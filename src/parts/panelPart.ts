@@ -47,14 +47,10 @@ export class PanelPart extends Part {
     }
   }
 
-  protected override get hasTitleArea(): boolean { return true; }
+  protected override get hasTitleArea(): boolean { return false; }
 
-  protected override createTitleArea(container: HTMLElement): void {
-    this._tabBarSlot = container;
-    container.classList.add('panel-tab-bar');
-    container.style.display = 'flex';
-    container.style.alignItems = 'center';
-    container.style.overflowX = 'auto';
+  protected override createTitleArea(_container: HTMLElement): void {
+    // Not used — the ViewContainer mounted in the panel provides its own tab bar.
   }
 
   protected override createContent(container: HTMLElement): void {

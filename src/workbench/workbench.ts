@@ -40,7 +40,8 @@ import { LayoutPersistence } from '../layout/layoutPersistence.js';
 // Views
 import { ViewManager } from '../views/viewManager.js';
 import { ViewContainer } from '../views/viewContainer.js';
-import { allPlaceholderViewDescriptors } from '../views/placeholderViews.js';
+import { allPlaceholderViewDescriptors, allAuxiliaryBarViewDescriptors } from '../views/placeholderViews.js';
+import { AuxiliaryBarPart } from '../parts/auxiliaryBarPart.js';
 
 // DnD
 import { DragAndDropController } from '../dnd/dragAndDrop.js';
@@ -86,6 +87,9 @@ export class Workbench extends Disposable {
   private _activityBarEl!: HTMLElement;
   private _sidebarContainer!: ViewContainer;
   private _panelContainer!: ViewContainer;
+  private _auxBarContainer!: ViewContainer;
+  private _secondaryActivityBarEl!: HTMLElement;
+  private _auxBarVisible = false;
 
   // Storage + Persistence
   private _storage!: IStorage;
@@ -128,6 +132,33 @@ export class Workbench extends Disposable {
   get state(): WorkbenchState { return this._state; }
   get services(): ServiceCollection { return this._services; }
   get container(): HTMLElement { return this._container; }
+
+  /**
+   * Toggle visibility of the auxiliary bar (secondary sidebar).
+   * When shown, it appears on the right side of the editor area.
+   */
+  toggleAuxiliaryBar(): void {
+    if (this._auxBarVisible) {
+      // Hide: remove from hGrid
+      this._hGrid.removeView(this._auxiliaryBar.id);
+      this._auxiliaryBar.setVisible(false);
+      this._secondaryActivityBarEl.style.display = 'none';
+      this._auxBarVisible = false;
+    } else {
+      // Show: add to hGrid at the end (right of editor column)
+      this._auxiliaryBar.setVisible(true);
+      this._hGrid.addView(this._auxiliaryBar, DEFAULT_AUX_BAR_WIDTH);
+      this._secondaryActivityBarEl.style.display = 'flex';
+      this._auxBarVisible = true;
+
+      // Ensure the aux bar content is populated
+      if (!this._auxBarContainer) {
+        this._auxBarContainer = this._setupAuxBarViews();
+      }
+    }
+    this._hGrid.layout();
+    this._layoutViewContainers();
+  }
 
   async initialize(): Promise<void> {
     if (this._state !== WorkbenchState.Created) {
@@ -378,6 +409,10 @@ export class Workbench extends Disposable {
 
     this._sidebarContainer = this._setupSidebarViews();
     this._panelContainer = this._setupPanelViews();
+    this._auxBarContainer = this._setupAuxBarViews();
+
+    // 2b. Secondary activity bar (right edge, for aux bar views)
+    this._setupSecondaryActivityBar();
 
     // 3. Editor watermark
     this._setupEditorWatermark();
@@ -385,8 +420,14 @@ export class Workbench extends Disposable {
     // 4. Status bar entries
     this._setupStatusBar();
 
+    // 4b. Toggle aux bar button in activity bar (bottom)
+    this._addAuxBarToggle();
+
     // 5. DnD between parts
     this._dndController = this._setupDragAndDrop();
+
+    // 5b. Register aux bar view descriptors
+    this._viewManager.registerMany(allAuxiliaryBarViewDescriptors);
 
     // 6. Layout view containers
     this._layoutViewContainers();
@@ -637,6 +678,101 @@ export class Workbench extends Disposable {
   }
 
   // ════════════════════════════════════════════════════════════════════════
+  // Activity bar toggle for aux bar
+  // ════════════════════════════════════════════════════════════════════════
+
+  private _addAuxBarToggle(): void {
+    // Add a spacer + toggle button at the bottom of the primary activity bar
+    const spacer = document.createElement('div');
+    spacer.style.flex = '1';
+    this._activityBarEl.appendChild(spacer);
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.classList.add('activity-bar-item');
+    toggleBtn.title = 'Toggle Secondary Side Bar';
+    toggleBtn.textContent = '💬';
+    toggleBtn.addEventListener('click', () => {
+      this.toggleAuxiliaryBar();
+      toggleBtn.classList.toggle('active', this._auxBarVisible);
+    });
+    this._activityBarEl.appendChild(toggleBtn);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Auxiliary bar views
+  // ════════════════════════════════════════════════════════════════════════
+
+  private _setupAuxBarViews(): ViewContainer {
+    const container = new ViewContainer('auxiliaryBar');
+
+    // Create and add Chat view
+    const chatView = this._viewManager.createViewSync('view.chat')!;
+    container.addView(chatView);
+
+    // Mount into aux bar's view slot
+    const auxBarPart = this._auxiliaryBar as unknown as AuxiliaryBarPart;
+    const viewSlot = auxBarPart.viewContainerSlot;
+    if (viewSlot) {
+      viewSlot.appendChild(container.element);
+    }
+
+    // Set header label
+    const headerSlot = auxBarPart.headerSlot;
+    if (headerSlot) {
+      const headerLabel = document.createElement('span');
+      headerLabel.classList.add('auxiliary-bar-header-label');
+      headerLabel.textContent = 'CHAT';
+      headerSlot.appendChild(headerLabel);
+
+      container.onDidChangeActiveView((viewId) => {
+        if (viewId) {
+          const view = container.getView(viewId);
+          headerLabel.textContent = (view?.name ?? 'CHAT').toUpperCase();
+        }
+      });
+    }
+
+    this._viewManager.showView('view.chat');
+
+    return container;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Secondary activity bar (right edge)
+  // ════════════════════════════════════════════════════════════════════════
+
+  private _setupSecondaryActivityBar(): void {
+    this._secondaryActivityBarEl = document.createElement('div');
+    this._secondaryActivityBarEl.classList.add('secondary-activity-bar');
+    // Hidden by default (aux bar starts hidden)
+    this._secondaryActivityBarEl.style.display = 'none';
+
+    const views = [
+      { id: 'view.chat', icon: '💬', label: 'Chat' },
+    ];
+
+    for (const v of views) {
+      const btn = document.createElement('button');
+      btn.classList.add('activity-bar-item');
+      btn.dataset.viewId = v.id;
+      btn.title = v.label;
+      btn.textContent = v.icon;
+      btn.addEventListener('click', () => {
+        if (this._auxBarVisible && this._auxBarContainer) {
+          this._auxBarContainer.activateView(v.id);
+          this._secondaryActivityBarEl.querySelectorAll('.activity-bar-item').forEach((el) =>
+            el.classList.toggle('active', el === btn),
+          );
+        }
+      });
+      this._secondaryActivityBarEl.appendChild(btn);
+    }
+
+    // Append to body row (after hGrid, at the right edge)
+    this._bodyRow.appendChild(this._secondaryActivityBarEl);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
   // Editor watermark
   // ════════════════════════════════════════════════════════════════════════
 
@@ -675,8 +811,11 @@ export class Workbench extends Disposable {
       this._sidebarContainer.layout(this._sidebar.width, this._sidebar.height - headerH, Orientation.Vertical);
     }
     if (this._panel.visible && this._panel.height > 0) {
-      const panelTabH = 30;
-      this._panelContainer.layout(this._panel.width, this._panel.height - panelTabH, Orientation.Horizontal);
+      this._panelContainer.layout(this._panel.width, this._panel.height, Orientation.Horizontal);
+    }
+    if (this._auxBarVisible && this._auxiliaryBar.width > 0) {
+      const auxHeaderH = 35;
+      this._auxBarContainer?.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - auxHeaderH, Orientation.Vertical);
     }
   }
 
@@ -690,9 +829,11 @@ export class Workbench extends Disposable {
     dnd.registerTarget(this._sidebar.id, this._sidebar.element);
     dnd.registerTarget(this._editor.id, this._editor.element);
     dnd.registerTarget(this._panel.id, this._panel.element);
+    dnd.registerTarget(this._auxiliaryBar.id, this._auxiliaryBar.element);
 
     this._makeTabsDraggable(dnd, this._sidebarContainer, this._sidebar.id);
     this._makeTabsDraggable(dnd, this._panelContainer, this._panel.id);
+    this._makeTabsDraggable(dnd, this._auxBarContainer, this._auxiliaryBar.id);
 
     dnd.onDropCompleted((result: DropResult) => {
       console.log('Drop completed:', result);

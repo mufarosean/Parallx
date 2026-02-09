@@ -309,9 +309,127 @@ export const outputViewDescriptor: IViewDescriptor = ViewDescriptorBuilder
 
 // ─── All descriptors (convenience) ──────────────────────────────────────────
 
+/**
+ * All placeholder view descriptors for sidebar and panel.
+ */
 export const allPlaceholderViewDescriptors: readonly IViewDescriptor[] = [
   explorerViewDescriptor,
   searchViewDescriptor,
   terminalViewDescriptor,
   outputViewDescriptor,
+];
+
+// ─── Auxiliary Bar Views ────────────────────────────────────────────────────
+
+/**
+ * Placeholder "Chat" view for the auxiliary bar (secondary sidebar).
+ * Demonstrates extension-like views that open in the right-side panel,
+ * similar to Copilot Chat in VS Code.
+ */
+export class ChatPlaceholderView extends PlaceholderView {
+
+  constructor() {
+    super('view.chat', 'Chat', 'codicon-comment-discussion');
+  }
+
+  get minimumWidth(): number { return 200; }
+  get maximumWidth(): number { return 800; }
+  get minimumHeight(): number { return 100; }
+  get maximumHeight(): number { return Number.POSITIVE_INFINITY; }
+
+  protected override createPlaceholderContent(container: HTMLElement): void {
+    container.style.padding = '12px';
+    container.style.color = '#cccccc';
+    container.style.fontSize = '13px';
+    container.style.backgroundColor = '#252526';
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.height = '100%';
+
+    // Chat history area
+    const chatHistory = document.createElement('div');
+    chatHistory.style.flex = '1';
+    chatHistory.style.overflowY = 'auto';
+    chatHistory.style.marginBottom = '8px';
+
+    const messages = [
+      { role: 'assistant', text: 'Hello! I can help you with your code. Ask me anything.' },
+      { role: 'user', text: 'How do I create a new view?' },
+      { role: 'assistant', text: 'Create a class extending PlaceholderView, register a descriptor with ViewDescriptorBuilder, and add it to the ViewManager.' },
+    ];
+
+    for (const msg of messages) {
+      const bubble = document.createElement('div');
+      bubble.style.padding = '8px 12px';
+      bubble.style.marginBottom = '8px';
+      bubble.style.borderRadius = '6px';
+      bubble.style.lineHeight = '1.4';
+      bubble.style.maxWidth = '90%';
+
+      if (msg.role === 'user') {
+        bubble.style.backgroundColor = '#1a4b8c';
+        bubble.style.marginLeft = 'auto';
+        bubble.style.color = '#e0e0e0';
+      } else {
+        bubble.style.backgroundColor = '#2d2d2d';
+        bubble.style.color = '#cccccc';
+      }
+
+      bubble.textContent = msg.text;
+      chatHistory.appendChild(bubble);
+    }
+    container.appendChild(chatHistory);
+
+    // Input area
+    const inputRow = document.createElement('div');
+    inputRow.style.display = 'flex';
+    inputRow.style.gap = '6px';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Ask a question…';
+    input.style.flex = '1';
+    input.style.padding = '8px 10px';
+    input.style.border = '1px solid #3c3c3c';
+    input.style.borderRadius = '4px';
+    input.style.backgroundColor = '#3c3c3c';
+    input.style.color = '#cccccc';
+    input.style.fontSize = '13px';
+    input.style.outline = 'none';
+    input.style.boxSizing = 'border-box';
+    inputRow.appendChild(input);
+
+    const sendBtn = document.createElement('button');
+    sendBtn.textContent = '→';
+    sendBtn.style.width = '36px';
+    sendBtn.style.background = '#007acc';
+    sendBtn.style.color = 'white';
+    sendBtn.style.border = 'none';
+    sendBtn.style.borderRadius = '4px';
+    sendBtn.style.cursor = 'pointer';
+    sendBtn.style.fontSize = '16px';
+    inputRow.appendChild(sendBtn);
+
+    container.appendChild(inputRow);
+  }
+
+  protected override saveViewState(): Record<string, unknown> {
+    return { messages: [] };
+  }
+}
+
+export const chatViewDescriptor: IViewDescriptor = ViewDescriptorBuilder
+  .create('view.chat', 'Chat')
+  .icon('codicon-comment-discussion')
+  .container('auxiliaryBar')
+  .order(1)
+  .constraints({ minimumWidth: 200, maximumWidth: 800, minimumHeight: 100, maximumHeight: Number.POSITIVE_INFINITY })
+  .factory(() => new ChatPlaceholderView())
+  .build();
+
+/**
+ * All auxiliary bar view descriptors.
+ */
+export const allAuxiliaryBarViewDescriptors: readonly IViewDescriptor[] = [
+  chatViewDescriptor,
 ];

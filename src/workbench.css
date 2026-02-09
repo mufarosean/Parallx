@@ -192,18 +192,51 @@ html, body {
   border-left: 1px solid #3c3c3c;
 }
 
+.auxiliary-bar-header {
+  height: 35px;
+  border-bottom: 1px solid #3c3c3c;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+}
+
+.auxiliary-bar-header-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.auxiliary-bar-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.auxiliary-bar-views {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Secondary Activity Bar (right edge) ── */
+.secondary-activity-bar {
+  width: 48px;
+  flex-shrink: 0;
+  background: #333333;
+  border-left: 1px solid #3c3c3c;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 4px;
+  gap: 2px;
+}
+
 /* ── Panel ── */
 .part-workbench-parts-panel {
   background: #1e1e1e;
   border-top: 1px solid #3c3c3c;
 }
 
-.panel-tab-bar {
-  height: 35px;
-  background: #252526;
-  border-bottom: 1px solid #3c3c3c;
-  padding: 0 8px;
-}
+/* Panel tab bar is provided by ViewContainer — no separate .panel-tab-bar needed */
 
 /* ── Status Bar ── */
 .part-workbench-parts-statusbar {
@@ -291,21 +324,12 @@ html, body {
   background: transparent;
   flex-shrink: 0;
   z-index: 10;
-  position: relative;
-}
-
-/* Thin visible border line (1px, centered in the 4px hit area) */
-.grid-sash::after {
-  content: '';
-  position: absolute;
-  background: #2d2d2d;
   transition: background-color 0.15s;
-  transition-delay: 0s;
 }
 
-.grid-sash:hover::after {
+.grid-sash:hover {
   background: #007acc;
-  transition-delay: 0.3s;
+  transition-delay: 0.15s;
 }
 
 .grid-sash-vertical {
@@ -314,24 +338,10 @@ html, body {
   cursor: col-resize;
 }
 
-.grid-sash-vertical::after {
-  top: 0;
-  bottom: 0;
-  left: 1px;
-  width: 1px;
-}
-
 .grid-sash-horizontal {
   height: 4px;
   min-height: 4px;
   cursor: row-resize;
-}
-
-.grid-sash-horizontal::after {
-  left: 0;
-  right: 0;
-  top: 1px;
-  height: 1px;
 }
 
 /* ── Grid branch container ── */
