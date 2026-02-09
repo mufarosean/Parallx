@@ -45,11 +45,43 @@ export const IViewService = createServiceIdentifier<IViewService>('IViewService'
 
 // ─── IWorkspaceService ───────────────────────────────────────────────────────
 
+import type { Workspace } from '../workspace/workspace.js';
+import type { WorkspaceState } from '../workspace/workspaceTypes.js';
+import type { RecentWorkspaceEntry } from '../workspace/workspaceTypes.js';
+
 /**
- * Manages workspace identity and state.
+ * Manages workspace identity, state persistence, and switching.
  */
 export interface IWorkspaceService extends IDisposable {
-  // Will be expanded in Capability 5/6
+  /** The currently active workspace (undefined before first load). */
+  readonly activeWorkspace: Workspace | undefined;
+
+  /** Whether a workspace has been loaded and restored. */
+  readonly isRestored: boolean;
+
+  /** Fires when the active workspace changes (e.g. after a switch). */
+  readonly onDidChangeWorkspace: Event<Workspace | undefined>;
+
+  /** Fires after workspace state has been restored. */
+  readonly onDidRestoreState: Event<WorkspaceState>;
+
+  /** Explicitly save the current workspace state. */
+  save(): Promise<void>;
+
+  /** Request a debounced save (for auto-save). */
+  requestSave(): void;
+
+  /** Create a new workspace and optionally switch to it. */
+  createWorkspace(name: string, path?: string, switchTo?: boolean): Promise<Workspace>;
+
+  /** Switch to a different workspace by ID. */
+  switchWorkspace(workspaceId: string): Promise<void>;
+
+  /** Get the recent workspaces list. */
+  getRecentWorkspaces(): Promise<readonly RecentWorkspaceEntry[]>;
+
+  /** Remove a workspace from the recent list. */
+  removeRecentWorkspace(workspaceId: string): Promise<void>;
 }
 
 export const IWorkspaceService = createServiceIdentifier<IWorkspaceService>('IWorkspaceService');
@@ -78,12 +110,19 @@ export const IEditorGroupService = createServiceIdentifier<IEditorGroupService>(
 
 // ─── ICommandService ─────────────────────────────────────────────────────────
 
+import type {
+  CommandDescriptor,
+  CommandExecutedEvent,
+  CommandRegisteredEvent,
+  CommandUnregisteredEvent,
+  ICommandServiceShape,
+} from '../commands/commandTypes.js';
+
 /**
  * Registers and executes commands.
+ * Re-exports ICommandServiceShape so consumers import from serviceTypes.
  */
-export interface ICommandService extends IDisposable {
-  // Will be expanded in Capability 7
-}
+export interface ICommandService extends ICommandServiceShape {}
 
 export const ICommandService = createServiceIdentifier<ICommandService>('ICommandService');
 

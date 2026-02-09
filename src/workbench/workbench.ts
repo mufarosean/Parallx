@@ -12,7 +12,7 @@
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices } from './workbenchServices.js';
 
@@ -36,6 +36,27 @@ import { LayoutRenderer } from '../layout/layoutRenderer.js';
 // Storage + Persistence
 import { LocalStorage, NamespacedStorage, IStorage } from '../platform/storage.js';
 import { LayoutPersistence } from '../layout/layoutPersistence.js';
+
+// Workspace
+import { Workspace } from '../workspace/workspace.js';
+import { WorkspaceLoader } from '../workspace/workspaceLoader.js';
+import { WorkspaceSaver, WorkspaceStateSources } from '../workspace/workspaceSaver.js';
+import {
+  WorkspaceState,
+  SerializedContextSnapshot,
+  createDefaultContextSnapshot,
+  createDefaultEditorSnapshot,
+  workspaceStorageKey,
+  RecentWorkspaceEntry,
+  RECENT_WORKSPACES_KEY,
+  DEFAULT_MAX_RECENT_WORKSPACES,
+} from '../workspace/workspaceTypes.js';
+import { createDefaultLayoutState, SerializedLayoutState } from '../layout/layoutModel.js';
+
+// Commands
+import { CommandService } from '../commands/commandRegistry.js';
+import { registerBuiltinCommands } from '../commands/structuralCommands.js';
+import { CommandPalette } from '../commands/commandPalette.js';
 
 // Views
 import { ViewManager } from '../views/viewManager.js';
@@ -96,6 +117,12 @@ export class Workbench extends Disposable {
   private _persistence!: LayoutPersistence;
   private _layoutRenderer!: LayoutRenderer;
 
+  // Workspace
+  private _workspace!: Workspace;
+  private _workspaceLoader!: WorkspaceLoader;
+  private _workspaceSaver!: WorkspaceSaver;
+  private _restoredState: WorkspaceState | undefined;
+
   // Part refs (cached after creation)
   private _titlebar!: Part;
   private _sidebar!: Part;
@@ -117,6 +144,12 @@ export class Workbench extends Disposable {
 
   private readonly _onDidShutdown = this._register(new Emitter<void>());
   readonly onDidShutdown: Event<void> = this._onDidShutdown.event;
+
+  private readonly _onDidSwitchWorkspace = this._register(new Emitter<Workspace>());
+  readonly onDidSwitchWorkspace: Event<Workspace> = this._onDidSwitchWorkspace.event;
+
+  // Recent workspaces manager (initialized in Phase 1)
+  private _recentWorkspaces!: RecentWorkspaces;
 
   constructor(
     private readonly _container: HTMLElement,
@@ -158,6 +191,120 @@ export class Workbench extends Disposable {
     }
     this._hGrid.layout();
     this._layoutViewContainers();
+  }
+
+  /**
+   * The currently active workspace.
+   */
+  get workspace(): Workspace { return this._workspace; }
+
+  /**
+   * Create a brand-new workspace and optionally switch to it.
+   */
+  async createWorkspace(name: string, path?: string, switchTo = true): Promise<Workspace> {
+    const ws = Workspace.create(name, path);
+
+    // Persist it immediately so it has an entry in storage
+    const state = ws.createDefaultState(
+      this._container.clientWidth,
+      this._container.clientHeight,
+    );
+    const key = workspaceStorageKey(ws.id);
+    await this._storage.set(key, JSON.stringify(state));
+
+    // Add to recent list
+    await this._recentWorkspaces.add(ws);
+
+    if (switchTo) {
+      await this.switchWorkspace(ws.id);
+    }
+
+    return ws;
+  }
+
+  /**
+   * Switch to a different workspace by ID.
+   *
+   * Flow:
+   *   1. Save current workspace state
+   *   2. Show transition overlay
+   *   3. Tear down DOM content (views, containers, DnD, grids)
+   *   4. Load new workspace state
+   *   5. Rebuild layout and parts
+   *   6. Apply restored state
+   *   7. Configure saver
+   *   8. Remove overlay
+   */
+  async switchWorkspace(targetId: string): Promise<void> {
+    if (this._state !== WorkbenchState.Ready) {
+      console.warn('[Workbench] Cannot switch workspace while in state:', this._state);
+      return;
+    }
+    if (this._workspace && this._workspace.id === targetId) {
+      console.log('[Workbench] Already on workspace %s — no-op', targetId);
+      return;
+    }
+
+    console.log('[Workbench] Switching workspace → %s', targetId);
+    const overlay = this._showTransitionOverlay();
+
+    try {
+      // 1. Save current workspace
+      await this._workspaceSaver.save();
+
+      // 2. Tear down current workspace content (views, containers, DnD)
+      this._teardownWorkspaceContent();
+
+      // 3. Load target workspace state
+      const w = this._container.clientWidth;
+      const h = this._container.clientHeight;
+      const savedState = await this._workspaceLoader.loadById(targetId, w, h);
+
+      if (savedState) {
+        this._workspace = Workspace.fromSerialized(savedState.identity, savedState.metadata);
+        this._restoredState = savedState;
+      } else {
+        // No saved state — create a fresh workspace identity
+        this._workspace = Workspace.create('Workspace');
+        this._restoredState = undefined;
+      }
+
+      // 4. Rebuild views, containers, DnD inside existing layout
+      this._rebuildWorkspaceContent();
+
+      // 5. Apply restored state
+      this._applyRestoredState();
+
+      // 6. Re-configure the saver for the new workspace
+      this._configureSaver();
+
+      // 7. Update recent workspaces and active ID
+      await this._recentWorkspaces.add(this._workspace);
+      await this._workspaceLoader.setActiveWorkspaceId(this._workspace.id);
+
+      // 8. Notify
+      this._onDidSwitchWorkspace.fire(this._workspace);
+
+      console.log('[Workbench] Switched to workspace "%s"', this._workspace.name);
+    } catch (err) {
+      console.error('[Workbench] Workspace switch failed:', err);
+    } finally {
+      this._removeTransitionOverlay(overlay);
+    }
+  }
+
+  /**
+   * Get the recent workspaces list.
+   */
+  async getRecentWorkspaces(): Promise<readonly import('../workspace/workspaceTypes.js').RecentWorkspaceEntry[]> {
+    return this._recentWorkspaces.getAll();
+  }
+
+  /**
+   * Remove a workspace from the recent list.
+   */
+  async removeRecentWorkspace(workspaceId: string): Promise<void> {
+    await this._recentWorkspaces.remove(workspaceId);
   }
 
   async initialize(): Promise<void> {
@@ -255,6 +402,7 @@ export class Workbench extends Disposable {
     lc.onTeardown(LifecyclePhase.Parts, () => {
       this._dndController?.dispose();
       this._viewManager?.dispose();
+      this._workspaceSaver?.dispose();
     });
 
     lc.onTeardown(LifecyclePhase.Layout, () => {
@@ -282,9 +430,17 @@ export class Workbench extends Disposable {
     this._persistence = new LayoutPersistence(this._storage);
 
     // Layout renderer: available for future serialized-state rendering
-    // (current layout uses manual grid construction, renderer will be
-    // used once we converge on SerializedLayoutState-driven rendering)
     this._layoutRenderer = this._register(new LayoutRenderer(this._container));
+
+    // Workspace persistence
+    this._workspaceLoader = new WorkspaceLoader(this._storage);
+    this._workspaceSaver = this._register(new WorkspaceSaver(this._storage));
+
+    // Create or identify the current workspace
+    this._workspace = Workspace.create('Default Workspace');
+
+    // Recent workspaces manager
+    this._recentWorkspaces = new RecentWorkspaces(this._storage);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -440,6 +596,28 @@ export class Workbench extends Disposable {
 
     // 8. Window resize handler
     window.addEventListener('resize', this._onWindowResize);
+
+    // 9. Command system: wire up and register built-in commands
+    this._initializeCommands();
+  }
+
+  /**
+   * Initialize the command system: set workbench ref, register all builtin commands,
+   * and create the command palette UI.
+   */
+  private _initializeCommands(): void {
+    const cmdService = this._services.get(ICommandService) as CommandService;
+    cmdService.setWorkbench(this);
+    this._register(registerBuiltinCommands(cmdService));
+
+    // Command Palette — overlay UI for discovering and executing commands
+    const palette = new CommandPalette(cmdService, this._container);
+    this._register(palette);
+
+    console.log(
+      '[Workbench] Registered %d built-in commands, command palette ready',
+      cmdService.getCommands().size,
+    );
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -447,19 +625,34 @@ export class Workbench extends Disposable {
   // ════════════════════════════════════════════════════════════════════════
 
   private async _restoreWorkspace(): Promise<void> {
-    // Exercise the persistence path: attempt to load saved layout state.
-    // In this milestone, the loaded state is logged but not applied to the
-    // grid (the manual grid construction is the active rendering path).
-    // Full restore from SerializedLayoutState will come in a later capability.
-    const hasSaved = await this._persistence.hasSavedState();
-    if (hasSaved) {
-      const w = this._container.clientWidth;
-      const h = this._container.clientHeight;
-      const savedState = await this._persistence.load(w, h);
-      console.log('[Workbench] Loaded saved layout state (v%d)', savedState.version);
+    const w = this._container.clientWidth;
+    const h = this._container.clientHeight;
+
+    // Try to load the last-active workspace ID
+    const activeId = await this._workspaceLoader.getActiveWorkspaceId();
+    if (activeId) {
+      const savedState = await this._workspaceLoader.loadById(activeId, w, h);
+      if (savedState) {
+        // Re-create workspace identity from saved state
+        this._workspace = Workspace.fromSerialized(savedState.identity, savedState.metadata);
+        this._restoredState = savedState;
+        console.log('[Workbench] Loaded workspace "%s" (v%d)', savedState.identity.name, savedState.version);
+      } else {
+        console.log('[Workbench] No valid saved state for workspace %s — using defaults', activeId);
+      }
     } else {
-      console.log('[Workbench] No saved layout state — using defaults');
+      console.log('[Workbench] No active workspace ID — using defaults');
     }
+
+    // Apply restored state to live parts, views, and containers
+    this._applyRestoredState();
+
+    // Configure the saver with live sources so subsequent saves capture real state
+    this._configureSaver();
+
+    // Track as recent + persist active workspace ID
+    await this._recentWorkspaces.add(this._workspace);
+    await this._workspaceLoader.setActiveWorkspaceId(this._workspace.id);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -468,16 +661,133 @@ export class Workbench extends Disposable {
 
   private async _saveLayoutState(): Promise<void> {
     try {
-      // Build a minimal SerializedLayoutState from current dimensions
-      const { createDefaultLayoutState } = await import('../layout/layoutModel.js');
-      const w = this._container.clientWidth;
-      const h = this._container.clientHeight;
-      const state = createDefaultLayoutState(w, h);
-      await this._persistence.save(state);
-      console.log('[Workbench] Layout state saved');
+      await this._workspaceSaver.save();
     } catch (err) {
-      console.error('[Workbench] Failed to save layout state:', err);
+      console.error('[Workbench] Failed to save workspace state:', err);
     }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Apply restored workspace state to live subsystems
+  // ════════════════════════════════════════════════════════════════════════
+
+  private _applyRestoredState(): void {
+    const state = this._restoredState;
+    if (!state) return;
+
+    // 1. Restore part visibility and sizes
+    for (const partSnap of state.parts) {
+      const part = this._partRegistry.getPart(partSnap.partId) as Part | undefined;
+      if (!part) continue;
+
+      // Restore visibility
+      if (part.visible !== partSnap.visible) {
+        // Special handling for aux bar — use the toggle mechanism
+        if (partSnap.partId === PartId.AuxiliaryBar) {
+          if (partSnap.visible && !this._auxBarVisible) {
+            this.toggleAuxiliaryBar();
+          } else if (!partSnap.visible && this._auxBarVisible) {
+            this.toggleAuxiliaryBar();
+          }
+        } else {
+          part.setVisible(partSnap.visible);
+        }
+      }
+
+      // Restore part-specific data
+      if (partSnap.data) {
+        part.restoreState({
+          id: partSnap.partId,
+          visible: partSnap.visible,
+          width: partSnap.width,
+          height: partSnap.height,
+          position: part.position,
+          data: partSnap.data,
+        });
+      }
+    }
+
+    // 2. Restore view container states (tab order + active view)
+    const containerMap = new Map<string, ViewContainer>([
+      ['sidebar', this._sidebarContainer],
+      ['panel', this._panelContainer],
+    ]);
+    if (this._auxBarContainer) {
+      containerMap.set('auxiliaryBar', this._auxBarContainer);
+    }
+
+    for (const vcSnap of state.viewContainers) {
+      const container = containerMap.get(vcSnap.containerId);
+      if (!container) continue;
+
+      container.restoreContainerState({
+        activeViewId: vcSnap.activeViewId,
+        tabOrder: vcSnap.tabOrder,
+      });
+    }
+
+    // 3. Restore per-view states
+    for (const viewSnap of state.views) {
+      const view = this._viewManager.getView(viewSnap.viewId);
+      if (view && viewSnap.state) {
+        view.restoreState(viewSnap.state);
+      }
+    }
+
+    // 4. Restore context (active part / focused view)
+    if (state.context.focusedView) {
+      const view = this._viewManager.getView(state.context.focusedView);
+      if (view) {
+        try { view.focus(); } catch { /* best-effort */ }
+      }
+    }
+
+    console.log('[Workbench] Restored workspace state for "%s"', state.identity.name);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Configure the WorkspaceSaver with live sources
+  // ════════════════════════════════════════════════════════════════════════
+
+  private _configureSaver(): void {
+    const allParts = [
+      this._titlebar,
+      this._sidebar,
+      this._editor,
+      this._auxiliaryBar,
+      this._panel,
+      this._statusBar,
+    ];
+
+    const allContainers: ViewContainer[] = [this._sidebarContainer, this._panelContainer];
+    if (this._auxBarContainer) {
+      allContainers.push(this._auxBarContainer);
+    }
+
+    this._workspaceSaver.setSources({
+      workspace: this._workspace,
+      containerWidth: this._container.clientWidth,
+      containerHeight: this._container.clientHeight,
+      parts: allParts,
+      viewContainers: allContainers,
+      viewManager: this._viewManager,
+      layoutSerializer: () => {
+        return createDefaultLayoutState(this._container.clientWidth, this._container.clientHeight);
+      },
+      contextProvider: () => {
+        return {
+          activePart: undefined,
+          focusedView: this._viewManager.activeViewId,
+          activeEditor: undefined,
+          activeEditorGroup: undefined,
+        };
+      },
+      editorProvider: () => createDefaultEditorSnapshot(),
+    });
+
+    // Wire auto-save on structural changes
+    this._hGrid.onDidChange(() => this._workspaceSaver.requestSave());
+    this._vGrid.onDidChange(() => this._workspaceSaver.requestSave());
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -848,5 +1158,219 @@ export class Workbench extends Disposable {
   private _setState(state: WorkbenchState): void {
     this._state = state;
     this._onDidChangeState.fire(state);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Workspace switch helpers
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Tear down workspace-specific content (views, containers, DnD)
+   * while keeping the structural layout (grids, parts elements) intact.
+   */
+  private _teardownWorkspaceContent(): void {
+    // 1. Dispose DnD controller
+    this._dndController?.dispose();
+
+    // 2. Dispose view containers (which dispose their child views)
+    this._sidebarContainer?.dispose();
+    this._panelContainer?.dispose();
+    this._auxBarContainer?.dispose();
+
+    // 3. Clear view container mount points in parts
+    const sidebarViews = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
+    if (sidebarViews) sidebarViews.innerHTML = '';
+
+    const panelViews = this._panel.element.querySelector('.panel-views') as HTMLElement;
+    if (panelViews) panelViews.innerHTML = '';
+
+    const auxBarPart = this._auxiliaryBar as unknown as AuxiliaryBarPart;
+    const auxViewSlot = auxBarPart.viewContainerSlot;
+    if (auxViewSlot) auxViewSlot.innerHTML = '';
+    const auxHeaderSlot = auxBarPart.headerSlot;
+    if (auxHeaderSlot) auxHeaderSlot.innerHTML = '';
+
+    // 4. Clear activity bar view items (keep the structure, remove buttons)
+    const activityItems = this._activityBarEl.querySelectorAll('.activity-bar-item');
+    activityItems.forEach(el => el.remove());
+    // Remove spacer too
+    while (this._activityBarEl.firstChild) {
+      this._activityBarEl.removeChild(this._activityBarEl.firstChild);
+    }
+
+    // 5. Dispose the view manager (disposes all remaining view instances)
+    this._viewManager?.dispose();
+
+    // 6. Dispose the workspace saver (cancel pending debounce)
+    this._workspaceSaver?.dispose();
+    this._workspaceSaver = new WorkspaceSaver(this._storage);
+
+    // 7. Reset aux bar visibility tracking
+    if (this._auxBarVisible) {
+      try { this._hGrid.removeView(this._auxiliaryBar.id); } catch { /* ok */ }
+      this._auxiliaryBar.setVisible(false);
+      this._secondaryActivityBarEl.style.display = 'none';
+      this._auxBarVisible = false;
+    }
+
+    console.log('[Workbench] Torn down workspace content');
+  }
+
+  /**
+   * Rebuild workspace-specific content after a switch.
+   * Re-runs the same logic as Phase 3 (_initializeParts) but without
+   * rebuilding the structural layout, titlebar, or status bar.
+   */
+  private _rebuildWorkspaceContent(): void {
+    // 1. View system — register ALL descriptors, then create containers
+    this._viewManager = new ViewManager();
+    this._viewManager.registerMany(allPlaceholderViewDescriptors);
+    this._viewManager.registerMany(allAuxiliaryBarViewDescriptors);
+
+    this._sidebarContainer = this._setupSidebarViews();
+    this._panelContainer = this._setupPanelViews();
+    this._auxBarContainer = this._setupAuxBarViews();
+
+    // 2. Aux bar toggle button
+    this._addAuxBarToggle();
+
+    // 3. DnD
+    this._dndController = this._setupDragAndDrop();
+
+    // 4. Layout view containers
+    this._layoutViewContainers();
+
+    console.log('[Workbench] Rebuilt workspace content');
+  }
+
+  /**
+   * Show a fade overlay during workspace switch.
+   */
+  private _showTransitionOverlay(): HTMLElement {
+    const overlay = document.createElement('div');
+    overlay.classList.add('workspace-transition-overlay');
+    overlay.style.cssText = `
+      position: absolute; inset: 0; z-index: 10000;
+      background: #1e1e1e; opacity: 0;
+      transition: opacity 120ms ease-in;
+      pointer-events: all;
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(255,255,255,0.5); font-size: 14px;
+    `;
+    overlay.textContent = 'Switching workspace…';
+    this._container.appendChild(overlay);
+
+    // Trigger fade-in
+    requestAnimationFrame(() => { overlay.style.opacity = '1'; });
+
+    return overlay;
+  }
+
+  /**
+   * Remove the transition overlay with a fade-out.
+   */
+  private _removeTransitionOverlay(overlay: HTMLElement): void {
+    overlay.style.opacity = '0';
+    overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
+    // Safety fallback
+    setTimeout(() => { if (overlay.parentElement) overlay.remove(); }, 300);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// RecentWorkspaces — manages the persisted list of recent workspaces
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Manages a capped, ordered list of recently accessed workspaces.
+ * Stored in global (non-workspace-specific) storage.
+ */
+export class RecentWorkspaces {
+  private _maxSize: number;
+
+  constructor(
+    private readonly _storage: IStorage,
+    maxSize = DEFAULT_MAX_RECENT_WORKSPACES,
+  ) {
+    this._maxSize = maxSize;
+  }
+
+  /**
+   * Get all recent workspace entries, sorted by lastAccessedAt descending.
+   */
+  async getAll(): Promise<readonly RecentWorkspaceEntry[]> {
+    try {
+      const json = await this._storage.get(RECENT_WORKSPACES_KEY);
+      if (!json) return [];
+
+      const parsed = JSON.parse(json);
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed as RecentWorkspaceEntry[];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Add (or update) a workspace in the recent list.
+   * Moves it to the top and trims the list to maxSize.
+   */
+  async add(workspace: Workspace): Promise<void> {
+    const list = await this._getList();
+
+    // Remove existing entry with same ID
+    const filtered = list.filter(e => e.identity.id !== workspace.id);
+
+    // Prepend current workspace
+    workspace.touch();
+    const entry: RecentWorkspaceEntry = {
+      identity: workspace.identity,
+      metadata: workspace.metadata,
+    };
+    filtered.unshift(entry);
+
+    // Trim to max
+    const trimmed = filtered.slice(0, this._maxSize);
+    await this._saveList(trimmed);
+  }
+
+  /**
+   * Remove a workspace from the recent list.
+   */
+  async remove(workspaceId: string): Promise<void> {
+    const list = await this._getList();
+    const filtered = list.filter(e => e.identity.id !== workspaceId);
+    await this._saveList(filtered);
+  }
+
+  /**
+   * Clear the entire recent list.
+   */
+  async clear(): Promise<void> {
+    await this._storage.delete(RECENT_WORKSPACES_KEY);
+  }
+
+  /**
+   * Get the number of recent entries.
+   */
+  async count(): Promise<number> {
+    const list = await this._getList();
+    return list.length;
+  }
+
+  private async _getList(): Promise<RecentWorkspaceEntry[]> {
+    try {
+      const json = await this._storage.get(RECENT_WORKSPACES_KEY);
+      if (!json) return [];
+      const parsed = JSON.parse(json);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async _saveList(list: RecentWorkspaceEntry[]): Promise<void> {
+    await this._storage.set(RECENT_WORKSPACES_KEY, JSON.stringify(list));
   }
 }
