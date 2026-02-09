@@ -460,6 +460,19 @@ The system can define and manage structural parts (analogous to VS Code's "Parts
   - Provide keyboard alternatives for accessibility
   - Drop zones: center (merge), top/bottom (split vertical), left/right (split horizontal)
 
+**Additional Work – Electron Desktop Shell** ✅ *(not in original milestone)*
+- **Description:** Added an Electron-based desktop app shell so the workbench can be viewed and tested as a standalone native application (like VS Code), rather than running in a browser.
+- **What was built:**
+  - `electron/main.cjs` — Electron main process (frameless window, custom titlebar, IPC for minimize/maximize/close)
+  - `electron/preload.cjs` — Context bridge exposing window control API to the renderer
+  - `index.html` — HTML entry point with CSP headers
+  - `src/main.ts` — Renderer entry that boots all 6 standard parts with placeholder content (explorer tree, editor watermark, terminal mock, status bar entries)
+  - `src/workbench.css` — VS Code-inspired dark theme base styles
+  - `scripts/build.mjs` — esbuild bundler for the renderer (IIFE, sourcemaps)
+  - `package.json` updated with `"main"`, `npm start` / `npm run dev` scripts
+  - `electron` and `esbuild` added as devDependencies
+- **Rationale:** Provides a visual harness for verifying that Capabilities 1–3 (DI, layout, parts) work together correctly and gives a tangible checkpoint before proceeding to view hosting.
+
 ---
 
 ## Capability 4 – View Hosting and Lifecycle
