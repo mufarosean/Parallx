@@ -291,12 +291,21 @@ html, body {
   background: transparent;
   flex-shrink: 0;
   z-index: 10;
-  transition: background-color 0.15s;
+  position: relative;
 }
 
-.grid-sash:hover {
+/* Thin visible border line (1px, centered in the 4px hit area) */
+.grid-sash::after {
+  content: '';
+  position: absolute;
+  background: #2d2d2d;
+  transition: background-color 0.15s;
+  transition-delay: 0s;
+}
+
+.grid-sash:hover::after {
   background: #007acc;
-  transition-delay: 0.15s;
+  transition-delay: 0.3s;
 }
 
 .grid-sash-vertical {
@@ -305,10 +314,24 @@ html, body {
   cursor: col-resize;
 }
 
+.grid-sash-vertical::after {
+  top: 0;
+  bottom: 0;
+  left: 1px;
+  width: 1px;
+}
+
 .grid-sash-horizontal {
   height: 4px;
   min-height: 4px;
   cursor: row-resize;
+}
+
+.grid-sash-horizontal::after {
+  left: 0;
+  right: 0;
+  top: 1px;
+  height: 1px;
 }
 
 /* ── Grid branch container ── */
