@@ -29,7 +29,7 @@ html, body {
 /* ── Middle row (sidebar + editor + auxbar) ── */
 .workbench-middle {
   display: flex;
-  flex: 1;
+  flex: 1 0 auto;
   overflow: hidden;
 }
 
@@ -84,6 +84,36 @@ html, body {
   color: white;
 }
 
+/* ── Titlebar menu bar ── */
+.titlebar-menubar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 100%;
+}
+
+.titlebar-app-icon {
+  font-size: 16px;
+  padding: 0 10px 0 12px;
+  opacity: 0.9;
+}
+
+.titlebar-menu-item {
+  padding: 0 8px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: default;
+  transition: color 0.1s, background-color 0.1s;
+}
+
+.titlebar-menu-item:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
 /* ── Sidebar ── */
 .part-workbench-parts-sidebar {
   background: #252526;
@@ -93,12 +123,57 @@ html, body {
 .sidebar-header {
   height: 35px;
   border-bottom: 1px solid #3c3c3c;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-header-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ── Activity Bar (standalone, full-height) ── */
+.activity-bar {
+  width: 48px;
+  flex-shrink: 0;
+  background: #333333;
+  border-right: 1px solid #3c3c3c;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 4px;
+  gap: 2px;
 }
 
 .sidebar-activity-bar {
+  display: none; /* hidden — we use the standalone activity bar */
+}
+
+.activity-bar-item {
   width: 48px;
-  background: #333333;
-  border-right: 1px solid #3c3c3c;
+  height: 48px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-left: 2px solid transparent;
+  transition: color 0.15s;
+}
+
+.activity-bar-item:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.activity-bar-item.active {
+  color: #ffffff;
+  border-left-color: #ffffff;
 }
 
 /* ── Editor ── */
@@ -171,7 +246,82 @@ html, body {
   50% { opacity: 0; }
 }
 
+/* ── View Container ── */
+.view-container-tabs {
+  background: #252526;
+  border-bottom: 1px solid #1e1e1e;
+  gap: 0;
+}
+
+.view-tab {
+  color: rgba(255, 255, 255, 0.5);
+  border-right: 1px solid #1e1e1e;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.view-tab:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.view-tab.tab-active {
+  color: #ffffff;
+  background-color: #1e1e1e;
+  border-bottom: 2px solid #007acc;
+}
+
+.view-tab.tab-dragging {
+  opacity: 0.5;
+}
+
+.view-tab.tab-drop-target {
+  border-left: 2px solid #007acc;
+}
+
+.view-tab-icon {
+  font-size: 14px;
+}
+
+.view-container-content {
+  background: #1e1e1e;
+}
+
+/* ── Grid sash (resize handles) ── */
+.grid-sash {
+  background: transparent;
+  flex-shrink: 0;
+  z-index: 10;
+  transition: background-color 0.15s;
+}
+
+.grid-sash:hover {
+  background: #007acc;
+  transition-delay: 0.15s;
+}
+
+.grid-sash-vertical {
+  width: 4px;
+  min-width: 4px;
+  cursor: col-resize;
+}
+
+.grid-sash-horizontal {
+  height: 4px;
+  min-height: 4px;
+  cursor: row-resize;
+}
+
+/* ── Grid branch container ── */
+.grid-branch {
+  overflow: hidden;
+}
+
 /* ── Drop overlay ── */
 .parallx-drop-overlay {
   pointer-events: none;
+}
+
+/* ── Drag feedback ── */
+.dragging {
+  opacity: 0.5;
 }

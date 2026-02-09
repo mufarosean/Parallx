@@ -101,6 +101,14 @@ export class ViewContainer extends Disposable implements IGridView {
 
   get element(): HTMLElement { return this._element; }
 
+  /**
+   * Hide the built-in tab bar (e.g. when an external activity bar controls switching).
+   */
+  hideTabBar(): void {
+    this._tabBar.style.display = 'none';
+    this._tabBarHeight = 0;
+  }
+
   get minimumWidth(): number {
     return this._getActiveView()?.minimumWidth ?? 0;
   }

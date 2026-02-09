@@ -5,6 +5,7 @@ import { Part } from './parts/part.js';
 import { PartRegistry } from './parts/partRegistry.js';
 import { PartId } from './parts/partTypes.js';
 import { Orientation } from './layout/layoutTypes.js';
+import { Grid } from './layout/grid.js';
 
 // Import all part descriptors
 import { titlebarPartDescriptor } from './parts/titlebarPart.js';
@@ -14,6 +15,26 @@ import { editorPartDescriptor } from './parts/editorPart.js';
 import { auxiliaryBarPartDescriptor } from './parts/auxiliaryBarPart.js';
 import { statusBarPartDescriptor } from './parts/statusBarPart.js';
 import { StatusBarPart, StatusBarAlignment } from './parts/statusBarPart.js';
+import { SidebarPart } from './parts/sidebarPart.js';
+
+// Import view system
+import { ViewManager } from './views/viewManager.js';
+import { ViewContainer } from './views/viewContainer.js';
+import {
+  ExplorerPlaceholderView,
+  SearchPlaceholderView,
+  TerminalPlaceholderView,
+  OutputPlaceholderView,
+  allPlaceholderViewDescriptors,
+} from './views/placeholderViews.js';
+
+// Import drag-and-drop
+import { DragAndDropController } from './dnd/dragAndDrop.js';
+import { DropPosition, DragPayload, DropResult } from './dnd/dndTypes.js';
+
+// Import events for adapter
+import { Emitter } from './platform/events.js';
+import { IGridView } from './layout/gridView.js';
 
 // ── Electron window controls bridge ──
 
@@ -52,8 +73,7 @@ function bootstrap(): void {
   // 2. Create all parts
   registry.createAll();
 
-  // 3. Build the workbench DOM structure
-  // Layout: Titlebar | [Sidebar | Editor | AuxBar] | Panel | StatusBar
+  // 3. Retrieve parts
   const titlebar = registry.requirePart(PartId.Titlebar) as Part;
   const sidebar = registry.requirePart(PartId.Sidebar) as Part;
   const editor = registry.requirePart(PartId.Editor) as Part;
@@ -61,70 +81,182 @@ function bootstrap(): void {
   const panel = registry.requirePart(PartId.Panel) as Part;
   const statusBar = registry.requirePart(PartId.StatusBar) as Part;
 
-  // Create structural wrappers
+  // 4. Build the workbench DOM structure using Grid system
+  // Layout: Titlebar | MiddleRow[ ActivityBar | HGrid(Sidebar | Editor | AuxBar) ] | VGrid(Panel) | StatusBar
+  //
+  // We use two grids:
+  //   - hGrid (Horizontal): sidebar | editor | auxbar  → col-resize sashes
+  //   - vGrid (Vertical):   hGridWrapper | panel       → row-resize sash
+  // Titlebar + statusbar remain outside the grids (fixed heights).
+
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  const titleH = 30;
+  const statusH = 22;
+  const activityBarW = 48;
+  const bodyH = h - titleH - statusH;
+  const panelH = panel.visible ? 200 : 0;
+  const middleH = bodyH - panelH;
+  const sidebarW = sidebar.visible ? 202 : 0;
+  const auxBarW = auxiliaryBar.visible ? 250 : 0;
+  const editorW = Math.max(200, w - activityBarW - sidebarW - auxBarW - 8); // 8px for sashes
+
+  // ── Create parts into temporary containers so their elements exist ──
+  const tempDiv = document.createElement('div');
+  tempDiv.style.display = 'none';
+  document.body.appendChild(tempDiv);
+
+  titlebar.create(tempDiv);
+  sidebar.create(tempDiv);
+  editor.create(tempDiv);
+  auxiliaryBar.create(tempDiv);
+  panel.create(tempDiv);
+  statusBar.create(tempDiv);
+
+  // ── Horizontal grid: sidebar | editor | auxbar ──
+  const hGrid = new Grid(Orientation.Horizontal, w - activityBarW, middleH);
+
+  if (sidebar.visible) {
+    hGrid.addView(sidebar, sidebarW);
+  }
+  hGrid.addView(editor, editorW);
+  if (auxiliaryBar.visible) {
+    hGrid.addView(auxiliaryBar, auxBarW);
+  }
+  hGrid.layout();
+
+  // ── Middle row wrapper: activityBar + hGrid ──
   const middleRow = document.createElement('div');
   middleRow.classList.add('workbench-middle');
 
-  // Create and mount parts into the workbench
-  titlebar.create(container);
-  sidebar.create(middleRow);
-  editor.create(middleRow);
-  // AuxBar hidden by default — still create it so toggle works
-  auxiliaryBar.create(middleRow);
-  container.appendChild(middleRow);
-  panel.create(container);
-  statusBar.create(container);
+  const activityBarEl = document.createElement('div');
+  activityBarEl.classList.add('activity-bar');
+  middleRow.appendChild(activityBarEl);
 
-  // 4. Populate the titlebar with window controls
+  // Hide the sidebar's internal activity bar slot
+  const internalActivityBar = sidebar.element.querySelector('.sidebar-activity-bar') as HTMLElement;
+  if (internalActivityBar) {
+    internalActivityBar.style.display = 'none';
+  }
+
+  // ── Vertical grid: middleRowWrapper | panel ──
+  // We create a "middleRowView" adapter so the hGrid + activityBar can be a leaf in vGrid.
+  // For simplicity we'll wrap the middleRow as a standalone grid view.
+  const middleRowAdapter = createMiddleRowAdapter(middleRow, hGrid, activityBarW);
+
+  const vGrid = new Grid(Orientation.Vertical, w, bodyH);
+  vGrid.addView(middleRowAdapter, middleH);
+  if (panel.visible) {
+    vGrid.addView(panel, panelH);
+  }
+  vGrid.layout();
+
+  // ── Assemble final DOM ──
+  // Titlebar (fixed, outside grid)
+  container.appendChild(titlebar.element);
+  titlebar.layout(w, titleH, Orientation.Horizontal);
+
+  // Vertical grid body (middleRow + panel with sash)
+  container.appendChild(vGrid.element);
+  vGrid.element.style.flex = '1';
+
+  // Append hGrid element into middleRow (after activityBar)
+  middleRow.appendChild(hGrid.element);
+  hGrid.element.style.flex = '1';
+
+  // StatusBar (fixed, outside grid)
+  container.appendChild(statusBar.element);
+  statusBar.layout(w, statusH, Orientation.Horizontal);
+
+  // Clean up temp container
+  tempDiv.remove();
+
+  // ── Initialize sash drag on both grids ──
+  hGrid.initializeSashDrag();
+  vGrid.initializeSashDrag();
+
+  // 5. Populate the titlebar with window controls
   setupTitlebar(titlebar);
 
-  // 5. Add placeholder content to demonstrate parts are alive
-  addPlaceholderContent(sidebar, editor, panel);
+  // 6. Set up the view system
+  const viewManager = new ViewManager();
+  viewManager.registerMany(allPlaceholderViewDescriptors);
 
-  // 6. Add status bar entries
+  const sidebarContainer = setupSidebarViews(viewManager, sidebar, activityBarEl);
+  const panelContainer = setupPanelViews(viewManager, panel);
+
+  // 7. Editor watermark
+  setupEditorWatermark(editor);
+
+  // 8. Add status bar entries
   setupStatusBar(statusBar as unknown as StatusBarPart);
 
-  // 7. Initial layout
-  doLayout(container, titlebar, middleRow, sidebar, editor, auxiliaryBar, panel, statusBar);
+  // 9. Set up drag-and-drop between parts
+  const dndController = setupDragAndDrop(sidebar, editor, panel, sidebarContainer, panelContainer);
 
-  // 8. Relayout on window resize
+  // 10. Layout view containers
+  layoutViewContainers(sidebar, sidebarContainer, panel, panelContainer);
+
+  // Update view containers when grid sizes change (sash drag)
+  hGrid.onDidChange(() => {
+    layoutViewContainers(sidebar, sidebarContainer, panel, panelContainer);
+  });
+  vGrid.onDidChange(() => {
+    layoutViewContainers(sidebar, sidebarContainer, panel, panelContainer);
+  });
+
+  // 11. Relayout on window resize
   window.addEventListener('resize', () => {
-    doLayout(container, titlebar, middleRow, sidebar, editor, auxiliaryBar, panel, statusBar);
+    const rw = container.clientWidth;
+    const rh = container.clientHeight;
+    const rbodyH = rh - titleH - statusH;
+
+    titlebar.layout(rw, titleH, Orientation.Horizontal);
+    statusBar.layout(rw, statusH, Orientation.Horizontal);
+
+    // Resize vertical grid (cascades to hGrid via middleRowAdapter)
+    vGrid.resize(rw, rbodyH);
+
+    // Relayout view containers
+    layoutViewContainers(sidebar, sidebarContainer, panel, panelContainer);
   });
 
   console.log('Parallx workbench started.');
 }
 
-// ── Layout ──
+// ── Middle Row Adapter ──
 
-function doLayout(
-  container: HTMLElement,
-  titlebar: Part,
-  middleRow: HTMLElement,
-  sidebar: Part,
-  editor: Part,
-  auxiliaryBar: Part,
-  panel: Part,
-  statusBar: Part,
-): void {
-  const w = container.clientWidth;
-  const h = container.clientHeight;
+/**
+ * Creates an IGridView adapter that wraps the middleRow div (activityBar + hGrid).
+ * This lets the vertical grid manage the middleRow height along with the panel.
+ */
+function createMiddleRowAdapter(middleRow: HTMLElement, hGrid: Grid, activityBarW: number): IGridView {
+  const emitter = new Emitter<void>();
 
-  const titleH = 30;
-  const statusH = 22;
-  const panelH = panel.visible ? 200 : 0;
-  const middleH = h - titleH - statusH - panelH;
-  const sidebarW = sidebar.visible ? 250 : 0;
-  const auxBarW = auxiliaryBar.visible ? 250 : 0;
-  const editorW = w - sidebarW - auxBarW;
-
-  titlebar.layout(w, titleH, Orientation.Horizontal);
-  middleRow.style.height = `${middleH}px`;
-  sidebar.layout(sidebarW, middleH, Orientation.Vertical);
-  editor.layout(editorW, middleH, Orientation.Vertical);
-  auxiliaryBar.layout(auxBarW, middleH, Orientation.Vertical);
-  panel.layout(w, panelH, Orientation.Horizontal);
-  statusBar.layout(w, statusH, Orientation.Horizontal);
+  return {
+    element: middleRow,
+    id: 'workbench.middleRow',
+    minimumWidth: 0,
+    maximumWidth: Number.POSITIVE_INFINITY,
+    minimumHeight: 150,
+    maximumHeight: Number.POSITIVE_INFINITY,
+    layout(width: number, height: number, _orientation: Orientation): void {
+      middleRow.style.width = `${width}px`;
+      middleRow.style.height = `${height}px`;
+      // Relay to horizontal grid (minus activityBar width)
+      hGrid.resize(width - activityBarW, height);
+    },
+    setVisible(visible: boolean): void {
+      middleRow.style.display = visible ? 'flex' : 'none';
+    },
+    toJSON(): object {
+      return { id: 'workbench.middleRow', type: 'adapter' };
+    },
+    onDidChangeConstraints: emitter.event,
+    dispose(): void {
+      emitter.dispose();
+    },
+  };
 }
 
 // ── Titlebar ──
@@ -132,15 +264,25 @@ function doLayout(
 function setupTitlebar(titlebar: Part): void {
   const el = titlebar.element;
 
-  // Left: app name
+  // Left: app icon + menu bar
   const leftSlot = el.querySelector('.titlebar-left') as HTMLElement;
   if (leftSlot) {
-    const appName = document.createElement('span');
-    appName.textContent = 'Parallx';
-    appName.style.fontWeight = '600';
-    appName.style.fontSize = '13px';
-    appName.style.marginLeft = '12px';
-    leftSlot.appendChild(appName);
+    leftSlot.classList.add('titlebar-menubar');
+
+    // App icon
+    const appIcon = document.createElement('span');
+    appIcon.textContent = '⊞';
+    appIcon.classList.add('titlebar-app-icon');
+    leftSlot.appendChild(appIcon);
+
+    // Menu items (structural placeholders — no dropdowns in this milestone)
+    const menuItems = ['File', 'Edit', 'Selection', 'View', 'Go', 'Run', 'Terminal', 'Help'];
+    for (const label of menuItems) {
+      const item = document.createElement('span');
+      item.textContent = label;
+      item.classList.add('titlebar-menu-item');
+      leftSlot.appendChild(item);
+    }
   }
 
   // Right: window controls
@@ -172,36 +314,97 @@ function setupTitlebar(titlebar: Part): void {
   }
 }
 
-// ── Placeholder content ──
+// ── View system setup ──
 
-function addPlaceholderContent(sidebar: Part, editor: Part, panel: Part): void {
-  // Sidebar: explorer tree placeholder
-  const sidebarContent = sidebar.element.querySelector('.sidebar-views') as HTMLElement;
-  if (sidebarContent) {
-    const header = document.createElement('div');
-    header.textContent = 'EXPLORER';
-    header.style.padding = '8px 12px';
-    header.style.fontSize = '11px';
-    header.style.fontWeight = '600';
-    header.style.letterSpacing = '0.5px';
-    header.style.color = 'rgba(255,255,255,0.6)';
-    sidebarContent.appendChild(header);
+function setupSidebarViews(viewManager: ViewManager, sidebar: Part, activityBarEl: HTMLElement): ViewContainer {
+  const sidebarPart = sidebar as unknown as SidebarPart;
+  const container = new ViewContainer('sidebar');
 
-    const items = ['src/', '  main.ts', '  parts/', '  layout/', 'index.html', 'package.json'];
-    for (const item of items) {
-      const el = document.createElement('div');
-      el.textContent = item;
-      el.style.padding = '2px 12px';
-      el.style.fontSize = '13px';
-      el.style.cursor = 'pointer';
-      el.style.color = 'rgba(255,255,255,0.85)';
-      el.addEventListener('mouseenter', () => el.style.backgroundColor = 'rgba(255,255,255,0.05)');
-      el.addEventListener('mouseleave', () => el.style.backgroundColor = '');
-      sidebarContent.appendChild(el);
-    }
+  // Hide the ViewContainer's own horizontal tab bar — we use the activity bar instead
+  container.hideTabBar();
+
+  // Create views from registered descriptors
+  const explorerView = viewManager.createViewSync('view.explorer')!;
+  const searchView = viewManager.createViewSync('view.search')!;
+
+  container.addView(explorerView);
+  container.addView(searchView);
+
+  // ── Activity bar: vertical icon strip (standalone, full height) ──
+  const views = [
+    { id: 'view.explorer', icon: '📁', label: 'Explorer' },
+    { id: 'view.search', icon: '🔍', label: 'Search' },
+  ];
+
+  for (const v of views) {
+    const btn = document.createElement('button');
+    btn.classList.add('activity-bar-item');
+    btn.dataset.viewId = v.id;
+    btn.title = v.label;
+    btn.textContent = v.icon;
+    btn.addEventListener('click', () => {
+      container.activateView(v.id);
+      // Update active indicator
+      activityBarEl.querySelectorAll('.activity-bar-item').forEach(el =>
+        el.classList.toggle('active', el === btn));
+    });
+    activityBarEl.appendChild(btn);
   }
 
-  // Editor: watermark
+  // Mark the first one active
+  activityBarEl.querySelector('.activity-bar-item')?.classList.add('active');
+
+  // ── Header slot: show active view name ──
+  const headerSlot = sidebar.element.querySelector('.sidebar-header') as HTMLElement;
+  if (headerSlot) {
+    const headerLabel = document.createElement('span');
+    headerLabel.classList.add('sidebar-header-label');
+    headerLabel.textContent = 'EXPLORER';
+    headerSlot.appendChild(headerLabel);
+
+    container.onDidChangeActiveView((viewId) => {
+      if (viewId) {
+        const view = container.getView(viewId);
+        headerLabel.textContent = (view?.name ?? 'EXPLORER').toUpperCase();
+      }
+    });
+  }
+
+  // Mount view container into the sidebar's view slot
+  const sidebarContent = sidebar.element.querySelector('.sidebar-views') as HTMLElement;
+  if (sidebarContent) {
+    sidebarContent.appendChild(container.element);
+  }
+
+  // Show views in the manager
+  viewManager.showView('view.explorer');
+  viewManager.showView('view.search');
+
+  return container;
+}
+
+function setupPanelViews(viewManager: ViewManager, panel: Part): ViewContainer {
+  const container = new ViewContainer('panel');
+
+  const terminalView = viewManager.createViewSync('view.terminal')!;
+  const outputView = viewManager.createViewSync('view.output')!;
+
+  container.addView(terminalView);
+  container.addView(outputView);
+
+  // Mount into the panel's view slot
+  const panelContent = panel.element.querySelector('.panel-views') as HTMLElement;
+  if (panelContent) {
+    panelContent.appendChild(container.element);
+  }
+
+  viewManager.showView('view.terminal');
+  viewManager.showView('view.output');
+
+  return container;
+}
+
+function setupEditorWatermark(editor: Part): void {
   const watermark = editor.element.querySelector('.editor-watermark') as HTMLElement;
   if (watermark) {
     watermark.innerHTML = `
@@ -211,23 +414,6 @@ function addPlaceholderContent(sidebar: Part, editor: Part, panel: Part): void {
         <div style="font-size: 12px; margin-top: 4px;">No editors open</div>
       </div>
     `;
-  }
-
-  // Panel: terminal placeholder
-  const panelViews = panel.element.querySelector('.panel-views') as HTMLElement;
-  if (panelViews) {
-    const terminal = document.createElement('div');
-    terminal.style.padding = '8px 12px';
-    terminal.style.fontFamily = 'monospace';
-    terminal.style.fontSize = '13px';
-    terminal.style.color = 'rgba(255,255,255,0.75)';
-    terminal.innerHTML = `
-      <div style="color: rgba(255,255,255,0.4); margin-bottom: 4px;">TERMINAL</div>
-      <div>$ parallx --version</div>
-      <div style="color: #4ec9b0;">v0.1.0</div>
-      <div>$ <span style="animation: blink 1s step-end infinite;">▋</span></div>
-    `;
-    panelViews.appendChild(terminal);
   }
 }
 
@@ -259,6 +445,116 @@ function setupStatusBar(statusBar: StatusBarPart): void {
     text: 'UTF-8',
     alignment: StatusBarAlignment.Right,
     priority: 90,
+  });
+}
+
+// ── Layout View Containers ──
+
+function layoutViewContainers(
+  sidebar: Part,
+  sidebarContainer: ViewContainer,
+  panel: Part,
+  panelContainer: ViewContainer,
+): void {
+  // Sidebar view container fills the part minus the header
+  if (sidebar.visible && sidebar.width > 0) {
+    const headerH = 35;
+    sidebarContainer.layout(sidebar.width, sidebar.height - headerH, Orientation.Vertical);
+  }
+  // Panel view container fills the part minus the tab bar
+  if (panel.visible && panel.height > 0) {
+    const panelTabH = 30;
+    panelContainer.layout(panel.width, panel.height - panelTabH, Orientation.Horizontal);
+  }
+}
+
+// ── Drag-and-Drop Setup ──
+
+function setupDragAndDrop(
+  sidebar: Part,
+  editor: Part,
+  panel: Part,
+  sidebarContainer: ViewContainer,
+  panelContainer: ViewContainer,
+): DragAndDropController {
+  const dnd = new DragAndDropController();
+
+  // Register drop targets on the main parts
+  dnd.registerTarget(sidebar.id, sidebar.element);
+  dnd.registerTarget(editor.id, editor.element);
+  dnd.registerTarget(panel.id, panel.element);
+
+  // Make sidebar view tabs draggable
+  makeSidebarTabsDraggable(dnd, sidebarContainer, sidebar.id);
+
+  // Make panel view tabs draggable
+  makePanelTabsDraggable(dnd, panelContainer, panel.id);
+
+  // Handle drops — move views between containers
+  dnd.onDropCompleted((result: DropResult) => {
+    console.log('Drop completed:', result);
+    // In this milestone, log the event. Full view-move logic will come
+    // in a later capability once ViewManager.moveView() is wired.
+  });
+
+  return dnd;
+}
+
+/**
+ * Make sidebar ViewContainer tabs draggable.
+ */
+function makeSidebarTabsDraggable(dnd: DragAndDropController, container: ViewContainer, partId: string): void {
+  // Find tab elements in the sidebar container and make them draggable
+  const tabBar = container.element.querySelector('.view-container-tabs');
+  if (!tabBar) return;
+
+  const observer = new MutationObserver(() => {
+    const tabs = tabBar.querySelectorAll('.view-tab');
+    tabs.forEach((tab) => {
+      const el = tab as HTMLElement;
+      if (el.draggable) return; // already wired
+      const viewId = el.dataset.viewId;
+      if (!viewId) return;
+      dnd.makeDraggable(el, { viewId, sourcePartId: partId });
+    });
+  });
+  observer.observe(tabBar, { childList: true });
+
+  // Wire existing tabs immediately
+  const existingTabs = tabBar.querySelectorAll('.view-tab');
+  existingTabs.forEach((tab) => {
+    const el = tab as HTMLElement;
+    const viewId = el.dataset.viewId;
+    if (!viewId) return;
+    dnd.makeDraggable(el, { viewId, sourcePartId: partId });
+  });
+}
+
+/**
+ * Make panel ViewContainer tabs draggable.
+ */
+function makePanelTabsDraggable(dnd: DragAndDropController, container: ViewContainer, partId: string): void {
+  const tabBar = container.element.querySelector('.view-container-tabs');
+  if (!tabBar) return;
+
+  const observer = new MutationObserver(() => {
+    const tabs = tabBar.querySelectorAll('.view-tab');
+    tabs.forEach((tab) => {
+      const el = tab as HTMLElement;
+      if (el.draggable) return;
+      const viewId = el.dataset.viewId;
+      if (!viewId) return;
+      dnd.makeDraggable(el, { viewId, sourcePartId: partId });
+    });
+  });
+  observer.observe(tabBar, { childList: true });
+
+  const existingTabs = tabBar.querySelectorAll('.view-tab');
+  existingTabs.forEach((tab) => {
+    const el = tab as HTMLElement;
+    const viewId = el.dataset.viewId;
+    if (!viewId) return;
+    dnd.makeDraggable(el, { viewId, sourcePartId: partId });
   });
 }
 
