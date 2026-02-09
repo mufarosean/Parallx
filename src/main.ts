@@ -82,12 +82,16 @@ function bootstrap(): void {
   const statusBar = registry.requirePart(PartId.StatusBar) as Part;
 
   // 4. Build the workbench DOM structure using Grid system
-  // Layout: Titlebar | MiddleRow[ ActivityBar | HGrid(Sidebar | Editor | AuxBar) ] | VGrid(Panel) | StatusBar
+  // VS Code layout: sidebar spans full height, panel sits under editor only.
   //
-  // We use two grids:
-  //   - hGrid (Horizontal): sidebar | editor | auxbar  → col-resize sashes
-  //   - vGrid (Vertical):   hGridWrapper | panel       → row-resize sash
-  // Titlebar + statusbar remain outside the grids (fixed heights).
+  //   Titlebar (full width, fixed)
+  //   [ ActivityBar | hGrid( Sidebar | vGrid( Editor | Panel ) ) ]
+  //   StatusBar (full width, fixed)
+  //
+  // Two grids:
+  //   - vGrid (Vertical): editor | panel           → row-resize sash
+  //   - hGrid (Horizontal): sidebar | vGrid-wrapper → col-resize sash
+  // Activity bar is a standalone element before hGrid in the body row.
 
   const w = container.clientWidth;
   const h = container.clientHeight;
@@ -95,11 +99,11 @@ function bootstrap(): void {
   const statusH = 22;
   const activityBarW = 48;
   const bodyH = h - titleH - statusH;
-  const panelH = panel.visible ? 200 : 0;
-  const middleH = bodyH - panelH;
   const sidebarW = sidebar.visible ? 202 : 0;
   const auxBarW = auxiliaryBar.visible ? 250 : 0;
-  const editorW = Math.max(200, w - activityBarW - sidebarW - auxBarW - 8); // 8px for sashes
+  const panelH = panel.visible ? 200 : 0;
+  const editorAreaW = Math.max(200, w - activityBarW - sidebarW - auxBarW - 4); // 4px for sash
+  const editorH = bodyH - panelH - (panel.visible ? 4 : 0); // 4px for sash
 
   // ── Create parts into temporary containers so their elements exist ──
   const tempDiv = document.createElement('div');
@@ -113,25 +117,37 @@ function bootstrap(): void {
   panel.create(tempDiv);
   statusBar.create(tempDiv);
 
-  // ── Horizontal grid: sidebar | editor | auxbar ──
-  const hGrid = new Grid(Orientation.Horizontal, w - activityBarW, middleH);
+  // ── Vertical grid: editor | panel (stacked in the right column) ──
+  const vGrid = new Grid(Orientation.Vertical, editorAreaW, bodyH);
+  vGrid.addView(editor, editorH);
+  if (panel.visible) {
+    vGrid.addView(panel, panelH);
+  }
+  vGrid.layout();
+
+  // ── Wrap vGrid in an adapter so hGrid can manage it as a leaf ──
+  const editorColumnAdapter = createEditorColumnAdapter(vGrid);
+
+  // ── Horizontal grid: sidebar | editorColumn ──
+  const hGridW = w - activityBarW;
+  const hGrid = new Grid(Orientation.Horizontal, hGridW, bodyH);
 
   if (sidebar.visible) {
     hGrid.addView(sidebar, sidebarW);
   }
-  hGrid.addView(editor, editorW);
+  hGrid.addView(editorColumnAdapter, editorAreaW);
   if (auxiliaryBar.visible) {
     hGrid.addView(auxiliaryBar, auxBarW);
   }
   hGrid.layout();
 
-  // ── Middle row wrapper: activityBar + hGrid ──
-  const middleRow = document.createElement('div');
-  middleRow.classList.add('workbench-middle');
+  // ── Body row wrapper: activityBar + hGrid ──
+  const bodyRow = document.createElement('div');
+  bodyRow.classList.add('workbench-middle');
 
   const activityBarEl = document.createElement('div');
   activityBarEl.classList.add('activity-bar');
-  middleRow.appendChild(activityBarEl);
+  bodyRow.appendChild(activityBarEl);
 
   // Hide the sidebar's internal activity bar slot
   const internalActivityBar = sidebar.element.querySelector('.sidebar-activity-bar') as HTMLElement;
@@ -139,32 +155,22 @@ function bootstrap(): void {
     internalActivityBar.style.display = 'none';
   }
 
-  // ── Vertical grid: middleRowWrapper | panel ──
-  // We create a "middleRowView" adapter so the hGrid + activityBar can be a leaf in vGrid.
-  // For simplicity we'll wrap the middleRow as a standalone grid view.
-  const middleRowAdapter = createMiddleRowAdapter(middleRow, hGrid, activityBarW);
+  // Append hGrid element into bodyRow (after activityBar)
+  bodyRow.appendChild(hGrid.element);
+  hGrid.element.style.flex = '1';
 
-  const vGrid = new Grid(Orientation.Vertical, w, bodyH);
-  vGrid.addView(middleRowAdapter, middleH);
-  if (panel.visible) {
-    vGrid.addView(panel, panelH);
-  }
-  vGrid.layout();
+  // Append vGrid into the editorColumn adapter element
+  editorColumnAdapter.element.appendChild(vGrid.element);
+  vGrid.element.style.width = '100%';
+  vGrid.element.style.height = '100%';
 
   // ── Assemble final DOM ──
-  // Titlebar (fixed, outside grid)
   container.appendChild(titlebar.element);
   titlebar.layout(w, titleH, Orientation.Horizontal);
 
-  // Vertical grid body (middleRow + panel with sash)
-  container.appendChild(vGrid.element);
-  vGrid.element.style.flex = '1';
+  container.appendChild(bodyRow);
+  bodyRow.style.flex = '1';
 
-  // Append hGrid element into middleRow (after activityBar)
-  middleRow.appendChild(hGrid.element);
-  hGrid.element.style.flex = '1';
-
-  // StatusBar (fixed, outside grid)
   container.appendChild(statusBar.element);
   statusBar.layout(w, statusH, Orientation.Horizontal);
 
@@ -214,8 +220,8 @@ function bootstrap(): void {
     titlebar.layout(rw, titleH, Orientation.Horizontal);
     statusBar.layout(rw, statusH, Orientation.Horizontal);
 
-    // Resize vertical grid (cascades to hGrid via middleRowAdapter)
-    vGrid.resize(rw, rbodyH);
+    // Resize hGrid (cascades to vGrid via editorColumnAdapter)
+    hGrid.resize(rw - activityBarW, rbodyH);
 
     // Relayout view containers
     layoutViewContainers(sidebar, sidebarContainer, panel, panelContainer);
@@ -224,33 +230,40 @@ function bootstrap(): void {
   console.log('Parallx workbench started.');
 }
 
-// ── Middle Row Adapter ──
+// ── Editor Column Adapter ──
 
 /**
- * Creates an IGridView adapter that wraps the middleRow div (activityBar + hGrid).
- * This lets the vertical grid manage the middleRow height along with the panel.
+ * Creates an IGridView adapter that wraps the vGrid (editor | panel) as a leaf
+ * in the horizontal grid. This lets the sidebar sit alongside it at full height.
  */
-function createMiddleRowAdapter(middleRow: HTMLElement, hGrid: Grid, activityBarW: number): IGridView {
+function createEditorColumnAdapter(vGrid: Grid): IGridView & { element: HTMLElement } {
+  const wrapper = document.createElement('div');
+  wrapper.classList.add('editor-column');
+  wrapper.style.display = 'flex';
+  wrapper.style.flexDirection = 'column';
+  wrapper.style.overflow = 'hidden';
+  wrapper.style.position = 'relative';
+
   const emitter = new Emitter<void>();
 
   return {
-    element: middleRow,
-    id: 'workbench.middleRow',
-    minimumWidth: 0,
+    element: wrapper,
+    id: 'workbench.editorColumn',
+    minimumWidth: 200,
     maximumWidth: Number.POSITIVE_INFINITY,
-    minimumHeight: 150,
+    minimumHeight: 0,
     maximumHeight: Number.POSITIVE_INFINITY,
     layout(width: number, height: number, _orientation: Orientation): void {
-      middleRow.style.width = `${width}px`;
-      middleRow.style.height = `${height}px`;
-      // Relay to horizontal grid (minus activityBar width)
-      hGrid.resize(width - activityBarW, height);
+      wrapper.style.width = `${width}px`;
+      wrapper.style.height = `${height}px`;
+      // Relay to vertical grid (editor | panel)
+      vGrid.resize(width, height);
     },
     setVisible(visible: boolean): void {
-      middleRow.style.display = visible ? 'flex' : 'none';
+      wrapper.style.display = visible ? 'flex' : 'none';
     },
     toJSON(): object {
-      return { id: 'workbench.middleRow', type: 'adapter' };
+      return { id: 'workbench.editorColumn', type: 'adapter' };
     },
     onDidChangeConstraints: emitter.event,
     dispose(): void {
