@@ -372,18 +372,22 @@ export class Workbench extends Disposable {
     }
 
     this._bodyRow.appendChild(this._hGrid.element);
-    this._hGrid.element.style.flex = '1';
+    this._hGrid.element.style.flex = '1 1 0';
+    this._hGrid.element.style.minWidth = '0';
+    this._hGrid.element.style.minHeight = '0';
 
     this._editorColumnAdapter.element.appendChild(this._vGrid.element);
     this._vGrid.element.style.width = '100%';
     this._vGrid.element.style.height = '100%';
+    this._vGrid.element.style.minHeight = '0';
 
     // 9. Assemble final DOM
     this._container.appendChild(this._titlebar.element);
     this._titlebar.layout(w, TITLE_HEIGHT, Orientation.Horizontal);
 
     this._container.appendChild(this._bodyRow);
-    this._bodyRow.style.flex = '1';
+    this._bodyRow.style.flex = '1 1 0';
+    this._bodyRow.style.minHeight = '0';
 
     this._container.appendChild(this._statusBar.element);
     this._statusBar.layout(w, STATUS_HEIGHT, Orientation.Horizontal);
@@ -403,9 +407,10 @@ export class Workbench extends Disposable {
     // 1. Titlebar: app icon + menu bar + window controls
     this._setupTitlebar();
 
-    // 2. View system
+    // 2. View system — register ALL descriptors before creating any views
     this._viewManager = new ViewManager();
     this._viewManager.registerMany(allPlaceholderViewDescriptors);
+    this._viewManager.registerMany(allAuxiliaryBarViewDescriptors);
 
     this._sidebarContainer = this._setupSidebarViews();
     this._panelContainer = this._setupPanelViews();
@@ -425,9 +430,6 @@ export class Workbench extends Disposable {
 
     // 5. DnD between parts
     this._dndController = this._setupDragAndDrop();
-
-    // 5b. Register aux bar view descriptors
-    this._viewManager.registerMany(allAuxiliaryBarViewDescriptors);
 
     // 6. Layout view containers
     this._layoutViewContainers();
@@ -648,8 +650,9 @@ export class Workbench extends Disposable {
       sidebarContent.appendChild(container.element);
     }
 
-    this._viewManager.showView('view.explorer');
-    this._viewManager.showView('view.search');
+    // NOTE: Do not call viewManager.showView() here — it bypasses
+    // ViewContainer's tab-switching logic and makes both views visible.
+    // The container's addView already activated the first view (Explorer).
 
     return container;
   }
@@ -671,8 +674,8 @@ export class Workbench extends Disposable {
       panelContent.appendChild(container.element);
     }
 
-    this._viewManager.showView('view.terminal');
-    this._viewManager.showView('view.output');
+    // NOTE: Do not call viewManager.showView() here — the container
+    // already activated the first view (Terminal) via addView.
 
     return container;
   }
@@ -705,10 +708,6 @@ export class Workbench extends Disposable {
   private _setupAuxBarViews(): ViewContainer {
     const container = new ViewContainer('auxiliaryBar');
 
-    // Create and add Chat view
-    const chatView = this._viewManager.createViewSync('view.chat')!;
-    container.addView(chatView);
-
     // Mount into aux bar's view slot
     const auxBarPart = this._auxiliaryBar as unknown as AuxiliaryBarPart;
     const viewSlot = auxBarPart.viewContainerSlot;
@@ -716,23 +715,23 @@ export class Workbench extends Disposable {
       viewSlot.appendChild(container.element);
     }
 
-    // Set header label
+    // Header label — updates when extensions register and activate views
     const headerSlot = auxBarPart.headerSlot;
     if (headerSlot) {
       const headerLabel = document.createElement('span');
       headerLabel.classList.add('auxiliary-bar-header-label');
-      headerLabel.textContent = 'CHAT';
+      headerLabel.textContent = 'SECONDARY SIDE BAR';
       headerSlot.appendChild(headerLabel);
 
       container.onDidChangeActiveView((viewId) => {
         if (viewId) {
           const view = container.getView(viewId);
-          headerLabel.textContent = (view?.name ?? 'CHAT').toUpperCase();
+          headerLabel.textContent = (view?.name ?? 'SECONDARY SIDE BAR').toUpperCase();
         }
       });
     }
 
-    this._viewManager.showView('view.chat');
+    // No views registered yet — extensions will populate this in later milestones.
 
     return container;
   }
@@ -747,26 +746,8 @@ export class Workbench extends Disposable {
     // Hidden by default (aux bar starts hidden)
     this._secondaryActivityBarEl.style.display = 'none';
 
-    const views = [
-      { id: 'view.chat', icon: '💬', label: 'Chat' },
-    ];
-
-    for (const v of views) {
-      const btn = document.createElement('button');
-      btn.classList.add('activity-bar-item');
-      btn.dataset.viewId = v.id;
-      btn.title = v.label;
-      btn.textContent = v.icon;
-      btn.addEventListener('click', () => {
-        if (this._auxBarVisible && this._auxBarContainer) {
-          this._auxBarContainer.activateView(v.id);
-          this._secondaryActivityBarEl.querySelectorAll('.activity-bar-item').forEach((el) =>
-            el.classList.toggle('active', el === btn),
-          );
-        }
-      });
-      this._secondaryActivityBarEl.appendChild(btn);
-    }
+    // No hardcoded view buttons — extensions will register their own
+    // activity bar items when they add views to the auxiliary bar.
 
     // Append to body row (after hGrid, at the right edge)
     this._bodyRow.appendChild(this._secondaryActivityBarEl);
