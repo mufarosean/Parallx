@@ -1,1 +1,515 @@
 // editorGroupView.ts — editor group UI rendering
+//
+// Renders a single editor group: a tab bar at the top and the active
+// editor pane below. Integrates with EditorGroupModel for state and
+// implements IGridView so the editor part grid can size it.
+//
+// Tab bar features: click-to-activate, close button, dirty indicator,
+// preview (italic), sticky marker, drag-and-drop reordering.
+
+import { Disposable, DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Emitter, Event } from '../platform/events.js';
+import { EditorGroupModel, EditorModelChangeEvent } from './editorGroupModel.js';
+import { EditorPane, PlaceholderEditorPane, EditorPaneViewState } from './editorPane.js';
+import type { IEditorInput } from './editorInput.js';
+import type { IGridView } from '../layout/gridView.js';
+import { SizeConstraints, Orientation, Dimensions } from '../layout/layoutTypes.js';
+import {
+  EditorGroupChangeKind,
+  EditorOpenOptions,
+  EDITOR_TAB_DRAG_TYPE,
+  EditorTabDragData,
+  GroupDirection,
+} from './editorTypes.js';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const TAB_HEIGHT = 35;
+const MIN_GROUP_WIDTH = 200;
+const MIN_GROUP_HEIGHT = 120;
+
+// ─── EditorGroupView ─────────────────────────────────────────────────────────
+
+/**
+ * UI view for a single editor group.
+ *
+ * Owns:
+ *  - The EditorGroupModel (state)
+ *  - A tab bar (rendered from model state)
+ *  - An editor pane area (swaps pane for active editor)
+ *
+ * Implements IGridView so the editor part grid can manage sizing.
+ */
+export class EditorGroupView extends Disposable implements IGridView {
+  readonly model: EditorGroupModel;
+
+  private _element!: HTMLElement;
+  private _tabBar!: HTMLElement;
+  private _paneContainer!: HTMLElement;
+  private _emptyMessage!: HTMLElement;
+
+  private _activePane: EditorPane | undefined;
+  private readonly _paneDisposables = this._register(new DisposableStore());
+
+  private _width = 0;
+  private _height = 0;
+  private _created = false;
+
+  /** Pane factory — subclass or set externally to customise pane creation. */
+  private _paneFactory: (input: IEditorInput) => EditorPane;
+
+  // ── Events ──
+
+  private readonly _onDidChangeConstraints = this._register(new Emitter<void>());
+  readonly onDidChangeConstraints: Event<void> = this._onDidChangeConstraints.event;
+
+  private readonly _onDidFocus = this._register(new Emitter<void>());
+  readonly onDidFocus: Event<void> = this._onDidFocus.event;
+
+  private readonly _onDidRequestSplit = this._register(new Emitter<GroupDirection>());
+  readonly onDidRequestSplit: Event<GroupDirection> = this._onDidRequestSplit.event;
+
+  private readonly _onDidRequestClose = this._register(new Emitter<void>());
+  readonly onDidRequestClose: Event<void> = this._onDidRequestClose.event;
+
+  constructor(groupId?: string, paneFactory?: (input: IEditorInput) => EditorPane) {
+    super();
+    this.model = this._register(new EditorGroupModel(groupId));
+    this._paneFactory = paneFactory ?? (() => new PlaceholderEditorPane());
+
+    // Listen to model changes to keep UI in sync
+    this._register(this.model.onDidChange((e) => this._onModelChange(e)));
+
+    // Eagerly create the element so IGridView.element is available
+    this._createElement();
+  }
+
+  // ─── IGridView ─────────────────────────────────────────────────────────
+
+  get id(): string { return this.model.id; }
+  get element(): HTMLElement { return this._element; }
+
+  get minimumWidth(): number { return MIN_GROUP_WIDTH; }
+  get maximumWidth(): number { return Number.POSITIVE_INFINITY; }
+  get minimumHeight(): number { return MIN_GROUP_HEIGHT; }
+  get maximumHeight(): number { return Number.POSITIVE_INFINITY; }
+
+  setVisible(visible: boolean): void {
+    if (this._element) {
+      this._element.style.display = visible ? 'flex' : 'none';
+    }
+  }
+
+  toJSON(): object {
+    return {
+      id: this.model.id,
+      type: 'editorGroup',
+      model: this.model.serialize(),
+    };
+  }
+
+  layout(width: number, height: number, _orientation: Orientation): void {
+    this._width = width;
+    this._height = height;
+
+    if (this._element) {
+      this._element.style.width = `${width}px`;
+      this._element.style.height = `${height}px`;
+    }
+
+    // Layout pane: subtract tab bar height
+    const paneH = Math.max(0, height - TAB_HEIGHT);
+    if (this._paneContainer) {
+      this._paneContainer.style.height = `${paneH}px`;
+    }
+    this._activePane?.layout(width, paneH);
+  }
+
+  // ─── Create ────────────────────────────────────────────────────────────
+
+  /**
+   * Build the DOM structure for this group (called eagerly from constructor).
+   */
+  private _createElement(): void {
+    this._element = document.createElement('div');
+    this._element.classList.add('editor-group');
+    this._element.setAttribute('data-editor-group-id', this.model.id);
+    this._element.style.display = 'flex';
+    this._element.style.flexDirection = 'column';
+    this._element.style.overflow = 'hidden';
+    this._element.style.position = 'relative';
+    this._element.tabIndex = -1;
+
+    // Focus tracking
+    this._element.addEventListener('focusin', () => this._onDidFocus.fire());
+
+    // Tab bar
+    this._tabBar = document.createElement('div');
+    this._tabBar.classList.add('editor-tab-bar');
+    this._tabBar.style.height = `${TAB_HEIGHT}px`;
+    this._tabBar.style.minHeight = `${TAB_HEIGHT}px`;
+    this._tabBar.style.display = 'flex';
+    this._tabBar.style.alignItems = 'center';
+    this._tabBar.style.overflow = 'hidden';
+    this._tabBar.style.borderBottom = '1px solid var(--color-border, #333)';
+    this._tabBar.style.backgroundColor = 'var(--color-editor-tab-bar, #1e1e1e)';
+    this._element.appendChild(this._tabBar);
+
+    // Pane container
+    this._paneContainer = document.createElement('div');
+    this._paneContainer.classList.add('editor-pane-container');
+    this._paneContainer.style.flex = '1';
+    this._paneContainer.style.overflow = 'hidden';
+    this._paneContainer.style.position = 'relative';
+    this._element.appendChild(this._paneContainer);
+
+    // Empty message
+    this._emptyMessage = document.createElement('div');
+    this._emptyMessage.classList.add('editor-group-empty');
+    this._emptyMessage.style.position = 'absolute';
+    this._emptyMessage.style.inset = '0';
+    this._emptyMessage.style.display = 'flex';
+    this._emptyMessage.style.alignItems = 'center';
+    this._emptyMessage.style.justifyContent = 'center';
+    this._emptyMessage.style.color = 'var(--color-text-muted, #666)';
+    this._emptyMessage.style.fontSize = '13px';
+    this._emptyMessage.style.pointerEvents = 'none';
+    this._emptyMessage.textContent = 'No editors open';
+    this._paneContainer.appendChild(this._emptyMessage);
+
+    this._renderTabs();
+    this._updateEmptyState();
+  }
+
+  /**
+   * Attach the group element to a parent (idempotent — safe to call multiple times).
+   */
+  create(parent: HTMLElement): void {
+    if (this._created) return;
+    if (!this._element.parentElement) {
+      parent.appendChild(this._element);
+    }
+    this._created = true;
+  }
+
+  // ─── Public API ────────────────────────────────────────────────────────
+
+  /**
+   * Open an editor in this group.
+   */
+  async openEditor(input: IEditorInput, options?: EditorOpenOptions): Promise<void> {
+    this.model.openEditor(input, options);
+    await this._showActiveEditor();
+  }
+
+  /**
+   * Close an editor in this group.
+   */
+  async closeEditor(indexOrEditor: number | IEditorInput, force = false): Promise<boolean> {
+    return this.model.closeEditor(indexOrEditor, force);
+  }
+
+  /**
+   * Get the number of editors.
+   */
+  get editorCount(): number { return this.model.count; }
+
+  /**
+   * Whether the group is empty.
+   */
+  get isEmpty(): boolean { return this.model.isEmpty; }
+
+  /**
+   * Focus the group.
+   */
+  focus(): void {
+    this._element?.focus();
+  }
+
+  // ─── Model Change Handler ──────────────────────────────────────────────
+
+  private async _onModelChange(e: EditorModelChangeEvent): Promise<void> {
+    switch (e.kind) {
+      case EditorGroupChangeKind.EditorOpen:
+      case EditorGroupChangeKind.EditorClose:
+      case EditorGroupChangeKind.EditorMove:
+      case EditorGroupChangeKind.EditorPin:
+      case EditorGroupChangeKind.EditorUnpin:
+      case EditorGroupChangeKind.EditorSticky:
+      case EditorGroupChangeKind.EditorUnsticky:
+        this._renderTabs();
+        break;
+      case EditorGroupChangeKind.EditorActive:
+        this._renderTabs();
+        await this._showActiveEditor();
+        break;
+    }
+    this._updateEmptyState();
+  }
+
+  // ─── Tab Rendering ─────────────────────────────────────────────────────
+
+  private _renderTabs(): void {
+    if (!this._tabBar) return;
+
+    // Clear existing tabs (but keep any toolbar we might add later)
+    this._tabBar.innerHTML = '';
+
+    const editors = this.model.editors;
+    const activeIdx = this.model.activeIndex;
+
+    // Tabs container
+    const tabsWrap = document.createElement('div');
+    tabsWrap.classList.add('editor-tabs');
+    tabsWrap.style.display = 'flex';
+    tabsWrap.style.flex = '1';
+    tabsWrap.style.overflow = 'hidden';
+
+    for (let i = 0; i < editors.length; i++) {
+      const editor = editors[i];
+      const isActive = i === activeIdx;
+      const isPinned = this.model.isPinned(i);
+      const isSticky = this.model.isSticky(i);
+      const isPreview = this.model.isPreview(i);
+
+      const tab = this._createTab(editor, i, isActive, isPinned, isSticky, isPreview);
+      tabsWrap.appendChild(tab);
+    }
+
+    this._tabBar.appendChild(tabsWrap);
+
+    // Group toolbar (split, close)
+    const toolbar = this._createToolbar();
+    this._tabBar.appendChild(toolbar);
+  }
+
+  private _createTab(
+    editor: IEditorInput,
+    index: number,
+    isActive: boolean,
+    isPinned: boolean,
+    isSticky: boolean,
+    isPreview: boolean,
+  ): HTMLElement {
+    const tab = document.createElement('div');
+    tab.classList.add('editor-tab');
+    if (isActive) tab.classList.add('editor-tab--active');
+    if (isSticky) tab.classList.add('editor-tab--sticky');
+    if (isPreview) tab.classList.add('editor-tab--preview');
+
+    tab.style.display = 'flex';
+    tab.style.alignItems = 'center';
+    tab.style.padding = '0 8px';
+    tab.style.height = '100%';
+    tab.style.cursor = 'pointer';
+    tab.style.whiteSpace = 'nowrap';
+    tab.style.fontSize = '13px';
+    tab.style.borderRight = '1px solid var(--color-border, #333)';
+    tab.style.userSelect = 'none';
+    tab.style.maxWidth = '200px';
+
+    if (isActive) {
+      tab.style.backgroundColor = 'var(--color-editor-tab-active, #1e1e1e)';
+      tab.style.color = 'var(--color-text, #ccc)';
+      tab.style.borderBottom = '2px solid var(--color-accent, #007acc)';
+    } else {
+      tab.style.backgroundColor = 'var(--color-editor-tab, #2d2d2d)';
+      tab.style.color = 'var(--color-text-muted, #888)';
+      tab.style.borderBottom = '2px solid transparent';
+    }
+
+    // Sticky indicator
+    if (isSticky) {
+      const pin = document.createElement('span');
+      pin.textContent = '📌 ';
+      pin.style.fontSize = '10px';
+      tab.appendChild(pin);
+    }
+
+    // Label
+    const label = document.createElement('span');
+    label.classList.add('editor-tab-label');
+    label.textContent = editor.name;
+    label.style.overflow = 'hidden';
+    label.style.textOverflow = 'ellipsis';
+    if (isPreview) {
+      label.style.fontStyle = 'italic';
+    }
+    tab.appendChild(label);
+
+    // Dirty indicator
+    if (editor.isDirty) {
+      const dirty = document.createElement('span');
+      dirty.classList.add('editor-tab-dirty');
+      dirty.textContent = ' ●';
+      dirty.style.marginLeft = '4px';
+      dirty.style.color = 'var(--color-dirty, #e8e8e8)';
+      tab.appendChild(dirty);
+    }
+
+    // Close button
+    const closeBtn = document.createElement('span');
+    closeBtn.classList.add('editor-tab-close');
+    closeBtn.textContent = '×';
+    closeBtn.style.marginLeft = '6px';
+    closeBtn.style.fontSize = '14px';
+    closeBtn.style.lineHeight = '1';
+    closeBtn.style.opacity = '0.6';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.addEventListener('mouseenter', () => { closeBtn.style.opacity = '1'; });
+    closeBtn.addEventListener('mouseleave', () => { closeBtn.style.opacity = '0.6'; });
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.model.closeEditor(index);
+    });
+    tab.appendChild(closeBtn);
+
+    // Click to activate
+    tab.addEventListener('click', () => {
+      this.model.setActive(index);
+    });
+
+    // Double-click to pin preview
+    tab.addEventListener('dblclick', () => {
+      if (!isPinned) {
+        this.model.pin(index);
+      }
+    });
+
+    // Drag source
+    tab.draggable = true;
+    tab.addEventListener('dragstart', (e) => {
+      const data: EditorTabDragData = {
+        sourceGroupId: this.model.id,
+        editorIndex: index,
+        inputId: editor.id,
+      };
+      e.dataTransfer?.setData(EDITOR_TAB_DRAG_TYPE, JSON.stringify(data));
+      e.dataTransfer!.effectAllowed = 'move';
+      tab.style.opacity = '0.5';
+    });
+    tab.addEventListener('dragend', () => {
+      tab.style.opacity = '1';
+    });
+
+    // Drop target (reorder within group)
+    tab.addEventListener('dragover', (e) => {
+      if (e.dataTransfer?.types.includes(EDITOR_TAB_DRAG_TYPE)) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        tab.style.borderLeft = '2px solid var(--color-accent, #007acc)';
+      }
+    });
+    tab.addEventListener('dragleave', () => {
+      tab.style.borderLeft = '';
+    });
+    tab.addEventListener('drop', (e) => {
+      tab.style.borderLeft = '';
+      const raw = e.dataTransfer?.getData(EDITOR_TAB_DRAG_TYPE);
+      if (!raw) return;
+      e.preventDefault();
+      try {
+        const data: EditorTabDragData = JSON.parse(raw);
+        if (data.sourceGroupId === this.model.id) {
+          // Same group: reorder
+          this.model.moveEditor(data.editorIndex, index);
+        }
+        // Cross-group moves handled at editor part level
+      } catch { /* ignore bad data */ }
+    });
+
+    return tab;
+  }
+
+  private _createToolbar(): HTMLElement {
+    const toolbar = document.createElement('div');
+    toolbar.classList.add('editor-group-toolbar');
+    toolbar.style.display = 'flex';
+    toolbar.style.alignItems = 'center';
+    toolbar.style.padding = '0 4px';
+    toolbar.style.gap = '2px';
+    toolbar.style.marginLeft = 'auto';
+
+    // Split button
+    const splitBtn = this._createToolbarButton('⊞', 'Split Editor Right', () => {
+      this._onDidRequestSplit.fire(GroupDirection.Right);
+    });
+    toolbar.appendChild(splitBtn);
+
+    // Close group button
+    const closeBtn = this._createToolbarButton('✕', 'Close Group', () => {
+      this._onDidRequestClose.fire();
+    });
+    toolbar.appendChild(closeBtn);
+
+    return toolbar;
+  }
+
+  private _createToolbarButton(text: string, title: string, onClick: () => void): HTMLElement {
+    const btn = document.createElement('button');
+    btn.textContent = text;
+    btn.title = title;
+    btn.style.background = 'none';
+    btn.style.border = 'none';
+    btn.style.color = 'var(--color-text-muted, #888)';
+    btn.style.cursor = 'pointer';
+    btn.style.fontSize = '13px';
+    btn.style.padding = '2px 4px';
+    btn.style.borderRadius = '3px';
+    btn.addEventListener('mouseenter', () => {
+      btn.style.backgroundColor = 'var(--color-hover, rgba(255,255,255,0.1))';
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.backgroundColor = '';
+    });
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onClick();
+    });
+    return btn;
+  }
+
+  // ─── Pane Management ───────────────────────────────────────────────────
+
+  private async _showActiveEditor(): Promise<void> {
+    const activeInput = this.model.activeEditor;
+
+    // Clear current pane
+    if (this._activePane) {
+      this._activePane.clearInput();
+      this._paneDisposables.clear();
+      if (this._activePane.element) {
+        this._activePane.element.remove();
+      }
+      this._activePane = undefined;
+    }
+
+    if (!activeInput) return;
+
+    // Create new pane
+    const pane = this._paneFactory(activeInput);
+    this._paneDisposables.add(pane);
+    pane.create(this._paneContainer);
+    await pane.setInput(activeInput);
+
+    // Layout
+    const paneH = Math.max(0, this._height - TAB_HEIGHT);
+    pane.layout(this._width, paneH);
+
+    this._activePane = pane;
+  }
+
+  private _updateEmptyState(): void {
+    if (this._emptyMessage) {
+      this._emptyMessage.style.display = this.model.isEmpty ? 'flex' : 'none';
+    }
+  }
+
+  // ─── Dispose ───────────────────────────────────────────────────────────
+
+  override dispose(): void {
+    this._paneDisposables.clear();
+    this._activePane = undefined;
+    super.dispose();
+  }
+}

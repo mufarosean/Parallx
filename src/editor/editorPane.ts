@@ -1,1 +1,211 @@
 // editorPane.ts — abstract editor pane
+//
+// Renders the content of an editor input. The pane is the visual
+// representation — it receives an EditorInput and produces DOM.
+//
+// Lifecycle: create → setInput → layout → clearInput → dispose
+//
+// Implements IGridView so the editor group grid can size it.
+// Concrete panes extend this class for specific editor types
+// (text, diff, welcome, etc.).
+
+import { Disposable, IDisposable } from '../platform/lifecycle.js';
+import { Emitter, Event } from '../platform/events.js';
+import type { IEditorInput } from './editorInput.js';
+import type { SizeConstraints, Orientation, Dimensions } from '../layout/layoutTypes.js';
+import { DEFAULT_SIZE_CONSTRAINTS } from '../layout/layoutTypes.js';
+
+// ─── View State ──────────────────────────────────────────────────────────────
+
+/**
+ * Serializable view state for restoring scroll position, selection, etc.
+ */
+export type EditorPaneViewState = Record<string, unknown>;
+
+// ─── IEditorPane ─────────────────────────────────────────────────────────────
+
+export interface IEditorPane extends IDisposable {
+  readonly id: string;
+  readonly element: HTMLElement | undefined;
+  readonly input: IEditorInput | undefined;
+
+  create(container: HTMLElement): void;
+  setInput(input: IEditorInput): Promise<void>;
+  clearInput(): void;
+  layout(width: number, height: number): void;
+  focus(): void;
+  saveViewState(): EditorPaneViewState;
+  restoreViewState(state: EditorPaneViewState): void;
+
+  readonly onDidChangeViewState: Event<void>;
+}
+
+// ─── EditorPane (abstract base) ──────────────────────────────────────────────
+
+let _nextPaneId = 1;
+
+/**
+ * Abstract base class for editor panes.
+ *
+ * Subclasses implement `createPaneContent()` and `renderInput()`.
+ */
+export abstract class EditorPane extends Disposable implements IEditorPane {
+  readonly id: string;
+
+  private _element: HTMLElement | undefined;
+  private _input: IEditorInput | undefined;
+  private _width = 0;
+  private _height = 0;
+  private _created = false;
+
+  private readonly _onDidChangeViewState = this._register(new Emitter<void>());
+  readonly onDidChangeViewState: Event<void> = this._onDidChangeViewState.event;
+
+  protected readonly constraints: SizeConstraints;
+
+  constructor(id?: string, constraints?: SizeConstraints) {
+    super();
+    this.id = id ?? `editor-pane-${_nextPaneId++}`;
+    this.constraints = constraints ?? DEFAULT_SIZE_CONSTRAINTS;
+  }
+
+  // ── Accessors ──
+
+  get element(): HTMLElement | undefined { return this._element; }
+  get input(): IEditorInput | undefined { return this._input; }
+  get width(): number { return this._width; }
+  get height(): number { return this._height; }
+
+  // ── Lifecycle — create ──
+
+  create(container: HTMLElement): void {
+    if (this._created) return;
+
+    this._element = document.createElement('div');
+    this._element.classList.add('editor-pane');
+    this._element.style.width = '100%';
+    this._element.style.height = '100%';
+    this._element.style.overflow = 'hidden';
+    this._element.style.position = 'relative';
+
+    this.createPaneContent(this._element);
+    this._created = true;
+    container.appendChild(this._element);
+  }
+
+  // ── Lifecycle — input ──
+
+  async setInput(input: IEditorInput): Promise<void> {
+    const previous = this._input;
+    this._input = input;
+    await this.renderInput(input, previous);
+  }
+
+  clearInput(): void {
+    const previous = this._input;
+    this._input = undefined;
+    this.clearPaneContent(previous);
+  }
+
+  // ── Lifecycle — layout ──
+
+  layout(width: number, height: number): void {
+    this._width = width;
+    this._height = height;
+    if (this._element) {
+      this._element.style.width = `${width}px`;
+      this._element.style.height = `${height}px`;
+    }
+    this.layoutPaneContent(width, height);
+  }
+
+  // ── Focus ──
+
+  focus(): void {
+    this._element?.focus();
+  }
+
+  // ── View state ──
+
+  saveViewState(): EditorPaneViewState {
+    return this.savePaneViewState();
+  }
+
+  restoreViewState(state: EditorPaneViewState): void {
+    this.restorePaneViewState(state);
+  }
+
+  protected fireViewStateChanged(): void {
+    this._onDidChangeViewState.fire();
+  }
+
+  // ── Protected hooks ──
+
+  /** Build the pane's internal DOM structure. */
+  protected abstract createPaneContent(container: HTMLElement): void;
+
+  /** Render the given input into the pane. */
+  protected abstract renderInput(input: IEditorInput, previous: IEditorInput | undefined): Promise<void>;
+
+  /** Clear the pane content when the input is removed. */
+  protected clearPaneContent(_previous: IEditorInput | undefined): void {
+    // no-op by default
+  }
+
+  /** React to dimension changes. */
+  protected layoutPaneContent(_width: number, _height: number): void {
+    // no-op by default
+  }
+
+  /** Return pane-specific view state for persistence. */
+  protected savePaneViewState(): EditorPaneViewState {
+    return {};
+  }
+
+  /** Restore pane-specific view state. */
+  protected restorePaneViewState(_state: EditorPaneViewState): void {
+    // no-op by default
+  }
+}
+
+// ─── PlaceholderEditorPane ───────────────────────────────────────────────────
+
+/**
+ * Simple editor pane for development/testing.
+ * Shows the editor name and description in a centered label.
+ */
+export class PlaceholderEditorPane extends EditorPane {
+  private _label: HTMLElement | undefined;
+
+  constructor() {
+    super('placeholder-pane');
+  }
+
+  protected override createPaneContent(container: HTMLElement): void {
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+
+    this._label = document.createElement('div');
+    this._label.style.color = 'var(--color-text-muted, #888)';
+    this._label.style.fontSize = '14px';
+    this._label.style.textAlign = 'center';
+    this._label.style.padding = '16px';
+    this._label.textContent = 'No editor';
+    container.appendChild(this._label);
+  }
+
+  protected override async renderInput(input: IEditorInput): Promise<void> {
+    if (this._label) {
+      this._label.textContent = input.description
+        ? `${input.name}\n${input.description}`
+        : input.name;
+    }
+  }
+
+  protected override clearPaneContent(): void {
+    if (this._label) {
+      this._label.textContent = 'No editor';
+    }
+  }
+}

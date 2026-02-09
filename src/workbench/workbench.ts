@@ -12,7 +12,7 @@
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices } from './workbenchServices.js';
 
@@ -22,7 +22,7 @@ import { PartRegistry } from '../parts/partRegistry.js';
 import { PartId } from '../parts/partTypes.js';
 import { titlebarPartDescriptor } from '../parts/titlebarPart.js';
 import { sidebarPartDescriptor, SidebarPart } from '../parts/sidebarPart.js';
-import { editorPartDescriptor } from '../parts/editorPart.js';
+import { editorPartDescriptor, EditorPart } from '../parts/editorPart.js';
 import { auxiliaryBarPartDescriptor } from '../parts/auxiliaryBarPart.js';
 import { panelPartDescriptor } from '../parts/panelPart.js';
 import { statusBarPartDescriptor, StatusBarPart, StatusBarAlignment } from '../parts/statusBarPart.js';
@@ -68,6 +68,10 @@ import {
   CTX_AUXILIARY_BAR_VISIBLE,
   CTX_STATUS_BAR_VISIBLE,
 } from '../context/workbenchContext.js';
+
+// Editor services (Capability 9)
+import { EditorService } from '../services/editorService.js';
+import { EditorGroupService } from '../services/editorGroupService.js';
 
 // Views
 import { ViewManager } from '../views/viewManager.js';
@@ -595,6 +599,9 @@ export class Workbench extends Disposable {
 
     // 3. Editor watermark
     this._setupEditorWatermark();
+
+    // 3b. Register editor services (EditorPart exists after Phase 2)
+    this._registerEditorServices();
 
     // 4. Status bar entries
     this._setupStatusBar();
@@ -1151,6 +1158,27 @@ export class Workbench extends Disposable {
         </div>
       `;
     }
+  }
+
+  /**
+   * Register editor services (Capability 9).
+   * Called in Phase 3 after EditorPart exists.
+   */
+  private _registerEditorServices(): void {
+    const editorPart = this._editor as EditorPart;
+    const editorGroupService = new EditorGroupService(editorPart);
+    const editorService = new EditorService(editorPart);
+    this._register(editorGroupService);
+    this._register(editorService);
+    this._services.registerInstance(IEditorGroupService, editorGroupService);
+    this._services.registerInstance(IEditorService, editorService);
+
+    // Update context key when group count changes
+    editorGroupService.onDidGroupCountChange((count) => {
+      this._workbenchContext?.setEditorGroupCount(count);
+    });
+
+    console.log('[Workbench] Editor services registered (Capability 9)');
   }
 
   // ════════════════════════════════════════════════════════════════════════

@@ -88,22 +88,63 @@ export const IWorkspaceService = createServiceIdentifier<IWorkspaceService>('IWo
 
 // ─── IEditorService ──────────────────────────────────────────────────────────
 
+import type { IEditorInput } from '../editor/editorInput.js';
+import type { EditorOpenOptions } from '../editor/editorTypes.js';
+
 /**
  * Manages editor opening/closing and active editor tracking.
  */
 export interface IEditorService extends IDisposable {
-  // Will be expanded in Capability 9
+  /** Fires when the active editor changes. */
+  readonly onDidActiveEditorChange: Event<IEditorInput | undefined>;
+
+  /** The currently active editor input. */
+  readonly activeEditor: IEditorInput | undefined;
+
+  /** Open an editor in the active group (or a specified group). */
+  openEditor(input: IEditorInput, options?: EditorOpenOptions, groupId?: string): Promise<void>;
+
+  /** Close the active editor (or a specific one). */
+  closeEditor(input?: IEditorInput, groupId?: string, force?: boolean): Promise<boolean>;
 }
 
 export const IEditorService = createServiceIdentifier<IEditorService>('IEditorService');
 
 // ─── IEditorGroupService ─────────────────────────────────────────────────────
 
+import type { EditorGroupView } from '../editor/editorGroupView.js';
+import type { GroupDirection } from '../editor/editorTypes.js';
+
 /**
  * Manages editor group lifecycle and layout.
  */
 export interface IEditorGroupService extends IDisposable {
-  // Will be expanded in Capability 9
+  /** Fires when the active editor group changes. */
+  readonly onDidActiveGroupChange: Event<EditorGroupView>;
+
+  /** Fires when the number of groups changes. */
+  readonly onDidGroupCountChange: Event<number>;
+
+  /** The currently active editor group. */
+  readonly activeGroup: EditorGroupView | undefined;
+
+  /** All editor groups. */
+  readonly groups: EditorGroupView[];
+
+  /** Number of groups. */
+  readonly groupCount: number;
+
+  /** Get a group by ID. */
+  getGroup(groupId: string): EditorGroupView | undefined;
+
+  /** Split a group in a direction. */
+  splitGroup(sourceGroupId: string, direction: GroupDirection): EditorGroupView | undefined;
+
+  /** Remove a group (last group replaced by empty one). */
+  removeGroup(groupId: string): void;
+
+  /** Activate a group by ID. */
+  activateGroup(groupId: string): void;
 }
 
 export const IEditorGroupService = createServiceIdentifier<IEditorGroupService>('IEditorGroupService');
