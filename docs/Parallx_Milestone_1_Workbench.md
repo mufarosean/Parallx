@@ -391,7 +391,8 @@ The system can define and manage structural parts (analogous to VS Code's "Parts
 
 #### Tasks
 
-**Task 3.1 – Implement Part Base Class**
+**Task 3.1 – Implement Part Base Class** ✅
+- **Status:** Done — `part.ts` (abstract Part extending Disposable, implements IPart + IGridView, lifecycle: create/mount/layout/dispose, visibility, saveState/restoreState, contentElement for child content, size constraints). `partTypes.ts` (PartId enum, PartPosition, PartState, IPart, PartDescriptor). 6/6 criteria met.
 - **Task Description:** Implement base `Part` class that all structural parts extend.
 - **Output:** Abstract `Part` class with lifecycle and grid integration.
 - **Completion Criteria:**
@@ -407,7 +408,8 @@ The system can define and manage structural parts (analogous to VS Code's "Parts
   - Parts should be framework-agnostic (plain TypeScript/DOM)
   - Use composition over inheritance where possible
 
-**Task 3.2 – Implement Part Registry**
+**Task 3.2 – Implement Part Registry** ✅
+- **Status:** Done — `partRegistry.ts` (register/registerMany, getDescriptor/getPart/requirePart, DuplicatePartError, createPart factory with singleton caching, createAll, events: onDidRegister/onDidCreate). 4/4 criteria met.
 - **Task Description:** Implement part registration and lookup system.
 - **Output:** `PartRegistry` class for part definitions and instantiation.
 - **Completion Criteria:** 
@@ -419,7 +421,8 @@ The system can define and manage structural parts (analogous to VS Code's "Parts
   - Registry should be populated at workbench initialization
   - Consider using decorators for part registration
 
-**Task 3.3 – Implement Standard Parts**
+**Task 3.3 – Implement Standard Parts** ✅
+- **Status:** Done — All 6 parts implemented: TitlebarPart (30px fixed, left/center/right slots), SidebarPart (170-800px, activity bar + view container + header), PanelPart (100px min, tab bar + view container), EditorPart (200×150px min, editor group container + watermark), AuxiliaryBarPart (170-800px, hidden by default), StatusBarPart (22px fixed, left/right slots + entry management). Each exports a PartDescriptor. 5/5 criteria met.
 - **Task Description:** Implement the standard set of workbench parts.
 - **Output:** Implementations of TitlebarPart, SidebarPart, PanelPart, EditorPart, AuxiliaryBarPart, StatusBarPart.
 - **Completion Criteria:**
@@ -438,7 +441,8 @@ The system can define and manage structural parts (analogous to VS Code's "Parts
   - AuxiliaryBarPart: Secondary sidebar (opposite primary)
   - StatusBarPart: Bottom status information bar
 
-**Task 3.4 – Implement Drag-and-Drop for Parts**
+**Task 3.4 – Implement Drag-and-Drop for Parts** ✅
+- **Status:** Done — `dndTypes.ts` (DropPosition, DragPayload, DropResult, IDropTarget, VIEW_DRAG_MIME). `dropOverlay.ts` (5-zone visual feedback, computePosition with 25% edge threshold, highlight/highlightInvalid, CSS transitions). `dropZone.ts` (HTML5 DnD events, overlay integration, accepts filtering). `dragAndDrop.ts` (DragAndDropController: makeDraggable, registerTarget, performKeyboardDrop for accessibility). 6/6 criteria met.
 - **Task Description:** Implement drop zone rendering and view transfer between parts.
 - **Output:** Visual drop zones and transfer logic for moving views between parts.
 - **Completion Criteria:** 
