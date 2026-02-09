@@ -22,7 +22,7 @@ interface WorkbenchLike {
   readonly workspace: { readonly id: string; readonly name: string };
   createWorkspace(name: string, path?: string, switchTo?: boolean): Promise<unknown>;
   switchWorkspace(targetId: string): Promise<void>;
-  getRecentWorkspaces(): Promise<readonly { id: string; name: string; timestamp: number }[]>;
+  getRecentWorkspaces(): Promise<readonly { identity: { id: string; name: string }; metadata: { lastAccessedAt: string } }[]>;
   removeRecentWorkspace(workspaceId: string): Promise<void>;
   shutdown(): Promise<void>;
 
@@ -267,7 +267,7 @@ const workspaceOpenRecent: CommandDescriptor = {
   handler: async (ctx) => {
     const recents = await wb(ctx).getRecentWorkspaces();
     // Return the list — the command palette or caller can display choices
-    console.log('[Command] Recent workspaces:', recents.map((r) => `${r.name} (${r.id})`).join(', '));
+    console.log('[Command] Recent workspaces:', recents.map((r) => `${r.identity.name} (${r.identity.id})`).join(', '));
     return recents;
   },
 };
