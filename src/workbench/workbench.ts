@@ -693,7 +693,7 @@ export class Workbench extends Disposable {
     const toggleBtn = document.createElement('button');
     toggleBtn.classList.add('activity-bar-item');
     toggleBtn.title = 'Toggle Secondary Side Bar';
-    toggleBtn.textContent = '💬';
+    toggleBtn.textContent = '⊞';
     toggleBtn.addEventListener('click', () => {
       this.toggleAuxiliaryBar();
       toggleBtn.classList.toggle('active', this._auxBarVisible);
