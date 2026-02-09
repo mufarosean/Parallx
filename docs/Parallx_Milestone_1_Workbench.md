@@ -276,7 +276,8 @@ The system can represent, render, and restore the workbench layout using a fully
 
 #### Tasks
 
-**Task 2.1 – Define Layout Schema**
+**Task 2.1 – Define Layout Schema** ✅
+- **Status:** Done — `layoutModel.ts` (SerializedLayoutState discriminated union, LAYOUT_SCHEMA_VERSION=1, createDefaultLayoutState) + `layoutTypes.ts` (Orientation, SizingMode, SizeConstraints, Dimensions, Box, SashEdge, GridEventType, GridLocation). 9/9 criteria met.
 - **Task Description:** Define the layout state schema used to describe the entire workbench layout.
 - **Output:** TypeScript interfaces and types for serializable layout model.
 - **Completion Criteria:** Layout schema can represent:
@@ -293,7 +294,8 @@ The system can represent, render, and restore the workbench layout using a fully
   - Schema must be versionable for future migrations
   - Consider using a discriminated union for different node types
 
-**Task 2.2 – Implement Grid System**
+**Task 2.2 – Implement Grid System** ✅
+- **Status:** Done — `grid.ts` (~450 LOC, addView/splitView/removeView/resize/resizeSash/serialize/deserialize, sash mouse handling) + `gridNode.ts` (GridBranchNode, GridLeafNode tree). 7/7 criteria met.
 - **Task Description:** Implement a constraint-based grid that supports splitting, resizing, nesting, and serialization.
 - **Output:** Grid class with split/resize/serialize capabilities.
 - **Completion Criteria:** 
@@ -311,7 +313,8 @@ The system can represent, render, and restore the workbench layout using a fully
   - Implement sash (resize handles) between grid cells
   - Support both pixel and proportional sizing
 
-**Task 2.3 – Implement Grid View Interface**
+**Task 2.3 – Implement Grid View Interface** ✅
+- **Status:** Done — `gridView.ts` (IGridView interface, BaseGridView abstract class, GridViewFactory type). `fromJSON` provided as static override convention on BaseGridView + `GridViewFactory` type for `Grid.deserialize()`. 6/6 criteria met.
 - **Task Description:** Define the interface that views must implement to participate in the grid system.
 - **Output:** `IGridView` interface and helper base class.
 - **Completion Criteria:**
@@ -326,7 +329,8 @@ The system can represent, render, and restore the workbench layout using a fully
   - Size constraints can be dynamic (computed properties)
   - Layout method should be efficient and non-blocking
 
-**Task 2.4 – Implement Layout Renderer**
+**Task 2.4 – Implement Layout Renderer** ✅
+- **Status:** Done — `layoutRenderer.ts` (renderFromState, renderDefault, renderGrid, relayout, ResizeObserver auto-resize, _disposeGrid/_clearContainer cleanup, CSS classes: parallx-layout-container, parallx-grid-root). 5/5 criteria met.
 - **Task Description:** Implement rendering logic that converts layout state to DOM structure using the grid system.
 - **Output:** `LayoutRenderer` class that mounts grid to DOM.
 - **Completion Criteria:**
@@ -340,7 +344,8 @@ The system can represent, render, and restore the workbench layout using a fully
   - Minimize DOM thrashing during updates
   - Support smooth transitions for user-initiated changes
 
-**Task 2.5 – Implement Layout Persistence**
+**Task 2.5 – Implement Layout Persistence** ✅
+- **Status:** Done — `layoutPersistence.ts` (save/load/hasSavedState/clear, JSON validation, version check, migration placeholder, fallback to default) + `platform/storage.ts` (IStorage async interface, InMemoryStorage, LocalStorage, NamespacedStorage). 4/4 criteria met.
 - **Task Description:** Implement saving and loading of layout state.
 - **Output:** `LayoutPersistence` class with save/load methods.
 - **Completion Criteria:**
