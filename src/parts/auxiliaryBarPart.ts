@@ -1,0 +1,1 @@
+// auxiliaryBarPart.ts — secondary sidebar

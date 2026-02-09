@@ -79,10 +79,11 @@ None.
 
 #### Tasks
 
-**Task 0.1 – Establish Repository Structure**
+**Task 0.1 – Establish Repository Structure** ✅
 - **Task Description:** Create and commit the repository folder and file structure exactly as defined below.
 - **Output:** A committed directory tree with placeholder files.
 - **Completion Criteria:** All listed directories and files exist, and no Milestone 1 code exists outside this structure.
+- **Status:** Complete — All 60 files across 11 modules created under `src/`. Structure verified against spec.
 - **Notes / Constraints:**  
   - Inspired by VS Code's structural separation of workbench concerns.
   - Reference only:
@@ -174,10 +175,11 @@ src/
    └─ types.ts              # shared platform types and utilities
 ```
 
-**Task 0.2 – Document Architectural Boundaries**
+**Task 0.2 – Document Architectural Boundaries** ✅
 - **Task Description:** Create a `ARCHITECTURE.md` file that documents the responsibility of each module and the allowed dependencies between them.
 - **Output:** `ARCHITECTURE.md` file in the repository root.
 - **Completion Criteria:** Dependency rules are clear; circular dependencies are explicitly forbidden.
+- **Status:** Complete — `ARCHITECTURE.md` created with module responsibilities, dependency matrix, layered diagram, and explicit prohibition of circular dependencies.
 - **Notes / Constraints:**
   - Example rule: "Views may depend on Platform but not on Parts"
   - Example rule: "Services may depend on Platform and expose interfaces, but not on Views directly"
