@@ -361,3 +361,115 @@ html, body {
 .dragging {
   opacity: 0.5;
 }
+
+/* ── Command Palette ── */
+.command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.command-palette {
+  margin-top: 40px;
+  width: 600px;
+  max-height: 420px;
+  background: #252526;
+  border: 1px solid #454545;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  align-self: flex-start;
+}
+
+.command-palette-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  outline: none;
+  background: #3c3c3c;
+  color: #cccccc;
+  font-family: inherit;
+  font-size: 14px;
+  border-bottom: 1px solid #454545;
+}
+
+.command-palette-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.command-palette-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 360px;
+}
+
+.command-palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background-color 0.08s;
+}
+
+.command-palette-item:hover,
+.command-palette-item.selected {
+  background: #04395e;
+}
+
+.command-palette-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #cccccc;
+}
+
+.command-palette-item-category {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.command-palette-recent-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  font-style: italic;
+}
+
+.command-palette-item-keybinding {
+  flex-shrink: 0;
+  margin-left: 16px;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  font-family: 'Segoe UI', monospace;
+}
+
+.command-palette-separator {
+  height: 1px;
+  margin: 4px 14px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.command-palette-empty {
+  padding: 16px 14px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 13px;
+}
+
+.command-palette-more {
+  padding: 6px 14px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 12px;
+}
