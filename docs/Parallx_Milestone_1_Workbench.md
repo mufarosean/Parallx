@@ -473,6 +473,19 @@ The system can define and manage structural parts (analogous to VS Code's "Parts
   - `electron` and `esbuild` added as devDependencies
 - **Rationale:** Provides a visual harness for verifying that Capabilities 1–3 (DI, layout, parts) work together correctly and gives a tangible checkpoint before proceeding to view hosting.
 
+**Additional Work – Integration Wiring and Bug Fixes** ✅ *(not in original milestone tasks)*
+- **Description:** After Capabilities 0–4 were individually completed, several integration passes were needed to wire everything into a functioning end-to-end workbench. These are recorded here as deviations from the original task list.
+- **What was done:**
+  1. **Sash resizing + DnD wired to live app** — Connected `grid.ts` sash drag handling and `DragAndDropController` to the running workbench so resize handles and view tab dragging work in the Electron shell.
+  2. **Layout restructure** — Changed grid topology so the sidebar spans full height (titlebar→statusbar) and the panel sits beneath the editor only, matching VS Code's real layout: `hGrid(sidebar | editorColumnAdapter(vGrid(editor | panel)))`.
+  3. **10 disconnected files wired into main** — Refactored `main.ts` into a thin bootstrap; moved all orchestration into `Workbench` class with real lifecycle hooks across all 5 phases. Previously, 10 source files (services, lifecycle, persistence, grid, views, etc.) were built but not imported anywhere.
+  4. **Sash visual fix** — Changed sash from a visible 4px solid bar to a transparent 4px hit area with a 1px `::after` pseudo-element border line (hover turns blue), matching VS Code's subtle divider style.
+  5. **Panel double tab bar fix** — PanelPart had `hasTitleArea: true` which created a 35px empty `.part-title` div stacking on top of ViewContainer's own tab bar. Fixed by setting `hasTitleArea = false`.
+  6. **Auxiliary bar integration** — Wired the AuxiliaryBarPart (Capability 3) into the live workbench: toggle mechanism via activity bar button, secondary activity bar element on right edge, generic empty `ViewContainer('auxiliaryBar')` ready for extensions. Any view descriptor with `containerId: 'auxiliaryBar'` will automatically route to this container. No hardcoded views — extensions populate it in later milestones.
+  7. **Registration ordering bug fix** — `allAuxiliaryBarViewDescriptors` was registered after `_setupAuxBarViews()` tried to create views from it, crashing Phase 3. Everything after the crash (layout, resize handler, etc.) never ran. Fixed by registering all descriptors before any `setupXxxViews()` calls.
+  8. **Resize/maximize fix** — `.workbench-middle` had `flex: 1 0 auto` causing the middle row to not expand on window maximize; changed to `flex: 1 1 0` with `min-height: 0`. Also added `min-width: 0` / `min-height: 0` to `.grid-branch` and grid element flex properties to allow proper shrinking.
+- **Key architectural note:** The view system is fully generic. To add a view to any container (sidebar, panel, or auxiliary bar), you define a `ViewDescriptor` with the target `containerId`, register it with `ViewManager`, create it via `createViewSync()`, and call `container.addView()`. No special-casing per container.
+
 ---
 
 ## Capability 4 – View Hosting and Lifecycle
