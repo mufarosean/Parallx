@@ -893,7 +893,7 @@ The system can track and expose structural context such as active view, focused 
 
 #### Tasks
 
-**Task 8.1 – Implement Context Key System**
+**Task 8.1 – Implement Context Key System** ✅
 - **Task Description:** Implement context key definitions, storage, and query API.
 - **Output:** `ContextKey` and `IContextKeyService` with evaluation engine.
 - **Completion Criteria:**
@@ -904,13 +904,14 @@ The system can track and expose structural context such as active view, focused 
   - Expression syntax supports AND, OR, NOT operators
   - Expressions support comparisons (==, !=, <, >, in)
   - Context changes trigger re-evaluation of dependent clauses
+- **Status:** Complete — Implemented in `context/contextKey.ts` as `ContextKeyService` with `ContextKeyScope` (parent-chain lookup for global→part→view scoping), `ContextKeyHandle<T>` (typed IContextKey), scope management, and when-clause evaluation via delegation to `whenClause.ts`. Registered in DI via `services/contextKeyService.ts` and `workbench/workbenchServices.ts`. Full `IContextKeyService` interface defined in `services/serviceTypes.ts`. Wired into `CommandService` and `CommandPalette` for real when-clause evaluation and filtering.
 - **Notes / Constraints:**
   - Reference only:
     - https://github.com/microsoft/vscode/tree/main/src/vs/platform/contextkey
   - Expression syntax: `sidebarVisible && !panelVisible`
   - Support dynamic context (values computed on demand)
 
-**Task 8.2 – Implement Workbench Context**
+**Task 8.2 – Implement Workbench Context** ✅
 - **Task Description:** Implement tracking of structural workbench context.
 - **Output:** Standard context keys for workbench structure.
 - **Completion Criteria:** Context keys track:
@@ -918,18 +919,20 @@ The system can track and expose structural context such as active view, focused 
   - `activePart` - ID of currently active part
   - `activeView` - ID of currently active view
   - `focusedView` - ID of currently focused view
+  - `focusedPart` - ID of currently focused part
   - `activeEditor` - ID of active editor (if any)
   - `activeEditorGroup` - ID of active editor group
   - `editorGroupCount` - Number of editor groups
   - `workspaceLoaded` - Whether a workspace is loaded
   - `workbenchState` - Current workbench state (empty, folder, workspace)
+- **Status:** Complete — Implemented in `context/workbenchContext.ts` as `WorkbenchContextManager`. Exports named constants for all 13 context keys (`CTX_SIDEBAR_VISIBLE`, `CTX_PANEL_VISIBLE`, etc.). Provides `trackPartVisibility()` for all structural parts, `trackViewManager()` for active view, `setActiveEditor()`/`setActiveEditorGroup()`/`setEditorGroupCount()` for editor state, `setWorkspaceLoaded()`/`setWorkbenchState()` for workspace state. Subscribes to `FocusTracker` events for automatic `focusedPart`/`focusedView` updates. Wired in `workbench.ts._initializeContext()`.
 - **Notes / Constraints:**
   - Reference only:
     - https://github.com/microsoft/vscode/blob/main/src/vs/workbench/common/contextkeys.ts
   - Update context synchronously when state changes
   - Use context to enable/disable commands dynamically
 
-**Task 8.3 – Implement Focus Tracking**
+**Task 8.3 – Implement Focus Tracking** ✅
 - **Task Description:** Implement tracking of active view, focused part, and keyboard focus.
 - **Output:** `FocusTracker` class with focus management.
 - **Completion Criteria:** 
@@ -940,12 +943,13 @@ The system can track and expose structural context such as active view, focused 
   - Updates workbench context on focus changes
   - Emits focus change events
   - Handles focus restoration after dialogs/overlays
+- **Status:** Complete — Implemented in `context/focusTracker.ts` as `FocusTracker extends Disposable`. Uses `focusin`/`focusout` DOM events on the workbench container, walks up the DOM tree to find `data-part-id` and `data-view-id` attributes (added to `Part.create()` and `View.createElement()`). Maintains focus history with `WeakRef<HTMLElement>` for safe restoration. Provides `focusPart()`, `focusView()`, `restoreFocus()` for programmatic focus, `suspend()`/`resume()` for dialog handling. Emits `onDidFocusPart` and `onDidFocusView` events. Updates `focusedPart`/`focusedView` context keys via ContextKeyService.
 - **Notes / Constraints:**
   - Use DOM focus events as base signal
   - Track focus at part granularity for keyboard shortcuts
   - Restore focus intelligently (e.g., after closing a view)
 
-**Task 8.4 – Implement When Clause Parser**
+**Task 8.4 – Implement When Clause Parser** ✅
 - **Task Description:** Implement expression parser for when clause evaluation.
 - **Output:** `WhenClause` parser and evaluator.
 - **Completion Criteria:**
@@ -955,6 +959,7 @@ The system can track and expose structural context such as active view, focused 
   - Handles undefined context keys gracefully
   - Provides useful error messages for invalid syntax
   - Evaluates expressions efficiently (cached parsing)
+- **Status:** Complete — Implemented in `context/whenClause.ts` (~380 lines). Tokenizer converts expression strings into typed tokens. `WhenClauseParser` is a recursive descent parser (or→and→not→compare→primary) that builds a typed AST (`WhenClauseNode`). `parseWhenClause()` caches parsed ASTs in a `Map` for repeated evaluation. `evaluateWhenClause()` / `_evalNode()` evaluates ASTs against a `ContextKeyLookup` function. `testWhenClause()` provides convenient parse+evaluate. Supports all required operators plus parenthesized grouping, string/number/boolean literals, and graceful handling of undefined keys (treated as falsy).
 - **Notes / Constraints:**
   - Reference only:
     - https://github.com/microsoft/vscode/blob/main/src/vs/platform/contextkey/common/contextkey.ts

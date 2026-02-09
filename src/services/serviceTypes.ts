@@ -128,11 +128,39 @@ export const ICommandService = createServiceIdentifier<ICommandService>('IComman
 
 // ─── IContextKeyService ──────────────────────────────────────────────────────
 
+import type { ContextKeyChangeEvent, ContextKeyValue, IContextKey } from '../context/contextKey.js';
+import type { ContextKeyLookup } from '../context/whenClause.js';
+
 /**
  * Manages context keys and when-clause evaluation.
  */
 export interface IContextKeyService extends IDisposable {
-  // Will be expanded in Capability 8
+  /** Fires when any context key value changes. */
+  readonly onDidChangeContext: Event<ContextKeyChangeEvent>;
+
+  /** Create a scoped context (part or view level). */
+  createScope(scopeId: string, parentId?: string): IDisposable;
+
+  /** Create a typed handle to a context key. */
+  createKey<T extends ContextKeyValue>(key: string, defaultValue: T, scopeId?: string): IContextKey<T>;
+
+  /** Set a context key value in the global scope. */
+  setContext(key: string, value: ContextKeyValue): void;
+
+  /** Set a context key value in a specific scope. */
+  setContextInScope(key: string, value: ContextKeyValue, scopeId: string): void;
+
+  /** Get a context key value (with scope inheritance). */
+  getContextValue(key: string, scopeId?: string): ContextKeyValue;
+
+  /** Evaluate a when-clause expression against a scope. */
+  evaluate(expression: string | undefined, scopeId?: string): boolean;
+
+  /** Check if a command's when-clause is satisfied (global scope). */
+  contextMatchesRules(whenClause: string | undefined): boolean;
+
+  /** Create a lookup function for a scope. */
+  createLookup(scopeId?: string): ContextKeyLookup;
 }
 
 export const IContextKeyService = createServiceIdentifier<IContextKeyService>('IContextKeyService');

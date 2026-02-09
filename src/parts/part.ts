@@ -99,6 +99,7 @@ export abstract class Part extends Disposable implements IPart, IGridView {
     this._element.classList.add('part', `part-${this.id.replace(/\./g, '-')}`);
     this._element.setAttribute('role', 'region');
     this._element.setAttribute('aria-label', this._name);
+    this._element.setAttribute('data-part-id', this.id);
     this._element.style.overflow = 'hidden';
     this._element.style.position = 'relative';
     this._element.style.display = this._visible ? 'flex' : 'none';

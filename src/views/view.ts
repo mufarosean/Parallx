@@ -132,6 +132,7 @@ export abstract class View extends Disposable implements IView {
 
     this._element = document.createElement('div');
     this._element.classList.add('view', `view-${this.id}`);
+    this._element.setAttribute('data-view-id', this.id);
     this._element.style.overflow = 'hidden';
     this._element.style.position = 'relative';
     this._element.style.width = '100%';

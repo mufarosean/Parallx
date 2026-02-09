@@ -4,7 +4,7 @@
 // in the DI container under ICommandService.
 //
 // Design decisions:
-//   • When-clause evaluation is deferred to Cap 8 (always passes here).
+//   • When-clause evaluation uses ContextKeyService (Cap 8) when available.
 //   • Command handlers receive a CommandExecutionContext for service access.
 //   • Registration returns a disposable for clean teardown.
 //   • Execution is always async (even for sync handlers) for consistency.
@@ -22,6 +22,11 @@ import type {
   ICommandServiceShape,
 } from './commandTypes.js';
 
+/** Minimal shape of ContextKeyService to avoid circular imports. */
+interface IContextKeyServiceLike {
+  contextMatchesRules(whenClause: string | undefined): boolean;
+}
+
 /**
  * Central command service — owns the registry and handles execution.
  */
@@ -30,6 +35,9 @@ export class CommandService extends Disposable implements ICommandServiceShape {
 
   // Optional backref to the workbench (set after Phase 1)
   private _workbench: unknown | undefined;
+
+  // Context key service for when-clause evaluation (set by Cap 8 init)
+  private _contextKeyService: IContextKeyServiceLike | undefined;
 
   // ── Events ──
 
@@ -52,6 +60,14 @@ export class CommandService extends Disposable implements ICommandServiceShape {
    */
   setWorkbench(workbench: unknown): void {
     this._workbench = workbench;
+  }
+
+  /**
+   * Set the context key service for real when-clause evaluation.
+   * Called once during Cap 8 initialization.
+   */
+  setContextKeyService(service: IContextKeyServiceLike): void {
+    this._contextKeyService = service;
   }
 
   // ─── Registry (read) ───────────────────────────────────────────────────────
@@ -110,8 +126,14 @@ export class CommandService extends Disposable implements ICommandServiceShape {
     }
 
     // When-clause precondition check.
-    // Full evaluation deferred to Cap 8; for now we accept all commands.
-    // When Cap 8 lands, this will call contextKeyService.evaluate(descriptor.when).
+    // Uses ContextKeyService when available (Cap 8), otherwise accepts all.
+    if (descriptor.when && this._contextKeyService) {
+      if (!this._contextKeyService.contextMatchesRules(descriptor.when)) {
+        throw new Error(
+          `[CommandService] Command '${id}' precondition not met: ${descriptor.when}`,
+        );
+      }
+    }
 
     const ctx = this._createContext();
     const start = performance.now();

@@ -12,7 +12,7 @@
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices } from './workbenchServices.js';
 
@@ -57,6 +57,17 @@ import { createDefaultLayoutState, SerializedLayoutState } from '../layout/layou
 import { CommandService } from '../commands/commandRegistry.js';
 import { registerBuiltinCommands } from '../commands/structuralCommands.js';
 import { CommandPalette } from '../commands/commandPalette.js';
+
+// Context (Capability 8)
+import { ContextKeyService } from '../context/contextKey.js';
+import { FocusTracker } from '../context/focusTracker.js';
+import {
+  WorkbenchContextManager,
+  CTX_SIDEBAR_VISIBLE,
+  CTX_PANEL_VISIBLE,
+  CTX_AUXILIARY_BAR_VISIBLE,
+  CTX_STATUS_BAR_VISIBLE,
+} from '../context/workbenchContext.js';
 
 // Views
 import { ViewManager } from '../views/viewManager.js';
@@ -130,6 +141,11 @@ export class Workbench extends Disposable {
   private _auxiliaryBar!: Part;
   private _panel!: Part;
   private _statusBar!: Part;
+
+  // Context (Capability 8)
+  private _contextKeyService!: ContextKeyService;
+  private _focusTracker!: FocusTracker;
+  private _workbenchContext!: WorkbenchContextManager;
 
   // ── Events ──
 
@@ -403,6 +419,8 @@ export class Workbench extends Disposable {
       this._dndController?.dispose();
       this._viewManager?.dispose();
       this._workspaceSaver?.dispose();
+      this._focusTracker?.dispose();
+      this._workbenchContext?.dispose();
     });
 
     lc.onTeardown(LifecyclePhase.Layout, () => {
@@ -599,25 +617,72 @@ export class Workbench extends Disposable {
 
     // 9. Command system: wire up and register built-in commands
     this._initializeCommands();
+
+    // 10. Context system (Capability 8): context keys, focus tracking, when-clause evaluation
+    this._initializeContext();
   }
 
   /**
    * Initialize the command system: set workbench ref, register all builtin commands,
    * and create the command palette UI.
    */
+  private _commandPalette: CommandPalette | undefined;
   private _initializeCommands(): void {
     const cmdService = this._services.get(ICommandService) as CommandService;
     cmdService.setWorkbench(this);
     this._register(registerBuiltinCommands(cmdService));
 
     // Command Palette — overlay UI for discovering and executing commands
-    const palette = new CommandPalette(cmdService, this._container);
-    this._register(palette);
+    this._commandPalette = new CommandPalette(cmdService, this._container);
+    this._register(this._commandPalette);
 
     console.log(
       '[Workbench] Registered %d built-in commands, command palette ready',
       cmdService.getCommands().size,
     );
+  }
+
+  /**
+   * Initialize the context key system (Capability 8):
+   *  1. Retrieve ContextKeyService from DI
+   *  2. Wire CommandService to use real when-clause evaluation
+   *  3. Create FocusTracker
+   *  4. Create WorkbenchContextManager and wire all part visibility + view tracking
+   */
+  private _initializeContext(): void {
+    // 1. Get context key service from DI
+    this._contextKeyService = this._services.get(IContextKeyService) as ContextKeyService;
+
+    // 2. Wire the CommandService to evaluate when-clauses via the context key service
+    const cmdService = this._services.get(ICommandService) as CommandService;
+    cmdService.setContextKeyService(this._contextKeyService);
+
+    // 3. Focus tracker — monitors DOM focusin/focusout and updates context
+    this._focusTracker = this._register(new FocusTracker(this._container, this._contextKeyService));
+
+    // 4. Workbench context manager — standard context keys for structure
+    this._workbenchContext = this._register(
+      new WorkbenchContextManager(this._contextKeyService, this._focusTracker),
+    );
+
+    // 5. Track part visibility
+    this._workbenchContext.trackPartVisibility(this._sidebar, CTX_SIDEBAR_VISIBLE);
+    this._workbenchContext.trackPartVisibility(this._panel, CTX_PANEL_VISIBLE);
+    this._workbenchContext.trackPartVisibility(this._auxiliaryBar, CTX_AUXILIARY_BAR_VISIBLE);
+    this._workbenchContext.trackPartVisibility(this._statusBar, CTX_STATUS_BAR_VISIBLE);
+
+    // 6. Track view manager active view
+    this._workbenchContext.trackViewManager(this._viewManager);
+
+    // 7. Initial editor group state (Capability 9 will update these dynamically)
+    this._workbenchContext.setEditorGroupCount(1);
+
+    // 8. Wire the command palette's when-clause filtering
+    if (this._commandPalette) {
+      this._commandPalette.setContextKeyService(this._contextKeyService);
+    }
+
+    console.log('[Workbench] Context key system initialized (%d context keys)', this._contextKeyService.getAllContext().size);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -653,6 +718,14 @@ export class Workbench extends Disposable {
     // Track as recent + persist active workspace ID
     await this._recentWorkspaces.add(this._workspace);
     await this._workspaceLoader.setActiveWorkspaceId(this._workspace.id);
+
+    // Update context keys for workspace state
+    if (this._workbenchContext) {
+      this._workbenchContext.setWorkspaceLoaded(true);
+      this._workbenchContext.setWorkbenchState(
+        this._workspace.path ? 'folder' : 'workspace',
+      );
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════

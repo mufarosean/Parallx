@@ -57,6 +57,11 @@ interface PaletteItem {
 
 // ─── CommandPalette ──────────────────────────────────────────────────────────
 
+/** Minimal shape to avoid circular import. */
+interface IContextKeyServiceLike {
+  contextMatchesRules(whenClause: string | undefined): boolean;
+}
+
 export class CommandPalette extends Disposable {
   private _overlay: HTMLElement | null = null;
   private _input: HTMLInputElement | null = null;
@@ -65,6 +70,7 @@ export class CommandPalette extends Disposable {
   private _selectedIndex = 0;
   private _visible = false;
   private _recentCommandIds: string[] = [];
+  private _contextKeyService: IContextKeyServiceLike | undefined;
 
   private readonly _onDidExecute = this._register(new Emitter<string>());
   readonly onDidExecute: Event<string> = this._onDidExecute.event;
@@ -84,6 +90,14 @@ export class CommandPalette extends Disposable {
     this._register(this._commandService.onDidExecuteCommand((e) => {
       this._pushRecent(e.commandId);
     }));
+  }
+
+  /**
+   * Set the context key service for when-clause filtering in the palette.
+   * Commands whose when-clause is not satisfied will be hidden.
+   */
+  setContextKeyService(service: IContextKeyServiceLike): void {
+    this._contextKeyService = service;
   }
 
   // ─── Public API ──────────────────────────────────────────────────────────
@@ -248,6 +262,13 @@ export class CommandPalette extends Disposable {
     const items: PaletteItem[] = [];
 
     for (const [, desc] of commands) {
+      // Filter by when-clause: commands whose precondition is not met are hidden
+      if (desc.when && this._contextKeyService) {
+        if (!this._contextKeyService.contextMatchesRules(desc.when)) {
+          continue;
+        }
+      }
+
       const searchText = desc.category
         ? `${desc.category}: ${desc.title}`
         : desc.title;
