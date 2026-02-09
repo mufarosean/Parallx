@@ -209,10 +209,11 @@ The system can initialize a top-level workbench shell that coordinates layout, v
 
 #### Tasks
 
-**Task 1.1 – Implement Service Collection**
+**Task 1.1 – Implement Service Collection** ✅
 - **Task Description:** Implement a dependency injection container that registers and resolves services.
 - **Output:** `ServiceCollection` class with registration and instantiation capabilities.
 - **Completion Criteria:** Services can be registered by interface, dependencies are automatically resolved, circular dependencies are detected and reported.
+- **Status:** Complete — Implemented in `services/serviceCollection.ts` with supporting DI utilities in `platform/instantiation.ts` and `platform/types.ts`. Also implemented `platform/lifecycle.ts` (IDisposable, DisposableStore, MutableDisposable, Disposable base class) and `platform/events.ts` (Emitter, Event) as foundational dependencies.
 - **Notes / Constraints:**
   - Reference only:
     - https://github.com/microsoft/vscode/blob/main/src/vs/platform/instantiation/common/instantiation.ts
@@ -221,7 +222,7 @@ The system can initialize a top-level workbench shell that coordinates layout, v
   - Services should be lazily instantiated when first requested
   - Implement IDisposable for cleanup
 
-**Task 1.2 – Implement Workbench Shell**
+**Task 1.2 – Implement Workbench Shell** ✅
 - **Task Description:** Implement the workbench shell as the sole owner of UI composition and lifecycle.
 - **Output:** A functioning workbench shell with initialization and teardown methods.
 - **Completion Criteria:** 
@@ -229,13 +230,14 @@ The system can initialize a top-level workbench shell that coordinates layout, v
   - Shell can be instantiated with a service collection
   - Shell properly disposes all resources on shutdown
   - Shell emits lifecycle events (initialized, ready, shutdown)
+- **Status:** Complete — Implemented in `workbench/workbench.ts` with service registration in `workbench/workbenchServices.ts` and service interface definitions in `services/serviceTypes.ts`.
 - **Notes / Constraints:**  
   - Reference only:
     - https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/workbench.ts
   - Shell should not contain business logic; it delegates to services
   - Initialization phases: (1) Services, (2) Layout, (3) Parts, (4) Workspace restore, (5) Ready
 
-**Task 1.3 – Implement Lifecycle Management**
+**Task 1.3 – Implement Lifecycle Management** ✅
 - **Task Description:** Implement lifecycle sequencing for proper startup and teardown order.
 - **Output:** `Lifecycle` class with phase tracking and hooks.
 - **Completion Criteria:**
@@ -243,6 +245,7 @@ The system can initialize a top-level workbench shell that coordinates layout, v
   - Teardown happens in reverse order
   - Async initialization is properly awaited
   - Errors in one phase don't corrupt other phases
+- **Status:** Complete — Implemented as `LifecycleService` in `workbench/lifecycle.ts` with 5 named phases (Services, Layout, Parts, WorkspaceRestore, Ready), event emitters for phase transitions, and error isolation via try/catch per hook.
 - **Notes / Constraints:**
   - Reference only:
     - https://github.com/microsoft/vscode/blob/main/src/vs/workbench/services/lifecycle/common/lifecycle.ts
