@@ -49,6 +49,7 @@ export class EditorGroupView extends Disposable implements IGridView {
   private _emptyMessage!: HTMLElement;
 
   private _activePane: EditorPane | undefined;
+  private _showingActiveEditor = false;
   private readonly _paneDisposables = this._register(new DisposableStore());
 
   private _width = 0;
@@ -199,6 +200,10 @@ export class EditorGroupView extends Disposable implements IGridView {
    */
   async openEditor(input: IEditorInput, options?: EditorOpenOptions): Promise<void> {
     this.model.openEditor(input, options);
+    // model.openEditor() fires EditorActive → _onModelChange → _showActiveEditor()
+    // synchronously, which may already create the pane. We call _showActiveEditor()
+    // explicitly to await the async pane.setInput(). The idempotency guard inside
+    // _showActiveEditor() ensures no duplicate pane is created.
     await this._showActiveEditor();
   }
 
@@ -479,31 +484,41 @@ export class EditorGroupView extends Disposable implements IGridView {
   // ─── Pane Management ───────────────────────────────────────────────────
 
   private async _showActiveEditor(): Promise<void> {
-    const activeInput = this.model.activeEditor;
+    // Reentrancy guard: prevent duplicate pane creation when both the model
+    // event handler and the explicit openEditor() call invoke this method
+    // concurrently (the first call suspends at await pane.setInput(), the
+    // second call would otherwise create a second pane).
+    if (this._showingActiveEditor) return;
+    this._showingActiveEditor = true;
+    try {
+      const activeInput = this.model.activeEditor;
 
-    // Clear current pane
-    if (this._activePane) {
-      this._activePane.clearInput();
-      this._paneDisposables.clear();
-      if (this._activePane.element) {
-        this._activePane.element.remove();
+      // Clear current pane
+      if (this._activePane) {
+        this._activePane.clearInput();
+        this._paneDisposables.clear();
+        if (this._activePane.element) {
+          this._activePane.element.remove();
+        }
+        this._activePane = undefined;
       }
-      this._activePane = undefined;
+
+      if (!activeInput) return;
+
+      // Create new pane
+      const pane = this._paneFactory(activeInput);
+      this._paneDisposables.add(pane);
+      pane.create(this._paneContainer);
+      await pane.setInput(activeInput);
+
+      // Layout
+      const paneH = Math.max(0, this._height - TAB_HEIGHT);
+      pane.layout(this._width, paneH);
+
+      this._activePane = pane;
+    } finally {
+      this._showingActiveEditor = false;
     }
-
-    if (!activeInput) return;
-
-    // Create new pane
-    const pane = this._paneFactory(activeInput);
-    this._paneDisposables.add(pane);
-    pane.create(this._paneContainer);
-    await pane.setInput(activeInput);
-
-    // Layout
-    const paneH = Math.max(0, this._height - TAB_HEIGHT);
-    pane.layout(this._width, paneH);
-
-    this._activePane = pane;
   }
 
   private _updateEmptyState(): void {
