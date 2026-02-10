@@ -52,6 +52,9 @@ export class MenuContributionProcessor extends Disposable implements IContributi
   /** Active context menu overlay (if any). */
   private _activeContextMenu: HTMLElement | null = null;
 
+  /** Active context menu escape handler for cleanup. */
+  private _activeEscHandler: ((e: KeyboardEvent) => void) | null = null;
+
   /** Optional context key service for when-clause evaluation. */
   private _contextKeyService: IContextKeyServiceLike | undefined;
 
@@ -469,6 +472,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
       }
     };
     document.addEventListener('keydown', escHandler, true);
+    this._activeEscHandler = escHandler;
 
     overlay.appendChild(menu);
     document.body.appendChild(overlay);
@@ -487,6 +491,10 @@ export class MenuContributionProcessor extends Disposable implements IContributi
    * Dismiss the currently active context menu.
    */
   dismissContextMenu(): void {
+    if (this._activeEscHandler) {
+      document.removeEventListener('keydown', this._activeEscHandler, true);
+      this._activeEscHandler = null;
+    }
     if (this._activeContextMenu) {
       this._activeContextMenu.remove();
       this._activeContextMenu = null;

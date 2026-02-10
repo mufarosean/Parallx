@@ -3,7 +3,8 @@
 
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs/promises');
+const fsSync = require('fs');
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
@@ -68,28 +69,34 @@ app.whenReady().then(createWindow);
  */
 ipcMain.handle('tools:scan-directory', async (_event, dirPath) => {
   try {
-    if (!fs.existsSync(dirPath)) {
+    let stat;
+    try {
+      stat = await fs.stat(dirPath);
+    } catch {
       return { entries: [], error: null };
     }
 
-    const stat = fs.statSync(dirPath);
     if (!stat.isDirectory()) {
       return { entries: [], error: `Not a directory: ${dirPath}` };
     }
 
     const entries = [];
-    const children = fs.readdirSync(dirPath);
+    const children = await fs.readdir(dirPath);
 
     for (const child of children) {
       const childPath = path.join(dirPath, child);
       try {
-        const childStat = fs.statSync(childPath);
+        const childStat = await fs.stat(childPath);
         if (!childStat.isDirectory()) continue;
 
         const manifestPath = path.join(childPath, 'parallx-manifest.json');
-        if (!fs.existsSync(manifestPath)) continue;
+        try {
+          await fs.access(manifestPath);
+        } catch {
+          continue;
+        }
 
-        const raw = fs.readFileSync(manifestPath, 'utf-8');
+        const raw = await fs.readFile(manifestPath, 'utf-8');
         const parsed = JSON.parse(raw);
         entries.push({ toolPath: childPath, manifestJson: parsed });
       } catch (err) {

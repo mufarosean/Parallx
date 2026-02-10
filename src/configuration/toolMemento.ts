@@ -92,8 +92,10 @@ export class ToolMemento implements Memento {
       );
     }
 
-    // Quota check
-    const newSize = this._estimatedBytes + serialized.length;
+    // Quota check — account for the old value being replaced
+    const oldValue = this._cache.get(fullKey);
+    const oldSize = oldValue !== undefined ? JSON.stringify(oldValue).length : 0;
+    const newSize = this._estimatedBytes - oldSize + serialized.length;
     if (newSize > QUOTA_HARD_BYTES) {
       throw new Error(
         `[ToolMemento] Storage quota exceeded for tool "${this._toolId}" (${this._scope}). ` +

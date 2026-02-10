@@ -85,8 +85,10 @@ export class ConfigurationRegistry implements IDisposable {
       this._onDidChangeSchema.fire({ toolId, affectedKeys: registeredKeys });
     }
 
+    // Return a disposable that only removes the keys registered by THIS call
+    const keysToRemove = [...registeredKeys];
     return toDisposable(() => {
-      this.unregisterTool(toolId);
+      this._unregisterKeys(toolId, keysToRemove);
     });
   }
 
@@ -139,9 +141,44 @@ export class ConfigurationRegistry implements IDisposable {
       this._onDidChangeSchema.fire({ toolId, affectedKeys: registeredKeys });
     }
 
+    // Return a disposable that only removes the keys registered by THIS call
+    const keysToRemove = [...registeredKeys];
     return toDisposable(() => {
-      this.unregisterTool(toolId);
+      this._unregisterKeys(toolId, keysToRemove);
     });
+  }
+
+  /**
+   * Unregister specific keys for a tool (used by per-registration disposables).
+   */
+  private _unregisterKeys(toolId: string, keys: string[]): void {
+    const removedKeys: string[] = [];
+    for (const key of keys) {
+      if (this._properties.has(key)) {
+        this._properties.delete(key);
+        removedKeys.push(key);
+      }
+    }
+
+    // Clean up sections that no longer have any registered properties
+    const sections = this._sectionsByTool.get(toolId);
+    if (sections) {
+      const updated = sections
+        .map(s => ({
+          ...s,
+          properties: s.properties.filter(p => !removedKeys.includes(p.key)),
+        }))
+        .filter(s => s.properties.length > 0);
+      if (updated.length === 0) {
+        this._sectionsByTool.delete(toolId);
+      } else {
+        this._sectionsByTool.set(toolId, updated);
+      }
+    }
+
+    if (removedKeys.length > 0) {
+      this._onDidChangeSchema.fire({ toolId, affectedKeys: removedKeys });
+    }
   }
 
   /**

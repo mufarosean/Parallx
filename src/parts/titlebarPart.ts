@@ -53,6 +53,8 @@ export class TitlebarPart extends Part {
     this._dragRegion.style.position = 'absolute';
     this._dragRegion.style.inset = '0';
     this._dragRegion.style.zIndex = '-1';
+    // Enable Electron window dragging on the titlebar
+    this._dragRegion.style.setProperty('-webkit-app-region', 'drag');
     container.appendChild(this._dragRegion);
 
     // Left slot (menus)

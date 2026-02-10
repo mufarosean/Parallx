@@ -360,28 +360,32 @@ export class EditorGroupView extends Disposable implements IGridView {
     closeBtn.addEventListener('mouseleave', () => { closeBtn.style.opacity = '0.6'; });
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.model.closeEditor(index);
+      const currentIdx = this.model.editors.indexOf(editor);
+      if (currentIdx >= 0) this.model.closeEditor(currentIdx);
     });
     tab.appendChild(closeBtn);
 
     // Click to activate
     tab.addEventListener('click', () => {
-      this.model.setActive(index);
+      const currentIdx = this.model.editors.indexOf(editor);
+      if (currentIdx >= 0) this.model.setActive(currentIdx);
     });
 
     // Double-click to pin preview
     tab.addEventListener('dblclick', () => {
-      if (!isPinned) {
-        this.model.pin(index);
+      const currentIdx = this.model.editors.indexOf(editor);
+      if (currentIdx >= 0 && !this.model.isPinned(currentIdx)) {
+        this.model.pin(currentIdx);
       }
     });
 
     // Drag source
     tab.draggable = true;
     tab.addEventListener('dragstart', (e) => {
+      const currentIdx = this.model.editors.indexOf(editor);
       const data: EditorTabDragData = {
         sourceGroupId: this.model.id,
-        editorIndex: index,
+        editorIndex: currentIdx >= 0 ? currentIdx : index,
         inputId: editor.id,
       };
       e.dataTransfer?.setData(EDITOR_TAB_DRAG_TYPE, JSON.stringify(data));
@@ -411,8 +415,11 @@ export class EditorGroupView extends Disposable implements IGridView {
       try {
         const data: EditorTabDragData = JSON.parse(raw);
         if (data.sourceGroupId === this.model.id) {
-          // Same group: reorder
-          this.model.moveEditor(data.editorIndex, index);
+          // Same group: reorder — use current index of drop target
+          const dropIdx = this.model.editors.indexOf(editor);
+          if (dropIdx >= 0) {
+            this.model.moveEditor(data.editorIndex, dropIdx);
+          }
         }
         // Cross-group moves handled at editor part level
       } catch { /* ignore bad data */ }

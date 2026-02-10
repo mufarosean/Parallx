@@ -33,7 +33,8 @@ export class EditorService extends Disposable implements IEditorService {
 
   async openEditor(input: IEditorInput, options?: EditorOpenOptions, groupId?: string): Promise<void> {
     await this._editorPart.openEditor(input, options, groupId);
-    this._onDidActiveEditorChange.fire(this.activeEditor);
+    // Note: onDidActiveEditorChange is fired by the onDidActiveGroupChange
+    // listener in the constructor. No manual fire needed here.
   }
 
   async closeEditor(input?: IEditorInput, groupId?: string, force = false): Promise<boolean> {

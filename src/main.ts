@@ -15,6 +15,8 @@ declare global {
       close: () => void;
       isMaximized: () => Promise<boolean>;
       onMaximizedChange: (cb: (maximized: boolean) => void) => void;
+      scanToolDirectory: (dirPath: string) => Promise<{ entries: { toolPath: string; manifestJson?: unknown; error?: string }[]; error: string | null }>;
+      getToolDirectories: () => Promise<{ builtinDir: string; userDir: string }>;
     };
   }
 }
@@ -31,9 +33,15 @@ async function bootstrap(): Promise<void> {
   const workbench = new Workbench(container);
   await workbench.initialize();
 
-  // Electron shutdown hook
+  // Electron shutdown hook — fire-and-forget async shutdown.
+  // `beforeunload` cannot await, so we kick off shutdown synchronously
+  // and rely on the lifecycle teardown chain saving state.
+  // The workbench's WorkspaceSaver auto-saves on structural changes,
+  // so the risk window for data loss is minimal.
   window.addEventListener('beforeunload', () => {
-    workbench.shutdown();
+    workbench.shutdown().catch((err) => {
+      console.error('Shutdown error:', err);
+    });
   });
 
   console.log('Parallx workbench started.');

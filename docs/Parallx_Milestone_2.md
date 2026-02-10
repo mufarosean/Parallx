@@ -1018,3 +1018,47 @@ These references were selected for their relevance to Parallx's structural shell
 - Focus on correctness and clean API design over broad feature coverage. A small, correct API is better than a large, leaky one.
 - Reference VS Code source as inspiration, but adapt patterns for Parallx's simpler, non-IDE model. Most VS Code complexity comes from language features, remote hosting, and web compatibility — none of which apply to Parallx in M2.
 
+---
+
+## Post-M2 Audit Resolution
+
+A full 43-issue audit was performed after M2 implementation. All actionable issues have been resolved:
+
+### HIGH Severity (3/3 fixed)
+- **Shutdown data loss** — `main.ts` `beforeunload` handler now catches shutdown errors; preload listener leak fixed
+- **Stale tab indices** — `editorGroupView.ts` closures now resolve editor index at event time via `model.editors.indexOf(editor)`
+- **QuickPick OOB** — `notificationService.ts` ArrowDown clamps `highlightIndex` to visible item count
+
+### MEDIUM Bugs (8/9 fixed, 1 non-issue)
+- **EditorService double-fire** — Removed redundant manual fire in `openEditor()`
+- **ViewContainer listener leak** — Per-view disposable map tracks and cleans up constraint listeners
+- **ToolMemento quota** — Byte tracking now subtracts old value size on overwrites
+- **Workbench saver leak** — Old grid listeners disposed before adding new ones in `_configureSaver()`
+- **MenuContribution escape leak** — Escape handler tracked and removed in `dismissContextMenu()`
+- **StatusBar stale entry** — `updateEntry()` now syncs stored entry map with DOM changes
+- **ConfigRegistry over-unregistration** — Disposable now removes only specific keys, not entire tool registration
+- EditorPart double-fire (non-issue — separate add/remove events are correct behavior)
+- LayoutRenderer dispose (non-issue — `DisposableStore.delete()` exists)
+
+### MEDIUM Design (3/3 fixed, 6 intentional/deferred)
+- **`as any` casts** — `window.parallxElectron` now properly typed with `scanToolDirectory`/`getToolDirectories`
+- **Sync FS in main process** — `electron/main.cjs` tool scanner IPC handler converted to async `fs/promises`
+- **Unbounded parse cache** — `whenClause.ts` parse cache capped at 500 entries with LRU eviction
+- Structural commands coupling, workspace null-host, duplicate context writes, loose equality — intentional patterns
+- Windows `file://` URI handling, focus/context rebuild — deferred to future work
+
+### LOW Dead Code
+- Audit originally flagged types like `Position`, `Box`, `SashEdge`, `GridEventType`, `GridViewFactory`, `EditorMoveTarget`, `EditorCloseResult`, `CommandRegistrationOptions`, and `PALETTE_WIDTH` as unused dead code. These are **milestone-specified forward-looking contracts** (defined in M1 Task 2.1, 2.3, 9.x) that will be consumed in future work. All were preserved — no design types were removed.
+
+### LOW Missing Implementations (6/6 fixed)
+- **Titlebar drag region** — Added `-webkit-app-region: drag` CSS property
+- **StatusBar command click** — Added `onDidClickEntry` event with click handler wiring
+- **Grid constraint subscription** — `GridBranchNode.addChild` now subscribes to child `onDidChangeConstraints`
+- **ViewsBridge descriptor unregister** — Added `ViewManager.unregister()`, bridge calls it on dispose
+- **parallxElectron type sync** — Resolved with HIGH #1 fix
+- **ViewContainer aria-selected** — `activateView()` now updates `aria-selected` on both old and new tabs
+
+### LOW Architecture/Docs (2/2 fixed, 3 observations noted)
+- **ARCHITECTURE.md** — Added `tools/`, `api/`, `configuration/`, `contributions/` modules; updated dependency matrix and rules
+- **Semver** — Verified clean (no duplicates or inconsistencies)
+- Workbench.ts god-class, contribution disposables, no tests — noted for future milestone work

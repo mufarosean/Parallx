@@ -368,10 +368,11 @@ class WhenClauseParser {
 // ─── Parse Cache ─────────────────────────────────────────────────────────────
 
 const _parseCache = new Map<string, WhenClauseNode>();
+const PARSE_CACHE_MAX_SIZE = 500;
 
 /**
  * Parse a when-clause expression into an AST node.
- * Results are cached for efficient re-evaluation.
+ * Results are cached (capped at 500 entries) for efficient re-evaluation.
  *
  * @param expression  The when-clause string, e.g. `'sidebarVisible && !panelVisible'`
  * @returns           The parsed AST node
@@ -390,6 +391,13 @@ export function parseWhenClause(expression: string | undefined): WhenClauseNode 
 
   const parser = new WhenClauseParser();
   const node = parser.parse(trimmed);
+
+  // Evict oldest entries when cache grows too large
+  if (_parseCache.size >= PARSE_CACHE_MAX_SIZE) {
+    const firstKey = _parseCache.keys().next().value;
+    if (firstKey !== undefined) _parseCache.delete(firstKey);
+  }
+
   _parseCache.set(trimmed, node);
   return node;
 }

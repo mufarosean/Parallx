@@ -68,9 +68,7 @@ export class ViewsBridge {
     this._viewManager.register(descriptor);
 
     const disposable = toDisposable(() => {
-      if (this._viewManager.isCreated(viewId)) {
-        this._viewManager.disposeView(viewId);
-      }
+      this._viewManager.unregister(viewId);
     });
 
     this._registrations.push(disposable);

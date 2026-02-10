@@ -43,6 +43,7 @@ export class ViewContainer extends Disposable implements IGridView {
   // ── State ──
 
   private readonly _views: Map<string, IView> = new Map();
+  private readonly _viewDisposables: Map<string, IDisposable> = new Map();
   private readonly _tabElements: Map<string, HTMLElement> = new Map();
   private _tabOrder: string[] = [];
   private _activeViewId: string | undefined;
@@ -178,11 +179,12 @@ export class ViewContainer extends Disposable implements IGridView {
 
     // Listen for constraint changes from the view
     if (view.onDidChangeConstraints) {
-      this._register(view.onDidChangeConstraints(() => {
+      const constraintDisposable = view.onDidChangeConstraints(() => {
         if (this._activeViewId === view.id) {
           this._onDidChangeConstraints.fire();
         }
-      }));
+      });
+      this._viewDisposables.set(view.id, constraintDisposable);
     }
 
     this._onDidAddView.fire(view);
@@ -208,6 +210,10 @@ export class ViewContainer extends Disposable implements IGridView {
     const tab = this._tabElements.get(viewId);
     tab?.remove();
     this._tabElements.delete(viewId);
+
+    // Dispose per-view listener
+    this._viewDisposables.get(viewId)?.dispose();
+    this._viewDisposables.delete(viewId);
 
     // Remove from tracking
     this._views.delete(viewId);
@@ -239,7 +245,9 @@ export class ViewContainer extends Disposable implements IGridView {
     if (this._activeViewId) {
       const current = this._views.get(this._activeViewId);
       current?.setVisible(false);
-      this._tabElements.get(this._activeViewId)?.classList.remove('tab-active');
+      const prevTab = this._tabElements.get(this._activeViewId);
+      prevTab?.classList.remove('tab-active');
+      prevTab?.setAttribute('aria-selected', 'false');
     }
 
     // Show new
@@ -251,7 +259,9 @@ export class ViewContainer extends Disposable implements IGridView {
     next.layout(this._width, contentH);
 
     this._activeViewId = viewId;
-    this._tabElements.get(viewId)?.classList.add('tab-active');
+    const nextTab = this._tabElements.get(viewId);
+    nextTab?.classList.add('tab-active');
+    nextTab?.setAttribute('aria-selected', 'true');
 
     this._onDidChangeActiveView.fire(viewId);
     this._onDidChangeConstraints.fire(); // constraints may differ
@@ -409,6 +419,10 @@ export class ViewContainer extends Disposable implements IGridView {
   }
 
   override dispose(): void {
+    for (const d of this._viewDisposables.values()) {
+      d.dispose();
+    }
+    this._viewDisposables.clear();
     for (const view of this._views.values()) {
       view.dispose();
     }

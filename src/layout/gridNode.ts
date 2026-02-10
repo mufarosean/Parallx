@@ -34,10 +34,14 @@ export class GridBranchNode extends Disposable {
 
   private _children: GridNode[] = [];
   private _sashes: HTMLElement[] = [];
+  private readonly _childConstraintListeners = new Map<GridNode, IDisposable>();
   private readonly _disposables = this._register(new DisposableStore());
 
   private readonly _onDidChange = this._register(new Emitter<void>());
   readonly onDidChange: Event<void> = this._onDidChange.event;
+
+  private readonly _onDidChangeConstraints = this._register(new Emitter<void>());
+  readonly onDidChangeConstraints: Event<void> = this._onDidChangeConstraints.event;
 
   constructor(
     readonly orientation: Orientation,
@@ -75,6 +79,15 @@ export class GridBranchNode extends Disposable {
    */
   addChild(child: GridNode, index: number = this._children.length): void {
     this._children.splice(index, 0, child);
+
+    // Subscribe to child constraint changes and propagate upward
+    if (child.onDidChangeConstraints) {
+      const listener = child.onDidChangeConstraints(() => {
+        this._onDidChangeConstraints.fire();
+      });
+      this._childConstraintListeners.set(child, listener);
+    }
+
     this._rebuildDOM();
     this._onDidChange.fire();
   }
@@ -84,6 +97,11 @@ export class GridBranchNode extends Disposable {
    */
   removeChild(index: number): GridNode {
     const [removed] = this._children.splice(index, 1);
+
+    // Clean up constraint listener for the removed child
+    this._childConstraintListeners.get(removed)?.dispose();
+    this._childConstraintListeners.delete(removed);
+
     this._rebuildDOM();
     this._onDidChange.fire();
     return removed;
@@ -198,6 +216,10 @@ export class GridBranchNode extends Disposable {
   }
 
   override dispose(): void {
+    for (const listener of this._childConstraintListeners.values()) {
+      listener.dispose();
+    }
+    this._childConstraintListeners.clear();
     for (const sash of this._sashes) {
       sash.remove();
     }

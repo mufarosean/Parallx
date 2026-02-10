@@ -156,6 +156,7 @@ export class Workbench extends Disposable {
   private _workspace!: Workspace;
   private _workspaceLoader!: WorkspaceLoader;
   private _workspaceSaver!: WorkspaceSaver;
+  private _saverListeners: IDisposable[] = [];
   private _restoredState: WorkspaceState | undefined;
 
   // Part refs (cached after creation)
@@ -927,9 +928,12 @@ export class Workbench extends Disposable {
       editorProvider: () => createDefaultEditorSnapshot(),
     });
 
-    // Wire auto-save on structural changes
-    this._hGrid.onDidChange(() => this._workspaceSaver.requestSave());
-    this._vGrid.onDidChange(() => this._workspaceSaver.requestSave());
+    // Wire auto-save on structural changes (dispose old listeners first)
+    for (const d of this._saverListeners) d.dispose();
+    this._saverListeners = [
+      this._hGrid.onDidChange(() => this._workspaceSaver.requestSave()),
+      this._vGrid.onDidChange(() => this._workspaceSaver.requestSave()),
+    ];
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1033,7 +1037,7 @@ export class Workbench extends Disposable {
         return btn;
       };
 
-      const api = (window as any).parallxElectron;
+      const api = window.parallxElectron;
       if (api) {
         controls.appendChild(makeBtn('─', () => api.minimize(), 'rgba(255,255,255,0.1)'));
         controls.appendChild(makeBtn('□', () => api.maximize(), 'rgba(255,255,255,0.1)'));

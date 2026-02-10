@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   close: () => ipcRenderer.send('window:close'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   onMaximizedChange: (callback) => {
+    // Remove any previous listener to prevent stacking
+    ipcRenderer.removeAllListeners('window:maximized-changed');
     ipcRenderer.on('window:maximized-changed', (_event, maximized) => callback(maximized));
   },
   // Tool scanning API

@@ -93,6 +93,19 @@ export class ViewManager extends Disposable {
   }
 
   /**
+   * Unregister a view descriptor by ID.
+   * If the view has been created, it is disposed first.
+   */
+  unregister(viewId: string): void {
+    if (!this._descriptors.has(viewId)) return;
+    if (this._views.has(viewId)) {
+      this.disposeView(viewId);
+    }
+    this._descriptors.delete(viewId);
+    this._savedStates.delete(viewId);
+  }
+
+  /**
    * Get a descriptor by ID.
    */
   getDescriptor(viewId: string): IViewDescriptor | undefined {

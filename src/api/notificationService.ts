@@ -542,7 +542,8 @@ export function showQuickPickModal(
         }
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        highlightIndex++;
+        const visibleCount = list.querySelectorAll('[data-index]').length;
+        highlightIndex = Math.min(highlightIndex + 1, visibleCount - 1);
         renderItems(input.value);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();

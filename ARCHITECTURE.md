@@ -89,25 +89,61 @@
 - Visual drop overlay feedback
 - Drag-and-drop types
 
+### `tools/`
+**Tool discovery, validation, activation, and isolation.**
+- Manifest schema and validation (`parallx-manifest.schema.json`, `toolManifest.ts`, `toolValidator.ts`)
+- Tool scanning from filesystem (`toolScanner.ts`)
+- Tool module loading (`toolModuleLoader.ts`)
+- Registry of discovered and activated tools (`toolRegistry.ts`)
+- Activation event matching (`activationEventService.ts`)
+- Tool activation lifecycle (`toolActivator.ts`)
+- Error isolation to prevent tool crashes from affecting the shell (`toolErrorIsolation.ts`)
+
+### `api/`
+**Public API surface exposed to tool extensions.**
+- API factory that creates scoped `parallx.*` namespaces per tool (`apiFactory.ts`)
+- API type definitions for tools (`parallx.d.ts`)
+- API version validation (`apiVersionValidation.ts`)
+- Notification, input box, and quick pick UI (`notificationService.ts`)
+- Bridge modules connecting API calls to internal services (`bridges/`)
+
+### `configuration/`
+**Configuration schema registration and tool-scoped storage.**
+- Configuration registry for tool-contributed settings (`configurationRegistry.ts`)
+- Configuration service for reading/writing values (`configurationService.ts`)
+- Per-tool memento storage with quota enforcement (`toolMemento.ts`)
+- Configuration types (`configurationTypes.ts`)
+
+### `contributions/`
+**Processing of tool manifest contribution points.**
+- Command registration from manifests (`commandContribution.ts`)
+- Keybinding registration from manifests (`keybindingContribution.ts`)
+- Menu contribution processing (`menuContribution.ts`)
+- Shared contribution types (`contributionTypes.ts`)
+
 ---
 
 ## Dependency Rules
 
 ### Dependency Matrix
 
-| Module ↓ may depend on → | platform | services | workbench | layout | parts | views | editor | workspace | commands | context | dnd |
-|--------------------------|:--------:|:--------:|:---------:|:------:|:-----:|:-----:|:------:|:---------:|:--------:|:-------:|:---:|
-| **platform**             |    —     |    ✗     |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |
-| **services**             |    ✓     |    —     |     ✗     |   ✓    |   ✓   |   ✓   |   ✓    |     ✓     |    ✓     |    ✓    |  ✓  |
-| **workbench**            |    ✓     |    ✓     |     —     |   ✓    |   ✓   |   ✓   |   ✓    |     ✓     |    ✓     |    ✓    |  ✓  |
-| **layout**               |    ✓     |    ✗     |     ✗     |   —    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |
-| **parts**                |    ✓     |    ✓*    |     ✗     |   ✓    |   —   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |
-| **views**                |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   —   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |
-| **editor**               |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   —    |     ✗     |    ✗     |    ✗    |  ✗  |
-| **workspace**            |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     —     |    ✗     |    ✗    |  ✗  |
-| **commands**             |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    —     |    ✓    |  ✗  |
-| **context**              |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    —    |  ✗  |
-| **dnd**                  |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   ✗    |     ✗     |    ✗     |    ✗    |  —  |
+| Module ↓ may depend on → | platform | services | workbench | layout | parts | views | editor | workspace | commands | context | dnd | tools | api | configuration | contributions |
+|--------------------------|:--------:|:--------:|:---------:|:------:|:-----:|:-----:|:------:|:---------:|:--------:|:-------:|:---:|:-----:|:---:|:-------------:|:-------------:|
+| **platform**             |    —     |    ✗     |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **services**             |    ✓     |    —     |     ✗     |   ✓    |   ✓   |   ✓   |   ✓    |     ✓     |    ✓     |    ✓    |  ✓  |   ✓   |  ✗  |       ✓       |       ✗       |
+| **workbench**            |    ✓     |    ✓     |     —     |   ✓    |   ✓   |   ✓   |   ✓    |     ✓     |    ✓     |    ✓    |  ✓  |   ✓   |  ✓  |       ✓       |       ✓       |
+| **layout**               |    ✓     |    ✗     |     ✗     |   —    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **parts**                |    ✓     |    ✓*    |     ✗     |   ✓    |   —   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **views**                |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   —   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **editor**               |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   —    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **workspace**            |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     —     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **commands**             |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    —     |    ✓    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **context**              |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    —    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **dnd**                  |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   ✗    |     ✗     |    ✗     |    ✗    |  —  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **tools**                |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   —   |  ✓  |       ✓       |       ✗       |
+| **api**                  |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   ✓    |     ✗     |    ✓     |    ✓    |  ✗  |   ✗   |  —  |       ✓       |       ✗       |
+| **configuration**        |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       —       |       ✗       |
+| **contributions**        |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✓   |   ✗    |     ✗     |    ✓     |    ✓    |  ✗  |   ✗   |  ✗  |       ✗       |       —       |
 
 > `✓*` = May depend on service **interfaces** only (from `services/serviceTypes.ts`), never on concrete implementations.
 
@@ -122,8 +158,12 @@
 7. **`commands` depend on `platform`, `context`, and service interfaces.** Commands evaluate context and call services.
 8. **`context` depends on `platform` and service interfaces.** Context is a data tracking layer.
 9. **`dnd` depends on `platform`, `layout`, `views`, and service interfaces.** DnD coordinates view movement through layout.
-10. **`services` depend on `platform` and may import from any module** to provide concrete implementations behind interfaces.
-11. **`workbench` is the composition root.** It may depend on everything to wire the system together.
+10. **`tools` depend on `platform`, `api`, `configuration`, and service interfaces.** Tool lifecycle management loads, validates, and activates tools.
+11. **`api` depends on `platform`, `layout`, `views`, `editor`, `commands`, `context`, `configuration`, and service interfaces.** API bridges connect tool calls to internal services.
+12. **`configuration` depends on `platform` and service interfaces.** Configuration is a data/schema concern.
+13. **`contributions` depend on `platform`, `views`, `commands`, `context`, and service interfaces.** Contributions process manifest declarations into registered entities.
+14. **`services` depend on `platform` and may import from any module** to provide concrete implementations behind interfaces.
+15. **`workbench` is the composition root.** It may depend on everything to wire the system together.
 
 ### Absolute Prohibitions
 

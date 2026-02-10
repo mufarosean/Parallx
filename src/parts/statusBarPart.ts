@@ -50,6 +50,9 @@ export class StatusBarPart extends Part {
   private readonly _onDidRemoveEntry = this._register(new Emitter<string>());
   readonly onDidRemoveEntry: Event<string> = this._onDidRemoveEntry.event;
 
+  private readonly _onDidClickEntry = this._register(new Emitter<{ id: string; command: string }>());
+  readonly onDidClickEntry: Event<{ id: string; command: string }> = this._onDidClickEntry.event;
+
   constructor() {
     super(
       PartId.StatusBar,
@@ -77,6 +80,9 @@ export class StatusBarPart extends Part {
     if (entry.command) {
       el.style.cursor = 'pointer';
       el.setAttribute('role', 'button');
+      el.addEventListener('click', () => {
+        this._onDidClickEntry.fire({ id: entry.id, command: entry.command! });
+      });
     }
 
     this._entryElements.set(entry.id, el);
@@ -88,6 +94,14 @@ export class StatusBarPart extends Part {
     const entry = this._entries.get(id);
     const el = this._entryElements.get(id);
     if (!entry || !el) { return; }
+
+    // Update the stored entry to keep it in sync with the DOM
+    const updated: StatusBarEntry = {
+      ...entry,
+      ...(update.text !== undefined ? { text: update.text } : {}),
+      ...(update.tooltip !== undefined ? { tooltip: update.tooltip } : {}),
+    };
+    this._entries.set(id, updated);
 
     if (update.text !== undefined) {
       el.textContent = update.text;
