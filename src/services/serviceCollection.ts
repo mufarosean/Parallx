@@ -2,7 +2,7 @@
 
 import { IDisposable } from '../platform/lifecycle.js';
 import { ServiceIdentifier } from '../platform/types.js';
-import { ServiceDescriptor, getServiceDependencies } from '../platform/instantiation.js';
+import { ServiceDescriptor, getServiceDependencies, IServiceProvider } from '../platform/instantiation.js';
 
 /**
  * Thrown when the service collection detects a circular dependency.
@@ -44,7 +44,7 @@ type ServiceEntry<T = any> = {
  * - Singleton and transient lifetimes
  * - Disposal of all instantiated services
  */
-export class ServiceCollection implements IDisposable {
+export class ServiceCollection implements IDisposable, IServiceProvider {
   private readonly _entries = new Map<string, ServiceEntry>();
   private readonly _instantiating = new Set<string>();
   private _disposed = false;

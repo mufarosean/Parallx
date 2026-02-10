@@ -1123,69 +1123,73 @@ The system provides platform-agnostic abstractions for storage, events, lifecycl
 
 #### Tasks
 
-**Task 10.1 – Implement Storage Abstraction**
+**Task 10.1 – Implement Storage Abstraction** ✅
 - **Task Description:** Create storage interface with multiple backend implementations.
 - **Output:** `IStorage` interface with localStorage and IndexedDB implementations.
 - **Completion Criteria:**
-  - Interface supports get/set/delete/clear operations
-  - Interface supports namespacing for isolation
-  - Async and sync variants available
-  - localStorage implementation for simple data
-  - IndexedDB implementation for large data
-  - In-memory implementation for testing
-  - Graceful error handling for quota exceeded
+  - Interface supports get/set/delete/clear operations ✅
+  - Interface supports namespacing for isolation ✅ (`NamespacedStorage`, `NamespacedSyncStorage`)
+  - Async and sync variants available ✅ (`IStorage` async, `ISyncStorage` sync)
+  - localStorage implementation for simple data ✅ (`LocalStorage` implements both)
+  - IndexedDB implementation for large data ✅ (`IndexedDBStorage`)
+  - In-memory implementation for testing ✅ (`InMemoryStorage` implements both)
+  - Graceful error handling for quota exceeded ✅ (`StorageError` / `onError` event)
 - **Notes / Constraints:**
   - Reference only:
     - https://github.com/microsoft/vscode/blob/main/src/vs/base/common/storage.ts
   - Consider encryption for sensitive data
-  - Support migration between storage backends
+  - Support migration between storage backends ✅ (`migrateStorage()` utility)
+- **Deviation:** Encryption for sensitive data deferred — not needed for Milestone 1 scope. All key enumeration uses `keys(prefix?)` / `keysSync(prefix?)` methods.
 
-**Task 10.2 – Implement Event System**
+**Task 10.2 – Implement Event System** ✅
 - **Task Description:** Create event emitter with typed events and disposal.
 - **Output:** `Emitter<T>` class and `Event<T>` type.
 - **Completion Criteria:**
-  - Emitters are typed by event payload
-  - Listeners can be added and removed
-  - Listeners return IDisposable for cleanup
-  - Support once listeners (fire once, then dispose)
-  - Support event filtering and mapping
-  - Events can be debounced or throttled
-  - Memory leak prevention (weak references where appropriate)
+  - Emitters are typed by event payload ✅
+  - Listeners can be added and removed ✅
+  - Listeners return IDisposable for cleanup ✅
+  - Support once listeners (fire once, then dispose) ✅ (`EventUtils.once`)
+  - Support event filtering and mapping ✅ (`EventUtils.filter`, `EventUtils.map`)
+  - Events can be debounced or throttled ✅ (`EventUtils.debounce`, `EventUtils.throttle`)
+  - Memory leak prevention (weak references where appropriate) ✅ (`enableLeakWarnings(threshold)` — threshold-based console warnings)
 - **Notes / Constraints:**
   - Reference only:
     - https://github.com/microsoft/vscode/blob/main/src/vs/base/common/event.ts
-  - Use functional API: `onDidChangeLayout: Event<LayoutChangeEvent>`
+  - Use functional API: `onDidChangeLayout: Event<LayoutChangeEvent>` ✅
+- **Deviation:** Leak prevention uses listener-count threshold warnings rather than WeakRef, which is sufficient for development-time detection. Additional utilities: `EventUtils.any` (merge), `EventUtils.defer` (lazy), `EventUtils.fromDOMEvent`, `EventUtils.fromPromise`, `EventUtils.None`.
 
-**Task 10.3 – Implement Lifecycle and Disposables**
+**Task 10.3 – Implement Lifecycle and Disposables** ✅
 - **Task Description:** Implement IDisposable pattern and disposal tracking utilities.
 - **Output:** `IDisposable` interface and helper classes.
 - **Completion Criteria:**
-  - IDisposable interface with dispose method
-  - DisposableStore for managing multiple disposables
-  - toDisposable helper for wrapping cleanup functions
-  - MutableDisposable for replaceable disposables
-  - Disposal tracking to detect leaks in development
-  - Async disposal support
+  - IDisposable interface with dispose method ✅
+  - DisposableStore for managing multiple disposables ✅ (with `size` getter)
+  - toDisposable helper for wrapping cleanup functions ✅
+  - MutableDisposable for replaceable disposables ✅
+  - Disposal tracking to detect leaks in development ✅ (`enableDisposalTracking()`, `getUndisposedCount()`, `getUndisposedTraces()`)
+  - Async disposal support ✅ (`IAsyncDisposable`, `AsyncDisposableStore`, `AsyncDisposable` base class)
 - **Notes / Constraints:**
   - Reference only:
     - https://github.com/microsoft/vscode/blob/main/src/vs/base/common/lifecycle.ts
-  - All resources (event listeners, intervals, DOM elements) should be disposable
+  - All resources (event listeners, intervals, DOM elements) should be disposable ✅
   - Use try-finally to ensure disposal
+- **Deviation:** Added `RefCountDisposable` for shared resources, `safeDispose()`, `isDisposable()` type guard, and `markAsDisposed()` beyond original criteria.
 
-**Task 10.4 – Implement Instantiation Utilities**
+**Task 10.4 – Implement Instantiation Utilities** ✅
 - **Task Description:** Create utilities for service instantiation and dependency resolution.
 - **Output:** Instantiation helper functions and decorators.
 - **Completion Criteria:**
-  - Support for constructor parameter injection
-  - Decorators for marking injectable services
-  - Utilities for creating service instances from collection
-  - Support for service descriptors (singleton, transient)
-  - Circular dependency detection
+  - Support for constructor parameter injection ✅ (`@inject` decorator)
+  - Decorators for marking injectable services ✅ (`@inject`, `@injectOptional`)
+  - Utilities for creating service instances from collection ✅ (`createInstance(provider, ctor, ...extraArgs)`)
+  - Support for service descriptors (singleton, transient) ✅ (`singleton()`, `transient()`, `ServiceDescriptor`)
+  - Circular dependency detection ✅ (in `ServiceCollection`)
 - **Notes / Constraints:**
   - Reference only:
     - https://github.com/microsoft/vscode/blob/main/src/vs/platform/instantiation/common/instantiation.ts
-  - Use TypeScript decorators for marking dependencies
-  - Provide good error messages for missing services
+  - Use TypeScript decorators for marking dependencies ✅
+  - Provide good error messages for missing services ✅ (`MissingDependencyError` with class name, service ID, parameter index, and fix suggestion)
+- **Deviation:** `IServiceProvider` interface added as minimal resolution contract; `ServiceCollection` now implements it. The standalone `createInstance` function fills non-decorated parameter slots with extra args.
 
 ---
 

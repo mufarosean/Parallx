@@ -1,6 +1,10 @@
 // instantiation.ts — service instantiation utilities
+//
+// Provides constructor-parameter injection decorators, service descriptors
+// (singleton / transient), and a standalone `createInstance` function
+// that resolves dependencies from a service provider.
 
-import { ServiceIdentifier, createServiceIdentifier } from './types.js';
+import { ServiceIdentifier } from './types.js';
 
 /**
  * Metadata key used to store service dependency information on classes.
@@ -36,6 +40,7 @@ export function inject(serviceId: ServiceIdentifier<any>) {
 
 /**
  * Decorator factory for optional service dependencies.
+ * If the service is not registered, undefined is injected.
  */
 export function injectOptional(serviceId: ServiceIdentifier<any>) {
   return function (target: any, _propertyKey: string | symbol | undefined, parameterIndex: number) {
@@ -92,4 +97,79 @@ export function transient<T>(
   ctor: new (...args: any[]) => T
 ): ServiceDescriptor<T> {
   return { id, ctor, singleton: false };
+}
+
+// ─── Service Provider ────────────────────────────────────────────────────────
+
+/**
+ * Minimal interface for service resolution — used by `createInstance`.
+ */
+export interface IServiceProvider {
+  get<T>(id: ServiceIdentifier<T>): T;
+  has(id: ServiceIdentifier<any>): boolean;
+}
+
+// ─── createInstance ──────────────────────────────────────────────────────────
+
+/**
+ * Thrown when a required service dependency cannot be resolved.
+ */
+export class MissingDependencyError extends Error {
+  constructor(
+    ctor: Function,
+    dep: ServiceDependency,
+  ) {
+    super(
+      `Cannot instantiate ${ctor.name ?? 'anonymous class'}:` +
+      ` missing required service "${dep.id.id}" at parameter index ${dep.parameterIndex}.` +
+      ` Register the service before calling createInstance, or use @injectOptional.`
+    );
+    this.name = 'MissingDependencyError';
+  }
+}
+
+/**
+ * Instantiate a class by resolving its `@inject`-decorated constructor
+ * dependencies from the given service provider, plus any extra arguments
+ * that fill non-decorated parameter positions.
+ *
+ * @param provider  Service provider for resolving dependencies
+ * @param ctor      Class constructor
+ * @param extraArgs Additional arguments for non-decorated parameters
+ */
+export function createInstance<T>(
+  provider: IServiceProvider,
+  ctor: new (...args: any[]) => T,
+  ...extraArgs: any[]
+): T {
+  const deps = getServiceDependencies(ctor)
+    .sort((a, b) => a.parameterIndex - b.parameterIndex);
+
+  // Figure out the total number of constructor params
+  const maxIndex = deps.length > 0
+    ? Math.max(ctor.length, deps[deps.length - 1].parameterIndex + 1)
+    : ctor.length;
+
+  const args: any[] = new Array(maxIndex);
+
+  // Place service dependencies
+  for (const dep of deps) {
+    if (dep.optional && !provider.has(dep.id)) {
+      args[dep.parameterIndex] = undefined;
+    } else if (!dep.optional && !provider.has(dep.id)) {
+      throw new MissingDependencyError(ctor, dep);
+    } else {
+      args[dep.parameterIndex] = provider.get(dep.id);
+    }
+  }
+
+  // Fill remaining slots with extraArgs (in order, skipping service-filled slots)
+  let extraIdx = 0;
+  for (let i = 0; i < maxIndex && extraIdx < extraArgs.length; i++) {
+    if (args[i] === undefined && !deps.some(d => d.parameterIndex === i)) {
+      args[i] = extraArgs[extraIdx++];
+    }
+  }
+
+  return new ctor(...args);
 }
