@@ -1499,6 +1499,9 @@ export class Workbench extends Disposable {
         registry.register(description);
         // Register activation events so the system knows about them
         activationEvents.registerToolEvents(manifest.id, manifest.activationEvents);
+        // Pre-mark as activated so fireStartupFinished() doesn't double-trigger
+        // via the onStartupFinished event while activateBuiltin is still awaiting
+        activationEvents.markActivated(manifest.id);
         // Activate immediately using the pre-imported module (no module loader)
         this._toolActivator.activateBuiltin(manifest.id, module as any).catch((err) => {
           console.error(`[Workbench] Failed to activate built-in tool "${manifest.id}":`, err);

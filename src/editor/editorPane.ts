@@ -209,3 +209,82 @@ export class PlaceholderEditorPane extends EditorPane {
     }
   }
 }
+
+// ─── ToolEditorPane ──────────────────────────────────────────────────────────
+
+/**
+ * Editor pane that delegates rendering to a tool-provided editor provider.
+ *
+ * The input must have a `provider` property with `createEditorPane(container)`.
+ * This is duck-typed to avoid a hard dependency on the API bridge layer.
+ */
+export class ToolEditorPane extends EditorPane {
+  private _contentContainer: HTMLElement | undefined;
+  private _providerDisposable: IDisposable | undefined;
+
+  constructor() {
+    super('tool-editor-pane');
+  }
+
+  protected override createPaneContent(container: HTMLElement): void {
+    this._contentContainer = document.createElement('div');
+    this._contentContainer.style.width = '100%';
+    this._contentContainer.style.height = '100%';
+    this._contentContainer.style.overflow = 'auto';
+    container.appendChild(this._contentContainer);
+  }
+
+  protected override async renderInput(input: IEditorInput): Promise<void> {
+    // Dispose previous provider content
+    this._disposeProviderContent();
+
+    if (!this._contentContainer) return;
+
+    // Duck-type check for a tool editor provider
+    const provider = (input as any).provider;
+    if (provider && typeof provider.createEditorPane === 'function') {
+      this._providerDisposable = provider.createEditorPane(this._contentContainer);
+    } else {
+      // Fallback: show the input name
+      const label = document.createElement('div');
+      label.style.cssText = 'color: var(--color-text-muted, #888); font-size: 14px; text-align: center; padding: 16px;';
+      label.textContent = input.name;
+      this._contentContainer.appendChild(label);
+    }
+  }
+
+  protected override clearPaneContent(): void {
+    this._disposeProviderContent();
+    if (this._contentContainer) {
+      this._contentContainer.innerHTML = '';
+    }
+  }
+
+  private _disposeProviderContent(): void {
+    if (this._providerDisposable) {
+      this._providerDisposable.dispose();
+      this._providerDisposable = undefined;
+    }
+  }
+
+  override dispose(): void {
+    this._disposeProviderContent();
+    super.dispose();
+  }
+}
+
+// ─── Smart Pane Factory ──────────────────────────────────────────────────────
+
+/**
+ * Create the appropriate editor pane for an input.
+ *
+ * If the input has a tool-provided editor provider (duck-typed via `.provider`),
+ * a ToolEditorPane is created. Otherwise, a PlaceholderEditorPane is used.
+ */
+export function createEditorPaneForInput(input: IEditorInput): EditorPane {
+  const provider = (input as any).provider;
+  if (provider && typeof provider.createEditorPane === 'function') {
+    return new ToolEditorPane();
+  }
+  return new PlaceholderEditorPane();
+}

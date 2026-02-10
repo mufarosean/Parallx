@@ -14,6 +14,7 @@ import { Grid } from '../layout/grid.js';
 import { EditorGroupView } from '../editor/editorGroupView.js';
 import { GroupDirection, EditorOpenOptions } from '../editor/editorTypes.js';
 import type { IEditorInput } from '../editor/editorInput.js';
+import { createEditorPaneForInput } from '../editor/editorPane.js';
 
 const EDITOR_CONSTRAINTS: SizeConstraints = {
   minimumWidth: 200,
@@ -137,7 +138,7 @@ export class EditorPart extends Part {
   // ── Group management ──
 
   private _createGroupView(): EditorGroupView {
-    const group = new EditorGroupView();
+    const group = new EditorGroupView(undefined, createEditorPaneForInput);
     this._groups.set(group.id, group);
 
     const store = new DisposableStore();
