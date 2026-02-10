@@ -242,3 +242,31 @@ export interface IToolRegistryService extends IDisposable {
 }
 
 export const IToolRegistryService = createServiceIdentifier<IToolRegistryService>('IToolRegistryService');
+
+// ─── INotificationService ────────────────────────────────────────────────────
+
+import type { NotificationAction, NotificationSeverity as NotifSeverity, INotification } from '../api/notificationService.js';
+
+/**
+ * Service interface for the notification/toast system.
+ */
+export interface INotificationService extends IDisposable {
+  /** Attach the notification container to a parent element. */
+  attach(parent: HTMLElement): void;
+  /** Show a notification. */
+  notify(severity: NotifSeverity, message: string, actions?: readonly NotificationAction[], source?: string, timeoutMs?: number): Promise<NotificationAction | undefined>;
+  /** Show an information message. */
+  info(message: string, ...actions: NotificationAction[]): Promise<NotificationAction | undefined>;
+  /** Show a warning message. */
+  warn(message: string, ...actions: NotificationAction[]): Promise<NotificationAction | undefined>;
+  /** Show an error message. */
+  error(message: string, ...actions: NotificationAction[]): Promise<NotificationAction | undefined>;
+  /** Dismiss all notifications. */
+  dismissAll(): void;
+  /** Fires when a notification is shown. */
+  readonly onDidShowNotification: Event<INotification>;
+  /** Fires when a notification is closed. */
+  readonly onDidCloseNotification: Event<string>;
+}
+
+export const INotificationService = createServiceIdentifier<INotificationService>('INotificationService');

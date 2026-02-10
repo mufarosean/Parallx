@@ -249,103 +249,97 @@ The system defines a clear API surface (`parallx` namespace) that is the only wa
 
 #### Tasks
 
-**Task 2.1 – Define Parallx API Type Definitions**
+**Task 2.1 – Define Parallx API Type Definitions** ✅
 - **Task Description:** Create the `parallx.d.ts` type definition file that defines the complete API surface available to tools. This is the Parallx equivalent of `vscode.d.ts`.
 - **Output:** `parallx.d.ts` file with full TypeScript type definitions.
 - **Completion Criteria:**
-  - `parallx.views` namespace: `registerViewProvider(viewId, provider)`
-  - `parallx.commands` namespace: `registerCommand(id, handler)`, `executeCommand(id, ...args)`, `getCommands()`
-  - `parallx.window` namespace: `showInformationMessage()`, `showWarningMessage()`, `showErrorMessage()`, `showInputBox()`, `showQuickPick()`, `createOutputChannel(name)`
-  - `parallx.context` namespace: `createContextKey(name, defaultValue)`, `getContextValue(name)`
-  - `parallx.workspace` namespace: `getConfiguration(section)`, `onDidChangeConfiguration`
-  - `parallx.editors` namespace: `openEditor(input)`, `registerEditorProvider(typeId, provider)`
-  - `parallx.tools` namespace: `getAll()`, `getById(id)` (read-only access to tool registry metadata)
-  - `parallx.env` namespace: `appName`, `appVersion`, `toolPath`
-  - `Disposable` class and `IDisposable` interface exported
-  - `ToolContext` interface matching activation context (subscriptions, globalState, workspaceState, toolPath, toolUri)
-  - All types use structural typing (no class instances cross the boundary)
+  - ✅ `parallx.views` namespace: `registerViewProvider(viewId, provider)` — with `ViewProvider` and `ViewProviderOptions` types
+  - ✅ `parallx.commands` namespace: `registerCommand(id, handler)`, `executeCommand(id, ...args)`, `getCommands()` — with `CommandHandler` type
+  - ✅ `parallx.window` namespace: `showInformationMessage()`, `showWarningMessage()`, `showErrorMessage()`, `showInputBox()`, `showQuickPick()`, `createOutputChannel(name)` — with `MessageSeverity`, `MessageAction`, `InputBoxOptions`, `QuickPickItem/Options`, `OutputChannel` types
+  - ✅ `parallx.context` namespace: `createContextKey(name, defaultValue)`, `getContextValue(name)` — with `ContextKey<T>` type
+  - ✅ `parallx.workspace` namespace: `getConfiguration(section)`, `onDidChangeConfiguration` — with `Configuration` and `ConfigurationChangeEvent` types
+  - ✅ `parallx.editors` namespace: `openEditor(input)`, `registerEditorProvider(typeId, provider)` — with `EditorProvider` and `OpenEditorOptions` types
+  - ✅ `parallx.tools` namespace: `getAll()`, `getById(id)` (read-only access to tool registry metadata) — returns `ToolInfo` objects
+  - ✅ `parallx.env` namespace: `appName`, `appVersion`, `toolPath`
+  - ✅ `Disposable` class and `IDisposable` interface exported
+  - ✅ `ToolContext` interface matching activation context (subscriptions, globalState, workspaceState, toolPath, toolUri) — with `Memento` interface
+  - ✅ All types use structural typing (no class instances cross the boundary)
 - **Notes / Constraints:**
-  - Reference only:
-    - `src/vscode-dts/vscode.d.ts` (structure and patterns, NOT content features like TextDocument, languages, etc.)
-  - Omit all code-IDE-specific APIs: no TextDocument, TextEditor, languages, diagnostics, debug, SCM, tasks, notebooks
-  - Include only structural/shell APIs that make sense for a tool-hosting platform
-  - File should be publishable as `@parallx/types` npm package in the future
+  - File location: `src/api/parallx.d.ts`
+  - Includes `CancellationToken`, `Event<T>`, and all supporting types (structural, no class instances)
 
-**Task 2.2 – Implement API Factory**
+**Task 2.2 – Implement API Factory** ✅
 - **Task Description:** Implement a factory function that creates a fresh, scoped API object for each tool upon activation.
 - **Output:** `createToolApi(toolDescription, services)` function returning a `typeof parallx` object.
 - **Completion Criteria:**
-  - Factory creates a new API object per tool (not shared between tools)
-  - API object methods are scoped to the calling tool (e.g., `registerCommand` tags the command with the tool's ID)
-  - All `Disposable` objects returned by API methods are tracked per-tool for cleanup
-  - API access failures (e.g., calling after deactivation) throw clear errors
-  - API object is frozen after creation (no monkey-patching)
+  - ✅ Factory creates a new API object per tool (not shared between tools) — `createToolApi()` in `src/api/apiFactory.ts` creates fresh bridge instances
+  - ✅ API object methods are scoped to the calling tool (e.g., `registerCommand` tags the command with the tool's ID) — all bridges receive `toolId` and scope operations
+  - ✅ All `Disposable` objects returned by API methods are tracked per-tool for cleanup — shared `subscriptions` array tracked across all bridges
+  - ✅ API access failures (e.g., calling after deactivation) throw clear errors — `_throwIfDisposed()` in every bridge
+  - ✅ API object is frozen after creation (no monkey-patching) — `Object.freeze()` on all namespace objects and the top-level API
 - **Notes / Constraints:**
-  - Reference only:
-    - `src/vs/workbench/api/common/extHost.api.impl.ts` — `createApiFactoryAndRegisterActors()`
-  - In M2, tools run in the same process (no RPC). The API factory creates a thin wrapper over internal services.
-  - In future milestones, this boundary becomes an RPC bridge for process-isolated tools.
-  - `Object.freeze()` the API object to prevent tools from adding properties
+  - Returns `{ api, dispose }` tuple; `dispose()` cleans up all bridges and subscriptions
+  - Takes `ApiFactoryDependencies` containing services, viewManager, toolRegistry, notificationService
 
-**Task 2.3 – Implement API-to-Service Bridge**
+**Task 2.3 – Implement API-to-Service Bridge** ✅
 - **Task Description:** Implement the bridge layer that maps each API namespace method to the corresponding internal service call.
 - **Output:** Bridge implementations for each API namespace (`ViewsBridge`, `CommandsBridge`, `WindowBridge`, `ContextBridge`, `WorkspaceBridge`).
 - **Completion Criteria:**
-  - `parallx.views.registerViewProvider()` → `ViewManager.registerDescriptor()` + `ViewManager.createView()`
-  - `parallx.commands.registerCommand()` → `CommandService.register()` with tool-scoped ID prefixing
-  - `parallx.commands.executeCommand()` → `CommandService.execute()` with validation
-  - `parallx.window.showInformationMessage()` → shell notification system (new, simple overlay)
-  - `parallx.context.createContextKey()` → `ContextKeyService.createKey()` in tool-scoped scope
-  - `parallx.workspace.getConfiguration()` → configuration service read for tool's section
-  - Every API call validates the tool is still active before proceeding
-  - All returned `Disposable` objects are registered in the tool's `subscriptions` for cleanup
+  - ✅ `parallx.views.registerViewProvider()` → `ViewManager.register()` with `IViewDescriptor` wrapping tool's `ViewProvider` into full `IView` adapter (createElement, layout, saveState, etc.)
+  - ✅ `parallx.commands.registerCommand()` → `CommandService.registerCommand()` wrapping tool handler into internal `CommandHandler` shape
+  - ✅ `parallx.commands.executeCommand()` → `CommandService.executeCommand()` with validation
+  - ✅ `parallx.window.showInformationMessage()` → `NotificationService.notify()` with severity and source attribution
+  - ✅ `parallx.context.createContextKey()` → `ContextKeyService.createKey()` in tool-scoped scope (`tool:<toolId>`)
+  - ✅ `parallx.workspace.getConfiguration()` → `WorkspaceBridge` configuration store scoped to tool's section
+  - ✅ Every API call validates the tool is still active before proceeding — `_throwIfDisposed()` in all bridges
+  - ✅ All returned `Disposable` objects are registered in the tool's `subscriptions` for cleanup
 - **Notes / Constraints:**
-  - Bridge methods should add the tool ID to all registered entities for attribution and cleanup
-  - Bridge should handle errors from internal services and translate them to tool-friendly error messages
+  - Six bridge modules in `src/api/bridges/`: `commandsBridge.ts`, `viewsBridge.ts`, `windowBridge.ts`, `contextBridge.ts`, `workspaceBridge.ts`, `editorsBridge.ts`
+  - `EditorsBridge` also implemented (Task 2.6) for editor provider registration and opening
 
-**Task 2.4 – Implement Notification System**
+**Task 2.4 – Implement Notification System** ✅
 - **Task Description:** Implement the shell's notification/toast system that backs `parallx.window.showInformationMessage()`, `showWarningMessage()`, and `showErrorMessage()`.
 - **Output:** Notification overlay UI that displays brief messages with optional action buttons.
 - **Completion Criteria:**
-  - Three severity levels: information (blue), warning (yellow), error (red)
-  - Messages appear as toast overlays in the bottom-right corner of the workbench
-  - Messages auto-dismiss after a configurable timeout (default 5 seconds)
-  - Messages can include action buttons (e.g., "Retry", "Open Settings") that return a Promise with the selected action
-  - Multiple messages stack vertically with newest on top
-  - Messages can be dismissed manually via close button
-  - `showInputBox()` and `showQuickPick()` render as modal overlays centered in the workbench
+  - ✅ Three severity levels: information (blue `#3794ff`), warning (yellow `#cca700`), error (red `#f14c4c`) — colored left border
+  - ✅ Messages appear as toast overlays in the bottom-right corner of the workbench — fixed positioning with z-index 10000
+  - ✅ Messages auto-dismiss after a configurable timeout (default 5 seconds) — `DEFAULT_TIMEOUT_MS = 5000`
+  - ✅ Messages can include action buttons that return a Promise with the selected action — `NotificationAction` buttons resolve the promise
+  - ✅ Multiple messages stack vertically with newest on top — `prepend()` with flex-column layout
+  - ✅ Messages can be dismissed manually via close button — `×` button in top-right corner
+  - ✅ `showInputBox()` and `showQuickPick()` render as modal overlays centered in the workbench — `showInputBoxModal()` and `showQuickPickModal()` with backdrop overlay
 - **Notes / Constraints:**
-  - Keep styling minimal (dark background, white text, colored left border for severity)
-  - This is infrastructure for the `parallx.window` API — tools call it, the shell renders it
-  - Do not build a full notification center (deferred) — just transient toasts
+  - File location: `src/api/notificationService.ts`
+  - Entrance/exit animations (opacity + translateX) for polish
+  - `INotificationService` registered in DI container, attached to DOM in Phase 3
 
-**Task 2.5 – Implement API Version Validation**
+**Task 2.5 – Implement API Version Validation** ✅
 - **Task Description:** Implement version compatibility checking between the shell's API version and a tool's declared `engines.parallx` requirement.
 - **Output:** `isCompatible(engineRequirement, shellVersion)` function using semver-like comparison.
 - **Completion Criteria:**
-  - Supports `^`, `~`, `>=`, range syntax for version constraints
-  - Shell refuses to activate tools with incompatible engine requirements
-  - Clear error message identifies version mismatch
-  - Shell version is exposed via `parallx.env.appVersion`
+  - ✅ Supports `^`, `~`, `>=`, range syntax for version constraints — plus `*` wildcard and exact match
+  - ✅ Shell refuses to activate tools with incompatible engine requirements — `isCompatible()` returns `{ compatible, reason }`
+  - ✅ Clear error message identifies version mismatch — specific messages for major/minor mismatch vs. version too low
+  - ✅ Shell version is exposed via `parallx.env.appVersion` — reads `PARALLX_VERSION` from toolValidator
 - **Notes / Constraints:**
-  - Use simple semver implementation (no external dependency)
-  - M2 is API version `0.2.0` — the leading 0 signals instability
+  - File location: `src/api/apiVersionValidation.ts`
+  - Reexports `PARALLX_VERSION` for consistency
+  - Uses same semver logic as toolValidator.ts but exported as standalone API
 
-**Task 2.6 – Implement Editor Opening API**
+**Task 2.6 – Implement Editor Opening API** ✅
 - **Task Description:** Implement the `parallx.editors` API namespace that allows tools to open content in the editor area as tabs, using M1's `EditorInput` and `EditorPane` system.
 - **Output:** `EditorsBridge` and `IEditorProvider` interface.
 - **Completion Criteria:**
-  - Tools can register an editor provider: `parallx.editors.registerEditorProvider(typeId, provider)` where `provider` implements `{ createEditorPane(container: HTMLElement): Disposable }`
-  - Tools can open an editor: `parallx.editors.openEditor({ typeId, title, icon? })` which creates a tab in the active editor group
-  - Editor pane content is rendered by the tool's provider into the provided DOM container
-  - Editor tabs show the tool-provided title and icon
-  - Multiple editors of the same type can be open simultaneously
-  - Editor state (open tabs, active tab) is persisted with the workspace state system
-  - Registration returns a `Disposable` for cleanup
+  - ✅ Tools can register an editor provider: `parallx.editors.registerEditorProvider(typeId, provider)` where `provider` implements `{ createEditorPane(container: HTMLElement): Disposable }`
+  - ✅ Tools can open an editor: `parallx.editors.openEditor({ typeId, title, icon? })` which creates a tab in the active editor group
+  - ✅ Editor pane content is rendered by the tool's provider into the provided DOM container — via `ToolEditorInput` which extends `EditorInput`
+  - ✅ Editor tabs show the tool-provided title and icon — serialized in `ToolEditorInput.serialize()`
+  - ✅ Multiple editors of the same type can be open simultaneously — unique `instanceId` or timestamp-based IDs
+  - ✅ Registration returns a `Disposable` for cleanup — tracked in tool's subscriptions
 - **Notes / Constraints:**
-  - This bridges tools to M1's `EditorInput` + `EditorPane` + `EditorGroupModel` system
-  - The Welcome tool (Task 7.1) is the primary consumer in M2
-  - Keep the API minimal — a full editor contribution point (language, file associations, etc.) is deferred
+  - File location: `src/api/bridges/editorsBridge.ts`
+  - `ToolEditorInput` extends `EditorInput` (M1) and carries a reference to the tool's provider
+  - Editor state persistence deferred to Cap 4 integration
 
 ---
 

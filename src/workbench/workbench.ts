@@ -12,7 +12,7 @@
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices } from './workbenchServices.js';
 
@@ -1210,6 +1210,12 @@ export class Workbench extends Disposable {
     workspaceService.setHost(this as any);
     this._register(workspaceService);
     this._services.registerInstance(IWorkspaceService, workspaceService);
+
+    // Notification service — attach toast container to the workbench DOM
+    if (this._services.has(INotificationService)) {
+      const notificationService = this._services.get(INotificationService);
+      (notificationService as any).attach(this._container);
+    }
 
     console.log('[Workbench] Facade services registered (layout, view, workspace)');
   }
