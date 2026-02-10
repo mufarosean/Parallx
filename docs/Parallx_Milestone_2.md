@@ -598,7 +598,7 @@ Tools can contribute commands through their manifest and register runtime comman
 - **Task Description:** Process the `contributes.commands` section from tool manifests and register command metadata in the command service.
 - **Output:** Command contribution processor that reads manifests and registers command descriptors.
 - **Completion Criteria:**
-  - ✅ Manifest `contributes.commands` schema: `[{ "command": "myTool.doSomething", "title": "Do Something", "category": "My Tool", "icon": "...", "enablement": "when clause" }]` — parsed in `CommandContributionProcessor.processManifest()`
+  - ✅ Manifest `contributes.commands` schema: `[{ "command": "myTool.doSomething", "title": "Do Something", "category": "My Tool", "icon": "...", "enablement": "when clause" }]` — parsed in `CommandContributionProcessor.processContributions()`
   - ✅ Each declared command is registered in `CommandService` with metadata (title, category, icon, when clause) — `CommandDescriptor` created with all manifest fields, registered via `commandService.registerCommand()`
   - ✅ A proxy handler is registered that triggers tool activation on first invocation — proxy fires `activationEventService.fireActivationEvent('onCommand:' + id)` then queues the invocation with a 10 s timeout
   - ✅ After tool activation, the proxy handler is replaced with the tool's real handler — `wireRealHandler()` swaps the handler in CommandService and replays all queued invocations
@@ -616,7 +616,7 @@ Tools can contribute commands through their manifest and register runtime comman
 - **Task Description:** Process the `contributes.keybindings` section from tool manifests and register keybindings.
 - **Output:** Keybinding contribution processor.
 - **Completion Criteria:**
-  - ✅ Manifest `contributes.keybindings` schema: `[{ "command": "myTool.doSomething", "key": "ctrl+shift+t", "when": "when clause" }]` — parsed in `KeybindingContributionProcessor.processManifest()`
+  - ✅ Manifest `contributes.keybindings` schema: `[{ "command": "myTool.doSomething", "key": "ctrl+shift+t", "when": "when clause" }]` — parsed in `KeybindingContributionProcessor.processContributions()`
   - ✅ Keybindings are registered in a keybinding service — `KeybindingContributionProcessor` maintains a keybinding map from normalized key combos to command IDs; registered as `IKeybindingContributionService` in DI container
   - ✅ Keybinding conflicts are detected and logged (last registered wins) — `console.warn` emitted on conflict, previous binding replaced
   - ✅ Keybindings are shown in the command palette alongside their commands — `CommandPalette` queries `IKeybindingContributionLike.getKeybindingForCommand()` and displays via `formatKeybindingForDisplay()`
@@ -635,7 +635,7 @@ Tools can contribute commands through their manifest and register runtime comman
 - **Task Description:** Process the `contributes.menus` section from tool manifests to place commands in menus.
 - **Output:** Menu contribution processor and basic menu rendering system.
 - **Completion Criteria:**
-  - ✅ Manifest `contributes.menus` schema: `{ "commandPalette": [{ "command": "id", "when": "clause" }], "view/title": [{ "command": "id", "group": "navigation" }], "view/context": [{ "command": "id", "when": "clause" }] }` — parsed in `MenuContributionProcessor.processManifest()`
+  - ✅ Manifest `contributes.menus` schema: `{ "commandPalette": [{ "command": "id", "when": "clause" }], "view/title": [{ "command": "id", "group": "navigation" }], "view/context": [{ "command": "id", "when": "clause" }] }` — parsed in `MenuContributionProcessor.processContributions()`
   - ✅ Menu items are conditional on when clauses — `_evaluateWhen()` integrates with `IContextKeyServiceLike` for runtime evaluation
   - ✅ `commandPalette` menu controls whether a command appears in the palette — `isCommandVisibleInPalette()` used by `CommandPalette._updateList()` to filter commands
   - ✅ `view/title` adds action buttons to view title bars — `renderViewTitleActions()` creates `<button>` elements positioned in a flex container, with title tooltip and click → `commandService.executeCommand()`
@@ -829,61 +829,55 @@ The following files and directories are added in Milestone 2. Existing M1 files 
 
 ```txt
 src/
-├─ tools/                        # Tool system infrastructure
-│  ├─ toolManifest.ts            # IToolManifest interface, manifest types
-│  ├─ toolManifestValidator.ts   # Manifest validation logic
-│  ├─ toolScanner.ts             # Filesystem tool discovery
-│  ├─ toolRegistry.ts            # Central tool registry
-│  ├─ toolModuleLoader.ts        # Dynamic import() loader for tool entry points
-│  ├─ toolActivator.ts           # Activation/deactivation lifecycle
-│  ├─ toolErrorBoundary.ts       # Error isolation and reporting
-│  ├─ toolTypes.ts               # Tool state enums, ActivatedTool, etc.
-│  └─ activationEvents.ts        # Activation event monitoring
+├─ tools/                           # Tool system infrastructure
+│  ├─ toolManifest.ts               # IToolManifest interface, manifest types
+│  ├─ toolValidator.ts              # Manifest validation logic
+│  ├─ toolScanner.ts                # Filesystem tool discovery
+│  ├─ toolRegistry.ts               # Central tool registry (includes ToolState enum)
+│  ├─ toolModuleLoader.ts           # Dynamic import() loader for tool entry points
+│  ├─ toolActivator.ts              # Activation/deactivation lifecycle (includes ActivatedTool)
+│  ├─ toolErrorIsolation.ts         # Error isolation and reporting
+│  ├─ activationEventService.ts     # Activation event monitoring
+│  └─ parallx-manifest.schema.json  # JSON Schema for IDE-assisted manifest editing
 │
-├─ api/                          # Tool API boundary
-│  ├─ parallx.d.ts               # Public API type definitions
-│  ├─ apiFactory.ts              # Per-tool API object factory
-│  ├─ apiBridge.ts               # API-to-service bridge coordinator
-│  ├─ bridges/
-│  │  ├─ viewsBridge.ts          # parallx.views → ViewManager
-│  │  ├─ commandsBridge.ts       # parallx.commands → CommandService
-│  │  ├─ windowBridge.ts         # parallx.window → notification/dialog system
-│  │  ├─ contextBridge.ts        # parallx.context → ContextKeyService
-│  │  ├─ workspaceBridge.ts      # parallx.workspace → ConfigurationService
-│  │  ├─ editorsBridge.ts        # parallx.editors → EditorService/EditorGroupService
-│  │  └─ toolsBridge.ts          # parallx.tools → ToolRegistry (read-only)
-│  ├─ apiVersion.ts              # Version compatibility checking
-│  └─ notifications.ts           # Toast/notification overlay UI
+├─ api/                             # Tool API boundary
+│  ├─ parallx.d.ts                  # Public API type definitions
+│  ├─ apiFactory.ts                 # Per-tool API object factory (also wires parallx.tools inline)
+│  ├─ apiVersionValidation.ts       # Version compatibility checking
+│  ├─ notificationService.ts        # Toast/notification overlay UI
+│  └─ bridges/
+│     ├─ viewsBridge.ts             # parallx.views → ViewManager
+│     ├─ commandsBridge.ts          # parallx.commands → CommandService
+│     ├─ windowBridge.ts            # parallx.window → notification/dialog system
+│     ├─ contextBridge.ts           # parallx.context → ContextKeyService
+│     ├─ workspaceBridge.ts         # parallx.workspace → ConfigurationService
+│     └─ editorsBridge.ts           # parallx.editors → EditorService/EditorGroupService
 │
-├─ configuration/                # Configuration system
-│  ├─ configurationService.ts    # Configuration read/write/events
-│  ├─ configurationRegistry.ts   # Schema registration from manifests
-│  ├─ configurationTypes.ts      # Configuration-related types
-│  └─ toolMemento.ts             # Per-tool Memento implementation
+├─ configuration/                   # Configuration system
+│  ├─ configurationService.ts       # Configuration read/write/events
+│  ├─ configurationRegistry.ts      # Schema registration from manifests
+│  ├─ configurationTypes.ts         # Configuration-related types
+│  └─ toolMemento.ts                # Per-tool Memento implementation
 │
-├─ contributions/                # Contribution point processors
-│  ├─ commandContribution.ts     # contributes.commands processor
-│  ├─ viewContribution.ts        # contributes.views + viewsContainers processor
-│  ├─ keybindingContribution.ts  # contributes.keybindings processor
-│  ├─ menuContribution.ts        # contributes.menus processor
-│  └─ contributionTypes.ts       # Shared contribution types
+├─ contributions/                   # Contribution point processors
+│  ├─ contributionTypes.ts          # Shared contribution types and IContributionProcessor
+│  ├─ commandContribution.ts        # contributes.commands processor
+│  ├─ keybindingContribution.ts     # contributes.keybindings processor
+│  ├─ menuContribution.ts           # contributes.menus processor
+│  └─ viewContribution.ts           # contributes.views + viewsContainers processor (Cap 6)
 │
-├─ built-in/                     # Built-in tools (each is a self-contained tool)
+├─ built-in/                        # Built-in tools — each is a self-contained tool (Cap 7)
 │  ├─ welcome/
-│  │  ├─ parallx-manifest.json   # Welcome tool manifest
-│  │  └─ main.ts                 # Welcome tool entry point
+│  │  ├─ parallx-manifest.json      # Welcome tool manifest
+│  │  └─ main.ts                    # Welcome tool entry point
 │  ├─ output/
-│  │  ├─ parallx-manifest.json   # Output tool manifest
-│  │  └─ main.ts                 # Output tool entry point
+│  │  ├─ parallx-manifest.json      # Output tool manifest
+│  │  └─ main.ts                    # Output tool entry point
 │  └─ tool-gallery/
-│     ├─ parallx-manifest.json   # Tool Gallery manifest
-│     └─ main.ts                 # Tool Gallery entry point
+│     ├─ parallx-manifest.json      # Tool Gallery manifest
+│     └─ main.ts                    # Tool Gallery entry point
 │
-├─ services/
-│  ├─ toolService.ts             # IToolService interface + implementation (NEW)
-│  └─ configurationService.ts    # IConfigurationService re-export (NEW)
-│
-└─ main.ts                       # (MODIFIED) Boot sequence includes tool system init
+└─ main.ts                          # (MODIFIED) Boot sequence includes tool system init
 ```
 
 ---
