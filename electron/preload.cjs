@@ -13,4 +13,7 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   onMaximizedChange: (callback) => {
     ipcRenderer.on('window:maximized-changed', (_event, maximized) => callback(maximized));
   },
+  // Tool scanning API
+  scanToolDirectory: (dirPath) => ipcRenderer.invoke('tools:scan-directory', dirPath),
+  getToolDirectories: () => ipcRenderer.invoke('tools:get-directories'),
 });

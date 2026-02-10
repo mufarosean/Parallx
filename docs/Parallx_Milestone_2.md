@@ -149,17 +149,17 @@ The system can discover, validate, and register tools from declarative manifest 
 
 #### Tasks
 
-**Task 1.1 – Define Tool Manifest Schema**
+**Task 1.1 – Define Tool Manifest Schema** ✅
 - **Task Description:** Define the TypeScript interfaces and JSON schema for a tool manifest. This is the `package.json`-equivalent for Parallx tools.
 - **Output:** `IToolManifest` interface and JSON Schema definition for validation.
 - **Completion Criteria:**
-  - Manifest declares tool identity (`id`, `name`, `version`, `publisher`, `description`)
-  - Manifest declares `main` entry point (relative path to JS/TS module)
-  - Manifest declares `activationEvents` array (e.g., `onCommand:*`, `onView:*`, `onStartupFinished`)
-  - Manifest declares `contributes` object with contribution point keys (views, viewContainers, commands, configuration, menus, keybindings)
-  - Manifest declares `engines.parallx` version compatibility string
-  - Schema is versioned (`manifestVersion` field)
-  - JSON schema file can be used for IDE-assisted editing of manifests
+  - ✅ Manifest declares tool identity (`id`, `name`, `version`, `publisher`, `description`) — `IToolManifest` in `src/tools/toolManifest.ts`
+  - ✅ Manifest declares `main` entry point (relative path to JS/TS module)
+  - ✅ Manifest declares `activationEvents` array (e.g., `onCommand:*`, `onView:*`, `onStartupFinished`) — typed as `ActivationEventType` union
+  - ✅ Manifest declares `contributes` object with contribution point keys (views, viewContainers, commands, configuration, menus, keybindings) — typed as `IManifestContributions` with per-point descriptor interfaces
+  - ✅ Manifest declares `engines.parallx` version compatibility string — `IManifestEngines` interface
+  - ✅ Schema is versioned (`manifestVersion` field) — `CURRENT_MANIFEST_VERSION = 1`
+  - ✅ JSON schema file can be used for IDE-assisted editing of manifests — `src/tools/parallx-manifest.schema.json` (JSON Schema draft-07)
 - **Notes / Constraints:**
   - Reference only:
     - VS Code's `package.json` schema for extensions: https://code.visualstudio.com/api/references/extension-manifest
@@ -168,47 +168,50 @@ The system can discover, validate, and register tools from declarative manifest 
   - `activationEvents` supported in M2: `onStartupFinished`, `onCommand:<id>`, `onView:<id>`, `*` (eager)
   - Parallx-specific: no `browser` entry point (no web workers in M2), no `extensionDependencies` (deferred)
 
-**Task 1.2 – Implement Tool Manifest Validator**
+**Task 1.2 – Implement Tool Manifest Validator** ✅
 - **Task Description:** Implement validation logic that checks a parsed manifest against the schema and reports errors.
 - **Output:** `validateManifest(manifest: unknown): ValidationResult` function.
 - **Completion Criteria:**
-  - Validates all required fields are present and correctly typed
-  - Validates `activationEvents` use supported event types
-  - Validates `contributes` sub-schemas (view descriptors, command descriptors, etc.)
-  - Returns structured errors with field path and message (e.g., `contributes.views[0].id: must be a non-empty string`)
-  - Validates `engines.parallx` version compatibility against current shell version
-  - Warns on unknown fields without failing (forward compatibility)
+  - ✅ Validates all required fields are present and correctly typed — checks `id`, `name`, `version`, `publisher`, `main`, `engines`, `activationEvents`
+  - ✅ Validates `activationEvents` use supported event types — validates prefixes against `SUPPORTED_ACTIVATION_PREFIXES`
+  - ✅ Validates `contributes` sub-schemas (view descriptors, command descriptors, etc.) — validates views, viewContainers, commands, configuration, menus, keybindings arrays
+  - ✅ Returns structured errors with field path and message (e.g., `contributes.views[0].id: must be a non-empty string`) — `ValidationError { path, message }` with dot-path notation
+  - ✅ Validates `engines.parallx` version compatibility against current shell version — supports `^`, `~`, `>=`, exact, and `*` semver ranges against `PARALLX_VERSION`
+  - ✅ Warns on unknown fields without failing (forward compatibility) — `ValidationWarning` for unrecognized top-level keys
 - **Notes / Constraints:**
   - Do not use a heavy JSON schema library; write focused validation logic
   - Validation should be synchronous and fast
 
-**Task 1.3 – Implement Tool Scanner**
+**Task 1.3 – Implement Tool Scanner** ✅
 - **Task Description:** Implement discovery of tool manifests from configured directories.
 - **Output:** `ToolScanner` class that finds and parses tool manifests.
 - **Completion Criteria:**
-  - Scans one or more configured tool directories
-  - Finds `parallx-manifest.json` files in tool subdirectories
-  - Parses and validates each manifest
-  - Returns list of valid tool descriptions and list of validation failures
-  - Handles filesystem errors gracefully (permissions, missing dirs)
-  - Supports both built-in tool directory and user tool directory
+  - ✅ Scans one or more configured tool directories — `scanDirectories()` accepts array of `{ path, isBuiltin }` entries
+  - ✅ Finds `parallx-manifest.json` files in tool subdirectories — IPC handler in `electron/main.cjs` reads subdirectories and parses manifest files
+  - ✅ Parses and validates each manifest — scanner calls `validateManifest()` on each discovered manifest
+  - ✅ Returns list of valid tool descriptions and list of validation failures — `ToolScanResult { tools, failures, directoryErrors }`
+  - ✅ Handles filesystem errors gracefully (permissions, missing dirs) — directory-level and entry-level errors captured without throwing
+  - ✅ Supports both built-in tool directory and user tool directory — `scanDefaults()` scans `<appPath>/tools` (builtin) and `~/.parallx/tools` (user) via IPC bridge
 - **Notes / Constraints:**
   - Reference only:
     - `src/vs/workbench/services/extensions/node/extensionPoints.ts` — Extension scanner
   - Built-in tools live under `src/tools/` (or similar in-repo path)
   - External tools are loaded from a configurable directory (e.g., `~/.parallx/tools/`)
   - In M2, external tools are manually placed in the directory (no install command yet)
+  - Filesystem access uses Electron IPC bridge (renderer has no Node.js access): `electron/main.cjs` handles `tools:scan-directory` and `tools:get-directories`, `electron/preload.cjs` exposes `scanToolDirectory()` and `getToolDirectories()`
 
-**Task 1.4 – Implement Tool Registry**
+**Task 1.4 – Implement Tool Registry** ✅
 - **Task Description:** Implement a central registry that holds all validated tool descriptions and tracks their state.
 - **Output:** `ToolRegistry` class with registration, lookup, and state tracking.
 - **Completion Criteria:**
-  - Tools can be registered from validated manifests
-  - Tools can be looked up by ID
-  - Registry tracks tool state: `discovered` → `registered` → `activating` → `activated` → `deactivating` → `deactivated` → `disposed`
-  - Registry rejects duplicate tool IDs
-  - Registry emits events: `onDidRegisterTool`, `onDidChangeToolState`
-  - Registry provides query methods: `getAll()`, `getById(id)`, `getByState(state)`, `getContributorsOf(contributionPoint)`
+  - ✅ Tools can be registered from validated manifests — `register(description)` stores and fires `onDidRegisterTool`
+  - ✅ Tools can be looked up by ID — `getById(toolId)` returns `IToolEntry | undefined`
+  - ✅ Registry tracks tool state: `discovered` → `registered` → `activating` → `activated` → `deactivating` → `deactivated` → `disposed` — `ToolState` enum with `setToolState()` method
+  - ✅ Registry rejects duplicate tool IDs — `register()` throws on duplicate
+  - ✅ Registry emits events: `onDidRegisterTool`, `onDidChangeToolState` — via `Emitter<T>` pattern
+  - ✅ Registry provides query methods: `getAll()`, `getById(id)`, `getByState(state)`, `getContributorsOf(contributionPoint)` — all return `readonly IToolEntry[]`
+  - ✅ Registry is a singleton service registered in the DI container — `IToolRegistryService` in `serviceTypes.ts`, registered in `workbenchServices.ts`
+  - ✅ State transitions are validated — `VALID_TRANSITIONS` map enforces legal transitions (e.g., cannot go from `discovered` directly to `activated`)
 - **Notes / Constraints:**
   - Reference only:
     - `src/vs/workbench/services/extensions/common/extensionDescriptionRegistry.ts` — `ExtensionDescriptionRegistry`

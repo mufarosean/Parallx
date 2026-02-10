@@ -205,3 +205,40 @@ export interface IContextKeyService extends IDisposable {
 }
 
 export const IContextKeyService = createServiceIdentifier<IContextKeyService>('IContextKeyService');
+
+// ─── IToolRegistryService ────────────────────────────────────────────────────
+
+import type { IToolDescription } from '../tools/toolManifest.js';
+import type { IToolEntry, ToolRegisteredEvent, ToolStateChangedEvent, ToolState, ContributionPoint } from '../tools/toolRegistry.js';
+
+/**
+ * Service interface for the central tool registry.
+ */
+export interface IToolRegistryService extends IDisposable {
+  /** Fires when a new tool is registered. */
+  readonly onDidRegisterTool: Event<ToolRegisteredEvent>;
+  /** Fires when a tool's lifecycle state changes. */
+  readonly onDidChangeToolState: Event<ToolStateChangedEvent>;
+
+  /** Register a validated tool description. */
+  register(description: IToolDescription): void;
+  /** Transition a tool to a new state. */
+  setToolState(toolId: string, newState: ToolState): void;
+  /** Remove a tool from the registry. */
+  unregister(toolId: string): void;
+
+  /** Get all registered tool entries. */
+  getAll(): readonly IToolEntry[];
+  /** Get a tool entry by manifest ID. */
+  getById(toolId: string): IToolEntry | undefined;
+  /** Get all tools in a specific state. */
+  getByState(state: ToolState): readonly IToolEntry[];
+  /** Get all tools contributing to a specific point. */
+  getContributorsOf(point: ContributionPoint): readonly IToolEntry[];
+  /** Total number of registered tools. */
+  readonly count: number;
+  /** Check if a tool with the given ID is registered. */
+  has(toolId: string): boolean;
+}
+
+export const IToolRegistryService = createServiceIdentifier<IToolRegistryService>('IToolRegistryService');

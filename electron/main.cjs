@@ -3,6 +3,7 @@
 
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
@@ -57,6 +58,61 @@ ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() ?? false);
 
 app.whenReady().then(createWindow);
+
+// ── IPC handlers for tool scanning ──
+
+/**
+ * Scan a directory for tool manifests.
+ * Returns an array of { toolPath, manifestJson } objects for each valid manifest found.
+ * Returns { error } for scanning failures.
+ */
+ipcMain.handle('tools:scan-directory', async (_event, dirPath) => {
+  try {
+    if (!fs.existsSync(dirPath)) {
+      return { entries: [], error: null };
+    }
+
+    const stat = fs.statSync(dirPath);
+    if (!stat.isDirectory()) {
+      return { entries: [], error: `Not a directory: ${dirPath}` };
+    }
+
+    const entries = [];
+    const children = fs.readdirSync(dirPath);
+
+    for (const child of children) {
+      const childPath = path.join(dirPath, child);
+      try {
+        const childStat = fs.statSync(childPath);
+        if (!childStat.isDirectory()) continue;
+
+        const manifestPath = path.join(childPath, 'parallx-manifest.json');
+        if (!fs.existsSync(manifestPath)) continue;
+
+        const raw = fs.readFileSync(manifestPath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        entries.push({ toolPath: childPath, manifestJson: parsed });
+      } catch (err) {
+        // Individual tool directory errors are reported but don't stop scanning
+        entries.push({ toolPath: childPath, error: err.message });
+      }
+    }
+
+    return { entries, error: null };
+  } catch (err) {
+    return { entries: [], error: err.message };
+  }
+});
+
+/**
+ * Get the default tool directories.
+ * Returns { builtinDir, userDir }.
+ */
+ipcMain.handle('tools:get-directories', async () => {
+  const builtinDir = path.join(app.getAppPath(), 'tools');
+  const userDir = path.join(app.getPath('home'), '.parallx', 'tools');
+  return { builtinDir, userDir };
+});
 
 app.on('window-all-closed', () => {
   // On macOS, apps stay active until Cmd+Q

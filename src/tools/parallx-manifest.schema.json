@@ -1,0 +1,168 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://parallx.dev/schemas/parallx-manifest.json",
+  "title": "Parallx Tool Manifest",
+  "description": "Schema for parallx-manifest.json — the manifest file for Parallx tools.",
+  "type": "object",
+  "required": ["manifestVersion", "id", "name", "version", "publisher", "main", "activationEvents", "engines"],
+  "properties": {
+    "manifestVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version. Currently must be 1."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9._-]+$",
+      "description": "Unique tool identifier (e.g., 'my-publisher.my-tool')."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable tool name."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+",
+      "description": "Semver version string."
+    },
+    "publisher": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Publisher name or identifier."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description."
+    },
+    "main": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Relative path to the JS/TS entry module (must export activate())."
+    },
+    "activationEvents": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "anyOf": [
+          { "const": "*" },
+          { "const": "onStartupFinished" },
+          { "pattern": "^onCommand:.+" },
+          { "pattern": "^onView:.+" }
+        ]
+      },
+      "description": "Events that trigger tool activation."
+    },
+    "contributes": {
+      "type": "object",
+      "properties": {
+        "views": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "icon": { "type": "string" },
+              "defaultContainerId": { "type": "string" },
+              "when": { "type": "string" }
+            }
+          }
+        },
+        "viewContainers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "title", "location"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "title": { "type": "string", "minLength": 1 },
+              "icon": { "type": "string" },
+              "location": { "type": "string", "enum": ["sidebar", "panel", "auxiliaryBar"] }
+            }
+          }
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "title"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "title": { "type": "string", "minLength": 1 },
+              "category": { "type": "string" },
+              "icon": { "type": "string" },
+              "keybinding": { "type": "string" },
+              "when": { "type": "string" }
+            }
+          }
+        },
+        "configuration": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["title", "properties"],
+            "properties": {
+              "title": { "type": "string", "minLength": 1 },
+              "properties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": ["type"],
+                  "properties": {
+                    "type": { "type": "string", "enum": ["string", "number", "boolean", "object", "array"] },
+                    "default": {},
+                    "description": { "type": "string" },
+                    "enum": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "menus": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["command"],
+              "properties": {
+                "command": { "type": "string", "minLength": 1 },
+                "group": { "type": "string" },
+                "when": { "type": "string" }
+              }
+            }
+          }
+        },
+        "keybindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["command", "key"],
+            "properties": {
+              "command": { "type": "string", "minLength": 1 },
+              "key": { "type": "string", "minLength": 1 },
+              "when": { "type": "string" }
+            }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "engines": {
+      "type": "object",
+      "required": ["parallx"],
+      "properties": {
+        "parallx": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Minimum Parallx version required (semver range)."
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}
