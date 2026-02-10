@@ -12,9 +12,9 @@
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
-import { registerWorkbenchServices } from './workbenchServices.js';
+import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
 
 // Parts
 import { Part } from '../parts/part.js';
@@ -89,10 +89,14 @@ import { DragAndDropController } from '../dnd/dragAndDrop.js';
 import { DropResult } from '../dnd/dndTypes.js';
 
 // Tool Lifecycle (M2 Capability 3)
-import { ToolActivator } from '../tools/toolActivator.js';
+import { ToolActivator, ToolStorageDependencies } from '../tools/toolActivator.js';
 import { ToolRegistry } from '../tools/toolRegistry.js';
 import { ActivationEventService } from '../tools/activationEventService.js';
 import { ToolErrorService } from '../tools/toolErrorIsolation.js';
+
+// Configuration (M2 Capability 4)
+import type { ConfigurationService } from '../configuration/configurationService.js';
+import type { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
 
 // ── Layout constants ──
 
@@ -164,6 +168,11 @@ export class Workbench extends Disposable {
 
   // Tool Lifecycle (M2 Capability 3)
   private _toolActivator!: ToolActivator;
+
+  // Configuration (M2 Capability 4)
+  private _configService!: ConfigurationService;
+  private _configRegistry!: ConfigurationRegistry;
+  private _globalStorage!: IStorage;
 
   // ── Events ──
 
@@ -456,6 +465,9 @@ export class Workbench extends Disposable {
     });
 
     lc.onTeardown(LifecyclePhase.Services, () => {
+      // Dispose configuration system (Cap 4)
+      this._configService?.dispose();
+      this._configRegistry?.dispose();
       // ServiceCollection.dispose() handled by Workbench.dispose()
     });
   }
@@ -468,6 +480,9 @@ export class Workbench extends Disposable {
     // Storage: namespaced localStorage wrapper
     const rawStorage = new LocalStorage();
     this._storage = new NamespacedStorage(rawStorage, 'parallx');
+
+    // Global storage: separate namespace for tool global state (persists across workspaces)
+    this._globalStorage = new NamespacedStorage(rawStorage, 'parallx-global');
 
     // Layout persistence: save/load layout state via storage
     this._persistence = new LayoutPersistence(this._storage);
@@ -484,6 +499,14 @@ export class Workbench extends Disposable {
 
     // Recent workspaces manager
     this._recentWorkspaces = new RecentWorkspaces(this._storage);
+
+    // Configuration system (M2 Capability 4)
+    const { configService, configRegistry } = registerConfigurationServices(
+      this._services,
+      this._storage,
+    );
+    this._configService = configService;
+    this._configRegistry = configRegistry;
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -756,6 +779,11 @@ export class Workbench extends Disposable {
       this._workbenchContext.setWorkbenchState(
         this._workspace.path ? 'folder' : 'workspace',
       );
+    }
+
+    // Load persisted configuration values (Cap 4)
+    if (this._configService) {
+      await this._configService.load();
     }
   }
 
@@ -1253,18 +1281,26 @@ export class Workbench extends Disposable {
       ? this._services.get(INotificationService) as any
       : undefined;
 
-    // Build API factory dependencies
+    // Build API factory dependencies (includes ConfigurationService for Cap 4)
     const apiFactoryDeps = {
       services: this._services,
       viewManager: this._viewManager,
       toolRegistry: registry,
       notificationService,
       workbenchContainer: this._container,
+      configurationService: this._configService,
+    };
+
+    // Storage dependencies for persistent tool mementos (Cap 4)
+    const storageDeps: ToolStorageDependencies = {
+      globalStorage: this._globalStorage,
+      workspaceStorage: this._storage,
+      configRegistry: this._configRegistry,
     };
 
     // Create and register the activator
     this._toolActivator = this._register(
-      new ToolActivator(registry, errorService, activationEvents, apiFactoryDeps),
+      new ToolActivator(registry, errorService, activationEvents, apiFactoryDeps, storageDeps),
     );
     this._services.registerInstance(IToolActivatorService, this._toolActivator as any);
 

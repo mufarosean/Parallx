@@ -1,80 +1,67 @@
 // workspaceBridge.ts — bridges parallx.workspace to configuration
 //
 // Provides configuration read access and change events for tools.
-// In M2, configuration is backed by workspace state storage.
+// In M2, configuration is backed by the ConfigurationService (Cap 4)
+// which persists values per-workspace in IStorage.
 
 import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
-
-/**
- * A read-only configuration object.
- */
-export interface IConfiguration {
-  get<T>(key: string, defaultValue?: T): T | undefined;
-  has(key: string): boolean;
-}
-
-export interface IConfigurationChangeEvent {
-  affectsConfiguration(section: string): boolean;
-}
+import type { ConfigurationService } from '../../configuration/configurationService.js';
+import type { IWorkspaceConfiguration, IConfigurationChangeEvent } from '../../configuration/configurationTypes.js';
 
 /**
  * Bridge for the `parallx.workspace` API namespace.
  *
- * In M2, configuration is stored in workspace state as a flat key-value map
- * under `config.<toolId>.<section>.<key>`. Full configuration contribution
- * points are expanded in Capability 4.
+ * Delegates to the ConfigurationService (Cap 4) for reading and writing
+ * configuration values. Configuration schemas are registered from manifests
+ * via the ConfigurationRegistry.
  */
 export class WorkspaceBridge {
-  private readonly _configStore = new Map<string, unknown>();
   private _disposed = false;
+  private readonly _disposables: IDisposable[] = [];
 
-  private readonly _onDidChangeConfiguration = new Emitter<IConfigurationChangeEvent>();
-  readonly onDidChangeConfiguration: Event<IConfigurationChangeEvent> = this._onDidChangeConfiguration.event;
+  /** Forwarded change event. */
+  readonly onDidChangeConfiguration: Event<IConfigurationChangeEvent>;
 
   constructor(
     private readonly _toolId: string,
     private readonly _subscriptions: IDisposable[],
+    private readonly _configService?: ConfigurationService,
   ) {
-    this._subscriptions.push(this._onDidChangeConfiguration);
+    if (this._configService) {
+      this.onDidChangeConfiguration = this._configService.onDidChangeConfiguration;
+    } else {
+      // Fallback: no-op event when ConfigurationService is not available
+      const fallbackEmitter = new Emitter<IConfigurationChangeEvent>();
+      this._disposables.push(fallbackEmitter);
+      this.onDidChangeConfiguration = fallbackEmitter.event;
+    }
   }
 
   /**
    * Get a configuration object scoped to a section.
    */
-  getConfiguration(section?: string): IConfiguration {
+  getConfiguration(section?: string): IWorkspaceConfiguration {
     this._throwIfDisposed();
-    const prefix = section ? `${this._toolId}.${section}` : this._toolId;
 
+    if (this._configService) {
+      return this._configService.getConfiguration(section);
+    }
+
+    // Fallback: empty configuration when service is not available
     return {
-      get: <T>(key: string, defaultValue?: T): T | undefined => {
-        const fullKey = `${prefix}.${key}`;
-        if (this._configStore.has(fullKey)) {
-          return this._configStore.get(fullKey) as T;
-        }
-        return defaultValue;
-      },
-      has: (key: string): boolean => {
-        return this._configStore.has(`${prefix}.${key}`);
-      },
+      get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
+      update: async () => {},
+      has: () => false,
     };
-  }
-
-  /**
-   * Set a configuration value (used internally by the shell when loading defaults).
-   */
-  _setConfigValue(section: string, key: string, value: unknown): void {
-    const fullKey = `${this._toolId}.${section}.${key}`;
-    this._configStore.set(fullKey, value);
-    this._onDidChangeConfiguration.fire({
-      affectsConfiguration: (s: string) => fullKey.startsWith(s) || s.startsWith(fullKey),
-    });
   }
 
   dispose(): void {
     this._disposed = true;
-    this._configStore.clear();
-    this._onDidChangeConfiguration.dispose();
+    for (const d of this._disposables) {
+      d.dispose();
+    }
+    this._disposables.length = 0;
   }
 
   private _throwIfDisposed(): void {

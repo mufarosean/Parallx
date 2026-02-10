@@ -1,7 +1,7 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IConfigurationService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -9,6 +9,9 @@ import { ToolRegistry } from '../tools/toolRegistry.js';
 import { NotificationService } from '../api/notificationService.js';
 import { ActivationEventService } from '../tools/activationEventService.js';
 import { ToolErrorService } from '../tools/toolErrorIsolation.js';
+import { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
+import { ConfigurationService } from '../configuration/configurationService.js';
+import type { IStorage } from '../platform/storage.js';
 
 /**
  * Registers all core services into the service collection.
@@ -43,9 +46,24 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
   // Note: IToolActivatorService is registered in the workbench after
   // all dependencies (API factory deps) are available.
 
-  // Future capabilities will register additional services here:
-  // ── Layout (Capability 2) ──
-  // ── View (Capability 4) ──
-  // ── Workspace (Capability 5/6) ──
-  // ── Editor (Capability 9) ──
+  // Note: IConfigurationService is registered in the workbench after
+  // storage is initialized (requires IStorage from Phase 1).
+}
+
+/**
+ * Creates and registers the ConfigurationService.
+ * Called after storage is available (Phase 1).
+ *
+ * @returns The ConfigurationService and ConfigurationRegistry instances.
+ */
+export function registerConfigurationServices(
+  services: ServiceCollection,
+  storage: IStorage,
+): { configService: ConfigurationService; configRegistry: ConfigurationRegistry } {
+  const configRegistry = new ConfigurationRegistry();
+  const configService = new ConfigurationService(storage, configRegistry);
+
+  services.registerInstance(IConfigurationService, configService as any);
+
+  return { configService, configRegistry };
 }

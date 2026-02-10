@@ -360,3 +360,20 @@ export interface IToolActivatorService extends IDisposable {
 }
 
 export const IToolActivatorService = createServiceIdentifier<IToolActivatorService>('IToolActivatorService');
+
+// ─── IConfigurationService ───────────────────────────────────────────────────
+
+import type {
+  IConfigurationServiceShape,
+  IConfigurationChangeEvent,
+  IConfigurationPropertySchema,
+  IRegisteredConfigurationSection,
+  IWorkspaceConfiguration,
+} from '../configuration/configurationTypes.js';
+
+/**
+ * Service interface for the configuration system (M2 Capability 4).
+ */
+export interface IConfigurationService extends IConfigurationServiceShape {}
+
+export const IConfigurationService = createServiceIdentifier<IConfigurationService>('IConfigurationService');

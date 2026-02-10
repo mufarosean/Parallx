@@ -15,12 +15,16 @@
 
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
+import { IStorage } from '../platform/storage.js';
 import { ToolRegistry, ToolState } from './toolRegistry.js';
 import { ToolModuleLoader, ToolModule, ToolContext, Memento } from './toolModuleLoader.js';
 import { ToolErrorService } from './toolErrorIsolation.js';
 import { ActivationEventService } from './activationEventService.js';
 import { createToolApi, ApiFactoryDependencies, ParallxApiObject } from '../api/apiFactory.js';
 import type { IToolDescription } from './toolManifest.js';
+import { ToolMemento, createToolMementos } from '../configuration/toolMemento.js';
+import type { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
+import type { IManifestConfigurationDescriptor } from './toolManifest.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -57,8 +61,7 @@ export interface ToolActivationEvent {
 // ─── Placeholder Memento ─────────────────────────────────────────────────────
 
 /**
- * In-memory Memento implementation for M2.
- * Full persistent Memento is implemented in Cap 4.
+ * In-memory fallback Memento used when no persistent storage is available.
  */
 class InMemoryMemento implements Memento {
   private readonly _data = new Map<string, unknown>();
@@ -81,6 +84,18 @@ class InMemoryMemento implements Memento {
   keys(): readonly string[] {
     return [...this._data.keys()];
   }
+}
+
+// ─── Storage Dependencies ────────────────────────────────────────────────────
+
+/**
+ * Optional storage dependencies for persistent mementos.
+ * When provided, ToolMemento is used instead of InMemoryMemento.
+ */
+export interface ToolStorageDependencies {
+  readonly globalStorage: IStorage;
+  readonly workspaceStorage: IStorage;
+  readonly configRegistry?: ConfigurationRegistry;
 }
 
 // ─── ToolActivator ───────────────────────────────────────────────────────────
@@ -118,6 +133,7 @@ export class ToolActivator extends Disposable {
     private readonly _errorService: ToolErrorService,
     private readonly _activationEvents: ActivationEventService,
     private readonly _apiFactoryDeps: ApiFactoryDependencies,
+    private readonly _storageDeps?: ToolStorageDependencies,
   ) {
     super();
 
@@ -186,7 +202,7 @@ export class ToolActivator extends Disposable {
     const toolModule = loadResult.module;
 
     // 4. Create ToolContext
-    const context = this._createToolContext(entry.description);
+    const context = await this._createToolContext(entry.description);
 
     // 5. Create scoped API
     const { api, dispose: disposeApi } = createToolApi(entry.description, this._apiFactoryDeps);
@@ -366,12 +382,42 @@ export class ToolActivator extends Disposable {
 
   /**
    * Create a ToolContext for a tool.
+   * Uses persistent ToolMemento when storage is available, otherwise InMemoryMemento.
    */
-  private _createToolContext(description: IToolDescription): ToolContext {
+  private async _createToolContext(description: IToolDescription): Promise<ToolContext> {
+    let globalState: Memento;
+    let workspaceState: Memento;
+
+    if (this._storageDeps) {
+      const mementos = createToolMementos(
+        this._storageDeps.globalStorage,
+        this._storageDeps.workspaceStorage,
+        description.manifest.id,
+      );
+      // Load persisted data into cache
+      await mementos.globalState.load();
+      await mementos.workspaceState.load();
+      globalState = mementos.globalState;
+      workspaceState = mementos.workspaceState;
+
+      // Register configuration schemas from manifest if available
+      if (this._storageDeps.configRegistry && description.manifest.contributes?.configuration) {
+        for (const config of description.manifest.contributes.configuration) {
+          this._storageDeps.configRegistry.registerFromManifest(
+            description.manifest.id,
+            [config],
+          );
+        }
+      }
+    } else {
+      globalState = new InMemoryMemento();
+      workspaceState = new InMemoryMemento();
+    }
+
     return {
       subscriptions: [],
-      globalState: new InMemoryMemento(),
-      workspaceState: new InMemoryMemento(),
+      globalState,
+      workspaceState,
       toolPath: description.toolPath,
       toolUri: `file://${description.toolPath}`,
       environmentVariableCollection: {},

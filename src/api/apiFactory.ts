@@ -26,6 +26,7 @@ import { ContextBridge } from './bridges/contextBridge.js';
 import { WorkspaceBridge } from './bridges/workspaceBridge.js';
 import { EditorsBridge } from './bridges/editorsBridge.js';
 import type { ViewManager } from '../views/viewManager.js';
+import type { ConfigurationService } from '../configuration/configurationService.js';
 
 // ─── API Dependencies ────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ export interface ApiFactoryDependencies {
   readonly toolRegistry: ToolRegistry;
   readonly notificationService: NotificationService;
   readonly workbenchContainer: HTMLElement | undefined;
+  readonly configurationService?: ConfigurationService;
 }
 
 // ─── API Shape ───────────────────────────────────────────────────────────────
@@ -137,7 +139,7 @@ export function createToolApi(
     ? new ContextBridge(toolId, contextKeyService, subscriptions)
     : undefined;
 
-  const workspaceBridge = new WorkspaceBridge(toolId, subscriptions);
+  const workspaceBridge = new WorkspaceBridge(toolId, subscriptions, deps.configurationService);
 
   const editorsBridge = new EditorsBridge(toolId, editorService, subscriptions);
 

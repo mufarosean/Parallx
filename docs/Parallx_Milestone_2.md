@@ -492,54 +492,61 @@ The system provides scoped persistent storage for tools (Memento pattern) and al
 
 #### Tasks
 
-**Task 4.1 – Implement Tool Memento Storage**
+**Task 4.1 – Implement Tool Memento Storage** ✅
 - **Task Description:** Implement the Memento pattern providing tools with `globalState` and `workspaceState` key-value stores.
 - **Output:** `ToolMemento` class implementing `get<T>(key, defaultValue?)` and `update(key, value)`.
 - **Completion Criteria:**
-  - `globalState` persists across all workspaces (stored in global storage namespace)
-  - `workspaceState` persists only within the current workspace (stored in workspace storage namespace)
-  - Keys are namespaced by tool ID to prevent collisions (e.g., `tool:myTool/key`)
-  - Values are JSON-serialized
-  - `get<T>(key)` returns `T | undefined`; `get<T>(key, defaultValue)` returns `T`
-  - `update(key, value)` is async (returns `Promise<void>`)
-  - `keys()` returns all stored keys for the tool
-  - Integrates with M1's `IStorage` abstraction
+  - ✅ `globalState` persists across all workspaces (stored in global storage namespace) — namespace `tool-global:<toolId>/`
+  - ✅ `workspaceState` persists only within the current workspace (stored in workspace storage namespace) — namespace `tool-ws:<toolId>/`
+  - ✅ Keys are namespaced by tool ID to prevent collisions (e.g., `tool-global:myTool/key`)
+  - ✅ Values are JSON-serialized — `JSON.stringify()` on write, `JSON.parse()` on read
+  - ✅ `get<T>(key)` returns `T | undefined`; `get<T>(key, defaultValue)` returns `T` — function overloads
+  - ✅ `update(key, value)` is async (returns `Promise<void>`) — pass `undefined` to delete
+  - ✅ `keys()` returns all stored keys for the tool — strips namespace prefix
+  - ✅ Integrates with M1's `IStorage` abstraction — constructor takes `IStorage`, uses `get`/`set`/`delete`/`keys`
 - **Notes / Constraints:**
-  - Reference only:
-    - `src/vs/workbench/common/memento.ts`
-    - `src/vs/platform/extensionManagement/common/extensionStorage.ts`
-  - Storage quota per tool: warn at 5MB, hard limit at 10MB (configurable)
-  - Values must be JSON-serializable (no functions, symbols, circular refs)
+  - File location: `src/configuration/toolMemento.ts`
+  - `createToolMementos()` factory creates global + workspace pair
+  - `load()` hydrates in-memory cache from storage; `flush()` persists cache to storage
+  - Storage quota per tool: warn at 5MB, hard limit at 10MB
+  - Non-JSON-serializable values throw with clear error message
+  - ToolActivator now uses `ToolMemento` instead of `InMemoryMemento` when storage deps are available; falls back to `InMemoryMemento` when not
 
-**Task 4.2 – Implement Configuration Contribution Point**
+**Task 4.2 – Implement Configuration Contribution Point** ✅
 - **Task Description:** Implement the `contributes.configuration` manifest section that allows tools to define typed settings with defaults.
 - **Output:** Configuration schema processing and registration in the shell's configuration system.
 - **Completion Criteria:**
-  - Tools declare configuration in manifest: `{ "contributes": { "configuration": { "title": "My Tool", "properties": { "myTool.setting1": { "type": "string", "default": "value", "description": "..." } } } } }`
-  - Shell parses and registers configuration schemas at manifest load time
-  - Schemas define type, default, description, enum values, and validation constraints
-  - Registered configurations are queryable by section
-  - Invalid configuration values fall back to defaults
+  - ✅ Tools declare configuration in manifest: `{ "contributes": { "configuration": { "title": "My Tool", "properties": { "myTool.setting1": { "type": "string", "default": "value", "description": "..." } } } } }` — parsed from `IManifestConfigurationDescriptor`
+  - ✅ Shell parses and registers configuration schemas at manifest load time — `ConfigurationRegistry.registerFromManifest()` called during tool activation
+  - ✅ Schemas define type, default, description, enum values, and validation constraints — `IConfigurationPropertySchema` with runtime `validateValue()`
+  - ✅ Registered configurations are queryable by section — `getAllSchemas()`, `getAllSections()`, `getToolSchemas(toolId)`
+  - ✅ Invalid configuration values fall back to defaults — `ConfigurationService._getValue()` checks explicit → registered default → caller default
 - **Notes / Constraints:**
-  - Reference only:
-    - VS Code's configuration contribution point: https://code.visualstudio.com/api/references/contribution-points#contributes.configuration
-  - Configuration UI (a settings editor) is NOT in M2 scope — tools read configuration programmatically
-  - Configuration storage uses the workspace state system
+  - File location: `src/configuration/configurationRegistry.ts`
+  - `registerProperties()` for programmatic registration, `registerFromManifest()` for manifest-based
+  - `unregisterTool(toolId)` removes all schemas contributed by a tool
+  - `onDidChangeSchema` event fires when schemas are added or removed
+  - Validation warns on type mismatch but does not block writes (forward compatibility)
 
-**Task 4.3 – Implement Configuration Service**
+**Task 4.3 – Implement Configuration Service** ✅
 - **Task Description:** Implement a configuration service that tools access through `parallx.workspace.getConfiguration()`.
 - **Output:** `ConfigurationService` class with get/update/onDidChange methods.
 - **Completion Criteria:**
-  - `getConfiguration(section?)` returns a `WorkspaceConfiguration` object
-  - `WorkspaceConfiguration.get<T>(key, defaultValue?)` reads a setting value
-  - `WorkspaceConfiguration.update(key, value)` writes a setting value
-  - `WorkspaceConfiguration.has(key)` checks if a setting exists
-  - `onDidChangeConfiguration` event fires with affected keys when settings change
-  - Default values from manifest are used when no explicit value is set
-  - Configuration values are stored per-workspace
+  - ✅ `getConfiguration(section?)` returns a `WorkspaceConfiguration` object — `ScopedConfiguration` class with section-prefixed key resolution
+  - ✅ `WorkspaceConfiguration.get<T>(key, defaultValue?)` reads a setting value — checks explicit → registered default → caller default
+  - ✅ `WorkspaceConfiguration.update(key, value)` writes a setting value — persists to `IStorage` under `config:` prefix
+  - ✅ `WorkspaceConfiguration.has(key)` checks if a setting exists — checks both explicit values and registered schemas
+  - ✅ `onDidChangeConfiguration` event fires with affected keys when settings change — `IConfigurationChangeEvent` with `affectsConfiguration()` and `affectedKeys`
+  - ✅ Default values from manifest are used when no explicit value is set — registry defaults from `IConfigurationPropertySchema`
+  - ✅ Configuration values are stored per-workspace — uses workspace-scoped `IStorage` via `NamespacedStorage`
 - **Notes / Constraints:**
-  - The configuration service is distinct from Memento — configuration has schemas, defaults, and is user-facing; Memento is opaque tool-internal storage
-  - In M2, configuration is stored in workspace state. A standalone `settings.json` file is deferred.
+  - File location: `src/configuration/configurationService.ts`
+  - Shared types in `src/configuration/configurationTypes.ts`
+  - `IConfigurationService` registered in DI container via `registerConfigurationServices()` in Phase 1
+  - `ConfigurationService.load()` hydrates in-memory cache from storage during Phase 4 (workspace restore)
+  - `WorkspaceBridge` now delegates to `ConfigurationService` instead of maintaining its own config store
+  - `ApiFactoryDependencies` extended with optional `configurationService` field
+  - Schema change events propagated as configuration change events (tools see new defaults immediately)
 
 ---
 
