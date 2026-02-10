@@ -1,0 +1,415 @@
+// toolActivator.ts — tool activation and deactivation
+//
+// Manages the full lifecycle of tool activation:
+//   1. Load the tool's entry-point module
+//   2. Create a ToolContext with subscriptions, memento, toolPath
+//   3. Create a scoped API object via the API factory
+//   4. Call tool.activate(api, context) wrapped in error isolation
+//   5. Track the activated tool for later deactivation
+//
+// Deactivation reverses the process:
+//   1. Call tool.deactivate() (if exported, wrapped in try/catch)
+//   2. Dispose all subscriptions
+//   3. Clean up contributed entities (commands, views, context keys)
+//   4. Clear module references for GC
+
+import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Emitter, Event } from '../platform/events.js';
+import { ToolRegistry, ToolState } from './toolRegistry.js';
+import { ToolModuleLoader, ToolModule, ToolContext, Memento } from './toolModuleLoader.js';
+import { ToolErrorService } from './toolErrorIsolation.js';
+import { ActivationEventService } from './activationEventService.js';
+import { createToolApi, ApiFactoryDependencies, ParallxApiObject } from '../api/apiFactory.js';
+import type { IToolDescription } from './toolManifest.js';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+/**
+ * Record of an activated tool.
+ */
+export interface ActivatedTool {
+  /** The tool's validated description. */
+  readonly description: IToolDescription;
+  /** The loaded module. */
+  readonly module: ToolModule;
+  /** The tool context passed to activate(). */
+  readonly context: ToolContext;
+  /** The scoped API object. */
+  readonly api: ParallxApiObject;
+  /** Function to dispose the API bridges. */
+  readonly disposeApi: () => void;
+  /** Timestamp when activation completed. */
+  readonly activatedAt: number;
+  /** Duration of activation in ms. */
+  readonly activationDurationMs: number;
+}
+
+/**
+ * Event fired on activation/deactivation.
+ */
+export interface ToolActivationEvent {
+  readonly toolId: string;
+  readonly success: boolean;
+  readonly durationMs: number;
+  readonly error?: string;
+}
+
+// ─── Placeholder Memento ─────────────────────────────────────────────────────
+
+/**
+ * In-memory Memento implementation for M2.
+ * Full persistent Memento is implemented in Cap 4.
+ */
+class InMemoryMemento implements Memento {
+  private readonly _data = new Map<string, unknown>();
+
+  get<T>(key: string, defaultValue?: T): T | undefined {
+    if (this._data.has(key)) {
+      return this._data.get(key) as T;
+    }
+    return defaultValue;
+  }
+
+  async update(key: string, value: unknown): Promise<void> {
+    if (value === undefined) {
+      this._data.delete(key);
+    } else {
+      this._data.set(key, value);
+    }
+  }
+
+  keys(): readonly string[] {
+    return [...this._data.keys()];
+  }
+}
+
+// ─── ToolActivator ───────────────────────────────────────────────────────────
+
+/**
+ * Manages tool activation and deactivation.
+ *
+ * The activator coordinates with:
+ * - ToolRegistry for state transitions
+ * - ToolModuleLoader for dynamic import()
+ * - ToolErrorService for error isolation
+ * - ActivationEventService for dedup marking
+ * - API Factory for scoped API creation
+ */
+export class ToolActivator extends Disposable {
+
+  /** Map of tool ID → activated tool record. */
+  private readonly _activatedTools = new Map<string, ActivatedTool>();
+
+  /** The module loader instance. */
+  private readonly _loader = new ToolModuleLoader();
+
+  // ── Events ──
+
+  private readonly _onDidActivate = this._register(new Emitter<ToolActivationEvent>());
+  /** Fires after a tool has been activated (success or failure). */
+  readonly onDidActivate: Event<ToolActivationEvent> = this._onDidActivate.event;
+
+  private readonly _onDidDeactivate = this._register(new Emitter<ToolActivationEvent>());
+  /** Fires after a tool has been deactivated. */
+  readonly onDidDeactivate: Event<ToolActivationEvent> = this._onDidDeactivate.event;
+
+  constructor(
+    private readonly _registry: ToolRegistry,
+    private readonly _errorService: ToolErrorService,
+    private readonly _activationEvents: ActivationEventService,
+    private readonly _apiFactoryDeps: ApiFactoryDependencies,
+  ) {
+    super();
+
+    // Listen for force-deactivation signals from error service
+    this._register(this._errorService.onShouldForceDeactivate((toolId) => {
+      console.error(`[ToolActivator] Force-deactivating tool "${toolId}" due to excessive errors`);
+      this.deactivate(toolId).catch(err => {
+        console.error(`[ToolActivator] Error during force-deactivation of "${toolId}":`, err);
+      });
+    }));
+  }
+
+  // ── Activation ──
+
+  /**
+   * Activate a tool by ID.
+   *
+   * Flow:
+   * 1. Validate the tool is in the registry and in a valid state
+   * 2. Transition to `Activating`
+   * 3. Load the tool's entry module
+   * 4. Create a ToolContext with subscriptions, memento, etc.
+   * 5. Create a scoped API via the factory
+   * 6. Call activate(api, context)
+   * 7. Transition to `Activated` (or `Deactivated` on failure)
+   */
+  async activate(toolId: string): Promise<boolean> {
+    const startTime = performance.now();
+
+    // 1. Lookup and validate
+    const entry = this._registry.getById(toolId);
+    if (!entry) {
+      console.error(`[ToolActivator] Cannot activate unknown tool: "${toolId}"`);
+      return false;
+    }
+
+    if (this._activatedTools.has(toolId)) {
+      console.warn(`[ToolActivator] Tool "${toolId}" is already activated`);
+      return true;
+    }
+
+    // Check state is valid for activation
+    if (entry.state !== ToolState.Registered && entry.state !== ToolState.Deactivated) {
+      console.error(`[ToolActivator] Cannot activate tool "${toolId}" in state: ${entry.state}`);
+      return false;
+    }
+
+    // 2. Transition to Activating
+    try {
+      this._registry.setToolState(toolId, ToolState.Activating);
+    } catch (err) {
+      console.error(`[ToolActivator] State transition failed for "${toolId}":`, err);
+      return false;
+    }
+
+    // 3. Load the module
+    const loadResult = await this._loader.loadModule(entry.description);
+    if (!loadResult.success) {
+      const duration = performance.now() - startTime;
+      this._errorService.recordError(toolId, new Error(loadResult.error), 'module-load');
+      this._safeSetState(toolId, ToolState.Deactivated);
+      this._onDidActivate.fire({ toolId, success: false, durationMs: duration, error: loadResult.error });
+      return false;
+    }
+
+    const toolModule = loadResult.module;
+
+    // 4. Create ToolContext
+    const context = this._createToolContext(entry.description);
+
+    // 5. Create scoped API
+    const { api, dispose: disposeApi } = createToolApi(entry.description, this._apiFactoryDeps);
+
+    // 6. Call activate(api, context)
+    try {
+      const activateResult = toolModule.activate(api, context);
+      // Handle async activation
+      if (activateResult instanceof Promise) {
+        await activateResult;
+      }
+    } catch (err) {
+      const duration = performance.now() - startTime;
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this._errorService.recordError(toolId, err, 'activation');
+      // Clean up the API
+      disposeApi();
+      this._safeSetState(toolId, ToolState.Deactivated);
+      this._onDidActivate.fire({ toolId, success: false, durationMs: duration, error: errorMsg });
+      return false;
+    }
+
+    const duration = performance.now() - startTime;
+
+    // 7. Record the activated tool
+    const activated: ActivatedTool = {
+      description: entry.description,
+      module: toolModule,
+      context,
+      api,
+      disposeApi,
+      activatedAt: Date.now(),
+      activationDurationMs: duration,
+    };
+
+    this._activatedTools.set(toolId, activated);
+
+    // Transition to Activated
+    this._safeSetState(toolId, ToolState.Activated);
+
+    // Mark as activated in the event service (prevents re-activation)
+    this._activationEvents.markActivated(toolId);
+
+    console.log(`[ToolActivator] Tool "${toolId}" activated in ${duration.toFixed(1)}ms`);
+    this._onDidActivate.fire({ toolId, success: true, durationMs: duration });
+
+    return true;
+  }
+
+  // ── Deactivation ──
+
+  /**
+   * Deactivate a tool by ID.
+   *
+   * Flow:
+   * 1. Look up the activated tool record
+   * 2. Transition to `Deactivating`
+   * 3. Call deactivate() if exported (wrapped in try/catch)
+   * 4. Dispose all subscriptions
+   * 5. Dispose the API bridges
+   * 6. Transition to `Deactivated`
+   * 7. Clear references for GC
+   */
+  async deactivate(toolId: string): Promise<boolean> {
+    const startTime = performance.now();
+    const activated = this._activatedTools.get(toolId);
+
+    if (!activated) {
+      console.warn(`[ToolActivator] Tool "${toolId}" is not activated — nothing to deactivate`);
+      return false;
+    }
+
+    // 2. Transition to Deactivating
+    this._safeSetState(toolId, ToolState.Deactivating);
+
+    const errors: string[] = [];
+
+    // 3. Call deactivate() if available
+    if (activated.module.deactivate) {
+      try {
+        const result = activated.module.deactivate();
+        if (result instanceof Promise) {
+          await result;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`deactivate() threw: ${msg}`);
+        this._errorService.recordError(toolId, err, 'deactivation');
+        // Continue with disposal — deactivation is tolerant
+      }
+    }
+
+    // 4. Dispose all subscriptions
+    const subs = activated.context.subscriptions;
+    for (let i = subs.length - 1; i >= 0; i--) {
+      try {
+        subs[i].dispose();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`subscription dispose error: ${msg}`);
+      }
+    }
+    subs.length = 0;
+
+    // 5. Dispose the API bridges
+    try {
+      activated.disposeApi();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`API dispose error: ${msg}`);
+    }
+
+    // 6. Transition to Deactivated
+    this._safeSetState(toolId, ToolState.Deactivated);
+
+    // 7. Clear references
+    this._activatedTools.delete(toolId);
+    this._activationEvents.clearActivated(toolId);
+
+    const duration = performance.now() - startTime;
+
+    if (errors.length > 0) {
+      console.warn(
+        `[ToolActivator] Tool "${toolId}" deactivated with ${errors.length} error(s):`,
+        errors.join('; '),
+      );
+    } else {
+      console.log(`[ToolActivator] Tool "${toolId}" deactivated in ${duration.toFixed(1)}ms`);
+    }
+
+    this._onDidDeactivate.fire({
+      toolId,
+      success: errors.length === 0,
+      durationMs: duration,
+      error: errors.length > 0 ? errors.join('; ') : undefined,
+    });
+
+    return true;
+  }
+
+  // ── Deactivate All ──
+
+  /**
+   * Deactivate all activated tools. Used during shell teardown.
+   */
+  async deactivateAll(): Promise<void> {
+    const toolIds = [...this._activatedTools.keys()];
+    for (const toolId of toolIds) {
+      await this.deactivate(toolId);
+    }
+  }
+
+  // ── Queries ──
+
+  /**
+   * Get the activated tool record for a tool.
+   */
+  getActivated(toolId: string): ActivatedTool | undefined {
+    return this._activatedTools.get(toolId);
+  }
+
+  /**
+   * Get all activated tool IDs.
+   */
+  getActivatedToolIds(): readonly string[] {
+    return [...this._activatedTools.keys()];
+  }
+
+  /**
+   * Check if a tool is currently activated.
+   */
+  isActivated(toolId: string): boolean {
+    return this._activatedTools.has(toolId);
+  }
+
+  // ── Internal ──
+
+  /**
+   * Create a ToolContext for a tool.
+   */
+  private _createToolContext(description: IToolDescription): ToolContext {
+    return {
+      subscriptions: [],
+      globalState: new InMemoryMemento(),
+      workspaceState: new InMemoryMemento(),
+      toolPath: description.toolPath,
+      toolUri: `file://${description.toolPath}`,
+      environmentVariableCollection: {},
+    };
+  }
+
+  /**
+   * Safely set tool state, catching any transition errors.
+   */
+  private _safeSetState(toolId: string, state: ToolState): void {
+    try {
+      this._registry.setToolState(toolId, state);
+    } catch (err) {
+      console.error(`[ToolActivator] Failed to set state ${state} for "${toolId}":`, err);
+    }
+  }
+
+  // ── Disposal ──
+
+  override dispose(): void {
+    // Deactivate all tools synchronously on dispose
+    for (const [toolId, activated] of this._activatedTools) {
+      try {
+        if (activated.module.deactivate) {
+          activated.module.deactivate();
+        }
+      } catch { /* best effort */ }
+
+      for (const sub of activated.context.subscriptions) {
+        try { sub.dispose(); } catch { /* best effort */ }
+      }
+
+      try { activated.disposeApi(); } catch { /* best effort */ }
+
+      this._safeSetState(toolId, ToolState.Deactivated);
+    }
+    this._activatedTools.clear();
+
+    super.dispose();
+  }
+}

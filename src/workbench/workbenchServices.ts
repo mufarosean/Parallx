@@ -1,12 +1,14 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
 import { ToolRegistry } from '../tools/toolRegistry.js';
 import { NotificationService } from '../api/notificationService.js';
+import { ActivationEventService } from '../tools/activationEventService.js';
+import { ToolErrorService } from '../tools/toolErrorIsolation.js';
 
 /**
  * Registers all core services into the service collection.
@@ -31,6 +33,15 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
 
   // ── Notification Service (M2 Capability 2) ──
   services.registerInstance(INotificationService, new NotificationService());
+
+  // ── Activation Event Service (M2 Capability 3) ──
+  services.registerInstance(IActivationEventService, new ActivationEventService());
+
+  // ── Tool Error Service (M2 Capability 3) ──
+  services.registerInstance(IToolErrorService, new ToolErrorService());
+
+  // Note: IToolActivatorService is registered in the workbench after
+  // all dependencies (API factory deps) are available.
 
   // Future capabilities will register additional services here:
   // ── Layout (Capability 2) ──

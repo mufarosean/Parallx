@@ -375,92 +375,88 @@ The system can load, activate, and deactivate tools on demand based on activatio
 
 #### Tasks
 
-**Task 3.1 – Implement Activation Event System**
+**Task 3.1 – Implement Activation Event System** ✅
 - **Task Description:** Implement the event system that monitors activation triggers and signals when a tool should be activated.
 - **Output:** `ActivationEventService` class that listens for and dispatches activation events.
 - **Completion Criteria:**
-  - Supports `onStartupFinished` — tool activates after shell initialization completes
-  - Supports `onCommand:<commandId>` — tool activates when a contributed command is first invoked
-  - Supports `onView:<viewId>` — tool activates when a contributed view is first shown
-  - Supports `*` (star) — tool activates eagerly at startup (discouraged but supported)
-  - Events are deduplicated (a tool activates at most once regardless of how many events fire)
-  - Events that fire before a tool is registered are queued and replayed
-  - Activation events emit through the shell's event bus for observability
+  - ✅ Supports `onStartupFinished` — tool activates after shell initialization completes
+  - ✅ Supports `onCommand:<commandId>` — tool activates when a contributed command is first invoked
+  - ✅ Supports `onView:<viewId>` — tool activates when a contributed view is first shown
+  - ✅ Supports `*` (star) — tool activates eagerly at startup (discouraged but supported)
+  - ✅ Events are deduplicated (a tool activates at most once regardless of how many events fire) — `_activatedTools` Set in ActivationEventService
+  - ✅ Events that fire before a tool is registered are queued and replayed — `_pendingEvents` Set with replay in `registerToolEvents()`
+  - ✅ Activation events emit through the shell's event bus for observability — `onDidFireEvent` emitter
 - **Notes / Constraints:**
-  - Reference only:
-    - `src/vs/workbench/services/extensions/common/abstractExtensionService.ts` — Two activation kinds: `ActivationKind.Immediate` and `ActivationKind.Normal`
-  - `onCommand` activation requires a proxy command to be registered at manifest-read time that triggers activation, then re-executes the command
-  - Keep the event list small for M2; expand in future milestones (e.g., `onFileSystem`, `onUri`, `onCustomEvent`)
+  - File location: `src/tools/activationEventService.ts`
+  - Includes `parseActivationEvent()` utility for structured event parsing
+  - `fireStartupFinished()` triggers both `*` and `onStartupFinished` events
+  - Registered as `IActivationEventService` in DI container
 
-**Task 3.2 – Implement Tool Module Loader**
+**Task 3.2 – Implement Tool Module Loader** ✅
 - **Task Description:** Implement the loader that imports a tool's entry point module and extracts its `activate` and `deactivate` exports.
 - **Output:** `ToolModuleLoader` class with `loadModule(manifestPath, mainEntry)` method.
 - **Completion Criteria:**
-  - Loads the tool's `main` entry point using dynamic `import()`
-  - Validates the module exports an `activate` function
-  - Validates optional `deactivate` function export
-  - Reports clear error if module fails to load (syntax error, missing file, etc.)
-  - Handles both `.js` and `.ts` (compiled) entry points
-  - Returns a typed `ToolModule` object: `{ activate: ActivateFunction, deactivate?: DeactivateFunction }`
+  - ✅ Loads the tool's `main` entry point using dynamic `import()` — webpackIgnore comment for esbuild compatibility
+  - ✅ Validates the module exports an `activate` function
+  - ✅ Validates optional `deactivate` function export — warns if exported but not a function
+  - ✅ Reports clear error if module fails to load (syntax error, missing file, etc.) — returns `LoadModuleResult` with error string
+  - ✅ Handles both `.js` and `.ts` (compiled) entry points — path resolution is extension-agnostic
+  - ✅ Returns a typed `ToolModule` object: `{ activate: ActivateFunction, deactivate?: DeactivateFunction }` — includes `rawModule` for diagnostics
 - **Notes / Constraints:**
-  - Reference only:
-    - `src/vs/workbench/api/common/extHostExtensionService.ts` — `_loadExtensionModule()`
-  - In M2, tools run in-process via dynamic `import()`. No separate worker or extension host process.
-  - For built-in tools, the main entry is a relative path within the Parallx source tree
-  - For external tools, the main entry is resolved relative to the manifest directory
+  - File location: `src/tools/toolModuleLoader.ts`
+  - Also exports `ToolContext`, `Memento`, `ActivateFunction`, `DeactivateFunction` types
+  - In M2, tools run in-process — no RPC or worker isolation
 
-**Task 3.3 – Implement Tool Activation**
+**Task 3.3 – Implement Tool Activation** ✅
 - **Task Description:** Implement the activation flow that creates a `ToolContext`, calls the tool's `activate()` function, and tracks the activated tool.
 - **Output:** `ToolActivator` class with `activate(toolId)` method.
 - **Completion Criteria:**
-  - Creates a `ToolContext` object with: `subscriptions`, `globalState` (Memento), `workspaceState` (Memento), `toolPath`, `toolUri`, `environmentVariableCollection` (placeholder)
-  - Creates a scoped API object via the API factory (Capability 2)
-  - Calls `tool.activate(context)` with the context and API
-  - Wraps activation in a try/catch — failure logs an error and marks the tool as `activation-failed`
-  - Tracks the `ActivatedTool` record (module reference, context, subscriptions, exports)
-  - Updates tool state in the registry from `registered` → `activating` → `activated` (or `activation-failed`)
-  - Times activation and logs duration for performance monitoring
+  - ✅ Creates a `ToolContext` object with: `subscriptions`, `globalState` (Memento), `workspaceState` (Memento), `toolPath`, `toolUri`, `environmentVariableCollection` (placeholder) — uses `InMemoryMemento` (full persistent Memento deferred to Cap 4)
+  - ✅ Creates a scoped API object via the API factory (Capability 2) — calls `createToolApi(description, deps)`
+  - ✅ Calls `tool.activate(api, context)` with the context and API — handles both sync and async activation
+  - ✅ Wraps activation in a try/catch — failure logs error via ToolErrorService and marks tool as `Deactivated`
+  - ✅ Tracks the `ActivatedTool` record (module reference, context, subscriptions, exports) — stored in `_activatedTools` Map
+  - ✅ Updates tool state in the registry from `registered` → `activating` → `activated` (or `Deactivated` on failure)
+  - ✅ Times activation and logs duration for performance monitoring — `performance.now()` timing
 - **Notes / Constraints:**
-  - Reference only:
-    - `src/vs/workbench/api/common/extHostExtensionActivator.ts` — `ActivationOperation` class, `_activateExtension()` method
-    - `src/vscode-dts/vscode.d.ts` lines 8100-8300 — `ExtensionContext` interface
-  - Activation must be async-safe (handle tools that return Promises from `activate`)
-  - The API object is passed as the first argument; the context is passed as the second argument:
-    `export function activate(parallx: typeof import('parallx'), context: ToolContext)`
+  - File location: `src/tools/toolActivator.ts`
+  - Activation signature: `activate(api, context)` — API first, context second
+  - Phase 5 (Ready) in workbench.ts creates the activator and fires `fireStartupFinished()`
+  - Registered as `IToolActivatorService` in DI container
 
-**Task 3.4 – Implement Tool Deactivation**
+**Task 3.4 – Implement Tool Deactivation** ✅
 - **Task Description:** Implement the deactivation flow that calls a tool's `deactivate()` function and cleans up all associated resources.
 - **Output:** `ToolActivator.deactivate(toolId)` method.
 - **Completion Criteria:**
-  - Calls the tool's `deactivate()` function if exported (wrapped in try/catch)
-  - Disposes all items in `context.subscriptions` array
-  - Unregisters all commands contributed by this tool
-  - Removes all views contributed by this tool
-  - Removes all context keys created by this tool
-  - Updates tool state in registry: `activated` → `deactivating` → `deactivated`
-  - Clears references to the tool module for garbage collection
-  - Logs deactivation result (success or errors encountered during cleanup)
+  - ✅ Calls the tool's `deactivate()` function if exported (wrapped in try/catch)
+  - ✅ Disposes all items in `context.subscriptions` array — reverse-order disposal
+  - ✅ Unregisters all commands contributed by this tool — via API bridge dispose
+  - ✅ Removes all views contributed by this tool — via API bridge dispose
+  - ✅ Removes all context keys created by this tool — via API bridge dispose
+  - ✅ Updates tool state in registry: `activated` → `deactivating` → `deactivated`
+  - ✅ Clears references to the tool module for garbage collection — `_activatedTools.delete()`
+  - ✅ Logs deactivation result (success or errors encountered during cleanup)
 - **Notes / Constraints:**
-  - Reference only:
-    - `src/vs/workbench/api/common/extHostExtensionService.ts` — Deactivation with dispose
-  - Deactivation must be tolerant — if `deactivate()` throws, continue disposing subscriptions
-  - Order of disposal: deactivate() → subscriptions → contributed entities → references
+  - Deactivation is tolerant — continues disposing subscriptions even if `deactivate()` throws
+  - Order: deactivate() → subscriptions → API bridges → references
+  - `deactivateAll()` method for shell teardown
+  - Teardown wired in Phase Ready of workbench lifecycle
 
-**Task 3.5 – Implement Tool Error Isolation**
+**Task 3.5 – Implement Tool Error Isolation** ✅
 - **Task Description:** Implement error boundary logic that prevents tool failures from affecting the shell or other tools.
 - **Output:** Error wrapping utilities and error reporting infrastructure.
 - **Completion Criteria:**
-  - All tool-originated calls (activation, command handlers, view providers) are wrapped in try/catch
-  - Errors are attributed to the originating tool (by tool ID)
-  - Errors are logged with tool ID, error message, and stack trace
-  - Repeated errors from the same tool trigger a warning (potential infinite loop detection)
-  - Shell provides `parallx.window.showErrorMessage()` for tools to report their own errors
-  - A tool error summary is available for debugging (e.g., `getToolErrors(toolId)`)
+  - ✅ All tool-originated calls (activation, command handlers, view providers) are wrapped in try/catch — `wrap()` and `wrapAsync()` utilities
+  - ✅ Errors are attributed to the originating tool (by tool ID) — `ToolError.toolId` field
+  - ✅ Errors are logged with tool ID, error message, and stack trace — `console.error()` with full context
+  - ✅ Repeated errors from the same tool trigger a warning (potential infinite loop detection) — rapid-error detection: 5 errors in 5s window
+  - ✅ Shell provides `parallx.window.showErrorMessage()` for tools to report their own errors — via WindowBridge (Cap 2)
+  - ✅ A tool error summary is available for debugging (e.g., `getToolErrors(toolId)`) — plus `getErrorCount()`, `getAllErrors()`
 - **Notes / Constraints:**
-  - Reference only:
-    - `src/vs/workbench/api/common/extHostExtensionActivator.ts` — Per-extension error isolation in `ActivatedExtension`
-  - Consider a maximum error count before force-deactivating a misbehaving tool
-  - Error reporting should be non-blocking (don't wait for UI)
+  - File location: `src/tools/toolErrorIsolation.ts`
+  - Maximum error count (50) before `onShouldForceDeactivate` fires
+  - Warning at 10 errors, force-deactivation signal at 50
+  - Registered as `IToolErrorService` in DI container
 
 ---
 

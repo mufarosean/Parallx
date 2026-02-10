@@ -12,7 +12,7 @@
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices } from './workbenchServices.js';
 
@@ -88,6 +88,12 @@ import { AuxiliaryBarPart } from '../parts/auxiliaryBarPart.js';
 import { DragAndDropController } from '../dnd/dragAndDrop.js';
 import { DropResult } from '../dnd/dndTypes.js';
 
+// Tool Lifecycle (M2 Capability 3)
+import { ToolActivator } from '../tools/toolActivator.js';
+import { ToolRegistry } from '../tools/toolRegistry.js';
+import { ActivationEventService } from '../tools/activationEventService.js';
+import { ToolErrorService } from '../tools/toolErrorIsolation.js';
+
 // ── Layout constants ──
 
 const TITLE_HEIGHT = 30;
@@ -155,6 +161,9 @@ export class Workbench extends Disposable {
   private _contextKeyService!: ContextKeyService;
   private _focusTracker!: FocusTracker;
   private _workbenchContext!: WorkbenchContextManager;
+
+  // Tool Lifecycle (M2 Capability 3)
+  private _toolActivator!: ToolActivator;
 
   // ── Events ──
 
@@ -407,16 +416,23 @@ export class Workbench extends Disposable {
       await this._restoreWorkspace();
     });
 
-    // Phase 5: Ready — CSS hooks
+    // Phase 5: Ready — CSS hooks + tool lifecycle initialization
     lc.onStartup(LifecyclePhase.Ready, () => {
       this._container.classList.add('parallx-workbench');
       this._container.classList.add('parallx-ready');
+
+      // Initialize tool activator and fire startup finished
+      this._initializeToolLifecycle();
     });
 
     // ── Teardown (5→1) ──
 
-    lc.onTeardown(LifecyclePhase.Ready, () => {
+    lc.onTeardown(LifecyclePhase.Ready, async () => {
       this._container.classList.remove('parallx-ready');
+      // Deactivate all tools before teardown
+      if (this._toolActivator) {
+        await this._toolActivator.deactivateAll();
+      }
     });
 
     lc.onTeardown(LifecyclePhase.WorkspaceRestore, async () => {
@@ -1218,6 +1234,50 @@ export class Workbench extends Disposable {
     }
 
     console.log('[Workbench] Facade services registered (layout, view, workspace)');
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Tool Lifecycle (M2 Capability 3)
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Initialize tool activator and fire startup-finished event.
+   * Called in Phase 5 (Ready) after all services and UI are available.
+   */
+  private _initializeToolLifecycle(): void {
+    // Resolve services
+    const registry = this._services.get(IToolRegistryService) as unknown as ToolRegistry;
+    const activationEvents = this._services.get(IActivationEventService) as unknown as ActivationEventService;
+    const errorService = this._services.get(IToolErrorService) as unknown as ToolErrorService;
+    const notificationService = this._services.has(INotificationService)
+      ? this._services.get(INotificationService) as any
+      : undefined;
+
+    // Build API factory dependencies
+    const apiFactoryDeps = {
+      services: this._services,
+      viewManager: this._viewManager,
+      toolRegistry: registry,
+      notificationService,
+      workbenchContainer: this._container,
+    };
+
+    // Create and register the activator
+    this._toolActivator = this._register(
+      new ToolActivator(registry, errorService, activationEvents, apiFactoryDeps),
+    );
+    this._services.registerInstance(IToolActivatorService, this._toolActivator as any);
+
+    // Wire activation events to the activator
+    this._register(activationEvents.onActivationRequested(async (request) => {
+      console.log(`[Workbench] Activation requested for tool "${request.toolId}" (event: ${request.event.raw})`);
+      await this._toolActivator.activate(request.toolId);
+    }));
+
+    // Fire startup finished — triggers * and onStartupFinished activation events
+    activationEvents.fireStartupFinished();
+
+    console.log('[Workbench] Tool lifecycle initialized');
   }
 
   // ════════════════════════════════════════════════════════════════════════
