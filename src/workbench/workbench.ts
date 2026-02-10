@@ -12,7 +12,7 @@
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices } from './workbenchServices.js';
 
@@ -72,6 +72,11 @@ import {
 // Editor services (Capability 9)
 import { EditorService } from '../services/editorService.js';
 import { EditorGroupService } from '../services/editorGroupService.js';
+
+// Service facades (Capability 0 gap cleanup)
+import { LayoutService } from '../services/layoutService.js';
+import { ViewService } from '../services/viewService.js';
+import { WorkspaceService } from '../services/workspaceService.js';
 
 // Views
 import { ViewManager } from '../views/viewManager.js';
@@ -602,6 +607,9 @@ export class Workbench extends Disposable {
 
     // 3b. Register editor services (EditorPart exists after Phase 2)
     this._registerEditorServices();
+
+    // 3c. Register facade services (grids, ViewManager, workspace exist)
+    this._registerFacadeServices();
 
     // 4. Status bar entries
     this._setupStatusBar();
@@ -1179,6 +1187,31 @@ export class Workbench extends Disposable {
     });
 
     console.log('[Workbench] Editor services registered (Capability 9)');
+  }
+
+  /**
+   * Register facade services (Capability 0 gap cleanup).
+   * Called in Phase 3 after grids, ViewManager, and workspace exist.
+   */
+  private _registerFacadeServices(): void {
+    // Layout service — delegates to grids
+    const layoutService = new LayoutService();
+    layoutService.setHost(this as any);
+    this._register(layoutService);
+    this._services.registerInstance(ILayoutService, layoutService);
+
+    // View service — placeholder for M2 tool API surface
+    const viewService = new ViewService();
+    this._register(viewService);
+    this._services.registerInstance(IViewService, viewService);
+
+    // Workspace service — delegates to workbench workspace operations
+    const workspaceService = new WorkspaceService();
+    workspaceService.setHost(this as any);
+    this._register(workspaceService);
+    this._services.registerInstance(IWorkspaceService, workspaceService);
+
+    console.log('[Workbench] Facade services registered (layout, view, workspace)');
   }
 
   // ════════════════════════════════════════════════════════════════════════

@@ -13,6 +13,8 @@
 import type { CommandDescriptor, CommandExecutionContext } from './commandTypes.js';
 import type { CommandService } from './commandRegistry.js';
 import type { IDisposable } from '../platform/lifecycle.js';
+import type { IEditorGroupService } from '../services/serviceTypes.js';
+import { GroupDirection } from '../editor/editorTypes.js';
 
 // ─── Workbench type (avoids circular import) ────────────────────────────────
 // Command handlers access workbench via `ctx.workbench` cast to this shape.
@@ -31,10 +33,38 @@ interface WorkbenchLike {
   readonly _panel: { visible: boolean; setVisible(v: boolean): void; id: string };
   readonly _statusBar: { visible: boolean; setVisible(v: boolean): void };
   readonly _auxiliaryBar: { visible: boolean; setVisible(v: boolean): void };
-  readonly _hGrid: { addView(view: unknown, size: number): void; removeView(id: string): void; layout(): void };
-  readonly _vGrid: { addView(view: unknown, size: number): void; removeView(id: string): void; layout(): void };
+  readonly _hGrid: {
+    addView(view: unknown, size: number): void;
+    removeView(id: string): void;
+    layout(): void;
+    readonly root: { readonly children: readonly unknown[]; readonly orientation: string };
+    getView(viewId: string): unknown | undefined;
+    hasView(viewId: string): boolean;
+    resizeSash(parentNode: unknown, sashIndex: number, delta: number): void;
+  };
+  readonly _vGrid: {
+    addView(view: unknown, size: number): void;
+    removeView(id: string): void;
+    layout(): void;
+    readonly root: { readonly children: readonly unknown[]; readonly orientation: string };
+    getView(viewId: string): unknown | undefined;
+    hasView(viewId: string): boolean;
+    resizeSash(parentNode: unknown, sashIndex: number, delta: number): void;
+  };
   readonly _workspaceSaver: { save(): Promise<void> };
+  readonly _sidebarContainer: ViewContainerLike;
+  readonly _panelContainer: ViewContainerLike;
+  readonly _auxBarContainer: ViewContainerLike | undefined;
+  readonly _viewManager: { getView(viewId: string): unknown | undefined };
   _layoutViewContainers(): void;
+}
+
+/** Minimal shape of a view container for cross-container moves. */
+interface ViewContainerLike {
+  readonly id: string;
+  addView(view: unknown, index?: number): void;
+  removeView(viewId: string): unknown | undefined;
+  getView(viewId: string): unknown | undefined;
 }
 
 function wb(ctx: CommandExecutionContext): WorkbenchLike {
@@ -120,9 +150,18 @@ const splitEditor: CommandDescriptor = {
   title: 'Split Editor Right',
   category: 'Editor',
   keybinding: 'Ctrl+\\',
-  handler(_ctx) {
-    // Editor groups are implemented in Cap 9; stub for now
-    console.log('[Command] splitEditor — not yet implemented (Cap 9)');
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    if (!editorGroupService) {
+      console.warn('[Command] splitEditor — IEditorGroupService not available');
+      return;
+    }
+    const activeGroup = editorGroupService.activeGroup;
+    if (!activeGroup) {
+      console.warn('[Command] splitEditor — no active editor group');
+      return;
+    }
+    editorGroupService.splitGroup(activeGroup.id, GroupDirection.Right);
   },
 };
 
@@ -130,8 +169,18 @@ const splitEditorOrthogonal: CommandDescriptor = {
   id: 'workbench.action.splitEditorOrthogonal',
   title: 'Split Editor Down',
   category: 'Editor',
-  handler(_ctx) {
-    console.log('[Command] splitEditorOrthogonal — not yet implemented (Cap 9)');
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    if (!editorGroupService) {
+      console.warn('[Command] splitEditorOrthogonal — IEditorGroupService not available');
+      return;
+    }
+    const activeGroup = editorGroupService.activeGroup;
+    if (!activeGroup) {
+      console.warn('[Command] splitEditorOrthogonal — no active editor group');
+      return;
+    }
+    editorGroupService.splitGroup(activeGroup.id, GroupDirection.Down);
   },
 };
 
@@ -210,9 +259,11 @@ const workspaceAddFolder: CommandDescriptor = {
   title: 'Add Folder to Workspace...',
   category: 'Workspace',
   handler: async (_ctx, _folderPath?: unknown) => {
-    // Multi-root folder support is a future expansion.
-    // For now this logs intent; full implementation requires workspace model extension.
-    console.log('[Command] workspace.addFolderToWorkspace — multi-root not yet implemented');
+    // DEFERRED: Multi-root workspace support is out of scope for Milestone 2.
+    // Implementation requires extending the Workspace model to support multiple
+    // root folders, updating WorkspaceLoader/Saver, and adding folder picker UI.
+    // Tracked for a future milestone.
+    console.log('[Command] workspace.addFolderToWorkspace — deferred (multi-root not in M2 scope)');
   },
 };
 
@@ -221,7 +272,10 @@ const workspaceRemoveFolder: CommandDescriptor = {
   title: 'Remove Folder from Workspace',
   category: 'Workspace',
   handler: async (_ctx, _folderPath?: unknown) => {
-    console.log('[Command] workspace.removeFolderFromWorkspace — multi-root not yet implemented');
+    // DEFERRED: Multi-root workspace support is out of scope for Milestone 2.
+    // Requires the same workspace model extensions as addFolderToWorkspace.
+    // Tracked for a future milestone.
+    console.log('[Command] workspace.removeFolderFromWorkspace — deferred (multi-root not in M2 scope)');
   },
 };
 
@@ -293,9 +347,28 @@ const viewMoveToSidebar: CommandDescriptor = {
   id: 'view.moveToSidebar',
   title: 'Move View to Sidebar',
   category: 'View',
-  handler(_ctx, _viewId?: unknown) {
-    // View relocation is driven by DnD in Cap 4; command stub for programmatic use
-    console.log('[Command] view.moveToSidebar — programmatic move not yet implemented');
+  handler(ctx, viewId?: unknown) {
+    if (typeof viewId !== 'string') {
+      console.warn('[Command] view.moveToSidebar requires a string viewId argument');
+      return;
+    }
+    const w = wb(ctx);
+    const targetContainer = w._sidebarContainer;
+    const sourceContainer = _findViewContainer(w, viewId);
+    if (!sourceContainer) {
+      console.warn('[Command] view.moveToSidebar — view "%s" not found in any container', viewId);
+      return;
+    }
+    if (sourceContainer.id === targetContainer.id) {
+      console.log('[Command] view.moveToSidebar — view "%s" already in sidebar', viewId);
+      return;
+    }
+    const view = sourceContainer.removeView(viewId);
+    if (view) {
+      targetContainer.addView(view);
+      w._layoutViewContainers();
+      console.log('[Command] Moved view "%s" to sidebar', viewId);
+    }
   },
 };
 
@@ -303,8 +376,28 @@ const viewMoveToPanel: CommandDescriptor = {
   id: 'view.moveToPanel',
   title: 'Move View to Panel',
   category: 'View',
-  handler(_ctx, _viewId?: unknown) {
-    console.log('[Command] view.moveToPanel — programmatic move not yet implemented');
+  handler(ctx, viewId?: unknown) {
+    if (typeof viewId !== 'string') {
+      console.warn('[Command] view.moveToPanel requires a string viewId argument');
+      return;
+    }
+    const w = wb(ctx);
+    const targetContainer = w._panelContainer;
+    const sourceContainer = _findViewContainer(w, viewId);
+    if (!sourceContainer) {
+      console.warn('[Command] view.moveToPanel — view "%s" not found in any container', viewId);
+      return;
+    }
+    if (sourceContainer.id === targetContainer.id) {
+      console.log('[Command] view.moveToPanel — view "%s" already in panel', viewId);
+      return;
+    }
+    const view = sourceContainer.removeView(viewId);
+    if (view) {
+      targetContainer.addView(view);
+      w._layoutViewContainers();
+      console.log('[Command] Moved view "%s" to panel', viewId);
+    }
   },
 };
 
@@ -312,10 +405,57 @@ const partResize: CommandDescriptor = {
   id: 'part.resize',
   title: 'Resize Part',
   category: 'Layout',
-  handler(_ctx, _partId?: unknown, _delta?: unknown) {
-    console.log('[Command] part.resize — programmatic resize not yet implemented');
+  handler(ctx, partId?: unknown, delta?: unknown) {
+    if (typeof partId !== 'string' || typeof delta !== 'number') {
+      console.warn('[Command] part.resize requires (partId: string, delta: number)');
+      return;
+    }
+    const w = wb(ctx);
+    // Determine which grid contains the part and find its sash index.
+    // Sidebar and auxiliary bar live in hGrid; panel lives in vGrid.
+    const grid = _resolveGridForPart(w, partId);
+    if (!grid) {
+      console.warn('[Command] part.resize — part "%s" not found in any grid', partId);
+      return;
+    }
+    // Find the leaf index within the root branch
+    const root = grid.root as { readonly children: readonly { readonly type?: string; view?: { id: string } }[] };
+    const sashIndex = root.children.findIndex((child: any) => {
+      if (child.type === 'leaf' && child.view?.id === partId) return true;
+      // Also match the editor column adapter
+      if (child.view?.id === partId) return true;
+      return false;
+    });
+    if (sashIndex < 0) {
+      console.warn('[Command] part.resize — cannot find sash for part "%s"', partId);
+      return;
+    }
+    // Resize the sash between this part and its neighbor.
+    // Use max(0, sashIndex - 1) to resize the sash *before* this part,
+    // so a positive delta increases the part's size.
+    const actualSashIndex = sashIndex > 0 ? sashIndex - 1 : 0;
+    grid.resizeSash(grid.root, actualSashIndex, sashIndex > 0 ? delta : -delta);
+    grid.layout();
+    w._layoutViewContainers();
+    console.log('[Command] Resized part "%s" by %dpx', partId, delta);
   },
 };
+
+// ─── Helper: find which container holds a view ──────────────────────────────
+
+function _findViewContainer(w: WorkbenchLike, viewId: string): ViewContainerLike | undefined {
+  const containers: ViewContainerLike[] = [w._sidebarContainer, w._panelContainer];
+  if (w._auxBarContainer) containers.push(w._auxBarContainer);
+  return containers.find(c => c.getView(viewId) !== undefined);
+}
+
+// ─── Helper: resolve which grid owns a part ──────────────────────────────────
+
+function _resolveGridForPart(w: WorkbenchLike, partId: string): WorkbenchLike['_hGrid'] | WorkbenchLike['_vGrid'] | undefined {
+  if (w._hGrid.hasView(partId)) return w._hGrid;
+  if (w._vGrid.hasView(partId)) return w._vGrid;
+  return undefined;
+}
 
 // ─── All builtin commands ────────────────────────────────────────────────────
 

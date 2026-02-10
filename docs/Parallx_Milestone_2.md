@@ -1,0 +1,999 @@
+# Milestone 2 – Tools, Views, and Extensibility
+
+> **Authoritative Scope Notice**
+>
+> This document is the single source of truth for Milestone 2.
+> All implementation must conform to the structures and boundaries defined here.
+> VS Code source files are referenced strictly as inspiration and validation, not as scope drivers.
+> Referenced material must not expand scope unless a missing core extensibility element is identified.
+> Parallx is **not** a code IDE. It is a VS Code-like structural shell that hosts arbitrary domain-specific tools.
+> All VS Code references are filtered through this lens — only structural, shell, and hosting patterns apply.
+
+---
+
+## Milestone Definition
+
+### Vision
+The workbench shell built in Milestone 1 becomes a **tool-hosting platform**. External tools can register themselves, contribute UI, lifecycle-manage their resources, and persist their state — all through a well-defined API boundary. The shell remains domain-agnostic; tools bring the domain.
+
+### Purpose
+This milestone transforms Parallx from a static shell into a live extensibility platform. It solves tool discovery, registration, isolation, lifecycle, and contribution before any domain-specific tools are authored. After M2, a third-party developer can write a Parallx tool that contributes views, commands, and configuration without touching shell internals.
+
+### Conceptual Scope
+
+**Included**
+- Tool manifest schema and validation
+- Tool registry and discovery
+- Tool API boundary (the `parallx` namespace)
+- Tool lifecycle (activation, deactivation, error isolation)
+- Tool configuration and state persistence (Memento pattern)
+- Command contribution from tools
+- Declarative view and view container contribution
+- Menu and keybinding contribution points
+- Built-in tools that validate the system end-to-end
+- M1 gap cleanup (stub commands, empty facades, dead file)
+
+**Excluded**
+- Tool marketplace or remote installation (deferred)
+- Tool sandboxing or process isolation (tools run in-process for M2)
+- Multi-window tool hosting (deferred)
+- Theming contribution from tools (deferred)
+- Network-based tool communication (deferred)
+- Domain-specific tool implementations (canvas, database, AI, etc.)
+- Language server protocol or code intelligence features (not applicable — Parallx is not a code IDE)
+
+### Structural Commitments
+- Tools interact with the shell only through the `parallx` API surface — never through internal imports.
+- Tool manifests are declarative JSON; the shell reads and validates them at load time.
+- Activation is lazy and event-driven; tools are not loaded until needed.
+- Tool errors must not crash the shell; activation failures are isolated and reported.
+- Built-in tools use the same API and manifest as external tools — no special-casing.
+- All M1 extension points (ViewDescriptor, CommandDescriptor, ContextKey, EditorInput) are reachable through the tool API.
+
+### Architectural Principles
+- **API Boundary**: All tool↔shell interaction goes through a versioned, documented API object.
+- **Declarative First**: Tools declare capabilities in a manifest; the shell does the wiring.
+- **Lazy Activation**: Tools are loaded on-demand in response to activation events.
+- **Error Isolation**: One tool's failure must not affect another tool or the shell.
+- **Symmetry**: Built-in tools and external tools use identical mechanisms.
+- **State Ownership**: Tools own their state; the shell provides scoped storage.
+
+---
+
+## Capability 0 – M1 Gap Cleanup
+
+### Capability Description
+Address the known gaps identified in the Milestone 1 Completion Verdict before building new M2 infrastructure on top. This ensures the foundation is solid.
+
+### Goals
+- All M1 stub command handlers are wired to real implementations
+- Empty service facade files are populated or removed
+- Dead files are removed
+- Codebase is clean for M2 work
+
+### Conceptual Responsibilities
+- Wire stub commands to existing APIs
+- Create thin service facades or consolidate
+- Remove files that serve no purpose
+- Verify no regressions after cleanup
+
+### Dependencies
+None — this is prerequisite work.
+
+#### Tasks
+
+**Task 0.1 – Wire Stub Command Handlers** ✅
+- **Task Description:** Connect the 7 stub command handlers identified in M1 Gap 1 to their real implementations.
+- **Output:** All 19 structural commands are fully functional (no stub messages logged).
+- **Completion Criteria:**
+  - ✅ `workbench.action.splitEditor` calls `IEditorGroupService.splitGroup(activeGroupId, GroupDirection.Right)`
+  - ✅ `workbench.action.splitEditorOrthogonal` calls `IEditorGroupService.splitGroup(activeGroupId, GroupDirection.Down)`
+  - ✅ `view.moveToSidebar` performs `removeView` + `addView` across containers via `_findViewContainer` helper; validates source ≠ target
+  - ✅ `view.moveToPanel` performs `removeView` + `addView` across containers via `_findViewContainer` helper; validates source ≠ target
+  - ✅ `part.resize` calls `Grid.resizeSash()` via `_resolveGridForPart` helper to find the correct grid (hGrid or vGrid)
+  - ✅ `workspace.addFolderToWorkspace` and `workspace.removeFolderFromWorkspace` remain stubs with clear `DEFERRED` comments explaining multi-root is out of M2 scope
+- **Notes / Constraints:**
+  - The editor split commands use the `IEditorGroupService` interface via `ctx.getService()`, not reaching into `EditorPart` directly
+  - The view move commands validate the target container accepts the view before moving (checks source ≠ target, view exists in source)
+
+**Task 0.2 – Populate or Remove Empty Service Facades** ✅
+- **Task Description:** Address `layoutService.ts`, `viewService.ts`, and `workspaceService.ts` which are currently comment-only placeholders.
+- **Output:** Each file contains a thin facade class implementing its interface.
+- **Completion Criteria:**
+  - ✅ `LayoutService` implements `ILayoutService`, delegates `layout()` to hGrid/vGrid and `_layoutViewContainers()`; host set via `setHost()` in Phase 3
+  - ✅ `ViewService` implements `IViewService` (currently empty interface — placeholder for Cap 4 expansion); registered for DI stability
+  - ✅ `WorkspaceService` implements `IWorkspaceService`, delegates all workspace ops to Workbench; forwards `onDidSwitchWorkspace` events
+  - ✅ All three registered in DI container via `_registerFacadeServices()` called in Phase 3 of workbench initialization
+  - ✅ Consumers can import from the facade via the service identifier, not from implementation internals
+- **Notes / Constraints:**
+  - Thin delegation pattern chosen — facades use a `setHost()` method to receive the Workbench reference (same pattern as `CommandService.setWorkbench()`)
+  - This establishes the facade pattern for M2 — tools will access services through the DI container
+
+**Task 0.3 – Remove Dead File** ✅
+- **Task Description:** Remove `context/contextKeyService.ts` (1-line comment, serves no purpose) and update any imports.
+- **Output:** File deleted, no dangling references.
+- **Completion Criteria:**
+  - ✅ File deleted from repository
+  - ✅ No imports referenced the dead file (confirmed via grep); `services/contextKeyService.ts` and `context/contextKey.ts` already used by all consumers
+  - ✅ Build succeeds with zero errors (esbuild bundle builds successfully)
+
+---
+
+## Capability 1 – Tool Manifest and Registry
+
+### Capability Description
+The system can discover, validate, and register tools from declarative manifest files. A tool manifest declares the tool's identity, activation events, contributions (views, commands, configuration), and entry point — analogous to a VS Code extension's `package.json`.
+
+### Goals
+- Tool identity is established at load time from manifest
+- Manifests are validated against a schema before registration
+- Invalid manifests produce clear error messages without crashing the shell
+- The tool registry is the single source of truth for loaded tools
+- Tools can be queried by ID, state, or contribution type
+
+### Conceptual Responsibilities
+- Define and validate tool manifest schema
+- Scan configured directories for tool manifests
+- Register validated tools in central registry
+- Track tool state (discovered → registered → activated → deactivated → disposed)
+- Provide query API for registered tools
+
+### Dependencies
+- M1 Gap Cleanup
+
+### VS Code Reference
+- `src/vs/workbench/services/extensions/common/extensionDescriptionRegistry.ts` — Extension description storage and lookup
+- `src/vs/platform/extensions/common/extensions.ts` — `IExtensionDescription` interface, extension manifest shape
+- `src/vs/workbench/services/extensions/common/abstractExtensionService.ts` — Scanning and activation coordination
+- DeepWiki: [Extension System](https://deepwiki.com/microsoft/vscode/8-extension-system) — Extension Lifecycle, Extension Management
+
+#### Tasks
+
+**Task 1.1 – Define Tool Manifest Schema**
+- **Task Description:** Define the TypeScript interfaces and JSON schema for a tool manifest. This is the `package.json`-equivalent for Parallx tools.
+- **Output:** `IToolManifest` interface and JSON Schema definition for validation.
+- **Completion Criteria:**
+  - Manifest declares tool identity (`id`, `name`, `version`, `publisher`, `description`)
+  - Manifest declares `main` entry point (relative path to JS/TS module)
+  - Manifest declares `activationEvents` array (e.g., `onCommand:*`, `onView:*`, `onStartupFinished`)
+  - Manifest declares `contributes` object with contribution point keys (views, viewContainers, commands, configuration, menus, keybindings)
+  - Manifest declares `engines.parallx` version compatibility string
+  - Schema is versioned (`manifestVersion` field)
+  - JSON schema file can be used for IDE-assisted editing of manifests
+- **Notes / Constraints:**
+  - Reference only:
+    - VS Code's `package.json` schema for extensions: https://code.visualstudio.com/api/references/extension-manifest
+    - `src/vs/platform/extensions/common/extensions.ts` — `IExtensionDescription` interface
+  - Start minimal — only include contribution points that M2 implements
+  - `activationEvents` supported in M2: `onStartupFinished`, `onCommand:<id>`, `onView:<id>`, `*` (eager)
+  - Parallx-specific: no `browser` entry point (no web workers in M2), no `extensionDependencies` (deferred)
+
+**Task 1.2 – Implement Tool Manifest Validator**
+- **Task Description:** Implement validation logic that checks a parsed manifest against the schema and reports errors.
+- **Output:** `validateManifest(manifest: unknown): ValidationResult` function.
+- **Completion Criteria:**
+  - Validates all required fields are present and correctly typed
+  - Validates `activationEvents` use supported event types
+  - Validates `contributes` sub-schemas (view descriptors, command descriptors, etc.)
+  - Returns structured errors with field path and message (e.g., `contributes.views[0].id: must be a non-empty string`)
+  - Validates `engines.parallx` version compatibility against current shell version
+  - Warns on unknown fields without failing (forward compatibility)
+- **Notes / Constraints:**
+  - Do not use a heavy JSON schema library; write focused validation logic
+  - Validation should be synchronous and fast
+
+**Task 1.3 – Implement Tool Scanner**
+- **Task Description:** Implement discovery of tool manifests from configured directories.
+- **Output:** `ToolScanner` class that finds and parses tool manifests.
+- **Completion Criteria:**
+  - Scans one or more configured tool directories
+  - Finds `parallx-manifest.json` files in tool subdirectories
+  - Parses and validates each manifest
+  - Returns list of valid tool descriptions and list of validation failures
+  - Handles filesystem errors gracefully (permissions, missing dirs)
+  - Supports both built-in tool directory and user tool directory
+- **Notes / Constraints:**
+  - Reference only:
+    - `src/vs/workbench/services/extensions/node/extensionPoints.ts` — Extension scanner
+  - Built-in tools live under `src/tools/` (or similar in-repo path)
+  - External tools are loaded from a configurable directory (e.g., `~/.parallx/tools/`)
+  - In M2, external tools are manually placed in the directory (no install command yet)
+
+**Task 1.4 – Implement Tool Registry**
+- **Task Description:** Implement a central registry that holds all validated tool descriptions and tracks their state.
+- **Output:** `ToolRegistry` class with registration, lookup, and state tracking.
+- **Completion Criteria:**
+  - Tools can be registered from validated manifests
+  - Tools can be looked up by ID
+  - Registry tracks tool state: `discovered` → `registered` → `activating` → `activated` → `deactivating` → `deactivated` → `disposed`
+  - Registry rejects duplicate tool IDs
+  - Registry emits events: `onDidRegisterTool`, `onDidChangeToolState`
+  - Registry provides query methods: `getAll()`, `getById(id)`, `getByState(state)`, `getContributorsOf(contributionPoint)`
+- **Notes / Constraints:**
+  - Reference only:
+    - `src/vs/workbench/services/extensions/common/extensionDescriptionRegistry.ts` — `ExtensionDescriptionRegistry`
+  - Registry is a singleton service registered in the DI container
+  - State transitions should be validated (e.g., cannot go from `discovered` directly to `activated`)
+
+---
+
+## Capability 2 – Tool API Boundary
+
+### Capability Description
+The system defines a clear API surface (`parallx` namespace) that is the only way tools interact with the shell. The API is a versioned, documented contract that provides access to views, commands, context, configuration, and state — without exposing internal implementation details.
+
+### Goals
+- Tools cannot import shell internals; they receive an API object
+- API is versioned and stable within a major version
+- API object is created per-tool with proper scoping
+- API provides access to all M1 extension points (views, commands, context, editors)
+- API is type-safe with full TypeScript definitions
+
+### Conceptual Responsibilities
+- Define the `parallx` API type definition file
+- Implement API factory that creates per-tool API instances
+- Scope API access per tool (e.g., tool can only dispose its own resources)
+- Map API calls to internal shell services
+- Version the API for compatibility
+
+### Dependencies
+- Tool Manifest and Registry
+
+### VS Code Reference
+- `src/vscode-dts/vscode.d.ts` — The public API type definitions
+- `src/vs/workbench/api/common/extHost.api.impl.ts` — `createApiFactoryAndRegisterActors()` — API factory that creates API object per extension
+- DeepWiki: [Extension System → API Surface](https://deepwiki.com/microsoft/vscode/8-extension-system) — API Structure, API Factory, Namespaces
+
+#### Tasks
+
+**Task 2.1 – Define Parallx API Type Definitions**
+- **Task Description:** Create the `parallx.d.ts` type definition file that defines the complete API surface available to tools. This is the Parallx equivalent of `vscode.d.ts`.
+- **Output:** `parallx.d.ts` file with full TypeScript type definitions.
+- **Completion Criteria:**
+  - `parallx.views` namespace: `registerViewProvider(viewId, provider)`
+  - `parallx.commands` namespace: `registerCommand(id, handler)`, `executeCommand(id, ...args)`, `getCommands()`
+  - `parallx.window` namespace: `showInformationMessage()`, `showWarningMessage()`, `showErrorMessage()`, `showInputBox()`, `showQuickPick()`, `createOutputChannel(name)`
+  - `parallx.context` namespace: `createContextKey(name, defaultValue)`, `getContextValue(name)`
+  - `parallx.workspace` namespace: `getConfiguration(section)`, `onDidChangeConfiguration`
+  - `parallx.editors` namespace: `openEditor(input)`, `registerEditorProvider(typeId, provider)`
+  - `parallx.tools` namespace: `getAll()`, `getById(id)` (read-only access to tool registry metadata)
+  - `parallx.env` namespace: `appName`, `appVersion`, `toolPath`
+  - `Disposable` class and `IDisposable` interface exported
+  - `ToolContext` interface matching activation context (subscriptions, globalState, workspaceState, toolPath, toolUri)
+  - All types use structural typing (no class instances cross the boundary)
+- **Notes / Constraints:**
+  - Reference only:
+    - `src/vscode-dts/vscode.d.ts` (structure and patterns, NOT content features like TextDocument, languages, etc.)
+  - Omit all code-IDE-specific APIs: no TextDocument, TextEditor, languages, diagnostics, debug, SCM, tasks, notebooks
+  - Include only structural/shell APIs that make sense for a tool-hosting platform
+  - File should be publishable as `@parallx/types` npm package in the future
+
+**Task 2.2 – Implement API Factory**
+- **Task Description:** Implement a factory function that creates a fresh, scoped API object for each tool upon activation.
+- **Output:** `createToolApi(toolDescription, services)` function returning a `typeof parallx` object.
+- **Completion Criteria:**
+  - Factory creates a new API object per tool (not shared between tools)
+  - API object methods are scoped to the calling tool (e.g., `registerCommand` tags the command with the tool's ID)
+  - All `Disposable` objects returned by API methods are tracked per-tool for cleanup
+  - API access failures (e.g., calling after deactivation) throw clear errors
+  - API object is frozen after creation (no monkey-patching)
+- **Notes / Constraints:**
+  - Reference only:
+    - `src/vs/workbench/api/common/extHost.api.impl.ts` — `createApiFactoryAndRegisterActors()`
+  - In M2, tools run in the same process (no RPC). The API factory creates a thin wrapper over internal services.
+  - In future milestones, this boundary becomes an RPC bridge for process-isolated tools.
+  - `Object.freeze()` the API object to prevent tools from adding properties
+
+**Task 2.3 – Implement API-to-Service Bridge**
+- **Task Description:** Implement the bridge layer that maps each API namespace method to the corresponding internal service call.
+- **Output:** Bridge implementations for each API namespace (`ViewsBridge`, `CommandsBridge`, `WindowBridge`, `ContextBridge`, `WorkspaceBridge`).
+- **Completion Criteria:**
+  - `parallx.views.registerViewProvider()` → `ViewManager.registerDescriptor()` + `ViewManager.createView()`
+  - `parallx.commands.registerCommand()` → `CommandService.register()` with tool-scoped ID prefixing
+  - `parallx.commands.executeCommand()` → `CommandService.execute()` with validation
+  - `parallx.window.showInformationMessage()` → shell notification system (new, simple overlay)
+  - `parallx.context.createContextKey()` → `ContextKeyService.createKey()` in tool-scoped scope
+  - `parallx.workspace.getConfiguration()` → configuration service read for tool's section
+  - Every API call validates the tool is still active before proceeding
+  - All returned `Disposable` objects are registered in the tool's `subscriptions` for cleanup
+- **Notes / Constraints:**
+  - Bridge methods should add the tool ID to all registered entities for attribution and cleanup
+  - Bridge should handle errors from internal services and translate them to tool-friendly error messages
+
+**Task 2.4 – Implement Notification System**
+- **Task Description:** Implement the shell's notification/toast system that backs `parallx.window.showInformationMessage()`, `showWarningMessage()`, and `showErrorMessage()`.
+- **Output:** Notification overlay UI that displays brief messages with optional action buttons.
+- **Completion Criteria:**
+  - Three severity levels: information (blue), warning (yellow), error (red)
+  - Messages appear as toast overlays in the bottom-right corner of the workbench
+  - Messages auto-dismiss after a configurable timeout (default 5 seconds)
+  - Messages can include action buttons (e.g., "Retry", "Open Settings") that return a Promise with the selected action
+  - Multiple messages stack vertically with newest on top
+  - Messages can be dismissed manually via close button
+  - `showInputBox()` and `showQuickPick()` render as modal overlays centered in the workbench
+- **Notes / Constraints:**
+  - Keep styling minimal (dark background, white text, colored left border for severity)
+  - This is infrastructure for the `parallx.window` API — tools call it, the shell renders it
+  - Do not build a full notification center (deferred) — just transient toasts
+
+**Task 2.5 – Implement API Version Validation**
+- **Task Description:** Implement version compatibility checking between the shell's API version and a tool's declared `engines.parallx` requirement.
+- **Output:** `isCompatible(engineRequirement, shellVersion)` function using semver-like comparison.
+- **Completion Criteria:**
+  - Supports `^`, `~`, `>=`, range syntax for version constraints
+  - Shell refuses to activate tools with incompatible engine requirements
+  - Clear error message identifies version mismatch
+  - Shell version is exposed via `parallx.env.appVersion`
+- **Notes / Constraints:**
+  - Use simple semver implementation (no external dependency)
+  - M2 is API version `0.2.0` — the leading 0 signals instability
+
+**Task 2.6 – Implement Editor Opening API**
+- **Task Description:** Implement the `parallx.editors` API namespace that allows tools to open content in the editor area as tabs, using M1's `EditorInput` and `EditorPane` system.
+- **Output:** `EditorsBridge` and `IEditorProvider` interface.
+- **Completion Criteria:**
+  - Tools can register an editor provider: `parallx.editors.registerEditorProvider(typeId, provider)` where `provider` implements `{ createEditorPane(container: HTMLElement): Disposable }`
+  - Tools can open an editor: `parallx.editors.openEditor({ typeId, title, icon? })` which creates a tab in the active editor group
+  - Editor pane content is rendered by the tool's provider into the provided DOM container
+  - Editor tabs show the tool-provided title and icon
+  - Multiple editors of the same type can be open simultaneously
+  - Editor state (open tabs, active tab) is persisted with the workspace state system
+  - Registration returns a `Disposable` for cleanup
+- **Notes / Constraints:**
+  - This bridges tools to M1's `EditorInput` + `EditorPane` + `EditorGroupModel` system
+  - The Welcome tool (Task 7.1) is the primary consumer in M2
+  - Keep the API minimal — a full editor contribution point (language, file associations, etc.) is deferred
+
+---
+
+## Capability 3 – Tool Lifecycle
+
+### Capability Description
+The system can load, activate, and deactivate tools on demand based on activation events. Tools are lazily activated when their declared activation events fire, and cleanly deactivated during disposal with full resource cleanup.
+
+### Goals
+- Tools are not loaded until an activation event fires
+- Activation is orderly and error-isolated per tool
+- Tools receive a `ToolContext` on activation for resource management
+- Deactivation cleanly disposes all tool resources
+- Tool failures are reported but never crash the shell
+
+### Conceptual Responsibilities
+- Monitor activation events and trigger tool loading
+- Load tool entry point modules
+- Call `activate(context)` on the tool's exported API
+- Track activated tools and their subscriptions
+- Call `deactivate()` and dispose subscriptions on teardown
+- Report and isolate activation/runtime errors
+
+### Dependencies
+- Tool Manifest and Registry
+- Tool API Boundary
+
+### VS Code Reference
+- `src/vs/workbench/api/common/extHostExtensionActivator.ts` — `ExtensionsActivator` class: `activateByEvent()`, dependency resolution, error isolation
+- `src/vs/workbench/api/common/extHostExtensionService.ts` — Extension module loading and activation context creation
+- `src/vs/workbench/services/extensions/common/abstractExtensionService.ts` — `activateByEvent()` with Immediate/Normal kinds
+- DeepWiki: [Extension System → Extension Lifecycle](https://deepwiki.com/microsoft/vscode/8-extension-system) — Activation Events, Activation Sequence
+
+#### Tasks
+
+**Task 3.1 – Implement Activation Event System**
+- **Task Description:** Implement the event system that monitors activation triggers and signals when a tool should be activated.
+- **Output:** `ActivationEventService` class that listens for and dispatches activation events.
+- **Completion Criteria:**
+  - Supports `onStartupFinished` — tool activates after shell initialization completes
+  - Supports `onCommand:<commandId>` — tool activates when a contributed command is first invoked
+  - Supports `onView:<viewId>` — tool activates when a contributed view is first shown
+  - Supports `*` (star) — tool activates eagerly at startup (discouraged but supported)
+  - Events are deduplicated (a tool activates at most once regardless of how many events fire)
+  - Events that fire before a tool is registered are queued and replayed
+  - Activation events emit through the shell's event bus for observability
+- **Notes / Constraints:**
+  - Reference only:
+    - `src/vs/workbench/services/extensions/common/abstractExtensionService.ts` — Two activation kinds: `ActivationKind.Immediate` and `ActivationKind.Normal`
+  - `onCommand` activation requires a proxy command to be registered at manifest-read time that triggers activation, then re-executes the command
+  - Keep the event list small for M2; expand in future milestones (e.g., `onFileSystem`, `onUri`, `onCustomEvent`)
+
+**Task 3.2 – Implement Tool Module Loader**
+- **Task Description:** Implement the loader that imports a tool's entry point module and extracts its `activate` and `deactivate` exports.
+- **Output:** `ToolModuleLoader` class with `loadModule(manifestPath, mainEntry)` method.
+- **Completion Criteria:**
+  - Loads the tool's `main` entry point using dynamic `import()`
+  - Validates the module exports an `activate` function
+  - Validates optional `deactivate` function export
+  - Reports clear error if module fails to load (syntax error, missing file, etc.)
+  - Handles both `.js` and `.ts` (compiled) entry points
+  - Returns a typed `ToolModule` object: `{ activate: ActivateFunction, deactivate?: DeactivateFunction }`
+- **Notes / Constraints:**
+  - Reference only:
+    - `src/vs/workbench/api/common/extHostExtensionService.ts` — `_loadExtensionModule()`
+  - In M2, tools run in-process via dynamic `import()`. No separate worker or extension host process.
+  - For built-in tools, the main entry is a relative path within the Parallx source tree
+  - For external tools, the main entry is resolved relative to the manifest directory
+
+**Task 3.3 – Implement Tool Activation**
+- **Task Description:** Implement the activation flow that creates a `ToolContext`, calls the tool's `activate()` function, and tracks the activated tool.
+- **Output:** `ToolActivator` class with `activate(toolId)` method.
+- **Completion Criteria:**
+  - Creates a `ToolContext` object with: `subscriptions`, `globalState` (Memento), `workspaceState` (Memento), `toolPath`, `toolUri`, `environmentVariableCollection` (placeholder)
+  - Creates a scoped API object via the API factory (Capability 2)
+  - Calls `tool.activate(context)` with the context and API
+  - Wraps activation in a try/catch — failure logs an error and marks the tool as `activation-failed`
+  - Tracks the `ActivatedTool` record (module reference, context, subscriptions, exports)
+  - Updates tool state in the registry from `registered` → `activating` → `activated` (or `activation-failed`)
+  - Times activation and logs duration for performance monitoring
+- **Notes / Constraints:**
+  - Reference only:
+    - `src/vs/workbench/api/common/extHostExtensionActivator.ts` — `ActivationOperation` class, `_activateExtension()` method
+    - `src/vscode-dts/vscode.d.ts` lines 8100-8300 — `ExtensionContext` interface
+  - Activation must be async-safe (handle tools that return Promises from `activate`)
+  - The API object is passed as the first argument; the context is passed as the second argument:
+    `export function activate(parallx: typeof import('parallx'), context: ToolContext)`
+
+**Task 3.4 – Implement Tool Deactivation**
+- **Task Description:** Implement the deactivation flow that calls a tool's `deactivate()` function and cleans up all associated resources.
+- **Output:** `ToolActivator.deactivate(toolId)` method.
+- **Completion Criteria:**
+  - Calls the tool's `deactivate()` function if exported (wrapped in try/catch)
+  - Disposes all items in `context.subscriptions` array
+  - Unregisters all commands contributed by this tool
+  - Removes all views contributed by this tool
+  - Removes all context keys created by this tool
+  - Updates tool state in registry: `activated` → `deactivating` → `deactivated`
+  - Clears references to the tool module for garbage collection
+  - Logs deactivation result (success or errors encountered during cleanup)
+- **Notes / Constraints:**
+  - Reference only:
+    - `src/vs/workbench/api/common/extHostExtensionService.ts` — Deactivation with dispose
+  - Deactivation must be tolerant — if `deactivate()` throws, continue disposing subscriptions
+  - Order of disposal: deactivate() → subscriptions → contributed entities → references
+
+**Task 3.5 – Implement Tool Error Isolation**
+- **Task Description:** Implement error boundary logic that prevents tool failures from affecting the shell or other tools.
+- **Output:** Error wrapping utilities and error reporting infrastructure.
+- **Completion Criteria:**
+  - All tool-originated calls (activation, command handlers, view providers) are wrapped in try/catch
+  - Errors are attributed to the originating tool (by tool ID)
+  - Errors are logged with tool ID, error message, and stack trace
+  - Repeated errors from the same tool trigger a warning (potential infinite loop detection)
+  - Shell provides `parallx.window.showErrorMessage()` for tools to report their own errors
+  - A tool error summary is available for debugging (e.g., `getToolErrors(toolId)`)
+- **Notes / Constraints:**
+  - Reference only:
+    - `src/vs/workbench/api/common/extHostExtensionActivator.ts` — Per-extension error isolation in `ActivatedExtension`
+  - Consider a maximum error count before force-deactivating a misbehaving tool
+  - Error reporting should be non-blocking (don't wait for UI)
+
+---
+
+## Capability 4 – Tool Configuration and State
+
+### Capability Description
+The system provides scoped persistent storage for tools (Memento pattern) and allows tools to contribute configuration schemas that appear in a settings system. Tools own their data; the shell provides the storage infrastructure.
+
+### Goals
+- Each tool has dedicated global and workspace-scoped storage
+- Tools can contribute typed configuration schemas
+- Configuration changes emit events for reactive updates
+- State persists across sessions via the workspace state system (M1 Capability 5)
+- Configuration values have defined defaults from the manifest
+
+### Conceptual Responsibilities
+- Implement Memento storage scoped per tool
+- Implement configuration contribution point
+- Implement configuration read/write API
+- Integrate configuration with workspace persistence
+- Emit configuration change events
+
+### Dependencies
+- Tool Manifest and Registry
+- Tool API Boundary
+- Workspace State Persistence (M1)
+
+### VS Code Reference
+- `src/vs/workbench/common/memento.ts` — `Memento` class for scoped storage
+- `src/vs/platform/extensionManagement/common/extensionStorage.ts` — Extension-scoped storage service
+- `src/vscode-dts/vscode.d.ts` lines 8000-8200 — `ExtensionContext.globalState`, `ExtensionContext.workspaceState`, `SecretStorage`
+- DeepWiki: [Extension System → Extension Storage and Secrets](https://deepwiki.com/microsoft/vscode/8-extension-system) — Storage Scopes
+
+#### Tasks
+
+**Task 4.1 – Implement Tool Memento Storage**
+- **Task Description:** Implement the Memento pattern providing tools with `globalState` and `workspaceState` key-value stores.
+- **Output:** `ToolMemento` class implementing `get<T>(key, defaultValue?)` and `update(key, value)`.
+- **Completion Criteria:**
+  - `globalState` persists across all workspaces (stored in global storage namespace)
+  - `workspaceState` persists only within the current workspace (stored in workspace storage namespace)
+  - Keys are namespaced by tool ID to prevent collisions (e.g., `tool:myTool/key`)
+  - Values are JSON-serialized
+  - `get<T>(key)` returns `T | undefined`; `get<T>(key, defaultValue)` returns `T`
+  - `update(key, value)` is async (returns `Promise<void>`)
+  - `keys()` returns all stored keys for the tool
+  - Integrates with M1's `IStorage` abstraction
+- **Notes / Constraints:**
+  - Reference only:
+    - `src/vs/workbench/common/memento.ts`
+    - `src/vs/platform/extensionManagement/common/extensionStorage.ts`
+  - Storage quota per tool: warn at 5MB, hard limit at 10MB (configurable)
+  - Values must be JSON-serializable (no functions, symbols, circular refs)
+
+**Task 4.2 – Implement Configuration Contribution Point**
+- **Task Description:** Implement the `contributes.configuration` manifest section that allows tools to define typed settings with defaults.
+- **Output:** Configuration schema processing and registration in the shell's configuration system.
+- **Completion Criteria:**
+  - Tools declare configuration in manifest: `{ "contributes": { "configuration": { "title": "My Tool", "properties": { "myTool.setting1": { "type": "string", "default": "value", "description": "..." } } } } }`
+  - Shell parses and registers configuration schemas at manifest load time
+  - Schemas define type, default, description, enum values, and validation constraints
+  - Registered configurations are queryable by section
+  - Invalid configuration values fall back to defaults
+- **Notes / Constraints:**
+  - Reference only:
+    - VS Code's configuration contribution point: https://code.visualstudio.com/api/references/contribution-points#contributes.configuration
+  - Configuration UI (a settings editor) is NOT in M2 scope — tools read configuration programmatically
+  - Configuration storage uses the workspace state system
+
+**Task 4.3 – Implement Configuration Service**
+- **Task Description:** Implement a configuration service that tools access through `parallx.workspace.getConfiguration()`.
+- **Output:** `ConfigurationService` class with get/update/onDidChange methods.
+- **Completion Criteria:**
+  - `getConfiguration(section?)` returns a `WorkspaceConfiguration` object
+  - `WorkspaceConfiguration.get<T>(key, defaultValue?)` reads a setting value
+  - `WorkspaceConfiguration.update(key, value)` writes a setting value
+  - `WorkspaceConfiguration.has(key)` checks if a setting exists
+  - `onDidChangeConfiguration` event fires with affected keys when settings change
+  - Default values from manifest are used when no explicit value is set
+  - Configuration values are stored per-workspace
+- **Notes / Constraints:**
+  - The configuration service is distinct from Memento — configuration has schemas, defaults, and is user-facing; Memento is opaque tool-internal storage
+  - In M2, configuration is stored in workspace state. A standalone `settings.json` file is deferred.
+
+---
+
+## Capability 5 – Command Contribution from Tools
+
+### Capability Description
+Tools can contribute commands through their manifest and register runtime command handlers through the API. Contributed commands integrate with the existing command palette from M1 and respect when-clause activation conditions.
+
+### Goals
+- Tools declare commands in their manifest's `contributes.commands` section
+- Runtime registration wires handlers to declared commands
+- Commands appear in the command palette with proper metadata
+- Commands can have keybinding contributions
+- Commands respect when clauses for conditional enablement
+- Menu contributions place commands in context menus and title bars
+
+### Conceptual Responsibilities
+- Process `contributes.commands` from manifests
+- Register proxy commands for lazy activation
+- Wire tool-registered handler to proxy when tool activates
+- Process `contributes.keybindings` from manifests
+- Process `contributes.menus` from manifests
+- Integrate with M1's CommandService and CommandPalette
+
+### Dependencies
+- Tool API Boundary
+- Tool Lifecycle
+
+### VS Code Reference
+- `src/vs/workbench/api/common/extHostCommands.ts` — `ExtHostCommands`: `registerCommand`, `executeCommand`, `$executeContributedCommand`
+- `src/vs/workbench/api/browser/mainThreadCommands.ts` — Renderer-side command proxy
+- `src/vs/workbench/services/extensions/common/extensionsApiProposals.ts` — Command contribution from extensions
+- DeepWiki: [Extension System → ExtHostCommands](https://deepwiki.com/microsoft/vscode/8-extension-system) — Command registration and execution flow
+
+#### Tasks
+
+**Task 5.1 – Implement Command Contribution Processing**
+- **Task Description:** Process the `contributes.commands` section from tool manifests and register command metadata in the command service.
+- **Output:** Command contribution processor that reads manifests and registers command descriptors.
+- **Completion Criteria:**
+  - Manifest `contributes.commands` schema: `[{ "command": "myTool.doSomething", "title": "Do Something", "category": "My Tool", "icon": "...", "enablement": "when clause" }]`
+  - Each declared command is registered in `CommandService` with metadata (title, category, icon, when clause)
+  - A proxy handler is registered that triggers tool activation on first invocation (for `onCommand` activation)
+  - After tool activation, the proxy handler is replaced with the tool's real handler
+  - Commands contributed by a tool are unregistered when the tool is deactivated
+- **Notes / Constraints:**
+  - Commands should be prefixed or namespaced to avoid collisions (manifest validation ensures `tool.id` prefix)
+  - Proxy handlers should queue the invocation and replay it once the real handler is available
+
+**Task 5.2 – Implement Keybinding Contribution Processing**
+- **Task Description:** Process the `contributes.keybindings` section from tool manifests and register keybindings.
+- **Output:** Keybinding contribution processor.
+- **Completion Criteria:**
+  - Manifest `contributes.keybindings` schema: `[{ "command": "myTool.doSomething", "key": "ctrl+shift+t", "when": "when clause" }]`
+  - Keybindings are registered in a keybinding service (new in M2 or extension of command service)
+  - Keybinding conflicts are detected and logged (last registered wins)
+  - Keybindings are shown in the command palette alongside their commands
+  - Keybindings respect platform differences (Ctrl vs Cmd)
+- **Notes / Constraints:**
+  - M2 keybinding support is basic — a keybinding map from key combos to command IDs
+  - A full keybinding resolution system with chords and contexts is deferred to a later milestone
+  - Keybindings should integrate with M1's `CommandPalette` display
+
+**Task 5.3 – Implement Menu Contribution Processing**
+- **Task Description:** Process the `contributes.menus` section from tool manifests to place commands in menus.
+- **Output:** Menu contribution processor and basic menu rendering system.
+- **Completion Criteria:**
+  - Manifest `contributes.menus` schema: `{ "commandPalette": [{ "command": "id", "when": "clause" }], "view/title": [{ "command": "id", "group": "navigation" }], "view/context": [{ "command": "id", "when": "clause" }] }`
+  - Menu items are conditional on when clauses
+  - `commandPalette` menu controls whether a command appears in the palette (can hide built-in commands from palette)
+  - `view/title` adds action buttons to view title bars
+  - `view/context` adds items to view right-click context menus
+  - Menu items are sorted by `group` and `order` properties
+- **Notes / Constraints:**
+  - Reference only:
+    - VS Code's menu contribution point: https://code.visualstudio.com/api/references/contribution-points#contributes.menus
+  - M2 implements a basic menu system — full theming and nested submenus are deferred
+  - Context menus are triggered by right-click events on view containers
+
+---
+
+## Capability 6 – Declarative View and ViewContainer Contribution
+
+### Capability Description
+Tools can contribute views and view containers through their manifest's `contributes` section. Contributed views integrate with the M1 view system (ViewDescriptor, ViewManager, ViewContainer) and are rendered in the appropriate workbench parts.
+
+### Goals
+- Tools declare views and view containers in their manifest
+- Views are created lazily when their container becomes visible
+- View containers route to sidebar, panel, or auxiliary bar as declared
+- Tools implement view content through the API's view provider pattern
+- When clauses control view visibility
+
+### Conceptual Responsibilities
+- Process `contributes.viewsContainers` from manifests
+- Process `contributes.views` from manifests
+- Create view descriptors and register with ViewManager
+- Implement view provider pattern for tool-rendered content
+- Lazy-create views when containers become visible
+- Handle view activation events
+
+### Dependencies
+- Tool API Boundary
+- Tool Lifecycle
+- View Hosting and Lifecycle (M1)
+
+### VS Code Reference
+- `src/vs/workbench/api/browser/viewsExtensionPoint.ts` — `ViewsExtensionHandler`: processes `contributes.viewsContainers` and `contributes.views`, routes to sidebar/panel/auxBar
+- `src/vs/workbench/common/views.ts` — `IViewsRegistry`, `IViewContainersRegistry`, `IViewDescriptor`, `ViewContainer`
+- `src/vs/workbench/browser/parts/views/viewDescriptorService.ts` — View descriptor management
+- DeepWiki: [Workbench Architecture → Parts Overview](https://deepwiki.com/microsoft/vscode/7-workbench-architecture) — Part structure and view hosting
+
+#### Tasks
+
+**Task 6.1 – Implement ViewContainer Contribution Processing**
+- **Task Description:** Process the `contributes.viewsContainers` section from tool manifests and register new view containers in the appropriate workbench parts.
+- **Output:** ViewContainer contribution processor.
+- **Completion Criteria:**
+  - Manifest schema: `{ "contributes": { "viewsContainers": { "sidebar": [{ "id": "myContainer", "title": "My Container", "icon": "..." }], "panel": [...], "auxiliaryBar": [...] } } }`
+  - Each declared container is registered with the M1 `PartRegistry` / view container system
+  - Container location (sidebar, panel, auxiliaryBar) determines which part hosts it
+  - Container has an icon and title for the activity bar entry
+  - Container is created lazily (no DOM until first view is shown)
+  - Container contributed by a tool is removed when the tool is deactivated
+- **Notes / Constraints:**
+  - Reference only:
+    - `src/vs/workbench/api/browser/viewsExtensionPoint.ts` — `ViewsExtensionHandler` class, `handleAndRegisterCustomViewContainers()`
+  - Sidebar containers get an activity bar icon; panel containers get a tab; auxiliary bar containers get a secondary activity bar icon
+  - Built-in containers from M1 (explorer, terminal, etc.) remain; tool-contributed containers are additive
+
+**Task 6.2 – Implement View Contribution Processing**
+- **Task Description:** Process the `contributes.views` section from tool manifests and register view descriptors.
+- **Output:** View contribution processor.
+- **Completion Criteria:**
+  - Manifest schema: `{ "contributes": { "views": { "myContainer": [{ "id": "myView", "name": "My View", "when": "when clause", "icon": "..." }] } } }`
+  - Views are keyed by container ID (referencing a built-in or tool-contributed container)
+  - Each view becomes a `ViewDescriptor` registered with `ViewManager`
+  - Views specify optional `when` clause for conditional visibility
+  - Views are created lazily when their container is first shown
+  - The view's actual content is provided by a `ViewProvider` registered at runtime via the API
+- **Notes / Constraints:**
+  - Reference only:
+    - `src/vs/workbench/api/browser/viewsExtensionPoint.ts` — View descriptor creation from extension manifest
+    - `src/vs/workbench/common/views.ts` — `IViewDescriptor` interface
+  - If a view is declared but no provider is registered, show a placeholder with the view name and a message
+  - Views contributed to unknown containers log a warning
+
+**Task 6.3 – Implement View Provider Pattern**
+- **Task Description:** Implement the runtime API for tools to provide view content. A tool registers a `ViewProvider` that the shell calls to render view content.
+- **Output:** `IViewProvider` interface and `registerViewProvider()` API method.
+- **Completion Criteria:**
+  - `IViewProvider` interface: `{ resolveView(viewId: string, container: HTMLElement): void | Disposable }`
+  - Tools call `parallx.views.registerViewProvider(viewId, provider)` during activation
+  - When the shell needs to show the view, it calls `provider.resolveView(viewId, container)`
+  - The tool renders its UI into the provided `container` element
+  - Provider registration returns a `Disposable` for cleanup
+  - If a provider is registered before the view is shown, the view is rendered on first show
+  - If a provider is registered after the view is already showing, the view is immediately rendered
+- **Notes / Constraints:**
+  - This is the primary mechanism for tools to create UI — they receive a DOM container and own its contents
+  - The shell does not interpret or manage the tool's DOM — the tool has full control within its container
+  - View providers should handle `layout(width, height)` calls for responsive behavior
+
+**Task 6.4 – Implement Activity Bar Integration**
+- **Task Description:** Extend the M1 sidebar activity bar to display icons for tool-contributed view containers.
+- **Output:** Dynamic activity bar population from registered view containers.
+- **Completion Criteria:**
+  - Activity bar shows icons for all registered sidebar view containers
+  - Clicking an activity bar icon switches the sidebar to that container's views
+  - Active container is visually indicated (highlighted icon)
+  - Activity bar updates dynamically when tools contribute or remove containers
+  - Ordering respects a priority value from the manifest (lower = higher position)
+  - Built-in containers appear first; tool-contributed containers appear below
+- **Notes / Constraints:**
+  - M1's sidebar already has a basic activity bar; this task extends it for dynamic population
+  - Icon format in M2: simple text/emoji or class name reference (full icon theming deferred)
+
+---
+
+## Capability 7 – Built-In Tools
+
+### Capability Description
+A small set of built-in tools ship with Parallx to validate the tool system end-to-end and provide baseline functionality. Built-in tools use the exact same manifest and API as external tools — no special-casing. They serve as reference implementations and smoke tests for Capabilities 1–6.
+
+### Goals
+- At least 2 built-in tools that exercise the full contribution surface
+- Built-in tools use `parallx-manifest.json` and the `parallx` API exclusively
+- Built-in tools demonstrate views, commands, configuration, and state
+- Built-in tools serve as documentation by example for tool authors
+
+### Conceptual Responsibilities
+- Provide reference tool implementations
+- Exercise all contribution points (views, commands, config, menus)
+- Validate the full tool lifecycle (discovery → activation → runtime → deactivation)
+- Provide baseline utility to an empty Parallx workbench
+
+### Dependencies
+- All of Capabilities 1–6
+
+#### Tasks
+
+**Task 7.1 – Implement Welcome Tool**
+- **Task Description:** Create a built-in "Welcome" tool that contributes a welcome view to the editor area, showing getting-started content and recent workspaces.
+- **Output:** Complete Welcome tool with manifest, entry point, and view provider.
+- **Completion Criteria:**
+  - `parallx-manifest.json` declares: identity, `onStartupFinished` activation, contributes a view, contributes commands
+  - Entry point exports `activate(parallx, context)` and `deactivate()`
+  - View renders a welcome page with Parallx logo/name, version, links, and recent workspace list
+  - Contributes `welcome.openWelcome` command to show the welcome view
+  - Uses `context.globalState` to track whether this is the first launch (show welcome automatically on first launch)
+  - View content is plain DOM (no framework)
+- **Notes / Constraints:**
+  - This tool validates: manifest loading, activation events, editor opening API, command contribution, Memento state
+  - The welcome view opens in the editor area as an editor tab via `parallx.editors.openEditor()` (uses `EditorInput` + `EditorPane` from M1)
+  - Keep content simple and structural — it demonstrates the system, not a polished UX
+
+**Task 7.2 – Implement Output Tool**
+- **Task Description:** Create a built-in "Output" tool that contributes an output panel view showing log messages from tools and the shell.
+- **Output:** Complete Output tool with manifest, entry point, and view provider.
+- **Completion Criteria:**
+  - `parallx-manifest.json` declares: identity, `onStartupFinished` activation, contributes a panel view, contributes commands
+  - Entry point exports `activate(parallx, context)` and `deactivate()`
+  - View renders a scrollable log viewer in the panel area
+  - Contributes `output.clear` command to clear the log
+  - Contributes `output.toggleTimestamps` command to show/hide timestamps
+  - Exposes an output channel pattern: tools can write to named output channels via `parallx.window.createOutputChannel(name)`
+  - Uses `context.workspaceState` to persist view settings (timestamp visibility, scroll position)
+- **Notes / Constraints:**
+  - This tool validates: panel view contribution, commands, workspace state, tool-to-tool communication via API
+  - Output channel API: `parallx.window.createOutputChannel(name)` returns `{ appendLine(msg), clear(), show(), dispose() }`
+  - Log entries are in-memory (not persisted) — configuration for persistence is a future feature
+
+**Task 7.3 – Implement Tool Gallery View**
+- **Task Description:** Create a built-in "Tools" view that shows all registered tools, their status, and contribution summary — analogous to VS Code's Extensions view.
+- **Output:** Complete Tools tool with manifest, entry point, and view provider.
+- **Completion Criteria:**
+  - `parallx-manifest.json` declares: identity, `onStartupFinished` activation, contributes a sidebar view container and view
+  - Entry point exports `activate(parallx, context)` and `deactivate()`
+  - View renders a list of all registered tools with: name, version, status (activated/deactivated/error), contribution summary
+  - Clicking a tool shows detail (manifest info, contributed views, commands, configuration)
+  - View updates dynamically when tools are activated or deactivated
+  - Contributes `tools.showInstalled` command to focus the tools view
+- **Notes / Constraints:**
+  - This tool validates: sidebar view container contribution, dynamic data rendering, registry querying
+  - This is a read-only view in M2 (no install/uninstall actions — marketplace is deferred)
+  - Tool list is fetched from ToolRegistry via `parallx.tools.getAll()` and `parallx.tools.getById(id)`
+
+---
+
+## File Structure Additions
+
+The following files and directories are added in Milestone 2. Existing M1 files are unchanged unless noted as modified.
+
+```txt
+src/
+├─ tools/                        # Tool system infrastructure
+│  ├─ toolManifest.ts            # IToolManifest interface, manifest types
+│  ├─ toolManifestValidator.ts   # Manifest validation logic
+│  ├─ toolScanner.ts             # Filesystem tool discovery
+│  ├─ toolRegistry.ts            # Central tool registry
+│  ├─ toolModuleLoader.ts        # Dynamic import() loader for tool entry points
+│  ├─ toolActivator.ts           # Activation/deactivation lifecycle
+│  ├─ toolErrorBoundary.ts       # Error isolation and reporting
+│  ├─ toolTypes.ts               # Tool state enums, ActivatedTool, etc.
+│  └─ activationEvents.ts        # Activation event monitoring
+│
+├─ api/                          # Tool API boundary
+│  ├─ parallx.d.ts               # Public API type definitions
+│  ├─ apiFactory.ts              # Per-tool API object factory
+│  ├─ apiBridge.ts               # API-to-service bridge coordinator
+│  ├─ bridges/
+│  │  ├─ viewsBridge.ts          # parallx.views → ViewManager
+│  │  ├─ commandsBridge.ts       # parallx.commands → CommandService
+│  │  ├─ windowBridge.ts         # parallx.window → notification/dialog system
+│  │  ├─ contextBridge.ts        # parallx.context → ContextKeyService
+│  │  ├─ workspaceBridge.ts      # parallx.workspace → ConfigurationService
+│  │  ├─ editorsBridge.ts        # parallx.editors → EditorService/EditorGroupService
+│  │  └─ toolsBridge.ts          # parallx.tools → ToolRegistry (read-only)
+│  ├─ apiVersion.ts              # Version compatibility checking
+│  └─ notifications.ts           # Toast/notification overlay UI
+│
+├─ configuration/                # Configuration system
+│  ├─ configurationService.ts    # Configuration read/write/events
+│  ├─ configurationRegistry.ts   # Schema registration from manifests
+│  ├─ configurationTypes.ts      # Configuration-related types
+│  └─ toolMemento.ts             # Per-tool Memento implementation
+│
+├─ contributions/                # Contribution point processors
+│  ├─ commandContribution.ts     # contributes.commands processor
+│  ├─ viewContribution.ts        # contributes.views + viewsContainers processor
+│  ├─ keybindingContribution.ts  # contributes.keybindings processor
+│  ├─ menuContribution.ts        # contributes.menus processor
+│  └─ contributionTypes.ts       # Shared contribution types
+│
+├─ built-in/                     # Built-in tools (each is a self-contained tool)
+│  ├─ welcome/
+│  │  ├─ parallx-manifest.json   # Welcome tool manifest
+│  │  └─ main.ts                 # Welcome tool entry point
+│  ├─ output/
+│  │  ├─ parallx-manifest.json   # Output tool manifest
+│  │  └─ main.ts                 # Output tool entry point
+│  └─ tool-gallery/
+│     ├─ parallx-manifest.json   # Tool Gallery manifest
+│     └─ main.ts                 # Tool Gallery entry point
+│
+├─ services/
+│  ├─ toolService.ts             # IToolService interface + implementation (NEW)
+│  └─ configurationService.ts    # IConfigurationService re-export (NEW)
+│
+└─ main.ts                       # (MODIFIED) Boot sequence includes tool system init
+```
+
+---
+
+## Testing Strategy
+
+### Unit Tests
+- **Tool Manifest Validator:** Test with valid, invalid, missing-field, and extra-field manifests
+- **Tool Registry:** Test registration, duplicate rejection, state transitions, queries
+- **API Factory:** Test per-tool scoping, API freeze, post-deactivation access rejection
+- **Version Compatibility:** Test semver range matching for `engines.parallx`
+- **Configuration Service:** Test get/set/defaults/events with tool-scoped configurations
+- **Memento Storage:** Test get/set/keys/namespacing for global and workspace scopes
+- **Activation Events:** Test event firing, deduplication, queuing, replay
+- **When Clause:** Test command enablement and view visibility with contributed when clauses
+
+### Integration Tests
+- **Full Tool Lifecycle:** Load manifest → register → activate via event → run command → deactivate → verify cleanup
+- **Multi-Tool Interaction:** Two tools contribute commands and views; verify no cross-contamination
+- **Error Isolation:** Tool A throws in activate(); verify Tool B still activates and runs correctly
+- **Workspace Switching:** Activate tools → switch workspace → verify workspace state isolates per-tool
+- **Contribution Processing:** Load manifest with views, commands, and configuration → verify all contributions appear in shell
+
+### Manual Verification
+- **Built-In Tools:** Start Parallx → Welcome tool opens → Output panel shows logs → Tools view lists all tools
+- **Command Palette:** Open palette → tool-contributed commands appear with proper titles and keybindings
+- **Activity Bar:** Tool-contributed sidebar container appears with icon → clicking navigates to views
+- **View Lifecycle:** Navigate away from tool view → navigate back → view is restored (not recreated)
+- **Error Handling:** Introduce a syntax error in a tool → shell starts cleanly → error is reported in output
+
+---
+
+## Success Criteria
+
+| # | Criterion | Description |
+|---|-----------|-------------|
+| **0** | **M1 Gap Cleanup** | |
+| 0a | All stub command handlers are wired to real implementations | No stub log messages; `splitEditor`, `splitEditorOrthogonal`, `view.moveToSidebar`, `view.moveToPanel`, `part.resize` all functional |
+| 0b | Empty service facades are resolved | Each facade file is populated or removed; no comment-only placeholders |
+| 0c | Dead file removed; build passes | `context/contextKeyService.ts` deleted; all imports redirected; zero build errors |
+| **1** | **Tool Discovery** | |
+| 1a | Tool manifests are discovered from configured directories | Scanner finds and parses `parallx-manifest.json` files |
+| 1b | Invalid manifests produce clear errors without crashing | Validation reports field-level errors; shell continues |
+| 1c | Tool registry tracks all discovered tools and their state | Registry queryable by ID, state, contribution type |
+| **2** | **API Boundary** | |
+| 2a | Tools receive a scoped, frozen API object on activation | Each tool gets its own API; `Object.freeze()` prevents tampering |
+| 2b | API provides access to views, commands, context, configuration, editors, and tools | All M2 API namespaces are functional |
+| 2c | API calls after deactivation throw clear errors | Post-disposal access is caught and reported |
+| 2d | API version is validated against manifest requirement | Incompatible tools are rejected with version mismatch error |
+| **3** | **Tool Lifecycle** | |
+| 3a | Tools activate lazily in response to activation events | `onCommand`, `onView`, `onStartupFinished` all trigger activation |
+| 3b | Activation failures are isolated and reported | Failed tool is marked as errored; other tools unaffected |
+| 3c | Deactivation disposes all tool resources | Commands, views, context keys, subscriptions all cleaned up |
+| 3d | Tool error in runtime does not crash shell | Try/catch on all tool-originated calls |
+| **4** | **Configuration and State** | |
+| 4a | Tools have global and workspace-scoped Memento storage | `get`/`update`/`keys` work for both scopes |
+| 4b | Tools can contribute configuration schemas | Settings declared in manifest are registered and queryable |
+| 4c | Configuration changes fire events | `onDidChangeConfiguration` notifies relevant tools |
+| **5** | **Command Contribution** | |
+| 5a | Tool-declared commands appear in command palette | Title, category, and keybinding are displayed |
+| 5b | Keybindings trigger contributed commands | Keyboard shortcut executes the correct command |
+| 5c | Menu contributions place commands in view title bars | `view/title` menu items render as action buttons |
+| **6** | **View Contribution** | |
+| 6a | Tool-declared view containers appear in activity bar | Container icon and title are shown |
+| 6b | Tool-declared views render in their target containers | View provider content appears in the correct part |
+| 6c | Views with when clauses are conditionally visible | View hides/shows as context changes |
+| **7** | **Built-In Tools** | |
+| 7a | Welcome tool activates and opens welcome editor tab | Welcome page renders in editor area via `parallx.editors.openEditor()` |
+| 7b | Output tool captures log messages in panel | Output channel messages appear in scrollable log |
+| 7c | Tool Gallery view lists all registered tools | List shows name, version, status for each tool |
+| **8** | **Quality** | |
+| 8a | No console errors in normal operation | Clean startup with all built-in tools |
+| 8b | No memory leaks from tool activation/deactivation cycles | Repeated activate/deactivate doesn't grow memory |
+| 8c | Tool system initialization adds < 50ms to startup | Tool scanning and registration is fast |
+| 8d | Code follows architectural boundaries | Tools cannot import from `src/` internals; only from API |
+
+---
+
+## VS Code Source References (Curated for Parallx)
+
+These references were selected for their relevance to Parallx's structural shell and tool-hosting model. Code-IDE-specific features (languages, text editing, debugging, SCM, etc.) are intentionally excluded.
+
+1. **Extension Description / Manifest** — `src/vs/platform/extensions/common/extensions.ts`
+   - `IExtensionDescription` interface — Parallx equivalent is `IToolManifest`
+   - Extension identity, activation events, contribution points
+
+2. **Extension Description Registry** — `src/vs/workbench/services/extensions/common/extensionDescriptionRegistry.ts`
+   - Centralized extension metadata storage — Parallx equivalent is `ToolRegistry`
+   - Lookup by ID, activation event mapping
+
+3. **Extension Activation** — `src/vs/workbench/api/common/extHostExtensionActivator.ts`
+   - `ExtensionsActivator.activateByEvent()` — Event-driven lazy activation
+   - `ActivationOperation` class — Error isolation per extension
+   - Dependency-ordered activation (deferred for Parallx M2)
+
+4. **Extension Service** — `src/vs/workbench/api/common/extHostExtensionService.ts`
+   - `_loadExtensionModule()` — Dynamic module loading
+   - Activation context creation (`ExtensionContext`)
+   - Deactivation with dispose-all-subscriptions
+
+5. **API Factory** — `src/vs/workbench/api/common/extHost.api.impl.ts`
+   - `createApiFactoryAndRegisterActors()` — Creates fresh API object per extension
+   - Namespace structure (`commands`, `window`, `workspace`, etc.)
+   - Per-extension scoping of `registerCommand`, `registerProvider`, etc.
+
+6. **View Contribution Extension Point** — `src/vs/workbench/api/browser/viewsExtensionPoint.ts`
+   - `ViewsExtensionHandler` — Processes `contributes.viewsContainers` and `contributes.views`
+   - Routes view containers to sidebar, panel, or auxiliary bar
+   - Creates `ViewDescriptor` from manifest JSON
+
+7. **Views Registry** — `src/vs/workbench/common/views.ts`
+   - `IViewsRegistry`, `IViewContainersRegistry` — Centralized view metadata
+   - `IViewDescriptor` — View metadata with when clause, icon, container routing
+
+8. **Extension Host Manager** — `src/vs/workbench/services/extensions/common/extensionHostManager.ts`
+   - Process boundary management (not needed in M2 but architecturally relevant for future isolation)
+
+9. **Memento** — `src/vs/workbench/common/memento.ts`
+   - Scoped storage for extensions — pattern for Parallx's `ToolMemento`
+
+10. **Workbench Architecture** — DeepWiki: [Workbench Architecture](https://deepwiki.com/microsoft/vscode/7-workbench-architecture)
+    - Parts overview, layout system, state persistence, context keys
+    - Relevant for understanding how tool-contributed views integrate with the shell
+
+11. **Extension System** — DeepWiki: [Extension System](https://deepwiki.com/microsoft/vscode/8-extension-system)
+    - Process architecture, RPC protocol, API surface, lifecycle, storage
+    - Primary reference for Parallx's tool system design (filtered for structural relevance)
+
+---
+
+## Notes
+
+- This milestone transforms Parallx from a passive shell into an active tool-hosting platform. The key deliverable is the API boundary — everything else supports it.
+- Tools run in-process in M2. Process isolation (like VS Code's Extension Host) is a future milestone. The API boundary is designed so that adding isolation later requires no changes to tool code.
+- Built-in tools are first-class citizens — they use the same manifest and API as external tools. If a built-in tool can't be built with the public API, the API is incomplete.
+- The `parallx.d.ts` file should be treated as a public contract. Breaking changes require a major version bump.
+- Do not build a tool marketplace, installer, or update mechanism in M2. Tool installation is manual (copy files to a directory).
+- Focus on correctness and clean API design over broad feature coverage. A small, correct API is better than a large, leaky one.
+- Reference VS Code source as inspiration, but adapt patterns for Parallx's simpler, non-IDE model. Most VS Code complexity comes from language features, remote hosting, and web compatibility — none of which apply to Parallx in M2.
+
