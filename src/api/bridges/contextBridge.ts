@@ -41,7 +41,7 @@ export class ContextBridge {
     const apiHandle = {
       get key() { return fullKey; },
       get(): T { return handle.get() as T; },
-      set(value: T): void { handle.set(value as ContextKeyValue); },
+      set(value: T): void { handle.set(value); },
       reset(): void { handle.reset(); },
     };
 

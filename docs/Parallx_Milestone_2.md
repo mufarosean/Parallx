@@ -117,6 +117,17 @@ None — this is prerequisite work.
   - ✅ No imports referenced the dead file (confirmed via grep); `services/contextKeyService.ts` and `context/contextKey.ts` already used by all consumers
   - ✅ Build succeeds with zero errors (esbuild bundle builds successfully)
 
+**Task 0.4 – Fix All Pre-existing TypeScript Errors** ✅
+- **Task Description:** Resolve all 7 TypeScript strict-mode errors across 4 files so `npx tsc --noEmit` reports zero errors.
+- **Output:** Clean TypeScript compilation (zero errors, zero warnings).
+- **Completion Criteria:**
+  - ✅ `editorGroup.ts`: `EditorOpenOptions` and `EditorCloseOptions` re-exported with `export type` (required by `isolatedModules`)
+  - ✅ `contextBridge.ts`: removed unnecessary `as ContextKeyValue` cast in `handle.set(value)` — `value` is already `T extends ContextKeyValue`
+  - ✅ `notificationService.ts`: wrapped Promise `resolve` callback in a `resolveWrapper` that adapts `NotificationResult` → `NotificationAction | undefined`
+  - ✅ `apiFactory.ts`: imported `ContextKeyValue` type and aligned `ParallxApiObject.context` API surface to use `ContextKeyValue` instead of narrower `string | number | boolean | undefined`
+  - ✅ `viewsBridge.ts`: made `ViewProviderOptions.name` optional (API shape already declared it optional; fallback to `viewId` already existed)
+  - ✅ `npx tsc --noEmit` produces zero errors
+
 ---
 
 ## Capability 1 – Tool Manifest and Registry

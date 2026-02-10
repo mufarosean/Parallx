@@ -10,14 +10,14 @@ export { EditorInput, PlaceholderEditorInput } from './editorInput.js';
 export { EditorPane, PlaceholderEditorPane } from './editorPane.js';
 export type { EditorPaneViewState, IEditorPane } from './editorPane.js';
 export {
-  EditorOpenOptions,
   EditorActivation,
-  EditorCloseOptions,
   GroupDirection,
   EditorGroupChangeKind,
   EDITOR_TAB_DRAG_TYPE,
 } from './editorTypes.js';
 export type {
+  EditorOpenOptions,
+  EditorCloseOptions,
   SerializedEditorEntry,
   SerializedEditorGroup,
   EditorTabDragData,

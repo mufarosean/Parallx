@@ -18,7 +18,7 @@ export interface ToolViewProvider {
 }
 
 export interface ViewProviderOptions {
-  readonly name: string;
+  readonly name?: string;
   readonly icon?: string;
   readonly defaultContainerId?: string;
   readonly when?: string;

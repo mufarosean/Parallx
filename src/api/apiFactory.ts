@@ -15,6 +15,7 @@ import {
   IContextKeyService,
   IEditorService,
 } from '../services/serviceTypes.js';
+import type { ContextKeyValue } from '../context/contextKey.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { ToolRegistry, IToolEntry } from '../tools/toolRegistry.js';
 import { PARALLX_VERSION } from './apiVersionValidation.js';
@@ -69,8 +70,8 @@ export interface ParallxApiObject {
     createOutputChannel(name: string): IDisposable & { name: string; append(v: string): void; appendLine(v: string): void; clear(): void; show(): void; hide(): void };
   };
   readonly context: {
-    createContextKey<T extends string | number | boolean | undefined>(name: string, defaultValue: T): { key: string; get(): T; set(value: T): void; reset(): void };
-    getContextValue(name: string): string | number | boolean | undefined;
+    createContextKey<T extends ContextKeyValue>(name: string, defaultValue: T): { key: string; get(): T; set(value: T): void; reset(): void };
+    getContextValue(name: string): ContextKeyValue;
   };
   readonly workspace: {
     getConfiguration(section?: string): { get<T>(key: string, defaultValue?: T): T | undefined; has(key: string): boolean };

@@ -95,12 +95,13 @@ export class NotificationService extends Disposable {
     const notification: INotification = { id, severity, message, actions, source };
 
     return new Promise<NotificationAction | undefined>(resolve => {
-      const element = this._createNotificationElement(notification, resolve);
+      const resolveWrapper = (result: NotificationResult) => resolve(result.action);
+      const element = this._createNotificationElement(notification, resolveWrapper);
 
       this._activeNotifications.set(id, {
         element,
         timer: timeoutMs > 0 ? setTimeout(() => this._dismiss(id, undefined), timeoutMs) : undefined,
-        resolve,
+        resolve: resolveWrapper,
       });
 
       if (this._container) {
