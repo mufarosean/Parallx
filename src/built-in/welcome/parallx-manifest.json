@@ -1,0 +1,19 @@
+{
+  "manifestVersion": 1,
+  "id": "parallx.welcome",
+  "name": "Welcome",
+  "version": "1.0.0",
+  "publisher": "parallx",
+  "description": "Welcome page for Parallx — shows getting-started content and recent workspaces.",
+  "main": "./main.js",
+  "engines": { "parallx": "^0.1.0" },
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "welcome.openWelcome",
+        "title": "Welcome: Show Welcome Page"
+      }
+    ]
+  }
+}

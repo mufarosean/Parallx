@@ -107,6 +107,12 @@ import type { MenuContributionProcessor } from '../contributions/menuContributio
 // View Contribution (M2 Capability 6)
 import { ViewContributionProcessor } from '../contributions/viewContribution.js';
 import type { IContributedContainer, IContributedView } from '../contributions/viewContribution.js';
+
+// Built-in Tools (M2 Capability 7)
+import * as WelcomeTool from '../built-in/welcome/main.js';
+import * as OutputTool from '../built-in/output/main.js';
+import * as ToolGalleryTool from '../built-in/tool-gallery/main.js';
+import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 // ── Layout constants ──
 
 const TITLE_HEIGHT = 30;
@@ -1398,10 +1404,109 @@ export class Workbench extends Disposable {
       this._commandPalette.setKeybindingContribution(keybindingContribution);
     }
 
+    // ── Register and activate built-in tools (M2 Capability 7) ──
+    this._registerAndActivateBuiltinTools(registry, activationEvents);
+
     // Fire startup finished — triggers * and onStartupFinished activation events
     activationEvents.fireStartupFinished();
 
     console.log('[Workbench] Tool lifecycle initialized (with contribution processors)');
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Built-in Tools (M2 Capability 7)
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Register built-in tools in the registry and activate them using
+   * pre-imported modules. Called before fireStartupFinished() so built-in
+   * tools are ready when the workbench becomes interactive.
+   */
+  private _registerAndActivateBuiltinTools(
+    registry: ToolRegistry,
+    activationEvents: ActivationEventService,
+  ): void {
+    const builtins: { manifest: IToolManifest; module: { activate: Function; deactivate?: Function } }[] = [
+      {
+        manifest: {
+          manifestVersion: 1,
+          id: 'parallx.welcome',
+          name: 'Welcome',
+          version: '1.0.0',
+          publisher: 'parallx',
+          description: 'Welcome page — shows getting-started content and recent workspaces.',
+          main: './main.js',
+          engines: { parallx: '^0.1.0' },
+          activationEvents: ['onStartupFinished'],
+          contributes: {
+            commands: [{ id: 'welcome.openWelcome', title: 'Welcome: Show Welcome Page' }],
+          },
+        },
+        module: WelcomeTool,
+      },
+      {
+        manifest: {
+          manifestVersion: 1,
+          id: 'parallx.output',
+          name: 'Output',
+          version: '1.0.0',
+          publisher: 'parallx',
+          description: 'Output panel — shows log messages from tools and the shell.',
+          main: './main.js',
+          engines: { parallx: '^0.1.0' },
+          activationEvents: ['onStartupFinished'],
+          contributes: {
+            commands: [
+              { id: 'output.clear', title: 'Output: Clear Log' },
+              { id: 'output.toggleTimestamps', title: 'Output: Toggle Timestamps' },
+            ],
+            views: [{ id: 'view.output', name: 'Output', defaultContainerId: 'panel' }],
+          },
+        },
+        module: OutputTool,
+      },
+      {
+        manifest: {
+          manifestVersion: 1,
+          id: 'parallx.tool-gallery',
+          name: 'Tools',
+          version: '1.0.0',
+          publisher: 'parallx',
+          description: 'Tool Gallery — shows all registered tools, their status, and contributions.',
+          main: './main.js',
+          engines: { parallx: '^0.1.0' },
+          activationEvents: ['onStartupFinished'],
+          contributes: {
+            commands: [{ id: 'tools.showInstalled', title: 'Tools: Show Installed Tools' }],
+            viewContainers: [
+              { id: 'tools-container', title: 'Tools', icon: '🧩', location: 'sidebar' as const },
+            ],
+            views: [{ id: 'view.tools', name: 'Installed Tools', defaultContainerId: 'tools-container' }],
+          },
+        },
+        module: ToolGalleryTool,
+      },
+    ];
+
+    for (const { manifest, module } of builtins) {
+      const description: IToolDescription = {
+        manifest,
+        toolPath: `built-in/${manifest.id}`,
+        isBuiltin: true,
+      };
+
+      try {
+        registry.register(description);
+        // Register activation events so the system knows about them
+        activationEvents.registerToolEvents(manifest.id, manifest.activationEvents);
+        // Activate immediately using the pre-imported module (no module loader)
+        this._toolActivator.activateBuiltin(manifest.id, module as any).catch((err) => {
+          console.error(`[Workbench] Failed to activate built-in tool "${manifest.id}":`, err);
+        });
+      } catch (err) {
+        console.error(`[Workbench] Failed to register built-in tool "${manifest.id}":`, err);
+      }
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════

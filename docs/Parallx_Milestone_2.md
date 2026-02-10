@@ -780,7 +780,7 @@ A small set of built-in tools ship with Parallx to validate the tool system end-
 
 #### Tasks
 
-**Task 7.1 – Implement Welcome Tool**
+**Task 7.1 – Implement Welcome Tool** ✅
 - **Task Description:** Create a built-in "Welcome" tool that contributes a welcome view to the editor area, showing getting-started content and recent workspaces.
 - **Output:** Complete Welcome tool with manifest, entry point, and view provider.
 - **Completion Criteria:**
@@ -794,8 +794,10 @@ A small set of built-in tools ship with Parallx to validate the tool system end-
   - This tool validates: manifest loading, activation events, editor opening API, command contribution, Memento state
   - The welcome view opens in the editor area as an editor tab via `parallx.editors.openEditor()` (uses `EditorInput` + `EditorPane` from M1)
   - Keep content simple and structural — it demonstrates the system, not a polished UX
+- **Implementation Notes:** `src/built-in/welcome/main.ts` — registers EditorProvider (EDITOR_TYPE_ID `parallx.welcome.editor`), contributes `welcome.openWelcome` command. Uses `context.globalState` with `welcome.hasShownWelcome` key to auto-open on first launch. Plain DOM with logo, version, getting-started items, footer.
+- **Deviation:** Built-in tools are statically imported and activated via `ToolActivator.activateBuiltin()` (bypasses ToolModuleLoader) since esbuild IIFE bundles can't dynamically import bundled modules. Manifests are defined inline in workbench.ts. The manifest JSON files still exist as reference documentation.
 
-**Task 7.2 – Implement Output Tool**
+**Task 7.2 – Implement Output Tool** ✅
 - **Task Description:** Create a built-in "Output" tool that contributes an output panel view showing log messages from tools and the shell.
 - **Output:** Complete Output tool with manifest, entry point, and view provider.
 - **Completion Criteria:**
@@ -810,8 +812,9 @@ A small set of built-in tools ship with Parallx to validate the tool system end-
   - This tool validates: panel view contribution, commands, workspace state, tool-to-tool communication via API
   - Output channel API: `parallx.window.createOutputChannel(name)` returns `{ appendLine(msg), clear(), show(), dispose() }`
   - Log entries are in-memory (not persisted) — configuration for persistence is a future feature
+- **Implementation Notes:** `src/built-in/output/main.ts` — registers panel view provider for `view.output` (defaultContainerId: panel). Intercepts `console.log/warn/error` to capture tool and shell output. Toolbar with timestamp toggle and clear button. Capped at 1000 entries. Uses `context.workspaceState` for `output.showTimestamps`. Creates own output channel via `api.window.createOutputChannel('Output Tool')`.
 
-**Task 7.3 – Implement Tool Gallery View**
+**Task 7.3 – Implement Tool Gallery View** ✅
 - **Task Description:** Create a built-in "Tools" view that shows all registered tools, their status, and contribution summary — analogous to VS Code's Extensions view.
 - **Output:** Complete Tools tool with manifest, entry point, and view provider.
 - **Completion Criteria:**
@@ -825,6 +828,7 @@ A small set of built-in tools ship with Parallx to validate the tool system end-
   - This tool validates: sidebar view container contribution, dynamic data rendering, registry querying
   - This is a read-only view in M2 (no install/uninstall actions — marketplace is deferred)
   - Tool list is fetched from ToolRegistry via `parallx.tools.getAll()` and `parallx.tools.getById(id)`
+- **Implementation Notes:** `src/built-in/tool-gallery/main.ts` — contributes `tools-container` sidebar view container (icon 🧩) and `view.tools` view. Renders a scrollable tool list from `api.tools.getAll()` with name, version, built-in badge, and description. Click shows detail panel with ID, publisher, path. Manual refresh button. Uses Cap 6 activity bar integration to add a sidebar icon.
 
 ---
 

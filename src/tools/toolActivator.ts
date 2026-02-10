@@ -17,7 +17,7 @@ import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js'
 import { Emitter, Event } from '../platform/events.js';
 import { IStorage } from '../platform/storage.js';
 import { ToolRegistry, ToolState } from './toolRegistry.js';
-import { ToolModuleLoader, ToolModule, ToolContext, Memento } from './toolModuleLoader.js';
+import { ToolModuleLoader, ToolModule, ToolContext, Memento, ActivateFunction, DeactivateFunction } from './toolModuleLoader.js';
 import { ToolErrorService } from './toolErrorIsolation.js';
 import { ActivationEventService } from './activationEventService.js';
 import { createToolApi, ApiFactoryDependencies, ParallxApiObject } from '../api/apiFactory.js';
@@ -247,6 +247,88 @@ export class ToolActivator extends Disposable {
     this._activationEvents.markActivated(toolId);
 
     console.log(`[ToolActivator] Tool "${toolId}" activated in ${duration.toFixed(1)}ms`);
+    this._onDidActivate.fire({ toolId, success: true, durationMs: duration });
+
+    return true;
+  }
+
+  // ── Built-in Activation ──
+
+  /**
+   * Activate a built-in tool using a pre-imported module.
+   *
+   * Built-in tools are bundled with the renderer — they can't be loaded
+   * via dynamic import() in an IIFE bundle. This method is identical to
+   * `activate()` except it skips the ToolModuleLoader step.
+   *
+   * @param toolId The tool's ID (must be registered in the registry).
+   * @param moduleExports An object with `activate` (required) and optional `deactivate`.
+   */
+  async activateBuiltin(
+    toolId: string,
+    moduleExports: { activate: ActivateFunction; deactivate?: DeactivateFunction },
+  ): Promise<boolean> {
+    const startTime = performance.now();
+
+    const entry = this._registry.getById(toolId);
+    if (!entry) {
+      console.error(`[ToolActivator] Cannot activate unknown built-in tool: "${toolId}"`);
+      return false;
+    }
+
+    if (this._activatedTools.has(toolId)) {
+      console.warn(`[ToolActivator] Built-in tool "${toolId}" is already activated`);
+      return true;
+    }
+
+    if (entry.state !== ToolState.Registered && entry.state !== ToolState.Deactivated) {
+      console.error(`[ToolActivator] Cannot activate built-in tool "${toolId}" in state: ${entry.state}`);
+      return false;
+    }
+
+    this._safeSetState(toolId, ToolState.Activating);
+
+    // Wrap module exports as ToolModule (skip module loader)
+    const toolModule: ToolModule = {
+      activate: moduleExports.activate,
+      deactivate: moduleExports.deactivate,
+      rawModule: moduleExports as unknown as Record<string, unknown>,
+    };
+
+    const context = await this._createToolContext(entry.description);
+    const { api, dispose: disposeApi } = createToolApi(entry.description, this._apiFactoryDeps);
+
+    try {
+      const activateResult = toolModule.activate(api, context);
+      if (activateResult instanceof Promise) {
+        await activateResult;
+      }
+    } catch (err) {
+      const duration = performance.now() - startTime;
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this._errorService.recordError(toolId, err, 'activation');
+      disposeApi();
+      this._safeSetState(toolId, ToolState.Deactivated);
+      this._onDidActivate.fire({ toolId, success: false, durationMs: duration, error: errorMsg });
+      return false;
+    }
+
+    const duration = performance.now() - startTime;
+
+    this._activatedTools.set(toolId, {
+      description: entry.description,
+      module: toolModule,
+      context,
+      api,
+      disposeApi,
+      activatedAt: Date.now(),
+      activationDurationMs: duration,
+    });
+
+    this._safeSetState(toolId, ToolState.Activated);
+    this._activationEvents.markActivated(toolId);
+
+    console.log(`[ToolActivator] Built-in tool "${toolId}" activated in ${duration.toFixed(1)}ms`);
     this._onDidActivate.fire({ toolId, success: true, durationMs: duration });
 
     return true;
