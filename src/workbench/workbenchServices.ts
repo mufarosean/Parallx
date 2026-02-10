@@ -1,7 +1,7 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -14,7 +14,9 @@ import { ConfigurationService } from '../configuration/configurationService.js';
 import { CommandContributionProcessor } from '../contributions/commandContribution.js';
 import { KeybindingContributionProcessor } from '../contributions/keybindingContribution.js';
 import { MenuContributionProcessor } from '../contributions/menuContribution.js';
+import { ViewContributionProcessor } from '../contributions/viewContribution.js';
 import type { IStorage } from '../platform/storage.js';
+import type { ViewManager } from '../views/viewManager.js';
 
 /**
  * Registers all core services into the service collection.
@@ -108,4 +110,17 @@ export function registerContributionProcessors(
   services.registerInstance(IMenuContributionService, menuContribution as any);
 
   return { commandContribution, keybindingContribution, menuContribution };
+}
+
+/**
+ * Creates and registers the ViewContributionProcessor (M2 Capability 6).
+ * Called during Phase 5 after ViewManager is available.
+ */
+export function registerViewContributionProcessor(
+  services: ServiceCollection,
+  viewManager: ViewManager,
+): ViewContributionProcessor {
+  const viewContribution = new ViewContributionProcessor(viewManager);
+  services.registerInstance(IViewContributionService, viewContribution as any);
+  return viewContribution;
 }

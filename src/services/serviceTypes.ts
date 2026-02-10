@@ -425,3 +425,27 @@ export interface IMenuContributionService {
 }
 
 export const IMenuContributionService = createServiceIdentifier<IMenuContributionService>('IMenuContributionService');
+
+// ─── View Contribution (M2 Capability 6) ─────────────────────────────────────
+
+/**
+ * Service for processing view and view container contributions from tool manifests.
+ * Manages the view provider registry that bridges manifest declarations to runtime content.
+ */
+export interface IViewContributionService {
+  processContributions(toolDescription: import('../tools/toolManifest.js').IToolDescription): void;
+  removeContributions(toolId: string): void;
+  registerProvider(viewId: string, provider: { resolveView(viewId: string, container: HTMLElement): void | import('../platform/lifecycle.js').IDisposable }): import('../platform/lifecycle.js').IDisposable;
+  hasContributedView(viewId: string): boolean;
+  getContainers(): readonly { id: string; toolId: string; title: string; icon?: string; location: 'sidebar' | 'panel' | 'auxiliaryBar'; priority: number }[];
+  getContainer(containerId: string): { id: string; toolId: string; title: string; icon?: string; location: 'sidebar' | 'panel' | 'auxiliaryBar'; priority: number } | undefined;
+  getContainersForLocation(location: 'sidebar' | 'panel' | 'auxiliaryBar'): readonly { id: string; toolId: string; title: string; icon?: string; location: 'sidebar' | 'panel' | 'auxiliaryBar'; priority: number }[];
+  getViewsForContainer(containerId: string): readonly { id: string; toolId: string; name: string; containerId: string; icon?: string; when?: string }[];
+  readonly onDidAddContainer: import('../platform/events.js').Event<{ id: string; toolId: string; title: string; icon?: string; location: 'sidebar' | 'panel' | 'auxiliaryBar'; priority: number }>;
+  readonly onDidRemoveContainer: import('../platform/events.js').Event<string>;
+  readonly onDidAddView: import('../platform/events.js').Event<{ id: string; toolId: string; name: string; containerId: string; icon?: string; when?: string }>;
+  readonly onDidRemoveView: import('../platform/events.js').Event<string>;
+  readonly onDidRegisterProvider: import('../platform/events.js').Event<{ viewId: string }>;
+}
+
+export const IViewContributionService = createServiceIdentifier<IViewContributionService>('IViewContributionService');

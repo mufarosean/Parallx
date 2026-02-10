@@ -99,10 +99,14 @@ import type { ConfigurationService } from '../configuration/configurationService
 import type { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
 
 // Contribution Processors (M2 Capability 5)
-import { registerContributionProcessors } from './workbenchServices.js';
+import { registerContributionProcessors, registerViewContributionProcessor } from './workbenchServices.js';
 import type { CommandContributionProcessor } from '../contributions/commandContribution.js';
 import type { KeybindingContributionProcessor } from '../contributions/keybindingContribution.js';
 import type { MenuContributionProcessor } from '../contributions/menuContribution.js';
+
+// View Contribution (M2 Capability 6)
+import { ViewContributionProcessor } from '../contributions/viewContribution.js';
+import type { IContributedContainer, IContributedView } from '../contributions/viewContribution.js';
 // ── Layout constants ──
 
 const TITLE_HEIGHT = 30;
@@ -184,6 +188,21 @@ export class Workbench extends Disposable {
   private _commandContribution!: CommandContributionProcessor;
   private _keybindingContribution!: KeybindingContributionProcessor;
   private _menuContribution!: MenuContributionProcessor;
+
+  // View Contribution (M2 Capability 6)
+  private _viewContribution!: ViewContributionProcessor;
+  /** Tool-contributed sidebar containers (keyed by container ID). */
+  private _contributedSidebarContainers = new Map<string, ViewContainer>();
+  /** Tool-contributed panel containers (keyed by container ID). */
+  private _contributedPanelContainers = new Map<string, ViewContainer>();
+  /** Tool-contributed auxiliary bar containers (keyed by container ID). */
+  private _contributedAuxBarContainers = new Map<string, ViewContainer>();
+  /** Which sidebar container is currently active: undefined = built-in default. */
+  private _activeSidebarContainerId: string | undefined;
+  /** Activity bar separator element (between built-in and contributed items). */
+  private _activityBarSeparator: HTMLElement | undefined;
+  /** Header label element for the sidebar. */
+  private _sidebarHeaderLabel: HTMLElement | undefined;
 
   // ── Events ──
 
@@ -1074,6 +1093,10 @@ export class Workbench extends Disposable {
       btn.title = v.label;
       btn.textContent = v.icon;
       btn.addEventListener('click', () => {
+        // Switch back to built-in sidebar container if a contributed one is active
+        if (this._activeSidebarContainerId) {
+          this._switchSidebarContainer(undefined);
+        }
         container.activateView(v.id);
         this._activityBarEl.querySelectorAll('.activity-bar-item').forEach((el) =>
           el.classList.toggle('active', el === btn),
@@ -1091,6 +1114,9 @@ export class Workbench extends Disposable {
       headerLabel.classList.add('sidebar-header-label');
       headerLabel.textContent = 'EXPLORER';
       headerSlot.appendChild(headerLabel);
+
+      // Store reference for dynamic container switching (Cap 6)
+      this._sidebarHeaderLabel = headerLabel;
 
       container.onDidChangeActiveView((viewId) => {
         if (viewId) {
@@ -1305,11 +1331,17 @@ export class Workbench extends Disposable {
     this._register(keybindingContribution);
     this._register(menuContribution);
 
+    // Register view contribution processor (M2 Capability 6)
+    this._viewContribution = registerViewContributionProcessor(this._services, this._viewManager);
+    this._register(this._viewContribution);
+    this._wireViewContributionEvents();
+
     // Process contributions from already-registered tools
     for (const entry of registry.getAll()) {
       commandContribution.processContributions(entry.description);
       keybindingContribution.processContributions(entry.description);
       menuContribution.processContributions(entry.description);
+      this._viewContribution.processContributions(entry.description);
     }
 
     // Process contributions for future tool registrations
@@ -1317,10 +1349,11 @@ export class Workbench extends Disposable {
       commandContribution.processContributions(event.description);
       keybindingContribution.processContributions(event.description);
       menuContribution.processContributions(event.description);
+      this._viewContribution.processContributions(event.description);
     }));
 
-    // Build API factory dependencies (includes ConfigurationService for Cap 4
-    // and CommandContributionProcessor for Cap 5)
+    // Build API factory dependencies (includes ConfigurationService for Cap 4,
+    // CommandContributionProcessor for Cap 5, ViewContributionProcessor for Cap 6)
     const apiFactoryDeps = {
       services: this._services,
       viewManager: this._viewManager,
@@ -1329,6 +1362,7 @@ export class Workbench extends Disposable {
       workbenchContainer: this._container,
       configurationService: this._configService,
       commandContributionProcessor: commandContribution,
+      viewContributionProcessor: this._viewContribution,
     };
 
     // Storage dependencies for persistent tool mementos (Cap 4)
@@ -1355,6 +1389,7 @@ export class Workbench extends Disposable {
       commandContribution.removeContributions(event.toolId);
       keybindingContribution.removeContributions(event.toolId);
       menuContribution.removeContributions(event.toolId);
+      this._viewContribution.removeContributions(event.toolId);
     }));
 
     // Wire contribution processors into the command palette for display
@@ -1367,6 +1402,324 @@ export class Workbench extends Disposable {
     activationEvents.fireStartupFinished();
 
     console.log('[Workbench] Tool lifecycle initialized (with contribution processors)');
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // View Contribution Events (M2 Capability 6)
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Wire events from the ViewContributionProcessor to the workbench DOM.
+   * Called once during _initializeToolLifecycle().
+   */
+  private _wireViewContributionEvents(): void {
+    // When a tool contributes a new container → create DOM + activity bar icon
+    this._register(this._viewContribution.onDidAddContainer((container) => {
+      this._onToolContainerAdded(container);
+    }));
+
+    // When a tool's container is removed → tear down DOM + remove icon
+    this._register(this._viewContribution.onDidRemoveContainer((containerId) => {
+      this._onToolContainerRemoved(containerId);
+    }));
+
+    // When a tool contributes a view → create it and add to the correct container
+    this._register(this._viewContribution.onDidAddView((view) => {
+      this._onToolViewAdded(view);
+    }));
+
+    // When a tool's view is removed → container will handle via ViewManager unregister
+    this._register(this._viewContribution.onDidRemoveView((viewId) => {
+      this._onToolViewRemoved(viewId);
+    }));
+
+    // When a provider is registered → if the view is in a visible container, ensure it's rendered
+    this._register(this._viewContribution.onDidRegisterProvider(({ viewId }) => {
+      console.log(`[Workbench] View provider registered for "${viewId}"`);
+    }));
+  }
+
+  /**
+   * Handle a tool contributing a new view container.
+   * Creates the ViewContainer DOM and adds an activity bar / panel tab icon.
+   */
+  private _onToolContainerAdded(info: IContributedContainer): void {
+    const vc = new ViewContainer(info.id);
+
+    if (info.location === 'sidebar') {
+      vc.hideTabBar(); // sidebar containers use the activity bar, not tabs
+      vc.setVisible(false);
+
+      // Mount into sidebar's view slot (hidden until its icon is clicked)
+      const sidebarContent = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
+      if (sidebarContent) {
+        sidebarContent.appendChild(vc.element);
+      }
+      this._contributedSidebarContainers.set(info.id, vc);
+
+      // Add activity bar icon (after separator)
+      this._addContributedActivityBarIcon(info);
+      console.log(`[Workbench] Added sidebar container "${info.id}" (${info.title})`);
+
+    } else if (info.location === 'panel') {
+      vc.setVisible(false);
+
+      const panelContent = this._panel.element.querySelector('.panel-views') as HTMLElement;
+      if (panelContent) {
+        panelContent.appendChild(vc.element);
+      }
+      this._contributedPanelContainers.set(info.id, vc);
+      console.log(`[Workbench] Added panel container "${info.id}" (${info.title})`);
+
+    } else if (info.location === 'auxiliaryBar') {
+      vc.hideTabBar();
+      vc.setVisible(false);
+
+      const auxBarPart = this._auxiliaryBar as unknown as AuxiliaryBarPart;
+      const viewSlot = auxBarPart.viewContainerSlot;
+      if (viewSlot) {
+        viewSlot.appendChild(vc.element);
+      }
+      this._contributedAuxBarContainers.set(info.id, vc);
+      console.log(`[Workbench] Added auxiliary bar container "${info.id}" (${info.title})`);
+    }
+  }
+
+  /**
+   * Handle a tool's view container being removed (tool deactivation).
+   */
+  private _onToolContainerRemoved(containerId: string): void {
+    // Sidebar
+    const sidebarVc = this._contributedSidebarContainers.get(containerId);
+    if (sidebarVc) {
+      // If this was the active sidebar container, switch back to default
+      if (this._activeSidebarContainerId === containerId) {
+        this._switchSidebarContainer(undefined);
+      }
+      sidebarVc.dispose();
+      this._contributedSidebarContainers.delete(containerId);
+      this._removeContributedActivityBarIcon(containerId);
+      return;
+    }
+
+    // Panel
+    const panelVc = this._contributedPanelContainers.get(containerId);
+    if (panelVc) {
+      panelVc.dispose();
+      this._contributedPanelContainers.delete(containerId);
+      return;
+    }
+
+    // Auxiliary bar
+    const auxVc = this._contributedAuxBarContainers.get(containerId);
+    if (auxVc) {
+      auxVc.dispose();
+      this._contributedAuxBarContainers.delete(containerId);
+      return;
+    }
+  }
+
+  /**
+   * Handle a tool contributing a new view.
+   * The view is created from its registered descriptor and added to the appropriate container.
+   */
+  private _onToolViewAdded(info: IContributedView): void {
+    const containerId = info.containerId;
+
+    // Check if the container is a contributed container
+    const sidebarVc = this._contributedSidebarContainers.get(containerId);
+    if (sidebarVc) {
+      this._addViewToContainer(info, sidebarVc);
+      return;
+    }
+
+    const panelVc = this._contributedPanelContainers.get(containerId);
+    if (panelVc) {
+      this._addViewToContainer(info, panelVc);
+      return;
+    }
+
+    const auxVc = this._contributedAuxBarContainers.get(containerId);
+    if (auxVc) {
+      this._addViewToContainer(info, auxVc);
+      return;
+    }
+
+    // Check built-in container IDs
+    if (containerId === 'sidebar' || containerId === 'workbench.parts.sidebar') {
+      this._addViewToContainer(info, this._sidebarContainer);
+      return;
+    }
+    if (containerId === 'panel' || containerId === 'workbench.parts.panel') {
+      this._addViewToContainer(info, this._panelContainer);
+      return;
+    }
+    if (containerId === 'auxiliaryBar' || containerId === 'workbench.parts.auxiliarybar') {
+      this._addViewToContainer(info, this._auxBarContainer);
+      return;
+    }
+
+    console.warn(`[Workbench] View "${info.id}" targets unknown container "${containerId}"`);
+  }
+
+  /**
+   * Create a view from its descriptor and add it to a ViewContainer.
+   */
+  private async _addViewToContainer(info: IContributedView, container: ViewContainer): Promise<void> {
+    try {
+      const view = await this._viewManager.createView(info.id);
+      container.addView(view);
+    } catch (err) {
+      console.error(`[Workbench] Failed to add view "${info.id}" to container:`, err);
+    }
+  }
+
+  /**
+   * Handle a tool's view being removed.
+   */
+  private _onToolViewRemoved(viewId: string): void {
+    // The ViewManager.unregister() already disposes the view.
+    // We also need to remove it from its container.
+    for (const vc of [this._sidebarContainer, this._panelContainer, this._auxBarContainer]) {
+      if (vc?.getView(viewId)) {
+        vc.removeView(viewId);
+        return;
+      }
+    }
+    for (const vc of this._contributedSidebarContainers.values()) {
+      if (vc.getView(viewId)) { vc.removeView(viewId); return; }
+    }
+    for (const vc of this._contributedPanelContainers.values()) {
+      if (vc.getView(viewId)) { vc.removeView(viewId); return; }
+    }
+    for (const vc of this._contributedAuxBarContainers.values()) {
+      if (vc.getView(viewId)) { vc.removeView(viewId); return; }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Activity Bar — Dynamic Icons (M2 Capability 6, Task 6.4)
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Add an activity bar icon for a tool-contributed sidebar container.
+   * Contributed icons appear below the built-in icons, after a separator.
+   */
+  private _addContributedActivityBarIcon(info: IContributedContainer): void {
+    // Ensure separator exists between built-in and contributed icons
+    if (!this._activityBarSeparator) {
+      this._activityBarSeparator = document.createElement('div');
+      this._activityBarSeparator.classList.add('activity-bar-separator');
+      this._activityBarSeparator.style.width = '60%';
+      this._activityBarSeparator.style.height = '1px';
+      this._activityBarSeparator.style.backgroundColor = '#3c3c3c';
+      this._activityBarSeparator.style.margin = '4px auto';
+
+      // Insert before the spacer (which pushes the aux-bar toggle to the bottom)
+      const spacer = this._activityBarEl.querySelector('.activity-bar-spacer');
+      if (spacer) {
+        this._activityBarEl.insertBefore(this._activityBarSeparator, spacer);
+      } else {
+        this._activityBarEl.appendChild(this._activityBarSeparator);
+      }
+    }
+
+    const btn = document.createElement('button');
+    btn.classList.add('activity-bar-item', 'activity-bar-contributed');
+    btn.dataset.containerId = info.id;
+    btn.title = info.title;
+    btn.textContent = info.icon ?? info.title.charAt(0).toUpperCase();
+
+    btn.addEventListener('click', () => {
+      this._switchSidebarContainer(info.id);
+    });
+
+    // Insert before the spacer (after separator, before aux toggle)
+    const spacer = this._activityBarEl.querySelector('.activity-bar-spacer');
+    if (spacer) {
+      this._activityBarEl.insertBefore(btn, spacer);
+    } else {
+      this._activityBarEl.appendChild(btn);
+    }
+  }
+
+  /**
+   * Remove an activity bar icon for a deactivated tool container.
+   */
+  private _removeContributedActivityBarIcon(containerId: string): void {
+    const btn = this._activityBarEl.querySelector(
+      `.activity-bar-contributed[data-container-id="${containerId}"]`,
+    );
+    btn?.remove();
+
+    // If no more contributed icons, remove the separator
+    const remaining = this._activityBarEl.querySelectorAll('.activity-bar-contributed');
+    if (remaining.length === 0 && this._activityBarSeparator) {
+      this._activityBarSeparator.remove();
+      this._activityBarSeparator = undefined;
+    }
+  }
+
+  /**
+   * Switch the active sidebar container.
+   *
+   * @param containerId - ID of a contributed container, or `undefined` for the built-in default.
+   */
+  private _switchSidebarContainer(containerId: string | undefined): void {
+    if (this._activeSidebarContainerId === containerId) return;
+
+    // Hide current active container
+    if (this._activeSidebarContainerId) {
+      const current = this._contributedSidebarContainers.get(this._activeSidebarContainerId);
+      current?.setVisible(false);
+    } else {
+      this._sidebarContainer.setVisible(false);
+    }
+
+    // Show new container
+    this._activeSidebarContainerId = containerId;
+    if (containerId) {
+      const next = this._contributedSidebarContainers.get(containerId);
+      if (next) {
+        next.setVisible(true);
+        this._layoutViewContainers();
+      }
+    } else {
+      this._sidebarContainer.setVisible(true);
+      this._layoutViewContainers();
+    }
+
+    // Update activity bar highlight
+    this._activityBarEl.querySelectorAll('.activity-bar-item').forEach((el) => {
+      const htmlEl = el as HTMLElement;
+      if (containerId) {
+        // A contributed container is active — highlight its icon, deactivate all others
+        htmlEl.classList.toggle('active', htmlEl.dataset.containerId === containerId);
+      } else {
+        // Built-in container is active — restore the default built-in highlight
+        // The first built-in item (Explorer) gets highlighted
+        htmlEl.classList.remove('active');
+      }
+    });
+
+    // If switching back to built-in, re-activate the first built-in icon
+    if (!containerId) {
+      this._activityBarEl.querySelector('.activity-bar-item:not(.activity-bar-contributed)')
+        ?.classList.add('active');
+    }
+
+    // Update sidebar header label
+    if (this._sidebarHeaderLabel) {
+      if (containerId) {
+        const info = this._viewContribution.getContainer(containerId);
+        this._sidebarHeaderLabel.textContent = (info?.title ?? 'SIDEBAR').toUpperCase();
+      } else {
+        // Restore to the active view name in the built-in container
+        const activeId = this._sidebarContainer.activeViewId;
+        const activeView = activeId ? this._sidebarContainer.getView(activeId) : undefined;
+        this._sidebarHeaderLabel.textContent = (activeView?.name ?? 'EXPLORER').toUpperCase();
+      }
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1388,14 +1741,29 @@ export class Workbench extends Disposable {
   private _layoutViewContainers(): void {
     if (this._sidebar.visible && this._sidebar.width > 0) {
       const headerH = 35;
-      this._sidebarContainer.layout(this._sidebar.width, this._sidebar.height - headerH, Orientation.Vertical);
+      const sidebarW = this._sidebar.width;
+      const sidebarH = this._sidebar.height - headerH;
+      // Layout the active sidebar container (built-in or contributed)
+      if (this._activeSidebarContainerId) {
+        const contributed = this._contributedSidebarContainers.get(this._activeSidebarContainerId);
+        contributed?.layout(sidebarW, sidebarH, Orientation.Vertical);
+      } else {
+        this._sidebarContainer.layout(sidebarW, sidebarH, Orientation.Vertical);
+      }
     }
     if (this._panel.visible && this._panel.height > 0) {
       this._panelContainer.layout(this._panel.width, this._panel.height, Orientation.Horizontal);
+      // Layout any contributed panel containers
+      for (const vc of this._contributedPanelContainers.values()) {
+        vc.layout(this._panel.width, this._panel.height, Orientation.Horizontal);
+      }
     }
     if (this._auxBarVisible && this._auxiliaryBar.width > 0) {
       const auxHeaderH = 35;
       this._auxBarContainer?.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - auxHeaderH, Orientation.Vertical);
+      for (const vc of this._contributedAuxBarContainers.values()) {
+        vc.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - auxHeaderH, Orientation.Vertical);
+      }
     }
   }
 
@@ -1466,6 +1834,17 @@ export class Workbench extends Disposable {
     this._panelContainer?.dispose();
     this._auxBarContainer?.dispose();
 
+    // 2b. Dispose contributed containers (Cap 6)
+    for (const vc of this._contributedSidebarContainers.values()) vc.dispose();
+    this._contributedSidebarContainers.clear();
+    for (const vc of this._contributedPanelContainers.values()) vc.dispose();
+    this._contributedPanelContainers.clear();
+    for (const vc of this._contributedAuxBarContainers.values()) vc.dispose();
+    this._contributedAuxBarContainers.clear();
+    this._activeSidebarContainerId = undefined;
+    this._activityBarSeparator = undefined;
+    this._sidebarHeaderLabel = undefined;
+
     // 3. Clear view container mount points in parts
     const sidebarViews = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
     if (sidebarViews) sidebarViews.innerHTML = '';
@@ -1528,6 +1907,11 @@ export class Workbench extends Disposable {
 
     // 4. Layout view containers
     this._layoutViewContainers();
+
+    // 5. Re-wire view contribution events (Cap 6)
+    if (this._viewContribution) {
+      this._wireViewContributionEvents();
+    }
 
     console.log('[Workbench] Rebuilt workspace content');
   }

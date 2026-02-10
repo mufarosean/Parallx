@@ -9,6 +9,7 @@ import { Emitter } from '../../platform/events.js';
 import type { ViewManager } from '../../views/viewManager.js';
 import type { IView, ViewState } from '../../views/view.js';
 import { DEFAULT_SIZE_CONSTRAINTS } from '../../layout/layoutTypes.js';
+import type { ViewContributionProcessor } from '../../contributions/viewContribution.js';
 
 /**
  * Shape of a tool-provided view provider.
@@ -35,6 +36,7 @@ export class ViewsBridge {
     private readonly _toolId: string,
     private readonly _viewManager: ViewManager,
     private readonly _subscriptions: IDisposable[],
+    private readonly _viewContributionProcessor?: ViewContributionProcessor,
   ) {}
 
   /**
@@ -47,6 +49,18 @@ export class ViewsBridge {
   ): IDisposable {
     this._throwIfDisposed();
 
+    // If this view was declared in a tool manifest (Cap 6), delegate to the
+    // ViewContributionProcessor which manages the placeholder → content transition.
+    if (this._viewContributionProcessor?.hasContributedView(viewId)) {
+      const disposable = this._viewContributionProcessor.registerProvider(viewId, {
+        resolveView: (_id: string, container: HTMLElement) => provider.createView(container),
+      });
+      this._registrations.push(disposable);
+      this._subscriptions.push(disposable);
+      return disposable;
+    }
+
+    // Fallback: inline registration (pre-Cap 6 path or views not declared in manifest)
     const name = options?.name ?? viewId;
     const containerId = options?.defaultContainerId ?? 'workbench.parts.sidebar';
     const icon = options?.icon;

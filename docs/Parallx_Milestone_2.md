@@ -688,7 +688,7 @@ Tools can contribute views and view containers through their manifest's `contrib
 
 #### Tasks
 
-**Task 6.1 – Implement ViewContainer Contribution Processing**
+**Task 6.1 – Implement ViewContainer Contribution Processing** ✅
 - **Task Description:** Process the `contributes.viewsContainers` section from tool manifests and register new view containers in the appropriate workbench parts.
 - **Output:** ViewContainer contribution processor.
 - **Completion Criteria:**
@@ -703,8 +703,10 @@ Tools can contribute views and view containers through their manifest's `contrib
     - `src/vs/workbench/api/browser/viewsExtensionPoint.ts` — `ViewsExtensionHandler` class, `handleAndRegisterCustomViewContainers()`
   - Sidebar containers get an activity bar icon; panel containers get a tab; auxiliary bar containers get a secondary activity bar icon
   - Built-in containers from M1 (explorer, terminal, etc.) remain; tool-contributed containers are additive
+- **Implementation Notes:** `ViewContributionProcessor` in `src/contributions/viewContribution.ts` processes manifest `viewContainers` array. Workbench creates `ViewContainer` DOM via `_onToolContainerAdded()`, mounting into sidebar-views/panel-views/aux-bar slots. Containers are disposed on tool deactivation via `_onToolContainerRemoved()` and in `_teardownWorkspaceContent()`.
+- **Deviation:** The manifest schema uses a flat `viewContainers: [{ id, title, icon, location }]` array instead of the nested `{ sidebar: [...], panel: [...] }` format. The flat format was already established by the existing M2 validator and is functionally equivalent.
 
-**Task 6.2 – Implement View Contribution Processing**
+**Task 6.2 – Implement View Contribution Processing** ✅
 - **Task Description:** Process the `contributes.views` section from tool manifests and register view descriptors.
 - **Output:** View contribution processor.
 - **Completion Criteria:**
@@ -720,8 +722,9 @@ Tools can contribute views and view containers through their manifest's `contrib
     - `src/vs/workbench/common/views.ts` — `IViewDescriptor` interface
   - If a view is declared but no provider is registered, show a placeholder with the view name and a message
   - Views contributed to unknown containers log a warning
+- **Implementation Notes:** `ViewContributionProcessor.processContributions()` iterates `contributes.views` (keyed by container ID), creates `ViewDescriptor` per entry with an async factory (placeholder until provider resolves), and registers via `ViewManager.register()`. Views added to contributed containers trigger workbench `_onToolViewAdded()` which calls `ViewManager.createView()` + `ViewContainer.addView()`.
 
-**Task 6.3 – Implement View Provider Pattern**
+**Task 6.3 – Implement View Provider Pattern** ✅
 - **Task Description:** Implement the runtime API for tools to provide view content. A tool registers a `ViewProvider` that the shell calls to render view content.
 - **Output:** `IViewProvider` interface and `registerViewProvider()` API method.
 - **Completion Criteria:**
@@ -736,8 +739,9 @@ Tools can contribute views and view containers through their manifest's `contrib
   - This is the primary mechanism for tools to create UI — they receive a DOM container and own its contents
   - The shell does not interpret or manage the tool's DOM — the tool has full control within its container
   - View providers should handle `layout(width, height)` calls for responsive behavior
+- **Implementation Notes:** `IToolViewProvider` interface in `viewContribution.ts`. `ViewsBridge.registerViewProvider()` detects manifest-contributed views via `_viewContributionProcessor.hasContributedView()` and delegates to `processor.registerProvider()`, wrapping the tool's `createView` callback into the `IToolViewProvider.resolveView` pattern. Pending resolver map (`_pendingResolvers`) handles both pre- and post-registration timing.
 
-**Task 6.4 – Implement Activity Bar Integration**
+**Task 6.4 – Implement Activity Bar Integration** ✅
 - **Task Description:** Extend the M1 sidebar activity bar to display icons for tool-contributed view containers.
 - **Output:** Dynamic activity bar population from registered view containers.
 - **Completion Criteria:**
@@ -750,6 +754,7 @@ Tools can contribute views and view containers through their manifest's `contrib
 - **Notes / Constraints:**
   - M1's sidebar already has a basic activity bar; this task extends it for dynamic population
   - Icon format in M2: simple text/emoji or class name reference (full icon theming deferred)
+- **Implementation Notes:** `_addContributedActivityBarIcon()` inserts a separator between built-in and contributed icons, then adds a button with click handler calling `_switchSidebarContainer()`. `_switchSidebarContainer()` hides/shows containers, updates active highlights across all icons, and updates the sidebar header label. Built-in icon clicks now call `_switchSidebarContainer(undefined)` to properly deactivate contributed containers. Separator and contributed icons are cleaned up on tool deactivation.
 
 ---
 
