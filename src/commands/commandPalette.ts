@@ -62,6 +62,16 @@ interface IContextKeyServiceLike {
   contextMatchesRules(whenClause: string | undefined): boolean;
 }
 
+/** Minimal shape of menu contribution processor for palette filtering. */
+interface IMenuContributionLike {
+  isCommandVisibleInPalette(commandId: string): boolean;
+}
+
+/** Minimal shape of keybinding contribution processor for display. */
+interface IKeybindingContributionLike {
+  getKeybindingForCommand(commandId: string): { key: string } | undefined;
+}
+
 export class CommandPalette extends Disposable {
   private _overlay: HTMLElement | null = null;
   private _input: HTMLInputElement | null = null;
@@ -71,6 +81,8 @@ export class CommandPalette extends Disposable {
   private _visible = false;
   private _recentCommandIds: string[] = [];
   private _contextKeyService: IContextKeyServiceLike | undefined;
+  private _menuContribution: IMenuContributionLike | undefined;
+  private _keybindingContribution: IKeybindingContributionLike | undefined;
 
   private readonly _onDidExecute = this._register(new Emitter<string>());
   readonly onDidExecute: Event<string> = this._onDidExecute.event;
@@ -98,6 +110,22 @@ export class CommandPalette extends Disposable {
    */
   setContextKeyService(service: IContextKeyServiceLike): void {
     this._contextKeyService = service;
+  }
+
+  /**
+   * Set the menu contribution processor for commandPalette visibility filtering.
+   * Commands hidden via `contributes.menus.commandPalette` will not appear.
+   */
+  setMenuContribution(service: IMenuContributionLike): void {
+    this._menuContribution = service;
+  }
+
+  /**
+   * Set the keybinding contribution processor for palette keybinding display.
+   * Tool-contributed keybindings will be shown alongside commands.
+   */
+  setKeybindingContribution(service: IKeybindingContributionLike): void {
+    this._keybindingContribution = service;
   }
 
   // ─── Public API ──────────────────────────────────────────────────────────
@@ -269,6 +297,11 @@ export class CommandPalette extends Disposable {
         }
       }
 
+      // Filter by commandPalette menu contribution: tools can hide commands from palette
+      if (this._menuContribution && !this._menuContribution.isCommandVisibleInPalette(desc.id)) {
+        continue;
+      }
+
       const searchText = desc.category
         ? `${desc.category}: ${desc.title}`
         : desc.title;
@@ -362,11 +395,13 @@ export class CommandPalette extends Disposable {
 
       row.appendChild(label);
 
-      // Keybinding
-      if (item.descriptor.keybinding) {
+      // Keybinding — show from descriptor or from contributed keybindings
+      const keybindingText = item.descriptor.keybinding
+        ?? this._keybindingContribution?.getKeybindingForCommand(item.descriptor.id)?.key;
+      if (keybindingText) {
         const kbd = document.createElement('span');
         kbd.className = 'command-palette-item-keybinding';
-        kbd.textContent = item.descriptor.keybinding;
+        kbd.textContent = keybindingText;
         row.appendChild(kbd);
       }
 

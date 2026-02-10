@@ -377,3 +377,51 @@ import type {
 export interface IConfigurationService extends IConfigurationServiceShape {}
 
 export const IConfigurationService = createServiceIdentifier<IConfigurationService>('IConfigurationService');
+
+// ─── ICommandContributionService ─────────────────────────────────────────────
+
+import type { IContributedCommand } from '../contributions/contributionTypes.js';
+import type { CommandContributionProcessor } from '../contributions/commandContribution.js';
+
+export interface ICommandContributionService {
+  processContributions(toolDescription: IToolDescription): void;
+  removeContributions(toolId: string): void;
+  wireRealHandler(commandId: string, handler: (...args: unknown[]) => unknown | Promise<unknown>): void;
+  getContributedCommands(): readonly IContributedCommand[];
+  getContributedCommand(commandId: string): IContributedCommand | undefined;
+  isContributed(commandId: string): boolean;
+}
+
+export const ICommandContributionService = createServiceIdentifier<ICommandContributionService>('ICommandContributionService');
+
+// ─── IKeybindingContributionService ──────────────────────────────────────────
+
+import type { IContributedKeybinding } from '../contributions/contributionTypes.js';
+import type { KeybindingContributionProcessor } from '../contributions/keybindingContribution.js';
+
+export interface IKeybindingContributionService {
+  processContributions(toolDescription: IToolDescription): void;
+  removeContributions(toolId: string): void;
+  getKeybindingForCommand(commandId: string): IContributedKeybinding | undefined;
+  getAllKeybindings(): readonly IContributedKeybinding[];
+}
+
+export const IKeybindingContributionService = createServiceIdentifier<IKeybindingContributionService>('IKeybindingContributionService');
+
+// ─── IMenuContributionService ────────────────────────────────────────────────
+
+import type { IContributedMenuItem, MenuLocationId } from '../contributions/contributionTypes.js';
+import type { MenuContributionProcessor } from '../contributions/menuContribution.js';
+
+export interface IMenuContributionService {
+  processContributions(toolDescription: IToolDescription): void;
+  removeContributions(toolId: string): void;
+  isCommandVisibleInPalette(commandId: string): boolean;
+  getViewTitleActions(viewId: string): readonly IContributedMenuItem[];
+  renderViewTitleActions(viewId: string, container: HTMLElement): IDisposable;
+  showViewContextMenu(viewId: string, x: number, y: number): IDisposable;
+  dismissContextMenu(): void;
+  getMenuItems(location: MenuLocationId): readonly IContributedMenuItem[];
+}
+
+export const IMenuContributionService = createServiceIdentifier<IMenuContributionService>('IMenuContributionService');

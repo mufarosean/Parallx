@@ -1,7 +1,7 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IConfigurationService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -11,6 +11,9 @@ import { ActivationEventService } from '../tools/activationEventService.js';
 import { ToolErrorService } from '../tools/toolErrorIsolation.js';
 import { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
 import { ConfigurationService } from '../configuration/configurationService.js';
+import { CommandContributionProcessor } from '../contributions/commandContribution.js';
+import { KeybindingContributionProcessor } from '../contributions/keybindingContribution.js';
+import { MenuContributionProcessor } from '../contributions/menuContribution.js';
 import type { IStorage } from '../platform/storage.js';
 
 /**
@@ -48,6 +51,11 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
 
   // Note: IConfigurationService is registered in the workbench after
   // storage is initialized (requires IStorage from Phase 1).
+
+  // Note: Contribution processors (ICommandContributionService,
+  // IKeybindingContributionService, IMenuContributionService) are
+  // registered in the workbench during Phase 5 after CommandService
+  // and ActivationEventService are available.
 }
 
 /**
@@ -66,4 +74,38 @@ export function registerConfigurationServices(
   services.registerInstance(IConfigurationService, configService as any);
 
   return { configService, configRegistry };
+}
+
+/**
+ * Creates and registers the contribution processors (M2 Capability 5).
+ * Called during Phase 5 after CommandService and ActivationEventService are available.
+ *
+ * @returns The three contribution processor instances.
+ */
+export function registerContributionProcessors(
+  services: ServiceCollection,
+): {
+  commandContribution: CommandContributionProcessor;
+  keybindingContribution: KeybindingContributionProcessor;
+  menuContribution: MenuContributionProcessor;
+} {
+  const commandService = services.get(ICommandService) as unknown as import('../commands/commandRegistry.js').CommandService;
+  const activationEvents = services.get(IActivationEventService) as unknown as ActivationEventService;
+
+  const commandContribution = new CommandContributionProcessor(commandService, activationEvents);
+  const keybindingContribution = new KeybindingContributionProcessor(commandService);
+  const menuContribution = new MenuContributionProcessor(commandService);
+
+  // Wire context key service if available
+  if (services.has(IContextKeyService)) {
+    const contextKeyService = services.get(IContextKeyService) as any;
+    keybindingContribution.setContextKeyService(contextKeyService);
+    menuContribution.setContextKeyService(contextKeyService);
+  }
+
+  services.registerInstance(ICommandContributionService, commandContribution as any);
+  services.registerInstance(IKeybindingContributionService, keybindingContribution as any);
+  services.registerInstance(IMenuContributionService, menuContribution as any);
+
+  return { commandContribution, keybindingContribution, menuContribution };
 }

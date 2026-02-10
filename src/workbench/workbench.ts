@@ -98,6 +98,11 @@ import { ToolErrorService } from '../tools/toolErrorIsolation.js';
 import type { ConfigurationService } from '../configuration/configurationService.js';
 import type { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
 
+// Contribution Processors (M2 Capability 5)
+import { registerContributionProcessors } from './workbenchServices.js';
+import type { CommandContributionProcessor } from '../contributions/commandContribution.js';
+import type { KeybindingContributionProcessor } from '../contributions/keybindingContribution.js';
+import type { MenuContributionProcessor } from '../contributions/menuContribution.js';
 // ── Layout constants ──
 
 const TITLE_HEIGHT = 30;
@@ -173,6 +178,11 @@ export class Workbench extends Disposable {
   private _configService!: ConfigurationService;
   private _configRegistry!: ConfigurationRegistry;
   private _globalStorage!: IStorage;
+
+  // Contribution Processors (M2 Capability 5)
+  private _commandContribution!: CommandContributionProcessor;
+  private _keybindingContribution!: KeybindingContributionProcessor;
+  private _menuContribution!: MenuContributionProcessor;
 
   // ── Events ──
 
@@ -1269,7 +1279,7 @@ export class Workbench extends Disposable {
   // ════════════════════════════════════════════════════════════════════════
 
   /**
-   * Initialize tool activator and fire startup-finished event.
+   * Initialize tool activator, contribution processors, and fire startup-finished event.
    * Called in Phase 5 (Ready) after all services and UI are available.
    */
   private _initializeToolLifecycle(): void {
@@ -1281,7 +1291,32 @@ export class Workbench extends Disposable {
       ? this._services.get(INotificationService) as any
       : undefined;
 
-    // Build API factory dependencies (includes ConfigurationService for Cap 4)
+    // Register contribution processors (M2 Capability 5)
+    const { commandContribution, keybindingContribution, menuContribution } =
+      registerContributionProcessors(this._services);
+    this._commandContribution = commandContribution;
+    this._keybindingContribution = keybindingContribution;
+    this._menuContribution = menuContribution;
+    this._register(commandContribution);
+    this._register(keybindingContribution);
+    this._register(menuContribution);
+
+    // Process contributions from already-registered tools
+    for (const entry of registry.getAll()) {
+      commandContribution.processContributions(entry.description);
+      keybindingContribution.processContributions(entry.description);
+      menuContribution.processContributions(entry.description);
+    }
+
+    // Process contributions for future tool registrations
+    this._register(registry.onDidRegisterTool((event) => {
+      commandContribution.processContributions(event.description);
+      keybindingContribution.processContributions(event.description);
+      menuContribution.processContributions(event.description);
+    }));
+
+    // Build API factory dependencies (includes ConfigurationService for Cap 4
+    // and CommandContributionProcessor for Cap 5)
     const apiFactoryDeps = {
       services: this._services,
       viewManager: this._viewManager,
@@ -1289,6 +1324,7 @@ export class Workbench extends Disposable {
       notificationService,
       workbenchContainer: this._container,
       configurationService: this._configService,
+      commandContributionProcessor: commandContribution,
     };
 
     // Storage dependencies for persistent tool mementos (Cap 4)
@@ -1310,10 +1346,23 @@ export class Workbench extends Disposable {
       await this._toolActivator.activate(request.toolId);
     }));
 
+    // Clean up contributions when tools are deactivated
+    this._register(this._toolActivator.onDidDeactivate((event) => {
+      commandContribution.removeContributions(event.toolId);
+      keybindingContribution.removeContributions(event.toolId);
+      menuContribution.removeContributions(event.toolId);
+    }));
+
+    // Wire contribution processors into the command palette for display
+    if (this._commandPalette) {
+      this._commandPalette.setMenuContribution(menuContribution);
+      this._commandPalette.setKeybindingContribution(keybindingContribution);
+    }
+
     // Fire startup finished — triggers * and onStartupFinished activation events
     activationEvents.fireStartupFinished();
 
-    console.log('[Workbench] Tool lifecycle initialized');
+    console.log('[Workbench] Tool lifecycle initialized (with contribution processors)');
   }
 
   // ════════════════════════════════════════════════════════════════════════

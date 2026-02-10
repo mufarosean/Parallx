@@ -27,6 +27,7 @@ import { WorkspaceBridge } from './bridges/workspaceBridge.js';
 import { EditorsBridge } from './bridges/editorsBridge.js';
 import type { ViewManager } from '../views/viewManager.js';
 import type { ConfigurationService } from '../configuration/configurationService.js';
+import type { CommandContributionProcessor } from '../contributions/commandContribution.js';
 
 // ─── API Dependencies ────────────────────────────────────────────────────────
 
@@ -41,6 +42,7 @@ export interface ApiFactoryDependencies {
   readonly notificationService: NotificationService;
   readonly workbenchContainer: HTMLElement | undefined;
   readonly configurationService?: ConfigurationService;
+  readonly commandContributionProcessor?: CommandContributionProcessor;
 }
 
 // ─── API Shape ───────────────────────────────────────────────────────────────
@@ -123,7 +125,7 @@ export function createToolApi(
 
   // ── Create bridges ──
   const commandsBridge = commandService
-    ? new CommandsBridge(toolId, commandService as any, subscriptions)
+    ? new CommandsBridge(toolId, commandService as any, subscriptions, deps.commandContributionProcessor)
     : undefined;
 
   const viewsBridge = new ViewsBridge(toolId, deps.viewManager, subscriptions);

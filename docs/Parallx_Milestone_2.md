@@ -583,48 +583,64 @@ Tools can contribute commands through their manifest and register runtime comman
 
 #### Tasks
 
-**Task 5.1 – Implement Command Contribution Processing**
+**Task 5.1 – Implement Command Contribution Processing** ✅
 - **Task Description:** Process the `contributes.commands` section from tool manifests and register command metadata in the command service.
 - **Output:** Command contribution processor that reads manifests and registers command descriptors.
 - **Completion Criteria:**
-  - Manifest `contributes.commands` schema: `[{ "command": "myTool.doSomething", "title": "Do Something", "category": "My Tool", "icon": "...", "enablement": "when clause" }]`
-  - Each declared command is registered in `CommandService` with metadata (title, category, icon, when clause)
-  - A proxy handler is registered that triggers tool activation on first invocation (for `onCommand` activation)
-  - After tool activation, the proxy handler is replaced with the tool's real handler
-  - Commands contributed by a tool are unregistered when the tool is deactivated
+  - ✅ Manifest `contributes.commands` schema: `[{ "command": "myTool.doSomething", "title": "Do Something", "category": "My Tool", "icon": "...", "enablement": "when clause" }]` — parsed in `CommandContributionProcessor.processManifest()`
+  - ✅ Each declared command is registered in `CommandService` with metadata (title, category, icon, when clause) — `CommandDescriptor` created with all manifest fields, registered via `commandService.registerCommand()`
+  - ✅ A proxy handler is registered that triggers tool activation on first invocation — proxy fires `activationEventService.fireActivationEvent('onCommand:' + id)` then queues the invocation with a 10 s timeout
+  - ✅ After tool activation, the proxy handler is replaced with the tool's real handler — `wireRealHandler()` swaps the handler in CommandService and replays all queued invocations
+  - ✅ Commands contributed by a tool are unregistered when the tool is deactivated — `removeContributions(toolId)` unregisters all commands and cleans tracking maps; wired to `onDidDeactivate` in `workbench.ts`
 - **Notes / Constraints:**
   - Commands should be prefixed or namespaced to avoid collisions (manifest validation ensures `tool.id` prefix)
   - Proxy handlers should queue the invocation and replay it once the real handler is available
+- **Implementation Notes:**
+  - New file: `src/contributions/commandContribution.ts` — `CommandContributionProcessor extends Disposable implements IContributionProcessor`
+  - New file: `src/contributions/contributionTypes.ts` — shared types `IContributedCommand`, `IContributedKeybinding`, `IContributedMenuItem`, `MenuLocationId`, `IContributionProcessor`
+  - Modified: `src/api/bridges/commandsBridge.ts` — `registerCommand()` detects contributed commands and calls `wireRealHandler()` instead of re-registering
+  - Service identifier `ICommandContributionService` added to `src/services/serviceTypes.ts`
 
-**Task 5.2 – Implement Keybinding Contribution Processing**
+**Task 5.2 – Implement Keybinding Contribution Processing** ✅
 - **Task Description:** Process the `contributes.keybindings` section from tool manifests and register keybindings.
 - **Output:** Keybinding contribution processor.
 - **Completion Criteria:**
-  - Manifest `contributes.keybindings` schema: `[{ "command": "myTool.doSomething", "key": "ctrl+shift+t", "when": "when clause" }]`
-  - Keybindings are registered in a keybinding service (new in M2 or extension of command service)
-  - Keybinding conflicts are detected and logged (last registered wins)
-  - Keybindings are shown in the command palette alongside their commands
-  - Keybindings respect platform differences (Ctrl vs Cmd)
+  - ✅ Manifest `contributes.keybindings` schema: `[{ "command": "myTool.doSomething", "key": "ctrl+shift+t", "when": "when clause" }]` — parsed in `KeybindingContributionProcessor.processManifest()`
+  - ✅ Keybindings are registered in a keybinding service — `KeybindingContributionProcessor` maintains a keybinding map from normalized key combos to command IDs; registered as `IKeybindingContributionService` in DI container
+  - ✅ Keybinding conflicts are detected and logged (last registered wins) — `console.warn` emitted on conflict, previous binding replaced
+  - ✅ Keybindings are shown in the command palette alongside their commands — `CommandPalette` queries `IKeybindingContributionLike.getKeybindingForCommand()` and displays via `formatKeybindingForDisplay()`
+  - ✅ Keybindings respect platform differences (Ctrl vs Cmd) — `formatKeybindingForDisplay()` uses `navigator.platform` to show ⌘/⌃/⌥/⇧ on Mac, Ctrl/Alt/Shift on others
 - **Notes / Constraints:**
   - M2 keybinding support is basic — a keybinding map from key combos to command IDs
   - A full keybinding resolution system with chords and contexts is deferred to a later milestone
   - Keybindings should integrate with M1's `CommandPalette` display
+- **Implementation Notes:**
+  - New file: `src/contributions/keybindingContribution.ts` — `KeybindingContributionProcessor extends Disposable implements IContributionProcessor`
+  - Key normalization: `normalizeKeybinding()` sorts modifiers alphabetically (alt, ctrl, meta, shift) + lowercase key for reliable matching
+  - Global `keydown` listener on `document` dispatches to `commandService.executeCommand()` when normalized key matches; respects when-clause via optional `IContextKeyServiceLike`
+  - Service identifier `IKeybindingContributionService` added to `src/services/serviceTypes.ts`
 
-**Task 5.3 – Implement Menu Contribution Processing**
+**Task 5.3 – Implement Menu Contribution Processing** ✅
 - **Task Description:** Process the `contributes.menus` section from tool manifests to place commands in menus.
 - **Output:** Menu contribution processor and basic menu rendering system.
 - **Completion Criteria:**
-  - Manifest `contributes.menus` schema: `{ "commandPalette": [{ "command": "id", "when": "clause" }], "view/title": [{ "command": "id", "group": "navigation" }], "view/context": [{ "command": "id", "when": "clause" }] }`
-  - Menu items are conditional on when clauses
-  - `commandPalette` menu controls whether a command appears in the palette (can hide built-in commands from palette)
-  - `view/title` adds action buttons to view title bars
-  - `view/context` adds items to view right-click context menus
-  - Menu items are sorted by `group` and `order` properties
+  - ✅ Manifest `contributes.menus` schema: `{ "commandPalette": [{ "command": "id", "when": "clause" }], "view/title": [{ "command": "id", "group": "navigation" }], "view/context": [{ "command": "id", "when": "clause" }] }` — parsed in `MenuContributionProcessor.processManifest()`
+  - ✅ Menu items are conditional on when clauses — `_evaluateWhen()` integrates with `IContextKeyServiceLike` for runtime evaluation
+  - ✅ `commandPalette` menu controls whether a command appears in the palette — `isCommandVisibleInPalette()` used by `CommandPalette._updateList()` to filter commands
+  - ✅ `view/title` adds action buttons to view title bars — `renderViewTitleActions()` creates `<button>` elements positioned in a flex container, with title tooltip and click → `commandService.executeCommand()`
+  - ✅ `view/context` adds items to view right-click context menus — `showViewContextMenu()` renders a positioned overlay with items sorted by group, group separators, and click-to-execute; overlay auto-dismisses on outside click or Escape
+  - ✅ Menu items are sorted by `group` and `order` properties — items sorted by group string first, then numeric order within group
 - **Notes / Constraints:**
   - Reference only:
     - VS Code's menu contribution point: https://code.visualstudio.com/api/references/contribution-points#contributes.menus
   - M2 implements a basic menu system — full theming and nested submenus are deferred
   - Context menus are triggered by right-click events on view containers
+- **Implementation Notes:**
+  - New file: `src/contributions/menuContribution.ts` — `MenuContributionProcessor extends Disposable implements IContributionProcessor`
+  - Three menu locations supported: `commandPalette`, `view/title`, `view/context` (typed as `MenuLocationId`)
+  - `CommandPalette` updated with `setMenuContribution()` / `setKeybindingContribution()` setter methods and `IMenuContributionLike` / `IKeybindingContributionLike` interfaces for loose coupling
+  - Service identifier `IMenuContributionService` added to `src/services/serviceTypes.ts`
+  - All three contribution processors created and wired in `workbench.ts._initializeToolLifecycle()`, registered in DI via `workbenchServices.ts.registerContributionProcessors()`
 
 ---
 
