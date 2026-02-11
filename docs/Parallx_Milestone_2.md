@@ -1114,3 +1114,60 @@ beyond the initial 43-issue audit. 14 files modified, all issues verified at the
 ### Previously Cleared (false positives from initial audit)
 - Output tool console recursion — NOT FOUND (addEntry uses DOM only)
 - ViewContainer tab listener accumulation — NOT FOUND (tabs created once per view)
+
+---
+
+## Comprehensive Cohesion Audit (Post-M2, Round 3)
+
+A full-spectrum cohesion audit was performed across all M1 + M2 subsystems to verify that
+independently-built systems interoperate correctly and that no latent cross-system conflicts
+remain. Five parallel deep-dive audits covered: Editor chain, Tool lifecycle pipeline,
+Contributions & Views, Platform/Storage/Config, and Workbench orchestration. All confirmed
+findings were resolved. Commit `1f01957` on `milestone-2`.
+
+**12 files modified, 179 insertions, 39 deletions.**
+
+### HIGH Severity (7/7 fixed)
+
+- **H1 — Last-editor-close leaves stale pane** — `editorGroupModel.ts` `_closeAt()` now fires `EditorActive` with `editor: undefined` when closing the last editor in a group (`wasActive && editors.length === 0`). Previously the condition `wasActive && _activeIndex >= 0` silently skipped the event when `_activeIndex` was `-1`, leaving the old pane visible in `editorGroupView.ts`.
+
+- **H2 — Editor inputs never disposed on close** — `editorGroupModel.ts` `_closeAt()` now calls `entry.input.dispose()` after removing the editor. `dispose()` also disposes all remaining inputs. Previously, closed editor inputs were spliced from the array but never freed.
+
+- **H3 — Double pane creation on every openEditor** — `editorGroupView.ts` `openEditor()` now checks whether the model already fired `EditorActive` synchronously (by comparing `_showActiveEditorSeq` before/after) and skips the explicit `_showActiveEditor()` call if so. Previously, both the model event handler and the explicit call created panes.
+
+- **H4 — Tool-scoped context keys invisible during global evaluation** — `contextKey.ts` `contextMatchesRules()` now aggregates own keys from ALL registered scopes (including child scopes like `tool:<toolId>`) instead of only evaluating against the global scope. This ensures tool-contributed when-clauses work correctly for command enablement and menu visibility.
+
+- **H5 — ToolMemento quota counter grows monotonically on delete** — `toolMemento.ts` delete path (`update(key, undefined)`) now decrements `_estimatedBytes` by the old value's serialized size before removing it. Previously, deletes returned early without adjusting the quota counter, causing it to eventually hit the 10MB hard limit even with tiny actual data.
+
+- **H6 — ConfigurationRegistry unregister deletes other tool's keys** — `configurationRegistry.ts` `_unregisterKeys()` now verifies `schema.toolId === toolId` before deleting a key from `_properties`. Previously, if Tool B re-registered the same key after Tool A, Tool A's disposal would delete Tool B's key.
+
+- **H7 — Workspace switch has no mutex + contributions lost** — `workbench.ts` `switchWorkspace()` now has a `_switching` boolean guard preventing concurrent calls. `_rebuildWorkspaceContent()` now replays tool contributions by calling `removeContributions()` + `processContributions()` for all registered tools with view/viewContainer contributions, and calls `viewContribution.updateViewManager()` to update the ViewManager reference. Previously, contributed UI vanished after workspace switch because the new ViewManager had no descriptors.
+
+### MEDIUM Severity (6/6 fixed)
+
+- **M1 — DisposableStore.clear/dispose unsafe** — `lifecycle.ts` `DisposableStore.clear()` and `dispose()` now wrap each item's `dispose()` in try/catch, collecting errors and logging them. Previously, if one disposal threw, remaining items and the Set's `.clear()` were never reached.
+
+- **M2 — EditorPart emitters not tracked for disposal** — `editorPart.ts` `_onDidActiveGroupChange` and `_onDidGroupCountChange` emitters now use `this._register()`. Previously they were standalone instances manually disposed in `dispose()`, which was fragile.
+
+- **M3 — EditorService fires active-editor events for non-active groups** — `editorService.ts` `_wireGroupListeners()` now only fires `onDidActiveEditorChange` when the originating group is `editorPart.activeGroup`. Previously, background group tab switches incorrectly updated the service-level active editor.
+
+- **M4 — EditorService closeEditor double-fires** — `editorService.ts` `closeEditor()` no longer explicitly fires `onDidActiveEditorChange`. The model's `EditorActive` event (now always fired, including on last-editor close via H1) is caught by `_wireGroupListeners()`.
+
+- **M5 — Keybinding when-clause fallthrough** — `keybindingContribution.ts` global keydown handler now iterates bindings from last to first, checking each binding's when-clause. Previously it only checked the very last binding, so if that binding's `when` evaluated false, no earlier valid binding was tried.
+
+- **M6 — Concurrent tool activation race** — `toolActivator.ts` `activate()` now maintains an `_activating` Map of in-flight promises. If `activate()` is called for a tool that's already activating, it returns the existing promise instead of starting a parallel activation.
+
+### MEDIUM Structural (2/2 fixed)
+
+- **M7 — Activity bar spacer missing CSS class** — `workbench.ts` `_addAuxBarToggle()` now adds `activity-bar-spacer` class to the spacer div. Previously, `_addContributedActivityBarIcon()` queried `.activity-bar-spacer` to insert icons before the aux-bar toggle, but the selector returned null because the class was never set.
+
+- **M8 — ViewContribution needs ViewManager update on workspace switch** — `viewContribution.ts` added `updateViewManager(viewManager)` method that updates the internal `_viewManager` reference and re-registers all existing view descriptors into the new ViewManager. Called from `_rebuildWorkspaceContent()` during workspace switch.
+
+### Pane robustness improvements (from editor audit)
+
+- **pane.setInput() error isolation** — `editorGroupView.ts` `_showActiveEditor()` now wraps `pane.setInput()` in try/catch. On failure, the orphan pane is immediately disposed and its DOM removed, preventing a blank pane from persisting.
+
+### False positives identified
+- **ViewContribution #1 (ViewManager ↔ ViewContainer disconnect)** — `_onToolViewRemoved` DOES call `vc.removeView(viewId)` on all container maps. Not a bug.
+- **ViewContribution #3 (container removal no DOM cleanup)** — `_onToolContainerRemoved` properly disposes and removes from maps. Not a bug.
+- **ActivationEventService markActivated on failure** — `markActivated()` is only called AFTER successful activation (lines 247, 329 in toolActivator.ts). Not a bug.
