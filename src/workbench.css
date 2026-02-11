@@ -38,6 +38,18 @@ html, body {
 .part {
   overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.part.hidden {
+  display: none !important;
+}
+
+.part-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
 }
 
 /* ── Titlebar ── */
@@ -124,9 +136,18 @@ html, body {
 .sidebar-header {
   height: 35px;
   border-bottom: 1px solid #3c3c3c;
-  padding: 0 12px;
+  padding: 0 8px;
   display: flex;
   align-items: center;
+}
+
+.sidebar-content {
+  display: flex;
+}
+
+.sidebar-views {
+  flex: 1;
+  overflow: hidden;
 }
 
 .sidebar-header-label {
@@ -183,7 +204,24 @@ html, body {
   flex: 1;
 }
 
+.editor-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-group-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
 .editor-watermark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
   color: rgba(255, 255, 255, 0.2);
 }
 
@@ -196,7 +234,7 @@ html, body {
 .auxiliary-bar-header {
   height: 35px;
   border-bottom: 1px solid #3c3c3c;
-  padding: 0 12px;
+  padding: 0 8px;
   display: flex;
   align-items: center;
 }
@@ -214,6 +252,7 @@ html, body {
 }
 
 .auxiliary-bar-views {
+  flex: 1;
   height: 100%;
   overflow: hidden;
 }
@@ -238,6 +277,11 @@ html, body {
 }
 
 /* Panel tab bar is provided by ViewContainer — no separate .panel-tab-bar needed */
+
+.panel-views {
+  flex: 1;
+  overflow: hidden;
+}
 
 /* ── Status Bar ── */
 .part-workbench-parts-statusbar {
@@ -472,4 +516,220 @@ html, body {
   text-align: center;
   color: rgba(255, 255, 255, 0.3);
   font-size: 12px;
+}
+
+/* ── Global utility ── */
+.hidden {
+  display: none !important;
+}
+
+/* ── Titlebar content slot ── */
+.titlebar-content {
+  display: flex;
+  align-items: center;
+  user-select: none;
+}
+
+.titlebar-drag-region {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  -webkit-app-region: drag;
+}
+
+.titlebar-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+/* ── Status Bar content ── */
+.statusbar-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.statusbar-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statusbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statusbar-entry[role="button"] {
+  cursor: pointer;
+}
+
+/* ── Activity Bar spacer ── */
+.activity-bar-spacer {
+  flex: 1 1 0;
+}
+
+/* ── Grid wrappers (workbench layout) ── */
+.workbench-hgrid {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workbench-vgrid {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── Editor column adapter ── */
+.editor-column {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Workspace transition overlay ── */
+.workspace-transition-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10000;
+  background: #1e1e1e;
+  opacity: 0;
+  transition: opacity 120ms ease-in;
+  pointer-events: all;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+}
+
+.workspace-transition-overlay.visible {
+  opacity: 1;
+}
+
+/* ── Editor Group View ── */
+.editor-group {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.editor-tab-bar {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border-bottom: 1px solid var(--color-border, #333);
+  background-color: var(--color-editor-tab-bar, #1e1e1e);
+}
+
+.editor-pane-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.editor-group-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted, #666);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.editor-tabs {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  height: 100%;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 13px;
+  border-right: 1px solid var(--color-border, #333);
+  user-select: none;
+  max-width: 200px;
+  background-color: var(--color-editor-tab, #2d2d2d);
+  color: var(--color-text-muted, #888);
+  border-bottom: 2px solid transparent;
+}
+
+.editor-tab--active {
+  background-color: var(--color-editor-tab-active, #1e1e1e);
+  color: var(--color-text, #ccc);
+  border-bottom-color: var(--color-accent, #007acc);
+}
+
+.editor-tab-pin {
+  font-size: 10px;
+}
+
+.editor-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor-tab--preview .editor-tab-label {
+  font-style: italic;
+}
+
+.editor-tab-dirty {
+  margin-left: 4px;
+  color: var(--color-dirty, #e8e8e8);
+}
+
+.editor-tab-close {
+  margin-left: 6px;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.editor-tab-close:hover {
+  opacity: 1;
+}
+
+.editor-tab.dragging {
+  opacity: 0.5;
+}
+
+.editor-tab.drop-target {
+  border-left: 2px solid var(--color-accent, #007acc);
+}
+
+.editor-group-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.editor-group-toolbar button {
+  background: none;
+  border: none;
+  color: var(--color-text-muted, #888);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.editor-group-toolbar button:hover {
+  background-color: var(--color-hover, rgba(255, 255, 255, 0.1));
 }

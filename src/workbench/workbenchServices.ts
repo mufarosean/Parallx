@@ -1,7 +1,7 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -15,6 +15,7 @@ import { CommandContributionProcessor } from '../contributions/commandContributi
 import { KeybindingContributionProcessor } from '../contributions/keybindingContribution.js';
 import { MenuContributionProcessor } from '../contributions/menuContribution.js';
 import { ViewContributionProcessor } from '../contributions/viewContribution.js';
+import { KeybindingService } from '../services/keybindingService.js';
 import type { IStorage } from '../platform/storage.js';
 import type { ViewManager } from '../views/viewManager.js';
 
@@ -79,10 +80,11 @@ export function registerConfigurationServices(
 }
 
 /**
- * Creates and registers the contribution processors (M2 Capability 5).
+ * Creates and registers the contribution processors (M2 Capability 5)
+ * and the centralized KeybindingService (M3 Capability 0.3).
  * Called during Phase 5 after CommandService and ActivationEventService are available.
  *
- * @returns The three contribution processor instances.
+ * @returns The three contribution processor instances and the KeybindingService.
  */
 export function registerContributionProcessors(
   services: ServiceCollection,
@@ -90,6 +92,7 @@ export function registerContributionProcessors(
   commandContribution: CommandContributionProcessor;
   keybindingContribution: KeybindingContributionProcessor;
   menuContribution: MenuContributionProcessor;
+  keybindingService: KeybindingService;
 } {
   const commandService = services.get(ICommandService) as unknown as import('../commands/commandRegistry.js').CommandService;
   const activationEvents = services.get(IActivationEventService) as unknown as ActivationEventService;
@@ -98,18 +101,27 @@ export function registerContributionProcessors(
   const keybindingContribution = new KeybindingContributionProcessor(commandService);
   const menuContribution = new MenuContributionProcessor(commandService);
 
+  // Create the centralized KeybindingService (M3 Capability 0.3)
+  const keybindingService = new KeybindingService(commandService);
+
   // Wire context key service if available
   if (services.has(IContextKeyService)) {
     const contextKeyService = services.get(IContextKeyService) as any;
     keybindingContribution.setContextKeyService(contextKeyService);
     menuContribution.setContextKeyService(contextKeyService);
+    keybindingService.setContextKeyService(contextKeyService);
   }
+
+  // Tell the keybinding contribution processor to delegate dispatch
+  // to the centralized service instead of its own listener
+  keybindingContribution.setKeybindingService(keybindingService);
 
   services.registerInstance(ICommandContributionService, commandContribution as any);
   services.registerInstance(IKeybindingContributionService, keybindingContribution as any);
   services.registerInstance(IMenuContributionService, menuContribution as any);
+  services.registerInstance(IKeybindingService, keybindingService as any);
 
-  return { commandContribution, keybindingContribution, menuContribution };
+  return { commandContribution, keybindingContribution, menuContribution, keybindingService };
 }
 
 /**

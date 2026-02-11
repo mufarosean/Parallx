@@ -83,6 +83,22 @@ function electronBridge(): ElectronBridge | undefined {
 
 // ─── View Commands ───────────────────────────────────────────────────────────
 
+const showCommands: CommandDescriptor = {
+  id: 'workbench.action.showCommands',
+  title: 'Show All Commands',
+  category: 'View',
+  keybinding: 'Ctrl+Shift+P',
+  handler(ctx) {
+    // The command palette toggle is dispatched via the workbench reference.
+    // The actual palette instance lives in the workbench and is toggled through
+    // a method exposed on WorkbenchLike.
+    const w = wb(ctx);
+    if (typeof (w as any).toggleCommandPalette === 'function') {
+      (w as any).toggleCommandPalette();
+    }
+  },
+};
+
 const toggleSidebar: CommandDescriptor = {
   id: 'workbench.action.toggleSidebar',
   title: 'Toggle Primary Sidebar',
@@ -461,6 +477,7 @@ function _resolveGridForPart(w: WorkbenchLike, partId: string): WorkbenchLike['_
 
 const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // View
+  showCommands,
   toggleSidebar,
   togglePanel,
   toggleAuxiliaryBar,

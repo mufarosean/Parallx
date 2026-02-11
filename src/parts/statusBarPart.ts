@@ -78,7 +78,6 @@ export class StatusBarPart extends Part {
       el.title = entry.tooltip;
     }
     if (entry.command) {
-      el.style.cursor = 'pointer';
       el.setAttribute('role', 'button');
       el.addEventListener('click', () => {
         this._onDidClickEntry.fire({ id: entry.id, command: entry.command! });
@@ -129,23 +128,13 @@ export class StatusBarPart extends Part {
 
   protected override createContent(container: HTMLElement): void {
     container.classList.add('statusbar-content');
-    container.style.display = 'flex';
-    container.style.alignItems = 'center';
-    container.style.justifyContent = 'space-between';
-    container.style.fontSize = '12px';
 
     this._leftSlot = document.createElement('div');
     this._leftSlot.classList.add('statusbar-left');
-    this._leftSlot.style.display = 'flex';
-    this._leftSlot.style.alignItems = 'center';
-    this._leftSlot.style.gap = '4px';
     container.appendChild(this._leftSlot);
 
     this._rightSlot = document.createElement('div');
     this._rightSlot.classList.add('statusbar-right');
-    this._rightSlot.style.display = 'flex';
-    this._rightSlot.style.alignItems = 'center';
-    this._rightSlot.style.gap = '4px';
     container.appendChild(this._rightSlot);
   }
 

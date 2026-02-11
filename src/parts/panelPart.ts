@@ -58,8 +58,6 @@ export class PanelPart extends Part {
 
     this._viewContainerSlot = document.createElement('div');
     this._viewContainerSlot.classList.add('panel-views');
-    this._viewContainerSlot.style.flex = '1';
-    this._viewContainerSlot.style.overflow = 'hidden';
     container.appendChild(this._viewContainerSlot);
   }
 

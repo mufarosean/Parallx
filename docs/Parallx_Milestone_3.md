@@ -81,6 +81,61 @@ Milestones 1 and 2 established:
 
 ---
 
+## Prerequisite – UI Component Library (`src/ui/`)
+
+### Description
+Before M3 UI work begins, a shared component library exists at `src/ui/` that provides reusable UI primitives modeled after VS Code's `src/vs/base/browser/ui/`. This eliminates the duplication patterns identified in M1/M2 (tab bars built twice, overlays built five times, input fields built four times, close buttons built three times) and establishes the foundation for all M3 UI construction.
+
+### Rationale
+M1/M2 codebase audit revealed zero reusable UI primitives — every visual element was hand-rolled with raw `document.createElement` + inline styles. This caused:
+- **Tab bar** duplicated in `editorGroupView.ts` (~177 lines) and `viewContainer.ts` (~65 lines)
+- **Overlay/backdrop** duplicated across `commandPalette.ts`, `notificationService.ts` (3×), `menuContribution.ts`, `workbench.ts`
+- **Input fields** duplicated in `commandPalette.ts`, `notificationService.ts` (2×), `placeholderViews.ts`
+- **Close buttons** duplicated in `editorGroupView.ts` (2×), `notificationService.ts`
+- **Toolbar/action buttons** duplicated in `editorGroupView.ts`, `output/main.ts`, `tool-gallery/main.ts`
+- **Filterable lists** duplicated in `commandPalette.ts` (~258 lines) and `notificationService.ts` (~130 lines)
+
+### Architecture
+Components follow VS Code's exact pattern:
+- Vanilla TypeScript classes extending `Disposable` (from `platform/lifecycle.ts`)
+- Events via `Emitter<T>` (from `platform/events.ts`)
+- Constructor signature: `(container: HTMLElement, options?: TOptions)`
+- All visual styling via CSS classes in co-located `ui.css` (no inline styles)
+- Context-agnostic — components know nothing about parts, services, or tools
+
+**Dependency rule:** `src/ui/` depends only on `src/platform/`. Feature modules consume from `src/ui/`.
+
+### Phase 1 Components (✅ Implemented)
+
+| Component | File | Consolidates |
+|---|---|---|
+| **DOM helpers** | `src/ui/dom.ts` | `$()` element creation, `addDisposableListener()`, `clearNode()`, `toggleClass()` |
+| **Button** | `src/ui/button.ts` | Toolbar buttons (editorGroupView, output, tool-gallery), notification action buttons, close buttons |
+| **InputBox** | `src/ui/inputBox.ts` | Command palette input, notification modal inputs, placeholder view inputs |
+| **TabBar** | `src/ui/tabBar.ts` | Editor group tab bar, view container tab bar — with DnD, close, active state, decorations |
+| **Overlay** | `src/ui/overlay.ts` | Command palette overlay, notification modals, context menu backdrop, transition overlay |
+| **FilterableList** | `src/ui/list.ts` | Command palette list + quick pick list — with fuzzy filter, keyboard nav, badges |
+| **ActionBar** | `src/ui/actionBar.ts` | Editor group toolbar, notification action rows, view title bar actions |
+| **CountBadge** | `src/ui/countBadge.ts` | Notification count badges, activity bar badges (M3 Cap 1) |
+
+### CSS
+All component styles live in `src/ui/ui.css`, concatenated with `src/workbench.css` at build time. All classes use `ui-` prefix to avoid collisions with existing workbench classes. Theme integration via CSS custom properties (`--color-*`).
+
+### VS Code Reference
+- `src/vs/base/browser/ui/button/button.ts` — Button pattern
+- `src/vs/base/browser/ui/inputbox/inputBox.ts` — InputBox pattern
+- `src/vs/base/browser/ui/actionbar/actionbar.ts` — ActionBar pattern
+- `src/vs/base/browser/ui/countBadge/countBadge.ts` — CountBadge pattern
+- `src/vs/base/browser/ui/list/listWidget.ts` — List/Tree pattern
+
+### Integration Path
+M3 capabilities should:
+1. **Import from `src/ui/`** instead of creating raw DOM for standard widgets
+2. **Refactor existing duplication** as each capability touches the relevant code (e.g., Cap 0 CSS migration should also wire in `TabBar` for editor and view containers)
+3. **Add new components to `src/ui/`** when M3 requires primitives not yet built (e.g., `Sash`, `ProgressBar`, `ContextMenu`)
+
+---
+
 ## Capability 0 – M2 Gap Cleanup and CSS Migration
 
 ### Capability Description
@@ -101,9 +156,10 @@ None — this is prerequisite work.
 
 #### Tasks
 
-**Task 0.1 – Migrate Inline Styles to CSS Classes**
+**Task 0.1 – Migrate Inline Styles to CSS Classes** ✅
 - **Task Description:** Audit all Part subclasses and replace inline `element.style.*` assignments with CSS class application. Computed dimensions (`width`, `height` set by `layout()`) are the only permitted inline styles.
 - **Output:** Updated part files and expanded `workbench.css`.
+- **Deviation:** Used `.hidden` utility class with `!important` for visibility toggling instead of BEM modifiers. All `display: flex/none` toggles (Part visibility, watermark, empty state, editor column adapter) now use `classList.toggle('hidden')`. Window control hover effects removed from JS since CSS `:hover` already handles them. Grid wrapper classes `.workbench-hgrid` / `.workbench-vgrid` and `.editor-column` added. Workspace transition overlay uses `.visible` class toggle instead of inline opacity. 158 inline styles migrated across 10 files, 9 kept (layout dimensions). Bundle size reduced ~7kb.
 - **Completion Criteria:**
   - All `element.style.backgroundColor`, `element.style.color`, `element.style.border*`, `element.style.padding`, `element.style.fontSize`, etc. in part create/mount methods are replaced with CSS class selectors
   - `workbench.css` contains all visual properties that were previously inline
@@ -115,9 +171,10 @@ None — this is prerequisite work.
   - Consider using BEM-like naming convention for new classes: `.part-titlebar__center`, `.editor-tab--active`, `.statusbar-entry--has-command`
   - Do not introduce a CSS preprocessor (plain CSS for now)
 
-**Task 0.2 – Promote Activity Bar to ActivityBarPart**
+**Task 0.2 – Promote Activity Bar to ActivityBarPart** ✅
 - **Task Description:** Replace the ad-hoc `div.activity-bar` created in `workbench.ts` Phase 2 with a proper `ActivityBarPart` class extending `Part`, registered in `PartRegistry`, and participating in the grid layout.
-- **Output:** `ActivityBarPart` class in `src/parts/activityBarPart.ts` (name consistent with VS Code's `activitybarPart.ts`), registered descriptor, grid integration.
+- **Output:** `ActivityBarPart` class in `src/parts/activityBarPart.ts`, registered descriptor, grid integration.
+- **Deviation:** ActivityBarPart is positioned outside the horizontal grid (prepended to bodyRow) rather than as a grid view, matching the fixed 48px width constraint. Grid topology remains `hGrid(sidebar | editorColumn | auxBar)` with ActivityBarPart as a non-grid fixed-width element.
 - **Completion Criteria:**
   - `ActivityBarPart` extends `Part` and implements `IGridView`
   - Registered in `PartRegistry` with `PartId.ActivityBar`
@@ -132,9 +189,10 @@ None — this is prerequisite work.
   - The secondary activity bar (auxiliary bar side) remains as-is for M3 — it can be promoted in a future milestone
   - The horizontal grid topology changes from `hGrid(sidebar | editorColumn | auxBar)` to `hGrid(activityBar | sidebar | editorColumn | auxBar)`
 
-**Task 0.3 – Establish Keybinding Dispatch Infrastructure**
+**Task 0.3 – Establish Keybinding Dispatch Infrastructure** ✅
 - **Task Description:** Create a centralized `KeybindingService` that intercepts all keyboard events at the workbench level and resolves them to commands. Replace the ad-hoc `document.addEventListener('keydown')` in `CommandPalette` and any other scattered listeners.
 - **Output:** `KeybindingService` class in `src/services/keybindingService.ts`, registered in DI.
+- **Deviation:** KeybindingContributionProcessor retains a `setKeybindingService()` bridge method rather than being fully replaced — it continues to parse tool manifests but delegates dispatch to the service. F1 registered as a separate secondary binding for showCommands alongside Ctrl+Shift+P. Chord timeout uses 1500ms as specified.
 - **Completion Criteria:**
   - Single `keydown` listener on `document` (capture phase) owned by `KeybindingService`
   - Service maintains a keybinding table: `{ key: NormalizedKeybinding, commandId: string, when?: string }[]`

@@ -1,0 +1,392 @@
+/* ui.css — Styles for src/ui/ component library
+ *
+ * All visual styling for reusable UI components lives here.
+ * Components apply CSS classes — no inline styles for visual properties.
+ *
+ * Theme integration: uses CSS custom properties (--color-*) defined by
+ * the workbench theme. Fallbacks ensure components render in isolation.
+ */
+
+/* ── Utility ── */
+
+.ui-hidden {
+  display: none !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Button
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 20px;
+  color: var(--color-button-foreground, #ffffff);
+  background-color: var(--color-button-background, #0e639c);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  outline: none;
+  transition: background-color 0.1s;
+}
+
+.ui-button:hover {
+  background-color: var(--color-button-hover-background, #1177bb);
+}
+
+.ui-button:active {
+  background-color: var(--color-button-active-background, #0d5689);
+}
+
+.ui-button:focus-visible {
+  outline: 1px solid var(--color-focus-border, #007fd4);
+  outline-offset: 1px;
+}
+
+.ui-button--secondary {
+  color: var(--color-button-secondary-foreground, #cccccc);
+  background-color: var(--color-button-secondary-background, #3a3d41);
+  border-color: var(--color-border, #474747);
+}
+
+.ui-button--secondary:hover {
+  background-color: var(--color-button-secondary-hover-background, #45494e);
+}
+
+.ui-button--disabled {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
+}
+
+.ui-button--icon-only {
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  color: var(--color-text-muted, #888);
+  border-radius: 3px;
+}
+
+.ui-button--icon-only:hover {
+  background-color: var(--color-hover, rgba(255, 255, 255, 0.1));
+}
+
+.ui-button-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.ui-button-label {
+  /* Inherits from .ui-button */
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * InputBox
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.ui-input-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-input-box-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--color-input-foreground, #cccccc);
+  background-color: var(--color-input-background, #3c3c3c);
+  border: 1px solid var(--color-input-border, #474747);
+  border-radius: 3px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.ui-input-box-input::placeholder {
+  color: var(--color-input-placeholder, #888888);
+}
+
+.ui-input-box-input:focus {
+  border-color: var(--color-focus-border, #007fd4);
+}
+
+.ui-input-box--invalid .ui-input-box-input {
+  border-color: var(--color-error, #f14c4c);
+}
+
+.ui-input-box-validation {
+  font-size: 12px;
+  color: var(--color-error, #f14c4c);
+  margin-top: 4px;
+  min-height: 0; /* Collapses when empty */
+}
+
+.ui-input-box--invalid .ui-input-box-validation {
+  min-height: 16px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * TabBar
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.ui-tab-bar {
+  display: flex;
+  align-items: center;
+  height: 35px;
+  min-height: 35px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--color-border, #333);
+  background-color: var(--color-tab-bar-background, #1e1e1e);
+}
+
+.ui-tab-bar-tabs {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.ui-tab {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  height: 100%;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 13px;
+  user-select: none;
+  max-width: 200px;
+  color: var(--color-text-muted, #888);
+  background-color: var(--color-tab-inactive-background, #2d2d2d);
+  border-bottom: 2px solid transparent;
+  border-right: 1px solid var(--color-border, #333);
+  transition: background-color 0.1s;
+}
+
+.ui-tab:hover {
+  background-color: var(--color-tab-hover-background, #383838);
+}
+
+.ui-tab--active {
+  color: var(--color-text, #ccc);
+  background-color: var(--color-tab-active-background, #1e1e1e);
+  border-bottom-color: var(--color-accent, #007acc);
+}
+
+.ui-tab--italic .ui-tab-label {
+  font-style: italic;
+}
+
+.ui-tab--sticky .ui-tab-icon::before {
+  content: '📌 ';
+  font-size: 10px;
+}
+
+.ui-tab--dragging {
+  opacity: 0.5;
+}
+
+.ui-tab--drop-target {
+  border-left: 2px solid var(--color-accent, #007acc);
+}
+
+.ui-tab-icon {
+  margin-right: 4px;
+  font-size: 12px;
+}
+
+.ui-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.ui-tab-dirty {
+  margin-left: 4px;
+  color: var(--color-dirty, #e8e8e8);
+  font-size: 12px;
+}
+
+.ui-tab-close {
+  margin-left: 6px;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.5;
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.ui-tab-close:hover {
+  opacity: 1;
+  background-color: var(--color-hover, rgba(255, 255, 255, 0.1));
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Overlay
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.ui-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 20vh;
+  z-index: 20000;
+}
+
+.ui-overlay--transparent {
+  background-color: transparent;
+}
+
+.ui-overlay-content {
+  /* Content container — consumers add their own sizing/styling */
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * FilterableList
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.ui-filterable-list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ui-filterable-list-items {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.ui-filterable-list-row {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text, #cccccc);
+}
+
+.ui-filterable-list-row:hover {
+  background-color: var(--color-list-hover-background, rgba(255, 255, 255, 0.04));
+}
+
+.ui-filterable-list-row--selected {
+  background-color: var(--color-list-active-background, #04395e);
+}
+
+.ui-filterable-list-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-filterable-list-description {
+  margin-left: 8px;
+  color: var(--color-text-muted, #888888);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ui-filterable-list-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--color-text-muted, #888888);
+  white-space: nowrap;
+}
+
+.ui-filterable-list-empty {
+  padding: 8px 12px;
+  color: var(--color-text-muted, #888888);
+  font-size: 13px;
+  text-align: center;
+}
+
+.ui-filterable-list-more {
+  padding: 4px 12px;
+  color: var(--color-text-muted, #888888);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * ActionBar
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.ui-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ui-action-bar-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  color: var(--color-text-muted, #888);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  border-radius: 3px;
+  outline: none;
+}
+
+.ui-action-bar-item:hover {
+  background-color: var(--color-hover, rgba(255, 255, 255, 0.1));
+  color: var(--color-text, #ccc);
+}
+
+.ui-action-bar-item:focus-visible {
+  outline: 1px solid var(--color-focus-border, #007fd4);
+}
+
+.ui-action-bar-item--disabled {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
+}
+
+.ui-action-bar-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.ui-action-bar-label {
+  font-size: 12px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * CountBadge
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.ui-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--color-badge-foreground, #ffffff);
+  background-color: var(--color-badge-background, #4d4d4d);
+  border-radius: 9px;
+  white-space: nowrap;
+}
+
+.ui-count-badge--hidden {
+  display: none;
+}

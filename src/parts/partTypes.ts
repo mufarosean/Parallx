@@ -11,6 +11,7 @@ import { SizeConstraints, Dimensions, Orientation } from '../layout/layoutTypes.
  */
 export enum PartId {
   Titlebar = 'workbench.parts.titlebar',
+  ActivityBar = 'workbench.parts.activitybar',
   Sidebar = 'workbench.parts.sidebar',
   Panel = 'workbench.parts.panel',
   Editor = 'workbench.parts.editor',

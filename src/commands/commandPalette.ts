@@ -96,7 +96,8 @@ export class CommandPalette extends Disposable {
   ) {
     super();
     this._loadRecent();
-    this._registerGlobalKeybinding();
+    // Global keybinding (Ctrl+Shift+P / F1) is now handled by KeybindingService (M3 Capability 0.3)
+    // instead of a hardcoded listener here.
 
     // Track executed commands for recents
     this._register(this._commandService.onDidExecuteCommand((e) => {
@@ -184,26 +185,10 @@ export class CommandPalette extends Disposable {
     this._saveRecent();
   }
 
-  // ─── Global keybinding ───────────────────────────────────────────────────
-
-  private _registerGlobalKeybinding(): void {
-    const handler = (e: KeyboardEvent) => {
-      // Ctrl+Shift+P or Cmd+Shift+P
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
-        e.preventDefault();
-        e.stopPropagation();
-        this.toggle();
-      }
-      // F1 as alternative
-      if (e.key === 'F1') {
-        e.preventDefault();
-        e.stopPropagation();
-        this.toggle();
-      }
-    };
-    document.addEventListener('keydown', handler, true);
-    this._register({ dispose: () => document.removeEventListener('keydown', handler, true) });
-  }
+  // ─── Global keybinding (REMOVED — M3 Capability 0.3) ─────────────────────
+  // Ctrl+Shift+P and F1 are now registered through the centralized
+  // KeybindingService → 'workbench.action.showCommands' command.
+  // The hardcoded document.addEventListener('keydown') has been removed.
 
   // ─── DOM creation ────────────────────────────────────────────────────────
 

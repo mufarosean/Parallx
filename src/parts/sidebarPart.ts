@@ -54,26 +54,19 @@ export class SidebarPart extends Part {
   protected override createTitleArea(container: HTMLElement): void {
     this._headerSlot = container;
     container.classList.add('sidebar-header');
-    container.style.display = 'flex';
-    container.style.alignItems = 'center';
-    container.style.padding = '0 8px';
   }
 
   protected override createContent(container: HTMLElement): void {
     container.classList.add('sidebar-content');
-    container.style.display = 'flex';
 
     // Activity bar (icon strip)
     this._activityBarSlot = document.createElement('div');
     this._activityBarSlot.classList.add('sidebar-activity-bar');
-    this._activityBarSlot.style.flexShrink = '0';
     container.appendChild(this._activityBarSlot);
 
     // View container area
     this._viewContainerSlot = document.createElement('div');
     this._viewContainerSlot.classList.add('sidebar-views');
-    this._viewContainerSlot.style.flex = '1';
-    this._viewContainerSlot.style.overflow = 'hidden';
     container.appendChild(this._viewContainerSlot);
   }
 

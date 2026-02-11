@@ -19,6 +19,12 @@ interface IContextKeyServiceLike {
   contextMatchesRules(whenClause: string | undefined): boolean;
 }
 
+/** Minimal shape of KeybindingService to avoid circular imports (M3 Capability 0.3). */
+interface IKeybindingServiceLike {
+  registerKeybinding(key: string, commandId: string, when?: string, source?: string): import('../platform/lifecycle.js').IDisposable;
+  removeKeybindingsBySource(source: string): void;
+}
+
 // ─── Key Normalization ───────────────────────────────────────────────────────
 
 /**
@@ -110,7 +116,7 @@ export function formatKeybindingForDisplay(key: string): string {
 /**
  * Build a normalized key string from a keyboard event.
  */
-function keyFromEvent(e: KeyboardEvent): string {
+export function keyFromEvent(e: KeyboardEvent): string {
   const modifiers: string[] = [];
   if (e.ctrlKey) modifiers.push('ctrl');
   if (e.shiftKey) modifiers.push('shift');
@@ -158,8 +164,15 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
   /** Optional context key service for when-clause evaluation. */
   private _contextKeyService: IContextKeyServiceLike | undefined;
 
-  /** The global keyboard event listener (for cleanup). */
+  /** The global keyboard event listener (for cleanup) — only used in legacy mode. */
   private _keydownHandler: ((e: KeyboardEvent) => void) | undefined;
+
+  /**
+   * Centralized KeybindingService (M3 Capability 0.3).
+   * When set, new contributions are registered through the service
+   * instead of being dispatched by this processor's own listener.
+   */
+  private _keybindingService: IKeybindingServiceLike | undefined;
 
   // ── Events ──
 
@@ -173,6 +186,7 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
     private readonly _commandService: CommandService,
   ) {
     super();
+    // Legacy global listener — will be disabled when KeybindingService is set
     this._installGlobalListener();
   }
 
@@ -181,6 +195,28 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
    */
   setContextKeyService(service: IContextKeyServiceLike): void {
     this._contextKeyService = service;
+  }
+
+  /**
+   * Set the centralized KeybindingService (M3 Capability 0.3).
+   * Once set, this processor delegates dispatch to the service and
+   * removes its own global keydown listener.
+   */
+  setKeybindingService(service: IKeybindingServiceLike): void {
+    this._keybindingService = service;
+
+    // Remove the legacy global listener — the KeybindingService now owns dispatch
+    if (this._keydownHandler) {
+      document.removeEventListener('keydown', this._keydownHandler, true);
+      this._keydownHandler = undefined;
+    }
+
+    // Re-register all existing tool keybindings through the centralized service
+    for (const [toolId, keybindings] of this._toolKeybindings) {
+      for (const kb of keybindings) {
+        this._keybindingService.registerKeybinding(kb.key, kb.commandId, kb.when, `tool:${toolId}`);
+      }
+    }
   }
 
   // ── IContributionProcessor ──
@@ -240,6 +276,13 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
         `[KeybindingContribution] Registered ${contributedList.length} keybinding(s) from tool "${toolId}":`,
         contributedList.map(k => `${k.key} → ${k.commandId}`).join(', '),
       );
+
+      // If centralized KeybindingService is available, register through it
+      if (this._keybindingService) {
+        for (const kb of contributedList) {
+          this._keybindingService.registerKeybinding(kb.key, kb.commandId, kb.when, `tool:${toolId}`);
+        }
+      }
     }
 
     // Also update command descriptors with keybinding info for palette display
@@ -252,6 +295,11 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
   removeContributions(toolId: string): void {
     const toolKb = this._toolKeybindings.get(toolId);
     if (!toolKb || toolKb.length === 0) return;
+
+    // Remove from centralized KeybindingService if available
+    if (this._keybindingService) {
+      this._keybindingService.removeKeybindingsBySource(`tool:${toolId}`);
+    }
 
     for (const kb of toolKb) {
       const bindings = this._keybindings.get(kb.normalizedKey);

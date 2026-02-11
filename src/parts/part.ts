@@ -100,10 +100,9 @@ export abstract class Part extends Disposable implements IPart, IGridView {
     this._element.setAttribute('role', 'region');
     this._element.setAttribute('aria-label', this._name);
     this._element.setAttribute('data-part-id', this.id);
-    this._element.style.overflow = 'hidden';
-    this._element.style.position = 'relative';
-    this._element.style.display = this._visible ? 'flex' : 'none';
-    this._element.style.flexDirection = 'column';
+    if (!this._visible) {
+      this._element.classList.add('hidden');
+    }
 
     // Optional title bar area (subclasses may use it)
     if (this.hasTitleArea) {
@@ -116,9 +115,6 @@ export abstract class Part extends Disposable implements IPart, IGridView {
     // Content container — where views will be mounted
     this._contentElement = document.createElement('div');
     this._contentElement.classList.add('part-content');
-    this._contentElement.style.flex = '1';
-    this._contentElement.style.overflow = 'hidden';
-    this._contentElement.style.position = 'relative';
     this._element.appendChild(this._contentElement);
 
     // Let the concrete part build its internals
@@ -172,7 +168,7 @@ export abstract class Part extends Disposable implements IPart, IGridView {
     }
     this._visible = visible;
     if (this._created) {
-      this._element.style.display = visible ? 'flex' : 'none';
+      this._element.classList.toggle('hidden', !visible);
     }
     this._onDidChangeVisibility.fire(visible);
   }

@@ -21,6 +21,7 @@ import { Part } from '../parts/part.js';
 import { PartRegistry } from '../parts/partRegistry.js';
 import { PartId } from '../parts/partTypes.js';
 import { titlebarPartDescriptor } from '../parts/titlebarPart.js';
+import { activityBarPartDescriptor, ActivityBarPart } from '../parts/activityBarPart.js';
 import { sidebarPartDescriptor, SidebarPart } from '../parts/sidebarPart.js';
 import { editorPartDescriptor, EditorPart } from '../parts/editorPart.js';
 import { auxiliaryBarPartDescriptor } from '../parts/auxiliaryBarPart.js';
@@ -55,7 +56,7 @@ import { createDefaultLayoutState, SerializedLayoutState } from '../layout/layou
 
 // Commands
 import { CommandService } from '../commands/commandRegistry.js';
-import { registerBuiltinCommands } from '../commands/structuralCommands.js';
+import { registerBuiltinCommands, ALL_BUILTIN_COMMANDS } from '../commands/structuralCommands.js';
 import { CommandPalette } from '../commands/commandPalette.js';
 
 // Context (Capability 8)
@@ -104,6 +105,9 @@ import type { CommandContributionProcessor } from '../contributions/commandContr
 import type { KeybindingContributionProcessor } from '../contributions/keybindingContribution.js';
 import type { MenuContributionProcessor } from '../contributions/menuContribution.js';
 
+// Keybinding Service (M3 Capability 0.3)
+import type { KeybindingService } from '../services/keybindingService.js';
+
 // View Contribution (M2 Capability 6)
 import { ViewContributionProcessor } from '../contributions/viewContribution.js';
 import type { IContributedContainer, IContributedView } from '../contributions/viewContribution.js';
@@ -150,7 +154,6 @@ export class Workbench extends Disposable {
   private _vGrid!: Grid;
   private _editorColumnAdapter!: IGridView & { element: HTMLElement };
   private _bodyRow!: HTMLElement;
-  private _activityBarEl!: HTMLElement;
   private _sidebarContainer!: ViewContainer;
   private _panelContainer!: ViewContainer;
   private _auxBarContainer!: ViewContainer;
@@ -171,6 +174,7 @@ export class Workbench extends Disposable {
 
   // Part refs (cached after creation)
   private _titlebar!: Part;
+  private _activityBarPart!: ActivityBarPart;
   private _sidebar!: Part;
   private _editor!: Part;
   private _auxiliaryBar!: Part;
@@ -207,8 +211,6 @@ export class Workbench extends Disposable {
   private _contributedAuxBarContainers = new Map<string, ViewContainer>();
   /** Which sidebar container is currently active: undefined = built-in default. */
   private _activeSidebarContainerId: string | undefined;
-  /** Activity bar separator element (between built-in and contributed items). */
-  private _activityBarSeparator: HTMLElement | undefined;
   /** Header label element for the sidebar. */
   private _sidebarHeaderLabel: HTMLElement | undefined;
   /** MutationObservers for tab drag wiring (disconnected on teardown). */
@@ -258,13 +260,13 @@ export class Workbench extends Disposable {
       // Hide: remove from hGrid
       this._hGrid.removeView(this._auxiliaryBar.id);
       this._auxiliaryBar.setVisible(false);
-      this._secondaryActivityBarEl.style.display = 'none';
+      this._secondaryActivityBarEl.classList.add('hidden');
       this._auxBarVisible = false;
     } else {
       // Show: add to hGrid at the end (right of editor column)
       this._auxiliaryBar.setVisible(true);
       this._hGrid.addView(this._auxiliaryBar, DEFAULT_AUX_BAR_WIDTH);
-      this._secondaryActivityBarEl.style.display = 'flex';
+      this._secondaryActivityBarEl.classList.remove('hidden');
       this._auxBarVisible = true;
 
       // Ensure the aux bar content is populated
@@ -274,6 +276,16 @@ export class Workbench extends Disposable {
     }
     this._hGrid.layout();
     this._layoutViewContainers();
+  }
+
+  /**
+   * Toggle the command palette overlay (M3 Capability 0.3).
+   * Exposed as a public method so the 'workbench.action.showCommands' command handler can call it.
+   */
+  toggleCommandPalette(): void {
+    if (this._commandPalette) {
+      this._commandPalette.toggle();
+    }
   }
 
   /**
@@ -570,6 +582,7 @@ export class Workbench extends Disposable {
     this._partRegistry = this._register(new PartRegistry());
     this._partRegistry.registerMany([
       titlebarPartDescriptor,
+      activityBarPartDescriptor,
       sidebarPartDescriptor,
       editorPartDescriptor,
       auxiliaryBarPartDescriptor,
@@ -580,6 +593,7 @@ export class Workbench extends Disposable {
 
     // 2. Cache part references
     this._titlebar = this._partRegistry.requirePart(PartId.Titlebar) as Part;
+    this._activityBarPart = this._partRegistry.requirePart(PartId.ActivityBar) as ActivityBarPart;
     this._sidebar = this._partRegistry.requirePart(PartId.Sidebar) as Part;
     this._editor = this._partRegistry.requirePart(PartId.Editor) as Part;
     this._auxiliaryBar = this._partRegistry.requirePart(PartId.AuxiliaryBar) as Part;
@@ -598,10 +612,11 @@ export class Workbench extends Disposable {
 
     // 4. Create parts into temporary container so their elements exist
     const tempDiv = document.createElement('div');
-    tempDiv.style.display = 'none';
+    tempDiv.classList.add('hidden');
     document.body.appendChild(tempDiv);
 
     this._titlebar.create(tempDiv);
+    this._activityBarPart.create(tempDiv);
     this._sidebar.create(tempDiv);
     this._editor.create(tempDiv);
     this._auxiliaryBar.create(tempDiv);
@@ -631,37 +646,29 @@ export class Workbench extends Disposable {
     }
     this._hGrid.layout();
 
-    // 8. Body row: activityBar + hGrid
+    // 8. Body row: activityBar (Part) + hGrid
     this._bodyRow = document.createElement('div');
     this._bodyRow.classList.add('workbench-middle');
 
-    this._activityBarEl = document.createElement('div');
-    this._activityBarEl.classList.add('activity-bar');
-    this._bodyRow.appendChild(this._activityBarEl);
+    // Mount the ActivityBarPart (M3 Capability 0.2) — replaces ad-hoc div.activity-bar
+    this._bodyRow.appendChild(this._activityBarPart.element);
+    this._activityBarPart.layout(ACTIVITY_BAR_WIDTH, bodyH, Orientation.Vertical);
 
-    // Hide the sidebar's internal activity bar slot
-    const internalActivityBar = this._sidebar.element.querySelector('.sidebar-activity-bar') as HTMLElement;
-    if (internalActivityBar) {
-      internalActivityBar.style.display = 'none';
-    }
+    // Hide the sidebar's internal activity bar slot (now owned by ActivityBarPart)
+    // CSS .sidebar-activity-bar already sets display:none
 
     this._bodyRow.appendChild(this._hGrid.element);
-    this._hGrid.element.style.flex = '1 1 0';
-    this._hGrid.element.style.minWidth = '0';
-    this._hGrid.element.style.minHeight = '0';
+    this._hGrid.element.classList.add('workbench-hgrid');
 
     this._editorColumnAdapter.element.appendChild(this._vGrid.element);
-    this._vGrid.element.style.width = '100%';
-    this._vGrid.element.style.height = '100%';
-    this._vGrid.element.style.minHeight = '0';
+    this._vGrid.element.classList.add('workbench-vgrid');
 
     // 9. Assemble final DOM
     this._container.appendChild(this._titlebar.element);
     this._titlebar.layout(w, TITLE_HEIGHT, Orientation.Horizontal);
 
     this._container.appendChild(this._bodyRow);
-    this._bodyRow.style.flex = '1 1 0';
-    this._bodyRow.style.minHeight = '0';
+    // .workbench-middle CSS already sets flex: 1 1 0 and min-height: 0
 
     this._container.appendChild(this._statusBar.element);
     this._statusBar.layout(w, STATUS_HEIGHT, Orientation.Horizontal);
@@ -1002,10 +1009,6 @@ export class Workbench extends Disposable {
   private _createEditorColumnAdapter(vGrid: Grid): IGridView & { element: HTMLElement } {
     const wrapper = document.createElement('div');
     wrapper.classList.add('editor-column');
-    wrapper.style.display = 'flex';
-    wrapper.style.flexDirection = 'column';
-    wrapper.style.overflow = 'hidden';
-    wrapper.style.position = 'relative';
 
     const emitter = new Emitter<void>();
 
@@ -1022,7 +1025,7 @@ export class Workbench extends Disposable {
         vGrid.resize(width, height);
       },
       setVisible(visible: boolean): void {
-        wrapper.style.display = visible ? 'flex' : 'none';
+        wrapper.classList.toggle('hidden', !visible);
       },
       toJSON(): object {
         return { id: 'workbench.editorColumn', type: 'adapter' };
@@ -1066,23 +1069,19 @@ export class Workbench extends Disposable {
       const controls = document.createElement('div');
       controls.classList.add('window-controls');
 
-      const makeBtn = (label: string, action: () => void, hoverColor?: string): HTMLElement => {
+      const makeBtn = (label: string, action: () => void): HTMLElement => {
         const btn = document.createElement('button');
         btn.textContent = label;
         btn.classList.add('window-control-btn');
         btn.addEventListener('click', action);
-        if (hoverColor) {
-          btn.addEventListener('mouseenter', () => (btn.style.backgroundColor = hoverColor));
-          btn.addEventListener('mouseleave', () => (btn.style.backgroundColor = ''));
-        }
         return btn;
       };
 
       const api = window.parallxElectron;
       if (api) {
-        controls.appendChild(makeBtn('─', () => api.minimize(), 'rgba(255,255,255,0.1)'));
-        controls.appendChild(makeBtn('□', () => api.maximize(), 'rgba(255,255,255,0.1)'));
-        controls.appendChild(makeBtn('✕', () => api.close(), '#e81123'));
+        controls.appendChild(makeBtn('─', () => api.minimize()));
+        controls.appendChild(makeBtn('□', () => api.maximize()));
+        controls.appendChild(makeBtn('✕', () => api.close()));
       }
 
       rightSlot.appendChild(controls);
@@ -1102,32 +1101,38 @@ export class Workbench extends Disposable {
     container.addView(explorerView);
     container.addView(searchView);
 
-    // Activity bar: vertical icon strip
+    // Activity bar: register built-in icons via ActivityBarPart (M3 Capability 0.2)
     const views = [
       { id: 'view.explorer', icon: '📁', label: 'Explorer' },
       { id: 'view.search', icon: '🔍', label: 'Search' },
     ];
 
     for (const v of views) {
-      const btn = document.createElement('button');
-      btn.classList.add('activity-bar-item');
-      btn.dataset.viewId = v.id;
-      btn.title = v.label;
-      btn.textContent = v.icon;
-      btn.addEventListener('click', () => {
+      this._activityBarPart.addIcon({
+        id: v.id,
+        icon: v.icon,
+        label: v.label,
+        source: 'builtin',
+      });
+    }
+
+    // Wire icon click events to switch views
+    this._register(this._activityBarPart.onDidClickIcon((event) => {
+      if (event.source === 'builtin') {
         // Switch back to built-in sidebar container if a contributed one is active
         if (this._activeSidebarContainerId) {
           this._switchSidebarContainer(undefined);
         }
-        container.activateView(v.id);
-        this._activityBarEl.querySelectorAll('.activity-bar-item').forEach((el) =>
-          el.classList.toggle('active', el === btn),
-        );
-      });
-      this._activityBarEl.appendChild(btn);
-    }
+        container.activateView(event.iconId);
+        this._activityBarPart.setActiveIcon(event.iconId);
+      } else if (event.source === 'contributed') {
+        // Switch to contributed sidebar container
+        this._switchSidebarContainer(event.iconId);
+      }
+    }));
 
-    this._activityBarEl.querySelector('.activity-bar-item')?.classList.add('active');
+    // Activate the first icon by default
+    this._activityBarPart.setActiveIcon('view.explorer');
 
     // Sidebar header label
     const headerSlot = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
@@ -1189,21 +1194,21 @@ export class Workbench extends Disposable {
   // ════════════════════════════════════════════════════════════════════════
 
   private _addAuxBarToggle(): void {
-    // Add a spacer + toggle button at the bottom of the primary activity bar
-    const spacer = document.createElement('div');
-    spacer.classList.add('activity-bar-spacer');
-    spacer.style.flex = '1';
-    this._activityBarEl.appendChild(spacer);
+    // The spacer and bottom section are already part of ActivityBarPart's
+    // createContent(). We just need to add the toggle icon to the bottom section.
+    const bottomSection = this._activityBarPart.contentElement.querySelector('.activity-bar-bottom');
+    if (!bottomSection) return;
 
     const toggleBtn = document.createElement('button');
     toggleBtn.classList.add('activity-bar-item');
+    toggleBtn.dataset.iconId = 'auxbar-toggle';
     toggleBtn.title = 'Toggle Secondary Side Bar';
     toggleBtn.textContent = '⊞';
     toggleBtn.addEventListener('click', () => {
       this.toggleAuxiliaryBar();
       toggleBtn.classList.toggle('active', this._auxBarVisible);
     });
-    this._activityBarEl.appendChild(toggleBtn);
+    bottomSection.appendChild(toggleBtn);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1247,9 +1252,7 @@ export class Workbench extends Disposable {
 
   private _setupSecondaryActivityBar(): void {
     this._secondaryActivityBarEl = document.createElement('div');
-    this._secondaryActivityBarEl.classList.add('secondary-activity-bar');
-    // Hidden by default (aux bar starts hidden)
-    this._secondaryActivityBarEl.style.display = 'none';
+    this._secondaryActivityBarEl.classList.add('secondary-activity-bar', 'hidden');
 
     // No hardcoded view buttons — extensions will register their own
     // activity bar items when they add views to the auxiliary bar.
@@ -1345,7 +1348,7 @@ export class Workbench extends Disposable {
       : undefined;
 
     // Register contribution processors (M2 Capability 5)
-    const { commandContribution, keybindingContribution, menuContribution } =
+    const { commandContribution, keybindingContribution, menuContribution, keybindingService } =
       registerContributionProcessors(this._services);
     this._commandContribution = commandContribution;
     this._keybindingContribution = keybindingContribution;
@@ -1353,6 +1356,10 @@ export class Workbench extends Disposable {
     this._register(commandContribution);
     this._register(keybindingContribution);
     this._register(menuContribution);
+    this._register(keybindingService);
+
+    // Register structural keybindings through the centralized service (M3 Capability 0.3)
+    this._registerStructuralKeybindings(keybindingService);
 
     // Register view contribution processor (M2 Capability 6)
     this._viewContribution = registerViewContributionProcessor(this._services, this._viewManager);
@@ -1428,6 +1435,39 @@ export class Workbench extends Disposable {
     activationEvents.fireStartupFinished();
 
     console.log('[Workbench] Tool lifecycle initialized (with contribution processors)');
+  }
+
+  /**
+   * Register all structural (built-in) keybindings through the centralized
+   * KeybindingService (M3 Capability 0.3). This replaces ad-hoc keydown
+   * listeners scattered across CommandPalette and other modules.
+   */
+  private _registerStructuralKeybindings(keybindingService: KeybindingService): void {
+    const bindings: { key: string; commandId: string; when?: string; source: string }[] = [];
+
+    // 1. Structural command keybindings from command descriptors
+    for (const cmd of ALL_BUILTIN_COMMANDS) {
+      if (cmd.keybinding) {
+        bindings.push({
+          key: cmd.keybinding,
+          commandId: cmd.id,
+          when: cmd.when,
+          source: 'builtin',
+        });
+      }
+    }
+
+    // 2. F1 as secondary trigger for command palette (not in command descriptor)
+    bindings.push(
+      { key: 'F1', commandId: 'workbench.action.showCommands', source: 'builtin' },
+    );
+
+    this._register(keybindingService.registerKeybindings(bindings));
+
+    console.log(
+      '[Workbench] Registered %d structural keybinding(s) via KeybindingService',
+      bindings.length,
+    );
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1739,61 +1779,22 @@ export class Workbench extends Disposable {
 
   /**
    * Add an activity bar icon for a tool-contributed sidebar container.
-   * Contributed icons appear below the built-in icons, after a separator.
+   * Uses the ActivityBarPart's addIcon API (M3 Capability 0.2).
    */
   private _addContributedActivityBarIcon(info: IContributedContainer): void {
-    // Ensure separator exists between built-in and contributed icons
-    if (!this._activityBarSeparator) {
-      this._activityBarSeparator = document.createElement('div');
-      this._activityBarSeparator.classList.add('activity-bar-separator');
-      this._activityBarSeparator.style.width = '60%';
-      this._activityBarSeparator.style.height = '1px';
-      this._activityBarSeparator.style.backgroundColor = '#3c3c3c';
-      this._activityBarSeparator.style.margin = '4px auto';
-
-      // Insert before the spacer (which pushes the aux-bar toggle to the bottom)
-      const spacer = this._activityBarEl.querySelector('.activity-bar-spacer');
-      if (spacer) {
-        this._activityBarEl.insertBefore(this._activityBarSeparator, spacer);
-      } else {
-        this._activityBarEl.appendChild(this._activityBarSeparator);
-      }
-    }
-
-    const btn = document.createElement('button');
-    btn.classList.add('activity-bar-item', 'activity-bar-contributed');
-    btn.dataset.containerId = info.id;
-    btn.title = info.title;
-    btn.textContent = info.icon ?? info.title.charAt(0).toUpperCase();
-
-    btn.addEventListener('click', () => {
-      this._switchSidebarContainer(info.id);
+    this._activityBarPart.addIcon({
+      id: info.id,
+      icon: info.icon ?? info.title.charAt(0).toUpperCase(),
+      label: info.title,
+      source: 'contributed',
     });
-
-    // Insert before the spacer (after separator, before aux toggle)
-    const spacer = this._activityBarEl.querySelector('.activity-bar-spacer');
-    if (spacer) {
-      this._activityBarEl.insertBefore(btn, spacer);
-    } else {
-      this._activityBarEl.appendChild(btn);
-    }
   }
 
   /**
    * Remove an activity bar icon for a deactivated tool container.
    */
   private _removeContributedActivityBarIcon(containerId: string): void {
-    const btn = this._activityBarEl.querySelector(
-      `.activity-bar-contributed[data-container-id="${containerId}"]`,
-    );
-    btn?.remove();
-
-    // If no more contributed icons, remove the separator
-    const remaining = this._activityBarEl.querySelectorAll('.activity-bar-contributed');
-    if (remaining.length === 0 && this._activityBarSeparator) {
-      this._activityBarSeparator.remove();
-      this._activityBarSeparator = undefined;
-    }
+    this._activityBarPart.removeIcon(containerId);
   }
 
   /**
@@ -1825,23 +1826,12 @@ export class Workbench extends Disposable {
       this._layoutViewContainers();
     }
 
-    // Update activity bar highlight
-    this._activityBarEl.querySelectorAll('.activity-bar-item').forEach((el) => {
-      const htmlEl = el as HTMLElement;
-      if (containerId) {
-        // A contributed container is active — highlight its icon, deactivate all others
-        htmlEl.classList.toggle('active', htmlEl.dataset.containerId === containerId);
-      } else {
-        // Built-in container is active — restore the default built-in highlight
-        // The first built-in item (Explorer) gets highlighted
-        htmlEl.classList.remove('active');
-      }
-    });
-
-    // If switching back to built-in, re-activate the first built-in icon
-    if (!containerId) {
-      this._activityBarEl.querySelector('.activity-bar-item:not(.activity-bar-contributed)')
-        ?.classList.add('active');
+    // Update activity bar highlight via ActivityBarPart (M3 Capability 0.2)
+    if (containerId) {
+      this._activityBarPart.setActiveIcon(containerId);
+    } else {
+      // Switch back to built-in: re-activate the first built-in icon
+      this._activityBarPart.setActiveIcon('view.explorer');
     }
 
     // Update sidebar header label
@@ -1993,7 +1983,6 @@ export class Workbench extends Disposable {
     for (const vc of this._contributedAuxBarContainers.values()) vc.dispose();
     this._contributedAuxBarContainers.clear();
     this._activeSidebarContainerId = undefined;
-    this._activityBarSeparator = undefined;
     this._sidebarHeaderLabel = undefined;
 
     // 3. Clear view container mount points in parts
@@ -2009,12 +1998,9 @@ export class Workbench extends Disposable {
     const auxHeaderSlot = auxBarPart.headerSlot;
     if (auxHeaderSlot) auxHeaderSlot.innerHTML = '';
 
-    // 4. Clear activity bar view items (keep the structure, remove buttons)
-    const activityItems = this._activityBarEl.querySelectorAll('.activity-bar-item');
-    activityItems.forEach(el => el.remove());
-    // Remove spacer too
-    while (this._activityBarEl.firstChild) {
-      this._activityBarEl.removeChild(this._activityBarEl.firstChild);
+    // 4. Clear activity bar icons (the Part structure stays, only icons are removed)
+    for (const icon of this._activityBarPart.getIcons()) {
+      this._activityBarPart.removeIcon(icon.id);
     }
 
     // 5. Dispose the view manager (disposes all remaining view instances)
@@ -2028,7 +2014,7 @@ export class Workbench extends Disposable {
     if (this._auxBarVisible) {
       try { this._hGrid.removeView(this._auxiliaryBar.id); } catch { /* ok */ }
       this._auxiliaryBar.setVisible(false);
-      this._secondaryActivityBarEl.style.display = 'none';
+      this._secondaryActivityBarEl.classList.add('hidden');
       this._auxBarVisible = false;
     }
 
@@ -2093,19 +2079,11 @@ export class Workbench extends Disposable {
   private _showTransitionOverlay(): HTMLElement {
     const overlay = document.createElement('div');
     overlay.classList.add('workspace-transition-overlay');
-    overlay.style.cssText = `
-      position: absolute; inset: 0; z-index: 10000;
-      background: #1e1e1e; opacity: 0;
-      transition: opacity 120ms ease-in;
-      pointer-events: all;
-      display: flex; align-items: center; justify-content: center;
-      color: rgba(255,255,255,0.5); font-size: 14px;
-    `;
     overlay.textContent = 'Switching workspace…';
     this._container.appendChild(overlay);
 
     // Trigger fade-in
-    requestAnimationFrame(() => { overlay.style.opacity = '1'; });
+    requestAnimationFrame(() => { overlay.classList.add('visible'); });
 
     return overlay;
   }
@@ -2114,7 +2092,7 @@ export class Workbench extends Disposable {
    * Remove the transition overlay with a fade-out.
    */
   private _removeTransitionOverlay(overlay: HTMLElement): void {
-    overlay.style.opacity = '0';
+    overlay.classList.remove('visible');
     overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
     // Safety fallback
     setTimeout(() => { if (overlay.parentElement) overlay.remove(); }, 300);

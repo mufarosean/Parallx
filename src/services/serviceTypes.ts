@@ -449,3 +449,60 @@ export interface IViewContributionService {
 }
 
 export const IViewContributionService = createServiceIdentifier<IViewContributionService>('IViewContributionService');
+
+// ─── IKeybindingService ──────────────────────────────────────────────────────
+
+/**
+ * Centralized keybinding dispatch service (M3 Capability 0.3).
+ * Owns a single document-level keydown listener (capture phase) and resolves
+ * keyboard events to command executions via the keybinding table.
+ *
+ * Replaces the ad-hoc dispatch in KeybindingContributionProcessor and the
+ * hardcoded listeners in CommandPalette.
+ *
+ * VS Code reference: src/vs/workbench/services/keybinding/browser/keybindingService.ts
+ */
+export interface IKeybindingService extends IDisposable {
+  /**
+   * Register a keybinding that maps a key combination to a command.
+   * Returns a disposable that removes the registration.
+   *
+   * @param key — Normalized keybinding string, e.g. 'Ctrl+B', 'Ctrl+K Ctrl+F'
+   * @param commandId — Command to execute when the keybinding fires
+   * @param when — Optional when-clause expression for conditional activation
+   * @param source — Origin of the keybinding (e.g. 'builtin', 'tool:<toolId>')
+   */
+  registerKeybinding(key: string, commandId: string, when?: string, source?: string): IDisposable;
+
+  /**
+   * Register multiple keybindings at once. Returns a single disposable.
+   */
+  registerKeybindings(bindings: readonly { key: string; commandId: string; when?: string; source?: string }[]): IDisposable;
+
+  /**
+   * Remove all keybindings contributed by a specific source.
+   */
+  removeKeybindingsBySource(source: string): void;
+
+  /**
+   * Look up the keybinding string for a command (first match).
+   * Returns undefined if no keybinding is registered for the command.
+   */
+  lookupKeybinding(commandId: string): string | undefined;
+
+  /**
+   * Get all registered keybindings.
+   */
+  getAllKeybindings(): readonly { key: string; commandId: string; when?: string; source?: string }[];
+
+  /** Fires when a keybinding is successfully dispatched. */
+  readonly onDidDispatch: Event<{ key: string; commandId: string }>;
+
+  /** Fires when a chord prefix is entered (status bar hint). */
+  readonly onDidEnterChordPrefix: Event<string>;
+
+  /** Fires when a chord is cancelled (timeout or non-matching second key). */
+  readonly onDidCancelChord: Event<void>;
+}
+
+export const IKeybindingService = createServiceIdentifier<IKeybindingService>('IKeybindingService');

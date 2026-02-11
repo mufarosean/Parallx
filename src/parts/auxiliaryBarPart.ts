@@ -52,9 +52,6 @@ export class AuxiliaryBarPart extends Part {
   protected override createTitleArea(container: HTMLElement): void {
     this._headerSlot = container;
     container.classList.add('auxiliary-bar-header');
-    container.style.display = 'flex';
-    container.style.alignItems = 'center';
-    container.style.padding = '0 8px';
   }
 
   protected override createContent(container: HTMLElement): void {
@@ -62,8 +59,6 @@ export class AuxiliaryBarPart extends Part {
 
     this._viewContainerSlot = document.createElement('div');
     this._viewContainerSlot.classList.add('auxiliary-bar-views');
-    this._viewContainerSlot.style.flex = '1';
-    this._viewContainerSlot.style.overflow = 'hidden';
     container.appendChild(this._viewContainerSlot);
   }
 

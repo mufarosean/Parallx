@@ -98,7 +98,7 @@ export class EditorGroupView extends Disposable implements IGridView {
 
   setVisible(visible: boolean): void {
     if (this._element) {
-      this._element.style.display = visible ? 'flex' : 'none';
+      this._element.classList.toggle('hidden', !visible);
     }
   }
 
@@ -136,10 +136,6 @@ export class EditorGroupView extends Disposable implements IGridView {
     this._element = document.createElement('div');
     this._element.classList.add('editor-group');
     this._element.setAttribute('data-editor-group-id', this.model.id);
-    this._element.style.display = 'flex';
-    this._element.style.flexDirection = 'column';
-    this._element.style.overflow = 'hidden';
-    this._element.style.position = 'relative';
     this._element.tabIndex = -1;
 
     // Focus tracking
@@ -150,32 +146,16 @@ export class EditorGroupView extends Disposable implements IGridView {
     this._tabBar.classList.add('editor-tab-bar');
     this._tabBar.style.height = `${TAB_HEIGHT}px`;
     this._tabBar.style.minHeight = `${TAB_HEIGHT}px`;
-    this._tabBar.style.display = 'flex';
-    this._tabBar.style.alignItems = 'center';
-    this._tabBar.style.overflow = 'hidden';
-    this._tabBar.style.borderBottom = '1px solid var(--color-border, #333)';
-    this._tabBar.style.backgroundColor = 'var(--color-editor-tab-bar, #1e1e1e)';
     this._element.appendChild(this._tabBar);
 
     // Pane container
     this._paneContainer = document.createElement('div');
     this._paneContainer.classList.add('editor-pane-container');
-    this._paneContainer.style.flex = '1';
-    this._paneContainer.style.overflow = 'hidden';
-    this._paneContainer.style.position = 'relative';
     this._element.appendChild(this._paneContainer);
 
     // Empty message
     this._emptyMessage = document.createElement('div');
     this._emptyMessage.classList.add('editor-group-empty');
-    this._emptyMessage.style.position = 'absolute';
-    this._emptyMessage.style.inset = '0';
-    this._emptyMessage.style.display = 'flex';
-    this._emptyMessage.style.alignItems = 'center';
-    this._emptyMessage.style.justifyContent = 'center';
-    this._emptyMessage.style.color = 'var(--color-text-muted, #666)';
-    this._emptyMessage.style.fontSize = '13px';
-    this._emptyMessage.style.pointerEvents = 'none';
     this._emptyMessage.textContent = 'No editors open';
     this._paneContainer.appendChild(this._emptyMessage);
 
@@ -272,9 +252,6 @@ export class EditorGroupView extends Disposable implements IGridView {
     // Tabs container
     const tabsWrap = document.createElement('div');
     tabsWrap.classList.add('editor-tabs');
-    tabsWrap.style.display = 'flex';
-    tabsWrap.style.flex = '1';
-    tabsWrap.style.overflow = 'hidden';
 
     for (let i = 0; i < editors.length; i++) {
       const editor = editors[i];
@@ -308,32 +285,11 @@ export class EditorGroupView extends Disposable implements IGridView {
     if (isSticky) tab.classList.add('editor-tab--sticky');
     if (isPreview) tab.classList.add('editor-tab--preview');
 
-    tab.style.display = 'flex';
-    tab.style.alignItems = 'center';
-    tab.style.padding = '0 8px';
-    tab.style.height = '100%';
-    tab.style.cursor = 'pointer';
-    tab.style.whiteSpace = 'nowrap';
-    tab.style.fontSize = '13px';
-    tab.style.borderRight = '1px solid var(--color-border, #333)';
-    tab.style.userSelect = 'none';
-    tab.style.maxWidth = '200px';
-
-    if (isActive) {
-      tab.style.backgroundColor = 'var(--color-editor-tab-active, #1e1e1e)';
-      tab.style.color = 'var(--color-text, #ccc)';
-      tab.style.borderBottom = '2px solid var(--color-accent, #007acc)';
-    } else {
-      tab.style.backgroundColor = 'var(--color-editor-tab, #2d2d2d)';
-      tab.style.color = 'var(--color-text-muted, #888)';
-      tab.style.borderBottom = '2px solid transparent';
-    }
-
     // Sticky indicator
     if (isSticky) {
       const pin = document.createElement('span');
+      pin.classList.add('editor-tab-pin');
       pin.textContent = '📌 ';
-      pin.style.fontSize = '10px';
       tab.appendChild(pin);
     }
 
@@ -341,11 +297,6 @@ export class EditorGroupView extends Disposable implements IGridView {
     const label = document.createElement('span');
     label.classList.add('editor-tab-label');
     label.textContent = editor.name;
-    label.style.overflow = 'hidden';
-    label.style.textOverflow = 'ellipsis';
-    if (isPreview) {
-      label.style.fontStyle = 'italic';
-    }
     tab.appendChild(label);
 
     // Dirty indicator
@@ -353,8 +304,6 @@ export class EditorGroupView extends Disposable implements IGridView {
       const dirty = document.createElement('span');
       dirty.classList.add('editor-tab-dirty');
       dirty.textContent = ' ●';
-      dirty.style.marginLeft = '4px';
-      dirty.style.color = 'var(--color-dirty, #e8e8e8)';
       tab.appendChild(dirty);
     }
 
@@ -362,13 +311,6 @@ export class EditorGroupView extends Disposable implements IGridView {
     const closeBtn = document.createElement('span');
     closeBtn.classList.add('editor-tab-close');
     closeBtn.textContent = '×';
-    closeBtn.style.marginLeft = '6px';
-    closeBtn.style.fontSize = '14px';
-    closeBtn.style.lineHeight = '1';
-    closeBtn.style.opacity = '0.6';
-    closeBtn.style.cursor = 'pointer';
-    closeBtn.addEventListener('mouseenter', () => { closeBtn.style.opacity = '1'; });
-    closeBtn.addEventListener('mouseleave', () => { closeBtn.style.opacity = '0.6'; });
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const currentIdx = this.model.editors.indexOf(editor);
@@ -401,10 +343,10 @@ export class EditorGroupView extends Disposable implements IGridView {
       };
       e.dataTransfer?.setData(EDITOR_TAB_DRAG_TYPE, JSON.stringify(data));
       e.dataTransfer!.effectAllowed = 'move';
-      tab.style.opacity = '0.5';
+      tab.classList.add('dragging');
     });
     tab.addEventListener('dragend', () => {
-      tab.style.opacity = '1';
+      tab.classList.remove('dragging');
     });
 
     // Drop target (reorder within group)
@@ -412,14 +354,14 @@ export class EditorGroupView extends Disposable implements IGridView {
       if (e.dataTransfer?.types.includes(EDITOR_TAB_DRAG_TYPE)) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        tab.style.borderLeft = '2px solid var(--color-accent, #007acc)';
+        tab.classList.add('drop-target');
       }
     });
     tab.addEventListener('dragleave', () => {
-      tab.style.borderLeft = '';
+      tab.classList.remove('drop-target');
     });
     tab.addEventListener('drop', (e) => {
-      tab.style.borderLeft = '';
+      tab.classList.remove('drop-target');
       const raw = e.dataTransfer?.getData(EDITOR_TAB_DRAG_TYPE);
       if (!raw) return;
       e.preventDefault();
@@ -442,11 +384,6 @@ export class EditorGroupView extends Disposable implements IGridView {
   private _createToolbar(): HTMLElement {
     const toolbar = document.createElement('div');
     toolbar.classList.add('editor-group-toolbar');
-    toolbar.style.display = 'flex';
-    toolbar.style.alignItems = 'center';
-    toolbar.style.padding = '0 4px';
-    toolbar.style.gap = '2px';
-    toolbar.style.marginLeft = 'auto';
 
     // Split button
     const splitBtn = this._createToolbarButton('⊞', 'Split Editor Right', () => {
@@ -467,19 +404,6 @@ export class EditorGroupView extends Disposable implements IGridView {
     const btn = document.createElement('button');
     btn.textContent = text;
     btn.title = title;
-    btn.style.background = 'none';
-    btn.style.border = 'none';
-    btn.style.color = 'var(--color-text-muted, #888)';
-    btn.style.cursor = 'pointer';
-    btn.style.fontSize = '13px';
-    btn.style.padding = '2px 4px';
-    btn.style.borderRadius = '3px';
-    btn.addEventListener('mouseenter', () => {
-      btn.style.backgroundColor = 'var(--color-hover, rgba(255,255,255,0.1))';
-    });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.backgroundColor = '';
-    });
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       onClick();
@@ -547,7 +471,7 @@ export class EditorGroupView extends Disposable implements IGridView {
 
   private _updateEmptyState(): void {
     if (this._emptyMessage) {
-      this._emptyMessage.style.display = this.model.isEmpty ? 'flex' : 'none';
+      this._emptyMessage.classList.toggle('hidden', !this.model.isEmpty);
     }
   }
 

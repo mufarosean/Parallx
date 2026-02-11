@@ -88,26 +88,15 @@ export class EditorPart extends Part {
 
   protected override createContent(container: HTMLElement): void {
     container.classList.add('editor-content');
-    container.style.display = 'flex';
-    container.style.flexDirection = 'column';
 
     // Editor group container (nested grid lives here)
     this._editorGroupContainer = document.createElement('div');
     this._editorGroupContainer.classList.add('editor-group-container');
-    this._editorGroupContainer.style.flex = '1';
-    this._editorGroupContainer.style.position = 'relative';
-    this._editorGroupContainer.style.overflow = 'hidden';
     container.appendChild(this._editorGroupContainer);
 
     // Watermark (shown when no editors are open)
     this._watermark = document.createElement('div');
     this._watermark.classList.add('editor-watermark');
-    this._watermark.style.position = 'absolute';
-    this._watermark.style.inset = '0';
-    this._watermark.style.display = 'flex';
-    this._watermark.style.alignItems = 'center';
-    this._watermark.style.justifyContent = 'center';
-    this._watermark.style.pointerEvents = 'none';
     this._editorGroupContainer.appendChild(this._watermark);
 
     // Initialise grid with a single default group
@@ -270,7 +259,7 @@ export class EditorPart extends Part {
   /** Show or hide the watermark. */
   setWatermarkVisible(visible: boolean): void {
     if (this._watermark) {
-      this._watermark.style.display = visible ? 'flex' : 'none';
+      this._watermark.classList.toggle('hidden', !visible);
     }
   }
 

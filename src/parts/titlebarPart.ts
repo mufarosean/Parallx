@@ -43,18 +43,10 @@ export class TitlebarPart extends Part {
 
   protected override createContent(container: HTMLElement): void {
     container.classList.add('titlebar-content');
-    container.style.display = 'flex';
-    container.style.alignItems = 'center';
-    container.style.userSelect = 'none';
 
     // Drag region (for custom titlebars with -webkit-app-region)
     this._dragRegion = document.createElement('div');
     this._dragRegion.classList.add('titlebar-drag-region');
-    this._dragRegion.style.position = 'absolute';
-    this._dragRegion.style.inset = '0';
-    this._dragRegion.style.zIndex = '-1';
-    // Enable Electron window dragging on the titlebar
-    this._dragRegion.style.setProperty('-webkit-app-region', 'drag');
     container.appendChild(this._dragRegion);
 
     // Left slot (menus)
@@ -65,9 +57,6 @@ export class TitlebarPart extends Part {
     // Center slot (command center / search)
     this._centerSlot = document.createElement('div');
     this._centerSlot.classList.add('titlebar-center');
-    this._centerSlot.style.flex = '1';
-    this._centerSlot.style.display = 'flex';
-    this._centerSlot.style.justifyContent = 'center';
     container.appendChild(this._centerSlot);
 
     // Right slot (window controls)
