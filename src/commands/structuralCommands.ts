@@ -21,6 +21,7 @@ import { GroupDirection } from '../editor/editorTypes.js';
 
 interface WorkbenchLike {
   toggleAuxiliaryBar(): void;
+  toggleCommandPalette(): void;
   readonly workspace: { readonly id: string; readonly name: string };
   createWorkspace(name: string, path?: string, switchTo?: boolean): Promise<unknown>;
   switchWorkspace(targetId: string): Promise<void>;
@@ -89,13 +90,7 @@ const showCommands: CommandDescriptor = {
   category: 'View',
   keybinding: 'Ctrl+Shift+P',
   handler(ctx) {
-    // The command palette toggle is dispatched via the workbench reference.
-    // The actual palette instance lives in the workbench and is toggled through
-    // a method exposed on WorkbenchLike.
-    const w = wb(ctx);
-    if (typeof (w as any).toggleCommandPalette === 'function') {
-      (w as any).toggleCommandPalette();
-    }
+    wb(ctx).toggleCommandPalette();
   },
 };
 
