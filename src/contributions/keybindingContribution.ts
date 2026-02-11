@@ -308,18 +308,23 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
       const bindings = this._keybindings.get(normalizedKey);
       if (!bindings || bindings.length === 0) return;
 
-      // Use the last binding (last registered wins)
-      const binding = bindings[bindings.length - 1];
-
-      // Evaluate when clause
-      if (binding.when && this._contextKeyService) {
-        if (!this._contextKeyService.contextMatchesRules(binding.when)) {
-          return; // When clause not satisfied
+      // Find the last binding whose when-clause is satisfied (last registered wins)
+      let matchedBinding: IContributedKeybinding | undefined;
+      for (let i = bindings.length - 1; i >= 0; i--) {
+        const binding = bindings[i];
+        if (binding.when) {
+          // Skip bindings with when-clauses when no context service is available
+          if (!this._contextKeyService) continue;
+          if (!this._contextKeyService.contextMatchesRules(binding.when)) continue;
         }
+        matchedBinding = binding;
+        break;
       }
 
+      if (!matchedBinding) return;
+
       // Check that the command exists
-      if (!this._commandService.hasCommand(binding.commandId)) {
+      if (!this._commandService.hasCommand(matchedBinding.commandId)) {
         return;
       }
 
@@ -328,10 +333,10 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
       e.stopPropagation();
 
       // Execute the command (fire and forget, errors handled by CommandService)
-      this._commandService.executeCommand(binding.commandId).catch(err => {
+      this._commandService.executeCommand(matchedBinding.commandId).catch(err => {
         console.error(
-          `[KeybindingContribution] Error executing command "${binding.commandId}" ` +
-          `via keybinding "${binding.key}":`,
+          `[KeybindingContribution] Error executing command "${matchedBinding!.commandId}" ` +
+          `via keybinding "${matchedBinding!.key}":`,
           err,
         );
       });

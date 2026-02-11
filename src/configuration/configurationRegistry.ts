@@ -154,7 +154,10 @@ export class ConfigurationRegistry implements IDisposable {
   private _unregisterKeys(toolId: string, keys: string[]): void {
     const removedKeys: string[] = [];
     for (const key of keys) {
-      if (this._properties.has(key)) {
+      const schema = this._properties.get(key);
+      // Only delete if the current registration belongs to this tool.
+      // Another tool may have re-registered the same key after us.
+      if (schema && schema.toolId === toolId) {
         this._properties.delete(key);
         removedKeys.push(key);
       }

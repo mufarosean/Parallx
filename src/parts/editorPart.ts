@@ -46,10 +46,10 @@ export class EditorPart extends Part {
 
   // ── Events ──
 
-  private readonly _onDidActiveGroupChange = new Emitter<EditorGroupView>();
+  private readonly _onDidActiveGroupChange = this._register(new Emitter<EditorGroupView>());
   readonly onDidActiveGroupChange: Event<EditorGroupView> = this._onDidActiveGroupChange.event;
 
-  private readonly _onDidGroupCountChange = new Emitter<number>();
+  private readonly _onDidGroupCountChange = this._register(new Emitter<number>());
   readonly onDidGroupCountChange: Event<number> = this._onDidGroupCountChange.event;
 
   constructor() {
@@ -319,8 +319,7 @@ export class EditorPart extends Part {
     }
     this._groups.clear();
     this._grid?.dispose();
-    this._onDidActiveGroupChange.dispose();
-    this._onDidGroupCountChange.dispose();
+    // Emitters now registered via this._register() — disposed by super.dispose()
     super.dispose();
   }
 }

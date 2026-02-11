@@ -200,12 +200,17 @@ export class EditorGroupView extends Disposable implements IGridView {
    * Open an editor in this group.
    */
   async openEditor(input: IEditorInput, options?: EditorOpenOptions): Promise<void> {
+    // Capture the seq before the model fires EditorActive synchronously
+    const seqBefore = this._showActiveEditorSeq;
     this.model.openEditor(input, options);
     // model.openEditor() fires EditorActive → _onModelChange → _showActiveEditor()
-    // synchronously, which may already create the pane. We call _showActiveEditor()
-    // explicitly to await the async pane.setInput(). The idempotency guard inside
-    // _showActiveEditor() ensures no duplicate pane is created.
-    await this._showActiveEditor();
+    // synchronously (which bumps the seq). Only call _showActiveEditor() again
+    // if the model DID NOT fire an EditorActive event (i.e. seq unchanged).
+    if (this._showActiveEditorSeq === seqBefore) {
+      await this._showActiveEditor();
+    }
+    // Otherwise, a _showActiveEditor() call is already in flight from the
+    // model event — we just need to wait for it to finish with the pane.
   }
 
   /**
@@ -506,20 +511,32 @@ export class EditorGroupView extends Disposable implements IGridView {
 
     if (!activeInput) return;
 
-    // Create new pane
+    // Create new pane — do NOT add to _paneDisposables yet.
+    // Only the call that "wins" the seq check will track it.
     const pane = this._paneFactory(activeInput);
-    this._paneDisposables.add(pane);
     pane.create(this._paneContainer);
-    await pane.setInput(activeInput);
-
-    // After the await: check if we're still the latest call
-    if (seq !== this._showActiveEditorSeq) {
-      // A newer _showActiveEditor() call superseded us — clean up and bail
-      pane.clearInput();
-      this._paneDisposables.clear();
+    try {
+      await pane.setInput(activeInput);
+    } catch (err) {
+      // If setInput fails, clean up the orphan pane immediately
+      console.error('[EditorGroupView] pane.setInput() failed:', err);
+      pane.dispose();
       if (pane.element) pane.element.remove();
       return;
     }
+
+    // After the await: check if we're still the latest call
+    if (seq !== this._showActiveEditorSeq) {
+      // A newer _showActiveEditor() call superseded us — dispose our pane
+      // directly (NOT _paneDisposables, which may hold the winning pane).
+      pane.clearInput();
+      pane.dispose();
+      if (pane.element) pane.element.remove();
+      return;
+    }
+
+    // This call is the latest — track the pane in the disposable store
+    this._paneDisposables.add(pane);
 
     // Layout
     const paneH = Math.max(0, this._height - TAB_HEIGHT);

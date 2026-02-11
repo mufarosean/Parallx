@@ -323,11 +323,16 @@ export class Workbench extends Disposable {
       console.warn('[Workbench] Cannot switch workspace while in state:', this._state);
       return;
     }
+    if ((this as any)._switching) {
+      console.warn('[Workbench] Workspace switch already in progress — ignoring');
+      return;
+    }
     if (this._workspace && this._workspace.id === targetId) {
       console.log('[Workbench] Already on workspace %s — no-op', targetId);
       return;
     }
 
+    (this as any)._switching = true;
     console.log('[Workbench] Switching workspace → %s', targetId);
     const overlay = this._showTransitionOverlay();
 
@@ -372,6 +377,7 @@ export class Workbench extends Disposable {
     } catch (err) {
       console.error('[Workbench] Workspace switch failed:', err);
     } finally {
+      (this as any)._switching = false;
       this._removeTransitionOverlay(overlay);
     }
   }
@@ -1185,6 +1191,7 @@ export class Workbench extends Disposable {
   private _addAuxBarToggle(): void {
     // Add a spacer + toggle button at the bottom of the primary activity bar
     const spacer = document.createElement('div');
+    spacer.classList.add('activity-bar-spacer');
     spacer.style.flex = '1';
     this._activityBarEl.appendChild(spacer);
 
@@ -2054,7 +2061,27 @@ export class Workbench extends Disposable {
 
     // 5. Re-wire view contribution events (Cap 6)
     if (this._viewContribution) {
+      // Update the ViewContribution's ViewManager reference to the new one
+      // and re-register all existing view descriptors into the new ViewManager
+      this._viewContribution.updateViewManager(this._viewManager);
       this._wireViewContributionEvents();
+
+      // Replay view contributions for all already-registered tools so
+      // contributed containers and views are re-created in the new DOM.
+      const registry = this._services.get(IToolRegistryService) as unknown as ToolRegistry;
+      if (registry) {
+        for (const entry of registry.getAll()) {
+          // Only replay container/view additions — the processor tracks
+          // what it already knows and fires onDidAddContainer/onDidAddView
+          // for items that need DOM re-creation.
+          const contributes = entry.description.manifest.contributes;
+          if (contributes?.viewContainers || contributes?.views) {
+            // Remove then re-process to rebuild DOM via events
+            this._viewContribution.removeContributions(entry.description.manifest.id);
+            this._viewContribution.processContributions(entry.description);
+          }
+        }
+      }
     }
 
     console.log('[Workbench] Rebuilt workspace content');

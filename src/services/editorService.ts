@@ -47,7 +47,11 @@ export class EditorService extends Disposable implements IEditorService {
       this._groupListeners.add(
         group.model.onDidChange((e) => {
           if (e.kind === EditorGroupChangeKind.EditorActive) {
-            this._onDidActiveEditorChange.fire(e.editor);
+            // Only fire for the active group — non-active groups' tab
+            // switches should not change the service-level "active editor".
+            if (this._editorPart.activeGroup === group) {
+              this._onDidActiveEditorChange.fire(e.editor);
+            }
           }
         }),
       );
@@ -75,10 +79,9 @@ export class EditorService extends Disposable implements IEditorService {
       const idx = group.model.editors.findIndex(e => e.id === input.id);
       if (idx < 0) return false;
       const closed = await group.closeEditor(idx, force);
-      // M2 fix: only fire if the active editor actually changed
-      if (closed && this.activeEditor !== previousActive) {
-        this._onDidActiveEditorChange.fire(this.activeEditor);
-      }
+      // EditorActive is now always fired from the model (including when last
+      // editor closes), so _wireGroupListeners handles the event. No need
+      // for explicit fire here — it would cause a double-fire.
       return closed;
     }
 

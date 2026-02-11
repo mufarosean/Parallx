@@ -268,10 +268,21 @@ export class ContextKeyService extends Disposable {
 
   /**
    * Check if a command's when-clause is satisfied.
-   * Convenience wrapper used by CommandService.
+   * Aggregates context from ALL scopes so tool-scoped keys are visible
+   * during global evaluation (e.g. command enablement, menu visibility).
    */
   contextMatchesRules(whenClause: string | undefined): boolean {
-    return this.evaluate(whenClause, 'global');
+    if (!whenClause) return true;
+    // Aggregate own keys from every scope so tool-scoped context keys
+    // (set in child scopes like `tool:<id>`) are visible for evaluation.
+    const aggregated = new Map<string, ContextKeyValue>();
+    for (const scope of this._scopes.values()) {
+      for (const key of scope.ownKeys()) {
+        aggregated.set(key, scope.get(key));
+      }
+    }
+    const lookup: ContextKeyLookup = (key: string) => aggregated.get(key);
+    return testWhenClause(whenClause, lookup);
   }
 
   // ─── Disposal ──────────────────────────────────────────────────────────

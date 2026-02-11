@@ -184,20 +184,36 @@ export class DisposableStore implements IDisposable {
       return;
     }
     this._isDisposed = true;
+    const errors: unknown[] = [];
     for (const d of this._disposables) {
-      d.dispose();
+      try {
+        d.dispose();
+      } catch (e) {
+        errors.push(e);
+      }
     }
     this._disposables.clear();
+    if (errors.length > 0) {
+      console.error(`[DisposableStore] ${errors.length} error(s) during dispose:`, errors);
+    }
   }
 
   /**
    * Dispose all items but keep the store usable (not marked as disposed).
    */
   clear(): void {
+    const errors: unknown[] = [];
     for (const d of this._disposables) {
-      d.dispose();
+      try {
+        d.dispose();
+      } catch (e) {
+        errors.push(e);
+      }
     }
     this._disposables.clear();
+    if (errors.length > 0) {
+      console.error(`[DisposableStore] ${errors.length} error(s) during clear:`, errors);
+    }
   }
 }
 

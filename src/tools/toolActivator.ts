@@ -115,6 +115,9 @@ export class ToolActivator extends Disposable {
   /** Map of tool ID → activated tool record. */
   private readonly _activatedTools = new Map<string, ActivatedTool>();
 
+  /** In-flight activation promises (prevents concurrent activation). */
+  private readonly _activating = new Map<string, Promise<boolean>>();
+
   /** The module loader instance. */
   private readonly _loader = new ToolModuleLoader();
 
@@ -161,6 +164,23 @@ export class ToolActivator extends Disposable {
    * 7. Transition to `Activated` (or `Deactivated` on failure)
    */
   async activate(toolId: string): Promise<boolean> {
+    // Guard against concurrent activation of the same tool
+    const inFlight = this._activating.get(toolId);
+    if (inFlight) {
+      console.warn(`[ToolActivator] Activation already in flight for "${toolId}" — awaiting`);
+      return inFlight;
+    }
+
+    const promise = this._doActivate(toolId);
+    this._activating.set(toolId, promise);
+    try {
+      return await promise;
+    } finally {
+      this._activating.delete(toolId);
+    }
+  }
+
+  private async _doActivate(toolId: string): Promise<boolean> {
     const startTime = performance.now();
 
     // 1. Lookup and validate

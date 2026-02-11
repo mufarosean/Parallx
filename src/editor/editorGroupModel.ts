@@ -377,15 +377,19 @@ export class EditorGroupModel extends Disposable {
     if (!isPreviewReplace) {
       this._onDidChange.fire({ kind: EditorGroupChangeKind.EditorClose, editorIndex: index, editor: entry.input });
 
-      // If the closed editor was active, notify about the new active editor
-      if (wasActive && this._activeIndex >= 0) {
+      // If the closed editor was active, always notify about the new active editor
+      // (including when _activeIndex is -1, meaning the group is now empty)
+      if (wasActive) {
         this._onDidChange.fire({
           kind: EditorGroupChangeKind.EditorActive,
           editorIndex: this._activeIndex,
-          editor: this._editors[this._activeIndex]?.input,
+          editor: this._activeIndex >= 0 ? this._editors[this._activeIndex]?.input : undefined,
         });
       }
     }
+
+    // Dispose the closed editor input to release its resources
+    entry.input.dispose();
   }
 
   private _moveEditor(from: number, to: number): void {
@@ -426,6 +430,9 @@ export class EditorGroupModel extends Disposable {
   // ─── Dispose ───────────────────────────────────────────────────────────
 
   override dispose(): void {
+    for (const entry of this._editors) {
+      entry.input.dispose();
+    }
     this._editors.length = 0;
     this._activeIndex = -1;
     this._previewIndex = -1;

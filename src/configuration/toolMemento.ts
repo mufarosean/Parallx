@@ -76,7 +76,12 @@ export class ToolMemento implements Memento {
     const fullKey = this._fullKey(key);
 
     if (value === undefined) {
-      // Delete
+      // Delete — decrement quota estimate for the removed value
+      const oldValue = this._cache.get(fullKey);
+      if (oldValue !== undefined) {
+        const oldSize = JSON.stringify(oldValue).length;
+        this._estimatedBytes = Math.max(0, this._estimatedBytes - oldSize);
+      }
       this._cache.delete(fullKey);
       await this._storage.delete(fullKey);
       return;

@@ -130,9 +130,36 @@ export class ViewContributionProcessor extends Disposable implements IContributi
   readonly onDidRegisterProvider: Event<{ viewId: string }> = this._onDidRegisterProvider.event;
 
   constructor(
-    private readonly _viewManager: ViewManager,
+    private _viewManager: ViewManager,
   ) {
     super();
+  }
+
+  /**
+   * Update the ViewManager reference after a workspace switch.
+   * Re-registers all existing view descriptors into the new ViewManager.
+   */
+  updateViewManager(viewManager: ViewManager): void {
+    this._viewManager = viewManager;
+
+    // Re-register all tracked view descriptors into the new ViewManager
+    for (const [, views] of this._toolViews) {
+      for (const v of views) {
+        if (!this._viewManager.hasDescriptor(v.id)) {
+          this._viewManager.register({
+            id: v.id,
+            name: v.name,
+            icon: v.icon,
+            containerId: v.containerId,
+            when: v.when,
+            constraints: DEFAULT_SIZE_CONSTRAINTS,
+            focusOnActivate: false,
+            order: 100,
+            factory: () => this._createContributedView(v.id, v.name, v.icon),
+          });
+        }
+      }
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════
