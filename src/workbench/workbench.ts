@@ -203,6 +203,8 @@ export class Workbench extends Disposable {
   private _viewContribution!: ViewContributionProcessor;
   /** Disposable store for view contribution event listeners (cleared on workspace switch). */
   private readonly _viewContribListeners = this._register(new DisposableStore());
+  /** Built-in sidebar containers keyed by activity-bar icon ID (e.g. 'view.explorer'). */
+  private _builtinSidebarContainers = new Map<string, ViewContainer>();
   /** Tool-contributed sidebar containers (keyed by container ID). */
   private _contributedSidebarContainers = new Map<string, ViewContainer>();
   /** Tool-contributed panel containers (keyed by container ID). */
@@ -763,7 +765,9 @@ export class Workbench extends Disposable {
     this._initializeContext();
 
     // 11. Wire view/title actions and context menus to stacked containers
-    this._wireSectionMenus(this._sidebarContainer);
+    for (const vc of this._builtinSidebarContainers.values()) {
+      this._wireSectionMenus(vc);
+    }
   }
 
   /**
@@ -946,6 +950,10 @@ export class Workbench extends Disposable {
       ['sidebar', this._sidebarContainer],
       ['panel', this._panelContainer],
     ]);
+    // Also include all built-in sidebar containers by their IDs
+    for (const [id, vc] of this._builtinSidebarContainers) {
+      containerMap.set(id, vc);
+    }
     if (this._auxBarContainer) {
       containerMap.set('auxiliaryBar', this._auxBarContainer);
     }
@@ -993,7 +1001,7 @@ export class Workbench extends Disposable {
       this._statusBar,
     ];
 
-    const allContainers: ViewContainer[] = [this._sidebarContainer, this._panelContainer];
+    const allContainers: ViewContainer[] = [...this._builtinSidebarContainers.values(), this._panelContainer];
     if (this._auxBarContainer) {
       allContainers.push(this._auxBarContainer);
     }
@@ -1164,30 +1172,59 @@ export class Workbench extends Disposable {
   // ════════════════════════════════════════════════════════════════════════
 
   private _setupSidebarViews(): ViewContainer {
-    const container = new ViewContainer('sidebar');
-    container.setMode('stacked');
+    // ── VS Code parity ──────────────────────────────────────────────────
+    // In VS Code each activity-bar icon maps to its *own* ViewContainer
+    // that fills the entire sidebar.  Explorer, Search, Source-Control,
+    // etc. are separate containers — clicking an icon *switches* which
+    // container is visible rather than showing stacked sections inside a
+    // single container.
+    //
+    // We create one ViewContainer per built-in activity-bar icon, store
+    // them in `_builtinSidebarContainers`, mount all into `.sidebar-views`,
+    // and show only the active one.
+    // ─────────────────────────────────────────────────────────────────────
 
-    const explorerView = this._viewManager.createViewSync('view.explorer')!;
-    const searchView = this._viewManager.createViewSync('view.search')!;
-    container.addView(explorerView);
-    container.addView(searchView);
-
-    // Activity bar: register built-in icons via ActivityBarPart (M3 Capability 0.2)
     const views = [
       { id: 'view.explorer', icon: '📁', label: 'Explorer' },
       { id: 'view.search', icon: '🔍', label: 'Search' },
     ];
 
+    const sidebarContent = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
+
     for (const v of views) {
+      const vc = new ViewContainer(`sidebar.${v.id}`);
+      vc.setMode('stacked');
+
+      const view = this._viewManager.createViewSync(v.id)!;
+      vc.addView(view);
+
+      this._builtinSidebarContainers.set(v.id, vc);
+
+      // Activity bar: register built-in icons via ActivityBarPart (M3 Capability 0.2)
       this._activityBarPart.addIcon({
         id: v.id,
         icon: v.icon,
         label: v.label,
         source: 'builtin',
       });
+
+      // Mount into sidebar slot; only the first container is initially visible
+      if (sidebarContent) {
+        sidebarContent.appendChild(vc.element);
+      }
     }
 
-    // Wire icon click events to switch views
+    // The default (first) container is the Explorer
+    const defaultContainer = this._builtinSidebarContainers.get('view.explorer')!;
+
+    // Hide all others
+    for (const [id, vc] of this._builtinSidebarContainers) {
+      if (id !== 'view.explorer') {
+        vc.setVisible(false);
+      }
+    }
+
+    // Wire icon click events to switch containers
     // VS Code reference: ViewContainerActivityAction.run()
     // - Click inactive icon → show sidebar + switch to that container
     // - Click active icon while sidebar visible → hide sidebar
@@ -1201,22 +1238,15 @@ export class Workbench extends Disposable {
         return;
       }
 
+      // Ensure sidebar is visible
+      if (!this._sidebar.visible) {
+        this.toggleSidebar();
+      }
+
       if (event.source === 'builtin') {
-        // Ensure sidebar is visible
-        if (!this._sidebar.visible) {
-          this.toggleSidebar();
-        }
-        // Switch back to built-in sidebar container if a contributed one is active
-        if (this._activeSidebarContainerId) {
-          this._switchSidebarContainer(undefined);
-        }
-        container.activateView(event.iconId);
-        this._activityBarPart.setActiveIcon(event.iconId);
+        // Switch to the target built-in container
+        this._switchSidebarContainer(event.iconId);
       } else if (event.source === 'contributed') {
-        // Ensure sidebar is visible
-        if (!this._sidebar.visible) {
-          this.toggleSidebar();
-        }
         // Switch to contributed sidebar container
         this._switchSidebarContainer(event.iconId);
       }
@@ -1224,6 +1254,8 @@ export class Workbench extends Disposable {
 
     // Activate the first icon by default
     this._activityBarPart.setActiveIcon('view.explorer');
+    // Track it as the active container
+    this._activeSidebarContainerId = 'view.explorer';
 
     // Sidebar header label
     const headerSlot = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
@@ -1235,26 +1267,13 @@ export class Workbench extends Disposable {
 
       // Store reference for dynamic container switching (Cap 6)
       this._sidebarHeaderLabel = headerLabel;
-
-      container.onDidChangeActiveView((viewId) => {
-        if (viewId) {
-          const view = container.getView(viewId);
-          headerLabel.textContent = (view?.name ?? 'EXPLORER').toUpperCase();
-        }
-      });
-    }
-
-    // Mount into sidebar's view slot
-    const sidebarContent = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
-    if (sidebarContent) {
-      sidebarContent.appendChild(container.element);
     }
 
     // NOTE: Do not call viewManager.showView() here — it bypasses
     // ViewContainer's tab-switching logic and makes both views visible.
     // The container's addView already activated the first view (Explorer).
 
-    return container;
+    return defaultContainer;
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1927,7 +1946,7 @@ export class Workbench extends Disposable {
   private _onToolViewRemoved(viewId: string): void {
     // The ViewManager.unregister() already disposes the view.
     // We also need to remove it from its container.
-    for (const vc of [this._sidebarContainer, this._panelContainer, this._auxBarContainer]) {
+    for (const vc of [...this._builtinSidebarContainers.values(), this._panelContainer, this._auxBarContainer]) {
       if (vc?.getView(viewId)) {
         vc.removeView(viewId);
         return;
@@ -1999,9 +2018,11 @@ export class Workbench extends Disposable {
   private _switchSidebarContainer(containerId: string | undefined): void {
     if (this._activeSidebarContainerId === containerId) return;
 
-    // Hide current active container
+    // Hide current active container (check builtin → contributed → fallback)
     if (this._activeSidebarContainerId) {
-      const current = this._contributedSidebarContainers.get(this._activeSidebarContainerId);
+      const current =
+        this._builtinSidebarContainers.get(this._activeSidebarContainerId) ??
+        this._contributedSidebarContainers.get(this._activeSidebarContainerId);
       current?.setVisible(false);
     } else {
       this._sidebarContainer.setVisible(false);
@@ -2010,7 +2031,9 @@ export class Workbench extends Disposable {
     // Show new container
     this._activeSidebarContainerId = containerId;
     if (containerId) {
-      const next = this._contributedSidebarContainers.get(containerId);
+      const next =
+        this._builtinSidebarContainers.get(containerId) ??
+        this._contributedSidebarContainers.get(containerId);
       if (next) {
         next.setVisible(true);
         this._layoutViewContainers();
@@ -2031,8 +2054,17 @@ export class Workbench extends Disposable {
     // Update sidebar header label
     if (this._sidebarHeaderLabel) {
       if (containerId) {
-        const info = this._viewContribution.getContainer(containerId);
-        this._sidebarHeaderLabel.textContent = (info?.title ?? 'SIDEBAR').toUpperCase();
+        // Check if it's a built-in container first
+        const builtinVc = this._builtinSidebarContainers.get(containerId);
+        if (builtinVc) {
+          // Use the first view's name as the header label
+          const views = builtinVc.getViews();
+          this._sidebarHeaderLabel.textContent = (views[0]?.name ?? 'SIDEBAR').toUpperCase();
+        } else {
+          // Contributed container — use container title
+          const info = this._viewContribution.getContainer(containerId);
+          this._sidebarHeaderLabel.textContent = (info?.title ?? 'SIDEBAR').toUpperCase();
+        }
       } else {
         // Restore to the active view name in the built-in container
         const activeId = this._sidebarContainer.activeViewId;
@@ -2065,8 +2097,10 @@ export class Workbench extends Disposable {
       const sidebarH = this._sidebar.height - headerH;
       // Layout the active sidebar container (built-in or contributed)
       if (this._activeSidebarContainerId) {
-        const contributed = this._contributedSidebarContainers.get(this._activeSidebarContainerId);
-        contributed?.layout(sidebarW, sidebarH, Orientation.Vertical);
+        const active =
+          this._builtinSidebarContainers.get(this._activeSidebarContainerId) ??
+          this._contributedSidebarContainers.get(this._activeSidebarContainerId);
+        active?.layout(sidebarW, sidebarH, Orientation.Vertical);
       } else {
         this._sidebarContainer.layout(sidebarW, sidebarH, Orientation.Vertical);
       }
@@ -2099,7 +2133,9 @@ export class Workbench extends Disposable {
     dnd.registerTarget(this._panel.id, this._panel.element);
     dnd.registerTarget(this._auxiliaryBar.id, this._auxiliaryBar.element);
 
-    this._makeTabsDraggable(dnd, this._sidebarContainer, this._sidebar.id);
+    for (const vc of this._builtinSidebarContainers.values()) {
+      this._makeTabsDraggable(dnd, vc, this._sidebar.id);
+    }
     this._makeTabsDraggable(dnd, this._panelContainer, this._panel.id);
     this._makeTabsDraggable(dnd, this._auxBarContainer, this._auxiliaryBar.id);
 
@@ -2165,7 +2201,8 @@ export class Workbench extends Disposable {
     this._dndController?.dispose();
 
     // 2. Dispose view containers (which dispose their child views)
-    this._sidebarContainer?.dispose();
+    for (const vc of this._builtinSidebarContainers.values()) vc.dispose();
+    this._builtinSidebarContainers.clear();
     this._panelContainer?.dispose();
     this._auxBarContainer?.dispose();
 
