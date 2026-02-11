@@ -691,6 +691,12 @@ html, body {
   -webkit-app-region: drag;
 }
 
+.titlebar-left,
+.titlebar-center,
+.titlebar-right {
+  position: relative; /* must be positioned to stack above .titlebar-drag-region (position: absolute) via DOM order */
+}
+
 .titlebar-center {
   flex: 1;
   display: flex;
