@@ -1071,3 +1071,46 @@ A full 43-issue audit was performed after M2 implementation. All actionable issu
 - **ARCHITECTURE.md** — Added `tools/`, `api/`, `configuration/`, `contributions/` modules; updated dependency matrix and rules
 - **Semver** — Verified clean (no duplicates or inconsistencies)
 - Workbench.ts god-class, contribution disposables, no tests — noted for future milestone work
+
+---
+
+## Cross-Milestone Deep Audit (Post-M2, Round 2)
+
+A comprehensive cross-milestone audit covering M1 + M2 found additional latent bugs and structural debt
+beyond the initial 43-issue audit. 14 files modified, all issues verified at the line level.
+
+### HIGH Severity (8/8 fixed)
+- **H1 — NamespacedStorage.clear() wipes ALL namespaces** — `storage.ts` `clear()` and `clearSync()` now enumerate keys matching the namespace prefix and delete individually, instead of delegating to `_inner.clear()`
+- **H2 — Reentrancy guard drops concurrent editor switches** — `editorGroupView.ts` boolean guard replaced with a "latest-wins" sequence counter; stale calls bail after the await instead of newer calls being dropped
+- **H3 — `_closeAt` doesn't fire EditorActive** — `editorGroupModel.ts` now fires `EditorGroupChangeKind.EditorActive` when the closed editor was the active one and a new active editor is selected
+- **H4 — Remote code execution via `http://` in manifest main** — `toolModuleLoader.ts` now throws for `http://` and `https://` URLs; only `file:` URIs and relative paths are accepted
+- **H5 — Pending command invocations dropped on deactivation** — `commandContribution.ts` `removeContributions()` now iterates and rejects all pending invocations before deleting them, ensuring caller promises settle
+- **H6 — Window resize listener never removed** — `workbench.ts` `shutdown()` now calls `window.removeEventListener('resize', ...)`
+- **H7 — `_wireViewContributionEvents` accumulates duplicates** — View contribution event subscriptions now tracked in a dedicated `DisposableStore` that is cleared during `_teardownWorkspaceContent()`
+- **H8 — `shutdown()` fires disposed emitter** — `_onDidShutdown.fire()` now executes BEFORE `this.dispose()` so listeners receive the shutdown notification
+
+### MEDIUM Severity (9/9 fixed)
+- **M1 — EditorService misses within-group editor switches** — `editorService.ts` now subscribes to each group's model `EditorActive` change events via `_wireGroupListeners()`, re-wired when group count changes
+- **M2 — EditorService.closeEditor double-fires** — Only fires `onDidActiveEditorChange` when the active editor actually changed (compares before/after); delegates to model's `EditorActive` event for active-closed case
+- **M3 — `getContributorsOf('menus')` always empty** — `toolRegistry.ts` now handles Record-type contributions (menus) by checking `Object.keys(...).length > 0` in addition to `Array.isArray()`
+- **M4 — Built-in tool activation fire-and-forget** — `_registerAndActivateBuiltinTools()` now async; `Promise.allSettled()` awaits all activations before `fireStartupFinished()`; `_initializeToolLifecycle()` also made async
+- **M5 — MutationObserver never disconnected** — `_makeTabsDraggable()` `observer` stored in `_tabObservers` array; all disconnected in `_teardownWorkspaceContent()`
+- **M6 — Tool views not cleared on workspace switch** — `_teardownWorkspaceContent()` now calls `removeContributions()` for all contributed tool IDs; added `getContributedToolIds()` to `ViewContributionProcessor`
+- **M7 — `notify()` promise leak (timeoutMs=0, no container)** — `notificationService.ts` immediately dismisses persistent notifications when no container is attached
+- **M8 — Emitter leak counter never decrements** — `events.ts` `_leakWarnCount` now decremented in the unsubscribe disposable, tracking active listeners not total-ever
+- **M9 — `_editorColumnAdapter` emitter relies on indirect disposal** — `workbench.ts` layout teardown now explicitly disposes the adapter before the parent grid
+
+### LOW Severity (2/4 fixed, 2 noted)
+- **L2 — `_pendingEvents` grows monotonically** — `activationEventService.ts` added `dispose()` override that clears `_pendingEvents`, `_eventToTools`, and `_activatedTools`
+- **L3 — ContextBridge double-dispose** — `contextBridge.ts` removed duplicate push to `_subscriptions`; only `_keys` array now owns the `handle.reset()` disposable
+- L1 (ToolActivator TOCTOU) — mitigated by ToolState.Activating synchronous guard; no code change needed
+- L4 (EditorPart fallback dimensions) — by design; `|| 800`/`|| 600` fallbacks work correctly when parts are created in a hidden div
+
+### Architecture (dependency matrix updated)
+- **ARCHITECTURE.md** — Updated dependency matrix to reflect M2 type-only imports:
+  - `parts` → `editor` (✓†), `workspace` → `layout`/`views`/`parts` (✓†), `api` → `tools`/`contributions` (✓†), `contributions` → `tools` (✓†)
+  - Added `✓†` notation for type-only dependencies; updated all 4 affected plain-language rules
+
+### Previously Cleared (false positives from initial audit)
+- Output tool console recursion — NOT FOUND (addEntry uses DOM only)
+- ViewContainer tab listener accumulation — NOT FOUND (tabs created once per view)

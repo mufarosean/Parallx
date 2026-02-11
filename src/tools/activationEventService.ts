@@ -288,4 +288,11 @@ export class ActivationEventService extends Disposable {
     // Other events replay if they've already fired
     return this._pendingEvents.has(parsed.raw);
   }
+
+  override dispose(): void {
+    this._pendingEvents.clear();
+    this._eventToTools.clear();
+    this._activatedTools.clear();
+    super.dispose();
+  }
 }

@@ -353,6 +353,8 @@ export class EditorGroupModel extends Disposable {
     const entry = this._editors[index];
     if (!entry) return;
 
+    const wasActive = this._activeIndex === index;
+
     this._editors.splice(index, 1);
 
     // Fix indices
@@ -374,6 +376,15 @@ export class EditorGroupModel extends Disposable {
 
     if (!isPreviewReplace) {
       this._onDidChange.fire({ kind: EditorGroupChangeKind.EditorClose, editorIndex: index, editor: entry.input });
+
+      // If the closed editor was active, notify about the new active editor
+      if (wasActive && this._activeIndex >= 0) {
+        this._onDidChange.fire({
+          kind: EditorGroupChangeKind.EditorActive,
+          editorIndex: this._activeIndex,
+          editor: this._editors[this._activeIndex]?.input,
+        });
+      }
     }
   }
 

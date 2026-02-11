@@ -46,7 +46,6 @@ export class ContextBridge {
     };
 
     this._keys.push(toDisposable(() => handle.reset()));
-    this._subscriptions.push(toDisposable(() => handle.reset()));
 
     return apiHandle;
   }

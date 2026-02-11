@@ -107,6 +107,12 @@ export class NotificationService extends Disposable {
       if (this._container) {
         // Insert at top (newest first)
         this._container.prepend(element);
+      } else if (timeoutMs === 0) {
+        // No container and no auto-dismiss timeout: the notification would be
+        // invisible and uninteractable, so resolve immediately to prevent a
+        // permanently unsettled promise.
+        console.warn(`[NotificationService] No container attached — dismissing persistent notification "${id}" immediately`);
+        this._dismiss(id, undefined);
       }
 
       this._onDidShowNotification.fire(notification);

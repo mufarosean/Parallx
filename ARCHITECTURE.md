@@ -133,35 +133,37 @@
 | **services**             |    ✓     |    —     |     ✗     |   ✓    |   ✓   |   ✓   |   ✓    |     ✓     |    ✓     |    ✓    |  ✓  |   ✓   |  ✗  |       ✓       |       ✗       |
 | **workbench**            |    ✓     |    ✓     |     —     |   ✓    |   ✓   |   ✓   |   ✓    |     ✓     |    ✓     |    ✓    |  ✓  |   ✓   |  ✓  |       ✓       |       ✓       |
 | **layout**               |    ✓     |    ✗     |     ✗     |   —    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **parts**                |    ✓     |    ✓*    |     ✗     |   ✓    |   —   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **parts**                |    ✓     |    ✓*    |     ✗     |   ✓    |   —   |   ✗   |   ✓†   |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
 | **views**                |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   —   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
 | **editor**               |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   —    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **workspace**            |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     —     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **workspace**            |    ✓     |    ✓*    |     ✗     |   ✓†   |   ✓†  |   ✓†  |   ✗    |     —     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
 | **commands**             |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    —     |    ✓    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
 | **context**              |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    —    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
 | **dnd**                  |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   ✗    |     ✗     |    ✗     |    ✗    |  —  |   ✗   |  ✗  |       ✗       |       ✗       |
 | **tools**                |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   —   |  ✓  |       ✓       |       ✗       |
-| **api**                  |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   ✓    |     ✗     |    ✓     |    ✓    |  ✗  |   ✗   |  —  |       ✓       |       ✗       |
+| **api**                  |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   ✓    |     ✗     |    ✓     |    ✓    |  ✗  |   ✓†  |  —  |       ✓       |       ✓†      |
 | **configuration**        |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       —       |       ✗       |
-| **contributions**        |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✓   |   ✗    |     ✗     |    ✓     |    ✓    |  ✗  |   ✗   |  ✗  |       ✗       |       —       |
+| **contributions**        |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✓   |   ✗    |     ✗     |    ✓     |    ✓    |  ✗  |   ✓†  |  ✗  |       ✗       |       —       |
 
 > `✓*` = May depend on service **interfaces** only (from `services/serviceTypes.ts`), never on concrete implementations.
+>
+> `✓†` = Type-only imports allowed (`import type`). The dependency is on **type definitions** (interfaces, enums, type aliases) only — no runtime coupling.
 
 ### Rules in Plain Language
 
 1. **`platform` depends on nothing.** It is the foundational layer.
 2. **`layout` depends only on `platform`.** Grid and layout logic is self-contained.
-3. **`parts` depend on `platform`, `layout`, and service interfaces.** Parts integrate with the grid but don't know about views or editors.
+3. **`parts` depend on `platform`, `layout`, `editor` (type-only†), and service interfaces.** EditorPart integrates with EditorGroupView for editor group management.
 4. **`views` depend on `platform`, `layout`, and service interfaces.** Views participate in layout but don't know about parts or editors.
 5. **`editor` depends on `platform`, `layout`, `views`, and service interfaces.** Editors extend view concepts but don't depend on parts directly.
-6. **`workspace` depends on `platform` and service interfaces.** Workspace is a pure data/persistence concern.
+6. **`workspace` depends on `platform`, `layout`†, `views`†, `parts`† (type-only), and service interfaces.** Workspace serialization references layout models, view descriptors, and part types for state persistence.
 7. **`commands` depend on `platform`, `context`, and service interfaces.** Commands evaluate context and call services.
 8. **`context` depends on `platform` and service interfaces.** Context is a data tracking layer.
 9. **`dnd` depends on `platform`, `layout`, `views`, and service interfaces.** DnD coordinates view movement through layout.
 10. **`tools` depend on `platform`, `api`, `configuration`, and service interfaces.** Tool lifecycle management loads, validates, and activates tools.
-11. **`api` depends on `platform`, `layout`, `views`, `editor`, `commands`, `context`, `configuration`, and service interfaces.** API bridges connect tool calls to internal services.
+11. **`api` depends on `platform`, `layout`, `views`, `editor`, `commands`, `context`, `configuration`, `tools`† (type-only), `contributions`† (type-only), and service interfaces.** API bridges connect tool calls to internal services; the factory imports tool manifest types and contribution processor types.
 12. **`configuration` depends on `platform` and service interfaces.** Configuration is a data/schema concern.
-13. **`contributions` depend on `platform`, `views`, `commands`, `context`, and service interfaces.** Contributions process manifest declarations into registered entities.
+13. **`contributions` depend on `platform`, `views`, `commands`, `context`, `tools`† (type-only), and service interfaces.** Contributions process manifest declarations into registered entities; they import tool manifest types and activation event interfaces.
 14. **`services` depend on `platform` and may import from any module** to provide concrete implementations behind interfaces.
 15. **`workbench` is the composition root.** It may depend on everything to wire the system together.
 

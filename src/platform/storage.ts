@@ -106,8 +106,11 @@ export class NamespacedStorage implements IStorage {
     return allKeys.map(k => k.slice(nsLen));
   }
 
-  clear(): Promise<void> {
-    return this._inner.clear();
+  async clear(): Promise<void> {
+    const allKeys = await this._inner.keys(this._namespace + ':');
+    for (const key of allKeys) {
+      await this._inner.delete(key);
+    }
   }
 
   get onError(): Event<StorageError> | undefined {
@@ -139,7 +142,12 @@ export class NamespacedSyncStorage implements ISyncStorage {
     return allKeys.map(k => k.slice(nsLen));
   }
 
-  clearSync(): void { this._inner.clearSync(); }
+  clearSync(): void {
+    const allKeys = this._inner.keysSync(this._namespace + ':');
+    for (const key of allKeys) {
+      this._inner.deleteSync(key);
+    }
+  }
 
   get onError(): Event<StorageError> | undefined { return this._inner.onError; }
 }

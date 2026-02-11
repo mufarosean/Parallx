@@ -76,6 +76,9 @@ export class Emitter<T> implements IDisposable {
 
         return toDisposable(() => {
           this._listeners.delete(listener);
+          if (_leakWarningEnabled) {
+            this._leakWarnCount--;
+          }
         });
       };
     }

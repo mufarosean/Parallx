@@ -176,7 +176,19 @@ export class CommandContributionProcessor extends Disposable implements IContrib
       if (contributed.toolId === toolId) {
         removedIds.push(cmdId);
         this._contributed.delete(cmdId);
-        this._pendingInvocations.delete(cmdId);
+
+        // Reject any pending invocations so caller promises settle
+        const pendingQueue = this._pendingInvocations.get(cmdId);
+        if (pendingQueue) {
+          for (const invocation of pendingQueue) {
+            invocation.reject(new Error(
+              `[CommandContribution] Command "${cmdId}" from tool "${toolId}" ` +
+              `was deactivated while invocations were pending`,
+            ));
+          }
+          this._pendingInvocations.delete(cmdId);
+        }
+
         this._realHandlers.delete(cmdId);
       }
     }

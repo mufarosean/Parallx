@@ -49,7 +49,8 @@ export class EditorGroupView extends Disposable implements IGridView {
   private _emptyMessage!: HTMLElement;
 
   private _activePane: EditorPane | undefined;
-  private _showingActiveEditor = false;
+  /** Sequence counter for "latest-wins" active editor rendering. */
+  private _showActiveEditorSeq = 0;
   private readonly _paneDisposables = this._register(new DisposableStore());
 
   private _width = 0;
@@ -484,41 +485,47 @@ export class EditorGroupView extends Disposable implements IGridView {
   // ─── Pane Management ───────────────────────────────────────────────────
 
   private async _showActiveEditor(): Promise<void> {
-    // Reentrancy guard: prevent duplicate pane creation when both the model
-    // event handler and the explicit openEditor() call invoke this method
-    // concurrently (the first call suspends at await pane.setInput(), the
-    // second call would otherwise create a second pane).
-    if (this._showingActiveEditor) return;
-    this._showingActiveEditor = true;
-    try {
-      const activeInput = this.model.activeEditor;
+    // "Latest wins" guard: each call bumps a sequence counter. After the
+    // async pane.setInput() returns, the call checks whether it is still
+    // the latest — if a newer call has started, it bails out and lets the
+    // newer call handle rendering. This avoids both the duplicate-pane bug
+    // AND the dropped-switch bug that the old boolean guard had.
+    const seq = ++this._showActiveEditorSeq;
 
-      // Clear current pane
-      if (this._activePane) {
-        this._activePane.clearInput();
-        this._paneDisposables.clear();
-        if (this._activePane.element) {
-          this._activePane.element.remove();
-        }
-        this._activePane = undefined;
+    const activeInput = this.model.activeEditor;
+
+    // Clear current pane (synchronous — safe to do even if a newer call follows)
+    if (this._activePane) {
+      this._activePane.clearInput();
+      this._paneDisposables.clear();
+      if (this._activePane.element) {
+        this._activePane.element.remove();
       }
-
-      if (!activeInput) return;
-
-      // Create new pane
-      const pane = this._paneFactory(activeInput);
-      this._paneDisposables.add(pane);
-      pane.create(this._paneContainer);
-      await pane.setInput(activeInput);
-
-      // Layout
-      const paneH = Math.max(0, this._height - TAB_HEIGHT);
-      pane.layout(this._width, paneH);
-
-      this._activePane = pane;
-    } finally {
-      this._showingActiveEditor = false;
+      this._activePane = undefined;
     }
+
+    if (!activeInput) return;
+
+    // Create new pane
+    const pane = this._paneFactory(activeInput);
+    this._paneDisposables.add(pane);
+    pane.create(this._paneContainer);
+    await pane.setInput(activeInput);
+
+    // After the await: check if we're still the latest call
+    if (seq !== this._showActiveEditorSeq) {
+      // A newer _showActiveEditor() call superseded us — clean up and bail
+      pane.clearInput();
+      this._paneDisposables.clear();
+      if (pane.element) pane.element.remove();
+      return;
+    }
+
+    // Layout
+    const paneH = Math.max(0, this._height - TAB_HEIGHT);
+    pane.layout(this._width, paneH);
+
+    this._activePane = pane;
   }
 
   private _updateEmptyState(): void {

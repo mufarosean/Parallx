@@ -9,7 +9,7 @@
 //   5. Ready — CSS ready class, log
 // Teardown reverses (5→1).
 
-import { Disposable, IDisposable } from '../platform/lifecycle.js';
+import { Disposable, DisposableStore, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService } from '../services/serviceTypes.js';
@@ -197,6 +197,8 @@ export class Workbench extends Disposable {
 
   // View Contribution (M2 Capability 6)
   private _viewContribution!: ViewContributionProcessor;
+  /** Disposable store for view contribution event listeners (cleared on workspace switch). */
+  private readonly _viewContribListeners = this._register(new DisposableStore());
   /** Tool-contributed sidebar containers (keyed by container ID). */
   private _contributedSidebarContainers = new Map<string, ViewContainer>();
   /** Tool-contributed panel containers (keyed by container ID). */
@@ -209,6 +211,8 @@ export class Workbench extends Disposable {
   private _activityBarSeparator: HTMLElement | undefined;
   /** Header label element for the sidebar. */
   private _sidebarHeaderLabel: HTMLElement | undefined;
+  /** MutationObservers for tab drag wiring (disconnected on teardown). */
+  private _tabObservers: MutationObserver[] = [];
 
   // ── Events ──
 
@@ -421,9 +425,14 @@ export class Workbench extends Disposable {
       await this._lifecycle.teardown();
     }
 
+    // Remove window resize listener
+    window.removeEventListener('resize', this._onWindowResize);
+
+    // Fire onDidShutdown BEFORE dispose() so listeners can still receive it
+    this._onDidShutdown.fire();
+
     this.dispose();
     this._setState(WorkbenchState.Disposed);
-    this._onDidShutdown.fire();
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -462,12 +471,12 @@ export class Workbench extends Disposable {
     });
 
     // Phase 5: Ready — CSS hooks + tool lifecycle initialization
-    lc.onStartup(LifecyclePhase.Ready, () => {
+    lc.onStartup(LifecyclePhase.Ready, async () => {
       this._container.classList.add('parallx-workbench');
       this._container.classList.add('parallx-ready');
 
       // Initialize tool activator and fire startup finished
-      this._initializeToolLifecycle();
+      await this._initializeToolLifecycle();
     });
 
     // ── Teardown (5→1) ──
@@ -494,6 +503,7 @@ export class Workbench extends Disposable {
     });
 
     lc.onTeardown(LifecyclePhase.Layout, () => {
+      this._editorColumnAdapter?.dispose();
       this._hGrid?.dispose();
       this._vGrid?.dispose();
       this._partRegistry?.dispose();
@@ -1318,7 +1328,7 @@ export class Workbench extends Disposable {
    * Initialize tool activator, contribution processors, and fire startup-finished event.
    * Called in Phase 5 (Ready) after all services and UI are available.
    */
-  private _initializeToolLifecycle(): void {
+  private async _initializeToolLifecycle(): Promise<void> {
     // Resolve services
     const registry = this._services.get(IToolRegistryService) as unknown as ToolRegistry;
     const activationEvents = this._services.get(IActivationEventService) as unknown as ActivationEventService;
@@ -1405,7 +1415,7 @@ export class Workbench extends Disposable {
     }
 
     // ── Register and activate built-in tools (M2 Capability 7) ──
-    this._registerAndActivateBuiltinTools(registry, activationEvents);
+    await this._registerAndActivateBuiltinTools(registry, activationEvents);
 
     // Fire startup finished — triggers * and onStartupFinished activation events
     activationEvents.fireStartupFinished();
@@ -1422,10 +1432,10 @@ export class Workbench extends Disposable {
    * pre-imported modules. Called before fireStartupFinished() so built-in
    * tools are ready when the workbench becomes interactive.
    */
-  private _registerAndActivateBuiltinTools(
+  private async _registerAndActivateBuiltinTools(
     registry: ToolRegistry,
     activationEvents: ActivationEventService,
-  ): void {
+  ): Promise<void> {
     const builtins: { manifest: IToolManifest; module: { activate: Function; deactivate?: Function } }[] = [
       {
         manifest: {
@@ -1488,6 +1498,8 @@ export class Workbench extends Disposable {
       },
     ];
 
+    const activationPromises: Promise<void>[] = [];
+
     for (const { manifest, module } of builtins) {
       const description: IToolDescription = {
         manifest,
@@ -1503,13 +1515,19 @@ export class Workbench extends Disposable {
         // via the onStartupFinished event while activateBuiltin is still awaiting
         activationEvents.markActivated(manifest.id);
         // Activate immediately using the pre-imported module (no module loader)
-        this._toolActivator.activateBuiltin(manifest.id, module as any).catch((err) => {
-          console.error(`[Workbench] Failed to activate built-in tool "${manifest.id}":`, err);
-        });
+        activationPromises.push(
+          this._toolActivator.activateBuiltin(manifest.id, module as any).then(
+            () => {},
+            (err) => { console.error(`[Workbench] Failed to activate built-in tool "${manifest.id}":`, err); },
+          ),
+        );
       } catch (err) {
         console.error(`[Workbench] Failed to register built-in tool "${manifest.id}":`, err);
       }
     }
+
+    // Wait for all built-in tools to finish activating before returning
+    await Promise.allSettled(activationPromises);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1521,28 +1539,31 @@ export class Workbench extends Disposable {
    * Called once during _initializeToolLifecycle().
    */
   private _wireViewContributionEvents(): void {
+    // Clear previous listeners (prevents duplication on workspace switch)
+    this._viewContribListeners.clear();
+
     // When a tool contributes a new container → create DOM + activity bar icon
-    this._register(this._viewContribution.onDidAddContainer((container) => {
+    this._viewContribListeners.add(this._viewContribution.onDidAddContainer((container) => {
       this._onToolContainerAdded(container);
     }));
 
     // When a tool's container is removed → tear down DOM + remove icon
-    this._register(this._viewContribution.onDidRemoveContainer((containerId) => {
+    this._viewContribListeners.add(this._viewContribution.onDidRemoveContainer((containerId) => {
       this._onToolContainerRemoved(containerId);
     }));
 
     // When a tool contributes a view → create it and add to the correct container
-    this._register(this._viewContribution.onDidAddView((view) => {
+    this._viewContribListeners.add(this._viewContribution.onDidAddView((view) => {
       this._onToolViewAdded(view);
     }));
 
     // When a tool's view is removed → container will handle via ViewManager unregister
-    this._register(this._viewContribution.onDidRemoveView((viewId) => {
+    this._viewContribListeners.add(this._viewContribution.onDidRemoveView((viewId) => {
       this._onToolViewRemoved(viewId);
     }));
 
     // When a provider is registered → if the view is in a visible container, ensure it's rendered
-    this._register(this._viewContribution.onDidRegisterProvider(({ viewId }) => {
+    this._viewContribListeners.add(this._viewContribution.onDidRegisterProvider(({ viewId }) => {
       console.log(`[Workbench] View provider registered for "${viewId}"`);
     }));
   }
@@ -1915,6 +1936,7 @@ export class Workbench extends Disposable {
 
     const observer = new MutationObserver(() => wireExisting());
     observer.observe(tabBar, { childList: true });
+    this._tabObservers.push(observer);
     wireExisting();
   }
 
@@ -1934,6 +1956,20 @@ export class Workbench extends Disposable {
    * while keeping the structural layout (grids, parts elements) intact.
    */
   private _teardownWorkspaceContent(): void {
+    // 0. Disconnect tab MutationObservers
+    for (const obs of this._tabObservers) obs.disconnect();
+    this._tabObservers = [];
+
+    // 0b. Clear view contribution event listeners (H7)
+    this._viewContribListeners.clear();
+
+    // 0c. Clear view contribution processor's internal maps so stale refs don't persist (M6)
+    if (this._viewContribution) {
+      for (const toolId of this._viewContribution.getContributedToolIds()) {
+        this._viewContribution.removeContributions(toolId);
+      }
+    }
+
     // 1. Dispose DnD controller
     this._dndController?.dispose();
 

@@ -144,8 +144,16 @@ export class ToolModuleLoader {
    * For built-in tools, relative to source tree. For external, relative to toolPath.
    */
   private _resolveEntryPath(toolPath: string, mainEntry: string): string {
-    // If mainEntry is already an absolute path or URL, use as-is
-    if (mainEntry.startsWith('/') || mainEntry.startsWith('http') || mainEntry.startsWith('file:')) {
+    // Security: reject http/https URLs to prevent remote code execution
+    if (mainEntry.startsWith('http://') || mainEntry.startsWith('https://')) {
+      throw new Error(
+        `Refusing to load remote entry point "${mainEntry}". ` +
+        `Tool entry points must be local file paths.`,
+      );
+    }
+
+    // If mainEntry is already an absolute path or file URL, use as-is
+    if (mainEntry.startsWith('/') || mainEntry.startsWith('file:')) {
       return mainEntry;
     }
 

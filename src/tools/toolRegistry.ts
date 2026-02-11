@@ -193,8 +193,12 @@ export class ToolRegistry extends Disposable {
       .filter(e => {
         const contrib = e.description.manifest.contributes;
         if (!contrib) return false;
-        const arr = contrib[point];
-        return Array.isArray(arr) && arr.length > 0;
+        const val = contrib[point];
+        // Arrays (commands, views, viewContainers, etc.)
+        if (Array.isArray(val) && val.length > 0) return true;
+        // Record types (menus) — check for non-empty object
+        if (val && typeof val === 'object' && !Array.isArray(val) && Object.keys(val).length > 0) return true;
+        return false;
       })
       .map(e => ({ description: e.description, state: e.state }));
   }

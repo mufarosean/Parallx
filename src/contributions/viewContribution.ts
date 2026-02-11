@@ -290,6 +290,16 @@ export class ViewContributionProcessor extends Disposable implements IContributi
   }
 
   /**
+   * Get all tool IDs that have contributed views or containers.
+   */
+  getContributedToolIds(): readonly string[] {
+    const ids = new Set<string>();
+    for (const toolId of this._toolContainers.keys()) ids.add(toolId);
+    for (const toolId of this._toolViews.keys()) ids.add(toolId);
+    return [...ids];
+  }
+
+  /**
    * Get the registered provider for a view.
    */
   getProvider(viewId: string): IToolViewProvider | undefined {
