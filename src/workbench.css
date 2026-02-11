@@ -97,11 +97,6 @@ html, body {
   background: rgba(255, 255, 255, 0.1);
 }
 
-.window-control-btn:last-child:hover {
-  background: #e81123;
-  color: white;
-}
-
 /* ── Titlebar menu bar ── */
 .titlebar-menubar {
   display: flex;
@@ -130,6 +125,95 @@ html, body {
 .titlebar-menu-item:hover {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.1);
+}
+
+.titlebar-menu-item--active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.titlebar-menu-item:focus {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+  outline: 1px solid rgba(255, 255, 255, 0.2);
+  outline-offset: -1px;
+}
+
+/* ── Titlebar workspace label (M3 Cap 1.1) ── */
+.titlebar-workspace-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: color 0.1s, background-color 0.1s;
+  user-select: none;
+}
+
+.titlebar-workspace-label:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.titlebar-workspace-label:focus {
+  color: #ffffff;
+  outline: 1px solid rgba(255, 255, 255, 0.3);
+  outline-offset: -1px;
+}
+
+/* ── Titlebar dropdown menus (M3 Cap 1.2) ── */
+.titlebar-dropdown {
+  z-index: 1100;
+  background: #252526;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  min-width: 220px;
+  padding: 4px 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.titlebar-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 24px 4px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #cccccc;
+  transition: background-color 0.08s;
+}
+
+.titlebar-dropdown-item:hover,
+.titlebar-dropdown-item--selected {
+  background: #04395e;
+}
+
+.titlebar-dropdown-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titlebar-dropdown-item-keybinding {
+  flex-shrink: 0;
+  margin-left: 24px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.titlebar-dropdown-separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Window control close button (M3 Cap 1.3) ── */
+.window-control-btn--close:hover {
+  background: #e81123 !important;
+  color: white !important;
 }
 
 /* ── Sidebar ── */

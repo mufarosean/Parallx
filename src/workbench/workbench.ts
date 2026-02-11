@@ -20,7 +20,7 @@ import { registerWorkbenchServices, registerConfigurationServices } from './work
 import { Part } from '../parts/part.js';
 import { PartRegistry } from '../parts/partRegistry.js';
 import { PartId } from '../parts/partTypes.js';
-import { titlebarPartDescriptor } from '../parts/titlebarPart.js';
+import { titlebarPartDescriptor, TitlebarPart } from '../parts/titlebarPart.js';
 import { activityBarPartDescriptor, ActivityBarPart } from '../parts/activityBarPart.js';
 import { sidebarPartDescriptor, SidebarPart } from '../parts/sidebarPart.js';
 import { editorPartDescriptor, EditorPart } from '../parts/editorPart.js';
@@ -173,7 +173,7 @@ export class Workbench extends Disposable {
   private _restoredState: WorkspaceState | undefined;
 
   // Part refs (cached after creation)
-  private _titlebar!: Part;
+  private _titlebar!: TitlebarPart;
   private _activityBarPart!: ActivityBarPart;
   private _sidebar!: Part;
   private _editor!: Part;
@@ -592,7 +592,7 @@ export class Workbench extends Disposable {
     this._partRegistry.createAll();
 
     // 2. Cache part references
-    this._titlebar = this._partRegistry.requirePart(PartId.Titlebar) as Part;
+    this._titlebar = this._partRegistry.requirePart(PartId.Titlebar) as TitlebarPart;
     this._activityBarPart = this._partRegistry.requirePart(PartId.ActivityBar) as ActivityBarPart;
     this._sidebar = this._partRegistry.requirePart(PartId.Sidebar) as Part;
     this._editor = this._partRegistry.requirePart(PartId.Editor) as Part;
@@ -1038,54 +1038,71 @@ export class Workbench extends Disposable {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // Titlebar setup
+  // Titlebar setup (M3 Capability 1 — service-wired, data-driven)
   // ════════════════════════════════════════════════════════════════════════
 
   private _setupTitlebar(): void {
-    const el = this._titlebar.element;
+    // Task 1.1: Wire workspace name reactively
+    this._titlebar.setWorkspaceName(this._workspace.name);
 
-    // Left: app icon + menu bar
-    const leftSlot = el.querySelector('.titlebar-left') as HTMLElement;
-    if (leftSlot) {
-      leftSlot.classList.add('titlebar-menubar');
+    // Subscribe to workspace switches so the label updates automatically
+    this._register(this._onDidSwitchWorkspace.event((ws) => {
+      this._titlebar.setWorkspaceName(ws.name);
+    }));
 
-      const appIcon = document.createElement('span');
-      appIcon.textContent = '⊞';
-      appIcon.classList.add('titlebar-app-icon');
-      leftSlot.appendChild(appIcon);
+    // Task 1.2: Register default menu bar items via contribution system
+    this._registerDefaultMenuBarItems();
 
-      const menuItems = ['File', 'Edit', 'Selection', 'View', 'Go', 'Run', 'Terminal', 'Help'];
-      for (const label of menuItems) {
-        const item = document.createElement('span');
-        item.textContent = label;
-        item.classList.add('titlebar-menu-item');
-        leftSlot.appendChild(item);
-      }
+    // Task 1.1: Clicking workspace name opens Quick Access (for now toggles command palette)
+    this._register(this._titlebar.onDidClickWorkspaceName(() => {
+      this.toggleCommandPalette();
+    }));
+
+    console.log('[Workbench] Title bar wired to services');
+  }
+
+  /**
+   * Register the default (shell) menu bar items via TitlebarPart's
+   * registration API. These are not hardcoded DOM — they go through
+   * the same registration path that tools can use.
+   */
+  private _registerDefaultMenuBarItems(): void {
+    const defaultMenus = [
+      { id: 'file', label: 'File', order: 10 },
+      { id: 'edit', label: 'Edit', order: 20 },
+      { id: 'selection', label: 'Selection', order: 30 },
+      { id: 'view', label: 'View', order: 40 },
+      { id: 'go', label: 'Go', order: 50 },
+      { id: 'tools', label: 'Tools', order: 60 },
+      { id: 'help', label: 'Help', order: 70 },
+    ];
+
+    for (const menu of defaultMenus) {
+      this._register(this._titlebar.registerMenuBarItem(menu));
     }
 
-    // Right: window controls
-    const rightSlot = el.querySelector('.titlebar-right') as HTMLElement;
-    if (rightSlot) {
-      const controls = document.createElement('div');
-      controls.classList.add('window-controls');
+    // Register dropdown items for View menu — delegates to structural commands
+    this._register(this._titlebar.registerMenuBarDropdownItems('view', [
+      { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '1_nav', order: 1 },
+      { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Sidebar', group: '2_appearance', order: 1 },
+      { commandId: 'workbench.action.togglePanel', title: 'Toggle Panel', group: '2_appearance', order: 2 },
+      { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Auxiliary Bar', group: '2_appearance', order: 3 },
+      { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
+    ]));
 
-      const makeBtn = (label: string, action: () => void): HTMLElement => {
-        const btn = document.createElement('button');
-        btn.textContent = label;
-        btn.classList.add('window-control-btn');
-        btn.addEventListener('click', action);
-        return btn;
-      };
+    // Register dropdown items for File menu
+    this._register(this._titlebar.registerMenuBarDropdownItems('file', [
+      { commandId: 'workspace.new', title: 'New Workspace…', group: '1_workspace', order: 1 },
+      { commandId: 'workspace.openRecent', title: 'Open Recent…', group: '1_workspace', order: 2 },
+    ]));
 
-      const api = window.parallxElectron;
-      if (api) {
-        controls.appendChild(makeBtn('─', () => api.minimize()));
-        controls.appendChild(makeBtn('□', () => api.maximize()));
-        controls.appendChild(makeBtn('✕', () => api.close()));
-      }
+    // Register dropdown items for Help menu
+    this._register(this._titlebar.registerMenuBarDropdownItems('help', [
+      { commandId: 'welcome.openWelcome', title: 'Welcome', group: '1_welcome', order: 1 },
+      { commandId: 'workbench.action.showCommands', title: 'Show All Commands', group: '2_commands', order: 1 },
+    ]));
 
-      rightSlot.appendChild(controls);
-    }
+    console.log('[Workbench] Default menu bar items registered (%d menus)', defaultMenus.length);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1427,6 +1444,10 @@ export class Workbench extends Disposable {
       this._commandPalette.setMenuContribution(menuContribution);
       this._commandPalette.setKeybindingContribution(keybindingContribution);
     }
+
+    // Wire keybinding lookup and command executor into TitlebarPart (M3 Capability 1)
+    this._titlebar.setKeybindingLookup(keybindingService);
+    this._titlebar.setCommandExecutor(this._services.get(ICommandService) as any);
 
     // ── Register and activate built-in tools (M2 Capability 7) ──
     await this._registerAndActivateBuiltinTools(registry, activationEvents);

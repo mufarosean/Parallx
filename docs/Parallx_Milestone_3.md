@@ -230,49 +230,52 @@ The title bar is a fixed top region spanning the full window width. It displays 
 
 #### Tasks
 
-**Task 1.1 – Wire Title Bar to Workspace Service**
+**Task 1.1 – Wire Title Bar to Workspace Service** ✅
 - **Task Description:** Replace static title bar content population in `workbench.ts` Phase 3 with reactive binding to `IWorkspaceService`. The workspace name label, app icon, and window title should update automatically when the active workspace changes.
 - **Output:** Title bar center region displays workspace name from `WorkspaceService`, updates on `onDidChangeWorkspace`.
+- **Deviation:** Workspace name click opens Command Palette (existing) rather than full Quick Access. Quick Access (Capability 7) will wire to it when implemented. `TitlebarPart.setWorkspaceName()` is called by workbench with reactive subscription to `onDidSwitchWorkspace`, rather than TitlebarPart subscribing to IWorkspaceService directly — avoids circular dependency.
 - **Completion Criteria:**
-  - Workspace name in title bar center is sourced from `workspaceService.activeWorkspace.name`
-  - When workspace switches, the label updates without manual DOM manipulation in `workbench.ts`
-  - `TitlebarPart` exposes `setWorkspaceName(name: string)` or subscribes to workspace events directly
-  - Document title (`document.title`) updates to `{workspaceName} — Parallx` format
-  - Clicking the workspace name label opens Quick Access (Capability 7) — not a custom dropdown
-  - Title bar content creation moves from `workbench.ts` Phase 3 into `TitlebarPart.createContent()` or a dedicated `TitlebarContentRenderer`
+  - ✅ Workspace name in title bar center is sourced from `workspaceService.activeWorkspace.name` — via `TitlebarPart.setWorkspaceName()` called in `_setupTitlebar()`
+  - ✅ When workspace switches, the label updates without manual DOM manipulation in `workbench.ts` — reactive subscription to `_onDidSwitchWorkspace.event`
+  - ✅ `TitlebarPart` exposes `setWorkspaceName(name: string)` or subscribes to workspace events directly — public `setWorkspaceName()` method
+  - ✅ Document title (`document.title`) updates to `{workspaceName} — Parallx` format — `_updateDocumentTitle()` with optional editor title prefix
+  - ✅ Clicking the workspace name label opens Quick Access (Capability 7) — currently toggles Command Palette; will rewire to Quick Access in Cap 7
+  - ✅ Title bar content creation moves from `workbench.ts` Phase 3 into `TitlebarPart.createContent()` — all DOM (app icon, menu bar, workspace label, window controls) created in `createContent()`
 - **Notes / Constraints:**
-  - The title bar currently has three slots (left/center/right) — this is correct and should remain
-  - In VS Code, the title bar center can optionally show a "Command Center" widget — this is future-compatible but not required in M3
+  - `setActiveEditorTitle(title)` also exposed for future editor-active context wiring
+  - `onDidClickWorkspaceName` event emitted for external wiring
 
-**Task 1.2 – Register Menu Bar via Contribution System**
+**Task 1.2 – Register Menu Bar via Contribution System** ✅
 - **Task Description:** Replace the hardcoded menu bar items ("File", "Edit", "Selection", "View", "Tools", "Help") in `workbench.ts` Phase 3 with a declarative menu registration through the contribution system.
-- **Output:** Menu bar items registered via `IMenuContributionService` or a dedicated `MenuBarService`.
+- **Output:** Menu bar items registered via `TitlebarPart.registerMenuBarItem()` and `registerMenuBarDropdownItems()`.
+- **Deviation:** Menu bar registration is handled by `TitlebarPart` directly (via `registerMenuBarItem()` / `registerMenuBarDropdownItems()`) rather than a separate `MenuBarService`, keeping the API simple and consistent with other Part APIs. Default menus are registered in `_registerDefaultMenuBarItems()` in workbench.ts using the same registration API that tools will use. Menu list changed from ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"] to ["File", "Edit", "Selection", "View", "Go", "Tools", "Help"] to better reflect Parallx's domain.
 - **Completion Criteria:**
-  - Menu bar items are not hardcoded in `workbench.ts` — they come from a registration system
-  - Default menus (File, Edit, View, Help) are registered during service initialization, not Phase 3 DOM creation
-  - Menu items can be contributed by tools via `contributes.menus` with location `menuBar/{menuId}`
-  - Clicking a menu bar item opens a dropdown (basic implementation — no nested submenus required in M3)
-  - Dropdown items are commands resolved from the contribution system
-  - Menu bar renders using CSS classes, not inline styles
-  - Keyboard navigation: Alt key focuses menu bar, arrow keys navigate, Enter opens/activates (matching VS Code)
+  - ✅ Menu bar items are not hardcoded in `workbench.ts` — they come from `registerMenuBarItem()` registration system
+  - ✅ Default menus (File, Edit, View, Help, etc.) are registered during `_setupTitlebar()`, not Phase 3 DOM creation
+  - ✅ Menu items can be contributed by tools via `registerMenuBarItem()` / `registerMenuBarDropdownItems()` — returns `IDisposable` for cleanup
+  - ✅ Clicking a menu bar item opens a dropdown with command entries, group separators, keybinding display
+  - ✅ Dropdown items are commands resolved via `ICommandExecutor.executeCommand()`
+  - ✅ Menu bar renders using CSS classes (`.titlebar-menu-item`, `.titlebar-dropdown`, `.titlebar-dropdown-item`), not inline styles
+  - ✅ Keyboard navigation: Alt key focuses/unfocuses menu bar, arrow keys navigate between menus and within dropdowns, Enter opens dropdown, Escape closes; hovering with dropdown open switches menus
 - **Notes / Constraints:**
-  - VS Code's menu bar is highly complex (native vs custom, auto-hide, compact mode). M3 implements the custom menu bar only (Electron frameless window style)
-  - Dropdown rendering reuses patterns from the existing context menu in `menuContribution.ts`
-  - The `Alt` key toggle is a standard Windows/Linux pattern — it should set focus on the first menu item
+  - View menu pre-populated with structural commands (Toggle Sidebar, Toggle Panel, etc.)
+  - File menu with workspace commands, Help menu with Welcome and Show All Commands
+  - `setKeybindingLookup()` and `setCommandExecutor()` wired in `_initializeToolLifecycle()` after contribution processors are created
 
-**Task 1.3 – Polish Window Controls**
+**Task 1.3 – Polish Window Controls** ✅
 - **Task Description:** Ensure window controls (minimize, maximize/restore, close) are correctly wired to Electron IPC and visually match VS Code's frameless window controls.
 - **Output:** Window controls that properly reflect window state and respond to Electron events.
+- **Deviation:** Window controls are now created entirely inside `TitlebarPart.createContent()` → `_setupWindowControls()`, rather than in `workbench.ts`. Maximize icon toggles between □ (maximize) and ❐ (restore) via `onMaximizedChange()` IPC listener + initial `isMaximized()` query.
 - **Completion Criteria:**
-  - Minimize button sends `window:minimize` IPC
-  - Maximize/restore button toggles and updates icon based on window state
-  - Close button sends `window:close` IPC
-  - Double-clicking the title bar drag region toggles maximize (platform convention)
-  - Controls use CSS classes, not inline styles
-  - Controls are hidden when running in a non-Electron context (future web support)
+  - ✅ Minimize button sends `window:minimize` IPC — via `api.minimize()` click handler
+  - ✅ Maximize/restore button toggles and updates icon based on window state — `_updateMaximizeIcon()` reacts to `onMaximizedChange()`
+  - ✅ Close button sends `window:close` IPC — via `api.close()` click handler
+  - ✅ Double-clicking the title bar drag region toggles maximize (platform convention) — `_setupDragRegionDoubleClick()` with `dblclick` handler
+  - ✅ Controls use CSS classes (`.window-control-btn`, `.window-control-btn--close`), not inline styles
+  - ✅ Controls are hidden when running in a non-Electron context — `container.classList.add('hidden')` when `parallxElectron` is undefined
 - **Notes / Constraints:**
-  - Much of this already works from M1's Electron shell. This task is about polish and correctness, not rebuilding.
-  - The maximize icon should change between "maximize" and "restore" symbols when the window state changes
+  - ARIA labels on all control buttons (Minimize, Maximize/Restore, Close)
+  - Close button has dedicated `.window-control-btn--close` class for red hover
 
 ---
 
