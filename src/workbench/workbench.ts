@@ -996,6 +996,9 @@ export class Workbench extends Disposable {
     this._titlebar.layout(rw, TITLE_HEIGHT, Orientation.Horizontal);
     this._statusBar.layout(rw, STATUS_HEIGHT, Orientation.Horizontal);
 
+    // Re-layout activity bar (not in hGrid, so must be done explicitly)
+    this._activityBarPart.layout(ACTIVITY_BAR_WIDTH, rbodyH, Orientation.Vertical);
+
     // Resize hGrid (cascades to vGrid via editorColumnAdapter)
     this._hGrid.resize(rw - ACTIVITY_BAR_WIDTH, rbodyH);
 
