@@ -83,7 +83,8 @@
 }
 
 .ui-button-label {
-  /* Inherits from .ui-button */
+  /* Inherits font/color from .ui-button */
+  line-height: inherit;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -248,6 +249,7 @@
 
 .ui-overlay-content {
   /* Content container — consumers add their own sizing/styling */
+  position: relative;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
