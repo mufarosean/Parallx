@@ -761,6 +761,9 @@ export class Workbench extends Disposable {
 
     // 10. Context system (Capability 8): context keys, focus tracking, when-clause evaluation
     this._initializeContext();
+
+    // 11. Wire view/title actions and context menus to stacked containers
+    this._wireSectionMenus(this._sidebarContainer);
   }
 
   /**
@@ -1252,6 +1255,82 @@ export class Workbench extends Disposable {
     // The container's addView already activated the first view (Explorer).
 
     return container;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Wire view/title actions and context menus to stacked section headers
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Connect a ViewContainer's section events to the MenuContributionProcessor.
+   * - `onDidCreateSection`: renders view/title action buttons into the header's actions slot.
+   * - `onDidContextMenuSection`: shows a context menu populated from view/title items.
+   */
+  private _wireSectionMenus(container: ViewContainer): void {
+    if (!this._menuContribution) return;
+
+    // Render actions for any sections already created
+    for (const viewId of container.getViews().map(v => v.id)) {
+      const section = (container as any)._sectionElements?.get(viewId);
+      if (section?.actionsSlot) {
+        this._menuContribution.renderViewTitleActions(viewId, section.actionsSlot);
+      }
+    }
+
+    // Render actions for future sections
+    this._register(container.onDidCreateSection(({ viewId, actionsSlot }) => {
+      this._menuContribution.renderViewTitleActions(viewId, actionsSlot);
+    }));
+
+    // Handle right-click context menu on section headers
+    this._register(container.onDidContextMenuSection(({ viewId, x, y }) => {
+      const actions = this._menuContribution.getViewTitleActions(viewId);
+      if (actions.length === 0) return;
+
+      // Build a simple context menu from the view/title actions
+      const cmdService = this._services.get(ICommandService) as CommandService;
+      const menu = document.createElement('div');
+      menu.classList.add('context-menu');
+      menu.style.cssText = `
+        position: fixed; left: ${x}px; top: ${y}px; z-index: 1000;
+        background: #252526; border: 1px solid #3c3c3c; border-radius: 4px;
+        padding: 4px 0; min-width: 160px; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      `;
+
+      for (const action of actions) {
+        const cmd = cmdService.getCommand(action.commandId);
+        if (!cmd) continue;
+        const item = document.createElement('div');
+        item.classList.add('context-menu-item');
+        item.textContent = cmd.title;
+        item.style.cssText = `
+          padding: 4px 20px; cursor: pointer; color: #ccc; font-size: 13px;
+          white-space: nowrap;
+        `;
+        item.addEventListener('mouseenter', () => { item.style.background = '#094771'; });
+        item.addEventListener('mouseleave', () => { item.style.background = ''; });
+        item.addEventListener('click', () => {
+          menu.remove();
+          cmdService.executeCommand(action.commandId).catch(err => {
+            console.error(`[Workbench] Context menu action error:`, err);
+          });
+        });
+        menu.appendChild(item);
+      }
+
+      document.body.appendChild(menu);
+
+      // Close on click outside
+      const dismiss = (e: MouseEvent) => {
+        if (!menu.contains(e.target as Node)) {
+          menu.remove();
+          document.removeEventListener('mousedown', dismiss, true);
+        }
+      };
+      requestAnimationFrame(() => {
+        document.addEventListener('mousedown', dismiss, true);
+      });
+    }));
   }
 
   // ════════════════════════════════════════════════════════════════════════

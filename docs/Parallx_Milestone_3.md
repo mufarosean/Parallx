@@ -446,7 +446,7 @@ The sidebar is a vertically resizable, collapsible panel on the left side of the
   - This is an enhancement to the existing `ViewContainer` class — it needs a "stacked mode" in addition to the existing "tabbed mode"
   - The sidebar uses stacked mode; the panel continues to use tabbed mode
   - Stacked mode means all views in the container are visible simultaneously in a vertical stack (collapsed sections take minimal height, expanded sections share remaining space)
-- **Deviation:** Right-click context menu on section headers is deferred — the `contextmenu` event listener will be wired when the menu contribution system supports `view/title` menu location. Optional action toolbar (ellipsis) also deferred.
+- **Deviation:** Context menu renders as a simple positioned overlay (not a full ContextMenu UI component). Action toolbar (ellipsis) not rendered — view/title action buttons render directly in section header actions slot. Both are functional but visual polish can improve in future caps.
 - **Implementation Notes:**
   - Added `ViewContainerMode` type (`'tabbed' | 'stacked'`) and `setMode()` method to ViewContainer
   - Stacked mode: all views visible simultaneously with `view-section` wrappers, 22px headers with ▸/▾ chevrons
@@ -456,6 +456,9 @@ The sidebar is a vertically resizable, collapsible panel on the left side of the
   - Collapse state persisted via `ViewContainerState.collapsedSections`
   - Sidebar container now uses `setMode('stacked')` instead of `hideTabBar()`
   - CSS: `.view-section-header` matches VS Code's 22px, uppercase, 700 weight, #252526 background
+  - `onDidCreateSection` event + `actionsSlot` in header → workbench renders view/title action buttons
+  - `onDidContextMenuSection` event → workbench shows context menu from view/title items
+  - `_wireSectionMenus()` connects ViewContainer events to MenuContributionProcessor
 
 ---
 

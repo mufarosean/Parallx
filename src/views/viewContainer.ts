@@ -60,7 +60,7 @@ export class ViewContainer extends Disposable implements IGridView {
 
   private _mode: ViewContainerMode = 'tabbed';
   private _collapsedSections = new Set<string>();
-  private _sectionElements = new Map<string, { wrapper: HTMLElement; header: HTMLElement; body: HTMLElement }>();
+  private _sectionElements = new Map<string, { wrapper: HTMLElement; header: HTMLElement; body: HTMLElement; actionsSlot: HTMLElement }>();
   private _sectionSashes: HTMLElement[] = [];
   private _sectionSashDragState: { sashIndex: number; startY: number } | null = null;
 
@@ -80,6 +80,14 @@ export class ViewContainer extends Disposable implements IGridView {
 
   private readonly _onDidRemoveView = this._register(new Emitter<string>());
   readonly onDidRemoveView: Event<string> = this._onDidRemoveView.event;
+
+  /** Fires when a section header is right-clicked. Consumers can show a context menu. */
+  private readonly _onDidContextMenuSection = this._register(new Emitter<{ viewId: string; x: number; y: number; event: MouseEvent }>());
+  readonly onDidContextMenuSection: Event<{ viewId: string; x: number; y: number; event: MouseEvent }> = this._onDidContextMenuSection.event;
+
+  /** Fires when a stacked section is created. Consumers can render actions into the provided slot. */
+  private readonly _onDidCreateSection = this._register(new Emitter<{ viewId: string; actionsSlot: HTMLElement }>());
+  readonly onDidCreateSection: Event<{ viewId: string; actionsSlot: HTMLElement }> = this._onDidCreateSection.event;
 
   constructor(readonly id: string) {
     super();
@@ -485,6 +493,11 @@ export class ViewContainer extends Disposable implements IGridView {
     title.textContent = view.name;
     header.appendChild(title);
 
+    // Actions slot — consumers (workbench) can render action buttons here
+    const actionsSlot = document.createElement('div');
+    actionsSlot.classList.add('view-section-actions');
+    header.appendChild(actionsSlot);
+
     wrapper.appendChild(header);
 
     // Body
@@ -506,7 +519,14 @@ export class ViewContainer extends Disposable implements IGridView {
       }
     });
 
-    this._sectionElements.set(view.id, { wrapper, header, body });
+    // Right-click context menu
+    header.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this._onDidContextMenuSection.fire({ viewId: view.id, x: e.clientX, y: e.clientY, event: e });
+    });
+
+    this._sectionElements.set(view.id, { wrapper, header, body, actionsSlot });
+    this._onDidCreateSection.fire({ viewId: view.id, actionsSlot });
     this._contentArea.appendChild(wrapper);
   }
 
