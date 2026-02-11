@@ -1134,8 +1134,24 @@ export class Workbench extends Disposable {
     }
 
     // Wire icon click events to switch views
+    // VS Code reference: ViewContainerActivityAction.run()
+    // - Click inactive icon → show sidebar + switch to that container
+    // - Click active icon while sidebar visible → hide sidebar
+    // - Click active icon while sidebar hidden → show sidebar
     this._register(this._activityBarPart.onDidClickIcon((event) => {
+      const isAlreadyActive = event.iconId === this._activityBarPart.activeIconId;
+
+      if (isAlreadyActive) {
+        // Toggle sidebar visibility (VS Code parity: click active icon toggles sidebar)
+        this._toggleSidebarVisibility();
+        return;
+      }
+
       if (event.source === 'builtin') {
+        // Ensure sidebar is visible
+        if (!this._sidebar.visible) {
+          this._toggleSidebarVisibility();
+        }
         // Switch back to built-in sidebar container if a contributed one is active
         if (this._activeSidebarContainerId) {
           this._switchSidebarContainer(undefined);
@@ -1143,6 +1159,10 @@ export class Workbench extends Disposable {
         container.activateView(event.iconId);
         this._activityBarPart.setActiveIcon(event.iconId);
       } else if (event.source === 'contributed') {
+        // Ensure sidebar is visible
+        if (!this._sidebar.visible) {
+          this._toggleSidebarVisibility();
+        }
         // Switch to contributed sidebar container
         this._switchSidebarContainer(event.iconId);
       }
@@ -1816,6 +1836,24 @@ export class Workbench extends Disposable {
    */
   private _removeContributedActivityBarIcon(containerId: string): void {
     this._activityBarPart.removeIcon(containerId);
+  }
+
+  /**
+   * Toggle primary sidebar visibility.
+   *
+   * VS Code reference: ViewContainerActivityAction.run() — clicking active icon toggles sidebar.
+   * Mirrors logic from structuralCommands.ts toggleSidebar command.
+   */
+  private _toggleSidebarVisibility(): void {
+    if (this._sidebar.visible) {
+      this._hGrid.removeView(this._sidebar.id);
+      this._sidebar.setVisible(false);
+    } else {
+      this._sidebar.setVisible(true);
+      this._hGrid.addView(this._sidebar as any, 202);
+    }
+    this._hGrid.layout();
+    this._layoutViewContainers();
   }
 
   /**

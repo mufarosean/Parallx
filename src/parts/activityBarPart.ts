@@ -1,10 +1,28 @@
-// activityBarPart.ts — primary activity bar (M3 Capability 0.2)
+// activityBarPart.ts — primary activity bar (M3 Capability 0.2 + Cap 2)
 //
 // Vertical icon strip on the far left of the workbench.
 // Replaces the ad-hoc `div.activity-bar` created inline in workbench.ts.
 // Participates in the horizontal grid with fixed 48px width.
 //
 // VS Code reference: src/vs/workbench/browser/parts/activitybar/activitybarPart.ts
+// VS Code CSS: src/vs/workbench/browser/parts/activitybar/media/activitybarpart.css
+//              src/vs/workbench/browser/parts/activitybar/media/activityaction.css
+//
+// VS Code DOM structure (Cap 2 research):
+//   .part.activitybar
+//     .content (flex column, justify: space-between)
+//       .composite-bar
+//         .monaco-action-bar [role=tablist]
+//           .action-item [role=tab]
+//             a.action-label (the icon)
+//             .badge > .badge-content
+//             .active-item-indicator
+//       .global-activity (manage/accounts at bottom)
+//
+// VS Code CSS patterns:
+//   - Active indicator: border-left 2px solid on .active-item-indicator::before
+//   - Badge: absolute positioned, top-right, z-index 2
+//   - Interaction: click inactive → show sidebar + switch. Click active → toggle sidebar.
 
 import { Part } from './part.js';
 import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
@@ -49,6 +67,17 @@ export interface ActivityBarIconClickEvent {
   readonly source: 'builtin' | 'contributed';
 }
 
+/**
+ * Badge descriptor for an activity bar icon.
+ * VS Code reference: compositeBarActions.ts — NumberBadge, IconBadge, ProgressBadge
+ */
+export interface ActivityBarBadge {
+  /** Numeric count to display. Shows as number; max "99+". */
+  readonly count?: number;
+  /** Show a small dot instead of a count. */
+  readonly dot?: boolean;
+}
+
 // ─── ActivityBarPart ─────────────────────────────────────────────────────────
 
 export class ActivityBarPart extends Part {
@@ -77,6 +106,12 @@ export class ActivityBarPart extends Part {
 
   /** The currently active (highlighted) icon ID. */
   private _activeIconId: string | undefined;
+
+  /** Badge state per icon ID. */
+  private readonly _badges = new Map<string, ActivityBarBadge>();
+
+  /** Badge DOM elements per icon ID, for efficient updates. */
+  private readonly _badgeElements = new Map<string, { badge: HTMLElement; content: HTMLElement }>();
 
   // ── Events ──
 
@@ -139,6 +174,8 @@ export class ActivityBarPart extends Part {
     if (!descriptor) return;
 
     this._icons.delete(iconId);
+    this._badges.delete(iconId);
+    this._badgeElements.delete(iconId);
 
     // Remove DOM element
     const section = descriptor.source === 'builtin' ? this._builtinSection : this._contributedSection;
@@ -194,6 +231,56 @@ export class ActivityBarPart extends Part {
     return [...this._icons.values()];
   }
 
+  // ── Badge Management ──
+
+  /**
+   * Set or clear a badge on an activity bar icon.
+   *
+   * VS Code reference: CompositeBarActionViewItem.updateActivity()
+   * - NumberBadge → shows count (max "99+")
+   * - IconBadge → shows dot indicator
+   * - ProgressBadge → shows progress (not implemented in Parallx yet)
+   *
+   * @param iconId The icon to badge.
+   * @param badge The badge descriptor, or `undefined` to clear.
+   */
+  setBadge(iconId: string, badge: ActivityBarBadge | undefined): void {
+    const els = this._badgeElements.get(iconId);
+    if (!els) return;
+
+    if (!badge || (!badge.count && !badge.dot)) {
+      // Clear badge
+      this._badges.delete(iconId);
+      els.badge.style.display = 'none';
+      els.badge.classList.remove('activity-bar-badge--count', 'activity-bar-badge--dot');
+      els.content.textContent = '';
+      return;
+    }
+
+    this._badges.set(iconId, badge);
+
+    if (badge.dot) {
+      // Dot badge (like VS Code's IconBadge)
+      els.badge.style.display = '';
+      els.badge.classList.add('activity-bar-badge--dot');
+      els.badge.classList.remove('activity-bar-badge--count');
+      els.content.textContent = '';
+    } else if (badge.count !== undefined && badge.count > 0) {
+      // Count badge (like VS Code's NumberBadge)
+      els.badge.style.display = '';
+      els.badge.classList.add('activity-bar-badge--count');
+      els.badge.classList.remove('activity-bar-badge--dot');
+      els.content.textContent = badge.count > 99 ? '99+' : String(badge.count);
+    }
+  }
+
+  /**
+   * Get the current badge for an icon, or `undefined` if none.
+   */
+  getBadge(iconId: string): ActivityBarBadge | undefined {
+    return this._badges.get(iconId);
+  }
+
   // ── Part overrides ──
 
   protected override createContent(container: HTMLElement): void {
@@ -240,9 +327,31 @@ export class ActivityBarPart extends Part {
     btn.classList.add('activity-bar-item');
     btn.dataset.iconId = descriptor.id;
     btn.title = descriptor.label;
-    btn.textContent = descriptor.icon;
     btn.setAttribute('role', 'tab');
     btn.setAttribute('aria-label', descriptor.label);
+
+    // Icon label (the emoji/glyph)
+    const iconLabel = document.createElement('span');
+    iconLabel.classList.add('activity-bar-icon-label');
+    iconLabel.textContent = descriptor.icon;
+    btn.appendChild(iconLabel);
+
+    // Badge element (VS Code: .badge > .badge-content, absolute top-right)
+    const badge = document.createElement('div');
+    badge.classList.add('activity-bar-badge');
+    badge.style.display = 'none'; // hidden until setBadge is called
+    const badgeContent = document.createElement('span');
+    badgeContent.classList.add('activity-bar-badge-content');
+    badge.appendChild(badgeContent);
+    btn.appendChild(badge);
+
+    // Track badge elements for efficient updates
+    this._badgeElements.set(descriptor.id, { badge, content: badgeContent });
+
+    // Active item indicator (VS Code: .active-item-indicator with ::before border-left)
+    const indicator = document.createElement('div');
+    indicator.classList.add('activity-bar-active-indicator');
+    btn.appendChild(indicator);
 
     btn.addEventListener('click', () => {
       this._onDidClickIcon.fire({

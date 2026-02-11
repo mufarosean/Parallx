@@ -272,6 +272,7 @@ html, body {
   justify-content: center;
   border-left: 2px solid transparent;
   transition: color 0.15s;
+  position: relative; /* anchor for badge + active-indicator */
 }
 
 .activity-bar-item:hover {
@@ -281,6 +282,60 @@ html, body {
 .activity-bar-item.active {
   color: #ffffff;
   border-left-color: #ffffff;
+}
+
+/* Icon label within activity bar item */
+.activity-bar-icon-label {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Activity Bar — Active Item Indicator ──
+   VS Code: .active-item-indicator::before with border-left 2px solid
+   In Parallx the border-left on .activity-bar-item.active already handles this,
+   so the indicator div is reserved for future theming (e.g., background highlight). */
+.activity-bar-active-indicator {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ── Activity Bar — Badge ──
+   VS Code: .badge positioned absolute, z-index 2, top-right of .action-item
+   .badge-content styled as small circle with count or dot.
+   References: activityaction.css lines 141-170 */
+.activity-bar-badge {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Count badge: small pill with number */
+.activity-bar-badge--count .activity-bar-badge-content {
+  display: block;
+  min-width: 9px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: #007acc;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Dot badge: small colored dot */
+.activity-bar-badge--dot .activity-bar-badge-content {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #007acc;
 }
 
 /* ── Editor ── */

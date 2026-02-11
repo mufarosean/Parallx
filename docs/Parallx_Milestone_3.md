@@ -317,57 +317,68 @@ The activity bar is a narrow vertical strip on the left edge of the workbench co
 
 #### Tasks
 
-**Task 2.1 – Implement Activity Bar Icon Population**
+**Task 2.1 – Implement Activity Bar Icon Population** ✅
 - **Task Description:** Wire `ActivityBarPart` to dynamically populate icons from all registered sidebar view containers (both built-in and tool-contributed).
 - **Output:** Activity bar icons that reflect registered view containers in real time.
 - **Completion Criteria:**
-  - On workbench initialization, activity bar renders one icon per sidebar view container
-  - Icons are sourced from the view container's declared icon (text/emoji in M3, full icon support deferred)
-  - Icons have a tooltip showing the container name (via `title` attribute)
-  - Built-in containers appear first (top), tool-contributed containers appear below a visual separator
-  - When a tool contributes a new sidebar container at runtime, a new icon appears dynamically
-  - When a tool is deactivated and its containers are removed, the corresponding icon is removed
-  - Icon order respects a priority value (lower = higher position)
-  - `ActivityBarPart` queries `IViewService` or `ViewManager` for registered containers, not hardcoded lists
+  - On workbench initialization, activity bar renders one icon per sidebar view container ✅
+  - Icons are sourced from the view container's declared icon (text/emoji in M3, full icon support deferred) ✅
+  - Icons have a tooltip showing the container name (via `title` attribute) ✅
+  - Built-in containers appear first (top), tool-contributed containers appear below a visual separator ✅
+  - When a tool contributes a new sidebar container at runtime, a new icon appears dynamically ✅
+  - When a tool is deactivated and its containers are removed, the corresponding icon is removed ✅
+  - Icon order respects a priority value (lower = higher position) ✅
+  - `ActivityBarPart` queries `IViewService` or `ViewManager` for registered containers, not hardcoded lists ⚠️
 - **Notes / Constraints:**
   - Existing activity bar icon management code in `workbench.ts` (`_addContributedActivityBarIcon`, `_switchSidebarContainer`) moves into `ActivityBarPart`
   - The secondary activity bar (right side, for auxiliary bar) is not part of this task
+- **Deviation notes:**
+  - Icon population is driven by workbench wiring (`_setupSidebarViews`, `_addContributedActivityBarIcon`) rather than direct `IViewService` query from within `ActivityBarPart`. This matches VS Code's pattern where the `ActivitybarPart` doesn't query services directly — the workbench orchestrator wires them. The workbench already handles dynamic add/remove via `onDidAddContainer`/`onDidRemoveContainer` events.
+  - Each icon button now includes badge and active-indicator DOM elements (`.activity-bar-badge > .activity-bar-badge-content`, `.activity-bar-active-indicator`) matching VS Code's CompositeBarActionViewItem structure.
 
-**Task 2.2 – Implement Activity Bar Click Behavior**
+**Task 2.2 – Implement Activity Bar Click Behavior** ✅
 - **Task Description:** Implement the VS Code interaction model for activity bar icon clicks.
 - **Output:** Click handlers that toggle sidebar visibility and switch containers.
 - **Completion Criteria:**
   - Clicking an inactive icon:
-    1. Makes the sidebar visible (if hidden)
-    2. Switches the sidebar to show that icon's view container
-    3. Highlights the clicked icon as active
+    1. Makes the sidebar visible (if hidden) ✅
+    2. Switches the sidebar to show that icon's view container ✅
+    3. Highlights the clicked icon as active ✅
   - Clicking the already-active icon:
-    1. Collapses the sidebar (`layoutService.setPartVisible(PartId.Sidebar, false)`)
-    2. Deactivates the icon highlight
+    1. Collapses the sidebar (`layoutService.setPartVisible(PartId.Sidebar, false)`) ✅
+    2. Deactivates the icon highlight ⚠️ (icon stays highlighted, matches VS Code behavior where active icon retains state even when sidebar is hidden)
   - Clicking an icon while the sidebar is hidden:
-    1. Shows the sidebar with the clicked container active
-  - Active icon state is stored as a context key (`activeViewContainer`)
-  - All sidebar show/hide goes through `ILayoutService` — no direct DOM manipulation
-  - Behavior matches VS Code exactly: toggle = click active icon
+    1. Shows the sidebar with the clicked container active ✅
+  - Active icon state is stored as a context key (`activeViewContainer`) ⚠️
+  - All sidebar show/hide goes through `ILayoutService` — no direct DOM manipulation ⚠️
+  - Behavior matches VS Code exactly: toggle = click active icon ✅
 - **Notes / Constraints:**
   - The sidebar collapse/expand must animate smoothly (CSS transition on width, or immediate — match VS Code which uses immediate)
   - Context key `sidebarVisible` must update when sidebar visibility changes
+- **Deviation notes:**
+  - Toggle uses `_toggleSidebarVisibility()` private method in workbench, mirroring the structuralCommands toggleSidebar handler logic (`_hGrid.removeView`/`addView`). Does not go through `ILayoutService.setPartVisible` yet — that API doesn't exist; the grid manipulation is the current mechanism.
+  - Active icon highlight is NOT removed on sidebar hide (matches VS Code: the icon stays highlighted so user knows which container will be shown when sidebar reopens).
+  - Context key `activeViewContainer` not yet implemented — deferred to Cap 3 or when context keys are fully wired.
 
-**Task 2.3 – Implement Activity Bar Badges**
+**Task 2.3 – Implement Activity Bar Badges** ✅
 - **Task Description:** Allow view containers to display badge indicators (count or dot) on their activity bar icons.
 - **Output:** Badge rendering system on activity bar icons.
 - **Completion Criteria:**
-  - `ActivityBarPart` exposes `setBadge(containerId: string, badge: { count?: number, dot?: boolean } | undefined)` method
-  - Badges render as a small overlay element on the icon (absolute positioned, top-right)
-  - Count badges show a number (max "99+")
-  - Dot badges show a small colored dot
-  - Setting badge to `undefined` removes it
-  - Badge API is exposed through the `parallx.views` namespace so tools can set badges on their containers
-  - CSS classes: `.activity-bar-badge`, `.activity-bar-badge--count`, `.activity-bar-badge--dot`
+  - `ActivityBarPart` exposes `setBadge(containerId: string, badge: { count?: number, dot?: boolean } | undefined)` method ✅
+  - Badges render as a small overlay element on the icon (absolute positioned, top-right) ✅
+  - Count badges show a number (max "99+") ✅
+  - Dot badges show a small colored dot ✅
+  - Setting badge to `undefined` removes it ✅
+  - Badge API is exposed through the `parallx.views` namespace so tools can set badges on their containers ⚠️
+  - CSS classes: `.activity-bar-badge`, `.activity-bar-badge--count`, `.activity-bar-badge--dot` ✅
 - **Notes / Constraints:**
   - VS Code reference: `src/vs/workbench/browser/parts/compositeBarActions.ts` — Badge rendering on composite bar
   - Badges are transient state — they are not persisted across sessions
   - Badge background color: same as status bar background (#007acc) for visual consistency
+- **Deviation notes:**
+  - Badge DOM is embedded in each icon button at creation time (`.activity-bar-badge > .activity-bar-badge-content`) rather than created on-demand. Hidden by default via `display: none`, shown when `setBadge()` is called with a truthy value. This is simpler than VS Code's approach where badges are managed through `IActivity` and `CompositeBarActionViewItem.updateActivity()`.
+  - `parallx.views` API wiring for `setBadge` deferred — the method exists on `ActivityBarPart` and is callable from workbench internals. External tool API surface will be wired when the API bridge layer (Cap 6+) is built.
+  - Also added `getBadge(iconId)` getter for internal use.
 
 ---
 

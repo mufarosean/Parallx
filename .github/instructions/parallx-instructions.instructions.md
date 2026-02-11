@@ -52,32 +52,13 @@ Every capability implementation MUST complete these steps **before writing a sin
 
 ---
 
-## 🚨 Known Issues Requiring Rework
+## ✅ Resolved Issues (previously known rework items)
 
-> **These items are NOT complete. They were marked ✅ prematurely and must be fixed before moving to new capabilities.**
-
-### M3 Cap 1 – Title Bar Drag Region (BROKEN)
-
-**Problem**: Window cannot be dragged. After maximizing, window cannot be moved to another screen. The CSS/DOM implementation invented patterns instead of following VS Code's actual source.
-
-**Root cause**: Three CSS deviations from VS Code:
-1. `-webkit-app-region: drag` on `.part-workbench-parts-titlebar` and `.part-content` — **VS Code does NOT set this on parent containers**
-2. `-webkit-app-region: no-drag` blanket on `.titlebar-left, .titlebar-center, .titlebar-right` — **VS Code does NOT set app-region on these containers**; only specific interactive widgets get `no-drag`
-3. `z-index: -1` on `.titlebar-drag-region` — **VS Code does NOT use z-index on drag region**; it relies on DOM order (`prepend` = behind siblings)
-
-**VS Code's actual pattern** (from `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` + `media/titlebarpart.css`):
-- `.titlebar-container` wraps all titlebar content (rootContainer)
-- `.titlebar-drag-region` is **prepended** (first child) with `position: absolute; inset: 0; -webkit-app-region: drag` and **NO z-index**
-- `.titlebar-left`, `.titlebar-center`, `.titlebar-right` have **NO `-webkit-app-region`** set
-- Only individual interactive widgets (`.menubar`: z-index 2500, `.window-controls-container`: z-index 3000) get `-webkit-app-region: no-drag`
-- The drag region covers 100% and stacks below content by DOM order — clicks pass through to it when not intercepted by content
-
-**Fix required**:
-- Remove `drag` from `.part-workbench-parts-titlebar` and `.part-content`
-- Remove `no-drag` from `.titlebar-left, .titlebar-center, .titlebar-right`
-- Remove `z-index: -1` from `.titlebar-drag-region`
-- Add `no-drag` to `.titlebar-menubar` and `.window-controls` only
-- In `titlebarPart.ts`: use `container.prepend()` instead of `container.appendChild()` for drag region; add `.titlebar-container` rootContainer wrapper
+### M3 Cap 1 – Title Bar Drag Region — FIXED
+Fixed in commit 213f7b1 (Tasks R1.1, R1.2). CSS drag region now matches VS Code's actual pattern:
+- `.titlebar-drag-region` prepended with `position: absolute; inset: 0; -webkit-app-region: drag` and NO z-index
+- `-webkit-app-region: no-drag` only on interactive widgets (`.titlebar-menubar`, `.window-controls`)
+- No drag/no-drag on parent containers
 
 ---
 
