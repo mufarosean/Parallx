@@ -35,7 +35,7 @@ interface WorkbenchLike {
   readonly _statusBar: { visible: boolean; setVisible(v: boolean): void };
   readonly _auxiliaryBar: { visible: boolean; setVisible(v: boolean): void };
   readonly _hGrid: {
-    addView(view: unknown, size: number): void;
+    addView(view: unknown, size: number, index?: number): void;
     removeView(id: string): void;
     layout(): void;
     readonly root: { readonly children: readonly unknown[]; readonly orientation: string };
@@ -107,7 +107,7 @@ const toggleSidebar: CommandDescriptor = {
       sidebar.setVisible(false);
     } else {
       sidebar.setVisible(true);
-      w._hGrid.addView(sidebar as any, 202);
+      w._hGrid.addView(sidebar as any, 202, 0); // index 0 = leftmost in hGrid
     }
     w._hGrid.layout();
     w._layoutViewContainers();

@@ -1853,7 +1853,7 @@ export class Workbench extends Disposable {
       this._sidebar.setVisible(false);
     } else {
       this._sidebar.setVisible(true);
-      this._hGrid.addView(this._sidebar as any, 202);
+      this._hGrid.addView(this._sidebar as any, 202, 0); // index 0 = leftmost in hGrid
     }
     this._hGrid.layout();
     this._layoutViewContainers();
