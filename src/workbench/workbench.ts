@@ -1098,7 +1098,7 @@ export class Workbench extends Disposable {
       { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Sidebar', group: '2_appearance', order: 1 },
       { commandId: 'workbench.action.togglePanel', title: 'Toggle Panel', group: '2_appearance', order: 2 },
       { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Auxiliary Bar', group: '2_appearance', order: 3 },
-      { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
+      { commandId: 'workbench.action.toggleStatusBar', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
     ]));
 
     // Register dropdown items for File menu
