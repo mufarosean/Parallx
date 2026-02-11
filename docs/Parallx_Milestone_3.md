@@ -277,6 +277,22 @@ The title bar is a fixed top region spanning the full window width. It displays 
   - ARIA labels on all control buttons (Minimize, Maximize/Restore, Close)
   - Close button has dedicated `.window-control-btn--close` class for red hover
 
+#### 🚨 Cap 1 Rework – Drag Region Fix (required before Cap 2)
+
+**Status:** Tasks 1.1–1.3 were marked complete but the drag region CSS/DOM implementation does not follow VS Code's actual source, causing window dragging to fail.
+
+**Task R1.1 – Fix CSS drag region to match VS Code** ✅
+- Remove `-webkit-app-region: drag` from `.part-workbench-parts-titlebar` and `.part-content`
+- Remove `-webkit-app-region: no-drag` blanket from `.titlebar-left, .titlebar-center, .titlebar-right`
+- Remove `z-index: -1` from `.titlebar-drag-region`
+- Add `-webkit-app-region: no-drag` only to `.titlebar-menubar` and `.window-controls`
+- VS Code reference: `src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css`
+
+**Task R1.2 – Fix DOM order to match VS Code** ✅
+- Use `container.prepend(dragRegion)` instead of `container.appendChild(dragRegion)` in `TitlebarPart.createContent()`
+- Add `.titlebar-container` rootContainer wrapper (VS Code has this between `.part-content` and titlebar content)
+- VS Code reference: `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` `BrowserTitlebarPart.createContentArea()`
+
 ---
 
 ## Capability 2 – Activity Bar (Left Icon Strip)

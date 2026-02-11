@@ -17,6 +17,70 @@ When implementing any feature, **always reference VS Code's source code and arch
 
 ---
 
+## ⚠️ Mandatory VS Code Parity Checklist (BEFORE writing any code)
+
+Every capability implementation MUST complete these steps **before writing a single line of implementation code**. Skipping this checklist is how we end up with broken patterns that require rework.
+
+### Pre-Implementation Research (required for EVERY capability)
+
+1. **DeepWiki first** — Fetch the relevant DeepWiki page(s) for the feature area. Understand the high-level architecture, which classes are involved, and how they interact.
+2. **VS Code source (TypeScript)** — Search the `microsoft/vscode` repo for the actual implementation. Read the relevant `.ts` files. Pay attention to:
+   - Class hierarchy and method signatures
+   - DOM structure (what elements are created, in what order, with what classes)
+   - Event handling patterns (what events, on which elements, capture vs bubble)
+   - Service dependencies (what services are injected, how they're used)
+3. **VS Code source (CSS)** — Read the co-located CSS file for the feature. Pay attention to:
+   - Which properties are set on which selectors
+   - What is NOT set (absence is as important as presence)
+   - z-index stacking, position schemes, `-webkit-app-region` assignments
+4. **Document findings** — Before writing code, write a brief summary in the implementation commit or in the task notes of:
+   - What VS Code does (DOM structure, CSS rules, event flow)
+   - What Parallx will do (adapted version)
+   - Any deliberate deviations and why
+
+### During Implementation
+
+5. **Match VS Code's DOM structure** — Same nesting, same class names where practical, same creation order (e.g., `prepend` vs `append` matters for stacking).
+6. **Match VS Code's CSS approach** — If VS Code doesn't set `-webkit-app-region` on a container, neither should we. If VS Code uses DOM order instead of z-index, so should we.
+7. **Match VS Code's abstractions** — If VS Code uses a service for something, create/use the Parallx equivalent. No direct IPC calls from UI code; no `window.parallxElectron` in Part classes.
+
+### Post-Implementation Validation
+
+8. **Compare DOM output** — Open DevTools, compare your DOM tree against VS Code's for the same component. Same nesting depth, same element types, same class structure.
+9. **Compare CSS computed styles** — Check that key properties (drag regions, z-index, overflow, position) match VS Code.
+10. **Test the actual interaction** — Does dragging work? Does clicking work? Does keyboard nav work? Don't just check that it renders.
+
+---
+
+## 🚨 Known Issues Requiring Rework
+
+> **These items are NOT complete. They were marked ✅ prematurely and must be fixed before moving to new capabilities.**
+
+### M3 Cap 1 – Title Bar Drag Region (BROKEN)
+
+**Problem**: Window cannot be dragged. After maximizing, window cannot be moved to another screen. The CSS/DOM implementation invented patterns instead of following VS Code's actual source.
+
+**Root cause**: Three CSS deviations from VS Code:
+1. `-webkit-app-region: drag` on `.part-workbench-parts-titlebar` and `.part-content` — **VS Code does NOT set this on parent containers**
+2. `-webkit-app-region: no-drag` blanket on `.titlebar-left, .titlebar-center, .titlebar-right` — **VS Code does NOT set app-region on these containers**; only specific interactive widgets get `no-drag`
+3. `z-index: -1` on `.titlebar-drag-region` — **VS Code does NOT use z-index on drag region**; it relies on DOM order (`prepend` = behind siblings)
+
+**VS Code's actual pattern** (from `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` + `media/titlebarpart.css`):
+- `.titlebar-container` wraps all titlebar content (rootContainer)
+- `.titlebar-drag-region` is **prepended** (first child) with `position: absolute; inset: 0; -webkit-app-region: drag` and **NO z-index**
+- `.titlebar-left`, `.titlebar-center`, `.titlebar-right` have **NO `-webkit-app-region`** set
+- Only individual interactive widgets (`.menubar`: z-index 2500, `.window-controls-container`: z-index 3000) get `-webkit-app-region: no-drag`
+- The drag region covers 100% and stacks below content by DOM order — clicks pass through to it when not intercepted by content
+
+**Fix required**:
+- Remove `drag` from `.part-workbench-parts-titlebar` and `.part-content`
+- Remove `no-drag` from `.titlebar-left, .titlebar-center, .titlebar-right`
+- Remove `z-index: -1` from `.titlebar-drag-region`
+- Add `no-drag` to `.titlebar-menubar` and `.window-controls` only
+- In `titlebarPart.ts`: use `container.prepend()` instead of `container.appendChild()` for drag region; add `.titlebar-container` rootContainer wrapper
+
+---
+
 ## UI Component Rules
 
 Parallx follows VS Code's approach to UI: vanilla TypeScript classes extending `Disposable`, using `Emitter<T>` for events, with co-located CSS. No frameworks. No web components. No external UI libraries unless explicitly approved.

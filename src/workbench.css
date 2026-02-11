@@ -60,17 +60,13 @@ html, body {
 /* ── Titlebar ── */
 .part-workbench-parts-titlebar {
   background: #323233;
-  -webkit-app-region: drag;
   z-index: 10;
 }
 
-.part-workbench-parts-titlebar .part-content {
-  -webkit-app-region: drag;
-}
-
-.titlebar-left,
-.titlebar-center,
-.titlebar-right {
+/* Menu bar and window controls are interactive — no-drag.
+   Everything else falls through to .titlebar-drag-region.
+   Matches VS Code: only specific widgets get no-drag, not containers. */
+.titlebar-menubar {
   -webkit-app-region: no-drag;
 }
 
@@ -613,16 +609,30 @@ html, body {
 }
 
 /* ── Titlebar content slot ── */
+.titlebar-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+
 .titlebar-content {
   display: flex;
   align-items: center;
   user-select: none;
 }
 
+/* Drag region: VS Code uses position: absolute, full coverage, NO z-index.
+   DOM order (prepend = first child) keeps it behind siblings.
+   See: src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css */
 .titlebar-drag-region {
   position: absolute;
-  inset: 0;
-  z-index: -1;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   -webkit-app-region: drag;
 }
 

@@ -593,18 +593,22 @@ export class TitlebarPart extends Part {
   // ════════════════════════════════════════════════════════════════════════
 
   protected override createContent(container: HTMLElement): void {
-    container.classList.add('titlebar-content');
+    // Root container wrapper (VS Code: .titlebar-container)
+    const rootContainer = document.createElement('div');
+    rootContainer.classList.add('titlebar-container');
+    container.appendChild(rootContainer);
 
-    // Drag region (for custom titlebars with -webkit-app-region)
+    // Drag region — prepend so it's first child (behind siblings by DOM order, no z-index needed)
+    // VS Code: src/vs/workbench/browser/parts/titlebar/titlebarPart.ts BrowserTitlebarPart.createContentArea()
     this._dragRegion = document.createElement('div');
     this._dragRegion.classList.add('titlebar-drag-region');
-    container.appendChild(this._dragRegion);
+    rootContainer.prepend(this._dragRegion);
 
     // Left slot: app icon + menu bar
     this._leftSlot = document.createElement('div');
     this._leftSlot.classList.add('titlebar-left', 'titlebar-menubar');
     this._leftSlot.setAttribute('role', 'menubar');
-    container.appendChild(this._leftSlot);
+    rootContainer.appendChild(this._leftSlot);
 
     // App icon
     const appIcon = document.createElement('span');
@@ -617,7 +621,7 @@ export class TitlebarPart extends Part {
     // Center slot: workspace name label
     this._centerSlot = document.createElement('div');
     this._centerSlot.classList.add('titlebar-center');
-    container.appendChild(this._centerSlot);
+    rootContainer.appendChild(this._centerSlot);
 
     this._workspaceLabel = document.createElement('span');
     this._workspaceLabel.classList.add('titlebar-workspace-label');
@@ -638,7 +642,7 @@ export class TitlebarPart extends Part {
     // Right slot: window controls
     this._rightSlot = document.createElement('div');
     this._rightSlot.classList.add('titlebar-right');
-    container.appendChild(this._rightSlot);
+    rootContainer.appendChild(this._rightSlot);
 
     // Window controls (Task 1.3)
     this._setupWindowControls(this._rightSlot);
