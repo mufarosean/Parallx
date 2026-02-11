@@ -34,6 +34,7 @@ interface WorkbenchLike {
   readonly _panel: { visible: boolean; setVisible(v: boolean): void; id: string };
   readonly _statusBar: { visible: boolean; setVisible(v: boolean): void };
   readonly _auxiliaryBar: { visible: boolean; setVisible(v: boolean): void };
+  _relayout(): void;
   readonly _hGrid: {
     addView(view: unknown, size: number, index?: number): void;
     removeView(id: string): void;
@@ -151,6 +152,7 @@ const toggleStatusBar: CommandDescriptor = {
     const w = wb(ctx);
     const sb = w._statusBar;
     sb.setVisible(!sb.visible);
+    w._relayout();
   },
 };
 
