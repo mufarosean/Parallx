@@ -42,6 +42,11 @@ html, body {
   flex-direction: column;
 }
 
+/* Activity bar part — fixed width, must not flex-shrink in the body row */
+.part-workbench-parts-activitybar {
+  flex-shrink: 0;
+}
+
 .part.hidden {
   display: none !important;
 }
