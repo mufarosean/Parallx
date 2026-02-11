@@ -21,6 +21,7 @@ import { GroupDirection } from '../editor/editorTypes.js';
 
 interface WorkbenchLike {
   toggleAuxiliaryBar(): void;
+  toggleSidebar(): void;
   toggleCommandPalette(): void;
   readonly workspace: { readonly id: string; readonly name: string };
   createWorkspace(name: string, path?: string, switchTo?: boolean): Promise<unknown>;
@@ -101,17 +102,7 @@ const toggleSidebar: CommandDescriptor = {
   category: 'View',
   keybinding: 'Ctrl+B',
   handler(ctx) {
-    const w = wb(ctx);
-    const sidebar = w._sidebar;
-    if (sidebar.visible) {
-      w._hGrid.removeView(sidebar.id);
-      sidebar.setVisible(false);
-    } else {
-      sidebar.setVisible(true);
-      w._hGrid.addView(sidebar as any, 202, 0); // index 0 = leftmost in hGrid
-    }
-    w._hGrid.layout();
-    w._layoutViewContainers();
+    wb(ctx).toggleSidebar();
   },
 };
 

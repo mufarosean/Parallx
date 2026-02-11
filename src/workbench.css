@@ -244,6 +244,83 @@ html, body {
   color: rgba(255, 255, 255, 0.6);
 }
 
+/* ── View Container: Stacked Section Headers (VS Code ViewPaneContainer parity) ── */
+
+.view-section {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.view-section.collapsed {
+  flex: 0 0 auto;
+}
+
+.view-section-header {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  min-height: 22px;
+  flex-shrink: 0;
+  padding: 0 8px;
+  cursor: pointer;
+  user-select: none;
+  background: #252526;
+  border-top: 1px solid #3c3c3c;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #cccccc;
+  outline: none;
+}
+
+.view-section-header:hover {
+  background: #2a2d2e;
+}
+
+.view-section-header:focus-visible {
+  outline: 1px solid #007acc;
+  outline-offset: -1px;
+}
+
+.view-section-chevron {
+  flex-shrink: 0;
+  width: 16px;
+  font-size: 10px;
+  line-height: 22px;
+  color: #cccccc;
+}
+
+.view-section-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-section-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.view-section-sash {
+  height: 4px;
+  min-height: 4px;
+  flex-shrink: 0;
+  cursor: row-resize;
+  background: transparent;
+  z-index: 10;
+  transition: background-color 0.15s;
+}
+
+.view-section-sash:hover {
+  background: #007acc;
+  transition-delay: 0.15s;
+}
+
 /* ── Activity Bar (standalone, full-height) ── */
 .activity-bar {
   width: 48px;

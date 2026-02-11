@@ -213,6 +213,9 @@ export class Workbench extends Disposable {
   private _activeSidebarContainerId: string | undefined;
   /** Header label element for the sidebar. */
   private _sidebarHeaderLabel: HTMLElement | undefined;
+
+  /** Last known sidebar width — used to restore on toggle / persist across sessions. */
+  private _lastSidebarWidth: number = DEFAULT_SIDEBAR_WIDTH;
   /** MutationObservers for tab drag wiring (disconnected on teardown). */
   private _tabObservers: MutationObserver[] = [];
 
@@ -604,7 +607,7 @@ export class Workbench extends Disposable {
     const w = this._container.clientWidth;
     const h = this._container.clientHeight;
     const bodyH = h - TITLE_HEIGHT - STATUS_HEIGHT;
-    const sidebarW = this._sidebar.visible ? DEFAULT_SIDEBAR_WIDTH : 0;
+    const sidebarW = this._sidebar.visible ? this._lastSidebarWidth : 0;
     const auxBarW = this._auxiliaryBar.visible ? DEFAULT_AUX_BAR_WIDTH : 0;
     const panelH = this._panel.visible ? DEFAULT_PANEL_HEIGHT : 0;
     const editorAreaW = Math.max(MIN_EDITOR_WIDTH, w - ACTIVITY_BAR_WIDTH - sidebarW - auxBarW - 4);
@@ -724,6 +727,31 @@ export class Workbench extends Disposable {
     // 7. React to sash-drag grid changes
     this._hGrid.onDidChange(() => this._layoutViewContainers());
     this._vGrid.onDidChange(() => this._layoutViewContainers());
+
+    // 7a. Track sidebar width after sash drags so toggleSidebar() restores the right size
+    this._hGrid.onDidChange(() => {
+      if (this._sidebar.visible) {
+        const w = this._hGrid.getViewSize(this._sidebar.id);
+        if (w !== undefined && w > 0) {
+          this._lastSidebarWidth = w;
+        }
+      }
+    });
+
+    // 7b. Double-click sash resets sidebar to default width (VS Code parity: Sash.onDidReset)
+    this._hGrid.onDidSashReset(({ sashIndex }) => {
+      if (sashIndex === 0 && this._sidebar.visible) {
+        const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
+        if (currentWidth !== undefined) {
+          const delta = DEFAULT_SIDEBAR_WIDTH - currentWidth;
+          if (delta !== 0) {
+            this._hGrid.resizeSash(this._hGrid.root, 0, delta);
+            this._hGrid.layout();
+            this._lastSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
+          }
+        }
+      }
+    });
 
     // 8. Window resize handler
     window.addEventListener('resize', this._onWindowResize);
@@ -895,6 +923,18 @@ export class Workbench extends Disposable {
           position: part.position,
           data: partSnap.data,
         });
+      }
+    }
+
+    // 1b. Restore sidebar width — resize grid node to match the saved width
+    const sidebarSnap = state.parts.find(p => p.partId === PartId.Sidebar);
+    if (sidebarSnap?.width && sidebarSnap.width > 0 && this._sidebar.visible) {
+      this._lastSidebarWidth = sidebarSnap.width;
+      const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
+      if (currentWidth !== undefined && currentWidth !== sidebarSnap.width) {
+        const delta = sidebarSnap.width - currentWidth;
+        this._hGrid.resizeSash(this._hGrid.root, 0, delta);
+        this._hGrid.layout();
       }
     }
 
@@ -1122,7 +1162,7 @@ export class Workbench extends Disposable {
 
   private _setupSidebarViews(): ViewContainer {
     const container = new ViewContainer('sidebar');
-    container.hideTabBar();
+    container.setMode('stacked');
 
     const explorerView = this._viewManager.createViewSync('view.explorer')!;
     const searchView = this._viewManager.createViewSync('view.search')!;
@@ -1154,14 +1194,14 @@ export class Workbench extends Disposable {
 
       if (isAlreadyActive) {
         // Toggle sidebar visibility (VS Code parity: click active icon toggles sidebar)
-        this._toggleSidebarVisibility();
+        this.toggleSidebar();
         return;
       }
 
       if (event.source === 'builtin') {
         // Ensure sidebar is visible
         if (!this._sidebar.visible) {
-          this._toggleSidebarVisibility();
+          this.toggleSidebar();
         }
         // Switch back to built-in sidebar container if a contributed one is active
         if (this._activeSidebarContainerId) {
@@ -1172,7 +1212,7 @@ export class Workbench extends Disposable {
       } else if (event.source === 'contributed') {
         // Ensure sidebar is visible
         if (!this._sidebar.visible) {
-          this._toggleSidebarVisibility();
+          this.toggleSidebar();
         }
         // Switch to contributed sidebar container
         this._switchSidebarContainer(event.iconId);
@@ -1853,15 +1893,20 @@ export class Workbench extends Disposable {
    * Toggle primary sidebar visibility.
    *
    * VS Code reference: ViewContainerActivityAction.run() — clicking active icon toggles sidebar.
-   * Mirrors logic from structuralCommands.ts toggleSidebar command.
+   * Remembers width before collapse and restores it on expand.
    */
-  private _toggleSidebarVisibility(): void {
+  toggleSidebar(): void {
     if (this._sidebar.visible) {
+      // Save current width before collapsing so we can restore later
+      const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
+      if (currentWidth !== undefined && currentWidth > 0) {
+        this._lastSidebarWidth = currentWidth;
+      }
       this._hGrid.removeView(this._sidebar.id);
       this._sidebar.setVisible(false);
     } else {
       this._sidebar.setVisible(true);
-      this._hGrid.addView(this._sidebar as any, 202, 0); // index 0 = leftmost in hGrid
+      this._hGrid.addView(this._sidebar as any, this._lastSidebarWidth, 0); // index 0 = leftmost in hGrid
     }
     this._hGrid.layout();
     this._layoutViewContainers();

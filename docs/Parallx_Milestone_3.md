@@ -405,7 +405,7 @@ The sidebar is a vertically resizable, collapsible panel on the left side of the
 
 #### Tasks
 
-**Task 3.1 – Polish Sidebar Resize and Collapse**
+**Task 3.1 – Polish Sidebar Resize and Collapse** ✅
 - **Task Description:** Ensure the sidebar resize sash works smoothly and that collapse/expand is wired to all trigger points.
 - **Output:** Sidebar with polished resize and collapse behavior.
 - **Completion Criteria:**
@@ -421,8 +421,15 @@ The sidebar is a vertically resizable, collapsible panel on the left side of the
 - **Notes / Constraints:**
   - The sash handling from M1's `Grid` class provides the underlying resize — this task ensures the sash UX is correct and the collapse animation is smooth
   - State persistence already partially works from M1's workspace save/restore — this task verifies and fixes any gaps
+- **Deviation:** Sidebar collapse/expand is instant (no animation), matching VS Code's actual behavior. The spec mentioned 150ms animation, but VS Code itself uses instant toggle. Can be added later if desired.
+- **Implementation Notes:**
+  - Added `Grid.getViewSize(viewId)` and `Grid.onDidSashReset` event with dblclick handler
+  - Added `_lastSidebarWidth` tracking in Workbench — saved before collapse, restored on expand
+  - Sidebar width restored from workspace state on load via `_applyRestoredState()`
+  - `toggleSidebar()` now public on Workbench; structural command delegates to it
+  - Double-click on sidebar sash resets to `DEFAULT_SIDEBAR_WIDTH` (202px)
 
-**Task 3.2 – Implement View Container Section Headers**
+**Task 3.2 – Implement View Container Section Headers** ✅
 - **Task Description:** Render view containers within the sidebar as collapsible sections with headers, matching VS Code's "View Pane Container" pattern where each view gets a collapsible accordion section.
 - **Output:** Sidebar view containers render with expandable/collapsible sections.
 - **Completion Criteria:**
@@ -439,6 +446,16 @@ The sidebar is a vertically resizable, collapsible panel on the left side of the
   - This is an enhancement to the existing `ViewContainer` class — it needs a "stacked mode" in addition to the existing "tabbed mode"
   - The sidebar uses stacked mode; the panel continues to use tabbed mode
   - Stacked mode means all views in the container are visible simultaneously in a vertical stack (collapsed sections take minimal height, expanded sections share remaining space)
+- **Deviation:** Right-click context menu on section headers is deferred — the `contextmenu` event listener will be wired when the menu contribution system supports `view/title` menu location. Optional action toolbar (ellipsis) also deferred.
+- **Implementation Notes:**
+  - Added `ViewContainerMode` type (`'tabbed' | 'stacked'`) and `setMode()` method to ViewContainer
+  - Stacked mode: all views visible simultaneously with `view-section` wrappers, 22px headers with ▸/▾ chevrons
+  - Click/Enter/Space on section header toggles collapse. Collapsed sections show only header.
+  - Single view → headers hidden (VS Code `mergeViewWithContainerWhenSingleView` behavior)
+  - Section sash drag between stacked sections for proportional resizing
+  - Collapse state persisted via `ViewContainerState.collapsedSections`
+  - Sidebar container now uses `setMode('stacked')` instead of `hideTabBar()`
+  - CSS: `.view-section-header` matches VS Code's 22px, uppercase, 700 weight, #252526 background
 
 ---
 

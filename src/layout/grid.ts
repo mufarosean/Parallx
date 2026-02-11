@@ -46,6 +46,10 @@ export class Grid extends Disposable {
   private readonly _onDidChange = this._register(new Emitter<GridChangeEvent>());
   readonly onDidChange: Event<GridChangeEvent> = this._onDidChange.event;
 
+  private readonly _onDidSashReset = this._register(new Emitter<{ branch: GridBranchNode; sashIndex: number }>());
+  /** Fires when the user double-clicks a sash to request a size reset. */
+  readonly onDidSashReset: Event<{ branch: GridBranchNode; sashIndex: number }> = this._onDidSashReset.event;
+
   constructor(rootOrientation: Orientation, width: number, height: number) {
     super();
     this._width = width;
@@ -91,6 +95,16 @@ export class Grid extends Disposable {
    */
   hasView(viewId: string): boolean {
     return this._views.has(viewId);
+  }
+
+  /**
+   * Get a view's current size along the parent branch's orientation.
+   * Returns `undefined` if the view is not in the grid.
+   */
+  getViewSize(viewId: string): number | undefined {
+    const leaf = this._views.get(viewId);
+    if (!leaf) return undefined;
+    return this._getNodeSize(leaf);
   }
 
   /**
@@ -299,6 +313,23 @@ export class Grid extends Disposable {
     this._root.element.addEventListener('mousedown', this._onSashMouseDown);
     this._disposables.add(toDisposable(() => {
       this._root.element.removeEventListener('mousedown', this._onSashMouseDown);
+    }));
+
+    // Double-click on sash fires onDidSashReset (VS Code parity: Sash.onDidReset)
+    const onDblClick = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement;
+      if (!target.classList.contains('grid-sash')) return;
+      e.preventDefault();
+      const sashIndex = parseInt(target.dataset.sashIndex ?? '0', 10);
+      const parent = target.parentElement;
+      if (!parent) return;
+      const branch = this._findBranchByElement(parent);
+      if (!branch) return;
+      this._onDidSashReset.fire({ branch, sashIndex });
+    };
+    this._root.element.addEventListener('dblclick', onDblClick);
+    this._disposables.add(toDisposable(() => {
+      this._root.element.removeEventListener('dblclick', onDblClick);
     }));
   }
 
