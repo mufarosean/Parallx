@@ -304,8 +304,9 @@ A renderer-side service abstraction over the Electron filesystem IPC. Consumers 
 
 #### Tasks
 
-**Task 1.1 — Define IFileService Interface and URI Type**
+**Task 1.1 — Define IFileService Interface and URI Type** ✅
 - **Task Description:** Define the filesystem service interface that all consumers depend on, along with the URI type used throughout the system.
+- **Implementation Notes:** Created URI class in src/platform/uri.ts (static factories: file(), parse(), from(), revive(); instance: fsPath, with(), toString(), toJSON(), basename, extname, dirname, joinPath, equals(), toKey(); plus URIMap utility). Created fileTypes.ts with FileType, FileChangeType, FileStat, FileContent, FileEntry, FileChangeEvent, FileOperationError, FileDeleteOptions, dialog types. Added IFileService and ITextFileModelManager interfaces to serviceTypes.ts.
 - **Output:** `IFileService` interface in `src/services/serviceTypes.ts`, `URI` class in `src/platform/uri.ts`, and types in `src/platform/fileTypes.ts`.
 - **Completion Criteria:**
   - `URI` class with `scheme: string`, `authority: string`, `path: string`, `query: string`, `fragment: string`
@@ -331,8 +332,9 @@ A renderer-side service abstraction over the Electron filesystem IPC. Consumers 
   - Interface is designed as a provider facade — M4 has one provider (disk), but `registerProvider(scheme, provider)` method exists on the interface for future extensibility
   - Convenience: `URI.file('/path/to/file')` creates `{ scheme: 'file', authority: '', path: '/path/to/file' }`
 
-**Task 1.2 — Implement FileService**
+**Task 1.2 — Implement FileService** ✅
 - **Task Description:** Implement the filesystem service backed by the Electron IPC bridge.
+- **Implementation Notes:** Created FileService in src/services/fileService.ts. Delegates to parallxElectron.fs.* and dialog.* APIs. Includes LRU content cache (20 entries, invalidated on change events), watcher lifecycle management, URI-based interface, structured error normalization via FileOperationError, graceful degradation when Electron bridge unavailable. Registered as singleton in workbenchServices.ts.
 - **Output:** `FileService` class in `src/services/fileService.ts`.
 - **Completion Criteria:**
   - Implements `IFileService` interface
@@ -349,8 +351,9 @@ A renderer-side service abstraction over the Electron filesystem IPC. Consumers 
   - Watcher management: maintains a Map of active watchers, disposes all on service dispose
   - Dialog methods are pass-through to `parallxElectron.dialog.*` with default path injection
 
-**Task 1.3 — Extend Parallx Tool API with Filesystem Access**
+**Task 1.3 — Extend Parallx Tool API with Filesystem Access** ✅
 - **Task Description:** Add `parallx.workspace.fs` namespace to the tool API so tools can access the filesystem.
+- **Implementation Notes:** Created FileSystemBridge in src/api/bridges/fileSystemBridge.ts. Provides readFile, writeFile, stat, readdir, exists, delete, rename, createDirectory. All operations scoped to workspace folders (validates URI against folder list). Bridge validates tool is active before every call (_throwIfDisposed).
 - **Output:** Updated `parallx.d.ts` and new `FileSystemBridge` in `src/api/bridges/`.
 - **Completion Criteria:**
   - `parallx.workspace.fs.readFile(uri)` → Promise<string>
@@ -368,8 +371,9 @@ A renderer-side service abstraction over the Electron filesystem IPC. Consumers 
   - This mirrors VS Code's `vscode.workspace.fs` namespace
   - Copy operation intentionally excluded from tool API in M4 (tools can read+write to achieve it)
 
-**Task 1.4 — Implement TextFileModelManager**
-- **Task Description:** Add a lightweight text file model manager that sits between `IFileService` (raw bytes) and editors (text panes). This is the central authority for text file dirty state, content, and model lifecycle. It mirrors VS Code's `ITextFileService` in simplified form.
+**Task 1.4 — Implement TextFileModelManager** ✅
+- **Task Description:** Add a lightweight text file model manager that sits between `IFileService` (raw bytes) and editors (text panes).
+- **Implementation Notes:** Created TextFileModelManager and TextFileModel in src/services/textFileModelManager.ts. TextFileModel: uri, content, isDirty, isConflicted, mtime, updateContent(), save(), revert(), ref-counted lifecycle, events (onDidChangeContent, onDidChangeDirty, onDidChangeConflicted, onDidDispose). Manager: resolve() (get-or-create with ref count), get(), models, saveAll(), reacts to IFileService.onDidFileChange (silent reload if clean, conflict if dirty). Registered in workbenchServices.ts. This is the central authority for text file dirty state, content, and model lifecycle. It mirrors VS Code's `ITextFileService` in simplified form.
 - **Output:** `TextFileModelManager` class in `src/services/textFileModelManager.ts`, `ITextFileModelManager` interface in `serviceTypes.ts`.
 - **Completion Criteria:**
   - `resolve(uri: URI): Promise<TextFileModel>` — loads file content from `IFileService`, creates or returns existing model

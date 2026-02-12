@@ -1,7 +1,7 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -16,6 +16,8 @@ import { KeybindingContributionProcessor } from '../contributions/keybindingCont
 import { MenuContributionProcessor } from '../contributions/menuContribution.js';
 import { ViewContributionProcessor } from '../contributions/viewContribution.js';
 import { KeybindingService } from '../services/keybindingService.js';
+import { FileService } from '../services/fileService.js';
+import { TextFileModelManager } from '../services/textFileModelManager.js';
 import type { IStorage } from '../platform/storage.js';
 import type { ViewManager } from '../views/viewManager.js';
 
@@ -48,6 +50,14 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
 
   // ── Tool Error Service (M2 Capability 3) ──
   services.registerInstance(IToolErrorService, new ToolErrorService());
+
+  // ── File Service (M4 Capability 1) ──
+  const fileService = new FileService();
+  services.registerInstance(IFileService, fileService as any);
+
+  // ── Text File Model Manager (M4 Capability 1) ──
+  const textFileModelManager = new TextFileModelManager(fileService);
+  services.registerInstance(ITextFileModelManager, textFileModelManager as any);
 
   // Note: IToolActivatorService is registered in the workbench after
   // all dependencies (API factory deps) are available.

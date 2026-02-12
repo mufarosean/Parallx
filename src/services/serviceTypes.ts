@@ -569,3 +569,96 @@ export interface IWindowService extends IDisposable {
 }
 
 export const IWindowService = createServiceIdentifier<IWindowService>('IWindowService');
+
+// ─── IFileService (M4 Capability 1) ────────────────────────────────────────
+
+/**
+ * Provides filesystem operations as a service abstraction.
+ * Backed by Electron IPC bridge in M4; designed as a provider facade
+ * so additional providers (virtual FS, remote FS) can be registered later.
+ *
+ * VS Code reference: IFileService (src/vs/platform/files/common/files.ts)
+ */
+export interface IFileService extends IDisposable {
+  /** Read a file's content. */
+  readFile(uri: import('../platform/uri.js').URI): Promise<import('../platform/fileTypes.js').FileContent>;
+
+  /** Write string content to a file (creates parent dirs if needed). */
+  writeFile(uri: import('../platform/uri.js').URI, content: string): Promise<void>;
+
+  /** Get stat information for a file or directory. */
+  stat(uri: import('../platform/uri.js').URI): Promise<import('../platform/fileTypes.js').FileStat>;
+
+  /** List directory entries, sorted directories-first then alphabetical. */
+  readdir(uri: import('../platform/uri.js').URI): Promise<import('../platform/fileTypes.js').FileEntry[]>;
+
+  /** Check if a resource exists. */
+  exists(uri: import('../platform/uri.js').URI): Promise<boolean>;
+
+  /** Rename or move a resource. */
+  rename(source: import('../platform/uri.js').URI, target: import('../platform/uri.js').URI): Promise<void>;
+
+  /** Delete a resource. */
+  delete(uri: import('../platform/uri.js').URI, options?: import('../platform/fileTypes.js').FileDeleteOptions): Promise<void>;
+
+  /** Create a directory (recursive). */
+  mkdir(uri: import('../platform/uri.js').URI): Promise<void>;
+
+  /** Copy a file or directory. */
+  copy(source: import('../platform/uri.js').URI, target: import('../platform/uri.js').URI): Promise<void>;
+
+  /** Start watching a path for changes. Returns a disposable that stops watching. */
+  watch(uri: import('../platform/uri.js').URI): Promise<IDisposable>;
+
+  /** Fires when files change (create, modify, delete). */
+  readonly onDidFileChange: Event<import('../platform/fileTypes.js').FileChangeEvent[]>;
+
+  // ── Dialogs ──
+
+  /** Open native file picker. Returns selected file URIs, or null if cancelled. */
+  openFileDialog(options?: import('../platform/fileTypes.js').OpenFileOptions): Promise<import('../platform/uri.js').URI[] | null>;
+
+  /** Open native folder picker. Returns selected folder URIs, or null if cancelled. */
+  openFolderDialog(options?: import('../platform/fileTypes.js').OpenFolderOptions): Promise<import('../platform/uri.js').URI[] | null>;
+
+  /** Open native save dialog. Returns target URI, or null if cancelled. */
+  saveFileDialog(options?: import('../platform/fileTypes.js').SaveFileOptions): Promise<import('../platform/uri.js').URI | null>;
+
+  /** Show a native OS message box. */
+  showMessageBox(options: import('../platform/fileTypes.js').MessageBoxOptions): Promise<import('../platform/fileTypes.js').MessageBoxResult>;
+}
+
+export const IFileService = createServiceIdentifier<IFileService>('IFileService');
+
+// ─── ITextFileModelManager (M4 Capability 1) ──────────────────────────────
+
+/**
+ * Manages text file models — the in-memory representation of text files
+ * that sits between IFileService (raw bytes) and editors (text panes).
+ *
+ * Central authority for dirty state, content, and model lifecycle.
+ * Multiple editors viewing the same file share one TextFileModel.
+ *
+ * VS Code reference: ITextFileService (src/vs/workbench/services/textfile/common/textFileService.ts)
+ */
+export interface ITextFileModelManager extends IDisposable {
+  /** Load (or return existing) model for a URI. */
+  resolve(uri: import('../platform/uri.js').URI): Promise<import('./textFileModelManager.js').TextFileModel>;
+
+  /** Get existing model without loading (returns undefined if not tracked). */
+  get(uri: import('../platform/uri.js').URI): import('./textFileModelManager.js').TextFileModel | undefined;
+
+  /** All currently managed models. */
+  readonly models: readonly import('./textFileModelManager.js').TextFileModel[];
+
+  /** Save all dirty models. */
+  saveAll(): Promise<void>;
+
+  /** Fires when a new model is created. */
+  readonly onDidCreate: Event<import('./textFileModelManager.js').TextFileModel>;
+
+  /** Fires when a model is disposed. */
+  readonly onDidDispose: Event<import('../platform/uri.js').URI>;
+}
+
+export const ITextFileModelManager = createServiceIdentifier<ITextFileModelManager>('ITextFileModelManager');
