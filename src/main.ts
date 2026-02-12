@@ -17,6 +17,30 @@ declare global {
       onMaximizedChange: (cb: (maximized: boolean) => void) => void;
       scanToolDirectory: (dirPath: string) => Promise<{ entries: { toolPath: string; manifestJson?: unknown; error?: string }[]; error: string | null }>;
       getToolDirectories: () => Promise<{ builtinDir: string; userDir: string }>;
+
+      // ── Filesystem API (M4 Cap 0) ──
+      fs: {
+        readFile(path: string, encoding?: string): Promise<{ content: string; encoding: string; size: number; mtime: number } | { error: { code: string; message: string; path: string } }>;
+        writeFile(path: string, content: string, encoding?: string): Promise<{ error: null } | { error: { code: string; message: string; path: string } }>;
+        stat(path: string): Promise<{ type: string; size: number; mtime: number; ctime: number; isReadonly: boolean; error: null } | { error: { code: string; message: string; path: string } }>;
+        readdir(path: string): Promise<{ entries: { name: string; type: string; size: number; mtime: number }[]; error: null } | { error: { code: string; message: string; path: string } }>;
+        exists(path: string): Promise<boolean>;
+        rename(oldPath: string, newPath: string): Promise<{ error: null } | { error: { code: string; message: string; path: string } }>;
+        delete(path: string, options?: { useTrash?: boolean; recursive?: boolean }): Promise<{ error: null } | { error: { code: string; message: string; path: string } }>;
+        mkdir(path: string): Promise<{ error: null } | { error: { code: string; message: string; path: string } }>;
+        copy(source: string, destination: string): Promise<{ error: null } | { error: { code: string; message: string; path: string } }>;
+        watch(path: string, options?: { recursive?: boolean }): Promise<{ watchId: string; error: null } | { error: { code: string; message: string; path: string } }>;
+        unwatch(watchId: string): Promise<{ error: null }>;
+        onDidChange(callback: (payload: { watchId: string; events?: { type: string; path: string }[]; error?: { code: string; message: string; path: string } }) => void): () => void;
+      };
+
+      // ── Dialog API (M4 Cap 0) ──
+      dialog: {
+        openFile(options?: { multiSelect?: boolean; filters?: { name: string; extensions: string[] }[]; defaultPath?: string }): Promise<string[] | null>;
+        openFolder(options?: { multiSelect?: boolean; defaultPath?: string }): Promise<string[] | null>;
+        saveFile(options?: { filters?: { name: string; extensions: string[] }[]; defaultPath?: string; defaultName?: string }): Promise<string | null>;
+        showMessageBox(options: { type?: string; title?: string; message: string; detail?: string; buttons?: string[]; defaultId?: number; cancelId?: number; checkboxLabel?: string; checkboxChecked?: boolean }): Promise<{ response: number; checkboxChecked: boolean }>;
+      };
     };
   }
 }

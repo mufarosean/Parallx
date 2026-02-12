@@ -196,8 +196,9 @@ The Electron main process provides a filesystem API to the renderer via IPC. Thi
 
 #### Tasks
 
-**Task 0.1 — Implement Filesystem IPC Handlers in Main Process**
+**Task 0.1 — Implement Filesystem IPC Handlers in Main Process** ✅
 - **Task Description:** Add IPC handlers to `electron/main.cjs` for core filesystem operations.
+- **Implementation Notes:** Added 9 IPC handlers (fs:readFile, fs:writeFile, fs:stat, fs:readdir, fs:exists, fs:rename, fs:delete, fs:mkdir, fs:copy) to main.cjs using fs/promises. Includes 50MB size guard, binary detection (first 8KB null-byte scan), structured error normalization, readdir sorts dirs-first then alpha case-insensitive, delete defaults to shell.trashItem(), mkdir/writeFile create parent dirs recursively.
 - **Output:** IPC handlers for file CRUD, directory listing, stat, and file watching.
 - **Completion Criteria:**
   - `fs:readFile(path, encoding?)` — reads file content, returns string (utf-8 default) or base64 for binary; rejects for files > 50MB with clear error
@@ -218,8 +219,9 @@ The Electron main process provides a filesystem API to the renderer via IPC. Thi
   - Large file guard: files > 50MB are rejected with `ETOOLARGE` to prevent renderer memory issues
   - File encoding: default utf-8; future milestone can add encoding detection
 
-**Task 0.2 — Implement File Dialog IPC Handlers**
+**Task 0.2 — Implement File Dialog IPC Handlers** ✅
 - **Task Description:** Add IPC handlers for native OS file dialogs.
+- **Implementation Notes:** Added 4 dialog IPC handlers (dialog:openFile, dialog:openFolder, dialog:saveFile, dialog:showMessageBox) using electron.dialog API. All modal to mainWindow. Cancel returns null. Default path falls back to user home.
 - **Output:** IPC handlers for open file, open folder, and save-as dialogs.
 - **Completion Criteria:**
   - `dialog:openFile(options?)` — opens native file picker, returns `string[]` (selected paths) or `null` if cancelled; options: `filters` (e.g., `[{ name: 'Text', extensions: ['txt', 'md'] }]`), `multiSelect: boolean`, `defaultPath: string`
@@ -233,8 +235,9 @@ The Electron main process provides a filesystem API to the renderer via IPC. Thi
   - Default path should be current workspace folder (if any) or user's home directory
   - File filters follow Electron's `FileFilter` format
 
-**Task 0.3 — Implement File Watcher IPC**
+**Task 0.3 — Implement File Watcher IPC** ✅
 - **Task Description:** Add IPC handlers for filesystem watching so the renderer is notified of external file changes.
+- **Implementation Notes:** Added fs:watch and fs:unwatch handlers using fsSync.watch() with recursive option. 100ms debounce with event coalescing. Ignores .git/node_modules/.DS_Store/Thumbs.db/__pycache__. Max 10 watchers with ELIMIT error. Auto-unwatch on error. Cleanup on before-quit. Push events via mainWindow.webContents.send('fs:change').
 - **Output:** File watcher IPC with subscribe/unsubscribe pattern.
 - **Completion Criteria:**
   - `fs:watch(path, options?)` — starts watching a file or directory for changes; returns a `watchId` string
@@ -251,8 +254,9 @@ The Electron main process provides a filesystem API to the renderer via IPC. Thi
   - Watcher events include the absolute path of the changed file
   - Watcher errors (e.g., watched directory deleted) send an error event and auto-unwatch
 
-**Task 0.4 — Expose Filesystem API via Preload Context Bridge**
+**Task 0.4 — Expose Filesystem API via Preload Context Bridge** ✅
 - **Task Description:** Extend `electron/preload.cjs` to expose all filesystem and dialog APIs to the renderer.
+- **Implementation Notes:** Extended preload.cjs with parallxElectron.fs.* (12 methods including onDidChange) and parallxElectron.dialog.* (4 methods). Updated Window interface in main.ts with full TypeScript types for all new APIs. onDidChange returns unsubscribe function. All methods async via ipcRenderer.invoke().
 - **Output:** `window.parallxElectron` extended with filesystem methods.
 - **Completion Criteria:**
   - `parallxElectron.fs.readFile(path, encoding?)` → Promise
