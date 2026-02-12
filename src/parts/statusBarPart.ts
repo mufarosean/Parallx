@@ -1,49 +1,110 @@
 // statusBarPart.ts — bottom status information bar
+//
+// VS Code parity:
+//   - `src/vs/workbench/browser/parts/statusbar/statusbarPart.ts`
+//   - `src/vs/workbench/browser/parts/statusbar/statusbarModel.ts`
+//   - `src/vs/workbench/browser/parts/statusbar/media/statusbarpart.css`
+//
+// DOM structure (matches VS Code):
+//   .part.statusbar
+//     .left-items.items-container     (flex, flex-grow: 1)
+//       .statusbar-item.left
+//         a.statusbar-item-label      (role="button", tabindex=-1)
+//     .right-items.items-container    (flex, flex-direction: row-reverse)
+//       .statusbar-item.right
+//         a.statusbar-item-label
+//
+// Entries are sorted by priority within each alignment group.
+// Higher priority = further left (for left items) or further right (for right items).
 
 import { Part } from './part.js';
 import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
 import { Emitter, Event } from '../platform/events.js';
-import { toDisposable } from '../platform/lifecycle.js';
+import { IDisposable, toDisposable } from '../platform/lifecycle.js';
+
+/** Fixed status bar height — matches VS Code's `StatusbarPart.HEIGHT = 22`. */
+export const STATUS_BAR_HEIGHT = 22;
 
 const STATUSBAR_CONSTRAINTS: SizeConstraints = {
   minimumWidth: 0,
   maximumWidth: Number.POSITIVE_INFINITY,
-  minimumHeight: 22,
-  maximumHeight: 22,
+  minimumHeight: STATUS_BAR_HEIGHT,
+  maximumHeight: STATUS_BAR_HEIGHT,
 };
+
+// ─── Alignment ───────────────────────────────────────────────────────────────
 
 /**
  * Status bar alignment for items.
+ * Matches VS Code's `StatusbarAlignment` enum.
  */
 export enum StatusBarAlignment {
   Left = 'left',
   Right = 'right',
 }
 
+// ─── Entry Types ─────────────────────────────────────────────────────────────
+
 /**
  * Descriptor for a status bar entry.
+ * Matches VS Code's `IStatusbarEntry` (simplified for M3).
  */
 export interface StatusBarEntry {
   readonly id: string;
+  /** Display text. Supports `$(icon-name)` codicon placeholders (rendered as text in M3). */
   readonly text: string;
   readonly alignment: StatusBarAlignment;
+  /** Sort order: higher priority = closer to the edge. Left: higher = further left. Right: higher = further right. */
   readonly priority?: number;
   readonly tooltip?: string;
+  /** Command ID to execute on click. */
   readonly command?: string;
+  /** Human-readable name for context-menu toggling (defaults to `text`). */
+  readonly name?: string;
 }
 
 /**
+ * Accessor returned when adding an entry — allows updating or removing it.
+ * Matches VS Code's `IStatusbarEntryAccessor`.
+ */
+export interface StatusBarEntryAccessor extends IDisposable {
+  /** Update the entry's mutable properties. */
+  update(entry: Partial<Pick<StatusBarEntry, 'text' | 'tooltip' | 'command'>>): void;
+}
+
+// ─── Internal view-model entry ───────────────────────────────────────────────
+
+interface StatusBarViewModelEntry {
+  readonly id: string;
+  readonly alignment: StatusBarAlignment;
+  readonly priority: number;
+  entry: StatusBarEntry;
+  container: HTMLElement;
+  label: HTMLElement;
+}
+
+// ─── StatusBarPart ───────────────────────────────────────────────────────────
+
+/**
  * Status bar part — occupies the bottom edge of the workbench.
- * Displays status information items aligned left and right.
+ *
+ * VS Code parity: entries are added via `addEntry()` returning an accessor,
+ * not by hardcoding DOM elements. The shell and tools both use the same
+ * `addEntry()` API to contribute entries.
  */
 export class StatusBarPart extends Part {
 
-  private _leftSlot: HTMLElement | undefined;
-  private _rightSlot: HTMLElement | undefined;
+  private _leftItemsContainer: HTMLElement | undefined;
+  private _rightItemsContainer: HTMLElement | undefined;
 
-  private readonly _entries = new Map<string, StatusBarEntry>();
-  private readonly _entryElements = new Map<string, HTMLElement>();
+  /** View-model entries keyed by ID. */
+  private readonly _entries = new Map<string, StatusBarViewModelEntry>();
+
+  /** Command handler — wired by workbench after construction. */
+  private _commandExecutor: ((commandId: string) => void) | undefined;
+
+  // ── Events ──
 
   private readonly _onDidAddEntry = this._register(new Emitter<StatusBarEntry>());
   readonly onDidAddEntry: Event<StatusBarEntry> = this._onDidAddEntry.event;
@@ -51,10 +112,7 @@ export class StatusBarPart extends Part {
   private readonly _onDidRemoveEntry = this._register(new Emitter<string>());
   readonly onDidRemoveEntry: Event<string> = this._onDidRemoveEntry.event;
 
-  private readonly _onDidClickEntry = this._register(new Emitter<{ id: string; command: string }>());
-  readonly onDidClickEntry: Event<{ id: string; command: string }> = this._onDidClickEntry.event;
-
-  /** P2.8: Fired on right-click in the status bar area. */
+  /** Fired on right-click in the status bar area (context menu). */
   private readonly _onDidContextMenu = this._register(new Emitter<{ x: number; y: number }>());
   readonly onDidContextMenu: Event<{ x: number; y: number }> = this._onDidContextMenu.event;
 
@@ -68,81 +126,148 @@ export class StatusBarPart extends Part {
     );
   }
 
-  get leftSlot(): HTMLElement | undefined { return this._leftSlot; }
-  get rightSlot(): HTMLElement | undefined { return this._rightSlot; }
+  // ── Command executor (wired by workbench) ──
 
-  // ── Entry management ──
+  /**
+   * Wire the command executor so entry clicks can execute commands.
+   * In VS Code this is done via DI (`ICommandService`); here we use a
+   * simple callback to avoid circular dependencies.
+   */
+  setCommandExecutor(executor: (commandId: string) => void): void {
+    this._commandExecutor = executor;
+  }
 
-  addEntry(entry: StatusBarEntry): void {
-    this._entries.set(entry.id, entry);
+  // ── Entry management (contribution API) ──
 
-    const el = document.createElement('span');
-    el.classList.add('statusbar-entry', `statusbar-entry-${entry.id}`);
-    el.textContent = entry.text;
-    if (entry.tooltip) {
-      el.title = entry.tooltip;
+  /**
+   * Add a status bar entry. Returns an accessor to update or dispose it.
+   *
+   * VS Code parity: `IStatusbarEntryContainer.addEntry()`.
+   */
+  addEntry(entry: StatusBarEntry): StatusBarEntryAccessor {
+    // Remove existing entry with same ID (update semantics)
+    if (this._entries.has(entry.id)) {
+      this._removeEntryElement(entry.id);
     }
+
+    const priority = entry.priority ?? 0;
+
+    // Create DOM: .statusbar-item > a.statusbar-item-label
+    const itemContainer = document.createElement('div');
+    itemContainer.className = 'statusbar-item';
+    itemContainer.id = entry.id;
+    itemContainer.classList.add(entry.alignment === StatusBarAlignment.Left ? 'left' : 'right');
+
+    const label = document.createElement('a');
+    label.className = 'statusbar-item-label';
+    label.setAttribute('role', 'button');
+    label.tabIndex = -1;
+    this._applyEntryToLabel(label, entry);
+    itemContainer.appendChild(label);
+
+    // Click handler
     if (entry.command) {
-      el.setAttribute('role', 'button');
-      el.addEventListener('click', () => {
-        this._onDidClickEntry.fire({ id: entry.id, command: entry.command! });
+      label.addEventListener('click', () => {
+        if (entry.command && this._commandExecutor) {
+          this._commandExecutor(entry.command);
+        }
       });
     }
 
-    this._entryElements.set(entry.id, el);
-    this._appendEntryToSlot(entry, el);
+    // Store view-model entry
+    const vmEntry: StatusBarViewModelEntry = {
+      id: entry.id,
+      alignment: entry.alignment,
+      priority,
+      entry,
+      container: itemContainer,
+      label,
+    };
+    this._entries.set(entry.id, vmEntry);
+
+    // Append to correct container
+    this._insertEntry(vmEntry);
     this._onDidAddEntry.fire(entry);
+
+    // Return accessor
+    return {
+      update: (update) => {
+        const existing = this._entries.get(entry.id);
+        if (!existing) return;
+        const updated: StatusBarEntry = {
+          ...existing.entry,
+          ...(update.text !== undefined ? { text: update.text } : {}),
+          ...(update.tooltip !== undefined ? { tooltip: update.tooltip } : {}),
+          ...(update.command !== undefined ? { command: update.command } : {}),
+        };
+        existing.entry = updated;
+        this._applyEntryToLabel(existing.label, updated);
+
+        // Re-wire click if command changed
+        if (update.command !== undefined) {
+          const newLabel = existing.label.cloneNode(false) as HTMLElement;
+          this._applyEntryToLabel(newLabel, updated);
+          if (updated.command) {
+            newLabel.addEventListener('click', () => {
+              if (updated.command && this._commandExecutor) {
+                this._commandExecutor(updated.command);
+              }
+            });
+          }
+          existing.container.replaceChild(newLabel, existing.label);
+          existing.label = newLabel;
+        }
+      },
+      dispose: () => {
+        this._removeEntryElement(entry.id);
+      },
+    };
   }
 
+  /**
+   * Legacy compat: update an entry by ID (used by workbench before accessor pattern).
+   */
   updateEntry(id: string, update: Partial<Pick<StatusBarEntry, 'text' | 'tooltip'>>): void {
-    const entry = this._entries.get(id);
-    const el = this._entryElements.get(id);
-    if (!entry || !el) { return; }
-
-    // Update the stored entry to keep it in sync with the DOM
+    const vm = this._entries.get(id);
+    if (!vm) return;
     const updated: StatusBarEntry = {
-      ...entry,
+      ...vm.entry,
       ...(update.text !== undefined ? { text: update.text } : {}),
       ...(update.tooltip !== undefined ? { tooltip: update.tooltip } : {}),
     };
-    this._entries.set(id, updated);
-
-    if (update.text !== undefined) {
-      el.textContent = update.text;
-    }
-    if (update.tooltip !== undefined) {
-      el.title = update.tooltip;
-    }
+    vm.entry = updated;
+    this._applyEntryToLabel(vm.label, updated);
   }
 
+  /**
+   * Remove an entry by ID.
+   */
   removeEntry(id: string): void {
-    const el = this._entryElements.get(id);
-    if (el) {
-      el.remove();
-      this._entryElements.delete(id);
-    }
-    this._entries.delete(id);
-    this._onDidRemoveEntry.fire(id);
+    this._removeEntryElement(id);
   }
 
+  /**
+   * Get all current entries (sorted by alignment then priority).
+   */
   getEntries(): readonly StatusBarEntry[] {
-    return [...this._entries.values()];
+    return [...this._entries.values()]
+      .sort((a, b) => b.priority - a.priority)
+      .map(vm => vm.entry);
   }
 
   // ── Part hooks ──
 
   protected override createContent(container: HTMLElement): void {
-    container.classList.add('statusbar-content');
+    // VS Code: .left-items.items-container and .right-items.items-container
+    this._leftItemsContainer = document.createElement('div');
+    this._leftItemsContainer.className = 'left-items items-container';
+    container.appendChild(this._leftItemsContainer);
 
-    this._leftSlot = document.createElement('div');
-    this._leftSlot.classList.add('statusbar-left');
-    container.appendChild(this._leftSlot);
+    this._rightItemsContainer = document.createElement('div');
+    this._rightItemsContainer.className = 'right-items items-container';
+    container.appendChild(this._rightItemsContainer);
 
-    this._rightSlot = document.createElement('div');
-    this._rightSlot.classList.add('statusbar-right');
-    container.appendChild(this._rightSlot);
-
-    // P2.8: Status bar context menu (right-click to hide items)
+    // Context menu (right-click)
     const handler = (e: MouseEvent) => {
       e.preventDefault();
       this._onDidContextMenu.fire({ x: e.clientX, y: e.clientY });
@@ -153,28 +278,69 @@ export class StatusBarPart extends Part {
 
   // ── Internals ──
 
-  private _appendEntryToSlot(entry: StatusBarEntry, el: HTMLElement): void {
-    const slot = entry.alignment === StatusBarAlignment.Left
-      ? this._leftSlot
-      : this._rightSlot;
+  /**
+   * Apply entry text/tooltip to the label element.
+   * VS Code parses `$(icon-name)` via `StatusBarCodiconLabel` — in M3
+   * we render them as plain text (matching milestone spec).
+   */
+  private _applyEntryToLabel(label: HTMLElement, entry: StatusBarEntry): void {
+    label.textContent = entry.text;
+    if (entry.tooltip) {
+      label.title = entry.tooltip;
+    } else {
+      label.removeAttribute('title');
+    }
+    // Cursor style: pointer for clickable entries (VS Code parity)
+    if (entry.command) {
+      label.style.cursor = 'pointer';
+    } else {
+      label.style.cursor = 'default';
+    }
+  }
 
-    if (!slot) { return; }
+  /**
+   * Insert a view-model entry into the correct container, sorted by priority.
+   *
+   * VS Code parity: left items sorted highest-priority first (left-to-right).
+   * Right items use `flex-direction: row-reverse`, so we also insert
+   * highest-priority first — CSS reversal means they appear rightmost.
+   */
+  private _insertEntry(vmEntry: StatusBarViewModelEntry): void {
+    const target = vmEntry.alignment === StatusBarAlignment.Left
+      ? this._leftItemsContainer
+      : this._rightItemsContainer;
+    if (!target) return;
 
-    // Insert by priority (lower = earlier)
-    const priority = entry.priority ?? 0;
-    const children = Array.from(slot.children) as HTMLElement[];
-    let inserted = false;
-    for (const child of children) {
-      const childId = child.classList.item(1)?.replace('statusbar-entry-', '');
-      const childEntry = childId ? this._entries.get(childId) : undefined;
-      if (childEntry && (childEntry.priority ?? 0) > priority) {
-        slot.insertBefore(el, child);
-        inserted = true;
+    // Collect same-alignment entries sorted by priority descending
+    const siblings = [...this._entries.values()]
+      .filter(e => e.alignment === vmEntry.alignment && e.id !== vmEntry.id)
+      .sort((a, b) => b.priority - a.priority);
+
+    // Find insert position: before the first sibling with lower priority
+    let insertBefore: HTMLElement | null = null;
+    for (const sib of siblings) {
+      if (sib.priority < vmEntry.priority) {
+        insertBefore = sib.container;
         break;
       }
     }
-    if (!inserted) {
-      slot.appendChild(el);
+
+    if (insertBefore) {
+      target.insertBefore(vmEntry.container, insertBefore);
+    } else {
+      target.appendChild(vmEntry.container);
+    }
+  }
+
+  /**
+   * Remove an entry's DOM and view-model record.
+   */
+  private _removeEntryElement(id: string): void {
+    const vm = this._entries.get(id);
+    if (vm) {
+      vm.container.remove();
+      this._entries.delete(id);
+      this._onDidRemoveEntry.fire(id);
     }
   }
 }

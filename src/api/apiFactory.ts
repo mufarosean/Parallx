@@ -18,6 +18,8 @@ import {
 import type { ContextKeyValue } from '../context/contextKey.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { ToolRegistry, IToolEntry } from '../tools/toolRegistry.js';
+import type { StatusBarPart, StatusBarEntryAccessor } from '../parts/statusBarPart.js';
+import { StatusBarAlignment } from '../parts/statusBarPart.js';
 import { PARALLX_VERSION } from './apiVersionValidation.js';
 import { NotificationService } from './notificationService.js';
 import { CommandsBridge } from './bridges/commandsBridge.js';
@@ -48,6 +50,8 @@ export interface ApiFactoryDependencies {
   readonly viewContributionProcessor?: ViewContributionProcessor;
   /** ActivityBarPart badge host for parallx.views.setBadge(). */
   readonly badgeHost?: { setBadge(iconId: string, badge: { count?: number; dot?: boolean } | undefined): void };
+  /** StatusBarPart for parallx.window.createStatusBarItem(). */
+  readonly statusBarPart?: StatusBarPart;
 }
 
 // ─── API Shape ───────────────────────────────────────────────────────────────
@@ -73,6 +77,11 @@ export interface ParallxApiObject {
     showInputBox(options?: { prompt?: string; value?: string; placeholder?: string; password?: boolean }): Promise<string | undefined>;
     showQuickPick(items: readonly { label: string; description?: string }[], options?: { placeholder?: string; canPickMany?: boolean }): Promise<any>;
     createOutputChannel(name: string): IDisposable & { name: string; append(v: string): void; appendLine(v: string): void; clear(): void; show(): void; hide(): void };
+    createStatusBarItem(alignment?: number, priority?: number): {
+      alignment: number; priority: number;
+      text: string; tooltip: string | undefined; command: string | undefined; name: string | undefined;
+      show(): void; hide(): void; dispose(): void;
+    };
   };
   readonly context: {
     createContextKey<T extends ContextKeyValue>(name: string, defaultValue: T): { key: string; get(): T; set(value: T): void; reset(): void };
@@ -182,6 +191,68 @@ export function createToolApi(
       showInputBox: (options) => windowBridge.showInputBox(options),
       showQuickPick: (items, options) => windowBridge.showQuickPick(items, options),
       createOutputChannel: (name) => windowBridge.createOutputChannel(name),
+      createStatusBarItem: (alignment?: number, priority?: number) => {
+        const sbPart = deps.statusBarPart;
+        // Map public enum (1=Left, 2=Right) to internal enum.
+        const internalAlignment = alignment === 2
+          ? StatusBarAlignment.Right
+          : StatusBarAlignment.Left;
+        const prio = priority ?? 0;
+        const itemId = `${toolId}.statusbar.${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
+
+        let _text = '';
+        let _tooltip: string | undefined;
+        let _command: string | undefined;
+        let _name: string | undefined;
+        let _visible = false;
+        let _accessor: StatusBarEntryAccessor | undefined;
+
+        const item = {
+          get alignment() { return alignment === 2 ? 2 : 1; },
+          get priority() { return prio; },
+          get text() { return _text; },
+          set text(v: string) {
+            _text = v;
+            if (_visible && _accessor) _accessor.update({ text: v });
+          },
+          get tooltip() { return _tooltip; },
+          set tooltip(v: string | undefined) {
+            _tooltip = v;
+            if (_visible && _accessor) _accessor.update({ tooltip: v });
+          },
+          get command() { return _command; },
+          set command(v: string | undefined) {
+            _command = v;
+            if (_visible && _accessor) _accessor.update({ command: v });
+          },
+          get name() { return _name; },
+          set name(v: string | undefined) { _name = v; },
+          show() {
+            if (_visible || !sbPart) return;
+            _visible = true;
+            _accessor = sbPart.addEntry({
+              id: itemId,
+              text: _text,
+              alignment: internalAlignment,
+              priority: prio,
+              tooltip: _tooltip,
+              command: _command,
+              name: _name,
+            });
+            subscriptions.push(_accessor);
+          },
+          hide() {
+            if (!_visible || !_accessor) return;
+            _visible = false;
+            _accessor.dispose();
+            _accessor = undefined;
+          },
+          dispose() {
+            item.hide();
+          },
+        };
+        return item;
+      },
     }),
 
     context: Object.freeze({

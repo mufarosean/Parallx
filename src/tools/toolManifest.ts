@@ -131,6 +131,27 @@ export interface IManifestKeybinding {
 }
 
 /**
+ * A status bar entry declared in a tool manifest.
+ * VS Code reference: `statusBarExtensionPoint.ts` schema.
+ */
+export interface IManifestStatusBarEntry {
+  /** Unique identifier for this entry. */
+  readonly id: string;
+  /** Human-readable name (shown in context menu). */
+  readonly name: string;
+  /** Display text. Supports `$(icon-name)` codicon syntax. */
+  readonly text: string;
+  /** Tooltip text. */
+  readonly tooltip?: string;
+  /** Command ID to execute on click. */
+  readonly command?: string;
+  /** Alignment: 'left' or 'right'. */
+  readonly alignment: 'left' | 'right';
+  /** Priority (higher = closer to edge). */
+  readonly priority?: number;
+}
+
+/**
  * The `contributes` section of a tool manifest.
  * Each key is a contribution point; the shell reads these at load time.
  */
@@ -147,6 +168,11 @@ export interface IManifestContributions {
   readonly menus?: Readonly<Record<string, readonly IManifestMenuItem[]>>;
   /** Keybindings contributed by this tool. */
   readonly keybindings?: readonly IManifestKeybinding[];
+  /**
+   * Status bar entries contributed by this tool.
+   * VS Code reference: `statusBarExtensionPoint.ts` — `contributes.statusBar`.
+   */
+  readonly statusBar?: readonly IManifestStatusBarEntry[];
 }
 
 /**

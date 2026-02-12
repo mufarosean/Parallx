@@ -647,7 +647,7 @@ The status bar is a fixed-height strip at the bottom of the workbench displaying
 
 #### Tasks
 
-**Task 6.1 – Wire Status Bar to Contribution System**
+**Task 6.1 – Wire Status Bar to Contribution System** ✅
 - **Task Description:** Ensure status bar entries come from the contribution system and are not hardcoded in `workbench.ts`.
 - **Output:** Status bar populated dynamically from registered entries.
 - **Completion Criteria:**
@@ -663,8 +663,18 @@ The status bar is a fixed-height strip at the bottom of the workbench displaying
   - No new status bar entry for M3 — keep it minimal. Default entries: workspace name (left), notification indicator (right)
   - VS Code puts many entries in the status bar (language, encoding, line endings, git branch, etc.) — Parallx adds entries as tools contribute them
   - Consider adding `parallx.window.createStatusBarItem()` to the API if not already present
+- **Implementation Notes:**
+  - `StatusBarPart` completely rewritten with VS Code–parity DOM: `.statusbar-item > a.statusbar-item-label` (role="button", tabindex=-1)
+  - `addEntry()` now returns `StatusBarEntryAccessor` with `update()` and `dispose()` — matches VS Code's `IStatusbarEntryAccessor`
+  - Priority sorting: higher priority = further from center (VS Code convention)
+  - Left container uses `flex-grow: 1`, right container uses `flex-direction: row-reverse` (VS Code CSS)
+  - `setCommandExecutor()` wires click → `commandService.executeCommand()`
+  - Default entries: `status.scm.branch` (left, priority 100), `status.problems` (left, priority 50), `status.editor.selection` (right, priority 100), `status.editor.encoding` (right, priority 50)
+  - `parallx.window.createStatusBarItem()` added to API with full getter/setter lifecycle, show/hide/dispose
+  - `IManifestStatusBarEntry` and `contributes.statusBar` added to tool manifest types
+  - Context menu on right-click shows "Hide Status Bar" + per-entry items (VS Code parity)
 
-**Task 6.2 – Implement Status Bar Hide/Show**
+**Task 6.2 – Implement Status Bar Hide/Show** ✅
 - **Task Description:** Allow the status bar to be hidden/shown via command, matching VS Code's behavior.
 - **Output:** Status bar toggle command and state persistence.
 - **Completion Criteria:**
@@ -674,6 +684,13 @@ The status bar is a fixed-height strip at the bottom of the workbench displaying
   - When hidden, the panel or editor area fills the vacated space (22px)
 - **Notes / Constraints:**
   - VS Code allows hiding the status bar via Settings and View menu — in M3, the command is sufficient
+- **Implementation Notes:**
+  - `toggleStatusBar()` method added to Workbench class — sets visibility, updates `statusBarVisible` context key, calls `_relayout()`, triggers workspace save
+  - Command ID: `workbench.action.toggleStatusbarVisibility` (VS Code parity — `ToggleStatusbarVisibilityAction`)
+  - Persistence handled automatically through WorkspaceSaver part snapshots (statusBar in `allParts` array)
+  - `_relayout()` already handles hidden state: `statusH = statusBar.visible ? 22 : 0`
+  - `setPartHidden()` now dispatches StatusBar to `toggleStatusBar()`
+  - View menu item wired to the new command ID
 
 ---
 

@@ -1226,7 +1226,7 @@ export class Workbench extends Disposable {
       { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Sidebar', group: '2_appearance', order: 1 },
       { commandId: 'workbench.action.togglePanel', title: 'Toggle Panel', group: '2_appearance', order: 2 },
       { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Auxiliary Bar', group: '2_appearance', order: 3 },
-      { commandId: 'workbench.action.toggleStatusBar', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
+      { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
     ]));
 
     // Register dropdown items for File menu
@@ -1764,6 +1764,7 @@ export class Workbench extends Disposable {
       commandContributionProcessor: commandContribution,
       viewContributionProcessor: this._viewContribution,
       badgeHost: this._activityBarPart,
+      statusBarPart: this._statusBar as unknown as StatusBarPart,
     };
 
     // Storage dependencies for persistent tool mementos (Cap 4)
@@ -2272,6 +2273,22 @@ export class Workbench extends Disposable {
     this._layoutViewContainers();
   }
 
+  /**
+   * Toggle status bar visibility.
+   *
+   * VS Code reference: ToggleStatusbarVisibilityAction
+   * (workbench.action.toggleStatusbarVisibility).
+   * Status bar is a fixed-height (22 px) strip — no sash resizing needed.
+   * Visibility is persisted through WorkspaceSaver (part snapshot).
+   */
+  toggleStatusBar(): void {
+    const visible = !this._statusBar.visible;
+    this._statusBar.setVisible(visible);
+    this._workbenchContext.setStatusBarVisible(visible);
+    this._relayout();
+    this._workspaceSaver.requestSave();
+  }
+
   // ── LayoutHost Protocol ──────────────────────────────────────────────────
   // These methods fulfil the LayoutHost interface expected by LayoutService.
   // VS Code reference: IWorkbenchLayoutService.isVisible / setPartHidden.
@@ -2311,6 +2328,9 @@ export class Workbench extends Disposable {
         break;
       case PartId.AuxiliaryBar:
         this.toggleAuxiliaryBar();
+        break;
+      case PartId.StatusBar:
+        this.toggleStatusBar();
         break;
       // Titlebar, Editor, ActivityBar — not toggleable
       default:
@@ -2391,24 +2411,89 @@ export class Workbench extends Disposable {
 
   private _setupStatusBar(): void {
     const sb = this._statusBar as unknown as StatusBarPart;
-    sb.addEntry({ id: 'branch', text: '⎇ master', alignment: StatusBarAlignment.Left, priority: 0, tooltip: 'Current branch' });
-    sb.addEntry({ id: 'errors', text: '⊘ 0  ⚠ 0', alignment: StatusBarAlignment.Left, priority: 10, tooltip: 'Errors and warnings' });
-    sb.addEntry({ id: 'line-col', text: 'Ln 1, Col 1', alignment: StatusBarAlignment.Right, priority: 100 });
-    sb.addEntry({ id: 'encoding', text: 'UTF-8', alignment: StatusBarAlignment.Right, priority: 90 });
 
-    // P2.8: Status bar context menu — right-click to show/hide items
+    // Wire command executor so entry clicks execute commands via CommandService
+    // VS Code parity: StatusbarEntryItem uses ICommandService.executeCommand()
+    const commandService = this._services.get(ICommandService) as any;
+    if (commandService) {
+      sb.setCommandExecutor((cmdId: string) => {
+        commandService.executeCommand(cmdId);
+      });
+    }
+
+    // Register default status bar entries through the contribution API
+    // (not hardcoded DOM — matches Task 6.1 requirement)
+    const branchAccessor = sb.addEntry({
+      id: 'status.scm.branch',
+      text: '⎇ master',
+      alignment: StatusBarAlignment.Left,
+      priority: 100,
+      tooltip: 'Current branch',
+      name: 'Branch',
+    });
+
+    const errorsAccessor = sb.addEntry({
+      id: 'status.problems',
+      text: '⊘ 0  ⚠ 0',
+      alignment: StatusBarAlignment.Left,
+      priority: 90,
+      tooltip: 'Errors and warnings',
+      name: 'Problems',
+    });
+
+    sb.addEntry({
+      id: 'status.editor.selection',
+      text: 'Ln 1, Col 1',
+      alignment: StatusBarAlignment.Right,
+      priority: 100,
+      tooltip: 'Go to Line/Column',
+      name: 'Cursor Position',
+    });
+
+    sb.addEntry({
+      id: 'status.editor.encoding',
+      text: 'UTF-8',
+      alignment: StatusBarAlignment.Right,
+      priority: 90,
+      tooltip: 'Select Encoding',
+      name: 'Encoding',
+    });
+
+    // Track accessors so the workbench can update them later
+    this._statusBarAccessors = { branch: branchAccessor, errors: errorsAccessor };
+
+    // Context menu on right-click — VS Code parity:
+    // Shows "Hide Status Bar" + per-entry hide toggles
     this._register(sb.onDidContextMenu((event) => {
       const entries = sb.getEntries();
-      ContextMenu.show({
-        items: entries.map((e) => ({
-          id: e.id,
-          label: e.text,
-          group: '1_entries',
-        })),
+      const ctxMenu = ContextMenu.show({
+        items: [
+          {
+            id: 'hideStatusBar',
+            label: 'Hide Status Bar',
+            group: '0_visibility',
+          },
+          ...entries.map((e) => ({
+            id: e.id,
+            label: e.name || e.text,
+            group: '1_entries',
+          })),
+        ],
         anchor: { x: event.x, y: event.y },
+      });
+      ctxMenu.onDidSelect((e) => {
+        if (e.item.id === 'hideStatusBar') {
+          this.toggleStatusBar();
+        }
       });
     }));
   }
+
+  /** Tracked status bar entry accessors for dynamic updates. */
+  private _statusBarAccessors: {
+    branch?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
+    errors?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
+  } = {};
 
   // ════════════════════════════════════════════════════════════════════════
   // Layout view containers

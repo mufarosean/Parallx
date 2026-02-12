@@ -614,20 +614,88 @@ html, body {
 }
 
 /* ── Status Bar ── */
+/* VS Code parity: src/vs/workbench/browser/parts/statusbar/media/statusbarpart.css */
 .part-workbench-parts-statusbar {
-  background: #007acc;
-  color: white;
+  background: var(--vscode-statusBar-background, #007acc);
+  color: var(--vscode-statusBar-foreground, #ffffff);
   z-index: 10;
+  box-sizing: border-box;
+  cursor: default;
+  width: 100%;
+  height: 22px;
+  font-size: 12px;
+  display: flex;
+  overflow: hidden;
 }
 
 .part-workbench-parts-statusbar .part-content {
-  padding: 0 8px;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  padding: 0;
 }
 
-.statusbar-entry {
-  padding: 0 6px;
-  white-space: nowrap;
+/* VS Code: .left-items and .right-items are flex containers */
+.part-workbench-parts-statusbar .left-items,
+.part-workbench-parts-statusbar .right-items {
+  display: flex;
+  height: 100%;
+}
+
+.part-workbench-parts-statusbar .right-items {
+  flex-wrap: wrap;
+  flex-direction: row-reverse; /* VS Code: let elements to the left wrap first */
+}
+
+.part-workbench-parts-statusbar .left-items {
+  flex-grow: 1; /* VS Code: left items push right items to the far right */
+}
+
+/* VS Code: .statusbar-item */
+.statusbar-item {
+  display: inline-block;
   line-height: 22px;
+  height: 100%;
+  vertical-align: top;
+  max-width: 40vw;
+  font-variant-numeric: tabular-nums;
+}
+
+/* VS Code: .statusbar-item > .statusbar-item-label */
+.statusbar-item > .statusbar-item-label {
+  display: flex;
+  height: 100%;
+  margin-right: 3px;
+  margin-left: 3px;
+  padding: 0 5px;
+  white-space: pre;
+  align-items: center;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  outline-width: 0px;
+  text-decoration: none;
+  color: inherit;
+}
+
+/* First/last visible items: reduce margin (attach to edge) — VS Code parity */
+.statusbar-item.left:first-child > .statusbar-item-label,
+.statusbar-item.right:first-child > .statusbar-item-label {
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* Hover */
+.statusbar-item > .statusbar-item-label:hover {
+  background-color: var(--vscode-statusBarItem-hoverBackground, rgba(255, 255, 255, 0.12));
+  color: var(--vscode-statusBarItem-hoverForeground, inherit);
+  text-decoration: none;
+}
+
+/* Active (press) */
+.statusbar-item > .statusbar-item-label:active {
+  background-color: var(--vscode-statusBarItem-activeBackground, rgba(255, 255, 255, 0.18));
 }
 
 /* ── Scrollbar tweaks ── */
@@ -926,29 +994,7 @@ html, body {
   justify-content: center;
 }
 
-/* ── Status Bar content ── */
-.statusbar-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-}
-
-.statusbar-left {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.statusbar-right {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.statusbar-entry[role="button"] {
-  cursor: pointer;
-}
+/* ── Status Bar content (legacy compat — now handled by .left-items/.right-items) ── */
 
 /* ── Activity Bar spacer ── */
 .activity-bar-spacer {

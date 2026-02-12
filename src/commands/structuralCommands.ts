@@ -24,6 +24,7 @@ interface WorkbenchLike {
   toggleSidebar(): void;
   togglePanel(): void;
   toggleMaximizedPanel(): void;
+  toggleStatusBar(): void;
   toggleCommandPalette(): void;
   readonly workspace: { readonly id: string; readonly name: string };
   createWorkspace(name: string, path?: string, switchTo?: boolean): Promise<unknown>;
@@ -138,14 +139,12 @@ const toggleAuxiliaryBar: CommandDescriptor = {
 };
 
 const toggleStatusBar: CommandDescriptor = {
-  id: 'workbench.action.toggleStatusBar',
-  title: 'Toggle Status Bar',
+  id: 'workbench.action.toggleStatusbarVisibility',
+  title: 'Toggle Status Bar Visibility',
   category: 'View',
   handler(ctx) {
     const w = wb(ctx);
-    const sb = w._statusBar;
-    sb.setVisible(!sb.visible);
-    w._relayout();
+    w.toggleStatusBar();
   },
 };
 
