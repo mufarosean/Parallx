@@ -1959,6 +1959,9 @@ export class Workbench extends Disposable {
     // ── Wire file editor resolver (M4 Capability 4) ──
     this._initFileEditorResolver();
 
+    // ── Wire file picker into Quick Access (M4 Capability 6) ──
+    this._initQuickAccessFilePicker();
+
     // ── Register and activate built-in tools (M2 Capability 7) ──
     await this._registerAndActivateBuiltinTools(registry, activationEvents);
 
@@ -2089,6 +2092,73 @@ export class Workbench extends Disposable {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Wire the file picker delegate into the Quick Access widget (M4 Cap 6).
+   * When Ctrl+P is pressed with workspace folders open, the user sees
+   * workspace files matching their query, sorted by recency and fuzzy score.
+   */
+  private _initQuickAccessFilePicker(): void {
+    if (!this._commandPalette) return;
+
+    const fileService = this._services.has(IFileService)
+      ? this._services.get(IFileService) as any
+      : undefined;
+    const workspaceService = this._services.has(IWorkspaceService)
+      ? this._services.get(IWorkspaceService) as any
+      : undefined;
+    const editorService = this._services.has(IEditorService)
+      ? this._services.get(IEditorService) as any
+      : undefined;
+
+    if (!fileService || !workspaceService) {
+      console.warn('[Workbench] File picker not wired — missing fileService or workspaceService');
+      return;
+    }
+
+    // Build delegate using minimal shapes to avoid leaking service internals
+    this._commandPalette.setFilePickerDelegate(
+      {
+        getWorkspaceFolders: () => {
+          return (workspaceService.folders ?? []).map((f: any) => ({
+            uri: f.uri.toString(),
+            name: f.name,
+          }));
+        },
+        readDirectory: async (dirUri: string) => {
+          const uri = URI.parse(dirUri);
+          const entries: any[] = await fileService.readdir(uri);
+          return entries.map((e: any) => ({
+            name: e.name,
+            uri: e.uri.toString(),
+            type: e.type as number,
+          }));
+        },
+        onDidChangeFolders: (listener: () => void) => {
+          return workspaceService.onDidChangeFolders(listener);
+        },
+      },
+      // openFileEditor callback — reuses the existing file editor resolver
+      async (uriString: string) => {
+        try {
+          const uri = URI.parse(uriString);
+          const textFileModelManager = this._services.get(ITextFileModelManager) as any;
+          // Deduplicate — reuse existing input if same file is already open
+          const existing = this._findOpenFileEditorInput(uri);
+          const input = existing ?? FileEditorInput.create(
+            uri, textFileModelManager, fileService, undefined,
+          );
+          if (editorService) {
+            await editorService.openEditor(input, { pinned: true });
+          }
+        } catch (err) {
+          console.error('[QuickAccess] Failed to open file:', uriString, err);
+        }
+      },
+    );
+
+    console.log('[Workbench] Quick Access file picker wired');
   }
 
   /**

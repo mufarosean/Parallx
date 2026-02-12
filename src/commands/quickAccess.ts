@@ -35,6 +35,18 @@ const RECENT_STORAGE_KEY = 'parallx:commandPalette:recent';
 /** VS Code prefix for command mode. */
 const COMMAND_PREFIX = '>';
 
+// ── File picker constants (M4 Cap 6) ────────────────────────────────────────
+
+const RECENT_FILES_KEY = 'parallx:quickAccess:recentFiles';
+const MAX_RECENT_FILES = 20;
+const MAX_FILE_RESULTS = 50;
+const FILE_SCAN_DEPTH = 10;
+
+/** Directory names excluded from recursive file scanning. */
+const EXCLUDED_DIRS = new Set([
+  'node_modules', '.git', '__pycache__', 'dist', 'build', '.next',
+]);
+
 // ─── Fuzzy match ─────────────────────────────────────────────────────────────
 
 /**
@@ -118,6 +130,22 @@ interface IWorkspaceServiceLike {
   switchWorkspace(workspaceId: string): Promise<void>;
 }
 
+// ── File picker types (M4 Cap 6) ────────────────────────────────────────────
+
+/** Minimal shape for file-picker scanning — avoids circular imports. */
+interface IFilePickerDelegate {
+  getWorkspaceFolders(): readonly { uri: string; name: string }[];
+  readDirectory(dirUri: string): Promise<readonly { name: string; uri: string; type: number }[]>;
+  onDidChangeFolders(listener: () => void): IDisposable;
+}
+
+interface FilePickerEntry {
+  readonly name: string;
+  readonly uri: string;
+  readonly relativePath: string;
+  readonly folderName: string;
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Commands Provider — existing command palette behaviour under '>' prefix
 // ═════════════════════════════════════════════════════════════════════════════
@@ -193,56 +221,156 @@ class CommandsProvider implements IQuickAccessProvider {
 
 class GeneralProvider implements IQuickAccessProvider {
   readonly prefix = '';
-  readonly placeholder = 'Search workspaces and views, or type > for commands.';
+  readonly placeholder = 'Search files, workspaces, or type > for commands.';
+
+  // ── File picker state (M4 Cap 6) ──────────────────────────────────────
+  private _fileScanner: WorkspaceFileScanner | undefined;
+  private _openFileEditor: ((uri: string) => void) | undefined;
+  private _recentFileUris: string[] = [];
 
   constructor(
     private readonly _getWorkspaceService: () => IWorkspaceServiceLike | undefined,
-  ) {}
+  ) {
+    this._loadRecentFiles();
+  }
+
+  // ── File picker setters (M4 Cap 6) ────────────────────────────────────
+
+  setFileScanner(scanner: WorkspaceFileScanner): void {
+    this._fileScanner = scanner;
+  }
+
+  setOpenFileEditor(fn: (uri: string) => void): void {
+    this._openFileEditor = fn;
+  }
+
+  // ── Recent files persistence (M4 Cap 6) ───────────────────────────────
+
+  private _loadRecentFiles(): void {
+    try {
+      const raw = localStorage.getItem(RECENT_FILES_KEY);
+      this._recentFileUris = raw ? JSON.parse(raw) : [];
+    } catch {
+      this._recentFileUris = [];
+    }
+  }
+
+  private _saveRecentFiles(): void {
+    try {
+      localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(this._recentFileUris));
+    } catch { /* storage full */ }
+  }
+
+  pushRecentFile(uri: string): void {
+    this._recentFileUris = [
+      uri,
+      ...this._recentFileUris.filter((u) => u !== uri),
+    ].slice(0, MAX_RECENT_FILES);
+    this._saveRecentFiles();
+  }
+
+  // ── Items ─────────────────────────────────────────────────────────────
 
   async getItems(query: string): Promise<QuickAccessItem[]> {
-    const workspaceService = this._getWorkspaceService();
-    if (!workspaceService) return [];
-
     const items: QuickAccessItem[] = [];
-    const currentId = workspaceService.workspace.id;
+    const hasWorkspaceFolders = this._fileScanner
+      && (this._fileScanner.cached?.length ?? 0) > 0
+      || this._fileScanner?.isScanning;
 
-    try {
-      const recents = await workspaceService.getRecentWorkspaces();
-      for (const entry of recents) {
-        // Exclude current workspace from the list
-        if (entry.identity.id === currentId) continue;
+    // ── File results (M4 Cap 6) ─────────────────────────────────────────
+    if (this._fileScanner) {
+      this._fileScanner.ensureScanned();
+      const files = this._fileScanner.cached;
 
-        const label = entry.identity.name;
-        const score = query.length > 0 ? fuzzyScore(query, label) : 0;
-        if (query.length > 0 && score < 0) continue;
+      if (files) {
+        const recentSet = new Set(this._recentFileUris);
+        const recentOrder = this._recentFileUris;
+        const openFn = this._openFileEditor;
 
-        const lastAccessed = entry.metadata.lastAccessedAt
-          ? _formatRelativeTime(entry.metadata.lastAccessedAt)
-          : '';
+        // Score and collect
+        const scored: { entry: FilePickerEntry; score: number; isRecent: boolean }[] = [];
+        for (const file of files) {
+          const score = query.length > 0 ? fuzzyScore(query, file.name) : 0;
+          if (query.length > 0 && score < 0) continue;
+          scored.push({ entry: file, score, isRecent: recentSet.has(file.uri) });
+        }
 
+        // Sort: recent first (by recency order), then score, then alpha
+        scored.sort((a, b) => {
+          if (a.isRecent && !b.isRecent) return -1;
+          if (!a.isRecent && b.isRecent) return 1;
+          if (a.isRecent && b.isRecent) {
+            return recentOrder.indexOf(a.entry.uri) - recentOrder.indexOf(b.entry.uri);
+          }
+          if (a.score !== b.score) return a.score - b.score;
+          return a.entry.name.localeCompare(b.entry.name);
+        });
+
+        const limit = Math.min(scored.length, MAX_FILE_RESULTS);
+        for (let i = 0; i < limit; i++) {
+          const { entry, score, isRecent } = scored[i];
+          items.push({
+            id: `file:${entry.uri}`,
+            label: entry.name,
+            detail: entry.relativePath,
+            group: 'files',
+            score: isRecent ? -1 : score,
+            isRecent,
+            accept: () => {
+              this.pushRecentFile(entry.uri);
+              openFn?.(entry.uri);
+            },
+          });
+        }
+      } else if (this._fileScanner.isScanning) {
         items.push({
-          id: `workspace:${entry.identity.id}`,
-          label,
-          detail: lastAccessed,
-          group: 'recent workspaces',
-          score,
-          accept: () => {
-            workspaceService.switchWorkspace(entry.identity.id).catch((err) => {
-              console.error('[QuickAccess] Failed to switch workspace:', err);
-            });
-          },
+          id: 'files:searching',
+          label: 'Searching files…',
+          detail: '',
+          group: 'files',
+          score: 0,
+          accept: () => {},
         });
       }
-    } catch (err) {
-      console.warn('[QuickAccess] Failed to load recent workspaces:', err);
     }
 
-    // Sort by score then name
-    items.sort((a, b) => {
-      if (a.score !== b.score) return a.score - b.score;
-      return a.label.localeCompare(b.label);
-    });
+    // ── Workspace results ───────────────────────────────────────────────
+    const workspaceService = this._getWorkspaceService();
+    if (workspaceService) {
+      const currentId = workspaceService.workspace.id;
+      try {
+        const recents = await workspaceService.getRecentWorkspaces();
+        for (const entry of recents) {
+          if (entry.identity.id === currentId) continue;
 
+          const label = entry.identity.name;
+          const score = query.length > 0 ? fuzzyScore(query, label) : 0;
+          if (query.length > 0 && score < 0) continue;
+
+          const lastAccessed = entry.metadata.lastAccessedAt
+            ? _formatRelativeTime(entry.metadata.lastAccessedAt)
+            : '';
+
+          items.push({
+            id: `workspace:${entry.identity.id}`,
+            label,
+            detail: lastAccessed,
+            group: 'recent workspaces',
+            score,
+            accept: () => {
+              workspaceService.switchWorkspace(entry.identity.id).catch((err) => {
+                console.error('[QuickAccess] Failed to switch workspace:', err);
+              });
+            },
+          });
+        }
+      } catch (err) {
+        console.warn('[QuickAccess] Failed to load recent workspaces:', err);
+      }
+    }
+
+    // Sort: files before workspaces (group order), then within each group
+    // the items are already sorted by their insertion logic
     return items;
   }
 }
@@ -264,6 +392,114 @@ function _formatRelativeTime(isoString: string): string {
     return dt.toLocaleDateString();
   } catch {
     return '';
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Workspace File Scanner (M4 Cap 6)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Recursively scans workspace folders for files, caching results.
+ * Scanning is async and non-blocking — results are available via `cached`.
+ * Cache is invalidated when workspace folders change.
+ */
+class WorkspaceFileScanner {
+  private _cache: FilePickerEntry[] | null = null;
+  private _scanPromise: Promise<void> | null = null;
+  private _version = 0;
+
+  private readonly _onDidScan = new Emitter<void>();
+  readonly onDidScan: Event<void> = this._onDidScan.event;
+
+  constructor(private readonly _delegate: IFilePickerDelegate) {
+    _delegate.onDidChangeFolders(() => this.invalidate());
+  }
+
+  invalidate(): void {
+    this._cache = null;
+    this._version++;
+    this._scanPromise = null;
+  }
+
+  get cached(): readonly FilePickerEntry[] | null {
+    return this._cache;
+  }
+
+  get isScanning(): boolean {
+    return this._scanPromise !== null && this._cache === null;
+  }
+
+  /** Start scanning (if not already in progress or cached). */
+  ensureScanned(): void {
+    if (this._cache || this._scanPromise) return;
+    const version = ++this._version;
+    this._scanPromise = this._doScan(version)
+      .then(() => {
+        if (this._version === version) {
+          this._onDidScan.fire();
+        }
+      })
+      .catch((err) => {
+        console.warn('[FileScanner] scan failed:', err);
+      });
+  }
+
+  private async _doScan(version: number): Promise<void> {
+    const files: FilePickerEntry[] = [];
+    const folders = this._delegate.getWorkspaceFolders();
+
+    for (const folder of folders) {
+      if (this._version !== version) return;
+      await this._scanDir(folder.uri, folder.name, '', files, 0, version);
+    }
+
+    if (this._version === version) {
+      this._cache = files;
+    }
+  }
+
+  private async _scanDir(
+    dirUri: string,
+    folderName: string,
+    relativePath: string,
+    out: FilePickerEntry[],
+    depth: number,
+    version: number,
+  ): Promise<void> {
+    if (depth >= FILE_SCAN_DEPTH || this._version !== version) return;
+
+    try {
+      const entries = await this._delegate.readDirectory(dirUri);
+      for (const entry of entries) {
+        if (this._version !== version) return;
+
+        const childRelative = relativePath
+          ? `${relativePath}/${entry.name}`
+          : entry.name;
+
+        if (entry.type === 2 /* Directory */) {
+          if (EXCLUDED_DIRS.has(entry.name)) continue;
+          await this._scanDir(
+            entry.uri, folderName, childRelative, out, depth + 1, version,
+          );
+        } else if (entry.type === 1 /* File */) {
+          out.push({
+            name: entry.name,
+            uri: entry.uri,
+            relativePath: childRelative,
+            folderName,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[FileScanner] readdir failed:', dirUri, err);
+    }
+  }
+
+  dispose(): void {
+    this._onDidScan.dispose();
+    this._version++;
   }
 }
 
@@ -349,6 +585,29 @@ export class QuickAccessWidget extends Disposable {
 
   setFocusTracker(tracker: { suspend(): void; resume(restore?: boolean): void }): void {
     this._focusTracker = tracker;
+  }
+
+  /**
+   * Wire the file picker delegate (M4 Cap 6).
+   * Creates a workspace file scanner that feeds file results into the
+   * general provider. When scanning completes, the visible list is refreshed.
+   */
+  setFilePickerDelegate(
+    delegate: IFilePickerDelegate,
+    openFileEditor: (uri: string) => void,
+  ): void {
+    const scanner = new WorkspaceFileScanner(delegate);
+    this._generalProvider.setFileScanner(scanner);
+    this._generalProvider.setOpenFileEditor(openFileEditor);
+
+    // Re-render when background scan completes
+    this._register({
+      dispose: scanner.onDidScan(() => {
+        if (this._visible && this._activeProvider === this._generalProvider) {
+          this._resolveProviderAndUpdate();
+        }
+      }).dispose,
+    });
   }
 
   // ── Public API ─────────────────────────────────────────────────────────
@@ -609,7 +868,7 @@ export class QuickAccessWidget extends Disposable {
       empty.className = 'command-palette-empty';
       empty.textContent = this._activeProvider === this._commandsProvider
         ? 'No matching commands'
-        : 'No recent workspaces';
+        : 'No matching files or workspaces';
       list.appendChild(empty);
       return;
     }

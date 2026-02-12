@@ -870,8 +870,9 @@ The Quick Access widget (M3 Cap 7) gains a file picker mode. When opened with Ct
 
 #### Tasks
 
-**Task 6.1 — Implement File Picker Quick Access Provider**
+**Task 6.1 — Implement File Picker Quick Access Provider** ✅
 - **Task Description:** Add a `FilesProvider` to the Quick Access system that lists files from workspace folders.
+- **Deviation:** Rather than a separate `FilesProvider` class, file scanning is integrated into the existing `GeneralProvider` (prefix `''`) via a `WorkspaceFileScanner` class and setter methods on the provider. This avoids modifying the provider resolution logic (which resolves by prefix). The scanner is wired into the `QuickAccessWidget` via `setFilePickerDelegate()` called from `workbench._initQuickAccessFilePicker()`. Recent files are tracked in localStorage (`parallx:quickAccess:recentFiles`, max 20 entries). File results appear in a "files" group; workspace results in a "recent workspaces" group. The "Searching files…" placeholder appears while the background scan is in progress. Cache is invalidated on `onDidChangeFolders`. `EXCLUDED_DIRS` is a static `Set` — not yet user-configurable. The `openFileEditor` callback deduplicates by checking existing open editors via `_findOpenFileEditorInput(uri)`.
 - **Output:** File search results in Quick Access when opened without prefix.
 - **Completion Criteria:**
   - When Quick Access is opened with Ctrl+P and workspace folders exist, shows file results
