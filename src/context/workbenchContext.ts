@@ -29,6 +29,8 @@ export const CTX_ACTIVE_EDITOR = 'activeEditor';
 export const CTX_ACTIVE_EDITOR_GROUP = 'activeEditorGroup';
 export const CTX_EDITOR_GROUP_COUNT = 'editorGroupCount';
 
+export const CTX_ACTIVE_VIEW_CONTAINER = 'activeViewContainer';
+
 export const CTX_WORKSPACE_LOADED = 'workspaceLoaded';
 export const CTX_WORKBENCH_STATE = 'workbenchState';
 
@@ -77,6 +79,8 @@ export class WorkbenchContextManager extends Disposable {
   private readonly _activeEditorGroup: IContextKey<string | undefined>;
   private readonly _editorGroupCount: IContextKey<number>;
 
+  private readonly _activeViewContainer: IContextKey<string | undefined>;
+
   private readonly _workspaceLoaded: IContextKey<boolean>;
   private readonly _workbenchState: IContextKey<string>;
 
@@ -100,6 +104,8 @@ export class WorkbenchContextManager extends Disposable {
     this._activeEditor = _contextKeyService.createKey<string | undefined>(CTX_ACTIVE_EDITOR, undefined);
     this._activeEditorGroup = _contextKeyService.createKey<string | undefined>(CTX_ACTIVE_EDITOR_GROUP, undefined);
     this._editorGroupCount = _contextKeyService.createKey(CTX_EDITOR_GROUP_COUNT, 1);
+
+    this._activeViewContainer = _contextKeyService.createKey<string | undefined>(CTX_ACTIVE_VIEW_CONTAINER, undefined);
 
     this._workspaceLoaded = _contextKeyService.createKey(CTX_WORKSPACE_LOADED, false);
     this._workbenchState = _contextKeyService.createKey(CTX_WORKBENCH_STATE, 'empty');
@@ -200,5 +206,9 @@ export class WorkbenchContextManager extends Disposable {
 
   setStatusBarVisible(visible: boolean): void {
     this._statusBarVisible.set(visible);
+  }
+
+  setActiveViewContainer(containerId: string | undefined): void {
+    this._activeViewContainer.set(containerId);
   }
 }

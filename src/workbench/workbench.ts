@@ -1256,6 +1256,8 @@ export class Workbench extends Disposable {
     this._activityBarPart.setActiveIcon('view.explorer');
     // Track it as the active container
     this._activeSidebarContainerId = 'view.explorer';
+    // Update activeViewContainer context key (Capability 2 deferred item)
+    this._workbenchContext?.setActiveViewContainer('view.explorer');
 
     // Sidebar header label
     const headerSlot = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
@@ -1579,6 +1581,7 @@ export class Workbench extends Disposable {
       configurationService: this._configService,
       commandContributionProcessor: commandContribution,
       viewContributionProcessor: this._viewContribution,
+      badgeHost: this._activityBarPart,
     };
 
     // Storage dependencies for persistent tool mementos (Cap 4)
@@ -2010,6 +2013,62 @@ export class Workbench extends Disposable {
     this._layoutViewContainers();
   }
 
+  // ── LayoutHost Protocol ──────────────────────────────────────────────────
+  // These methods fulfil the LayoutHost interface expected by LayoutService.
+  // VS Code reference: IWorkbenchLayoutService.isVisible / setPartHidden.
+
+  /**
+   * Check whether a part is currently visible by its PartId.
+   */
+  isPartVisible(partId: string): boolean {
+    switch (partId) {
+      case PartId.Sidebar: return this._sidebar.visible;
+      case PartId.Panel: return this._panel.visible;
+      case PartId.AuxiliaryBar: return this._auxiliaryBar.visible;
+      case PartId.StatusBar: return this._statusBar!.visible;
+      case PartId.ActivityBar: return true; // always visible
+      case PartId.Titlebar: return true;    // always visible
+      case PartId.Editor: return true;      // always visible
+      default: return false;
+    }
+  }
+
+  /**
+   * Show or hide a part by its PartId.
+   * Dispatches to the relevant toggle method following VS Code's
+   * `setPartHidden → setSideBarHidden / setPanelHidden` pattern.
+   */
+  setPartHidden(hidden: boolean, partId: string): void {
+    const isVisible = this.isPartVisible(partId);
+    // No-op if already in the desired state
+    if (hidden === !isVisible) return;
+
+    switch (partId) {
+      case PartId.Sidebar:
+        this.toggleSidebar();
+        break;
+      case PartId.Panel:
+        // Panel toggle lives in structuralCommands — inline the same logic
+        if (this._panel.visible) {
+          this._vGrid.removeView(this._panel.id);
+          this._panel.setVisible(false);
+        } else {
+          this._panel.setVisible(true);
+          this._vGrid.addView(this._panel as any, 200);
+        }
+        this._vGrid.layout();
+        this._layoutViewContainers();
+        break;
+      case PartId.AuxiliaryBar:
+        this.toggleAuxiliaryBar();
+        break;
+      // Titlebar, Editor, ActivityBar — not toggleable
+      default:
+        console.warn(`[Workbench] setPartHidden not supported for "${partId}"`);
+        break;
+    }
+  }
+
   /**
    * Switch the active sidebar container.
    *
@@ -2030,6 +2089,8 @@ export class Workbench extends Disposable {
 
     // Show new container
     this._activeSidebarContainerId = containerId;
+    // Update activeViewContainer context key (Capability 2 deferred item)
+    this._workbenchContext?.setActiveViewContainer(containerId ?? 'view.explorer');
     if (containerId) {
       const next =
         this._builtinSidebarContainers.get(containerId) ??

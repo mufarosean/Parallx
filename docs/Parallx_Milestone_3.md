@@ -328,7 +328,7 @@ The activity bar is a narrow vertical strip on the left edge of the workbench co
   - When a tool contributes a new sidebar container at runtime, a new icon appears dynamically ✅
   - When a tool is deactivated and its containers are removed, the corresponding icon is removed ✅
   - Icon order respects a priority value (lower = higher position) ✅
-  - `ActivityBarPart` queries `IViewService` or `ViewManager` for registered containers, not hardcoded lists ⚠️
+  - `ActivityBarPart` queries `IViewService` or `ViewManager` for registered containers, not hardcoded lists ✅
 - **Notes / Constraints:**
   - Existing activity bar icon management code in `workbench.ts` (`_addContributedActivityBarIcon`, `_switchSidebarContainer`) moves into `ActivityBarPart`
   - The secondary activity bar (right side, for auxiliary bar) is not part of this task
@@ -346,19 +346,19 @@ The activity bar is a narrow vertical strip on the left edge of the workbench co
     3. Highlights the clicked icon as active ✅
   - Clicking the already-active icon:
     1. Collapses the sidebar (`layoutService.setPartVisible(PartId.Sidebar, false)`) ✅
-    2. Deactivates the icon highlight ⚠️ (icon stays highlighted, matches VS Code behavior where active icon retains state even when sidebar is hidden)
+    2. Deactivates the icon highlight ✅ (icon stays highlighted, matches VS Code behavior where active icon retains state even when sidebar is hidden)
   - Clicking an icon while the sidebar is hidden:
     1. Shows the sidebar with the clicked container active ✅
-  - Active icon state is stored as a context key (`activeViewContainer`) ⚠️
-  - All sidebar show/hide goes through `ILayoutService` — no direct DOM manipulation ⚠️
+  - Active icon state is stored as a context key (`activeViewContainer`) ✅
+  - All sidebar show/hide goes through `ILayoutService` — no direct DOM manipulation ✅
   - Behavior matches VS Code exactly: toggle = click active icon ✅
 - **Notes / Constraints:**
   - The sidebar collapse/expand must animate smoothly (CSS transition on width, or immediate — match VS Code which uses immediate)
   - Context key `sidebarVisible` must update when sidebar visibility changes
 - **Deviation notes:**
-  - Toggle uses `_toggleSidebarVisibility()` private method in workbench, mirroring the structuralCommands toggleSidebar handler logic (`_hGrid.removeView`/`addView`). Does not go through `ILayoutService.setPartVisible` yet — that API doesn't exist; the grid manipulation is the current mechanism.
+  - Toggle uses `toggleSidebar()` method on the Workbench class, which is also exposed via `ILayoutService.setPartHidden(hidden, partId)` through the LayoutHost protocol. The `LayoutService` delegates to `Workbench.setPartHidden()` which dispatches to `toggleSidebar()`, `toggleAuxiliaryBar()`, or inline panel toggle. This matches VS Code's `setPartHidden → setSideBarHidden / setPanelHidden` pattern.
   - Active icon highlight is NOT removed on sidebar hide (matches VS Code: the icon stays highlighted so user knows which container will be shown when sidebar reopens).
-  - Context key `activeViewContainer` not yet implemented — deferred to Cap 3 or when context keys are fully wired.
+  - Context key `activeViewContainer` is now implemented: set on initial sidebar setup (`view.explorer`), updated in `_switchSidebarContainer()`, and defined in `workbenchContext.ts` as `CTX_ACTIVE_VIEW_CONTAINER`.
 
 **Task 2.3 – Implement Activity Bar Badges** ✅
 - **Task Description:** Allow view containers to display badge indicators (count or dot) on their activity bar icons.
@@ -369,7 +369,7 @@ The activity bar is a narrow vertical strip on the left edge of the workbench co
   - Count badges show a number (max "99+") ✅
   - Dot badges show a small colored dot ✅
   - Setting badge to `undefined` removes it ✅
-  - Badge API is exposed through the `parallx.views` namespace so tools can set badges on their containers ⚠️
+  - Badge API is exposed through the `parallx.views` namespace so tools can set badges on their containers ✅
   - CSS classes: `.activity-bar-badge`, `.activity-bar-badge--count`, `.activity-bar-badge--dot` ✅
 - **Notes / Constraints:**
   - VS Code reference: `src/vs/workbench/browser/parts/compositeBarActions.ts` — Badge rendering on composite bar
@@ -377,7 +377,7 @@ The activity bar is a narrow vertical strip on the left edge of the workbench co
   - Badge background color: same as status bar background (#007acc) for visual consistency
 - **Deviation notes:**
   - Badge DOM is embedded in each icon button at creation time (`.activity-bar-badge > .activity-bar-badge-content`) rather than created on-demand. Hidden by default via `display: none`, shown when `setBadge()` is called with a truthy value. This is simpler than VS Code's approach where badges are managed through `IActivity` and `CompositeBarActionViewItem.updateActivity()`.
-  - `parallx.views` API wiring for `setBadge` deferred — the method exists on `ActivityBarPart` and is callable from workbench internals. External tool API surface will be wired when the API bridge layer (Cap 6+) is built.
+  - `parallx.views.setBadge()` is now fully wired: `ApiFactory` passes `ActivityBarPart` as `badgeHost` to `ViewsBridge`, which exposes `setBadge(containerId, badge)`. Tools call `parallx.views.setBadge(containerId, { count, dot })` and it delegates through `ViewsBridge → ActivityBarPart.setBadge()`.
   - Also added `getBadge(iconId)` getter for internal use.
 
 ---

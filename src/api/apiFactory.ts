@@ -46,6 +46,8 @@ export interface ApiFactoryDependencies {
   readonly configurationService?: ConfigurationService;
   readonly commandContributionProcessor?: CommandContributionProcessor;
   readonly viewContributionProcessor?: ViewContributionProcessor;
+  /** ActivityBarPart badge host for parallx.views.setBadge(). */
+  readonly badgeHost?: { setBadge(iconId: string, badge: { count?: number; dot?: boolean } | undefined): void };
 }
 
 // ─── API Shape ───────────────────────────────────────────────────────────────
@@ -57,6 +59,7 @@ export interface ApiFactoryDependencies {
 export interface ParallxApiObject {
   readonly views: {
     registerViewProvider(viewId: string, provider: { createView(container: HTMLElement): IDisposable }, options?: { name?: string; icon?: string; defaultContainerId?: string; when?: string }): IDisposable;
+    setBadge(containerId: string, badge: { count?: number; dot?: boolean } | undefined): void;
   };
   readonly commands: {
     registerCommand(id: string, handler: (...args: unknown[]) => unknown | Promise<unknown>): IDisposable;
@@ -131,7 +134,7 @@ export function createToolApi(
     ? new CommandsBridge(toolId, commandService as any, subscriptions, deps.commandContributionProcessor)
     : undefined;
 
-  const viewsBridge = new ViewsBridge(toolId, deps.viewManager, subscriptions, deps.viewContributionProcessor);
+  const viewsBridge = new ViewsBridge(toolId, deps.viewManager, subscriptions, deps.viewContributionProcessor, deps.badgeHost);
 
   const windowBridge = new WindowBridge(
     toolId,
@@ -153,6 +156,8 @@ export function createToolApi(
     views: Object.freeze({
       registerViewProvider: (viewId, provider, options) =>
         viewsBridge.registerViewProvider(viewId, provider, options),
+      setBadge: (containerId, badge) =>
+        viewsBridge.setBadge(containerId, badge),
     }),
 
     commands: Object.freeze({

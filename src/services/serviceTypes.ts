@@ -23,11 +23,39 @@ export const ILifecycleService = createServiceIdentifier<ILifecycleService>('ILi
 // ─── ILayoutService ──────────────────────────────────────────────────────────
 
 /**
+ * Event fired when a part's visibility changes.
+ * VS Code reference: IPartVisibilityChangeEvent in layoutService.ts
+ */
+export interface PartVisibilityChangeEvent {
+  readonly partId: string;
+  readonly visible: boolean;
+}
+
+/**
  * Manages overall workbench layout.
+ * VS Code reference: IWorkbenchLayoutService (src/vs/workbench/services/layout/browser/layoutService.ts)
  */
 export interface ILayoutService extends IDisposable {
   readonly container: HTMLElement | undefined;
   layout(): void;
+
+  /**
+   * Returns whether the given part is currently visible.
+   * VS Code reference: isVisible(part: Parts): boolean
+   */
+  isVisible(partId: string): boolean;
+
+  /**
+   * Show or hide a workbench part.
+   * VS Code reference: setPartHidden(hidden: boolean, part: Parts): void
+   */
+  setPartHidden(hidden: boolean, partId: string): void;
+
+  /**
+   * Fires when any part's visibility changes.
+   * VS Code reference: onDidChangePartVisibility
+   */
+  readonly onDidChangePartVisibility: Event<PartVisibilityChangeEvent>;
 }
 
 export const ILayoutService = createServiceIdentifier<ILayoutService>('ILayoutService');

@@ -26,6 +26,14 @@ export interface ViewProviderOptions {
 }
 
 /**
+ * Minimal shape of ActivityBarPart for badge delegation.
+ * Avoids circular import of the full Part class.
+ */
+export interface BadgeHost {
+  setBadge(iconId: string, badge: { count?: number; dot?: boolean } | undefined): void;
+}
+
+/**
  * Bridge for the `parallx.views` API namespace.
  */
 export class ViewsBridge {
@@ -37,6 +45,7 @@ export class ViewsBridge {
     private readonly _viewManager: ViewManager,
     private readonly _subscriptions: IDisposable[],
     private readonly _viewContributionProcessor?: ViewContributionProcessor,
+    private readonly _badgeHost?: BadgeHost,
   ) {}
 
   /**
@@ -89,6 +98,19 @@ export class ViewsBridge {
     this._subscriptions.push(disposable);
 
     return disposable;
+  }
+
+  /**
+   * Set a badge on an activity bar icon.
+   * VS Code reference: IActivity badge on CompositeBarActionViewItem.
+   */
+  setBadge(containerId: string, badge: { count?: number; dot?: boolean } | undefined): void {
+    this._throwIfDisposed();
+    if (!this._badgeHost) {
+      console.warn(`[ViewsBridge] Badge host not available — cannot setBadge for "${containerId}"`);
+      return;
+    }
+    this._badgeHost.setBadge(containerId, badge);
   }
 
   dispose(): void {
