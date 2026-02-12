@@ -1307,14 +1307,14 @@ export class Workbench extends Disposable {
       { commandId: 'file.openFile', title: 'Open File…', group: '2_open', order: 1 },
       { commandId: 'workspace.openFolder', title: 'Open Folder…', group: '2_open', order: 2 },
       { commandId: 'workspace.openRecent', title: 'Open Recent…', group: '2_open', order: 3 },
-      { commandId: 'workspace.addFolder', title: 'Add Folder to Workspace…', group: '3_workspace', order: 1 },
+      { commandId: 'workspace.addFolderToWorkspace', title: 'Add Folder to Workspace…', group: '3_workspace', order: 1 },
       { commandId: 'workspace.saveAs', title: 'Save Workspace As…', group: '3_workspace', order: 2 },
-      { commandId: 'workspace.duplicate', title: 'Duplicate Workspace', group: '3_workspace', order: 3 },
+      { commandId: 'workspace.duplicateWorkspace', title: 'Duplicate Workspace', group: '3_workspace', order: 3 },
       { commandId: 'file.save', title: 'Save', group: '4_save', order: 1 },
       { commandId: 'file.saveAs', title: 'Save As…', group: '4_save', order: 2 },
       { commandId: 'file.saveAll', title: 'Save All', group: '4_save', order: 3 },
       { commandId: 'file.revert', title: 'Revert File', group: '5_close', order: 1 },
-      { commandId: 'workbench.closeActiveEditor', title: 'Close Editor', group: '5_close', order: 2 },
+      { commandId: 'workbench.action.closeActiveEditor', title: 'Close Editor', group: '5_close', order: 2 },
       { commandId: 'workspace.closeFolder', title: 'Close Folder', group: '5_close', order: 3 },
       { commandId: 'workspace.closeWindow', title: 'Close Window', group: '5_close', order: 4 },
     ]));
@@ -2062,8 +2062,8 @@ export class Workbench extends Disposable {
       const workspaceService = this._services.has(IWorkspaceService)
         ? this._services.get(IWorkspaceService) as any
         : undefined;
-      if (workspaceService?.workspaceFolders) {
-        for (const folder of workspaceService.workspaceFolders) {
+      if (workspaceService?.folders) {
+        for (const folder of workspaceService.folders) {
           const folderUri = typeof folder.uri === 'string' ? URI.parse(folder.uri) : folder.uri;
           const folderPath = folderUri.fsPath;
           if (uri.fsPath.startsWith(folderPath)) {

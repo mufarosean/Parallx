@@ -413,13 +413,38 @@ function saveExpandState(): void {
   _context.workspaceState.update(EXPAND_STATE_KEY, expanded);
 }
 
+// ─── URI ↔ Path Helpers ──────────────────────────────────────────────────────
+
+/**
+ * Convert a `file:///` URI string to an OS filesystem path.
+ * e.g. `file:///D:/project/src` → `D:/project/src`
+ *      `file:///home/user/proj` → `/home/user/proj`
+ * If the string is already a filesystem path, returns it unchanged.
+ */
+function uriToFsPath(uri: string): string {
+  if (!uri.startsWith('file:///')) return uri;
+  // Strip scheme.  On Windows: file:///D:/foo → D:/foo
+  //                On Linux:   file:///home   → /home
+  const raw = uri.slice('file:///'.length);
+  // If it looks like a Windows drive letter (e.g. D:/...), keep as-is
+  if (/^[a-zA-Z]:/.test(raw)) return raw;
+  // Otherwise it's a Unix path — prepend the leading /
+  return '/' + raw;
+}
+
 // ─── Filesystem Helpers ──────────────────────────────────────────────────────
 
 async function readDirectory(uri: string): Promise<{ name: string; type: number }[]> {
   const electronFs = (globalThis as any).parallxElectron?.fs;
   if (electronFs) {
     try {
-      const entries: { name: string; type: string }[] = await electronFs.readdir(uri);
+      const result = await electronFs.readdir(uriToFsPath(uri));
+      // IPC returns { entries: [...], error: null } or { error: {...} }
+      if (result.error) {
+        console.error('[Explorer] readdir error:', result.error);
+        return [];
+      }
+      const entries: { name: string; type: string }[] = result.entries ?? result;
       return entries.map(e => ({
         name: e.name,
         type: e.type === 'directory' ? FILE_TYPE_DIRECTORY : FILE_TYPE_FILE,
@@ -433,38 +458,39 @@ async function readDirectory(uri: string): Promise<{ name: string; type: number 
 }
 
 function joinUri(base: string, name: string): string {
-  const sep = base.includes('\\') ? '\\' : '/';
   if (base.startsWith('file:///')) {
-    const path = base.replace('file:///', '').replace(/\//g, sep);
-    return 'file:///' + path + sep + name;
+    // Always use forward slashes inside file:/// URIs
+    const cleaned = base.endsWith('/') ? base.slice(0, -1) : base;
+    return cleaned + '/' + name;
   }
+  const sep = base.includes('\\') ? '\\' : '/';
   return base + sep + name;
 }
 
 async function fsCreateFile(parentUri: string, name: string): Promise<void> {
   const electronFs = (globalThis as any).parallxElectron?.fs;
   if (!electronFs) return;
-  const fileUri = joinUri(parentUri, name);
-  await electronFs.writeFile(fileUri, '');
+  const childPath = uriToFsPath(joinUri(parentUri, name));
+  await electronFs.writeFile(childPath, '');
 }
 
 async function fsCreateFolder(parentUri: string, name: string): Promise<void> {
   const electronFs = (globalThis as any).parallxElectron?.fs;
   if (!electronFs) return;
-  const folderUri = joinUri(parentUri, name);
-  await electronFs.mkdir(folderUri);
+  const childPath = uriToFsPath(joinUri(parentUri, name));
+  await electronFs.mkdir(childPath);
 }
 
 async function fsDelete(uri: string): Promise<void> {
   const electronFs = (globalThis as any).parallxElectron?.fs;
   if (!electronFs) return;
-  await electronFs.delete(uri, { recursive: true, useTrash: true });
+  await electronFs.delete(uriToFsPath(uri), { recursive: true, useTrash: true });
 }
 
 async function fsRename(oldUri: string, newUri: string): Promise<void> {
   const electronFs = (globalThis as any).parallxElectron?.fs;
   if (!electronFs) return;
-  await electronFs.rename(oldUri, newUri);
+  await electronFs.rename(uriToFsPath(oldUri), uriToFsPath(newUri));
 }
 
 // ─── Keyboard Navigation ─────────────────────────────────────────────────────
