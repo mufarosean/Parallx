@@ -22,6 +22,8 @@ import { GroupDirection } from '../editor/editorTypes.js';
 interface WorkbenchLike {
   toggleAuxiliaryBar(): void;
   toggleSidebar(): void;
+  togglePanel(): void;
+  toggleMaximizedPanel(): void;
   toggleCommandPalette(): void;
   readonly workspace: { readonly id: string; readonly name: string };
   createWorkspace(name: string, path?: string, switchTo?: boolean): Promise<unknown>;
@@ -52,6 +54,7 @@ interface WorkbenchLike {
     readonly root: { readonly children: readonly unknown[]; readonly orientation: string };
     getView(viewId: string): unknown | undefined;
     hasView(viewId: string): boolean;
+    getViewSize(viewId: string): number | undefined;
     resizeSash(parentNode: unknown, sashIndex: number, delta: number): void;
   };
   readonly _workspaceSaver: { save(): Promise<void> };
@@ -112,17 +115,16 @@ const togglePanel: CommandDescriptor = {
   category: 'View',
   keybinding: 'Ctrl+J',
   handler(ctx) {
-    const w = wb(ctx);
-    const panel = w._panel;
-    if (panel.visible) {
-      w._vGrid.removeView(panel.id);
-      panel.setVisible(false);
-    } else {
-      panel.setVisible(true);
-      w._vGrid.addView(panel as any, 200);
-    }
-    w._vGrid.layout();
-    w._layoutViewContainers();
+    wb(ctx).togglePanel();
+  },
+};
+
+const toggleMaximizedPanel: CommandDescriptor = {
+  id: 'workbench.action.toggleMaximizedPanel',
+  title: 'Toggle Maximized Panel',
+  category: 'View',
+  handler(ctx) {
+    wb(ctx).toggleMaximizedPanel();
   },
 };
 
@@ -249,8 +251,7 @@ const layoutReset: CommandDescriptor = {
       w._hGrid.addView(w._sidebar as any, 202);
     }
     if (!w._panel.visible) {
-      w._panel.setVisible(true);
-      w._vGrid.addView(w._panel as any, 200);
+      w.togglePanel();
     }
     if (w._auxiliaryBar.visible) {
       w.toggleAuxiliaryBar(); // hide it
@@ -515,6 +516,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   showCommands,
   toggleSidebar,
   togglePanel,
+  toggleMaximizedPanel,
   toggleAuxiliaryBar,
   toggleStatusBar,
   // Editor

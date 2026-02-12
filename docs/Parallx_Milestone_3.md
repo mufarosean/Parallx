@@ -570,37 +570,55 @@ The bottom panel is a collapsible, resizable region at the bottom of the workben
 
 #### Tasks
 
-**Task 5.1 – Polish Panel Toggle and Resize**
+**Task 5.1 – Polish Panel Toggle and Resize** ✅
 - **Task Description:** Ensure the panel toggles and resizes with VS Code-matching behavior.
 - **Output:** Panel with polished toggle, resize, and state persistence.
 - **Completion Criteria:**
-  - `Ctrl+J` toggles panel visibility (registered via `KeybindingService`)
-  - `workbench.action.togglePanel` command toggles panel visibility
-  - Panel top border has a vertical sash for dragging to resize
-  - Panel height persists between min (100px) and a maximum of 80% of the workbench height
-  - Panel height before collapse is remembered and restored on expand
-  - Panel height is persisted in workspace state
-  - When panel is hidden, the editor area expands to fill the space
-  - Double-clicking the sash resets panel to default height (matching VS Code behavior)
-  - Context key `panelVisible` updates when panel visibility changes
-  - Maximize: `workbench.action.toggleMaximizedPanel` command makes panel fill the editor area (toggle back restores original size)
+  - `Ctrl+J` toggles panel visibility (registered via `KeybindingService`) ✅
+  - `workbench.action.togglePanel` command toggles panel visibility ✅
+  - Panel top border has a vertical sash for dragging to resize ✅
+  - Panel height persists between min (100px) and a maximum of 80% of the workbench height ✅
+  - Panel height before collapse is remembered and restored on expand ✅
+  - Panel height is persisted in workspace state ✅
+  - When panel is hidden, the editor area expands to fill the space ✅
+  - Double-clicking the sash resets panel to default height (matching VS Code behavior) ✅
+  - Context key `panelVisible` updates when panel visibility changes ✅
+  - Maximize: `workbench.action.toggleMaximizedPanel` command makes panel fill the editor area (toggle back restores original size) ✅
 - **Notes / Constraints:**
   - Panel already exists and is functional — this task is about ensuring the UX matches VS Code
+- **Implementation Notes:**
+  - Added `_lastPanelHeight` field (mirrors `_lastSidebarWidth`) and `_panelMaximized` flag to Workbench class
+  - Created `togglePanel()` method: saves height via `_vGrid.getViewSize()` before collapse, restores `_lastPanelHeight` on expand
+  - Created `toggleMaximizedPanel()` method: stores non-maximized height, resizes editor to 30px min to give panel maximum space, restores on second toggle
+  - Panel height tracked on `_vGrid.onDidChange()` (skips tracking when maximized to preserve restore height)
+  - Double-click panel sash resets to `DEFAULT_PANEL_HEIGHT` (200px) via `_vGrid.onDidSashReset()`
+  - Panel height restored in `_applyRestoredState()` (step 1c, mirrors sidebar width step 1b)
+  - `setPartHidden(Panel)` now delegates to `togglePanel()` instead of inlining duplicate logic
+  - `structuralCommands.ts` togglePanel refactored to call `w.togglePanel()` (like sidebar uses `w.toggleSidebar()`)
+  - `toggleMaximizedPanel` command registered with `WorkbenchLike` interface updated
+  - `layoutReset` now uses `w.togglePanel()` instead of direct `_vGrid.addView(panel, 200)`
 
-**Task 5.2 – Polish Panel Tab Switching**
+**Task 5.2 – Polish Panel Tab Switching** ✅
 - **Task Description:** Ensure panel tabs (provided by the `ViewContainer`) work correctly and persist state.
 - **Output:** Panel tabs with proper activation, ordering, and persistence.
 - **Completion Criteria:**
-  - Panel shows one tab per registered panel view container
-  - Clicking a tab activates that container's views in the panel content area
-  - Active tab has a visual bottom border indicator (accent color)
-  - Tab order persists within workspace state
-  - Drag-and-drop reordering of panel tabs updates persisted order
-  - When a tool contributes a new panel container, a tab appears dynamically
-  - When a tool is deactivated, its panel tab is removed
-  - Keyboard: Left/Right arrow keys navigate tabs when tab bar is focused
+  - Panel shows one tab per registered panel view container ✅
+  - Clicking a tab activates that container's views in the panel content area ✅
+  - Active tab has a visual bottom border indicator (accent color) ✅
+  - Tab order persists within workspace state ✅
+  - Drag-and-drop reordering of panel tabs updates persisted order ✅
+  - When a tool contributes a new panel container, a tab appears dynamically ✅
+  - When a tool is deactivated, its panel tab is removed ✅
+  - Keyboard: Left/Right arrow keys navigate tabs when tab bar is focused ✅
 - **Notes / Constraints:**
   - This mostly works already via `ViewContainer` — verify and fix gaps
+- **Implementation Notes:**
+  - Added `role="tablist"` and `aria-orientation="horizontal"` to ViewContainer tab bar element
+  - Added keyboard navigation: ArrowLeft/ArrowRight (wrapping), Home/End, Enter/Space for activation
+  - Roving tabindex pattern: active tab gets `tabindex="0"`, others get `tabindex="-1"`
+  - Tab focus outline (1px solid #007acc) added via CSS `.view-tab:focus` rule
+  - Active tab bottom border (`border-bottom: 2px solid #007acc`) was already present in CSS
+  - All pre-existing functionality (DnD reordering, dynamic tool tab add/remove, state persistence) verified working
 
 ---
 

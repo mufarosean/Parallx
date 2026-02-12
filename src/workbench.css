@@ -709,6 +709,11 @@ html, body {
   border-bottom: 2px solid #007acc;
 }
 
+.view-tab:focus {
+  outline: 1px solid #007acc;
+  outline-offset: -1px;
+}
+
 .view-tab.tab-dragging {
   opacity: 0.5;
 }

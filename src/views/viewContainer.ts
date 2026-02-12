@@ -100,7 +100,51 @@ export class ViewContainer extends Disposable implements IGridView {
     this._tabBar = document.createElement('div');
     this._tabBar.classList.add('view-container-tabs');
     this._tabBar.style.height = `${this._tabBarHeight}px`;
+    this._tabBar.setAttribute('role', 'tablist');
+    this._tabBar.setAttribute('aria-orientation', 'horizontal');
     this._element.appendChild(this._tabBar);
+
+    // Keyboard navigation for tabs (VS Code parity: ArrowLeft/Right, Home/End)
+    this._tabBar.addEventListener('keydown', (e) => {
+      const tabs = Array.from(this._tabBar.querySelectorAll<HTMLElement>('.view-tab'));
+      if (tabs.length === 0) return;
+
+      const focused = document.activeElement as HTMLElement;
+      const currentIdx = tabs.indexOf(focused);
+      if (currentIdx < 0) return;
+
+      let nextIdx = -1;
+      switch (e.key) {
+        case 'ArrowRight':
+          nextIdx = (currentIdx + 1) % tabs.length;
+          break;
+        case 'ArrowLeft':
+          nextIdx = (currentIdx - 1 + tabs.length) % tabs.length;
+          break;
+        case 'Home':
+          nextIdx = 0;
+          break;
+        case 'End':
+          nextIdx = tabs.length - 1;
+          break;
+        case 'Enter':
+        case ' ': {
+          const viewId = focused.dataset.viewId;
+          if (viewId) this.activateView(viewId);
+          e.preventDefault();
+          return;
+        }
+        default:
+          return;
+      }
+
+      if (nextIdx >= 0) {
+        e.preventDefault();
+        tabs[nextIdx].focus();
+        const viewId = tabs[nextIdx].dataset.viewId;
+        if (viewId) this.activateView(viewId);
+      }
+    });
 
     // Content area
     this._contentArea = document.createElement('div');
@@ -336,6 +380,7 @@ export class ViewContainer extends Disposable implements IGridView {
       const prevTab = this._tabElements.get(this._activeViewId);
       prevTab?.classList.remove('tab-active');
       prevTab?.setAttribute('aria-selected', 'false');
+      prevTab?.setAttribute('tabindex', '-1');
     }
 
     // Show new
@@ -350,6 +395,7 @@ export class ViewContainer extends Disposable implements IGridView {
     const nextTab = this._tabElements.get(viewId);
     nextTab?.classList.add('tab-active');
     nextTab?.setAttribute('aria-selected', 'true');
+    nextTab?.setAttribute('tabindex', '0');
 
     this._onDidChangeActiveView.fire(viewId);
     this._onDidChangeConstraints.fire(); // constraints may differ
@@ -683,6 +729,7 @@ export class ViewContainer extends Disposable implements IGridView {
     tab.dataset.viewId = view.id;
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-selected', 'false');
+    tab.setAttribute('tabindex', '-1');
 
     // Icon
     if (view.icon) {

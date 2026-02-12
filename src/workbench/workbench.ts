@@ -221,6 +221,10 @@ export class Workbench extends Disposable {
 
   /** Last known sidebar width — used to restore on toggle / persist across sessions. */
   private _lastSidebarWidth: number = DEFAULT_SIDEBAR_WIDTH;
+  /** Last known panel height — used to restore on toggle / persist across sessions. */
+  private _lastPanelHeight: number = DEFAULT_PANEL_HEIGHT;
+  /** Whether the panel is currently maximized (occupying all vertical space). */
+  private _panelMaximized = false;
   /** MutationObservers for tab drag wiring (disconnected on teardown). */
   private _tabObservers: MutationObserver[] = [];
 
@@ -765,6 +769,32 @@ export class Workbench extends Disposable {
       }
     });
 
+    // 7c. Track panel height after sash drags so togglePanel() restores the right size
+    this._vGrid.onDidChange(() => {
+      if (this._panel.visible && !this._panelMaximized) {
+        const h = this._vGrid.getViewSize(this._panel.id);
+        if (h !== undefined && h > 0) {
+          this._lastPanelHeight = h;
+        }
+      }
+    });
+
+    // 7d. Double-click sash resets panel to default height (VS Code parity: Sash.onDidReset)
+    this._vGrid.onDidSashReset(({ sashIndex }) => {
+      if (sashIndex === 0 && this._panel.visible) {
+        const currentHeight = this._vGrid.getViewSize(this._panel.id);
+        if (currentHeight !== undefined) {
+          const delta = DEFAULT_PANEL_HEIGHT - currentHeight;
+          if (delta !== 0) {
+            this._vGrid.resizeSash(this._vGrid.root, 0, delta);
+            this._vGrid.layout();
+            this._lastPanelHeight = DEFAULT_PANEL_HEIGHT;
+            this._panelMaximized = false;
+          }
+        }
+      }
+    });
+
     // 8. Window resize handler
     window.addEventListener('resize', this._onWindowResize);
 
@@ -952,6 +982,18 @@ export class Workbench extends Disposable {
         const delta = sidebarSnap.width - currentWidth;
         this._hGrid.resizeSash(this._hGrid.root, 0, delta);
         this._hGrid.layout();
+      }
+    }
+
+    // 1c. Restore panel height — resize vGrid node to match the saved height
+    const panelSnap = state.parts.find(p => p.partId === PartId.Panel);
+    if (panelSnap?.height && panelSnap.height > 0 && this._panel.visible) {
+      this._lastPanelHeight = panelSnap.height;
+      const currentHeight = this._vGrid.getViewSize(this._panel.id);
+      if (currentHeight !== undefined && currentHeight !== panelSnap.height) {
+        const delta = panelSnap.height - currentHeight;
+        this._vGrid.resizeSash(this._vGrid.root, 0, delta);
+        this._vGrid.layout();
       }
     }
 
@@ -2144,6 +2186,79 @@ export class Workbench extends Disposable {
     this._layoutViewContainers();
   }
 
+  /**
+   * Toggle panel visibility.
+   *
+   * VS Code reference: TogglePanelAction (workbench.action.togglePanel, Ctrl+J).
+   * Remembers height before collapse and restores it on expand.
+   */
+  togglePanel(): void {
+    if (this._panel.visible) {
+      // Save current height before collapsing
+      const currentHeight = this._vGrid.getViewSize(this._panel.id);
+      if (currentHeight !== undefined && currentHeight > 0) {
+        this._lastPanelHeight = currentHeight;
+      }
+      this._vGrid.removeView(this._panel.id);
+      this._panel.setVisible(false);
+      this._panelMaximized = false;
+    } else {
+      this._panel.setVisible(true);
+      this._vGrid.addView(this._panel as any, this._lastPanelHeight);
+      this._panelMaximized = false;
+    }
+    this._vGrid.layout();
+    this._layoutViewContainers();
+  }
+
+  /**
+   * Toggle panel between normal and maximized height.
+   *
+   * VS Code reference: toggleMaximizedPanel — stores non-maximized height,
+   * sets panel to fill all vertical space (editor gets minimum), restores on
+   * second toggle.
+   */
+  toggleMaximizedPanel(): void {
+    if (!this._panel.visible) {
+      // Show + maximize in one go
+      this._panel.setVisible(true);
+      this._vGrid.addView(this._panel as any, this._lastPanelHeight);
+      this._vGrid.layout();
+      // Now maximize
+    }
+
+    if (this._panelMaximized) {
+      // Restore to previous non-maximized height
+      const currentHeight = this._vGrid.getViewSize(this._panel.id);
+      if (currentHeight !== undefined) {
+        const delta = this._lastPanelHeight - currentHeight;
+        if (delta !== 0) {
+          this._vGrid.resizeSash(this._vGrid.root, 0, delta);
+          this._vGrid.layout();
+        }
+      }
+      this._panelMaximized = false;
+    } else {
+      // Save current height, then maximize panel (give editor minimum)
+      const currentHeight = this._vGrid.getViewSize(this._panel.id);
+      if (currentHeight !== undefined && currentHeight > 0) {
+        this._lastPanelHeight = currentHeight;
+      }
+      // Calculate how much to grow: vGrid total height minus a thin editor minimum
+      const editorMin = 30; // minimal editor strip when maximized
+      const editorSize = this._vGrid.getViewSize(this._editor.id);
+      if (editorSize !== undefined) {
+        const delta = editorSize - editorMin;
+        if (delta > 0) {
+          this._vGrid.resizeSash(this._vGrid.root, 0, -delta);
+          this._vGrid.layout();
+        }
+      }
+      this._panelMaximized = true;
+    }
+    this._layoutViewContainers();
+  }
+
   // ── LayoutHost Protocol ──────────────────────────────────────────────────
   // These methods fulfil the LayoutHost interface expected by LayoutService.
   // VS Code reference: IWorkbenchLayoutService.isVisible / setPartHidden.
@@ -2179,16 +2294,7 @@ export class Workbench extends Disposable {
         this.toggleSidebar();
         break;
       case PartId.Panel:
-        // Panel toggle lives in structuralCommands — inline the same logic
-        if (this._panel.visible) {
-          this._vGrid.removeView(this._panel.id);
-          this._panel.setVisible(false);
-        } else {
-          this._panel.setVisible(true);
-          this._vGrid.addView(this._panel as any, 200);
-        }
-        this._vGrid.layout();
-        this._layoutViewContainers();
+        this.togglePanel();
         break;
       case PartId.AuxiliaryBar:
         this.toggleAuxiliaryBar();
