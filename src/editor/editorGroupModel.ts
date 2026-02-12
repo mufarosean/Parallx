@@ -7,7 +7,7 @@
 // This is a pure state model with no DOM — the EditorGroupView consumes
 // events from this model to render the tab UI.
 
-import { Disposable } from '../platform/lifecycle.js';
+import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { IEditorInput } from './editorInput.js';
 import type { EditorOpenOptions, SerializedEditorGroup, SerializedEditorEntry } from './editorTypes.js';
@@ -22,6 +22,8 @@ interface EditorEntry {
   readonly input: IEditorInput;
   pinned: boolean;
   sticky: boolean;
+  /** Subscription to input.onDidChangeDirty for reactive tab updates. */
+  dirtyListener?: IDisposable;
 }
 
 // ─── Model Events ────────────────────────────────────────────────────────────
@@ -145,6 +147,17 @@ export class EditorGroupModel extends Disposable {
     const sticky = options.sticky ?? false;
     const activation = options.activation ?? EditorActivation.Activate;
 
+    // Subscribe to dirty state changes so tabs re-render reactively
+    const subscribeDirty = (entry: EditorEntry): void => {
+      entry.dirtyListener?.dispose();
+      entry.dirtyListener = entry.input.onDidChangeDirty(() => {
+        const idx = this.indexOf(entry.input);
+        if (idx >= 0) {
+          this._onDidChange.fire({ kind: EditorGroupChangeKind.EditorDirty, editorIndex: idx, editor: entry.input });
+        }
+      });
+    };
+
     // Already exists?
     const existing = this.indexOf(input);
     if (existing >= 0) {
@@ -165,6 +178,7 @@ export class EditorGroupModel extends Disposable {
 
     // Build entry
     const entry: EditorEntry = { input, pinned, sticky };
+    subscribeDirty(entry);
 
     // Determine insertion index
     let insertAt: number;
@@ -353,6 +367,10 @@ export class EditorGroupModel extends Disposable {
     const entry = this._editors[index];
     if (!entry) return;
 
+    // Dispose dirty listener before removing
+    entry.dirtyListener?.dispose();
+    entry.dirtyListener = undefined;
+
     const wasActive = this._activeIndex === index;
 
     this._editors.splice(index, 1);
@@ -431,6 +449,7 @@ export class EditorGroupModel extends Disposable {
 
   override dispose(): void {
     for (const entry of this._editors) {
+      entry.dirtyListener?.dispose();
       entry.input.dispose();
     }
     this._editors.length = 0;

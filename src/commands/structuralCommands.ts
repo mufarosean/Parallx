@@ -188,6 +188,53 @@ const splitEditorOrthogonal: CommandDescriptor = {
   },
 };
 
+const closeActiveEditor: CommandDescriptor = {
+  id: 'workbench.action.closeActiveEditor',
+  title: 'Close Editor',
+  category: 'Editor',
+  keybinding: 'Ctrl+W',
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    if (!editorGroupService) return;
+    const group = editorGroupService.activeGroup;
+    if (!group) return;
+    const activeIdx = group.model.activeIndex;
+    if (activeIdx >= 0) {
+      group.model.closeEditor(activeIdx);
+    }
+  },
+};
+
+const nextEditor: CommandDescriptor = {
+  id: 'workbench.action.nextEditor',
+  title: 'Open Next Editor',
+  category: 'Editor',
+  keybinding: 'Ctrl+PageDown',
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    if (!editorGroupService) return;
+    const group = editorGroupService.activeGroup;
+    if (!group || group.model.count === 0) return;
+    const nextIdx = (group.model.activeIndex + 1) % group.model.count;
+    group.model.setActive(nextIdx);
+  },
+};
+
+const previousEditor: CommandDescriptor = {
+  id: 'workbench.action.previousEditor',
+  title: 'Open Previous Editor',
+  category: 'Editor',
+  keybinding: 'Ctrl+PageUp',
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    if (!editorGroupService) return;
+    const group = editorGroupService.activeGroup;
+    if (!group || group.model.count === 0) return;
+    const prevIdx = (group.model.activeIndex - 1 + group.model.count) % group.model.count;
+    group.model.setActive(prevIdx);
+  },
+};
+
 // ─── Layout Commands ─────────────────────────────────────────────────────────
 
 const layoutReset: CommandDescriptor = {
@@ -473,6 +520,9 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // Editor
   splitEditor,
   splitEditorOrthogonal,
+  closeActiveEditor,
+  nextEditor,
+  previousEditor,
   // Layout
   layoutReset,
   // Workspace

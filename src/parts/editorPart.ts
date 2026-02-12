@@ -141,8 +141,43 @@ export class EditorPart extends Part {
     // Close-group request
     store.add(group.onDidRequestClose(() => this.removeGroup(group.id)));
 
-    // Model changes → update watermark
-    store.add(group.model.onDidChange(() => this._updateWatermark()));
+    // Cross-group tab drop: move editor from source group to this group
+    store.add(group.onDidRequestCrossGroupDrop((data) => {
+      const sourceGroup = this._groups.get(data.sourceGroupId);
+      if (!sourceGroup) return;
+
+      const sourceEditor = sourceGroup.model.getEditorAt(data.editorIndex);
+      if (!sourceEditor) return;
+
+      // Open the editor in this group at the drop position, pinned
+      group.openEditor(sourceEditor, { pinned: true, index: data.dropIndex });
+
+      // Close from source group (force close — it's a move, not a real close)
+      sourceGroup.model.closeEditor(data.editorIndex, true);
+
+      // Activate the target group
+      this._setActiveGroup(group);
+
+      // Auto-close empty source group if it's not the last group
+      if (sourceGroup.isEmpty && this._groups.size > 1) {
+        this.removeGroup(sourceGroup.id);
+      }
+    }));
+
+    // Model changes → update watermark + auto-close empty groups
+    store.add(group.model.onDidChange(() => {
+      this._updateWatermark();
+
+      // Auto-close empty groups (except the last remaining group)
+      if (group.isEmpty && this._groups.size > 1 && this._activeGroupId !== group.id) {
+        // Use queueMicrotask to avoid re-entry during model event dispatch
+        queueMicrotask(() => {
+          if (group.isEmpty && this._groups.size > 1) {
+            this.removeGroup(group.id);
+          }
+        });
+      }
+    }));
 
     this._groupDisposables.set(group.id, store);
     this._onDidGroupCountChange.fire(this._groups.size);

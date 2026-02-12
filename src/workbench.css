@@ -459,6 +459,48 @@ html, body {
   color: rgba(255, 255, 255, 0.2);
 }
 
+.editor-watermark-content {
+  text-align: center;
+}
+
+.editor-watermark-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.editor-watermark-title {
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.editor-watermark-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.editor-watermark-entry {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.editor-watermark-entry kbd {
+  display: inline-block;
+  min-width: 90px;
+  text-align: right;
+  font-family: inherit;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.editor-watermark-entry span {
+  min-width: 120px;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.2);
+}
+
 /* ── Auxiliary Bar ── */
 .part-workbench-parts-auxiliarybar {
   background: #252526;
@@ -954,6 +996,32 @@ html, body {
   cursor: pointer;
 }
 
+/* Hide close button on inactive non-dirty tabs until hover */
+.editor-tab:not(.editor-tab--active):not(.editor-tab--dirty) .editor-tab-close {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+  margin-left: 0;
+}
+
+.editor-tab:not(.editor-tab--active):hover .editor-tab-close {
+  opacity: 0.6;
+  width: auto;
+  margin-left: 6px;
+}
+
+/* Dirty tabs: show dirty dot by default, swap to close on hover */
+.editor-tab--dirty:not(.editor-tab--active):not(:hover) .editor-tab-close {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+  margin-left: 0;
+}
+
+.editor-tab--dirty:not(.editor-tab--active):hover .editor-tab-dirty {
+  display: none;
+}
+
 .editor-tab-close:hover {
   opacity: 1;
 }
@@ -964,6 +1032,11 @@ html, body {
 
 .editor-tab.drop-target {
   border-left: 2px solid var(--color-accent, #007acc);
+}
+
+/* Active group indicator — subtle top border on tab bar */
+.editor-group--active .editor-tab-bar {
+  border-top: 1px solid var(--color-accent, #007acc);
 }
 
 .editor-group-toolbar {

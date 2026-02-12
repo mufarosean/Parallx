@@ -73,6 +73,7 @@ import {
 // Editor services (Capability 9)
 import { EditorService } from '../services/editorService.js';
 import { EditorGroupService } from '../services/editorGroupService.js';
+import type { IEditorInput } from '../editor/editorInput.js';
 
 // Service facades (Capability 0 gap cleanup)
 import { LayoutService } from '../services/layoutService.js';
@@ -1457,10 +1458,15 @@ export class Workbench extends Disposable {
     const watermark = this._editor.element.querySelector('.editor-watermark') as HTMLElement;
     if (watermark) {
       watermark.innerHTML = `
-        <div style="text-align: center; color: rgba(255,255,255,0.25);">
-          <div style="font-size: 48px; margin-bottom: 16px;">⊞</div>
-          <div style="font-size: 14px;">Parallx Workbench</div>
-          <div style="font-size: 12px; margin-top: 4px;">No editors open</div>
+        <div class="editor-watermark-content">
+          <div class="editor-watermark-icon">⊞</div>
+          <div class="editor-watermark-title">Parallx Workbench</div>
+          <div class="editor-watermark-shortcuts">
+            <div class="editor-watermark-entry"><kbd>Ctrl+Shift+P</kbd> <span>Command Palette</span></div>
+            <div class="editor-watermark-entry"><kbd>Ctrl+B</kbd> <span>Toggle Sidebar</span></div>
+            <div class="editor-watermark-entry"><kbd>Ctrl+J</kbd> <span>Toggle Panel</span></div>
+            <div class="editor-watermark-entry"><kbd>Ctrl+\\</kbd> <span>Split Editor</span></div>
+          </div>
         </div>
       `;
     }
@@ -1484,7 +1490,51 @@ export class Workbench extends Disposable {
       this._workbenchContext?.setEditorGroupCount(count);
     });
 
+    // Wire activeEditorGroup context key
+    editorGroupService.onDidActiveGroupChange((group) => {
+      this._workbenchContext?.setActiveEditorGroup(group.id);
+    });
+
+    // Wire activeEditor + activeEditorDirty context keys
+    let activeEditorDirtyListener: { dispose(): void } | undefined;
+    editorService.onDidActiveEditorChange((editor) => {
+      // Update active editor type id
+      this._workbenchContext?.setActiveEditor(editor?.typeId);
+
+      // Track dirty state of the active editor
+      activeEditorDirtyListener?.dispose();
+      activeEditorDirtyListener = undefined;
+
+      if (editor) {
+        this._workbenchContext?.setActiveEditorDirty(editor.isDirty);
+        activeEditorDirtyListener = editor.onDidChangeDirty((dirty) => {
+          this._workbenchContext?.setActiveEditorDirty(dirty);
+        });
+      } else {
+        this._workbenchContext?.setActiveEditorDirty(false);
+      }
+
+      // Update window title
+      this._updateWindowTitle(editor);
+    });
+
     console.log('[Workbench] Editor services registered (Capability 9)');
+  }
+
+  /**
+   * Update the window title based on the active editor.
+   */
+  private _updateWindowTitle(editor?: IEditorInput): void {
+    const parts: string[] = [];
+    if (editor) {
+      parts.push(editor.isDirty ? `● ${editor.name}` : editor.name);
+    }
+    const wsName = this._workspace?.name;
+    if (wsName) {
+      parts.push(wsName);
+    }
+    parts.push('Parallx');
+    document.title = parts.join(' — ');
   }
 
   /**

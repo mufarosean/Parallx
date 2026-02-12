@@ -74,6 +74,10 @@ export class EditorGroupView extends Disposable implements IGridView {
   private readonly _onDidRequestClose = this._register(new Emitter<void>());
   readonly onDidRequestClose: Event<void> = this._onDidRequestClose.event;
 
+  /** Fires when a tab from another group is dropped onto this group. */
+  private readonly _onDidRequestCrossGroupDrop = this._register(new Emitter<{ sourceGroupId: string; editorIndex: number; dropIndex: number }>());
+  readonly onDidRequestCrossGroupDrop: Event<{ sourceGroupId: string; editorIndex: number; dropIndex: number }> = this._onDidRequestCrossGroupDrop.event;
+
   constructor(groupId?: string, paneFactory?: (input: IEditorInput) => EditorPane) {
     super();
     this.model = this._register(new EditorGroupModel(groupId));
@@ -228,6 +232,7 @@ export class EditorGroupView extends Disposable implements IGridView {
       case EditorGroupChangeKind.EditorUnpin:
       case EditorGroupChangeKind.EditorSticky:
       case EditorGroupChangeKind.EditorUnsticky:
+      case EditorGroupChangeKind.EditorDirty:
         this._renderTabs();
         break;
       case EditorGroupChangeKind.EditorActive:
@@ -284,6 +289,10 @@ export class EditorGroupView extends Disposable implements IGridView {
     if (isActive) tab.classList.add('editor-tab--active');
     if (isSticky) tab.classList.add('editor-tab--sticky');
     if (isPreview) tab.classList.add('editor-tab--preview');
+    if (editor.isDirty) tab.classList.add('editor-tab--dirty');
+
+    // Tooltip
+    tab.title = editor.description || editor.name;
 
     // Sticky indicator
     if (isSticky) {
@@ -332,6 +341,16 @@ export class EditorGroupView extends Disposable implements IGridView {
       }
     });
 
+    // Middle-click to close (VS Code auxclick pattern)
+    tab.addEventListener('auxclick', (e) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        const currentIdx = this.model.editors.indexOf(editor);
+        if (currentIdx >= 0) this.model.closeEditor(currentIdx);
+      }
+    });
+
     // Drag source
     tab.draggable = true;
     tab.addEventListener('dragstart', (e) => {
@@ -373,8 +392,15 @@ export class EditorGroupView extends Disposable implements IGridView {
           if (dropIdx >= 0) {
             this.model.moveEditor(data.editorIndex, dropIdx);
           }
+        } else {
+          // Cross-group move: delegate to EditorPart
+          const dropIdx = this.model.editors.indexOf(editor);
+          this._onDidRequestCrossGroupDrop.fire({
+            sourceGroupId: data.sourceGroupId,
+            editorIndex: data.editorIndex,
+            dropIndex: dropIdx >= 0 ? dropIdx : this.model.count,
+          });
         }
-        // Cross-group moves handled at editor part level
       } catch { /* ignore bad data */ }
     });
 

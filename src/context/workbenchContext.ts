@@ -28,6 +28,7 @@ export const CTX_FOCUSED_PART = 'focusedPart';
 export const CTX_ACTIVE_EDITOR = 'activeEditor';
 export const CTX_ACTIVE_EDITOR_GROUP = 'activeEditorGroup';
 export const CTX_EDITOR_GROUP_COUNT = 'editorGroupCount';
+export const CTX_ACTIVE_EDITOR_DIRTY = 'activeEditorDirty';
 
 export const CTX_ACTIVE_VIEW_CONTAINER = 'activeViewContainer';
 
@@ -79,6 +80,8 @@ export class WorkbenchContextManager extends Disposable {
   private readonly _activeEditorGroup: IContextKey<string | undefined>;
   private readonly _editorGroupCount: IContextKey<number>;
 
+  private readonly _activeEditorDirty: IContextKey<boolean>;
+
   private readonly _activeViewContainer: IContextKey<string | undefined>;
 
   private readonly _workspaceLoaded: IContextKey<boolean>;
@@ -104,6 +107,8 @@ export class WorkbenchContextManager extends Disposable {
     this._activeEditor = _contextKeyService.createKey<string | undefined>(CTX_ACTIVE_EDITOR, undefined);
     this._activeEditorGroup = _contextKeyService.createKey<string | undefined>(CTX_ACTIVE_EDITOR_GROUP, undefined);
     this._editorGroupCount = _contextKeyService.createKey(CTX_EDITOR_GROUP_COUNT, 1);
+
+    this._activeEditorDirty = _contextKeyService.createKey(CTX_ACTIVE_EDITOR_DIRTY, false);
 
     this._activeViewContainer = _contextKeyService.createKey<string | undefined>(CTX_ACTIVE_VIEW_CONTAINER, undefined);
 
@@ -182,6 +187,10 @@ export class WorkbenchContextManager extends Disposable {
 
   setEditorGroupCount(count: number): void {
     this._editorGroupCount.set(count);
+  }
+
+  setActiveEditorDirty(dirty: boolean): void {
+    this._activeEditorDirty.set(dirty);
   }
 
   setWorkspaceLoaded(loaded: boolean): void {
