@@ -533,11 +533,21 @@ const fileOpenFile: CommandDescriptor = {
       return;
     }
 
+    const textFileManager = ctx.getService<import('../services/serviceTypes.js').ITextFileModelManager>('ITextFileModelManager');
+    const fileService = ctx.getService<IFileService>('IFileService');
+
     for (const filePath of result) {
       const uri = URI.file(filePath);
-      const { PlaceholderEditorInput } = await import('../editor/editorInput.js');
-      const input = new PlaceholderEditorInput(uri.basename, uri.fsPath, uri.toString());
-      await editorService.openEditor(input, { pinned: result.length > 1 });
+      if (textFileManager && fileService) {
+        const { FileEditorInput } = await import('../built-in/editor/fileEditorInput.js');
+        const input = FileEditorInput.create(uri, textFileManager, fileService);
+        await editorService.openEditor(input, { pinned: result.length > 1 });
+      } else {
+        // Fallback to placeholder
+        const { PlaceholderEditorInput } = await import('../editor/editorInput.js');
+        const input = new PlaceholderEditorInput(uri.basename, uri.fsPath, uri.toString());
+        await editorService.openEditor(input, { pinned: result.length > 1 });
+      }
     }
     console.log('[Command] file.openFile — opened %d file(s)', result.length);
   },
@@ -555,11 +565,10 @@ const fileNewTextFile: CommandDescriptor = {
       return;
     }
 
-    const untitledId = `untitled:Untitled-${Date.now().toString(36)}`;
-    const { PlaceholderEditorInput } = await import('../editor/editorInput.js');
-    const input = new PlaceholderEditorInput('Untitled', '', untitledId);
+    const { UntitledEditorInput } = await import('../built-in/editor/untitledEditorInput.js');
+    const input = UntitledEditorInput.create();
     await editorService.openEditor(input, { pinned: false });
-    console.log('[Command] file.newTextFile — created untitled editor');
+    console.log('[Command] file.newTextFile — created untitled editor "%s"', input.name);
   },
 };
 
@@ -568,7 +577,7 @@ const fileSave: CommandDescriptor = {
   title: 'Save',
   category: 'File',
   keybinding: 'Ctrl+S',
-  when: 'activeEditorDirty',
+  when: 'activeEditor',
   handler: async (ctx) => {
     const editorService = ctx.getService<IEditorService>('IEditorService');
     if (!editorService?.activeEditor) {
@@ -577,9 +586,16 @@ const fileSave: CommandDescriptor = {
     }
 
     const active = editorService.activeEditor;
-    const resourceUri = (active as any).uri as string | undefined;
 
-    // If untitled, delegate to save-as
+    // Use FileEditorInput/UntitledEditorInput directly if available
+    if (typeof (active as any).save === 'function') {
+      await (active as any).save();
+      console.log('[Command] file.save — saved via editor input');
+      return;
+    }
+
+    // Legacy fallback: uri-based approach
+    const resourceUri = (active as any).uri as string | undefined;
     if (!resourceUri || resourceUri.startsWith('untitled:')) {
       const commandService = ctx.getService<import('../services/serviceTypes.js').ICommandService>('ICommandService');
       if (commandService) {
@@ -588,7 +604,6 @@ const fileSave: CommandDescriptor = {
       return;
     }
 
-    // Save via text file model manager if available
     const textFileManager = ctx.getService<import('../services/serviceTypes.js').ITextFileModelManager>('ITextFileModelManager');
     if (textFileManager) {
       const uri = URI.parse(resourceUri);
@@ -600,7 +615,7 @@ const fileSave: CommandDescriptor = {
       }
     }
 
-    console.log('[Command] file.save — file saved (no model backing)');
+    console.log('[Command] file.save — no model backing');
   },
 };
 
@@ -701,6 +716,85 @@ const fileRevert: CommandDescriptor = {
       await model.revert();
       console.log('[Command] file.revert — reverted "%s"', uri.basename);
     }
+  },
+};
+
+const fileSaveAll: CommandDescriptor = {
+  id: 'file.saveAll',
+  title: 'Save All',
+  category: 'File',
+  keybinding: 'Ctrl+K S',
+  handler: async (ctx) => {
+    const textFileManager = ctx.getService<import('../services/serviceTypes.js').ITextFileModelManager>('ITextFileModelManager');
+    if (textFileManager) {
+      await textFileManager.saveAll();
+      console.log('[Command] file.saveAll — saved all dirty models');
+    }
+  },
+};
+
+// ─── Edit Commands (browser-native delegates) ────────────────────────────────
+
+const editUndo: CommandDescriptor = {
+  id: 'edit.undo',
+  title: 'Undo',
+  category: 'Edit',
+  keybinding: 'Ctrl+Z',
+  handler: () => { document.execCommand('undo'); },
+};
+
+const editRedo: CommandDescriptor = {
+  id: 'edit.redo',
+  title: 'Redo',
+  category: 'Edit',
+  keybinding: 'Ctrl+Shift+Z',
+  handler: () => { document.execCommand('redo'); },
+};
+
+const editCut: CommandDescriptor = {
+  id: 'edit.cut',
+  title: 'Cut',
+  category: 'Edit',
+  keybinding: 'Ctrl+X',
+  handler: () => { document.execCommand('cut'); },
+};
+
+const editCopy: CommandDescriptor = {
+  id: 'edit.copy',
+  title: 'Copy',
+  category: 'Edit',
+  keybinding: 'Ctrl+C',
+  handler: () => { document.execCommand('copy'); },
+};
+
+const editPaste: CommandDescriptor = {
+  id: 'edit.paste',
+  title: 'Paste',
+  category: 'Edit',
+  keybinding: 'Ctrl+V',
+  handler: () => { document.execCommand('paste'); },
+};
+
+const editFind: CommandDescriptor = {
+  id: 'edit.find',
+  title: 'Find',
+  category: 'Edit',
+  keybinding: 'Ctrl+F',
+  handler: () => {
+    // Trigger browser-native find (works on textarea)
+    // Note: window.find() is deprecated but still functional in Electron
+    (globalThis as any).parallxElectron?.webContents?.find?.() ?? (window as any).find?.();
+  },
+};
+
+const editReplace: CommandDescriptor = {
+  id: 'edit.replace',
+  title: 'Replace',
+  category: 'Edit',
+  keybinding: 'Ctrl+H',
+  handler: () => {
+    // Browser-native find doesn't support replace — stub for M4
+    console.log('[Command] edit.replace — deferred to future milestone');
   },
 };
 
@@ -1007,7 +1101,16 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   fileNewTextFile,
   fileSave,
   fileSaveAs,
+  fileSaveAll,
   fileRevert,
+  // Edit (browser-native delegates)
+  editUndo,
+  editRedo,
+  editCut,
+  editCopy,
+  editPaste,
+  editFind,
+  editReplace,
   // View move
   viewMoveToSidebar,
   viewMoveToPanel,

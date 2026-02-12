@@ -1298,12 +1298,47 @@ export class Workbench extends Disposable {
       { commandId: 'workbench.action.togglePanel', title: 'Toggle Panel', group: '2_appearance', order: 2 },
       { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Auxiliary Bar', group: '2_appearance', order: 3 },
       { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
+      { commandId: 'editor.toggleWordWrap', title: 'Word Wrap', group: '3_editor', order: 1 },
     ]));
 
     // Register dropdown items for File menu
     this._register(this._titlebar.registerMenuBarDropdownItems('file', [
-      { commandId: 'workspace.new', title: 'New Workspace…', group: '1_workspace', order: 1 },
-      { commandId: 'workspace.openRecent', title: 'Open Recent…', group: '1_workspace', order: 2 },
+      { commandId: 'file.newTextFile', title: 'New Text File', group: '1_new', order: 1 },
+      { commandId: 'file.openFile', title: 'Open File…', group: '2_open', order: 1 },
+      { commandId: 'workspace.openFolder', title: 'Open Folder…', group: '2_open', order: 2 },
+      { commandId: 'workspace.openRecent', title: 'Open Recent…', group: '2_open', order: 3 },
+      { commandId: 'workspace.addFolder', title: 'Add Folder to Workspace…', group: '3_workspace', order: 1 },
+      { commandId: 'workspace.saveAs', title: 'Save Workspace As…', group: '3_workspace', order: 2 },
+      { commandId: 'workspace.duplicate', title: 'Duplicate Workspace', group: '3_workspace', order: 3 },
+      { commandId: 'file.save', title: 'Save', group: '4_save', order: 1 },
+      { commandId: 'file.saveAs', title: 'Save As…', group: '4_save', order: 2 },
+      { commandId: 'file.saveAll', title: 'Save All', group: '4_save', order: 3 },
+      { commandId: 'file.revert', title: 'Revert File', group: '5_close', order: 1 },
+      { commandId: 'workbench.closeActiveEditor', title: 'Close Editor', group: '5_close', order: 2 },
+      { commandId: 'workspace.closeFolder', title: 'Close Folder', group: '5_close', order: 3 },
+      { commandId: 'workspace.closeWindow', title: 'Close Window', group: '5_close', order: 4 },
+    ]));
+
+    // Register dropdown items for Edit menu
+    this._register(this._titlebar.registerMenuBarDropdownItems('edit', [
+      { commandId: 'edit.undo', title: 'Undo', group: '1_undo', order: 1 },
+      { commandId: 'edit.redo', title: 'Redo', group: '1_undo', order: 2 },
+      { commandId: 'edit.cut', title: 'Cut', group: '2_clipboard', order: 1 },
+      { commandId: 'edit.copy', title: 'Copy', group: '2_clipboard', order: 2 },
+      { commandId: 'edit.paste', title: 'Paste', group: '2_clipboard', order: 3 },
+      { commandId: 'edit.find', title: 'Find', group: '3_find', order: 1 },
+      { commandId: 'edit.replace', title: 'Replace', group: '3_find', order: 2 },
+    ]));
+
+    // Register dropdown items for Go menu
+    this._register(this._titlebar.registerMenuBarDropdownItems('go', [
+      { commandId: 'workbench.action.quickOpen', title: 'Go to File…', group: '1_go', order: 1 },
+      { commandId: 'workbench.action.showCommands', title: 'Go to Command…', group: '1_go', order: 2 },
+    ]));
+
+    // Register dropdown items for Tools menu
+    this._register(this._titlebar.registerMenuBarDropdownItems('tools', [
+      { commandId: 'tools.showInstalled', title: 'Tool Gallery', group: '1_tools', order: 1 },
     ]));
 
     // Register dropdown items for Help menu

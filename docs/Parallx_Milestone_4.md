@@ -763,8 +763,9 @@ All File menu items are wired to real, functional commands. The File menu matche
 
 #### Tasks
 
-**Task 5.1 — Wire Complete File Menu**
+**Task 5.1 — Wire Complete File Menu** ✅
 - **Task Description:** Register all File menu items with real command implementations.
+- **Deviation:** Updated existing `file.openFile` to create `FileEditorInput` (falls back to `PlaceholderEditorInput` if services unavailable). Updated `file.newTextFile` to create `UntitledEditorInput`. Updated `file.save` to duck-type `save()` on active editor before falling back to URI-based model lookup. Added `file.saveAll` delegating to `textFileManager.saveAll()`. "Open Recent" shows Command Palette hint rather than a real submenu (recent workspace tracking exists but submenu rendering deferred). When-clause enablement for menu item graying out is not yet wired to rendering — context keys are set but titlebar dropdown items don't dynamically disable.
 - **Output:** Complete File menu with functional items.
 - **Completion Criteria:**
   - Menu structure (with separator groups):
@@ -798,8 +799,9 @@ All File menu items are wired to real, functional commands. The File menu matche
   - The menu registration uses `TitlebarPart.registerMenuBarDropdownItems()` from M3 Cap 1.2
   - "Open Recent" submenu is a simplified implementation — shows flat list, not nested folders/workspaces distinction
 
-**Task 5.2 — Wire Edit Menu**
+**Task 5.2 — Wire Edit Menu** ✅
 - **Task Description:** Wire the Edit menu to real operations.
+- **Deviation:** All 7 Edit commands (`edit.undo/redo/cut/copy/paste/find/replace`) delegate to browser-native `document.execCommand()`. `edit.find` tries `parallxElectron.webContents.find()` first, then falls back to `window.find()`. `edit.replace` logs a stub message — custom find/replace deferred per spec. Keybinding service interception for Ctrl+C/V/X/Z when textarea is focused relies on existing `_shouldSuppressKeybinding()` logic in KeybindingService.
 - **Output:** Functional Edit menu.
 - **Completion Criteria:**
   - Menu structure:
@@ -821,8 +823,9 @@ All File menu items are wired to real, functional commands. The File menu matche
   - Edit operations are largely browser-native for M4 — the menu items provide discoverability
   - The keybinding service must NOT intercept Ctrl+C/V/X/Z when a text input or textarea is focused
 
-**Task 5.3 — Update Other Menus**
+**Task 5.3 — Update Other Menus** ✅
 - **Task Description:** Ensure View, Go, Tools, and Help menus have appropriate content.
+- **Deviation:** Selection menu left empty (no selection-specific commands in M4 scope). View menu has Explorer, Output, Toggle Sidebar/Panel/Status Bar, Word Wrap. Go menu has Go to File (Ctrl+P) and Go to Command (Ctrl+Shift+P). Tools menu has Tool Gallery. Help menu unchanged (Welcome + Show All Commands). All items wired to existing commands.
 - **Output:** All menus populated with functional or clearly-scoped items.
 - **Completion Criteria:**
   - **View menu** (already mostly done from M3):
