@@ -951,6 +951,32 @@ src/
 
 ---
 
+## Post-Implementation Bug Fixes
+
+### Audit Round 1 — Commit `115e860`
+
+Runtime audit after all Caps 0-6 were committed. Found 5 critical bugs:
+
+1. **Explorer URI-to-path conversion** — `electronFs.*()` methods received `file:///` URI strings instead of OS paths. Added `uriToFsPath()` helper in `explorer/main.ts` to strip scheme and handle Windows/Unix paths. Applied to all `electronFs.readdir/readFile/writeFile/mkdir/rm/rename` calls.
+2. **Explorer readdir result unwrapping** — `electronFs.readdir()` returns `{ entries: [...], error }` but code treated it as a raw array. Fixed to unwrap `.entries`.
+3. **Resolver used wrong property** — `workbench._initFileEditorResolver()` checked `workspaceService.workspaceFolders` (undefined). Fixed to `.folders`.
+4. **Menu command ID mismatches** — Three menu items referenced wrong command IDs: `workspace.addFolder` → `workspace.addFolderToWorkspace`, `workspace.duplicate` → `workspace.duplicateWorkspace`, `workbench.closeActiveEditor` → `workbench.action.closeActiveEditor`.
+5. **`joinUri()` used backslashes in file URIs** — Rewrote to always use forward slashes inside `file:///` URIs.
+
+### Audit Round 2 — Commit `e78568a`
+
+Deeper audit of editor system, tool activator, and remaining explorer paths:
+
+1. **`_closeAt` disposes shared EditorInput on cross-group moves** — When `closeEditor(idx, force=true)` is called during a tab move, `_closeAt` disposed the input that's now shared by the destination group. Added `skipDispose` parameter; `closeEditor` passes `force` as `skipDispose`.
+2. **Tab drag uses stale `editorIndex`** — Same-group drop handler used `data.editorIndex` captured at drag-start. Fixed to resolve current index via `data.inputId`.
+3. **`toolUri` malformed on Windows** — `file://${toolPath}` produced `file://D:\...`. Fixed to `file:///${toolPath.replace(/\\/g, '/')}`.
+4. **`closeActiveEditor` doesn't await async close** — `closeEditor()` is async (save dialog). Made handler async with await to prevent race conditions on rapid Ctrl+W.
+5. **Explorer `uriToPath()` loses leading `/` on non-Windows** — Hardcoded `slice(8)` and backslash replacement. Replaced with call to existing `uriToFsPath()`.
+6. **Explorer `openFile()` fire-and-forget** — Promise from `openFileEditor()` was never caught. Added `.catch()` with console error.
+7. **Explorer `unload()` recursion on empty array** — `n.children = []` ran before `unload(n.children)`, making recursion a no-op. Fixed order.
+
+---
+
 ## Testing Strategy
 
 ### Unit Tests
