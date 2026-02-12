@@ -14,6 +14,7 @@ import {
   ICommandService,
   IContextKeyService,
   IEditorService,
+  IWorkspaceService,
 } from '../services/serviceTypes.js';
 import type { ContextKeyValue } from '../context/contextKey.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
@@ -90,6 +91,10 @@ export interface ParallxApiObject {
   readonly workspace: {
     getConfiguration(section?: string): { get<T>(key: string, defaultValue?: T): T | undefined; has(key: string): boolean };
     readonly onDidChangeConfiguration: (listener: (e: { affectsConfiguration(section: string): boolean }) => void) => IDisposable;
+    readonly workspaceFolders: readonly { uri: string; name: string; index: number }[] | undefined;
+    getWorkspaceFolder(uri: string): { uri: string; name: string; index: number } | undefined;
+    readonly onDidChangeWorkspaceFolders: (listener: (e: { added: readonly { uri: string; name: string; index: number }[]; removed: readonly { uri: string; name: string; index: number }[] }) => void) => IDisposable;
+    readonly name: string | undefined;
   };
   readonly editors: {
     registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable }): IDisposable;
@@ -138,6 +143,10 @@ export function createToolApi(
     ? deps.services.get(IEditorService)
     : undefined;
 
+  const workspaceService = deps.services.has(IWorkspaceService)
+    ? deps.services.get(IWorkspaceService)
+    : undefined;
+
   // ── Create bridges ──
   const commandsBridge = commandService
     ? new CommandsBridge(toolId, commandService as any, subscriptions, deps.commandContributionProcessor)
@@ -156,7 +165,7 @@ export function createToolApi(
     ? new ContextBridge(toolId, contextKeyService, subscriptions)
     : undefined;
 
-  const workspaceBridge = new WorkspaceBridge(toolId, subscriptions, deps.configurationService);
+  const workspaceBridge = new WorkspaceBridge(toolId, subscriptions, deps.configurationService, workspaceService as any);
 
   const editorsBridge = new EditorsBridge(toolId, editorService, subscriptions);
 
@@ -269,6 +278,10 @@ export function createToolApi(
     workspace: Object.freeze({
       getConfiguration: (section) => workspaceBridge.getConfiguration(section),
       onDidChangeConfiguration: workspaceBridge.onDidChangeConfiguration,
+      get workspaceFolders() { return workspaceBridge.workspaceFolders; },
+      getWorkspaceFolder: (uri: string) => workspaceBridge.getWorkspaceFolder(uri),
+      onDidChangeWorkspaceFolders: workspaceBridge.onDidChangeWorkspaceFolders,
+      get name() { return workspaceBridge.name; },
     }),
 
     editors: Object.freeze({

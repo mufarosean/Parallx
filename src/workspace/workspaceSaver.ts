@@ -150,6 +150,7 @@ export class WorkspaceSaver extends Disposable {
       views: this._collectViewStates(src),
       editors: src.editorProvider?.() ?? createDefaultEditorSnapshot(),
       context: src.contextProvider(),
+      folders: src.workspace.serializeFolders(),
     };
   }
 

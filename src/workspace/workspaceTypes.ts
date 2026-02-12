@@ -10,7 +10,7 @@ import { ViewContainerState } from '../views/viewContainer.js';
  * Current workspace state schema version.
  * Incremented on breaking changes; used for migration decisions.
  */
-export const WORKSPACE_STATE_VERSION = 1;
+export const WORKSPACE_STATE_VERSION = 2;
 
 // ─── Workspace Identity ──────────────────────────────────────────────────────
 
@@ -40,6 +40,53 @@ export interface WorkspaceMetadata {
   readonly lastAccessedAt: string;
   /** Optional description. */
   readonly description?: string;
+}
+
+// ─── WorkbenchState (M4 Cap 2) ──────────────────────────────────────────────
+
+/**
+ * Classifies the workspace state based on open folders.
+ * Matches VS Code's WorkbenchState enum.
+ */
+export const enum WorkbenchState {
+  /** No folder open. */
+  EMPTY = 1,
+  /** Single folder open. */
+  FOLDER = 2,
+  /** Multi-root workspace (reserved for future milestone). */
+  WORKSPACE = 3,
+}
+
+// ─── Workspace Folder (M4 Cap 2) ────────────────────────────────────────────
+
+/**
+ * A folder opened in the workspace.
+ * Matches VS Code's IWorkspaceFolder ({ uri, name, index }).
+ */
+export interface WorkspaceFolder {
+  /** URI of the folder root. */
+  readonly uri: import('../platform/uri.js').URI;
+  /** Display name (defaults to directory basename, can be customized). */
+  readonly name: string;
+  /** Position index (0-based). */
+  readonly index: number;
+}
+
+/**
+ * Serialized form of a workspace folder for persistence.
+ */
+export interface SerializedWorkspaceFolder {
+  readonly scheme: string;
+  readonly path: string;
+  readonly name: string;
+}
+
+/**
+ * Event payload when workspace folders change.
+ */
+export interface WorkspaceFoldersChangeEvent {
+  readonly added: readonly WorkspaceFolder[];
+  readonly removed: readonly WorkspaceFolder[];
 }
 
 // ─── Part Snapshot ───────────────────────────────────────────────────────────
@@ -163,6 +210,8 @@ export interface WorkspaceState {
   readonly editors: SerializedEditorSnapshot;
   /** Context state (active part, focused view). */
   readonly context: SerializedContextSnapshot;
+  /** Open workspace folders (M4 Cap 2). */
+  readonly folders?: readonly SerializedWorkspaceFolder[];
 }
 
 // ─── Storage Keys ────────────────────────────────────────────────────────────

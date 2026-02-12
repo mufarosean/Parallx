@@ -12,6 +12,7 @@
 import { Disposable, DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
+import { URI } from '../platform/uri.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IWindowService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
@@ -421,6 +422,11 @@ export class Workbench extends Disposable {
 
       // 5. Apply restored state
       this._applyRestoredState();
+
+      // 5b. Restore workspace folders from saved state
+      if (this._restoredState?.folders) {
+        this._workspace.restoreFolders(this._restoredState.folders);
+      }
 
       // 6. Re-configure the saver for the new workspace
       this._configureSaver();
@@ -947,6 +953,11 @@ export class Workbench extends Disposable {
     // Apply restored state to live parts, views, and containers
     this._applyRestoredState();
 
+    // Restore workspace folders from saved state
+    if (this._restoredState?.folders) {
+      this._workspace.restoreFolders(this._restoredState.folders);
+    }
+
     // Configure the saver with live sources so subsequent saves capture real state
     this._configureSaver();
 
@@ -957,9 +968,22 @@ export class Workbench extends Disposable {
     // Update context keys for workspace state
     if (this._workbenchContext) {
       this._workbenchContext.setWorkspaceLoaded(true);
+
+      const folderCount = this._workspace.folders.length;
+      this._workbenchContext.setWorkspaceFolderCount(folderCount);
       this._workbenchContext.setWorkbenchState(
-        this._workspace.path ? 'folder' : 'workspace',
+        folderCount === 0 ? 'empty' : 'folder',
       );
+
+      // Subscribe to folder changes for live context key updates
+      this._register(this._workspace.onDidChangeFolders(() => {
+        const count = this._workspace.folders.length;
+        this._workbenchContext.setWorkspaceFolderCount(count);
+        this._workbenchContext.setWorkbenchState(
+          count === 0 ? 'empty' : 'folder',
+        );
+        this._updateWindowTitle();
+      }));
     }
 
     // Load persisted configuration values (Cap 4)
@@ -1693,15 +1717,52 @@ export class Workbench extends Disposable {
    */
   private _updateWindowTitle(editor?: IEditorInput): void {
     const parts: string[] = [];
+
+    // {dirty}{filename}
     if (editor) {
       parts.push(editor.isDirty ? `● ${editor.name}` : editor.name);
     }
-    const wsName = this._workspace?.name;
-    if (wsName) {
-      parts.push(wsName);
+
+    // {folderName} or {workspaceName}
+    const folders = this._workspace?.folders;
+    if (folders && folders.length === 1) {
+      // Single folder — show folder name
+      parts.push(folders[0].name);
+    } else {
+      // Multi-folder, no folders, or no workspace — show workspace name
+      const wsName = this._workspace?.name;
+      if (wsName) {
+        parts.push(wsName);
+      }
     }
+
     parts.push('Parallx');
     document.title = parts.join(' — ');
+
+    // Update resource context keys from active editor
+    if (this._workbenchContext && editor) {
+      const editorUri = (editor as any).uri as string | undefined;
+      if (editorUri) {
+        try {
+          const uri = URI.parse(editorUri);
+          this._workbenchContext.setResourceScheme(uri.scheme);
+          this._workbenchContext.setResourceExtname(uri.extname);
+          this._workbenchContext.setResourceFilename(uri.basename);
+        } catch {
+          this._workbenchContext.setResourceScheme('');
+          this._workbenchContext.setResourceExtname('');
+          this._workbenchContext.setResourceFilename('');
+        }
+      } else {
+        this._workbenchContext.setResourceScheme('');
+        this._workbenchContext.setResourceExtname('');
+        this._workbenchContext.setResourceFilename('');
+      }
+    } else if (this._workbenchContext) {
+      this._workbenchContext.setResourceScheme('');
+      this._workbenchContext.setResourceExtname('');
+      this._workbenchContext.setResourceFilename('');
+    }
   }
 
   /**

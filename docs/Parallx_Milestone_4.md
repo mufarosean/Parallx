@@ -429,7 +429,7 @@ The workspace model gains a `folders` array that represents the directories the 
 
 #### Tasks
 
-**Task 2.1 — Extend Workspace Model with Folders**
+**Task 2.1 — Extend Workspace Model with Folders** ✅
 - **Task Description:** Add a `folders` array to the `Workspace` class and update serialization.
 - **Output:** `Workspace.folders` property with add/remove/reorder methods, plus `WorkbenchState` tracking.
 - **Completion Criteria:**
@@ -452,7 +452,7 @@ The workspace model gains a `folders` array that represents the directories the 
   - VS Code reference: `WorkbenchState` in `src/vs/platform/workspace/common/workspace.ts`
   - `WorkbenchState.EMPTY` drives Explorer to show "Open Folder" welcome screen instead of tree
 
-**Task 2.2 — Wire Workspace Folder Commands**
+**Task 2.2 — Wire Workspace Folder Commands** ✅
 - **Task Description:** Connect the existing stub commands to real implementations using the new folder model and Electron dialogs.
 - **Output:** Functional `addFolderToWorkspace`, `removeFolderFromWorkspace`, `openFolder`, `closeFolder` commands.
 - **Completion Criteria:**
@@ -472,7 +472,7 @@ The workspace model gains a `folders` array that represents the directories the 
   - `openFolder` in VS Code replaces the current workspace; `addFolderToWorkspace` adds to it — preserve this distinction
   - When the last folder is removed, the workspace is "empty" but still exists (like VS Code's "untitled workspace")
 
-**Task 2.3 — Update Context Keys and Window Title for Folders**
+**Task 2.3 — Update Context Keys and Window Title for Folders** ✅
 - **Task Description:** Add folder-related context keys and update the window title to reflect open folders.
 - **Output:** New context keys and reactive window title.
 - **Completion Criteria:**
@@ -490,7 +490,7 @@ The workspace model gains a `folders` array that represents the directories the 
   - These context keys enable when-clause conditions like `when: "resourceExtname == .md"` for future tool contributions
   - Title format matches VS Code's default `window.title` template
 
-**Task 2.4 — Expose Workspace Folders in Tool API**
+**Task 2.4 — Expose Workspace Folders in Tool API** ✅
 - **Task Description:** Extend `parallx.workspace` API with folder access.
 - **Output:** Updated `parallx.d.ts` and workspace bridge.
 - **Completion Criteria:**

@@ -36,6 +36,13 @@ export const CTX_ACTIVE_VIEW_CONTAINER = 'activeViewContainer';
 export const CTX_WORKSPACE_LOADED = 'workspaceLoaded';
 export const CTX_WORKBENCH_STATE = 'workbenchState';
 
+// M4 Cap 2 — folder-related context keys
+export const CTX_WORKSPACE_FOLDER_COUNT = 'workspaceFolderCount';
+export const CTX_WORKSPACE_HAS_FOLDER = 'workspaceHasFolder';
+export const CTX_RESOURCE_SCHEME = 'resourceScheme';
+export const CTX_RESOURCE_EXTNAME = 'resourceExtname';
+export const CTX_RESOURCE_FILENAME = 'resourceFilename';
+
 // ─── WorkbenchParts interface ────────────────────────────────────────────────
 // Minimal shape of the parts we track. Avoids importing the Workbench class.
 
@@ -89,6 +96,13 @@ export class WorkbenchContextManager extends Disposable {
   private readonly _workspaceLoaded: IContextKey<boolean>;
   private readonly _workbenchState: IContextKey<string>;
 
+  // M4 Cap 2 — folder-related keys
+  private readonly _workspaceFolderCount: IContextKey<number>;
+  private readonly _workspaceHasFolder: IContextKey<boolean>;
+  private readonly _resourceScheme: IContextKey<string>;
+  private readonly _resourceExtname: IContextKey<string>;
+  private readonly _resourceFilename: IContextKey<string>;
+
   constructor(
     private readonly _contextKeyService: ContextKeyService,
     private readonly _focusTracker: FocusTracker | undefined,
@@ -117,6 +131,13 @@ export class WorkbenchContextManager extends Disposable {
 
     this._workspaceLoaded = _contextKeyService.createKey(CTX_WORKSPACE_LOADED, false);
     this._workbenchState = _contextKeyService.createKey(CTX_WORKBENCH_STATE, 'empty');
+
+    // M4 Cap 2 — folder-related keys
+    this._workspaceFolderCount = _contextKeyService.createKey(CTX_WORKSPACE_FOLDER_COUNT, 0);
+    this._workspaceHasFolder = _contextKeyService.createKey(CTX_WORKSPACE_HAS_FOLDER, false);
+    this._resourceScheme = _contextKeyService.createKey(CTX_RESOURCE_SCHEME, '');
+    this._resourceExtname = _contextKeyService.createKey(CTX_RESOURCE_EXTNAME, '');
+    this._resourceFilename = _contextKeyService.createKey(CTX_RESOURCE_FILENAME, '');
 
     // Subscribe to focus tracker
     if (_focusTracker) {
@@ -226,5 +247,24 @@ export class WorkbenchContextManager extends Disposable {
 
   setActiveViewContainer(containerId: string | undefined): void {
     this._activeViewContainer.set(containerId);
+  }
+
+  // ─── M4 Cap 2 — Folder Context Keys ─────────────────────────────────
+
+  setWorkspaceFolderCount(count: number): void {
+    this._workspaceFolderCount.set(count);
+    this._workspaceHasFolder.set(count > 0);
+  }
+
+  setResourceScheme(scheme: string): void {
+    this._resourceScheme.set(scheme);
+  }
+
+  setResourceExtname(extname: string): void {
+    this._resourceExtname.set(extname);
+  }
+
+  setResourceFilename(filename: string): void {
+    this._resourceFilename.set(filename);
   }
 }

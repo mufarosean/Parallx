@@ -13,8 +13,9 @@
 import type { CommandDescriptor, CommandExecutionContext } from './commandTypes.js';
 import type { CommandService } from './commandRegistry.js';
 import type { IDisposable } from '../platform/lifecycle.js';
-import type { IEditorGroupService } from '../services/serviceTypes.js';
+import type { IEditorGroupService, IFileService, IWorkspaceService, IEditorService } from '../services/serviceTypes.js';
 import { GroupDirection } from '../editor/editorTypes.js';
+import { URI } from '../platform/uri.js';
 
 // ─── Workbench type (avoids circular import) ────────────────────────────────
 // Command handlers access workbench via `ctx.workbench` cast to this shape.
@@ -88,6 +89,12 @@ function wb(ctx: CommandExecutionContext): WorkbenchLike {
 
 interface ElectronBridge {
   close(): void;
+  dialog: {
+    openFolder(options?: { title?: string }): Promise<string[] | null>;
+    openFile(options?: { title?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string[] | null>;
+    saveFile(options?: { title?: string; defaultPath?: string; filters?: { name: string; extensions: string[] }[] }): Promise<string | null>;
+    showMessageBox(options: { type?: string; title?: string; message: string; buttons?: string[]; defaultId?: number }): Promise<{ response: number }>;
+  };
 }
 
 function electronBridge(): ElectronBridge | undefined {
@@ -325,12 +332,37 @@ const workspaceAddFolder: CommandDescriptor = {
   id: 'workspace.addFolderToWorkspace',
   title: 'Add Folder to Workspace...',
   category: 'Workspace',
-  handler: async (_ctx, _folderPath?: unknown) => {
-    // DEFERRED: Multi-root workspace support is out of scope for Milestone 2.
-    // Implementation requires extending the Workspace model to support multiple
-    // root folders, updating WorkspaceLoader/Saver, and adding folder picker UI.
-    // Tracked for a future milestone.
-    console.log('[Command] workspace.addFolderToWorkspace — deferred (multi-root not in M2 scope)');
+  handler: async (ctx, _folderPath?: unknown) => {
+    const w = wb(ctx);
+    const bridge = electronBridge();
+    if (!bridge) {
+      console.warn('[Command] workspace.addFolderToWorkspace — no Electron bridge');
+      return;
+    }
+
+    // If a path was provided directly, use it; otherwise open folder picker
+    let folderPaths: string[];
+    if (typeof _folderPath === 'string') {
+      folderPaths = [_folderPath];
+    } else {
+      const result = await bridge.dialog.openFolder({ title: 'Add Folder to Workspace' });
+      if (!result || result.length === 0) return; // cancelled
+      folderPaths = result;
+    }
+
+    const wsService = ctx.getService<IWorkspaceService>('IWorkspaceService');
+    if (!wsService) {
+      console.warn('[Command] workspace.addFolderToWorkspace — IWorkspaceService not available');
+      return;
+    }
+
+    for (const p of folderPaths) {
+      const uri = URI.file(p);
+      wsService.addFolder(uri);
+    }
+
+    await w._workspaceSaver.save();
+    console.log('[Command] workspace.addFolderToWorkspace — added %d folder(s)', folderPaths.length);
   },
 };
 
@@ -338,11 +370,37 @@ const workspaceRemoveFolder: CommandDescriptor = {
   id: 'workspace.removeFolderFromWorkspace',
   title: 'Remove Folder from Workspace',
   category: 'Workspace',
-  handler: async (_ctx, _folderPath?: unknown) => {
-    // DEFERRED: Multi-root workspace support is out of scope for Milestone 2.
-    // Requires the same workspace model extensions as addFolderToWorkspace.
-    // Tracked for a future milestone.
-    console.log('[Command] workspace.removeFolderFromWorkspace — deferred (multi-root not in M2 scope)');
+  handler: async (ctx, _folderPath?: unknown) => {
+    const w = wb(ctx);
+    const wsService = ctx.getService<IWorkspaceService>('IWorkspaceService');
+    if (!wsService) {
+      console.warn('[Command] workspace.removeFolderFromWorkspace — IWorkspaceService not available');
+      return;
+    }
+
+    const folders = wsService.folders;
+    if (folders.length === 0) {
+      console.log('[Command] workspace.removeFolderFromWorkspace — no folders to remove');
+      return;
+    }
+
+    let targetUri: URI;
+    if (typeof _folderPath === 'string') {
+      targetUri = URI.file(_folderPath);
+    } else if (folders.length === 1) {
+      // Only one folder — remove it directly
+      targetUri = folders[0].uri;
+    } else {
+      // TODO: In the future, show a Quick Pick to select which folder to remove.
+      // For now, remove the last folder added.
+      const last = folders[folders.length - 1];
+      targetUri = last.uri;
+      console.log('[Command] workspace.removeFolderFromWorkspace — removing last folder "%s"', last.name);
+    }
+
+    wsService.removeFolder(targetUri);
+    await w._workspaceSaver.save();
+    console.log('[Command] workspace.removeFolderFromWorkspace — removed folder');
   },
 };
 
@@ -353,10 +411,21 @@ const workspaceCloseFolder: CommandDescriptor = {
   keybinding: 'Ctrl+K Ctrl+F',
   handler: async (ctx) => {
     const w = wb(ctx);
-    // Save, then switch to a fresh empty workspace
+    const wsService = ctx.getService<IWorkspaceService>('IWorkspaceService');
+    if (!wsService) {
+      console.warn('[Command] workspace.closeFolder — IWorkspaceService not available');
+      return;
+    }
+
+    const folders = [...wsService.folders];
+
+    // Remove all folders — workspace becomes EMPTY
+    for (const f of folders) {
+      wsService.removeFolder(f.uri);
+    }
+
     await w._workspaceSaver.save();
-    const freshWs = await w.createWorkspace('Untitled Workspace', undefined, true);
-    console.log('[Command] Closed folder — switched to empty workspace "%s"', (freshWs as any).name);
+    console.log('[Command] workspace.closeFolder — cleared %d folder(s)', folders.length);
   },
 };
 
@@ -405,6 +474,233 @@ const workspaceSaveAs: CommandDescriptor = {
     const newWs = await w.createWorkspace(name, undefined, true);
     console.log('[Command] Workspace saved as "%s" (id: %s)', name, (newWs as any).id);
     return newWs;
+  },
+};
+
+const workspaceOpenFolder: CommandDescriptor = {
+  id: 'workspace.openFolder',
+  title: 'Open Folder...',
+  category: 'Workspace',
+  handler: async (ctx) => {
+    const w = wb(ctx);
+    const bridge = electronBridge();
+    if (!bridge) {
+      console.warn('[Command] workspace.openFolder — no Electron bridge');
+      return;
+    }
+
+    const result = await bridge.dialog.openFolder({ title: 'Open Folder' });
+    if (!result || result.length === 0) return; // cancelled
+
+    const wsService = ctx.getService<IWorkspaceService>('IWorkspaceService');
+    if (!wsService) {
+      console.warn('[Command] workspace.openFolder — IWorkspaceService not available');
+      return;
+    }
+
+    // Replace current workspace folders with the selected folder
+    const oldFolders = [...wsService.folders];
+    for (const f of oldFolders) {
+      wsService.removeFolder(f.uri);
+    }
+    wsService.addFolder(URI.file(result[0]));
+
+    await w._workspaceSaver.save();
+    console.log('[Command] workspace.openFolder — opened "%s"', result[0]);
+  },
+};
+
+// ─── File Commands (M4 Cap 2.2) ──────────────────────────────────────────────
+
+const fileOpenFile: CommandDescriptor = {
+  id: 'file.openFile',
+  title: 'Open File...',
+  category: 'File',
+  keybinding: 'Ctrl+O',
+  handler: async (ctx) => {
+    const bridge = electronBridge();
+    if (!bridge) {
+      console.warn('[Command] file.openFile — no Electron bridge');
+      return;
+    }
+
+    const result = await bridge.dialog.openFile({ title: 'Open File' });
+    if (!result || result.length === 0) return;
+
+    const editorService = ctx.getService<IEditorService>('IEditorService');
+    if (!editorService) {
+      console.warn('[Command] file.openFile — IEditorService not available');
+      return;
+    }
+
+    for (const filePath of result) {
+      const uri = URI.file(filePath);
+      const { PlaceholderEditorInput } = await import('../editor/editorInput.js');
+      const input = new PlaceholderEditorInput(uri.basename, uri.fsPath, uri.toString());
+      await editorService.openEditor(input, { pinned: result.length > 1 });
+    }
+    console.log('[Command] file.openFile — opened %d file(s)', result.length);
+  },
+};
+
+const fileNewTextFile: CommandDescriptor = {
+  id: 'file.newTextFile',
+  title: 'New Text File',
+  category: 'File',
+  keybinding: 'Ctrl+N',
+  handler: async (ctx) => {
+    const editorService = ctx.getService<IEditorService>('IEditorService');
+    if (!editorService) {
+      console.warn('[Command] file.newTextFile — IEditorService not available');
+      return;
+    }
+
+    const untitledId = `untitled:Untitled-${Date.now().toString(36)}`;
+    const { PlaceholderEditorInput } = await import('../editor/editorInput.js');
+    const input = new PlaceholderEditorInput('Untitled', '', untitledId);
+    await editorService.openEditor(input, { pinned: false });
+    console.log('[Command] file.newTextFile — created untitled editor');
+  },
+};
+
+const fileSave: CommandDescriptor = {
+  id: 'file.save',
+  title: 'Save',
+  category: 'File',
+  keybinding: 'Ctrl+S',
+  when: 'activeEditorDirty',
+  handler: async (ctx) => {
+    const editorService = ctx.getService<IEditorService>('IEditorService');
+    if (!editorService?.activeEditor) {
+      console.log('[Command] file.save — no active editor');
+      return;
+    }
+
+    const active = editorService.activeEditor;
+    const resourceUri = (active as any).uri as string | undefined;
+
+    // If untitled, delegate to save-as
+    if (!resourceUri || resourceUri.startsWith('untitled:')) {
+      const commandService = ctx.getService<import('../services/serviceTypes.js').ICommandService>('ICommandService');
+      if (commandService) {
+        await (commandService as any).executeCommand('file.saveAs');
+      }
+      return;
+    }
+
+    // Save via text file model manager if available
+    const textFileManager = ctx.getService<import('../services/serviceTypes.js').ITextFileModelManager>('ITextFileModelManager');
+    if (textFileManager) {
+      const uri = URI.parse(resourceUri);
+      const model = textFileManager.get(uri);
+      if (model) {
+        await model.save();
+        console.log('[Command] file.save — saved "%s"', uri.basename);
+        return;
+      }
+    }
+
+    console.log('[Command] file.save — file saved (no model backing)');
+  },
+};
+
+const fileSaveAs: CommandDescriptor = {
+  id: 'file.saveAs',
+  title: 'Save As...',
+  category: 'File',
+  keybinding: 'Ctrl+Shift+S',
+  handler: async (ctx) => {
+    const editorService = ctx.getService<IEditorService>('IEditorService');
+    if (!editorService?.activeEditor) {
+      console.log('[Command] file.saveAs — no active editor');
+      return;
+    }
+
+    const bridge = electronBridge();
+    if (!bridge) {
+      console.warn('[Command] file.saveAs — no Electron bridge');
+      return;
+    }
+
+    const active = editorService.activeEditor;
+    const currentUri = (active as any).uri as string | undefined;
+    const defaultPath = currentUri && !currentUri.startsWith('untitled:')
+      ? URI.parse(currentUri).fsPath
+      : undefined;
+
+    const result = await bridge.dialog.saveFile({
+      title: 'Save As',
+      defaultPath,
+    });
+    if (!result) return; // cancelled
+
+    const fileService = ctx.getService<IFileService>('IFileService');
+    if (!fileService) {
+      console.warn('[Command] file.saveAs — IFileService not available');
+      return;
+    }
+
+    const targetUri = URI.file(result);
+
+    // Get content from text file model or editor
+    const textFileManager = ctx.getService<import('../services/serviceTypes.js').ITextFileModelManager>('ITextFileModelManager');
+    let content = '';
+    if (textFileManager && currentUri) {
+      const model = textFileManager.get(URI.parse(currentUri));
+      if (model) {
+        content = (model as any).content ?? '';
+      }
+    }
+
+    await fileService.writeFile(targetUri, content);
+    console.log('[Command] file.saveAs — saved to "%s"', targetUri.fsPath);
+  },
+};
+
+const fileRevert: CommandDescriptor = {
+  id: 'file.revert',
+  title: 'Revert File',
+  category: 'File',
+  handler: async (ctx) => {
+    const editorService = ctx.getService<IEditorService>('IEditorService');
+    if (!editorService?.activeEditor) {
+      console.log('[Command] file.revert — no active editor');
+      return;
+    }
+
+    const active = editorService.activeEditor;
+    const resourceUri = (active as any).uri as string | undefined;
+    if (!resourceUri || resourceUri.startsWith('untitled:')) {
+      console.log('[Command] file.revert — cannot revert untitled file');
+      return;
+    }
+
+    const textFileManager = ctx.getService<import('../services/serviceTypes.js').ITextFileModelManager>('ITextFileModelManager');
+    if (!textFileManager) {
+      console.warn('[Command] file.revert — ITextFileModelManager not available');
+      return;
+    }
+
+    const uri = URI.parse(resourceUri);
+    const model = textFileManager.get(uri);
+    if (model) {
+      // Confirm if dirty
+      if ((model as any).isDirty) {
+        const bridge = electronBridge();
+        if (bridge) {
+          const { response } = await bridge.dialog.showMessageBox({
+            type: 'warning',
+            title: 'Revert File',
+            message: `Revert "${uri.basename}" and lose unsaved changes?`,
+            buttons: ['Revert', 'Cancel'],
+            defaultId: 1,
+          });
+          if (response !== 0) return; // cancelled
+        }
+      }
+      await model.revert();
+      console.log('[Command] file.revert — reverted "%s"', uri.basename);
+    }
   },
 };
 
@@ -705,6 +1001,13 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   workspaceCloseWindow,
   workspaceOpenRecent,
   workspaceSaveAs,
+  workspaceOpenFolder,
+  // File
+  fileOpenFile,
+  fileNewTextFile,
+  fileSave,
+  fileSaveAs,
+  fileRevert,
   // View move
   viewMoveToSidebar,
   viewMoveToPanel,

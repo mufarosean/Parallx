@@ -167,17 +167,22 @@ export class WorkspaceLoader {
 
   /**
    * Migrate state from older schema versions to current.
-   * Currently at version 1 — this is a placeholder for future migrations.
    */
   private _migrate(state: WorkspaceState): WorkspaceState {
     if (state.version === WORKSPACE_STATE_VERSION) {
       return state;
     }
 
-    // Future: add migration logic per version
-    // e.g., if (state.version === 1) { state = migrateV1toV2(state); }
+    let migrated = { ...state };
+
+    // v1 → v2: add folders field if missing
+    if (migrated.version < 2) {
+      if (!('folders' in migrated) || !migrated.folders) {
+        migrated = { ...migrated, folders: [] };
+      }
+    }
 
     console.log('[WorkspaceLoader] Migrated state from v%d to v%d', state.version, WORKSPACE_STATE_VERSION);
-    return { ...state, version: WORKSPACE_STATE_VERSION };
+    return { ...migrated, version: WORKSPACE_STATE_VERSION };
   }
 }

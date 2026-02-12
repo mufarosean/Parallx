@@ -74,11 +74,11 @@ export const IViewService = createServiceIdentifier<IViewService>('IViewService'
 // ─── IWorkspaceService ───────────────────────────────────────────────────────
 
 import type { Workspace } from '../workspace/workspace.js';
-import type { WorkspaceState } from '../workspace/workspaceTypes.js';
+import type { WorkspaceState, WorkbenchState, WorkspaceFolder, WorkspaceFoldersChangeEvent } from '../workspace/workspaceTypes.js';
 import type { RecentWorkspaceEntry } from '../workspace/workspaceTypes.js';
 
 /**
- * Manages workspace identity, state persistence, and switching.
+ * Manages workspace identity, state persistence, switching, and folder model.
  */
 export interface IWorkspaceService extends IDisposable {
   /** The currently active workspace (undefined before first load). */
@@ -110,6 +110,32 @@ export interface IWorkspaceService extends IDisposable {
 
   /** Remove a workspace from the recent list. */
   removeRecentWorkspace(workspaceId: string): Promise<void>;
+
+  // ── Folder Model (M4 Cap 2) ──
+
+  /** The open workspace folders. Empty array if no folders open. */
+  readonly folders: readonly WorkspaceFolder[];
+
+  /** Current workbench state (EMPTY, FOLDER, WORKSPACE). */
+  readonly workbenchState: WorkbenchState;
+
+  /** Fires when workspace folders change. */
+  readonly onDidChangeFolders: Event<WorkspaceFoldersChangeEvent>;
+
+  /** Fires when workbench state changes (e.g., EMPTY → FOLDER). */
+  readonly onDidChangeWorkbenchState: Event<WorkbenchState>;
+
+  /** Add a folder to the workspace. */
+  addFolder(uri: import('../platform/uri.js').URI, name?: string): void;
+
+  /** Remove a folder from the workspace. */
+  removeFolder(uri: import('../platform/uri.js').URI): void;
+
+  /** Get the workspace folder containing the given URI. */
+  getWorkspaceFolder(uri: import('../platform/uri.js').URI): WorkspaceFolder | undefined;
+
+  /** Workspace display name (first folder name or workspace identity name). */
+  readonly workspaceName: string;
 }
 
 export const IWorkspaceService = createServiceIdentifier<IWorkspaceService>('IWorkspaceService');
