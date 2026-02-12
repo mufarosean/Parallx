@@ -521,7 +521,7 @@ export class ToolActivator extends Disposable {
       globalState,
       workspaceState,
       toolPath: description.toolPath,
-      toolUri: `file://${description.toolPath}`,
+      toolUri: `file:///${description.toolPath.replace(/\\/g, '/')}`,  
       environmentVariableCollection: {},
     };
   }

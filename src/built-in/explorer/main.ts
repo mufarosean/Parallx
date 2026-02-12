@@ -396,7 +396,9 @@ function sortEntries(a: { name: string; type: number }, b: { name: string; type:
 
 function openFile(node: TreeNode, pinned: boolean): void {
   if (node.type !== FILE_TYPE_FILE) return;
-  _api.editors.openFileEditor(node.uri, { pinned });
+  _api.editors.openFileEditor(node.uri, { pinned }).catch(err => {
+    console.error('[Explorer] Failed to open file:', node.uri, err);
+  });
 }
 
 function saveExpandState(): void {
@@ -640,10 +642,8 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
 }
 
 function uriToPath(uri: string): string {
-  if (uri.startsWith('file:///')) {
-    return uri.slice(8).replace(/\//g, '\\');
-  }
-  return uri;
+  // Re-use uriToFsPath logic: strip scheme and produce OS-native path
+  return uriToFsPath(uri);
 }
 
 function copyToClipboard(text: string): void {
@@ -676,8 +676,9 @@ function refreshTree(): void {
   function unload(nodes: TreeNode[]): void {
     for (const n of nodes) {
       n.loaded = false;
-      n.children = [];
+      // Recurse before clearing so nested nodes are also reset
       unload(n.children);
+      n.children = [];
     }
   }
   unload(_roots);

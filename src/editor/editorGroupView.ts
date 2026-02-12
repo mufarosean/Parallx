@@ -386,10 +386,12 @@ export class EditorGroupView extends Disposable implements IGridView {
       try {
         const data: EditorTabDragData = JSON.parse(raw);
         if (data.sourceGroupId === this.model.id) {
-          // Same group: reorder — use current index of drop target
+          // Same group: reorder — resolve current source index by inputId
+          // to avoid stale index from drag-start time
+          const sourceIdx = this.model.editors.findIndex(e => e.id === data.inputId);
           const dropIdx = this.model.editors.indexOf(editor);
-          if (dropIdx >= 0) {
-            this.model.moveEditor(data.editorIndex, dropIdx);
+          if (sourceIdx >= 0 && dropIdx >= 0) {
+            this.model.moveEditor(sourceIdx, dropIdx);
           }
         } else {
           // Cross-group move: delegate to EditorPart

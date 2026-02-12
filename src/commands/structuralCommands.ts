@@ -217,14 +217,14 @@ const closeActiveEditor: CommandDescriptor = {
   title: 'Close Editor',
   category: 'Editor',
   keybinding: 'Ctrl+W',
-  handler(ctx) {
+  async handler(ctx) {
     const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
     if (!editorGroupService) return;
     const group = editorGroupService.activeGroup;
     if (!group) return;
     const activeIdx = group.model.activeIndex;
     if (activeIdx >= 0) {
-      group.model.closeEditor(activeIdx);
+      await group.model.closeEditor(activeIdx);
     }
   },
 };

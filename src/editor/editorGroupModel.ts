@@ -222,7 +222,9 @@ export class EditorGroupModel extends Disposable {
       if (!allowed) return false;
     }
 
-    this._closeAt(idx, false);
+    // When force-closing (move to another group), skip disposal so the
+    // shared EditorInput remains alive in the destination group.
+    this._closeAt(idx, false, /* skipDispose */ force);
     return true;
   }
 
@@ -363,7 +365,7 @@ export class EditorGroupModel extends Disposable {
     this._onDidChange.fire({ kind: EditorGroupChangeKind.EditorPin, editorIndex: index, editor: entry.input });
   }
 
-  private _closeAt(index: number, isPreviewReplace: boolean): void {
+  private _closeAt(index: number, isPreviewReplace: boolean, skipDispose = false): void {
     const entry = this._editors[index];
     if (!entry) return;
 
@@ -406,8 +408,12 @@ export class EditorGroupModel extends Disposable {
       }
     }
 
-    // Dispose the closed editor input to release its resources
-    entry.input.dispose();
+    // Dispose the closed editor input to release its resources.
+    // Skip disposal when the input is being moved to another group (force-close)
+    // to avoid destroying a shared reference.
+    if (!skipDispose) {
+      entry.input.dispose();
+    }
   }
 
   private _moveEditor(from: number, to: number): void {
