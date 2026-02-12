@@ -9,10 +9,10 @@
 //   5. Ready — CSS ready class, log
 // Teardown reverses (5→1).
 
-import { Disposable, DisposableStore, IDisposable } from '../platform/lifecycle.js';
+import { Disposable, DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IWindowService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
 
@@ -79,6 +79,8 @@ import type { IEditorInput } from '../editor/editorInput.js';
 import { LayoutService } from '../services/layoutService.js';
 import { ViewService } from '../services/viewService.js';
 import { WorkspaceService } from '../services/workspaceService.js';
+import { WindowService } from '../services/windowService.js';
+import { ContextMenu } from '../ui/contextMenu.js';
 
 // Views
 import { ViewManager } from '../views/viewManager.js';
@@ -577,6 +579,10 @@ export class Workbench extends Disposable {
     );
     this._configService = configService;
     this._configRegistry = configRegistry;
+
+    // Window service — abstracts Electron IPC for window controls
+    const windowService = this._register(new WindowService());
+    this._services.registerInstance(IWindowService, windowService);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -605,6 +611,9 @@ export class Workbench extends Disposable {
     this._auxiliaryBar = this._partRegistry.requirePart(PartId.AuxiliaryBar) as Part;
     this._panel = this._partRegistry.requirePart(PartId.Panel) as Part;
     this._statusBar = this._partRegistry.requirePart(PartId.StatusBar) as Part;
+
+    // 2b. Inject services that parts need before create() — IWindowService for titlebar
+    this._titlebar.setWindowService(this._services.get(IWindowService));
 
     // 3. Compute initial dimensions
     const w = this._container.clientWidth;
@@ -1121,6 +1130,22 @@ export class Workbench extends Disposable {
       this.toggleCommandPalette();
     }));
 
+    // P1.5: Window inactive state — toggle `.inactive` on titlebar when window loses/gains focus
+    // VS Code dims titlebar text and window controls when the window is not focused.
+    const titlebarEl = this._titlebar.element;
+    const onBlur = () => titlebarEl.classList.add('inactive');
+    const onFocus = () => titlebarEl.classList.remove('inactive');
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    this._register(toDisposable(() => {
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+    }));
+    // Initialise: if window is already blurred (e.g. DevTools focused), set inactive
+    if (!document.hasFocus()) {
+      titlebarEl.classList.add('inactive');
+    }
+
     console.log('[Workbench] Title bar wired to services');
   }
 
@@ -1253,6 +1278,17 @@ export class Workbench extends Disposable {
       }
     }));
 
+    // P2.7: Activity bar icon context menu
+    this._register(this._activityBarPart.onDidContextMenuIcon((event) => {
+      const icon = this._activityBarPart.getIcons().find((i) => i.id === event.iconId);
+      ContextMenu.show({
+        items: [
+          { id: 'hide', label: `Hide ${icon?.label ?? 'View'}`, group: '1_visibility' },
+        ],
+        anchor: { x: event.x, y: event.y },
+      });
+    }));
+
     // Activate the first icon by default
     this._activityBarPart.setActiveIcon('view.explorer');
     // Track it as the active container
@@ -1260,13 +1296,37 @@ export class Workbench extends Disposable {
     // Update activeViewContainer context key (Capability 2 deferred item)
     this._workbenchContext?.setActiveViewContainer('view.explorer');
 
-    // Sidebar header label
+    // Sidebar header label + toolbar
+    // VS Code pattern: compositePart.createTitleArea() → title label (left) + actions toolbar (right)
     const headerSlot = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
     if (headerSlot) {
       const headerLabel = document.createElement('span');
       headerLabel.classList.add('sidebar-header-label');
       headerLabel.textContent = 'EXPLORER';
       headerSlot.appendChild(headerLabel);
+
+      // Actions toolbar on the right (VS Code: `.title-actions` inside `.composite.title`)
+      const actionsContainer = document.createElement('div');
+      actionsContainer.classList.add('sidebar-header-actions');
+
+      // "More actions" button (ellipsis)
+      const moreBtn = document.createElement('button');
+      moreBtn.classList.add('sidebar-header-action-btn');
+      moreBtn.title = 'More Actions…';
+      moreBtn.setAttribute('aria-label', 'More Actions…');
+      moreBtn.textContent = '⋯';
+      moreBtn.addEventListener('click', (e) => {
+        const rect = moreBtn.getBoundingClientRect();
+        ContextMenu.show({
+          items: [
+            { id: 'collapse-all', label: 'Collapse All', group: '1_actions' },
+            { id: 'refresh', label: 'Refresh', group: '1_actions' },
+          ],
+          anchor: { x: rect.left, y: rect.bottom + 2 },
+        });
+      });
+      actionsContainer.appendChild(moreBtn);
+      headerSlot.appendChild(actionsContainer);
 
       // Store reference for dynamic container switching (Cap 6)
       this._sidebarHeaderLabel = headerLabel;
@@ -1309,48 +1369,24 @@ export class Workbench extends Disposable {
       const actions = this._menuContribution.getViewTitleActions(viewId);
       if (actions.length === 0) return;
 
-      // Build a simple context menu from the view/title actions
+      // Build menu items from contributed actions
       const cmdService = this._services.get(ICommandService) as CommandService;
-      const menu = document.createElement('div');
-      menu.classList.add('context-menu');
-      menu.style.cssText = `
-        position: fixed; left: ${x}px; top: ${y}px; z-index: 1000;
-        background: #252526; border: 1px solid #3c3c3c; border-radius: 4px;
-        padding: 4px 0; min-width: 160px; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-      `;
-
+      const items: import('../ui/contextMenu.js').IContextMenuItem[] = [];
       for (const action of actions) {
         const cmd = cmdService.getCommand(action.commandId);
         if (!cmd) continue;
-        const item = document.createElement('div');
-        item.classList.add('context-menu-item');
-        item.textContent = cmd.title;
-        item.style.cssText = `
-          padding: 4px 20px; cursor: pointer; color: #ccc; font-size: 13px;
-          white-space: nowrap;
-        `;
-        item.addEventListener('mouseenter', () => { item.style.background = '#094771'; });
-        item.addEventListener('mouseleave', () => { item.style.background = ''; });
-        item.addEventListener('click', () => {
-          menu.remove();
-          cmdService.executeCommand(action.commandId).catch(err => {
-            console.error(`[Workbench] Context menu action error:`, err);
-          });
-        });
-        menu.appendChild(item);
+        items.push({ id: action.commandId, label: cmd.title });
       }
+      if (items.length === 0) return;
 
-      document.body.appendChild(menu);
-
-      // Close on click outside
-      const dismiss = (e: MouseEvent) => {
-        if (!menu.contains(e.target as Node)) {
-          menu.remove();
-          document.removeEventListener('mousedown', dismiss, true);
-        }
-      };
-      requestAnimationFrame(() => {
-        document.addEventListener('mousedown', dismiss, true);
+      const ctxMenu = ContextMenu.show({
+        items,
+        anchor: { x, y },
+      });
+      ctxMenu.onDidSelect(({ item }) => {
+        cmdService.executeCommand(item.id).catch(err => {
+          console.error(`[Workbench] Context menu action error:`, err);
+        });
       });
     }));
   }
@@ -2240,6 +2276,19 @@ export class Workbench extends Disposable {
     sb.addEntry({ id: 'errors', text: '⊘ 0  ⚠ 0', alignment: StatusBarAlignment.Left, priority: 10, tooltip: 'Errors and warnings' });
     sb.addEntry({ id: 'line-col', text: 'Ln 1, Col 1', alignment: StatusBarAlignment.Right, priority: 100 });
     sb.addEntry({ id: 'encoding', text: 'UTF-8', alignment: StatusBarAlignment.Right, priority: 90 });
+
+    // P2.8: Status bar context menu — right-click to show/hide items
+    this._register(sb.onDidContextMenu((event) => {
+      const entries = sb.getEntries();
+      ContextMenu.show({
+        items: entries.map((e) => ({
+          id: e.id,
+          label: e.text,
+          group: '1_entries',
+        })),
+        anchor: { x: event.x, y: event.y },
+      });
+    }));
   }
 
   // ════════════════════════════════════════════════════════════════════════

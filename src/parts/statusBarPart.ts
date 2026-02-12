@@ -4,6 +4,7 @@ import { Part } from './part.js';
 import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
 import { Emitter, Event } from '../platform/events.js';
+import { toDisposable } from '../platform/lifecycle.js';
 
 const STATUSBAR_CONSTRAINTS: SizeConstraints = {
   minimumWidth: 0,
@@ -52,6 +53,10 @@ export class StatusBarPart extends Part {
 
   private readonly _onDidClickEntry = this._register(new Emitter<{ id: string; command: string }>());
   readonly onDidClickEntry: Event<{ id: string; command: string }> = this._onDidClickEntry.event;
+
+  /** P2.8: Fired on right-click in the status bar area. */
+  private readonly _onDidContextMenu = this._register(new Emitter<{ x: number; y: number }>());
+  readonly onDidContextMenu: Event<{ x: number; y: number }> = this._onDidContextMenu.event;
 
   constructor() {
     super(
@@ -136,6 +141,14 @@ export class StatusBarPart extends Part {
     this._rightSlot = document.createElement('div');
     this._rightSlot.classList.add('statusbar-right');
     container.appendChild(this._rightSlot);
+
+    // P2.8: Status bar context menu (right-click to hide items)
+    const handler = (e: MouseEvent) => {
+      e.preventDefault();
+      this._onDidContextMenu.fire({ x: e.clientX, y: e.clientY });
+    };
+    container.addEventListener('contextmenu', handler);
+    this._register(toDisposable(() => container.removeEventListener('contextmenu', handler)));
   }
 
   // ── Internals ──

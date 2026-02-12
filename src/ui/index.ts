@@ -14,3 +14,4 @@ export { Overlay, type IOverlayOptions } from './overlay.js';
 export { FilterableList, type IListItem, type IFilterableListOptions } from './list.js';
 export { ActionBar, type IAction } from './actionBar.js';
 export { CountBadge, type ICountBadgeOptions } from './countBadge.js';
+export { ContextMenu, type IContextMenuItem, type IContextMenuAnchor, type IContextMenuOptions, type IContextMenuSelectEvent } from './contextMenu.js';

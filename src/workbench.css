@@ -91,6 +91,11 @@ html, body {
   transition: background-color 0.15s;
 }
 
+.window-control-btn svg {
+  width: 10px;
+  height: 10px;
+}
+
 .window-control-btn:hover {
   background: rgba(255, 255, 255, 0.1);
 }
@@ -242,6 +247,30 @@ html, body {
   font-weight: 600;
   letter-spacing: 0.5px;
   color: rgba(255, 255, 255, 0.6);
+}
+
+/* Sidebar header actions (VS Code: .title-actions in composite title) */
+.sidebar-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.sidebar-header-action-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 3px;
+}
+
+.sidebar-header-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 /* ── View Container: Stacked Section Headers (VS Code ViewPaneContainer parity) ── */
@@ -626,13 +655,44 @@ html, body {
 }
 
 /* ── View Container ── */
+.view-container {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
 .view-container-tabs {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: #252526;
   border-bottom: 1px solid #1e1e1e;
   gap: 0;
 }
 
+.view-container-tabs.hidden {
+  display: none;
+}
+
+.view-container-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  background: #1e1e1e;
+}
+
 .view-tab {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  height: 100%;
+  user-select: none;
+  font-size: 13px;
   color: rgba(255, 255, 255, 0.5);
   border-right: 1px solid #1e1e1e;
   transition: color 0.15s, background-color 0.15s;
@@ -659,10 +719,7 @@ html, body {
 
 .view-tab-icon {
   font-size: 14px;
-}
-
-.view-container-content {
-  background: #1e1e1e;
+  margin-right: 6px;
 }
 
 /* ── Grid sash (resize handles) ── */
@@ -1084,4 +1141,134 @@ html, body {
 
 .editor-group-toolbar button:hover {
   background-color: var(--color-hover, rgba(255, 255, 255, 0.1));
+}
+
+/* ── View (base class) ── */
+.view {
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: none; /* hidden until setVisible(true) */
+}
+
+.view.visible {
+  display: block;
+}
+
+/* ── Placeholder View: dimension badge ── */
+.placeholder-dimension-badge {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  font-size: 10px;
+  color: #6a6a6a;
+  font-family: monospace;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Placeholder View: Explorer ── */
+.placeholder-explorer,
+.placeholder-search-container {
+  padding: 8px;
+  color: #cccccc;
+  font-size: 13px;
+  background-color: #252526;
+}
+
+.placeholder-search-container {
+  background-color: #1e1e1e;
+}
+
+.placeholder-tree-row {
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.placeholder-tree-row:hover {
+  background-color: #2a2d2e;
+}
+
+/* ── Placeholder View: Search ── */
+.placeholder-search-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #3c3c3c;
+  border-radius: 2px;
+  background-color: #3c3c3c;
+  color: #cccccc;
+  margin-bottom: 8px;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.placeholder-search-results {
+  margin-top: 4px;
+}
+
+.placeholder-search-result-item {
+  line-height: 22px;
+  padding-left: 4px;
+  cursor: pointer;
+}
+
+.placeholder-search-result-item:hover {
+  background-color: #2a2d2e;
+}
+
+.placeholder-search-result-file { color: #4ec9b0; }
+.placeholder-search-result-line { color: #6a9955; }
+.placeholder-search-result-text { color: #9cdcfe; }
+
+/* ── Placeholder View: Terminal ── */
+.placeholder-terminal {
+  padding: 8px 12px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 20px;
+  background-color: #1e1e1e;
+  color: #cccccc;
+}
+
+.placeholder-terminal-prompt { color: #6a9955; }
+.placeholder-terminal-cmd { color: #569cd6; }
+.placeholder-terminal-ok { color: #4ec9b0; }
+
+/* ── Placeholder View: Output ── */
+.placeholder-output {
+  padding: 8px 12px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 18px;
+  background-color: #1e1e1e;
+  color: #858585;
+  overflow-y: auto;
+}
+
+.placeholder-output-line {
+  white-space: pre;
+}
+
+/* ── Activity Bar Badge visibility ── */
+.activity-bar-badge.badge-hidden {
+  display: none;
+}
+
+/* ── Titlebar inactive state (P1.5) ── */
+.part-workbench-parts-titlebar.inactive .titlebar-workspace-label,
+.part-workbench-parts-titlebar.inactive .titlebar-menu-item {
+  opacity: 0.6;
+}
+
+.part-workbench-parts-titlebar.inactive .window-control-btn {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Window controls container no-drag (P2.10) ── */
+.window-controls-container {
+  display: flex;
+  -webkit-app-region: no-drag;
+  z-index: 3000;
 }

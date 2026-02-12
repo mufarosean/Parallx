@@ -133,11 +133,7 @@ export abstract class View extends Disposable implements IView {
     this._element = document.createElement('div');
     this._element.classList.add('view', `view-${this.id}`);
     this._element.setAttribute('data-view-id', this.id);
-    this._element.style.overflow = 'hidden';
-    this._element.style.position = 'relative';
-    this._element.style.width = '100%';
-    this._element.style.height = '100%';
-    this._element.style.display = 'none'; // hidden until setVisible(true)
+    // .view CSS: overflow hidden, position relative, width/height 100%, display none
 
     this.createViewContent(this._element);
     this._created = true;
@@ -152,7 +148,7 @@ export abstract class View extends Disposable implements IView {
     this._visible = visible;
 
     if (this._element) {
-      this._element.style.display = visible ? '' : 'none';
+      this._element.classList.toggle('visible', visible);
     }
 
     this._onDidChangeVisibility.fire(visible);

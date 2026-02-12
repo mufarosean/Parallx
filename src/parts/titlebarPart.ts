@@ -12,6 +12,8 @@ import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
 import { Emitter, Event } from '../platform/events.js';
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { IWindowService } from '../services/serviceTypes.js';
+import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -52,15 +54,7 @@ export interface ICommandExecutor {
   hasCommand(commandId: string): boolean;
 }
 
-// ─── ElectronApi shape ──────────────────────────────────────────────────────
 
-interface ElectronWindowApi {
-  minimize(): void;
-  maximize(): void;
-  close(): void;
-  isMaximized(): Promise<boolean>;
-  onMaximizedChange(callback: (maximized: boolean) => void): void;
-}
 
 // ─── TitlebarPart ───────────────────────────────────────────────────────────
 
@@ -92,7 +86,7 @@ export class TitlebarPart extends Part {
   private readonly _menuBarItems: MenuBarItem[] = [];
   private readonly _menuBarDropdownItems = new Map<string, MenuBarDropdownItem[]>();
   private _menuBarContainer: HTMLElement | undefined;
-  private _activeDropdown: { menuId: string; el: HTMLElement; cleanup: IDisposable } | undefined;
+  private _activeDropdown: { menuId: string; menu: ContextMenu; cleanup: IDisposable } | undefined;
   private _menuBarFocused = false;
   private _focusedMenuIndex = -1;
   private _keybindingLookup: IKeybindingLookup | undefined;
@@ -102,7 +96,7 @@ export class TitlebarPart extends Part {
 
   private _maximizeBtn: HTMLButtonElement | undefined;
   private _isMaximized = false;
-  private _electronApi: ElectronWindowApi | undefined;
+  private _windowService: IWindowService | undefined;
 
   // ── Events ──
 
@@ -262,135 +256,71 @@ export class TitlebarPart extends Part {
     const items = this._menuBarDropdownItems.get(menuId);
     if (!items || items.length === 0) return;
 
-    // Build dropdown element
-    const dropdown = document.createElement('div');
-    dropdown.classList.add('titlebar-dropdown');
-    dropdown.setAttribute('role', 'menu');
-
-    let highlightIndex = -1;
-    const itemEls: HTMLElement[] = [];
-
-    let lastGroup: string | undefined;
-    for (const item of items) {
-      // Group separator
-      if (lastGroup !== undefined && item.group !== lastGroup) {
-        const sep = document.createElement('div');
-        sep.classList.add('titlebar-dropdown-separator');
-        dropdown.appendChild(sep);
-      }
-      lastGroup = item.group;
-
-      const row = document.createElement('div');
-      row.classList.add('titlebar-dropdown-item');
-      row.setAttribute('role', 'menuitem');
-
-      const label = document.createElement('span');
-      label.classList.add('titlebar-dropdown-item-label');
-      label.textContent = item.title;
-      row.appendChild(label);
-
-      // Keybinding display
-      const kb = item.keybinding ?? this._keybindingLookup?.lookupKeybinding(item.commandId);
-      if (kb) {
-        const kbEl = document.createElement('span');
-        kbEl.classList.add('titlebar-dropdown-item-keybinding');
-        kbEl.textContent = this._formatKeybinding(kb);
-        row.appendChild(kbEl);
-      }
-
-      row.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._closeActiveDropdown();
-        this._commandExecutor?.executeCommand(item.commandId);
-      });
-
-      row.addEventListener('mouseenter', () => {
-        this._highlightDropdownItem(itemEls, items.indexOf(item));
-        highlightIndex = items.indexOf(item);
-      });
-
-      itemEls.push(row);
-      dropdown.appendChild(row);
-    }
+    // Build IContextMenuItem[] from MenuBarDropdownItem[]
+    const menuItems: IContextMenuItem[] = items.map(item => ({
+      id: item.commandId,
+      label: item.title,
+      keybinding: this._formatKeybinding(
+        item.keybinding ?? this._keybindingLookup?.lookupKeybinding(item.commandId) ?? '',
+      ) || undefined,
+      group: item.group,
+      order: item.order,
+    }));
 
     // Position below anchor
     const rect = anchor.getBoundingClientRect();
-    dropdown.style.position = 'fixed';
-    dropdown.style.top = `${rect.bottom}px`;
-    dropdown.style.left = `${rect.left}px`;
+    const ctxMenu = ContextMenu.show({
+      items: menuItems,
+      anchor: { x: rect.left, y: rect.bottom },
+      autoSelectFirst: true,
+      className: 'titlebar-dropdown',
+    });
 
-    document.body.appendChild(dropdown);
+    // Item selected → execute command
+    ctxMenu.onDidSelect(({ item }) => {
+      this._commandExecutor?.executeCommand(item.id);
+    });
 
-    // Keyboard navigation inside dropdown
-    const onKeydown = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case 'ArrowDown':
-          e.preventDefault();
-          highlightIndex = Math.min(highlightIndex + 1, itemEls.length - 1);
-          this._highlightDropdownItem(itemEls, highlightIndex);
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          highlightIndex = Math.max(highlightIndex - 1, 0);
-          this._highlightDropdownItem(itemEls, highlightIndex);
-          break;
-        case 'Enter':
-          e.preventDefault();
-          if (highlightIndex >= 0 && highlightIndex < items.length) {
-            this._closeActiveDropdown();
-            this._commandExecutor?.executeCommand(items[highlightIndex].commandId);
-          }
-          break;
-        case 'Escape':
-          e.preventDefault();
-          this._closeActiveDropdown();
-          anchor.focus();
-          break;
-        case 'ArrowRight': {
-          e.preventDefault();
-          const idx = this._menuBarItems.findIndex(m => m.id === menuId);
-          if (idx >= 0 && idx < this._menuBarItems.length - 1) {
-            const nextItem = this._menuBarItems[idx + 1];
-            const nextEl = this._menuBarContainer?.querySelector(`[data-menu-id="${nextItem.id}"]`) as HTMLElement;
-            if (nextEl) this._toggleDropdown(nextItem.id, nextEl);
-          }
-          break;
+    // When dismissed (Escape, click outside, or selection), clean up
+    ctxMenu.onDidDismiss(() => {
+      this._activeDropdown = undefined;
+      anchor.classList.remove('titlebar-menu-item--active');
+    });
+
+    // ArrowLeft / ArrowRight — navigate between menu bar items
+    const onLateralNav = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const idx = this._menuBarItems.findIndex(m => m.id === menuId);
+        if (idx >= 0 && idx < this._menuBarItems.length - 1) {
+          const nextItem = this._menuBarItems[idx + 1];
+          const nextEl = this._menuBarContainer?.querySelector(`[data-menu-id="${nextItem.id}"]`) as HTMLElement;
+          if (nextEl) this._toggleDropdown(nextItem.id, nextEl);
         }
-        case 'ArrowLeft': {
-          e.preventDefault();
-          const idx2 = this._menuBarItems.findIndex(m => m.id === menuId);
-          if (idx2 > 0) {
-            const prevItem = this._menuBarItems[idx2 - 1];
-            const prevEl = this._menuBarContainer?.querySelector(`[data-menu-id="${prevItem.id}"]`) as HTMLElement;
-            if (prevEl) this._toggleDropdown(prevItem.id, prevEl);
-          }
-          break;
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const idx = this._menuBarItems.findIndex(m => m.id === menuId);
+        if (idx > 0) {
+          const prevItem = this._menuBarItems[idx - 1];
+          const prevEl = this._menuBarContainer?.querySelector(`[data-menu-id="${prevItem.id}"]`) as HTMLElement;
+          if (prevEl) this._toggleDropdown(prevItem.id, prevEl);
         }
       }
     };
-
-    document.addEventListener('keydown', onKeydown, true);
-
-    // Click outside to close
-    const onClickOutside = (e: MouseEvent) => {
-      if (!dropdown.contains(e.target as Node) && !anchor.contains(e.target as Node)) {
-        this._closeActiveDropdown();
-      }
-    };
-    // Defer the outside-click listener to avoid immediate dismissal
-    setTimeout(() => document.addEventListener('click', onClickOutside), 0);
+    document.addEventListener('keydown', onLateralNav, true);
 
     // Mark anchor as active
     anchor.classList.add('titlebar-menu-item--active');
 
     this._activeDropdown = {
       menuId,
-      el: dropdown,
+      menu: ctxMenu,
       cleanup: toDisposable(() => {
-        document.removeEventListener('keydown', onKeydown, true);
-        document.removeEventListener('click', onClickOutside);
+        document.removeEventListener('keydown', onLateralNav, true);
         anchor.classList.remove('titlebar-menu-item--active');
-        if (dropdown.parentNode) dropdown.remove();
+        ctxMenu.dismiss();
       }),
     };
   }
@@ -399,12 +329,6 @@ export class TitlebarPart extends Part {
     if (this._activeDropdown) {
       this._activeDropdown.cleanup.dispose();
       this._activeDropdown = undefined;
-    }
-  }
-
-  private _highlightDropdownItem(els: HTMLElement[], index: number): void {
-    for (let i = 0; i < els.length; i++) {
-      els[i].classList.toggle('titlebar-dropdown-item--selected', i === index);
     }
   }
 
@@ -517,12 +441,19 @@ export class TitlebarPart extends Part {
   // Task 1.3 — Window Controls
   // ════════════════════════════════════════════════════════════════════════
 
-  /** Wire window controls to Electron IPC. */
-  private _setupWindowControls(container: HTMLElement): void {
-    const api = (window as any).parallxElectron as ElectronWindowApi | undefined;
-    this._electronApi = api;
+  /**
+   * Provide the window service for window-control operations.
+   * Must be called before (or immediately after) `create()`.
+   */
+  setWindowService(svc: IWindowService): void {
+    this._windowService = svc;
+  }
 
-    if (!api) {
+  /** Wire window controls via IWindowService (no direct Electron access). */
+  private _setupWindowControls(container: HTMLElement): void {
+    const svc = this._windowService;
+
+    if (!svc || !svc.isNativeWindow) {
       // Not running in Electron — hide window controls
       container.classList.add('hidden');
       return;
@@ -535,56 +466,58 @@ export class TitlebarPart extends Part {
     const minimizeBtn = document.createElement('button');
     minimizeBtn.classList.add('window-control-btn');
     minimizeBtn.setAttribute('aria-label', 'Minimize');
-    minimizeBtn.textContent = '─';
-    minimizeBtn.addEventListener('click', () => api.minimize());
+    minimizeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 1"><path d="M0 0h10v1H0z" fill="currentColor"/></svg>';
+    minimizeBtn.addEventListener('click', () => svc.minimize());
     controls.appendChild(minimizeBtn);
 
     // Maximize / Restore
     this._maximizeBtn = document.createElement('button');
     this._maximizeBtn.classList.add('window-control-btn');
     this._maximizeBtn.setAttribute('aria-label', 'Maximize');
-    this._maximizeBtn.textContent = '□';
-    this._maximizeBtn.addEventListener('click', () => api.maximize());
+    this._maximizeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0v10h10V0H0zm1 1h8v8H1V1z" fill="currentColor"/></svg>';
+    this._maximizeBtn.addEventListener('click', () => svc.maximize());
     controls.appendChild(this._maximizeBtn);
 
     // Close
     const closeBtn = document.createElement('button');
     closeBtn.classList.add('window-control-btn', 'window-control-btn--close');
     closeBtn.setAttribute('aria-label', 'Close');
-    closeBtn.textContent = '✕';
-    closeBtn.addEventListener('click', () => api.close());
+    closeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.41 0L5 3.59 8.59 0 10 1.41 6.41 5 10 8.59 8.59 10 5 6.41 1.41 10 0 8.59 3.59 5 0 1.41z" fill="currentColor"/></svg>';
+    closeBtn.addEventListener('click', () => svc.close());
     controls.appendChild(closeBtn);
 
     container.appendChild(controls);
 
     // Track maximized state and update icon
-    api.isMaximized().then((maximized) => {
+    svc.isMaximized().then((maximized) => {
       this._isMaximized = maximized;
       this._updateMaximizeIcon();
     });
 
-    api.onMaximizedChange((maximized) => {
+    this._register(svc.onDidChangeMaximized((maximized) => {
       this._isMaximized = maximized;
       this._updateMaximizeIcon();
-    });
+    }));
   }
 
   private _updateMaximizeIcon(): void {
     if (!this._maximizeBtn) return;
     if (this._isMaximized) {
-      this._maximizeBtn.textContent = '❐'; // restore icon
+      // Restore icon (two overlapping rectangles)
+      this._maximizeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 0v2H0v8h8V8h2V0H2zm1 3h5v4H1V3h2zm6-2v6H9V1H3V1h6z" fill="currentColor"/></svg>';
       this._maximizeBtn.setAttribute('aria-label', 'Restore');
     } else {
-      this._maximizeBtn.textContent = '□'; // maximize icon
+      // Maximize icon (single rectangle)
+      this._maximizeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0v10h10V0H0zm1 1h8v8H1V1z" fill="currentColor"/></svg>';
       this._maximizeBtn.setAttribute('aria-label', 'Maximize');
     }
   }
 
   /** Double-click on drag region toggles maximize (platform convention). */
   private _setupDragRegionDoubleClick(): void {
-    if (!this._dragRegion || !this._electronApi) return;
+    if (!this._dragRegion || !this._windowService?.isNativeWindow) return;
     this._dragRegion.addEventListener('dblclick', () => {
-      this._electronApi?.maximize(); // maximize() toggles in Electron IPC handler
+      this._windowService?.maximize(); // maximize() toggles in Electron IPC handler
     });
   }
 

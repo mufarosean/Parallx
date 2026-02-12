@@ -95,28 +95,16 @@ export class ViewContainer extends Disposable implements IGridView {
     // Root element
     this._element = document.createElement('div');
     this._element.classList.add('view-container', `view-container-${id}`);
-    this._element.style.display = 'flex';
-    this._element.style.flexDirection = 'column';
-    this._element.style.overflow = 'hidden';
-    this._element.style.position = 'relative';
 
     // Tab bar
     this._tabBar = document.createElement('div');
     this._tabBar.classList.add('view-container-tabs');
-    this._tabBar.style.display = 'flex';
-    this._tabBar.style.alignItems = 'center';
     this._tabBar.style.height = `${this._tabBarHeight}px`;
-    this._tabBar.style.flexShrink = '0';
-    this._tabBar.style.overflowX = 'auto';
-    this._tabBar.style.overflowY = 'hidden';
     this._element.appendChild(this._tabBar);
 
     // Content area
     this._contentArea = document.createElement('div');
     this._contentArea.classList.add('view-container-content');
-    this._contentArea.style.flex = '1';
-    this._contentArea.style.overflow = 'hidden';
-    this._contentArea.style.position = 'relative';
     this._element.appendChild(this._contentArea);
   }
 
@@ -128,7 +116,7 @@ export class ViewContainer extends Disposable implements IGridView {
    * Hide the built-in tab bar (e.g. when an external activity bar controls switching).
    */
   hideTabBar(): void {
-    this._tabBar.style.display = 'none';
+    this._tabBar.classList.add('hidden');
     this._tabBarHeight = 0;
   }
 
@@ -145,7 +133,7 @@ export class ViewContainer extends Disposable implements IGridView {
 
     if (mode === 'stacked') {
       // Hide tab bar in stacked mode
-      this._tabBar.style.display = 'none';
+      this._tabBar.classList.add('hidden');
       this._tabBarHeight = 0;
 
       // Rebuild: convert all existing views to stacked sections
@@ -203,7 +191,7 @@ export class ViewContainer extends Disposable implements IGridView {
 
   setVisible(visible: boolean): void {
     this._visible = visible;
-    this._element.style.display = visible ? 'flex' : 'none';
+    this._element.classList.toggle('hidden', !visible);
   }
 
   toJSON(): object {
@@ -635,11 +623,11 @@ export class ViewContainer extends Disposable implements IGridView {
   private _updateStackedHeaders(): void {
     const singleView = this._views.size <= 1;
     for (const [, section] of this._sectionElements) {
-      section.header.style.display = singleView ? 'none' : '';
+      section.header.classList.toggle('hidden', singleView);
     }
     // Also hide sashes when single view
     for (const sash of this._sectionSashes) {
-      sash.style.display = singleView ? 'none' : '';
+      sash.classList.toggle('hidden', singleView);
     }
   }
 
@@ -672,7 +660,7 @@ export class ViewContainer extends Disposable implements IGridView {
       const view = this._views.get(viewId);
       if (!section || !view) continue;
 
-      if (section.header.style.display !== 'none') {
+      if (!section.header.classList.contains('hidden')) {
         section.header.style.height = `${headerH}px`;
       }
 
@@ -695,20 +683,11 @@ export class ViewContainer extends Disposable implements IGridView {
     tab.dataset.viewId = view.id;
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-selected', 'false');
-    tab.style.display = 'flex';
-    tab.style.alignItems = 'center';
-    tab.style.padding = '0 12px';
-    tab.style.cursor = 'pointer';
-    tab.style.whiteSpace = 'nowrap';
-    tab.style.height = '100%';
-    tab.style.userSelect = 'none';
-    tab.style.fontSize = '13px';
 
     // Icon
     if (view.icon) {
       const iconEl = document.createElement('span');
       iconEl.classList.add('view-tab-icon', view.icon);
-      iconEl.style.marginRight = '6px';
       tab.appendChild(iconEl);
     }
 

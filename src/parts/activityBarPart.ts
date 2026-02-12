@@ -113,6 +113,9 @@ export class ActivityBarPart extends Part {
   /** Badge DOM elements per icon ID, for efficient updates. */
   private readonly _badgeElements = new Map<string, { badge: HTMLElement; content: HTMLElement }>();
 
+  /** Index of the keyboard-focused item (roving tabindex). */
+  private _focusedIndex = 0;
+
   // ── Events ──
 
   private readonly _onDidClickIcon = this._register(new Emitter<ActivityBarIconClickEvent>());
@@ -120,6 +123,13 @@ export class ActivityBarPart extends Part {
 
   private readonly _onDidChangeActiveIcon = this._register(new Emitter<string | undefined>());
   readonly onDidChangeActiveIcon: Event<string | undefined> = this._onDidChangeActiveIcon.event;
+
+  /**
+   * Fired when the user right-clicks (context menu) an activity bar icon.
+   * Payload includes the icon ID and the mouse position for anchor.
+   */
+  private readonly _onDidContextMenuIcon = this._register(new Emitter<{ iconId: string; x: number; y: number }>());
+  readonly onDidContextMenuIcon: Event<{ iconId: string; x: number; y: number }> = this._onDidContextMenuIcon.event;
 
   // ── Constructor ──
 
@@ -161,6 +171,9 @@ export class ActivityBarPart extends Part {
       this._contributedSection.appendChild(btn);
     }
 
+    // Keep roving tabindex in sync
+    this._syncRovingTabindex();
+
     return toDisposable(() => {
       this.removeIcon(descriptor.id);
     });
@@ -192,6 +205,9 @@ export class ActivityBarPart extends Part {
       this._activeIconId = undefined;
       this._onDidChangeActiveIcon.fire(undefined);
     }
+
+    // Keep roving tabindex in sync
+    this._syncRovingTabindex();
   }
 
   /**
@@ -204,6 +220,7 @@ export class ActivityBarPart extends Part {
     if (this._activeIconId) {
       const prev = this._findButton(this._activeIconId);
       prev?.classList.remove('active');
+      prev?.setAttribute('aria-selected', 'false');
     }
 
     this._activeIconId = iconId;
@@ -212,6 +229,7 @@ export class ActivityBarPart extends Part {
     if (iconId) {
       const next = this._findButton(iconId);
       next?.classList.add('active');
+      next?.setAttribute('aria-selected', 'true');
     }
 
     this._onDidChangeActiveIcon.fire(iconId);
@@ -251,7 +269,7 @@ export class ActivityBarPart extends Part {
     if (!badge || (!badge.count && !badge.dot)) {
       // Clear badge
       this._badges.delete(iconId);
-      els.badge.style.display = 'none';
+      els.badge.classList.add('badge-hidden');
       els.badge.classList.remove('activity-bar-badge--count', 'activity-bar-badge--dot');
       els.content.textContent = '';
       return;
@@ -261,13 +279,13 @@ export class ActivityBarPart extends Part {
 
     if (badge.dot) {
       // Dot badge (like VS Code's IconBadge)
-      els.badge.style.display = '';
+      els.badge.classList.remove('badge-hidden');
       els.badge.classList.add('activity-bar-badge--dot');
       els.badge.classList.remove('activity-bar-badge--count');
       els.content.textContent = '';
     } else if (badge.count !== undefined && badge.count > 0) {
       // Count badge (like VS Code's NumberBadge)
-      els.badge.style.display = '';
+      els.badge.classList.remove('badge-hidden');
       els.badge.classList.add('activity-bar-badge--count');
       els.badge.classList.remove('activity-bar-badge--dot');
       els.content.textContent = badge.count > 99 ? '99+' : String(badge.count);
@@ -285,6 +303,10 @@ export class ActivityBarPart extends Part {
 
   protected override createContent(container: HTMLElement): void {
     container.classList.add('activity-bar');
+    // VS Code: .monaco-action-bar [role=tablist] on the vertical action bar
+    container.setAttribute('role', 'tablist');
+    container.setAttribute('aria-orientation', 'vertical');
+    container.setAttribute('aria-label', 'Active View Switcher');
 
     // Built-in icons section (top)
     this._builtinSection = document.createElement('div');
@@ -305,6 +327,15 @@ export class ActivityBarPart extends Part {
     this._bottomSection = document.createElement('div');
     this._bottomSection.classList.add('activity-bar-bottom');
     container.appendChild(this._bottomSection);
+
+    // Keyboard navigation — VS Code ActionBar pattern (vertical orientation)
+    this._register(
+      (() => {
+        const handler = (e: KeyboardEvent) => this._onKeyDown(e);
+        container.addEventListener('keydown', handler);
+        return toDisposable(() => container.removeEventListener('keydown', handler));
+      })(),
+    );
   }
 
   protected override savePartData(): Record<string, unknown> | undefined {
@@ -320,6 +351,97 @@ export class ActivityBarPart extends Part {
     }
   }
 
+  // ── Keyboard navigation ──
+  // VS Code pattern: ActionBar with vertical orientation (Up/Down/Home/End/Enter/Space)
+  // Roving tabindex: only the focused item has tabIndex=0, all others -1.
+
+  /**
+   * Get all tab-role buttons in DOM order.
+   */
+  private _getAllButtons(): HTMLButtonElement[] {
+    return Array.from(
+      this.contentElement.querySelectorAll<HTMLButtonElement>('.activity-bar-item'),
+    );
+  }
+
+  /**
+   * Handle keydown on the activity-bar container.
+   */
+  private _onKeyDown(e: KeyboardEvent): void {
+    const buttons = this._getAllButtons();
+    if (buttons.length === 0) return;
+
+    let handled = true;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        this._focusRelative(buttons, 1);
+        break;
+      case 'ArrowUp':
+        this._focusRelative(buttons, -1);
+        break;
+      case 'Home':
+        this._focusAt(buttons, 0);
+        break;
+      case 'End':
+        this._focusAt(buttons, buttons.length - 1);
+        break;
+      case 'Enter':
+      case ' ':
+        // Activate the focused item
+        buttons[this._focusedIndex]?.click();
+        break;
+      default:
+        handled = false;
+    }
+
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
+  /**
+   * Move focus by `delta` positions (wrapping).
+   */
+  private _focusRelative(buttons: HTMLButtonElement[], delta: number): void {
+    const len = buttons.length;
+    const next = (this._focusedIndex + delta + len) % len;
+    this._focusAt(buttons, next);
+  }
+
+  /**
+   * Focus the button at `index` and update roving tabindex.
+   */
+  private _focusAt(buttons: HTMLButtonElement[], index: number): void {
+    // Remove tabindex from previous
+    const prev = buttons[this._focusedIndex];
+    if (prev) prev.tabIndex = -1;
+
+    this._focusedIndex = index;
+
+    const next = buttons[index];
+    if (next) {
+      next.tabIndex = 0;
+      next.focus();
+    }
+  }
+
+  /**
+   * Synchronise roving tabindex after buttons are added/removed.
+   * Ensures exactly one button has tabIndex=0.
+   */
+  private _syncRovingTabindex(): void {
+    const buttons = this._getAllButtons();
+    // Clamp index
+    if (this._focusedIndex >= buttons.length) {
+      this._focusedIndex = Math.max(0, buttons.length - 1);
+    }
+    buttons.forEach((btn, i) => {
+      btn.tabIndex = i === this._focusedIndex ? 0 : -1;
+    });
+  }
+
   // ── DOM helpers ──
 
   private _createIconButton(descriptor: ActivityBarIconDescriptor): HTMLButtonElement {
@@ -329,6 +451,9 @@ export class ActivityBarPart extends Part {
     btn.title = descriptor.label;
     btn.setAttribute('role', 'tab');
     btn.setAttribute('aria-label', descriptor.label);
+    btn.setAttribute('aria-selected', 'false');
+    // Roving tabindex: new buttons start at -1; _syncRovingTabindex sets the first to 0
+    btn.tabIndex = -1;
 
     // Icon label (the emoji/glyph)
     const iconLabel = document.createElement('span');
@@ -338,8 +463,7 @@ export class ActivityBarPart extends Part {
 
     // Badge element (VS Code: .badge > .badge-content, absolute top-right)
     const badge = document.createElement('div');
-    badge.classList.add('activity-bar-badge');
-    badge.style.display = 'none'; // hidden until setBadge is called
+    badge.classList.add('activity-bar-badge', 'badge-hidden'); // hidden until setBadge is called
     const badgeContent = document.createElement('span');
     badgeContent.classList.add('activity-bar-badge-content');
     badge.appendChild(badgeContent);
@@ -357,6 +481,16 @@ export class ActivityBarPart extends Part {
       this._onDidClickIcon.fire({
         iconId: descriptor.id,
         source: descriptor.source,
+      });
+    });
+
+    // P2.7: Context menu on right-click
+    btn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this._onDidContextMenuIcon.fire({
+        iconId: descriptor.id,
+        x: e.clientX,
+        y: e.clientY,
       });
     });
 

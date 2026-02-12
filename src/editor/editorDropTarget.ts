@@ -85,10 +85,7 @@ class EditorDropOverlay extends Disposable {
   private _createOverlayContainer(): HTMLElement {
     const el = document.createElement('div');
     el.classList.add('editor-drop-overlay');
-    el.style.position = 'absolute';
-    el.style.inset = '0';
-    el.style.zIndex = OVERLAY_Z_INDEX;
-    el.style.pointerEvents = 'auto';
+    // Positioning via .editor-drop-overlay CSS class (position absolute, inset 0, z-index, pointer-events)
     return el;
   }
 
@@ -102,7 +99,7 @@ class EditorDropOverlay extends Disposable {
     // Overlay is placed inside the group element's pane container
     const paneContainer = this._groupElement.querySelector('.editor-pane-container') as HTMLElement | null;
     const parent = paneContainer ?? this._groupElement;
-    parent.style.position = 'relative'; // ensure overlay positioning
+    // .editor-pane-container already has position: relative via CSS
     parent.appendChild(this._container);
   }
 

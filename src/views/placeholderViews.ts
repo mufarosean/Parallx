@@ -21,9 +21,7 @@ abstract class PlaceholderView extends View {
 
     // Dimension badge
     this._dimensionBadge = document.createElement('div');
-    this._dimensionBadge.style.cssText =
-      'position:absolute;top:4px;right:8px;font-size:10px;color:#6a6a6a;' +
-      'font-family:monospace;pointer-events:none;z-index:1;';
+    this._dimensionBadge.classList.add('placeholder-dimension-badge');
     container.appendChild(this._dimensionBadge);
 
     this.createPlaceholderContent(container);
@@ -70,10 +68,7 @@ export class ExplorerPlaceholderView extends PlaceholderView {
   get maximumHeight(): number { return Number.POSITIVE_INFINITY; }
 
   protected override createPlaceholderContent(container: HTMLElement): void {
-    container.style.padding = '8px';
-    container.style.color = '#cccccc';
-    container.style.fontSize = '13px';
-    container.style.backgroundColor = '#252526';
+    container.classList.add('placeholder-explorer');
 
     const tree = [
       { label: 'src', indent: 0, icon: '📁' },
@@ -92,12 +87,9 @@ export class ExplorerPlaceholderView extends PlaceholderView {
 
     for (const item of tree) {
       const row = document.createElement('div');
+      row.classList.add('placeholder-tree-row');
       row.style.paddingLeft = `${item.indent * 16}px`;
-      row.style.lineHeight = '22px';
-      row.style.cursor = 'pointer';
       row.textContent = `${item.icon} ${item.label}`;
-      row.addEventListener('mouseenter', () => { row.style.backgroundColor = '#2a2d2e'; });
-      row.addEventListener('mouseleave', () => { row.style.backgroundColor = 'transparent'; });
       container.appendChild(row);
     }
   }
@@ -134,25 +126,13 @@ export class SearchPlaceholderView extends PlaceholderView {
   get maximumHeight(): number { return Number.POSITIVE_INFINITY; }
 
   protected override createPlaceholderContent(container: HTMLElement): void {
-    container.style.padding = '8px';
-    container.style.color = '#cccccc';
-    container.style.fontSize = '13px';
-    container.style.backgroundColor = '#1e1e1e';
+    container.classList.add('placeholder-search-container');
 
     // Search input
     const input = document.createElement('input');
     input.type = 'text';
     input.placeholder = 'Search…';
-    input.style.width = '100%';
-    input.style.padding = '6px 8px';
-    input.style.border = '1px solid #3c3c3c';
-    input.style.borderRadius = '2px';
-    input.style.backgroundColor = '#3c3c3c';
-    input.style.color = '#cccccc';
-    input.style.marginBottom = '8px';
-    input.style.fontSize = '13px';
-    input.style.outline = 'none';
-    input.style.boxSizing = 'border-box';
+    input.classList.add('placeholder-search-input');
     container.appendChild(input);
 
     // Mock results
@@ -163,17 +143,13 @@ export class SearchPlaceholderView extends PlaceholderView {
     ];
 
     const list = document.createElement('div');
-    list.style.marginTop = '4px';
+    list.classList.add('placeholder-search-results');
     for (const r of results) {
       const item = document.createElement('div');
-      item.style.lineHeight = '22px';
-      item.style.paddingLeft = '4px';
-      item.style.cursor = 'pointer';
-      item.innerHTML = `<span style="color:#4ec9b0">${r.file}</span>` +
-        `<span style="color:#6a9955">:${r.line}</span> ` +
-        `<span style="color:#9cdcfe">${r.text}</span>`;
-      item.addEventListener('mouseenter', () => { item.style.backgroundColor = '#2a2d2e'; });
-      item.addEventListener('mouseleave', () => { item.style.backgroundColor = 'transparent'; });
+      item.classList.add('placeholder-search-result-item');
+      item.innerHTML = `<span class="placeholder-search-result-file">${r.file}</span>` +
+        `<span class="placeholder-search-result-line">:${r.line}</span> ` +
+        `<span class="placeholder-search-result-text">${r.text}</span>`;
       list.appendChild(item);
     }
     container.appendChild(list);
@@ -211,23 +187,18 @@ export class TerminalPlaceholderView extends PlaceholderView {
   get maximumHeight(): number { return 500; }
 
   protected override createPlaceholderContent(container: HTMLElement): void {
-    container.style.padding = '8px 12px';
-    container.style.fontFamily = "'Cascadia Code', 'Consolas', monospace";
-    container.style.fontSize = '13px';
-    container.style.lineHeight = '20px';
-    container.style.backgroundColor = '#1e1e1e';
-    container.style.color = '#cccccc';
+    container.classList.add('placeholder-terminal');
 
     const lines = [
-      '<span style="color:#6a9955">$</span> npm run build',
-      '<span style="color:#569cd6">esbuild</span> src/main.ts → dist/renderer/main.js',
-      '  <span style="color:#4ec9b0">✔</span> built in 48ms',
+      '<span class="placeholder-terminal-prompt">$</span> npm run build',
+      '<span class="placeholder-terminal-cmd">esbuild</span> src/main.ts → dist/renderer/main.js',
+      '  <span class="placeholder-terminal-ok">✔</span> built in 48ms',
       '',
-      '<span style="color:#6a9955">$</span> npm start',
-      '<span style="color:#569cd6">Electron</span> starting...',
-      '  <span style="color:#4ec9b0">✔</span> window ready (1280×800)',
+      '<span class="placeholder-terminal-prompt">$</span> npm start',
+      '<span class="placeholder-terminal-cmd">Electron</span> starting...',
+      '  <span class="placeholder-terminal-ok">✔</span> window ready (1280×800)',
       '',
-      '<span style="color:#6a9955">$</span> <span style="animation:blink 1s step-end infinite">▋</span>',
+      '<span class="placeholder-terminal-prompt">$</span> <span style="animation:blink 1s step-end infinite">▋</span>',
     ];
 
     for (const line of lines) {
@@ -268,13 +239,7 @@ export class OutputPlaceholderView extends PlaceholderView {
   get maximumHeight(): number { return 400; }
 
   protected override createPlaceholderContent(container: HTMLElement): void {
-    container.style.padding = '8px 12px';
-    container.style.fontFamily = "'Cascadia Code', 'Consolas', monospace";
-    container.style.fontSize = '12px';
-    container.style.lineHeight = '18px';
-    container.style.backgroundColor = '#1e1e1e';
-    container.style.color = '#858585';
-    container.style.overflowY = 'auto';
+    container.classList.add('placeholder-output');
 
     const entries = [
       '[Info  - 10:01:23] Lifecycle service initialized',
@@ -287,7 +252,7 @@ export class OutputPlaceholderView extends PlaceholderView {
 
     for (const entry of entries) {
       const row = document.createElement('div');
-      row.style.whiteSpace = 'pre';
+      row.classList.add('placeholder-output-line');
       row.textContent = entry;
       container.appendChild(row);
     }

@@ -534,3 +534,30 @@ export interface IKeybindingService extends IDisposable {
 }
 
 export const IKeybindingService = createServiceIdentifier<IKeybindingService>('IKeybindingService');
+
+// ─── IWindowService ──────────────────────────────────────────────────────────
+
+/**
+ * Abstraction over native window operations (minimize, maximize, close, etc.).
+ * In Electron, delegates to `window.parallxElectron` IPC bridge.
+ * In browser-only mode, methods are no-ops.
+ *
+ * VS Code reference: INativeHostService (src/vs/platform/native/common/native.ts)
+ * — our scope is narrower: only window-chrome operations.
+ */
+export interface IWindowService extends IDisposable {
+  /** Whether the host supports native window controls (Electron). */
+  readonly isNativeWindow: boolean;
+  /** Minimize the window. */
+  minimize(): void;
+  /** Toggle maximize / restore. */
+  maximize(): void;
+  /** Close the window. */
+  close(): void;
+  /** Query current maximized state. */
+  isMaximized(): Promise<boolean>;
+  /** Fires when the maximized state changes. */
+  readonly onDidChangeMaximized: Event<boolean>;
+}
+
+export const IWindowService = createServiceIdentifier<IWindowService>('IWindowService');
