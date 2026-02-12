@@ -881,7 +881,7 @@ Wire the existing `NotificationService` (M2 API) to a visible notification cente
 
 #### Tasks
 
-**Task 9.1 – Wire Notification Toasts to Workbench**
+**Task 9.1 – Wire Notification Toasts to Workbench** ✅
 - **Task Description:** Ensure the existing `NotificationService` toast UI renders correctly within the workbench layout and doesn't conflict with other overlays.
 - **Output:** Notification toasts visible in bottom-right of workbench.
 - **Completion Criteria:**
@@ -896,6 +896,19 @@ Wire the existing `NotificationService` (M2 API) to a visible notification cente
 - **Notes / Constraints:**
   - The `NotificationService` already renders toasts — this task is about integration and polish, not rebuilding
   - The notification center dropdown is a simple scrollable list — not a full notification tray
+- **Implementation Notes:**
+  - NotificationService enhanced: `activeCount` getter, `history` array (max 50, newest first), `clearHistory()`, `onDidChangeCount` event
+  - INotificationService interface updated in serviceTypes.ts with new members
+  - Status bar bell badge entry (`status.notifications`) added via `addEntry()` API, right-aligned, priority -100 (far right)
+  - Badge text dynamically updates: "🔔" (no notifications) → "🔔 N" (N active)
+  - `onDidChangeCount` listener updates badge text and tooltip in real-time
+  - Notification center dropdown: click bell → toggle overlay with header ("Notifications" + "Clear All" button) + scrollable list of history items
+  - Each history item shows severity icon (color-coded left border), message, and optional source
+  - "Clear All" dismisses active notifications, clears history, and closes dropdown
+  - Escape key closes dropdown; clicking outside overlay closes it
+  - `workbench.action.toggleNotificationCenter` command registered for programmatic access
+  - CSS: notification center panel positioned bottom-right above status bar, z-index 15000 (above workbench, below modals at 20000)
+  - Toast container z-index remains 10000 (below notification center overlay)
 
 ---
 

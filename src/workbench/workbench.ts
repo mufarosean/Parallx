@@ -2534,6 +2534,140 @@ export class Workbench extends Disposable {
         }
       });
     }));
+
+    // ── Notification Center Badge (Cap 9) ──
+    this._setupNotificationBadge(sb);
+  }
+
+  /**
+   * Set up the notification bell badge in the status bar and wire it to
+   * the NotificationService. Clicking the badge toggles a notification
+   * center dropdown showing recent notifications.
+   *
+   * VS Code parity: `src/vs/workbench/browser/parts/notifications`
+   */
+  private _setupNotificationBadge(sb: StatusBarPart): void {
+    const notifService = this._services.has(INotificationService)
+      ? this._services.get(INotificationService) as import('../api/notificationService.js').NotificationService
+      : undefined;
+    if (!notifService) return;
+
+    // Add bell entry to status bar (right-aligned, low priority = far right)
+    const bellAccessor = sb.addEntry({
+      id: 'status.notifications',
+      text: '🔔',
+      alignment: StatusBarAlignment.Right,
+      priority: -100, // far right
+      tooltip: 'No new notifications',
+      command: 'workbench.action.toggleNotificationCenter',
+      name: 'Notifications',
+    });
+
+    // Update badge when notification count changes
+    const updateBadge = (count: number) => {
+      bellAccessor.update({
+        text: count > 0 ? `🔔 ${count}` : '🔔',
+        tooltip: count > 0 ? `${count} notification${count > 1 ? 's' : ''}` : 'No new notifications',
+      });
+    };
+    this._register(notifService.onDidChangeCount(updateBadge));
+
+    // Notification center overlay state
+    let centerOverlay: HTMLElement | null = null;
+    const hideCenter = () => {
+      if (centerOverlay) {
+        centerOverlay.remove();
+        centerOverlay = null;
+      }
+    };
+
+    const showCenter = () => {
+      if (centerOverlay) { hideCenter(); return; }
+
+      const overlay = document.createElement('div');
+      overlay.className = 'parallx-notification-center-overlay';
+      overlay.addEventListener('mousedown', (e) => {
+        if (e.target === overlay) hideCenter();
+      });
+
+      const panel = document.createElement('div');
+      panel.className = 'parallx-notification-center';
+
+      // Header
+      const header = document.createElement('div');
+      header.className = 'parallx-notification-center-header';
+      const title = document.createElement('span');
+      title.textContent = 'Notifications';
+      header.appendChild(title);
+
+      const clearBtn = document.createElement('button');
+      clearBtn.className = 'parallx-notification-center-clear';
+      clearBtn.textContent = 'Clear All';
+      clearBtn.title = 'Clear all notifications';
+      clearBtn.addEventListener('click', () => {
+        notifService.dismissAll();
+        notifService.clearHistory();
+        hideCenter();
+      });
+      header.appendChild(clearBtn);
+      panel.appendChild(header);
+
+      // List
+      const list = document.createElement('div');
+      list.className = 'parallx-notification-center-list';
+
+      const history = notifService.history;
+      if (history.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'parallx-notification-center-empty';
+        empty.textContent = 'No notifications';
+        list.appendChild(empty);
+      } else {
+        for (const notif of history) {
+          const row = document.createElement('div');
+          row.className = `parallx-notification-center-item parallx-notification-center-item-${notif.severity}`;
+
+          const icon = document.createElement('span');
+          icon.className = 'parallx-notification-center-icon';
+          icon.textContent = notif.severity === 'information' ? 'ℹ' : notif.severity === 'warning' ? '⚠' : '✕';
+          row.appendChild(icon);
+
+          const msg = document.createElement('span');
+          msg.className = 'parallx-notification-center-message';
+          msg.textContent = notif.message;
+          row.appendChild(msg);
+
+          if (notif.source) {
+            const src = document.createElement('span');
+            src.className = 'parallx-notification-center-source';
+            src.textContent = notif.source;
+            row.appendChild(src);
+          }
+
+          list.appendChild(row);
+        }
+      }
+      panel.appendChild(list);
+
+      overlay.appendChild(panel);
+      this._container.appendChild(overlay);
+      centerOverlay = overlay;
+
+      // Close on Escape
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          hideCenter();
+          document.removeEventListener('keydown', onKey);
+        }
+      };
+      document.addEventListener('keydown', onKey);
+    };
+
+    // Register the toggle command
+    const commandService = this._services.get(ICommandService) as any;
+    if (commandService?.registerCommand) {
+      commandService.registerCommand('workbench.action.toggleNotificationCenter', () => showCenter());
+    }
   }
 
   /** Tracked status bar entry accessors for dynamic updates. */

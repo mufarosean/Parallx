@@ -59,11 +59,34 @@ export class NotificationService extends Disposable {
     resolve: (result: NotificationResult) => void;
   }>();
 
+  /** Recent notification history for the notification center (newest first). */
+  private readonly _history: INotification[] = [];
+  private static readonly MAX_HISTORY = 50;
+
   private readonly _onDidShowNotification = this._register(new Emitter<INotification>());
   readonly onDidShowNotification: Event<INotification> = this._onDidShowNotification.event;
 
   private readonly _onDidCloseNotification = this._register(new Emitter<string>());
   readonly onDidCloseNotification: Event<string> = this._onDidCloseNotification.event;
+
+  /** Fired when active notification count changes (for status bar badge). */
+  private readonly _onDidChangeCount = this._register(new Emitter<number>());
+  readonly onDidChangeCount: Event<number> = this._onDidChangeCount.event;
+
+  /** Number of currently visible (active) notifications. */
+  get activeCount(): number {
+    return this._activeNotifications.size;
+  }
+
+  /** Recent notification history (newest first, read-only). */
+  get history(): readonly INotification[] {
+    return this._history;
+  }
+
+  /** Clear all notification history. */
+  clearHistory(): void {
+    this._history.length = 0;
+  }
 
   /**
    * Attach the notification overlay to the DOM.
@@ -104,6 +127,12 @@ export class NotificationService extends Disposable {
         resolve: resolveWrapper,
       });
 
+      // Track in history
+      this._history.unshift(notification);
+      if (this._history.length > NotificationService.MAX_HISTORY) {
+        this._history.length = NotificationService.MAX_HISTORY;
+      }
+
       if (this._container) {
         // Insert at top (newest first)
         this._container.prepend(element);
@@ -115,6 +144,7 @@ export class NotificationService extends Disposable {
         this._dismiss(id, undefined);
       }
 
+      this._onDidChangeCount.fire(this._activeNotifications.size);
       this._onDidShowNotification.fire(notification);
     });
   }
@@ -173,6 +203,7 @@ export class NotificationService extends Disposable {
     setTimeout(() => {
       entry.element.remove();
       this._activeNotifications.delete(id);
+      this._onDidChangeCount.fire(this._activeNotifications.size);
       entry.resolve({ action });
       this._onDidCloseNotification.fire(id);
     }, 200);

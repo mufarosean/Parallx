@@ -1343,3 +1343,103 @@ html, body {
   -webkit-app-region: no-drag;
   z-index: 3000;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Notification Center (Cap 9)
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.parallx-notification-center-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 15000;
+}
+
+.parallx-notification-center {
+  position: fixed;
+  bottom: 28px;            /* just above status bar */
+  right: 8px;
+  width: 380px;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  background-color: #252526;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.parallx-notification-center-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid #3c3c3c;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cccccc;
+}
+
+.parallx-notification-center-clear {
+  background: transparent;
+  border: 1px solid #474747;
+  color: #cccccc;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.parallx-notification-center-clear:hover {
+  background-color: #3c3c3c;
+}
+
+.parallx-notification-center-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.parallx-notification-center-empty {
+  padding: 16px;
+  text-align: center;
+  color: #858585;
+  font-size: 12px;
+}
+
+.parallx-notification-center-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #cccccc;
+  border-left: 3px solid transparent;
+}
+.parallx-notification-center-item:hover {
+  background-color: #2a2d2e;
+}
+.parallx-notification-center-item-information {
+  border-left-color: #3794ff;
+}
+.parallx-notification-center-item-warning {
+  border-left-color: #cca700;
+}
+.parallx-notification-center-item-error {
+  border-left-color: #f14c4c;
+}
+
+.parallx-notification-center-icon {
+  flex-shrink: 0;
+  line-height: 18px;
+}
+.parallx-notification-center-message {
+  flex: 1;
+  line-height: 18px;
+  word-break: break-word;
+}
+.parallx-notification-center-source {
+  flex-shrink: 0;
+  color: #858585;
+  font-size: 11px;
+  line-height: 18px;
+}

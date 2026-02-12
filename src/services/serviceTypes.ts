@@ -291,10 +291,18 @@ export interface INotificationService extends IDisposable {
   error(message: string, ...actions: NotificationAction[]): Promise<NotificationAction | undefined>;
   /** Dismiss all notifications. */
   dismissAll(): void;
+  /** Number of currently visible (active) notifications. */
+  readonly activeCount: number;
+  /** Recent notification history (newest first). */
+  readonly history: readonly INotification[];
+  /** Clear notification history. */
+  clearHistory(): void;
   /** Fires when a notification is shown. */
   readonly onDidShowNotification: Event<INotification>;
   /** Fires when a notification is closed. */
   readonly onDidCloseNotification: Event<string>;
+  /** Fires when the active notification count changes. */
+  readonly onDidChangeCount: Event<number>;
 }
 
 export const INotificationService = createServiceIdentifier<INotificationService>('INotificationService');
