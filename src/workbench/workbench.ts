@@ -770,8 +770,16 @@ export class Workbench extends Disposable {
     });
 
     // 7c. Track panel height after sash drags so togglePanel() restores the right size
+    //     Also reset _panelMaximized if user manually drags sash while maximized
+    //     (VS Code parity: isPanelMaximized() is derived from editor visibility,
+    //      so it auto-corrects; our boolean flag needs explicit reset)
     this._vGrid.onDidChange(() => {
-      if (this._panel.visible && !this._panelMaximized) {
+      if (this._panel.visible) {
+        if (this._panelMaximized) {
+          // Any manual sash drag while maximized exits the maximized state
+          this._panelMaximized = false;
+          this._workbenchContext.setPanelMaximized(false);
+        }
         const h = this._vGrid.getViewSize(this._panel.id);
         if (h !== undefined && h > 0) {
           this._lastPanelHeight = h;
@@ -790,6 +798,7 @@ export class Workbench extends Disposable {
             this._vGrid.layout();
             this._lastPanelHeight = DEFAULT_PANEL_HEIGHT;
             this._panelMaximized = false;
+            this._workbenchContext.setPanelMaximized(false);
           }
         }
       }
@@ -2202,10 +2211,12 @@ export class Workbench extends Disposable {
       this._vGrid.removeView(this._panel.id);
       this._panel.setVisible(false);
       this._panelMaximized = false;
+      this._workbenchContext.setPanelMaximized(false);
     } else {
       this._panel.setVisible(true);
       this._vGrid.addView(this._panel as any, this._lastPanelHeight);
       this._panelMaximized = false;
+      this._workbenchContext.setPanelMaximized(false);
     }
     this._vGrid.layout();
     this._layoutViewContainers();
@@ -2238,6 +2249,7 @@ export class Workbench extends Disposable {
         }
       }
       this._panelMaximized = false;
+      this._workbenchContext.setPanelMaximized(false);
     } else {
       // Save current height, then maximize panel (give editor minimum)
       const currentHeight = this._vGrid.getViewSize(this._panel.id);
@@ -2255,6 +2267,7 @@ export class Workbench extends Disposable {
         }
       }
       this._panelMaximized = true;
+      this._workbenchContext.setPanelMaximized(true);
     }
     this._layoutViewContainers();
   }

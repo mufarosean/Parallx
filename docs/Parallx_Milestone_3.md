@@ -590,13 +590,18 @@ The bottom panel is a collapsible, resizable region at the bottom of the workben
   - Added `_lastPanelHeight` field (mirrors `_lastSidebarWidth`) and `_panelMaximized` flag to Workbench class
   - Created `togglePanel()` method: saves height via `_vGrid.getViewSize()` before collapse, restores `_lastPanelHeight` on expand
   - Created `toggleMaximizedPanel()` method: stores non-maximized height, resizes editor to 30px min to give panel maximum space, restores on second toggle
-  - Panel height tracked on `_vGrid.onDidChange()` (skips tracking when maximized to preserve restore height)
+  - Panel height tracked on `_vGrid.onDidChange()` — also resets `_panelMaximized` if user drags sash while maximized (VS Code's `isPanelMaximized()` is derived from editor visibility and auto-corrects; our boolean flag needs explicit reset)
   - Double-click panel sash resets to `DEFAULT_PANEL_HEIGHT` (200px) via `_vGrid.onDidSashReset()`
   - Panel height restored in `_applyRestoredState()` (step 1c, mirrors sidebar width step 1b)
   - `setPartHidden(Panel)` now delegates to `togglePanel()` instead of inlining duplicate logic
   - `structuralCommands.ts` togglePanel refactored to call `w.togglePanel()` (like sidebar uses `w.toggleSidebar()`)
   - `toggleMaximizedPanel` command registered with `WorkbenchLike` interface updated
   - `layoutReset` now uses `w.togglePanel()` instead of direct `_vGrid.addView(panel, 200)`
+  - Added `CTX_PANEL_MAXIMIZED` context key (VS Code parity: `PanelMaximizedContext`), synced in `togglePanel()`, `toggleMaximizedPanel()`, sash drag, and sash reset handlers
+- **VS Code Parity Deviations (deliberate):**
+  - **Maximize approach**: VS Code hides the editor entirely via `setEditorHidden(true)`; Parallx resizes editor to 30px via `resizeSash()` because our grid lacks `setViewVisible()` / `getViewCachedVisibleSize()`
+  - **Default height**: Parallx uses 200px, VS Code defaults to 300px — stylistic choice for our smaller default window size
+  - **Tab bar ARIA**: Both use `role="tablist"` with `role="tab"` on items (confirmed matching VS Code's `CompositeBar` which uses `ariaRole: 'tablist'`)
 
 **Task 5.2 – Polish Panel Tab Switching** ✅
 - **Task Description:** Ensure panel tabs (provided by the `ViewContainer`) work correctly and persist state.

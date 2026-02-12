@@ -17,6 +17,7 @@ import { FocusTracker } from './focusTracker.js';
 
 export const CTX_SIDEBAR_VISIBLE = 'sidebarVisible';
 export const CTX_PANEL_VISIBLE = 'panelVisible';
+export const CTX_PANEL_MAXIMIZED = 'panelMaximized';
 export const CTX_AUXILIARY_BAR_VISIBLE = 'auxiliaryBarVisible';
 export const CTX_STATUS_BAR_VISIBLE = 'statusBarVisible';
 
@@ -68,6 +69,7 @@ export class WorkbenchContextManager extends Disposable {
   // Typed handles for each standard key
   private readonly _sidebarVisible: IContextKey<boolean>;
   private readonly _panelVisible: IContextKey<boolean>;
+  private readonly _panelMaximized: IContextKey<boolean>;
   private readonly _auxiliaryBarVisible: IContextKey<boolean>;
   private readonly _statusBarVisible: IContextKey<boolean>;
 
@@ -96,6 +98,7 @@ export class WorkbenchContextManager extends Disposable {
     // Create typed key handles (all in global scope)
     this._sidebarVisible = _contextKeyService.createKey(CTX_SIDEBAR_VISIBLE, false);
     this._panelVisible = _contextKeyService.createKey(CTX_PANEL_VISIBLE, false);
+    this._panelMaximized = _contextKeyService.createKey(CTX_PANEL_MAXIMIZED, false);
     this._auxiliaryBarVisible = _contextKeyService.createKey(CTX_AUXILIARY_BAR_VISIBLE, false);
     this._statusBarVisible = _contextKeyService.createKey(CTX_STATUS_BAR_VISIBLE, true);
 
@@ -207,6 +210,10 @@ export class WorkbenchContextManager extends Disposable {
 
   setPanelVisible(visible: boolean): void {
     this._panelVisible.set(visible);
+  }
+
+  setPanelMaximized(maximized: boolean): void {
+    this._panelMaximized.set(maximized);
   }
 
   setAuxiliaryBarVisible(visible: boolean): void {
