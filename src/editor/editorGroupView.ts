@@ -157,10 +157,9 @@ export class EditorGroupView extends Disposable implements IGridView {
     this._paneContainer.classList.add('editor-pane-container');
     this._element.appendChild(this._paneContainer);
 
-    // Empty message
+    // Empty message (hidden when watermark is visible at the EditorPart level)
     this._emptyMessage = document.createElement('div');
     this._emptyMessage.classList.add('editor-group-empty');
-    this._emptyMessage.textContent = 'No editors open';
     this._paneContainer.appendChild(this._emptyMessage);
 
     this._renderTabs();

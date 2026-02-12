@@ -15,6 +15,7 @@ import { EditorGroupView } from '../editor/editorGroupView.js';
 import { GroupDirection, EditorOpenOptions } from '../editor/editorTypes.js';
 import type { IEditorInput } from '../editor/editorInput.js';
 import { createEditorPaneForInput } from '../editor/editorPane.js';
+import { EditorDropTarget } from '../editor/editorDropTarget.js';
 
 const EDITOR_CONSTRAINTS: SizeConstraints = {
   minimumWidth: 200,
@@ -22,6 +23,9 @@ const EDITOR_CONSTRAINTS: SizeConstraints = {
   minimumHeight: 150,
   maximumHeight: Number.POSITIVE_INFINITY,
 };
+
+/** Soft limit on the number of visible editor groups. Matches VS Code default. */
+const MAX_EDITOR_GROUPS_SOFT_LIMIT = 3;
 
 /**
  * Editor part — the central content area that hosts editor groups.
@@ -37,6 +41,7 @@ export class EditorPart extends Part {
   private _watermark: HTMLElement | undefined;
 
   private _grid: Grid | undefined;
+  private _dropTarget: EditorDropTarget | undefined;
   private readonly _groups = new Map<string, EditorGroupView>();
   private readonly _groupDisposables = new Map<string, DisposableStore>();
   private _activeGroupId: string | undefined;
@@ -122,6 +127,57 @@ export class EditorPart extends Part {
 
     this._grid.layout();
     this._updateWatermark();
+
+    // Set up the drop target for drag-to-edge split creation
+    this._setupDropTarget();
+  }
+
+  // ── Drop target for drag-to-edge splits ──
+
+  private _setupDropTarget(): void {
+    if (!this._editorGroupContainer) return;
+
+    this._dropTarget = this._register(new EditorDropTarget(this._editorGroupContainer));
+
+    this._register(this._dropTarget.onDidDrop((event) => {
+      const { data, targetGroupId, splitDirection } = event;
+
+      // Find the source group and editor
+      const sourceGroup = this._groups.get(data.sourceGroupId);
+      if (!sourceGroup) return;
+
+      const sourceEditor = sourceGroup.model.getEditorAt(data.editorIndex);
+      if (!sourceEditor) return;
+
+      const targetGroup = this._groups.get(targetGroupId);
+      if (!targetGroup) return;
+
+      if (splitDirection) {
+        // Create a new split group and move the editor there
+        const newGroup = this.splitGroup(targetGroup.id, splitDirection);
+        if (newGroup) {
+          newGroup.openEditor(sourceEditor, { pinned: true });
+          // Close from source group (force — this is a move)
+          sourceGroup.model.closeEditor(data.editorIndex, true);
+
+          // Auto-close empty source group (not if it's the last)
+          if (sourceGroup.isEmpty && this._groups.size > 1) {
+            this.removeGroup(sourceGroup.id);
+          }
+        }
+      } else {
+        // Center drop — merge into existing group (same as cross-group tab drop)
+        if (data.sourceGroupId !== targetGroupId) {
+          targetGroup.openEditor(sourceEditor, { pinned: true });
+          sourceGroup.model.closeEditor(data.editorIndex, true);
+          this._setActiveGroup(targetGroup);
+
+          if (sourceGroup.isEmpty && this._groups.size > 1) {
+            this.removeGroup(sourceGroup.id);
+          }
+        }
+      }
+    }));
   }
 
   // ── Group management ──
@@ -191,6 +247,13 @@ export class EditorPart extends Part {
     if (!this._grid) return undefined;
     const source = this._groups.get(sourceGroupId);
     if (!source) return undefined;
+
+    // 3-group soft limit: warn but allow creation
+    if (this._groups.size >= MAX_EDITOR_GROUPS_SOFT_LIMIT) {
+      console.warn(
+        `[EditorPart] Creating group #${this._groups.size + 1} exceeds the soft limit of ${MAX_EDITOR_GROUPS_SOFT_LIMIT} visible groups.`,
+      );
+    }
 
     const newGroup = this._createGroupView();
 

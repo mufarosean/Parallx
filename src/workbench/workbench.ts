@@ -1457,19 +1457,61 @@ export class Workbench extends Disposable {
   private _setupEditorWatermark(): void {
     const watermark = this._editor.element.querySelector('.editor-watermark') as HTMLElement;
     if (watermark) {
-      watermark.innerHTML = `
+      // Initial watermark with static shortcuts (keybinding service not yet available)
+      this._renderWatermarkContent(watermark);
+    }
+  }
+
+  /**
+   * Update the watermark keyboard shortcuts to reflect actual keybinding
+   * labels from the keybinding service. Called after keybindingService is
+   * available (Phase 5).
+   */
+  private _updateWatermarkKeybindings(keybindingService: { lookupKeybinding(commandId: string): string | undefined }): void {
+    const watermark = this._editor.element.querySelector('.editor-watermark') as HTMLElement;
+    if (!watermark) return;
+    this._renderWatermarkContent(watermark, keybindingService);
+  }
+
+  /**
+   * Render the watermark content, optionally using the keybinding service
+   * for dynamic shortcut labels.
+   */
+  private _renderWatermarkContent(
+    watermark: HTMLElement,
+    keybindingService?: { lookupKeybinding(commandId: string): string | undefined },
+  ): void {
+    const shortcuts: { commandId: string; label: string; fallback: string }[] = [
+      { commandId: 'workbench.action.showCommands', label: 'Command Palette', fallback: 'Ctrl+Shift+P' },
+      { commandId: 'workbench.action.toggleSidebarVisibility', label: 'Toggle Sidebar', fallback: 'Ctrl+B' },
+      { commandId: 'workbench.action.togglePanel', label: 'Toggle Panel', fallback: 'Ctrl+J' },
+      { commandId: 'workbench.action.splitEditor', label: 'Split Editor', fallback: 'Ctrl+\\' },
+    ];
+
+    const entries = shortcuts.map(({ commandId, label, fallback }) => {
+      // Look up keybinding if service is available, else use fallback
+      let key = fallback;
+      if (keybindingService) {
+        const resolved = keybindingService.lookupKeybinding(commandId);
+        if (resolved) {
+          // Convert normalized format (ctrl+shift+p) to display format (Ctrl+Shift+P)
+          key = resolved.split('+').map(part =>
+            part.charAt(0).toUpperCase() + part.slice(1),
+          ).join('+');
+        }
+      }
+      return `<div class="editor-watermark-entry"><kbd>${key}</kbd> <span>${label}</span></div>`;
+    }).join('\n            ');
+
+    watermark.innerHTML = `
         <div class="editor-watermark-content">
           <div class="editor-watermark-icon">⊞</div>
           <div class="editor-watermark-title">Parallx Workbench</div>
           <div class="editor-watermark-shortcuts">
-            <div class="editor-watermark-entry"><kbd>Ctrl+Shift+P</kbd> <span>Command Palette</span></div>
-            <div class="editor-watermark-entry"><kbd>Ctrl+B</kbd> <span>Toggle Sidebar</span></div>
-            <div class="editor-watermark-entry"><kbd>Ctrl+J</kbd> <span>Toggle Panel</span></div>
-            <div class="editor-watermark-entry"><kbd>Ctrl+\\</kbd> <span>Split Editor</span></div>
+            ${entries}
           </div>
         </div>
       `;
-    }
   }
 
   /**
@@ -1598,6 +1640,9 @@ export class Workbench extends Disposable {
 
     // Register structural keybindings through the centralized service (M3 Capability 0.3)
     this._registerStructuralKeybindings(keybindingService);
+
+    // Update watermark shortcuts with actual keybinding labels (Phase 5 — service now available)
+    this._updateWatermarkKeybindings(keybindingService);
 
     // Register view contribution processor (M2 Capability 6)
     this._viewContribution = registerViewContributionProcessor(this._services, this._viewManager);

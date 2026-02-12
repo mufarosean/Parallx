@@ -449,6 +449,31 @@ html, body {
   overflow: hidden;
 }
 
+/* ── Editor Drop Overlay (drag-to-edge split creation) ── */
+/* VS Code ref: src/vs/workbench/browser/parts/editor/media/editordroptarget.css */
+.editor-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: auto;
+}
+
+.editor-drop-overlay-indicator {
+  position: absolute;
+  background-color: rgba(0, 120, 212, 0.18);
+  border: 2px solid rgba(0, 120, 212, 0.5);
+  border-radius: 3px;
+  box-sizing: border-box;
+  opacity: 1;
+  transition: opacity 150ms ease-out;
+}
+
+.editor-drop-overlay-indicator.overlay-move-transition {
+  transition: top 150ms ease-out, left 150ms ease-out,
+              width 150ms ease-out, height 150ms ease-out,
+              opacity 150ms ease-out;
+}
+
 .editor-watermark {
   position: absolute;
   inset: 0;

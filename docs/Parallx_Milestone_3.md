@@ -495,14 +495,13 @@ The editor area is the central region of the workbench where tool-provided edito
   - **Close button** ("×"): closes the editor; shows for active tab and on hover for others ✅ (CSS-driven visibility)
   - **Drag tab** within same group: reorders tabs ✅
   - **Drag tab** to another group: moves editor to target group ✅ (added `onDidRequestCrossGroupDrop` event, wired in EditorPart)
-  - **Drag tab** to edge of editor area: creates new split group in that direction (left/right/top/bottom) — DEFERRED (requires DropOverlay zone detection at editor-area edges, tracked for future polish pass)
+  - **Drag tab** to edge of editor area: creates new split group in that direction (left/right/top/bottom) ✅ (EditorDropTarget + EditorDropOverlay classes in editorDropTarget.ts, wired into EditorPart; uses VS Code's 33% edge threshold zone detection)
   - **Ctrl+W** / **Ctrl+F4**: closes active editor in focused group ✅ (Ctrl+W registered; Ctrl+F4 not added — Ctrl+W is the primary shortcut)
   - **Ctrl+Tab**: shows editor picker (next editor in MRU order) — deferred to future milestone, but command registered
   - **Ctrl+Page Down** / **Ctrl+Page Up**: switches to next/previous tab in order ✅
   - Preview editors (single-click opened) show tab label in italic; they are replaced by next preview open ✅
   - Dirty indicator ("●") shows for unsaved editors; close button changes to dot ✅ (reactive: dirty state now propagated via EditorGroupModel → EditorDirty event → tab re-render; CSS hides close/shows dot on dirty non-active non-hover tabs)
 - **Deviation Notes:**
-  - Drag-to-edge split creation deferred (requires positional drop zone detection at editor area boundaries)
   - Ctrl+F4 not registered (Ctrl+W is the standard shortcut)
   - Ctrl+Tab MRU picker deferred as specified
 
@@ -510,18 +509,17 @@ The editor area is the central region of the workbench where tool-provided edito
 - **Task Description:** Ensure split editor creation and management matches VS Code's behavior.
 - **Output:** Split editors with proper visual feedback and management.
 - **Completion Criteria:**
-  - Dragging a tab to the left/right/top/bottom edge of the editor area shows a drop overlay indicating split direction — DEFERRED (requires DropOverlay zone detection at editor-area edges)
-  - Dropping creates a new editor group in that direction with the dragged editor — DEFERRED (same as above)
+  - Dragging a tab to the left/right/top/bottom edge of the editor area shows a drop overlay indicating split direction ✅ (EditorDropOverlay with directional indicator, CSS overlay with transition animations)
+  - Dropping creates a new editor group in that direction with the dragged editor ✅ (EditorDropTarget.onDidDrop → EditorPart.splitGroup + editor move)
   - Split commands (`workbench.action.splitEditor`, `workbench.action.splitEditorOrthogonal`) work via keybinding ✅
   - `Ctrl+\` splits the active editor to the right (registered keybinding) ✅
   - When an editor group becomes empty and `closeEmptyGroups` is true (default), the group is automatically removed ✅ (auto-close added in EditorPart via queueMicrotask to avoid re-entry)
   - Remaining groups resize to fill the vacated space ✅
   - Active group has a subtle visual indicator (e.g., brighter tab bar background or accent border) ✅ (CSS: `.editor-group--active .editor-tab-bar` gets accent top border)
-  - Maximum of 3 visible groups (soft limit matching VS Code default — more can exist but warning logged) — not yet enforced
+  - Maximum of 3 visible groups (soft limit matching VS Code default — more can exist but warning logged) ✅ (MAX_EDITOR_GROUPS_SOFT_LIMIT = 3, console.warn on exceed)
   - Group positions persist across sessions via workspace state ✅ (existing serialization)
 - **Deviation Notes:**
-  - Drop overlay for drag-to-edge split deferred (requires positional hit-test against editor area edges)
-  - 3-group soft limit not enforced — left as future polish
+  - None (all items implemented)
 
 **Task 4.3 – Wire Editor State to Context** ✅
 - **Task Description:** Ensure the active editor, active editor group, and editor count are reflected in context keys and window title.
@@ -542,11 +540,11 @@ The editor area is the central region of the workbench where tool-provided edito
   - Watermark displays when all editor groups are empty ✅
   - Shows Parallx logo/icon (text-based in M3) ✅
   - Shows common keyboard shortcuts: "Ctrl+Shift+P Command Palette", "Ctrl+B Toggle Sidebar", "Ctrl+J Toggle Panel" ✅ (also includes Ctrl+\ Split Editor)
-  - Shortcut text is sourced from the keybinding service (so it updates if bindings change) — DEFERRED (shortcuts are hardcoded in watermark HTML; dynamic binding display requires keybinding service resolver integration)
+  - Shortcut text is sourced from the keybinding service (so it updates if bindings change) ✅ (_updateWatermarkKeybindings() called in Phase 5 after KeybindingService is created; lookupKeybinding resolves actual binding labels)
   - Watermark fades out when an editor is opened ✅ (toggled via CSS `.hidden` class in EditorPart._updateWatermark)
   - Watermark uses CSS classes, not inline styles ✅ (replaced all inline styles with structured CSS classes)
 - **Deviation Notes:**
-  - Shortcut text is static (not dynamically sourced from keybinding service) — acceptable for M3 as keybindings are not yet user-customizable
+  - None (dynamic keybinding text now implemented)
 
 ---
 
