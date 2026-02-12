@@ -26,6 +26,7 @@ interface WorkbenchLike {
   toggleMaximizedPanel(): void;
   toggleStatusBar(): void;
   toggleCommandPalette(): void;
+  showQuickOpen(): void;
   readonly workspace: { readonly id: string; readonly name: string };
   createWorkspace(name: string, path?: string, switchTo?: boolean): Promise<unknown>;
   switchWorkspace(targetId: string): Promise<void>;
@@ -97,6 +98,16 @@ const showCommands: CommandDescriptor = {
   keybinding: 'Ctrl+Shift+P',
   handler(ctx) {
     wb(ctx).toggleCommandPalette();
+  },
+};
+
+const quickOpen: CommandDescriptor = {
+  id: 'workbench.action.quickOpen',
+  title: 'Go to File…',
+  category: 'View',
+  keybinding: 'Ctrl+P',
+  handler(ctx) {
+    wb(ctx).showQuickOpen();
   },
 };
 
@@ -513,6 +524,7 @@ function _resolveGridForPart(w: WorkbenchLike, partId: string): WorkbenchLike['_
 const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // View
   showCommands,
+  quickOpen,
   toggleSidebar,
   togglePanel,
   toggleMaximizedPanel,

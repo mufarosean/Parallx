@@ -716,7 +716,7 @@ Quick Access is the unified text-input-driven navigation system for the workbenc
 
 #### Tasks
 
-**Task 7.1 – Evolve Command Palette into Quick Access**
+**Task 7.1 – Evolve Command Palette into Quick Access** ✅
 - **Task Description:** Refactor the existing `CommandPalette` class into a `QuickAccessWidget` that supports multiple modes based on input prefix.
 - **Output:** `QuickAccessWidget` in `src/commands/quickAccess.ts` (or refactored `commandPalette.ts`).
 - **Completion Criteria:**
@@ -733,8 +733,16 @@ Quick Access is the unified text-input-driven navigation system for the workbenc
   - VS Code has many Quick Access modes (`@` for symbols, `:` for go-to-line, `#` for workspace symbols, `?` for help). M3 implements only `>` (commands) and no-prefix (workspace/navigation). Additional modes can be added in future milestones.
   - The existing `CommandPalette` class can be refactored in-place — a full rewrite is unnecessary
   - The file is likely renamed from `commandPalette.ts` to `quickAccess.ts` with a re-export for compatibility
+- **Implementation Notes:**
+  - Created `src/commands/quickAccess.ts` (~700 lines) with `QuickAccessWidget` as unified overlay
+  - VS Code parity: mirrors `QuickAccessController` pattern — `show(value)` routes to providers by prefix, `_resolveProviderAndUpdate()` dynamically switches provider on input change (prefix-length-sorted matching)
+  - `CommandsProvider` (prefix `>`) preserves all M2 command palette behavior: fuzzy search, when-clause filtering, menu contribution filtering, keybinding display, recent commands sorting
+  - `GeneralProvider` (prefix `''`) shows recent workspaces with relative timestamps, group labels
+  - `IQuickAccessProvider` interface mirrors VS Code's provider contract: `prefix`, `placeholder`, `getItems(query)`
+  - Legacy re-export `export { QuickAccessWidget as CommandPalette }` for backward compatibility
+  - Old `commandPalette.ts` removed (confirmed zero imports)
 
-**Task 7.2 – Implement Workspace Switching via Quick Access**
+**Task 7.2 – Implement Workspace Switching via Quick Access** ✅
 - **Task Description:** Implement workspace selection through Quick Access when opened without a command prefix.
 - **Output:** Workspace list in Quick Access results.
 - **Completion Criteria:**
@@ -750,6 +758,14 @@ Quick Access is the unified text-input-driven navigation system for the workbenc
   - No custom dropdown — all workspace switching goes through Quick Access
   - The recent workspace list comes from `RecentWorkspaces` class (M1 Capability 6)
   - Future milestones can add "Open Folder" and "Open File" results to no-prefix mode
+- **Implementation Notes:**
+  - `GeneralProvider` in `quickAccess.ts` fetches recent workspaces via `workspaceService.getRecentWorkspaces()`, excludes current workspace, sorts by last-accessed
+  - Each workspace result shows name + relative time (e.g. "2 hours ago") via `_formatRelativeTime()` helper
+  - Accept calls `workspaceService.switchWorkspace(id)` which triggers reload lifecycle
+  - `workbench.action.quickOpen` command registered in `structuralCommands.ts` (Ctrl+P), calls `showQuickOpen()` → `quickAccess.show('')`
+  - Titlebar workspace name click changed from `toggleCommandPalette()` to `showQuickOpen()` for direct workspace switcher access
+  - `Ctrl+K Ctrl+O` chord not yet registered (requires chord support in keybinding service — deferred to Cap 8 or later)
+  - CSS additions: `.command-palette-group-label` (section headers) and `.command-palette-item-detail` (right-aligned timestamps)
 
 ---
 

@@ -57,7 +57,7 @@ import { createDefaultLayoutState, SerializedLayoutState } from '../layout/layou
 // Commands
 import { CommandService } from '../commands/commandRegistry.js';
 import { registerBuiltinCommands, ALL_BUILTIN_COMMANDS } from '../commands/structuralCommands.js';
-import { CommandPalette } from '../commands/commandPalette.js';
+import { QuickAccessWidget } from '../commands/quickAccess.js';
 
 // Context (Capability 8)
 import { ContextKeyService } from '../context/contextKey.js';
@@ -297,6 +297,16 @@ export class Workbench extends Disposable {
   toggleCommandPalette(): void {
     if (this._commandPalette) {
       this._commandPalette.toggle();
+    }
+  }
+
+  /**
+   * Open Quick Access in general mode (no prefix).
+   * VS Code parity: `workbench.action.quickOpen` (Ctrl+P).
+   */
+  showQuickOpen(): void {
+    if (this._commandPalette) {
+      this._commandPalette.show('');
     }
   }
 
@@ -823,14 +833,14 @@ export class Workbench extends Disposable {
    * Initialize the command system: set workbench ref, register all builtin commands,
    * and create the command palette UI.
    */
-  private _commandPalette: CommandPalette | undefined;
+  private _commandPalette: QuickAccessWidget | undefined;
   private _initializeCommands(): void {
     const cmdService = this._services.get(ICommandService) as CommandService;
     cmdService.setWorkbench(this);
     this._register(registerBuiltinCommands(cmdService));
 
-    // Command Palette — overlay UI for discovering and executing commands
-    this._commandPalette = new CommandPalette(cmdService, this._container);
+    // Quick Access — unified overlay for commands + workspace switching
+    this._commandPalette = new QuickAccessWidget(cmdService, this._container);
     this._register(this._commandPalette);
 
     console.log(
@@ -1176,9 +1186,9 @@ export class Workbench extends Disposable {
     // Task 1.2: Register default menu bar items via contribution system
     this._registerDefaultMenuBarItems();
 
-    // Task 1.1: Clicking workspace name opens Quick Access (for now toggles command palette)
+    // Task 1.1: Clicking workspace name opens Quick Access in general mode
     this._register(this._titlebar.onDidClickWorkspaceName(() => {
-      this.toggleCommandPalette();
+      this.showQuickOpen();
     }));
 
     // P1.5: Window inactive state — toggle `.inactive` on titlebar when window loses/gains focus
@@ -1687,6 +1697,15 @@ export class Workbench extends Disposable {
     workspaceService.setHost(this as any);
     this._register(workspaceService);
     this._services.registerInstance(IWorkspaceService, workspaceService);
+
+    // Wire workspace service into Quick Access for workspace switching
+    if (this._commandPalette) {
+      this._commandPalette.setWorkspaceService({
+        workspace: this._workspace,
+        getRecentWorkspaces: () => this.getRecentWorkspaces(),
+        switchWorkspace: (id: string) => this.switchWorkspace(id),
+      });
+    }
 
     // Notification service — attach toast container to the workbench DOM
     if (this._services.has(INotificationService)) {
