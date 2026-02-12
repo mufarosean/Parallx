@@ -117,6 +117,7 @@ import { ViewContributionProcessor } from '../contributions/viewContribution.js'
 import type { IContributedContainer, IContributedView } from '../contributions/viewContribution.js';
 
 // Built-in Tools (M2 Capability 7)
+import * as ExplorerTool from '../built-in/explorer/main.js';
 import * as WelcomeTool from '../built-in/welcome/main.js';
 import * as OutputTool from '../built-in/output/main.js';
 import * as ToolGalleryTool from '../built-in/tool-gallery/main.js';
@@ -1968,6 +1969,43 @@ export class Workbench extends Disposable {
     activationEvents: ActivationEventService,
   ): Promise<void> {
     const builtins: { manifest: IToolManifest; module: { activate: Function; deactivate?: Function } }[] = [
+      {
+        manifest: {
+          manifestVersion: 1,
+          id: 'parallx.explorer',
+          name: 'Explorer',
+          version: '1.0.0',
+          publisher: 'parallx',
+          description: 'File Explorer — browse, create, rename, and delete files and folders.',
+          main: './main.js',
+          engines: { parallx: '^0.1.0' },
+          activationEvents: ['onStartupFinished'],
+          contributes: {
+            commands: [
+              { id: 'explorer.newFile', title: 'Explorer: New File...' },
+              { id: 'explorer.newFolder', title: 'Explorer: New Folder...' },
+              { id: 'explorer.rename', title: 'Explorer: Rename...' },
+              { id: 'explorer.delete', title: 'Explorer: Delete' },
+              { id: 'explorer.refresh', title: 'Explorer: Refresh' },
+              { id: 'explorer.collapse', title: 'Explorer: Collapse All' },
+              { id: 'explorer.revealInExplorer', title: 'Explorer: Reveal in Explorer' },
+              { id: 'explorer.toggleHiddenFiles', title: 'Explorer: Toggle Hidden Files' },
+            ],
+            keybindings: [
+              { command: 'explorer.rename', key: 'F2', when: "focusedView == 'view.explorer'" },
+              { command: 'explorer.delete', key: 'Delete', when: "focusedView == 'view.explorer'" },
+            ],
+            viewContainers: [
+              { id: 'explorer-container', title: 'Explorer', icon: '📁', location: 'sidebar' as const },
+            ],
+            views: [
+              { id: 'view.openEditors', name: 'Open Editors', defaultContainerId: 'explorer-container' },
+              { id: 'view.explorer', name: 'Explorer', defaultContainerId: 'explorer-container' },
+            ],
+          },
+        },
+        module: ExplorerTool,
+      },
       {
         manifest: {
           manifestVersion: 1,

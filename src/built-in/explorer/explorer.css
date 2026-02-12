@@ -1,0 +1,152 @@
+/* explorer.css — Styles for the Explorer built-in tool
+ *
+ * Uses CSS custom properties (--color-*) defined by the workbench theme.
+ * Visual properties are all in CSS — only computed dimensions may be inline.
+ */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Explorer Tree
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.explorer-tree {
+  overflow: auto;
+  height: 100%;
+  user-select: none;
+}
+
+/* ── Empty state ── */
+
+.explorer-empty {
+  padding: 16px;
+  color: var(--color-description-foreground, #999);
+  font-size: 13px;
+}
+
+.explorer-empty-open-btn {
+  display: block;
+  margin-top: 8px;
+  cursor: pointer;
+  color: var(--color-link-foreground, #3794ff);
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.explorer-empty-open-btn:hover {
+  color: var(--color-link-active-foreground, #3794ff);
+}
+
+/* ── Tree node ── */
+
+.tree-node {
+  height: 22px;
+  line-height: 22px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  padding-right: 8px;
+  color: var(--color-foreground, #cccccc);
+}
+
+.tree-node:hover {
+  background-color: var(--color-list-hover-background, rgba(255, 255, 255, 0.04));
+}
+
+.tree-node--selected {
+  background-color: var(--color-list-active-selection-background, rgba(255, 255, 255, 0.1));
+}
+
+.tree-node--selected:hover {
+  background-color: var(--color-list-active-selection-background, rgba(255, 255, 255, 0.1));
+}
+
+/* ── Chevron ── */
+
+.tree-node-chevron {
+  width: 16px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 10px;
+  color: var(--color-foreground, #cccccc);
+}
+
+.tree-node-spacer {
+  width: 16px;
+  flex-shrink: 0;
+}
+
+/* ── Icon ── */
+
+.tree-node-icon {
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Label ── */
+
+.tree-node-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Loading / Empty placeholders ── */
+
+.tree-loading,
+.tree-empty-dir {
+  height: 22px;
+  line-height: 22px;
+  color: var(--color-description-foreground, #888);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* ── Inline input (rename / create) ── */
+
+.tree-inline-input {
+  flex: 1;
+  border: 1px solid var(--color-focus-border, #007acc);
+  background: var(--color-input-background, #3c3c3c);
+  color: var(--color-input-foreground, #cccccc);
+  font: inherit;
+  font-size: 13px;
+  padding: 0 2px;
+  outline: none;
+  height: 18px;
+  line-height: 18px;
+  box-sizing: border-box;
+}
+
+/* ── Create input row ── */
+
+.tree-create-row {
+  height: 22px;
+  display: flex;
+  align-items: center;
+}
+
+.tree-create-icon {
+  margin-right: 4px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Open Editors View
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.open-editors-view {
+  overflow: auto;
+  user-select: none;
+}
+
+.open-editors-placeholder {
+  padding: 8px 16px;
+  color: var(--color-description-foreground, #999);
+  font-size: 12px;
+  font-style: italic;
+}

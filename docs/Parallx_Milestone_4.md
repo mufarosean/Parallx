@@ -527,7 +527,7 @@ A built-in Explorer tool provides the file tree view in the sidebar, matching VS
 
 #### Tasks
 
-**Task 3.1 — Implement Explorer Tool Manifest and Activation**
+**Task 3.1 — Implement Explorer Tool Manifest and Activation** ✅
 - **Task Description:** Create the built-in Explorer tool with manifest, entry point, and sidebar view contribution.
 - **Output:** `src/built-in/explorer/parallx-manifest.json` and `src/built-in/explorer/main.ts`.
 - **Completion Criteria:**
@@ -544,8 +544,9 @@ A built-in Explorer tool provides the file tree view in the sidebar, matching VS
   - Subscribes to `parallx.workspace.onDidChangeWorkspaceFolders` to react to folder changes
   - Icon can be emoji 📁 or text "E" for M4 (codicon support deferred)
 
-**Task 3.2 — Implement File Tree View**
+**Task 3.2 — Implement File Tree View** ✅
 - **Task Description:** Implement the file tree UI that renders workspace folder contents as an expandable/collapsible tree.
+- **Deviation:** File watcher live updates and active editor reveal deferred to Cap 4 (requires EditorService wiring). CSS classes used per project conventions (explorer.css). Electron IPC bridge used directly for readdir (workspace.fs bridge not yet wired for readdir).
 - **Output:** File tree rendered in the Explorer sidebar view.
 - **Completion Criteria:**
   - Each workspace folder is a root node in the tree (if single folder, its children are shown directly at top level — matching VS Code behavior)
@@ -570,8 +571,9 @@ A built-in Explorer tool provides the file tree view in the sidebar, matching VS
   - File watcher is scoped to workspace folders only
   - Performance target: initial tree render of a 500-file folder < 200ms
 
-**Task 3.3 — Implement Open Editors View**
+**Task 3.3 — Implement Open Editors View** ✅
 - **Task Description:** Implement the "Open Editors" view that lists all currently open editor tabs.
+- **Deviation:** Implemented as placeholder ("No open editors") — reactive EditorService wiring deferred to Cap 4 Task 4.4. Context key `openEditorsCount` registered.
 - **Output:** Open Editors list in the Explorer sidebar.
 - **Completion Criteria:**
   - Lists all open editors across all editor groups
@@ -589,8 +591,9 @@ A built-in Explorer tool provides the file tree view in the sidebar, matching VS
   - This view is shown as a collapsible section above the file tree (matching VS Code's Explorer layout)
   - In stacked sidebar mode (M3 Cap 3.2), this is the first section, file tree is the second
 
-**Task 3.4 — Implement File Context Menu**
+**Task 3.4 — Implement File Context Menu** ✅
 - **Task Description:** Implement right-click context menu on file tree nodes for file operations.
+- **Deviation:** Context menu uses `ContextMenu` component from `src/ui/contextMenu.ts` (proper UI component reuse per project conventions) rather than MenuContributionProcessor declarative menus. "Open to the Side" and "Copy Relative Path" deferred. Operations use Electron IPC bridge directly.
 - **Output:** Context menu with file CRUD operations.
 - **Completion Criteria:**
   - Right-clicking a file shows: Open, Open to the Side, Rename, Delete, Copy Path, Copy Relative Path

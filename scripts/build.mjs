@@ -15,10 +15,12 @@ await build({
   logLevel: 'info',
 });
 
-// Concatenate CSS: workbench base + ui component styles
+// Concatenate CSS: workbench base + ui component styles + built-in tool styles
 const workbenchCss = readFileSync('src/workbench.css', 'utf-8');
 const uiCssPath = 'src/ui/ui.css';
 const uiCss = existsSync(uiCssPath) ? readFileSync(uiCssPath, 'utf-8') : '';
-writeFileSync('dist/renderer/workbench.css', workbenchCss + '\n' + uiCss);
+const explorerCssPath = 'src/built-in/explorer/explorer.css';
+const explorerCss = existsSync(explorerCssPath) ? readFileSync(explorerCssPath, 'utf-8') : '';
+writeFileSync('dist/renderer/workbench.css', workbenchCss + '\n' + uiCss + '\n' + explorerCss);
 
 console.log('Build complete.');
