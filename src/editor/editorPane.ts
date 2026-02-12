@@ -9,7 +9,7 @@
 // Concrete panes extend this class for specific editor types
 // (text, diff, welcome, etc.).
 
-import { Disposable, IDisposable } from '../platform/lifecycle.js';
+import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { IEditorInput } from './editorInput.js';
 import type { SizeConstraints, Orientation, Dimensions } from '../layout/layoutTypes.js';
@@ -273,15 +273,48 @@ export class ToolEditorPane extends EditorPane {
   }
 }
 
+// ─── Editor Pane Factory Registry ────────────────────────────────────────────
+
+/**
+ * A factory function that returns an EditorPane for a given input, or null
+ * if it cannot handle that input type.
+ */
+export type EditorPaneFactory = (input: IEditorInput) => EditorPane | null;
+
+const _paneFactories: EditorPaneFactory[] = [];
+
+/**
+ * Register a pane factory. Factories are consulted in registration order.
+ * The first factory returning a non-null pane wins.
+ */
+export function registerEditorPaneFactory(factory: EditorPaneFactory): IDisposable {
+  _paneFactories.push(factory);
+  return toDisposable(() => {
+    const idx = _paneFactories.indexOf(factory);
+    if (idx >= 0) _paneFactories.splice(idx, 1);
+  });
+}
+
 // ─── Smart Pane Factory ──────────────────────────────────────────────────────
 
 /**
  * Create the appropriate editor pane for an input.
  *
- * If the input has a tool-provided editor provider (duck-typed via `.provider`),
- * a ToolEditorPane is created. Otherwise, a PlaceholderEditorPane is used.
+ * First, consults the registered pane factories (e.g., the file-editor
+ * resolver registers one for FileEditorInput / UntitledEditorInput).
+ *
+ * Then falls back to:
+ *  - ToolEditorPane (if the input has a tool-provided editor provider)
+ *  - PlaceholderEditorPane (last resort)
  */
 export function createEditorPaneForInput(input: IEditorInput): EditorPane {
+  // Try registered factories first
+  for (const factory of _paneFactories) {
+    const pane = factory(input);
+    if (pane) return pane;
+  }
+
+  // Fall back to tool editor pane / placeholder
   const provider = (input as any).provider;
   if (provider && typeof provider.createEditorPane === 'function') {
     return new ToolEditorPane();

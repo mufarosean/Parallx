@@ -2,6 +2,8 @@
 //
 // Allows tools to register editor providers and open editors in the
 // editor area using M1's EditorInput + EditorPane system.
+// Also provides openFileEditor(uri) for opening files via the
+// workbench-level file editor resolver.
 
 import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
@@ -9,6 +11,28 @@ import { EditorInput, type IEditorInput } from '../../editor/editorInput.js';
 import { EditorPane, type IEditorPane } from '../../editor/editorPane.js';
 import type { SerializedEditorEntry } from '../../editor/editorTypes.js';
 import type { IEditorService } from '../../services/serviceTypes.js';
+
+// ─── File Editor Resolver ────────────────────────────────────────────────────
+
+/**
+ * A function that creates an EditorInput from a URI string.
+ * Registered at the workbench level (not per-tool).
+ */
+export type FileEditorResolverFn = (uri: string) => Promise<IEditorInput | undefined>;
+
+/**
+ * Global file editor resolver. Set by the workbench during initialisation.
+ * When a tool calls `editors.openFileEditor(uri)`, this resolver creates
+ * the appropriate EditorInput (FileEditorInput, UntitledEditorInput, etc.).
+ */
+let _fileEditorResolver: FileEditorResolverFn | undefined;
+
+/**
+ * Set the global file editor resolver. Called once during workbench init.
+ */
+export function setFileEditorResolver(resolver: FileEditorResolverFn): void {
+  _fileEditorResolver = resolver;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -101,6 +125,35 @@ export class EditorsBridge {
    */
   getProvider(typeId: string): ToolEditorProvider | undefined {
     return this._providers.get(typeId);
+  }
+
+  /**
+   * Open a file in the text editor using the workbench-level file-editor resolver.
+   *
+   * The resolver creates the appropriate `EditorInput` (FileEditorInput for
+   * `file://` URIs, UntitledEditorInput for `untitled://`, etc.).
+   *
+   * @param uri  File URI string (e.g. `file:///C:/project/readme.md` or an fsPath).
+   * @param options  Optional editor open options.
+   */
+  async openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void> {
+    this._throwIfDisposed();
+
+    if (!_fileEditorResolver) {
+      throw new Error('[EditorsBridge] No file editor resolver registered. The file editor may not be initialised yet.');
+    }
+
+    const input = await _fileEditorResolver(uri);
+    if (!input) {
+      console.warn(`[EditorsBridge] File editor resolver returned undefined for URI: ${uri}`);
+      return;
+    }
+
+    if (this._editorService) {
+      await this._editorService.openEditor(input, { pinned: options?.pinned ?? true });
+    } else {
+      console.warn(`[EditorsBridge] No editor service available — cannot open file editor.`);
+    }
   }
 
   dispose(): void {

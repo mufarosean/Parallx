@@ -637,7 +637,7 @@ A built-in file editor that can open, display, edit, and save plain text files. 
 
 #### Tasks
 
-**Task 4.1 — Implement FileEditorInput**
+**Task 4.1 — Implement FileEditorInput** ✅
 - **Task Description:** Create a concrete `EditorInput` subclass that represents a file on disk.
 - **Output:** `FileEditorInput` class in `src/built-in/editor/fileEditorInput.ts`.
 - **Completion Criteria:**
@@ -661,7 +661,7 @@ A built-in file editor that can open, display, edit, and save plain text files. 
   - The "save before close?" dialog uses `parallxElectron.dialog.showMessageBox()` or the notification system
   - `FileEditorInput.create(uri, fileService)` factory method for construction
 
-**Task 4.2 — Implement UntitledEditorInput**
+**Task 4.2 — Implement UntitledEditorInput** ✅
 - **Task Description:** Create an `EditorInput` subclass for new, unsaved files.
 - **Output:** `UntitledEditorInput` class in `src/built-in/editor/untitledEditorInput.ts`.
 - **Completion Criteria:**
@@ -678,7 +678,8 @@ A built-in file editor that can open, display, edit, and save plain text files. 
   - After save-as, the tab title updates to the real filename
   - Untitled editors that are empty (no typed content) can be closed without confirmation
 
-**Task 4.3 — Implement TextEditorPane**
+**Task 4.3 — Implement TextEditorPane** ✅
+> **Deviation:** Line numbers deferred (spec marked optional). Used `<textarea>` as recommended. Status bar is rendered inline in the pane (not via `parallx.window.createStatusBarItem()`) for simplicity.
 - **Task Description:** Create a concrete `EditorPane` that renders file content in an editable text area.
 - **Output:** `TextEditorPane` class in `src/built-in/editor/textEditorPane.ts`.
 - **Completion Criteria:**
@@ -703,7 +704,8 @@ A built-in file editor that can open, display, edit, and save plain text files. 
   - Word wrap default: on for prose files (.md, .txt), off for code files
   - Performance: should handle files up to ~1MB without lag (larger files show warning)
 
-**Task 4.4 — Register File Editor as Built-In Tool (with Editor Resolver)**
+**Task 4.4 — Register File Editor as Built-In Tool (with Editor Resolver)** ✅
+> **Deviation:** Core resolver (FileEditorInput → TextEditorPane) wired at workbench level in `_initFileEditorResolver()` (VS Code pattern — core text editor is part of workbench, not an extension). Companion built-in tool (`parallx.editor.text`) contributes commands only (toggleWordWrap, changeEncoding stub). Added `editors.openFileEditor(uri)` API and `EditorsBridge.openFileEditor()` backed by `setFileEditorResolver()`. Explorer updated to use `openFileEditor()` instead of `openEditor()` with placeholder type.
 - **Task Description:** Package the file editor as a built-in tool that registers the editor provider via the editor resolver pattern (matching VS Code's `EditorResolverService`).
 - **Output:** `src/built-in/editor/main.ts` with manifest and activation.
 - **Completion Criteria:**
@@ -725,7 +727,8 @@ A built-in file editor that can open, display, edit, and save plain text files. 
   - Binary file detection: if `readFile` returns base64, show a placeholder instead of garbled text
   - `FileEditorInput` uses `TextFileModelManager.resolve(uri)` to get/create the text model — NOT `IFileService.readFile()` directly
 
-**Task 4.5 — Wire EditorGroupView Close Confirmation**
+**Task 4.5 — Wire EditorGroupView Close Confirmation** ✅
+> **Deviation:** Already implemented in M1's `EditorGroupModel.closeEditor()` — dirty check + `confirmClose()` veto was in place. No changes needed.
 - **Task Description:** Ensure that closing a dirty editor tab triggers the save confirmation flow.
 - **Output:** Modified `EditorGroupView` and `EditorGroupModel` to check dirty state before close.
 - **Completion Criteria:**

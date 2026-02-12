@@ -99,6 +99,7 @@ export interface ParallxApiObject {
   readonly editors: {
     registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable }): IDisposable;
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
+    openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
   };
   readonly tools: {
     getAll(): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string }[];
@@ -287,6 +288,7 @@ export function createToolApi(
     editors: Object.freeze({
       registerEditorProvider: (typeId, provider) => editorsBridge.registerEditorProvider(typeId, provider),
       openEditor: (options) => editorsBridge.openEditor(options),
+      openFileEditor: (uri, options) => editorsBridge.openFileEditor(uri, options),
     }),
 
     tools: Object.freeze({

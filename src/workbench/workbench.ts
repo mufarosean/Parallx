@@ -13,7 +13,7 @@ import { Disposable, DisposableStore, IDisposable, toDisposable } from '../platf
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IWindowService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IWindowService, IFileService, ITextFileModelManager } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
 
@@ -121,7 +121,15 @@ import * as ExplorerTool from '../built-in/explorer/main.js';
 import * as WelcomeTool from '../built-in/welcome/main.js';
 import * as OutputTool from '../built-in/output/main.js';
 import * as ToolGalleryTool from '../built-in/tool-gallery/main.js';
+import * as FileEditorTool from '../built-in/editor/main.js';
 import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
+
+// File Editor Resolver (M4 Capability 4)
+import { registerEditorPaneFactory } from '../editor/editorPane.js';
+import { setFileEditorResolver } from '../api/bridges/editorsBridge.js';
+import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
+import { UntitledEditorInput } from '../built-in/editor/untitledEditorInput.js';
+import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
 // ── Layout constants ──
 
 const TITLE_HEIGHT = 30;
@@ -1913,6 +1921,9 @@ export class Workbench extends Disposable {
     this._titlebar.setKeybindingLookup(keybindingService);
     this._titlebar.setCommandExecutor(this._services.get(ICommandService) as any);
 
+    // ── Wire file editor resolver (M4 Capability 4) ──
+    this._initFileEditorResolver();
+
     // ── Register and activate built-in tools (M2 Capability 7) ──
     await this._registerAndActivateBuiltinTools(registry, activationEvents);
 
@@ -1958,6 +1969,92 @@ export class Workbench extends Disposable {
   // ════════════════════════════════════════════════════════════════════════
   // Built-in Tools (M2 Capability 7)
   // ════════════════════════════════════════════════════════════════════════
+
+  // ════════════════════════════════════════════════════════════════════════
+  // File Editor Resolver (M4 Capability 4)
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Wire the file editor resolver at the workbench level.
+   *
+   * This connects three things:
+   *  1. A pane factory for FileEditorInput / UntitledEditorInput → TextEditorPane
+   *  2. A URI resolver for `file://` and `untitled://` → FileEditorInput / UntitledEditorInput
+   *  3. Exposes the resolver via setFileEditorResolver() so EditorsBridge.openFileEditor() works
+   *
+   * Must be called AFTER services are registered but BEFORE built-in tools activate.
+   */
+  private _initFileEditorResolver(): void {
+    // ── 1. Pane factory ──
+    const paneFactoryDisposable = registerEditorPaneFactory((input) => {
+      if (input instanceof FileEditorInput || input instanceof UntitledEditorInput) {
+        return new TextEditorPane();
+      }
+      return null;
+    });
+    this._register(paneFactoryDisposable);
+
+    // ── 2. Resolver services ──
+    const textFileModelManager = this._services.get(ITextFileModelManager) as any;
+    const fileService = this._services.get(IFileService) as any;
+
+    // ── 3. URI resolver function ──
+    setFileEditorResolver(async (uriString: string) => {
+      // Handle untitled scheme
+      if (uriString.startsWith('untitled://') || uriString.startsWith('untitled:')) {
+        return UntitledEditorInput.create();
+      }
+
+      // Handle file scheme or plain fsPath
+      let uri: URI;
+      if (uriString.startsWith('file://') || uriString.startsWith('file:///')) {
+        uri = URI.parse(uriString);
+      } else {
+        // Treat as fsPath
+        uri = URI.file(uriString);
+      }
+
+      // Check if there's already an open FileEditorInput for this URI
+      // (deduplication via URI key)
+      const existingInput = this._findOpenFileEditorInput(uri);
+      if (existingInput) return existingInput;
+
+      // Compute workspace-relative path for description
+      let relativePath: string | undefined;
+      const workspaceService = this._services.has(IWorkspaceService)
+        ? this._services.get(IWorkspaceService) as any
+        : undefined;
+      if (workspaceService?.workspaceFolders) {
+        for (const folder of workspaceService.workspaceFolders) {
+          const folderUri = typeof folder.uri === 'string' ? URI.parse(folder.uri) : folder.uri;
+          const folderPath = folderUri.fsPath;
+          if (uri.fsPath.startsWith(folderPath)) {
+            relativePath = uri.fsPath.substring(folderPath.length + 1).replace(/\\/g, '/');
+            break;
+          }
+        }
+      }
+
+      return FileEditorInput.create(uri, textFileModelManager, fileService, relativePath);
+    });
+
+    console.log('[Workbench] File editor resolver wired');
+  }
+
+  /**
+   * Find an already-open FileEditorInput by URI across all editor groups.
+   */
+  private _findOpenFileEditorInput(uri: URI): FileEditorInput | undefined {
+    const editorPart = this._editor as EditorPart;
+    for (const group of editorPart.groups) {
+      for (const editor of group.model.editors) {
+        if (editor instanceof FileEditorInput && editor.uri.equals(uri)) {
+          return editor;
+        }
+      }
+    }
+    return undefined;
+  }
 
   /**
    * Register built-in tools in the registry and activate them using
@@ -2005,6 +2102,29 @@ export class Workbench extends Disposable {
           },
         },
         module: ExplorerTool,
+      },
+      {
+        manifest: {
+          manifestVersion: 1,
+          id: 'parallx.editor.text',
+          name: 'Text Editor',
+          version: '1.0.0',
+          publisher: 'parallx',
+          description: 'Built-in text editor for files and untitled documents.',
+          main: './main.js',
+          engines: { parallx: '^0.1.0' },
+          activationEvents: ['*'],
+          contributes: {
+            commands: [
+              { id: 'editor.toggleWordWrap', title: 'View: Toggle Word Wrap' },
+              { id: 'editor.changeEncoding', title: 'Change File Encoding' },
+            ],
+            keybindings: [
+              { command: 'editor.toggleWordWrap', key: 'Alt+Z' },
+            ],
+          },
+        },
+        module: FileEditorTool,
       },
       {
         manifest: {

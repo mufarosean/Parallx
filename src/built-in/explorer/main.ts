@@ -54,6 +54,7 @@ interface ParallxApi {
   };
   editors: {
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
+    openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
   };
 }
 
@@ -393,14 +394,9 @@ function sortEntries(a: { name: string; type: number }, b: { name: string; type:
   return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
 }
 
-function openFile(node: TreeNode, _pinned: boolean): void {
+function openFile(node: TreeNode, pinned: boolean): void {
   if (node.type !== FILE_TYPE_FILE) return;
-  _api.editors.openEditor({
-    typeId: 'placeholder',
-    title: node.name,
-    icon: '📄',
-    instanceId: node.uri,
-  });
+  _api.editors.openFileEditor(node.uri, { pinned });
 }
 
 function saveExpandState(): void {

@@ -21,6 +21,8 @@ const uiCssPath = 'src/ui/ui.css';
 const uiCss = existsSync(uiCssPath) ? readFileSync(uiCssPath, 'utf-8') : '';
 const explorerCssPath = 'src/built-in/explorer/explorer.css';
 const explorerCss = existsSync(explorerCssPath) ? readFileSync(explorerCssPath, 'utf-8') : '';
-writeFileSync('dist/renderer/workbench.css', workbenchCss + '\n' + uiCss + '\n' + explorerCss);
+const editorCssPath = 'src/built-in/editor/textEditorPane.css';
+const editorCss = existsSync(editorCssPath) ? readFileSync(editorCssPath, 'utf-8') : '';
+writeFileSync('dist/renderer/workbench.css', workbenchCss + '\n' + uiCss + '\n' + explorerCss + '\n' + editorCss);
 
 console.log('Build complete.');
