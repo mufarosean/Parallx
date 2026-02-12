@@ -310,6 +310,31 @@ export class Workbench extends Disposable {
     }
   }
 
+  // ── Focus Model (Cap 8) ────────────────────────────────────────────────
+
+  /**
+   * Programmatically move keyboard focus to a part.
+   * VS Code parity: `layout.ts#focusPart()` dispatches to each part's focus method.
+   * Parallx delegates to FocusTracker.focusPart() which finds the part's DOM element
+   * via `data-part-id` and focuses the first focusable child or restores previous focus.
+   */
+  focusPart(partId: string): void {
+    this._focusTracker?.focusPart(partId);
+  }
+
+  /**
+   * Check whether a given part currently has keyboard focus.
+   * VS Code parity: `layout.ts#hasFocus()` checks if activeElement is
+   * an ancestor of the part container.
+   */
+  hasFocus(partId: string): boolean {
+    const activeEl = document.activeElement as HTMLElement | null;
+    if (!activeEl) return false;
+    const partEl = this._container.querySelector(`[data-part-id="${partId}"]`) as HTMLElement | null;
+    if (!partEl) return false;
+    return partEl.contains(activeEl);
+  }
+
   /**
    * The currently active workspace.
    */
@@ -884,9 +909,12 @@ export class Workbench extends Disposable {
     // 7. Initial editor group state (Capability 9 will update these dynamically)
     this._workbenchContext.setEditorGroupCount(1);
 
-    // 8. Wire the command palette's when-clause filtering
+    // 8. Wire the command palette's when-clause filtering & focus trapping
     if (this._commandPalette) {
       this._commandPalette.setContextKeyService(this._contextKeyService);
+      if (this._focusTracker) {
+        this._commandPalette.setFocusTracker(this._focusTracker);
+      }
     }
 
     console.log('[Workbench] Context key system initialized (%d context keys)', this._contextKeyService.getAllContext().size);

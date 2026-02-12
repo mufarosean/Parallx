@@ -293,6 +293,7 @@ export class QuickAccessWidget extends Disposable {
   private _menuContribution: IMenuContributionLike | undefined;
   private _keybindingContribution: IKeybindingContributionLike | undefined;
   private _workspaceService: IWorkspaceServiceLike | undefined;
+  private _focusTracker: { suspend(): void; resume(restore?: boolean): void } | undefined;
 
   // ── Events ─────────────────────────────────────────────────────────────
   private readonly _onDidExecute = this._register(new Emitter<string>());
@@ -346,6 +347,10 @@ export class QuickAccessWidget extends Disposable {
     this._workspaceService = service;
   }
 
+  setFocusTracker(tracker: { suspend(): void; resume(restore?: boolean): void }): void {
+    this._focusTracker = tracker;
+  }
+
   // ── Public API ─────────────────────────────────────────────────────────
 
   get visible(): boolean {
@@ -371,6 +376,8 @@ export class QuickAccessWidget extends Disposable {
       return;
     }
     this._visible = true;
+    // Suspend workbench focus tracking while overlay is open (Cap 8.3)
+    this._focusTracker?.suspend();
     this._createDOM();
     if (this._input) {
       this._input.value = value;
@@ -388,6 +395,8 @@ export class QuickAccessWidget extends Disposable {
     if (!this._visible) return;
     this._visible = false;
     this._destroyDOM();
+    // Resume workbench focus tracking and restore previous focus (Cap 8.3)
+    this._focusTracker?.resume(true);
     this._onDidHide.fire();
   }
 
@@ -477,6 +486,10 @@ export class QuickAccessWidget extends Disposable {
     // Overlay backdrop
     const overlay = document.createElement('div');
     overlay.className = 'command-palette-overlay';
+    // Accessibility: modal overlay traps focus (Cap 8.3)
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Quick Access');
     overlay.addEventListener('mousedown', (e) => {
       if (e.target === overlay) this.hide();
     });
@@ -498,6 +511,35 @@ export class QuickAccessWidget extends Disposable {
     const list = document.createElement('div');
     list.className = 'command-palette-list';
     list.setAttribute('role', 'listbox');
+
+    // Focus-trap keydown on list items: Tab returns to input, Escape closes (Cap 8.3)
+    list.addEventListener('keydown', (e: KeyboardEvent) => {
+      switch (e.key) {
+        case 'Tab':
+          e.preventDefault();
+          if (e.shiftKey || !e.shiftKey) {
+            // Always cycle back to input
+            this._input?.focus();
+          }
+          break;
+        case 'Escape':
+          e.preventDefault();
+          this.hide();
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          this._moveSelection(1);
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          this._moveSelection(-1);
+          break;
+        case 'Enter':
+          e.preventDefault();
+          this._acceptSelected();
+          break;
+      }
+    });
 
     palette.appendChild(input);
     palette.appendChild(list);
@@ -537,6 +579,19 @@ export class QuickAccessWidget extends Disposable {
       case 'Escape':
         e.preventDefault();
         this.hide();
+        break;
+      case 'Tab':
+        // Focus trap — Tab cycles only within Quick Access (Cap 8.3)
+        e.preventDefault();
+        // Only two focusable elements: input and list.
+        // Tab from input focuses first visible item, Shift+Tab stays on input.
+        if (!e.shiftKey && this._listEl) {
+          const firstItem = this._listEl.querySelector('.command-palette-item') as HTMLElement | null;
+          if (firstItem) {
+            firstItem.focus();
+          }
+        }
+        // Shift+Tab always keeps focus on input (it's the first element)
         break;
     }
   }
@@ -587,6 +642,7 @@ export class QuickAccessWidget extends Disposable {
 
       const row = document.createElement('div');
       row.className = 'command-palette-item';
+      row.tabIndex = -1; // Focusable for keyboard navigation (Cap 8.3)
       if (i === this._selectedIndex) row.classList.add('selected');
       row.setAttribute('role', 'option');
       row.setAttribute('aria-selected', i === this._selectedIndex ? 'true' : 'false');

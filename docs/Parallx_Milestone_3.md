@@ -791,7 +791,7 @@ The workbench has a clear focus model where exactly one region (part) is active 
 
 #### Tasks
 
-**Task 8.1 – Implement Region Focus Shortcuts**
+**Task 8.1 – Implement Region Focus Shortcuts** ✅
 - **Task Description:** Register keybindings that move focus between workbench regions, matching VS Code defaults.
 - **Output:** Focus navigation commands registered in keybinding service.
 - **Completion Criteria:**
@@ -808,8 +808,15 @@ The workbench has a clear focus model where exactly one region (part) is active 
   - VS Code reference: `src/vs/workbench/browser/actions/layoutActions.ts` — Focus region actions
   - `FocusTracker` already handles `focusin`/`focusout` and resolves focused part/view. This task adds the explicit focus commands.
   - F6 cycling order should skip hidden parts
+- **Implementation Notes:**
+  - Added 9 focus commands to `structuralCommands.ts`: `focusNextPart` (F6), `focusPreviousPart` (Shift+F6), `focusFirstEditorGroup` (Ctrl+1), `focusSecondEditorGroup` (Ctrl+2), `focusThirdEditorGroup` (Ctrl+3), `focusSideBar` (Ctrl+0), `focusPanel` (Ctrl+\`), `focusActivityBar`, `focusStatusBar`
+  - VS Code parity cycling order: Editor→Panel→AuxBar→StatusBar→ActivityBar→Sidebar (matches `navigationActions.ts` `BaseFocusAction`)
+  - `findVisibleNeighbour()` helper skips hidden parts; Editor always treated as visible
+  - `getCurrentlyFocusedPart()` checks `hasFocus()` across all parts in cycle order
+  - `focusSideBar` / `focusPanel` show the part if hidden before focusing (VS Code parity)
+  - Added `focusPart(partId)` and `hasFocus(partId)` to `WorkbenchLike` interface and `workbench.ts`
 
-**Task 8.2 – Ensure Context-Driven Command Enablement in UI**
+**Task 8.2 – Ensure Context-Driven Command Enablement in UI** ✅
 - **Task Description:** Verify that all UI surfaces (command palette, menus, toolbar actions) correctly evaluate when clauses against current context before showing or enabling commands.
 - **Output:** Context-aware UI across all interactive surfaces.
 - **Completion Criteria:**
@@ -824,8 +831,13 @@ The workbench has a clear focus model where exactly one region (part) is active 
 - **Notes / Constraints:**
   - This is primarily a verification/bugfix task — the when-clause infrastructure exists from M1/M2
   - Focus on the integration points where context meets UI
+- **Implementation Notes:**
+  - Verified: `CommandsProvider.provide()` (quickAccess.ts L148-150) filters commands via `contextKeyService.contextMatchesRules(desc.when)` — commands with unsatisfied when-clauses are excluded from results
+  - Verified: `WorkbenchContextManager` subscribes to FocusTracker events and updates `focusedPart`/`activePart` context keys on every focus change
+  - Verified: Part visibility context keys (`sidebarVisible`, `panelVisible`, etc.) update on toggle via `trackPartVisibility()`
+  - Menu contribution filtering also active in CommandsProvider (L152+ checks `isCommandInMenu()`)
 
-**Task 8.3 – Implement Tab Trapping and Focus Containment**
+**Task 8.3 – Implement Tab Trapping and Focus Containment** ✅
 - **Task Description:** When an overlay is open (Quick Access, dropdown menu, context menu, notification), keyboard focus is trapped within the overlay until it is dismissed.
 - **Output:** Focus trap behavior for modal/overlay UI elements.
 - **Completion Criteria:**
@@ -839,6 +851,14 @@ The workbench has a clear focus model where exactly one region (part) is active 
   - Focus trapping is an accessibility requirement — important for keyboard-only users
   - Use `aria-modal="true"` and `role="dialog"` on overlay containers
   - The `FocusTracker` already has `suspend()`/`resume()` — wire them to overlay open/close
+- **Implementation Notes:**
+  - Quick Access overlay now has `role="dialog"`, `aria-modal="true"`, `aria-label="Quick Access"` on the backdrop element
+  - Tab key trapped in `_onInputKeydown()`: Tab from input focuses first list item, Shift+Tab stays on input
+  - List keydown handler added: Tab from any list item returns focus to input, Escape closes, ArrowDown/Up navigate, Enter accepts
+  - List items rendered with `tabIndex=-1` for programmatic focusability
+  - `show()` calls `focusTracker.suspend()` to prevent workbench focus tracking during overlay
+  - `hide()` calls `focusTracker.resume(true)` to restore tracking and return focus to previously-focused element
+  - `setFocusTracker()` setter added to QuickAccessWidget, wired from `workbench.ts` during context initialization
 
 ---
 
