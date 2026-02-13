@@ -260,6 +260,9 @@ export class Workbench extends Disposable {
   // Recent workspaces manager (initialized in Phase 1)
   private _recentWorkspaces!: RecentWorkspaces;
 
+  // Active file watchers for workspace folders (M4 — file watcher → tree refresh)
+  private readonly _folderWatchers = new Map<string, IDisposable>();
+
   constructor(
     private readonly _container: HTMLElement,
     services?: ServiceCollection,
@@ -470,6 +473,64 @@ export class Workbench extends Disposable {
    */
   async removeRecentWorkspace(workspaceId: string): Promise<void> {
     await this._recentWorkspaces.remove(workspaceId);
+  }
+
+  /**
+   * Start file watchers for all workspace folders.
+   * When folders change (added/removed), update watchers accordingly.
+   * File change events flow through IFileService.onDidFileChange.
+   */
+  private _startWorkspaceFolderWatchers(): void {
+    if (!this._services.has(IFileService)) return;
+    const fileService = this._services.get(IFileService) as any;
+
+    // Watch each current folder
+    const watchFolder = async (folderUri: string) => {
+      if (this._folderWatchers.has(folderUri)) return;
+      try {
+        const uri = (await import('../platform/uri.js')).URI.parse(folderUri);
+        const disposable = await fileService.watch(uri);
+        this._folderWatchers.set(folderUri, disposable);
+        console.log('[Workbench] Started file watcher for:', folderUri);
+      } catch (err) {
+        console.warn('[Workbench] Failed to start file watcher for:', folderUri, err);
+      }
+    };
+
+    const unwatchFolder = (folderUri: string) => {
+      const d = this._folderWatchers.get(folderUri);
+      if (d) {
+        d.dispose();
+        this._folderWatchers.delete(folderUri);
+      }
+    };
+
+    // Watch existing folders
+    for (const folder of this._workspace.folders) {
+      watchFolder(folder.uri.toString());
+    }
+
+    // React to folder additions/removals
+    this._register(this._workspace.onDidChangeFolders((e: any) => {
+      if (e.added) {
+        for (const f of e.added) {
+          watchFolder(typeof f.uri === 'string' ? f.uri : f.uri.toString());
+        }
+      }
+      if (e.removed) {
+        for (const f of e.removed) {
+          unwatchFolder(typeof f.uri === 'string' ? f.uri : f.uri.toString());
+        }
+      }
+    }));
+
+    // Cleanup all watchers on dispose
+    this._register({ dispose: () => {
+      for (const d of this._folderWatchers.values()) {
+        d.dispose();
+      }
+      this._folderWatchers.clear();
+    }});
   }
 
   async initialize(): Promise<void> {
@@ -997,6 +1058,9 @@ export class Workbench extends Disposable {
       }));
     }
 
+    // Start file watchers for workspace folders (M4 — file watcher → tree refresh)
+    this._startWorkspaceFolderWatchers();
+
     // Load persisted configuration values (Cap 4)
     if (this._configService) {
       await this._configService.load();
@@ -1305,7 +1369,7 @@ export class Workbench extends Disposable {
       { commandId: 'workbench.action.togglePanel', title: 'Toggle Panel', group: '2_appearance', order: 2 },
       { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Auxiliary Bar', group: '2_appearance', order: 3 },
       { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
-      { commandId: 'editor.toggleWordWrap', title: 'Word Wrap', group: '3_editor', order: 1 },
+      { commandId: 'editor.toggleWordWrap', title: 'Word Wrap', group: '3_editor', order: 1, when: 'activeEditor' },
     ]));
 
     // Register dropdown items for File menu
@@ -1317,24 +1381,24 @@ export class Workbench extends Disposable {
       { commandId: 'workspace.addFolderToWorkspace', title: 'Add Folder to Workspace…', group: '3_workspace', order: 1 },
       { commandId: 'workspace.saveAs', title: 'Save Workspace As…', group: '3_workspace', order: 2 },
       { commandId: 'workspace.duplicateWorkspace', title: 'Duplicate Workspace', group: '3_workspace', order: 3 },
-      { commandId: 'file.save', title: 'Save', group: '4_save', order: 1 },
-      { commandId: 'file.saveAs', title: 'Save As…', group: '4_save', order: 2 },
-      { commandId: 'file.saveAll', title: 'Save All', group: '4_save', order: 3 },
-      { commandId: 'file.revert', title: 'Revert File', group: '5_close', order: 1 },
-      { commandId: 'workbench.action.closeActiveEditor', title: 'Close Editor', group: '5_close', order: 2 },
-      { commandId: 'workspace.closeFolder', title: 'Close Folder', group: '5_close', order: 3 },
+      { commandId: 'file.save', title: 'Save', group: '4_save', order: 1, when: 'activeEditor' },
+      { commandId: 'file.saveAs', title: 'Save As…', group: '4_save', order: 2, when: 'activeEditor' },
+      { commandId: 'file.saveAll', title: 'Save All', group: '4_save', order: 3, when: 'activeEditor' },
+      { commandId: 'file.revert', title: 'Revert File', group: '5_close', order: 1, when: 'activeEditorIsDirty' },
+      { commandId: 'workbench.action.closeActiveEditor', title: 'Close Editor', group: '5_close', order: 2, when: 'activeEditor' },
+      { commandId: 'workspace.closeFolder', title: 'Close Folder', group: '5_close', order: 3, when: 'workspaceFolderCount > 0' },
       { commandId: 'workspace.closeWindow', title: 'Close Window', group: '5_close', order: 4 },
     ]));
 
     // Register dropdown items for Edit menu
     this._register(this._titlebar.registerMenuBarDropdownItems('edit', [
-      { commandId: 'edit.undo', title: 'Undo', group: '1_undo', order: 1 },
-      { commandId: 'edit.redo', title: 'Redo', group: '1_undo', order: 2 },
-      { commandId: 'edit.cut', title: 'Cut', group: '2_clipboard', order: 1 },
-      { commandId: 'edit.copy', title: 'Copy', group: '2_clipboard', order: 2 },
-      { commandId: 'edit.paste', title: 'Paste', group: '2_clipboard', order: 3 },
-      { commandId: 'edit.find', title: 'Find', group: '3_find', order: 1 },
-      { commandId: 'edit.replace', title: 'Replace', group: '3_find', order: 2 },
+      { commandId: 'edit.undo', title: 'Undo', group: '1_undo', order: 1, when: 'activeEditor' },
+      { commandId: 'edit.redo', title: 'Redo', group: '1_undo', order: 2, when: 'activeEditor' },
+      { commandId: 'edit.cut', title: 'Cut', group: '2_clipboard', order: 1, when: 'activeEditor' },
+      { commandId: 'edit.copy', title: 'Copy', group: '2_clipboard', order: 2, when: 'activeEditor' },
+      { commandId: 'edit.paste', title: 'Paste', group: '2_clipboard', order: 3, when: 'activeEditor' },
+      { commandId: 'edit.find', title: 'Find', group: '3_find', order: 1, when: 'activeEditor' },
+      { commandId: 'edit.replace', title: 'Replace', group: '3_find', order: 2, when: 'activeEditor' },
     ]));
 
     // Register dropdown items for Go menu
@@ -1962,6 +2026,11 @@ export class Workbench extends Disposable {
     // Wire keybinding lookup and command executor into TitlebarPart (M3 Capability 1)
     this._titlebar.setKeybindingLookup(keybindingService);
     this._titlebar.setCommandExecutor(this._services.get(ICommandService) as any);
+
+    // Wire context key evaluator for menu when-clause graying (M4)
+    if (this._contextKeyService) {
+      this._titlebar.setContextKeyEvaluator(this._contextKeyService);
+    }
 
     // ── Wire file editor resolver (M4 Capability 4) ──
     this._initFileEditorResolver();

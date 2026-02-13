@@ -29,6 +29,7 @@ interface ParallxApi {
     readonly workspaceFolders: readonly { uri: string; name: string; index: number }[] | undefined;
     getWorkspaceFolder(uri: string): { uri: string; name: string; index: number } | undefined;
     readonly onDidChangeWorkspaceFolders: (listener: (e: { added: readonly { uri: string; name: string; index: number }[]; removed: readonly { uri: string; name: string; index: number }[] }) => void) => IDisposable;
+    readonly onDidFilesChange: (listener: (events: { type: number; uri: string }[]) => void) => IDisposable;
     readonly name: string | undefined;
     readonly fs?: {
       readFile(uri: string): Promise<{ content: string; encoding: string }>;
@@ -55,6 +56,8 @@ interface ParallxApi {
   editors: {
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
     openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
+    readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
+    onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
 }
 
@@ -125,6 +128,19 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
     api.workspace.onDidChangeWorkspaceFolders(() => {
       rebuildTree();
+    }),
+  );
+
+  // Subscribe to file system changes for live tree refresh
+  let _refreshDebounce: ReturnType<typeof setTimeout> | null = null;
+  context.subscriptions.push(
+    api.workspace.onDidFilesChange(() => {
+      // Debounce: multiple changes may arrive in quick succession
+      if (_refreshDebounce) clearTimeout(_refreshDebounce);
+      _refreshDebounce = setTimeout(() => {
+        _refreshDebounce = null;
+        refreshTree();
+      }, 300);
     }),
   );
 }
@@ -854,11 +870,17 @@ function createOpenEditorsView(container: HTMLElement): IDisposable {
   container.classList.add('open-editors-view');
   _openEditorsContainer = container;
 
-  // Placeholder — will be wired to EditorService events in Cap 4
+  // Initial render
   renderOpenEditors();
+
+  // Subscribe to editor changes for reactive updates
+  const sub = _api.editors.onDidChangeOpenEditors(() => {
+    renderOpenEditors();
+  });
 
   return {
     dispose() {
+      sub.dispose();
       _openEditorsContainer = null;
     },
   };
@@ -868,12 +890,94 @@ function renderOpenEditors(): void {
   if (!_openEditorsContainer) return;
   _openEditorsContainer.innerHTML = '';
 
-  const placeholder = document.createElement('div');
-  placeholder.className = 'open-editors-placeholder';
-  placeholder.textContent = 'No open editors';
-  _openEditorsContainer.appendChild(placeholder);
+  const editors = _api.editors.openEditors;
 
-  _openEditorsCountKey.set(0);
+  if (editors.length === 0) {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'open-editors-placeholder';
+    placeholder.textContent = 'No open editors';
+    _openEditorsContainer.appendChild(placeholder);
+    _openEditorsCountKey.set(0);
+    return;
+  }
+
+  _openEditorsCountKey.set(editors.length);
+
+  for (const editor of editors) {
+    const row = document.createElement('div');
+    row.className = 'open-editors-item';
+    if (editor.isActive) {
+      row.classList.add('open-editors-item--active');
+    }
+    row.setAttribute('role', 'treeitem');
+    row.tabIndex = -1;
+
+    // Dirty indicator
+    if (editor.isDirty) {
+      const dot = document.createElement('span');
+      dot.className = 'open-editors-dirty';
+      dot.textContent = '●';
+      dot.title = 'Unsaved changes';
+      row.appendChild(dot);
+    }
+
+    // File icon (derive from name extension)
+    const icon = document.createElement('span');
+    icon.className = 'open-editors-icon';
+    icon.textContent = getFileIcon(editor.name);
+    row.appendChild(icon);
+
+    // Label
+    const label = document.createElement('span');
+    label.className = 'open-editors-label';
+    label.textContent = editor.name;
+    if (editor.description) {
+      label.title = editor.description;
+    }
+    row.appendChild(label);
+
+    // Close button
+    const closeBtn = document.createElement('span');
+    closeBtn.className = 'open-editors-close';
+    closeBtn.textContent = '×';
+    closeBtn.title = 'Close';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _api.commands.executeCommand('workbench.action.closeActiveEditor');
+    });
+    row.appendChild(closeBtn);
+
+    // Click → focus that editor
+    const editorId = editor.id;
+    row.addEventListener('click', () => {
+      // Re-open the editor to focus it (the editor service deduplicates)
+      // Use the description as a heuristic for the URI
+      if (editor.description) {
+        _api.editors.openFileEditor(editor.description, { pinned: false }).catch(() => {
+          // Fallback — it might be a non-file editor
+          console.log('[Explorer] Could not re-focus editor:', editor.name);
+        });
+      }
+    });
+
+    _openEditorsContainer.appendChild(row);
+  }
+}
+
+/** Simple icon picker based on file extension */
+function getFileIcon(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  switch (ext) {
+    case 'ts': case 'tsx': return '🟦';
+    case 'js': case 'jsx': return '🟨';
+    case 'json': return '📋';
+    case 'md': return '📝';
+    case 'css': return '🎨';
+    case 'html': return '🌐';
+    case 'svg': return '🖼️';
+    case 'png': case 'jpg': case 'jpeg': case 'gif': return '🖼️';
+    default: return '📄';
+  }
 }
 
 // ─── Commands Registration ───────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import {
   IContextKeyService,
   IEditorService,
   IWorkspaceService,
+  IFileService,
 } from '../services/serviceTypes.js';
 import type { ContextKeyValue } from '../context/contextKey.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
@@ -94,12 +95,15 @@ export interface ParallxApiObject {
     readonly workspaceFolders: readonly { uri: string; name: string; index: number }[] | undefined;
     getWorkspaceFolder(uri: string): { uri: string; name: string; index: number } | undefined;
     readonly onDidChangeWorkspaceFolders: (listener: (e: { added: readonly { uri: string; name: string; index: number }[]; removed: readonly { uri: string; name: string; index: number }[] }) => void) => IDisposable;
+    readonly onDidFilesChange: (listener: (events: { type: number; uri: string }[]) => void) => IDisposable;
     readonly name: string | undefined;
   };
   readonly editors: {
     registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable }): IDisposable;
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
     openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
+    readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
+    onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
   readonly tools: {
     getAll(): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string }[];
@@ -148,6 +152,10 @@ export function createToolApi(
     ? deps.services.get(IWorkspaceService)
     : undefined;
 
+  const fileService = deps.services.has(IFileService)
+    ? deps.services.get(IFileService)
+    : undefined;
+
   // ── Create bridges ──
   const commandsBridge = commandService
     ? new CommandsBridge(toolId, commandService as any, subscriptions, deps.commandContributionProcessor)
@@ -166,7 +174,7 @@ export function createToolApi(
     ? new ContextBridge(toolId, contextKeyService, subscriptions)
     : undefined;
 
-  const workspaceBridge = new WorkspaceBridge(toolId, subscriptions, deps.configurationService, workspaceService as any);
+  const workspaceBridge = new WorkspaceBridge(toolId, subscriptions, deps.configurationService, workspaceService as any, fileService as any);
 
   const editorsBridge = new EditorsBridge(toolId, editorService, subscriptions);
 
@@ -282,6 +290,7 @@ export function createToolApi(
       get workspaceFolders() { return workspaceBridge.workspaceFolders; },
       getWorkspaceFolder: (uri: string) => workspaceBridge.getWorkspaceFolder(uri),
       onDidChangeWorkspaceFolders: workspaceBridge.onDidChangeWorkspaceFolders,
+      onDidFilesChange: workspaceBridge.onDidFilesChange,
       get name() { return workspaceBridge.name; },
     }),
 
@@ -289,6 +298,8 @@ export function createToolApi(
       registerEditorProvider: (typeId, provider) => editorsBridge.registerEditorProvider(typeId, provider),
       openEditor: (options) => editorsBridge.openEditor(options),
       openFileEditor: (uri, options) => editorsBridge.openFileEditor(uri, options),
+      get openEditors() { return editorsBridge.getOpenEditors(); },
+      onDidChangeOpenEditors: (listener: () => void) => editorsBridge.onDidChangeOpenEditors(listener),
     }),
 
     tools: Object.freeze({

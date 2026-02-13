@@ -449,9 +449,17 @@ const workspaceOpenRecent: CommandDescriptor = {
   title: 'Open Recent Workspace...',
   category: 'Workspace',
   handler: async (ctx) => {
-    const recents = await wb(ctx).getRecentWorkspaces();
-    // Return the list — the command palette or caller can display choices
-    console.log('[Command] Recent workspaces:', recents.map((r) => `${r.identity.name} (${r.identity.id})`).join(', '));
+    const w = wb(ctx);
+    const recents = await w.getRecentWorkspaces();
+
+    if (recents.length === 0) {
+      console.log('[Command] No recent workspaces');
+      return;
+    }
+
+    // Show quick pick with recent workspaces
+    // Use the command palette in quick-open mode which already shows workspace results
+    w.showQuickOpen();
     return recents;
   },
 };

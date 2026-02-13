@@ -155,14 +155,32 @@ import type { IEditorInput } from '../editor/editorInput.js';
 import type { EditorOpenOptions } from '../editor/editorTypes.js';
 
 /**
+ * Descriptor for an open editor, used by the Open Editors view.
+ */
+export interface OpenEditorDescriptor {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly isDirty: boolean;
+  readonly isActive: boolean;
+  readonly groupId: string;
+}
+
+/**
  * Manages editor opening/closing and active editor tracking.
  */
 export interface IEditorService extends IDisposable {
   /** Fires when the active editor changes. */
   readonly onDidActiveEditorChange: Event<IEditorInput | undefined>;
 
+  /** Fires when the set of open editors changes (open, close, dirty, reorder). */
+  readonly onDidChangeOpenEditors: Event<void>;
+
   /** The currently active editor input. */
   readonly activeEditor: IEditorInput | undefined;
+
+  /** Get descriptors for all open editors across all groups. */
+  getOpenEditors(): OpenEditorDescriptor[];
 
   /** Open an editor in the active group (or a specified group). */
   openEditor(input: IEditorInput, options?: EditorOpenOptions, groupId?: string): Promise<void>;

@@ -167,3 +167,65 @@
   font-size: 12px;
   font-style: italic;
 }
+
+.open-editors-item {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px 2px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.open-editors-item:hover {
+  background: var(--color-list-hover-background, rgba(255, 255, 255, 0.04));
+}
+
+.open-editors-item--active {
+  background: var(--color-list-active-selection-background, rgba(255, 255, 255, 0.08));
+  font-weight: 600;
+}
+
+.open-editors-dirty {
+  flex-shrink: 0;
+  margin-right: 4px;
+  font-size: 10px;
+  color: var(--color-editor-dirty-foreground, #e8e8e8);
+}
+
+.open-editors-icon {
+  flex-shrink: 0;
+  margin-right: 4px;
+  font-size: 12px;
+}
+
+.open-editors-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.open-editors-close {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  border-radius: 3px;
+  opacity: 0;
+  color: var(--color-icon-foreground, #c5c5c5);
+  cursor: pointer;
+}
+
+.open-editors-item:hover .open-editors-close {
+  opacity: 1;
+}
+
+.open-editors-close:hover {
+  background: var(--color-toolbar-hover-background, rgba(255, 255, 255, 0.1));
+}

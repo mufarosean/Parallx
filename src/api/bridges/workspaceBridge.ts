@@ -11,6 +11,7 @@ import { URI } from '../../platform/uri.js';
 import type { ConfigurationService } from '../../configuration/configurationService.js';
 import type { IWorkspaceConfiguration, IConfigurationChangeEvent } from '../../configuration/configurationTypes.js';
 import type { WorkspaceFolder, WorkspaceFoldersChangeEvent } from '../../workspace/workspaceTypes.js';
+import type { FileChangeEvent } from '../../platform/fileTypes.js';
 
 /** Minimal shape of the workspace service for the bridge. */
 interface WorkspaceServiceLike {
@@ -18,6 +19,11 @@ interface WorkspaceServiceLike {
   readonly workspaceName: string;
   readonly onDidChangeFolders: Event<WorkspaceFoldersChangeEvent>;
   getWorkspaceFolder(uri: URI): WorkspaceFolder | undefined;
+}
+
+/** Minimal shape of the file service for the bridge. */
+interface FileServiceLike {
+  readonly onDidFileChange: Event<FileChangeEvent[]>;
 }
 
 /** Serialized workspace folder for tool API (URI as string). */
@@ -50,11 +56,15 @@ export class WorkspaceBridge {
   /** Forwarded folder change event (serialized for tool API). */
   readonly onDidChangeWorkspaceFolders: Event<ToolWorkspaceFoldersChangeEvent>;
 
+  /** Forwarded file change event from IFileService. */
+  readonly onDidFilesChange: Event<{ type: number; uri: string }[]>;
+
   constructor(
     private readonly _toolId: string,
     private readonly _subscriptions: IDisposable[],
     private readonly _configService?: ConfigurationService,
     private readonly _workspaceService?: WorkspaceServiceLike,
+    private readonly _fileService?: FileServiceLike,
   ) {
     if (this._configService) {
       this.onDidChangeConfiguration = this._configService.onDidChangeConfiguration;
@@ -81,6 +91,24 @@ export class WorkspaceBridge {
       const fallbackEmitter = new Emitter<ToolWorkspaceFoldersChangeEvent>();
       this._disposables.push(fallbackEmitter);
       this.onDidChangeWorkspaceFolders = fallbackEmitter.event;
+    }
+
+    // File change events (M4 — file watcher → tree refresh)
+    if (this._fileService) {
+      const fileChangeEmitter = new Emitter<{ type: number; uri: string }[]>();
+      this._disposables.push(fileChangeEmitter);
+      const fileSub = this._fileService.onDidFileChange((events) => {
+        fileChangeEmitter.fire(events.map(e => ({
+          type: e.type as number,
+          uri: e.uri.toString(),
+        })));
+      });
+      this._disposables.push(fileSub);
+      this.onDidFilesChange = fileChangeEmitter.event;
+    } else {
+      const fallbackEmitter = new Emitter<{ type: number; uri: string }[]>();
+      this._disposables.push(fallbackEmitter);
+      this.onDidFilesChange = fallbackEmitter.event;
     }
   }
 

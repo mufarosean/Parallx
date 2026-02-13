@@ -41,6 +41,8 @@ export interface MenuBarDropdownItem {
   readonly keybinding?: string;
   readonly group?: string;
   readonly order?: number;
+  /** When-clause expression — item is disabled (grayed out) when the clause evaluates to false. */
+  readonly when?: string;
 }
 
 /** Service providing keybinding display strings. */
@@ -52,6 +54,11 @@ export interface IKeybindingLookup {
 export interface ICommandExecutor {
   executeCommand(commandId: string, ...args: unknown[]): Promise<unknown>;
   hasCommand(commandId: string): boolean;
+}
+
+/** Service for evaluating when-clause expressions against context keys. */
+export interface IContextKeyEvaluator {
+  contextMatchesRules(whenClause: string | undefined): boolean;
 }
 
 
@@ -91,6 +98,7 @@ export class TitlebarPart extends Part {
   private _focusedMenuIndex = -1;
   private _keybindingLookup: IKeybindingLookup | undefined;
   private _commandExecutor: ICommandExecutor | undefined;
+  private _contextKeyEvaluator: IContextKeyEvaluator | undefined;
 
   // ── Window controls (Task 1.3) ──
 
@@ -164,6 +172,11 @@ export class TitlebarPart extends Part {
   /** Provide command executor for dropdown item activation. */
   setCommandExecutor(executor: ICommandExecutor): void {
     this._commandExecutor = executor;
+  }
+
+  /** Provide context key evaluator for when-clause graying. */
+  setContextKeyEvaluator(evaluator: IContextKeyEvaluator): void {
+    this._contextKeyEvaluator = evaluator;
   }
 
   /**
@@ -257,15 +270,29 @@ export class TitlebarPart extends Part {
     if (!items || items.length === 0) return;
 
     // Build IContextMenuItem[] from MenuBarDropdownItem[]
-    const menuItems: IContextMenuItem[] = items.map(item => ({
-      id: item.commandId,
-      label: item.title,
-      keybinding: this._formatKeybinding(
-        item.keybinding ?? this._keybindingLookup?.lookupKeybinding(item.commandId) ?? '',
-      ) || undefined,
-      group: item.group,
-      order: item.order,
-    }));
+    const menuItems: IContextMenuItem[] = items.map(item => {
+      // Determine disabled state:
+      // 1. When-clause evaluates to false → disabled
+      // 2. Command not registered → disabled
+      let disabled = false;
+      if (item.when && this._contextKeyEvaluator) {
+        disabled = !this._contextKeyEvaluator.contextMatchesRules(item.when);
+      }
+      if (!disabled && this._commandExecutor && !this._commandExecutor.hasCommand(item.commandId)) {
+        disabled = true;
+      }
+
+      return {
+        id: item.commandId,
+        label: item.title,
+        keybinding: this._formatKeybinding(
+          item.keybinding ?? this._keybindingLookup?.lookupKeybinding(item.commandId) ?? '',
+        ) || undefined,
+        group: item.group,
+        order: item.order,
+        disabled,
+      };
+    });
 
     // Position below anchor
     const rect = anchor.getBoundingClientRect();

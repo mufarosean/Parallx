@@ -10,7 +10,7 @@ import { Emitter, Event } from '../../platform/events.js';
 import { EditorInput, type IEditorInput } from '../../editor/editorInput.js';
 import { EditorPane, type IEditorPane } from '../../editor/editorPane.js';
 import type { SerializedEditorEntry } from '../../editor/editorTypes.js';
-import type { IEditorService } from '../../services/serviceTypes.js';
+import type { IEditorService, OpenEditorDescriptor } from '../../services/serviceTypes.js';
 
 // ─── File Editor Resolver ────────────────────────────────────────────────────
 
@@ -125,6 +125,30 @@ export class EditorsBridge {
    */
   getProvider(typeId: string): ToolEditorProvider | undefined {
     return this._providers.get(typeId);
+  }
+
+  /**
+   * Event that fires when the set of open editors changes.
+   * Delegates to EditorService.onDidChangeOpenEditors.
+   */
+  get onDidChangeOpenEditors(): (listener: () => void) => IDisposable {
+    return (listener: () => void) => {
+      if (!this._editorService) {
+        console.warn('[EditorsBridge] No editor service — onDidChangeOpenEditors is a no-op');
+        return toDisposable(() => {});
+      }
+      const d = this._editorService.onDidChangeOpenEditors(listener);
+      this._subscriptions.push(d);
+      return d;
+    };
+  }
+
+  /**
+   * Get descriptors for all open editors across all groups.
+   */
+  getOpenEditors(): OpenEditorDescriptor[] {
+    if (!this._editorService) return [];
+    return this._editorService.getOpenEditors();
   }
 
   /**
