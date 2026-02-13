@@ -168,6 +168,24 @@
   font-style: italic;
 }
 
+/* Group header shown when multiple editor groups exist (VS Code parity) */
+.open-editors-group-header {
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 10px;
+  height: 22px;
+  line-height: 22px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
 .open-editors-item {
   display: flex;
   align-items: center;
@@ -180,6 +198,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--vscode-foreground);
+}
+
+/* Extra indent when showing group headers */
+.open-editors-item--grouped {
+  padding-left: 28px;
 }
 
 .open-editors-item:hover {

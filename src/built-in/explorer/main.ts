@@ -903,64 +903,99 @@ function renderOpenEditors(): void {
 
   _openEditorsCountKey.set(editors.length);
 
+  // Group editors by group ID (preserving order)
+  const groupedEditors = new Map<string, typeof editors[number][]>();
   for (const editor of editors) {
-    const row = document.createElement('div');
-    row.className = 'open-editors-item';
-    if (editor.isActive) {
-      row.classList.add('open-editors-item--active');
+    const groupId = editor.groupId;
+    if (!groupedEditors.has(groupId)) {
+      groupedEditors.set(groupId, []);
     }
-    row.setAttribute('role', 'treeitem');
-    row.tabIndex = -1;
-
-    // Dirty indicator
-    if (editor.isDirty) {
-      const dot = document.createElement('span');
-      dot.className = 'open-editors-dirty';
-      dot.title = 'Unsaved changes';
-      row.appendChild(dot);
-    }
-
-    // File icon (derive from name extension)
-    const icon = document.createElement('span');
-    icon.className = 'open-editors-icon';
-    icon.textContent = getFileIcon(editor.name);
-    row.appendChild(icon);
-
-    // Label
-    const label = document.createElement('span');
-    label.className = 'open-editors-label';
-    label.textContent = editor.name;
-    if (editor.description) {
-      label.title = editor.description;
-    }
-    row.appendChild(label);
-
-    // Close button
-    const closeBtn = document.createElement('span');
-    closeBtn.className = 'open-editors-close';
-    closeBtn.textContent = '×';
-    closeBtn.title = 'Close';
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _api.commands.executeCommand('workbench.action.closeActiveEditor');
-    });
-    row.appendChild(closeBtn);
-
-    // Click → focus that editor
-    const editorId = editor.id;
-    row.addEventListener('click', () => {
-      // Re-open the editor to focus it (the editor service deduplicates)
-      // Use the description as a heuristic for the URI
-      if (editor.description) {
-        _api.editors.openFileEditor(editor.description, { pinned: false }).catch(() => {
-          // Fallback — it might be a non-file editor
-          console.log('[Explorer] Could not re-focus editor:', editor.name);
-        });
-      }
-    });
-
-    _openEditorsContainer.appendChild(row);
+    groupedEditors.get(groupId)!.push(editor);
   }
+
+  const multipleGroups = groupedEditors.size > 1;
+  let groupIndex = 0;
+
+  for (const [_groupId, groupEditors] of groupedEditors) {
+    groupIndex++;
+
+    // Show group header when there are multiple groups (VS Code parity)
+    if (multipleGroups) {
+      const header = document.createElement('div');
+      header.className = 'open-editors-group-header';
+      header.textContent = `Group ${groupIndex}`;
+      _openEditorsContainer.appendChild(header);
+    }
+
+    for (const editor of groupEditors) {
+      _openEditorsContainer.appendChild(createOpenEditorRow(editor, multipleGroups));
+    }
+  }
+}
+
+/** Create a single row element for an open editor entry. */
+function createOpenEditorRow(
+  editor: { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string },
+  indented: boolean
+): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'open-editors-item';
+  if (indented) {
+    row.classList.add('open-editors-item--grouped');
+  }
+  if (editor.isActive) {
+    row.classList.add('open-editors-item--active');
+  }
+  row.setAttribute('role', 'treeitem');
+  row.tabIndex = -1;
+
+  // Dirty indicator
+  if (editor.isDirty) {
+    const dot = document.createElement('span');
+    dot.className = 'open-editors-dirty';
+    dot.title = 'Unsaved changes';
+    row.appendChild(dot);
+  }
+
+  // File icon (derive from name extension)
+  const icon = document.createElement('span');
+  icon.className = 'open-editors-icon';
+  icon.textContent = getFileIcon(editor.name);
+  row.appendChild(icon);
+
+  // Label
+  const label = document.createElement('span');
+  label.className = 'open-editors-label';
+  label.textContent = editor.name;
+  if (editor.description) {
+    label.title = editor.description;
+  }
+  row.appendChild(label);
+
+  // Close button
+  const closeBtn = document.createElement('span');
+  closeBtn.className = 'open-editors-close';
+  closeBtn.textContent = '×';
+  closeBtn.title = 'Close';
+  closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _api.commands.executeCommand('workbench.action.closeActiveEditor');
+  });
+  row.appendChild(closeBtn);
+
+  // Click → focus that editor
+  row.addEventListener('click', () => {
+    // Re-open the editor to focus it (the editor service deduplicates)
+    // Use the description as a heuristic for the URI
+    if (editor.description) {
+      _api.editors.openFileEditor(editor.description, { pinned: false }).catch(() => {
+        // Fallback — it might be a non-file editor
+        console.log('[Explorer] Could not re-focus editor:', editor.name);
+      });
+    }
+  });
+
+  return row;
 }
 
 /** Simple icon picker based on file extension — returns a text glyph, not emoji */
