@@ -1217,11 +1217,19 @@ html, body {
 .editor-group-toolbar button {
   background: none;
   border: none;
-  color: var(--vscode-descriptionForeground);
+  color: var(--vscode-icon-foreground, #c5c5c5);
   cursor: pointer;
-  font-size: 13px;
-  padding: 2px 4px;
+  padding: 4px;
   border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editor-group-toolbar button svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
 }
 
 .editor-group-toolbar button:hover {

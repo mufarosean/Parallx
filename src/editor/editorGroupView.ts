@@ -412,24 +412,25 @@ export class EditorGroupView extends Disposable implements IGridView {
     const toolbar = document.createElement('div');
     toolbar.classList.add('editor-group-toolbar');
 
-    // Split button
-    const splitBtn = this._createToolbarButton('⊞', 'Split Editor Right', () => {
-      this._onDidRequestSplit.fire(GroupDirection.Right);
-    });
+    // Split button — SVG matching VS Code's split-editor codicon
+    const splitBtn = this._createToolbarButton(
+      `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M14 1H2a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zm0 13H9V2h5v12zM2 2h6v12H2V2z"/></svg>`,
+      'Split Editor Right',
+      () => { this._onDidRequestSplit.fire(GroupDirection.Right); },
+      true
+    );
     toolbar.appendChild(splitBtn);
-
-    // Close group button
-    const closeBtn = this._createToolbarButton('✕', 'Close Group', () => {
-      this._onDidRequestClose.fire();
-    });
-    toolbar.appendChild(closeBtn);
 
     return toolbar;
   }
 
-  private _createToolbarButton(text: string, title: string, onClick: () => void): HTMLElement {
+  private _createToolbarButton(content: string, title: string, onClick: () => void, isSvg = false): HTMLElement {
     const btn = document.createElement('button');
-    btn.textContent = text;
+    if (isSvg) {
+      btn.innerHTML = content;
+    } else {
+      btn.textContent = content;
+    }
     btn.title = title;
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
