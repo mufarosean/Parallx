@@ -343,6 +343,16 @@ export class Workbench extends Disposable {
     }
   }
 
+  /**
+   * Open Quick Access in go-to-line mode (':' prefix).
+   * VS Code parity: `workbench.action.gotoLine` (Ctrl+G).
+   */
+  showGoToLine(): void {
+    if (this._commandPalette) {
+      this._commandPalette.show(':');
+    }
+  }
+
   // ── Focus Model (Cap 8) ────────────────────────────────────────────────
 
   /**
@@ -1837,6 +1847,11 @@ export class Workbench extends Disposable {
     this._services.registerInstance(IEditorGroupService, editorGroupService);
     this._services.registerInstance(IEditorService, editorService);
 
+    // Wire editor group service into Quick Access for Go to Line provider
+    if (this._commandPalette) {
+      this._commandPalette.setEditorGroupService(editorGroupService);
+    }
+
     // Update context key when group count changes
     editorGroupService.onDidGroupCountChange((count) => {
       this._workbenchContext?.setEditorGroupCount(count);
@@ -3202,7 +3217,8 @@ export class Workbench extends Disposable {
       text: 'Ln 1, Col 1',
       alignment: StatusBarAlignment.Right,
       priority: 100,
-      tooltip: 'Go to Line/Column',
+      tooltip: 'Go to Line/Column (Ctrl+G)',
+      command: 'workbench.action.gotoLine',
       name: 'Cursor Position',
     });
 

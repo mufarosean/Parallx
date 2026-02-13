@@ -35,6 +35,9 @@ const RECENT_STORAGE_KEY = 'parallx:commandPalette:recent';
 /** VS Code prefix for command mode. */
 const COMMAND_PREFIX = '>';
 
+/** VS Code prefix for go-to-line mode (`:123` or `:123:45`). */
+const GOTO_LINE_PREFIX = ':';
+
 // ── File picker constants (M4 Cap 6) ────────────────────────────────────────
 
 const RECENT_FILES_KEY = 'parallx:quickAccess:recentFiles';
@@ -248,6 +251,113 @@ class CommandsProvider implements IQuickAccessProvider {
     });
 
     return items;
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Go-to-Line Provider — jump to line[:column] under ':' prefix
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** Minimal shape for accessing the active text editor's textarea. */
+interface IEditorGroupServiceLike {
+  readonly activeGroup: {
+    readonly activePane: unknown;
+  } | undefined;
+}
+
+class GoToLineProvider implements IQuickAccessProvider {
+  readonly prefix = GOTO_LINE_PREFIX;
+  readonly placeholder = 'Type a line number, optionally followed by :column.';
+
+  private _editorGroupService: IEditorGroupServiceLike | undefined;
+
+  setEditorGroupService(service: IEditorGroupServiceLike): void {
+    this._editorGroupService = service;
+  }
+
+  getItems(query: string): QuickAccessItem[] {
+    const textarea = this._getActiveTextarea();
+    if (!textarea) {
+      return [{
+        id: 'goto-no-editor',
+        label: 'No active text editor',
+        score: 0,
+        accept: () => {},
+      }];
+    }
+
+    // Parse "line" or "line:column" or "line,column"
+    const trimmed = query.trim();
+    if (!trimmed) {
+      // Count total lines in current editor
+      const totalLines = textarea.value.split('\n').length;
+      return [{
+        id: 'goto-hint',
+        label: `Type a line number between 1 and ${totalLines}`,
+        detail: 'Use :column notation for column (e.g. 10:5)',
+        score: 0,
+        accept: () => {},
+      }];
+    }
+
+    const parts = trimmed.split(/[:,]/);
+    const lineNum = parseInt(parts[0], 10);
+    const colNum = parts.length > 1 ? parseInt(parts[1], 10) : undefined;
+
+    if (isNaN(lineNum) || lineNum < 1) {
+      return [{
+        id: 'goto-invalid',
+        label: `"${trimmed}" is not a valid line number`,
+        score: 0,
+        accept: () => {},
+      }];
+    }
+
+    const totalLines = textarea.value.split('\n').length;
+    const clampedLine = Math.min(lineNum, totalLines);
+    const labelText = colNum && !isNaN(colNum)
+      ? `Go to Line ${clampedLine}, Column ${colNum}`
+      : `Go to Line ${clampedLine}`;
+
+    return [{
+      id: 'goto-line',
+      label: labelText,
+      detail: totalLines > 0 ? `of ${totalLines} lines` : undefined,
+      score: 0,
+      accept: () => this._goToLine(textarea, clampedLine, colNum),
+    }];
+  }
+
+  private _goToLine(textarea: HTMLTextAreaElement, line: number, column?: number): void {
+    const lines = textarea.value.split('\n');
+    const targetLine = Math.max(1, Math.min(line, lines.length));
+
+    // Calculate offset to the start of the target line
+    let offset = 0;
+    for (let i = 0; i < targetLine - 1; i++) {
+      offset += lines[i].length + 1; // +1 for \n
+    }
+
+    // Add column offset
+    if (column && column > 1) {
+      const lineContent = lines[targetLine - 1] ?? '';
+      offset += Math.min(column - 1, lineContent.length);
+    }
+
+    textarea.focus();
+    textarea.setSelectionRange(offset, offset);
+
+    // Scroll into view
+    const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 18;
+    const desiredScrollTop = (targetLine - 3) * lineHeight;
+    if (desiredScrollTop < textarea.scrollTop || desiredScrollTop > textarea.scrollTop + textarea.clientHeight) {
+      textarea.scrollTop = Math.max(0, desiredScrollTop);
+    }
+  }
+
+  private _getActiveTextarea(): HTMLTextAreaElement | undefined {
+    const pane = this._editorGroupService?.activeGroup?.activePane;
+    return (pane as any)?.textarea as HTMLTextAreaElement | undefined;
   }
 }
 
@@ -615,6 +725,7 @@ export class QuickAccessWidget extends Disposable {
 
   // ── Providers ──────────────────────────────────────────────────────────
   private readonly _commandsProvider: CommandsProvider;
+  private readonly _goToLineProvider: GoToLineProvider;
   private readonly _generalProvider: GeneralProvider;
 
   // ── Dependency accessors ───────────────────────────────────────────────
@@ -653,6 +764,8 @@ export class QuickAccessWidget extends Disposable {
       (id) => this._executeCommandById(id),
     );
 
+    this._goToLineProvider = new GoToLineProvider();
+
     this._generalProvider = new GeneralProvider(
       () => this._workspaceService,
     );
@@ -678,6 +791,10 @@ export class QuickAccessWidget extends Disposable {
 
   setFocusTracker(tracker: { suspend(): void; resume(restore?: boolean): void }): void {
     this._focusTracker = tracker;
+  }
+
+  setEditorGroupService(service: IEditorGroupServiceLike): void {
+    this._goToLineProvider.setEditorGroupService(service);
   }
 
   /**
@@ -802,9 +919,21 @@ export class QuickAccessWidget extends Disposable {
    */
   private _resolveProviderAndUpdate(): void {
     const value = this._input?.value ?? '';
-    const provider = value.startsWith(COMMAND_PREFIX)
-      ? this._commandsProvider
-      : this._generalProvider;
+
+    // Determine provider by prefix (longest-prefix match — `:` before `>` before default)
+    let provider: IQuickAccessProvider;
+    let query: string;
+
+    if (value.startsWith(GOTO_LINE_PREFIX)) {
+      provider = this._goToLineProvider;
+      query = value.slice(GOTO_LINE_PREFIX.length);
+    } else if (value.startsWith(COMMAND_PREFIX)) {
+      provider = this._commandsProvider;
+      query = value.slice(COMMAND_PREFIX.length).trimStart();
+    } else {
+      provider = this._generalProvider;
+      query = value;
+    }
 
     const providerChanged = provider !== this._activeProvider;
     this._activeProvider = provider;
@@ -813,11 +942,6 @@ export class QuickAccessWidget extends Disposable {
     if (providerChanged && this._input) {
       this._input.placeholder = provider.placeholder;
     }
-
-    // Strip prefix to get the filter query
-    const query = value.startsWith(COMMAND_PREFIX)
-      ? value.slice(COMMAND_PREFIX.length).trimStart()
-      : value;
 
     this._updateItems(query);
   }

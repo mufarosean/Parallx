@@ -31,6 +31,7 @@ interface WorkbenchLike {
   toggleStatusBar(): void;
   toggleCommandPalette(): void;
   showQuickOpen(): void;
+  showGoToLine(): void;
   showSidebarView(viewId: string): void;
   readonly workspace: { readonly id: string; readonly name: string };
   createWorkspace(name: string, path?: string, switchTo?: boolean): Promise<unknown>;
@@ -124,6 +125,16 @@ const quickOpen: CommandDescriptor = {
   keybinding: 'Ctrl+P',
   handler(ctx) {
     wb(ctx).showQuickOpen();
+  },
+};
+
+const gotoLine: CommandDescriptor = {
+  id: 'workbench.action.gotoLine',
+  title: 'Go to Line/Column…',
+  category: 'Go',
+  keybinding: 'Ctrl+G',
+  handler(ctx) {
+    wb(ctx).showGoToLine();
   },
 };
 
@@ -1191,6 +1202,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // View
   showCommands,
   quickOpen,
+  gotoLine,
   toggleSidebar,
   togglePanel,
   toggleMaximizedPanel,
