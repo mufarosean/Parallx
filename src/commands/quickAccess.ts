@@ -173,6 +173,9 @@ class CommandsProvider implements IQuickAccessProvider {
     const items: QuickAccessItem[] = [];
 
     for (const [, desc] of commands) {
+      // Skip commands with no title — they shouldn't appear in the palette
+      if (!desc.title) continue;
+
       // When-clause filtering
       if (desc.when && contextKeyService) {
         if (!contextKeyService.contextMatchesRules(desc.when)) continue;

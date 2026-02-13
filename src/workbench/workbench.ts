@@ -2359,7 +2359,52 @@ export class Workbench extends Disposable {
     // When a provider is registered → if the view is in a visible container, ensure it's rendered
     this._viewContribListeners.add(this._viewContribution.onDidRegisterProvider(({ viewId }) => {
       console.log(`[Workbench] View provider registered for "${viewId}"`);
+      // If the view lives in a built-in sidebar container (as a placeholder),
+      // replace the placeholder content with the real tool view content.
+      this._replaceBuiltinPlaceholderIfNeeded(viewId);
     }));
+  }
+
+  /**
+   * When a tool registers a view provider for a view that already exists in
+   * a built-in sidebar container (as a placeholder), replace the placeholder
+   * content with the real tool view content.
+   */
+  private _replaceBuiltinPlaceholderIfNeeded(viewId: string): void {
+    // Find the built-in sidebar container that holds this view
+    for (const [_id, vc] of this._builtinSidebarContainers) {
+      const existingView = vc.getView(viewId);
+      if (!existingView) continue;
+
+      // Found the placeholder view in a built-in container.
+      // Get the provider from the ViewContributionProcessor.
+      const provider = this._viewContribution.getProvider(viewId);
+      if (!provider) return;
+
+      // Get the section body element where the placeholder is rendered
+      const sectionEl = vc.element.querySelector(`[data-view-id="${viewId}"] .view-section-body`) as HTMLElement;
+      if (!sectionEl) return;
+
+      // Clear the placeholder content
+      sectionEl.innerHTML = '';
+
+      // Create a content wrapper for the real tool view
+      const contentEl = document.createElement('div');
+      contentEl.className = 'tool-view-content';
+      contentEl.style.width = '100%';
+      contentEl.style.height = '100%';
+      contentEl.style.overflow = 'auto';
+      sectionEl.appendChild(contentEl);
+
+      // Resolve the real tool view into the container
+      try {
+        provider.resolveView(viewId, contentEl);
+        console.log(`[Workbench] Replaced placeholder for "${viewId}" with real tool view`);
+      } catch (err) {
+        console.error(`[Workbench] Failed to resolve tool view for "${viewId}":`, err);
+      }
+      return;
+    }
   }
 
   /**
@@ -2448,6 +2493,16 @@ export class Workbench extends Disposable {
    */
   private _onToolViewAdded(info: IContributedView): void {
     const containerId = info.containerId;
+
+    // If this view already exists in a built-in sidebar container (as a placeholder),
+    // skip adding it to the contributed container. The placeholder will be replaced
+    // when the tool registers its view provider (via onDidRegisterProvider).
+    for (const [_id, vc] of this._builtinSidebarContainers) {
+      if (vc.getView(info.id)) {
+        console.log(`[Workbench] View "${info.id}" already in built-in container — skipping contributed add`);
+        return;
+      }
+    }
 
     // Check if the container is a contributed container
     const sidebarVc = this._contributedSidebarContainers.get(containerId);

@@ -595,8 +595,16 @@ const fileSave: CommandDescriptor = {
     }
 
     // Legacy fallback: uri-based approach
-    const resourceUri = (active as any).uri as string | undefined;
-    if (!resourceUri || resourceUri.startsWith('untitled:')) {
+    const rawUri = (active as any).uri;
+    if (!rawUri) {
+      const commandService = ctx.getService<import('../services/serviceTypes.js').ICommandService>('ICommandService');
+      if (commandService) {
+        await (commandService as any).executeCommand('file.saveAs');
+      }
+      return;
+    }
+    const saveUri: import('../platform/uri.js').URI = typeof rawUri === 'string' ? URI.parse(rawUri) : rawUri;
+    if (saveUri.scheme === 'untitled') {
       const commandService = ctx.getService<import('../services/serviceTypes.js').ICommandService>('ICommandService');
       if (commandService) {
         await (commandService as any).executeCommand('file.saveAs');
@@ -606,11 +614,10 @@ const fileSave: CommandDescriptor = {
 
     const textFileManager = ctx.getService<import('../services/serviceTypes.js').ITextFileModelManager>('ITextFileModelManager');
     if (textFileManager) {
-      const uri = URI.parse(resourceUri);
-      const model = textFileManager.get(uri);
+      const model = textFileManager.get(saveUri);
       if (model) {
         await model.save();
-        console.log('[Command] file.save — saved "%s"', uri.basename);
+        console.log('[Command] file.save — saved "%s"', saveUri.basename);
         return;
       }
     }
@@ -638,9 +645,12 @@ const fileSaveAs: CommandDescriptor = {
     }
 
     const active = editorService.activeEditor;
-    const currentUri = (active as any).uri as string | undefined;
-    const defaultPath = currentUri && !currentUri.startsWith('untitled:')
-      ? URI.parse(currentUri).fsPath
+    const rawSaveAsUri = (active as any).uri;
+    const currentUri: import('../platform/uri.js').URI | undefined = rawSaveAsUri
+      ? (typeof rawSaveAsUri === 'string' ? URI.parse(rawSaveAsUri) : rawSaveAsUri)
+      : undefined;
+    const defaultPath = currentUri && currentUri.scheme !== 'untitled'
+      ? currentUri.fsPath
       : undefined;
 
     const result = await bridge.dialog.saveFile({
@@ -661,7 +671,7 @@ const fileSaveAs: CommandDescriptor = {
     const textFileManager = ctx.getService<import('../services/serviceTypes.js').ITextFileModelManager>('ITextFileModelManager');
     let content = '';
     if (textFileManager && currentUri) {
-      const model = textFileManager.get(URI.parse(currentUri));
+      const model = textFileManager.get(currentUri);
       if (model) {
         content = (model as any).content ?? '';
       }
@@ -684,35 +694,50 @@ const fileRevert: CommandDescriptor = {
     }
 
     const active = editorService.activeEditor;
-    const resourceUri = (active as any).uri as string | undefined;
-    if (!resourceUri || resourceUri.startsWith('untitled:')) {
+
+    // Check if this is an untitled file (no revert possible)
+    const rawUri = (active as any).uri;
+    if (!rawUri) {
+      console.log('[Command] file.revert — cannot revert untitled file');
+      return;
+    }
+    const uri: import('../platform/uri.js').URI = typeof rawUri === 'string' ? URI.parse(rawUri) : rawUri;
+    if (uri.scheme === 'untitled') {
       console.log('[Command] file.revert — cannot revert untitled file');
       return;
     }
 
+    // If the input has a dirty flag, confirm with the user first
+    if ((active as any).isDirty) {
+      const bridge = electronBridge();
+      if (bridge) {
+        const { response } = await bridge.dialog.showMessageBox({
+          type: 'warning',
+          title: 'Revert File',
+          message: `Revert "${uri.basename}" and lose unsaved changes?`,
+          buttons: ['Revert', 'Cancel'],
+          defaultId: 1,
+        });
+        if (response !== 0) return; // cancelled
+      }
+    }
+
+    // Use EditorInput.revert() directly if available (preferred path)
+    if (typeof (active as any).revert === 'function') {
+      await (active as any).revert();
+      console.log('[Command] file.revert — reverted "%s"', uri.basename);
+      return;
+    }
+
+    // Fallback: use textFileModelManager
     const textFileManager = ctx.getService<import('../services/serviceTypes.js').ITextFileModelManager>('ITextFileModelManager');
     if (!textFileManager) {
       console.warn('[Command] file.revert — ITextFileModelManager not available');
       return;
     }
 
-    const uri = URI.parse(resourceUri);
     const model = textFileManager.get(uri);
     if (model) {
-      // Confirm if dirty
-      if ((model as any).isDirty) {
-        const bridge = electronBridge();
-        if (bridge) {
-          const { response } = await bridge.dialog.showMessageBox({
-            type: 'warning',
-            title: 'Revert File',
-            message: `Revert "${uri.basename}" and lose unsaved changes?`,
-            buttons: ['Revert', 'Cancel'],
-            defaultId: 1,
-          });
-          if (response !== 0) return; // cancelled
-        }
-      }
       await model.revert();
       console.log('[Command] file.revert — reverted "%s"', uri.basename);
     }

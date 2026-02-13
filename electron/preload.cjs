@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('parallxElectron', {
   platform: process.platform,
+  testMode: process.env.PARALLX_TEST_MODE === '1',
 
   // ── Window controls for the custom titlebar ──
   minimize: () => ipcRenderer.send('window:minimize'),
