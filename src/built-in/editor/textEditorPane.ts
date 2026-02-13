@@ -1,7 +1,8 @@
 // textEditorPane.ts — concrete editor pane for plain text editing
 //
 // Extends EditorPane to render file/untitled content in a <textarea>.
-// Deliberately simple: no syntax highlighting, no autocomplete, no minimap.
+// Deliberately simple: no syntax highlighting, no autocomplete.
+// Includes line-number gutter and minimap.
 // Supports word wrap toggle, tab insertion, cursor position tracking,
 // and scroll state save/restore.
 //
@@ -42,6 +43,17 @@ export class TextEditorPane extends EditorPane {
   private _inputListeners = new DisposableStore();
   private _suppressModelUpdate = false;
   private _findWidget: FindReplaceWidget | undefined;
+
+  // Minimap
+  private _minimapContainer!: HTMLElement;
+  private _minimapCanvas!: HTMLCanvasElement;
+  private _minimapSlider!: HTMLElement;
+  private _minimapScrollTrack!: HTMLElement;
+  private _minimapScrollThumb!: HTMLElement;
+  private _minimapDragging = false;
+  private _minimapDragStartY = 0;
+  private _minimapDragStartScrollTop = 0;
+  private _minimapRafId = 0;
 
   private readonly _onDidToggleWordWrap = this._register(new Emitter<boolean>());
   readonly onDidToggleWordWrap: Event<boolean> = this._onDidToggleWordWrap.event;
@@ -90,6 +102,37 @@ export class TextEditorPane extends EditorPane {
     this._textarea.addEventListener('scroll', this._syncGutterScroll);
 
     this._editorBody.appendChild(this._textarea);
+
+    // Minimap — scaled-down document overview on the right edge
+    this._minimapContainer = document.createElement('div');
+    this._minimapContainer.classList.add('text-editor-minimap');
+
+    this._minimapCanvas = document.createElement('canvas');
+    this._minimapCanvas.classList.add('text-editor-minimap-canvas');
+    this._minimapContainer.appendChild(this._minimapCanvas);
+
+    this._minimapSlider = document.createElement('div');
+    this._minimapSlider.classList.add('text-editor-minimap-slider');
+    this._minimapContainer.appendChild(this._minimapSlider);
+
+    // Thin scrollbar track on the right edge of the minimap
+    this._minimapScrollTrack = document.createElement('div');
+    this._minimapScrollTrack.classList.add('text-editor-minimap-scrollbar-track');
+    this._minimapScrollThumb = document.createElement('div');
+    this._minimapScrollThumb.classList.add('text-editor-minimap-scrollbar-thumb');
+    this._minimapScrollTrack.appendChild(this._minimapScrollThumb);
+    this._minimapContainer.appendChild(this._minimapScrollTrack);
+
+    this._editorBody.appendChild(this._minimapContainer);
+
+    // Minimap interactions
+    this._minimapContainer.addEventListener('mousedown', this._onMinimapMouseDown);
+    this._textarea.addEventListener('scroll', this._updateMinimapSlider);
+
+    // Selection changes → redraw minimap to show highlight
+    this._textarea.addEventListener('select', this._renderMinimap.bind(this));
+    this._textarea.addEventListener('mouseup', this._renderMinimap.bind(this));
+
     container.appendChild(this._editorBody);
 
     // Gutter click → select entire line
@@ -171,6 +214,7 @@ export class TextEditorPane extends EditorPane {
             this._textarea.value = newContent;
             this._detectEol(newContent);
             this._updateLineNumbers();
+            this._renderMinimap();
           }
         }));
       } catch (err) {
@@ -185,6 +229,7 @@ export class TextEditorPane extends EditorPane {
         if (!this._suppressModelUpdate) {
           this._textarea.value = newContent;
           this._updateLineNumbers();
+          this._renderMinimap();
         }
       }));
     }
@@ -208,6 +253,9 @@ export class TextEditorPane extends EditorPane {
 
     // Build initial gutter line numbers
     this._updateLineNumbers();
+
+    // Render minimap
+    this._renderMinimap();
   }
 
   protected override clearPaneContent(_previous: IEditorInput | undefined): void {
@@ -220,10 +268,12 @@ export class TextEditorPane extends EditorPane {
     this._textarea.style.display = '';
     this._lineCount = 0;
     this._updateLineNumbers();
+    this._renderMinimap();
   }
 
   protected override layoutPaneContent(_width: number, _height: number): void {
-    // textarea fills via flex; nothing to do here
+    // textarea fills via flex; redraw minimap on resize
+    this._renderMinimap();
   }
 
   // ── Focus ──
@@ -332,6 +382,7 @@ export class TextEditorPane extends EditorPane {
     this._pushContentToInput();
     this._updateCursorPosition();
     this._updateLineNumbers();
+    this._renderMinimap();
   };
 
   private _pushContentToInput(): void {
@@ -455,6 +506,167 @@ export class TextEditorPane extends EditorPane {
     this._textarea.setSelectionRange(offset, selectEnd);
     this._textarea.focus({ preventScroll: true });
     this._updateCursorPosition();
+    this._renderMinimap();
+  };
+
+  // ── Minimap ─────────────────────────────────────────────────────────────
+
+  /** Schedule a minimap redraw (batched via rAF). */
+  private _renderMinimap(): void {
+    if (this._minimapRafId) return;
+    this._minimapRafId = requestAnimationFrame(() => {
+      this._minimapRafId = 0;
+      this._renderMinimapNow();
+    });
+  }
+
+  /** Render the minimap canvas — each line drawn as a proportional bar. */
+  private _renderMinimapNow(): void {
+    const canvas = this._minimapCanvas;
+    const container = this._minimapContainer;
+    if (!canvas || !container) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = container.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    if (width === 0 || height === 0) return;
+
+    // Size canvas for crisp rendering
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    const text = this._textarea?.value ?? '';
+    if (text.length === 0) { this._updateMinimapSlider(); return; }
+
+    const lines = text.split('\n');
+    const totalLines = lines.length;
+
+    // Each line is ideally 2px tall; scale down if the doc is huge
+    const idealLineH = 2;
+    const lineH = Math.min(idealLineH, height / totalLines);
+    const maxChars = 120;
+    // Leave room for scrollbar (14px on right)
+    const barArea = width - 22;
+
+    // ── Determine selection range in line numbers ─────────────────────
+    let selStartLine = -1;
+    let selEndLine = -1;
+    const ss = this._textarea?.selectionStart ?? 0;
+    const se = this._textarea?.selectionEnd ?? 0;
+    if (se > ss) {
+      // Walk chars to find selection line range
+      let charIdx = 0;
+      for (let i = 0; i < totalLines; i++) {
+        const lineEnd = charIdx + lines[i].length; // not counting '\n'
+        if (selStartLine < 0 && ss <= lineEnd) selStartLine = i;
+        if (se <= lineEnd + 1) { selEndLine = i; break; }
+        charIdx = lineEnd + 1;
+      }
+      if (selEndLine < 0) selEndLine = totalLines - 1;
+    }
+
+    // ── Draw selection highlight first (behind text bars) ────────────
+    if (selStartLine >= 0 && selEndLine >= selStartLine) {
+      ctx.fillStyle = 'var(--vscode-minimap-selectionHighlight, rgba(38, 79, 120, 0.6))';
+      // CSS var() doesn't work in canvas — use a fallback directly
+      ctx.fillStyle = 'rgba(38, 79, 120, 0.6)';
+      const sy = selStartLine * lineH;
+      const sh = (selEndLine - selStartLine + 1) * lineH;
+      ctx.fillRect(0, sy, width - 14, Math.max(1, sh));
+    }
+
+    // ── Draw text line bars ──────────────────────────────────────────
+    ctx.fillStyle = 'rgba(200, 200, 200, 0.35)';
+
+    for (let i = 0; i < totalLines; i++) {
+      const len = lines[i].length;
+      if (len === 0) continue;
+      const barW = Math.min(len, maxChars) / maxChars * barArea;
+      const y = i * lineH;
+      if (y > height) break;
+      ctx.fillRect(4, y, barW, Math.max(0.5, lineH - 0.5));
+    }
+
+    this._updateMinimapSlider();
+  }
+
+  /** Reposition the viewport slider over the minimap. */
+  private readonly _updateMinimapSlider = (): void => {
+    if (!this._minimapSlider || !this._textarea || !this._minimapContainer) return;
+
+    const ta = this._textarea;
+    const ch = this._minimapContainer.clientHeight;
+    if (ch === 0 || ta.scrollHeight === 0) return;
+
+    const viewportRatio = Math.min(1, ta.clientHeight / ta.scrollHeight);
+    const sliderH = Math.max(20, viewportRatio * ch);
+
+    const scrollable = ta.scrollHeight - ta.clientHeight;
+    const scrollRatio = scrollable > 0 ? ta.scrollTop / scrollable : 0;
+    const maxTop = ch - sliderH;
+    const sliderTop = scrollRatio * maxTop;
+
+    this._minimapSlider.style.top = `${sliderTop}px`;
+    this._minimapSlider.style.height = `${sliderH}px`;
+    this._minimapSlider.style.display = viewportRatio >= 1 ? 'none' : '';
+
+    // Update the thin scrollbar thumb on the right edge
+    if (this._minimapScrollThumb && this._minimapScrollTrack) {
+      const trackH = this._minimapScrollTrack.clientHeight;
+      const thumbH = Math.max(16, viewportRatio * trackH);
+      const thumbTop = scrollRatio * (trackH - thumbH);
+      this._minimapScrollThumb.style.top = `${thumbTop}px`;
+      this._minimapScrollThumb.style.height = `${thumbH}px`;
+      this._minimapScrollTrack.style.display = viewportRatio >= 1 ? 'none' : '';
+    }
+  };
+
+  /** Mousedown on minimap: click-to-scroll or start slider drag. */
+  private readonly _onMinimapMouseDown = (e: MouseEvent): void => {
+    e.preventDefault();
+
+    const containerRect = this._minimapContainer.getBoundingClientRect();
+    const clickY = e.clientY - containerRect.top;
+
+    // If clicking on the slider itself → start drag
+    const sr = this._minimapSlider.getBoundingClientRect();
+    if (e.clientY >= sr.top && e.clientY <= sr.bottom) {
+      this._minimapDragging = true;
+      this._minimapDragStartY = e.clientY;
+      this._minimapDragStartScrollTop = this._textarea.scrollTop;
+      document.addEventListener('mousemove', this._onMinimapMouseMove);
+      document.addEventListener('mouseup', this._onMinimapMouseUp);
+      return;
+    }
+
+    // Click outside slider → centre viewport on clicked position
+    const ratio = clickY / containerRect.height;
+    this._textarea.scrollTop = Math.max(
+      0,
+      ratio * this._textarea.scrollHeight - this._textarea.clientHeight / 2,
+    );
+  };
+
+  private readonly _onMinimapMouseMove = (e: MouseEvent): void => {
+    if (!this._minimapDragging) return;
+    const deltaY = e.clientY - this._minimapDragStartY;
+    const scrollDelta = (deltaY / this._minimapContainer.clientHeight) * this._textarea.scrollHeight;
+    const scrollable = this._textarea.scrollHeight - this._textarea.clientHeight;
+    this._textarea.scrollTop = Math.max(0, Math.min(scrollable, this._minimapDragStartScrollTop + scrollDelta));
+  };
+
+  private readonly _onMinimapMouseUp = (): void => {
+    this._minimapDragging = false;
+    document.removeEventListener('mousemove', this._onMinimapMouseMove);
+    document.removeEventListener('mouseup', this._onMinimapMouseUp);
   };
 
   // ── Accessor for external use ──
@@ -472,7 +684,12 @@ export class TextEditorPane extends EditorPane {
     this._textarea?.removeEventListener('click', this._updateCursorPosition);
     this._textarea?.removeEventListener('select', this._updateCursorPosition);
     this._textarea?.removeEventListener('scroll', this._syncGutterScroll);
+    this._textarea?.removeEventListener('scroll', this._updateMinimapSlider);
     this._gutter?.removeEventListener('mousedown', this._onGutterClick);
+    this._minimapContainer?.removeEventListener('mousedown', this._onMinimapMouseDown);
+    document.removeEventListener('mousemove', this._onMinimapMouseMove);
+    document.removeEventListener('mouseup', this._onMinimapMouseUp);
+    if (this._minimapRafId) cancelAnimationFrame(this._minimapRafId);
     super.dispose();
   }
 }
