@@ -4,7 +4,7 @@
  * These tests verify the full file editing lifecycle by opening a real file
  * from a workspace folder and interacting with the textarea editor pane.
  */
-import { test, expect, createTestWorkspace, cleanupTestWorkspace, addWorkspaceFolder } from './fixtures';
+import { test, expect, createTestWorkspace, cleanupTestWorkspace, openFolderViaMenu } from './fixtures';
 import path from 'path';
 import fs from 'fs/promises';
 
@@ -20,15 +20,12 @@ test.describe('File Editor', () => {
   });
 
   /**
-   * Helper: add the test workspace folder and wait for tree to render.
-   * Then opens a specific file by clicking it in the explorer.
+   * Helper: open the test workspace folder via real File menu interaction,
+   * then open a specific file by clicking it in the explorer.
    */
-  async function openWorkspaceAndFile(window: any, fileName: string) {
-    // Add workspace folder via test hook
-    await addWorkspaceFolder(window, wsPath);
-
-    // Wait for tree
-    await window.waitForSelector('.tree-node', { timeout: 10_000 });
+  async function openWorkspaceAndFile(electronApp: any, window: any, fileName: string) {
+    // Open folder via real File menu interaction (dialog IPC is mocked)
+    await openFolderViaMenu(electronApp, window, wsPath);
 
     // If fileName is in a subfolder, we need to expand the folder first
     const parts = fileName.split('/');
@@ -56,8 +53,8 @@ test.describe('File Editor', () => {
     return baseName;
   }
 
-  test('opening a file shows its content in the editor pane', async ({ window }) => {
-    await openWorkspaceAndFile(window, 'README.md');
+  test('opening a file shows its content in the editor pane', async ({ window, electronApp }) => {
+    await openWorkspaceAndFile(electronApp, window, 'README.md');
 
     // The editor pane should contain a textarea with the file content
     const textarea = window.locator('.text-editor-pane textarea, .editor-pane-container textarea');
@@ -68,8 +65,8 @@ test.describe('File Editor', () => {
     expect(content).toContain('Hello world.');
   });
 
-  test('editing text marks the editor tab as dirty', async ({ window }) => {
-    await openWorkspaceAndFile(window, 'README.md');
+  test('editing text marks the editor tab as dirty', async ({ window, electronApp }) => {
+    await openWorkspaceAndFile(electronApp, window, 'README.md');
 
     const textarea = window.locator('.text-editor-pane textarea, .editor-pane-container textarea');
     await expect(textarea).toBeVisible({ timeout: 5000 });
@@ -88,8 +85,8 @@ test.describe('File Editor', () => {
     await expect(dirtyDot).toBeVisible();
   });
 
-  test('Ctrl+S saves the file and clears the dirty state', async ({ window }) => {
-    await openWorkspaceAndFile(window, 'src/utils.ts');
+  test('Ctrl+S saves the file and clears the dirty state', async ({ window, electronApp }) => {
+    await openWorkspaceAndFile(electronApp, window, 'src/utils.ts');
 
     const textarea = window.locator('.text-editor-pane textarea, .editor-pane-container textarea');
     await expect(textarea).toBeVisible({ timeout: 5000 });
@@ -114,9 +111,9 @@ test.describe('File Editor', () => {
     expect(diskContent).toContain('// saved by test');
   });
 
-  test('opening multiple files shows multiple tabs', async ({ window }) => {
+  test('opening multiple files shows multiple tabs', async ({ window, electronApp }) => {
     // Open first file
-    await openWorkspaceAndFile(window, 'README.md');
+    await openWorkspaceAndFile(electronApp, window, 'README.md');
 
     // Open second file  
     const indexNode = window.locator('.tree-node .tree-node-label', { hasText: 'index.ts' }).first();
@@ -138,9 +135,9 @@ test.describe('File Editor', () => {
     expect(count).toBeGreaterThanOrEqual(2);
   });
 
-  test('clicking a tab switches the active editor', async ({ window }) => {
+  test('clicking a tab switches the active editor', async ({ window, electronApp }) => {
     // Ensure we have multiple tabs open — double-click to pin (not preview)
-    await openWorkspaceAndFile(window, 'README.md');
+    await openWorkspaceAndFile(electronApp, window, 'README.md');
 
     // Double-click README to pin it
     const readmeNode = window.locator('.tree-node .tree-node-label', { hasText: 'README.md' }).first();
@@ -174,8 +171,8 @@ test.describe('File Editor', () => {
     expect(content).toContain('# Test Project');
   });
 
-  test('closing a tab via the close button removes it', async ({ window }) => {
-    await openWorkspaceAndFile(window, 'README.md');
+  test('closing a tab via the close button removes it', async ({ window, electronApp }) => {
+    await openWorkspaceAndFile(electronApp, window, 'README.md');
 
     const tab = window.locator('.editor-tab', { hasText: 'README.md' });
     await expect(tab).toBeVisible();
@@ -188,8 +185,8 @@ test.describe('File Editor', () => {
     await expect(tab).not.toBeVisible({ timeout: 5000 });
   });
 
-  test('Ctrl+W closes the active editor tab', async ({ window }) => {
-    await openWorkspaceAndFile(window, 'docs/guide.md');
+  test('Ctrl+W closes the active editor tab', async ({ window, electronApp }) => {
+    await openWorkspaceAndFile(electronApp, window, 'docs/guide.md');
 
     const tab = window.locator('.editor-tab', { hasText: 'guide.md' });
     await expect(tab).toBeVisible();

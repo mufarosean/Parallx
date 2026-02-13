@@ -30,7 +30,7 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
 
-  // Uncomment to open DevTools automatically:
+  // Open DevTools (uncomment for debugging)
   // mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {

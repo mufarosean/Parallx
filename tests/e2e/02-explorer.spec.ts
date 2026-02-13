@@ -4,7 +4,7 @@
  * Opens a temp folder, verifies the file tree renders correctly,
  * expand/collapse works, and clicking a file opens it in the editor.
  */
-import { test, expect, createTestWorkspace, cleanupTestWorkspace, addWorkspaceFolder } from './fixtures';
+import { test, expect, createTestWorkspace, cleanupTestWorkspace, openFolderViaMenu } from './fixtures';
 
 test.describe('Explorer Sidebar', () => {
   let wsPath: string;
@@ -17,12 +17,9 @@ test.describe('Explorer Sidebar', () => {
     await cleanupTestWorkspace(wsPath);
   });
 
-  test('opening a folder shows the explorer tree', async ({ window }) => {
-    // Add workspace folder via test hook
-    await addWorkspaceFolder(window, wsPath);
-
-    // Wait for the explorer tree to populate
-    await window.waitForSelector('.tree-node', { timeout: 10_000 });
+  test('opening a folder shows the explorer tree', async ({ window, electronApp }) => {
+    // Open folder via real File menu interaction (dialog IPC is mocked)
+    await openFolderViaMenu(electronApp, window, wsPath);
 
     // Verify root nodes appear — should have at minimum the root folder
     const treeNodes = window.locator('.tree-node');
@@ -30,11 +27,8 @@ test.describe('Explorer Sidebar', () => {
     expect(count).toBeGreaterThan(0);
   });
 
-  test('tree shows folders and files with correct icons', async ({ window }) => {
-    // Add workspace folder
-    await addWorkspaceFolder(window, wsPath);
-    // Wait for tree to be populated
-    await window.waitForSelector('.tree-node', { timeout: 10_000 });
+  test('tree shows folders and files with correct icons', async ({ window, electronApp }) => {
+    await openFolderViaMenu(electronApp, window, wsPath);
 
     // Check that folder icon (📁) and file icon (📄) are present
     const folderIcons = window.locator('.tree-node-icon:has-text("📁")');
@@ -47,9 +41,9 @@ test.describe('Explorer Sidebar', () => {
     expect(fileCount).toBeGreaterThanOrEqual(1); // at least README.md
   });
 
-  test('clicking a folder expands to show children', async ({ window }) => {
-    await addWorkspaceFolder(window, wsPath);
-    await window.waitForSelector('.tree-node', { timeout: 10_000 });
+  test('clicking a folder expands to show children', async ({ window, electronApp }) => {
+    await openFolderViaMenu(electronApp, window, wsPath);
+
     // Find a collapsed directory (chevron ▸)
     const collapsedDir = window.locator('.tree-node:has(.tree-node-chevron:has-text("▸"))').first();
     const dirCount = await window.locator('.tree-node:has(.tree-node-chevron:has-text("▸"))').count();
@@ -73,9 +67,9 @@ test.describe('Explorer Sidebar', () => {
     }
   });
 
-  test('clicking an expanded folder collapses it', async ({ window }) => {
-    await addWorkspaceFolder(window, wsPath);
-    await window.waitForSelector('.tree-node', { timeout: 10_000 });
+  test('clicking an expanded folder collapses it', async ({ window, electronApp }) => {
+    await openFolderViaMenu(electronApp, window, wsPath);
+
     // Expand a folder first
     const collapsedDir = window.locator('.tree-node:has(.tree-node-chevron:has-text("▸"))').first();
     const folderLabel = await collapsedDir.locator('.tree-node-label').textContent();
@@ -101,9 +95,9 @@ test.describe('Explorer Sidebar', () => {
     expect(afterCount).toBeLessThan(beforeCount);
   });
 
-  test('clicking a file opens it in the editor', async ({ window }) => {
-    await addWorkspaceFolder(window, wsPath);
-    await window.waitForSelector('.tree-node', { timeout: 10_000 });
+  test('clicking a file opens it in the editor', async ({ window, electronApp }) => {
+    await openFolderViaMenu(electronApp, window, wsPath);
+
     // Find a file node (has 📄 icon, not a directory)
     const fileNodes = window.locator('.tree-node:has(.tree-node-icon:has-text("📄"))');
     const count = await fileNodes.count();
@@ -122,9 +116,9 @@ test.describe('Explorer Sidebar', () => {
     await expect(tab).toHaveClass(/editor-tab--active/);
   });
 
-  test('double-clicking a file pins it (not preview)', async ({ window }) => {
-    await addWorkspaceFolder(window, wsPath);
-    await window.waitForSelector('.tree-node', { timeout: 10_000 });
+  test('double-clicking a file pins it (not preview)', async ({ window, electronApp }) => {
+    await openFolderViaMenu(electronApp, window, wsPath);
+
     // Find a file node
     const fileNodes = window.locator('.tree-node:has(.tree-node-icon:has-text("📄"))');
     const count = await fileNodes.count();
@@ -143,9 +137,9 @@ test.describe('Explorer Sidebar', () => {
     }
   });
 
-  test('selecting a tree node highlights it', async ({ window }) => {
-    await addWorkspaceFolder(window, wsPath);
-    await window.waitForSelector('.tree-node', { timeout: 10_000 });
+  test('selecting a tree node highlights it', async ({ window, electronApp }) => {
+    await openFolderViaMenu(electronApp, window, wsPath);
+
     const treeNodes = window.locator('.tree-node');
     const count = await treeNodes.count();
 
@@ -155,6 +149,37 @@ test.describe('Explorer Sidebar', () => {
 
       // Node should have the selected class
       await expect(node).toHaveClass(/tree-node--selected/);
+    }
+  });
+
+  test('opening a different folder replaces the previous one', async ({ window, electronApp }) => {
+    // First: open the original workspace folder
+    await openFolderViaMenu(electronApp, window, wsPath);
+    const nodesBefore = await window.locator('.tree-node').count();
+    expect(nodesBefore).toBeGreaterThan(0);
+
+    // Create a second, distinct temp folder with different contents
+    const secondDir = await createTestWorkspace();
+    try {
+      // Add a uniquely-named file so we can assert the tree changed
+      const fs = await import('fs/promises');
+      const nodePath = await import('path');
+      await fs.writeFile(
+        nodePath.join(secondDir, 'UNIQUE_SECOND_FOLDER.txt'),
+        'This file only exists in the second folder.\n',
+      );
+
+      // Open the second folder with force=true (folder already loaded)
+      await openFolderViaMenu(electronApp, window, secondDir, { force: true });
+
+      // The unique file from the second folder should appear
+      const uniqueNode = window.locator('.tree-node-label', { hasText: 'UNIQUE_SECOND_FOLDER.txt' });
+      await expect(uniqueNode).toBeVisible({ timeout: 10_000 });
+
+      // The tree should NOT show the old workspace's unique folder name
+      // (wsPath has a unique timestamp-based name; its root label should be gone)
+    } finally {
+      await cleanupTestWorkspace(secondDir);
     }
   });
 });

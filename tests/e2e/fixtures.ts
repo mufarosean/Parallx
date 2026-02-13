@@ -84,33 +84,55 @@ export const test = base.extend<TestFixtures>({
 export { expect };
 export { createTestWorkspace, cleanupTestWorkspace };
 
-// ── Test hook helpers (work through __parallxTestHook exposed in test mode) ──
+// ── Real-UI helpers for E2E tests ───────────────────────────────────────────
+//
+// These helpers drive the actual user-facing UI (menus, clicks, keyboard).
+// The ONLY thing mocked is the native OS dialog response — Playwright cannot
+// interact with OS-level dialogs, so we intercept the Electron IPC handler
+// for `dialog:openFolder` to return a predetermined path. Everything else
+// (menu clicks, command dispatch, workspace-service updates, explorer tree
+// rendering) goes through the real production code path.
+// ─────────────────────────────────────────────────────────────────────────────
 
-/** Add a workspace folder via the test hook. Returns true if the hook was available. */
-export async function addWorkspaceFolder(page: Page, folderPath: string): Promise<boolean> {
-  return page.evaluate((fp: string) => {
-    const hook = (window as any).__parallxTestHook;
-    if (!hook) return false;
-    hook.addFolder(fp);
-    return true;
+/**
+ * Open a folder through the real File → "Open Folder…" menu interaction.
+ *
+ * Mocks only the native dialog IPC response (which is un-automatable),
+ * then clicks File → Open Folder… exactly as a user would.
+ *
+ * @param force  When true, always drive the menu even if tree nodes exist
+ *               (needed for folder-replacement tests). Defaults to false.
+ */
+export async function openFolderViaMenu(
+  electronApp: ElectronApplication,
+  page: Page,
+  folderPath: string,
+  { force = false }: { force?: boolean } = {},
+): Promise<void> {
+  if (!force) {
+    // If the folder is already loaded, skip re-opening for efficiency.
+    const existingNodes = await page.locator('.tree-node').count();
+    if (existingNodes > 0) return;
+  }
+
+  // ── Mock the native dialog IPC handler ──
+  // The native OS dialog (`dialog.showOpenDialog`) cannot be driven by
+  // Playwright, so we intercept the IPC channel to return our test path.
+  await electronApp.evaluate(({ ipcMain }, fp) => {
+    ipcMain.removeHandler('dialog:openFolder');
+    ipcMain.handle('dialog:openFolder', async () => [fp]);
   }, folderPath);
-}
 
-/** Execute a workbench command via the test hook. Returns true if the hook was available. */
-export async function executeCommand(page: Page, commandId: string, ...args: any[]): Promise<boolean> {
-  return page.evaluate(({ id, a }) => {
-    const hook = (window as any).__parallxTestHook;
-    if (!hook) return false;
-    hook.executeCommand(id, ...a);
-    return true;
-  }, { id: commandId, a: args });
-}
+  // ── Drive the real UI: File → Open Folder… ──
+  const fileMenu = page.locator('.titlebar-menu-item[data-menu-id="file"]');
+  await fileMenu.click();
 
-/** Get the number of workspace folders. */
-export async function getFolderCount(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const hook = (window as any).__parallxTestHook;
-    if (!hook) return 0;
-    return hook.getFolders().length;
-  });
+  const dropdown = page.locator('.context-menu.titlebar-dropdown');
+  await dropdown.waitFor({ state: 'visible', timeout: 3000 });
+
+  const openFolderItem = dropdown.locator('.context-menu-item', { hasText: 'Open Folder' });
+  await openFolderItem.click();
+
+  // ── Wait for the explorer tree to populate ──
+  await page.waitForSelector('.tree-node', { timeout: 10_000 });
 }

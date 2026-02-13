@@ -224,6 +224,8 @@ export class Workbench extends Disposable {
   private _contributedPanelContainers = new Map<string, ViewContainer>();
   /** Tool-contributed auxiliary bar containers (keyed by container ID). */
   private _contributedAuxBarContainers = new Map<string, ViewContainer>();
+  /** Map of contributed container IDs → built-in container view IDs (redirect targets). */
+  private _containerRedirects = new Map<string, string>();
   /** Which sidebar container is currently active: undefined = built-in default. */
   private _activeSidebarContainerId: string | undefined;
   /** Header label element for the sidebar. */
@@ -999,6 +1001,11 @@ export class Workbench extends Disposable {
     if (this._configService) {
       await this._configService.load();
     }
+
+    // Phase 4 may have replaced this._workspace with a deserialized object.
+    // Fire onDidSwitchWorkspace so that the WorkspaceService (and any other
+    // listener) re-binds its event subscriptions to the live workspace.
+    this._onDidSwitchWorkspace.fire(this._workspace);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -2410,8 +2417,33 @@ export class Workbench extends Disposable {
   /**
    * Handle a tool contributing a new view container.
    * Creates the ViewContainer DOM and adds an activity bar / panel tab icon.
+   *
+   * VS Code parity: If a contributed sidebar container's title matches a
+   * built-in sidebar container's view name (e.g. both are "Explorer"),
+   * skip creating the duplicate container and icon. The container's views
+   * will be redirected to the built-in container by _onToolViewAdded.
    */
   private _onToolContainerAdded(info: IContributedContainer): void {
+    // ── Skip duplicate sidebar containers that overlap with built-ins ──
+    if (info.location === 'sidebar') {
+      for (const [builtinViewId, builtinVc] of this._builtinSidebarContainers) {
+        const views = builtinVc.getViews();
+        const matchesTitle = views.some(
+          (v) => v.name.toLowerCase() === info.title.toLowerCase(),
+        );
+        if (matchesTitle) {
+          // Record a redirect: views targeting this contributed container
+          // will be added to the built-in container instead.
+          this._containerRedirects.set(info.id, builtinViewId);
+          console.log(
+            `[Workbench] Skipped duplicate sidebar container "${info.id}" — ` +
+            `redirecting views to built-in "${builtinViewId}"`,
+          );
+          return;
+        }
+      }
+    }
+
     const vc = new ViewContainer(info.id);
 
     if (info.location === 'sidebar') {
@@ -2457,6 +2489,12 @@ export class Workbench extends Disposable {
    * Handle a tool's view container being removed (tool deactivation).
    */
   private _onToolContainerRemoved(containerId: string): void {
+    // Check if this container was redirected (no real container was created)
+    if (this._containerRedirects.has(containerId)) {
+      this._containerRedirects.delete(containerId);
+      return;
+    }
+
     // Sidebar
     const sidebarVc = this._contributedSidebarContainers.get(containerId);
     if (sidebarVc) {
@@ -2492,7 +2530,7 @@ export class Workbench extends Disposable {
    * The view is created from its registered descriptor and added to the appropriate container.
    */
   private _onToolViewAdded(info: IContributedView): void {
-    const containerId = info.containerId;
+    let containerId = info.containerId;
 
     // If this view already exists in a built-in sidebar container (as a placeholder),
     // skip adding it to the contributed container. The placeholder will be replaced
@@ -2500,6 +2538,18 @@ export class Workbench extends Disposable {
     for (const [_id, vc] of this._builtinSidebarContainers) {
       if (vc.getView(info.id)) {
         console.log(`[Workbench] View "${info.id}" already in built-in container — skipping contributed add`);
+        return;
+      }
+    }
+
+    // If the target container was redirected to a built-in container,
+    // add this view to the built-in container instead.
+    const redirectTarget = this._containerRedirects.get(containerId);
+    if (redirectTarget) {
+      const builtinVc = this._builtinSidebarContainers.get(redirectTarget);
+      if (builtinVc) {
+        console.log(`[Workbench] Redirecting view "${info.id}" to built-in container "${redirectTarget}"`);
+        this._addViewToContainer(info, builtinVc);
         return;
       }
     }

@@ -199,7 +199,7 @@ function rebuildTree(): void {
       uri: folder.uri,
       name: folder.name,
       type: FILE_TYPE_DIRECTORY,
-      depth: folders.length > 1 ? 0 : -1, // single folder: children start at depth 0
+      depth: 0, // always show root folder name (matches VS Code)
       expanded: expandedSet.has(folder.uri) || folders.length === 1, // auto-expand single root
       loaded: false,
       loading: false,
@@ -223,20 +223,20 @@ function renderTree(): void {
   if (!_treeContainer) return;
   _treeContainer.innerHTML = '';
 
+  // Multi-root workspace: show workspace name header (VS Code behaviour)
+  if (_roots.length > 1) {
+    const header = document.createElement('div');
+    header.className = 'explorer-workspace-header';
+    const wsName = _api.workspace.name;
+    const displayName = (!wsName || wsName === 'Default Workspace')
+      ? 'UNTITLED'
+      : wsName.toUpperCase();
+    header.textContent = `${displayName} (WORKSPACE)`;
+    _treeContainer.appendChild(header);
+  }
+
   for (const root of _roots) {
-    if (root.depth === -1) {
-      // Single folder: render children directly at depth 0
-      if (root.loaded) {
-        for (const child of root.children) {
-          renderNodeFlat(_treeContainer!, child);
-        }
-      } else if (root.loading) {
-        const loadingEl = createLoadingElement(0);
-        _treeContainer.appendChild(loadingEl);
-      }
-    } else {
-      renderNodeFlat(_treeContainer, root);
-    }
+    renderNodeFlat(_treeContainer, root);
   }
 }
 
@@ -546,12 +546,8 @@ function getAllVisibleNodes(): TreeNode[] {
     }
   }
   for (const root of _roots) {
-    if (root.depth === -1) {
-      if (root.expanded) collect(root.children);
-    } else {
-      result.push(root);
-      if (root.expanded) collect(root.children);
-    }
+    result.push(root);
+    if (root.expanded) collect(root.children);
   }
   return result;
 }

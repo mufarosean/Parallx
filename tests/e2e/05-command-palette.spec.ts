@@ -4,7 +4,7 @@
  * Verifies the palette opens, shows commands/files, accepts input,
  * and executing a selection produces the expected result.
  */
-import { test, expect, createTestWorkspace, cleanupTestWorkspace, addWorkspaceFolder } from './fixtures';
+import { test, expect, createTestWorkspace, cleanupTestWorkspace, openFolderViaMenu } from './fixtures';
 
 test.describe('Command Palette (Ctrl+Shift+P)', () => {
   test('opens with Ctrl+Shift+P', async ({ window }) => {
@@ -148,10 +148,9 @@ test.describe('Quick Access / File Picker (Ctrl+P)', () => {
     await window.keyboard.press('Escape');
   });
 
-  test('shows file results when workspace has folders', async ({ window }) => {
-    // Add workspace folder via test hook
-    const added = await addWorkspaceFolder(window, wsPath);
-    expect(added).toBe(true);
+  test('shows file results when workspace has folders', async ({ window, electronApp }) => {
+    // Open workspace folder via real File menu interaction
+    await openFolderViaMenu(electronApp, window, wsPath);
     await window.waitForTimeout(1000);
 
     await window.keyboard.press('Control+p');
@@ -183,9 +182,9 @@ test.describe('Quick Access / File Picker (Ctrl+P)', () => {
     await window.keyboard.press('Escape');
   });
 
-  test('typing filters file results', async ({ window }) => {
+  test('typing filters file results', async ({ window, electronApp }) => {
     // Ensure folder is added (may already be added from previous test)
-    await addWorkspaceFolder(window, wsPath);
+    await openFolderViaMenu(electronApp, window, wsPath);
     await window.waitForTimeout(500);
 
     await window.keyboard.press('Control+p');
@@ -213,9 +212,9 @@ test.describe('Quick Access / File Picker (Ctrl+P)', () => {
     await window.keyboard.press('Escape');
   });
 
-  test('selecting a file result opens it in the editor', async ({ window }) => {
+  test('selecting a file result opens it in the editor', async ({ window, electronApp }) => {
     // Ensure folder is added
-    await addWorkspaceFolder(window, wsPath);
+    await openFolderViaMenu(electronApp, window, wsPath);
     await window.waitForTimeout(500);
 
     await window.keyboard.press('Control+p');

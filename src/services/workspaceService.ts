@@ -139,6 +139,17 @@ export class WorkspaceService extends Disposable implements IWorkspaceService {
     this._host?.workspace.removeFolder(uri);
   }
 
+  updateFolders(foldersToAdd: { uri: URI; name?: string }[]): void {
+    const ws = this._host?.workspace;
+    if (!ws) return;
+    const newFolders: WorkspaceFolder[] = foldersToAdd.map((f, i) => ({
+      uri: f.uri,
+      name: f.name ?? f.uri.basename,
+      index: i,
+    }));
+    ws.setFolders(newFolders);
+  }
+
   getWorkspaceFolder(uri: URI): WorkspaceFolder | undefined {
     return this._host?.workspace.getWorkspaceFolder(uri);
   }
@@ -146,7 +157,6 @@ export class WorkspaceService extends Disposable implements IWorkspaceService {
   get workspaceName(): string {
     const ws = this._host?.workspace;
     if (!ws) return 'Parallx';
-    if (ws.folders.length > 0) return ws.folders[0].name;
     return ws.name;
   }
 

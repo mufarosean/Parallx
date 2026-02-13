@@ -131,6 +131,15 @@ export interface IWorkspaceService extends IDisposable {
   /** Remove a folder from the workspace. */
   removeFolder(uri: import('../platform/uri.js').URI): void;
 
+  /**
+   * Atomically replace all workspace folders.
+   *
+   * Mirrors VS Code's `updateFolders(foldersToAdd, foldersToRemove)` pattern:
+   * fires a **single** `onDidChangeFolders` event so that listeners never see
+   * an intermediate zero-folder state.
+   */
+  updateFolders(foldersToAdd: { uri: import('../platform/uri.js').URI; name?: string }[]): void;
+
   /** Get the workspace folder containing the given URI. */
   getWorkspaceFolder(uri: import('../platform/uri.js').URI): WorkspaceFolder | undefined;
 

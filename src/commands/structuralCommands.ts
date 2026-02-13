@@ -332,7 +332,7 @@ const workspaceAddFolder: CommandDescriptor = {
   id: 'workspace.addFolderToWorkspace',
   title: 'Add Folder to Workspace...',
   category: 'Workspace',
-  handler: async (ctx, _folderPath?: unknown) => {
+  handler: async (ctx) => {
     const w = wb(ctx);
     const bridge = electronBridge();
     if (!bridge) {
@@ -340,15 +340,9 @@ const workspaceAddFolder: CommandDescriptor = {
       return;
     }
 
-    // If a path was provided directly, use it; otherwise open folder picker
-    let folderPaths: string[];
-    if (typeof _folderPath === 'string') {
-      folderPaths = [_folderPath];
-    } else {
-      const result = await bridge.dialog.openFolder({ title: 'Add Folder to Workspace' });
-      if (!result || result.length === 0) return; // cancelled
-      folderPaths = result;
-    }
+    const result = await bridge.dialog.openFolder({ title: 'Add Folder to Workspace' });
+    if (!result || result.length === 0) return; // cancelled
+    const folderPaths = result;
 
     const wsService = ctx.getService<IWorkspaceService>('IWorkspaceService');
     if (!wsService) {
@@ -483,6 +477,7 @@ const workspaceOpenFolder: CommandDescriptor = {
   category: 'Workspace',
   handler: async (ctx) => {
     const w = wb(ctx);
+
     const bridge = electronBridge();
     if (!bridge) {
       console.warn('[Command] workspace.openFolder — no Electron bridge');
@@ -491,6 +486,7 @@ const workspaceOpenFolder: CommandDescriptor = {
 
     const result = await bridge.dialog.openFolder({ title: 'Open Folder' });
     if (!result || result.length === 0) return; // cancelled
+    const folderPath = result[0];
 
     const wsService = ctx.getService<IWorkspaceService>('IWorkspaceService');
     if (!wsService) {
@@ -498,15 +494,15 @@ const workspaceOpenFolder: CommandDescriptor = {
       return;
     }
 
-    // Replace current workspace folders with the selected folder
-    const oldFolders = [...wsService.folders];
-    for (const f of oldFolders) {
-      wsService.removeFolder(f.uri);
-    }
-    wsService.addFolder(URI.file(result[0]));
+    // Atomically replace all workspace folders with the selected folder.
+    // Uses updateFolders() which fires a SINGLE onDidChangeFolders event,
+    // matching VS Code's atomic updateFolders pattern. This avoids the
+    // intermediate zero-folder state that would cause the explorer to
+    // flash "No folder opened" before showing the new tree.
+    wsService.updateFolders([{ uri: URI.file(folderPath) }]);
 
     await w._workspaceSaver.save();
-    console.log('[Command] workspace.openFolder — opened "%s"', result[0]);
+    console.log('[Command] workspace.openFolder — opened "%s"', folderPath);
   },
 };
 

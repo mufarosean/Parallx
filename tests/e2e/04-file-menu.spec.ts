@@ -4,7 +4,7 @@
  * Verifies that every item in the File menu actually works —
  * not just that it doesn't throw, but that it produces visible results.
  */
-import { test, expect, createTestWorkspace, cleanupTestWorkspace, addWorkspaceFolder as addFolder } from './fixtures';
+import { test, expect, createTestWorkspace, cleanupTestWorkspace, openFolderViaMenu } from './fixtures';
 import path from 'path';
 import fs from 'fs/promises';
 
@@ -29,10 +29,9 @@ test.describe('File Menu Commands', () => {
     await item.click();
   }
 
-  /** Add workspace folder via test hook. */
-  async function addWorkspaceFolder(window: any) {
-    await addFolder(window, wsPath);
-    await window.waitForSelector('.tree-node', { timeout: 10_000 });
+  /** Open workspace folder via real File menu interaction. */
+  async function addWorkspaceFolder(electronApp: any, window: any) {
+    await openFolderViaMenu(electronApp, window, wsPath);
   }
 
   test('New Text File creates an untitled editor tab', async ({ window }) => {
@@ -80,8 +79,8 @@ test.describe('File Menu Commands', () => {
     await expect(tab).toBeVisible({ timeout: 3000 });
   });
 
-  test('Save All saves all dirty files', async ({ window }) => {
-    await addWorkspaceFolder(window);
+  test('Save All saves all dirty files', async ({ window, electronApp }) => {
+    await addWorkspaceFolder(electronApp, window);
 
     // Open a file and edit it
     const fileNode = window.locator('.tree-node .tree-node-label', { hasText: 'README.md' }).first();
@@ -110,7 +109,7 @@ test.describe('File Menu Commands', () => {
   });
 
   test('Revert File restores original content', async ({ window, electronApp }) => {
-    await addWorkspaceFolder(window);
+    await addWorkspaceFolder(electronApp, window);
 
     // Read original content
     const originalContent = await fs.readFile(path.join(wsPath, 'README.md'), 'utf-8');

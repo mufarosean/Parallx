@@ -3,7 +3,6 @@
 // Delegates all orchestration to the Workbench class and its lifecycle phases.
 
 import { Workbench } from './workbench/workbench.js';
-import { URI } from './platform/uri.js';
 
 // ── Electron window controls bridge ──
 
@@ -65,37 +64,6 @@ async function bootstrap(): Promise<void> {
   // Create and initialize the workbench (runs 5-phase lifecycle)
   const workbench = new Workbench(container);
   await workbench.initialize();
-
-  // Expose test hook for Playwright E2E tests (only when launched with PARALLX_TEST_MODE=1)
-  if (window.parallxElectron?.testMode) {
-    // Import service identifiers at the module level to use real ServiceIdentifier objects
-    const { IWorkspaceService, ICommandService } = await import('./services/serviceTypes.js');
-
-    const getService = (id: any) => {
-      try { return workbench.services.get(id); } catch { return undefined; }
-    };
-
-    (window as any).__parallxTestHook = {
-      /** Execute a command by ID with optional args */
-      executeCommand: (id: string, ...args: any[]) => {
-        const cmdService = getService(ICommandService) as any;
-        return cmdService?.executeCommand(id, ...args);
-      },
-      /** Add a workspace folder by filesystem path */
-      addFolder: (fsPath: string) => {
-        const wsService = getService(IWorkspaceService) as any;
-        const uri = URI.file(fsPath);
-        wsService?.addFolder(uri);
-      },
-      /** Get current workspace folders */
-      getFolders: () => {
-        const wsService = getService(IWorkspaceService) as any;
-        return wsService?.folders ?? [];
-      },
-      /** Direct access to workbench for advanced testing */
-      workbench,
-    };
-  }
 
   // Electron shutdown hook — fire-and-forget async shutdown.
   // `beforeunload` cannot await, so we kick off shutdown synchronously

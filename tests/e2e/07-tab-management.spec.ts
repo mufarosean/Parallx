@@ -4,7 +4,7 @@
  * Verifies tab interactions like middle-click close, tab switching,
  * and editor split via the toolbar button.
  */
-import { test, expect, createTestWorkspace, cleanupTestWorkspace, addWorkspaceFolder } from './fixtures';
+import { test, expect, createTestWorkspace, cleanupTestWorkspace, openFolderViaMenu } from './fixtures';
 
 test.describe('Tab Management', () => {
   let wsPath: string;
@@ -17,9 +17,8 @@ test.describe('Tab Management', () => {
     await cleanupTestWorkspace(wsPath);
   });
 
-  async function addWorkspace(window: any) {
-    await addWorkspaceFolder(window, wsPath);
-    await window.waitForSelector('.tree-node', { timeout: 10_000 });
+  async function addWorkspace(electronApp: any, window: any) {
+    await openFolderViaMenu(electronApp, window, wsPath);
   }
 
   async function openFileByName(window: any, fileName: string, pinned = false) {
@@ -80,7 +79,7 @@ test.describe('Tab Management', () => {
     expect(label2).not.toBe(label1);
   });
 
-  test('multiple files from explorer open as separate tabs', async ({ window }) => {
+  test('multiple files from explorer open as separate tabs', async ({ window, electronApp }) => {
     // Close all tabs first
     let tabCount = await window.locator('.editor-tab').count();
     for (let i = 0; i < tabCount; i++) {
@@ -88,7 +87,7 @@ test.describe('Tab Management', () => {
       await window.waitForTimeout(200);
     }
 
-    await addWorkspace(window);
+    await addWorkspace(electronApp, window);
 
     // Open README.md (pinned to keep its tab)
     await openFileByName(window, 'README.md', true);
