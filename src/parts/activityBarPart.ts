@@ -49,8 +49,10 @@ const ACTIVITY_BAR_CONSTRAINTS: SizeConstraints = {
 export interface ActivityBarIconDescriptor {
   /** Unique identifier, typically a view container ID or view ID. */
   readonly id: string;
-  /** Icon text (emoji, Unicode glyph, or single-character fallback). */
+  /** Icon content — SVG string, emoji, or single-character fallback. */
   readonly icon: string;
+  /** If true, icon is raw SVG markup rendered via innerHTML. */
+  readonly isSvg?: boolean;
   /** Tooltip label. */
   readonly label: string;
   /** Whether this is a built-in icon or contributed by a tool. */
@@ -455,10 +457,14 @@ export class ActivityBarPart extends Part {
     // Roving tabindex: new buttons start at -1; _syncRovingTabindex sets the first to 0
     btn.tabIndex = -1;
 
-    // Icon label (the emoji/glyph)
+    // Icon label (SVG or text glyph)
     const iconLabel = document.createElement('span');
     iconLabel.classList.add('activity-bar-icon-label');
-    iconLabel.textContent = descriptor.icon;
+    if (descriptor.isSvg) {
+      iconLabel.innerHTML = descriptor.icon;
+    } else {
+      iconLabel.textContent = descriptor.icon;
+    }
     btn.appendChild(iconLabel);
 
     // Badge element (VS Code: .badge > .badge-content, absolute top-right)

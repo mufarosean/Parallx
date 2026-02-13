@@ -1453,9 +1453,13 @@ export class Workbench extends Disposable {
     // and show only the active one.
     // ─────────────────────────────────────────────────────────────────────
 
+    // VS Code codicon-style SVG icons (24x24 viewBox, stroke-based, minimalist)
+    const codiconExplorer = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 0H8.5L7 1.5V6H2.5L1 7.5V22.5699L2.5 24H14.5699L16 22.5699V18H20.7L22 16.5699V4.5L17.5 0ZM17.5 2.12L19.88 4.5H17.5V2.12ZM14.5 22.5H2.5V7.5H7V16.5699L8.5 18H14.5V22.5ZM20.5 16.5H8.5V1.5H16V6H20.5V16.5Z" fill="currentColor"/></svg>';
+    const codiconSearch = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.25 1C11.524 1 8.5 4.024 8.5 7.75C8.5 9.247 9.012 10.622 9.873 11.72L1.939 19.655L3.0 20.716L10.934 12.781C12.06 13.7 13.49 14.25 15.05 14.25C18.776 14.25 21.8 11.226 21.8 7.5C21.8 3.774 18.776 0.75 15.05 0.75C15.117 0.75 15.183 0.753 15.25 0.757V1ZM15.25 2.5C17.873 2.5 20 4.627 20 7.25C20 9.873 17.873 12 15.25 12C12.627 12 10.5 9.873 10.5 7.25C10.5 4.627 12.627 2.5 15.25 2.5Z" fill="currentColor"/></svg>';
+
     const views = [
-      { id: 'view.explorer', icon: '📁', label: 'Explorer' },
-      { id: 'view.search', icon: '🔍', label: 'Search' },
+      { id: 'view.explorer', icon: codiconExplorer, label: 'Explorer', isSvg: true },
+      { id: 'view.search', icon: codiconSearch, label: 'Search', isSvg: true },
     ];
 
     const sidebarContent = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
@@ -1474,6 +1478,7 @@ export class Workbench extends Disposable {
         id: v.id,
         icon: v.icon,
         label: v.label,
+        isSvg: v.isSvg ?? false,
         source: 'builtin',
       });
 
