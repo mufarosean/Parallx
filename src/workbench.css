@@ -1088,10 +1088,10 @@ html, body {
 
 .editor-tab-bar {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   overflow: hidden;
-  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
   background-color: var(--vscode-editorGroupHeader-tabsBackground);
+  position: relative;
 }
 
 .editor-pane-container {
@@ -1121,7 +1121,6 @@ html, body {
   display: flex;
   align-items: center;
   padding: 0 8px;
-  height: 100%;
   cursor: pointer;
   white-space: nowrap;
   font-size: 13px;
@@ -1130,13 +1129,14 @@ html, body {
   max-width: 200px;
   background-color: var(--vscode-tab-inactiveBackground);
   color: var(--vscode-tab-inactiveForeground);
-  border-bottom: 2px solid transparent;
+  border-top: 1px solid transparent;
+  box-sizing: border-box;
 }
 
 .editor-tab--active {
   background-color: var(--vscode-tab-activeBackground);
   color: var(--vscode-tab-activeForeground);
-  border-bottom-color: var(--vscode-tab-activeBorder);
+  border-top-color: var(--vscode-tab-activeBorderTop, transparent);
 }
 
 .editor-tab-pin {
@@ -1203,10 +1203,7 @@ html, body {
   border-left: 2px solid var(--vscode-focusBorder);
 }
 
-/* Active group indicator — subtle top border on tab bar */
-.editor-group--active .editor-tab-bar {
-  border-top: 1px solid var(--vscode-tab-activeBorder);
-}
+/* Active group indicator — removed, accent is on active tab top border */
 
 .editor-group-toolbar {
   display: flex;
