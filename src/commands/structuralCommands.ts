@@ -16,6 +16,8 @@ import type { IDisposable } from '../platform/lifecycle.js';
 import type { IEditorGroupService, IFileService, IWorkspaceService, IEditorService } from '../services/serviceTypes.js';
 import { GroupDirection } from '../editor/editorTypes.js';
 import { URI } from '../platform/uri.js';
+import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
+import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
 
 // ─── Workbench type (avoids circular import) ────────────────────────────────
 // Command handlers access workbench via `ctx.workbench` cast to this shape.
@@ -190,6 +192,67 @@ const splitEditor: CommandDescriptor = {
       return;
     }
     editorGroupService.splitGroup(activeGroup.id, GroupDirection.Right);
+  },
+};
+
+// ─── Markdown Preview Commands ───────────────────────────────────────────────
+
+/** Check if a filename has a markdown extension. */
+function isMarkdownFile(name: string): boolean {
+  const dotIdx = name.lastIndexOf('.');
+  const ext = dotIdx >= 0 ? name.substring(dotIdx).toLowerCase() : '';
+  return ext === '.md' || ext === '.markdown' || ext === '.mdx';
+}
+
+const markdownOpenPreviewToSide: CommandDescriptor = {
+  id: 'markdown.showPreviewToSide',
+  title: 'Markdown: Open Preview to the Side',
+  category: 'Markdown',
+  keybinding: 'Ctrl+K V',
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    if (!editorGroupService) return;
+
+    const activeGroup = editorGroupService.activeGroup;
+    if (!activeGroup) return;
+
+    const activeEditor = activeGroup.model.activeEditor;
+    if (!(activeEditor instanceof FileEditorInput)) return;
+    if (!isMarkdownFile(activeEditor.name)) return;
+
+    // Split right to create a new group
+    const newGroup = editorGroupService.splitGroup(activeGroup.id, GroupDirection.Right);
+    if (!newGroup) return;
+
+    // Close the duplicated text editor from the new group (split copies active editor)
+    if (newGroup.model.count > 0) {
+      newGroup.model.closeEditor(0, true);
+    }
+
+    // Create a MarkdownPreviewInput wrapping the source FileEditorInput
+    const previewInput = MarkdownPreviewInput.create(activeEditor);
+    newGroup.openEditor(previewInput, { pinned: true });
+  },
+};
+
+const markdownOpenPreview: CommandDescriptor = {
+  id: 'markdown.showPreview',
+  title: 'Markdown: Open Preview',
+  category: 'Markdown',
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    if (!editorGroupService) return;
+
+    const activeGroup = editorGroupService.activeGroup;
+    if (!activeGroup) return;
+
+    const activeEditor = activeGroup.model.activeEditor;
+    if (!(activeEditor instanceof FileEditorInput)) return;
+    if (!isMarkdownFile(activeEditor.name)) return;
+
+    // Open preview in the same group (replaces the text editor tab)
+    const previewInput = MarkdownPreviewInput.create(activeEditor);
+    activeGroup.openEditor(previewInput, { pinned: true });
   },
 };
 
@@ -1110,6 +1173,9 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   splitEditor,
   splitEditorOrthogonal,
   closeActiveEditor,
+  // Markdown
+  markdownOpenPreviewToSide,
+  markdownOpenPreview,
   nextEditor,
   previousEditor,
   // Layout

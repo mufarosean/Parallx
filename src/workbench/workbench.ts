@@ -127,9 +127,19 @@ import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 // File Editor Resolver (M4 Capability 4)
 import { registerEditorPaneFactory } from '../editor/editorPane.js';
 import { setFileEditorResolver } from '../api/bridges/editorsBridge.js';
+import { GroupDirection } from '../editor/editorTypes.js';
 import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
 import { UntitledEditorInput } from '../built-in/editor/untitledEditorInput.js';
 import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
+
+// Format Readers (EditorResolverService)
+import { EditorResolverService, EditorResolverPriority } from '../services/editorResolverService.js';
+import { MarkdownEditorPane } from '../built-in/editor/markdownEditorPane.js';
+import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
+import { ImageEditorInput } from '../built-in/editor/imageEditorInput.js';
+import { ImageEditorPane } from '../built-in/editor/imageEditorPane.js';
+import { PdfEditorInput } from '../built-in/editor/pdfEditorInput.js';
+import { PdfEditorPane } from '../built-in/editor/pdfEditorPane.js';
 
 // Theme System (M5 Capability 1–3)
 import { colorRegistry } from '../theme/colorRegistry.js';
@@ -2111,26 +2121,101 @@ export class Workbench extends Disposable {
   /**
    * Wire the file editor resolver at the workbench level.
    *
-   * This connects three things:
-   *  1. A pane factory for FileEditorInput / UntitledEditorInput → TextEditorPane
-   *  2. A URI resolver for `file://` and `untitled://` → FileEditorInput / UntitledEditorInput
-   *  3. Exposes the resolver via setFileEditorResolver() so EditorsBridge.openFileEditor() works
+   * This connects four things:
+   *  1. An EditorResolverService with built-in format reader registrations
+   *  2. A pane factory that routes inputs to the correct EditorPane
+   *  3. A URI resolver that creates the correct EditorInput via the resolver
+   *  4. Exposes the resolver via setFileEditorResolver() so EditorsBridge.openFileEditor() works
+   *
+   * Built-in format readers:
+   *  - Markdown (.md, .markdown) → MarkdownEditorPane (rendered preview)
+   *  - Images (.png, .jpg, .gif, .svg, .webp, .bmp, .ico, .avif) → ImageEditorPane
+   *  - PDF (.pdf) → PdfEditorPane
+   *  - Text (fallback .*) → TextEditorPane
    *
    * Must be called AFTER services are registered but BEFORE built-in tools activate.
    */
   private _initFileEditorResolver(): void {
-    // ── 1. Pane factory ──
-    const paneFactoryDisposable = registerEditorPaneFactory((input) => {
-      if (input instanceof FileEditorInput || input instanceof UntitledEditorInput) {
-        return new TextEditorPane();
+    // ── 1. EditorResolverService ──
+    const resolver = new EditorResolverService();
+    this._register(resolver);
+
+    const textFileModelManager = this._services.get(ITextFileModelManager) as any;
+    const fileService = this._services.get(IFileService) as any;
+
+    // Helper: compute workspace-relative path for tab description
+    const getRelativePath = (uri: URI): string | undefined => {
+      const workspaceService = this._services.has(IWorkspaceService)
+        ? this._services.get(IWorkspaceService) as any
+        : undefined;
+      if (workspaceService?.folders) {
+        for (const folder of workspaceService.folders) {
+          const folderUri = typeof folder.uri === 'string' ? URI.parse(folder.uri) : folder.uri;
+          const folderPath = folderUri.fsPath;
+          if (uri.fsPath.startsWith(folderPath)) {
+            return uri.fsPath.substring(folderPath.length + 1).replace(/\\/g, '/');
+          }
+        }
       }
+      return undefined;
+    };
+
+    // ── Register built-in format readers (priority-sorted) ──
+
+    // Markdown: opens in text editor by default (editable). Preview is
+    // triggered via the "Markdown: Open Preview to the Side" command which
+    // creates a MarkdownPreviewInput in a split group.
+    // (No special resolver entry for .md — the wildcard text fallback handles it.)
+
+    // Image viewer
+    this._register(resolver.registerEditor({
+      id: ImageEditorInput.TYPE_ID,
+      name: 'Image Viewer',
+      extensions: ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.ico', '.avif'],
+      priority: EditorResolverPriority.Default,
+      createInput: (uri) => ImageEditorInput.create(uri),
+      createPane: () => new ImageEditorPane(),
+    }));
+
+    // PDF viewer
+    this._register(resolver.registerEditor({
+      id: PdfEditorInput.TYPE_ID,
+      name: 'PDF Viewer',
+      extensions: ['.pdf'],
+      priority: EditorResolverPriority.Default,
+      createInput: (uri) => PdfEditorInput.create(uri),
+      createPane: () => new PdfEditorPane(),
+    }));
+
+    // Text editor (fallback — matches everything)
+    this._register(resolver.registerEditor({
+      id: FileEditorInput.TYPE_ID,
+      name: 'Text Editor',
+      extensions: ['.*'],
+      priority: EditorResolverPriority.Builtin,
+      createInput: (uri) => FileEditorInput.create(uri, textFileModelManager, fileService, getRelativePath(uri)),
+      createPane: () => new TextEditorPane(),
+    }));
+
+    // ── 2. Pane factory (routes input → pane) ──
+    const paneFactoryDisposable = registerEditorPaneFactory((input) => {
+      // MarkdownPreviewInput → rendered preview pane
+      if (input instanceof MarkdownPreviewInput) return new MarkdownEditorPane();
+
+      // Image / PDF inputs → their dedicated panes
+      if (input instanceof ImageEditorInput) return new ImageEditorPane();
+      if (input instanceof PdfEditorInput) return new PdfEditorPane();
+
+      // FileEditorInput → always text editor (markdown is edited as text;
+      // preview is opened separately via command)
+      if (input instanceof FileEditorInput) return new TextEditorPane();
+
+      // UntitledEditorInput → always text
+      if (input instanceof UntitledEditorInput) return new TextEditorPane();
+
       return null;
     });
     this._register(paneFactoryDisposable);
-
-    // ── 2. Resolver services ──
-    const textFileModelManager = this._services.get(ITextFileModelManager) as any;
-    const fileService = this._services.get(IFileService) as any;
 
     // ── 3. URI resolver function ──
     setFileEditorResolver(async (uriString: string) => {
@@ -2144,45 +2229,59 @@ export class Workbench extends Disposable {
       if (uriString.startsWith('file://') || uriString.startsWith('file:///')) {
         uri = URI.parse(uriString);
       } else {
-        // Treat as fsPath
         uri = URI.file(uriString);
       }
 
-      // Check if there's already an open FileEditorInput for this URI
-      // (deduplication via URI key)
-      const existingInput = this._findOpenFileEditorInput(uri);
+      // Deduplication: check if already open
+      const existingInput = this._findOpenEditorInput(uri);
       if (existingInput) return existingInput;
 
-      // Compute workspace-relative path for description
-      let relativePath: string | undefined;
-      const workspaceService = this._services.has(IWorkspaceService)
-        ? this._services.get(IWorkspaceService) as any
-        : undefined;
-      if (workspaceService?.folders) {
-        for (const folder of workspaceService.folders) {
-          const folderUri = typeof folder.uri === 'string' ? URI.parse(folder.uri) : folder.uri;
-          const folderPath = folderUri.fsPath;
-          if (uri.fsPath.startsWith(folderPath)) {
-            relativePath = uri.fsPath.substring(folderPath.length + 1).replace(/\\/g, '/');
-            break;
-          }
-        }
-      }
+      // Consult the EditorResolverService for the right input
+      const resolution = resolver.resolve(uri);
+      if (resolution) return resolution.input;
 
-      return FileEditorInput.create(uri, textFileModelManager, fileService, relativePath);
+      // Absolute fallback — plain FileEditorInput
+      return FileEditorInput.create(uri, textFileModelManager, fileService, getRelativePath(uri));
     });
 
-    console.log('[Workbench] File editor resolver wired');
+    console.log('[Workbench] File editor resolver wired with format readers');
+
+    // ── 4. Markdown preview toolbar button handler ──
+    // When the user clicks the preview icon in the tab toolbar, open a
+    // MarkdownPreviewInput in a split-right group (same as the command).
+    const editorPart = this._editor as EditorPart;
+    this._register(editorPart.onDidRequestMarkdownPreview((sourceGroup) => {
+      const activeEditor = sourceGroup.model.activeEditor;
+      if (!(activeEditor instanceof FileEditorInput)) return;
+
+      const newGroup = editorPart.splitGroup(sourceGroup.id, GroupDirection.Right);
+      if (!newGroup) return;
+
+      // Close the duplicated text editor from split
+      if (newGroup.model.count > 0) {
+        newGroup.model.closeEditor(0, true);
+      }
+
+      const previewInput = MarkdownPreviewInput.create(activeEditor);
+      newGroup.openEditor(previewInput, { pinned: true });
+    }));
   }
 
   /**
-   * Find an already-open FileEditorInput by URI across all editor groups.
+   * Find an already-open editor by URI across all editor groups.
+   * Checks FileEditorInput, ImageEditorInput, and PdfEditorInput.
    */
-  private _findOpenFileEditorInput(uri: URI): FileEditorInput | undefined {
+  private _findOpenEditorInput(uri: URI): IEditorInput | undefined {
     const editorPart = this._editor as EditorPart;
     for (const group of editorPart.groups) {
       for (const editor of group.model.editors) {
         if (editor instanceof FileEditorInput && editor.uri.equals(uri)) {
+          return editor;
+        }
+        if (editor instanceof ImageEditorInput && editor.uri.equals(uri)) {
+          return editor;
+        }
+        if (editor instanceof PdfEditorInput && editor.uri.equals(uri)) {
           return editor;
         }
       }
@@ -2241,7 +2340,7 @@ export class Workbench extends Disposable {
           const uri = URI.parse(uriString);
           const textFileModelManager = this._services.get(ITextFileModelManager) as any;
           // Deduplicate — reuse existing input if same file is already open
-          const existing = this._findOpenFileEditorInput(uri);
+          const existing = this._findOpenEditorInput(uri);
           const input = existing ?? FileEditorInput.create(
             uri, textFileModelManager, fileService, undefined,
           );

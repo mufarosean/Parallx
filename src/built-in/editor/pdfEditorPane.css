@@ -1,0 +1,35 @@
+/* pdfEditorPane.css — Styles for the PDF viewer pane */
+
+.pdf-editor-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-editor-background, #1e1e1e);
+  overflow: hidden;
+  position: relative;
+}
+
+.pdf-embed {
+  flex: 1;
+  border: none;
+  background: #525659;
+}
+
+.pdf-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--vscode-descriptionForeground, #999);
+  font-size: 14px;
+}
+
+.pdf-error {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--vscode-errorForeground, #f48771);
+  font-size: 14px;
+  text-align: center;
+  padding: 24px;
+}

@@ -78,6 +78,9 @@ export class EditorGroupView extends Disposable implements IGridView {
   private readonly _onDidRequestCrossGroupDrop = this._register(new Emitter<{ sourceGroupId: string; editorIndex: number; dropIndex: number }>());
   readonly onDidRequestCrossGroupDrop: Event<{ sourceGroupId: string; editorIndex: number; dropIndex: number }> = this._onDidRequestCrossGroupDrop.event;
 
+  private readonly _onDidRequestMarkdownPreview = this._register(new Emitter<void>());
+  readonly onDidRequestMarkdownPreview: Event<void> = this._onDidRequestMarkdownPreview.event;
+
   constructor(groupId?: string, paneFactory?: (input: IEditorInput) => EditorPane) {
     super();
     this.model = this._register(new EditorGroupModel(groupId));
@@ -411,6 +414,22 @@ export class EditorGroupView extends Disposable implements IGridView {
   private _createToolbar(): HTMLElement {
     const toolbar = document.createElement('div');
     toolbar.classList.add('editor-group-toolbar');
+
+    // Markdown preview button — shown only when active editor is a markdown file
+    const activeEditor = this.model.activeEditor;
+    if (activeEditor) {
+      const name = activeEditor.name.toLowerCase();
+      if (name.endsWith('.md') || name.endsWith('.markdown') || name.endsWith('.mdx')) {
+        const previewBtn = this._createToolbarButton(
+          `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v12H2V2zm1 1v10h10V3H3zm1 1h5v2H4V4zm0 3h8v1H4V7zm0 2h8v1H4V9zm0 2h5v1H4v-1z"/></svg>`,
+          'Open Markdown Preview to the Side (Ctrl+K V)',
+          () => { this._onDidRequestMarkdownPreview.fire(); },
+          true
+        );
+        previewBtn.classList.add('editor-toolbar-preview');
+        toolbar.appendChild(previewBtn);
+      }
+    }
 
     // Split button — SVG matching VS Code's split-editor codicon
     const splitBtn = this._createToolbarButton(

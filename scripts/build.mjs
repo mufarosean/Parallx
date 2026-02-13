@@ -23,6 +23,12 @@ const explorerCssPath = 'src/built-in/explorer/explorer.css';
 const explorerCss = existsSync(explorerCssPath) ? readFileSync(explorerCssPath, 'utf-8') : '';
 const editorCssPath = 'src/built-in/editor/textEditorPane.css';
 const editorCss = existsSync(editorCssPath) ? readFileSync(editorCssPath, 'utf-8') : '';
-writeFileSync('dist/renderer/workbench.css', workbenchCss + '\n' + uiCss + '\n' + explorerCss + '\n' + editorCss);
+const markdownCssPath = 'src/built-in/editor/markdownEditorPane.css';
+const markdownCss = existsSync(markdownCssPath) ? readFileSync(markdownCssPath, 'utf-8') : '';
+const imageCssPath = 'src/built-in/editor/imageEditorPane.css';
+const imageCss = existsSync(imageCssPath) ? readFileSync(imageCssPath, 'utf-8') : '';
+const pdfCssPath = 'src/built-in/editor/pdfEditorPane.css';
+const pdfCss = existsSync(pdfCssPath) ? readFileSync(pdfCssPath, 'utf-8') : '';
+writeFileSync('dist/renderer/workbench.css', workbenchCss + '\n' + uiCss + '\n' + explorerCss + '\n' + editorCss + '\n' + markdownCss + '\n' + imageCss + '\n' + pdfCss);
 
 console.log('Build complete.');

@@ -57,6 +57,10 @@ export class EditorPart extends Part {
   private readonly _onDidGroupCountChange = this._register(new Emitter<number>());
   readonly onDidGroupCountChange: Event<number> = this._onDidGroupCountChange.event;
 
+  /** Fires when a group's toolbar "Open Markdown Preview" button is clicked. */
+  private readonly _onDidRequestMarkdownPreview = this._register(new Emitter<EditorGroupView>());
+  readonly onDidRequestMarkdownPreview: Event<EditorGroupView> = this._onDidRequestMarkdownPreview.event;
+
   constructor() {
     super(
       PartId.Editor,
@@ -193,6 +197,9 @@ export class EditorPart extends Part {
 
     // Split request
     store.add(group.onDidRequestSplit((direction) => this.splitGroup(group.id, direction)));
+
+    // Markdown preview request
+    store.add(group.onDidRequestMarkdownPreview(() => this._onDidRequestMarkdownPreview.fire(group)));
 
     // Close-group request
     store.add(group.onDidRequestClose(() => this.removeGroup(group.id)));
