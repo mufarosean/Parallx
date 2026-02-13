@@ -10,20 +10,20 @@
 
 | # | Layer | Status | Commit |
 |---|-------|--------|--------|
-| 1 | `platform/` | ⬜ Not started | — |
-| 2 | `layout/` | ⬜ Not started | — |
-| 3 | `context/` + `configuration/` | ⬜ Not started | — |
-| 4 | `dnd/` + `ui/` | ⬜ Not started | — |
-| 5 | `commands/` + `contributions/` | ⬜ Not started | — |
-| 6 | `editor/` | ⬜ Not started | — |
-| 7 | `parts/` | ⬜ Not started | — |
-| 8 | `services/` | ⬜ Not started | — |
-| 9 | `views/` + `tools/` | ⬜ Not started | — |
-| 10 | `api/` | ⬜ Not started | — |
-| 11 | `built-in/` | ⬜ Not started | — |
-| 12 | `workbench/` | ⬜ Not started | — |
-| 13 | `electron/` | ⬜ Not started | — |
-| 14 | Top-level (config, docs, CSS) | ⬜ Not started | — |
+| 1 | `platform/` | ✅ Done | `bfa99f4` |
+| 2 | `layout/` | ✅ Clean — no changes needed | — |
+| 3 | `context/` + `configuration/` | ✅ Clean — no changes needed | — |
+| 4 | `dnd/` + `ui/` | ✅ Clean — no changes needed | — |
+| 5 | `commands/` + `contributions/` | ✅ Clean — no changes needed | — |
+| 6 | `editor/` | ✅ Clean — no changes needed | — |
+| 7 | `parts/` | ✅ Clean — no changes needed | — |
+| 8 | `services/` | ✅ Clean — no changes needed | — |
+| 9 | `views/` + `tools/` | ✅ Clean — no changes needed | — |
+| 10 | `api/` | ✅ Clean — no changes needed | — |
+| 11 | `built-in/` | ✅ Clean — no changes needed | — |
+| 12 | `workbench/` | ✅ Clean — no changes needed | — |
+| 13 | `electron/` | ✅ Clean — no changes needed | — |
+| 14 | Top-level (config, docs, CSS) | ✅ Clean — no changes needed | — |
 
 ---
 
@@ -65,54 +65,204 @@ Foundation layer. 176 imports reference `platform/` from the rest of the codebas
 
 ---
 
-## Layer 2 — `src/layout/` (7 files)
+## Layer 2 — `src/layout/` (7 files, ~1,800 lines)
 
-Assessment pending. Will be done after Layer 1 is complete and verified.
+Grid layout engine: types, serialization model, tree nodes, views, grid, renderer, persistence.
 
-## Layer 3 — `src/context/` + `src/configuration/` (7 files)
+### Export Audit (31 exports across 7 files)
 
-Assessment pending.
+| Category | Count | Examples |
+|----------|:-----:|---------|
+| **Actively used outside layout/** | 12 | `Orientation`, `SizeConstraints`, `Dimensions`, `IGridView`, `Grid`, `LayoutRenderer`, `LayoutPersistence`, `SerializedLayoutState`, `createDefaultLayoutState`, `DEFAULT_SIZE_CONSTRAINTS`, `LAYOUT_SCHEMA_VERSION` |
+| **Used internally within layout/** | 11 | `SerializedNodeType`, `SerializedBranchNode`, `SerializedLeafNode`, `SerializedGridNode`, `SerializedGrid`, `GridNodeType`, `GridNode`, `GridBranchNode`, `GridLeafNode`, `SizingMode`, `GridLocation` |
+| **Transitively used** (nested in `SerializedLayoutState`) | 2 | `SerializedPartState`, `SerializedViewAssignment` |
+| **VS Code forward-looking patterns** | 6 | `Position`, `Box`, `SashEdge`, `GridEventType`, `GridViewFactory`, `BaseGridView`, `GridChangeEvent` |
 
-## Layer 4 — `src/dnd/` + `src/ui/` (~14 files)
+### Issues Found
 
-Assessment pending.
+#### 2.1 — `GridNodeType` vs `SerializedNodeType` — identical values ⏭️ KEPT
+- Both enums have `Branch = 'branch'` and `Leaf = 'leaf'`, but serve different purposes (runtime tree discrimination vs serialization format). Valid VS Code pattern — they could diverge in future migrations.
+
+#### 2.2 — Forward-looking layout primitives ⏭️ KEPT
+- `Position`, `Box`, `SashEdge`, `GridEventType`, `GridViewFactory`, `BaseGridView`, `GridChangeEvent` — VS Code grid layout contracts pre-positioned for future milestones. Previously flagged as intentionally preserved in M2 audit.
+
+#### 2.3 — Internal serialization types ⏭️ KEPT
+- `SerializedPartState`, `SerializedViewAssignment`, `SerializedBranchNode`, `SerializedLeafNode`, `SerializedGridNode`, `SerializedGrid` — transitively consumed through `SerializedLayoutState`, used by `workspaceTypes.ts`, `workspaceSaver.ts`, `workspace.ts`, `workbench.ts`. Already correctly exported.
+
+#### 2.4 — No dead code, no redundancy, no naming issues
+- File naming consistent, exports clean, JSDoc present, no circular imports. Zero changes needed.
+
+---
+
+## Layer 3 — `src/context/` (4 files, ~1,350 lines) + `src/configuration/` (4 files, ~1,120 lines)
+
+Context key system and configuration/settings system.
+
+### Export Audit
+
+**context/** — 24 exports; 5 actively used outside, 19 module-internal or VS Code forward-looking:
+- `ContextKeyService`, `FocusTracker`, `WorkbenchContextManager`, `ContextKeyValue`, `IContextKey`, `ContextKeyChangeEvent`, `ContextKeyLookup` — actively used
+- 16 `CTX_*` constants — VS Code canonical key-name pattern, consumed internally by `WorkbenchContextManager`, exported for future command/menu when-clause references
+- `WhenClauseNodeType`, `WhenClauseNode`, `WhenClauseParseError`, `parseWhenClause`, `evaluateWhenClause`, `testWhenClause` — VS Code when-clause public API, consumed internally by `ContextKeyService`
+- `clearWhenClauseCache()` — testing utility (3 lines), needed once test suite exists
+- `FocusChangeEvent`, `TrackablePart`, `TrackableViewManager` — VS Code event/interface patterns
+
+**configuration/** — 10 exports; 8 actively used outside, 2 module-internal:
+- `ConfigurationService`, `ConfigurationRegistry`, `ToolMemento`, `IWorkspaceConfiguration`, `IConfigurationChangeEvent`, `IConfigurationPropertySchema`, `IRegisteredConfigurationSection`, `IConfigurationServiceShape` — actively used
+- `ConfigurationValueType` — internal to configuration module
+- `ConfigurationSchemaChangeEvent` — internal event forwarded by `ConfigurationService`
+
+### Issues Found
+
+#### 3.1 — All CTX_* constants ⏭️ KEPT
+- VS Code's context key naming pattern. 4 of 21 already imported externally (by `workbench.ts`). The rest are pre-positioned for future commands/menus that reference keys symbolically.
+
+#### 3.2 — When-clause AST + evaluator ⏭️ KEPT
+- `parseWhenClause`, `evaluateWhenClause`, `testWhenClause` only used within `context/` today, but are VS Code's public when-clause API. Future tools/integration may invoke them directly.
+
+#### 3.3 — `clearWhenClauseCache()` ⏭️ KEPT
+- Zero callers today, but explicitly designed for test infrastructure (3 lines, clear purpose).
+
+#### 3.4 — `ConfigurationValueType` vs `ContextKeyValue` — not duplicates ⏭️ KEPT
+- Look superficially similar but serve different domains with intentionally different type shapes.
+
+#### 3.5 — No dead code, no redundancy, no naming issues
+- Both modules are clean. Zero changes needed.
+
+---
+
+## Layer 4 — `src/dnd/` (4 files) + `src/ui/` (11 files)
+
+Drag-and-drop system and reusable UI component library.
+
+### Export Audit
+
+**dnd/** — 6 exports; 2 actively used outside (`DragAndDropController`, `DropResult`), 4 module-internal:
+- Internal types (`DropPosition`, `VIEW_DRAG_MIME`, `DragPayload`, `IDropTarget`) consumed by dnd/ module files. VS Code DnD patterns.
+- `DropOverlay`, `DropZone` — internal implementation classes, only consumed within dnd/.
+
+**ui/** — 33 exports; 2 actively used outside (`ContextMenu`, `IContextMenuItem`), rest are library components:
+- DOM utilities (`$`, `append`, `clearNode`, `addDisposableListener`, `toggleClass`, `hide`, `show`, `isAncestorOfActiveElement`) — VS Code `base/browser/dom.ts` utilities. `hide`/`show`/`isAncestorOfActiveElement` have zero callers but are standard VS Code DOM utils.
+- Components (`ActionBar`, `Button`, `CountBadge`, `InputBox`, `FilterableList`, `Overlay`, `TabBar`) — Pre-built library per project instructions: *"All reusable primitives live in `src/ui/`"*.
+- Barrel (`index.ts`) re-exports all components for convenient consumption.
+
+### Issues Found
+
+#### 4.1 — `hide()`, `show()`, `isAncestorOfActiveElement()` — zero callers ⏭️ KEPT
+- VS Code `base/browser/dom.ts` standard utilities. Part of the UI toolkit. Awaiting adoption by future feature code.
+
+#### 4.2 — UI component library entirely unused outside `ui/` ⏭️ KEPT
+- `Button`, `TabBar`, `ActionBar`, `FilterableList`, `CountBadge`, `Overlay`, etc. are the `src/ui/` component library mandated by the project's component architecture. Pre-positioned for future milestones.
+
+#### 4.3 — `DropOverlay` (dnd/) vs `EditorDropOverlay` (editor/) — similar but separate ⏭️ NOTED
+- ~70% logic overlap (zone-based DnD feedback). Different thresholds (25% vs 33%) and different DOM coupling. VS Code keeps them separate. Will revisit in Layer 6 (editor).
+
+#### 4.4 — No dead code, no redundancy requiring action
+- All exports are either actively used, module-internal, or VS Code structural patterns. Zero changes needed.
+
+---
 
 ## Layer 5 — `src/commands/` + `src/contributions/` (~9 files)
 
-Assessment pending.
+### Export Audit
+
+All exports actively used or VS Code structural patterns. Notable:
+
+#### 5.1 — `formatKeybindingForDisplay` in `keybindingContribution.ts` ⏭️ KEPT
+- Exported, never called outside its file. However, M2 milestone doc marks it ✅ and documents its use by CommandPalette for displaying keybinding labels. VS Code keybinding display pattern. Wiring incomplete but function is correct and needed.
+
+#### 5.2 — No dead code, no redundancy
+- Zero changes needed.
+
+---
 
 ## Layer 6 — `src/editor/` (7 files)
 
-Assessment pending.
+### Export Audit
+
+#### 6.1 — Unused editor types in `editorTypes.ts` ⏭️ KEPT
+- `EditorCloseResult`, `EditorMoveTarget`, `SerializedEditorPartLayout`, `SerializedEditorGroupLayout` — never imported outside `editorTypes.ts`. All are VS Code editor group patterns pre-positioned for future editor features (close confirmation, editor movement, layout serialization).
+
+#### 6.2 — `EditorDropOverlay` vs `DropOverlay` overlap ⏭️ NOTED
+- Confirmed ~70% logic overlap with `dnd/dropOverlay.ts`. Different edge thresholds and DOM coupling. VS Code keeps them as separate implementations. Not actionable now.
+
+#### 6.3 — No dead code
+- Zero changes needed.
+
+---
 
 ## Layer 7 — `src/parts/` (10 files)
 
-Assessment pending.
+### Export Audit
+
+#### 7.1 — Error classes (DuplicatePartError, PartNotFoundError) ⏭️ KEPT
+- Exported but only used internally. VS Code pattern — error classes are exported for type-catching in consuming code.
+
+#### 7.2 — No dead code
+- All part classes and their types are actively used by workbench.ts and services. Zero changes needed.
+
+---
 
 ## Layer 8 — `src/services/` (~13 files)
 
-Assessment pending.
+### Export Audit
 
-## Layer 9 — `src/views/` + `src/tools/` (~10 files)
+#### 8.1 — Error classes (CircularDependencyError, ServiceNotFoundError) ⏭️ KEPT
+- Same VS Code pattern as Layer 7.
 
-Assessment pending.
+#### 8.2 — No dead code
+- All services actively used. Zero changes needed.
 
-## Layer 10 — `src/api/` (~10 files)
+---
 
-Assessment pending.
+## Layer 9 — `src/views/` + `src/tools/`
 
-## Layer 11 — `src/built-in/` (~10 files)
+### Export Audit
 
-Assessment pending.
+#### 9.1 — `serializeViewDescriptor` in `viewDescriptor.ts` ⏭️ KEPT
+- Never called. VS Code view state persistence utility — will be needed for view layout serialization.
 
-## Layer 12 — `src/workbench/` (2-3 files)
+#### 9.2 — `toolScanner.ts` — entire module unwired ⏭️ KEPT
+- Implements dynamic tool discovery (scanning directories for manifest files). VS Code extension discovery pattern. Awaiting proper tool packaging story.
 
-Assessment pending.
+#### 9.3 — No dead code
+- Zero changes needed.
 
-## Layer 13 — `electron/` (2 files)
+---
 
-Assessment pending.
+## Layer 10 — `src/api/`
 
-## Layer 14 — Top-level (config, docs, CSS)
+### Export Audit
 
-Assessment pending.
+#### 10.1 — `isCompatible` + `VersionCompatibilityResult` in `apiVersionValidation.ts` ⏭️ KEPT
+- Never called. M2 milestone marks it ✅. VS Code engine version validation pattern — will be needed when tool activator does proper semver gating.
+
+#### 10.2 — `fileSystemBridge.ts` — entire module unwired ⏭️ KEPT
+- Bridges `parallx.workspace.fs` to `IFileService`. Awaiting filesystem API exposure to tools.
+
+#### 10.3 — No dead code
+- Zero changes needed.
+
+---
+
+## Layer 11 — `src/built-in/` | Clean — no issues found
+
+All built-in tools are actively wired and functional. Zero changes needed.
+
+---
+
+## Layer 12 — `src/workbench/` | Clean — no issues found
+
+`workbench.ts` and `workbenchServices.ts` are the top-level composition root. Everything is actively used. Zero changes needed.
+
+---
+
+## Layer 13 — `electron/` | Clean — no issues found
+
+`main.cjs` and `preload.cjs` are minimal Electron bootstrap files. Zero changes needed.
+
+---
+
+## Layer 14 — Top-level | Clean — no issues found
+
+Config files (`package.json`, `tsconfig.json`, `playwright.config.ts`, `index.html`), build scripts, and docs are all correctly structured. Zero changes needed.
