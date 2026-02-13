@@ -1021,7 +1021,7 @@ Checked items are already implemented; unchecked items remain as future work.
 - [x] Find in Files (Ctrl+Shift+F) — A search view in the sidebar for workspace-wide text search with results list
 
 ### Editor Features
-- [ ] Find & Replace bar (Ctrl+F / Ctrl+H) — Inline find/replace within the active editor with match highlighting
+- [x] Find & Replace bar (Ctrl+F / Ctrl+H) — Inline find/replace within the active editor with match highlighting
 - [ ] Go to Line (Ctrl+G) — Command to jump to a specific line number in the active editor
 - [ ] Line numbers + gutter — Clickable line numbers in the text editor for selection and future breakpoint support
 - [ ] Minimap — A scaled-down overview of the document on the right edge of the editor
