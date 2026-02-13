@@ -223,6 +223,7 @@ html, body {
 .part-workbench-parts-sidebar {
   background: var(--vscode-sideBar-background);
   border-right: 1px solid var(--vscode-sideBar-border);
+  margin-bottom: 0; /* ensure border runs full height */
 }
 
 .sidebar-header {
@@ -613,6 +614,8 @@ html, body {
 .part-workbench-parts-panel {
   background: var(--vscode-panel-background);
   border-top: 1px solid var(--vscode-panel-border);
+  margin-left: 0;
+  margin-right: 0;
 }
 
 /* Panel tab bar is provided by ViewContainer — no separate .panel-tab-bar needed */

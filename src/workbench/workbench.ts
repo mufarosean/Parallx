@@ -1456,7 +1456,6 @@ export class Workbench extends Disposable {
     // VS Code codicon-style SVG icons (24x24 viewBox, stroke-based, minimalist)
     const codiconExplorer = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 0H8.5L7 1.5V6H2.5L1 7.5V22.5699L2.5 24H14.5699L16 22.5699V18H20.7L22 16.5699V4.5L17.5 0ZM17.5 2.12L19.88 4.5H17.5V2.12ZM14.5 22.5H2.5V7.5H7V16.5699L8.5 18H14.5V22.5ZM20.5 16.5H8.5V1.5H16V6H20.5V16.5Z" fill="currentColor"/></svg>';
     const codiconSearch = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.25 1C11.524 1 8.5 4.024 8.5 7.75C8.5 9.247 9.012 10.622 9.873 11.72L1.939 19.655L3.0 20.716L10.934 12.781C12.06 13.7 13.49 14.25 15.05 14.25C18.776 14.25 21.8 11.226 21.8 7.5C21.8 3.774 18.776 0.75 15.05 0.75C15.117 0.75 15.183 0.753 15.25 0.757V1ZM15.25 2.5C17.873 2.5 20 4.627 20 7.25C20 9.873 17.873 12 15.25 12C12.627 12 10.5 9.873 10.5 7.25C10.5 4.627 12.627 2.5 15.25 2.5Z" fill="currentColor"/></svg>';
-
     const views = [
       { id: 'view.explorer', icon: codiconExplorer, label: 'Explorer', isSvg: true },
       { id: 'view.search', icon: codiconSearch, label: 'Search', isSvg: true },
@@ -2724,12 +2723,31 @@ export class Workbench extends Disposable {
    * Uses the ActivityBarPart's addIcon API (M3 Capability 0.2).
    */
   private _addContributedActivityBarIcon(info: IContributedContainer): void {
+    // Map known icon identifiers to SVG codicons
+    const svgIcon = this._resolveCodiconSvg(info.icon);
     this._activityBarPart.addIcon({
       id: info.id,
-      icon: info.icon ?? info.title.charAt(0).toUpperCase(),
+      icon: svgIcon ?? info.icon ?? info.title.charAt(0).toUpperCase(),
+      isSvg: svgIcon !== undefined,
       label: info.title,
       source: 'contributed',
     });
+  }
+
+  /**
+   * Resolve an icon identifier to a codicon SVG string.
+   * Known icons get proper SVG; unknown return undefined (falls back to text).
+   */
+  private _resolveCodiconSvg(icon?: string): string | undefined {
+    // Map emoji or codicon names to SVG paths
+    const codiconMap: Record<string, string> = {
+      // Extensions / puzzle piece
+      '🧩': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.5 7H16V4.5C16 3.12 14.88 2 13.5 2C12.12 2 11 3.12 11 4.5V7H6.5C5.67 7 5 7.67 5 8.5V13H7.5C8.88 13 10 14.12 10 15.5C10 16.88 8.88 18 7.5 18H5V22.5C5 23.33 5.67 24 6.5 24H11V21.5C11 20.12 12.12 19 13.5 19C14.88 19 16 20.12 16 21.5V24H20.5C21.33 24 22 23.33 22 22.5V18H19.5C18.12 18 17 16.88 17 15.5C17 14.12 18.12 13 19.5 13H22V8.5C22 7.67 21.33 7 20.5 7Z" fill="currentColor"/></svg>',
+      'codicon-extensions': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.5 7H16V4.5C16 3.12 14.88 2 13.5 2C12.12 2 11 3.12 11 4.5V7H6.5C5.67 7 5 7.67 5 8.5V13H7.5C8.88 13 10 14.12 10 15.5C10 16.88 8.88 18 7.5 18H5V22.5C5 23.33 5.67 24 6.5 24H11V21.5C11 20.12 12.12 19 13.5 19C14.88 19 16 20.12 16 21.5V24H20.5C21.33 24 22 23.33 22 22.5V18H19.5C18.12 18 17 16.88 17 15.5C17 14.12 18.12 13 19.5 13H22V8.5C22 7.67 21.33 7 20.5 7Z" fill="currentColor"/></svg>',
+      // Settings gear
+      '⚙️': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.85 8.75L18.01 8.07L19 6.54L17.46 5L15.93 5.99L15.25 4.15H13.25L12.57 5.99L11.04 5L9.5 6.54L10.49 8.07L8.65 8.75V10.75L10.49 11.43L9.5 12.96L11.04 14.5L12.57 13.51L13.25 15.35H15.25L15.93 13.51L17.46 14.5L19 12.96L18.01 11.43L19.85 10.75V8.75ZM14.25 12.5C13.01 12.5 12 11.49 12 10.25C12 9.01 13.01 8 14.25 8C15.49 8 16.5 9.01 16.5 10.25C16.5 11.49 15.49 12.5 14.25 12.5Z" fill="currentColor"/></svg>',
+    };
+    return icon ? codiconMap[icon] : undefined;
   }
 
   /**

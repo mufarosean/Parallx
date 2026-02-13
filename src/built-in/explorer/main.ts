@@ -916,7 +916,6 @@ function renderOpenEditors(): void {
     if (editor.isDirty) {
       const dot = document.createElement('span');
       dot.className = 'open-editors-dirty';
-      dot.textContent = '●';
       dot.title = 'Unsaved changes';
       row.appendChild(dot);
     }
@@ -964,19 +963,18 @@ function renderOpenEditors(): void {
   }
 }
 
-/** Simple icon picker based on file extension */
+/** Simple icon picker based on file extension — returns a text glyph, not emoji */
 function getFileIcon(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
   switch (ext) {
-    case 'ts': case 'tsx': return '🟦';
-    case 'js': case 'jsx': return '🟨';
-    case 'json': return '📋';
-    case 'md': return '📝';
-    case 'css': return '🎨';
-    case 'html': return '🌐';
-    case 'svg': return '🖼️';
-    case 'png': case 'jpg': case 'jpeg': case 'gif': return '🖼️';
-    default: return '📄';
+    case 'ts': case 'tsx': return 'TS';
+    case 'js': case 'jsx': return 'JS';
+    case 'json': return '{}';
+    case 'md': return 'M↓';
+    case 'css': return '#';
+    case 'html': return '<>';
+    case 'svg': case 'png': case 'jpg': case 'jpeg': case 'gif': return '◻';
+    default: return '◇';
   }
 }
 
