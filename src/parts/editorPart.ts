@@ -16,6 +16,7 @@ import { GroupDirection, EditorOpenOptions, EditorActivation, EditorGroupChangeK
 import type { IEditorInput } from '../editor/editorInput.js';
 import { createEditorPaneForInput } from '../editor/editorPane.js';
 import { EditorDropTarget } from '../editor/editorDropTarget.js';
+import { URI } from '../platform/uri.js';
 
 const EDITOR_CONSTRAINTS: SizeConstraints = {
   minimumWidth: 200,
@@ -92,6 +93,20 @@ export class EditorPart extends Part {
 
   /** The inner grid. */
   get grid(): Grid | undefined { return this._grid; }
+
+  /**
+   * Update all editor groups with the current workspace folders.
+   * Enables the breadcrumbs bar to show workspace-relative paths.
+   */
+  setWorkspaceFolders(folders: readonly { uri: URI; name: string }[]): void {
+    for (const group of this._groups.values()) {
+      group.setWorkspaceFolders(folders);
+    }
+    // Store for newly created groups
+    this._workspaceFolders = [...folders];
+  }
+
+  private _workspaceFolders: { uri: URI; name: string }[] = [];
 
   // ── Content creation ──
 
@@ -190,6 +205,11 @@ export class EditorPart extends Part {
   private _createGroupView(): EditorGroupView {
     const group = new EditorGroupView(undefined, createEditorPaneForInput);
     this._groups.set(group.id, group);
+
+    // Pass workspace folders for breadcrumbs
+    if (this._workspaceFolders.length > 0) {
+      group.setWorkspaceFolders(this._workspaceFolders);
+    }
 
     const store = new DisposableStore();
 

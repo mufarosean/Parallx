@@ -15,3 +15,4 @@ export { FilterableList, type IListItem, type IFilterableListOptions } from './l
 export { ActionBar, type IAction } from './actionBar.js';
 export { CountBadge, type ICountBadgeOptions } from './countBadge.js';
 export { ContextMenu, type IContextMenuItem, type IContextMenuAnchor, type IContextMenuOptions, type IContextMenuSelectEvent } from './contextMenu.js';
+export { BreadcrumbsWidget, BreadcrumbsItem, type IBreadcrumbsItemEvent, type IBreadcrumbsWidgetStyles } from './breadcrumbs.js';

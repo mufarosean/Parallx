@@ -493,6 +493,17 @@ export class Workbench extends Disposable {
   }
 
   /**
+   * Push current workspace folders to the editor part so breadcrumbs
+   * can display workspace-relative paths.
+   */
+  private _updateEditorBreadcrumbs(): void {
+    if (!this._editor || !this._workspace) return;
+    const editorPart = this._editor as EditorPart;
+    const folders = this._workspace.folders.map(f => ({ uri: f.uri, name: f.name }));
+    editorPart.setWorkspaceFolders(folders);
+  }
+
+  /**
    * Start file watchers for all workspace folders.
    * When folders change (added/removed), update watchers accordingly.
    * File change events flow through IFileService.onDidFileChange.
@@ -1080,8 +1091,13 @@ export class Workbench extends Disposable {
           count === 0 ? 'empty' : 'folder',
         );
         this._updateWindowTitle();
+        // Update breadcrumbs in editor groups
+        this._updateEditorBreadcrumbs();
       }));
     }
+
+    // Push workspace folders to editor part for breadcrumbs
+    this._updateEditorBreadcrumbs();
 
     // Start file watchers for workspace folders (M4 — file watcher → tree refresh)
     this._startWorkspaceFolderWatchers();
