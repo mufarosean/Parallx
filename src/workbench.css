@@ -1115,7 +1115,20 @@ html, body {
 .editor-tabs {
   display: flex;
   flex: 1;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+/* Hide scrollbar visually but keep scrolling functional (VS Code approach) */
+.editor-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+.editor-tabs::-webkit-scrollbar-thumb {
+  background-color: transparent;
+}
+.editor-tabs:hover::-webkit-scrollbar-thumb {
+  background-color: var(--vscode-scrollbarSlider-background);
 }
 
 .editor-tab {
@@ -1200,8 +1213,68 @@ html, body {
   opacity: 0.5;
 }
 
-.editor-tab.drop-target {
-  border-left: 2px solid var(--vscode-focusBorder);
+/* VS Code parity: thin insertion line between tabs instead of highlighting whole tab.
+ * drop-before shows line on the left edge, drop-after on the right edge. */
+.editor-tab.drop-before {
+  position: relative;
+}
+.editor-tab.drop-before::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -1px;
+  width: 2px;
+  height: 100%;
+  background-color: var(--vscode-focusBorder);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.editor-tab.drop-after {
+  position: relative;
+}
+.editor-tab.drop-after::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -1px;
+  width: 2px;
+  height: 100%;
+  background-color: var(--vscode-focusBorder);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Indicator at the very end of the tabs container (drop in gap area) */
+.editor-tabs.drop-target-end {
+  position: relative;
+}
+.editor-tabs.drop-target-end::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2px;
+  height: 100%;
+  background-color: var(--vscode-focusBorder);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Custom drag image label (offscreen, styled like a tab) */
+.editor-tab-drag-image {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  padding: 4px 12px;
+  font-size: 13px;
+  background: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
+  color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground));
+  border: 1px solid var(--vscode-focusBorder);
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 99999;
 }
 
 /* Active group indicator — removed, accent is on active tab top border */

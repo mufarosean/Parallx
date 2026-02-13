@@ -274,6 +274,7 @@ export class EditorDropTarget extends Disposable {
   readonly onDidDrop: Event<EditorDropEvent> = this._onDidDrop.event;
 
   private _activeOverlay: EditorDropOverlay | undefined;
+  private _activeOverlayGroupElement: HTMLElement | undefined;
   private readonly _overlayDisposables = this._register(new DisposableStore());
 
   constructor(
@@ -293,8 +294,18 @@ export class EditorDropTarget extends Disposable {
       const groupElement = this._findGroupElement(e.target as HTMLElement | null);
       if (!groupElement) return;
 
-      // Don't create overlay if we're over the tab bar area
-      if (this._isOverTabBar(e.target as HTMLElement | null)) return;
+      // Don't create overlay if we're over the tab bar area — UNLESS the
+      // group is empty (no tabs to act as drop targets). VS Code parity:
+      // empty groups accept drops on the tab bar via the pane overlay.
+      if (this._isOverTabBar(e.target as HTMLElement | null)) {
+        const hasEditors = groupElement.querySelectorAll('.editor-tab').length > 0;
+        if (hasEditors) return;
+      }
+
+      // VS Code parity: if the overlay belongs to a different group, switch it
+      if (this._activeOverlay && this._activeOverlayGroupElement !== groupElement) {
+        this._clearOverlay();
+      }
 
       // Create overlay if needed
       if (!this._activeOverlay) {
@@ -316,6 +327,7 @@ export class EditorDropTarget extends Disposable {
 
     const overlay = new EditorDropOverlay(groupElement);
     this._activeOverlay = overlay;
+    this._activeOverlayGroupElement = groupElement;
 
     this._overlayDisposables.add(overlay);
 
@@ -332,6 +344,7 @@ export class EditorDropTarget extends Disposable {
 
     this._overlayDisposables.add(overlay.onDidDispose(() => {
       this._activeOverlay = undefined;
+      this._activeOverlayGroupElement = undefined;
       this._overlayDisposables.clear();
     }));
   }
@@ -340,6 +353,7 @@ export class EditorDropTarget extends Disposable {
     if (this._activeOverlay) {
       this._activeOverlay.dispose();
       this._activeOverlay = undefined;
+      this._activeOverlayGroupElement = undefined;
     }
   }
 

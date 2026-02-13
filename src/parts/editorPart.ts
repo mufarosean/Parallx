@@ -146,12 +146,13 @@ export class EditorPart extends Part {
     this._register(this._dropTarget.onDidDrop((event) => {
       const { data, targetGroupId, splitDirection } = event;
 
-      // Find the source group and editor
+      // Find the source group and editor — resolve by inputId for VS Code parity
       const sourceGroup = this._groups.get(data.sourceGroupId);
       if (!sourceGroup) return;
 
-      const sourceEditor = sourceGroup.model.getEditorAt(data.editorIndex);
-      if (!sourceEditor) return;
+      const sourceIdx = sourceGroup.model.editors.findIndex(e => e.id === data.inputId);
+      if (sourceIdx < 0) return;
+      const sourceEditor = sourceGroup.model.editors[sourceIdx];
 
       const targetGroup = this._groups.get(targetGroupId);
       if (!targetGroup) return;
@@ -162,7 +163,7 @@ export class EditorPart extends Part {
         if (newGroup) {
           newGroup.openEditor(sourceEditor, { pinned: true });
           // Close from source group (force — this is a move)
-          sourceGroup.model.closeEditor(data.editorIndex, true);
+          sourceGroup.model.closeEditor(sourceIdx, true);
 
           // Auto-close empty source group (not if it's the last)
           if (sourceGroup.isEmpty && this._groups.size > 1) {
@@ -173,7 +174,7 @@ export class EditorPart extends Part {
         // Center drop — merge into existing group (same as cross-group tab drop)
         if (data.sourceGroupId !== targetGroupId) {
           targetGroup.openEditor(sourceEditor, { pinned: true });
-          sourceGroup.model.closeEditor(data.editorIndex, true);
+          sourceGroup.model.closeEditor(sourceIdx, true);
           this._setActiveGroup(targetGroup);
 
           if (sourceGroup.isEmpty && this._groups.size > 1) {
@@ -204,19 +205,23 @@ export class EditorPart extends Part {
     // Close-group request
     store.add(group.onDidRequestClose(() => this.removeGroup(group.id)));
 
-    // Cross-group tab drop: move editor from source group to this group
+    // Cross-group tab drop: move editor from source group to this group.
+    // VS Code parity: resolve by inputId, not stale editorIndex.
     store.add(group.onDidRequestCrossGroupDrop((data) => {
       const sourceGroup = this._groups.get(data.sourceGroupId);
       if (!sourceGroup) return;
 
-      const sourceEditor = sourceGroup.model.getEditorAt(data.editorIndex);
-      if (!sourceEditor) return;
+      // Resolve the editor by inputId — the editorIndex captured at dragstart
+      // can be stale if tabs were reordered after the drag started.
+      const sourceIdx = sourceGroup.model.editors.findIndex(e => e.id === data.inputId);
+      if (sourceIdx < 0) return;
+      const sourceEditor = sourceGroup.model.editors[sourceIdx];
 
       // Open the editor in this group at the drop position, pinned
       group.openEditor(sourceEditor, { pinned: true, index: data.dropIndex });
 
       // Close from source group (force close — it's a move, not a real close)
-      sourceGroup.model.closeEditor(data.editorIndex, true);
+      sourceGroup.model.closeEditor(sourceIdx, true);
 
       // Activate the target group
       this._setActiveGroup(group);
