@@ -1018,7 +1018,7 @@ Checked items are already implemented; unchecked items remain as future work.
 ### Explorer & Navigation
 - [x] File search / Go to File (Ctrl+P) — Quick-pick file opener with fuzzy name matching
 - [x] Explorer context menu — New File, New Folder, Rename, Delete, Copy Path, Copy Relative Path, Reveal in File Explorer, Open to the Side
-- [ ] Find in Files (Ctrl+Shift+F) — A search view in the sidebar for workspace-wide text search with results list
+- [x] Find in Files (Ctrl+Shift+F) — A search view in the sidebar for workspace-wide text search with results list
 
 ### Editor Features
 - [ ] Find & Replace bar (Ctrl+F / Ctrl+H) — Inline find/replace within the active editor with match highlighting

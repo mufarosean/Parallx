@@ -118,6 +118,7 @@ import type { IContributedContainer, IContributedView } from '../contributions/v
 
 // Built-in Tools (M2 Capability 7)
 import * as ExplorerTool from '../built-in/explorer/main.js';
+import * as SearchTool from '../built-in/search/main.js';
 import * as WelcomeTool from '../built-in/welcome/main.js';
 import * as OutputTool from '../built-in/output/main.js';
 import * as ToolGalleryTool from '../built-in/tool-gallery/main.js';
@@ -2430,6 +2431,37 @@ export class Workbench extends Disposable {
       {
         manifest: {
           manifestVersion: 1,
+          id: 'parallx.search',
+          name: 'Search',
+          version: '1.0.0',
+          publisher: 'parallx',
+          description: 'Find in Files — workspace-wide text search with results tree.',
+          main: './main.js',
+          engines: { parallx: '^0.1.0' },
+          activationEvents: ['onStartupFinished'],
+          contributes: {
+            commands: [
+              { id: 'search.findInFiles', title: 'Search: Find in Files' },
+              { id: 'search.clearResults', title: 'Search: Clear Results' },
+              { id: 'search.collapseAll', title: 'Search: Collapse All Results' },
+              { id: 'search.expandAll', title: 'Search: Expand All Results' },
+            ],
+            keybindings: [
+              { command: 'search.findInFiles', key: 'Ctrl+Shift+F' },
+            ],
+            viewContainers: [
+              { id: 'search-container', title: 'Search', icon: '🔍', location: 'sidebar' as const },
+            ],
+            views: [
+              { id: 'view.search', name: 'Search', defaultContainerId: 'search-container' },
+            ],
+          },
+        },
+        module: SearchTool,
+      },
+      {
+        manifest: {
+          manifestVersion: 1,
           id: 'parallx.editor.text',
           name: 'Text Editor',
           version: '1.0.0',
@@ -2901,6 +2933,23 @@ export class Workbench extends Disposable {
     }
     this._hGrid.layout();
     this._layoutViewContainers();
+  }
+
+  /**
+   * Programmatically switch to a specific sidebar view and ensure sidebar is visible.
+   * Used by commands like `workbench.view.search` (Ctrl+Shift+F).
+   *
+   * VS Code reference: ViewsService.openView()
+   */
+  showSidebarView(viewId: string): void {
+    // Ensure sidebar is visible
+    if (!this._sidebar.visible) {
+      this.toggleSidebar();
+    }
+    // Switch to the requested container (builtin containers use viewId as key)
+    if (this._builtinSidebarContainers.has(viewId) || this._contributedSidebarContainers.has(viewId)) {
+      this._switchSidebarContainer(viewId);
+    }
   }
 
   /**

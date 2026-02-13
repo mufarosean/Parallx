@@ -1493,16 +1493,11 @@ html, body {
 }
 
 /* ── Placeholder View: Explorer ── */
-.placeholder-explorer,
-.placeholder-search-container {
+.placeholder-explorer {
   padding: 8px;
   color: var(--vscode-sideBar-foreground);
   font-size: 13px;
   background-color: var(--vscode-sideBar-background);
-}
-
-.placeholder-search-container {
-  background-color: var(--vscode-editor-background);
 }
 
 .placeholder-tree-row {
@@ -1514,37 +1509,305 @@ html, body {
   background-color: var(--vscode-list-hoverBackground);
 }
 
-/* ── Placeholder View: Search ── */
-.placeholder-search-input {
-  width: 100%;
-  padding: 6px 8px;
+/* ── Placeholder View: Search (replaced by built-in search tool) ── */
+/* Old placeholder styles removed — real search styles below */
+
+/* ═══════════════════════════════════════════════════════════════════
+   Search View (built-in tool — Find in Files)
+   VS Code reference: src/vs/workbench/contrib/search/browser/media/
+   ═══════════════════════════════════════════════════════════════════ */
+
+.search-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--vscode-sideBar-background);
+  color: var(--vscode-sideBar-foreground);
+  font-size: 13px;
+}
+
+/* ── Header (input area) ── */
+.search-header {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  padding: 6px 8px 4px;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.search-toggle-replace {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 26px;
+  margin-top: 1px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  opacity: 0.6;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: opacity 0.1s, transform 0.15s;
+}
+
+.search-toggle-replace:hover {
+  opacity: 1;
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.search-toggle-replace.active {
+  opacity: 1;
+  transform: rotate(90deg);
+}
+
+.search-toggle-replace svg {
+  width: 14px;
+  height: 14px;
+}
+
+.search-input-rows {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.search-input-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
   border: 1px solid var(--vscode-input-border);
   border-radius: 2px;
   background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
-  margin-bottom: 8px;
   font-size: 13px;
+  font-family: inherit;
   outline: none;
   box-sizing: border-box;
+  height: 26px;
 }
 
-.placeholder-search-results {
+.search-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.search-input::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+/* ── Option toggles (Aa, Ab|, .*) ── */
+.search-option-toggles {
+  display: flex;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.search-option-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.search-option-btn:hover {
+  opacity: 1;
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.search-option-btn.active {
+  opacity: 1;
+  border-color: var(--vscode-focusBorder);
+  background-color: var(--vscode-inputOption-activeBackground, rgba(0, 100, 200, 0.2));
+  color: var(--vscode-inputOption-activeForeground, inherit);
+}
+
+/* ── Filters section ── */
+.search-filters {
+  padding: 0 8px 4px;
+  flex-shrink: 0;
+}
+
+.search-filters-toggle {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--vscode-textLink-foreground);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0.8;
+}
+
+.search-filters-toggle:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.search-filters-toggle.active {
+  opacity: 1;
+}
+
+.search-filters-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   margin-top: 4px;
 }
 
-.placeholder-search-result-item {
-  line-height: 22px;
-  padding-left: 4px;
-  cursor: pointer;
+.search-filter-input {
+  height: 24px;
+  font-size: 12px;
 }
 
-.placeholder-search-result-item:hover {
+/* ── Message area ── */
+.search-message {
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  flex-shrink: 0;
+}
+
+/* ── Results tree ── */
+.search-results {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 8px;
+}
+
+/* File group */
+.search-file-group {
+  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, transparent);
+}
+
+.search-file-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  user-select: none;
+  line-height: 22px;
+  font-size: 13px;
+}
+
+.search-file-header:hover {
   background-color: var(--vscode-list-hoverBackground);
 }
 
-.placeholder-search-result-file { color: #4ec9b0; }
-.placeholder-search-result-line { color: #6a9955; }
-.placeholder-search-result-text { color: #9cdcfe; }
+.search-file-chevron {
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--vscode-foreground);
+  opacity: 0.7;
+}
+
+.search-file-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.search-file-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-file-name {
+  color: var(--vscode-foreground);
+  font-weight: 600;
+}
+
+.search-file-dir {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.search-file-badge {
+  flex-shrink: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background-color: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* ── Match items ── */
+.search-match-list {
+  /* Indent matches under file header */
+}
+
+.search-match-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 1px 8px 1px 28px; /* left indent = chevron + icon space */
+  cursor: pointer;
+  line-height: 22px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-match-item:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.search-match-line-num {
+  color: var(--vscode-editorLineNumber-foreground, #858585);
+  min-width: 30px;
+  text-align: right;
+  flex-shrink: 0;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.search-match-context {
+  color: var(--vscode-editor-foreground);
+  opacity: 0.8;
+}
+
+.search-match-highlight {
+  background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+  color: var(--vscode-editor-foreground);
+  border-radius: 2px;
+  padding: 0 1px;
+}
 
 /* ── Placeholder View: Terminal ── */
 .placeholder-terminal {

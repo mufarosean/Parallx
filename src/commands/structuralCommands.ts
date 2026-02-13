@@ -30,6 +30,7 @@ interface WorkbenchLike {
   toggleStatusBar(): void;
   toggleCommandPalette(): void;
   showQuickOpen(): void;
+  showSidebarView(viewId: string): void;
   readonly workspace: { readonly id: string; readonly name: string };
   createWorkspace(name: string, path?: string, switchTo?: boolean): Promise<unknown>;
   switchWorkspace(targetId: string): Promise<void>;
@@ -1158,6 +1159,26 @@ const focusStatusBar: CommandDescriptor = {
   },
 };
 
+// ─── Sidebar view switch ─────────────────────────────────────────────────────
+
+const showSearchView: CommandDescriptor = {
+  id: 'workbench.view.search',
+  title: 'Search: Show Search',
+  category: 'View',
+  handler(ctx) {
+    wb(ctx).showSidebarView('view.search');
+  },
+};
+
+const showExplorerView: CommandDescriptor = {
+  id: 'workbench.view.explorer',
+  title: 'Explorer: Show Explorer',
+  category: 'View',
+  handler(ctx) {
+    wb(ctx).showSidebarView('view.explorer');
+  },
+};
+
 // ─── All builtin commands ────────────────────────────────────────────────────
 
 const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
@@ -1220,6 +1241,9 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   focusPanel,
   focusActivityBar,
   focusStatusBar,
+  // Sidebar view switch
+  showSearchView,
+  showExplorerView,
 ];
 
 /**
