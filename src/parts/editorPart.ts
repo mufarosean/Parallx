@@ -12,7 +12,7 @@ import { Emitter, Event } from '../platform/events.js';
 import { DisposableStore } from '../platform/lifecycle.js';
 import { Grid } from '../layout/grid.js';
 import { EditorGroupView } from '../editor/editorGroupView.js';
-import { GroupDirection, EditorOpenOptions } from '../editor/editorTypes.js';
+import { GroupDirection, EditorOpenOptions, EditorActivation } from '../editor/editorTypes.js';
 import type { IEditorInput } from '../editor/editorInput.js';
 import { createEditorPaneForInput } from '../editor/editorPane.js';
 import { EditorDropTarget } from '../editor/editorDropTarget.js';
@@ -220,19 +220,13 @@ export class EditorPart extends Part {
       }
     }));
 
-    // Model changes → update watermark + auto-close empty groups
+    // Model changes → update watermark
+    // Note: VS Code does NOT auto-close empty groups by default — only when the
+    // `workbench.editor.closeEmptyGroups` setting is true. We match that default
+    // by NOT auto-closing here. Groups can be explicitly closed via the toolbar
+    // close button or via removeGroup().
     store.add(group.model.onDidChange(() => {
       this._updateWatermark();
-
-      // Auto-close empty groups (except the last remaining group)
-      if (group.isEmpty && this._groups.size > 1 && this._activeGroupId !== group.id) {
-        // Use queueMicrotask to avoid re-entry during model event dispatch
-        queueMicrotask(() => {
-          if (group.isEmpty && this._groups.size > 1) {
-            this.removeGroup(group.id);
-          }
-        });
-      }
     }));
 
     this._groupDisposables.set(group.id, store);
@@ -242,6 +236,13 @@ export class EditorPart extends Part {
 
   /**
    * Split an existing group in the given direction.
+   *
+   * Follows VS Code's addGroup() pattern:
+   * 1. Determine split orientation & direction from GroupDirection
+   * 2. Compute size from the SOURCE view's current size (not the container)
+   * 3. Insert new group into grid beside the source
+   * 4. Copy the active editor from source into the new group (VS Code parity)
+   * 5. Activate the new group (it now shows the same editor)
    */
   splitGroup(sourceGroupId: string, direction: GroupDirection): EditorGroupView | undefined {
     if (!this._grid) return undefined;
@@ -263,10 +264,17 @@ export class EditorPart extends Part {
         : Orientation.Vertical;
     const insertBefore = (direction === GroupDirection.Left || direction === GroupDirection.Up);
 
+    // VS Code parity: size the new view at half the SOURCE view's current size,
+    // not half the entire container. This ensures correct proportions when
+    // splitting a group that's already smaller than the full container.
+    const sourceSize = this._grid.getViewSize(sourceGroupId);
+    const fallbackSize = splitOrientation === Orientation.Horizontal
+      ? this._containerWidth
+      : this._containerHeight;
+    const splitSize = Math.floor((sourceSize ?? fallbackSize) / 2);
+
     try {
-      this._grid.splitView(sourceGroupId, newGroup, Math.floor(
-        (splitOrientation === Orientation.Horizontal ? this._containerWidth : this._containerHeight) / 2
-      ), splitOrientation, insertBefore);
+      this._grid.splitView(sourceGroupId, newGroup, splitSize, splitOrientation, insertBefore);
 
       // The grid creates a wrapper element for the leaf; render the group inside it
       newGroup.create(newGroup.element.parentElement ?? this._grid.element);
@@ -276,6 +284,15 @@ export class EditorPart extends Part {
       newGroup.create(newGroup.element.parentElement ?? this._grid.element);
     }
 
+    // VS Code parity: copy the active editor from the source group into the
+    // new split so the user sees the same file on both sides (like VS Code's
+    // "Split Editor Right"). Without this, the new group shows an empty watermark.
+    const activeEditor = source.model.activeEditor;
+    if (activeEditor) {
+      // Open in new group as pinned (same as VS Code split behaviour)
+      newGroup.openEditor(activeEditor, { pinned: true });
+    }
+
     this._setActiveGroup(newGroup);
     this._relayout();
     return newGroup;
@@ -283,11 +300,24 @@ export class EditorPart extends Part {
 
   /**
    * Remove an editor group. If it's the last group, a new empty one is created.
+   *
+   * VS Code parity: if the group has editors, they are merged into the most
+   * recently active remaining group before removal.
    */
   removeGroup(groupId: string): void {
     if (!this._grid) return;
     const group = this._groups.get(groupId);
     if (!group) return;
+
+    // If group has editors, merge them into the target group first (VS Code parity)
+    if (!group.isEmpty && this._groups.size > 1) {
+      // Find the best target: the most recently activated group that isn't this one
+      const target = this._findMergeTarget(groupId);
+      if (target) {
+        this.mergeGroup(groupId, target.id);
+        return; // mergeGroup removes the source if it becomes empty
+      }
+    }
 
     this._grid.removeView(groupId);
     this._groups.delete(groupId);
@@ -303,6 +333,113 @@ export class EditorPart extends Part {
       this._setActiveGroup(newGroup);
     } else if (this._activeGroupId === groupId) {
       // Activate the first remaining group
+      const first = this._groups.values().next().value as EditorGroupView;
+      this._setActiveGroup(first);
+    }
+
+    this._onDidGroupCountChange.fire(this._groups.size);
+    this._relayout();
+    this._updateWatermark();
+  }
+
+  /**
+   * Add a group adjacent to the given reference group (VS Code naming for splitGroup).
+   *
+   * This is the canonical VS Code API name; internally delegates to splitGroup.
+   */
+  addGroup(referenceGroupId: string, direction: GroupDirection): EditorGroupView | undefined {
+    return this.splitGroup(referenceGroupId, direction);
+  }
+
+  /**
+   * Merge one group's editors into another group.
+   *
+   * VS Code parity: moves all editors from source into target, then removes
+   * the now-empty source group.
+   */
+  mergeGroup(sourceGroupId: string, targetGroupId: string): void {
+    const source = this._groups.get(sourceGroupId);
+    const target = this._groups.get(targetGroupId);
+    if (!source || !target || sourceGroupId === targetGroupId) return;
+
+    // Move all editors from source to target
+    for (const editor of source.model.editors) {
+      target.openEditor(editor, { pinned: true, preserveFocus: true, activation: EditorActivation.Restore });
+    }
+
+    // Close all editors in source (force — they've been moved)
+    while (source.model.count > 0) {
+      source.model.closeEditor(0, true);
+    }
+
+    // Remove the now-empty source group
+    if (source.isEmpty && this._groups.size > 1) {
+      this._removeEmptyGroup(sourceGroupId);
+    }
+  }
+
+  /**
+   * Find a group adjacent to the given source in the specified direction.
+   *
+   * VS Code parity: EditorPart.findGroup({ direction }, source)
+   * Currently a simplified version that works for the common case.
+   */
+  findGroup(direction: GroupDirection, sourceGroupId?: string): EditorGroupView | undefined {
+    const groups = this.groups;
+    if (groups.length <= 1) return undefined;
+
+    const sourceId = sourceGroupId ?? this._activeGroupId;
+    const sourceIndex = groups.findIndex(g => g.id === sourceId);
+    if (sourceIndex < 0) return undefined;
+
+    // Simplified: for horizontal splits (Left/Right), navigate prev/next in group order
+    // For vertical splits (Up/Down), same — we use grid appearance order
+    switch (direction) {
+      case GroupDirection.Left:
+      case GroupDirection.Up:
+        return sourceIndex > 0 ? groups[sourceIndex - 1] : undefined;
+      case GroupDirection.Right:
+      case GroupDirection.Down:
+        return sourceIndex < groups.length - 1 ? groups[sourceIndex + 1] : undefined;
+    }
+  }
+
+  /**
+   * Find the best merge target for a group being removed.
+   */
+  private _findMergeTarget(excludeGroupId: string): EditorGroupView | undefined {
+    // Prefer the active group if it's not the one being removed
+    if (this._activeGroupId && this._activeGroupId !== excludeGroupId) {
+      return this._groups.get(this._activeGroupId);
+    }
+    // Otherwise use the first available group
+    for (const [id, group] of this._groups) {
+      if (id !== excludeGroupId) return group;
+    }
+    return undefined;
+  }
+
+  /**
+   * Remove an empty group without merging.
+   * Used internally after editors have already been moved elsewhere.
+   */
+  private _removeEmptyGroup(groupId: string): void {
+    if (!this._grid) return;
+    const group = this._groups.get(groupId);
+    if (!group) return;
+
+    this._grid.removeView(groupId);
+    this._groups.delete(groupId);
+    this._groupDisposables.get(groupId)?.dispose();
+    this._groupDisposables.delete(groupId);
+    group.dispose();
+
+    if (this._groups.size === 0) {
+      const newGroup = this._createGroupView();
+      this._grid.addView(newGroup, this._containerHeight || 600);
+      newGroup.create(newGroup.element.parentElement ?? this._grid.element);
+      this._setActiveGroup(newGroup);
+    } else if (this._activeGroupId === groupId) {
       const first = this._groups.values().next().value as EditorGroupView;
       this._setActiveGroup(first);
     }

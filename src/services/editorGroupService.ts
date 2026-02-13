@@ -51,8 +51,20 @@ export class EditorGroupService extends Disposable implements IEditorGroupServic
     return this._editorPart.splitGroup(sourceGroupId, direction);
   }
 
+  addGroup(referenceGroupId: string, direction: GroupDirection): EditorGroupView | undefined {
+    return this._editorPart.addGroup(referenceGroupId, direction);
+  }
+
   removeGroup(groupId: string): void {
     this._editorPart.removeGroup(groupId);
+  }
+
+  mergeGroup(sourceGroupId: string, targetGroupId: string): void {
+    this._editorPart.mergeGroup(sourceGroupId, targetGroupId);
+  }
+
+  findGroup(direction: GroupDirection, sourceGroupId?: string): EditorGroupView | undefined {
+    return this._editorPart.findGroup(direction, sourceGroupId);
   }
 
   activateGroup(groupId: string): void {

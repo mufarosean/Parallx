@@ -151,13 +151,21 @@ export class Grid extends Disposable {
     const existingIndex = parent.indexOfChild(existingNode);
 
     if (parent.orientation === splitOrientation) {
-      // Same orientation — just add sibling
+      // Same orientation — add as sibling, splitting the existing view's space.
+      // VS Code parity: the new view gets half the existing view's current size.
+      // The `size` param is a hint, but we clamp to ensure correctness.
       const insertIndex = insertBefore ? existingIndex : existingIndex + 1;
-      // Shrink existing to make room
-      existingNode.cachedSize = Math.max(
-        existingNode.cachedSize - size,
-        this._getMinSizeAlongOrientation(existingNode, splitOrientation)
-      );
+      const existingSize = existingNode.cachedSize;
+      const minExisting = this._getMinSizeAlongOrientation(existingNode, splitOrientation);
+      const minNew = this._getMinSizeAlongOrientation(newLeaf, splitOrientation);
+
+      // Ensure the split is at most what the existing view can give
+      const clampedSize = Math.min(size, existingSize - minExisting);
+      const actualNewSize = Math.max(clampedSize, minNew);
+      const actualExistingSize = Math.max(existingSize - actualNewSize, minExisting);
+
+      existingNode.cachedSize = actualExistingSize;
+      newLeaf.cachedSize = actualNewSize;
       parent.addChild(newLeaf, insertIndex);
     } else {
       // Different orientation — wrap existing in a new branch

@@ -218,11 +218,20 @@ export interface IEditorGroupService extends IDisposable {
   /** Get a group by ID. */
   getGroup(groupId: string): EditorGroupView | undefined;
 
-  /** Split a group in a direction. */
+  /** Split a group in a direction (creates new group, copies active editor). */
   splitGroup(sourceGroupId: string, direction: GroupDirection): EditorGroupView | undefined;
 
-  /** Remove a group (last group replaced by empty one). */
+  /** Add a group adjacent to the reference group (VS Code naming for splitGroup). */
+  addGroup(referenceGroupId: string, direction: GroupDirection): EditorGroupView | undefined;
+
+  /** Remove a group (merges editors into nearest group; last group replaced by empty one). */
   removeGroup(groupId: string): void;
+
+  /** Merge source group's editors into target group, then remove source. */
+  mergeGroup(sourceGroupId: string, targetGroupId: string): void;
+
+  /** Find a group adjacent to the source in the given direction. */
+  findGroup(direction: GroupDirection, sourceGroupId?: string): EditorGroupView | undefined;
 
   /** Activate a group by ID. */
   activateGroup(groupId: string): void;
