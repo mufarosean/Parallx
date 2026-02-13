@@ -1023,7 +1023,7 @@ Checked items are already implemented; unchecked items remain as future work.
 ### Editor Features
 - [x] Find & Replace bar (Ctrl+F / Ctrl+H) — Inline find/replace within the active editor with match highlighting
 - [x] Go to Line (Ctrl+G) — Command to jump to a specific line number in the active editor
-- [ ] Line numbers + gutter — Clickable line numbers in the text editor for selection and future breakpoint support
+- [x] Line numbers + gutter — Clickable line numbers in the text editor for selection and future breakpoint support
 - [ ] Minimap — A scaled-down overview of the document on the right edge of the editor
 - [ ] Word wrap toggle — Status bar button or command to toggle word wrap on/off per editor
 

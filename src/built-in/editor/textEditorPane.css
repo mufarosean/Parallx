@@ -16,6 +16,45 @@
   overflow: hidden;
 }
 
+/* ── Editor Body (gutter + textarea side by side) ── */
+
+.text-editor-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Line Number Gutter ── */
+
+.text-editor-gutter {
+  width: 40px;       /* default; JS adjusts based on digit count */
+  flex-shrink: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 8px 8px 8px 0;
+  text-align: right;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--vscode-editorLineNumber-foreground, #858585);
+  background-color: var(--vscode-editor-background);
+  user-select: none;
+  cursor: default;
+  border-right: 1px solid var(--vscode-editorIndentGuide-background, #404040);
+}
+
+.text-editor-gutter-line {
+  white-space: nowrap;
+  padding-right: 8px;
+}
+
+.text-editor-gutter-line:hover {
+  color: var(--vscode-editorLineNumber-activeForeground, #c6c6c6);
+  cursor: pointer;
+}
+
 /* ── Textarea ── */
 
 .text-editor-textarea {

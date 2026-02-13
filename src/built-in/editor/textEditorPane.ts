@@ -30,6 +30,8 @@ export class TextEditorPane extends EditorPane {
   static readonly PANE_ID = 'text-editor-pane';
 
   private _textarea!: HTMLTextAreaElement;
+  private _gutter!: HTMLElement;
+  private _editorBody!: HTMLElement;
   private _statusBar!: HTMLElement;
   private _positionItem!: HTMLElement;
   private _encodingItem!: HTMLElement;
@@ -54,6 +56,16 @@ export class TextEditorPane extends EditorPane {
   protected override createPaneContent(container: HTMLElement): void {
     container.classList.add('text-editor-pane');
 
+    // Editor body — flex row containing gutter + textarea
+    this._editorBody = document.createElement('div');
+    this._editorBody.classList.add('text-editor-body');
+
+    // Line number gutter
+    this._gutter = document.createElement('div');
+    this._gutter.classList.add('text-editor-gutter');
+    this._gutter.setAttribute('aria-hidden', 'true');
+    this._editorBody.appendChild(this._gutter);
+
     // Textarea
     this._textarea = document.createElement('textarea');
     this._textarea.classList.add('text-editor-textarea');
@@ -74,7 +86,14 @@ export class TextEditorPane extends EditorPane {
     this._textarea.addEventListener('click', this._updateCursorPosition);
     this._textarea.addEventListener('select', this._updateCursorPosition);
 
-    container.appendChild(this._textarea);
+    // Scroll sync: gutter follows textarea vertical scroll
+    this._textarea.addEventListener('scroll', this._syncGutterScroll);
+
+    this._editorBody.appendChild(this._textarea);
+    container.appendChild(this._editorBody);
+
+    // Gutter click → select entire line
+    this._gutter.addEventListener('mousedown', this._onGutterClick);
 
     // Binary file overlay (hidden by default)
     this._binaryOverlay = document.createElement('div');
@@ -151,6 +170,7 @@ export class TextEditorPane extends EditorPane {
           if (!this._suppressModelUpdate) {
             this._textarea.value = newContent;
             this._detectEol(newContent);
+            this._updateLineNumbers();
           }
         }));
       } catch (err) {
@@ -164,6 +184,7 @@ export class TextEditorPane extends EditorPane {
       this._inputListeners.add(input.onDidChangeContent((newContent) => {
         if (!this._suppressModelUpdate) {
           this._textarea.value = newContent;
+          this._updateLineNumbers();
         }
       }));
     }
@@ -184,6 +205,9 @@ export class TextEditorPane extends EditorPane {
 
     // Update cursor position to 1:1
     this._updateCursorPosition();
+
+    // Build initial gutter line numbers
+    this._updateLineNumbers();
   }
 
   protected override clearPaneContent(_previous: IEditorInput | undefined): void {
@@ -194,6 +218,8 @@ export class TextEditorPane extends EditorPane {
     this._eolItem.textContent = 'LF';
     this._binaryOverlay.style.display = 'none';
     this._textarea.style.display = '';
+    this._lineCount = 0;
+    this._updateLineNumbers();
   }
 
   protected override layoutPaneContent(_width: number, _height: number): void {
@@ -305,6 +331,7 @@ export class TextEditorPane extends EditorPane {
   private readonly _onTextInput = (): void => {
     this._pushContentToInput();
     this._updateCursorPosition();
+    this._updateLineNumbers();
   };
 
   private _pushContentToInput(): void {
@@ -357,6 +384,79 @@ export class TextEditorPane extends EditorPane {
     return false;
   }
 
+  // ── Line Number Gutter ─────────────────────────────────────────────────
+
+  private _lineCount = 0;
+
+  /** Rebuild gutter line numbers when the line count changes. */
+  private _updateLineNumbers(): void {
+    const text = this._textarea?.value ?? '';
+    const newCount = text.split('\n').length;
+
+    if (newCount === this._lineCount) return;
+    this._lineCount = newCount;
+
+    // Calculate gutter width based on digit count
+    const digits = Math.max(2, String(newCount).length);
+    this._gutter.style.width = `${digits * 8 + 24}px`;
+
+    // Build line numbers in a single DOM write via fragment
+    const frag = document.createDocumentFragment();
+    for (let i = 1; i <= newCount; i++) {
+      const line = document.createElement('div');
+      line.classList.add('text-editor-gutter-line');
+      line.textContent = String(i);
+      line.dataset.lineNumber = String(i);
+      frag.appendChild(line);
+    }
+
+    this._gutter.textContent = '';
+    this._gutter.appendChild(frag);
+
+    // Re-sync scroll position
+    this._syncGutterScroll();
+  }
+
+  /** Keep gutter scroll in sync with textarea. */
+  private readonly _syncGutterScroll = (): void => {
+    if (this._gutter && this._textarea) {
+      this._gutter.scrollTop = this._textarea.scrollTop;
+    }
+  };
+
+  /** Click on a gutter line number → select the entire line. */
+  private readonly _onGutterClick = (e: MouseEvent): void => {
+    // Prevent default to stop the gutter from stealing focus / starting
+    // a native text selection, which would interfere with setSelectionRange.
+    e.preventDefault();
+
+    const target = e.target as HTMLElement;
+    const lineNumStr = target.dataset?.lineNumber;
+    if (!lineNumStr) return;
+
+    const lineNum = parseInt(lineNumStr, 10);
+    if (isNaN(lineNum)) return;
+
+    const lines = this._textarea.value.split('\n');
+    if (lineNum < 1 || lineNum > lines.length) return;
+
+    // Calculate offset to start of the clicked line
+    let offset = 0;
+    for (let i = 0; i < lineNum - 1; i++) {
+      offset += lines[i].length + 1;
+    }
+
+    // Select the entire line (including trailing newline if not last)
+    const lineEnd = offset + lines[lineNum - 1].length;
+    const selectEnd = lineNum < lines.length ? lineEnd + 1 : lineEnd;
+
+    // Set selection BEFORE focus so the browser doesn't scroll to the old
+    // caret position (which causes the "jump to bottom" on first click).
+    this._textarea.setSelectionRange(offset, selectEnd);
+    this._textarea.focus({ preventScroll: true });
+    this._updateCursorPosition();
+  };
+
   // ── Accessor for external use ──
 
   get textarea(): HTMLTextAreaElement {
@@ -371,6 +471,8 @@ export class TextEditorPane extends EditorPane {
     this._textarea?.removeEventListener('keyup', this._updateCursorPosition);
     this._textarea?.removeEventListener('click', this._updateCursorPosition);
     this._textarea?.removeEventListener('select', this._updateCursorPosition);
+    this._textarea?.removeEventListener('scroll', this._syncGutterScroll);
+    this._gutter?.removeEventListener('mousedown', this._onGutterClick);
     super.dispose();
   }
 }
