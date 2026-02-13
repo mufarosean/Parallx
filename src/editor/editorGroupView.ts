@@ -23,6 +23,7 @@ import {
 } from './editorTypes.js';
 import { BreadcrumbsBar, BREADCRUMBS_HEIGHT } from './breadcrumbsBar.js';
 import { URI } from '../platform/uri.js';
+import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -83,6 +84,10 @@ export class EditorGroupView extends Disposable implements IGridView {
 
   private readonly _onDidRequestMarkdownPreview = this._register(new Emitter<void>());
   readonly onDidRequestMarkdownPreview: Event<void> = this._onDidRequestMarkdownPreview.event;
+
+  /** Fires when user selects "Reveal in Explorer" from a tab context menu. */
+  private readonly _onDidRequestRevealInExplorer = this._register(new Emitter<URI>());
+  readonly onDidRequestRevealInExplorer: Event<URI> = this._onDidRequestRevealInExplorer.event;
 
   constructor(groupId?: string, paneFactory?: (input: IEditorInput) => EditorPane) {
     super();
@@ -577,6 +582,13 @@ export class EditorGroupView extends Disposable implements IGridView {
       } catch { /* ignore bad data */ }
     });
 
+    // ── Context menu (right-click) — VS Code parity: EditorTitleContext ──
+    tab.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._showTabContextMenu(editor, index, e);
+    });
+
     return tab;
   }
 
@@ -588,6 +600,127 @@ export class EditorGroupView extends Disposable implements IGridView {
     const tabs = this._tabBar?.querySelectorAll('.editor-tab');
     tabs?.forEach(t => t.classList.remove('drop-before', 'drop-after'));
     this._tabBar?.querySelector('.editor-tabs')?.classList.remove('drop-target-end');
+  }
+
+  // ─── Tab Context Menu ──────────────────────────────────────────────────
+
+  /**
+   * Show the tab context menu at the right-click position.
+   *
+   * VS Code reference: `EditorTabsControl.onTabContextMenu()` in
+   * `src/vs/workbench/browser/parts/editor/editorTabsControl.ts`
+   * registers items on `MenuId.EditorTitleContext`.
+   *
+   * Menu groups (VS Code parity):
+   *  1_close  — Close, Close Others, Close to the Right, Close Saved, Close All
+   *  6_path   — Copy Path, Copy Relative Path
+   *  7_reveal — Reveal in Explorer
+   */
+  private _showTabContextMenu(editor: IEditorInput, index: number, e: MouseEvent): void {
+    const currentIdx = this.model.editors.indexOf(editor);
+    if (currentIdx < 0) return;
+
+    const editorCount = this.model.count;
+    const isLast = currentIdx === editorCount - 1;
+    const uri: URI | undefined = (editor as any).uri;
+
+    // ── Build menu items ──
+    const items: IContextMenuItem[] = [];
+
+    // Group 1: Close operations
+    items.push({ id: 'close', label: 'Close', keybinding: 'Ctrl+W', group: '1_close', order: 10 });
+    items.push({
+      id: 'closeOthers', label: 'Close Others', group: '1_close', order: 20,
+      disabled: editorCount <= 1,
+    });
+    items.push({
+      id: 'closeRight', label: 'Close to the Right', group: '1_close', order: 30,
+      disabled: isLast,
+    });
+    items.push({ id: 'closeSaved', label: 'Close Saved', group: '1_close', order: 40 });
+    items.push({ id: 'closeAll', label: 'Close All', group: '1_close', order: 50 });
+
+    // Group 6: Path operations (only when editor has a URI)
+    if (uri) {
+      items.push({ id: 'copyPath', label: 'Copy Path', group: '6_path', order: 10 });
+      items.push({ id: 'copyRelativePath', label: 'Copy Relative Path', group: '6_path', order: 20 });
+    }
+
+    // Group 7: Reveal (only when editor has a URI)
+    if (uri) {
+      items.push({ id: 'revealInExplorer', label: 'Reveal in Explorer', group: '7_reveal', order: 10 });
+    }
+
+    // ── Show menu ──
+    const menu = ContextMenu.show({
+      items,
+      anchor: { x: e.clientX, y: e.clientY },
+    });
+
+    // ── Handle selection ──
+    menu.onDidSelect(({ item }) => {
+      // Re-resolve index in case model changed between show and click
+      const idx = this.model.editors.indexOf(editor);
+      if (idx < 0 && item.id !== 'closeAll' && item.id !== 'closeSaved') return;
+
+      switch (item.id) {
+        case 'close':
+          this.model.closeEditor(idx);
+          break;
+        case 'closeOthers':
+          this.model.closeOthers(idx);
+          break;
+        case 'closeRight':
+          this.model.closeToTheRight(idx);
+          break;
+        case 'closeSaved':
+          this.model.closeSaved();
+          break;
+        case 'closeAll':
+          this.model.closeAllEditors();
+          break;
+        case 'copyPath':
+          if (uri) {
+            navigator.clipboard.writeText(uri.fsPath).catch(() => {});
+          }
+          break;
+        case 'copyRelativePath':
+          if (uri) {
+            const relativePath = this._getRelativePath(uri);
+            navigator.clipboard.writeText(relativePath).catch(() => {});
+          }
+          break;
+        case 'revealInExplorer':
+          if (uri) {
+            this._onDidRequestRevealInExplorer.fire(uri);
+          }
+          break;
+      }
+    });
+  }
+
+  /**
+   * Compute a workspace-relative path for a URI.
+   * Falls back to the full fsPath if no workspace folder matches.
+   */
+  private _getRelativePath(uri: URI): string {
+    const fsPath = uri.fsPath;
+    // If we have workspace folders (from breadcrumbs bar), try to make it relative
+    const folders = (this._breadcrumbsBar as any)?._workspaceFolders as readonly { uri: URI; name: string }[] | undefined;
+    if (folders) {
+      for (const folder of folders) {
+        const folderPath = folder.uri.fsPath;
+        if (fsPath.startsWith(folderPath)) {
+          let relative = fsPath.substring(folderPath.length);
+          // Remove leading separator
+          if (relative.startsWith('/') || relative.startsWith('\\')) {
+            relative = relative.substring(1);
+          }
+          return relative;
+        }
+      }
+    }
+    return fsPath;
   }
 
   private _createToolbar(): HTMLElement {

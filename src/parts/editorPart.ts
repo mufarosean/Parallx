@@ -62,6 +62,10 @@ export class EditorPart extends Part {
   private readonly _onDidRequestMarkdownPreview = this._register(new Emitter<EditorGroupView>());
   readonly onDidRequestMarkdownPreview: Event<EditorGroupView> = this._onDidRequestMarkdownPreview.event;
 
+  /** Fires when "Reveal in Explorer" is selected from a tab context menu. */
+  private readonly _onDidRequestRevealInExplorer = this._register(new Emitter<URI>());
+  readonly onDidRequestRevealInExplorer: Event<URI> = this._onDidRequestRevealInExplorer.event;
+
   constructor() {
     super(
       PartId.Editor,
@@ -221,6 +225,9 @@ export class EditorPart extends Part {
 
     // Markdown preview request
     store.add(group.onDidRequestMarkdownPreview(() => this._onDidRequestMarkdownPreview.fire(group)));
+
+    // Reveal in Explorer request (from tab context menu)
+    store.add(group.onDidRequestRevealInExplorer((uri) => this._onDidRequestRevealInExplorer.fire(uri)));
 
     // Close-group request
     store.add(group.onDidRequestClose(() => this.removeGroup(group.id)));

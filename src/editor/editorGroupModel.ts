@@ -240,6 +240,57 @@ export class EditorGroupModel extends Disposable {
     return true;
   }
 
+  /**
+   * Close all editors except the one at the given index.
+   * VS Code: "Close Others" in tab context menu.
+   */
+  async closeOthers(indexOrEditor: number | IEditorInput, force = false): Promise<boolean> {
+    const keepIdx = typeof indexOrEditor === 'number' ? indexOrEditor : this.indexOf(indexOrEditor);
+    if (keepIdx < 0 || keepIdx >= this._editors.length) return false;
+    const keepInput = this._editors[keepIdx].input;
+
+    // Pin the kept editor so it doesn't get replaced
+    this.pin(keepIdx);
+
+    // Close from end to start, skipping the kept editor
+    for (let i = this._editors.length - 1; i >= 0; i--) {
+      if (this._editors[i].input === keepInput) continue;
+      const ok = await this.closeEditor(i, force);
+      if (!ok) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Close all editors to the right of the given index.
+   * VS Code: "Close to the Right" in tab context menu.
+   */
+  async closeToTheRight(indexOrEditor: number | IEditorInput, force = false): Promise<boolean> {
+    const idx = typeof indexOrEditor === 'number' ? indexOrEditor : this.indexOf(indexOrEditor);
+    if (idx < 0 || idx >= this._editors.length) return false;
+
+    // Close from the end backwards to the position right after idx
+    for (let i = this._editors.length - 1; i > idx; i--) {
+      const ok = await this.closeEditor(i, force);
+      if (!ok) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Close all editors that are not dirty (saved).
+   * VS Code: "Close Saved" in tab context menu.
+   */
+  async closeSaved(): Promise<boolean> {
+    for (let i = this._editors.length - 1; i >= 0; i--) {
+      if (!this._editors[i].input.isDirty) {
+        const ok = await this.closeEditor(i, false);
+        if (!ok) return false;
+      }
+    }
+    return true;
+  }
+
   // ─── Pin / Unpin ───────────────────────────────────────────────────────
 
   pin(indexOrEditor: number | IEditorInput): void {

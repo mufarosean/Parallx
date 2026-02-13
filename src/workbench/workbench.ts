@@ -2281,6 +2281,14 @@ export class Workbench extends Disposable {
       const previewInput = MarkdownPreviewInput.create(activeEditor);
       newGroup.openEditor(previewInput, { pinned: true });
     }));
+
+    // ── 5. Tab context menu: Reveal in Explorer ──
+    // When the user selects "Reveal in Explorer" from a tab context menu,
+    // execute the explorer.revealInExplorer command with the URI.
+    this._register(editorPart.onDidRequestRevealInExplorer((uri) => {
+      const cmdService = this._services.get(ICommandService) as CommandService;
+      cmdService?.executeCommand('explorer.revealInExplorer', uri.toString());
+    }));
   }
 
   /**
