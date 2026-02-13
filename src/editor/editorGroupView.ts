@@ -292,9 +292,10 @@ export class EditorGroupView extends Disposable implements IGridView {
   private _setupTabsWrapDrop(tabsWrap: HTMLElement): void {
     tabsWrap.addEventListener('dragover', (e) => {
       if (!e.dataTransfer?.types.includes(EDITOR_TAB_DRAG_TYPE)) return;
-      // Only handle if the direct target is the tabsWrap itself (gap area)
-      // or if the group is empty (no tabs to handle it)
-      if (e.target !== tabsWrap && this.model.count > 0) return;
+      // Only accept drops on the tabsWrap for empty groups (no tabs to target).
+      // For non-empty groups, the individual tab drop-before/drop-after handles
+      // all positions including "append to end" (right half of last tab).
+      if (this.model.count > 0) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       // Show insertion line at the very end
@@ -314,8 +315,8 @@ export class EditorGroupView extends Disposable implements IGridView {
       this._stopScrollOnDrag();
       const raw = e.dataTransfer?.getData(EDITOR_TAB_DRAG_TYPE);
       if (!raw) return;
-      // Only handle if the direct target is the tabsWrap (gap) or empty group
-      if (e.target !== tabsWrap && this.model.count > 0) return;
+      // Only handle drops for empty groups
+      if (this.model.count > 0) return;
       e.preventDefault();
       e.stopPropagation();
       try {

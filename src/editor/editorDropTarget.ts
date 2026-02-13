@@ -313,11 +313,26 @@ export class EditorDropTarget extends Disposable {
       }
     };
 
+    // Document-level dragover: dismiss the overlay when the cursor leaves
+    // the editor group container. This is more reliable than enter/leave
+    // counters which are notoriously flaky in HTML5 DnD.
+    const onDocumentDragOver = (e: DragEvent): void => {
+      if (!this._activeOverlay) return;
+      const rect = el.getBoundingClientRect();
+      const inside = e.clientX >= rect.left && e.clientX <= rect.right &&
+                     e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (!inside) {
+        this._clearOverlay();
+      }
+    };
+
     el.addEventListener('dragover', onDragOver, { capture: true });
+    document.addEventListener('dragover', onDocumentDragOver);
 
     this._register({
       dispose: () => {
         el.removeEventListener('dragover', onDragOver, { capture: true });
+        document.removeEventListener('dragover', onDocumentDragOver);
       },
     });
   }

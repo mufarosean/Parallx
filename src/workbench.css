@@ -487,6 +487,10 @@ html, body {
   flex: 1;
   position: relative;
   overflow: hidden;
+  /* Contain the z-index stacking of the drop overlay so it doesn't
+     visually bleed into adjacent parts (panel, auxiliary bar). */
+  z-index: 0;
+  isolation: isolate;
 }
 
 /* ── Editor Drop Overlay (drag-to-edge split creation) ── */

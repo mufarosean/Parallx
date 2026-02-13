@@ -757,6 +757,8 @@ export class ViewContainer extends Disposable implements IGridView {
       tab.classList.remove('tab-dragging');
     });
     tab.addEventListener('dragover', (e) => {
+      // Reject editor-tab drags — only accept view-tab reorder drags
+      if (e.dataTransfer?.types.includes('application/parallx-editor-tab')) return;
       e.preventDefault();
       tab.classList.add('tab-drop-target');
     });
