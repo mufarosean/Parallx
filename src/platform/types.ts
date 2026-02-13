@@ -23,33 +23,4 @@ export function createServiceIdentifier<T>(id: string): ServiceIdentifier<T> {
   return identifier;
 }
 
-/**
- * Constructor type that can be instantiated with `new`.
- */
-export type Constructor<T = any> = new (...args: any[]) => T;
 
-/**
- * A function that returns void, used for callbacks and handlers.
- */
-export type VoidFunction = () => void;
-
-/**
- * Represents a value that may be a promise.
- */
-export type MaybePromise<T> = T | Promise<T>;
-
-/**
- * Represents a value that may be undefined.
- */
-export type Optional<T> = T | undefined;
-
-/**
- * URI-like identifier for resources.
- */
-export interface URI {
-  readonly scheme: string;
-  readonly authority: string;
-  readonly path: string;
-  readonly query: string;
-  readonly fragment: string;
-}
