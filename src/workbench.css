@@ -824,12 +824,16 @@ html, body {
   width: 4px;
   min-width: 4px;
   cursor: col-resize;
+  margin-left: -2px;
+  margin-right: -2px;
 }
 
 .grid-sash-horizontal {
   height: 4px;
   min-height: 4px;
   cursor: row-resize;
+  margin-top: -2px;
+  margin-bottom: -2px;
 }
 
 /* ── Grid branch container ── */
