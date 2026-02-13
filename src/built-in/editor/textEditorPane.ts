@@ -14,6 +14,7 @@ import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
 import { FileEditorInput } from './fileEditorInput.js';
 import { UntitledEditorInput } from './untitledEditorInput.js';
+import { FindReplaceWidget } from '../../ui/findReplaceWidget.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -38,6 +39,7 @@ export class TextEditorPane extends EditorPane {
   private _wordWrap = false;
   private _inputListeners = new DisposableStore();
   private _suppressModelUpdate = false;
+  private _findWidget: FindReplaceWidget | undefined;
 
   private readonly _onDidToggleWordWrap = this._register(new Emitter<boolean>());
   readonly onDidToggleWordWrap: Event<boolean> = this._onDidToggleWordWrap.event;
@@ -101,6 +103,11 @@ export class TextEditorPane extends EditorPane {
     this._statusBar.appendChild(this._encodingItem);
     this._statusBar.appendChild(this._eolItem);
     container.appendChild(this._statusBar);
+
+    // Find & Replace widget (overlay — positioned absolute inside .editor-pane)
+    this._findWidget = this._register(new FindReplaceWidget(container, {
+      textarea: this._textarea,
+    }));
   }
 
   protected override async renderInput(
@@ -243,6 +250,33 @@ export class TextEditorPane extends EditorPane {
 
   get isWordWrapEnabled(): boolean {
     return this._wordWrap;
+  }
+
+  // ── Find & Replace ──
+
+  /** Show the find bar (Ctrl+F). If already visible, re-focus it. */
+  showFind(): void {
+    if (!this._findWidget) return;
+    if (this._findWidget.visible) {
+      this._findWidget.focusFind();
+    } else {
+      this._findWidget.show(false);
+    }
+  }
+
+  /** Show the find+replace bar (Ctrl+H). */
+  showReplace(): void {
+    if (!this._findWidget) return;
+    if (this._findWidget.visible) {
+      this._findWidget.focusReplace();
+    } else {
+      this._findWidget.show(true);
+    }
+  }
+
+  /** Get the find widget (for command wiring). */
+  get findWidget(): FindReplaceWidget | undefined {
+    return this._findWidget;
   }
 
   private _applyWordWrap(): void {

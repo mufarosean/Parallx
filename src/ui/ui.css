@@ -460,3 +460,163 @@
   margin: 4px 8px;
   background: var(--vscode-menu-separatorBackground);
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Find & Replace Widget
+   VS Code reference: src/vs/editor/contrib/find/browser/findWidget.css
+   ════════════════════════════════════════════════════════════════════════════ */
+
+.find-replace-widget {
+  position: absolute;
+  top: 0;
+  right: 18px;
+  z-index: 10;
+  display: flex;
+  flex-direction: row;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+  padding: 4px 4px 4px 2px;
+  min-width: 340px;
+  max-width: 480px;
+}
+
+.find-replace-toggle-btn {
+  display: flex;
+  align-items: flex-start;
+  padding: 4px 2px;
+  background: none;
+  border: none;
+  color: var(--vscode-editorWidget-foreground, #cccccc);
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.find-replace-toggle-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.find-replace-toggle-btn.active {
+  color: var(--vscode-inputOption-activeForeground, #ffffff);
+}
+
+.find-replace-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.find-replace-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.find-replace-input {
+  flex: 1;
+  min-width: 100px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--vscode-inputOption-activeBackground, #007acc00);
+  border-color: var(--vscode-input-border, #3c3c3c);
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+
+.find-replace-input:focus {
+  border-color: var(--vscode-focusBorder, #007acc);
+}
+
+.find-replace-input::placeholder {
+  color: var(--vscode-input-placeholderForeground, #a0a0a0);
+}
+
+.find-replace-options {
+  display: flex;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.find-replace-option-btn {
+  width: 26px;
+  height: 24px;
+  font-size: 12px;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--vscode-editorWidget-foreground, #cccccc);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+}
+
+.find-replace-option-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.find-replace-option-btn.active {
+  background: var(--vscode-inputOption-activeBackground, #007acc66);
+  color: var(--vscode-inputOption-activeForeground, #ffffff);
+  border-color: var(--vscode-inputOption-activeBorder, #007acc);
+}
+
+.find-replace-match-count {
+  font-size: 11px;
+  color: var(--vscode-editorWidget-foreground, #cccccc);
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: center;
+  flex-shrink: 0;
+  padding: 0 4px;
+}
+
+.find-replace-match-count--no-results {
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+.find-replace-nav {
+  display: flex;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.find-replace-action-btn {
+  width: 26px;
+  height: 24px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--vscode-editorWidget-foreground, #cccccc);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+}
+
+.find-replace-action-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.find-replace-action-btn:active {
+  background: var(--vscode-toolbar-activeBackground, rgba(99, 102, 103, 0.4));
+}
+
+.find-replace-row--replace {
+  padding-left: 0;
+}

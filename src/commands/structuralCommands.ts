@@ -18,6 +18,7 @@ import { GroupDirection } from '../editor/editorTypes.js';
 import { URI } from '../platform/uri.js';
 import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
 import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
+import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
 
 // ─── Workbench type (avoids circular import) ────────────────────────────────
 // Command handlers access workbench via `ctx.workbench` cast to this shape.
@@ -873,10 +874,12 @@ const editFind: CommandDescriptor = {
   title: 'Find',
   category: 'Edit',
   keybinding: 'Ctrl+F',
-  handler: () => {
-    // Trigger browser-native find (works on textarea)
-    // Note: window.find() is deprecated but still functional in Electron
-    (globalThis as any).parallxElectron?.webContents?.find?.() ?? (window as any).find?.();
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    const pane = editorGroupService?.activeGroup?.activePane;
+    if (pane instanceof TextEditorPane) {
+      pane.showFind();
+    }
   },
 };
 
@@ -885,9 +888,12 @@ const editReplace: CommandDescriptor = {
   title: 'Replace',
   category: 'Edit',
   keybinding: 'Ctrl+H',
-  handler: () => {
-    // Browser-native find doesn't support replace — stub for M4
-    console.log('[Command] edit.replace — deferred to future milestone');
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    const pane = editorGroupService?.activeGroup?.activePane;
+    if (pane instanceof TextEditorPane) {
+      pane.showReplace();
+    }
   },
 };
 

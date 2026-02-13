@@ -55,6 +55,9 @@ export class EditorGroupView extends Disposable implements IGridView {
   private _activePane: EditorPane | undefined;
   /** Sequence counter for "latest-wins" active editor rendering. */
   private _showActiveEditorSeq = 0;
+
+  /** The currently active editor pane (if any). */
+  get activePane(): EditorPane | undefined { return this._activePane; }
   private readonly _paneDisposables = this._register(new DisposableStore());
 
   private _width = 0;
