@@ -993,6 +993,12 @@ export class Workbench extends Disposable {
     this._commandPalette = new QuickAccessWidget(cmdService, this._container);
     this._register(this._commandPalette);
 
+    // Wire editor group service for Go to Line provider
+    const editorGroupSvc = this._services.get(IEditorGroupService);
+    if (editorGroupSvc && this._commandPalette) {
+      this._commandPalette.setEditorGroupService(editorGroupSvc as any);
+    }
+
     console.log(
       '[Workbench] Registered %d built-in commands, command palette ready',
       cmdService.getCommands().size,
@@ -1846,11 +1852,6 @@ export class Workbench extends Disposable {
     this._register(editorService);
     this._services.registerInstance(IEditorGroupService, editorGroupService);
     this._services.registerInstance(IEditorService, editorService);
-
-    // Wire editor group service into Quick Access for Go to Line provider
-    if (this._commandPalette) {
-      this._commandPalette.setEditorGroupService(editorGroupService);
-    }
 
     // Update context key when group count changes
     editorGroupService.onDidGroupCountChange((count) => {
