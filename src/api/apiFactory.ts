@@ -9,6 +9,7 @@
 // for cleanup.
 
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import {
   ICommandService,
@@ -29,6 +30,7 @@ import { ViewsBridge } from './bridges/viewsBridge.js';
 import { WindowBridge } from './bridges/windowBridge.js';
 import { ContextBridge } from './bridges/contextBridge.js';
 import { WorkspaceBridge } from './bridges/workspaceBridge.js';
+import { FileSystemBridge } from './bridges/fileSystemBridge.js';
 import { EditorsBridge } from './bridges/editorsBridge.js';
 import type { IThemeServiceShape } from '../services/serviceTypes.js';
 import { ThemeType } from '../theme/colorRegistry.js';
@@ -103,6 +105,16 @@ export interface ParallxApiObject {
     readonly onDidChangeWorkspaceFolders: (listener: (e: { added: readonly { uri: string; name: string; index: number }[]; removed: readonly { uri: string; name: string; index: number }[] }) => void) => IDisposable;
     readonly onDidFilesChange: (listener: (events: { type: number; uri: string }[]) => void) => IDisposable;
     readonly name: string | undefined;
+    readonly fs: {
+      readFile(uri: string): Promise<{ content: string; encoding: string }>;
+      writeFile(uri: string, content: string): Promise<void>;
+      stat(uri: string): Promise<{ type: number; size: number; mtime: number }>;
+      readdir(uri: string): Promise<{ name: string; type: number }[]>;
+      exists(uri: string): Promise<boolean>;
+      rename(source: string, target: string): Promise<void>;
+      delete(uri: string, options?: { recursive?: boolean; useTrash?: boolean }): Promise<void>;
+      mkdir(uri: string): Promise<void>;
+    } | undefined;
   };
   readonly editors: {
     registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable }): IDisposable;
@@ -181,6 +193,15 @@ export function createToolApi(
     : undefined;
 
   const workspaceBridge = new WorkspaceBridge(toolId, subscriptions, deps.configurationService, workspaceService as any, fileService as any);
+
+  // FileSystemBridge — scoped filesystem access for workspace.fs
+  const fileSystemBridge = (fileService && workspaceService)
+    ? new FileSystemBridge(
+        toolId,
+        fileService as any,
+        () => (workspaceService as any).folders.map((f: { uri: import('../platform/uri.js').URI }) => f.uri),
+      )
+    : undefined;
 
   const editorsBridge = new EditorsBridge(toolId, editorService, subscriptions);
 
@@ -310,6 +331,36 @@ export function createToolApi(
       onDidChangeWorkspaceFolders: workspaceBridge.onDidChangeWorkspaceFolders,
       onDidFilesChange: workspaceBridge.onDidFilesChange,
       get name() { return workspaceBridge.name; },
+      get fs() {
+        if (!fileSystemBridge) return undefined;
+        return {
+          readFile: async (uriStr: string) => {
+            const content = await fileSystemBridge.readFile(URI.parse(uriStr));
+            return { content, encoding: 'utf-8' };
+          },
+          writeFile: async (uriStr: string, content: string) => {
+            await fileSystemBridge.writeFile(URI.parse(uriStr), content);
+          },
+          stat: async (uriStr: string) => {
+            const s = await fileSystemBridge.stat(URI.parse(uriStr));
+            return { type: s.type as number, size: s.size, mtime: s.mtime };
+          },
+          readdir: async (uriStr: string) => {
+            const entries = await fileSystemBridge.readdir(URI.parse(uriStr));
+            return entries.map(e => ({ name: e.name, type: e.type as number }));
+          },
+          exists: (uriStr: string) => fileSystemBridge.exists(URI.parse(uriStr)),
+          rename: async (src: string, tgt: string) => {
+            await fileSystemBridge.rename(URI.parse(src), URI.parse(tgt));
+          },
+          delete: async (uriStr: string) => {
+            await fileSystemBridge.delete(URI.parse(uriStr));
+          },
+          mkdir: async (uriStr: string) => {
+            await fileSystemBridge.createDirectory(URI.parse(uriStr));
+          },
+        };
+      },
     }),
 
     editors: Object.freeze({
@@ -345,6 +396,7 @@ export function createToolApi(
     windowBridge.dispose();
     contextBridge?.dispose();
     workspaceBridge.dispose();
+    fileSystemBridge?.dispose();
     editorsBridge.dispose();
 
     // Dispose all tracked subscriptions
