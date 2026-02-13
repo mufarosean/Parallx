@@ -306,6 +306,11 @@ ipcMain.handle('fs:delete', async (_event, filePath, options) => {
   }
 });
 
+// ── shell:showItemInFolder ──
+ipcMain.handle('shell:showItemInFolder', async (_event, filePath) => {
+  shell.showItemInFolder(filePath);
+});
+
 // ── fs:mkdir ──
 ipcMain.handle('fs:mkdir', async (_event, dirPath) => {
   try {

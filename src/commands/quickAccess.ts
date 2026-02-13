@@ -49,28 +49,46 @@ const EXCLUDED_DIRS = new Set([
 
 // ─── Fuzzy match ─────────────────────────────────────────────────────────────
 
+/** Result of a fuzzy match: score (lower is better) and matched character indices. */
+interface FuzzyMatchResult {
+  score: number;
+  /** Indices in the target string that matched the query characters. */
+  matches: number[];
+}
+
 /**
  * Simple fuzzy match: every character in the query must appear in order
  * within the target (case-insensitive). Returns a score (lower is better)
- * or -1 if no match.
+ * and the matched character indices, or null if no match.
  */
-function fuzzyScore(query: string, target: string): number {
+function fuzzyMatch(query: string, target: string): FuzzyMatchResult | null {
   const q = query.toLowerCase();
   const t = target.toLowerCase();
   let qi = 0;
   let score = 0;
   let lastMatchIndex = -1;
+  const matches: number[] = [];
 
   for (let ti = 0; ti < t.length && qi < q.length; ti++) {
     if (t[ti] === q[qi]) {
       const gap = lastMatchIndex >= 0 ? ti - lastMatchIndex - 1 : ti;
       score += gap;
       lastMatchIndex = ti;
+      matches.push(ti);
       qi++;
     }
   }
 
-  return qi === q.length ? score : -1;
+  return qi === q.length ? { score, matches } : null;
+}
+
+/**
+ * Backward-compatible score-only wrapper. Returns score (lower is better)
+ * or -1 if no match.
+ */
+function fuzzyScore(query: string, target: string): number {
+  const result = fuzzyMatch(query, target);
+  return result ? result.score : -1;
 }
 
 // ─── Quick‑access item types ─────────────────────────────────────────────────
@@ -90,6 +108,10 @@ interface QuickAccessItem {
   group?: string;
   /** Fuzzy score for sorting. */
   score: number;
+  /** Indices of matched characters in the label (for highlight rendering). */
+  labelMatches?: number[];
+  /** Indices of matched characters in the detail (for highlight rendering). */
+  detailMatches?: number[];
   /** Callback when selected. */
   accept: () => void;
 }
@@ -184,8 +206,18 @@ class CommandsProvider implements IQuickAccessProvider {
       if (menuContribution && !menuContribution.isCommandVisibleInPalette(desc.id)) continue;
 
       const searchText = desc.category ? `${desc.category}: ${desc.title}` : desc.title;
-      const score = query.length > 0 ? fuzzyScore(query, searchText) : 0;
-      if (query.length > 0 && score < 0) continue;
+      let score = 0;
+      let labelMatches: number[] | undefined;
+      if (query.length > 0) {
+        const result = fuzzyMatch(query, searchText);
+        if (!result) continue;
+        score = result.score;
+        // Offset matches into the label portion (skip "Category: " prefix)
+        const labelOffset = desc.category ? desc.category.length + 2 : 0;
+        labelMatches = result.matches
+          .filter(i => i >= labelOffset)
+          .map(i => i - labelOffset);
+      }
 
       const keybinding = desc.keybinding
         ?? keybindingContribution?.getKeybindingForCommand(desc.id)?.key;
@@ -197,6 +229,7 @@ class CommandsProvider implements IQuickAccessProvider {
         keybinding,
         isRecent: recentSet.has(desc.id),
         score,
+        labelMatches,
         accept: () => this._executeCommand(desc.id),
       });
     }
@@ -291,11 +324,24 @@ class GeneralProvider implements IQuickAccessProvider {
         const openFn = this._openFileEditor;
 
         // Score and collect
-        const scored: { entry: FilePickerEntry; score: number; isRecent: boolean }[] = [];
+        const scored: { entry: FilePickerEntry; score: number; isRecent: boolean; labelMatches?: number[]; detailMatches?: number[] }[] = [];
         for (const file of files) {
-          const score = query.length > 0 ? fuzzyScore(query, file.name) : 0;
-          if (query.length > 0 && score < 0) continue;
-          scored.push({ entry: file, score, isRecent: recentSet.has(file.uri) });
+          if (query.length > 0) {
+            // Match against filename first, then relative path
+            const nameResult = fuzzyMatch(query, file.name);
+            if (nameResult) {
+              scored.push({ entry: file, score: nameResult.score, isRecent: recentSet.has(file.uri), labelMatches: nameResult.matches });
+              continue;
+            }
+            const pathResult = fuzzyMatch(query, file.relativePath);
+            if (pathResult) {
+              scored.push({ entry: file, score: pathResult.score + 1, isRecent: recentSet.has(file.uri), detailMatches: pathResult.matches });
+              continue;
+            }
+            // No match
+            continue;
+          }
+          scored.push({ entry: file, score: 0, isRecent: recentSet.has(file.uri) });
         }
 
         // Sort: recent first (by recency order), then score, then alpha
@@ -311,7 +357,7 @@ class GeneralProvider implements IQuickAccessProvider {
 
         const limit = Math.min(scored.length, MAX_FILE_RESULTS);
         for (let i = 0; i < limit; i++) {
-          const { entry, score, isRecent } = scored[i];
+          const { entry, score, isRecent, labelMatches, detailMatches } = scored[i];
           items.push({
             id: `file:${entry.uri}`,
             label: entry.name,
@@ -319,6 +365,8 @@ class GeneralProvider implements IQuickAccessProvider {
             group: 'files',
             score: isRecent ? -1 : score,
             isRecent,
+            labelMatches,
+            detailMatches,
             accept: () => {
               this.pushRecentFile(entry.uri);
               openFn?.(entry.uri);
@@ -503,6 +551,48 @@ class WorkspaceFileScanner {
   dispose(): void {
     this._onDidScan.dispose();
     this._version++;
+  }
+}
+
+// ─── Highlight helper ────────────────────────────────────────────────────────
+
+/**
+ * Append text to a container, wrapping matched character indices in
+ * `<span class="highlight">` elements. Mirrors VS Code's HighlightedLabel
+ * rendering in the quick pick.
+ *
+ * @param container The element to append text/highlight spans into.
+ * @param text The full text string.
+ * @param matches Optional sorted array of character indices to highlight.
+ */
+function _appendHighlighted(
+  container: HTMLElement,
+  text: string,
+  matches?: number[],
+): void {
+  if (!matches || matches.length === 0) {
+    container.appendChild(document.createTextNode(text));
+    return;
+  }
+
+  const matchSet = new Set(matches);
+  let pos = 0;
+
+  while (pos < text.length) {
+    if (matchSet.has(pos)) {
+      // Collect consecutive highlighted chars
+      const start = pos;
+      while (pos < text.length && matchSet.has(pos)) pos++;
+      const span = document.createElement('span');
+      span.className = 'highlight';
+      span.textContent = text.slice(start, pos);
+      container.appendChild(span);
+    } else {
+      // Collect consecutive non-highlighted chars
+      const start = pos;
+      while (pos < text.length && !matchSet.has(pos)) pos++;
+      container.appendChild(document.createTextNode(text.slice(start, pos)));
+    }
   }
 }
 
@@ -919,7 +1009,7 @@ export class QuickAccessWidget extends Disposable {
         cat.textContent = `${item.category}: `;
         labelEl.appendChild(cat);
       }
-      labelEl.appendChild(document.createTextNode(item.label));
+      _appendHighlighted(labelEl, item.label, item.labelMatches);
 
       // "recently used" badge (command mode)
       if (item.isRecent && (this._input?.value ?? '').trim() === COMMAND_PREFIX) {
@@ -931,11 +1021,11 @@ export class QuickAccessWidget extends Disposable {
 
       row.appendChild(labelEl);
 
-      // Detail text (general mode — e.g. "2h ago")
+      // Detail text (general mode — e.g. relative path or "2h ago")
       if (item.detail) {
         const detailEl = document.createElement('span');
         detailEl.className = 'command-palette-item-detail';
-        detailEl.textContent = item.detail;
+        _appendHighlighted(detailEl, item.detail, item.detailMatches);
         row.appendChild(detailEl);
       }
 

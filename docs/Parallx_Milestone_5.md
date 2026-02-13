@@ -49,7 +49,7 @@ This milestone closes that gap by building the **theming infrastructure layer** 
 
 ### Conceptual Scope
 
-**Included**
+**Originally Planned (Capabilities 1–5)**
 - Color token registry (`colorRegistry.ts`) — centralized definition of all workbench color keys with default values per theme type (dark, light, high-contrast)
 - Theme data model — typed structure for theme JSON files (colors map, theme type, metadata)
 - Theme service — loads theme JSON, resolves all registered colors, injects as CSS custom properties on `document.body`
@@ -61,7 +61,15 @@ This milestone closes that gap by building the **theming infrastructure layer** 
 - Tool API extension: `parallx.window.activeColorTheme`, `parallx.window.onDidChangeActiveColorTheme`
 - Theme persistence — remember selected theme across sessions via workspace storage
 
-**Excluded**
+**Delivered Beyond Original Scope (Capabilities 6–11)**
+- Visual polish and VS Code pixel parity — SVG codicons, Dark Modern color corrections, sash gap elimination, active-tab continuity, titlebar border, Open Editors cleanup
+- Editor splitting and group management — proportional split sizing, group merge/navigation APIs, Open Editors group headers, empty group auto-close
+- Format readers and Markdown live preview — EditorResolverService, MarkdownEditorPane with live preview, ImageEditorPane with zoom, PdfEditorPane
+- Editor tab DnD overhaul — precise insertion targeting, thin line indicators, cross-group resolution, scroll-on-drag, editor area restriction
+- Breadcrumbs navigation bar — reusable BreadcrumbsWidget, BreadcrumbsBar with workspace root detection, keyboard navigation
+- Tab context menu — Close/Close Others/Close Saved/Close All, Copy Path/Copy Relative Path, Reveal in Explorer
+
+**Excluded (Deferred)**
 - Theme switching UI / settings panel (deferred — M5 ships one theme, the infrastructure supports switching programmatically)
 - Light theme or high-contrast theme JSON files (deferred — easy to add once infrastructure exists)
 - Token/syntax coloring (not applicable — Parallx is not a code editor)
@@ -618,28 +626,321 @@ Extend the `parallx.*` tool API to expose the active color theme and theme chang
 
 ---
 
+## Capability 6 — Visual Polish and VS Code Pixel Parity *(Beyond Original Scope)*
+
+### Capability Description
+After the theming infrastructure landed, a series of targeted visual-polish fixes were made to close the remaining pixel-level gaps between Parallx and VS Code's Dark Modern appearance. These fixes span SVG icon replacement, border alignment, sash gap elimination, active-tab continuity, and titlebar refinement.
+
+### Goals
+- Replace all emoji-based icons with proper SVG codicons matching VS Code's icon set
+- Eliminate visual gaps at pane junctions (sash handles consuming flex space)
+- Achieve seamless active-tab-to-editor connection (no visible separator line)
+- Ensure titlebar border matches VS Code
+
+### Implementation Summary
+
+**Task 6.1 — SVG Codicon Icons** ✅
+- Activity bar: replaced emoji icons (📁, 🔍, etc.) with VS Code codicon-style SVGs
+- `ActivityBarIconDescriptor`: added `isSvg` flag for SVG icon rendering
+- CSS: `activity-bar-icon-label` now flex-centered with 24×24 SVG sizing
+- Tools icon: emoji puzzle piece → SVG codicon via `resolveCodiconSvg()` map supporting contributed containers (`codicon-extensions`, etc.)
+- **Files:** `src/parts/activityBarPart.ts`, `src/workbench/workbench.ts`, `src/workbench.css`
+- **Commits:** `91ae839`, `a822a6d`
+
+**Task 6.2 — Dark Modern Color Corrections** ✅
+- `dark-modern.json`: replaced stale Dark+ values with actual VS Code Dark Modern colors (e.g., statusBar `#007acc` → `#181818`, sidebar `#252526` → `#181818`, borders `#3c3c3c` → `#2b2b2b`)
+- `workbenchColors.ts`: updated all dark-theme defaults to match Dark Modern
+- **Files:** `src/theme/themes/dark-modern.json`, `src/theme/workbenchColors.ts`
+- **Commit:** `91ae839`
+
+**Task 6.3 — Border and Gap Alignment** ✅
+- Sidebar/panel margins zeroed to eliminate junction gaps
+- Grid sashes (4 px resize handles): negative margins (−2 px each side) so sashes overlap adjacent panes and consume 0 net flex space while remaining fully functional for drag-resize
+- **Files:** `src/workbench.css`
+- **Commits:** `a822a6d`, `c94d7bf`
+
+**Task 6.4 — Active Tab Seamless Connection** ✅
+- Tab bar: `align-items: stretch` (tabs fill full height, no background gap)
+- Removed tab bar `border-bottom` entirely
+- Active tab: blue top accent via `border-top` (`tab.activeBorderTop`)
+- No visible line between active tab and editor content — matches VS Code exactly
+- **Files:** `src/workbench.css`
+- **Commit:** `fe2d1c4`
+
+**Task 6.5 — Titlebar Border** ✅
+- Added `border-bottom` to titlebar matching VS Code's `titleBar.border` token
+- **Files:** `src/workbench.css`
+- **Commit:** `c1581b8`
+
+**Task 6.6 — Open Editors Cleanup** ✅
+- Emoji file icons → minimal text glyphs (TS, JS, `{}`, etc.)
+- Dirty dot: CSS circle instead of text emoji
+- 22 px row height, removed bold on active, smaller close button
+- **Files:** `src/built-in/explorer/explorer.css`, `src/built-in/explorer/main.ts`
+- **Commit:** `a822a6d`
+
+---
+
+## Capability 7 — Editor Splitting and Group Management *(Beyond Original Scope)*
+
+### Capability Description
+Align editor splitting, group management, and Open Editors rendering with VS Code's architecture. Fixes proportional splitting, adds group merge/navigation, and introduces group headers in the Explorer's Open Editors section.
+
+### Goals
+- Split size uses source view's actual size, not container size
+- New split copies the active editor (VS Code parity: both sides show the same file)
+- Group merge, directional navigation, and alias APIs
+- Open Editors shows group headers when multiple groups exist
+- Empty groups auto-close when their last editor is closed
+
+### Implementation Summary
+
+**Task 7.1 — Editor Splitting Logic Alignment** ✅
+- Fix split size calculation: use source view's size, not container size (was giving new groups half the entire container)
+- Copy active editor from source group into new split (both sides show same file)
+- Added `mergeGroup()`: moves editors from source to target, removes empty source
+- Added `addGroup()` as VS Code-style alias for `splitGroup()`
+- Added `findGroup()` for directional group navigation
+- Improved `removeGroup()` to merge editors into nearest group before removal
+- Fixed grid `splitView` same-orientation case: clamp new view size so it never exceeds the space the existing view can give
+- **Files:** `src/layout/grid.ts`, `src/parts/editorPart.ts`, `src/services/editorGroupService.ts`, `src/services/serviceTypes.ts`
+- **Commit:** `d1b6a06`
+
+**Task 7.2 — Editor Toolbar Cleanup** ✅
+- Removed redundant close-group button (each tab already has its own close button)
+- Replaced text split icon with SVG split-editor codicon
+- Updated toolbar button CSS for flex-centered SVG layout
+- **Files:** `src/editor/editorGroupView.ts`, `src/workbench.css`
+- **Commit:** `d3052c4`
+
+**Task 7.3 — Open Editors Group Headers** ✅
+- Group editors by `groupId` in `renderOpenEditors()`
+- Show "Group N" headers (bold, uppercase, 11 px) when 2+ groups exist
+- Indent editor items under group headers for visual hierarchy
+- Single group keeps flat list (unchanged behavior)
+- **Files:** `src/built-in/explorer/explorer.css`, `src/built-in/explorer/main.ts`
+- **Commit:** `01898c6`
+
+**Task 7.4 — Auto-Close Empty Editor Groups** ✅
+- Match VS Code's `workbench.editor.closeEmptyGroups` default (`true`)
+- When `EditorClose` fires and group becomes empty with other groups remaining, remove via `queueMicrotask`
+- Remaining groups resize automatically to fill freed space
+- Last group is never auto-closed (at least one group always alive)
+- **Files:** `src/parts/editorPart.ts`
+- **Commit:** `500c95a`
+
+---
+
+## Capability 8 — Format Readers and Markdown Live Preview *(Beyond Original Scope)*
+
+### Capability Description
+Introduce an editor resolver service that maps file extensions to specialized read-only editor panes, plus a live-updating Markdown preview pane. This enables Parallx to open images, PDFs, and Markdown files with native renderers instead of raw text, matching VS Code's format reader behavior.
+
+### Goals
+- EditorResolverService: priority-sorted registry mapping file extensions to editor types
+- Markdown opens in text editor by default; `Open Preview to the Side` (`Ctrl+K V`) shows live-updating rendered preview in a split pane
+- Image files render with checkerboard background, zoom, and info bar
+- PDF files render via Chromium's built-in embed element
+- Clean separation between text editing and read-only preview
+
+### Implementation Summary
+
+**Task 8.1 — EditorResolverService** ✅
+- Priority-sorted registry mapping file extensions to editor types
+- Resolves which editor pane to instantiate for a given `EditorInput`
+- **Files:** `src/services/editorResolverService.ts`
+- **Commit:** `577969b`
+
+**Task 8.2 — Markdown Editor Pane and Preview** ✅
+- `MarkdownEditorPane`: lightweight MD-to-HTML renderer supporting headings, lists, tables, code blocks, links, images, and blockquotes
+- `MarkdownPreviewInput`: read-only input wrapping `FileEditorInput` for live preview
+- Preview toolbar button appears in editor group toolbar for `.md` files
+- `Ctrl+K V` command opens preview to the side
+- Fixed infinite loop in markdown parser (blockquote handler mismatch)
+- **Files:** `src/built-in/editor/markdownEditorPane.ts`, `src/built-in/editor/markdownEditorPane.css`, `src/built-in/editor/markdownPreviewInput.ts`, `src/commands/structuralCommands.ts`, `src/editor/editorGroupView.ts`
+- **Commit:** `577969b`
+
+**Task 8.3 — Image Editor Pane** ✅
+- Image viewer with checkerboard background for transparent images
+- `Ctrl+scroll` zoom support
+- Info bar showing image dimensions and file size
+- **Files:** `src/built-in/editor/imageEditorPane.ts`, `src/built-in/editor/imageEditorPane.css`, `src/built-in/editor/imageEditorInput.ts`
+- **Commit:** `577969b`
+
+**Task 8.4 — PDF Editor Pane** ✅
+- PDF viewer using Chromium's built-in `<embed>` element
+- CSP updated for `data:` URIs (images, PDFs)
+- **Files:** `src/built-in/editor/pdfEditorPane.ts`, `src/built-in/editor/pdfEditorPane.css`, `src/built-in/editor/pdfEditorInput.ts`, `index.html`
+- **Commit:** `577969b`
+
+---
+
+## Capability 9 — Editor Tab Drag-and-Drop Overhaul *(Beyond Original Scope)*
+
+### Capability Description
+Overhaul the editor tab DnD system to achieve VS Code parity across insertion targeting, visual feedback, cross-group drops, scroll-on-drag, and area restriction. Fixes 8 of 10 identified VS Code DnD parity gaps.
+
+### Goals
+- Left/right half detection on tabs for precise insertion position
+- Thin insertion-line indicator (CSS `::before`/`::after`) between tabs instead of whole-tab highlight
+- Cross-group drops resolved by `inputId` instead of stale `editorIndex`
+- Tab overflow scrollable with scroll-on-drag near edges
+- Editor drop overlay switches between groups during drag
+- Drops restricted to the editor area only — sidebar/panel reject editor-tab drags
+
+### Implementation Summary
+
+**Task 9.1 — VS Code Parity DnD** ✅
+- Left/right half detection on tabs for precise insertion position
+- Thin insertion line indicator between tabs matching VS Code's visual feedback
+- Tab bar wrapper accepts drops in gap area (append to end)
+- Custom drag image showing editor label via `setDragImage()`
+- Tab overflow scrollable (`overflow-x: auto`) with scroll-on-drag near edges
+- Cross-group drop resolves by `inputId` instead of stale `editorIndex`
+- `EditorDropTarget` switches overlay between groups during drag
+- Empty groups accept drops on their tab bar area
+- All drop indicators cleared on `dragend` for clean state
+- **Files:** `src/editor/editorDropTarget.ts`, `src/editor/editorGroupView.ts`, `src/parts/editorPart.ts`, `src/workbench.css`
+- **Commit:** `a7b6e41`
+
+**Task 9.2 — Editor Area Restriction** ✅
+- Tab drops only snap to actual tabs (before/after), not gap area
+- Editor drop overlay dismisses when cursor leaves editor container (document-level `dragover` bounds check)
+- View container tabs reject editor-tab drags (MIME type guard)
+- Editor group container uses CSS isolation to contain overlay `z-index`
+- Removed debug logging and DevTools auto-open
+- **Files:** `src/editor/editorDropTarget.ts`, `src/editor/editorGroupView.ts`, `src/views/viewContainer.ts`, `src/workbench.css`
+- **Commit:** `1204d46`
+
+---
+
+## Capability 10 — Breadcrumbs Navigation Bar *(Beyond Original Scope)*
+
+### Capability Description
+Add a breadcrumbs navigation bar below the editor tab bar, replicating VS Code's breadcrumb trail that shows the file path from workspace root to the active file. Includes a reusable `BreadcrumbsWidget` UI component and a feature-level `BreadcrumbsBar` controller.
+
+### Goals
+- Path segments from workspace root to active file, clickable and keyboard-navigable
+- 22 px fixed height matching VS Code's `BreadcrumbsControl.HEIGHT`
+- Chevron separators, folder icons, focus/selection states
+- Auto-hides when editor has no URI (e.g., welcome tab)
+- Horizontal scrollbar for long paths
+
+### Implementation Summary
+
+**Task 10.1 — BreadcrumbsWidget** ✅
+- Reusable UI component with items, separators, keyboard navigation, focus/select tracking, and horizontal scrollbar
+- Mirrors VS Code's `breadcrumbsWidget.ts` architecture
+- **Files:** `src/ui/breadcrumbs.ts`, `src/ui/index.ts`
+- **Commit:** `db393cc`
+
+**Task 10.2 — BreadcrumbsBar** ✅
+- Feature-level controller building path segments from file URI to workspace root
+- 22 px fixed height matching VS Code's `BreadcrumbsControl.HEIGHT`
+- Workspace folder wiring through `editorPart` → `workbench` for longest-prefix workspace root detection
+- **Files:** `src/editor/breadcrumbsBar.ts`, `src/parts/editorPart.ts`, `src/workbench/workbench.ts`
+- **Commit:** `db393cc`
+
+**Task 10.3 — Editor Group Integration** ✅
+- Breadcrumbs bar inserted between tab bar and pane container in `editorGroupView`
+- Updates on active editor change, auto-hides when editor has no URI
+- Full CSS styling with focus/selection states, chevron separators, folder icons, and thin scrollbar
+- **Files:** `src/editor/editorGroupView.ts`, `src/workbench.css`
+- **Commit:** `db393cc`
+
+---
+
+## Capability 11 — Tab Context Menu *(Beyond Original Scope)*
+
+### Capability Description
+Add a right-click context menu on editor tabs matching VS Code's `MenuId.EditorTitleContext` layout, with close actions, clipboard operations, and Explorer reveal.
+
+### Goals
+- Grouped context menu actions matching VS Code's layout
+- Bulk close operations: Close Others, Close to the Right, Close Saved, Close All
+- Clipboard operations: Copy Path, Copy Relative Path
+- Reveal in Explorer integration
+- Disabled states matching VS Code (e.g., Close Others disabled on single tab)
+
+### Implementation Summary
+
+**Task 11.1 — EditorGroupModel Bulk Close Methods** ✅
+- Added `closeOthers()`, `closeToTheRight()`, `closeSaved()` to `EditorGroupModel`
+- Matches VS Code's tab context menu command set
+- **Files:** `src/editor/editorGroupModel.ts`
+- **Commit:** `ae77932`
+
+**Task 11.2 — Tab Context Menu UI** ✅
+- `EditorGroupView._showTabContextMenu()` builds `IContextMenuItem[]` with grouped actions:
+  - **Close group:** Close, Close Others, Close to the Right, Close Saved, Close All
+  - **Clipboard group:** Copy Path, Copy Relative Path (via `navigator.clipboard`)
+  - **Explorer group:** Reveal in Explorer (fires command via `editorPart` event)
+- Disabled states: Close Others disabled when single tab, Close to the Right disabled for last tab
+- Groups match VS Code's `MenuId.EditorTitleContext` layout
+- **Files:** `src/editor/editorGroupView.ts`, `src/parts/editorPart.ts`, `src/workbench/workbench.ts`
+- **Commit:** `ae77932`
+
+---
+
 ## Implementation Order
 
-The capabilities must be implemented in this order due to dependencies:
+The capabilities were implemented in this order:
 
 ```
-Capability 1 (Color Registry)
+Capability 1 (Color Registry)                        ← bafc2f1
     ↓
-Capability 2 (Theme Data + Dark Modern JSON)
+Capability 2 (Theme Data + Dark Modern JSON)          ← bafc2f1
     ↓
-Capability 3 (Theme Service)
+Capability 3 (Theme Service)                          ← bafc2f1
     ↓
-Capability 4 (CSS Migration)  ←  Can partially overlap with Cap 3
+Capability 4 (CSS Migration)                          ← bafc2f1
     ↓
-Capability 5 (Tool API Extension)
+Capability 5 (Tool API Extension)                     ← bafc2f1
+    ↓
+Capability 6 (Visual Polish + Pixel Parity)           ← 91ae839, a822a6d, c94d7bf, fe2d1c4, c1581b8
+    ↓
+Capability 7 (Editor Splitting + Group Management)    ← d3052c4, d1b6a06, 01898c6, 500c95a
+    ↓
+Capability 8 (Format Readers + Markdown Preview)      ← 577969b
+    ↓
+Capability 9 (DnD Overhaul)                           ← a7b6e41, 1204d46
+    ↓
+Capability 10 (Breadcrumbs Navigation Bar)            ← db393cc
+    ↓
+Capability 11 (Tab Context Menu)                      ← ae77932
 ```
 
-Each capability is independently committable — the app works after each commit (though colors are still hardcoded until Capability 4 completes).
+Capabilities 1–5 were the originally planned scope. Capabilities 6–11 emerged during implementation as natural extensions to close remaining VS Code parity gaps revealed by visual testing.
+
+---
+
+## Commit History
+
+| # | SHA | Type | Summary |
+|---|-----|------|---------|
+| 1 | `bafc2f1` | feat | Theming infrastructure — color registry, theme service, CSS migration, tool API (Caps 1–5) |
+| 2 | `91ae839` | fix | Correct Dark Modern colors + replace emoji icons with SVG codicons |
+| 3 | `a822a6d` | fix | SVG tools icon, border alignment, Open Editors cleanup |
+| 4 | `c94d7bf` | fix | Eliminate sash gap between panes with negative margins |
+| 5 | `fe2d1c4` | fix | Active tab seamlessly connects to editor, VS Code parity |
+| 6 | `c1581b8` | fix | Add border-bottom to titlebar |
+| 7 | `d3052c4` | fix | Clean up editor toolbar: remove redundant close button, SVG split icon |
+| 8 | `d1b6a06` | feat | Align editor splitting logic with VS Code architecture |
+| 9 | `01898c6` | fix | Add GROUP headers to Open Editors when multiple groups exist |
+| 10 | `500c95a` | fix | Auto-close empty groups when last editor is closed |
+| 11 | `577969b` | feat | Format readers + markdown live preview |
+| 12 | `a7b6e41` | fix | VS Code parity for editor tab drag-and-drop |
+| 13 | `1204d46` | fix | Restrict editor tab DnD to editor area only |
+| 14 | `db393cc` | feat | Add breadcrumbs navigation bar (VS Code parity) |
+| 15 | `ae77932` | feat | Add tab context menu (VS Code parity) |
+
+**Stats:** 15 commits, ~50 files changed, ~5,000+ lines added
 
 ---
 
 ## Completion Criteria (Milestone-Level)
 
+### Originally Planned (Capabilities 1–5)
 - [x] All ~70+ workbench color tokens are registered in the color registry
 - [x] Dark Modern theme JSON exists with complete coverage of all registered tokens
 - [x] Theme service loads at startup and injects all CSS custom properties before first render
@@ -649,4 +950,99 @@ Each capability is independently committable — the app works after each commit
 - [x] `parallx.window.activeColorTheme` returns correct theme kind
 - [x] `parallx.window.onDidChangeActiveColorTheme` fires correctly (tested by switching theme programmatically)
 - [ ] Theme persistence: selected theme survives app restart *(deferred — only one theme ships in M5)*
-- [ ] No regression in any M1–M4 functionality *(requires visual launch test)*
+
+### Visual Polish (Capability 6)
+- [x] All activity bar icons are SVG codicons (no emoji)
+- [x] Dark Modern color values match VS Code exactly
+- [x] No visible gaps at pane junctions (sash handles overlap via negative margins)
+- [x] Active tab seamlessly connects to editor content (no separator line)
+- [x] Titlebar has bottom border matching VS Code
+- [x] Open Editors uses text glyphs and CSS dirty indicators (no emoji)
+
+### Editor Splitting and Groups (Capability 7)
+- [x] Split size uses source view's actual dimension (not container)
+- [x] New split copies the active editor from source group
+- [x] `mergeGroup()`, `addGroup()`, `findGroup()` APIs available
+- [x] Open Editors shows group headers when 2+ groups exist
+- [x] Empty groups auto-close when last editor is closed (last group exempt)
+- [x] Editor toolbar uses SVG split icon with no redundant close button
+
+### Format Readers (Capability 8)
+- [x] EditorResolverService maps extensions to editor pane types
+- [x] Markdown files open in text editor with toolbar preview button
+- [x] `Ctrl+K V` opens live-updating Markdown preview in split pane
+- [x] Image files render with checkerboard background and zoom support
+- [x] PDF files render via Chromium embed element
+
+### DnD Overhaul (Capability 9)
+- [x] Left/right half detection for precise tab insertion
+- [x] Thin insertion-line indicator between tabs (not whole-tab highlight)
+- [x] Cross-group drops resolve by `inputId`
+- [x] Tab overflow scrollable with scroll-on-drag near edges
+- [x] Drops restricted to editor area — sidebar/panel reject editor-tab drags
+
+### Breadcrumbs (Capability 10)
+- [x] Breadcrumbs bar shows file path from workspace root to active file
+- [x] 22 px fixed height matching VS Code
+- [x] Keyboard navigation, focus/selection states, chevron separators
+- [x] Auto-hides when editor has no URI
+
+### Tab Context Menu (Capability 11)
+- [x] Right-click on tab shows grouped context menu
+- [x] Close, Close Others, Close to the Right, Close Saved, Close All
+- [x] Copy Path, Copy Relative Path via clipboard
+- [x] Reveal in Explorer fires explorer command
+- [x] Disabled states match VS Code (single tab, last tab)
+
+### VS Code Parity Reconciliation (Capability 12)
+- [x] Explorer context menu: Open to the Side, New File/Folder on file nodes, Copy Relative Path, Reveal in File Explorer, keybinding hints, root folder rename/delete protection
+- [x] Ctrl+P file search: fuzzy match character highlighting, relative-path fallback matching
+- [x] Electron IPC `shell:showItemInFolder` for OS file reveal
+
+---
+
+## Future Improvements Backlog
+
+The following features have been identified as high-impact GUI improvements.
+Items are grouped by category and ordered roughly by impact within each group.
+Checked items are already implemented; unchecked items remain as future work.
+
+### Tab & Editor UX
+- [x] Tab context menu (Capability 11)
+- [x] Breadcrumbs bar (Capability 10)
+- [x] Tab close button on hover — Close button hidden on inactive tabs, shown on hover; dirty tabs swap dot for close on hover
+- [x] Tab dirty (unsaved) indicator dot — Dot indicator on tabs with `editor-tab--dirty` class + dirty dot element
+- [x] Pin tab support — Double-click to pin preview tabs; pinned tabs rendered with pin icon, prevented from preview replacement
+- [x] Tab scroll buttons — Left/right chevron arrows at the edges of the tab bar when tabs overflow, with auto-hide based on scroll position
+
+### Explorer & Navigation
+- [x] File search / Go to File (Ctrl+P) — Quick-pick file opener with fuzzy name matching
+- [x] Explorer context menu — New File, New Folder, Rename, Delete, Copy Path, Copy Relative Path, Reveal in File Explorer, Open to the Side
+- [ ] Find in Files (Ctrl+Shift+F) — A search view in the sidebar for workspace-wide text search with results list
+
+### Editor Features
+- [ ] Find & Replace bar (Ctrl+F / Ctrl+H) — Inline find/replace within the active editor with match highlighting
+- [ ] Go to Line (Ctrl+G) — Command to jump to a specific line number in the active editor
+- [ ] Line numbers + gutter — Clickable line numbers in the text editor for selection and future breakpoint support
+- [ ] Minimap — A scaled-down overview of the document on the right edge of the editor
+- [ ] Word wrap toggle — Status bar button or command to toggle word wrap on/off per editor
+
+### Layout & Panels
+- [ ] Drag sash resize feedback — Highlight sashes on hover so users discover they can resize panels/sidebar
+- [ ] Panel maximize/restore — Double-click panel title bar to maximize the panel to full height, double-click again to restore
+- [ ] Sidebar collapse animation — Smooth animated transition when toggling sidebar visibility
+- [ ] Zen Mode (Ctrl+K Z) — Hide all chrome (sidebar, panel, status bar, activity bar) to focus on the editor
+
+### Status Bar & Feedback
+- [ ] Cursor position — Status bar showing Ln X, Col Y — clickable to "Go to Line"
+- [ ] Editor language indicator — Status bar item showing the file type (TypeScript, Markdown, etc.) — clickable to change language mode
+- [ ] Encoding selector — Status bar item showing file encoding (UTF-8, etc.) — clickable to change
+- [ ] Indentation indicator — Status bar item showing indent style/size (Spaces: 2, Tabs, etc.) — clickable to change
+- [ ] Notification toasts — Slide-in notifications in the bottom-right for save confirmations, errors, tool activation feedback
+
+### Quality of Life
+- [ ] Keyboard shortcut hints — Show keybinding next to command names in menus and command palette entries
+- [ ] Keyboard shortcut viewer — Dedicated UI for browsing and customizing all keybindings
+- [ ] Unsaved changes indicator on window close — Prompt "You have unsaved changes" before closing the window
+- [ ] Recent files / workspaces — Welcome tab showing recently opened files and folders for quick re-entry
+- [ ] Settings UI — A visual settings editor (like VS Code's gear icon) instead of requiring manual JSON editing

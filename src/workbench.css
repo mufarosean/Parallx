@@ -990,6 +990,13 @@ html, body {
   color: var(--vscode-descriptionForeground);
 }
 
+.command-palette-item-label .highlight,
+.command-palette-item-detail .highlight {
+  font-weight: bold;
+  text-decoration: underline;
+  color: var(--vscode-quickInputList-focusForeground, inherit);
+}
+
 /* ── Global utility ── */
 .hidden {
   display: none !important;
@@ -1124,6 +1131,30 @@ html, body {
   scrollbar-width: thin;
 }
 
+/* ── Tab scroll buttons (VS Code parity) ── */
+.editor-tab-scroll-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  flex-shrink: 0;
+  border: none;
+  background: var(--vscode-editorGroupHeader-tabsBackground);
+  color: var(--vscode-icon-foreground, var(--vscode-foreground));
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.7;
+  z-index: 1;
+}
+.editor-tab-scroll-btn:hover {
+  opacity: 1;
+  background: var(--vscode-tab-hoverBackground, var(--vscode-editorGroupHeader-tabsBackground));
+}
+.editor-tab-scroll-btn.hidden {
+  display: none;
+}
+
 /* Hide scrollbar visually but keep scrolling functional (VS Code approach) */
 .editor-tabs::-webkit-scrollbar {
   height: 3px;
@@ -1183,26 +1214,27 @@ html, body {
   cursor: pointer;
 }
 
-/* Hide close button on inactive non-dirty tabs until hover */
+/* Hide close button on inactive non-dirty tabs until hover — space is always reserved */
 .editor-tab:not(.editor-tab--active):not(.editor-tab--dirty) .editor-tab-close {
   opacity: 0;
-  width: 0;
-  overflow: hidden;
-  margin-left: 0;
+  pointer-events: none;
 }
 
 .editor-tab:not(.editor-tab--active):hover .editor-tab-close {
   opacity: 0.6;
-  width: auto;
-  margin-left: 6px;
+  pointer-events: auto;
 }
 
-/* Dirty tabs: show dirty dot by default, swap to close on hover */
+/* Dirty tabs: show dirty dot by default, swap to close on hover.
+   Both dot and close occupy the same space via position:absolute so no layout shift. */
+.editor-tab--dirty .editor-tab-dirty,
+.editor-tab--dirty .editor-tab-close {
+  /* Stack them in the same slot */
+}
+
 .editor-tab--dirty:not(.editor-tab--active):not(:hover) .editor-tab-close {
   opacity: 0;
-  width: 0;
-  overflow: hidden;
-  margin-left: 0;
+  pointer-events: none;
 }
 
 .editor-tab--dirty:not(.editor-tab--active):hover .editor-tab-dirty {

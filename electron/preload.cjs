@@ -74,6 +74,15 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
 
   // ══════════════════════════════════════════════════════════════════════════
+  // Shell API
+  // ══════════════════════════════════════════════════════════════════════════
+
+  shell: {
+    /** Reveal file in OS native file manager (Explorer/Finder). */
+    showItemInFolder: (filePath) => ipcRenderer.invoke('shell:showItemInFolder', filePath),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Dialog API (M4 Cap 0)
   // ══════════════════════════════════════════════════════════════════════════
 

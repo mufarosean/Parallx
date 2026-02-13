@@ -608,17 +608,28 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
   if (node) {
     if (node.type === FILE_TYPE_FILE) {
       items.push({ id: 'open', label: 'Open', group: '1_open' });
-      items.push({ id: 'rename', label: 'Rename', group: '2_edit' });
-      items.push({ id: 'delete', label: 'Delete', group: '2_edit' });
-      items.push({ id: 'copyPath', label: 'Copy Path', group: '3_copy' });
+      items.push({ id: 'openToSide', label: 'Open to the Side', group: '1_open' });
+      items.push({ id: 'newFile', label: 'New File...', group: '2_create' });
+      items.push({ id: 'newFolder', label: 'New Folder...', group: '2_create' });
+      items.push({ id: 'rename', label: 'Rename', keybinding: 'F2', group: '3_edit' });
+      items.push({ id: 'delete', label: 'Delete', keybinding: 'Delete', group: '3_edit' });
+      items.push({ id: 'copyPath', label: 'Copy Path', group: '4_copy' });
+      items.push({ id: 'copyRelativePath', label: 'Copy Relative Path', group: '4_copy' });
+      items.push({ id: 'revealInFileExplorer', label: 'Reveal in File Explorer', group: '5_reveal' });
     } else {
+      // Folder context — hide rename/delete for workspace root folders
+      const isRootFolder = _roots.some(r => r.uri === node.uri);
       items.push({ id: 'newFile', label: 'New File...', group: '1_create' });
       items.push({ id: 'newFolder', label: 'New Folder...', group: '1_create' });
-      items.push({ id: 'rename', label: 'Rename', group: '2_edit' });
-      items.push({ id: 'delete', label: 'Delete', group: '2_edit' });
+      if (!isRootFolder) {
+        items.push({ id: 'rename', label: 'Rename', keybinding: 'F2', group: '2_edit' });
+        items.push({ id: 'delete', label: 'Delete', keybinding: 'Delete', group: '2_edit' });
+      }
       items.push({ id: 'copyPath', label: 'Copy Path', group: '3_copy' });
+      items.push({ id: 'copyRelativePath', label: 'Copy Relative Path', group: '3_copy' });
+      items.push({ id: 'revealInFileExplorer', label: 'Reveal in File Explorer', group: '4_reveal' });
       if (node.expanded) {
-        items.push({ id: 'collapseAll', label: 'Collapse All', group: '4_collapse' });
+        items.push({ id: 'collapseAll', label: 'Collapse All', group: '5_collapse' });
       }
     }
   } else {
@@ -638,12 +649,15 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
   menu.onDidSelect(({ item }) => {
     switch (item.id) {
       case 'open': if (node) openFile(node, true); break;
-      case 'newFile': startInlineCreate(node ?? getActiveRoot(), 'file'); break;
-      case 'newFolder': startInlineCreate(node ?? getActiveRoot(), 'folder'); break;
+      case 'openToSide': if (node) openFileToSide(node); break;
+      case 'newFile': startInlineCreate(node ? getParentForCreate(node) : getActiveRoot(), 'file'); break;
+      case 'newFolder': startInlineCreate(node ? getParentForCreate(node) : getActiveRoot(), 'folder'); break;
       case 'rename': if (node) startInlineRename(node); break;
       case 'delete': if (node) confirmDelete(node); break;
       case 'copyPath': if (node) copyToClipboard(uriToPath(node.uri)); break;
+      case 'copyRelativePath': if (node) copyToClipboard(getRelativePath(node)); break;
       case 'collapseAll': if (node) collapseAll(node); break;
+      case 'revealInFileExplorer': if (node) revealInOsExplorer(node); break;
       case 'refresh': refreshTree(); break;
     }
   });
@@ -662,6 +676,70 @@ function copyToClipboard(text: string): void {
   navigator.clipboard.writeText(text).catch(err => {
     console.error('[Explorer] Failed to copy to clipboard:', err);
   });
+}
+
+/**
+ * Get the parent folder for New File / New Folder operations.
+ * For files, returns the parent folder. For folders, returns the node itself.
+ */
+function getParentForCreate(node: TreeNode): TreeNode | null {
+  if (node.type === FILE_TYPE_FILE) {
+    return node.parent ?? getActiveRoot();
+  }
+  return node;
+}
+
+/**
+ * Open a file in a new editor group to the side (VS Code: "Open to the Side").
+ * Splits the active editor group and opens the file in the new group.
+ */
+function openFileToSide(node: TreeNode): void {
+  if (node.type !== FILE_TYPE_FILE) return;
+  // First split the editor, then open the file — the split becomes active
+  _api.commands.executeCommand('workbench.action.splitEditor').then(() => {
+    _api.editors.openFileEditor(node.uri, { pinned: true }).catch(err => {
+      console.error('[Explorer] Failed to open file to side:', node.uri, err);
+    });
+  }).catch(err => {
+    console.error('[Explorer] Failed to split editor:', err);
+  });
+}
+
+/**
+ * Compute workspace-relative path for a node.
+ * e.g. "src/editor/editorGroupView.ts" instead of the full absolute path.
+ */
+function getRelativePath(node: TreeNode): string {
+  const nodePath = uriToFsPath(node.uri);
+  // Find which workspace root contains this node
+  for (const root of _roots) {
+    const rootPath = uriToFsPath(root.uri);
+    // Normalize separators for comparison
+    const normNode = nodePath.replace(/\\/g, '/');
+    const normRoot = rootPath.replace(/\\/g, '/');
+    if (normNode.startsWith(normRoot)) {
+      let relative = normNode.slice(normRoot.length);
+      // Strip leading separator
+      if (relative.startsWith('/')) relative = relative.slice(1);
+      return relative || node.name;
+    }
+  }
+  // Fallback: return just the name
+  return node.name;
+}
+
+/**
+ * Reveal the file in the OS native file manager (Windows Explorer / macOS Finder).
+ * Uses Electron's shell.showItemInFolder IPC.
+ */
+function revealInOsExplorer(node: TreeNode): void {
+  const fsPath = uriToFsPath(node.uri);
+  const electronShell = (globalThis as any).parallxElectron?.shell;
+  if (electronShell?.showItemInFolder) {
+    electronShell.showItemInFolder(fsPath).catch((err: Error) => {
+      console.error('[Explorer] Failed to reveal in file explorer:', err);
+    });
+  }
 }
 
 function getActiveRoot(): TreeNode | null {

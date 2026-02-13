@@ -317,7 +317,55 @@ export class EditorGroupView extends Disposable implements IGridView {
     // ── Tab bar as drop target (drop at end / into empty group) ──
     this._setupTabsWrapDrop(tabsWrap);
 
+    // ── Scroll buttons (VS Code parity: chevron arrows when tabs overflow) ──
+    const scrollLeft = document.createElement('button');
+    scrollLeft.classList.add('editor-tab-scroll-btn', 'editor-tab-scroll-left');
+    scrollLeft.textContent = '\u2039'; // ‹
+    scrollLeft.title = 'Scroll Tabs Left';
+    scrollLeft.addEventListener('click', () => {
+      tabsWrap.scrollBy({ left: -200, behavior: 'smooth' });
+    });
+
+    const scrollRight = document.createElement('button');
+    scrollRight.classList.add('editor-tab-scroll-btn', 'editor-tab-scroll-right');
+    scrollRight.textContent = '\u203A'; // ›
+    scrollRight.title = 'Scroll Tabs Right';
+    scrollRight.addEventListener('click', () => {
+      tabsWrap.scrollBy({ left: 200, behavior: 'smooth' });
+    });
+
+    const updateScrollButtons = () => {
+      const hasOverflow = tabsWrap.scrollWidth > tabsWrap.clientWidth;
+      const atStart = tabsWrap.scrollLeft <= 0;
+      const atEnd = tabsWrap.scrollLeft + tabsWrap.clientWidth >= tabsWrap.scrollWidth - 1;
+      scrollLeft.classList.toggle('hidden', !hasOverflow || atStart);
+      scrollRight.classList.toggle('hidden', !hasOverflow || atEnd);
+    };
+
+    tabsWrap.addEventListener('scroll', updateScrollButtons);
+
+    // Also update when the tab bar resizes (e.g. sidebar toggle, window resize)
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(updateScrollButtons);
+      ro.observe(tabsWrap);
+      // Clean up on next re-render (innerHTML = '' disposes DOM)
+    }
+
+    // Initial visibility check after layout
+    requestAnimationFrame(updateScrollButtons);
+
+    this._tabBar.appendChild(scrollLeft);
     this._tabBar.appendChild(tabsWrap);
+    this._tabBar.appendChild(scrollRight);
+
+    // Scroll active tab into view
+    const activeTab = tabsWrap.children[activeIdx] as HTMLElement | undefined;
+    if (activeTab) {
+      requestAnimationFrame(() => {
+        activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        updateScrollButtons();
+      });
+    }
 
     // Group toolbar (split, close)
     const toolbar = this._createToolbar();
