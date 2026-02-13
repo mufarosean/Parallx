@@ -3,7 +3,7 @@
  * All visual styling for reusable UI components lives here.
  * Components apply CSS classes — no inline styles for visual properties.
  *
- * Theme integration: uses CSS custom properties (--color-*) defined by
+ * Theme integration: uses CSS custom properties (--vscode-*) injected by
  * the workbench theme. Fallbacks ensure components render in isolation.
  */
 
@@ -25,8 +25,8 @@
   font-size: 13px;
   font-family: inherit;
   line-height: 20px;
-  color: var(--color-button-foreground, #ffffff);
-  background-color: var(--color-button-background, #0e639c);
+  color: var(--vscode-button-foreground);
+  background-color: var(--vscode-button-background);
   border: 1px solid transparent;
   border-radius: 3px;
   cursor: pointer;
@@ -37,26 +37,26 @@
 }
 
 .ui-button:hover {
-  background-color: var(--color-button-hover-background, #1177bb);
+  background-color: var(--vscode-button-hoverBackground);
 }
 
 .ui-button:active {
-  background-color: var(--color-button-active-background, #0d5689);
+  background-color: var(--vscode-button-hoverBackground);
 }
 
 .ui-button:focus-visible {
-  outline: 1px solid var(--color-focus-border, #007fd4);
+  outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 1px;
 }
 
 .ui-button--secondary {
-  color: var(--color-button-secondary-foreground, #cccccc);
-  background-color: var(--color-button-secondary-background, #3a3d41);
-  border-color: var(--color-border, #474747);
+  color: var(--vscode-button-secondaryForeground);
+  background-color: var(--vscode-button-secondaryBackground);
+  border-color: var(--vscode-input-border);
 }
 
 .ui-button--secondary:hover {
-  background-color: var(--color-button-secondary-hover-background, #45494e);
+  background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
 .ui-button--disabled {
@@ -69,12 +69,12 @@
   padding: 2px 4px;
   background: none;
   border: none;
-  color: var(--color-text-muted, #888);
+  color: var(--vscode-descriptionForeground);
   border-radius: 3px;
 }
 
 .ui-button--icon-only:hover {
-  background-color: var(--color-hover, rgba(255, 255, 255, 0.1));
+  background-color: var(--vscode-toolbar-hoverBackground);
 }
 
 .ui-button-icon {
@@ -101,29 +101,29 @@
   padding: 6px 8px;
   font-size: 13px;
   font-family: inherit;
-  color: var(--color-input-foreground, #cccccc);
-  background-color: var(--color-input-background, #3c3c3c);
-  border: 1px solid var(--color-input-border, #474747);
+  color: var(--vscode-input-foreground);
+  background-color: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
   border-radius: 3px;
   outline: none;
   box-sizing: border-box;
 }
 
 .ui-input-box-input::placeholder {
-  color: var(--color-input-placeholder, #888888);
+  color: var(--vscode-input-placeholderForeground);
 }
 
 .ui-input-box-input:focus {
-  border-color: var(--color-focus-border, #007fd4);
+  border-color: var(--vscode-focusBorder);
 }
 
 .ui-input-box--invalid .ui-input-box-input {
-  border-color: var(--color-error, #f14c4c);
+  border-color: var(--vscode-errorForeground);
 }
 
 .ui-input-box-validation {
   font-size: 12px;
-  color: var(--color-error, #f14c4c);
+  color: var(--vscode-errorForeground);
   margin-top: 4px;
   min-height: 0; /* Collapses when empty */
 }
@@ -142,8 +142,8 @@
   height: 35px;
   min-height: 35px;
   overflow: hidden;
-  border-bottom: 1px solid var(--color-border, #333);
-  background-color: var(--color-tab-bar-background, #1e1e1e);
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
+  background-color: var(--vscode-editorGroupHeader-tabsBackground);
 }
 
 .ui-tab-bar-tabs {
@@ -162,21 +162,21 @@
   font-size: 13px;
   user-select: none;
   max-width: 200px;
-  color: var(--color-text-muted, #888);
-  background-color: var(--color-tab-inactive-background, #2d2d2d);
+  color: var(--vscode-tab-inactiveForeground);
+  background-color: var(--vscode-tab-inactiveBackground);
   border-bottom: 2px solid transparent;
-  border-right: 1px solid var(--color-border, #333);
+  border-right: 1px solid var(--vscode-tab-border);
   transition: background-color 0.1s;
 }
 
 .ui-tab:hover {
-  background-color: var(--color-tab-hover-background, #383838);
+  background-color: var(--vscode-tab-hoverBackground);
 }
 
 .ui-tab--active {
-  color: var(--color-text, #ccc);
-  background-color: var(--color-tab-active-background, #1e1e1e);
-  border-bottom-color: var(--color-accent, #007acc);
+  color: var(--vscode-tab-activeForeground);
+  background-color: var(--vscode-tab-activeBackground);
+  border-bottom-color: var(--vscode-tab-activeBorder);
 }
 
 .ui-tab--italic .ui-tab-label {
@@ -193,7 +193,7 @@
 }
 
 .ui-tab--drop-target {
-  border-left: 2px solid var(--color-accent, #007acc);
+  border-left: 2px solid var(--vscode-focusBorder);
 }
 
 .ui-tab-icon {
@@ -209,7 +209,7 @@
 
 .ui-tab-dirty {
   margin-left: 4px;
-  color: var(--color-dirty, #e8e8e8);
+  color: var(--vscode-tab-modifiedBorder);
   font-size: 12px;
 }
 
@@ -225,7 +225,7 @@
 
 .ui-tab-close:hover {
   opacity: 1;
-  background-color: var(--color-hover, rgba(255, 255, 255, 0.1));
+  background-color: var(--vscode-toolbar-hoverBackground);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -274,15 +274,15 @@
   padding: 4px 12px;
   cursor: pointer;
   font-size: 13px;
-  color: var(--color-text, #cccccc);
+  color: var(--vscode-foreground);
 }
 
 .ui-filterable-list-row:hover {
-  background-color: var(--color-list-hover-background, rgba(255, 255, 255, 0.04));
+  background-color: var(--vscode-list-hoverBackground);
 }
 
 .ui-filterable-list-row--selected {
-  background-color: var(--color-list-active-background, #04395e);
+  background-color: var(--vscode-quickInputList-focusBackground);
 }
 
 .ui-filterable-list-label {
@@ -294,7 +294,7 @@
 
 .ui-filterable-list-description {
   margin-left: 8px;
-  color: var(--color-text-muted, #888888);
+  color: var(--vscode-descriptionForeground);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -302,20 +302,20 @@
 .ui-filterable-list-badge {
   margin-left: 8px;
   font-size: 11px;
-  color: var(--color-text-muted, #888888);
+  color: var(--vscode-descriptionForeground);
   white-space: nowrap;
 }
 
 .ui-filterable-list-empty {
   padding: 8px 12px;
-  color: var(--color-text-muted, #888888);
+  color: var(--vscode-descriptionForeground);
   font-size: 13px;
   text-align: center;
 }
 
 .ui-filterable-list-more {
   padding: 4px 12px;
-  color: var(--color-text-muted, #888888);
+  color: var(--vscode-descriptionForeground);
   font-size: 12px;
   text-align: center;
 }
@@ -337,7 +337,7 @@
   padding: 2px 4px;
   background: none;
   border: none;
-  color: var(--color-text-muted, #888);
+  color: var(--vscode-descriptionForeground);
   cursor: pointer;
   font-size: 13px;
   font-family: inherit;
@@ -346,12 +346,12 @@
 }
 
 .ui-action-bar-item:hover {
-  background-color: var(--color-hover, rgba(255, 255, 255, 0.1));
-  color: var(--color-text, #ccc);
+  background-color: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
 }
 
 .ui-action-bar-item:focus-visible {
-  outline: 1px solid var(--color-focus-border, #007fd4);
+  outline: 1px solid var(--vscode-focusBorder);
 }
 
 .ui-action-bar-item--disabled {
@@ -383,8 +383,8 @@
   font-size: 11px;
   font-weight: 600;
   line-height: 18px;
-  color: var(--color-badge-foreground, #ffffff);
-  background-color: var(--color-badge-background, #4d4d4d);
+  color: var(--vscode-activityBarBadge-foreground);
+  background-color: var(--vscode-activityBarBadge-background);
   border-radius: 9px;
   white-space: nowrap;
 }
@@ -403,9 +403,9 @@
   min-width: 160px;
   max-width: 320px;
   padding: 4px 0;
-  background: var(--color-menu-background, #252526);
-  color: var(--color-menu-foreground, #cccccc);
-  border: 1px solid var(--color-menu-border, #454545);
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border);
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
   font-size: 13px;
@@ -427,8 +427,8 @@
 
 .context-menu-item:hover,
 .context-menu-item--selected {
-  background: var(--color-menu-selection-background, #04395e);
-  color: var(--color-menu-selection-foreground, #ffffff);
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
 }
 
 .context-menu-item--disabled {
@@ -458,5 +458,5 @@
 .context-menu-separator {
   height: 1px;
   margin: 4px 8px;
-  background: var(--color-menu-separator, #454545);
+  background: var(--vscode-menu-separatorBackground);
 }

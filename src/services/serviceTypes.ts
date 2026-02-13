@@ -715,3 +715,26 @@ export interface ITextFileModelManager extends IDisposable {
 }
 
 export const ITextFileModelManager = createServiceIdentifier<ITextFileModelManager>('ITextFileModelManager');
+
+// ─── IThemeService (M5 Capability 3) ──────────────────────────────────────
+
+/**
+ * Manages color themes — loading, resolving, and injecting CSS custom properties.
+ *
+ * VS Code reference: IThemeService (src/vs/platform/theme/common/themeService.ts)
+ */
+export interface IThemeServiceShape extends IDisposable {
+  /** The currently applied color theme. */
+  readonly activeTheme: import('../theme/themeData.js').IColorTheme;
+
+  /** Fired when the active theme changes. */
+  readonly onDidChangeTheme: Event<import('../theme/themeData.js').IColorTheme>;
+
+  /** Resolve a color from the active theme, with registry default fallback. */
+  getColor(colorId: string): string;
+
+  /** Apply a parsed theme. */
+  applyTheme(theme: import('../theme/themeData.js').ColorThemeData): void;
+}
+
+export const IThemeService = createServiceIdentifier<IThemeServiceShape>('IThemeService');

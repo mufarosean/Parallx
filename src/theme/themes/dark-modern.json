@@ -1,0 +1,113 @@
+{
+  "id": "parallx-dark-modern",
+  "label": "Dark Modern",
+  "uiTheme": "vs-dark",
+  "colors": {
+    "foreground": "#cccccc",
+    "focusBorder": "#007fd4",
+    "widget.shadow": "rgba(0, 0, 0, 0.5)",
+    "selection.background": "#04395e",
+    "descriptionForeground": "#999999",
+    "icon.foreground": "#c5c5c5",
+    "errorForeground": "#f14c4c",
+    "sash.hoverBorder": "#007acc",
+    "toolbar.hoverBackground": "rgba(255, 255, 255, 0.1)",
+
+    "titleBar.activeBackground": "#323233",
+    "titleBar.activeForeground": "rgba(255, 255, 255, 0.7)",
+    "titleBar.inactiveBackground": "#323233",
+    "titleBar.inactiveForeground": "rgba(255, 255, 255, 0.5)",
+
+    "menu.foreground": "#cccccc",
+    "menu.background": "#252526",
+    "menu.selectionBackground": "#04395e",
+    "menu.selectionForeground": "#ffffff",
+    "menu.border": "#454545",
+    "menu.separatorBackground": "rgba(255, 255, 255, 0.1)",
+
+    "activityBar.background": "#333333",
+    "activityBar.foreground": "#ffffff",
+    "activityBar.inactiveForeground": "rgba(255, 255, 255, 0.4)",
+    "activityBar.border": "#3c3c3c",
+    "activityBar.activeBorder": "#ffffff",
+    "activityBarBadge.background": "#007acc",
+    "activityBarBadge.foreground": "#ffffff",
+
+    "sideBar.background": "#252526",
+    "sideBar.foreground": "#cccccc",
+    "sideBar.border": "#3c3c3c",
+    "sideBarTitle.foreground": "rgba(255, 255, 255, 0.6)",
+    "sideBarSectionHeader.background": "#252526",
+    "sideBarSectionHeader.foreground": "#cccccc",
+    "sideBarSectionHeader.border": "#3c3c3c",
+
+    "editor.background": "#1e1e1e",
+    "editor.foreground": "#d4d4d4",
+    "editorGroupHeader.tabsBackground": "#252526",
+    "editorGroupHeader.tabsBorder": "#1e1e1e",
+    "tab.activeBackground": "#1e1e1e",
+    "tab.activeForeground": "#ffffff",
+    "tab.activeBorderTop": "transparent",
+    "tab.activeBorder": "#007acc",
+    "tab.inactiveBackground": "#2d2d2d",
+    "tab.inactiveForeground": "rgba(255, 255, 255, 0.5)",
+    "tab.border": "#1e1e1e",
+    "tab.modifiedBorder": "#e8e8e8",
+    "tab.hoverBackground": "rgba(255, 255, 255, 0.05)",
+
+    "panel.background": "#1e1e1e",
+    "panel.border": "#3c3c3c",
+    "panelTitle.activeForeground": "#ffffff",
+    "panelTitle.inactiveForeground": "rgba(255, 255, 255, 0.5)",
+    "panelTitle.activeBorder": "#007acc",
+
+    "auxiliaryBar.background": "#252526",
+    "auxiliaryBar.border": "#3c3c3c",
+    "auxiliaryBar.headerForeground": "rgba(255, 255, 255, 0.6)",
+
+    "statusBar.background": "#007acc",
+    "statusBar.foreground": "#ffffff",
+    "statusBarItem.hoverBackground": "rgba(255, 255, 255, 0.12)",
+    "statusBarItem.hoverForeground": "inherit",
+    "statusBarItem.activeBackground": "rgba(255, 255, 255, 0.18)",
+
+    "list.hoverBackground": "rgba(255, 255, 255, 0.04)",
+    "list.activeSelectionBackground": "rgba(255, 255, 255, 0.1)",
+    "list.activeSelectionForeground": "#ffffff",
+    "list.focusOutline": "#007acc",
+
+    "input.background": "#3c3c3c",
+    "input.foreground": "#cccccc",
+    "input.border": "#474747",
+    "input.placeholderForeground": "#888888",
+
+    "button.background": "#0e639c",
+    "button.foreground": "#ffffff",
+    "button.hoverBackground": "#1177bb",
+    "button.secondaryBackground": "#3a3d41",
+    "button.secondaryForeground": "#cccccc",
+    "button.secondaryHoverBackground": "#45494e",
+
+    "notifications.background": "#252526",
+    "notifications.foreground": "#cccccc",
+    "notifications.border": "#3c3c3c",
+    "notificationToast.border": "#3c3c3c",
+    "notificationLink.foreground": "#3794ff",
+    "notificationsInfoIcon.foreground": "#3794ff",
+    "notificationsWarningIcon.foreground": "#cca700",
+    "notificationsErrorIcon.foreground": "#f14c4c",
+
+    "quickInput.background": "#252526",
+    "quickInput.foreground": "#cccccc",
+    "quickInputList.focusBackground": "#04395e",
+    "quickInputTitle.background": "#3c3c3c",
+
+    "editorGroup.dropBackground": "rgba(0, 120, 212, 0.18)",
+    "editorGroup.dropBorder": "rgba(0, 120, 212, 0.5)",
+
+    "textLink.foreground": "#3794ff",
+    "textLink.activeForeground": "#3794ff",
+
+    "scrollbar.shadow": "rgba(0, 0, 0, 0.5)"
+  }
+}

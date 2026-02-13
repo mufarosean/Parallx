@@ -13,7 +13,7 @@ import { Disposable, DisposableStore, IDisposable, toDisposable } from '../platf
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IWindowService, IFileService, ITextFileModelManager } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IWindowService, IFileService, ITextFileModelManager, IThemeService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
 
@@ -130,6 +130,13 @@ import { setFileEditorResolver } from '../api/bridges/editorsBridge.js';
 import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
 import { UntitledEditorInput } from '../built-in/editor/untitledEditorInput.js';
 import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
+
+// Theme System (M5 Capability 1–3)
+import { colorRegistry } from '../theme/colorRegistry.js';
+import '../theme/workbenchColors.js'; // side-effect: registers all color tokens
+import { ColorThemeData } from '../theme/themeData.js';
+import { ThemeService } from '../services/themeService.js';
+import darkModernTheme from '../theme/themes/dark-modern.json';
 // ── Layout constants ──
 
 const TITLE_HEIGHT = 30;
@@ -700,6 +707,14 @@ export class Workbench extends Disposable {
     // Window service — abstracts Electron IPC for window controls
     const windowService = this._register(new WindowService());
     this._services.registerInstance(IWindowService, windowService);
+
+    // ── Theme Service (M5 Capability 3) ──
+    // Must be applied before layout rendering to avoid flash of unstyled content.
+    // workbenchColors.ts import above ensures all tokens are registered.
+    const themeData = ColorThemeData.fromSource(darkModernTheme as any, colorRegistry);
+    const themeService = this._register(new ThemeService(colorRegistry, themeData));
+    themeService.applyTheme(themeData);
+    this._services.registerInstance(IThemeService, themeService as any);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1988,6 +2003,7 @@ export class Workbench extends Disposable {
       viewContributionProcessor: this._viewContribution,
       badgeHost: this._activityBarPart,
       statusBarPart: this._statusBar as unknown as StatusBarPart,
+      themeService: this._services.has(IThemeService) ? this._services.get(IThemeService) : undefined,
     };
 
     // Storage dependencies for persistent tool mementos (Cap 4)

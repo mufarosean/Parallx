@@ -30,6 +30,8 @@ import { WindowBridge } from './bridges/windowBridge.js';
 import { ContextBridge } from './bridges/contextBridge.js';
 import { WorkspaceBridge } from './bridges/workspaceBridge.js';
 import { EditorsBridge } from './bridges/editorsBridge.js';
+import type { IThemeServiceShape } from '../services/serviceTypes.js';
+import { ThemeType } from '../theme/colorRegistry.js';
 import type { ViewManager } from '../views/viewManager.js';
 import type { ConfigurationService } from '../configuration/configurationService.js';
 import type { CommandContributionProcessor } from '../contributions/commandContribution.js';
@@ -54,6 +56,8 @@ export interface ApiFactoryDependencies {
   readonly badgeHost?: { setBadge(iconId: string, badge: { count?: number; dot?: boolean } | undefined): void };
   /** StatusBarPart for parallx.window.createStatusBarItem(). */
   readonly statusBarPart?: StatusBarPart;
+  /** ThemeService for parallx.window.activeColorTheme / onDidChangeActiveColorTheme. */
+  readonly themeService?: IThemeServiceShape;
 }
 
 // ─── API Shape ───────────────────────────────────────────────────────────────
@@ -84,6 +88,8 @@ export interface ParallxApiObject {
       text: string; tooltip: string | undefined; command: string | undefined; name: string | undefined;
       show(): void; hide(): void; dispose(): void;
     };
+    readonly activeColorTheme: { kind: number };
+    readonly onDidChangeActiveColorTheme: (listener: (e: { kind: number }) => void) => IDisposable;
   };
   readonly context: {
     createContextKey<T extends ContextKeyValue>(name: string, defaultValue: T): { key: string; get(): T; set(value: T): void; reset(): void };
@@ -271,6 +277,18 @@ export function createToolApi(
         };
         return item;
       },
+      get activeColorTheme() {
+        const ts = deps.themeService;
+        if (!ts) return { kind: 1 }; // fallback: Dark
+        return { kind: _themeTypeToKind(ts.activeTheme.type) };
+      },
+      onDidChangeActiveColorTheme: (listener: (e: { kind: number }) => void) => {
+        const ts = deps.themeService;
+        if (!ts) return { dispose() {} };
+        return ts.onDidChangeTheme((theme) => {
+          listener({ kind: _themeTypeToKind(theme.type) });
+        });
+      },
     }),
 
     context: Object.freeze({
@@ -340,6 +358,20 @@ export function createToolApi(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Map internal ThemeType enum to public ColorThemeKind numbers.
+ * Matches parallx.d.ts: Dark=1, Light=2, HighContrast=3, HighContrastLight=4.
+ */
+function _themeTypeToKind(type: ThemeType): number {
+  switch (type) {
+    case ThemeType.DARK: return 1;
+    case ThemeType.LIGHT: return 2;
+    case ThemeType.HIGH_CONTRAST_DARK: return 3;
+    case ThemeType.HIGH_CONTRAST_LIGHT: return 4;
+    default: return 1;
+  }
+}
 
 function _toolEntriesToInfo(entries: readonly IToolEntry[]): Array<{
   id: string; name: string; version: string; publisher: string;
