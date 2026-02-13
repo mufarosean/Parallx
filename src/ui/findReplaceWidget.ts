@@ -396,7 +396,17 @@ export class FindReplaceWidget extends Disposable {
     if (this._currentMatchIndex < 0 || this._currentMatchIndex >= this._matches.length) return;
 
     const match = this._matches[this._currentMatchIndex];
-    this._textarea.focus();
+
+    // Only move focus to the textarea when the user is explicitly navigating
+    // matches (prev/next). While typing in the find input we must NOT steal
+    // focus — just update the selection silently so the highlight is ready when
+    // the user dismisses the widget or presses Enter.
+    const findHasFocus = document.activeElement === this._findInput
+      || document.activeElement === this._replaceInput;
+
+    if (!findHasFocus) {
+      this._textarea.focus();
+    }
     this._textarea.setSelectionRange(match.start, match.start + match.length);
 
     // Scroll into view: set selectionStart briefly to force scroll
