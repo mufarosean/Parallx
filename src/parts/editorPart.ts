@@ -12,7 +12,7 @@ import { Emitter, Event } from '../platform/events.js';
 import { DisposableStore } from '../platform/lifecycle.js';
 import { Grid } from '../layout/grid.js';
 import { EditorGroupView } from '../editor/editorGroupView.js';
-import { GroupDirection, EditorOpenOptions, EditorActivation } from '../editor/editorTypes.js';
+import { GroupDirection, EditorOpenOptions, EditorActivation, EditorGroupChangeKind } from '../editor/editorTypes.js';
 import type { IEditorInput } from '../editor/editorInput.js';
 import { createEditorPaneForInput } from '../editor/editorPane.js';
 import { EditorDropTarget } from '../editor/editorDropTarget.js';
@@ -220,13 +220,23 @@ export class EditorPart extends Part {
       }
     }));
 
-    // Model changes → update watermark
-    // Note: VS Code does NOT auto-close empty groups by default — only when the
-    // `workbench.editor.closeEmptyGroups` setting is true. We match that default
-    // by NOT auto-closing here. Groups can be explicitly closed via the toolbar
-    // close button or via removeGroup().
-    store.add(group.model.onDidChange(() => {
+    // Model changes → update watermark + auto-close empty groups
+    // VS Code's `workbench.editor.closeEmptyGroups` defaults to TRUE, so when
+    // the last editor in a non-last group is closed, the group is removed
+    // automatically and remaining groups resize to fill the space.
+    store.add(group.model.onDidChange((e) => {
       this._updateWatermark();
+
+      // Auto-close: when last editor is closed and there is at least one other group
+      if (
+        e.kind === EditorGroupChangeKind.EditorClose &&
+        group.model.isEmpty &&
+        this._groups.size > 1
+      ) {
+        // Defer removal to after the current event cycle completes so that any
+        // in-flight tab-render or pane-update in the group view finishes first.
+        queueMicrotask(() => this.removeGroup(group.id));
+      }
     }));
 
     this._groupDisposables.set(group.id, store);
