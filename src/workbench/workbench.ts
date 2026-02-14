@@ -2345,7 +2345,7 @@ export class Workbench extends Disposable {
 
     watermark.innerHTML = `
         <div class="editor-watermark-content">
-          <div class="editor-watermark-icon">⊞</div>
+          <div class="editor-watermark-icon"><svg width="64" height="64" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="currentColor" opacity="0.4"/><rect x="10" y="6" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="currentColor"/></svg></div>
           <div class="editor-watermark-title">Parallx Workbench</div>
           <div class="editor-watermark-shortcuts">
             ${entries}

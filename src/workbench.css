@@ -513,6 +513,9 @@ html, body {
 .editor-watermark-icon {
   font-size: 48px;
   margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .editor-watermark-title {
