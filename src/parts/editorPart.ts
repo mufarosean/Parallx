@@ -14,7 +14,7 @@ import { Grid } from '../layout/grid.js';
 import { EditorGroupView } from '../editor/editorGroupView.js';
 import { GroupDirection, EditorOpenOptions, EditorActivation, EditorGroupChangeKind } from '../editor/editorTypes.js';
 import type { IEditorInput } from '../editor/editorInput.js';
-import { createEditorPaneForInput } from '../editor/editorPane.js';
+import { createEditorPaneForInput, EditorPane } from '../editor/editorPane.js';
 import { EditorDropTarget } from '../editor/editorDropTarget.js';
 import { URI } from '../platform/uri.js';
 
@@ -65,6 +65,13 @@ export class EditorPart extends Part {
   /** Fires when "Reveal in Explorer" is selected from a tab context menu. */
   private readonly _onDidRequestRevealInExplorer = this._register(new Emitter<URI>());
   readonly onDidRequestRevealInExplorer: Event<URI> = this._onDidRequestRevealInExplorer.event;
+
+  /**
+   * Fires after any group's active pane has been fully created and set.
+   * Consumers can safely read the pane when this fires.
+   */
+  private readonly _onDidActivePaneChange = this._register(new Emitter<EditorPane | undefined>());
+  readonly onDidActivePaneChange: Event<EditorPane | undefined> = this._onDidActivePaneChange.event;
 
   constructor() {
     super(
@@ -231,6 +238,9 @@ export class EditorPart extends Part {
 
     // Reveal in Explorer request (from tab context menu)
     store.add(group.onDidRequestRevealInExplorer((uri) => this._onDidRequestRevealInExplorer.fire(uri)));
+
+    // Pane-ready relay — fires after async pane.setInput() completes
+    store.add(group.onDidActivePaneChange((pane) => this._onDidActivePaneChange.fire(pane)));
 
     // Close-group request
     store.add(group.onDidRequestClose(() => this.removeGroup(group.id)));

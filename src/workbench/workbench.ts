@@ -3338,8 +3338,8 @@ export class Workbench extends Disposable {
       });
     }
 
-    // Register default status bar entries through the contribution API
-    // (not hardcoded DOM — matches Task 6.1 requirement)
+    // ── Left-aligned entries ──
+
     const branchAccessor = sb.addEntry({
       id: 'status.scm.branch',
       text: '⎇ master',
@@ -3358,7 +3358,12 @@ export class Workbench extends Disposable {
       name: 'Problems',
     });
 
-    sb.addEntry({
+    // ── Right-aligned editor indicators (VS Code parity) ──
+    // Order from left to right in the right section:
+    //   Cursor Position | Indentation | Encoding | EOL | Language
+    // Higher priority = further right (row-reverse), so language = lowest priority.
+
+    const cursorAccessor = sb.addEntry({
       id: 'status.editor.selection',
       text: 'Ln 1, Col 1',
       alignment: StatusBarAlignment.Right,
@@ -3368,17 +3373,55 @@ export class Workbench extends Disposable {
       name: 'Cursor Position',
     });
 
-    sb.addEntry({
+    const indentAccessor = sb.addEntry({
+      id: 'status.editor.indentation',
+      text: 'Spaces: 2',
+      alignment: StatusBarAlignment.Right,
+      priority: 80,
+      tooltip: 'Indentation Settings',
+      name: 'Indentation',
+    });
+
+    const encodingAccessor = sb.addEntry({
       id: 'status.editor.encoding',
       text: 'UTF-8',
       alignment: StatusBarAlignment.Right,
-      priority: 90,
+      priority: 70,
       tooltip: 'Select Encoding',
       name: 'Encoding',
     });
 
-    // Track accessors so the workbench can update them later
-    this._statusBarAccessors = { branch: branchAccessor, errors: errorsAccessor };
+    const eolAccessor = sb.addEntry({
+      id: 'status.editor.eol',
+      text: 'LF',
+      alignment: StatusBarAlignment.Right,
+      priority: 60,
+      tooltip: 'End of Line Sequence',
+      name: 'End of Line',
+    });
+
+    const languageAccessor = sb.addEntry({
+      id: 'status.editor.language',
+      text: 'Plain Text',
+      alignment: StatusBarAlignment.Right,
+      priority: 50,
+      tooltip: 'Select Language Mode',
+      name: 'Language',
+    });
+
+    // Track accessors for dynamic updates
+    this._statusBarAccessors = {
+      branch: branchAccessor,
+      errors: errorsAccessor,
+      cursor: cursorAccessor,
+      indent: indentAccessor,
+      encoding: encodingAccessor,
+      eol: eolAccessor,
+      language: languageAccessor,
+    };
+
+    // ── Wire active editor → status bar indicators ──
+    this._wireEditorStatusBarTracking();
 
     // Context menu on right-click — VS Code parity:
     // Shows "Hide Status Bar" + per-entry hide toggles
@@ -3408,6 +3451,120 @@ export class Workbench extends Disposable {
 
     // ── Notification Center Badge (Cap 9) ──
     this._setupNotificationBadge(sb);
+  }
+
+  // ── Extension → Language display name map ──
+  private static readonly EXT_TO_LANGUAGE: Record<string, string> = {
+    '.ts': 'TypeScript', '.tsx': 'TypeScript React',
+    '.js': 'JavaScript', '.jsx': 'JavaScript React',
+    '.json': 'JSON', '.jsonc': 'JSON with Comments',
+    '.md': 'Markdown', '.markdown': 'Markdown',
+    '.html': 'HTML', '.htm': 'HTML',
+    '.css': 'CSS', '.scss': 'SCSS', '.less': 'Less',
+    '.py': 'Python', '.rb': 'Ruby', '.rs': 'Rust',
+    '.go': 'Go', '.java': 'Java', '.c': 'C', '.cpp': 'C++', '.h': 'C',
+    '.cs': 'C#', '.swift': 'Swift', '.kt': 'Kotlin',
+    '.sh': 'Shell Script', '.bash': 'Shell Script', '.zsh': 'Shell Script',
+    '.ps1': 'PowerShell', '.bat': 'Batch',
+    '.xml': 'XML', '.svg': 'XML', '.yaml': 'YAML', '.yml': 'YAML',
+    '.toml': 'TOML', '.ini': 'INI', '.cfg': 'INI',
+    '.sql': 'SQL',
+    '.r': 'R', '.R': 'R',
+    '.lua': 'Lua', '.php': 'PHP', '.pl': 'Perl',
+    '.txt': 'Plain Text', '.log': 'Log',
+    '.dockerfile': 'Dockerfile',
+    '.gitignore': 'Ignore', '.env': 'Properties',
+  };
+
+  /** Resolve a filename to a display language name. */
+  private _getLanguageFromFileName(name: string): string {
+    const lower = name.toLowerCase();
+    // Exact filename matches
+    if (lower === 'dockerfile') return 'Dockerfile';
+    if (lower === 'makefile') return 'Makefile';
+    if (lower === '.gitignore') return 'Ignore';
+    if (lower === '.env') return 'Properties';
+
+    const dotIdx = name.lastIndexOf('.');
+    if (dotIdx >= 0) {
+      const ext = name.substring(dotIdx).toLowerCase();
+      return (this.constructor as typeof Workbench).EXT_TO_LANGUAGE[ext] ?? 'Plain Text';
+    }
+    return 'Plain Text';
+  }
+
+  /**
+   * Wire active editor changes to update cursor position, language,
+   * encoding, indentation, and EOL status bar indicators.
+   *
+   * VS Code parity: `EditorStatus` contribution in
+   * `src/vs/workbench/browser/parts/editor/editorStatus.ts`.
+   */
+  private _wireEditorStatusBarTracking(): void {
+    const editorService = this._services.has(IEditorService)
+      ? this._services.get(IEditorService) as import('../services/editorService.js').EditorService
+      : undefined;
+    if (!editorService) return;
+
+    const editorPart = this._editor as EditorPart;
+    const acc = this._statusBarAccessors;
+
+    /** Disposable for the cursor-position listener on the current TextEditorPane. */
+    let cursorSub: IDisposable | undefined;
+
+    // ── Language indicator updates (immediate — file name is available right away) ──
+    const updateLanguage = (editor: IEditorInput | undefined) => {
+      if (!editor) {
+        acc.language?.update({ text: '' });
+        return;
+      }
+      const lang = this._getLanguageFromFileName(editor.name ?? '');
+      acc.language?.update({ text: lang, tooltip: `${lang} — Select Language Mode` });
+    };
+
+    // Fire on initial active editor and on every editor switch
+    updateLanguage(editorService.activeEditor);
+    this._register(editorService.onDidActiveEditorChange(updateLanguage));
+
+    // ── Pane-dependent indicators (cursor, encoding, eol, indent) ──
+    // These require the pane to be fully created. EditorGroupView fires
+    // onDidActivePaneChange AFTER the async pane.setInput() completes,
+    // so the pane is ready at that point.
+    const updatePaneIndicators = (pane: import('../editor/editorPane.js').EditorPane | undefined) => {
+      // Tear down previous cursor listener
+      cursorSub?.dispose();
+      cursorSub = undefined;
+
+      if (pane instanceof TextEditorPane) {
+        // Text editor — show all indicators
+        acc.encoding?.update({ text: 'UTF-8' });
+        acc.indent?.update({ text: 'Spaces: 2' });
+        acc.cursor?.update({
+          text: `Ln ${pane.cursorLine}, Col ${pane.cursorCol}`,
+        });
+        acc.eol?.update({ text: pane.eolLabel });
+
+        // Live cursor position tracking
+        cursorSub = pane.onDidChangeCursorPosition(({ line, col }) => {
+          acc.cursor?.update({ text: `Ln ${line}, Col ${col}` });
+        });
+      } else {
+        // No pane or non-text editor (image, markdown preview, etc.)
+        acc.cursor?.update({ text: '' });
+        acc.eol?.update({ text: '' });
+        acc.indent?.update({ text: '' });
+        acc.encoding?.update({ text: '' });
+      }
+    };
+
+    // Listen to the reliable pane-ready signal from EditorPart
+    this._register(editorPart.onDidActivePaneChange(updatePaneIndicators));
+
+    // Fire once for the initial active pane (if any)
+    updatePaneIndicators(editorPart.activeGroup?.activePane);
+
+    // Clean up cursor sub on dispose
+    this._register(toDisposable(() => cursorSub?.dispose()));
   }
 
   /**
@@ -3545,6 +3702,11 @@ export class Workbench extends Disposable {
   private _statusBarAccessors: {
     branch?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
     errors?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
+    cursor?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
+    indent?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
+    encoding?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
+    eol?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
+    language?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
   } = {};
 
   // ════════════════════════════════════════════════════════════════════════

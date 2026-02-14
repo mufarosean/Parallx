@@ -92,6 +92,13 @@ export class EditorGroupView extends Disposable implements IGridView {
   private readonly _onDidRequestRevealInExplorer = this._register(new Emitter<URI>());
   readonly onDidRequestRevealInExplorer: Event<URI> = this._onDidRequestRevealInExplorer.event;
 
+  /**
+   * Fires after the active pane has been fully swapped (after async setInput).
+   * Consumers can safely read `activePane` when this fires.
+   */
+  private readonly _onDidActivePaneChange = this._register(new Emitter<EditorPane | undefined>());
+  readonly onDidActivePaneChange: Event<EditorPane | undefined> = this._onDidActivePaneChange.event;
+
   constructor(groupId?: string, paneFactory?: (input: IEditorInput) => EditorPane) {
     super();
     this.model = this._register(new EditorGroupModel(groupId));
@@ -843,7 +850,10 @@ export class EditorGroupView extends Disposable implements IGridView {
       this._activePane = undefined;
     }
 
-    if (!activeInput) return;
+    if (!activeInput) {
+      this._onDidActivePaneChange.fire(undefined);
+      return;
+    }
 
     // Create new pane — do NOT add to _paneDisposables yet.
     // Only the call that "wins" the seq check will track it.
@@ -878,6 +888,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     pane.layout(this._width, paneH);
 
     this._activePane = pane;
+    this._onDidActivePaneChange.fire(pane);
   }
 
   private _updateEmptyState(): void {

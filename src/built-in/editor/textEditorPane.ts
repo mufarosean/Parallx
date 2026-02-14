@@ -58,6 +58,10 @@ export class TextEditorPane extends EditorPane {
   private readonly _onDidToggleWordWrap = this._register(new Emitter<boolean>());
   readonly onDidToggleWordWrap: Event<boolean> = this._onDidToggleWordWrap.event;
 
+  /** Fires when the cursor position changes — consumed by the global status bar. */
+  private readonly _onDidChangeCursorPosition = this._register(new Emitter<{ line: number; col: number }>());
+  readonly onDidChangeCursorPosition: Event<{ line: number; col: number }> = this._onDidChangeCursorPosition.event;
+
   constructor() {
     super(TextEditorPane.PANE_ID);
     this._register(this._inputListeners);
@@ -421,8 +425,23 @@ export class TextEditorPane extends EditorPane {
     const line = lines.length;
     const col = (lines[lines.length - 1]?.length ?? 0) + 1;
 
+    this._cursorLine = line;
+    this._cursorCol = col;
     this._positionItem.textContent = `Ln ${line}, Col ${col}`;
+    this._onDidChangeCursorPosition.fire({ line, col });
   };
+
+  // ── Public getters for status bar consumers ────────────────────────────
+
+  private _cursorLine = 1;
+  private _cursorCol = 1;
+
+  /** Current cursor line (1-based). */
+  get cursorLine(): number { return this._cursorLine; }
+  /** Current cursor column (1-based). */
+  get cursorCol(): number { return this._cursorCol; }
+  /** Current EOL sequence label. */
+  get eolLabel(): string { return this._eolItem?.textContent ?? 'LF'; }
 
   private _detectEol(content: string): void {
     if (!this._eolItem) return;

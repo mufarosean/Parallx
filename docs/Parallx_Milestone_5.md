@@ -1025,20 +1025,20 @@ Checked items are already implemented; unchecked items remain as future work.
 - [x] Go to Line (Ctrl+G) — Command to jump to a specific line number in the active editor
 - [x] Line numbers + gutter — Clickable line numbers in the text editor for selection and future breakpoint support
 - [x] Minimap — A scaled-down overview of the document on the right edge of the editor
-- [ ] Word wrap toggle — Status bar button or command to toggle word wrap on/off per editor
+- [x] Word wrap toggle — Status bar button or command to toggle word wrap on/off per editor
 
 ### Layout & Panels
-- [ ] Drag sash resize feedback — Highlight sashes on hover so users discover they can resize panels/sidebar
-- [ ] Panel maximize/restore — Double-click panel title bar to maximize the panel to full height, double-click again to restore
-- [ ] Sidebar collapse animation — Smooth animated transition when toggling sidebar visibility
-- [ ] Zen Mode (Ctrl+K Z) — Hide all chrome (sidebar, panel, status bar, activity bar) to focus on the editor
+- [x] Drag sash resize feedback — Highlight sashes on hover so users discover they can resize panels/sidebar
+- [x] Panel maximize/restore — Double-click panel title bar to maximize the panel to full height, double-click again to restore
+- [x] Sidebar collapse animation — Smooth animated transition when toggling sidebar visibility
+- [x] Zen Mode (Ctrl+K Z) — Hide all chrome (sidebar, panel, status bar, activity bar) to focus on the editor
 
 ### Status Bar & Feedback
-- [ ] Cursor position — Status bar showing Ln X, Col Y — clickable to "Go to Line"
-- [ ] Editor language indicator — Status bar item showing the file type (TypeScript, Markdown, etc.) — clickable to change language mode
-- [ ] Encoding selector — Status bar item showing file encoding (UTF-8, etc.) — clickable to change
-- [ ] Indentation indicator — Status bar item showing indent style/size (Spaces: 2, Tabs, etc.) — clickable to change
-- [ ] Notification toasts — Slide-in notifications in the bottom-right for save confirmations, errors, tool activation feedback
+- [x] Cursor position — Status bar showing Ln X, Col Y — clickable to "Go to Line"
+- [x] Editor language indicator — Status bar item showing the file type (TypeScript, Markdown, etc.) — clickable to change language mode
+- [x] Encoding selector — Status bar item showing file encoding (UTF-8, etc.) — clickable to change
+- [x] Indentation indicator — Status bar item showing indent style/size (Spaces: 2, Tabs, etc.) — clickable to change
+- [x] Notification toasts — Slide-in notifications in the bottom-right for save confirmations, errors, tool activation feedback
 
 ### Quality of Life
 - [ ] Keyboard shortcut hints — Show keybinding next to command names in menus and command palette entries
