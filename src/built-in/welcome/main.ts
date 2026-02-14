@@ -79,8 +79,11 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
 
   // Logo / App name
   const logo = document.createElement('div');
-  logo.style.cssText = 'font-size: 64px; margin-bottom: 8px; user-select: none;';
-  logo.textContent = '⚡';
+  logo.style.cssText = 'margin-bottom: 8px; user-select: none; display: flex; justify-content: center;';
+  logo.innerHTML = `<svg width="64" height="64" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf" opacity="0.45"/>
+    <rect x="10" y="6" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf"/>
+  </svg>`;
   wrapper.appendChild(logo);
 
   const h1 = document.createElement('h1');
