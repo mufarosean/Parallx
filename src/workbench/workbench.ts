@@ -905,6 +905,9 @@ export class Workbench extends Disposable {
     // 4b. Toggle aux bar button in activity bar (bottom)
     this._addAuxBarToggle();
 
+    // 4c. Manage gear icon in activity bar (bottom) — VS Code parity
+    this._addManageGearIcon();
+
     // 5. DnD between parts
     this._dndController = this._setupDragAndDrop();
 
@@ -1844,6 +1847,136 @@ export class Workbench extends Disposable {
       toggleBtn.classList.toggle('active', this._auxBarVisible);
     });
     bottomSection.appendChild(toggleBtn);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Manage gear icon (VS Code: global-activity "Manage" button)
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Adds a gear icon to the activity bar bottom section that opens a
+   * settings/manage menu — mirrors VS Code's "Manage" gear icon.
+   *
+   * VS Code reference: src/vs/workbench/browser/parts/activitybar/activitybarActions.ts
+   *   → GlobalActivityActionViewItem
+   */
+  private _addManageGearIcon(): void {
+    const bottomSection = this._activityBarPart.contentElement.querySelector('.activity-bar-bottom');
+    if (!bottomSection) return;
+
+    const gearBtn = document.createElement('button');
+    gearBtn.classList.add('activity-bar-item', 'activity-bar-manage-gear');
+    gearBtn.dataset.iconId = 'manage-gear';
+    gearBtn.title = 'Manage';
+
+    // Use the gear SVG from the codicon map
+    const iconLabel = document.createElement('span');
+    iconLabel.classList.add('activity-bar-icon-label');
+    iconLabel.innerHTML =
+      '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '<path d="M19.85 8.75L18.01 8.07L19 6.54L17.46 5L15.93 5.99L15.25 4.15H13.25L12.57 5.99' +
+      'L11.04 5L9.5 6.54L10.49 8.07L8.65 8.75V10.75L10.49 11.43L9.5 12.96L11.04 14.5L12.57 13.51' +
+      'L13.25 15.35H15.25L15.93 13.51L17.46 14.5L19 12.96L18.01 11.43L19.85 10.75V8.75Z' +
+      'M14.25 12.5C13.01 12.5 12 11.49 12 10.25C12 9.01 13.01 8 14.25 8C15.49 8 16.5 9.01 16.5 10.25' +
+      'C16.5 11.49 15.49 12.5 14.25 12.5Z" fill="currentColor"/></svg>';
+    gearBtn.appendChild(iconLabel);
+
+    gearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._showManageMenu(gearBtn);
+    });
+
+    bottomSection.appendChild(gearBtn);
+  }
+
+  /**
+   * Show the Manage menu anchored above the gear icon (opens upward like VS Code).
+   */
+  private _showManageMenu(anchor: HTMLElement): void {
+    const cmdService = this._services.get(ICommandService) as CommandService;
+    const rect = anchor.getBoundingClientRect();
+
+    const items: import('../ui/contextMenu.js').IContextMenuItem[] = [
+      {
+        id: 'workbench.action.showCommands',
+        label: 'Command Palette...',
+        keybinding: this._keybindingHint('workbench.action.showCommands'),
+        group: '1_commands',
+      },
+      {
+        id: 'manage.profiles',
+        label: 'Profiles',
+        group: '2_preferences',
+        disabled: true,
+      },
+      {
+        id: 'workbench.action.openSettings',
+        label: 'Settings',
+        keybinding: this._keybindingHint('workbench.action.openSettings'),
+        group: '2_preferences',
+      },
+      {
+        id: 'manage.extensions',
+        label: 'Extensions',
+        keybinding: 'Ctrl+Shift+X',
+        group: '2_preferences',
+        disabled: true,
+      },
+      {
+        id: 'workbench.action.openKeybindings',
+        label: 'Keyboard Shortcuts',
+        keybinding: this._keybindingHint('workbench.action.openKeybindings'),
+        group: '2_preferences',
+      },
+      {
+        id: 'manage.tasks',
+        label: 'Tasks',
+        group: '2_preferences',
+        disabled: true,
+      },
+      {
+        id: 'manage.themes',
+        label: 'Themes',
+        group: '3_themes',
+        submenu: [
+          { id: 'workbench.action.selectTheme', label: 'Color Theme', keybinding: 'Ctrl+K Ctrl+T', group: '1_themes' },
+          { id: 'workbench.action.selectIconTheme', label: 'File Icon Theme', group: '1_themes', disabled: true },
+          { id: 'workbench.action.selectProductIconTheme', label: 'Product Icon Theme', group: '1_themes', disabled: true },
+        ],
+      },
+      {
+        id: 'manage.checkUpdates',
+        label: 'Check for Updates...',
+        group: '4_updates',
+        disabled: true,
+      },
+    ];
+
+    // Anchor above the gear icon (VS Code pattern: menu opens upward)
+    // We estimate a max height and position accordingly; viewport clamp handles overflows
+    const estimatedMenuHeight = items.length * 28 + 24; // rough: items + separators
+    const y = Math.max(8, rect.top - estimatedMenuHeight);
+
+    const ctxMenu = ContextMenu.show({
+      items,
+      anchor: { x: rect.right + 4, y },
+    });
+
+    ctxMenu.onDidSelect(({ item }) => {
+      if (item.disabled) return;
+
+      // Handle theme commands specially (no registered command yet)
+      if (item.id === 'workbench.action.selectTheme') {
+        // Open the command palette with a theme filter
+        this.toggleCommandPalette();
+        return;
+      }
+
+      // Execute via command service for registered commands
+      cmdService.executeCommand(item.id).catch(err => {
+        console.error(`[Workbench] Manage menu action error:`, err);
+      });
+    });
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -4006,6 +4139,9 @@ export class Workbench extends Disposable {
 
     // 2. Aux bar toggle button
     this._addAuxBarToggle();
+
+    // 2b. Manage gear icon
+    this._addManageGearIcon();
 
     // 3. DnD
     this._dndController = this._setupDragAndDrop();

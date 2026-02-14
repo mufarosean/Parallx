@@ -461,6 +461,20 @@
   background: var(--vscode-menu-separatorBackground);
 }
 
+/* Submenu arrow indicator */
+.context-menu-submenu-arrow {
+  margin-left: 24px;
+  font-size: 10px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+/* Highlight row when its submenu is open */
+.context-menu-item--has-submenu:hover .context-menu-submenu-arrow,
+.context-menu-item--selected .context-menu-submenu-arrow {
+  opacity: 1;
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
    Find & Replace Widget
    VS Code reference: src/vs/editor/contrib/find/browser/findWidget.css

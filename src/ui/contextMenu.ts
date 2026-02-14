@@ -28,6 +28,8 @@ export interface IContextMenuItem {
   readonly order?: number;
   /** Whether this item is disabled (grayed out, not clickable). */
   readonly disabled?: boolean;
+  /** Optional submenu items — renders an arrow indicator and opens a child menu on hover. */
+  readonly submenu?: readonly IContextMenuItem[];
 }
 
 /** Anchor specification for positioning the menu. */
@@ -84,6 +86,11 @@ export class ContextMenu extends Disposable {
   private readonly _itemEls: HTMLElement[] = [];
   private _highlightIndex = -1;
 
+  // ── Submenus ──
+
+  private _activeSubmenu: ContextMenu | null = null;
+  private _submenuTimer: ReturnType<typeof setTimeout> | null = null;
+
   // ── Lifecycle ──
 
   private _dismissed = false;
@@ -123,8 +130,9 @@ export class ContextMenu extends Disposable {
     // Click outside to dismiss
     this._register(this._listenOutsideClick());
 
-    // Clean up DOM on dispose
+    // Clean up DOM and submenus on dispose
     this._register(toDisposable(() => {
+      this._cancelSubmenu();
       if (this._el.parentNode) this._el.remove();
     }));
   }
@@ -170,8 +178,15 @@ export class ContextMenu extends Disposable {
       label.textContent = item.label;
       row.appendChild(label);
 
-      // Keybinding
-      if (item.keybinding) {
+      // Submenu arrow indicator
+      if (item.submenu && item.submenu.length > 0) {
+        row.classList.add('context-menu-item--has-submenu');
+        const arrow = document.createElement('span');
+        arrow.classList.add('context-menu-submenu-arrow');
+        arrow.textContent = '\u276F'; // ❯
+        row.appendChild(arrow);
+      } else if (item.keybinding) {
+        // Keybinding (only when no submenu)
         const kb = document.createElement('span');
         kb.classList.add('context-menu-item-keybinding');
         kb.textContent = item.keybinding;
@@ -180,16 +195,29 @@ export class ContextMenu extends Disposable {
 
       // Click
       if (!item.disabled) {
-        row.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this._select(item);
-        });
+        if (item.submenu && item.submenu.length > 0) {
+          // Submenu items open on click too
+          row.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._showSubmenu(item, row);
+          });
+        } else {
+          row.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._select(item);
+          });
+        }
       }
 
-      // Hover highlight
+      // Hover highlight + submenu management
       row.addEventListener('mouseenter', () => {
         if (!item.disabled) {
           this._highlight(this._itemEls.indexOf(row));
+        }
+        if (item.submenu && item.submenu.length > 0 && !item.disabled) {
+          this._scheduleSubmenu(item, row);
+        } else {
+          this._cancelSubmenu();
         }
       });
 
@@ -211,6 +239,58 @@ export class ContextMenu extends Disposable {
   private _select(item: IContextMenuItem): void {
     this._onDidSelect.fire({ item });
     this.dismiss();
+  }
+
+  // ── Submenu management ─────────────────────────────────────────────────
+
+  private _scheduleSubmenu(item: IContextMenuItem, row: HTMLElement): void {
+    this._cancelSubmenu();
+    this._submenuTimer = setTimeout(() => {
+      this._showSubmenu(item, row);
+    }, 200);
+  }
+
+  private _cancelSubmenu(): void {
+    if (this._submenuTimer) {
+      clearTimeout(this._submenuTimer);
+      this._submenuTimer = null;
+    }
+    if (this._activeSubmenu) {
+      this._activeSubmenu.dismiss();
+      this._activeSubmenu = null;
+    }
+  }
+
+  private _showSubmenu(item: IContextMenuItem, row: HTMLElement): void {
+    if (!item.submenu || item.submenu.length === 0) return;
+
+    // Dismiss any existing submenu
+    if (this._activeSubmenu) {
+      this._activeSubmenu.dismiss();
+      this._activeSubmenu = null;
+    }
+
+    // Position to the right of the parent row
+    const rowRect = row.getBoundingClientRect();
+    const sub = ContextMenu.show({
+      items: item.submenu,
+      anchor: { x: rowRect.right - 2, y: rowRect.top },
+      className: 'context-menu--submenu',
+    });
+
+    // Forward submenu selections to the parent menu's onDidSelect
+    sub.onDidSelect((e) => {
+      this._onDidSelect.fire(e);
+      this.dismiss();
+    });
+
+    sub.onDidDismiss(() => {
+      if (this._activeSubmenu === sub) {
+        this._activeSubmenu = null;
+      }
+    });
+
+    this._activeSubmenu = sub;
   }
 
   // ── Keyboard ───────────────────────────────────────────────────────────
