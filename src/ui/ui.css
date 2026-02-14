@@ -407,7 +407,7 @@
   color: var(--vscode-menu-foreground);
   border: 1px solid var(--vscode-menu-border);
   border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow);
   font-size: 13px;
   outline: none;
   overflow-y: auto;

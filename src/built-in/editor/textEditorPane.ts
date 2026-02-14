@@ -87,6 +87,10 @@ export class TextEditorPane extends EditorPane {
     this._textarea.setAttribute('autocorrect', 'off');
     this._textarea.placeholder = 'Start typing…';
 
+    // Store instance reference on the textarea so external commands
+    // (e.g. editor.toggleWordWrap) can reach the pane via DOM query.
+    (this._textarea as any).__textEditorPane = this;
+
     // Tab-key override
     this._textarea.addEventListener('keydown', this._onKeyDown);
 
@@ -358,6 +362,9 @@ export class TextEditorPane extends EditorPane {
   private _applyWordWrap(): void {
     if (!this._textarea) return;
     this._textarea.classList.toggle('text-editor-textarea--wrap', this._wordWrap);
+    // Wrapping changes scroll geometry → refresh minimap + slider
+    this._renderMinimap();
+    this._updateMinimapSlider();
   }
 
   // ── Private Handlers ───────────────────────────────────────────────────

@@ -151,6 +151,9 @@ export class EditorPart extends Part {
     this._grid.layout();
     this._updateWatermark();
 
+    // Enable sash drag resizing between editor groups
+    this._grid.initializeSashDrag();
+
     // Set up the drop target for drag-to-edge split creation
     this._setupDropTarget();
   }

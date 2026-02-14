@@ -156,6 +156,28 @@
 /* Hide the native vertical scrollbar — the minimap slider replaces it */
 .text-editor-body .text-editor-textarea::-webkit-scrollbar {
   width: 0;
+  height: 10px;
+}
+
+.text-editor-body .text-editor-textarea::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+  border-radius: 5px;
+}
+
+.text-editor-body .text-editor-textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121, 121, 121, 0.7));
+}
+
+.text-editor-body .text-editor-textarea::-webkit-scrollbar-thumb:active {
+  background: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.5));
+}
+
+.text-editor-body .text-editor-textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.text-editor-body .text-editor-textarea::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* Word wrap mode */
