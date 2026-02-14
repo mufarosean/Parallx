@@ -1134,9 +1134,6 @@ export class Workbench extends Disposable {
     // 4. Status bar entries
     this._setupStatusBar();
 
-    // 4b. Toggle aux bar button in activity bar (bottom)
-    this._addAuxBarToggle();
-
     // 4c. Manage gear icon in activity bar (bottom) — VS Code parity
     this._addManageGearIcon();
 
@@ -2057,28 +2054,6 @@ export class Workbench extends Disposable {
     // already activated the first view (Terminal) via addView.
 
     return container;
-  }
-
-  // ════════════════════════════════════════════════════════════════════════
-  // Activity bar toggle for aux bar
-  // ════════════════════════════════════════════════════════════════════════
-
-  private _addAuxBarToggle(): void {
-    // The spacer and bottom section are already part of ActivityBarPart's
-    // createContent(). We just need to add the toggle icon to the bottom section.
-    const bottomSection = this._activityBarPart.contentElement.querySelector('.activity-bar-bottom');
-    if (!bottomSection) return;
-
-    const toggleBtn = document.createElement('button');
-    toggleBtn.classList.add('activity-bar-item');
-    toggleBtn.dataset.iconId = 'auxbar-toggle';
-    toggleBtn.title = 'Toggle Secondary Side Bar';
-    toggleBtn.textContent = '⊞';
-    toggleBtn.addEventListener('click', () => {
-      this.toggleAuxiliaryBar();
-      toggleBtn.classList.toggle('active', this._auxBarVisible);
-    });
-    bottomSection.appendChild(toggleBtn);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -4397,9 +4372,6 @@ export class Workbench extends Disposable {
     this._sidebarContainer = this._setupSidebarViews();
     this._panelContainer = this._setupPanelViews();
     this._auxBarContainer = this._setupAuxBarViews();
-
-    // 2. Aux bar toggle button
-    this._addAuxBarToggle();
 
     // 2b. Manage gear icon
     this._addManageGearIcon();
