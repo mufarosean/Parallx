@@ -109,6 +109,44 @@
     "textLink.foreground": "#006ab1",
     "textLink.activeForeground": "#006ab1",
 
-    "scrollbar.shadow": "rgba(0, 0, 0, 0.2)"
+    "scrollbar.shadow": "rgba(0, 0, 0, 0.2)",
+
+    "scrollbarSlider.background": "rgba(100, 100, 100, 0.4)",
+    "scrollbarSlider.hoverBackground": "rgba(100, 100, 100, 0.7)",
+    "scrollbarSlider.activeBackground": "rgba(0, 0, 0, 0.6)",
+
+    "badge.background": "#ffffff",
+    "badge.foreground": "#292929",
+
+    "breadcrumb.background": "#ffffff",
+    "breadcrumb.foreground": "#292929",
+    "breadcrumb.focusForeground": "#292929",
+    "breadcrumb.activeSelectionForeground": "#292929",
+
+    "editor.findMatchHighlightBackground": "rgba(234, 92, 0, 0.33)",
+    "editorGroup.border": "#cecece",
+    "editorGroupHeader.border": "#cecece",
+    "editorIndentGuide.background": "#d3d3d3",
+    "editorLineNumber.foreground": "#237893",
+    "editorLineNumber.activeForeground": "#292929",
+
+    "editorWidget.background": "#ffffff",
+    "editorWidget.foreground": "#292929",
+    "editorWidget.border": "#cecece",
+
+    "inputOption.activeBackground": "rgba(0, 122, 204, 0.2)",
+    "inputOption.activeForeground": "#000000",
+    "inputOption.activeBorder": "#007acc",
+
+    "minimapSlider.hoverBackground": "rgba(100, 100, 100, 0.15)",
+    "minimapSlider.activeBackground": "rgba(100, 100, 100, 0.25)",
+
+    "quickInputList.focusForeground": "#292929",
+
+    "textBlockQuote.border": "#007acc",
+    "textBlockQuote.foreground": "#292929",
+    "textCodeBlock.background": "#f0f0f0",
+
+    "toolbar.activeBackground": "rgba(0, 0, 0, 0.12)"
   }
 }
