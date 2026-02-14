@@ -20,8 +20,6 @@ import { registerWorkbenchServices, registerConfigurationServices } from './work
 // Layout base class (VS Code: Layout → Workbench extends Layout)
 import {
   Layout,
-  TITLE_HEIGHT, STATUS_HEIGHT, ACTIVITY_BAR_WIDTH,
-  DEFAULT_SIDEBAR_WIDTH, DEFAULT_PANEL_HEIGHT, DEFAULT_AUX_BAR_WIDTH, MIN_EDITOR_WIDTH,
 } from './layout.js';
 
 // Parts
@@ -36,21 +34,18 @@ import { LayoutRenderer } from '../layout/layoutRenderer.js';
 
 // Storage + Persistence
 import { LocalStorage, NamespacedStorage, IStorage } from '../platform/storage.js';
-import { LayoutPersistence } from '../layout/layoutPersistence.js';
 
 // Workspace
 import { Workspace } from '../workspace/workspace.js';
 import { RecentWorkspaces } from '../workspace/recentWorkspaces.js';
 import { WorkspaceLoader } from '../workspace/workspaceLoader.js';
-import { WorkspaceSaver, WorkspaceStateSources } from '../workspace/workspaceSaver.js';
+import { WorkspaceSaver } from '../workspace/workspaceSaver.js';
 import {
   WorkspaceState,
-  SerializedContextSnapshot,
-  createDefaultContextSnapshot,
   createDefaultEditorSnapshot,
   workspaceStorageKey,
 } from '../workspace/workspaceTypes.js';
-import { createDefaultLayoutState, SerializedLayoutState } from '../layout/layoutModel.js';
+import { createDefaultLayoutState } from '../layout/layoutModel.js';
 
 // Commands
 import { CommandService } from '../commands/commandRegistry.js';
@@ -102,9 +97,7 @@ import type { ConfigurationRegistry } from '../configuration/configurationRegist
 
 // Contribution Processors (M2 Capability 5)
 import { registerContributionProcessors, registerViewContributionProcessor } from './workbenchServices.js';
-import type { CommandContributionProcessor } from '../contributions/commandContribution.js';
 import { formatKeybindingForDisplay } from '../contributions/keybindingContribution.js';
-import type { KeybindingContributionProcessor } from '../contributions/keybindingContribution.js';
 import type { MenuContributionProcessor } from '../contributions/menuContribution.js';
 
 // Keybinding Service (M3 Capability 0.3)
@@ -157,7 +150,6 @@ import { SettingsEditorPane } from '../built-in/editor/settingsEditorPane.js';
 // Theme System (M5 Capability 1–3)
 import { colorRegistry } from '../theme/colorRegistry.js';
 import '../theme/workbenchColors.js'; // side-effect: registers all color tokens
-import { ColorThemeData } from '../theme/themeData.js';
 import { ThemeService } from '../services/themeService.js';
 import {
   findThemeById,
@@ -201,7 +193,6 @@ export class Workbench extends Layout {
 
   // Storage + Persistence
   private _storage!: IStorage;
-  private _persistence!: LayoutPersistence;
   private _layoutRenderer!: LayoutRenderer;
 
   // Workspace
@@ -225,8 +216,6 @@ export class Workbench extends Layout {
   private _globalStorage!: IStorage;
 
   // Contribution Processors (M2 Capability 5)
-  private _commandContribution!: CommandContributionProcessor;
-  private _keybindingContribution!: KeybindingContributionProcessor;
   private _menuContribution!: MenuContributionProcessor;
 
   // View Contribution (M2 Capability 6)
@@ -707,7 +696,7 @@ export class Workbench extends Layout {
     this._globalStorage = new NamespacedStorage(rawStorage, 'parallx-global');
 
     // Layout persistence: save/load layout state via storage
-    this._persistence = new LayoutPersistence(this._storage);
+    // (handled by WorkspaceSaver — LayoutPersistence not needed directly)
 
     // Layout renderer: available for future serialized-state rendering
     this._layoutRenderer = this._register(new LayoutRenderer(this._container));
@@ -1392,7 +1381,7 @@ export class Workbench extends Layout {
       moreBtn.title = 'More Actions…';
       moreBtn.setAttribute('aria-label', 'More Actions…');
       moreBtn.textContent = '⋯';
-      moreBtn.addEventListener('click', (e) => {
+      moreBtn.addEventListener('click', (_e) => {
         const rect = moreBtn.getBoundingClientRect();
         ContextMenu.show({
           items: [
@@ -1978,8 +1967,6 @@ export class Workbench extends Layout {
     // Register contribution processors (M2 Capability 5)
     const { commandContribution, keybindingContribution, menuContribution, keybindingService } =
       registerContributionProcessors(this._services);
-    this._commandContribution = commandContribution;
-    this._keybindingContribution = keybindingContribution;
     this._menuContribution = menuContribution;
     this._register(commandContribution);
     this._register(keybindingContribution);

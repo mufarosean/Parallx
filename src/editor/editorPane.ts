@@ -12,7 +12,7 @@
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { IEditorInput } from './editorInput.js';
-import type { SizeConstraints, Orientation, Dimensions } from '../layout/layoutTypes.js';
+import type { SizeConstraints } from '../layout/layoutTypes.js';
 import { DEFAULT_SIZE_CONSTRAINTS } from '../layout/layoutTypes.js';
 
 // ─── View State ──────────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@
 
 import { Disposable, DisposableStore } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { $, append, clearNode, addDisposableListener, toggleClass } from './dom.js';
+import { $, clearNode, addDisposableListener, toggleClass } from './dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

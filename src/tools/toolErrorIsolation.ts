@@ -5,7 +5,7 @@
 // logged with stack traces, and tracked per-tool. Repeated errors trigger
 // warnings. Misbehaving tools can be force-deactivated.
 
-import { Disposable, IDisposable } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────

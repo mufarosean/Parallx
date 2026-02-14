@@ -1,5 +1,5 @@
 // viewManager.ts — view lifecycle + placement
-import { Disposable, IDisposable } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { IView, ViewState } from './view.js';
 import { IViewDescriptor } from './viewDescriptor.js';

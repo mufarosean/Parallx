@@ -8,7 +8,7 @@
 // ensures all such calls are scoped to the calling tool and tracked
 // for cleanup.
 
-import { IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { IDisposable } from '../platform/lifecycle.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import {

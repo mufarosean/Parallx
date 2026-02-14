@@ -1,11 +1,11 @@
 // layoutRenderer.ts — render UI from layout state
 
-import { Disposable, DisposableStore, toDisposable } from '../platform/lifecycle.js';
+import { Disposable, DisposableStore } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { Orientation } from './layoutTypes.js';
 import { IGridView } from './gridView.js';
 import { Grid } from './grid.js';
-import { SerializedGrid, SerializedLayoutState, createDefaultLayoutState } from './layoutModel.js';
+import { SerializedLayoutState, createDefaultLayoutState } from './layoutModel.js';
 
 /**
  * Renders and manages the grid layout within a container DOM element.

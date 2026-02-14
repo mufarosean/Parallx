@@ -121,7 +121,7 @@ export class NamespacedStorage implements IStorage {
 /**
  * Namespaced wrapper for synchronous storage.
  */
-class NamespacedSyncStorage implements ISyncStorage {
+export class NamespacedSyncStorage implements ISyncStorage {
   constructor(
     private readonly _inner: ISyncStorage,
     private readonly _namespace: string,
@@ -158,7 +158,7 @@ class NamespacedSyncStorage implements ISyncStorage {
  * In-memory storage implementation. Useful for testing.
  * Implements both IStorage and ISyncStorage.
  */
-class InMemoryStorage implements IStorage, ISyncStorage {
+export class InMemoryStorage implements IStorage, ISyncStorage {
   private readonly _store = new Map<string, string>();
 
   // ── Async ──
@@ -317,7 +317,7 @@ const IDB_DEFAULT_STORE = 'kv';
  * IndexedDB-backed storage for large data.
  * Async-only (IndexedDB is inherently asynchronous).
  */
-class IndexedDBStorage implements IStorage, IDisposable {
+export class IndexedDBStorage implements IStorage, IDisposable {
   private _db: IDBDatabase | undefined;
   private readonly _dbName: string;
   private readonly _storeName: string;

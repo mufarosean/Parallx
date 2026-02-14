@@ -1,5 +1,5 @@
 // placeholderViews.ts — test / dummy views for development
-import { View, IView, ViewState } from './view.js';
+import { View } from './view.js';
 import { IViewDescriptor, ViewDescriptorBuilder } from './viewDescriptor.js';
 
 // ─── Logging base class ─────────────────────────────────────────────────────

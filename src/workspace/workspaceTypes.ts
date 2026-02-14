@@ -1,8 +1,6 @@
 // workspaceTypes.ts — workspace-related types
 import { SerializedLayoutState } from '../layout/layoutModel.js';
 import { ViewState } from '../views/view.js';
-import { PartState } from '../parts/partTypes.js';
-import { ViewContainerState } from '../views/viewContainer.js';
 
 // ─── Schema Version ──────────────────────────────────────────────────────────
 

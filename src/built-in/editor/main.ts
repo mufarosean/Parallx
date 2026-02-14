@@ -35,12 +35,9 @@ interface ToolContext {
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
-let _api: ParallxApi;
-
 // ─── Activation ──────────────────────────────────────────────────────────────
 
 export function activate(api: ParallxApi, context: ToolContext): void {
-  _api = api;
 
   // ── editor.toggleWordWrap ──
   context.subscriptions.push(

@@ -42,7 +42,7 @@ export function inject(serviceId: ServiceIdentifier<any>) {
  * Decorator factory for optional service dependencies.
  * If the service is not registered, undefined is injected.
  */
-function injectOptional(serviceId: ServiceIdentifier<any>) {
+export function injectOptional(serviceId: ServiceIdentifier<any>) {
   return function (target: any, _propertyKey: string | symbol | undefined, parameterIndex: number) {
     const deps: ServiceDependency[] = getServiceDependencies(target);
     deps.push({ id: serviceId, parameterIndex, optional: true });
@@ -137,7 +137,7 @@ class MissingDependencyError extends Error {
  * @param ctor      Class constructor
  * @param extraArgs Additional arguments for non-decorated parameters
  */
-function createInstance<T>(
+export function createInstance<T>(
   provider: IServiceProvider,
   ctor: new (...args: any[]) => T,
   ...extraArgs: any[]

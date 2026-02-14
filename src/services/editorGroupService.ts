@@ -3,7 +3,7 @@
 // Thin façade over EditorPart that exposes group operations to the
 // service layer. Re-fires EditorPart events as service events.
 
-import { Disposable, DisposableStore } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { EditorPart } from '../parts/editorPart.js';
 import { EditorGroupView } from '../editor/editorGroupView.js';

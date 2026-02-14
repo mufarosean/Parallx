@@ -4,8 +4,6 @@
 // These are imported by editorInput, editorGroupModel, editorPane,
 // editorGroupView, and the editor services.
 
-import type { IDisposable } from '../platform/lifecycle.js';
-import type { Event } from '../platform/events.js';
 
 // ─── Editor Open Options ─────────────────────────────────────────────────────
 
@@ -86,7 +84,7 @@ export enum GroupDirection {
 /**
  * Where to move/copy an editor.
  */
-interface EditorMoveTarget {
+export interface EditorMoveTarget {
   readonly groupId: string;
   readonly index?: number;
 }
@@ -109,12 +107,12 @@ export const EDITOR_TAB_DRAG_TYPE = 'application/parallx-editor-tab';
 /**
  * Serialized layout of the editor part's nested grid.
  */
-interface SerializedEditorPartLayout {
+export interface SerializedEditorPartLayout {
   readonly orientation: 'horizontal' | 'vertical';
   readonly groups: SerializedEditorGroupLayout[];
 }
 
-interface SerializedEditorGroupLayout {
+export interface SerializedEditorGroupLayout {
   readonly groupId: string;
   readonly size: number;
 }
@@ -124,7 +122,7 @@ interface SerializedEditorGroupLayout {
 /**
  * Result of an editor close attempt.
  */
-enum EditorCloseResult {
+export enum EditorCloseResult {
   /** Editor was closed successfully. */
   Closed = 'closed',
   /** Editor close was vetoed (e.g. unsaved changes). */

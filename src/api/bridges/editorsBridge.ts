@@ -6,9 +6,7 @@
 // workbench-level file editor resolver.
 
 import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
-import { Emitter, Event } from '../../platform/events.js';
 import { EditorInput, type IEditorInput } from '../../editor/editorInput.js';
-import { EditorPane, type IEditorPane } from '../../editor/editorPane.js';
 import type { SerializedEditorEntry } from '../../editor/editorTypes.js';
 import type { IEditorService, OpenEditorDescriptor } from '../../services/serviceTypes.js';
 

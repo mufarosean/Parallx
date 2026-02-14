@@ -137,7 +137,6 @@ export class ViewsBridge {
 function _createToolView(viewId: string, name: string, provider: ToolViewProvider): IView {
   let _element: HTMLElement | undefined;
   let _providerDisposable: IDisposable | undefined;
-  let _visible = false;
   let _disposed = false;
 
   const _onDidChangeConstraints = new Emitter<void>();
@@ -173,7 +172,6 @@ function _createToolView(viewId: string, name: string, provider: ToolViewProvide
     },
 
     setVisible(visible: boolean): void {
-      _visible = visible;
       if (_element) {
         visible ? show(_element) : hide(_element);
       }

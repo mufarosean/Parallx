@@ -13,7 +13,6 @@ import type {
 } from './configurationTypes.js';
 import type {
   IManifestConfigurationDescriptor,
-  IManifestConfigurationProperty,
 } from '../tools/toolManifest.js';
 
 // ─── Events ──────────────────────────────────────────────────────────────────

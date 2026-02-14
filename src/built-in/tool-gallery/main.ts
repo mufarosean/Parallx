@@ -34,7 +34,6 @@ interface ParallxApi {
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
-let containerEl: HTMLElement | null = null;
 let refreshFn: (() => void) | null = null;
 
 // ─── Activation ──────────────────────────────────────────────────────────────
@@ -57,7 +56,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 }
 
 export function deactivate(): void {
-  containerEl = null;
   refreshFn = null;
 }
 
@@ -65,8 +63,6 @@ export function deactivate(): void {
 
 function renderToolGallery(container: HTMLElement, api: ParallxApi): IDisposable {
   container.classList.add('tool-gallery-container');
-
-  containerEl = container;
 
   // Header bar
   const header = document.createElement('div');
@@ -159,7 +155,6 @@ function renderToolGallery(container: HTMLElement, api: ParallxApi): IDisposable
 
   return {
     dispose() {
-      containerEl = null;
       refreshFn = null;
       container.innerHTML = '';
     },

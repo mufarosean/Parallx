@@ -8,7 +8,7 @@
 // WorkbenchContextManager is a Disposable that subscribes to workbench events
 // and synchronously updates the ContextKeyService whenever state changes.
 
-import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { ContextKeyService, IContextKey } from './contextKey.js';
 import { FocusTracker } from './focusTracker.js';
 
@@ -106,8 +106,8 @@ export class WorkbenchContextManager extends Disposable {
   private readonly _resourceFilename: IContextKey<string>;
 
   constructor(
-    private readonly _contextKeyService: ContextKeyService,
-    private readonly _focusTracker: FocusTracker | undefined,
+    _contextKeyService: ContextKeyService,
+    _focusTracker: FocusTracker | undefined,
   ) {
     super();
 

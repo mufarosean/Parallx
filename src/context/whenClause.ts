@@ -405,7 +405,7 @@ export function parseWhenClause(expression: string | undefined): WhenClauseNode 
 /**
  * Clear the parse cache. Useful for testing.
  */
-function clearWhenClauseCache(): void {
+export function clearWhenClauseCache(): void {
   _parseCache.clear();
 }
 

@@ -6,8 +6,6 @@
 import {
   CURRENT_MANIFEST_VERSION,
   SUPPORTED_ACTIVATION_PREFIXES,
-  type IToolManifest,
-  type IManifestContributions,
 } from './toolManifest.js';
 
 // ─── Current Shell Version ───────────────────────────────────────────────────
@@ -349,8 +347,8 @@ function _checkVersionCompatibility(required: string, current: string): VersionC
     return { compatible: false, reason: `Cannot parse required version: ${required}` };
   }
 
-  const [curMaj, curMin, curPatch] = currentParts;
-  const [reqMaj, reqMin, reqPatch] = requiredParts;
+  const [curMaj, curMin] = currentParts;
+  const [reqMaj, reqMin] = requiredParts;
 
   switch (prefix) {
     case '^':

@@ -1,11 +1,11 @@
 // viewContainer.ts — container that hosts multiple views with tabbed UI
 
-import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS, Orientation } from '../layout/layoutTypes.js';
+import { Orientation } from '../layout/layoutTypes.js';
 import { hide, show, startDrag, endDrag } from '../ui/dom.js';
 import { IGridView } from '../layout/gridView.js';
-import { IView, ViewState } from './view.js';
+import { IView } from './view.js';
 
 // ─── Tab State ───────────────────────────────────────────────────────────────
 
@@ -54,7 +54,6 @@ export class ViewContainer extends Disposable implements IGridView {
 
   private _width = 0;
   private _height = 0;
-  private _visible = true;
   private _tabBarHeight = 35;
 
   // ── Stacked mode ──
@@ -63,7 +62,6 @@ export class ViewContainer extends Disposable implements IGridView {
   private _collapsedSections = new Set<string>();
   private _sectionElements = new Map<string, { wrapper: HTMLElement; header: HTMLElement; body: HTMLElement; actionsSlot: HTMLElement }>();
   private _sectionSashes: HTMLElement[] = [];
-  private _sectionSashDragState: { sashIndex: number; startY: number } | null = null;
 
   static readonly SECTION_HEADER_HEIGHT = 22;
   static readonly SECTION_SASH_HEIGHT = 4;
@@ -235,7 +233,6 @@ export class ViewContainer extends Disposable implements IGridView {
   }
 
   setVisible(visible: boolean): void {
-    this._visible = visible;
     this._element.classList.toggle('hidden', !visible);
   }
 
@@ -611,7 +608,6 @@ export class ViewContainer extends Disposable implements IGridView {
    * Handle mousedown on a section sash for vertical resize between stacked sections.
    */
   private _onSectionSashMouseDown(sashIndex: number, startY: number): void {
-    this._sectionSashDragState = { sashIndex, startY };
 
     const expandedIds = this._tabOrder.filter(id => !this._collapsedSections.has(id));
     if (expandedIds.length < 2) return;
@@ -649,7 +645,6 @@ export class ViewContainer extends Disposable implements IGridView {
     };
 
     const onMouseUp = (): void => {
-      this._sectionSashDragState = null;
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       endDrag();
@@ -689,7 +684,6 @@ export class ViewContainer extends Disposable implements IGridView {
 
     const viewIds = this._tabOrder.filter(id => this._views.has(id));
     const expandedIds = viewIds.filter(id => !this._collapsedSections.has(id));
-    const collapsedIds = viewIds.filter(id => this._collapsedSections.has(id));
 
     // Space used by all section headers + collapsed sections + sashes
     const headerSpace = viewIds.length * headerH;

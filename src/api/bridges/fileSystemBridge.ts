@@ -5,7 +5,6 @@
 //
 // VS Code reference: vscode.workspace.fs namespace
 
-import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
 import { URI } from '../../platform/uri.js';
 import type { FileStat, FileEntry } from '../../platform/fileTypes.js';
 import type { IFileService } from '../../services/serviceTypes.js';

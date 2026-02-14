@@ -49,7 +49,6 @@ interface ParallxApi {
 const FILE_TYPE_FILE = 1;
 const FILE_TYPE_DIRECTORY = 2;
 const MAX_RESULTS_PER_FILE = 999;
-const MAX_TOTAL_FILES = 5000;
 const FILE_SCAN_DEPTH = 10;
 const SEARCH_DEBOUNCE_MS = 300;
 const CONTEXT_CHARS = 60;
@@ -118,11 +117,9 @@ let _options: SearchOptions = {
 };
 let _results: FileResult[] = [];
 let _totalMatches = 0;
-let _isSearching = false;
 let _searchVersion = 0;
 
 // DOM elements
-let _container: HTMLElement | null = null;
 let _queryInput: HTMLInputElement | null = null;
 let _replaceInput: HTMLInputElement | null = null;
 let _replaceRow: HTMLElement | null = null;
@@ -182,7 +179,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 }
 
 export function deactivate(): void {
-  _container = null;
   _queryInput = null;
   _replaceInput = null;
   _replaceRow = null;
@@ -196,7 +192,6 @@ export function deactivate(): void {
 
 function createSearchView(container: HTMLElement): IDisposable {
   container.classList.add('search-view');
-  _container = container;
 
   // ── Header / Input Area ──
   const header = document.createElement('div');
@@ -364,7 +359,6 @@ function createSearchView(container: HTMLElement): IDisposable {
   return {
     dispose() {
       if (debounceTimer) clearTimeout(debounceTimer);
-      _container = null;
       _queryInput = null;
       _replaceInput = null;
       _replaceRow = null;
@@ -420,7 +414,6 @@ async function executeSearch(): Promise<void> {
   }
 
   const version = ++_searchVersion;
-  _isSearching = true;
   _results = [];
   _totalMatches = 0;
   updateMessage('Searching…');
@@ -429,14 +422,12 @@ async function executeSearch(): Promise<void> {
     const regex = buildSearchRegex(query, _options);
     if (!regex) {
       updateMessage('Invalid regular expression');
-      _isSearching = false;
       return;
     }
 
     const folders = _api.workspace.workspaceFolders;
     if (!folders || folders.length === 0) {
       updateMessage('No workspace folder open');
-      _isSearching = false;
       return;
     }
 
@@ -456,8 +447,6 @@ async function executeSearch(): Promise<void> {
 
     if (_searchVersion !== version) return;
 
-    _isSearching = false;
-
     if (_results.length === 0) {
       updateMessage(`No results found for "${query}"`);
     } else {
@@ -469,7 +458,6 @@ async function executeSearch(): Promise<void> {
     renderResults();
   } catch (err) {
     if (_searchVersion !== version) return;
-    _isSearching = false;
     console.error('[Search] Error:', err);
     updateMessage('Search failed — see console');
   }
@@ -688,7 +676,6 @@ function clearResults(): void {
   _results = [];
   _totalMatches = 0;
   _searchVersion++;
-  _isSearching = false;
   renderResults();
   updateMessage();
 }
@@ -843,7 +830,7 @@ function getFileIcon(fileName: string): string {
   return iconMap[ext] ?? '📄';
 }
 
-async function openResult(uri: string, line: number, _column: number): Promise<void> {
+async function openResult(uri: string, _line: number, _column: number): Promise<void> {
   try {
     await _api.editors.openFileEditor(uri, { pinned: false });
     // TODO: scroll to line when editor supports it

@@ -8,7 +8,7 @@
 //   src/vs/workbench/services/textfile/common/textFileService.ts
 //   src/vs/workbench/services/textfile/common/textFileEditorModel.ts
 
-import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { URI, URIMap } from '../platform/uri.js';
 import { FileChangeType, type FileChangeEvent } from '../platform/fileTypes.js';

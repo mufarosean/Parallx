@@ -10,7 +10,7 @@
 
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import type { IToolDescription, IManifestMenuItem } from '../tools/toolManifest.js';
+import type { IToolDescription } from '../tools/toolManifest.js';
 import type { CommandService } from '../commands/commandRegistry.js';
 import type { IContributedMenuItem, MenuLocationId, IContributionProcessor } from './contributionTypes.js';
 
@@ -232,7 +232,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
    * Get the menu items for a view's title bar.
    * Only returns items whose when clause is satisfied.
    */
-  getViewTitleActions(viewId: string): readonly IContributedMenuItem[] {
+  getViewTitleActions(_viewId: string): readonly IContributedMenuItem[] {
     const items = this._menuItems.get('view/title') ?? [];
 
     return items
@@ -315,7 +315,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
    * Get the context menu items for a view.
    * Only returns items whose when clause is satisfied.
    */
-  getViewContextMenuItems(viewId: string): readonly IContributedMenuItem[] {
+  getViewContextMenuItems(_viewId: string): readonly IContributedMenuItem[] {
     const items = this._menuItems.get('view/context') ?? [];
 
     return items

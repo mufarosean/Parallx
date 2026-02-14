@@ -110,8 +110,6 @@ export class EditorService extends Disposable implements IEditorService {
       : this._editorPart.activeGroup;
     if (!group) return false;
 
-    const previousActive = this.activeEditor;
-
     if (input) {
       const idx = group.model.editors.findIndex(e => e.id === input.id);
       if (idx < 0) return false;

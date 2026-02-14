@@ -6,7 +6,7 @@
 // VS Code reference:
 //   src/vs/workbench/services/untitled/common/untitledTextEditorInput.ts
 
-import { EditorInput, type IEditorInput } from '../../editor/editorInput.js';
+import { EditorInput } from '../../editor/editorInput.js';
 import type { SerializedEditorEntry } from '../../editor/editorTypes.js';
 import { Emitter, Event } from '../../platform/events.js';
 import { URI } from '../../platform/uri.js';

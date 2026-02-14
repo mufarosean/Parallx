@@ -12,9 +12,8 @@ import {
   ACTIVE_WORKSPACE_KEY,
   WORKSPACE_STATE_VERSION,
   createDefaultEditorSnapshot,
-  createDefaultContextSnapshot,
 } from './workspaceTypes.js';
-import { SerializedLayoutState, createDefaultLayoutState } from '../layout/layoutModel.js';
+import { SerializedLayoutState } from '../layout/layoutModel.js';
 import { Workspace } from './workspace.js';
 import { Part } from '../parts/part.js';
 import { ViewContainer } from '../views/viewContainer.js';

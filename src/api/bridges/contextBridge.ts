@@ -3,7 +3,7 @@
 // Creates tool-scoped context keys and provides read access to context values.
 
 import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
-import type { ContextKeyValue, IContextKey } from '../../context/contextKey.js';
+import type { ContextKeyValue } from '../../context/contextKey.js';
 import type { IContextKeyService } from '../../services/serviceTypes.js';
 
 /**
@@ -18,7 +18,7 @@ export class ContextBridge {
   constructor(
     private readonly _toolId: string,
     private readonly _contextKeyService: IContextKeyService,
-    private readonly _subscriptions: IDisposable[],
+    _subscriptions: IDisposable[],
   ) {
     // Create a scope for this tool
     this._scopeId = `tool:${_toolId}`;

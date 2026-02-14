@@ -20,7 +20,7 @@ let _leakWarningEnabled = false;
  * Enable event listener leak detection in development.
  * @param threshold Fire a console.warn when an emitter exceeds this many listeners.
  */
-function enableLeakWarnings(threshold = 25): void {
+export function enableLeakWarnings(threshold = 25): void {
   _leakWarningThreshold = threshold;
   _leakWarningEnabled = true;
 }
@@ -28,7 +28,7 @@ function enableLeakWarnings(threshold = 25): void {
 /**
  * Disable event listener leak detection.
  */
-function disableLeakWarnings(): void {
+export function disableLeakWarnings(): void {
   _leakWarningEnabled = false;
 }
 

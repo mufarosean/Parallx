@@ -1,6 +1,6 @@
 // serviceTypes.ts — service interface definitions
 
-import { ServiceIdentifier, createServiceIdentifier } from '../platform/types.js';
+import { createServiceIdentifier } from '../platform/types.js';
 import { IDisposable } from '../platform/lifecycle.js';
 import { Event } from '../platform/events.js';
 
@@ -242,10 +242,6 @@ export const IEditorGroupService = createServiceIdentifier<IEditorGroupService>(
 // ─── ICommandService ─────────────────────────────────────────────────────────
 
 import type {
-  CommandDescriptor,
-  CommandExecutedEvent,
-  CommandRegisteredEvent,
-  CommandUnregisteredEvent,
   ICommandServiceShape,
 } from '../commands/commandTypes.js';
 
@@ -463,10 +459,6 @@ export const IToolActivatorService = createServiceIdentifier<IToolActivatorServi
 
 import type {
   IConfigurationServiceShape,
-  IConfigurationChangeEvent,
-  IConfigurationPropertySchema,
-  IRegisteredConfigurationSection,
-  IWorkspaceConfiguration,
 } from '../configuration/configurationTypes.js';
 
 /**
@@ -479,7 +471,6 @@ export const IConfigurationService = createServiceIdentifier<IConfigurationServi
 // ─── ICommandContributionService ─────────────────────────────────────────────
 
 import type { IContributedCommand } from '../contributions/contributionTypes.js';
-import type { CommandContributionProcessor } from '../contributions/commandContribution.js';
 
 export interface ICommandContributionService {
   processContributions(toolDescription: IToolDescription): void;
@@ -495,7 +486,6 @@ export const ICommandContributionService = createServiceIdentifier<ICommandContr
 // ─── IKeybindingContributionService ──────────────────────────────────────────
 
 import type { IContributedKeybinding } from '../contributions/contributionTypes.js';
-import type { KeybindingContributionProcessor } from '../contributions/keybindingContribution.js';
 
 export interface IKeybindingContributionService {
   processContributions(toolDescription: IToolDescription): void;
@@ -509,7 +499,6 @@ export const IKeybindingContributionService = createServiceIdentifier<IKeybindin
 // ─── IMenuContributionService ────────────────────────────────────────────────
 
 import type { IContributedMenuItem, MenuLocationId } from '../contributions/contributionTypes.js';
-import type { MenuContributionProcessor } from '../contributions/menuContribution.js';
 
 export interface IMenuContributionService {
   processContributions(toolDescription: IToolDescription): void;

@@ -1,11 +1,10 @@
 // gridNode.ts — internal grid tree structure
 
-import { Disposable, IDisposable, DisposableStore } from '../platform/lifecycle.js';
+import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { Orientation, SizingMode, GridLocation } from './layoutTypes.js';
+import { Orientation, SizingMode } from './layoutTypes.js';
 import { IGridView } from './gridView.js';
 import {
-  SerializedGridNode,
   SerializedBranchNode,
   SerializedLeafNode,
   SerializedNodeType,
@@ -35,7 +34,6 @@ export class GridBranchNode extends Disposable {
   private _children: GridNode[] = [];
   private _sashes: HTMLElement[] = [];
   private readonly _childConstraintListeners = new Map<GridNode, IDisposable>();
-  private readonly _disposables = this._register(new DisposableStore());
 
   private readonly _onDidChange = this._register(new Emitter<void>());
   readonly onDidChange: Event<void> = this._onDidChange.event;
@@ -236,7 +234,6 @@ export class GridBranchNode extends Disposable {
 export class GridLeafNode extends Disposable {
   readonly type = GridNodeType.Leaf;
   private _cachedSize = 0;
-  private readonly _constraintListener: IDisposable;
 
   private readonly _onDidChangeConstraints = this._register(new Emitter<void>());
   readonly onDidChangeConstraints: Event<void> = this._onDidChangeConstraints.event;
@@ -248,7 +245,7 @@ export class GridLeafNode extends Disposable {
     super();
 
     // Forward constraint changes from the view
-    this._constraintListener = this._register(
+    this._register(
       view.onDidChangeConstraints(() => {
         this._onDidChangeConstraints.fire();
       })

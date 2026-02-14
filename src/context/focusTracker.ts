@@ -7,7 +7,7 @@
 // Uses DOM focusin/focusout events as the base signal and maps the
 // focused element to the closest part/view ancestor via data attributes.
 
-import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { ContextKeyService } from './contextKey.js';
 

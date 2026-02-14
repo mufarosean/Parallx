@@ -9,8 +9,8 @@
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { IColorRegistry, ThemeType, colorRegistry } from '../theme/colorRegistry.js';
-import { IColorTheme, ColorThemeData, ThemeSource } from '../theme/themeData.js';
+import { IColorRegistry } from '../theme/colorRegistry.js';
+import { IColorTheme, ColorThemeData } from '../theme/themeData.js';
 
 // ─── Style element ID ────────────────────────────────────────────────────────
 

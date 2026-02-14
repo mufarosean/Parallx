@@ -62,7 +62,7 @@ export interface Box extends Dimensions, Position {}
 /**
  * Which edge of a grid node a sash (resize handle) is on.
  */
-enum SashEdge {
+export enum SashEdge {
   Top = 'top',
   Right = 'right',
   Bottom = 'bottom',
@@ -72,7 +72,7 @@ enum SashEdge {
 /**
  * Events emitted by the grid system.
  */
-enum GridEventType {
+export enum GridEventType {
   /** A node was added to the grid */
   NodeAdded = 'nodeAdded',
   /** A node was removed from the grid */

@@ -10,7 +10,7 @@ import './settingsEditorPane.css';
 
 import { EditorPane } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
-import type { IConfigurationPropertySchema, IRegisteredConfigurationSection } from '../../configuration/configurationTypes.js';
+import type { IConfigurationPropertySchema } from '../../configuration/configurationTypes.js';
 import { IConfigurationService } from '../../services/serviceTypes.js';
 import type { ServiceCollection } from '../../services/serviceCollection.js';
 import type { ConfigurationService } from '../../configuration/configurationService.js';
@@ -26,7 +26,6 @@ export class SettingsEditorPane extends EditorPane {
   private _emptyMessage: HTMLElement | undefined;
   private _configService: ConfigurationService | undefined;
   private _allSchemas: IConfigurationPropertySchema[] = [];
-  private _sections: IRegisteredConfigurationSection[] = [];
   private _changeListener: { dispose(): void } | undefined;
 
   constructor(private readonly _services: ServiceCollection) {
@@ -92,13 +91,11 @@ export class SettingsEditorPane extends EditorPane {
 
     // Load data
     this._allSchemas = [...this._configService.getAllSchemas()];
-    this._sections = [...this._configService.getAllSections()];
 
     // Listen for live changes
     this._changeListener?.dispose();
     this._changeListener = this._configService.onDidChangeConfiguration(() => {
       this._allSchemas = [...this._configService!.getAllSchemas()];
-      this._sections = [...this._configService!.getAllSections()];
       this._renderSettings();
     });
 
@@ -309,7 +306,6 @@ export class SettingsEditorPane extends EditorPane {
     }
     if (this._searchInput) this._searchInput.value = '';
     this._allSchemas = [];
-    this._sections = [];
   }
 
   // ── Dispose ──

@@ -9,7 +9,7 @@
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { InputBox, IInputBoxOptions } from './inputBox.js';
+import { InputBox } from './inputBox.js';
 import { $, clearNode, addDisposableListener, toggleClass } from './dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────

@@ -16,11 +16,6 @@ import { EDITOR_TAB_DRAG_TYPE, EditorTabDragData, GroupDirection } from './edito
 /** Fraction of the editor area width/height used as the edge split threshold. */
 const EDGE_THRESHOLD = 0.33;
 
-/** z-index for the overlay (matches VS Code: 10000). */
-const OVERLAY_Z_INDEX = '10000';
-
-/** Transition duration for the overlay indicator. */
-const TRANSITION_DURATION = '150ms';
 
 // ── Split Direction ──────────────────────────────────────────────────────────
 
@@ -123,7 +118,7 @@ class EditorDropOverlay extends Disposable {
       this._enterCounter++;
     };
 
-    const onDragLeave = (e: DragEvent): void => {
+    const onDragLeave = (_e: DragEvent): void => {
       this._enterCounter--;
       if (this._enterCounter <= 0) {
         this._enterCounter = 0;

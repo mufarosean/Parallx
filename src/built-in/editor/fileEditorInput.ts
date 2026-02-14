@@ -20,7 +20,6 @@ export class FileEditorInput extends EditorInput {
 
   private _uri: URI;
   private _model: TextFileModel | null = null;
-  private _resolved = false;
 
   private readonly _onDidChangeContent = this._register(new Emitter<string>());
   readonly onDidChangeContent: Event<string> = this._onDidChangeContent.event;
@@ -92,7 +91,6 @@ export class FileEditorInput extends EditorInput {
 
     const model = await this._textFileModelManager.resolve(this._uri);
     this._model = model;
-    this._resolved = true;
 
     // Wire model events to input events
     this._register(model.onDidChangeDirty((dirty) => {

@@ -11,7 +11,7 @@
 
 import { EditorPane, type EditorPaneViewState } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
-import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
+import { DisposableStore } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
 import { FileEditorInput } from './fileEditorInput.js';
 import { UntitledEditorInput } from './untitledEditorInput.js';

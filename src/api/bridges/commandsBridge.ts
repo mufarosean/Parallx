@@ -50,7 +50,7 @@ export class CommandsBridge {
     }
 
     // No manifest contribution — register directly with CommandService
-    const internalHandler: CommandHandler = (ctx: CommandExecutionContext, ...args: unknown[]) => {
+    const internalHandler: CommandHandler = (_ctx: CommandExecutionContext, ...args: unknown[]) => {
       return handler(...args);
     };
 

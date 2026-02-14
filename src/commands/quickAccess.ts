@@ -22,14 +22,12 @@
 
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import type { CommandDescriptor } from './commandTypes.js';
 import type { CommandService } from './commandRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MAX_VISIBLE_ITEMS = 15;
 const MAX_RECENT_COMMANDS = 5;
-const PALETTE_WIDTH = 600;
 const RECENT_STORAGE_KEY = 'parallx:commandPalette:recent';
 
 /** VS Code prefix for command mode. */
@@ -419,9 +417,6 @@ class GeneralProvider implements IQuickAccessProvider {
 
   async getItems(query: string): Promise<QuickAccessItem[]> {
     const items: QuickAccessItem[] = [];
-    const hasWorkspaceFolders = this._fileScanner
-      && (this._fileScanner.cached?.length ?? 0) > 0
-      || this._fileScanner?.isScanning;
 
     // ── File results (M4 Cap 6) ─────────────────────────────────────────
     if (this._fileScanner) {

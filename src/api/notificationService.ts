@@ -5,7 +5,7 @@
 // Renders brief toast messages in the bottom-right corner of the workbench
 // with support for severity levels, action buttons, and auto-dismiss.
 
-import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -209,7 +209,7 @@ export class NotificationService extends Disposable {
 
   private _createNotificationElement(
     notification: INotification,
-    resolve: (result: NotificationResult) => void,
+    _resolve: (result: NotificationResult) => void,
   ): HTMLElement {
     const el = document.createElement('div');
     el.className = `parallx-notification parallx-notification-${notification.severity}`;

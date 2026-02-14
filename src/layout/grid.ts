@@ -3,14 +3,12 @@
 import { Disposable, DisposableStore, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { startDrag, endDrag } from '../ui/dom.js';
-import { Orientation, SizingMode, GridLocation, Dimensions } from './layoutTypes.js';
+import { Orientation, SizingMode } from './layoutTypes.js';
 import { IGridView } from './gridView.js';
 import { GridBranchNode, GridLeafNode, GridNode, GridNodeType } from './gridNode.js';
 import {
   SerializedGrid,
-  SerializedGridNode,
   SerializedBranchNode,
-  SerializedLeafNode,
   SerializedNodeType,
 } from './layoutModel.js';
 
@@ -394,10 +392,8 @@ export class Grid extends Disposable {
     const children = branch.children;
     if (children.length === 0) return [];
 
-    const isHorizontal = branch.orientation === Orientation.Horizontal;
     const sizes: number[] = [];
     let totalFixed = 0;
-    let proportionalCount = 0;
 
     // First pass: collect current sizes
     for (const child of children) {

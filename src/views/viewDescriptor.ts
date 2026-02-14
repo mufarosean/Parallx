@@ -144,7 +144,7 @@ interface SerializedViewDescriptor {
 /**
  * Extract the serialisable portion of a descriptor.
  */
-function serializeViewDescriptor(d: IViewDescriptor): SerializedViewDescriptor {
+export function serializeViewDescriptor(d: IViewDescriptor): SerializedViewDescriptor {
   return {
     id: d.id,
     name: d.name,

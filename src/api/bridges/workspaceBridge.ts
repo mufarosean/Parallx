@@ -5,7 +5,7 @@
 // (Cap 4) which persists values per-workspace in IStorage.
 // In M4 Cap 2, workspace folders are exposed from the WorkspaceService.
 
-import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
+import { IDisposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
 import { URI } from '../../platform/uri.js';
 import type { ConfigurationService } from '../../configuration/configurationService.js';
@@ -61,7 +61,7 @@ export class WorkspaceBridge {
 
   constructor(
     private readonly _toolId: string,
-    private readonly _subscriptions: IDisposable[],
+    _subscriptions: IDisposable[],
     private readonly _configService?: ConfigurationService,
     private readonly _workspaceService?: WorkspaceServiceLike,
     private readonly _fileService?: FileServiceLike,

@@ -10,7 +10,7 @@
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { IEditorInput } from './editorInput.js';
-import type { EditorOpenOptions, SerializedEditorGroup, SerializedEditorEntry } from './editorTypes.js';
+import type { EditorOpenOptions, SerializedEditorGroup } from './editorTypes.js';
 import { EditorActivation, EditorGroupChangeKind } from './editorTypes.js';
 
 // ─── Editor Entry ────────────────────────────────────────────────────────────

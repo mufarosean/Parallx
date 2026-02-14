@@ -7,13 +7,13 @@
 // Tab bar features: click-to-activate, close button, dirty indicator,
 // preview (italic), sticky marker, drag-and-drop reordering.
 
-import { Disposable, DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable, DisposableStore } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { EditorGroupModel, EditorModelChangeEvent } from './editorGroupModel.js';
-import { EditorPane, PlaceholderEditorPane, EditorPaneViewState } from './editorPane.js';
+import { EditorPane, PlaceholderEditorPane } from './editorPane.js';
 import type { IEditorInput } from './editorInput.js';
 import type { IGridView } from '../layout/gridView.js';
-import { SizeConstraints, Orientation, Dimensions } from '../layout/layoutTypes.js';
+import { Orientation } from '../layout/layoutTypes.js';
 import {
   EditorGroupChangeKind,
   EditorOpenOptions,
@@ -21,7 +21,7 @@ import {
   EditorTabDragData,
   GroupDirection,
 } from './editorTypes.js';
-import { BreadcrumbsBar, BREADCRUMBS_HEIGHT } from './breadcrumbsBar.js';
+import { BreadcrumbsBar } from './breadcrumbsBar.js';
 import { URI } from '../platform/uri.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 
@@ -440,13 +440,10 @@ export class EditorGroupView extends Disposable implements IGridView {
    * Start auto-scrolling the tab bar when dragging near its left/right edges.
    * VS Code scrolls the tab bar during drag so overflow tabs are reachable.
    */
-  private _startScrollOnDrag(tabsWrap: HTMLElement, e: DragEvent): void {
+  private _startScrollOnDrag(_tabsWrap: HTMLElement, _e: DragEvent): void {
     this._stopScrollOnDrag();
-    const EDGE_SIZE = 30; // pixels from edge that triggers scroll
-    const SCROLL_SPEED = 3; // pixels per tick
 
     this._scrollDragTimer = setInterval(() => {
-      const rect = tabsWrap.getBoundingClientRect();
       // We use the last known mouse position — dragover fires frequently
       // Since we can't get mouse from interval, rely on scroll position checks
       // The actual scroll trigger is handled per-dragover call below
@@ -467,7 +464,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     editor: IEditorInput,
     index: number,
     isActive: boolean,
-    isPinned: boolean,
+    _isPinned: boolean,
     isSticky: boolean,
     isPreview: boolean,
   ): HTMLElement {
@@ -674,7 +671,7 @@ export class EditorGroupView extends Disposable implements IGridView {
    *  6_path   — Copy Path, Copy Relative Path
    *  7_reveal — Reveal in Explorer
    */
-  private _showTabContextMenu(editor: IEditorInput, index: number, e: MouseEvent): void {
+  private _showTabContextMenu(editor: IEditorInput, _index: number, e: MouseEvent): void {
     const currentIdx = this.model.editors.indexOf(editor);
     if (currentIdx < 0) return;
 

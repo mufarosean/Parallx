@@ -2,7 +2,7 @@
 //
 // Provides message, input box, quick pick, and output channel APIs.
 
-import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
+import { IDisposable } from '../../platform/lifecycle.js';
 import {
   NotificationService,
   NotificationSeverity,

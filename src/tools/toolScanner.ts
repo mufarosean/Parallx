@@ -6,8 +6,8 @@
 // Filesystem access is performed via the Electron IPC bridge
 // (renderer cannot access the filesystem directly).
 
-import { validateManifest, type ValidationResult } from './toolValidator.js';
-import { type IToolManifest, type IToolDescription, TOOL_MANIFEST_FILENAME } from './toolManifest.js';
+import { validateManifest } from './toolValidator.js';
+import { type IToolManifest, type IToolDescription } from './toolManifest.js';
 
 // ─── Electron Bridge Shape ───────────────────────────────────────────────────
 
@@ -66,7 +66,7 @@ interface ToolScanResult {
  * - Built-in and user tool directories are supported
  * - Filesystem errors are handled gracefully
  */
-class ToolScanner {
+export class ToolScanner {
 
   /**
    * Scan the default tool directories (built-in + user).

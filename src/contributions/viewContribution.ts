@@ -386,7 +386,6 @@ export class ViewContributionProcessor extends Disposable implements IContributi
     let _placeholderEl: HTMLElement | undefined;
     let _contentEl: HTMLElement | undefined;
     let _providerDisposable: IDisposable | undefined;
-    let _visible = false;
     let _disposed = false;
     let _resolved = false;
     let _width = 0;
@@ -477,7 +476,6 @@ export class ViewContributionProcessor extends Disposable implements IContributi
       },
 
       setVisible(visible: boolean): void {
-        _visible = visible;
         if (_element) {
           visible ? show(_element) : hide(_element);
         }
