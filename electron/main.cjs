@@ -59,7 +59,7 @@ function createWindow() {
     // Frameless for custom titlebar (like VS Code)
     frame: false,
     titleBarStyle: 'hidden',
-    icon: createAppIcon(),
+    icon: path.join(__dirname, 'parallx.ico'),
     // Dark background while loading
     backgroundColor: '#1e1e1e',
     webPreferences: {
