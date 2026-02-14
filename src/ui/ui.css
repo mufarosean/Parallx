@@ -194,7 +194,6 @@
   color: var(--vscode-tab-inactiveForeground);
   background-color: var(--vscode-tab-inactiveBackground);
   border-top: 1px solid transparent;
-  border-bottom: 1px solid transparent;
   border-right: 1px solid var(--vscode-tab-border);
   transition: background-color 0.1s;
   position: relative;
@@ -209,7 +208,11 @@
   color: var(--vscode-tab-activeForeground);
   background-color: var(--vscode-tab-activeBackground);
   border-top-color: var(--vscode-tab-activeBorderTop, transparent);
-  border-bottom-color: var(--vscode-tab-activeBackground);
+  /* Extend 1px below the tab bar so its background covers the parent's
+     bottom border — this is how VS Code merges the active tab into the
+     editor pane below (no visible divider line). */
+  margin-bottom: -1px;
+  padding-bottom: 1px;
 }
 
 .ui-tab--italic .ui-tab-label {
