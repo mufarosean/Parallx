@@ -142,9 +142,11 @@
   align-items: stretch;
   height: 35px;
   min-height: 35px;
-  overflow: hidden;
+  overflow: visible;
   border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
   background-color: var(--vscode-editorGroupHeader-tabsBackground);
+  position: relative;
+  z-index: 1;
 }
 
 .ui-tab-bar-tabs {
