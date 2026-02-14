@@ -368,9 +368,11 @@ export class ContextMenu extends Disposable {
 
   private _listenOutsideClick(): IDisposable {
     const handler = (e: MouseEvent) => {
-      if (!this._el.contains(e.target as Node)) {
-        this.dismiss();
-      }
+      const target = e.target as Node;
+      // Don't dismiss if the click is inside this menu OR inside an active submenu
+      if (this._el.contains(target)) return;
+      if (this._activeSubmenu && !this._activeSubmenu._dismissed && this._activeSubmenu._el.contains(target)) return;
+      this.dismiss();
     };
     // Defer to avoid catching the click that opened the menu
     const timerId = setTimeout(() => {

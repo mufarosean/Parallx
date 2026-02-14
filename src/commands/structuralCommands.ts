@@ -144,7 +144,7 @@ const selectColorTheme: CommandDescriptor = {
   id: 'workbench.action.selectTheme',
   title: 'Color Theme',
   category: 'Preferences',
-  keybinding: 'Ctrl+K Ctrl+T',
+  keybinding: 'Ctrl+T',
   handler(ctx) {
     wb(ctx).selectColorTheme();
   },

@@ -2192,7 +2192,7 @@ export class Workbench extends Disposable {
         label: 'Themes',
         group: '3_themes',
         submenu: [
-          { id: 'workbench.action.selectTheme', label: 'Color Theme', keybinding: 'Ctrl+K Ctrl+T', group: '1_themes' },
+          { id: 'workbench.action.selectTheme', label: 'Color Theme', keybinding: 'Ctrl+T', group: '1_themes' },
           { id: 'workbench.action.selectIconTheme', label: 'File Icon Theme', group: '1_themes', disabled: true },
           { id: 'workbench.action.selectProductIconTheme', label: 'Product Icon Theme', group: '1_themes', disabled: true },
         ],
