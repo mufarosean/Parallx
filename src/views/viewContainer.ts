@@ -3,6 +3,7 @@
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS, Orientation } from '../layout/layoutTypes.js';
+import { hide, show } from '../ui/dom.js';
 import { IGridView } from '../layout/gridView.js';
 import { IView, ViewState } from './view.js';
 
@@ -482,7 +483,7 @@ export class ViewContainer extends Disposable implements IGridView {
     if (this._collapsedSections.has(viewId)) {
       // Expand
       this._collapsedSections.delete(viewId);
-      section.body.style.display = '';
+      show(section.body);
       section.header.setAttribute('aria-expanded', 'true');
       section.wrapper.classList.remove('collapsed');
       const chevron = section.header.querySelector('.view-section-chevron') as HTMLElement | null;
@@ -491,7 +492,7 @@ export class ViewContainer extends Disposable implements IGridView {
     } else {
       // Collapse
       this._collapsedSections.add(viewId);
-      section.body.style.display = 'none';
+      hide(section.body);
       section.header.setAttribute('aria-expanded', 'false');
       section.wrapper.classList.add('collapsed');
       const chevron = section.header.querySelector('.view-section-chevron') as HTMLElement | null;
@@ -712,9 +713,9 @@ export class ViewContainer extends Disposable implements IGridView {
 
       if (this._collapsedSections.has(viewId)) {
         section.body.style.height = '0px';
-        section.body.style.display = 'none';
+        hide(section.body);
       } else {
-        section.body.style.display = '';
+        show(section.body);
         section.body.style.height = `${perSectionBodyH}px`;
         view.layout(this._width, perSectionBodyH);
       }

@@ -6,6 +6,7 @@
 
 import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
 import { Emitter } from '../../platform/events.js';
+import { hide, show } from '../../ui/dom.js';
 import type { ViewManager } from '../../views/viewManager.js';
 import type { IView, ViewState } from '../../views/view.js';
 import { DEFAULT_SIZE_CONSTRAINTS } from '../../layout/layoutTypes.js';
@@ -177,7 +178,7 @@ function _createToolView(viewId: string, name: string, provider: ToolViewProvide
     setVisible(visible: boolean): void {
       _visible = visible;
       if (_element) {
-        _element.style.display = visible ? '' : 'none';
+        visible ? show(_element) : hide(_element);
       }
       _onDidChangeVisibility.fire(visible);
     },

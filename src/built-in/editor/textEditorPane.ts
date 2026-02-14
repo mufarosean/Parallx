@@ -16,6 +16,7 @@ import { Emitter, Event } from '../../platform/events.js';
 import { FileEditorInput } from './fileEditorInput.js';
 import { UntitledEditorInput } from './untitledEditorInput.js';
 import { FindReplaceWidget } from '../../ui/findReplaceWidget.js';
+import { hide, show } from '../../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -150,7 +151,7 @@ export class TextEditorPane extends EditorPane {
     this._binaryOverlay = document.createElement('div');
     this._binaryOverlay.classList.add('text-editor-binary');
     this._binaryOverlay.textContent = 'Binary file — cannot display';
-    this._binaryOverlay.style.display = 'none';
+    hide(this._binaryOverlay);
     container.appendChild(this._binaryOverlay);
 
     // Status bar
@@ -244,12 +245,12 @@ export class TextEditorPane extends EditorPane {
 
     // Show binary overlay or textarea
     if (isBinary) {
-      this._textarea.style.display = 'none';
-      this._binaryOverlay.style.display = '';
+      hide(this._textarea);
+      show(this._binaryOverlay);
       this._textarea.value = '';
     } else {
-      this._textarea.style.display = '';
-      this._binaryOverlay.style.display = 'none';
+      show(this._textarea);
+      hide(this._binaryOverlay);
       this._textarea.value = content;
     }
 
@@ -272,8 +273,8 @@ export class TextEditorPane extends EditorPane {
     this._positionItem.textContent = 'Ln 1, Col 1';
     this._encodingItem.textContent = 'UTF-8';
     this._eolItem.textContent = 'LF';
-    this._binaryOverlay.style.display = 'none';
-    this._textarea.style.display = '';
+    hide(this._binaryOverlay);
+    show(this._textarea);
     this._lineCount = 0;
     this._updateLineNumbers();
     this._renderMinimap();
@@ -642,7 +643,7 @@ export class TextEditorPane extends EditorPane {
 
     this._minimapSlider.style.top = `${sliderTop}px`;
     this._minimapSlider.style.height = `${sliderH}px`;
-    this._minimapSlider.style.display = viewportRatio >= 1 ? 'none' : '';
+    viewportRatio >= 1 ? hide(this._minimapSlider) : show(this._minimapSlider);
 
     // Update the thin scrollbar thumb on the right edge
     if (this._minimapScrollThumb && this._minimapScrollTrack) {
@@ -651,7 +652,7 @@ export class TextEditorPane extends EditorPane {
       const thumbTop = scrollRatio * (trackH - thumbH);
       this._minimapScrollThumb.style.top = `${thumbTop}px`;
       this._minimapScrollThumb.style.height = `${thumbH}px`;
-      this._minimapScrollTrack.style.display = viewportRatio >= 1 ? 'none' : '';
+      viewportRatio >= 1 ? hide(this._minimapScrollTrack) : show(this._minimapScrollTrack);
     }
   };
 

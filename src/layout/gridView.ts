@@ -3,6 +3,7 @@
 import { IDisposable, Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS, Dimensions, Orientation } from './layoutTypes.js';
+import { hide, show } from '../ui/dom.js';
 
 /**
  * Interface that views must implement to participate in the grid system.
@@ -118,7 +119,7 @@ export abstract class BaseGridView extends Disposable implements IGridView {
 
   setVisible(visible: boolean): void {
     this._visible = visible;
-    this._element.style.display = visible ? '' : 'none';
+    visible ? show(this._element) : hide(this._element);
   }
 
   toJSON(): object {

@@ -5,6 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { hide, show } from '../../ui/dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -166,7 +167,7 @@ function renderToolGallery(container: HTMLElement, api: ParallxApi): IDisposable
 }
 
 function showDetail(tool: ToolInfo, detail: HTMLElement): void {
-  detail.style.display = 'block';
+  show(detail, 'block');
   detail.innerHTML = '';
 
   const h = document.createElement('div');
@@ -204,6 +205,6 @@ function showDetail(tool: ToolInfo, detail: HTMLElement): void {
   closeBtn.classList.add('tool-gallery-btn');
   closeBtn.style.marginTop = '10px';
   closeBtn.textContent = 'Close';
-  closeBtn.addEventListener('click', () => { detail.style.display = 'none'; });
+  closeBtn.addEventListener('click', () => { hide(detail); });
   detail.appendChild(closeBtn);
 }

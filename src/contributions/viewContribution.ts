@@ -10,6 +10,7 @@
 
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
+import { hide, show } from '../ui/dom.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { IContributionProcessor } from './contributionTypes.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -450,7 +451,7 @@ export class ViewContributionProcessor extends Disposable implements IContributi
         _element = document.createElement('div');
         _element.className = `view view-${viewId} contributed-view`;
         _element.setAttribute('data-view-id', viewId);
-        _element.style.display = 'none'; // hidden until setVisible(true)
+        hide(_element); // hidden until setVisible(true)
         container.appendChild(_element);
 
         if (_provider) {
@@ -478,7 +479,7 @@ export class ViewContributionProcessor extends Disposable implements IContributi
       setVisible(visible: boolean): void {
         _visible = visible;
         if (_element) {
-          _element.style.display = visible ? '' : 'none';
+          visible ? show(_element) : hide(_element);
         }
         _onDidChangeVisibility.fire(visible);
       },

@@ -14,6 +14,7 @@ import type { IConfigurationPropertySchema, IRegisteredConfigurationSection } fr
 import { IConfigurationService } from '../../services/serviceTypes.js';
 import type { ServiceCollection } from '../../services/serviceCollection.js';
 import type { ConfigurationService } from '../../configuration/configurationService.js';
+import { hide, show } from '../../ui/dom.js';
 
 // ─── Pane ────────────────────────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ export class SettingsEditorPane extends EditorPane {
     this._emptyMessage = document.createElement('div');
     this._emptyMessage.classList.add('settings-empty-message');
     this._emptyMessage.textContent = 'No settings found.';
-    this._emptyMessage.style.display = 'none';
+    hide(this._emptyMessage);
     this._body.appendChild(this._emptyMessage);
 
     this._container.appendChild(this._body);
@@ -84,7 +85,7 @@ export class SettingsEditorPane extends EditorPane {
     if (!this._configService) {
       if (this._emptyMessage) {
         this._emptyMessage.textContent = 'Configuration service not available.';
-        this._emptyMessage.style.display = 'flex';
+        show(this._emptyMessage, 'flex');
       }
       return;
     }
@@ -142,16 +143,16 @@ export class SettingsEditorPane extends EditorPane {
       // No matches
       if (this._emptyMessage) {
         this._emptyMessage.textContent = 'No settings match your search.';
-        this._emptyMessage.style.display = 'flex';
+        show(this._emptyMessage, 'flex');
       }
     } else if (this._allSchemas.length === 0) {
       // No registered settings at all
       if (this._emptyMessage) {
         this._emptyMessage.textContent = 'No settings have been registered by tools yet.';
-        this._emptyMessage.style.display = 'flex';
+        show(this._emptyMessage, 'flex');
       }
     } else {
-      if (this._emptyMessage) this._emptyMessage.style.display = 'none';
+      if (this._emptyMessage) hide(this._emptyMessage);
 
       for (const [_sectionKey, schemas] of grouped) {
         const sectionEl = document.createElement('div');

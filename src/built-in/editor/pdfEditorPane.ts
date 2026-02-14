@@ -10,6 +10,7 @@
 import { EditorPane } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import { PdfEditorInput } from './pdfEditorInput.js';
+import { hide, show } from '../../ui/dom.js';
 
 const PANE_ID = 'pdf-editor-pane';
 
@@ -39,7 +40,7 @@ export class PdfEditorPane extends EditorPane {
     // Error message (hidden)
     this._errorMessage = document.createElement('div');
     this._errorMessage.classList.add('pdf-error');
-    this._errorMessage.style.display = 'none';
+    hide(this._errorMessage);
     container.appendChild(this._errorMessage);
   }
 
@@ -58,8 +59,8 @@ export class PdfEditorPane extends EditorPane {
       return;
     }
 
-    this._loadingMessage.style.display = '';
-    this._errorMessage.style.display = 'none';
+    show(this._loadingMessage);
+    hide(this._errorMessage);
 
     try {
       const electron = (globalThis as any).parallxElectron;
@@ -85,7 +86,7 @@ export class PdfEditorPane extends EditorPane {
       this._embed.type = 'application/pdf';
       this._embed.src = `data:application/pdf;base64,${base64}`;
 
-      this._loadingMessage.style.display = 'none';
+      hide(this._loadingMessage);
       this._container.appendChild(this._embed);
     } catch (err) {
       console.error('[PdfEditorPane] Failed to load PDF:', err);
@@ -108,8 +109,8 @@ export class PdfEditorPane extends EditorPane {
   }
 
   private _showError(msg: string): void {
-    this._loadingMessage.style.display = 'none';
-    this._errorMessage.style.display = '';
+    hide(this._loadingMessage);
+    show(this._errorMessage);
     this._errorMessage.textContent = msg;
   }
 }

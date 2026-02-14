@@ -13,6 +13,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { hide, show } from '../../ui/dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -209,7 +210,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   _toggleReplaceBtn.addEventListener('click', () => {
     _showReplace = !_showReplace;
     _toggleReplaceBtn!.classList.toggle('active', _showReplace);
-    _replaceRow!.style.display = _showReplace ? '' : 'none';
+    _showReplace ? show(_replaceRow!) : hide(_replaceRow!);
   });
   header.appendChild(_toggleReplaceBtn);
 
@@ -261,7 +262,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   // Replace row
   _replaceRow = document.createElement('div');
   _replaceRow.className = 'search-input-row search-replace-row';
-  _replaceRow.style.display = _showReplace ? '' : 'none';
+  _showReplace ? show(_replaceRow) : hide(_replaceRow);
 
   _replaceInput = document.createElement('input');
   _replaceInput.type = 'text';
@@ -287,7 +288,7 @@ function createSearchView(container: HTMLElement): IDisposable {
 
   const filtersBody = document.createElement('div');
   filtersBody.className = 'search-filters-body';
-  filtersBody.style.display = 'none';
+  hide(filtersBody);
 
   const includeInput = document.createElement('input');
   includeInput.type = 'text';
@@ -318,7 +319,7 @@ function createSearchView(container: HTMLElement): IDisposable {
 
   filtersToggle.addEventListener('click', () => {
     const visible = filtersBody.style.display !== 'none';
-    filtersBody.style.display = visible ? 'none' : '';
+    visible ? hide(filtersBody) : show(filtersBody);
     filtersToggle.classList.toggle('active', !visible);
   });
 
@@ -697,12 +698,12 @@ function updateMessage(text?: string): void {
 
   if (text) {
     _messageEl.textContent = text;
-    _messageEl.style.display = '';
+    show(_messageEl);
   } else if (!_query.trim()) {
     _messageEl.textContent = '';
-    _messageEl.style.display = 'none';
+    hide(_messageEl);
   } else {
-    _messageEl.style.display = 'none';
+    hide(_messageEl);
   }
 }
 
@@ -722,7 +723,7 @@ function renderResults(): void {
     fileHeader.addEventListener('click', () => {
       fileResult.expanded = !fileResult.expanded;
       chevron.textContent = fileResult.expanded ? '▾' : '▸';
-      matchList.style.display = fileResult.expanded ? '' : 'none';
+      fileResult.expanded ? show(matchList) : hide(matchList);
     });
 
     const chevron = document.createElement('span');
@@ -764,7 +765,7 @@ function renderResults(): void {
     // Match list
     const matchList = document.createElement('div');
     matchList.className = 'search-match-list';
-    matchList.style.display = fileResult.expanded ? '' : 'none';
+    fileResult.expanded ? show(matchList) : hide(matchList);
 
     for (const match of fileResult.matches) {
       const matchEl = document.createElement('div');

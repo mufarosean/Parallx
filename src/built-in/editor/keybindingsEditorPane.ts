@@ -11,6 +11,7 @@ import './keybindingsEditorPane.css';
 import { EditorPane } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import { formatKeybindingForDisplay } from '../../contributions/keybindingContribution.js';
+import { hide, show } from '../../ui/dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -91,7 +92,7 @@ export class KeybindingsEditorPane extends EditorPane {
     this._emptyMessage = document.createElement('div');
     this._emptyMessage.classList.add('keybindings-editor-empty');
     this._emptyMessage.textContent = 'No keybindings match your search.';
-    this._emptyMessage.style.display = 'none';
+    hide(this._emptyMessage);
     tableContainer.appendChild(this._emptyMessage);
 
     this._container.appendChild(tableContainer);
@@ -166,7 +167,7 @@ export class KeybindingsEditorPane extends EditorPane {
 
     // Toggle empty message
     if (this._emptyMessage) {
-      this._emptyMessage.style.display = filtered.length === 0 ? 'flex' : 'none';
+      filtered.length === 0 ? show(this._emptyMessage, 'flex') : hide(this._emptyMessage);
     }
   }
 

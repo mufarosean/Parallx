@@ -12,6 +12,7 @@
 import { EditorPane } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import { ImageEditorInput } from './imageEditorInput.js';
+import { hide, show } from '../../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ export class ImageEditorPane extends EditorPane {
     // Error message (hidden initially)
     this._errorMessage = document.createElement('div');
     this._errorMessage.classList.add('image-error');
-    this._errorMessage.style.display = 'none';
+    hide(this._errorMessage);
     this._errorMessage.textContent = 'Failed to load image.';
 
     this._imageWrapper.appendChild(this._image);
@@ -93,15 +94,15 @@ export class ImageEditorPane extends EditorPane {
 
     // Load handler for dimensions
     this._image.addEventListener('load', () => {
-      this._image.style.display = '';
-      this._errorMessage.style.display = 'none';
+      show(this._image);
+      hide(this._errorMessage);
       this._updateInfoBar();
     });
 
     // Error handler
     this._image.addEventListener('error', () => {
-      this._image.style.display = 'none';
-      this._errorMessage.style.display = '';
+      hide(this._image);
+      show(this._errorMessage);
       this._errorMessage.textContent = 'Failed to load image.';
     });
   }
@@ -111,14 +112,14 @@ export class ImageEditorPane extends EditorPane {
     _previous: IEditorInput | undefined,
   ): Promise<void> {
     if (!(input instanceof ImageEditorInput)) {
-      this._errorMessage.style.display = '';
+      show(this._errorMessage);
       this._errorMessage.textContent = 'Cannot render: not an image input.';
       return;
     }
 
     this._zoom = 1;
-    this._image.style.display = 'none';
-    this._errorMessage.style.display = 'none';
+    hide(this._image);
+    hide(this._errorMessage);
     this._infoBar.textContent = 'Loading…';
 
     const uri = input.uri;
@@ -152,8 +153,8 @@ export class ImageEditorPane extends EditorPane {
       this._applyZoom();
     } catch (err) {
       console.error('[ImageEditorPane] Failed to load image:', err);
-      this._image.style.display = 'none';
-      this._errorMessage.style.display = '';
+      hide(this._image);
+      show(this._errorMessage);
       this._errorMessage.textContent = `Error: ${(err as Error).message}`;
     }
   }
