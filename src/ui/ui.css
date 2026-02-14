@@ -150,7 +150,15 @@
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative;
+}
+
+/* Border along empty space after the last tab */
+.ui-tab-bar-tabs::after {
+  content: '';
+  flex: 1 0 0;
   border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
+  align-self: stretch;
 }
 
 /* Scroll chevron buttons */
