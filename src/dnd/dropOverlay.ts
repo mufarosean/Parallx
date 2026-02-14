@@ -36,11 +36,6 @@ export class DropOverlay extends Disposable {
 
     this._container = document.createElement('div');
     this._container.classList.add(OVERLAY_CLASS);
-    this._container.style.position = 'absolute';
-    this._container.style.inset = '0';
-    this._container.style.pointerEvents = 'none';
-    this._container.style.zIndex = '100';
-    this._container.style.display = 'none';
 
     // Build five zone indicators
     this._centerZone = this._createZone('center');
@@ -48,8 +43,6 @@ export class DropOverlay extends Disposable {
     this._bottomZone = this._createZone('bottom');
     this._leftZone = this._createZone('left');
     this._rightZone = this._createZone('right');
-
-    this._applyZoneStyles();
 
     this._container.append(
       this._topZone,
@@ -122,8 +115,6 @@ export class DropOverlay extends Disposable {
     this._currentPosition = position;
     const zone = this._zoneFor(position);
     zone.classList.add(HIGHLIGHT_CLASS, `${HIGHLIGHT_CLASS}-${position}`);
-    zone.style.backgroundColor = 'rgba(0, 120, 212, 0.15)';
-    zone.style.border = '2px solid rgba(0, 120, 212, 0.6)';
   }
 
   /**
@@ -132,8 +123,7 @@ export class DropOverlay extends Disposable {
   highlightInvalid(): void {
     this._clearHighlight();
     this._currentPosition = undefined;
-    this._container.style.backgroundColor = 'rgba(220, 38, 38, 0.08)';
-    this._container.style.border = '2px dashed rgba(220, 38, 38, 0.4)';
+    this._container.classList.add('parallx-drop-overlay--invalid');
   }
 
   // ── Internals ──
@@ -141,32 +131,7 @@ export class DropOverlay extends Disposable {
   private _createZone(name: string): HTMLElement {
     const el = document.createElement('div');
     el.classList.add('drop-zone', `drop-zone-${name}`);
-    el.style.position = 'absolute';
-    el.style.boxSizing = 'border-box';
-    el.style.transition = 'background-color 0.15s, border-color 0.15s';
     return el;
-  }
-
-  private _applyZoneStyles(): void {
-    // Center: inset 25% from all edges
-    Object.assign(this._centerZone.style, { inset: '25%' });
-
-    // Top
-    Object.assign(this._topZone.style, {
-      top: '0', left: '0', right: '0', height: '25%',
-    });
-    // Bottom
-    Object.assign(this._bottomZone.style, {
-      bottom: '0', left: '0', right: '0', height: '25%',
-    });
-    // Left
-    Object.assign(this._leftZone.style, {
-      top: '25%', left: '0', bottom: '25%', width: '25%',
-    });
-    // Right
-    Object.assign(this._rightZone.style, {
-      top: '25%', right: '0', bottom: '25%', width: '25%',
-    });
   }
 
   private _zoneFor(position: DropPosition): HTMLElement {
@@ -182,10 +147,7 @@ export class DropOverlay extends Disposable {
   private _clearHighlight(): void {
     for (const zone of [this._centerZone, this._topZone, this._bottomZone, this._leftZone, this._rightZone]) {
       zone.className = zone.className.replace(/\bdrop-highlight\S*/g, '').trim();
-      zone.style.backgroundColor = '';
-      zone.style.border = '';
     }
-    this._container.style.backgroundColor = '';
-    this._container.style.border = '';
+    this._container.classList.remove('parallx-drop-overlay--invalid');
   }
 }
