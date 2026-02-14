@@ -69,9 +69,9 @@ function openWelcome(api: ParallxApi): void {
 
 function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable {
   container.style.cssText = `
-    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
     height: 100%; padding: 40px; overflow-y: auto;
-    background: #1e1e1e; color: #cccccc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--vscode-editor-background, #1e1e1e); color: var(--vscode-foreground, #cccccc); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   `;
 
   const wrapper = document.createElement('div');
@@ -79,8 +79,8 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
 
   // Logo / App name
   const logo = document.createElement('div');
-  logo.style.cssText = 'margin-bottom: 8px; user-select: none; display: flex; justify-content: center;';
-  logo.innerHTML = `<svg width="64" height="64" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  logo.style.cssText = 'margin-bottom: 12px; user-select: none; display: flex; justify-content: center;';
+  logo.innerHTML = `<svg width="96" height="96" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf" opacity="0.45"/>
     <rect x="10" y="6" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf"/>
   </svg>`;
