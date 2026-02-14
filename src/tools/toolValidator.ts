@@ -27,7 +27,7 @@ export interface ValidationError {
   readonly message: string;
 }
 
-export interface ValidationWarning {
+interface ValidationWarning {
   /** Dot-path to the field that triggered the warning. */
   readonly path: string;
   /** Human-readable warning message. */

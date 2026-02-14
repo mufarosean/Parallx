@@ -3,15 +3,15 @@
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS, Orientation } from '../layout/layoutTypes.js';
-import { hide, show } from '../ui/dom.js';
+import { hide, show, startDrag, endDrag } from '../ui/dom.js';
 import { IGridView } from '../layout/gridView.js';
 import { IView, ViewState } from './view.js';
 
 // ─── Tab State ───────────────────────────────────────────────────────────────
 
-export type ViewContainerMode = 'tabbed' | 'stacked';
+type ViewContainerMode = 'tabbed' | 'stacked';
 
-export interface TabInfo {
+interface TabInfo {
   readonly viewId: string;
   readonly name: string;
   readonly icon?: string;
@@ -652,14 +652,12 @@ export class ViewContainer extends Disposable implements IGridView {
       this._sectionSashDragState = null;
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      endDrag();
     };
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-    document.body.style.cursor = 'row-resize';
-    document.body.style.userSelect = 'none';
+    startDrag('row-resize');
   }
 
   /**

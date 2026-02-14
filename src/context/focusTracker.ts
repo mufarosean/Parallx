@@ -13,7 +13,7 @@ import type { ContextKeyService } from './contextKey.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export interface FocusChangeEvent {
+interface FocusChangeEvent {
   /** Previous focused part ID (undefined if none). */
   readonly previousPartId: string | undefined;
   /** New focused part ID (undefined if none). */

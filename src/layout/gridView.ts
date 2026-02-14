@@ -53,14 +53,14 @@ export interface IGridView extends IDisposable {
  * `Grid.deserialize()` receives a `GridViewFactory` so each view type can
  * hydrate itself without coupling the grid to concrete view classes.
  */
-export type GridViewFactory = (json: object) => IGridView;
+type GridViewFactory = (json: object) => IGridView;
 
 /**
  * Base class providing common implementation for IGridView.
  *
  * Subclasses override size constraint getters and the `layoutContent()` method.
  */
-export abstract class BaseGridView extends Disposable implements IGridView {
+abstract class BaseGridView extends Disposable implements IGridView {
   private readonly _element: HTMLElement;
   private _width = 0;
   private _height = 0;

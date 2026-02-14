@@ -17,14 +17,14 @@ let _nextTrackingId = 1;
 /**
  * Enable disposal tracking. Call once at app startup in development.
  */
-export function enableDisposalTracking(): void {
+function enableDisposalTracking(): void {
   _trackDisposals = true;
 }
 
 /**
  * Disable disposal tracking.
  */
-export function disableDisposalTracking(): void {
+function disableDisposalTracking(): void {
   _trackDisposals = false;
   _disposalTraces.clear();
 }
@@ -32,14 +32,14 @@ export function disableDisposalTracking(): void {
 /**
  * Get the number of tracked but not-yet-disposed objects (for diagnostics).
  */
-export function getUndisposedCount(): number {
+function getUndisposedCount(): number {
   return _disposalTraces.size;
 }
 
 /**
  * Get creation stack traces of all undisposed tracked objects.
  */
-export function getUndisposedTraces(): string[] {
+function getUndisposedTraces(): string[] {
   return [..._disposalTraces.values()];
 }
 
@@ -57,7 +57,7 @@ export interface IDisposable {
 /**
  * An object that performs asynchronous cleanup.
  */
-export interface IAsyncDisposable {
+interface IAsyncDisposable {
   disposeAsync(): Promise<void>;
 }
 
@@ -81,7 +81,7 @@ export function toDisposable(fn: () => void): IDisposable {
 /**
  * Wraps an async cleanup function into an IAsyncDisposable.
  */
-export function toAsyncDisposable(fn: () => Promise<void>): IAsyncDisposable {
+function toAsyncDisposable(fn: () => Promise<void>): IAsyncDisposable {
   let disposed = false;
   return {
     async disposeAsync() {
@@ -96,7 +96,7 @@ export function toAsyncDisposable(fn: () => Promise<void>): IAsyncDisposable {
 /**
  * Combines multiple disposables into a single IDisposable.
  */
-export function combinedDisposable(...disposables: IDisposable[]): IDisposable {
+function combinedDisposable(...disposables: IDisposable[]): IDisposable {
   return toDisposable(() => {
     for (const d of disposables) {
       d.dispose();
@@ -107,7 +107,7 @@ export function combinedDisposable(...disposables: IDisposable[]): IDisposable {
 /**
  * Check if a value is an IDisposable.
  */
-export function isDisposable(value: unknown): value is IDisposable {
+function isDisposable(value: unknown): value is IDisposable {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -118,7 +118,7 @@ export function isDisposable(value: unknown): value is IDisposable {
 /**
  * Safely dispose a value if it implements IDisposable.
  */
-export function safeDispose(value: unknown): void {
+function safeDispose(value: unknown): void {
   if (isDisposable(value)) {
     try {
       value.dispose();
@@ -131,7 +131,7 @@ export function safeDispose(value: unknown): void {
 /**
  * Marks a disposable as already disposed to prevent double-dispose warnings.
  */
-export function markAsDisposed(disposable: IDisposable): void {
+function markAsDisposed(disposable: IDisposable): void {
   // Used by tracking — remove from the tracking map
   if (_trackDisposals && '_trackingId' in disposable) {
     _disposalTraces.delete((disposable as any)._trackingId);
@@ -222,7 +222,7 @@ export class DisposableStore implements IDisposable {
 /**
  * Like DisposableStore but supports async disposal.
  */
-export class AsyncDisposableStore implements IAsyncDisposable, IDisposable {
+class AsyncDisposableStore implements IAsyncDisposable, IDisposable {
   private readonly _disposables: (IDisposable | IAsyncDisposable)[] = [];
   private _isDisposed = false;
 
@@ -278,7 +278,7 @@ export class AsyncDisposableStore implements IAsyncDisposable, IDisposable {
  * A disposable wrapper that holds a single disposable value that can be replaced.
  * When a new value is set, the old one is disposed.
  */
-export class MutableDisposable<T extends IDisposable> implements IDisposable {
+class MutableDisposable<T extends IDisposable> implements IDisposable {
   private _value: T | undefined;
   private _isDisposed = false;
 
@@ -317,7 +317,7 @@ export class MutableDisposable<T extends IDisposable> implements IDisposable {
  * A disposable that is only disposed when its reference count reaches zero.
  * Useful for shared resources that may be referenced by multiple owners.
  */
-export class RefCountDisposable implements IDisposable {
+class RefCountDisposable implements IDisposable {
   private _refCount: number;
   private _disposed = false;
 
@@ -397,7 +397,7 @@ export abstract class Disposable implements IDisposable {
 /**
  * Base class for objects that need async disposal.
  */
-export abstract class AsyncDisposable implements IDisposable, IAsyncDisposable {
+abstract class AsyncDisposable implements IDisposable, IAsyncDisposable {
   private readonly _syncStore = new DisposableStore();
   private readonly _asyncStore = new AsyncDisposableStore();
   private _isDisposed = false;

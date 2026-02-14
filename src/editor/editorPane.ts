@@ -209,7 +209,7 @@ export class PlaceholderEditorPane extends EditorPane {
  * The input must have a `provider` property with `createEditorPane(container)`.
  * This is duck-typed to avoid a hard dependency on the API bridge layer.
  */
-export class ToolEditorPane extends EditorPane {
+class ToolEditorPane extends EditorPane {
   private _contentContainer: HTMLElement | undefined;
   private _providerDisposable: IDisposable | undefined;
 

@@ -74,7 +74,7 @@ export interface SerializedGrid {
 /**
  * Serialized state of a single structural part.
  */
-export interface SerializedPartState {
+interface SerializedPartState {
   readonly partId: string;
   readonly visible: boolean;
   /** Grid location path, if participating in grid. */
@@ -88,7 +88,7 @@ export interface SerializedPartState {
 /**
  * Records which views are assigned to which part/container.
  */
-export interface SerializedViewAssignment {
+interface SerializedViewAssignment {
   readonly viewId: string;
   readonly containerId: string;
   /** Order within the container. */

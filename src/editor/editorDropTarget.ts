@@ -34,7 +34,7 @@ enum OverlayPosition {
 
 // ── Drop Overlay Event ───────────────────────────────────────────────────────
 
-export interface EditorDropEvent {
+interface EditorDropEvent {
   /** The dragged tab data. */
   readonly data: EditorTabDragData;
   /** The target group element's data-editor-group-id. */

@@ -41,7 +41,8 @@
 }
 
 .ui-button:active {
-  background-color: var(--vscode-button-hoverBackground);
+  background-color: var(--vscode-button-background);
+  transform: translateY(1px);
 }
 
 .ui-button:focus-visible {

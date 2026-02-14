@@ -66,7 +66,7 @@ export interface ToolModule {
 /**
  * Result of a module load attempt.
  */
-export type LoadModuleResult =
+type LoadModuleResult =
   | { success: true; module: ToolModule }
   | { success: false; error: string };
 

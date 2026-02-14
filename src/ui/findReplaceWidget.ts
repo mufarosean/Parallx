@@ -32,7 +32,7 @@ export interface FindMatch {
   readonly length: number;
 }
 
-export interface FindReplaceWidgetOptions {
+interface FindReplaceWidgetOptions {
   /** The textarea (or similar) whose content is searched. */
   readonly textarea: HTMLTextAreaElement;
 }

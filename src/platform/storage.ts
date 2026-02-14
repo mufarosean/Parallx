@@ -19,7 +19,7 @@ export const enum StorageErrorKind {
   Unknown = 'unknown',
 }
 
-export interface StorageError {
+interface StorageError {
   readonly kind: StorageErrorKind;
   readonly key: string;
   readonly message: string;
@@ -58,7 +58,7 @@ export interface IStorage {
 /**
  * Synchronous key-value storage interface for simple data.
  */
-export interface ISyncStorage {
+interface ISyncStorage {
   getSync(key: string): string | undefined;
   setSync(key: string, value: string): void;
   deleteSync(key: string): void;
@@ -121,7 +121,7 @@ export class NamespacedStorage implements IStorage {
 /**
  * Namespaced wrapper for synchronous storage.
  */
-export class NamespacedSyncStorage implements ISyncStorage {
+class NamespacedSyncStorage implements ISyncStorage {
   constructor(
     private readonly _inner: ISyncStorage,
     private readonly _namespace: string,
@@ -158,7 +158,7 @@ export class NamespacedSyncStorage implements ISyncStorage {
  * In-memory storage implementation. Useful for testing.
  * Implements both IStorage and ISyncStorage.
  */
-export class InMemoryStorage implements IStorage, ISyncStorage {
+class InMemoryStorage implements IStorage, ISyncStorage {
   private readonly _store = new Map<string, string>();
 
   // ── Async ──
@@ -317,7 +317,7 @@ const IDB_DEFAULT_STORE = 'kv';
  * IndexedDB-backed storage for large data.
  * Async-only (IndexedDB is inherently asynchronous).
  */
-export class IndexedDBStorage implements IStorage, IDisposable {
+class IndexedDBStorage implements IStorage, IDisposable {
   private _db: IDBDatabase | undefined;
   private readonly _dbName: string;
   private readonly _storeName: string;

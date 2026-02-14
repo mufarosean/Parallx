@@ -28,7 +28,7 @@ export const enum EditorResolverPriority {
   Exclusive = 300,
 }
 
-export interface EditorResolverRegistration {
+interface EditorResolverRegistration {
   /** Unique id for this registration (e.g., `parallx.editor.image`). */
   id: string;
   /** Human-readable name (e.g., "Image Viewer"). */
@@ -43,7 +43,7 @@ export interface EditorResolverRegistration {
   createPane: () => EditorPane;
 }
 
-export interface EditorResolution {
+interface EditorResolution {
   input: IEditorInput;
   pane: EditorPane;
   registration: EditorResolverRegistration;

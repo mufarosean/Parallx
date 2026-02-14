@@ -32,7 +32,7 @@ export const BREADCRUMBS_HEIGHT = 22; // VS Code: BreadcrumbsControl.HEIGHT = 22
  * Represents a single segment in the file path breadcrumbs.
  * Mirrors VS Code's FileElement in breadcrumbsModel.ts.
  */
-export interface FileElement {
+interface FileElement {
   readonly uri: URI;
   readonly kind: 'file' | 'folder' | 'root-folder';
   readonly label: string;

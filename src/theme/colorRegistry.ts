@@ -24,7 +24,7 @@ export enum ThemeType {
  * Default color values for each theme type.
  * Each value is a CSS color string (hex, rgb, rgba, transparent, inherit, etc.).
  */
-export interface ColorDefault {
+interface ColorDefault {
   readonly dark: string;
   readonly light: string;
   readonly hcDark: string;
@@ -36,7 +36,7 @@ export interface ColorDefault {
 /**
  * A registered color token with its key, description, and defaults.
  */
-export interface ColorRegistration {
+interface ColorRegistration {
   readonly id: string;
   readonly description: string;
   readonly defaults: ColorDefault;

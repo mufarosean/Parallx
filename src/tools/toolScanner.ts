@@ -35,7 +35,7 @@ function _getBridge(): ToolScanBridge | undefined {
 // ─── Scan Result ─────────────────────────────────────────────────────────────
 
 /** Result from scanning a single tool directory entry. */
-export interface ToolScanFailure {
+interface ToolScanFailure {
   /** Path to the tool directory that failed. */
   readonly toolPath: string;
   /** Human-readable reason for the failure. */
@@ -45,7 +45,7 @@ export interface ToolScanFailure {
 }
 
 /** Aggregate result from scanning one or more directories. */
-export interface ToolScanResult {
+interface ToolScanResult {
   /** Successfully discovered and validated tool descriptions. */
   readonly tools: readonly IToolDescription[];
   /** Tools that failed parsing or validation. */
@@ -66,7 +66,7 @@ export interface ToolScanResult {
  * - Built-in and user tool directories are supported
  * - Filesystem errors are handled gracefully
  */
-export class ToolScanner {
+class ToolScanner {
 
   /**
    * Scan the default tool directories (built-in + user).

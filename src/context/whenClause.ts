@@ -38,7 +38,7 @@ export const enum WhenClauseNodeType {
   Literal = 'literal',
 }
 
-export type WhenClauseNode =
+type WhenClauseNode =
   | { type: WhenClauseNodeType.True }
   | { type: WhenClauseNodeType.False }
   | { type: WhenClauseNodeType.Not; operand: WhenClauseNode }
@@ -199,7 +199,7 @@ function _isIdentChar(ch: string): boolean {
 /**
  * Error thrown when a when-clause expression cannot be parsed.
  */
-export class WhenClauseParseError extends Error {
+class WhenClauseParseError extends Error {
   constructor(message: string, readonly expression: string, readonly position: number) {
     super(`When clause parse error: ${message} in "${expression}"`);
     this.name = 'WhenClauseParseError';
@@ -405,7 +405,7 @@ export function parseWhenClause(expression: string | undefined): WhenClauseNode 
 /**
  * Clear the parse cache. Useful for testing.
  */
-export function clearWhenClauseCache(): void {
+function clearWhenClauseCache(): void {
   _parseCache.clear();
 }
 

@@ -86,7 +86,7 @@ export enum GroupDirection {
 /**
  * Where to move/copy an editor.
  */
-export interface EditorMoveTarget {
+interface EditorMoveTarget {
   readonly groupId: string;
   readonly index?: number;
 }
@@ -109,12 +109,12 @@ export const EDITOR_TAB_DRAG_TYPE = 'application/parallx-editor-tab';
 /**
  * Serialized layout of the editor part's nested grid.
  */
-export interface SerializedEditorPartLayout {
+interface SerializedEditorPartLayout {
   readonly orientation: 'horizontal' | 'vertical';
   readonly groups: SerializedEditorGroupLayout[];
 }
 
-export interface SerializedEditorGroupLayout {
+interface SerializedEditorGroupLayout {
   readonly groupId: string;
   readonly size: number;
 }
@@ -124,7 +124,7 @@ export interface SerializedEditorGroupLayout {
 /**
  * Result of an editor close attempt.
  */
-export enum EditorCloseResult {
+enum EditorCloseResult {
   /** Editor was closed successfully. */
   Closed = 'closed',
   /** Editor close was vetoed (e.g. unsaved changes). */

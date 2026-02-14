@@ -14,7 +14,7 @@ const SERVICE_DEPENDENCIES_KEY = Symbol('serviceDependencies');
 /**
  * Descriptor for a service dependency on a constructor parameter.
  */
-export interface ServiceDependency {
+interface ServiceDependency {
   readonly id: ServiceIdentifier<any>;
   readonly parameterIndex: number;
   readonly optional: boolean;
@@ -42,7 +42,7 @@ export function inject(serviceId: ServiceIdentifier<any>) {
  * Decorator factory for optional service dependencies.
  * If the service is not registered, undefined is injected.
  */
-export function injectOptional(serviceId: ServiceIdentifier<any>) {
+function injectOptional(serviceId: ServiceIdentifier<any>) {
   return function (target: any, _propertyKey: string | symbol | undefined, parameterIndex: number) {
     const deps: ServiceDependency[] = getServiceDependencies(target);
     deps.push({ id: serviceId, parameterIndex, optional: true });
@@ -114,7 +114,7 @@ export interface IServiceProvider {
 /**
  * Thrown when a required service dependency cannot be resolved.
  */
-export class MissingDependencyError extends Error {
+class MissingDependencyError extends Error {
   constructor(
     ctor: Function,
     dep: ServiceDependency,
@@ -137,7 +137,7 @@ export class MissingDependencyError extends Error {
  * @param ctor      Class constructor
  * @param extraArgs Additional arguments for non-decorated parameters
  */
-export function createInstance<T>(
+function createInstance<T>(
   provider: IServiceProvider,
   ctor: new (...args: any[]) => T,
   ...extraArgs: any[]

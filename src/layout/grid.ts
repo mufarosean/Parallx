@@ -2,6 +2,7 @@
 
 import { Disposable, DisposableStore, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
+import { startDrag, endDrag } from '../ui/dom.js';
 import { Orientation, SizingMode, GridLocation, Dimensions } from './layoutTypes.js';
 import { IGridView } from './gridView.js';
 import { GridBranchNode, GridLeafNode, GridNode, GridNodeType } from './gridNode.js';
@@ -16,7 +17,7 @@ import {
 /**
  * Event data for grid structural changes.
  */
-export interface GridChangeEvent {
+interface GridChangeEvent {
   readonly type: 'add' | 'remove' | 'resize' | 'structure';
   readonly viewId?: string;
 }
@@ -494,14 +495,12 @@ export class Grid extends Disposable {
       this._sashDragState = null;
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      endDrag();
     };
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-    document.body.style.cursor = isHorizontal ? 'col-resize' : 'row-resize';
-    document.body.style.userSelect = 'none';
+    startDrag(isHorizontal ? 'col-resize' : 'row-resize');
   };
 
   // ── Private: Deserialization ──
