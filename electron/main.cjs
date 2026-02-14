@@ -1,51 +1,10 @@
 // electron/main.cjs — Electron main process
 // Uses CommonJS because Electron's main process doesn't support ESM by default.
 
-const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
-
-/**
- * Create the Parallx "Layered Planes" logo as a nativeImage for the window icon.
- * Uses a 32×32 RGBA buffer drawn programmatically — no external files needed.
- * Two overlapping skewed rectangles in dark magenta (#a21caf).
- */
-function createAppIcon() {
-  const size = 32;
-  const buf = Buffer.alloc(size * size * 4, 0); // RGBA
-
-  // Brand color: #a21caf (dark magenta/fuchsia)
-  const R = 0xa2, G = 0x1c, B = 0xaf;
-
-  // Helper: set pixel (overwrites)
-  function setPixel(x, y, r, g, b, a) {
-    if (x < 0 || x >= size || y < 0 || y >= size) return;
-    const i = (y * size + x) * 4;
-    buf[i]     = r;
-    buf[i + 1] = g;
-    buf[i + 2] = b;
-    buf[i + 3] = a;
-  }
-
-  // Draw a skewed rounded-ish rect (skewX approximated by horizontal offset per row)
-  function fillSkewedRect(x0, y0, w, h, r, g, b, a, skewPx) {
-    for (let dy = 0; dy < h; dy++) {
-      // skewX shifts each row proportional to vertical position
-      const offset = Math.round(skewPx * (dy - h / 2) / h);
-      for (let dx = 0; dx < w; dx++) {
-        setPixel(x0 + dx + offset, y0 + dy, r, g, b, a);
-      }
-    }
-  }
-
-  // Back plane (shadow) — offset and semi-transparent
-  fillSkewedRect(5, 9, 16, 16, R, G, B, 110, -3);
-  // Front plane (main) — full opacity
-  fillSkewedRect(9, 6, 16, 16, R, G, B, 230, -3);
-
-  return nativeImage.createFromBuffer(buf, { width: size, height: size });
-}
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
