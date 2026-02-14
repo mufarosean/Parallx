@@ -33,6 +33,7 @@ interface WorkbenchLike {
   toggleCommandPalette(): void;
   showQuickOpen(): void;
   showGoToLine(): void;
+  selectColorTheme(): void;
   showSidebarView(viewId: string): void;
   readonly workspace: { readonly id: string; readonly name: string };
   createWorkspace(name: string, path?: string, switchTo?: boolean): Promise<unknown>;
@@ -136,6 +137,16 @@ const gotoLine: CommandDescriptor = {
   keybinding: 'Ctrl+G',
   handler(ctx) {
     wb(ctx).showGoToLine();
+  },
+};
+
+const selectColorTheme: CommandDescriptor = {
+  id: 'workbench.action.selectTheme',
+  title: 'Color Theme',
+  category: 'Preferences',
+  keybinding: 'Ctrl+K Ctrl+T',
+  handler(ctx) {
+    wb(ctx).selectColorTheme();
   },
 };
 
@@ -1305,6 +1316,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // Preferences
   openSettings,
   openKeybindings,
+  selectColorTheme,
 ];
 
 /**

@@ -1952,3 +1952,86 @@ html, body {
   display: none !important;
   width: 0 !important;
 }
+
+/* ── Theme Picker ── */
+/* VS Code parity: Ctrl+K Ctrl+T opens a quick-pick for color themes
+   with live preview as the user navigates. */
+
+.theme-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.theme-picker-box {
+  margin-top: 40px;
+  width: 600px;
+  max-height: 420px;
+  background: var(--vscode-quickInput-background);
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: 6px;
+  box-shadow: 0 8px 30px var(--vscode-widget-shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  align-self: flex-start;
+}
+
+.theme-picker-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  outline: none;
+  box-sizing: border-box;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-family: inherit;
+  font-size: 14px;
+  border-bottom: 1px solid var(--vscode-menu-border);
+}
+
+.theme-picker-input::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+.theme-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 360px;
+}
+
+.theme-picker-separator {
+  padding: 4px 14px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-descriptionForeground);
+  user-select: none;
+}
+
+.theme-picker-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--vscode-quickInput-foreground);
+  transition: background-color 0.08s;
+}
+
+.theme-picker-item:hover,
+.theme-picker-item--focused {
+  background: var(--vscode-quickInputList-focusBackground);
+  color: var(--vscode-quickInputList-focusForeground, var(--vscode-quickInput-foreground));
+}
+
+.theme-picker-item--current::after {
+  content: '✓';
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--vscode-notificationsInfoIcon-foreground);
+}

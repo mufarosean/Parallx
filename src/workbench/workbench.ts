@@ -154,7 +154,13 @@ import { colorRegistry } from '../theme/colorRegistry.js';
 import '../theme/workbenchColors.js'; // side-effect: registers all color tokens
 import { ColorThemeData } from '../theme/themeData.js';
 import { ThemeService } from '../services/themeService.js';
-import darkModernTheme from '../theme/themes/dark-modern.json';
+import {
+  getAvailableThemes,
+  findThemeById,
+  resolveTheme,
+  DEFAULT_THEME_ID,
+  THEME_STORAGE_KEY,
+} from '../theme/themeCatalog.js';
 // ── Layout constants ──
 
 const TITLE_HEIGHT = 30;
@@ -362,6 +368,229 @@ export class Workbench extends Disposable {
     if (this._commandPalette) {
       this._commandPalette.show(':');
     }
+  }
+
+  /**
+   * Show a quick pick for selecting the active color theme.
+   *
+   * VS Code reference: SelectColorThemeAction in
+   * src/vs/workbench/contrib/themes/browser/themes.contribution.ts
+   *
+   * Features:
+   * - Lists all built-in themes grouped by type (dark, light, high contrast)
+   * - Live preview as the user navigates with arrow keys
+   * - Reverts to previous theme on Escape
+   * - Persists choice to localStorage on confirm
+   */
+  selectColorTheme(): void {
+    const themeService = this._services.get(IThemeService) as ThemeService | undefined;
+    if (!themeService) return;
+
+    const previousThemeId = themeService.activeTheme.id;
+    const allThemes = getAvailableThemes();
+
+    // Build groups: dark themes, light themes, high contrast
+    const darkThemes = allThemes.filter(t => t.uiTheme === 'vs-dark');
+    const lightThemes = allThemes.filter(t => t.uiTheme === 'vs');
+    const hcThemes = allThemes.filter(t => t.uiTheme === 'hc-black' || t.uiTheme === 'hc-light');
+
+    // Build quick pick overlay
+    const overlay = document.createElement('div');
+    overlay.classList.add('theme-picker-overlay');
+
+    const box = document.createElement('div');
+    box.classList.add('theme-picker-box');
+
+    // Search input
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Select Color Theme (Up/Down Keys to Preview)';
+    input.classList.add('theme-picker-input');
+    box.appendChild(input);
+
+    // Items list
+    const list = document.createElement('div');
+    list.classList.add('theme-picker-list');
+    box.appendChild(list);
+
+    overlay.appendChild(box);
+    this._container.appendChild(overlay);
+    input.focus();
+
+    // Build items structure
+    interface PickerItem {
+      themeEntry: import('../theme/themeCatalog.js').ThemeCatalogEntry;
+      isSeparator: false;
+      label: string;
+    }
+    interface PickerSeparator {
+      isSeparator: true;
+      label: string;
+    }
+    type PickerRow = PickerItem | PickerSeparator;
+
+    const rows: PickerRow[] = [];
+    if (darkThemes.length) {
+      rows.push({ isSeparator: true, label: 'dark themes' });
+      for (const t of darkThemes) rows.push({ themeEntry: t, isSeparator: false, label: t.label });
+    }
+    if (lightThemes.length) {
+      rows.push({ isSeparator: true, label: 'light themes' });
+      for (const t of lightThemes) rows.push({ themeEntry: t, isSeparator: false, label: t.label });
+    }
+    if (hcThemes.length) {
+      rows.push({ isSeparator: true, label: 'high contrast themes' });
+      for (const t of hcThemes) rows.push({ themeEntry: t, isSeparator: false, label: t.label });
+    }
+
+    let highlightIndex = -1;
+    let visibleItems: PickerItem[] = [];
+
+    const renderItems = (filter: string): void => {
+      list.innerHTML = '';
+      visibleItems = [];
+      const lowerFilter = filter.toLowerCase();
+
+      for (const row of rows) {
+        if (row.isSeparator) {
+          // Check if any items in this group pass the filter
+          const groupStart = rows.indexOf(row);
+          let hasVisible = false;
+          for (let i = groupStart + 1; i < rows.length; i++) {
+            const r = rows[i];
+            if (r.isSeparator) break;
+            if (!lowerFilter || r.label.toLowerCase().includes(lowerFilter)) {
+              hasVisible = true;
+              break;
+            }
+          }
+          if (!hasVisible) continue;
+
+          const sep = document.createElement('div');
+          sep.classList.add('theme-picker-separator');
+          sep.textContent = row.label;
+          list.appendChild(sep);
+        } else {
+          if (lowerFilter && !row.label.toLowerCase().includes(lowerFilter)) continue;
+
+          const idx = visibleItems.length;
+          const el = document.createElement('div');
+          el.classList.add('theme-picker-item');
+          if (row.themeEntry.id === previousThemeId) {
+            el.classList.add('theme-picker-item--current');
+          }
+          el.textContent = row.label;
+
+          el.addEventListener('click', () => {
+            applyAndConfirm(row.themeEntry);
+          });
+          el.addEventListener('mouseenter', () => {
+            setHighlight(idx);
+            previewTheme(row.themeEntry);
+          });
+
+          visibleItems.push(row);
+          list.appendChild(el);
+        }
+      }
+
+      // Default highlight to the current theme
+      if (highlightIndex < 0 || highlightIndex >= visibleItems.length) {
+        const currentIdx = visibleItems.findIndex(
+          v => v.themeEntry.id === themeService.activeTheme.id
+        );
+        highlightIndex = currentIdx >= 0 ? currentIdx : 0;
+      }
+      updateHighlightVisual();
+    };
+
+    const setHighlight = (idx: number): void => {
+      if (idx < 0 || idx >= visibleItems.length) return;
+      highlightIndex = idx;
+      updateHighlightVisual();
+    };
+
+    const updateHighlightVisual = (): void => {
+      const items = list.querySelectorAll('.theme-picker-item');
+      items.forEach((el, i) => {
+        el.classList.toggle('theme-picker-item--focused', i === highlightIndex);
+      });
+      items[highlightIndex]?.scrollIntoView({ block: 'nearest' });
+    };
+
+    const previewTheme = (
+      entry: import('../theme/themeCatalog.js').ThemeCatalogEntry
+    ): void => {
+      const td = resolveTheme(entry, colorRegistry);
+      themeService.applyTheme(td);
+    };
+
+    const applyAndConfirm = (
+      entry: import('../theme/themeCatalog.js').ThemeCatalogEntry
+    ): void => {
+      const td = resolveTheme(entry, colorRegistry);
+      themeService.applyTheme(td);
+      localStorage.setItem(THEME_STORAGE_KEY, entry.id);
+      cleanup();
+    };
+
+    const revert = (): void => {
+      const prev = findThemeById(previousThemeId);
+      if (prev) {
+        const td = resolveTheme(prev, colorRegistry);
+        themeService.applyTheme(td);
+      }
+      cleanup();
+    };
+
+    const cleanup = (): void => {
+      overlay.remove();
+    };
+
+    // Initial render
+    renderItems('');
+
+    // Input events
+    input.addEventListener('input', () => {
+      highlightIndex = 0;
+      renderItems(input.value);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault();
+          setHighlight(Math.min(highlightIndex + 1, visibleItems.length - 1));
+          if (visibleItems[highlightIndex]) {
+            previewTheme(visibleItems[highlightIndex].themeEntry);
+          }
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          setHighlight(Math.max(highlightIndex - 1, 0));
+          if (visibleItems[highlightIndex]) {
+            previewTheme(visibleItems[highlightIndex].themeEntry);
+          }
+          break;
+        case 'Enter':
+          e.preventDefault();
+          if (visibleItems[highlightIndex]) {
+            applyAndConfirm(visibleItems[highlightIndex].themeEntry);
+          }
+          break;
+        case 'Escape':
+          e.preventDefault();
+          revert();
+          break;
+      }
+    });
+
+    // Click outside to revert
+    overlay.addEventListener('mousedown', (e) => {
+      if (e.target === overlay) {
+        revert();
+      }
+    });
   }
 
   // ── Focus Model (Cap 8) ────────────────────────────────────────────────
@@ -754,7 +983,10 @@ export class Workbench extends Disposable {
     // ── Theme Service (M5 Capability 3) ──
     // Must be applied before layout rendering to avoid flash of unstyled content.
     // workbenchColors.ts import above ensures all tokens are registered.
-    const themeData = ColorThemeData.fromSource(darkModernTheme as any, colorRegistry);
+    // Restore persisted theme or fall back to Dark Modern.
+    const persistedThemeId = localStorage.getItem(THEME_STORAGE_KEY) ?? DEFAULT_THEME_ID;
+    const themeEntry = findThemeById(persistedThemeId) ?? findThemeById(DEFAULT_THEME_ID)!;
+    const themeData = resolveTheme(themeEntry, colorRegistry);
     const themeService = this._register(new ThemeService(colorRegistry, themeData));
     themeService.applyTheme(themeData);
     this._services.registerInstance(IThemeService, themeService as any);
@@ -1995,10 +2227,9 @@ export class Workbench extends Disposable {
     ctxMenu.onDidSelect(({ item }) => {
       if (item.disabled) return;
 
-      // Handle theme commands specially (no registered command yet)
+      // Handle theme commands specially
       if (item.id === 'workbench.action.selectTheme') {
-        // Open the command palette with a theme filter
-        this.toggleCommandPalette();
+        this.selectColorTheme();
         return;
       }
 
