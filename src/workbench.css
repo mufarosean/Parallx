@@ -1105,7 +1105,6 @@ html, body {
 .editor-tab-bar .ui-tab-bar {
   flex: 1;
   height: 100%;
-  border-bottom: none; /* host container owns border via layout */
 }
 
 /* Editor group toolbar buttons live in the TabBar actions slot */

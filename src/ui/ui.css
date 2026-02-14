@@ -139,7 +139,7 @@
 
 .ui-tab-bar {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   height: 35px;
   min-height: 35px;
   overflow: hidden;
@@ -184,7 +184,7 @@
 .ui-tab {
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  padding: 0 10px;
   height: 100%;
   cursor: pointer;
   white-space: nowrap;
@@ -194,6 +194,7 @@
   color: var(--vscode-tab-inactiveForeground);
   background-color: var(--vscode-tab-inactiveBackground);
   border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
   border-right: 1px solid var(--vscode-tab-border);
   transition: background-color 0.1s;
   position: relative;
@@ -208,6 +209,7 @@
   color: var(--vscode-tab-activeForeground);
   background-color: var(--vscode-tab-activeBackground);
   border-top-color: var(--vscode-tab-activeBorderTop, transparent);
+  border-bottom-color: var(--vscode-tab-activeBackground);
 }
 
 .ui-tab--italic .ui-tab-label {
@@ -264,10 +266,31 @@
   margin-left: 6px;
   font-size: 14px;
   line-height: 1;
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: pointer;
   border-radius: 3px;
   padding: 0 2px;
+}
+
+/* Hide close button on inactive non-dirty tabs — show on hover (VS Code parity) */
+.ui-tab:not(.ui-tab--active) .ui-tab-close {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ui-tab:not(.ui-tab--active):hover .ui-tab-close {
+  opacity: 0.6;
+  pointer-events: auto;
+}
+
+/* Dirty inactive tabs: hide close until hover, then swap dirty dot for close */
+.ui-tab:not(.ui-tab--active):not(:hover) .ui-tab-close {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ui-tab:not(.ui-tab--active):hover .ui-tab-dirty {
+  display: none;
 }
 
 .ui-tab-close:hover {
