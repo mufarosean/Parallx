@@ -202,8 +202,7 @@ function showDetail(tool: ToolInfo, detail: HTMLElement): void {
 
   // Close button
   const closeBtn = document.createElement('button');
-  closeBtn.classList.add('tool-gallery-btn');
-  closeBtn.style.marginTop = '10px';
+  closeBtn.classList.add('tool-gallery-btn', 'tool-gallery-detail-close');
   closeBtn.textContent = 'Close';
   closeBtn.addEventListener('click', () => { hide(detail); });
   detail.appendChild(closeBtn);

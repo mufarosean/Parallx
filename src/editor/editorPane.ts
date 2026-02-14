@@ -178,15 +178,10 @@ export class PlaceholderEditorPane extends EditorPane {
   }
 
   protected override createPaneContent(container: HTMLElement): void {
-    container.style.display = 'flex';
-    container.style.alignItems = 'center';
-    container.style.justifyContent = 'center';
+    container.classList.add('placeholder-pane-content');
 
     this._label = document.createElement('div');
-    this._label.style.color = 'var(--color-text-muted, #888)';
-    this._label.style.fontSize = '14px';
-    this._label.style.textAlign = 'center';
-    this._label.style.padding = '16px';
+    this._label.classList.add('placeholder-pane-label');
     this._label.textContent = 'No editor';
     container.appendChild(this._label);
   }
@@ -224,9 +219,7 @@ export class ToolEditorPane extends EditorPane {
 
   protected override createPaneContent(container: HTMLElement): void {
     this._contentContainer = document.createElement('div');
-    this._contentContainer.style.width = '100%';
-    this._contentContainer.style.height = '100%';
-    this._contentContainer.style.overflow = 'auto';
+    this._contentContainer.classList.add('fill-container-scroll');
     container.appendChild(this._contentContainer);
   }
 

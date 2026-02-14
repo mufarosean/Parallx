@@ -155,3 +155,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.tool-gallery-detail-close {
+  margin-top: 10px;
+}

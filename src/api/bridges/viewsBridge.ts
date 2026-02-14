@@ -161,10 +161,7 @@ function _createToolView(viewId: string, name: string, provider: ToolViewProvide
     createElement(container: HTMLElement): void {
       if (_disposed) return;
       _element = document.createElement('div');
-      _element.className = 'tool-view-content';
-      _element.style.width = '100%';
-      _element.style.height = '100%';
-      _element.style.overflow = 'auto';
+      _element.className = 'tool-view-content fill-container-scroll';
       container.appendChild(_element);
 
       try {

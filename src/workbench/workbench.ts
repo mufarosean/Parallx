@@ -3163,10 +3163,7 @@ export class Workbench extends Disposable {
 
       // Create a content wrapper for the real tool view
       const contentEl = document.createElement('div');
-      contentEl.className = 'tool-view-content';
-      contentEl.style.width = '100%';
-      contentEl.style.height = '100%';
-      contentEl.style.overflow = 'auto';
+      contentEl.className = 'tool-view-content fill-container-scroll';
       sectionEl.appendChild(contentEl);
 
       // Resolve the real tool view into the container

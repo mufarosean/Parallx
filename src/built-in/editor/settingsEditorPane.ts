@@ -189,9 +189,7 @@ export class SettingsEditorPane extends EditorPane {
 
     // Key label
     const keyRow = document.createElement('div');
-    keyRow.style.display = 'flex';
-    keyRow.style.alignItems = 'center';
-    keyRow.style.gap = '6px';
+    keyRow.classList.add('settings-item-key-row');
 
     const keyEl = document.createElement('span');
     keyEl.classList.add('settings-item-key');
@@ -242,7 +240,7 @@ export class SettingsEditorPane extends EditorPane {
       container.appendChild(checkbox);
 
       const label = document.createElement('span');
-      label.style.fontSize = '13px';
+      label.classList.add('settings-control-label');
       label.textContent = checkbox.checked ? 'Enabled' : 'Disabled';
       checkbox.addEventListener('change', () => {
         label.textContent = checkbox.checked ? 'Enabled' : 'Disabled';

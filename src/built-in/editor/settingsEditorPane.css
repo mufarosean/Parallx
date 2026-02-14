@@ -81,6 +81,16 @@
   color: var(--color-text-primary, #ddd);
 }
 
+.settings-item-key-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-control-label {
+  font-size: 13px;
+}
+
 .settings-item-description {
   font-size: 12px;
   color: var(--color-text-muted, #888);
