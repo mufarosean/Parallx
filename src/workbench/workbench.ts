@@ -1892,6 +1892,13 @@ export class Workbench extends Disposable {
         this._manageMenu.dismiss();
         return;
       }
+      // Guard: if the menu was *just* dismissed (by the outside-click mousedown
+      // hitting this same button), skip re-opening. The mousedown fires before
+      // click, so dismiss() runs first and nulls _manageMenu; without this
+      // guard the click handler would immediately reopen the menu.
+      if (Date.now() - this._manageMenuDismissedAt < 300) {
+        return;
+      }
       this._showManageMenu(gearBtn);
     });
 
@@ -1900,6 +1907,8 @@ export class Workbench extends Disposable {
 
   /** Tracks the currently-open manage menu so we can toggle it. */
   private _manageMenu: ContextMenu | null = null;
+  /** Timestamp of the last manage-menu dismiss (used to defeat the mousedown/click race). */
+  private _manageMenuDismissedAt = 0;
 
   /**
    * Show the Manage menu anchored above the gear icon (opens upward like VS Code).
@@ -1978,6 +1987,7 @@ export class Workbench extends Disposable {
     this._manageMenu = ctxMenu;
     anchor.classList.add('active');
     ctxMenu.onDidDismiss(() => {
+      this._manageMenuDismissedAt = Date.now();
       this._manageMenu = null;
       anchor.classList.remove('active');
     });
