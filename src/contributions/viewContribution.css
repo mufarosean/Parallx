@@ -1,0 +1,36 @@
+/* ── View Contribution ────────────────────────────────────────────────────── */
+
+/* Contributed view wrapper */
+.contributed-view {
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Content container (injected once the provider resolves) */
+.tool-view-content {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
+/* Placeholder shown while waiting for view provider */
+.contributed-view-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--vscode-descriptionForeground, #6a6a6a);
+  font-size: 13px;
+}
+
+.contributed-view-placeholder__name {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.contributed-view-placeholder__msg {
+  font-style: italic;
+}

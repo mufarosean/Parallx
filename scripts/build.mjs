@@ -43,6 +43,8 @@ const notificationCssPath = 'src/api/notificationService.css';
 const notificationCss = existsSync(notificationCssPath) ? readFileSync(notificationCssPath, 'utf-8') : '';
 const menuCssPath = 'src/contributions/menuContribution.css';
 const menuCss = existsSync(menuCssPath) ? readFileSync(menuCssPath, 'utf-8') : '';
-writeFileSync('dist/renderer/workbench.css', workbenchCss + '\n' + uiCss + '\n' + explorerCss + '\n' + editorCss + '\n' + markdownCss + '\n' + imageCss + '\n' + pdfCss + '\n' + settingsCss + '\n' + keybindingsCss + '\n' + welcomeCss + '\n' + outputCss + '\n' + toolGalleryCss + '\n' + notificationCss + '\n' + menuCss);
+const viewCssPath = 'src/contributions/viewContribution.css';
+const viewCss = existsSync(viewCssPath) ? readFileSync(viewCssPath, 'utf-8') : '';
+writeFileSync('dist/renderer/workbench.css', workbenchCss + '\n' + uiCss + '\n' + explorerCss + '\n' + editorCss + '\n' + markdownCss + '\n' + imageCss + '\n' + pdfCss + '\n' + settingsCss + '\n' + keybindingsCss + '\n' + welcomeCss + '\n' + outputCss + '\n' + toolGalleryCss + '\n' + notificationCss + '\n' + menuCss + '\n' + viewCss);
 
 console.log('Build complete.');
