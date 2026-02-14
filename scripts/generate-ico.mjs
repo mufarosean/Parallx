@@ -19,14 +19,15 @@ const R = 0xa2, G = 0x1c, B = 0xaf;
 
 /**
  * Draw the Layered Planes logo into an RGBA buffer at the given size.
+ * Matches the SVG: two rects with skewX(-8), rx=1.5, back at opacity 0.45.
  */
 function drawLogo(size) {
   const buf = Buffer.alloc(size * size * 4, 0);
 
-  function setPixel(x, y, r, g, b, a) {
+  // Blend a pixel with alpha compositing (src over dst)
+  function blendPixel(x, y, r, g, b, a) {
     if (x < 0 || x >= size || y < 0 || y >= size) return;
     const i = (y * size + x) * 4;
-    // Alpha-blend over existing pixel
     const srcA = a / 255;
     const dstA = buf[i + 3] / 255;
     const outA = srcA + dstA * (1 - srcA);
@@ -38,30 +39,81 @@ function drawLogo(size) {
     buf[i + 3] = Math.round(outA * 255);
   }
 
-  function fillSkewedRect(x0, y0, w, h, r, g, b, a, skewPx) {
-    for (let dy = 0; dy < h; dy++) {
-      const offset = Math.round(skewPx * (dy - h / 2) / h);
-      for (let dx = 0; dx < w; dx++) {
-        setPixel(x0 + dx + offset, y0 + dy, r, g, b, a);
+  // Anti-aliased sub-pixel rendering: sample NxN grid per pixel
+  const AA = size >= 64 ? 4 : (size >= 32 ? 3 : 2);
+
+  /**
+   * Draw a rounded rect with SVG-compatible skewX transform.
+   * SVG: <rect x y width height rx transform="skewX(angle)" fill opacity />
+   * skewX(a) means: x' = x + y * tan(a), y' = y
+   */
+  function fillSkewedRoundRect(rx, ry, rw, rh, cornerR, skewDeg, r, g, b, alpha) {
+    const s = size / 32; // scale from 32px SVG viewBox
+    const tanA = Math.tan(skewDeg * Math.PI / 180);
+
+    // Scale SVG coordinates to pixel space
+    const sx = rx * s, sy = ry * s, sw = rw * s, sh = rh * s, sr = cornerR * s;
+
+    // Determine bounding box in pixel space (with skew margin)
+    const skewMargin = Math.abs(tanA) * size;
+    const minX = Math.max(0, Math.floor(sx - skewMargin - 1));
+    const maxX = Math.min(size - 1, Math.ceil(sx + sw + skewMargin + 1));
+    const minY = Math.max(0, Math.floor(sy - 1));
+    const maxY = Math.min(size - 1, Math.ceil(sy + sh + 1));
+
+    for (let py = minY; py <= maxY; py++) {
+      for (let px = minX; px <= maxX; px++) {
+        // Sub-pixel sampling for anti-aliasing
+        let coverage = 0;
+        for (let sy2 = 0; sy2 < AA; sy2++) {
+          for (let sx2 = 0; sx2 < AA; sx2++) {
+            // Sample point in pixel space
+            const sampleX = px + (sx2 + 0.5) / AA;
+            const sampleY = py + (sy2 + 0.5) / AA;
+
+            // Undo skew to get coordinates in rect's local space
+            const localX = sampleX - sampleY * tanA;
+            const localY = sampleY;
+
+            // Check if inside the rounded rect
+            const dx = localX - sx;
+            const dy = localY - sy;
+
+            if (dx >= 0 && dx <= sw && dy >= 0 && dy <= sh) {
+              // Check rounded corners
+              let inside = true;
+              if (sr > 0) {
+                // Distance from nearest corner center
+                let cx, cy;
+                if (dx < sr && dy < sr) { cx = sr; cy = sr; }
+                else if (dx > sw - sr && dy < sr) { cx = sw - sr; cy = sr; }
+                else if (dx < sr && dy > sh - sr) { cx = sr; cy = sh - sr; }
+                else if (dx > sw - sr && dy > sh - sr) { cx = sw - sr; cy = sh - sr; }
+                else { cx = -1; }
+
+                if (cx >= 0) {
+                  const dist = Math.sqrt((dx - cx) ** 2 + (dy - cy) ** 2);
+                  if (dist > sr) inside = false;
+                }
+              }
+              if (inside) coverage++;
+            }
+          }
+        }
+
+        if (coverage > 0) {
+          const pixelAlpha = Math.round(alpha * coverage / (AA * AA));
+          blendPixel(px, py, r, g, b, pixelAlpha);
+        }
       }
     }
   }
 
-  // Scale all parameters proportionally from the 32px reference
-  const s = size / 32;
+  // Back plane: <rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" opacity="0.45"/>
+  fillSkewedRoundRect(6, 8, 16, 16, 1.5, -8, R, G, B, Math.round(0.45 * 255));
 
-  // Back plane (shadow)
-  fillSkewedRect(
-    Math.round(5 * s), Math.round(9 * s),
-    Math.round(16 * s), Math.round(16 * s),
-    R, G, B, 110, Math.round(-3 * s)
-  );
-  // Front plane (main)
-  fillSkewedRect(
-    Math.round(9 * s), Math.round(6 * s),
-    Math.round(16 * s), Math.round(16 * s),
-    R, G, B, 230, Math.round(-3 * s)
-  );
+  // Front plane: <rect x="10" y="6" width="16" height="16" rx="1.5" transform="skewX(-8)"/>
+  fillSkewedRoundRect(10, 6, 16, 16, 1.5, -8, R, G, B, 255);
 
   return buf;
 }
