@@ -9,14 +9,14 @@ const fsSync = require('fs');
 /**
  * Create the Parallx "Layered Planes" logo as a nativeImage for the window icon.
  * Uses a 32×32 RGBA buffer drawn programmatically — no external files needed.
- * Two overlapping skewed rectangles in magenta (#d946ef).
+ * Two overlapping skewed rectangles in dark magenta (#a21caf).
  */
 function createAppIcon() {
   const size = 32;
   const buf = Buffer.alloc(size * size * 4, 0); // RGBA
 
-  // Brand color: #d946ef (magenta/fuchsia)
-  const R = 0xd9, G = 0x46, B = 0xef;
+  // Brand color: #a21caf (dark magenta/fuchsia)
+  const R = 0xa2, G = 0x1c, B = 0xaf;
 
   // Helper: set pixel (overwrites)
   function setPixel(x, y, r, g, b, a) {
