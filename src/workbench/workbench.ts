@@ -1869,25 +1869,37 @@ export class Workbench extends Disposable {
     gearBtn.dataset.iconId = 'manage-gear';
     gearBtn.title = 'Manage';
 
-    // Use the gear SVG from the codicon map
+    // Use VS Code's codicon gear SVG (16×16 viewBox for proper sizing)
     const iconLabel = document.createElement('span');
     iconLabel.classList.add('activity-bar-icon-label');
     iconLabel.innerHTML =
-      '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-      '<path d="M19.85 8.75L18.01 8.07L19 6.54L17.46 5L15.93 5.99L15.25 4.15H13.25L12.57 5.99' +
-      'L11.04 5L9.5 6.54L10.49 8.07L8.65 8.75V10.75L10.49 11.43L9.5 12.96L11.04 14.5L12.57 13.51' +
-      'L13.25 15.35H15.25L15.93 13.51L17.46 14.5L19 12.96L18.01 11.43L19.85 10.75V8.75Z' +
-      'M14.25 12.5C13.01 12.5 12 11.49 12 10.25C12 9.01 13.01 8 14.25 8C15.49 8 16.5 9.01 16.5 10.25' +
-      'C16.5 11.49 15.49 12.5 14.25 12.5Z" fill="currentColor"/></svg>';
+      '<svg width="24" height="24" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">' +
+      '<path fill-rule="evenodd" clip-rule="evenodd" d="M14.54 11.81L13.12 ' +
+      '11.03L13.56 10.05L15.18 9.72L15.18 7.28L13.56 6.95L13.12 5.97L14.54 ' +
+      '4.19L12.81 2.46L11.03 3.88L10.05 3.44L9.72 1.82L7.28 1.82L6.95 ' +
+      '3.44L5.97 3.88L4.19 2.46L2.46 4.19L3.88 5.97L3.44 6.95L1.82 7.28' +
+      'L1.82 9.72L3.44 10.05L3.88 11.03L2.46 12.81L4.19 14.54L5.97 13.12' +
+      'L6.95 13.56L7.28 15.18L9.72 15.18L10.05 13.56L11.03 13.12L12.81 ' +
+      '14.54L14.54 11.81ZM8.5 11C9.88 11 11 9.88 11 8.5C11 7.12 9.88 6 ' +
+      '8.5 6C7.12 6 6 7.12 6 8.5C6 9.88 7.12 11 8.5 11Z" fill="currentColor"/></svg>';
     gearBtn.appendChild(iconLabel);
 
+    // Toggle: click opens menu, click again closes it
     gearBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (this._manageMenu) {
+        // Menu is open — dismiss it
+        this._manageMenu.dismiss();
+        return;
+      }
       this._showManageMenu(gearBtn);
     });
 
     bottomSection.appendChild(gearBtn);
   }
+
+  /** Tracks the currently-open manage menu so we can toggle it. */
+  private _manageMenu: ContextMenu | null = null;
 
   /**
    * Show the Manage menu anchored above the gear icon (opens upward like VS Code).
@@ -1960,6 +1972,14 @@ export class Workbench extends Disposable {
     const ctxMenu = ContextMenu.show({
       items,
       anchor: { x: rect.right + 4, y },
+    });
+
+    // Track the menu for toggle behavior
+    this._manageMenu = ctxMenu;
+    anchor.classList.add('active');
+    ctxMenu.onDidDismiss(() => {
+      this._manageMenu = null;
+      anchor.classList.remove('active');
     });
 
     ctxMenu.onDidSelect(({ item }) => {
