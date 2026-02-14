@@ -167,6 +167,7 @@ import {
   THEME_STORAGE_KEY,
 } from '../theme/themeCatalog.js';
 import { showColorThemePicker } from './workbenchThemePicker.js';
+import { setupEditorWatermark, updateWatermarkKeybindings } from './workbenchWatermark.js';
 // ── Layout constants ──
 
 const TITLE_HEIGHT = 30;
@@ -2063,63 +2064,12 @@ export class Workbench extends Disposable {
   // ════════════════════════════════════════════════════════════════════════
 
   private _setupEditorWatermark(): void {
-    const watermark = this._editor.element.querySelector('.editor-watermark') as HTMLElement;
-    if (watermark) {
-      // Initial watermark with static shortcuts (keybinding service not yet available)
-      this._renderWatermarkContent(watermark);
-    }
+    setupEditorWatermark(this._editor.element);
   }
 
-  /**
-   * Update the watermark keyboard shortcuts to reflect actual keybinding
-   * labels from the keybinding service. Called after keybindingService is
-   * available (Phase 5).
-   */
+  /** Update watermark shortcuts from live keybinding service. */
   private _updateWatermarkKeybindings(keybindingService: { lookupKeybinding(commandId: string): string | undefined }): void {
-    const watermark = this._editor.element.querySelector('.editor-watermark') as HTMLElement;
-    if (!watermark) return;
-    this._renderWatermarkContent(watermark, keybindingService);
-  }
-
-  /**
-   * Render the watermark content, optionally using the keybinding service
-   * for dynamic shortcut labels.
-   */
-  private _renderWatermarkContent(
-    watermark: HTMLElement,
-    keybindingService?: { lookupKeybinding(commandId: string): string | undefined },
-  ): void {
-    const shortcuts: { commandId: string; label: string; fallback: string }[] = [
-      { commandId: 'workbench.action.showCommands', label: 'Command Palette', fallback: 'Ctrl+Shift+P' },
-      { commandId: 'workbench.action.toggleSidebarVisibility', label: 'Toggle Sidebar', fallback: 'Ctrl+B' },
-      { commandId: 'workbench.action.togglePanel', label: 'Toggle Panel', fallback: 'Ctrl+J' },
-      { commandId: 'workbench.action.splitEditor', label: 'Split Editor', fallback: 'Ctrl+\\' },
-    ];
-
-    const entries = shortcuts.map(({ commandId, label, fallback }) => {
-      // Look up keybinding if service is available, else use fallback
-      let key = fallback;
-      if (keybindingService) {
-        const resolved = keybindingService.lookupKeybinding(commandId);
-        if (resolved) {
-          // Convert normalized format (ctrl+shift+p) to display format (Ctrl+Shift+P)
-          key = resolved.split('+').map(part =>
-            part.charAt(0).toUpperCase() + part.slice(1),
-          ).join('+');
-        }
-      }
-      return `<div class="editor-watermark-entry"><kbd>${key}</kbd> <span>${label}</span></div>`;
-    }).join('\n            ');
-
-    watermark.innerHTML = `
-        <div class="editor-watermark-content">
-          <div class="editor-watermark-icon"><svg width="64" height="64" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="currentColor" opacity="0.4"/><rect x="10" y="6" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="currentColor"/></svg></div>
-          <div class="editor-watermark-title">Parallx Workbench</div>
-          <div class="editor-watermark-shortcuts">
-            ${entries}
-          </div>
-        </div>
-      `;
+    updateWatermarkKeybindings(this._editor.element, keybindingService);
   }
 
   /**
