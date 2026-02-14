@@ -110,9 +110,15 @@ html, body {
 }
 
 .titlebar-app-icon {
-  font-size: 16px;
-  padding: 0 10px 0 12px;
-  opacity: 0.9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px 0 12px;
+  color: var(--vscode-titleBar-activeForeground);
+}
+
+.titlebar-app-icon svg {
+  display: block;
 }
 
 .titlebar-menu-item {

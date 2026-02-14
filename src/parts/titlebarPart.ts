@@ -570,10 +570,17 @@ export class TitlebarPart extends Part {
     this._leftSlot.setAttribute('role', 'menubar');
     rootContainer.appendChild(this._leftSlot);
 
-    // App icon
+    // App icon — Prism P logo
     const appIcon = document.createElement('span');
-    appIcon.textContent = '⊞';
     appIcon.classList.add('titlebar-app-icon');
+    appIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Back face of prism (darker) -->
+      <path d="M8 4 L24 4 L24 14 Q24 20 18 20 L14 20 L14 28 L8 28 Z" fill="currentColor" opacity="0.35"/>
+      <!-- Front face of prism P (main) -->
+      <path d="M6 6 L22 6 L22 14 Q22 18 18 18 L12 18 L12 28 L6 28 Z" fill="currentColor" opacity="0.85"/>
+      <!-- Inner cutout to form the P bowl -->
+      <path d="M12 10 L18 10 Q20 10 20 13 Q20 15 18 15 L12 15 Z" fill="var(--vscode-titleBar-activeBackground, #181818)"/>
+    </svg>`;
     this._leftSlot.appendChild(appIcon);
 
     this._menuBarContainer = this._leftSlot;

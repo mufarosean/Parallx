@@ -1,10 +1,66 @@
 // electron/main.cjs — Electron main process
 // Uses CommonJS because Electron's main process doesn't support ESM by default.
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
+
+/**
+ * Create the Parallx "Prism P" logo as a nativeImage for the window icon.
+ * Uses a 32×32 RGBA buffer drawn programmatically — no external files needed.
+ */
+function createAppIcon() {
+  const size = 32;
+  const buf = Buffer.alloc(size * size * 4, 0); // RGBA
+
+  // Brand color: #569cd6
+  const R = 0x56, G = 0x9c, B = 0xd6;
+
+  // Helper: set pixel with alpha blending
+  function setPixel(x, y, r, g, b, a) {
+    if (x < 0 || x >= size || y < 0 || y >= size) return;
+    const i = (y * size + x) * 4;
+    buf[i]     = r;
+    buf[i + 1] = g;
+    buf[i + 2] = b;
+    buf[i + 3] = a;
+  }
+
+  // Fill a rect
+  function fillRect(x0, y0, w, h, r, g, b, a) {
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) {
+        setPixel(x0 + dx, y0 + dy, r, g, b, a);
+      }
+    }
+  }
+
+  // Back face (offset shadow) — semi-transparent
+  // Vertical stem: x=8..14, y=4..28
+  fillRect(8, 4, 6, 24, R, G, B, 120);
+  // Top bar: x=8..24, y=4..8
+  fillRect(8, 4, 16, 4, R, G, B, 120);
+  // Right curve top: x=22..24, y=8..14
+  fillRect(22, 8, 2, 6, R, G, B, 120);
+  // Bowl bottom: x=14..22, y=18..20
+  fillRect(14, 18, 8, 2, R, G, B, 120);
+
+  // Front face (main P shape) — full opacity
+  // Vertical stem: x=6..12, y=6..28
+  fillRect(6, 6, 6, 22, R, G, B, 220);
+  // Top bar: x=6..22, y=6..10
+  fillRect(6, 6, 16, 4, R, G, B, 220);
+  // Right side of bowl: x=20..22, y=10..15
+  fillRect(20, 10, 2, 5, R, G, B, 220);
+  // Bowl bottom: x=12..22, y=15..18
+  fillRect(12, 15, 10, 3, R, G, B, 220);
+
+  // Clear inner bowl (transparent) — forms the P counter
+  fillRect(12, 10, 8, 5, 0, 0, 0, 0);
+
+  return nativeImage.createFromBuffer(buf, { width: size, height: size });
+}
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
@@ -18,6 +74,7 @@ function createWindow() {
     // Frameless for custom titlebar (like VS Code)
     frame: false,
     titleBarStyle: 'hidden',
+    icon: createAppIcon(),
     // Dark background while loading
     backgroundColor: '#1e1e1e',
     webPreferences: {
