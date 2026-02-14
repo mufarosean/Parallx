@@ -6,7 +6,7 @@
 
 import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
 import { Emitter } from '../../platform/events.js';
-import { hide, show } from '../../ui/dom.js';
+import { $,  hide, show } from '../../ui/dom.js';
 import type { ViewManager } from '../../views/viewManager.js';
 import type { IView, ViewState } from '../../views/view.js';
 import { DEFAULT_SIZE_CONSTRAINTS } from '../../layout/layoutTypes.js';
@@ -159,7 +159,7 @@ function _createToolView(viewId: string, name: string, provider: ToolViewProvide
 
     createElement(container: HTMLElement): void {
       if (_disposed) return;
-      _element = document.createElement('div');
+      _element = $('div');
       _element.className = 'tool-view-content fill-container-scroll';
       container.appendChild(_element);
 

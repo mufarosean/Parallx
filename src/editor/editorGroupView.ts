@@ -26,6 +26,7 @@ import { BreadcrumbsBar } from './breadcrumbsBar.js';
 import { URI } from '../platform/uri.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 import { TabBar, type ITabBarItem } from '../ui/tabBar.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -162,7 +163,7 @@ export class EditorGroupView extends Disposable implements IGridView {
    * Build the DOM structure for this group (called eagerly from constructor).
    */
   private _createElement(): void {
-    this._element = document.createElement('div');
+    this._element = $('div');
     this._element.classList.add('editor-group');
     this._element.setAttribute('data-editor-group-id', this.model.id);
     this._element.tabIndex = -1;
@@ -171,7 +172,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     this._element.addEventListener('focusin', () => this._onDidFocus.fire());
 
     // Tab bar — delegates to ui/TabBar component
-    const tabBarHost = document.createElement('div');
+    const tabBarHost = $('div');
     tabBarHost.classList.add('editor-tab-bar');
     tabBarHost.style.height = `${TAB_HEIGHT}px`;
     tabBarHost.style.minHeight = `${TAB_HEIGHT}px`;
@@ -270,12 +271,12 @@ export class EditorGroupView extends Disposable implements IGridView {
     this._breadcrumbsBar = this._register(new BreadcrumbsBar(this._element));
 
     // Pane container
-    this._paneContainer = document.createElement('div');
+    this._paneContainer = $('div');
     this._paneContainer.classList.add('editor-pane-container');
     this._element.appendChild(this._paneContainer);
 
     // Empty message (hidden when watermark is visible at the EditorPart level)
-    this._emptyMessage = document.createElement('div');
+    this._emptyMessage = $('div');
     this._emptyMessage.classList.add('editor-group-empty');
     this._paneContainer.appendChild(this._emptyMessage);
 
@@ -570,7 +571,7 @@ export class EditorGroupView extends Disposable implements IGridView {
   }
 
   private _createToolbarButton(content: string, title: string, onClick: () => void, isSvg = false): HTMLElement {
-    const btn = document.createElement('button');
+    const btn = $('button');
     if (isSvg) {
       btn.innerHTML = content;
     } else {

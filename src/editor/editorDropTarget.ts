@@ -10,6 +10,7 @@
 import { Disposable, DisposableStore } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { EDITOR_TAB_DRAG_TYPE, EditorTabDragData, GroupDirection } from './editorTypes.js';
+import { $ } from '../ui/dom.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -78,14 +79,14 @@ class EditorDropOverlay extends Disposable {
   // ── DOM creation ──
 
   private _createOverlayContainer(): HTMLElement {
-    const el = document.createElement('div');
+    const el = $('div');
     el.classList.add('editor-drop-overlay');
     // Positioning via .editor-drop-overlay CSS class (position absolute, inset 0, z-index, pointer-events)
     return el;
   }
 
   private _createIndicator(): HTMLElement {
-    const el = document.createElement('div');
+    const el = $('div');
     el.classList.add('editor-drop-overlay-indicator');
     return el;
   }

@@ -3,7 +3,7 @@
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { Orientation } from '../layout/layoutTypes.js';
-import { hide, show, startDrag, endDrag } from '../ui/dom.js';
+import { $,  hide, show, startDrag, endDrag } from '../ui/dom.js';
 import { IGridView } from '../layout/gridView.js';
 import { IView } from './view.js';
 
@@ -97,11 +97,11 @@ export class ViewContainer extends Disposable implements IGridView {
     super();
 
     // Root element
-    this._element = document.createElement('div');
+    this._element = $('div');
     this._element.classList.add('view-container', `view-container-${id}`);
 
     // Tab bar
-    this._tabBar = document.createElement('div');
+    this._tabBar = $('div');
     this._tabBar.classList.add('view-container-tabs');
     this._tabBar.style.height = `${this._tabBarHeight}px`;
     this._tabBar.setAttribute('role', 'tablist');
@@ -151,7 +151,7 @@ export class ViewContainer extends Disposable implements IGridView {
     });
 
     // Content area
-    this._contentArea = document.createElement('div');
+    this._contentArea = $('div');
     this._contentArea.classList.add('view-container-content');
     this._element.appendChild(this._contentArea);
   }
@@ -509,36 +509,36 @@ export class ViewContainer extends Disposable implements IGridView {
    * Create a section wrapper for a view in stacked mode.
    */
   private _createSection(view: IView): void {
-    const wrapper = document.createElement('div');
+    const wrapper = $('div');
     wrapper.classList.add('view-section');
     wrapper.dataset.viewId = view.id;
 
     // Header
-    const header = document.createElement('div');
+    const header = $('div');
     header.classList.add('view-section-header');
     header.tabIndex = 0;
     header.setAttribute('role', 'button');
     header.setAttribute('aria-expanded', 'true');
 
-    const chevron = document.createElement('span');
+    const chevron = $('span');
     chevron.classList.add('view-section-chevron');
     chevron.textContent = '▾';
     header.appendChild(chevron);
 
-    const title = document.createElement('span');
+    const title = $('span');
     title.classList.add('view-section-title');
     title.textContent = view.name;
     header.appendChild(title);
 
     // Actions slot — consumers (workbench) can render action buttons here
-    const actionsSlot = document.createElement('div');
+    const actionsSlot = $('div');
     actionsSlot.classList.add('view-section-actions');
     header.appendChild(actionsSlot);
 
     wrapper.appendChild(header);
 
     // Body
-    const body = document.createElement('div');
+    const body = $('div');
     body.classList.add('view-section-body');
     wrapper.appendChild(body);
 
@@ -594,7 +594,7 @@ export class ViewContainer extends Disposable implements IGridView {
       .filter((s): s is NonNullable<typeof s> => s !== undefined);
 
     for (let i = 0; i < sections.length - 1; i++) {
-      const sash = document.createElement('div');
+      const sash = $('div');
       sash.classList.add('view-section-sash');
       sash.dataset.sashIndex = String(i);
 
@@ -722,7 +722,7 @@ export class ViewContainer extends Disposable implements IGridView {
   // ── Tab DOM ──
 
   private _createTab(view: IView): void {
-    const tab = document.createElement('div');
+    const tab = $('div');
     tab.classList.add('view-tab');
     tab.dataset.viewId = view.id;
     tab.setAttribute('role', 'tab');
@@ -731,13 +731,13 @@ export class ViewContainer extends Disposable implements IGridView {
 
     // Icon
     if (view.icon) {
-      const iconEl = document.createElement('span');
+      const iconEl = $('span');
       iconEl.classList.add('view-tab-icon', view.icon);
       tab.appendChild(iconEl);
     }
 
     // Label
-    const label = document.createElement('span');
+    const label = $('span');
     label.classList.add('view-tab-label');
     label.textContent = view.name;
     tab.appendChild(label);

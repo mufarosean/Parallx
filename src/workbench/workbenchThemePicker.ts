@@ -18,6 +18,7 @@ import {
   resolveTheme,
   THEME_STORAGE_KEY,
 } from '../theme/themeCatalog.js';
+import { $ } from '../ui/dom.js';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -55,19 +56,19 @@ export function showColorThemePicker(
   const hcThemes = allThemes.filter(t => t.uiTheme === 'hc-black' || t.uiTheme === 'hc-light');
 
   // ── Overlay DOM ──────────────────────────────────────────────────────
-  const overlay = document.createElement('div');
+  const overlay = $('div');
   overlay.classList.add('theme-picker-overlay');
 
-  const box = document.createElement('div');
+  const box = $('div');
   box.classList.add('theme-picker-box');
 
-  const input = document.createElement('input');
+  const input = $('input');
   input.type = 'text';
   input.placeholder = 'Select Color Theme (Up/Down Keys to Preview)';
   input.classList.add('theme-picker-input');
   box.appendChild(input);
 
-  const list = document.createElement('div');
+  const list = $('div');
   list.classList.add('theme-picker-list');
   box.appendChild(list);
 
@@ -115,7 +116,7 @@ export function showColorThemePicker(
         }
         if (!hasVisible) continue;
 
-        const sep = document.createElement('div');
+        const sep = $('div');
         sep.classList.add('theme-picker-separator');
         sep.textContent = row.label;
         list.appendChild(sep);
@@ -123,7 +124,7 @@ export function showColorThemePicker(
         if (lowerFilter && !row.label.toLowerCase().includes(lowerFilter)) continue;
 
         const idx = visibleItems.length;
-        const el = document.createElement('div');
+        const el = $('div');
         el.classList.add('theme-picker-item');
         if (row.themeEntry.id === previousThemeId) {
           el.classList.add('theme-picker-item--current');

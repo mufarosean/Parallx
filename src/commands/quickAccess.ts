@@ -23,6 +23,7 @@
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { CommandService } from './commandRegistry.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -688,7 +689,7 @@ function _appendHighlighted(
       // Collect consecutive highlighted chars
       const start = pos;
       while (pos < text.length && matchSet.has(pos)) pos++;
-      const span = document.createElement('span');
+      const span = $('span');
       span.className = 'highlight';
       span.textContent = text.slice(start, pos);
       container.appendChild(span);
@@ -955,7 +956,7 @@ export class QuickAccessWidget extends Disposable {
 
   private _createDOM(): void {
     // Overlay backdrop
-    const overlay = document.createElement('div');
+    const overlay = $('div');
     overlay.className = 'command-palette-overlay';
     // Accessibility: modal overlay traps focus (Cap 8.3)
     overlay.setAttribute('role', 'dialog');
@@ -966,11 +967,11 @@ export class QuickAccessWidget extends Disposable {
     });
 
     // Palette container
-    const palette = document.createElement('div');
+    const palette = $('div');
     palette.className = 'command-palette';
 
     // Input
-    const input = document.createElement('input');
+    const input = $('input');
     input.className = 'command-palette-input';
     input.type = 'text';
     input.spellcheck = false;
@@ -979,7 +980,7 @@ export class QuickAccessWidget extends Disposable {
     input.addEventListener('keydown', (e) => this._onInputKeydown(e));
 
     // List
-    const list = document.createElement('div');
+    const list = $('div');
     list.className = 'command-palette-list';
     list.setAttribute('role', 'listbox');
 
@@ -1076,7 +1077,7 @@ export class QuickAccessWidget extends Disposable {
     list.innerHTML = '';
 
     if (this._items.length === 0) {
-      const empty = document.createElement('div');
+      const empty = $('div');
       empty.className = 'command-palette-empty';
       empty.textContent = this._activeProvider === this._commandsProvider
         ? 'No matching commands'
@@ -1095,7 +1096,7 @@ export class QuickAccessWidget extends Disposable {
       // Section separator — command mode: recent vs other
       if (this._activeProvider === this._commandsProvider) {
         if (lastWasRecent && !item.isRecent && (this._input?.value ?? '').trim() === COMMAND_PREFIX) {
-          const sep = document.createElement('div');
+          const sep = $('div');
           sep.className = 'command-palette-separator';
           list.appendChild(sep);
         }
@@ -1103,7 +1104,7 @@ export class QuickAccessWidget extends Disposable {
       } else {
         // General mode: group separators
         if (item.group && item.group !== lastGroup) {
-          const sep = document.createElement('div');
+          const sep = $('div');
           sep.className = 'command-palette-group-label';
           sep.textContent = item.group;
           list.appendChild(sep);
@@ -1111,7 +1112,7 @@ export class QuickAccessWidget extends Disposable {
         }
       }
 
-      const row = document.createElement('div');
+      const row = $('div');
       row.className = 'command-palette-item';
       row.tabIndex = -1; // Focusable for keyboard navigation (Cap 8.3)
       if (i === this._selectedIndex) row.classList.add('selected');
@@ -1119,11 +1120,11 @@ export class QuickAccessWidget extends Disposable {
       row.setAttribute('aria-selected', i === this._selectedIndex ? 'true' : 'false');
 
       // Label
-      const labelEl = document.createElement('span');
+      const labelEl = $('span');
       labelEl.className = 'command-palette-item-label';
 
       if (item.category) {
-        const cat = document.createElement('span');
+        const cat = $('span');
         cat.className = 'command-palette-item-category';
         cat.textContent = `${item.category}: `;
         labelEl.appendChild(cat);
@@ -1132,7 +1133,7 @@ export class QuickAccessWidget extends Disposable {
 
       // "recently used" badge (command mode)
       if (item.isRecent && (this._input?.value ?? '').trim() === COMMAND_PREFIX) {
-        const badge = document.createElement('span');
+        const badge = $('span');
         badge.className = 'command-palette-recent-badge';
         badge.textContent = 'recently used';
         labelEl.appendChild(badge);
@@ -1142,7 +1143,7 @@ export class QuickAccessWidget extends Disposable {
 
       // Detail text (general mode — e.g. relative path or "2h ago")
       if (item.detail) {
-        const detailEl = document.createElement('span');
+        const detailEl = $('span');
         detailEl.className = 'command-palette-item-detail';
         _appendHighlighted(detailEl, item.detail, item.detailMatches);
         row.appendChild(detailEl);
@@ -1150,7 +1151,7 @@ export class QuickAccessWidget extends Disposable {
 
       // Keybinding (command mode)
       if (item.keybinding) {
-        const kbd = document.createElement('span');
+        const kbd = $('span');
         kbd.className = 'command-palette-item-keybinding';
         kbd.textContent = item.keybinding;
         row.appendChild(kbd);
@@ -1172,7 +1173,7 @@ export class QuickAccessWidget extends Disposable {
 
     // Overflow indicator
     if (this._items.length > MAX_VISIBLE_ITEMS) {
-      const more = document.createElement('div');
+      const more = $('div');
       more.className = 'command-palette-more';
       more.textContent = `${this._items.length - MAX_VISIBLE_ITEMS} more…`;
       list.appendChild(more);

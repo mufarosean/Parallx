@@ -13,7 +13,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { hide, show } from '../../ui/dom.js';
+import { $,  hide, show } from '../../ui/dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -194,11 +194,11 @@ function createSearchView(container: HTMLElement): IDisposable {
   container.classList.add('search-view');
 
   // ── Header / Input Area ──
-  const header = document.createElement('div');
+  const header = $('div');
   header.className = 'search-header';
 
   // Toggle replace button
-  _toggleReplaceBtn = document.createElement('button');
+  _toggleReplaceBtn = $('button');
   _toggleReplaceBtn.className = 'search-toggle-replace';
   _toggleReplaceBtn.title = 'Toggle Replace';
   _toggleReplaceBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M11 3.5L7.5 0 6 1.5 8 3.5H4.5A3.5 3.5 0 001 7v1h1.5V7A2 2 0 014.5 5H8l-2 2L7.5 8.5 11 5V3.5z" fill="currentColor"/></svg>';
@@ -210,14 +210,14 @@ function createSearchView(container: HTMLElement): IDisposable {
   header.appendChild(_toggleReplaceBtn);
 
   // Input rows wrapper
-  const inputRows = document.createElement('div');
+  const inputRows = $('div');
   inputRows.className = 'search-input-rows';
 
   // Search row
-  const searchRow = document.createElement('div');
+  const searchRow = $('div');
   searchRow.className = 'search-input-row';
 
-  _queryInput = document.createElement('input');
+  _queryInput = $('input');
   _queryInput.type = 'text';
   _queryInput.className = 'search-input';
   _queryInput.placeholder = 'Search';
@@ -226,7 +226,7 @@ function createSearchView(container: HTMLElement): IDisposable {
   searchRow.appendChild(_queryInput);
 
   // Option toggles container
-  const optionToggles = document.createElement('div');
+  const optionToggles = $('div');
   optionToggles.className = 'search-option-toggles';
 
   optionToggles.appendChild(
@@ -255,11 +255,11 @@ function createSearchView(container: HTMLElement): IDisposable {
   inputRows.appendChild(searchRow);
 
   // Replace row
-  _replaceRow = document.createElement('div');
+  _replaceRow = $('div');
   _replaceRow.className = 'search-input-row search-replace-row';
   _showReplace ? show(_replaceRow) : hide(_replaceRow);
 
-  _replaceInput = document.createElement('input');
+  _replaceInput = $('input');
   _replaceInput.type = 'text';
   _replaceInput.className = 'search-input';
   _replaceInput.placeholder = 'Replace';
@@ -273,19 +273,19 @@ function createSearchView(container: HTMLElement): IDisposable {
   container.appendChild(header);
 
   // ── Filters (include/exclude) ──
-  const filtersSection = document.createElement('div');
+  const filtersSection = $('div');
   filtersSection.className = 'search-filters';
 
-  const filtersToggle = document.createElement('button');
+  const filtersToggle = $('button');
   filtersToggle.className = 'search-filters-toggle';
   filtersToggle.textContent = '⋯ files to include/exclude';
   filtersToggle.title = 'Toggle Search Details';
 
-  const filtersBody = document.createElement('div');
+  const filtersBody = $('div');
   filtersBody.className = 'search-filters-body';
   hide(filtersBody);
 
-  const includeInput = document.createElement('input');
+  const includeInput = $('input');
   includeInput.type = 'text';
   includeInput.className = 'search-input search-filter-input';
   includeInput.placeholder = 'files to include (e.g. *.ts, src/**)';
@@ -296,7 +296,7 @@ function createSearchView(container: HTMLElement): IDisposable {
     triggerSearch();
   });
 
-  const excludeInput = document.createElement('input');
+  const excludeInput = $('input');
   excludeInput.type = 'text';
   excludeInput.className = 'search-input search-filter-input';
   excludeInput.placeholder = 'files to exclude (e.g. *.min.js)';
@@ -321,12 +321,12 @@ function createSearchView(container: HTMLElement): IDisposable {
   container.appendChild(filtersSection);
 
   // ── Message area ──
-  _messageEl = document.createElement('div');
+  _messageEl = $('div');
   _messageEl.className = 'search-message';
   container.appendChild(_messageEl);
 
   // ── Results ──
-  _resultsContainer = document.createElement('div');
+  _resultsContainer = $('div');
   _resultsContainer.className = 'search-results';
   container.appendChild(_resultsContainer);
 
@@ -377,7 +377,7 @@ function createToggleButton(
   initial: boolean,
   onToggle: (active: boolean) => void,
 ): HTMLElement {
-  const btn = document.createElement('button');
+  const btn = $('button');
   btn.className = 'search-option-btn';
   btn.title = title;
   btn.textContent = label;
@@ -701,11 +701,11 @@ function renderResults(): void {
   _resultsContainer.innerHTML = '';
 
   for (const fileResult of _results) {
-    const fileGroup = document.createElement('div');
+    const fileGroup = $('div');
     fileGroup.className = 'search-file-group';
 
     // File header
-    const fileHeader = document.createElement('div');
+    const fileHeader = $('div');
     fileHeader.className = 'search-file-header';
     fileHeader.addEventListener('click', () => {
       fileResult.expanded = !fileResult.expanded;
@@ -713,27 +713,27 @@ function renderResults(): void {
       fileResult.expanded ? show(matchList) : hide(matchList);
     });
 
-    const chevron = document.createElement('span');
+    const chevron = $('span');
     chevron.className = 'search-file-chevron';
     chevron.textContent = fileResult.expanded ? '▾' : '▸';
     fileHeader.appendChild(chevron);
 
-    const fileIcon = document.createElement('span');
+    const fileIcon = $('span');
     fileIcon.className = 'search-file-icon';
     fileIcon.textContent = getFileIcon(fileResult.fileName);
     fileHeader.appendChild(fileIcon);
 
-    const filePath = document.createElement('span');
+    const filePath = $('span');
     filePath.className = 'search-file-path';
     fileHeader.appendChild(filePath);
 
     // File name (bold) + directory (dim)
-    const nameSpan = document.createElement('span');
+    const nameSpan = $('span');
     nameSpan.className = 'search-file-name';
     nameSpan.textContent = fileResult.fileName;
     filePath.appendChild(nameSpan);
 
-    const dirSpan = document.createElement('span');
+    const dirSpan = $('span');
     dirSpan.className = 'search-file-dir';
     const dir = fileResult.relativePath.slice(0, -(fileResult.fileName.length + 1));
     if (dir) {
@@ -742,7 +742,7 @@ function renderResults(): void {
     filePath.appendChild(dirSpan);
 
     // Match count badge
-    const badge = document.createElement('span');
+    const badge = $('span');
     badge.className = 'search-file-badge';
     badge.textContent = String(fileResult.matches.length);
     fileHeader.appendChild(badge);
@@ -750,12 +750,12 @@ function renderResults(): void {
     fileGroup.appendChild(fileHeader);
 
     // Match list
-    const matchList = document.createElement('div');
+    const matchList = $('div');
     matchList.className = 'search-match-list';
     fileResult.expanded ? show(matchList) : hide(matchList);
 
     for (const match of fileResult.matches) {
-      const matchEl = document.createElement('div');
+      const matchEl = $('div');
       matchEl.className = 'search-match-item';
       matchEl.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -789,28 +789,28 @@ function renderMatchLine(container: HTMLElement, match: SearchMatch): void {
     (contextEnd < lineText.length ? '…' : '');
 
   // Line number
-  const lineNum = document.createElement('span');
+  const lineNum = $('span');
   lineNum.className = 'search-match-line-num';
   lineNum.textContent = String(match.line + 1);
   container.appendChild(lineNum);
 
   // Text before match
   if (prefix) {
-    const pre = document.createElement('span');
+    const pre = $('span');
     pre.className = 'search-match-context';
     pre.textContent = prefix;
     container.appendChild(pre);
   }
 
   // Highlighted match
-  const hl = document.createElement('span');
+  const hl = $('span');
   hl.className = 'search-match-highlight';
   hl.textContent = matched;
   container.appendChild(hl);
 
   // Text after match
   if (suffix) {
-    const post = document.createElement('span');
+    const post = $('span');
     post.className = 'search-match-context';
     post.textContent = suffix;
     container.appendChild(post);

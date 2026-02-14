@@ -16,7 +16,7 @@ import { Emitter, Event } from '../../platform/events.js';
 import { FileEditorInput } from './fileEditorInput.js';
 import { UntitledEditorInput } from './untitledEditorInput.js';
 import { FindReplaceWidget } from '../../ui/findReplaceWidget.js';
-import { hide, show } from '../../ui/dom.js';
+import { $,  hide, show } from '../../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -74,17 +74,17 @@ export class TextEditorPane extends EditorPane {
     container.classList.add('text-editor-pane');
 
     // Editor body — flex row containing gutter + textarea
-    this._editorBody = document.createElement('div');
+    this._editorBody = $('div');
     this._editorBody.classList.add('text-editor-body');
 
     // Line number gutter
-    this._gutter = document.createElement('div');
+    this._gutter = $('div');
     this._gutter.classList.add('text-editor-gutter');
     this._gutter.setAttribute('aria-hidden', 'true');
     this._editorBody.appendChild(this._gutter);
 
     // Textarea
-    this._textarea = document.createElement('textarea');
+    this._textarea = $('textarea');
     this._textarea.classList.add('text-editor-textarea');
     this._textarea.spellcheck = false;
     this._textarea.autocapitalize = 'off';
@@ -113,21 +113,21 @@ export class TextEditorPane extends EditorPane {
     this._editorBody.appendChild(this._textarea);
 
     // Minimap — scaled-down document overview on the right edge
-    this._minimapContainer = document.createElement('div');
+    this._minimapContainer = $('div');
     this._minimapContainer.classList.add('text-editor-minimap');
 
-    this._minimapCanvas = document.createElement('canvas');
+    this._minimapCanvas = $('canvas');
     this._minimapCanvas.classList.add('text-editor-minimap-canvas');
     this._minimapContainer.appendChild(this._minimapCanvas);
 
-    this._minimapSlider = document.createElement('div');
+    this._minimapSlider = $('div');
     this._minimapSlider.classList.add('text-editor-minimap-slider');
     this._minimapContainer.appendChild(this._minimapSlider);
 
     // Thin scrollbar track on the right edge of the minimap
-    this._minimapScrollTrack = document.createElement('div');
+    this._minimapScrollTrack = $('div');
     this._minimapScrollTrack.classList.add('text-editor-minimap-scrollbar-track');
-    this._minimapScrollThumb = document.createElement('div');
+    this._minimapScrollThumb = $('div');
     this._minimapScrollThumb.classList.add('text-editor-minimap-scrollbar-thumb');
     this._minimapScrollTrack.appendChild(this._minimapScrollThumb);
     this._minimapContainer.appendChild(this._minimapScrollTrack);
@@ -148,25 +148,25 @@ export class TextEditorPane extends EditorPane {
     this._gutter.addEventListener('mousedown', this._onGutterClick);
 
     // Binary file overlay (hidden by default)
-    this._binaryOverlay = document.createElement('div');
+    this._binaryOverlay = $('div');
     this._binaryOverlay.classList.add('text-editor-binary');
     this._binaryOverlay.textContent = 'Binary file — cannot display';
     hide(this._binaryOverlay);
     container.appendChild(this._binaryOverlay);
 
     // Status bar
-    this._statusBar = document.createElement('div');
+    this._statusBar = $('div');
     this._statusBar.classList.add('text-editor-status');
 
-    this._positionItem = document.createElement('span');
+    this._positionItem = $('span');
     this._positionItem.classList.add('text-editor-status-item');
     this._positionItem.textContent = 'Ln 1, Col 1';
 
-    this._encodingItem = document.createElement('span');
+    this._encodingItem = $('span');
     this._encodingItem.classList.add('text-editor-status-item');
     this._encodingItem.textContent = 'UTF-8';
 
-    this._eolItem = document.createElement('span');
+    this._eolItem = $('span');
     this._eolItem.classList.add('text-editor-status-item');
     this._eolItem.textContent = 'LF';
 
@@ -481,7 +481,7 @@ export class TextEditorPane extends EditorPane {
     // Build line numbers in a single DOM write via fragment
     const frag = document.createDocumentFragment();
     for (let i = 1; i <= newCount; i++) {
-      const line = document.createElement('div');
+      const line = $('div');
       line.classList.add('text-editor-gutter-line');
       line.textContent = String(i);
       line.dataset.lineNumber = String(i);

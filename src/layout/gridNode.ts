@@ -9,6 +9,7 @@ import {
   SerializedLeafNode,
   SerializedNodeType,
 } from './layoutModel.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Node Types ─────────────────────────────────────────────────────────────
 
@@ -47,7 +48,7 @@ export class GridBranchNode extends Disposable {
     private _sizingMode: SizingMode = SizingMode.Pixel
   ) {
     super();
-    this.element = document.createElement('div');
+    this.element = $('div');
     this.element.classList.add('grid-branch');
     this._applyStyles();
   }
@@ -154,7 +155,7 @@ export class GridBranchNode extends Disposable {
    * Create a resize sash handle between two children.
    */
   private _createSash(index: number): HTMLElement {
-    const sash = document.createElement('div');
+    const sash = $('div');
     sash.classList.add('grid-sash');
 
     if (this.orientation === Orientation.Horizontal) {

@@ -29,6 +29,7 @@ import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
 import { Emitter, Event } from '../platform/events.js';
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -311,22 +312,22 @@ export class ActivityBarPart extends Part {
     container.setAttribute('aria-label', 'Active View Switcher');
 
     // Built-in icons section (top)
-    this._builtinSection = document.createElement('div');
+    this._builtinSection = $('div');
     this._builtinSection.classList.add('activity-bar-builtin');
     container.appendChild(this._builtinSection);
 
     // Contributed icons section (below separator)
-    this._contributedSection = document.createElement('div');
+    this._contributedSection = $('div');
     this._contributedSection.classList.add('activity-bar-contributed');
     container.appendChild(this._contributedSection);
 
     // Spacer (pushes bottom section down)
-    this._spacer = document.createElement('div');
+    this._spacer = $('div');
     this._spacer.classList.add('activity-bar-spacer');
     container.appendChild(this._spacer);
 
     // Bottom section (settings gear, account, etc.)
-    this._bottomSection = document.createElement('div');
+    this._bottomSection = $('div');
     this._bottomSection.classList.add('activity-bar-bottom');
     container.appendChild(this._bottomSection);
 
@@ -447,7 +448,7 @@ export class ActivityBarPart extends Part {
   // ── DOM helpers ──
 
   private _createIconButton(descriptor: ActivityBarIconDescriptor): HTMLButtonElement {
-    const btn = document.createElement('button');
+    const btn = $('button');
     btn.classList.add('activity-bar-item');
     btn.dataset.iconId = descriptor.id;
     btn.title = descriptor.label;
@@ -458,7 +459,7 @@ export class ActivityBarPart extends Part {
     btn.tabIndex = -1;
 
     // Icon label (SVG or text glyph)
-    const iconLabel = document.createElement('span');
+    const iconLabel = $('span');
     iconLabel.classList.add('activity-bar-icon-label');
     if (descriptor.isSvg) {
       iconLabel.innerHTML = descriptor.icon;
@@ -468,9 +469,9 @@ export class ActivityBarPart extends Part {
     btn.appendChild(iconLabel);
 
     // Badge element (VS Code: .badge > .badge-content, absolute top-right)
-    const badge = document.createElement('div');
+    const badge = $('div');
     badge.classList.add('activity-bar-badge', 'badge-hidden'); // hidden until setBadge is called
-    const badgeContent = document.createElement('span');
+    const badgeContent = $('span');
     badgeContent.classList.add('activity-bar-badge-content');
     badge.appendChild(badgeContent);
     btn.appendChild(badge);
@@ -479,7 +480,7 @@ export class ActivityBarPart extends Part {
     this._badgeElements.set(descriptor.id, { badge, content: badgeContent });
 
     // Active item indicator (VS Code: .active-item-indicator with ::before border-left)
-    const indicator = document.createElement('div');
+    const indicator = $('div');
     indicator.classList.add('activity-bar-active-indicator');
     btn.appendChild(indicator);
 
@@ -509,7 +510,7 @@ export class ActivityBarPart extends Part {
 
   private _ensureSeparator(): void {
     if (this._separator) return;
-    this._separator = document.createElement('div');
+    this._separator = $('div');
     this._separator.classList.add('activity-bar-separator');
     // Insert separator before contributed section
     this.contentElement.insertBefore(this._separator, this._contributedSection);

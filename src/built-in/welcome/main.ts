@@ -5,6 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { $ } from '../../ui/dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -70,11 +71,11 @@ function openWelcome(api: ParallxApi): void {
 function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable {
   container.classList.add('welcome-container');
 
-  const wrapper = document.createElement('div');
+  const wrapper = $('div');
   wrapper.classList.add('welcome-wrapper');
 
   // Logo / App name
-  const logo = document.createElement('div');
+  const logo = $('div');
   logo.classList.add('welcome-logo');
   logo.innerHTML = `<svg width="96" height="96" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf" opacity="0.45"/>
@@ -82,31 +83,31 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   </svg>`;
   wrapper.appendChild(logo);
 
-  const h1 = document.createElement('h1');
+  const h1 = $('h1');
   h1.classList.add('welcome-title');
   h1.textContent = api.env.appName || 'Parallx';
   wrapper.appendChild(h1);
 
-  const version = document.createElement('div');
+  const version = $('div');
   version.classList.add('welcome-version');
   version.textContent = `v${api.env.appVersion || '0.1.0'}`;
   wrapper.appendChild(version);
 
   // Divider
-  const divider = document.createElement('hr');
+  const divider = $('hr');
   divider.classList.add('welcome-divider');
   wrapper.appendChild(divider);
 
   // ── Two-column layout: Start (left) | Recent (right) ──
-  const columns = document.createElement('div');
+  const columns = $('div');
   columns.classList.add('welcome-columns');
 
   // Left column: Getting Started
-  const leftCol = document.createElement('div');
+  const leftCol = $('div');
   leftCol.classList.add('welcome-col');
   columns.appendChild(leftCol);
 
-  const startTitle = document.createElement('h2');
+  const startTitle = $('h2');
   startTitle.classList.add('welcome-section-title');
   startTitle.textContent = 'Start';
   leftCol.appendChild(startTitle);
@@ -118,12 +119,12 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   ];
 
   for (const item of startItems) {
-    const row = document.createElement('div');
+    const row = $('div');
     row.classList.add('welcome-action-row');
-    const iconSpan = document.createElement('span');
+    const iconSpan = $('span');
     iconSpan.textContent = item.icon;
     iconSpan.classList.add('welcome-action-icon');
-    const textSpan = document.createElement('span');
+    const textSpan = $('span');
     textSpan.textContent = item.text;
     textSpan.classList.add('welcome-action-text');
     row.appendChild(iconSpan);
@@ -135,7 +136,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   }
 
   // Help sub-section
-  const helpTitle = document.createElement('h2');
+  const helpTitle = $('h2');
   helpTitle.classList.add('welcome-section-title', 'welcome-section-title--help');
   helpTitle.textContent = 'Help';
   leftCol.appendChild(helpTitle);
@@ -147,15 +148,15 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   ];
 
   for (const item of helpItems) {
-    const row = document.createElement('div');
+    const row = $('div');
     row.classList.add('welcome-action-row');
-    const iconSpan = document.createElement('span');
+    const iconSpan = $('span');
     iconSpan.textContent = item.icon;
     iconSpan.classList.add('welcome-action-icon');
-    const textSpan = document.createElement('span');
+    const textSpan = $('span');
     textSpan.textContent = item.text;
     textSpan.classList.add('welcome-action-text');
-    const hintSpan = document.createElement('span');
+    const hintSpan = $('span');
     hintSpan.textContent = item.hint;
     hintSpan.classList.add('welcome-action-hint');
     row.appendChild(iconSpan);
@@ -168,11 +169,11 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   }
 
   // Right column: Recent
-  const rightCol = document.createElement('div');
+  const rightCol = $('div');
   rightCol.classList.add('welcome-col');
   columns.appendChild(rightCol);
 
-  const recentTitle = document.createElement('h2');
+  const recentTitle = $('h2');
   recentTitle.classList.add('welcome-section-title');
   recentTitle.textContent = 'Recent';
   rightCol.appendChild(recentTitle);
@@ -183,14 +184,14 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   const recentFiles = _getRecentFiles();
 
   if (recentWorkspaces.length === 0 && recentFiles.length === 0) {
-    const emptyMsg = document.createElement('div');
+    const emptyMsg = $('div');
     emptyMsg.classList.add('welcome-empty');
     emptyMsg.textContent = 'No recent items yet.';
     rightCol.appendChild(emptyMsg);
   }
 
   if (recentWorkspaces.length > 0) {
-    const wsLabel = document.createElement('div');
+    const wsLabel = $('div');
     wsLabel.classList.add('welcome-category-label');
     wsLabel.textContent = 'Workspaces';
     rightCol.appendChild(wsLabel);
@@ -204,7 +205,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   }
 
   if (recentFiles.length > 0) {
-    const fileLabel = document.createElement('div');
+    const fileLabel = $('div');
     fileLabel.classList.add('welcome-category-label', 'welcome-category-label--files');
     fileLabel.textContent = 'Files';
     rightCol.appendChild(fileLabel);
@@ -222,7 +223,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   wrapper.appendChild(columns);
 
   // Footer
-  const footer = document.createElement('div');
+  const footer = $('div');
   footer.classList.add('welcome-footer');
   footer.textContent = 'Built-in tool — validates manifest loading, activation, editor API, commands, and state.';
   wrapper.appendChild(footer);
@@ -287,22 +288,22 @@ function _uriToDisplayPath(uri: string): string {
 
 /** Create a clickable recent item row. */
 function _createRecentRow(icon: string, label: string, detail: string, onClick: () => void): HTMLElement {
-  const row = document.createElement('div');
+  const row = $('div');
   row.classList.add('welcome-recent-row');
 
-  const iconSpan = document.createElement('span');
+  const iconSpan = $('span');
   iconSpan.textContent = icon;
   iconSpan.classList.add('welcome-recent-icon');
 
-  const textWrap = document.createElement('div');
+  const textWrap = $('div');
   textWrap.classList.add('welcome-recent-text-wrap');
 
-  const nameEl = document.createElement('div');
+  const nameEl = $('div');
   nameEl.classList.add('welcome-recent-name');
   nameEl.textContent = label;
 
   if (detail) {
-    const detailEl = document.createElement('div');
+    const detailEl = $('div');
     detailEl.classList.add('welcome-recent-detail');
     detailEl.textContent = detail;
     textWrap.appendChild(nameEl);

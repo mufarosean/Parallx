@@ -14,6 +14,7 @@ import { Emitter, Event } from '../platform/events.js';
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { IWindowService } from '../services/serviceTypes.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -234,7 +235,7 @@ export class TitlebarPart extends Part {
     }
 
     for (const item of this._menuBarItems) {
-      const el = document.createElement('span');
+      const el = $('span');
       el.textContent = item.label;
       el.classList.add('titlebar-menu-item');
       el.setAttribute('role', 'menuitem');
@@ -486,11 +487,11 @@ export class TitlebarPart extends Part {
       return;
     }
 
-    const controls = document.createElement('div');
+    const controls = $('div');
     controls.classList.add('window-controls');
 
     // Minimize
-    const minimizeBtn = document.createElement('button');
+    const minimizeBtn = $('button');
     minimizeBtn.classList.add('window-control-btn');
     minimizeBtn.setAttribute('aria-label', 'Minimize');
     minimizeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 1"><path d="M0 0h10v1H0z" fill="currentColor"/></svg>';
@@ -498,7 +499,7 @@ export class TitlebarPart extends Part {
     controls.appendChild(minimizeBtn);
 
     // Maximize / Restore
-    this._maximizeBtn = document.createElement('button');
+    this._maximizeBtn = $('button');
     this._maximizeBtn.classList.add('window-control-btn');
     this._maximizeBtn.setAttribute('aria-label', 'Maximize');
     this._maximizeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0v10h10V0H0zm1 1h8v8H1V1z" fill="currentColor"/></svg>';
@@ -506,7 +507,7 @@ export class TitlebarPart extends Part {
     controls.appendChild(this._maximizeBtn);
 
     // Close
-    const closeBtn = document.createElement('button');
+    const closeBtn = $('button');
     closeBtn.classList.add('window-control-btn', 'window-control-btn--close');
     closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.41 0L5 3.59 8.59 0 10 1.41 6.41 5 10 8.59 8.59 10 5 6.41 1.41 10 0 8.59 3.59 5 0 1.41z" fill="currentColor"/></svg>';
@@ -554,24 +555,24 @@ export class TitlebarPart extends Part {
 
   protected override createContent(container: HTMLElement): void {
     // Root container wrapper (VS Code: .titlebar-container)
-    const rootContainer = document.createElement('div');
+    const rootContainer = $('div');
     rootContainer.classList.add('titlebar-container');
     container.appendChild(rootContainer);
 
     // Drag region — prepend so it's first child (behind siblings by DOM order, no z-index needed)
     // VS Code: src/vs/workbench/browser/parts/titlebar/titlebarPart.ts BrowserTitlebarPart.createContentArea()
-    this._dragRegion = document.createElement('div');
+    this._dragRegion = $('div');
     this._dragRegion.classList.add('titlebar-drag-region');
     rootContainer.prepend(this._dragRegion);
 
     // Left slot: app icon + menu bar
-    this._leftSlot = document.createElement('div');
+    this._leftSlot = $('div');
     this._leftSlot.classList.add('titlebar-left', 'titlebar-menubar');
     this._leftSlot.setAttribute('role', 'menubar');
     rootContainer.appendChild(this._leftSlot);
 
     // App icon — Layered Planes logo
-    const appIcon = document.createElement('span');
+    const appIcon = $('span');
     appIcon.classList.add('titlebar-app-icon');
     appIcon.innerHTML = `<svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="currentColor" opacity="0.4"/>
@@ -582,11 +583,11 @@ export class TitlebarPart extends Part {
     this._menuBarContainer = this._leftSlot;
 
     // Center slot: workspace name label
-    this._centerSlot = document.createElement('div');
+    this._centerSlot = $('div');
     this._centerSlot.classList.add('titlebar-center');
     rootContainer.appendChild(this._centerSlot);
 
-    this._workspaceLabel = document.createElement('span');
+    this._workspaceLabel = $('span');
     this._workspaceLabel.classList.add('titlebar-workspace-label');
     this._workspaceLabel.textContent = this._workspaceName;
     this._workspaceLabel.setAttribute('role', 'button');
@@ -603,7 +604,7 @@ export class TitlebarPart extends Part {
     this._centerSlot.appendChild(this._workspaceLabel);
 
     // Right slot: window controls
-    this._rightSlot = document.createElement('div');
+    this._rightSlot = $('div');
     this._rightSlot.classList.add('titlebar-right');
     rootContainer.appendChild(this._rightSlot);
 

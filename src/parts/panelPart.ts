@@ -4,6 +4,7 @@ import { Part } from './part.js';
 import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
 import { Emitter, Event } from '../platform/events.js';
+import { $ } from '../ui/dom.js';
 
 const PANEL_CONSTRAINTS: SizeConstraints = {
   minimumWidth: 0,
@@ -56,7 +57,7 @@ export class PanelPart extends Part {
   protected override createContent(container: HTMLElement): void {
     container.classList.add('panel-content');
 
-    this._viewContainerSlot = document.createElement('div');
+    this._viewContainerSlot = $('div');
     this._viewContainerSlot.classList.add('panel-views');
     container.appendChild(this._viewContainerSlot);
   }

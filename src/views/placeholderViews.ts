@@ -1,6 +1,7 @@
 // placeholderViews.ts — test / dummy views for development
 import { View } from './view.js';
 import { IViewDescriptor, ViewDescriptorBuilder } from './viewDescriptor.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Logging base class ─────────────────────────────────────────────────────
 
@@ -20,7 +21,7 @@ abstract class PlaceholderView extends View {
     console.log(`[View:${this.id}] createViewContent`);
 
     // Dimension badge
-    this._dimensionBadge = document.createElement('div');
+    this._dimensionBadge = $('div');
     this._dimensionBadge.classList.add('placeholder-dimension-badge');
     container.appendChild(this._dimensionBadge);
 
@@ -86,7 +87,7 @@ export class ExplorerPlaceholderView extends PlaceholderView {
     ];
 
     for (const item of tree) {
-      const row = document.createElement('div');
+      const row = $('div');
       row.classList.add('placeholder-tree-row');
       row.style.paddingLeft = `${item.indent * 16}px`;
       row.textContent = `${item.icon} ${item.label}`;
@@ -129,7 +130,7 @@ export class SearchPlaceholderView extends PlaceholderView {
     container.classList.add('placeholder-search-container');
 
     // Search input
-    const input = document.createElement('input');
+    const input = $('input');
     input.type = 'text';
     input.placeholder = 'Search…';
     input.classList.add('placeholder-search-input');
@@ -142,10 +143,10 @@ export class SearchPlaceholderView extends PlaceholderView {
       { file: 'grid.ts', line: 88, text: 'addView(view, sizing, ...)' },
     ];
 
-    const list = document.createElement('div');
+    const list = $('div');
     list.classList.add('placeholder-search-results');
     for (const r of results) {
-      const item = document.createElement('div');
+      const item = $('div');
       item.classList.add('placeholder-search-result-item');
       item.innerHTML = `<span class="placeholder-search-result-file">${r.file}</span>` +
         `<span class="placeholder-search-result-line">:${r.line}</span> ` +
@@ -202,7 +203,7 @@ export class TerminalPlaceholderView extends PlaceholderView {
     ];
 
     for (const line of lines) {
-      const row = document.createElement('div');
+      const row = $('div');
       row.innerHTML = line || '&nbsp;';
       container.appendChild(row);
     }
@@ -251,7 +252,7 @@ export class OutputPlaceholderView extends PlaceholderView {
     ];
 
     for (const entry of entries) {
-      const row = document.createElement('div');
+      const row = $('div');
       row.classList.add('placeholder-output-line');
       row.textContent = entry;
       container.appendChild(row);

@@ -25,6 +25,7 @@ import { editorPartDescriptor } from '../parts/editorPart.js';
 import { auxiliaryBarPartDescriptor } from '../parts/auxiliaryBarPart.js';
 import { panelPartDescriptor } from '../parts/panelPart.js';
 import { statusBarPartDescriptor } from '../parts/statusBarPart.js';
+import { $ } from '../ui/dom.js';
 
 // ── Layout Constants ──
 
@@ -153,7 +154,7 @@ export abstract class Layout extends Disposable {
     const editorH = bodyH - panelH - (this._panel.visible ? 4 : 0);
 
     // 4. Create parts into temporary container so their elements exist
-    const tempDiv = document.createElement('div');
+    const tempDiv = $('div');
     tempDiv.classList.add('hidden');
     document.body.appendChild(tempDiv);
 
@@ -189,7 +190,7 @@ export abstract class Layout extends Disposable {
     this._hGrid.layout();
 
     // 8. Body row: activityBar (Part) + hGrid
-    this._bodyRow = document.createElement('div');
+    this._bodyRow = $('div');
     this._bodyRow.classList.add('workbench-middle');
 
     // Mount the ActivityBarPart — replaces ad-hoc div.activity-bar
@@ -232,7 +233,7 @@ export abstract class Layout extends Disposable {
   // ════════════════════════════════════════════════════════════════════════
 
   private _createEditorColumnAdapter(vGrid: Grid): IGridView & { element: HTMLElement } {
-    const wrapper = document.createElement('div');
+    const wrapper = $('div');
     wrapper.classList.add('editor-column');
 
     const emitter = new Emitter<void>();

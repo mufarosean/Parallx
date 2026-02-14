@@ -4,6 +4,7 @@ import { Emitter, Event } from '../platform/events.js';
 import { IGridView } from '../layout/gridView.js';
 import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS, Dimensions, Orientation } from '../layout/layoutTypes.js';
 import { IPart, PartPosition, PartState } from './partTypes.js';
+import { $ } from '../ui/dom.js';
 
 /**
  * Abstract base class for all structural workbench parts.
@@ -95,7 +96,7 @@ export abstract class Part extends Disposable implements IPart, IGridView {
     }
 
     // Root element
-    this._element = document.createElement('div');
+    this._element = $('div');
     this._element.classList.add('part', `part-${this.id.replace(/\./g, '-')}`);
     this._element.setAttribute('role', 'region');
     this._element.setAttribute('aria-label', this._name);
@@ -106,14 +107,14 @@ export abstract class Part extends Disposable implements IPart, IGridView {
 
     // Optional title bar area (subclasses may use it)
     if (this.hasTitleArea) {
-      this._titleElement = document.createElement('div');
+      this._titleElement = $('div');
       this._titleElement.classList.add('part-title');
       this._element.appendChild(this._titleElement);
       this.createTitleArea(this._titleElement);
     }
 
     // Content container — where views will be mounted
-    this._contentElement = document.createElement('div');
+    this._contentElement = $('div');
     this._contentElement.classList.add('part-content');
     this._element.appendChild(this._contentElement);
 

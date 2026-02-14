@@ -5,6 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { $ } from '../../ui/dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -126,7 +127,7 @@ function refreshList(): void {
   if (!listEl) return;
   listEl.innerHTML = '';
   for (const entry of logEntries) {
-    const row = document.createElement('div');
+    const row = $('div');
     row.classList.add('output-row', `output-${entry.source}`);
 
     let text = '';
@@ -149,15 +150,15 @@ function renderOutputView(container: HTMLElement): IDisposable {
   container.classList.add('output-container');
 
   // Toolbar
-  const toolbar = document.createElement('div');
+  const toolbar = $('div');
   toolbar.classList.add('output-toolbar');
 
-  const title = document.createElement('span');
+  const title = $('span');
   title.classList.add('output-toolbar-title');
   title.textContent = 'OUTPUT';
   toolbar.appendChild(title);
 
-  const tsBtn = document.createElement('button');
+  const tsBtn = $('button');
   tsBtn.classList.add('output-toolbar-btn');
   tsBtn.textContent = '⏱ Timestamps';
   tsBtn.title = 'Toggle timestamps';
@@ -167,7 +168,7 @@ function renderOutputView(container: HTMLElement): IDisposable {
   });
   toolbar.appendChild(tsBtn);
 
-  const clearBtn = document.createElement('button');
+  const clearBtn = $('button');
   clearBtn.classList.add('output-toolbar-btn');
   clearBtn.textContent = '🗑 Clear';
   clearBtn.title = 'Clear output';
@@ -180,7 +181,7 @@ function renderOutputView(container: HTMLElement): IDisposable {
   container.appendChild(toolbar);
 
   // Log list
-  const list = document.createElement('div');
+  const list = $('div');
   list.classList.add('output-list');
   container.appendChild(list);
 

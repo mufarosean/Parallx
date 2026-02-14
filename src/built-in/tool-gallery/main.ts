@@ -5,7 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { hide, show } from '../../ui/dom.js';
+import { $,  hide, show } from '../../ui/dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -65,15 +65,15 @@ function renderToolGallery(container: HTMLElement, api: ParallxApi): IDisposable
   container.classList.add('tool-gallery-container');
 
   // Header bar
-  const header = document.createElement('div');
+  const header = $('div');
   header.classList.add('tool-gallery-header');
 
-  const title = document.createElement('span');
+  const title = $('span');
   title.classList.add('tool-gallery-header-title');
   title.textContent = 'Installed Tools';
   header.appendChild(title);
 
-  const refreshBtn = document.createElement('button');
+  const refreshBtn = $('button');
   refreshBtn.classList.add('tool-gallery-btn');
   refreshBtn.textContent = '↻ Refresh';
   refreshBtn.addEventListener('click', () => refresh());
@@ -82,12 +82,12 @@ function renderToolGallery(container: HTMLElement, api: ParallxApi): IDisposable
   container.appendChild(header);
 
   // Tool list
-  const list = document.createElement('div');
+  const list = $('div');
   list.classList.add('tool-gallery-list');
   container.appendChild(list);
 
   // Detail panel (hidden by default)
-  const detail = document.createElement('div');
+  const detail = $('div');
   detail.classList.add('tool-gallery-detail');
   container.appendChild(detail);
 
@@ -97,7 +97,7 @@ function renderToolGallery(container: HTMLElement, api: ParallxApi): IDisposable
     list.innerHTML = '';
 
     if (tools.length === 0) {
-      const empty = document.createElement('div');
+      const empty = $('div');
       empty.classList.add('tool-gallery-empty');
       empty.textContent = 'No tools registered';
       list.appendChild(empty);
@@ -105,38 +105,38 @@ function renderToolGallery(container: HTMLElement, api: ParallxApi): IDisposable
     }
 
     for (const tool of tools) {
-      const row = document.createElement('div');
+      const row = $('div');
       row.classList.add('tool-gallery-row');
 
       // Icon
-      const icon = document.createElement('span');
+      const icon = $('span');
       icon.classList.add('tool-gallery-row-icon');
       icon.textContent = tool.isBuiltin ? '📦' : '🔌';
       row.appendChild(icon);
 
       // Info
-      const info = document.createElement('div');
+      const info = $('div');
       info.classList.add('tool-gallery-row-info');
 
-      const nameRow = document.createElement('div');
+      const nameRow = $('div');
       nameRow.classList.add('tool-gallery-row-name-row');
-      const nameEl = document.createElement('span');
+      const nameEl = $('span');
       nameEl.classList.add('tool-gallery-row-name');
       nameEl.textContent = tool.name;
       nameRow.appendChild(nameEl);
-      const versionEl = document.createElement('span');
+      const versionEl = $('span');
       versionEl.classList.add('tool-gallery-row-version');
       versionEl.textContent = `v${tool.version}`;
       nameRow.appendChild(versionEl);
       if (tool.isBuiltin) {
-        const badge = document.createElement('span');
+        const badge = $('span');
         badge.classList.add('tool-gallery-row-badge');
         badge.textContent = 'built-in';
         nameRow.appendChild(badge);
       }
       info.appendChild(nameRow);
 
-      const descEl = document.createElement('div');
+      const descEl = $('div');
       descEl.classList.add('tool-gallery-row-desc');
       descEl.textContent = tool.description || 'No description';
       info.appendChild(descEl);
@@ -165,7 +165,7 @@ function showDetail(tool: ToolInfo, detail: HTMLElement): void {
   show(detail, 'block');
   detail.innerHTML = '';
 
-  const h = document.createElement('div');
+  const h = $('div');
   h.classList.add('tool-gallery-detail-name');
   h.textContent = tool.name;
   detail.appendChild(h);
@@ -182,12 +182,12 @@ function showDetail(tool: ToolInfo, detail: HTMLElement): void {
   }
 
   for (const [label, value] of fields) {
-    const row = document.createElement('div');
+    const row = $('div');
     row.classList.add('tool-gallery-detail-field');
-    const lbl = document.createElement('span');
+    const lbl = $('span');
     lbl.classList.add('tool-gallery-detail-label');
     lbl.textContent = label;
-    const val = document.createElement('span');
+    const val = $('span');
     val.classList.add('tool-gallery-detail-value');
     val.textContent = value;
     row.appendChild(lbl);
@@ -196,7 +196,7 @@ function showDetail(tool: ToolInfo, detail: HTMLElement): void {
   }
 
   // Close button
-  const closeBtn = document.createElement('button');
+  const closeBtn = $('button');
   closeBtn.classList.add('tool-gallery-btn', 'tool-gallery-detail-close');
   closeBtn.textContent = 'Close';
   closeBtn.addEventListener('click', () => { hide(detail); });

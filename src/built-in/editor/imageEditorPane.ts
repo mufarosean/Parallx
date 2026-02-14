@@ -12,7 +12,7 @@
 import { EditorPane } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import { ImageEditorInput } from './imageEditorInput.js';
-import { hide, show } from '../../ui/dom.js';
+import { $,  hide, show } from '../../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -57,18 +57,18 @@ export class ImageEditorPane extends EditorPane {
     container.classList.add('image-editor-pane');
 
     // Scroll container with checkerboard background
-    this._scrollContainer = document.createElement('div');
+    this._scrollContainer = $('div');
     this._scrollContainer.classList.add('image-scroll-container');
 
-    this._imageWrapper = document.createElement('div');
+    this._imageWrapper = $('div');
     this._imageWrapper.classList.add('image-wrapper');
 
-    this._image = document.createElement('img');
+    this._image = $('img');
     this._image.classList.add('image-preview');
     this._image.draggable = false;
 
     // Error message (hidden initially)
-    this._errorMessage = document.createElement('div');
+    this._errorMessage = $('div');
     this._errorMessage.classList.add('image-error');
     hide(this._errorMessage);
     this._errorMessage.textContent = 'Failed to load image.';
@@ -79,7 +79,7 @@ export class ImageEditorPane extends EditorPane {
     container.appendChild(this._scrollContainer);
 
     // Info bar
-    this._infoBar = document.createElement('div');
+    this._infoBar = $('div');
     this._infoBar.classList.add('image-info-bar');
     container.appendChild(this._infoBar);
 

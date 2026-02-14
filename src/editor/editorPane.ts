@@ -14,6 +14,7 @@ import { Emitter, Event } from '../platform/events.js';
 import type { IEditorInput } from './editorInput.js';
 import type { SizeConstraints } from '../layout/layoutTypes.js';
 import { DEFAULT_SIZE_CONSTRAINTS } from '../layout/layoutTypes.js';
+import { $ } from '../ui/dom.js';
 
 // ─── View State ──────────────────────────────────────────────────────────────
 
@@ -81,7 +82,7 @@ export abstract class EditorPane extends Disposable implements IEditorPane {
   create(container: HTMLElement): void {
     if (this._created) return;
 
-    this._element = document.createElement('div');
+    this._element = $('div');
     this._element.classList.add('editor-pane', 'fill-container');
 
     this.createPaneContent(this._element);
@@ -180,7 +181,7 @@ export class PlaceholderEditorPane extends EditorPane {
   protected override createPaneContent(container: HTMLElement): void {
     container.classList.add('placeholder-pane-content');
 
-    this._label = document.createElement('div');
+    this._label = $('div');
     this._label.classList.add('placeholder-pane-label');
     this._label.textContent = 'No editor';
     container.appendChild(this._label);
@@ -218,7 +219,7 @@ class ToolEditorPane extends EditorPane {
   }
 
   protected override createPaneContent(container: HTMLElement): void {
-    this._contentContainer = document.createElement('div');
+    this._contentContainer = $('div');
     this._contentContainer.classList.add('fill-container-scroll');
     container.appendChild(this._contentContainer);
   }
@@ -235,7 +236,7 @@ class ToolEditorPane extends EditorPane {
       this._providerDisposable = provider.createEditorPane(this._contentContainer);
     } else {
       // Fallback: show the input name
-      const label = document.createElement('div');
+      const label = $('div');
       label.style.cssText = 'color: var(--color-text-muted, #888); font-size: 14px; text-align: center; padding: 16px;';
       label.textContent = input.name;
       this._contentContainer.appendChild(label);

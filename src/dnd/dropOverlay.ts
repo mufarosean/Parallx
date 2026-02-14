@@ -2,6 +2,7 @@
 
 import { Disposable } from '../platform/lifecycle.js';
 import { DropPosition } from './dndTypes.js';
+import { $ } from '../ui/dom.js';
 
 /**
  * CSS class name for the overlay container.
@@ -34,7 +35,7 @@ export class DropOverlay extends Disposable {
   constructor() {
     super();
 
-    this._container = document.createElement('div');
+    this._container = $('div');
     this._container.classList.add(OVERLAY_CLASS);
 
     // Build five zone indicators
@@ -129,7 +130,7 @@ export class DropOverlay extends Disposable {
   // ── Internals ──
 
   private _createZone(name: string): HTMLElement {
-    const el = document.createElement('div');
+    const el = $('div');
     el.classList.add('drop-zone', `drop-zone-${name}`);
     return el;
   }

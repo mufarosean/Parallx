@@ -13,6 +13,7 @@ import { type IEditorInput } from '../../editor/editorInput.js';
 import { DisposableStore } from '../../platform/lifecycle.js';
 import { FileEditorInput } from './fileEditorInput.js';
 import { MarkdownPreviewInput } from './markdownPreviewInput.js';
+import { $ } from '../../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -37,10 +38,10 @@ export class MarkdownEditorPane extends EditorPane {
   protected override createPaneContent(container: HTMLElement): void {
     container.classList.add('markdown-editor-pane');
 
-    this._scrollContainer = document.createElement('div');
+    this._scrollContainer = $('div');
     this._scrollContainer.classList.add('markdown-scroll-container');
 
-    this._contentEl = document.createElement('div');
+    this._contentEl = $('div');
     this._contentEl.classList.add('markdown-content');
 
     this._scrollContainer.appendChild(this._contentEl);

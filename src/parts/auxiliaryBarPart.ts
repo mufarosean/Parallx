@@ -4,6 +4,7 @@ import { Part } from './part.js';
 import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
 import { Emitter, Event } from '../platform/events.js';
+import { $ } from '../ui/dom.js';
 
 const AUXILIARY_BAR_CONSTRAINTS: SizeConstraints = {
   minimumWidth: 170,
@@ -57,7 +58,7 @@ export class AuxiliaryBarPart extends Part {
   protected override createContent(container: HTMLElement): void {
     container.classList.add('auxiliary-bar-content');
 
-    this._viewContainerSlot = document.createElement('div');
+    this._viewContainerSlot = $('div');
     this._viewContainerSlot.classList.add('auxiliary-bar-views');
     container.appendChild(this._viewContainerSlot);
   }

@@ -7,6 +7,7 @@
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -94,7 +95,7 @@ export class NotificationService extends Disposable {
   attach(parent: HTMLElement): void {
     if (this._container) return;
 
-    this._container = document.createElement('div');
+    this._container = $('div');
     this._container.className = 'parallx-notifications-container';
     parent.appendChild(this._container);
   }
@@ -211,22 +212,22 @@ export class NotificationService extends Disposable {
     notification: INotification,
     _resolve: (result: NotificationResult) => void,
   ): HTMLElement {
-    const el = document.createElement('div');
+    const el = $('div');
     el.className = `parallx-notification parallx-notification-${notification.severity}`;
     el.dataset.notificationId = notification.id;
 
     // Content row
-    const content = document.createElement('div');
+    const content = $('div');
     content.className = 'parallx-notification-content';
 
     // Severity icon
-    const icon = document.createElement('span');
+    const icon = $('span');
     icon.className = 'parallx-notification-icon';
     icon.textContent = this._getSeverityIcon(notification.severity);
     content.appendChild(icon);
 
     // Message
-    const msg = document.createElement('span');
+    const msg = $('span');
     msg.className = 'parallx-notification-message';
     msg.textContent = notification.message;
     content.appendChild(msg);
@@ -235,11 +236,11 @@ export class NotificationService extends Disposable {
 
     // Actions row
     if (notification.actions.length > 0) {
-      const actionsRow = document.createElement('div');
+      const actionsRow = $('div');
       actionsRow.className = 'parallx-notification-actions';
 
       for (const action of notification.actions) {
-        const btn = document.createElement('button');
+        const btn = $('button');
         btn.className = 'parallx-notification-action-btn';
         btn.textContent = action.title;
         btn.addEventListener('click', () => {
@@ -252,7 +253,7 @@ export class NotificationService extends Disposable {
     }
 
     // Close button
-    const closeBtn = document.createElement('button');
+    const closeBtn = $('button');
     closeBtn.className = 'parallx-notification-close';
     closeBtn.textContent = '×';
     closeBtn.addEventListener('click', () => {
@@ -301,24 +302,24 @@ export function showInputBoxModal(
   return new Promise(resolve => {
     const overlay = _createModalOverlay(parent);
 
-    const box = document.createElement('div');
+    const box = $('div');
     box.className = 'parallx-modal-box';
 
     if (options.prompt) {
-      const label = document.createElement('div');
+      const label = $('div');
       label.textContent = options.prompt;
       label.className = 'parallx-modal-label';
       box.appendChild(label);
     }
 
-    const input = document.createElement('input');
+    const input = $('input');
     input.type = options.password ? 'password' : 'text';
     input.value = options.value ?? '';
     input.placeholder = options.placeholder ?? '';
     input.className = 'parallx-modal-input';
     box.appendChild(input);
 
-    const errorLabel = document.createElement('div');
+    const errorLabel = $('div');
     errorLabel.className = 'parallx-modal-error';
     box.appendChild(errorLabel);
 
@@ -365,18 +366,18 @@ export function showQuickPickModal(
   return new Promise(resolve => {
     const overlay = _createModalOverlay(parent);
 
-    const box = document.createElement('div');
+    const box = $('div');
     box.className = 'parallx-quickpick-box';
 
     // Search input
-    const input = document.createElement('input');
+    const input = $('input');
     input.type = 'text';
     input.placeholder = options.placeholder ?? 'Select an item...';
     input.className = 'parallx-quickpick-input';
     box.appendChild(input);
 
     // Items list
-    const list = document.createElement('div');
+    const list = $('div');
     list.className = 'parallx-quickpick-list';
     box.appendChild(list);
 
@@ -391,7 +392,7 @@ export function showQuickPickModal(
       items.forEach((item, i) => {
         if (lowerFilter && !item.label.toLowerCase().includes(lowerFilter)) return;
 
-        const row = document.createElement('div');
+        const row = $('div');
         row.className = 'parallx-quickpick-row';
         row.dataset.index = String(i);
 
@@ -399,12 +400,12 @@ export function showQuickPickModal(
           row.classList.add('parallx-quickpick-row--active');
         }
 
-        const labelEl = document.createElement('span');
+        const labelEl = $('span');
         labelEl.textContent = item.label;
         row.appendChild(labelEl);
 
         if (item.description) {
-          const desc = document.createElement('span');
+          const desc = $('span');
           desc.textContent = `  ${item.description}`;
           desc.className = 'parallx-quickpick-desc';
           row.appendChild(desc);
@@ -477,7 +478,7 @@ export function showQuickPickModal(
 // ── Modal overlay helper ──
 
 function _createModalOverlay(parent: HTMLElement): HTMLElement {
-  const overlay = document.createElement('div');
+  const overlay = $('div');
   overlay.className = 'parallx-modal-overlay';
   parent.appendChild(overlay);
   return overlay;

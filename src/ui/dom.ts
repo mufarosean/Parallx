@@ -19,7 +19,15 @@ import { IDisposable, toDisposable } from '../platform/lifecycle.js';
  * VS Code reference: `src/vs/base/browser/dom.ts` → `$()` helper.
  */
 export function $<K extends keyof HTMLElementTagNameMap>(
-  descriptor: K | string,
+  descriptor: K,
+  ...children: (HTMLElement | string)[]
+): HTMLElementTagNameMap[K];
+export function $(
+  descriptor: string,
+  ...children: (HTMLElement | string)[]
+): HTMLElement;
+export function $(
+  descriptor: string,
   ...children: (HTMLElement | string)[]
 ): HTMLElement {
   const parts = descriptor.split('.');

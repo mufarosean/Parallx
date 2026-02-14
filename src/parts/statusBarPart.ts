@@ -22,6 +22,7 @@ import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
 import { Emitter, Event } from '../platform/events.js';
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { $ } from '../ui/dom.js';
 
 /** Fixed status bar height — matches VS Code's `StatusbarPart.HEIGHT = 22`. */
 export const STATUS_BAR_HEIGHT = 22;
@@ -153,12 +154,12 @@ export class StatusBarPart extends Part {
     const priority = entry.priority ?? 0;
 
     // Create DOM: .statusbar-item > a.statusbar-item-label
-    const itemContainer = document.createElement('div');
+    const itemContainer = $('div');
     itemContainer.className = 'statusbar-item';
     itemContainer.id = entry.id;
     itemContainer.classList.add(entry.alignment === StatusBarAlignment.Left ? 'left' : 'right');
 
-    const label = document.createElement('a');
+    const label = $('a');
     label.className = 'statusbar-item-label';
     label.setAttribute('role', 'button');
     label.tabIndex = -1;
@@ -259,11 +260,11 @@ export class StatusBarPart extends Part {
 
   protected override createContent(container: HTMLElement): void {
     // VS Code: .left-items.items-container and .right-items.items-container
-    this._leftItemsContainer = document.createElement('div');
+    this._leftItemsContainer = $('div');
     this._leftItemsContainer.className = 'left-items items-container';
     container.appendChild(this._leftItemsContainer);
 
-    this._rightItemsContainer = document.createElement('div');
+    this._rightItemsContainer = $('div');
     this._rightItemsContainer.className = 'right-items items-container';
     container.appendChild(this._rightItemsContainer);
 

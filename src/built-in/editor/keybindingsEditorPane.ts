@@ -11,7 +11,7 @@ import './keybindingsEditorPane.css';
 import { EditorPane } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import { formatKeybindingForDisplay } from '../../contributions/keybindingContribution.js';
-import { hide, show } from '../../ui/dom.js';
+import { $,  hide, show } from '../../ui/dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -43,53 +43,53 @@ export class KeybindingsEditorPane extends EditorPane {
   // ── Build DOM ──
 
   protected override createPaneContent(container: HTMLElement): void {
-    this._container = document.createElement('div');
+    this._container = $('div');
     this._container.classList.add('keybindings-editor');
 
     // Header with search
-    const header = document.createElement('div');
+    const header = $('div');
     header.classList.add('keybindings-editor-header');
 
-    const title = document.createElement('h2');
+    const title = $('h2');
     title.textContent = 'Keyboard Shortcuts';
     header.appendChild(title);
 
-    this._searchInput = document.createElement('input');
+    this._searchInput = $('input');
     this._searchInput.type = 'text';
     this._searchInput.classList.add('keybindings-search-input');
     this._searchInput.placeholder = 'Type to search keybindings…';
     this._searchInput.addEventListener('input', () => this._filterTable());
     header.appendChild(this._searchInput);
 
-    this._countLabel = document.createElement('span');
+    this._countLabel = $('span');
     this._countLabel.classList.add('keybindings-result-count');
     header.appendChild(this._countLabel);
 
     this._container.appendChild(header);
 
     // Table container
-    const tableContainer = document.createElement('div');
+    const tableContainer = $('div');
     tableContainer.classList.add('keybindings-table-container');
 
-    const table = document.createElement('table');
+    const table = $('table');
     table.classList.add('keybindings-table');
 
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
+    const thead = $('thead');
+    const headerRow = $('tr');
     for (const label of ['Command', 'Keybinding', 'Source', 'When']) {
-      const th = document.createElement('th');
+      const th = $('th');
       th.textContent = label;
       headerRow.appendChild(th);
     }
     thead.appendChild(headerRow);
     table.appendChild(thead);
 
-    this._tableBody = document.createElement('tbody');
+    this._tableBody = $('tbody');
     table.appendChild(this._tableBody);
     tableContainer.appendChild(table);
 
     // Empty message
-    this._emptyMessage = document.createElement('div');
+    this._emptyMessage = $('div');
     this._emptyMessage.classList.add('keybindings-editor-empty');
     this._emptyMessage.textContent = 'No keybindings match your search.';
     hide(this._emptyMessage);
@@ -128,29 +128,29 @@ export class KeybindingsEditorPane extends EditorPane {
     this._tableBody.innerHTML = '';
 
     for (const entry of filtered) {
-      const row = document.createElement('tr');
+      const row = $('tr');
 
       // Command
-      const cmdCell = document.createElement('td');
+      const cmdCell = $('td');
       cmdCell.textContent = entry.commandId;
       cmdCell.title = entry.commandId;
       row.appendChild(cmdCell);
 
       // Keybinding (formatted)
-      const keyCell = document.createElement('td');
-      const keySpan = document.createElement('span');
+      const keyCell = $('td');
+      const keySpan = $('span');
       keySpan.classList.add('keybinding-key');
       keySpan.textContent = formatKeybindingForDisplay(entry.key);
       keyCell.appendChild(keySpan);
       row.appendChild(keyCell);
 
       // Source
-      const sourceCell = document.createElement('td');
+      const sourceCell = $('td');
       sourceCell.textContent = entry.source ?? '';
       row.appendChild(sourceCell);
 
       // When clause
-      const whenCell = document.createElement('td');
+      const whenCell = $('td');
       whenCell.textContent = entry.when ?? '';
       whenCell.title = entry.when ?? '';
       row.appendChild(whenCell);

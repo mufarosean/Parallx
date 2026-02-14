@@ -14,7 +14,7 @@ import type { IConfigurationPropertySchema } from '../../configuration/configura
 import { IConfigurationService } from '../../services/serviceTypes.js';
 import type { ServiceCollection } from '../../services/serviceCollection.js';
 import type { ConfigurationService } from '../../configuration/configurationService.js';
-import { hide, show } from '../../ui/dom.js';
+import { $,  hide, show } from '../../ui/dom.js';
 
 // ─── Pane ────────────────────────────────────────────────────────────────────
 
@@ -35,35 +35,35 @@ export class SettingsEditorPane extends EditorPane {
   // ── Build DOM ──
 
   protected override createPaneContent(container: HTMLElement): void {
-    this._container = document.createElement('div');
+    this._container = $('div');
     this._container.classList.add('settings-editor');
 
     // Header with search
-    const header = document.createElement('div');
+    const header = $('div');
     header.classList.add('settings-editor-header');
 
-    const title = document.createElement('h2');
+    const title = $('h2');
     title.textContent = 'Settings';
     header.appendChild(title);
 
-    this._searchInput = document.createElement('input');
+    this._searchInput = $('input');
     this._searchInput.type = 'text';
     this._searchInput.classList.add('settings-search-input');
     this._searchInput.placeholder = 'Search settings…';
     this._searchInput.addEventListener('input', () => this._renderSettings());
     header.appendChild(this._searchInput);
 
-    this._countLabel = document.createElement('span');
+    this._countLabel = $('span');
     this._countLabel.classList.add('settings-result-count');
     header.appendChild(this._countLabel);
 
     this._container.appendChild(header);
 
     // Body
-    this._body = document.createElement('div');
+    this._body = $('div');
     this._body.classList.add('settings-body');
 
-    this._emptyMessage = document.createElement('div');
+    this._emptyMessage = $('div');
     this._emptyMessage.classList.add('settings-empty-message');
     this._emptyMessage.textContent = 'No settings found.';
     hide(this._emptyMessage);
@@ -152,10 +152,10 @@ export class SettingsEditorPane extends EditorPane {
       if (this._emptyMessage) hide(this._emptyMessage);
 
       for (const [_sectionKey, schemas] of grouped) {
-        const sectionEl = document.createElement('div');
+        const sectionEl = $('div');
         sectionEl.classList.add('settings-section');
 
-        const sectionTitle = document.createElement('h3');
+        const sectionTitle = $('h3');
         sectionTitle.classList.add('settings-section-title');
         sectionTitle.textContent = schemas[0].sectionTitle;
         sectionEl.appendChild(sectionTitle);
@@ -181,14 +181,14 @@ export class SettingsEditorPane extends EditorPane {
   // ── Create individual setting item ──
 
   private _createSettingItem(schema: IConfigurationPropertySchema): HTMLElement {
-    const item = document.createElement('div');
+    const item = $('div');
     item.classList.add('settings-item');
 
     // Key label
-    const keyRow = document.createElement('div');
+    const keyRow = $('div');
     keyRow.classList.add('settings-item-key-row');
 
-    const keyEl = document.createElement('span');
+    const keyEl = $('span');
     keyEl.classList.add('settings-item-key');
     keyEl.textContent = schema.key;
     keyRow.appendChild(keyEl);
@@ -197,7 +197,7 @@ export class SettingsEditorPane extends EditorPane {
     const currentValue = this._configService?._getValue(schema.key);
     const isModified = currentValue !== undefined && currentValue !== schema.defaultValue;
     if (isModified) {
-      const dot = document.createElement('span');
+      const dot = $('span');
       dot.classList.add('settings-modified-indicator');
       dot.title = 'Modified';
       keyRow.appendChild(dot);
@@ -207,14 +207,14 @@ export class SettingsEditorPane extends EditorPane {
 
     // Description
     if (schema.description) {
-      const descEl = document.createElement('div');
+      const descEl = $('div');
       descEl.classList.add('settings-item-description');
       descEl.textContent = schema.description;
       item.appendChild(descEl);
     }
 
     // Control
-    const controlEl = document.createElement('div');
+    const controlEl = $('div');
     controlEl.classList.add('settings-item-control');
     this._renderControl(controlEl, schema);
     item.appendChild(controlEl);
@@ -228,7 +228,7 @@ export class SettingsEditorPane extends EditorPane {
     const currentValue = this._configService?._getValue(schema.key) ?? schema.defaultValue;
 
     if (schema.type === 'boolean') {
-      const checkbox = document.createElement('input');
+      const checkbox = $('input');
       checkbox.type = 'checkbox';
       checkbox.checked = !!currentValue;
       checkbox.addEventListener('change', () => {
@@ -236,7 +236,7 @@ export class SettingsEditorPane extends EditorPane {
       });
       container.appendChild(checkbox);
 
-      const label = document.createElement('span');
+      const label = $('span');
       label.classList.add('settings-control-label');
       label.textContent = checkbox.checked ? 'Enabled' : 'Disabled';
       checkbox.addEventListener('change', () => {
@@ -244,9 +244,9 @@ export class SettingsEditorPane extends EditorPane {
       });
       container.appendChild(label);
     } else if (schema.enum && schema.enum.length > 0) {
-      const select = document.createElement('select');
+      const select = $('select');
       for (const opt of schema.enum) {
-        const option = document.createElement('option');
+        const option = $('option');
         option.value = String(opt);
         option.textContent = String(opt);
         if (String(currentValue) === String(opt)) option.selected = true;
@@ -257,7 +257,7 @@ export class SettingsEditorPane extends EditorPane {
       });
       container.appendChild(select);
     } else if (schema.type === 'number') {
-      const input = document.createElement('input');
+      const input = $('input');
       input.type = 'number';
       input.value = String(currentValue ?? '');
       input.addEventListener('change', () => {
@@ -269,7 +269,7 @@ export class SettingsEditorPane extends EditorPane {
       container.appendChild(input);
     } else {
       // String or generic
-      const input = document.createElement('input');
+      const input = $('input');
       input.type = 'text';
       input.value = String(currentValue ?? '');
       input.addEventListener('change', () => {
@@ -280,7 +280,7 @@ export class SettingsEditorPane extends EditorPane {
 
     // Default value hint
     if (schema.defaultValue !== undefined) {
-      const defaultHint = document.createElement('span');
+      const defaultHint = $('span');
       defaultHint.classList.add('settings-item-default');
       defaultHint.textContent = `Default: ${JSON.stringify(schema.defaultValue)}`;
       container.appendChild(defaultHint);

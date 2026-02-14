@@ -11,6 +11,7 @@ import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { IColorRegistry } from '../theme/colorRegistry.js';
 import { IColorTheme, ColorThemeData } from '../theme/themeData.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Style element ID ────────────────────────────────────────────────────────
 
@@ -107,7 +108,7 @@ export class ThemeService extends Disposable implements IThemeService {
 
     // Create or update the style element
     if (!this._styleElement) {
-      this._styleElement = document.createElement('style');
+      this._styleElement = $('style');
       this._styleElement.id = THEME_STYLE_ID;
       this._styleElement.setAttribute('type', 'text/css');
       document.head.appendChild(this._styleElement);

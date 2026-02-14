@@ -3,7 +3,7 @@
 import { IDisposable, Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS, Orientation } from './layoutTypes.js';
-import { hide, show } from '../ui/dom.js';
+import { $,  hide, show } from '../ui/dom.js';
 
 /**
  * Interface that views must implement to participate in the grid system.
@@ -74,7 +74,7 @@ export abstract class BaseGridView extends Disposable implements IGridView {
     private readonly _constraints: SizeConstraints = DEFAULT_SIZE_CONSTRAINTS
   ) {
     super();
-    this._element = document.createElement('div');
+    this._element = $('div');
     this._element.classList.add('grid-view', `grid-view-${id}`);
     this._element.style.overflow = 'hidden';
     this._element.style.position = 'relative';

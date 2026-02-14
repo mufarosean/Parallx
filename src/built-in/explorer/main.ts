@@ -13,6 +13,7 @@
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
+import { $ } from '../../ui/dom.js';
 
 // ─── Types (avoid circular imports) ──────────────────────────────────────────
 
@@ -190,11 +191,11 @@ function rebuildTree(): void {
 
   if (!folders || folders.length === 0) {
     _treeContainer.innerHTML = '';
-    const empty = document.createElement('div');
+    const empty = $('div');
     empty.className = 'explorer-empty';
     empty.textContent = 'No folder opened. Open a folder to start.';
 
-    const openBtn = document.createElement('button');
+    const openBtn = $('button');
     openBtn.className = 'explorer-empty-open-btn';
     openBtn.textContent = 'Open Folder';
     openBtn.addEventListener('click', () => {
@@ -241,7 +242,7 @@ function renderTree(): void {
 
   // Multi-root workspace: show workspace name header (VS Code behaviour)
   if (_roots.length > 1) {
-    const header = document.createElement('div');
+    const header = $('div');
     header.className = 'explorer-workspace-header';
     const wsName = _api.workspace.name;
     const displayName = (!wsName || wsName === 'Default Workspace')
@@ -258,7 +259,7 @@ function renderTree(): void {
 
 function renderNodeFlat(container: HTMLElement, node: TreeNode): void {
   const depth = Math.max(0, node.depth);
-  const el = document.createElement('div');
+  const el = $('div');
   el.className = 'tree-node';
   if (_selectedNode === node) {
     el.classList.add('tree-node--selected');
@@ -270,24 +271,24 @@ function renderNodeFlat(container: HTMLElement, node: TreeNode): void {
 
   // Chevron for directories
   if (node.type === FILE_TYPE_DIRECTORY) {
-    const chevron = document.createElement('span');
+    const chevron = $('span');
     chevron.className = 'tree-node-chevron';
     chevron.textContent = node.expanded ? '▾' : '▸';
     el.appendChild(chevron);
   } else {
-    const spacer = document.createElement('span');
+    const spacer = $('span');
     spacer.className = 'tree-node-spacer';
     el.appendChild(spacer);
   }
 
   // Icon
-  const icon = document.createElement('span');
+  const icon = $('span');
   icon.className = 'tree-node-icon';
   icon.textContent = node.type === FILE_TYPE_DIRECTORY ? '📁' : '📄';
   el.appendChild(icon);
 
   // Label
-  const label = document.createElement('span');
+  const label = $('span');
   label.className = 'tree-node-label';
   label.textContent = node.name;
   el.appendChild(label);
@@ -320,7 +321,7 @@ function renderNodeFlat(container: HTMLElement, node: TreeNode): void {
     if (node.loading && !node.loaded) {
       container.appendChild(createLoadingElement(depth + 1));
     } else if (node.loaded && node.children.length === 0) {
-      const emptyEl = document.createElement('div');
+      const emptyEl = $('div');
       emptyEl.className = 'tree-empty-dir';
       // Computed layout dimension
       emptyEl.style.paddingLeft = `${(depth + 1) * INDENT_PX + 20}px`;
@@ -335,7 +336,7 @@ function renderNodeFlat(container: HTMLElement, node: TreeNode): void {
 }
 
 function createLoadingElement(depth: number): HTMLElement {
-  const el = document.createElement('div');
+  const el = $('div');
   el.className = 'tree-loading';
   // Computed layout dimension
   el.style.paddingLeft = `${depth * INDENT_PX + 20}px`;
@@ -789,7 +790,7 @@ function startInlineRename(node: TreeNode): void {
   const labelEl = node.element.querySelector('.tree-node-label');
   if (!labelEl) return;
 
-  const input = document.createElement('input');
+  const input = $('input');
   input.type = 'text';
   input.className = 'tree-inline-input';
   input.value = node.name;
@@ -846,17 +847,17 @@ function insertCreateInput(parentNode: TreeNode, kind: 'file' | 'folder'): void 
   renderTree(); // re-render first to ensure DOM is current
 
   const depth = Math.max(0, parentNode.depth + 1);
-  const inputRow = document.createElement('div');
+  const inputRow = $('div');
   inputRow.className = 'tree-create-row';
   // Computed layout dimension
   inputRow.style.paddingLeft = `${depth * INDENT_PX + 20}px`;
 
-  const iconSpan = document.createElement('span');
+  const iconSpan = $('span');
   iconSpan.className = 'tree-create-icon';
   iconSpan.textContent = kind === 'folder' ? '📁' : '📄';
   inputRow.appendChild(iconSpan);
 
-  const input = document.createElement('input');
+  const input = $('input');
   input.type = 'text';
   input.className = 'tree-inline-input';
   input.placeholder = kind === 'folder' ? 'Folder name' : 'File name';
@@ -971,7 +972,7 @@ function renderOpenEditors(): void {
   const editors = _api.editors.openEditors;
 
   if (editors.length === 0) {
-    const placeholder = document.createElement('div');
+    const placeholder = $('div');
     placeholder.className = 'open-editors-placeholder';
     placeholder.textContent = 'No open editors';
     _openEditorsContainer.appendChild(placeholder);
@@ -999,7 +1000,7 @@ function renderOpenEditors(): void {
 
     // Show group header when there are multiple groups (VS Code parity)
     if (multipleGroups) {
-      const header = document.createElement('div');
+      const header = $('div');
       header.className = 'open-editors-group-header';
       header.textContent = `Group ${groupIndex}`;
       _openEditorsContainer.appendChild(header);
@@ -1016,7 +1017,7 @@ function createOpenEditorRow(
   editor: { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string },
   indented: boolean
 ): HTMLElement {
-  const row = document.createElement('div');
+  const row = $('div');
   row.className = 'open-editors-item';
   if (indented) {
     row.classList.add('open-editors-item--grouped');
@@ -1029,20 +1030,20 @@ function createOpenEditorRow(
 
   // Dirty indicator
   if (editor.isDirty) {
-    const dot = document.createElement('span');
+    const dot = $('span');
     dot.className = 'open-editors-dirty';
     dot.title = 'Unsaved changes';
     row.appendChild(dot);
   }
 
   // File icon (derive from name extension)
-  const icon = document.createElement('span');
+  const icon = $('span');
   icon.className = 'open-editors-icon';
   icon.textContent = getFileIcon(editor.name);
   row.appendChild(icon);
 
   // Label
-  const label = document.createElement('span');
+  const label = $('span');
   label.className = 'open-editors-label';
   label.textContent = editor.name;
   if (editor.description) {
@@ -1051,7 +1052,7 @@ function createOpenEditorRow(
   row.appendChild(label);
 
   // Close button
-  const closeBtn = document.createElement('span');
+  const closeBtn = $('span');
   closeBtn.className = 'open-editors-close';
   closeBtn.textContent = '×';
   closeBtn.title = 'Close';

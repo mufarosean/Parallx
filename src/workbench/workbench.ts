@@ -159,6 +159,7 @@ import {
 } from '../theme/themeCatalog.js';
 import { showColorThemePicker } from './workbenchThemePicker.js';
 import { setupEditorWatermark, updateWatermarkKeybindings } from './workbenchWatermark.js';
+import { $ } from '../ui/dom.js';
 
 // ── Types ──
 
@@ -1367,17 +1368,17 @@ export class Workbench extends Layout {
     // VS Code pattern: compositePart.createTitleArea() → title label (left) + actions toolbar (right)
     const headerSlot = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
     if (headerSlot) {
-      const headerLabel = document.createElement('span');
+      const headerLabel = $('span');
       headerLabel.classList.add('sidebar-header-label');
       headerLabel.textContent = 'EXPLORER';
       headerSlot.appendChild(headerLabel);
 
       // Actions toolbar on the right (VS Code: `.title-actions` inside `.composite.title`)
-      const actionsContainer = document.createElement('div');
+      const actionsContainer = $('div');
       actionsContainer.classList.add('sidebar-header-actions');
 
       // "More actions" button (ellipsis)
-      const moreBtn = document.createElement('button');
+      const moreBtn = $('button');
       moreBtn.classList.add('sidebar-header-action-btn');
       moreBtn.title = 'More Actions…';
       moreBtn.setAttribute('aria-label', 'More Actions…');
@@ -1599,13 +1600,13 @@ export class Workbench extends Layout {
     const bottomSection = this._activityBarPart.contentElement.querySelector('.activity-bar-bottom');
     if (!bottomSection) return;
 
-    const gearBtn = document.createElement('button');
+    const gearBtn = $('button');
     gearBtn.classList.add('activity-bar-item', 'activity-bar-manage-gear');
     gearBtn.dataset.iconId = 'manage-gear';
     gearBtn.title = 'Manage';
 
     // Use VS Code's codicon gear SVG (16×16 viewBox for proper sizing)
-    const iconLabel = document.createElement('span');
+    const iconLabel = $('span');
     iconLabel.classList.add('activity-bar-icon-label');
     iconLabel.innerHTML =
       '<svg width="24" height="24" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">' +
@@ -1760,7 +1761,7 @@ export class Workbench extends Layout {
     // Header label — updates when extensions register and activate views
     const headerSlot = auxBarPart.headerSlot;
     if (headerSlot) {
-      const headerLabel = document.createElement('span');
+      const headerLabel = $('span');
       headerLabel.classList.add('auxiliary-bar-header-label');
       headerLabel.textContent = 'SECONDARY SIDE BAR';
       headerSlot.appendChild(headerLabel);
@@ -1783,7 +1784,7 @@ export class Workbench extends Layout {
   // ════════════════════════════════════════════════════════════════════════
 
   private _setupSecondaryActivityBar(): void {
-    this._secondaryActivityBarEl = document.createElement('div');
+    this._secondaryActivityBarEl = $('div');
     this._secondaryActivityBarEl.classList.add('secondary-activity-bar', 'hidden');
 
     // No hardcoded view buttons — extensions will register their own
@@ -2511,7 +2512,7 @@ export class Workbench extends Layout {
       sectionEl.innerHTML = '';
 
       // Create a content wrapper for the real tool view
-      const contentEl = document.createElement('div');
+      const contentEl = $('div');
       contentEl.className = 'tool-view-content fill-container-scroll';
       sectionEl.appendChild(contentEl);
 
@@ -3154,23 +3155,23 @@ export class Workbench extends Layout {
     const showCenter = () => {
       if (centerOverlay) { hideCenter(); return; }
 
-      const overlay = document.createElement('div');
+      const overlay = $('div');
       overlay.className = 'parallx-notification-center-overlay';
       overlay.addEventListener('mousedown', (e) => {
         if (e.target === overlay) hideCenter();
       });
 
-      const panel = document.createElement('div');
+      const panel = $('div');
       panel.className = 'parallx-notification-center';
 
       // Header
-      const header = document.createElement('div');
+      const header = $('div');
       header.className = 'parallx-notification-center-header';
-      const title = document.createElement('span');
+      const title = $('span');
       title.textContent = 'Notifications';
       header.appendChild(title);
 
-      const clearBtn = document.createElement('button');
+      const clearBtn = $('button');
       clearBtn.className = 'parallx-notification-center-clear';
       clearBtn.textContent = 'Clear All';
       clearBtn.title = 'Clear all notifications';
@@ -3183,32 +3184,32 @@ export class Workbench extends Layout {
       panel.appendChild(header);
 
       // List
-      const list = document.createElement('div');
+      const list = $('div');
       list.className = 'parallx-notification-center-list';
 
       const history = notifService.history;
       if (history.length === 0) {
-        const empty = document.createElement('div');
+        const empty = $('div');
         empty.className = 'parallx-notification-center-empty';
         empty.textContent = 'No notifications';
         list.appendChild(empty);
       } else {
         for (const notif of history) {
-          const row = document.createElement('div');
+          const row = $('div');
           row.className = `parallx-notification-center-item parallx-notification-center-item-${notif.severity}`;
 
-          const icon = document.createElement('span');
+          const icon = $('span');
           icon.className = 'parallx-notification-center-icon';
           icon.textContent = notif.severity === 'information' ? 'ℹ' : notif.severity === 'warning' ? '⚠' : '✕';
           row.appendChild(icon);
 
-          const msg = document.createElement('span');
+          const msg = $('span');
           msg.className = 'parallx-notification-center-message';
           msg.textContent = notif.message;
           row.appendChild(msg);
 
           if (notif.source) {
-            const src = document.createElement('span');
+            const src = $('span');
             src.className = 'parallx-notification-center-source';
             src.textContent = notif.source;
             row.appendChild(src);
@@ -3477,7 +3478,7 @@ export class Workbench extends Layout {
    * Show a fade overlay during workspace switch.
    */
   private _showTransitionOverlay(): HTMLElement {
-    const overlay = document.createElement('div');
+    const overlay = $('div');
     overlay.classList.add('workspace-transition-overlay');
     overlay.textContent = 'Switching workspace…';
     this._container.appendChild(overlay);

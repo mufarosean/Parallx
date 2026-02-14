@@ -10,7 +10,7 @@
 
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { hide, show } from '../ui/dom.js';
+import { $,  hide, show } from '../ui/dom.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { IContributionProcessor } from './contributionTypes.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -407,7 +407,7 @@ export class ViewContributionProcessor extends Disposable implements IContributi
 
       // Create content container
       if (_element) {
-        _contentEl = document.createElement('div');
+        _contentEl = $('div');
         _contentEl.className = 'tool-view-content';
         _element.appendChild(_contentEl);
 
@@ -447,7 +447,7 @@ export class ViewContributionProcessor extends Disposable implements IContributi
       createElement(container: HTMLElement): void {
         if (_disposed) return;
 
-        _element = document.createElement('div');
+        _element = $('div');
         _element.className = `view view-${viewId} contributed-view`;
         _element.setAttribute('data-view-id', viewId);
         hide(_element); // hidden until setVisible(true)
@@ -458,15 +458,15 @@ export class ViewContributionProcessor extends Disposable implements IContributi
           doResolve(_provider);
         } else {
           // Show placeholder until provider registers
-          _placeholderEl = document.createElement('div');
+          _placeholderEl = $('div');
           _placeholderEl.className = 'contributed-view-placeholder';
 
-          const nameEl = document.createElement('div');
+          const nameEl = $('div');
           nameEl.textContent = name;
           nameEl.className = 'contributed-view-placeholder__name';
           _placeholderEl.appendChild(nameEl);
 
-          const msgEl = document.createElement('div');
+          const msgEl = $('div');
           msgEl.textContent = 'Waiting for view provider\u2026';
           msgEl.className = 'contributed-view-placeholder__msg';
           _placeholderEl.appendChild(msgEl);

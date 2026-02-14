@@ -4,6 +4,7 @@ import { Part } from './part.js';
 import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
 import { Emitter, Event } from '../platform/events.js';
+import { $ } from '../ui/dom.js';
 
 const SIDEBAR_CONSTRAINTS: SizeConstraints = {
   minimumWidth: 170,
@@ -60,12 +61,12 @@ export class SidebarPart extends Part {
     container.classList.add('sidebar-content');
 
     // Activity bar (icon strip)
-    this._activityBarSlot = document.createElement('div');
+    this._activityBarSlot = $('div');
     this._activityBarSlot.classList.add('sidebar-activity-bar');
     container.appendChild(this._activityBarSlot);
 
     // View container area
-    this._viewContainerSlot = document.createElement('div');
+    this._viewContainerSlot = $('div');
     this._viewContainerSlot.classList.add('sidebar-views');
     container.appendChild(this._viewContainerSlot);
   }

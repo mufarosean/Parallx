@@ -17,6 +17,7 @@ import type { IEditorInput } from '../editor/editorInput.js';
 import { createEditorPaneForInput, EditorPane } from '../editor/editorPane.js';
 import { EditorDropTarget } from '../editor/editorDropTarget.js';
 import { URI } from '../platform/uri.js';
+import { $ } from '../ui/dom.js';
 
 const EDITOR_CONSTRAINTS: SizeConstraints = {
   minimumWidth: 200,
@@ -125,12 +126,12 @@ export class EditorPart extends Part {
     container.classList.add('editor-content');
 
     // Editor group container (nested grid lives here)
-    this._editorGroupContainer = document.createElement('div');
+    this._editorGroupContainer = $('div');
     this._editorGroupContainer.classList.add('editor-group-container');
     container.appendChild(this._editorGroupContainer);
 
     // Watermark (shown when no editors are open)
-    this._watermark = document.createElement('div');
+    this._watermark = $('div');
     this._watermark.classList.add('editor-watermark');
     this._editorGroupContainer.appendChild(this._watermark);
 

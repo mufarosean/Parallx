@@ -13,6 +13,7 @@ import { Emitter, Event } from '../platform/events.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { CommandService } from '../commands/commandRegistry.js';
 import type { IContributedMenuItem, MenuLocationId, IContributionProcessor } from './contributionTypes.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Minimal shape to avoid circular imports ─────────────────────────────────
 
@@ -266,7 +267,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
       const cmd = this._commandService.getCommand(action.commandId);
       if (!cmd) continue;
 
-      const button = document.createElement('button');
+      const button = $('button');
       button.className = 'view-title-action';
       button.title = cmd.title;
       button.setAttribute('aria-label', cmd.title);
@@ -349,10 +350,10 @@ export class MenuContributionProcessor extends Disposable implements IContributi
     }
 
     // Create context menu overlay
-    const overlay = document.createElement('div');
+    const overlay = $('div');
     overlay.className = 'context-menu-overlay';
 
-    const menu = document.createElement('div');
+    const menu = $('div');
     menu.className = 'context-menu';
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
@@ -365,16 +366,16 @@ export class MenuContributionProcessor extends Disposable implements IContributi
 
       // Add separator between groups
       if (lastGroup !== undefined && item.group !== lastGroup) {
-        const sep = document.createElement('div');
+        const sep = $('div');
         sep.className = 'context-menu-separator';
         menu.appendChild(sep);
       }
       lastGroup = item.group;
 
-      const menuItem = document.createElement('div');
+      const menuItem = $('div');
       menuItem.className = 'context-menu-item';
 
-      const label = document.createElement('span');
+      const label = $('span');
       if (cmd.category) {
         label.textContent = `${cmd.category}: ${cmd.title}`;
       } else {
@@ -384,7 +385,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
 
       // Keybinding display
       if (cmd.keybinding) {
-        const kbd = document.createElement('span');
+        const kbd = $('span');
         kbd.className = 'context-menu-kbd';
         kbd.textContent = cmd.keybinding;
         menuItem.appendChild(kbd);

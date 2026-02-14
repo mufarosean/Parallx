@@ -21,6 +21,7 @@ import { Emitter, Event } from '../platform/events.js';
 import { URI } from '../platform/uri.js';
 import { BreadcrumbsWidget, BreadcrumbsItem } from '../ui/breadcrumbs.js';
 import type { IEditorInput } from '../editor/editorInput.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ class FileBreadcrumbItem extends BreadcrumbsItem {
   render(container: HTMLElement): void {
     // Icon (optional — file icon for files, folder icon for folders)
     if (this._showIcon) {
-      const icon = document.createElement('span');
+      const icon = $('span');
       icon.className = 'breadcrumb-icon';
       if (this.element.kind === 'file') {
         icon.classList.add('breadcrumb-icon--file');
@@ -75,7 +76,7 @@ class FileBreadcrumbItem extends BreadcrumbsItem {
     }
 
     // Label text
-    const label = document.createElement('span');
+    const label = $('span');
     label.className = 'breadcrumb-label';
     label.textContent = this.element.label;
     container.appendChild(label);
@@ -123,7 +124,7 @@ export class BreadcrumbsBar extends Disposable {
     super();
 
     // .breadcrumbs-control wrapper (matches VS Code's DOM class)
-    this.domNode = document.createElement('div');
+    this.domNode = $('div');
     this.domNode.classList.add('breadcrumbs-control');
     this.domNode.style.height = `${BREADCRUMBS_HEIGHT}px`;
     this.domNode.style.minHeight = `${BREADCRUMBS_HEIGHT}px`;

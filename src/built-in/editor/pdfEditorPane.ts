@@ -10,7 +10,7 @@
 import { EditorPane } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import { PdfEditorInput } from './pdfEditorInput.js';
-import { hide, show } from '../../ui/dom.js';
+import { $,  hide, show } from '../../ui/dom.js';
 
 const PANE_ID = 'pdf-editor-pane';
 
@@ -32,13 +32,13 @@ export class PdfEditorPane extends EditorPane {
     this._container = container;
 
     // Loading indicator
-    this._loadingMessage = document.createElement('div');
+    this._loadingMessage = $('div');
     this._loadingMessage.classList.add('pdf-loading');
     this._loadingMessage.textContent = 'Loading PDF…';
     container.appendChild(this._loadingMessage);
 
     // Error message (hidden)
-    this._errorMessage = document.createElement('div');
+    this._errorMessage = $('div');
     this._errorMessage.classList.add('pdf-error');
     hide(this._errorMessage);
     container.appendChild(this._errorMessage);
@@ -81,7 +81,7 @@ export class PdfEditorPane extends EditorPane {
       }
 
       // Create embed element with Chromium's built-in PDF viewer
-      this._embed = document.createElement('embed');
+      this._embed = $('embed');
       this._embed.classList.add('pdf-embed');
       this._embed.type = 'application/pdf';
       this._embed.src = `data:application/pdf;base64,${base64}`;
