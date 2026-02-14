@@ -9,7 +9,7 @@
 //   5. Ready — CSS ready class, log
 // Teardown reverses (5→1).
 
-import { Disposable, DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
@@ -17,22 +17,21 @@ import { ILifecycleService, ICommandService, IContextKeyService, IEditorService,
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
 
+// Layout base class (VS Code: Layout → Workbench extends Layout)
+import {
+  Layout,
+  TITLE_HEIGHT, STATUS_HEIGHT, ACTIVITY_BAR_WIDTH,
+  DEFAULT_SIDEBAR_WIDTH, DEFAULT_PANEL_HEIGHT, DEFAULT_AUX_BAR_WIDTH, MIN_EDITOR_WIDTH,
+} from './layout.js';
+
 // Parts
 import { Part } from '../parts/part.js';
-import { PartRegistry } from '../parts/partRegistry.js';
 import { PartId } from '../parts/partTypes.js';
-import { titlebarPartDescriptor, TitlebarPart } from '../parts/titlebarPart.js';
-import { activityBarPartDescriptor, ActivityBarPart } from '../parts/activityBarPart.js';
-import { sidebarPartDescriptor, SidebarPart } from '../parts/sidebarPart.js';
-import { editorPartDescriptor, EditorPart } from '../parts/editorPart.js';
-import { auxiliaryBarPartDescriptor } from '../parts/auxiliaryBarPart.js';
-import { panelPartDescriptor } from '../parts/panelPart.js';
-import { statusBarPartDescriptor, StatusBarPart, StatusBarAlignment } from '../parts/statusBarPart.js';
+import { EditorPart } from '../parts/editorPart.js';
+import { StatusBarPart, StatusBarAlignment } from '../parts/statusBarPart.js';
 
 // Layout
-import { Grid } from '../layout/grid.js';
 import { Orientation } from '../layout/layoutTypes.js';
-import { IGridView } from '../layout/gridView.js';
 import { LayoutRenderer } from '../layout/layoutRenderer.js';
 
 // Storage + Persistence
@@ -168,15 +167,6 @@ import {
 } from '../theme/themeCatalog.js';
 import { showColorThemePicker } from './workbenchThemePicker.js';
 import { setupEditorWatermark, updateWatermarkKeybindings } from './workbenchWatermark.js';
-// ── Layout constants ──
-
-const TITLE_HEIGHT = 30;
-const STATUS_HEIGHT = 22;
-const ACTIVITY_BAR_WIDTH = 48;
-const DEFAULT_SIDEBAR_WIDTH = 202;
-const DEFAULT_PANEL_HEIGHT = 200;
-const DEFAULT_AUX_BAR_WIDTH = 250;
-const MIN_EDITOR_WIDTH = 200;
 
 // ── Types ──
 
@@ -190,26 +180,24 @@ export enum WorkbenchState {
 
 /**
  * Root workbench shell. Creates and owns all subsystems.
+ *
+ * VS Code alignment: extends Layout which owns the grid system, part
+ * references, and layout-mutation methods (toggle sidebar/panel/etc).
+ * Workbench adds service wiring, tool registration, and lifecycle.
  */
-export class Workbench extends Disposable {
+export class Workbench extends Layout {
   private _state: WorkbenchState = WorkbenchState.Created;
   private readonly _services: ServiceCollection;
   private _lifecycle: LifecycleService | undefined;
 
   // ── Subsystem instances ──
 
-  private _partRegistry!: PartRegistry;
   private _viewManager!: ViewManager;
   private _dndController!: DragAndDropController;
-  private _hGrid!: Grid;
-  private _vGrid!: Grid;
-  private _editorColumnAdapter!: IGridView & { element: HTMLElement };
-  private _bodyRow!: HTMLElement;
   private _sidebarContainer!: ViewContainer;
   private _panelContainer!: ViewContainer;
   private _auxBarContainer!: ViewContainer;
   private _secondaryActivityBarEl!: HTMLElement;
-  private _auxBarVisible = false;
 
   // Storage + Persistence
   private _storage!: IStorage;
@@ -222,15 +210,6 @@ export class Workbench extends Disposable {
   private _workspaceSaver!: WorkspaceSaver;
   private _saverListeners: IDisposable[] = [];
   private _restoredState: WorkspaceState | undefined;
-
-  // Part refs (cached after creation)
-  private _titlebar!: TitlebarPart;
-  private _activityBarPart!: ActivityBarPart;
-  private _sidebar!: Part;
-  private _editor!: Part;
-  private _auxiliaryBar!: Part;
-  private _panel!: Part;
-  private _statusBar!: Part;
 
   // Context (Capability 8)
   private _contextKeyService!: ContextKeyService;
@@ -269,16 +248,6 @@ export class Workbench extends Disposable {
   /** Header label element for the sidebar. */
   private _sidebarHeaderLabel: HTMLElement | undefined;
 
-  /** Last known sidebar width — used to restore on toggle / persist across sessions. */
-  private _lastSidebarWidth: number = DEFAULT_SIDEBAR_WIDTH;
-  /** Last known panel height — used to restore on toggle / persist across sessions. */
-  private _lastPanelHeight: number = DEFAULT_PANEL_HEIGHT;
-  /** Whether the panel is currently maximized (occupying all vertical space). */
-  private _panelMaximized = false;
-  /** Whether Zen Mode is active (all chrome hidden). */
-  private _zenMode = false;
-  /** Pre–Zen-Mode visibility snapshot for restore. */
-  private _preZenState: { sidebar: boolean; panel: boolean; statusBar: boolean; auxBar: boolean; activityBar: boolean } | null = null;
   /** MutationObservers for tab drag wiring (disconnected on teardown). */
   private _tabObservers: MutationObserver[] = [];
 
@@ -306,10 +275,10 @@ export class Workbench extends Disposable {
   private readonly _folderWatchers = new Map<string, IDisposable>();
 
   constructor(
-    private readonly _container: HTMLElement,
+    container: HTMLElement,
     services?: ServiceCollection,
   ) {
-    super();
+    super(container);
     this._services = services ?? new ServiceCollection();
     this._register(this._services);
   }
@@ -318,33 +287,24 @@ export class Workbench extends Disposable {
 
   get state(): WorkbenchState { return this._state; }
   get services(): ServiceCollection { return this._services; }
-  get container(): HTMLElement { return this._container; }
 
   /**
    * Toggle visibility of the auxiliary bar (secondary sidebar).
-   * When shown, it appears on the right side of the editor area.
+   * Overrides Layout to handle secondary activity bar element + content setup.
    */
-  toggleAuxiliaryBar(): void {
-    if (this._auxBarVisible) {
-      // Hide: remove from hGrid
-      this._hGrid.removeView(this._auxiliaryBar.id);
-      this._auxiliaryBar.setVisible(false);
-      this._secondaryActivityBarEl.classList.add('hidden');
-      this._auxBarVisible = false;
-    } else {
-      // Show: add to hGrid at the end (right of editor column)
-      this._auxiliaryBar.setVisible(true);
-      this._hGrid.addView(this._auxiliaryBar, DEFAULT_AUX_BAR_WIDTH);
-      this._secondaryActivityBarEl.classList.remove('hidden');
-      this._auxBarVisible = true;
+  override toggleAuxiliaryBar(): void {
+    super.toggleAuxiliaryBar();
 
+    // Secondary activity bar element visibility
+    if (this._auxBarVisible) {
+      this._secondaryActivityBarEl.classList.remove('hidden');
       // Ensure the aux bar content is populated
       if (!this._auxBarContainer) {
         this._auxBarContainer = this._setupAuxBarViews();
       }
+    } else {
+      this._secondaryActivityBarEl.classList.add('hidden');
     }
-    this._hGrid.layout();
-    this._layoutViewContainers();
   }
 
   /**
@@ -787,113 +747,15 @@ export class Workbench extends Disposable {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // Phase 2 — Layout: create parts, build grids, assemble DOM
+  // Phase 2 — Layout: delegated to base class (Layout._initializeLayout)
   // ════════════════════════════════════════════════════════════════════════
 
-  private _initializeLayout(): void {
-    // 1. Create part registry and register all standard parts
-    this._partRegistry = this._register(new PartRegistry());
-    this._partRegistry.registerMany([
-      titlebarPartDescriptor,
-      activityBarPartDescriptor,
-      sidebarPartDescriptor,
-      editorPartDescriptor,
-      auxiliaryBarPartDescriptor,
-      panelPartDescriptor,
-      statusBarPartDescriptor,
-    ]);
-    this._partRegistry.createAll();
-
-    // 2. Cache part references
-    this._titlebar = this._partRegistry.requirePart(PartId.Titlebar) as TitlebarPart;
-    this._activityBarPart = this._partRegistry.requirePart(PartId.ActivityBar) as ActivityBarPart;
-    this._sidebar = this._partRegistry.requirePart(PartId.Sidebar) as Part;
-    this._editor = this._partRegistry.requirePart(PartId.Editor) as Part;
-    this._auxiliaryBar = this._partRegistry.requirePart(PartId.AuxiliaryBar) as Part;
-    this._panel = this._partRegistry.requirePart(PartId.Panel) as Part;
-    this._statusBar = this._partRegistry.requirePart(PartId.StatusBar) as Part;
-
-    // 2b. Inject services that parts need before create() — IWindowService for titlebar
+  /**
+   * Hook called by Layout._initializeLayout() after parts are registered
+   * but before Part.create().  Injects IWindowService into the titlebar.
+   */
+  protected override _onBeforePartsCreated(): void {
     this._titlebar.setWindowService(this._services.get(IWindowService));
-
-    // 3. Compute initial dimensions
-    const w = this._container.clientWidth;
-    const h = this._container.clientHeight;
-    const bodyH = h - TITLE_HEIGHT - STATUS_HEIGHT;
-    const sidebarW = this._sidebar.visible ? this._lastSidebarWidth : 0;
-    const auxBarW = this._auxiliaryBar.visible ? DEFAULT_AUX_BAR_WIDTH : 0;
-    const panelH = this._panel.visible ? DEFAULT_PANEL_HEIGHT : 0;
-    const editorAreaW = Math.max(MIN_EDITOR_WIDTH, w - ACTIVITY_BAR_WIDTH - sidebarW - auxBarW - 4);
-    const editorH = bodyH - panelH - (this._panel.visible ? 4 : 0);
-
-    // 4. Create parts into temporary container so their elements exist
-    const tempDiv = document.createElement('div');
-    tempDiv.classList.add('hidden');
-    document.body.appendChild(tempDiv);
-
-    this._titlebar.create(tempDiv);
-    this._activityBarPart.create(tempDiv);
-    this._sidebar.create(tempDiv);
-    this._editor.create(tempDiv);
-    this._auxiliaryBar.create(tempDiv);
-    this._panel.create(tempDiv);
-    this._statusBar.create(tempDiv);
-
-    // 5. Vertical grid: editor | panel (stacked in the right column)
-    this._vGrid = new Grid(Orientation.Vertical, editorAreaW, bodyH);
-    this._vGrid.addView(this._editor, editorH);
-    if (this._panel.visible) {
-      this._vGrid.addView(this._panel, panelH);
-    }
-    this._vGrid.layout();
-
-    // 6. Wrap vGrid in adapter so hGrid can manage it as a leaf
-    this._editorColumnAdapter = this._createEditorColumnAdapter(this._vGrid);
-
-    // 7. Horizontal grid: sidebar | editorColumn
-    const hGridW = w - ACTIVITY_BAR_WIDTH;
-    this._hGrid = new Grid(Orientation.Horizontal, hGridW, bodyH);
-    if (this._sidebar.visible) {
-      this._hGrid.addView(this._sidebar, sidebarW);
-    }
-    this._hGrid.addView(this._editorColumnAdapter, editorAreaW);
-    if (this._auxiliaryBar.visible) {
-      this._hGrid.addView(this._auxiliaryBar, auxBarW);
-    }
-    this._hGrid.layout();
-
-    // 8. Body row: activityBar (Part) + hGrid
-    this._bodyRow = document.createElement('div');
-    this._bodyRow.classList.add('workbench-middle');
-
-    // Mount the ActivityBarPart (M3 Capability 0.2) — replaces ad-hoc div.activity-bar
-    this._bodyRow.appendChild(this._activityBarPart.element);
-    this._activityBarPart.layout(ACTIVITY_BAR_WIDTH, bodyH, Orientation.Vertical);
-
-    // Hide the sidebar's internal activity bar slot (now owned by ActivityBarPart)
-    // CSS .sidebar-activity-bar already sets display:none
-
-    this._bodyRow.appendChild(this._hGrid.element);
-    this._hGrid.element.classList.add('workbench-hgrid');
-
-    this._editorColumnAdapter.element.appendChild(this._vGrid.element);
-    this._vGrid.element.classList.add('workbench-vgrid');
-
-    // 9. Assemble final DOM
-    this._container.appendChild(this._titlebar.element);
-    this._titlebar.layout(w, TITLE_HEIGHT, Orientation.Horizontal);
-
-    this._container.appendChild(this._bodyRow);
-    // .workbench-middle CSS already sets flex: 1 1 0 and min-height: 0
-
-    this._container.appendChild(this._statusBar.element);
-    this._statusBar.layout(w, STATUS_HEIGHT, Orientation.Horizontal);
-
-    tempDiv.remove();
-
-    // 10. Initialize sash drag on both grids
-    this._hGrid.initializeSashDrag();
-    this._vGrid.initializeSashDrag();
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -934,83 +796,33 @@ export class Workbench extends Disposable {
     // 5. DnD between parts
     this._dndController = this._setupDragAndDrop();
 
-    // 6. Layout view containers
+    // 6. Layout view containers + wire grid sash handlers (from Layout base)
     this._layoutViewContainers();
+    this._wireGridHandlers();
 
-    // 7. React to sash-drag grid changes
-    this._hGrid.onDidChange(() => this._layoutViewContainers());
-    this._vGrid.onDidChange(() => this._layoutViewContainers());
-
-    // 7a. Track sidebar width after sash drags so toggleSidebar() restores the right size
-    this._hGrid.onDidChange(() => {
-      if (this._sidebar.visible) {
-        const w = this._hGrid.getViewSize(this._sidebar.id);
-        if (w !== undefined && w > 0) {
-          this._lastSidebarWidth = w;
-        }
-      }
-    });
-
-    // 7b. Double-click sash resets sidebar to default width (VS Code parity: Sash.onDidReset)
-    this._hGrid.onDidSashReset(({ sashIndex }) => {
-      if (sashIndex === 0 && this._sidebar.visible) {
-        const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
-        if (currentWidth !== undefined) {
-          const delta = DEFAULT_SIDEBAR_WIDTH - currentWidth;
-          if (delta !== 0) {
-            this._hGrid.resizeSash(this._hGrid.root, 0, delta);
-            this._hGrid.layout();
-            this._lastSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
-          }
-        }
-      }
-    });
-
-    // 7c. Track panel height after sash drags so togglePanel() restores the right size
-    //     Also reset _panelMaximized if user manually drags sash while maximized
-    //     (VS Code parity: isPanelMaximized() is derived from editor visibility,
-    //      so it auto-corrects; our boolean flag needs explicit reset)
-    this._vGrid.onDidChange(() => {
-      if (this._panel.visible) {
-        if (this._panelMaximized) {
-          // Any manual sash drag while maximized exits the maximized state
-          this._panelMaximized = false;
-          this._workbenchContext.setPanelMaximized(false);
-        }
-        const h = this._vGrid.getViewSize(this._panel.id);
-        if (h !== undefined && h > 0) {
-          this._lastPanelHeight = h;
-        }
-      }
-    });
-
-    // 7d. Double-click sash resets panel to default height (VS Code parity: Sash.onDidReset)
-    this._vGrid.onDidSashReset(({ sashIndex }) => {
-      if (sashIndex === 0 && this._panel.visible) {
-        const currentHeight = this._vGrid.getViewSize(this._panel.id);
-        if (currentHeight !== undefined) {
-          const delta = DEFAULT_PANEL_HEIGHT - currentHeight;
-          if (delta !== 0) {
-            this._vGrid.resizeSash(this._vGrid.root, 0, delta);
-            this._vGrid.layout();
-            this._lastPanelHeight = DEFAULT_PANEL_HEIGHT;
-            this._panelMaximized = false;
-            this._workbenchContext.setPanelMaximized(false);
-          }
-        }
-      }
-    });
-
-    // 8. Window resize handler
+    // 7. Window resize handler
     window.addEventListener('resize', this._onWindowResize);
 
-    // 9. Command system: wire up and register built-in commands
+    // 8. Command system: wire up and register built-in commands
     this._initializeCommands();
 
-    // 10. Context system (Capability 8): context keys, focus tracking, when-clause evaluation
+    // 9. Context system (Capability 8): context keys, focus tracking, when-clause evaluation
     this._initializeContext();
 
-    // 11. Wire view/title actions and context menus to stacked containers
+    // 9b. Subscribe to Layout events for context key updates
+    this._register(this.onDidChangeZenMode((active) => {
+      this._workbenchContext.setZenMode(active);
+    }));
+    this._register(this.onDidChangePanelMaximized((maximized) => {
+      this._workbenchContext.setPanelMaximized(maximized);
+    }));
+    this._register(this.onDidChangePartVisibility(({ partId }) => {
+      if (partId === PartId.StatusBar) {
+        this._workspaceSaver?.requestSave();
+      }
+    }));
+
+    // 10. Wire view/title actions and context menus to stacked containers
     for (const vc of this._builtinSidebarContainers.values()) {
       this._wireSectionMenus(vc);
     }
@@ -1331,74 +1143,6 @@ export class Workbench extends Disposable {
       this._hGrid.onDidChange(() => this._workspaceSaver.requestSave()),
       this._vGrid.onDidChange(() => this._workspaceSaver.requestSave()),
     ];
-  }
-
-  // ════════════════════════════════════════════════════════════════════════
-  // Window resize handler (arrow fn keeps `this` binding)
-  // ════════════════════════════════════════════════════════════════════════
-
-  /** Public relayout entry point for commands that change part visibility. */
-  _relayout(): void {
-    this._onWindowResize();
-  }
-
-  private _onWindowResize = (): void => {
-    const rw = this._container.clientWidth;
-    const rh = this._container.clientHeight;
-    const statusH = this._statusBar.visible ? STATUS_HEIGHT : 0;
-    const rbodyH = rh - TITLE_HEIGHT - statusH;
-
-    this._titlebar.layout(rw, TITLE_HEIGHT, Orientation.Horizontal);
-    if (this._statusBar.visible) {
-      this._statusBar.layout(rw, STATUS_HEIGHT, Orientation.Horizontal);
-    }
-
-    // Re-layout activity bar (not in hGrid, so must be done explicitly)
-    const activityBarHidden = this._activityBarPart.element.classList.contains('hidden');
-    const activityBarW = activityBarHidden ? 0 : ACTIVITY_BAR_WIDTH;
-    if (!activityBarHidden) {
-      this._activityBarPart.layout(ACTIVITY_BAR_WIDTH, rbodyH, Orientation.Vertical);
-    }
-
-    // Resize hGrid (cascades to vGrid via editorColumnAdapter)
-    this._hGrid.resize(rw - activityBarW, rbodyH);
-
-    this._layoutViewContainers();
-  };
-
-  // ════════════════════════════════════════════════════════════════════════
-  // Editor Column Adapter
-  // ════════════════════════════════════════════════════════════════════════
-
-  private _createEditorColumnAdapter(vGrid: Grid): IGridView & { element: HTMLElement } {
-    const wrapper = document.createElement('div');
-    wrapper.classList.add('editor-column');
-
-    const emitter = new Emitter<void>();
-
-    return {
-      element: wrapper,
-      id: 'workbench.editorColumn',
-      minimumWidth: MIN_EDITOR_WIDTH,
-      maximumWidth: Number.POSITIVE_INFINITY,
-      minimumHeight: 0,
-      maximumHeight: Number.POSITIVE_INFINITY,
-      layout(width: number, height: number, _orientation: Orientation): void {
-        wrapper.style.width = `${width}px`;
-        wrapper.style.height = `${height}px`;
-        vGrid.resize(width, height);
-      },
-      setVisible(visible: boolean): void {
-        wrapper.classList.toggle('hidden', !visible);
-      },
-      toJSON(): object {
-        return { id: 'workbench.editorColumn', type: 'adapter' };
-      },
-      onDidChangeConstraints: emitter.event,
-      dispose(): void {
-        emitter.dispose();
-      },
-    };
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -3031,56 +2775,6 @@ export class Workbench extends Disposable {
   }
 
   /**
-   * Toggle primary sidebar visibility.
-   *
-   * VS Code reference: ViewContainerActivityAction.run() — clicking active icon toggles sidebar.
-   * Remembers width before collapse and restores it on expand.
-   */
-  toggleSidebar(): void {
-    const el = this._sidebar.element;
-
-    if (this._sidebar.visible) {
-      // Save current width before collapsing so we can restore later
-      const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
-      if (currentWidth !== undefined && currentWidth > 0) {
-        this._lastSidebarWidth = currentWidth;
-      }
-
-      // Animate out, then remove from grid
-      el.classList.add('sidebar-animating', 'sidebar-collapsed');
-      let finished = false;
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        el.removeEventListener('transitionend', finish);
-        el.classList.remove('sidebar-animating', 'sidebar-collapsed');
-        this._hGrid.removeView(this._sidebar.id);
-        this._sidebar.setVisible(false);
-        this._hGrid.layout();
-        this._layoutViewContainers();
-      };
-      el.addEventListener('transitionend', finish, { once: true });
-      // Safety fallback in case transitionend is missed
-      setTimeout(finish, 200);
-    } else {
-      // Add to grid, then animate in
-      this._sidebar.setVisible(true);
-      el.classList.add('sidebar-animating', 'sidebar-collapsed');
-      this._hGrid.addView(this._sidebar as any, this._lastSidebarWidth, 0);
-      this._hGrid.layout();
-      this._layoutViewContainers();
-
-      // Force reflow so the initial collapsed state is rendered before removing the class
-      void el.offsetWidth;
-      el.classList.remove('sidebar-collapsed');
-      el.addEventListener('transitionend', () => {
-        el.classList.remove('sidebar-animating');
-      }, { once: true });
-      setTimeout(() => el.classList.remove('sidebar-animating'), 200);
-    }
-  }
-
-  /**
    * Programmatically switch to a specific sidebar view and ensure sidebar is visible.
    * Used by commands like `workbench.view.search` (Ctrl+Shift+F).
    *
@@ -3094,243 +2788,6 @@ export class Workbench extends Disposable {
     // Switch to the requested container (builtin containers use viewId as key)
     if (this._builtinSidebarContainers.has(viewId) || this._contributedSidebarContainers.has(viewId)) {
       this._switchSidebarContainer(viewId);
-    }
-  }
-
-  /**
-   * Toggle panel visibility.
-   *
-   * VS Code reference: TogglePanelAction (workbench.action.togglePanel, Ctrl+J).
-   * Remembers height before collapse and restores it on expand.
-   */
-  togglePanel(): void {
-    if (this._panel.visible) {
-      // Save current height before collapsing
-      const currentHeight = this._vGrid.getViewSize(this._panel.id);
-      if (currentHeight !== undefined && currentHeight > 0) {
-        this._lastPanelHeight = currentHeight;
-      }
-      this._vGrid.removeView(this._panel.id);
-      this._panel.setVisible(false);
-      this._panelMaximized = false;
-      this._workbenchContext.setPanelMaximized(false);
-    } else {
-      this._panel.setVisible(true);
-      this._vGrid.addView(this._panel as any, this._lastPanelHeight);
-      this._panelMaximized = false;
-      this._workbenchContext.setPanelMaximized(false);
-    }
-    this._vGrid.layout();
-    this._layoutViewContainers();
-  }
-
-  /**
-   * Toggle panel between normal and maximized height.
-   *
-   * VS Code reference: toggleMaximizedPanel — stores non-maximized height,
-   * sets panel to fill all vertical space (editor gets minimum), restores on
-   * second toggle.
-   */
-  toggleMaximizedPanel(): void {
-    if (!this._panel.visible) {
-      // Show + maximize in one go
-      this._panel.setVisible(true);
-      this._vGrid.addView(this._panel as any, this._lastPanelHeight);
-      this._vGrid.layout();
-      // Now maximize
-    }
-
-    if (this._panelMaximized) {
-      // Restore to previous non-maximized height
-      const currentHeight = this._vGrid.getViewSize(this._panel.id);
-      if (currentHeight !== undefined) {
-        const delta = this._lastPanelHeight - currentHeight;
-        if (delta !== 0) {
-          this._vGrid.resizeSash(this._vGrid.root, 0, delta);
-          this._vGrid.layout();
-        }
-      }
-      this._panelMaximized = false;
-      this._workbenchContext.setPanelMaximized(false);
-    } else {
-      // Save current height, then maximize panel (give editor minimum)
-      const currentHeight = this._vGrid.getViewSize(this._panel.id);
-      if (currentHeight !== undefined && currentHeight > 0) {
-        this._lastPanelHeight = currentHeight;
-      }
-      // Calculate how much to grow: vGrid total height minus a thin editor minimum
-      const editorMin = 30; // minimal editor strip when maximized
-      const editorSize = this._vGrid.getViewSize(this._editor.id);
-      if (editorSize !== undefined) {
-        const delta = editorSize - editorMin;
-        if (delta > 0) {
-          this._vGrid.resizeSash(this._vGrid.root, 0, -delta);
-          this._vGrid.layout();
-        }
-      }
-      this._panelMaximized = true;
-      this._workbenchContext.setPanelMaximized(true);
-    }
-    this._layoutViewContainers();
-  }
-
-  /**
-   * Toggle status bar visibility.
-   *
-   * VS Code reference: ToggleStatusbarVisibilityAction
-   * (workbench.action.toggleStatusbarVisibility).
-   * Status bar is a fixed-height (22 px) strip — no sash resizing needed.
-   * Visibility is persisted through WorkspaceSaver (part snapshot).
-   */
-  toggleStatusBar(): void {
-    const visible = !this._statusBar.visible;
-    this._statusBar.setVisible(visible);
-    this._workbenchContext.setStatusBarVisible(visible);
-    this._relayout();
-    this._workspaceSaver.requestSave();
-  }
-
-  /**
-   * Toggle Zen Mode — hide all chrome to focus on the editor.
-   *
-   * VS Code reference: ToggleZenMode (workbench.action.toggleZenMode, Ctrl+K Z).
-   * Saves visibility state of all parts before entering, restores on exit.
-   */
-  toggleZenMode(): void {
-    if (this._zenMode) {
-      // ── Exit Zen Mode ──
-      this._zenMode = false;
-      this._workbenchContext.setZenMode(false);
-      this._container.classList.remove('zenMode');
-
-      // Restore pre-zen visibility state
-      const s = this._preZenState;
-      if (s) {
-        if (s.sidebar && !this._sidebar.visible) {
-          this._sidebar.setVisible(true);
-          this._hGrid.addView(this._sidebar as any, this._lastSidebarWidth, 0);
-        }
-        if (s.panel && !this._panel.visible) {
-          this._panel.setVisible(true);
-          this._vGrid.addView(this._panel as any, this._lastPanelHeight);
-        }
-        if (s.statusBar && !this._statusBar.visible) {
-          this._statusBar.setVisible(true);
-          this._workbenchContext.setStatusBarVisible(true);
-        }
-        if (s.auxBar && !this._auxiliaryBar.visible) {
-          this.toggleAuxiliaryBar();
-        }
-        if (s.activityBar) {
-          this._activityBarPart.element.classList.remove('hidden');
-        }
-        this._preZenState = null;
-      }
-
-      this._hGrid.layout();
-      this._vGrid.layout();
-      this._relayout();
-      this._layoutViewContainers();
-    } else {
-      // ── Enter Zen Mode ──
-      // Snapshot current visibility
-      this._preZenState = {
-        sidebar: this._sidebar.visible,
-        panel: this._panel.visible,
-        statusBar: this._statusBar.visible,
-        auxBar: this._auxBarVisible,
-        activityBar: !this._activityBarPart.element.classList.contains('hidden'),
-      };
-      this._zenMode = true;
-      this._workbenchContext.setZenMode(true);
-      this._container.classList.add('zenMode');
-
-      // Hide sidebar
-      if (this._sidebar.visible) {
-        const w = this._hGrid.getViewSize(this._sidebar.id);
-        if (w !== undefined && w > 0) this._lastSidebarWidth = w;
-        this._hGrid.removeView(this._sidebar.id);
-        this._sidebar.setVisible(false);
-      }
-
-      // Hide panel
-      if (this._panel.visible) {
-        const h = this._vGrid.getViewSize(this._panel.id);
-        if (h !== undefined && h > 0) this._lastPanelHeight = h;
-        this._vGrid.removeView(this._panel.id);
-        this._panel.setVisible(false);
-        this._panelMaximized = false;
-        this._workbenchContext.setPanelMaximized(false);
-      }
-
-      // Hide status bar
-      if (this._statusBar.visible) {
-        this._statusBar.setVisible(false);
-        this._workbenchContext.setStatusBarVisible(false);
-      }
-
-      // Hide auxiliary bar
-      if (this._auxBarVisible) {
-        this.toggleAuxiliaryBar();
-      }
-
-      // Hide activity bar
-      this._activityBarPart.element.classList.add('hidden');
-
-      this._hGrid.layout();
-      this._vGrid.layout();
-      this._relayout();
-      this._layoutViewContainers();
-    }
-  }
-
-  // ── LayoutHost Protocol ──────────────────────────────────────────────────
-  // These methods fulfil the LayoutHost interface expected by LayoutService.
-  // VS Code reference: IWorkbenchLayoutService.isVisible / setPartHidden.
-
-  /**
-   * Check whether a part is currently visible by its PartId.
-   */
-  isPartVisible(partId: string): boolean {
-    switch (partId) {
-      case PartId.Sidebar: return this._sidebar.visible;
-      case PartId.Panel: return this._panel.visible;
-      case PartId.AuxiliaryBar: return this._auxiliaryBar.visible;
-      case PartId.StatusBar: return this._statusBar!.visible;
-      case PartId.ActivityBar: return true; // always visible
-      case PartId.Titlebar: return true;    // always visible
-      case PartId.Editor: return true;      // always visible
-      default: return false;
-    }
-  }
-
-  /**
-   * Show or hide a part by its PartId.
-   * Dispatches to the relevant toggle method following VS Code's
-   * `setPartHidden → setSideBarHidden / setPanelHidden` pattern.
-   */
-  setPartHidden(hidden: boolean, partId: string): void {
-    const isVisible = this.isPartVisible(partId);
-    // No-op if already in the desired state
-    if (hidden === !isVisible) return;
-
-    switch (partId) {
-      case PartId.Sidebar:
-        this.toggleSidebar();
-        break;
-      case PartId.Panel:
-        this.togglePanel();
-        break;
-      case PartId.AuxiliaryBar:
-        this.toggleAuxiliaryBar();
-        break;
-      case PartId.StatusBar:
-        this.toggleStatusBar();
-        break;
-      // Titlebar, Editor, ActivityBar — not toggleable
-      default:
-        console.warn(`[Workbench] setPartHidden not supported for "${partId}"`);
-        break;
     }
   }
 
@@ -3792,7 +3249,7 @@ export class Workbench extends Disposable {
   // Layout view containers
   // ════════════════════════════════════════════════════════════════════════
 
-  private _layoutViewContainers(): void {
+  protected override _layoutViewContainers(): void {
     if (this._sidebar.visible && this._sidebar.width > 0) {
       const headerH = 35;
       const sidebarW = this._sidebar.width;
