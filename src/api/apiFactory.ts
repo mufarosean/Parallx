@@ -24,7 +24,7 @@ import type { ToolRegistry, IToolEntry } from '../tools/toolRegistry.js';
 import type { StatusBarPart, StatusBarEntryAccessor } from '../parts/statusBarPart.js';
 import { StatusBarAlignment } from '../parts/statusBarPart.js';
 import { PARALLX_VERSION } from './apiVersionValidation.js';
-import { NotificationService } from './notificationService.js';
+import type { INotificationService } from '../services/serviceTypes.js';
 import { CommandsBridge } from './bridges/commandsBridge.js';
 import { ViewsBridge } from './bridges/viewsBridge.js';
 import { WindowBridge } from './bridges/windowBridge.js';
@@ -49,7 +49,7 @@ export interface ApiFactoryDependencies {
   readonly services: ServiceCollection;
   readonly viewManager: ViewManager;
   readonly toolRegistry: ToolRegistry;
-  readonly notificationService: NotificationService;
+  readonly notificationService: INotificationService;
   readonly workbenchContainer: HTMLElement | undefined;
   readonly configurationService?: ConfigurationService;
   readonly commandContributionProcessor?: CommandContributionProcessor;

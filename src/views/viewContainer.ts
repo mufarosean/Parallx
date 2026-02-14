@@ -61,6 +61,11 @@ export class ViewContainer extends Disposable implements IGridView {
   private _mode: ViewContainerMode = 'tabbed';
   private _collapsedSections = new Set<string>();
   private _sectionElements = new Map<string, { wrapper: HTMLElement; header: HTMLElement; body: HTMLElement; actionsSlot: HTMLElement }>();
+
+  /** Public accessor for a section's actions slot element. */
+  getSectionActionsSlot(viewId: string): HTMLElement | undefined {
+    return this._sectionElements.get(viewId)?.actionsSlot;
+  }
   private _sectionSashes: HTMLElement[] = [];
 
   static readonly SECTION_HEADER_HEIGHT = 22;

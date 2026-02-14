@@ -197,6 +197,7 @@ export class Workbench extends Layout {
 
   // Workspace
   private _workspace!: Workspace;
+  private _switching = false;
   private _workspaceLoader!: WorkspaceLoader;
   private _workspaceSaver!: WorkspaceSaver;
   private _saverListeners: IDisposable[] = [];
@@ -408,7 +409,7 @@ export class Workbench extends Layout {
       console.warn('[Workbench] Cannot switch workspace while in state:', this._state);
       return;
     }
-    if ((this as any)._switching) {
+    if (this._switching) {
       console.warn('[Workbench] Workspace switch already in progress — ignoring');
       return;
     }
@@ -417,7 +418,7 @@ export class Workbench extends Layout {
       return;
     }
 
-    (this as any)._switching = true;
+    this._switching = true;
     console.log('[Workbench] Switching workspace → %s', targetId);
     const overlay = this._showTransitionOverlay();
 
@@ -467,7 +468,7 @@ export class Workbench extends Layout {
     } catch (err) {
       console.error('[Workbench] Workspace switch failed:', err);
     } finally {
-      (this as any)._switching = false;
+      this._switching = false;
       this._removeTransitionOverlay(overlay);
     }
   }
@@ -504,7 +505,7 @@ export class Workbench extends Layout {
    */
   private _startWorkspaceFolderWatchers(): void {
     if (!this._services.has(IFileService)) return;
-    const fileService = this._services.get(IFileService) as any;
+    const fileService = this._services.get(IFileService);
 
     // Watch each current folder
     const watchFolder = async (folderUri: string) => {
@@ -732,7 +733,7 @@ export class Workbench extends Layout {
     const themeData = resolveTheme(themeEntry, colorRegistry);
     const themeService = this._register(new ThemeService(colorRegistry, themeData));
     themeService.applyTheme(themeData);
-    this._services.registerInstance(IThemeService, themeService as any);
+    this._services.registerInstance(IThemeService, themeService);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -834,7 +835,7 @@ export class Workbench extends Layout {
     // Wire editor group service for Go to Line provider
     const editorGroupSvc = this._services.get(IEditorGroupService);
     if (editorGroupSvc && this._commandPalette) {
-      this._commandPalette.setEditorGroupService(editorGroupSvc as any);
+      this._commandPalette.setEditorGroupService(editorGroupSvc);
     }
 
     console.log(
@@ -1443,13 +1444,13 @@ export class Workbench extends Layout {
     electron.onBeforeClose(async () => {
       // Collect dirty models
       const tfm = this._services.has(ITextFileModelManager)
-        ? (this._services.get(ITextFileModelManager) as any)
+        ? this._services.get(ITextFileModelManager)
         : undefined;
       const dirtyModels: { name: string; isDirty: boolean; save: () => Promise<void> }[] = [];
       if (tfm?.models) {
         for (const model of tfm.models) {
           if (model.isDirty && !model.isDisposed) {
-            dirtyModels.push(model);
+            dirtyModels.push({ name: model.uri.basename, isDirty: model.isDirty, save: () => model.save() });
           }
         }
       }
@@ -1481,7 +1482,7 @@ export class Workbench extends Layout {
       if (result.response === 0) {
         // Save All
         try {
-          await tfm.saveAll();
+          await tfm!.saveAll();
         } catch (err) {
           console.error('[Workbench] Error saving files before close:', err);
           // If save fails, don't close — let user fix and try again
@@ -1508,9 +1509,9 @@ export class Workbench extends Layout {
 
     // Render actions for any sections already created
     for (const viewId of container.getViews().map(v => v.id)) {
-      const section = (container as any)._sectionElements?.get(viewId);
-      if (section?.actionsSlot) {
-        this._menuContribution.renderViewTitleActions(viewId, section.actionsSlot);
+      const actionsSlot = container.getSectionActionsSlot(viewId);
+      if (actionsSlot) {
+        this._menuContribution.renderViewTitleActions(viewId, actionsSlot);
       }
     }
 
@@ -1883,7 +1884,7 @@ export class Workbench extends Layout {
 
     // Update resource context keys from active editor
     if (this._workbenchContext && editor) {
-      const editorUri = (editor as any).uri as string | undefined;
+      const editorUri = editor.uri?.toString();
       if (editorUri) {
         try {
           const uri = URI.parse(editorUri);
@@ -1914,7 +1915,17 @@ export class Workbench extends Layout {
   private _registerFacadeServices(): void {
     // Layout service — delegates to grids
     const layoutService = new LayoutService();
-    layoutService.setHost(this as any);
+    // Adapter satisfies LayoutHost without `as any` on the Workbench's protected members
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    layoutService.setHost({
+      get container() { return self._container; },
+      get _hGrid() { return self._hGrid; },
+      get _vGrid() { return self._vGrid; },
+      _layoutViewContainers: () => this._layoutViewContainers(),
+      isPartVisible: (partId: string) => this.isPartVisible(partId),
+      setPartHidden: (hidden: boolean, partId: string) => this.setPartHidden(hidden, partId),
+    });
     this._register(layoutService);
     this._services.registerInstance(ILayoutService, layoutService);
 
@@ -1925,7 +1936,15 @@ export class Workbench extends Layout {
 
     // Workspace service — delegates to workbench workspace operations
     const workspaceService = new WorkspaceService();
-    workspaceService.setHost(this as any);
+    workspaceService.setHost({
+      get workspace() { return self._workspace; },
+      get _workspaceSaver() { return self._workspaceSaver; },
+      createWorkspace: (name: string, path?: string, switchTo?: boolean) => self.createWorkspace(name, path, switchTo),
+      switchWorkspace: (id: string) => self.switchWorkspace(id),
+      getRecentWorkspaces: () => self.getRecentWorkspaces(),
+      removeRecentWorkspace: (id: string) => self.removeRecentWorkspace(id),
+      get onDidSwitchWorkspace() { return self.onDidSwitchWorkspace; },
+    });
     this._register(workspaceService);
     this._services.registerInstance(IWorkspaceService, workspaceService);
 
@@ -1941,7 +1960,7 @@ export class Workbench extends Layout {
     // Notification service — attach toast container to the workbench DOM
     if (this._services.has(INotificationService)) {
       const notificationService = this._services.get(INotificationService);
-      (notificationService as any).attach(this._container);
+      notificationService.attach(this._container);
     }
 
     console.log('[Workbench] Facade services registered (layout, view, workspace)');
@@ -1961,7 +1980,7 @@ export class Workbench extends Layout {
     const activationEvents = this._services.get(IActivationEventService) as unknown as ActivationEventService;
     const errorService = this._services.get(IToolErrorService) as unknown as ToolErrorService;
     const notificationService = this._services.has(INotificationService)
-      ? this._services.get(INotificationService) as any
+      ? this._services.get(INotificationService)
       : undefined;
 
     // Register contribution processors (M2 Capability 5)
@@ -2006,7 +2025,7 @@ export class Workbench extends Layout {
       services: this._services,
       viewManager: this._viewManager,
       toolRegistry: registry,
-      notificationService,
+      notificationService: notificationService!,
       workbenchContainer: this._container,
       configurationService: this._configService,
       commandContributionProcessor: commandContribution,
@@ -2027,7 +2046,7 @@ export class Workbench extends Layout {
     this._toolActivator = this._register(
       new ToolActivator(registry, errorService, activationEvents, apiFactoryDeps, storageDeps),
     );
-    this._services.registerInstance(IToolActivatorService, this._toolActivator as any);
+    this._services.registerInstance(IToolActivatorService, this._toolActivator);
 
     // Wire activation events to the activator
     this._register(activationEvents.onActivationRequested(async (request) => {
@@ -2051,7 +2070,7 @@ export class Workbench extends Layout {
 
     // Wire keybinding lookup and command executor into TitlebarPart (M3 Capability 1)
     this._titlebar.setKeybindingLookup(keybindingService);
-    this._titlebar.setCommandExecutor(this._services.get(ICommandService) as any);
+    this._titlebar.setCommandExecutor(this._services.get(ICommandService));
 
     // Wire context key evaluator for menu when-clause graying (M4)
     if (this._contextKeyService) {
@@ -2139,13 +2158,13 @@ export class Workbench extends Layout {
     const resolver = new EditorResolverService();
     this._register(resolver);
 
-    const textFileModelManager = this._services.get(ITextFileModelManager) as any;
-    const fileService = this._services.get(IFileService) as any;
+    const textFileModelManager = this._services.get(ITextFileModelManager);
+    const fileService = this._services.get(IFileService);
 
     // Helper: compute workspace-relative path for tab description
     const getRelativePath = (uri: URI): string | undefined => {
       const workspaceService = this._services.has(IWorkspaceService)
-        ? this._services.get(IWorkspaceService) as any
+        ? this._services.get(IWorkspaceService)
         : undefined;
       if (workspaceService?.folders) {
         for (const folder of workspaceService.folders) {
@@ -2319,13 +2338,13 @@ export class Workbench extends Layout {
     if (!this._commandPalette) return;
 
     const fileService = this._services.has(IFileService)
-      ? this._services.get(IFileService) as any
+      ? this._services.get(IFileService)
       : undefined;
     const workspaceService = this._services.has(IWorkspaceService)
-      ? this._services.get(IWorkspaceService) as any
+      ? this._services.get(IWorkspaceService)
       : undefined;
     const editorService = this._services.has(IEditorService)
-      ? this._services.get(IEditorService) as any
+      ? this._services.get(IEditorService)
       : undefined;
 
     if (!fileService || !workspaceService) {
@@ -2359,7 +2378,7 @@ export class Workbench extends Layout {
       async (uriString: string) => {
         try {
           const uri = URI.parse(uriString);
-          const textFileModelManager = this._services.get(ITextFileModelManager) as any;
+          const textFileModelManager = this._services.get(ITextFileModelManager);
           // Deduplicate — reuse existing input if same file is already open
           const existing = this._findOpenEditorInput(uri);
           const input = existing ?? FileEditorInput.create(
@@ -2853,7 +2872,7 @@ export class Workbench extends Layout {
 
     // Wire command executor so entry clicks execute commands via CommandService
     // VS Code parity: StatusbarEntryItem uses ICommandService.executeCommand()
-    const commandService = this._services.get(ICommandService) as any;
+    const commandService = this._services.get(ICommandService);
     if (commandService) {
       sb.setCommandExecutor((cmdId: string) => {
         commandService.executeCommand(cmdId);
@@ -3215,9 +3234,13 @@ export class Workbench extends Layout {
     };
 
     // Register the toggle command
-    const commandService = this._services.get(ICommandService) as any;
+    const commandService = this._services.get(ICommandService);
     if (commandService?.registerCommand) {
-      commandService.registerCommand('workbench.action.toggleNotificationCenter', () => showCenter());
+      commandService.registerCommand({
+        id: 'workbench.action.toggleNotificationCenter',
+        title: 'Toggle Notification Center',
+        handler: () => showCenter(),
+      });
     }
   }
 

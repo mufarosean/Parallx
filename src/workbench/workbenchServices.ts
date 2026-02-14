@@ -53,11 +53,11 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
 
   // ── File Service (M4 Capability 1) ──
   const fileService = new FileService();
-  services.registerInstance(IFileService, fileService as any);
+  services.registerInstance(IFileService, fileService);
 
   // ── Text File Model Manager (M4 Capability 1) ──
   const textFileModelManager = new TextFileModelManager(fileService);
-  services.registerInstance(ITextFileModelManager, textFileModelManager as any);
+  services.registerInstance(ITextFileModelManager, textFileModelManager);
 
   // Note: IToolActivatorService is registered in the workbench after
   // all dependencies (API factory deps) are available.
@@ -84,7 +84,7 @@ export function registerConfigurationServices(
   const configRegistry = new ConfigurationRegistry();
   const configService = new ConfigurationService(storage, configRegistry);
 
-  services.registerInstance(IConfigurationService, configService as any);
+  services.registerInstance(IConfigurationService, configService);
 
   return { configService, configRegistry };
 }
@@ -116,7 +116,7 @@ export function registerContributionProcessors(
 
   // Wire context key service if available
   if (services.has(IContextKeyService)) {
-    const contextKeyService = services.get(IContextKeyService) as any;
+    const contextKeyService = services.get(IContextKeyService);
     keybindingContribution.setContextKeyService(contextKeyService);
     menuContribution.setContextKeyService(contextKeyService);
     keybindingService.setContextKeyService(contextKeyService);
@@ -126,10 +126,10 @@ export function registerContributionProcessors(
   // to the centralized service instead of its own listener
   keybindingContribution.setKeybindingService(keybindingService);
 
-  services.registerInstance(ICommandContributionService, commandContribution as any);
-  services.registerInstance(IKeybindingContributionService, keybindingContribution as any);
-  services.registerInstance(IMenuContributionService, menuContribution as any);
-  services.registerInstance(IKeybindingService, keybindingService as any);
+  services.registerInstance(ICommandContributionService, commandContribution);
+  services.registerInstance(IKeybindingContributionService, keybindingContribution);
+  services.registerInstance(IMenuContributionService, menuContribution);
+  services.registerInstance(IKeybindingService, keybindingService);
 
   return { commandContribution, keybindingContribution, menuContribution, keybindingService };
 }
@@ -143,6 +143,6 @@ export function registerViewContributionProcessor(
   viewManager: ViewManager,
 ): ViewContributionProcessor {
   const viewContribution = new ViewContributionProcessor(viewManager);
-  services.registerInstance(IViewContributionService, viewContribution as any);
+  services.registerInstance(IViewContributionService, viewContribution);
   return viewContribution;
 }

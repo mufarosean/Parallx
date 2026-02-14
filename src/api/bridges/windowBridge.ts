@@ -4,12 +4,12 @@
 
 import { IDisposable } from '../../platform/lifecycle.js';
 import {
-  NotificationService,
   NotificationSeverity,
   showInputBoxModal,
   showQuickPickModal,
   type NotificationAction,
 } from '../notificationService.js';
+import type { INotificationService } from '../../services/serviceTypes.js';
 
 /**
  * Bridge for the `parallx.window` API namespace.
@@ -20,7 +20,7 @@ export class WindowBridge {
 
   constructor(
     private readonly _toolId: string,
-    private readonly _notificationService: NotificationService,
+    private readonly _notificationService: INotificationService,
     private readonly _workbenchContainer: HTMLElement | undefined,
     private readonly _subscriptions: IDisposable[],
   ) {}

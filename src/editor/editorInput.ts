@@ -22,6 +22,9 @@ export interface IEditorInput extends IDisposable {
   /** Type identifier for editor resolution (e.g. 'text', 'diff', 'welcome'). */
   readonly typeId: string;
 
+  /** Optional resource URI (set by file-backed inputs like FileEditorInput). */
+  readonly uri?: import('../platform/uri.js').URI;
+
   /** Display name shown in the editor tab. */
   readonly name: string;
 
