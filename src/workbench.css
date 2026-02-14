@@ -187,6 +187,16 @@ html, body {
   background: var(--vscode-sideBar-background);
   border-right: 1px solid var(--vscode-sideBar-border);
   margin-bottom: 0; /* ensure border runs full height */
+  overflow: hidden;
+}
+
+/* Sidebar collapse / expand animation */
+.part-workbench-parts-sidebar.sidebar-animating {
+  transition: opacity 150ms ease-out, transform 150ms ease-out;
+}
+.part-workbench-parts-sidebar.sidebar-collapsed {
+  opacity: 0;
+  transform: translateX(-12px);
 }
 
 .sidebar-header {
@@ -793,6 +803,11 @@ html, body {
 .grid-sash:hover {
   background: var(--vscode-sash-hoverBorder);
   transition-delay: 0.15s;
+}
+
+.grid-sash.active {
+  background: var(--vscode-sash-hoverBorder);
+  transition-delay: 0s;
 }
 
 .grid-sash-vertical {
@@ -1928,4 +1943,12 @@ html, body {
   color: var(--vscode-descriptionForeground);
   font-size: 11px;
   line-height: 18px;
+}
+
+/* ── Zen Mode ── */
+/* VS Code parity: entering Zen Mode hides sidebar, panel, status bar, activity bar.
+   The editor gets full space. A subtle border-top hint remains on the title bar. */
+.zenMode .part-workbench-parts-activitybar.hidden {
+  display: none !important;
+  width: 0 !important;
 }

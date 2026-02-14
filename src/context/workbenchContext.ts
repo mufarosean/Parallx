@@ -20,6 +20,7 @@ export const CTX_PANEL_VISIBLE = 'panelVisible';
 export const CTX_PANEL_MAXIMIZED = 'panelMaximized';
 export const CTX_AUXILIARY_BAR_VISIBLE = 'auxiliaryBarVisible';
 export const CTX_STATUS_BAR_VISIBLE = 'statusBarVisible';
+export const CTX_ZEN_MODE = 'isZenMode';
 
 export const CTX_ACTIVE_PART = 'activePart';
 export const CTX_ACTIVE_VIEW = 'activeView';
@@ -79,6 +80,7 @@ export class WorkbenchContextManager extends Disposable {
   private readonly _panelMaximized: IContextKey<boolean>;
   private readonly _auxiliaryBarVisible: IContextKey<boolean>;
   private readonly _statusBarVisible: IContextKey<boolean>;
+  private readonly _zenMode: IContextKey<boolean>;
 
   private readonly _activePart: IContextKey<string | undefined>;
   private readonly _activeView: IContextKey<string | undefined>;
@@ -115,6 +117,7 @@ export class WorkbenchContextManager extends Disposable {
     this._panelMaximized = _contextKeyService.createKey(CTX_PANEL_MAXIMIZED, false);
     this._auxiliaryBarVisible = _contextKeyService.createKey(CTX_AUXILIARY_BAR_VISIBLE, false);
     this._statusBarVisible = _contextKeyService.createKey(CTX_STATUS_BAR_VISIBLE, true);
+    this._zenMode = _contextKeyService.createKey(CTX_ZEN_MODE, false);
 
     this._activePart = _contextKeyService.createKey<string | undefined>(CTX_ACTIVE_PART, undefined);
     this._activeView = _contextKeyService.createKey<string | undefined>(CTX_ACTIVE_VIEW, undefined);
@@ -243,6 +246,10 @@ export class WorkbenchContextManager extends Disposable {
 
   setStatusBarVisible(visible: boolean): void {
     this._statusBarVisible.set(visible);
+  }
+
+  setZenMode(enabled: boolean): void {
+    this._zenMode.set(enabled);
   }
 
   setActiveViewContainer(containerId: string | undefined): void {

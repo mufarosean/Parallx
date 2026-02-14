@@ -29,6 +29,7 @@ interface WorkbenchLike {
   togglePanel(): void;
   toggleMaximizedPanel(): void;
   toggleStatusBar(): void;
+  toggleZenMode(): void;
   toggleCommandPalette(): void;
   showQuickOpen(): void;
   showGoToLine(): void;
@@ -183,6 +184,16 @@ const toggleStatusBar: CommandDescriptor = {
   handler(ctx) {
     const w = wb(ctx);
     w.toggleStatusBar();
+  },
+};
+
+const toggleZenMode: CommandDescriptor = {
+  id: 'workbench.action.toggleZenMode',
+  title: 'Toggle Zen Mode',
+  category: 'View',
+  keybinding: 'Ctrl+K Z',
+  handler(ctx) {
+    wb(ctx).toggleZenMode();
   },
 };
 
@@ -1208,6 +1219,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   toggleMaximizedPanel,
   toggleAuxiliaryBar,
   toggleStatusBar,
+  toggleZenMode,
   // Editor
   splitEditor,
   splitEditorOrthogonal,

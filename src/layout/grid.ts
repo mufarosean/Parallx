@@ -476,6 +476,9 @@ export class Grid extends Disposable {
 
     this._sashDragState = { branch, sashIndex, startPos, isHorizontal };
 
+    // Visual feedback: add active class to sash during drag
+    target.classList.add('active');
+
     const onMouseMove = (moveEvent: MouseEvent) => {
       if (!this._sashDragState) return;
       const currentPos = isHorizontal ? moveEvent.clientX : moveEvent.clientY;
@@ -487,6 +490,7 @@ export class Grid extends Disposable {
     };
 
     const onMouseUp = () => {
+      target.classList.remove('active');
       this._sashDragState = null;
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);

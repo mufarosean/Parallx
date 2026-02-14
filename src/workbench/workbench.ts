@@ -255,6 +255,10 @@ export class Workbench extends Disposable {
   private _lastPanelHeight: number = DEFAULT_PANEL_HEIGHT;
   /** Whether the panel is currently maximized (occupying all vertical space). */
   private _panelMaximized = false;
+  /** Whether Zen Mode is active (all chrome hidden). */
+  private _zenMode = false;
+  /** Pre–Zen-Mode visibility snapshot for restore. */
+  private _preZenState: { sidebar: boolean; panel: boolean; statusBar: boolean; auxBar: boolean; activityBar: boolean } | null = null;
   /** MutationObservers for tab drag wiring (disconnected on teardown). */
   private _tabObservers: MutationObserver[] = [];
 
@@ -1317,10 +1321,14 @@ export class Workbench extends Disposable {
     }
 
     // Re-layout activity bar (not in hGrid, so must be done explicitly)
-    this._activityBarPart.layout(ACTIVITY_BAR_WIDTH, rbodyH, Orientation.Vertical);
+    const activityBarHidden = this._activityBarPart.element.classList.contains('hidden');
+    const activityBarW = activityBarHidden ? 0 : ACTIVITY_BAR_WIDTH;
+    if (!activityBarHidden) {
+      this._activityBarPart.layout(ACTIVITY_BAR_WIDTH, rbodyH, Orientation.Vertical);
+    }
 
     // Resize hGrid (cascades to vGrid via editorColumnAdapter)
-    this._hGrid.resize(rw - ACTIVITY_BAR_WIDTH, rbodyH);
+    this._hGrid.resize(rw - activityBarW, rbodyH);
 
     this._layoutViewContainers();
   };
@@ -1425,8 +1433,10 @@ export class Workbench extends Disposable {
       { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '1_nav', order: 1 },
       { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Sidebar', group: '2_appearance', order: 1 },
       { commandId: 'workbench.action.togglePanel', title: 'Toggle Panel', group: '2_appearance', order: 2 },
+      { commandId: 'workbench.action.toggleMaximizedPanel', title: 'Maximize Panel', group: '2_appearance', order: 2.5 },
       { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Auxiliary Bar', group: '2_appearance', order: 3 },
       { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
+      { commandId: 'workbench.action.toggleZenMode', title: 'Zen Mode', group: '2_appearance', order: 5 },
       { commandId: 'editor.toggleWordWrap', title: 'Word Wrap', group: '3_editor', order: 1, when: 'activeEditor' },
     ]));
 
@@ -1696,6 +1706,20 @@ export class Workbench extends Disposable {
     const panelContent = this._panel.element.querySelector('.panel-views') as HTMLElement;
     if (panelContent) {
       panelContent.appendChild(container.element);
+    }
+
+    // Double-click panel tab bar to maximize/restore
+    // VS Code parity: double-clicking the panel title bar toggles maximized state.
+    const tabBar = container.element.querySelector('.view-container-tabs') as HTMLElement;
+    if (tabBar) {
+      tabBar.addEventListener('dblclick', (e) => {
+        // Only respond to clicks on the tab bar itself or its empty space,
+        // not on individual tab buttons (which may have their own dblclick).
+        const target = e.target as HTMLElement;
+        if (target === tabBar || target.classList.contains('view-container-tabs')) {
+          this.toggleMaximizedPanel();
+        }
+      });
     }
 
     // NOTE: Do not call viewManager.showView() here — the container
@@ -2935,20 +2959,47 @@ export class Workbench extends Disposable {
    * Remembers width before collapse and restores it on expand.
    */
   toggleSidebar(): void {
+    const el = this._sidebar.element;
+
     if (this._sidebar.visible) {
       // Save current width before collapsing so we can restore later
       const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
       if (currentWidth !== undefined && currentWidth > 0) {
         this._lastSidebarWidth = currentWidth;
       }
-      this._hGrid.removeView(this._sidebar.id);
-      this._sidebar.setVisible(false);
+
+      // Animate out, then remove from grid
+      el.classList.add('sidebar-animating', 'sidebar-collapsed');
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        el.removeEventListener('transitionend', finish);
+        el.classList.remove('sidebar-animating', 'sidebar-collapsed');
+        this._hGrid.removeView(this._sidebar.id);
+        this._sidebar.setVisible(false);
+        this._hGrid.layout();
+        this._layoutViewContainers();
+      };
+      el.addEventListener('transitionend', finish, { once: true });
+      // Safety fallback in case transitionend is missed
+      setTimeout(finish, 200);
     } else {
+      // Add to grid, then animate in
       this._sidebar.setVisible(true);
-      this._hGrid.addView(this._sidebar as any, this._lastSidebarWidth, 0); // index 0 = leftmost in hGrid
+      el.classList.add('sidebar-animating', 'sidebar-collapsed');
+      this._hGrid.addView(this._sidebar as any, this._lastSidebarWidth, 0);
+      this._hGrid.layout();
+      this._layoutViewContainers();
+
+      // Force reflow so the initial collapsed state is rendered before removing the class
+      void el.offsetWidth;
+      el.classList.remove('sidebar-collapsed');
+      el.addEventListener('transitionend', () => {
+        el.classList.remove('sidebar-animating');
+      }, { once: true });
+      setTimeout(() => el.classList.remove('sidebar-animating'), 200);
     }
-    this._hGrid.layout();
-    this._layoutViewContainers();
   }
 
   /**
@@ -3059,6 +3110,100 @@ export class Workbench extends Disposable {
     this._workbenchContext.setStatusBarVisible(visible);
     this._relayout();
     this._workspaceSaver.requestSave();
+  }
+
+  /**
+   * Toggle Zen Mode — hide all chrome to focus on the editor.
+   *
+   * VS Code reference: ToggleZenMode (workbench.action.toggleZenMode, Ctrl+K Z).
+   * Saves visibility state of all parts before entering, restores on exit.
+   */
+  toggleZenMode(): void {
+    if (this._zenMode) {
+      // ── Exit Zen Mode ──
+      this._zenMode = false;
+      this._workbenchContext.setZenMode(false);
+      this._container.classList.remove('zenMode');
+
+      // Restore pre-zen visibility state
+      const s = this._preZenState;
+      if (s) {
+        if (s.sidebar && !this._sidebar.visible) {
+          this._sidebar.setVisible(true);
+          this._hGrid.addView(this._sidebar as any, this._lastSidebarWidth, 0);
+        }
+        if (s.panel && !this._panel.visible) {
+          this._panel.setVisible(true);
+          this._vGrid.addView(this._panel as any, this._lastPanelHeight);
+        }
+        if (s.statusBar && !this._statusBar.visible) {
+          this._statusBar.setVisible(true);
+          this._workbenchContext.setStatusBarVisible(true);
+        }
+        if (s.auxBar && !this._auxiliaryBar.visible) {
+          this.toggleAuxiliaryBar();
+        }
+        if (s.activityBar) {
+          this._activityBarPart.element.classList.remove('hidden');
+        }
+        this._preZenState = null;
+      }
+
+      this._hGrid.layout();
+      this._vGrid.layout();
+      this._relayout();
+      this._layoutViewContainers();
+    } else {
+      // ── Enter Zen Mode ──
+      // Snapshot current visibility
+      this._preZenState = {
+        sidebar: this._sidebar.visible,
+        panel: this._panel.visible,
+        statusBar: this._statusBar.visible,
+        auxBar: this._auxBarVisible,
+        activityBar: !this._activityBarPart.element.classList.contains('hidden'),
+      };
+      this._zenMode = true;
+      this._workbenchContext.setZenMode(true);
+      this._container.classList.add('zenMode');
+
+      // Hide sidebar
+      if (this._sidebar.visible) {
+        const w = this._hGrid.getViewSize(this._sidebar.id);
+        if (w !== undefined && w > 0) this._lastSidebarWidth = w;
+        this._hGrid.removeView(this._sidebar.id);
+        this._sidebar.setVisible(false);
+      }
+
+      // Hide panel
+      if (this._panel.visible) {
+        const h = this._vGrid.getViewSize(this._panel.id);
+        if (h !== undefined && h > 0) this._lastPanelHeight = h;
+        this._vGrid.removeView(this._panel.id);
+        this._panel.setVisible(false);
+        this._panelMaximized = false;
+        this._workbenchContext.setPanelMaximized(false);
+      }
+
+      // Hide status bar
+      if (this._statusBar.visible) {
+        this._statusBar.setVisible(false);
+        this._workbenchContext.setStatusBarVisible(false);
+      }
+
+      // Hide auxiliary bar
+      if (this._auxBarVisible) {
+        this.toggleAuxiliaryBar();
+      }
+
+      // Hide activity bar
+      this._activityBarPart.element.classList.add('hidden');
+
+      this._hGrid.layout();
+      this._vGrid.layout();
+      this._relayout();
+      this._layoutViewContainers();
+    }
   }
 
   // ── LayoutHost Protocol ──────────────────────────────────────────────────
