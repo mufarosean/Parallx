@@ -1,12 +1,12 @@
-/* keybindingsEditorPane.css — Keyboard Shortcuts viewer styles */
+/* keybindingsEditorPane.css â€” Keyboard Shortcuts viewer styles */
 
 .keybindings-editor {
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--color-editor-background, #1e1e1e);
-  color: var(--color-editor-foreground, #cccccc);
+  background: var(--vscode-editor-background, #1e1e1e);
+  color: var(--vscode-editor-foreground, #cccccc);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -15,7 +15,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--color-border, #333);
+  border-bottom: 1px solid var(--vscode-editorGroup-border, #333);
   flex-shrink: 0;
 }
 
@@ -29,20 +29,20 @@
 .keybindings-search-input {
   flex: 1;
   padding: 4px 8px;
-  border: 1px solid var(--color-input-border, #3c3c3c);
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
   border-radius: 2px;
-  background: var(--color-input-background, #3c3c3c);
-  color: var(--color-input-foreground, #cccccc);
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
   font-size: 13px;
   outline: none;
 }
 
 .keybindings-search-input:focus {
-  border-color: var(--color-focus-border, #007fd4);
+  border-color: var(--vscode-focusBorder, #007fd4);
 }
 
 .keybindings-search-input::placeholder {
-  color: var(--color-input-placeholder, #888);
+  color: var(--vscode-input-placeholderForeground, #888);
 }
 
 .keybindings-table-container {
@@ -60,15 +60,15 @@
 .keybindings-table th {
   position: sticky;
   top: 0;
-  background: var(--color-editor-background, #1e1e1e);
+  background: var(--vscode-editor-background, #1e1e1e);
   text-align: left;
   padding: 6px 12px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--color-text-muted, #888);
-  border-bottom: 1px solid var(--color-border, #333);
+  color: var(--vscode-descriptionForeground, #888);
+  border-bottom: 1px solid var(--vscode-editorGroup-border, #333);
   z-index: 1;
 }
 
@@ -83,23 +83,23 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-bottom: 1px solid var(--color-border-subtle, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-widget-border, #2a2a2a);
 }
 
 .keybindings-table tr:hover td {
-  background: var(--color-list-hover-background, #2a2d2e);
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
 }
 
 .keybindings-table .keybinding-key {
   display: inline-block;
   padding: 1px 6px;
-  border: 1px solid var(--color-border, #444);
+  border: 1px solid var(--vscode-editorGroup-border, #444);
   border-radius: 3px;
-  background: var(--color-keybinding-background, #2d2d2d);
+  background: var(--vscode-keybindingLabel-background, #2d2d2d);
   font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
   font-size: 12px;
   line-height: 18px;
-  color: var(--color-keybinding-foreground, #ddd);
+  color: var(--vscode-keybindingLabel-foreground, #ddd);
 }
 
 .keybindings-editor-empty {
@@ -107,13 +107,13 @@
   align-items: center;
   justify-content: center;
   height: 60px;
-  color: var(--color-text-muted, #888);
+  color: var(--vscode-descriptionForeground, #888);
   font-size: 13px;
 }
 
 .keybindings-result-count {
   font-size: 12px;
-  color: var(--color-text-muted, #888);
+  color: var(--vscode-descriptionForeground, #888);
   white-space: nowrap;
   flex-shrink: 0;
 }

@@ -76,7 +76,7 @@ export class BreadcrumbsWidget extends Disposable {
   private readonly _onDidChangeFocus = this._register(new Emitter<boolean>());
   readonly onDidChangeFocus: Event<boolean> = this._onDidChangeFocus.event;
 
-  constructor(container: HTMLElement, styles?: IBreadcrumbsWidgetStyles) {
+  constructor(container: HTMLElement, _styles?: IBreadcrumbsWidgetStyles) {
     super();
 
     this._domNode = document.createElement('div');
@@ -102,9 +102,9 @@ export class BreadcrumbsWidget extends Disposable {
       addListener(this._domNode, 'focusout', () => this._onDidChangeFocus.fire(false)),
     ));
 
-    if (styles) {
-      this._applyStyles(styles);
-    }
+    // Breadcrumb colors are applied via CSS:
+    //   var(--vscode-breadcrumb-background, var(--vscode-editor-background))
+    // No inline style overrides needed.
 
     container.appendChild(this._domNode);
   }
@@ -324,16 +324,6 @@ export class BreadcrumbsWidget extends Disposable {
         this._domNode.blur();
         break;
     }
-  }
-
-  // ── Styles ─────────────────────────────────────────────────────────────
-
-  private _applyStyles(styles: IBreadcrumbsWidgetStyles): void {
-    if (styles.breadcrumbsBackground) {
-      this._domNode.style.backgroundColor = styles.breadcrumbsBackground;
-    }
-    // Foreground colors are handled via CSS custom properties or direct style manipulation
-    // For simplicity, we rely on CSS variables from the theme
   }
 
   // ── Dispose ────────────────────────────────────────────────────────────

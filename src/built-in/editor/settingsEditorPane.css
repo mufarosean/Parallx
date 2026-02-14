@@ -1,12 +1,12 @@
-/* settingsEditorPane.css — Settings UI styles */
+/* settingsEditorPane.css ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Settings UI styles */
 
 .settings-editor {
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--color-editor-background, #1e1e1e);
-  color: var(--color-editor-foreground, #cccccc);
+  background: var(--vscode-editor-background, #1e1e1e);
+  color: var(--vscode-editor-foreground, #cccccc);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -15,7 +15,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--color-border, #333);
+  border-bottom: 1px solid var(--vscode-editorGroup-border, #333);
   flex-shrink: 0;
 }
 
@@ -29,20 +29,20 @@
 .settings-search-input {
   flex: 1;
   padding: 4px 8px;
-  border: 1px solid var(--color-input-border, #3c3c3c);
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
   border-radius: 2px;
-  background: var(--color-input-background, #3c3c3c);
-  color: var(--color-input-foreground, #cccccc);
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
   font-size: 13px;
   outline: none;
 }
 
 .settings-search-input:focus {
-  border-color: var(--color-focus-border, #007fd4);
+  border-color: var(--vscode-focusBorder, #007fd4);
 }
 
 .settings-search-input::placeholder {
-  color: var(--color-input-placeholder, #888);
+  color: var(--vscode-input-placeholderForeground, #888);
 }
 
 .settings-body {
@@ -58,10 +58,10 @@
 .settings-section-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--color-text-heading, #e0e0e0);
+  color: var(--vscode-foreground, #e0e0e0);
   margin: 0 0 12px;
   padding-bottom: 6px;
-  border-bottom: 1px solid var(--color-border-subtle, #2a2a2a);
+  border-bottom: 1px solid var(--vscode-widget-border, #2a2a2a);
 }
 
 .settings-item {
@@ -72,13 +72,13 @@
 }
 
 .settings-item + .settings-item {
-  border-top: 1px solid var(--color-border-subtle, #2a2a2a);
+  border-top: 1px solid var(--vscode-widget-border, #2a2a2a);
 }
 
 .settings-item-key {
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-text-primary, #ddd);
+  color: var(--vscode-foreground, #ddd);
 }
 
 .settings-item-key-row {
@@ -93,7 +93,7 @@
 
 .settings-item-description {
   font-size: 12px;
-  color: var(--color-text-muted, #888);
+  color: var(--vscode-descriptionForeground, #888);
   margin-bottom: 4px;
 }
 
@@ -106,10 +106,10 @@
 .settings-item-control input[type="text"],
 .settings-item-control input[type="number"] {
   padding: 3px 6px;
-  border: 1px solid var(--color-input-border, #3c3c3c);
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
   border-radius: 2px;
-  background: var(--color-input-background, #3c3c3c);
-  color: var(--color-input-foreground, #cccccc);
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
   font-size: 13px;
   outline: none;
   min-width: 200px;
@@ -117,33 +117,33 @@
 
 .settings-item-control input[type="text"]:focus,
 .settings-item-control input[type="number"]:focus {
-  border-color: var(--color-focus-border, #007fd4);
+  border-color: var(--vscode-focusBorder, #007fd4);
 }
 
 .settings-item-control select {
   padding: 3px 6px;
-  border: 1px solid var(--color-input-border, #3c3c3c);
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
   border-radius: 2px;
-  background: var(--color-input-background, #3c3c3c);
-  color: var(--color-input-foreground, #cccccc);
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
   font-size: 13px;
   outline: none;
   min-width: 200px;
 }
 
 .settings-item-control select:focus {
-  border-color: var(--color-focus-border, #007fd4);
+  border-color: var(--vscode-focusBorder, #007fd4);
 }
 
 .settings-item-control input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--color-focus-border, #007fd4);
+  accent-color: var(--vscode-focusBorder, #007fd4);
 }
 
 .settings-item-default {
   font-size: 11px;
-  color: var(--color-text-muted, #666);
+  color: var(--vscode-descriptionForeground, #666);
   font-style: italic;
 }
 
@@ -152,13 +152,13 @@
   align-items: center;
   justify-content: center;
   height: 60px;
-  color: var(--color-text-muted, #888);
+  color: var(--vscode-descriptionForeground, #888);
   font-size: 13px;
 }
 
 .settings-result-count {
   font-size: 12px;
-  color: var(--color-text-muted, #888);
+  color: var(--vscode-descriptionForeground, #888);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -167,6 +167,6 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--color-focus-border, #007fd4);
+  background: var(--vscode-focusBorder, #007fd4);
   flex-shrink: 0;
 }

@@ -602,16 +602,18 @@ export class TextEditorPane extends EditorPane {
 
     // ── Draw selection highlight first (behind text bars) ────────────
     if (selStartLine >= 0 && selEndLine >= selStartLine) {
-      ctx.fillStyle = 'var(--vscode-minimap-selectionHighlight, rgba(38, 79, 120, 0.6))';
-      // CSS var() doesn't work in canvas — use a fallback directly
-      ctx.fillStyle = 'rgba(38, 79, 120, 0.6)';
+      const selColor = getComputedStyle(document.documentElement).getPropertyValue('--vscode-minimap-selectionHighlight').trim() || 'rgba(38, 79, 120, 0.6)';
+      ctx.fillStyle = selColor;
       const sy = selStartLine * lineH;
       const sh = (selEndLine - selStartLine + 1) * lineH;
       ctx.fillRect(0, sy, width - 14, Math.max(1, sh));
     }
 
     // ── Draw text line bars ──────────────────────────────────────────
-    ctx.fillStyle = 'rgba(200, 200, 200, 0.35)';
+    const barColor = getComputedStyle(document.documentElement).getPropertyValue('--vscode-editor-foreground').trim() || 'rgba(200, 200, 200, 0.35)';
+    // Apply alpha to the bar color for subtle rendering
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = barColor;
 
     for (let i = 0; i < totalLines; i++) {
       const len = lines[i].length;
@@ -621,6 +623,7 @@ export class TextEditorPane extends EditorPane {
       if (y > height) break;
       ctx.fillRect(4, y, barW, Math.max(0.5, lineH - 0.5));
     }
+    ctx.globalAlpha = 1;
 
     this._updateMinimapSlider();
   }
