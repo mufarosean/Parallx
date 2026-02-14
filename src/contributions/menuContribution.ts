@@ -280,26 +280,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
       }
 
       // Styling
-      button.style.cssText = `
-        background: none;
-        border: none;
-        color: var(--foreground, #ccc);
-        cursor: pointer;
-        padding: 2px 4px;
-        font-size: 14px;
-        opacity: 0.7;
-        border-radius: 3px;
-      `;
-
-      button.addEventListener('mouseenter', () => {
-        button.style.opacity = '1';
-        button.style.background = 'rgba(255,255,255,0.1)';
-      });
-
-      button.addEventListener('mouseleave', () => {
-        button.style.opacity = '0.7';
-        button.style.background = 'none';
-      });
+      button.classList.add('menu-action-btn');
 
       button.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -370,27 +351,11 @@ export class MenuContributionProcessor extends Disposable implements IContributi
     // Create context menu overlay
     const overlay = document.createElement('div');
     overlay.className = 'context-menu-overlay';
-    overlay.style.cssText = `
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      z-index: 10001;
-    `;
 
     const menu = document.createElement('div');
     menu.className = 'context-menu';
-    menu.style.cssText = `
-      position: fixed;
-      left: ${x}px;
-      top: ${y}px;
-      min-width: 160px;
-      background: var(--panel-bg, #252526);
-      border: 1px solid var(--border-color, #3c3c3c);
-      border-radius: 4px;
-      padding: 4px 0;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-      z-index: 10002;
-      font-size: 13px;
-    `;
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
 
     let lastGroup: string | undefined;
 
@@ -401,23 +366,13 @@ export class MenuContributionProcessor extends Disposable implements IContributi
       // Add separator between groups
       if (lastGroup !== undefined && item.group !== lastGroup) {
         const sep = document.createElement('div');
-        sep.style.cssText = `
-          height: 1px;
-          background: var(--border-color, #3c3c3c);
-          margin: 4px 0;
-        `;
+        sep.className = 'context-menu-separator';
         menu.appendChild(sep);
       }
       lastGroup = item.group;
 
       const menuItem = document.createElement('div');
       menuItem.className = 'context-menu-item';
-      menuItem.style.cssText = `
-        padding: 4px 24px 4px 12px;
-        cursor: pointer;
-        color: var(--foreground, #ccc);
-        white-space: nowrap;
-      `;
 
       const label = document.createElement('span');
       if (cmd.category) {
@@ -430,23 +385,10 @@ export class MenuContributionProcessor extends Disposable implements IContributi
       // Keybinding display
       if (cmd.keybinding) {
         const kbd = document.createElement('span');
-        kbd.style.cssText = `
-          float: right;
-          opacity: 0.6;
-          margin-left: 24px;
-          font-size: 12px;
-        `;
+        kbd.className = 'context-menu-kbd';
         kbd.textContent = cmd.keybinding;
         menuItem.appendChild(kbd);
       }
-
-      menuItem.addEventListener('mouseenter', () => {
-        menuItem.style.background = 'var(--list-hover, #2a2d2e)';
-      });
-
-      menuItem.addEventListener('mouseleave', () => {
-        menuItem.style.background = 'none';
-      });
 
       menuItem.addEventListener('click', (e) => {
         e.stopPropagation();
