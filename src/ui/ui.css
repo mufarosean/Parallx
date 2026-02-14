@@ -193,10 +193,11 @@
   max-width: 200px;
   color: var(--vscode-tab-inactiveForeground);
   background-color: var(--vscode-tab-inactiveBackground);
-  border-bottom: 2px solid transparent;
+  border-top: 1px solid transparent;
   border-right: 1px solid var(--vscode-tab-border);
   transition: background-color 0.1s;
   position: relative;
+  box-sizing: border-box;
 }
 
 .ui-tab:hover {
@@ -206,7 +207,7 @@
 .ui-tab--active {
   color: var(--vscode-tab-activeForeground);
   background-color: var(--vscode-tab-activeBackground);
-  border-bottom-color: var(--vscode-tab-activeBorder);
+  border-top-color: var(--vscode-tab-activeBorderTop, transparent);
 }
 
 .ui-tab--italic .ui-tab-label {
