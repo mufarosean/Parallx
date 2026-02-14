@@ -18,6 +18,15 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     ipcRenderer.on('window:maximized-changed', (_event, maximized) => callback(maximized));
   },
 
+  // ── Lifecycle: unsaved changes guard ──
+  /** Register a callback that fires before the window closes (dirty check). */
+  onBeforeClose: (callback) => {
+    ipcRenderer.removeAllListeners('lifecycle:beforeClose');
+    ipcRenderer.on('lifecycle:beforeClose', () => callback());
+  },
+  /** Confirm that close may proceed (called after save/discard decision). */
+  confirmClose: () => ipcRenderer.send('lifecycle:confirmClose'),
+
   // ── Tool scanning API ──
   scanToolDirectory: (dirPath) => ipcRenderer.invoke('tools:scan-directory', dirPath),
   getToolDirectories: () => ipcRenderer.invoke('tools:get-directories'),

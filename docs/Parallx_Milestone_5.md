@@ -1041,8 +1041,8 @@ Checked items are already implemented; unchecked items remain as future work.
 - [x] Notification toasts — Slide-in notifications in the bottom-right for save confirmations, errors, tool activation feedback
 
 ### Quality of Life
-- [ ] Keyboard shortcut hints — Show keybinding next to command names in menus and command palette entries
-- [ ] Keyboard shortcut viewer — Dedicated UI for browsing and customizing all keybindings
-- [ ] Unsaved changes indicator on window close — Prompt "You have unsaved changes" before closing the window
-- [ ] Recent files / workspaces — Welcome tab showing recently opened files and folders for quick re-entry
-- [ ] Settings UI — A visual settings editor (like VS Code's gear icon) instead of requiring manual JSON editing
+- [x] Keyboard shortcut hints — Show keybinding next to command names in menus and command palette entries ✅
+- [x] Keyboard shortcut viewer — Dedicated UI for browsing and customizing all keybindings ✅
+- [x] Unsaved changes indicator on window close — Prompt "You have unsaved changes" before closing the window ✅
+- [x] Recent files / workspaces — Welcome tab showing recently opened files and folders for quick re-entry ✅
+- [x] Settings UI — A visual settings editor (like VS Code's gear icon) instead of requiring manual JSON editing ✅

@@ -1207,6 +1207,34 @@ const showExplorerView: CommandDescriptor = {
   },
 };
 
+// ─── Preferences: Open Settings / Keyboard Shortcuts ─────────────────────────
+
+const openSettings: CommandDescriptor = {
+  id: 'workbench.action.openSettings',
+  title: 'Open Settings',
+  category: 'Preferences',
+  keybinding: 'Ctrl+,',
+  async handler(ctx) {
+    const editorService = ctx.getService<IEditorService>('IEditorService');
+    if (!editorService) return;
+    const { SettingsEditorInput } = await import('../built-in/editor/settingsEditorInput.js');
+    await editorService.openEditor(SettingsEditorInput.getInstance(), { pinned: true });
+  },
+};
+
+const openKeybindings: CommandDescriptor = {
+  id: 'workbench.action.openKeybindings',
+  title: 'Open Keyboard Shortcuts',
+  category: 'Preferences',
+  keybinding: 'Ctrl+K Ctrl+S',
+  async handler(ctx) {
+    const editorService = ctx.getService<IEditorService>('IEditorService');
+    if (!editorService) return;
+    const { KeybindingsEditorInput } = await import('../built-in/editor/keybindingsEditorInput.js');
+    await editorService.openEditor(KeybindingsEditorInput.getInstance(), { pinned: true });
+  },
+};
+
 // ─── All builtin commands ────────────────────────────────────────────────────
 
 const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
@@ -1274,6 +1302,9 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // Sidebar view switch
   showSearchView,
   showExplorerView,
+  // Preferences
+  openSettings,
+  openKeybindings,
 ];
 
 /**

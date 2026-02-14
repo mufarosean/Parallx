@@ -13,7 +13,7 @@ import { Disposable, DisposableStore, IDisposable, toDisposable } from '../platf
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IWindowService, IFileService, ITextFileModelManager, IThemeService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
 
@@ -106,6 +106,7 @@ import type { ConfigurationRegistry } from '../configuration/configurationRegist
 // Contribution Processors (M2 Capability 5)
 import { registerContributionProcessors, registerViewContributionProcessor } from './workbenchServices.js';
 import type { CommandContributionProcessor } from '../contributions/commandContribution.js';
+import { formatKeybindingForDisplay } from '../contributions/keybindingContribution.js';
 import type { KeybindingContributionProcessor } from '../contributions/keybindingContribution.js';
 import type { MenuContributionProcessor } from '../contributions/menuContribution.js';
 
@@ -141,6 +142,12 @@ import { ImageEditorInput } from '../built-in/editor/imageEditorInput.js';
 import { ImageEditorPane } from '../built-in/editor/imageEditorPane.js';
 import { PdfEditorInput } from '../built-in/editor/pdfEditorInput.js';
 import { PdfEditorPane } from '../built-in/editor/pdfEditorPane.js';
+
+// Keybindings & Settings Editor (QoL)
+import { KeybindingsEditorInput } from '../built-in/editor/keybindingsEditorInput.js';
+import { KeybindingsEditorPane } from '../built-in/editor/keybindingsEditorPane.js';
+import { SettingsEditorInput } from '../built-in/editor/settingsEditorInput.js';
+import { SettingsEditorPane } from '../built-in/editor/settingsEditorPane.js';
 
 // Theme System (M5 Capability 1–3)
 import { colorRegistry } from '../theme/colorRegistry.js';
@@ -1583,7 +1590,7 @@ export class Workbench extends Disposable {
       const icon = this._activityBarPart.getIcons().find((i) => i.id === event.iconId);
       ContextMenu.show({
         items: [
-          { id: 'hide', label: `Hide ${icon?.label ?? 'View'}`, group: '1_visibility' },
+          { id: 'hide', label: `Hide ${icon?.label ?? 'View'}`, group: '1_visibility', keybinding: this._keybindingHint('hide') },
         ],
         anchor: { x: event.x, y: event.y },
       });
@@ -1619,8 +1626,8 @@ export class Workbench extends Disposable {
         const rect = moreBtn.getBoundingClientRect();
         ContextMenu.show({
           items: [
-            { id: 'collapse-all', label: 'Collapse All', group: '1_actions' },
-            { id: 'refresh', label: 'Refresh', group: '1_actions' },
+            { id: 'collapse-all', label: 'Collapse All', group: '1_actions', keybinding: this._keybindingHint('collapse-all') },
+            { id: 'refresh', label: 'Refresh', group: '1_actions', keybinding: this._keybindingHint('refresh') },
           ],
           anchor: { x: rect.left, y: rect.bottom + 2 },
         });
@@ -1637,6 +1644,95 @@ export class Workbench extends Disposable {
     // The container's addView already activated the first view (Explorer).
 
     return defaultContainer;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Keybinding hint helper (QoL — keyboard shortcut hints in context menus)
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Look up the keybinding for a commandId and return a display-formatted
+   * string, or undefined if no keybinding is registered.
+   */
+  private _keybindingHint(commandId: string): string | undefined {
+    const kbService = this._services.has(IKeybindingService)
+      ? (this._services.get(IKeybindingService) as unknown as KeybindingService)
+      : undefined;
+    if (!kbService) return undefined;
+    const raw = kbService.lookupKeybinding(commandId);
+    if (!raw) return undefined;
+    return formatKeybindingForDisplay(raw);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Unsaved changes guard (QoL — prompt before window close)
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Wire the Electron `lifecycle:beforeClose` IPC to check for dirty editors
+   * and show a save dialog before allowing the window to close.
+   */
+  private _wireUnsavedChangesGuard(): void {
+    const electron = (window as any).parallxElectron as {
+      onBeforeClose?: (cb: () => void) => void;
+      confirmClose?: () => void;
+      dialog?: { showMessageBox: (opts: any) => Promise<{ response: number }> };
+    } | undefined;
+
+    if (!electron?.onBeforeClose || !electron?.confirmClose) return;
+
+    electron.onBeforeClose(async () => {
+      // Collect dirty models
+      const tfm = this._services.has(ITextFileModelManager)
+        ? (this._services.get(ITextFileModelManager) as any)
+        : undefined;
+      const dirtyModels: { name: string; isDirty: boolean; save: () => Promise<void> }[] = [];
+      if (tfm?.models) {
+        for (const model of tfm.models) {
+          if (model.isDirty && !model.isDisposed) {
+            dirtyModels.push(model);
+          }
+        }
+      }
+
+      if (dirtyModels.length === 0) {
+        // No unsaved changes — proceed to close
+        electron.confirmClose!();
+        return;
+      }
+
+      // Show native save dialog
+      const fileList = dirtyModels.map((m) => m.name).join(', ');
+      const result = await electron.dialog?.showMessageBox({
+        type: 'warning',
+        title: 'Unsaved Changes',
+        message: `You have ${dirtyModels.length} unsaved file${dirtyModels.length > 1 ? 's' : ''}.`,
+        detail: `${fileList}\n\nDo you want to save your changes before closing?`,
+        buttons: ['Save All', "Don't Save", 'Cancel'],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+      });
+
+      if (!result || result.response === 2) {
+        // Cancel — veto close (do nothing)
+        return;
+      }
+
+      if (result.response === 0) {
+        // Save All
+        try {
+          await tfm.saveAll();
+        } catch (err) {
+          console.error('[Workbench] Error saving files before close:', err);
+          // If save fails, don't close — let user fix and try again
+          return;
+        }
+      }
+
+      // "Don't Save" (response === 1) or "Save All" succeeded — proceed
+      electron.confirmClose!();
+    });
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1675,7 +1771,7 @@ export class Workbench extends Disposable {
       for (const action of actions) {
         const cmd = cmdService.getCommand(action.commandId);
         if (!cmd) continue;
-        items.push({ id: action.commandId, label: cmd.title });
+        items.push({ id: action.commandId, label: cmd.title, keybinding: this._keybindingHint(action.commandId) });
       }
       if (items.length === 0) return;
 
@@ -2131,6 +2227,9 @@ export class Workbench extends Disposable {
     // Fire startup finished — triggers * and onStartupFinished activation events
     activationEvents.fireStartupFinished();
 
+    // ── Unsaved changes guard (QoL) ──
+    this._wireUnsavedChangesGuard();
+
     console.log('[Workbench] Tool lifecycle initialized (with contribution processors)');
   }
 
@@ -2255,6 +2354,7 @@ export class Workbench extends Disposable {
     }));
 
     // ── 2. Pane factory (routes input → pane) ──
+    const services = this._services;
     const paneFactoryDisposable = registerEditorPaneFactory((input) => {
       // MarkdownPreviewInput → rendered preview pane
       if (input instanceof MarkdownPreviewInput) return new MarkdownEditorPane();
@@ -2262,6 +2362,19 @@ export class Workbench extends Disposable {
       // Image / PDF inputs → their dedicated panes
       if (input instanceof ImageEditorInput) return new ImageEditorPane();
       if (input instanceof PdfEditorInput) return new PdfEditorPane();
+
+      // Keybindings viewer (QoL)
+      if (input instanceof KeybindingsEditorInput) {
+        const kbService = services.has(IKeybindingService)
+          ? (services.get(IKeybindingService) as unknown as KeybindingService)
+          : undefined;
+        return new KeybindingsEditorPane(() => kbService?.getAllKeybindings() ?? []);
+      }
+
+      // Settings editor (QoL)
+      if (input instanceof SettingsEditorInput) {
+        return new SettingsEditorPane(services);
+      }
 
       // FileEditorInput → always text editor (markdown is edited as text;
       // preview is opened separately via command)
@@ -3433,6 +3546,7 @@ export class Workbench extends Disposable {
             id: 'hideStatusBar',
             label: 'Hide Status Bar',
             group: '0_visibility',
+            keybinding: this._keybindingHint('workbench.action.toggleStatusbarVisibility'),
           },
           ...entries.map((e) => ({
             id: e.id,

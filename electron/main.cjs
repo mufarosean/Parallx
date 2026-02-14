@@ -37,6 +37,21 @@ function createWindow() {
     mainWindow = null;
   });
 
+  // ── Unsaved changes guard ──
+  // Intercept close to let the renderer check for dirty editors.
+  // The renderer will either confirm (send 'lifecycle:confirmClose') or
+  // veto (the user chose "Cancel" in the save dialog).
+  let closeConfirmed = false;
+  mainWindow.on('close', (e) => {
+    if (closeConfirmed) return; // already confirmed — let it close
+    e.preventDefault();
+    mainWindow?.webContents.send('lifecycle:beforeClose');
+  });
+  ipcMain.on('lifecycle:confirmClose', () => {
+    closeConfirmed = true;
+    mainWindow?.close();
+  });
+
   // Notify renderer on maximize/unmaximize
   mainWindow.on('maximize', () => {
     mainWindow?.webContents.send('window:maximized-changed', true);

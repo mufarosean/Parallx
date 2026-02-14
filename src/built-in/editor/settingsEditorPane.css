@@ -1,0 +1,162 @@
+/* settingsEditorPane.css — Settings UI styles */
+
+.settings-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-editor-background, #1e1e1e);
+  color: var(--color-editor-foreground, #cccccc);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.settings-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border, #333);
+  flex-shrink: 0;
+}
+
+.settings-editor-header h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.settings-search-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--color-input-border, #3c3c3c);
+  border-radius: 2px;
+  background: var(--color-input-background, #3c3c3c);
+  color: var(--color-input-foreground, #cccccc);
+  font-size: 13px;
+  outline: none;
+}
+
+.settings-search-input:focus {
+  border-color: var(--color-focus-border, #007fd4);
+}
+
+.settings-search-input::placeholder {
+  color: var(--color-input-placeholder, #888);
+}
+
+.settings-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+.settings-section {
+  margin-bottom: 24px;
+}
+
+.settings-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-heading, #e0e0e0);
+  margin: 0 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border-subtle, #2a2a2a);
+}
+
+.settings-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+}
+
+.settings-item + .settings-item {
+  border-top: 1px solid var(--color-border-subtle, #2a2a2a);
+}
+
+.settings-item-key {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary, #ddd);
+}
+
+.settings-item-description {
+  font-size: 12px;
+  color: var(--color-text-muted, #888);
+  margin-bottom: 4px;
+}
+
+.settings-item-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-item-control input[type="text"],
+.settings-item-control input[type="number"] {
+  padding: 3px 6px;
+  border: 1px solid var(--color-input-border, #3c3c3c);
+  border-radius: 2px;
+  background: var(--color-input-background, #3c3c3c);
+  color: var(--color-input-foreground, #cccccc);
+  font-size: 13px;
+  outline: none;
+  min-width: 200px;
+}
+
+.settings-item-control input[type="text"]:focus,
+.settings-item-control input[type="number"]:focus {
+  border-color: var(--color-focus-border, #007fd4);
+}
+
+.settings-item-control select {
+  padding: 3px 6px;
+  border: 1px solid var(--color-input-border, #3c3c3c);
+  border-radius: 2px;
+  background: var(--color-input-background, #3c3c3c);
+  color: var(--color-input-foreground, #cccccc);
+  font-size: 13px;
+  outline: none;
+  min-width: 200px;
+}
+
+.settings-item-control select:focus {
+  border-color: var(--color-focus-border, #007fd4);
+}
+
+.settings-item-control input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-focus-border, #007fd4);
+}
+
+.settings-item-default {
+  font-size: 11px;
+  color: var(--color-text-muted, #666);
+  font-style: italic;
+}
+
+.settings-empty-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 60px;
+  color: var(--color-text-muted, #888);
+  font-size: 13px;
+}
+
+.settings-result-count {
+  font-size: 12px;
+  color: var(--color-text-muted, #888);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.settings-modified-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-focus-border, #007fd4);
+  flex-shrink: 0;
+}
