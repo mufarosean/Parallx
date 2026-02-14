@@ -1,1 +1,205 @@
-/* notificationService.css — Notification system styles (Phase 3: migrate from inline JS) */
+/* ── Notification Service ─────────────────────────────────────────────────── */
+
+/* Toast container (fixed bottom-right) */
+.parallx-notifications-container {
+  position: fixed;
+  bottom: 40px; /* above status bar */
+  right: 16px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+  pointer-events: none; /* container is transparent to clicks */
+}
+
+/* ── Individual notification toast ────────────────────────────────────── */
+
+.parallx-notification {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 32px 10px 12px;
+  background-color: var(--vscode-notifications-background, #252526);
+  color: var(--vscode-notifications-foreground, #cccccc);
+  font-size: 13px;
+  font-family: system-ui, -apple-system, sans-serif;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  border-left: 3px solid transparent;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: auto;
+  min-width: 280px;
+}
+
+/* Severity border colours */
+.parallx-notification-information {
+  border-left-color: var(--vscode-notificationsInfoIcon-foreground, #3794ff);
+}
+
+.parallx-notification-warning {
+  border-left-color: var(--vscode-notificationsWarningIcon-foreground, #cca700);
+}
+
+.parallx-notification-error {
+  border-left-color: var(--vscode-notificationsErrorIcon-foreground, #f14c4c);
+}
+
+/* Content row */
+.parallx-notification-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+}
+
+/* Severity icon */
+.parallx-notification-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* Message text */
+.parallx-notification-message {
+  flex: 1;
+  line-height: 20px;
+  word-break: break-word;
+}
+
+/* Actions row */
+.parallx-notification-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  margin-left: 22px;
+}
+
+/* Action button */
+.parallx-notification-action-btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  background-color: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 18px;
+}
+
+/* Close button */
+.parallx-notification-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--vscode-descriptionForeground, #999999);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  border-radius: 3px;
+}
+
+/* ── Modal overlay ────────────────────────────────────────────────────── */
+
+.parallx-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 20vh;
+  z-index: 20000;
+}
+
+/* ── Input box modal ──────────────────────────────────────────────────── */
+
+.parallx-modal-box {
+  background-color: var(--vscode-editorWidget-background, #252526);
+  border-radius: 6px;
+  padding: 16px;
+  min-width: 400px;
+  max-width: 500px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+.parallx-modal-label {
+  color: var(--vscode-foreground, #cccccc);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.parallx-modal-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  background-color: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  border: 1px solid var(--vscode-input-border, #474747);
+  border-radius: 3px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.parallx-modal-error {
+  color: var(--vscode-notificationsErrorIcon-foreground, #f14c4c);
+  font-size: 12px;
+  margin-top: 4px;
+  min-height: 16px;
+}
+
+/* ── Quick pick modal ─────────────────────────────────────────────────── */
+
+.parallx-quickpick-box {
+  background-color: var(--vscode-editorWidget-background, #252526);
+  border-radius: 6px;
+  min-width: 400px;
+  max-width: 500px;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.parallx-quickpick-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  background-color: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  border: none;
+  border-bottom: 1px solid var(--vscode-input-border, #474747);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.parallx-quickpick-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.parallx-quickpick-row {
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-quickpick-row--active {
+  background-color: var(--vscode-quickInputList-focusBackground, #04395e);
+}
+
+.parallx-quickpick-desc {
+  color: var(--vscode-descriptionForeground, #888888);
+  font-size: 12px;
+}
