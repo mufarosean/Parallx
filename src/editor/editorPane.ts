@@ -82,11 +82,7 @@ export abstract class EditorPane extends Disposable implements IEditorPane {
     if (this._created) return;
 
     this._element = document.createElement('div');
-    this._element.classList.add('editor-pane');
-    this._element.style.width = '100%';
-    this._element.style.height = '100%';
-    this._element.style.overflow = 'hidden';
-    this._element.style.position = 'relative';
+    this._element.classList.add('editor-pane', 'fill-container');
 
     this.createPaneContent(this._element);
     this._created = true;

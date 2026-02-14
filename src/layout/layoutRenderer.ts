@@ -189,11 +189,7 @@ export class LayoutRenderer extends Disposable {
    * Apply base CSS classes and styles to the container.
    */
   private _applyContainerStyles(): void {
-    this._container.classList.add('parallx-layout-container');
-    this._container.style.overflow = 'hidden';
-    this._container.style.position = 'relative';
-    this._container.style.width = '100%';
-    this._container.style.height = '100%';
+    this._container.classList.add('parallx-layout-container', 'fill-container');
   }
 
   override dispose(): void {
