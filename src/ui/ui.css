@@ -153,6 +153,34 @@
   overflow: hidden;
 }
 
+/* Scroll chevron buttons */
+.ui-tab-bar-scroll-btn {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 100%;
+  border: none;
+  background: var(--vscode-editorGroupHeader-tabsBackground);
+  color: var(--vscode-tab-inactiveForeground);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.ui-tab-bar-scroll-btn:hover {
+  color: var(--vscode-tab-activeForeground);
+  background: var(--vscode-tab-hoverBackground);
+}
+
+/* Actions slot (trailing toolbar area) */
+.ui-tab-bar-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+}
+
 .ui-tab {
   display: flex;
   align-items: center;
@@ -168,6 +196,7 @@
   border-bottom: 2px solid transparent;
   border-right: 1px solid var(--vscode-tab-border);
   transition: background-color 0.1s;
+  position: relative;
 }
 
 .ui-tab:hover {
@@ -184,17 +213,33 @@
   font-style: italic;
 }
 
-.ui-tab--sticky .ui-tab-icon::before {
-  content: '📌 ';
-  font-size: 10px;
-}
-
 .ui-tab--dragging {
   opacity: 0.5;
 }
 
-.ui-tab--drop-target {
-  border-left: 2px solid var(--vscode-focusBorder);
+/* Positional drop indicators — vertical line on left or right edge */
+.ui-tab--drop-before::before,
+.ui-tab--drop-after::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--vscode-focusBorder);
+  z-index: 1;
+}
+.ui-tab--drop-before::before { left: -1px; }
+.ui-tab--drop-after::after  { right: -1px; }
+
+/* Empty-bar drop target */
+.ui-tab-bar--drop-end {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}
+
+.ui-tab-sticky {
+  margin-right: 2px;
+  font-size: 10px;
 }
 
 .ui-tab-icon {
@@ -227,6 +272,22 @@
 .ui-tab-close:hover {
   opacity: 1;
   background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/* Drag ghost image */
+.ui-tab-drag-image {
+  position: fixed;
+  top: -100px;
+  left: -100px;
+  padding: 4px 8px;
+  background: var(--vscode-tab-activeBackground, #1e1e1e);
+  color: var(--vscode-tab-activeForeground, #fff);
+  border: 1px solid var(--vscode-focusBorder, #007fd4);
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 99999;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

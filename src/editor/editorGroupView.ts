@@ -4,8 +4,9 @@
 // editor pane below. Integrates with EditorGroupModel for state and
 // implements IGridView so the editor part grid can size it.
 //
-// Tab bar features: click-to-activate, close button, dirty indicator,
-// preview (italic), sticky marker, drag-and-drop reordering.
+// Tab bar: delegates to `ui/TabBar` for rendering, DnD, scrolling,
+// and events. EditorGroupView maps the model to `ITabBarItem[]` and
+// wires TabBar events back to the model.
 
 import { Disposable, DisposableStore } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
@@ -24,6 +25,7 @@ import {
 import { BreadcrumbsBar } from './breadcrumbsBar.js';
 import { URI } from '../platform/uri.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
+import { TabBar, type ITabBarItem } from '../ui/tabBar.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -47,10 +49,11 @@ export class EditorGroupView extends Disposable implements IGridView {
   readonly model: EditorGroupModel;
 
   private _element!: HTMLElement;
-  private _tabBar!: HTMLElement;
+  private _tabs!: TabBar;
   private _breadcrumbsBar!: BreadcrumbsBar;
   private _paneContainer!: HTMLElement;
   private _emptyMessage!: HTMLElement;
+  private _workspaceFolders: readonly { uri: URI; name: string }[] = [];
 
   private _activePane: EditorPane | undefined;
   /** Sequence counter for "latest-wins" active editor rendering. */
@@ -167,12 +170,101 @@ export class EditorGroupView extends Disposable implements IGridView {
     // Focus tracking
     this._element.addEventListener('focusin', () => this._onDidFocus.fire());
 
-    // Tab bar
-    this._tabBar = document.createElement('div');
-    this._tabBar.classList.add('editor-tab-bar');
-    this._tabBar.style.height = `${TAB_HEIGHT}px`;
-    this._tabBar.style.minHeight = `${TAB_HEIGHT}px`;
-    this._element.appendChild(this._tabBar);
+    // Tab bar — delegates to ui/TabBar component
+    const tabBarHost = document.createElement('div');
+    tabBarHost.classList.add('editor-tab-bar');
+    tabBarHost.style.height = `${TAB_HEIGHT}px`;
+    tabBarHost.style.minHeight = `${TAB_HEIGHT}px`;
+    this._element.appendChild(tabBarHost);
+
+    this._tabs = this._register(new TabBar(tabBarHost, {
+      reorderable: true,
+      dragType: EDITOR_TAB_DRAG_TYPE,
+      scrollable: true,
+      showActions: true,
+      dragDataFactory: (id) => {
+        const idx = this.model.editors.findIndex(e => e.id === id);
+        const data: EditorTabDragData = {
+          sourceGroupId: this.model.id,
+          editorIndex: idx >= 0 ? idx : 0,
+          inputId: id,
+        };
+        return JSON.stringify(data);
+      },
+    }));
+
+    // Wire TabBar events → model
+    this._register(this._tabs.onDidSelect((id) => {
+      const idx = this.model.editors.findIndex(e => e.id === id);
+      if (idx >= 0) this.model.setActive(idx);
+    }));
+
+    this._register(this._tabs.onDidClose((id) => {
+      const idx = this.model.editors.findIndex(e => e.id === id);
+      if (idx >= 0) this.model.closeEditor(idx);
+    }));
+
+    this._register(this._tabs.onDidDoubleClick((id) => {
+      const idx = this.model.editors.findIndex(e => e.id === id);
+      if (idx >= 0 && !this.model.isPinned(idx)) {
+        this.model.pin(idx);
+      }
+    }));
+
+    this._register(this._tabs.onDidMiddleClick((id) => {
+      const idx = this.model.editors.findIndex(e => e.id === id);
+      if (idx >= 0) this.model.closeEditor(idx);
+    }));
+
+    this._register(this._tabs.onDidContextMenu(({ id, event }) => {
+      const idx = this.model.editors.findIndex(e => e.id === id);
+      if (idx >= 0) this._showTabContextMenu(this.model.editors[idx], idx, event);
+    }));
+
+    this._register(this._tabs.onDidReorder(({ fromId, targetId, position }) => {
+      const sourceIdx = this.model.editors.findIndex(e => e.id === fromId);
+      const targetIdx = this.model.editors.findIndex(e => e.id === targetId);
+      if (sourceIdx < 0 || targetIdx < 0) return;
+      let dropIdx = position === 'before' ? targetIdx : targetIdx + 1;
+      if (sourceIdx < dropIdx) dropIdx--;
+      if (dropIdx < 0) dropIdx = 0;
+      if (dropIdx >= this.model.count) dropIdx = this.model.count - 1;
+      this.model.moveEditor(sourceIdx, dropIdx);
+    }));
+
+    this._register(this._tabs.onDidExternalDrop(({ event, targetId, position }) => {
+      const raw = event.dataTransfer?.getData(EDITOR_TAB_DRAG_TYPE);
+      if (!raw) return;
+      try {
+        const data: EditorTabDragData = JSON.parse(raw);
+        let dropIndex: number;
+        if (targetId) {
+          const targetIdx = this.model.editors.findIndex(e => e.id === targetId);
+          dropIndex = position === 'before' ? targetIdx : targetIdx + 1;
+        } else {
+          dropIndex = this.model.count;
+        }
+        if (dropIndex < 0) dropIndex = this.model.count;
+
+        if (data.sourceGroupId === this.model.id) {
+          // Same group (dropped from outside current set — shouldn't normally happen)
+          const sourceIdx = this.model.editors.findIndex(ed => ed.id === data.inputId);
+          if (sourceIdx >= 0) {
+            let targetDrop = dropIndex;
+            if (sourceIdx < targetDrop) targetDrop--;
+            if (targetDrop < 0) targetDrop = 0;
+            if (targetDrop >= this.model.count) targetDrop = this.model.count - 1;
+            this.model.moveEditor(sourceIdx, targetDrop);
+          }
+        } else {
+          this._onDidRequestCrossGroupDrop.fire({
+            sourceGroupId: data.sourceGroupId,
+            inputId: data.inputId,
+            dropIndex,
+          });
+        }
+      } catch { /* ignore bad data */ }
+    }));
 
     // Breadcrumbs bar — between tab bar and pane (VS Code placement)
     this._breadcrumbsBar = this._register(new BreadcrumbsBar(this._element));
@@ -250,6 +342,7 @@ export class EditorGroupView extends Disposable implements IGridView {
    * Tell the breadcrumbs bar about workspace folders for relative path display.
    */
   setWorkspaceFolders(folders: readonly { uri: URI; name: string }[]): void {
+    this._workspaceFolders = folders;
     this._breadcrumbsBar?.setWorkspaceFolders(folders);
     this._updateBreadcrumbs();
   }
@@ -297,364 +390,40 @@ export class EditorGroupView extends Disposable implements IGridView {
 
   // ─── Tab Rendering ─────────────────────────────────────────────────────
 
-  /** Scroll-on-drag timer ID. */
-  private _scrollDragTimer: ReturnType<typeof setInterval> | undefined;
-
   private _renderTabs(): void {
-    if (!this._tabBar) return;
-
-    // Clear existing tabs (but keep any toolbar we might add later)
-    this._tabBar.innerHTML = '';
+    if (!this._tabs) return;
 
     const editors = this.model.editors;
     const activeIdx = this.model.activeIndex;
 
-    // Tabs container — scrollable, also a drop target for appending to end
-    const tabsWrap = document.createElement('div');
-    tabsWrap.classList.add('editor-tabs');
+    // Map model editors → ITabBarItem[]
+    const items: ITabBarItem[] = editors.map((editor, i) => ({
+      id: editor.id,
+      label: editor.name,
+      tooltip: editor.description || editor.name,
+      italic: this.model.isPreview(i),
+      stickyContent: this.model.isSticky(i) ? '📌 ' : undefined,
+      decorations: {
+        dirty: editor.isDirty,
+        pinned: this.model.isSticky(i),
+      },
+    }));
 
-    for (let i = 0; i < editors.length; i++) {
-      const editor = editors[i];
-      const isActive = i === activeIdx;
-      const isPinned = this.model.isPinned(i);
-      const isSticky = this.model.isSticky(i);
-      const isPreview = this.model.isPreview(i);
+    this._tabs.setItems(items);
 
-      const tab = this._createTab(editor, i, isActive, isPinned, isSticky, isPreview);
-      tabsWrap.appendChild(tab);
+    // Set active tab
+    const activeEditor = editors[activeIdx];
+    if (activeEditor) {
+      this._tabs.setActive(activeEditor.id);
+      this._tabs.scrollToActive();
     }
 
-    // ── Tab bar as drop target (drop at end / into empty group) ──
-    this._setupTabsWrapDrop(tabsWrap);
-
-    // ── Scroll buttons (VS Code parity: chevron arrows when tabs overflow) ──
-    const scrollLeft = document.createElement('button');
-    scrollLeft.classList.add('editor-tab-scroll-btn', 'editor-tab-scroll-left');
-    scrollLeft.textContent = '\u2039'; // ‹
-    scrollLeft.title = 'Scroll Tabs Left';
-    scrollLeft.addEventListener('click', () => {
-      tabsWrap.scrollBy({ left: -200, behavior: 'smooth' });
-    });
-
-    const scrollRight = document.createElement('button');
-    scrollRight.classList.add('editor-tab-scroll-btn', 'editor-tab-scroll-right');
-    scrollRight.textContent = '\u203A'; // ›
-    scrollRight.title = 'Scroll Tabs Right';
-    scrollRight.addEventListener('click', () => {
-      tabsWrap.scrollBy({ left: 200, behavior: 'smooth' });
-    });
-
-    const updateScrollButtons = () => {
-      const hasOverflow = tabsWrap.scrollWidth > tabsWrap.clientWidth;
-      const atStart = tabsWrap.scrollLeft <= 0;
-      const atEnd = tabsWrap.scrollLeft + tabsWrap.clientWidth >= tabsWrap.scrollWidth - 1;
-      scrollLeft.classList.toggle('hidden', !hasOverflow || atStart);
-      scrollRight.classList.toggle('hidden', !hasOverflow || atEnd);
-    };
-
-    tabsWrap.addEventListener('scroll', updateScrollButtons);
-
-    // Also update when the tab bar resizes (e.g. sidebar toggle, window resize)
-    if (typeof ResizeObserver !== 'undefined') {
-      const ro = new ResizeObserver(updateScrollButtons);
-      ro.observe(tabsWrap);
-      // Clean up on next re-render (innerHTML = '' disposes DOM)
+    // Rebuild toolbar in the actions slot
+    const actionsSlot = this._tabs.getActionsContainer();
+    if (actionsSlot) {
+      actionsSlot.innerHTML = '';
+      this._populateToolbar(actionsSlot);
     }
-
-    // Initial visibility check after layout
-    requestAnimationFrame(updateScrollButtons);
-
-    this._tabBar.appendChild(scrollLeft);
-    this._tabBar.appendChild(tabsWrap);
-    this._tabBar.appendChild(scrollRight);
-
-    // Scroll active tab into view
-    const activeTab = tabsWrap.children[activeIdx] as HTMLElement | undefined;
-    if (activeTab) {
-      requestAnimationFrame(() => {
-        activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-        updateScrollButtons();
-      });
-    }
-
-    // Group toolbar (split, close)
-    const toolbar = this._createToolbar();
-    this._tabBar.appendChild(toolbar);
-  }
-
-  /**
-   * Make the tabs wrapper a drop target. Drops that land on the empty area
-   * after all tabs (or on an empty group's tab bar) append to the end.
-   * VS Code parity: tab bar itself accepts drops.
-   */
-  private _setupTabsWrapDrop(tabsWrap: HTMLElement): void {
-    tabsWrap.addEventListener('dragover', (e) => {
-      if (!e.dataTransfer?.types.includes(EDITOR_TAB_DRAG_TYPE)) return;
-      // Only accept drops on the tabsWrap for empty groups (no tabs to target).
-      // For non-empty groups, the individual tab drop-before/drop-after handles
-      // all positions including "append to end" (right half of last tab).
-      if (this.model.count > 0) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      // Show insertion line at the very end
-      tabsWrap.classList.add('drop-target-end');
-
-      // Scroll-on-drag: auto-scroll when near edges
-      this._startScrollOnDrag(tabsWrap, e);
-    });
-
-    tabsWrap.addEventListener('dragleave', () => {
-      tabsWrap.classList.remove('drop-target-end');
-      this._stopScrollOnDrag();
-    });
-
-    tabsWrap.addEventListener('drop', (e) => {
-      tabsWrap.classList.remove('drop-target-end');
-      this._stopScrollOnDrag();
-      const raw = e.dataTransfer?.getData(EDITOR_TAB_DRAG_TYPE);
-      if (!raw) return;
-      // Only handle drops for empty groups
-      if (this.model.count > 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      try {
-        const data: EditorTabDragData = JSON.parse(raw);
-        const dropIndex = this.model.count; // append at end
-        if (data.sourceGroupId === this.model.id) {
-          const sourceIdx = this.model.editors.findIndex(ed => ed.id === data.inputId);
-          if (sourceIdx >= 0) {
-            this.model.moveEditor(sourceIdx, this.model.count - 1);
-          }
-        } else {
-          this._onDidRequestCrossGroupDrop.fire({
-            sourceGroupId: data.sourceGroupId,
-            inputId: data.inputId,
-            dropIndex,
-          });
-        }
-      } catch { /* ignore */ }
-    });
-  }
-
-  /**
-   * Start auto-scrolling the tab bar when dragging near its left/right edges.
-   * VS Code scrolls the tab bar during drag so overflow tabs are reachable.
-   */
-  private _startScrollOnDrag(_tabsWrap: HTMLElement, _e: DragEvent): void {
-    this._stopScrollOnDrag();
-
-    this._scrollDragTimer = setInterval(() => {
-      // We use the last known mouse position — dragover fires frequently
-      // Since we can't get mouse from interval, rely on scroll position checks
-      // The actual scroll trigger is handled per-dragover call below
-    }, 50);
-
-    // The real scroll logic runs on each dragover (which fires ~60fps)
-    // We store the handler so _renderTabs can clean it up
-  }
-
-  private _stopScrollOnDrag(): void {
-    if (this._scrollDragTimer !== undefined) {
-      clearInterval(this._scrollDragTimer);
-      this._scrollDragTimer = undefined;
-    }
-  }
-
-  private _createTab(
-    editor: IEditorInput,
-    index: number,
-    isActive: boolean,
-    _isPinned: boolean,
-    isSticky: boolean,
-    isPreview: boolean,
-  ): HTMLElement {
-    const tab = document.createElement('div');
-    tab.classList.add('editor-tab');
-    if (isActive) tab.classList.add('editor-tab--active');
-    if (isSticky) tab.classList.add('editor-tab--sticky');
-    if (isPreview) tab.classList.add('editor-tab--preview');
-    if (editor.isDirty) tab.classList.add('editor-tab--dirty');
-
-    // Tooltip
-    tab.title = editor.description || editor.name;
-
-    // Sticky indicator
-    if (isSticky) {
-      const pin = document.createElement('span');
-      pin.classList.add('editor-tab-pin');
-      pin.textContent = '📌 ';
-      tab.appendChild(pin);
-    }
-
-    // Label
-    const label = document.createElement('span');
-    label.classList.add('editor-tab-label');
-    label.textContent = editor.name;
-    tab.appendChild(label);
-
-    // Dirty indicator
-    if (editor.isDirty) {
-      const dirty = document.createElement('span');
-      dirty.classList.add('editor-tab-dirty');
-      dirty.textContent = ' ●';
-      tab.appendChild(dirty);
-    }
-
-    // Close button
-    const closeBtn = document.createElement('span');
-    closeBtn.classList.add('editor-tab-close');
-    closeBtn.textContent = '×';
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const currentIdx = this.model.editors.indexOf(editor);
-      if (currentIdx >= 0) this.model.closeEditor(currentIdx);
-    });
-    tab.appendChild(closeBtn);
-
-    // Click to activate
-    tab.addEventListener('click', () => {
-      const currentIdx = this.model.editors.indexOf(editor);
-      if (currentIdx >= 0) this.model.setActive(currentIdx);
-    });
-
-    // Double-click to pin preview
-    tab.addEventListener('dblclick', () => {
-      const currentIdx = this.model.editors.indexOf(editor);
-      if (currentIdx >= 0 && !this.model.isPinned(currentIdx)) {
-        this.model.pin(currentIdx);
-      }
-    });
-
-    // Middle-click to close (VS Code auxclick pattern)
-    tab.addEventListener('auxclick', (e) => {
-      if (e.button === 1) {
-        e.preventDefault();
-        e.stopPropagation();
-        const currentIdx = this.model.editors.indexOf(editor);
-        if (currentIdx >= 0) this.model.closeEditor(currentIdx);
-      }
-    });
-
-    // Drag source
-    tab.draggable = true;
-    tab.addEventListener('dragstart', (e) => {
-      const currentIdx = this.model.editors.indexOf(editor);
-      const data: EditorTabDragData = {
-        sourceGroupId: this.model.id,
-        editorIndex: currentIdx >= 0 ? currentIdx : index,
-        inputId: editor.id,
-      };
-      e.dataTransfer?.setData(EDITOR_TAB_DRAG_TYPE, JSON.stringify(data));
-      e.dataTransfer!.effectAllowed = 'move';
-      tab.classList.add('dragging');
-
-      // VS Code parity: custom drag image showing just the label
-      const ghost = document.createElement('div');
-      ghost.classList.add('editor-tab-drag-image');
-      ghost.textContent = editor.name;
-      document.body.appendChild(ghost);
-      e.dataTransfer?.setDragImage(ghost, 0, 0);
-      // Remove the ghost after browser captures it (next frame)
-      requestAnimationFrame(() => ghost.remove());
-    });
-    tab.addEventListener('dragend', () => {
-      tab.classList.remove('dragging');
-      // Clear any stale insertion indicators
-      this._clearAllDropIndicators();
-    });
-
-    // Drop target — VS Code left/right half detection for precise insertion
-    tab.addEventListener('dragover', (e) => {
-      if (!e.dataTransfer?.types.includes(EDITOR_TAB_DRAG_TYPE)) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-
-      // Determine left or right half of the tab
-      const rect = tab.getBoundingClientRect();
-      const midX = rect.left + rect.width / 2;
-      const isLeftHalf = e.clientX < midX;
-
-      // Clear all other indicators first
-      this._clearAllDropIndicators();
-
-      // Show insertion line on the appropriate side
-      if (isLeftHalf) {
-        tab.classList.add('drop-before');
-      } else {
-        tab.classList.add('drop-after');
-      }
-
-      // Scroll-on-drag near edges of tab bar
-      const tabsWrap = tab.parentElement;
-      if (tabsWrap) {
-        const wrapRect = tabsWrap.getBoundingClientRect();
-        const EDGE_SIZE = 30;
-        if (e.clientX - wrapRect.left < EDGE_SIZE) {
-          tabsWrap.scrollLeft -= 3;
-        } else if (wrapRect.right - e.clientX < EDGE_SIZE) {
-          tabsWrap.scrollLeft += 3;
-        }
-      }
-    });
-    tab.addEventListener('dragleave', () => {
-      tab.classList.remove('drop-before', 'drop-after');
-    });
-    tab.addEventListener('drop', (e) => {
-      this._clearAllDropIndicators();
-      const raw = e.dataTransfer?.getData(EDITOR_TAB_DRAG_TYPE);
-      if (!raw) return;
-      e.preventDefault();
-      e.stopPropagation();
-      try {
-        const data: EditorTabDragData = JSON.parse(raw);
-
-        // Determine insertion index from left/right half
-        const rect = tab.getBoundingClientRect();
-        const midX = rect.left + rect.width / 2;
-        const isLeftHalf = e.clientX < midX;
-        const tabIdx = this.model.editors.indexOf(editor);
-        // If dropping on left half, insert before this tab; right half, insert after
-        let dropIdx = isLeftHalf ? tabIdx : tabIdx + 1;
-
-        if (data.sourceGroupId === this.model.id) {
-          // Same group: reorder — resolve current source index by inputId
-          const sourceIdx = this.model.editors.findIndex(ed => ed.id === data.inputId);
-          if (sourceIdx >= 0 && tabIdx >= 0) {
-            // Adjust target if source is before the drop point
-            if (sourceIdx < dropIdx) dropIdx--;
-            if (dropIdx < 0) dropIdx = 0;
-            if (dropIdx >= this.model.count) dropIdx = this.model.count - 1;
-            this.model.moveEditor(sourceIdx, dropIdx);
-          }
-        } else {
-          // Cross-group move: delegate to EditorPart
-          this._onDidRequestCrossGroupDrop.fire({
-            sourceGroupId: data.sourceGroupId,
-            inputId: data.inputId,
-            dropIndex: dropIdx >= 0 ? dropIdx : this.model.count,
-          });
-        }
-      } catch { /* ignore bad data */ }
-    });
-
-    // ── Context menu (right-click) — VS Code parity: EditorTitleContext ──
-    tab.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this._showTabContextMenu(editor, index, e);
-    });
-
-    return tab;
-  }
-
-  /**
-   * Clear all drop insertion indicators from every tab.
-   * VS Code pattern: ensure a clean state before showing new indicator.
-   */
-  private _clearAllDropIndicators(): void {
-    const tabs = this._tabBar?.querySelectorAll('.editor-tab');
-    tabs?.forEach(t => t.classList.remove('drop-before', 'drop-after'));
-    this._tabBar?.querySelector('.editor-tabs')?.classList.remove('drop-target-end');
   }
 
   // ─── Tab Context Menu ──────────────────────────────────────────────────
@@ -677,7 +446,7 @@ export class EditorGroupView extends Disposable implements IGridView {
 
     const editorCount = this.model.count;
     const isLast = currentIdx === editorCount - 1;
-    const uri: URI | undefined = (editor as any).uri;
+    const uri: URI | undefined = editor.uri;
 
     // ── Build menu items ──
     const items: IContextMenuItem[] = [];
@@ -760,28 +529,20 @@ export class EditorGroupView extends Disposable implements IGridView {
    */
   private _getRelativePath(uri: URI): string {
     const fsPath = uri.fsPath;
-    // If we have workspace folders (from breadcrumbs bar), try to make it relative
-    const folders = (this._breadcrumbsBar as any)?._workspaceFolders as readonly { uri: URI; name: string }[] | undefined;
-    if (folders) {
-      for (const folder of folders) {
-        const folderPath = folder.uri.fsPath;
-        if (fsPath.startsWith(folderPath)) {
-          let relative = fsPath.substring(folderPath.length);
-          // Remove leading separator
-          if (relative.startsWith('/') || relative.startsWith('\\')) {
-            relative = relative.substring(1);
-          }
-          return relative;
+    for (const folder of this._workspaceFolders) {
+      const folderPath = folder.uri.fsPath;
+      if (fsPath.startsWith(folderPath)) {
+        let relative = fsPath.substring(folderPath.length);
+        if (relative.startsWith('/') || relative.startsWith('\\')) {
+          relative = relative.substring(1);
         }
+        return relative;
       }
     }
     return fsPath;
   }
 
-  private _createToolbar(): HTMLElement {
-    const toolbar = document.createElement('div');
-    toolbar.classList.add('editor-group-toolbar');
-
+  private _populateToolbar(slot: HTMLElement): void {
     // Markdown preview button — shown only when active editor is a markdown file
     const activeEditor = this.model.activeEditor;
     if (activeEditor) {
@@ -794,7 +555,7 @@ export class EditorGroupView extends Disposable implements IGridView {
           true
         );
         previewBtn.classList.add('editor-toolbar-preview');
-        toolbar.appendChild(previewBtn);
+        slot.appendChild(previewBtn);
       }
     }
 
@@ -805,9 +566,7 @@ export class EditorGroupView extends Disposable implements IGridView {
       () => { this._onDidRequestSplit.fire(GroupDirection.Right); },
       true
     );
-    toolbar.appendChild(splitBtn);
-
-    return toolbar;
+    slot.appendChild(splitBtn);
   }
 
   private _createToolbarButton(content: string, title: string, onClick: () => void, isSvg = false): HTMLElement {

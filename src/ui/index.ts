@@ -9,7 +9,7 @@ export { $, append, clearNode, addDisposableListener, hide, show, toggleClass, i
 // Components
 export { Button, type IButtonOptions } from './button.js';
 export { InputBox, type IInputBoxOptions } from './inputBox.js';
-export { TabBar, type ITabBarItem, type ITabBarOptions, type TabReorderEvent } from './tabBar.js';
+export { TabBar, type ITabBarItem, type ITabBarOptions, type TabReorderEvent, type TabContextMenuEvent, type TabExternalDropEvent } from './tabBar.js';
 export { Overlay, type IOverlayOptions } from './overlay.js';
 export { FilterableList, type IListItem, type IFilterableListOptions } from './list.js';
 export { ActionBar, type IAction } from './actionBar.js';

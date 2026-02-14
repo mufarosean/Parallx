@@ -477,7 +477,7 @@ for tool extensions to consume via `when` clauses in their manifests.
 | # | Issue | Scope | Action |
 |---|-------|-------|--------|
 | 4 | 6 built-in tools have no CSS file | 6 files | Create co-located CSS files for welcome, output, tool-gallery, search, notification, menu |
-| 5 | `editorGroupView.ts` builds tab bar manually | 1 file | Refactor to use `ui/TabBar` |
+| 5 | `editorGroupView.ts` builds tab bar manually | 1 file | ✅ Refactored to use `ui/TabBar`. Enhanced TabBar with scroll overflow, positional DnD, cross-bar drops, context menu, middle-click, actions slot. editorGroupView: 905→570 lines. Bundle: 913.6→870.2kb. |
 | 6 | 44 `style.display` toggles instead of `hide()`/`show()` | 15+ files | Adopt `ui/dom.ts` utilities |
 | 7 | 57 `.style.cssText` bulk assignments | 10+ files | Move to CSS classes |
 | 8 | `menuContribution.ts` uses custom CSS vars instead of `--vscode-*` | 1 file | Switch to standard theme tokens |

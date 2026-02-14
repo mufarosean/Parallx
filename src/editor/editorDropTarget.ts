@@ -293,7 +293,7 @@ export class EditorDropTarget extends Disposable {
       // group is empty (no tabs to act as drop targets). VS Code parity:
       // empty groups accept drops on the tab bar via the pane overlay.
       if (this._isOverTabBar(e.target as HTMLElement | null)) {
-        const hasEditors = groupElement.querySelectorAll('.editor-tab').length > 0;
+        const hasEditors = groupElement.querySelectorAll('.ui-tab').length > 0;
         if (hasEditors) return;
       }
 

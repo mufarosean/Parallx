@@ -41,18 +41,18 @@ test.describe('Tab Management', () => {
     await window.keyboard.press('Control+n');
     await window.waitForTimeout(300);
 
-    const tabs = window.locator('.editor-tab');
+    const tabs = window.locator('.ui-tab');
     const count = await tabs.count();
     expect(count).toBeGreaterThanOrEqual(2);
 
     // Get the active tab label before cycling
-    const activeLabel1 = await window.locator('.editor-tab--active .editor-tab-label').textContent();
+    const activeLabel1 = await window.locator('.ui-tab--active .ui-tab-label').textContent();
 
     // Cycle to next editor
     await window.keyboard.press('Control+PageDown');
     await window.waitForTimeout(300);
 
-    const activeLabel2 = await window.locator('.editor-tab--active .editor-tab-label').textContent();
+    const activeLabel2 = await window.locator('.ui-tab--active .ui-tab-label').textContent();
 
     // The active label should have changed (or wrapped around)
     // If only 2 tabs, they should be different
@@ -68,12 +68,12 @@ test.describe('Tab Management', () => {
     await window.keyboard.press('Control+n');
     await window.waitForTimeout(300);
 
-    const label1 = await window.locator('.editor-tab--active .editor-tab-label').textContent();
+    const label1 = await window.locator('.ui-tab--active .ui-tab-label').textContent();
 
     await window.keyboard.press('Control+PageUp');
     await window.waitForTimeout(300);
 
-    const label2 = await window.locator('.editor-tab--active .editor-tab-label').textContent();
+    const label2 = await window.locator('.ui-tab--active .ui-tab-label').textContent();
 
     // Should have switched
     expect(label2).not.toBe(label1);
@@ -81,7 +81,7 @@ test.describe('Tab Management', () => {
 
   test('multiple files from explorer open as separate tabs', async ({ window, electronApp }) => {
     // Close all tabs first
-    let tabCount = await window.locator('.editor-tab').count();
+    let tabCount = await window.locator('.ui-tab').count();
     for (let i = 0; i < tabCount; i++) {
       await window.keyboard.press('Control+w');
       await window.waitForTimeout(200);
@@ -102,14 +102,14 @@ test.describe('Tab Management', () => {
     await openFileByName(window, 'index.ts', true);
 
     // Should have 2 tabs
-    const tabs = window.locator('.editor-tab');
+    const tabs = window.locator('.ui-tab');
     const count = await tabs.count();
     expect(count).toBeGreaterThanOrEqual(2);
 
     // Both file names should appear in tabs
     const tabLabels = [];
     for (let i = 0; i < count; i++) {
-      tabLabels.push(await tabs.nth(i).locator('.editor-tab-label').textContent());
+      tabLabels.push(await tabs.nth(i).locator('.ui-tab-label').textContent());
     }
     expect(tabLabels.some(l => l?.includes('README'))).toBe(true);
     expect(tabLabels.some(l => l?.includes('index'))).toBe(true);
@@ -117,12 +117,12 @@ test.describe('Tab Management', () => {
 
   test('closing last tab shows the watermark/empty state', async ({ window }) => {
     // Make sure we have exactly one tab
-    let count = await window.locator('.editor-tab').count();
+    let count = await window.locator('.ui-tab').count();
     // Close all but last
     while (count > 1) {
       await window.keyboard.press('Control+w');
       await window.waitForTimeout(300);
-      count = await window.locator('.editor-tab').count();
+      count = await window.locator('.ui-tab').count();
     }
 
     if (count === 1) {
@@ -130,7 +130,7 @@ test.describe('Tab Management', () => {
       await window.waitForTimeout(500);
 
       // No tabs should remain
-      const remaining = await window.locator('.editor-tab').count();
+      const remaining = await window.locator('.ui-tab').count();
       expect(remaining).toBe(0);
 
       // The watermark or empty state should be visible
