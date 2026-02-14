@@ -68,18 +68,14 @@ function openWelcome(api: ParallxApi): void {
 }
 
 function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable {
-  container.style.cssText = `
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    height: 100%; padding: 40px; overflow-y: auto;
-    background: var(--vscode-editor-background, #1e1e1e); color: var(--vscode-foreground, #cccccc); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  `;
+  container.classList.add('welcome-container');
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'max-width: 700px; width: 100%; text-align: center;';
+  wrapper.classList.add('welcome-wrapper');
 
   // Logo / App name
   const logo = document.createElement('div');
-  logo.style.cssText = 'margin-bottom: 12px; user-select: none; display: flex; justify-content: center;';
+  logo.classList.add('welcome-logo');
   logo.innerHTML = `<svg width="96" height="96" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect x="6" y="8" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf" opacity="0.45"/>
     <rect x="10" y="6" width="16" height="16" rx="1.5" transform="skewX(-8)" fill="#a21caf"/>
@@ -87,31 +83,31 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
   wrapper.appendChild(logo);
 
   const h1 = document.createElement('h1');
-  h1.style.cssText = 'font-size: 28px; font-weight: 300; color: #e0e0e0; margin: 0 0 4px;';
+  h1.classList.add('welcome-title');
   h1.textContent = api.env.appName || 'Parallx';
   wrapper.appendChild(h1);
 
   const version = document.createElement('div');
-  version.style.cssText = 'font-size: 13px; color: #888; margin-bottom: 32px;';
+  version.classList.add('welcome-version');
   version.textContent = `v${api.env.appVersion || '0.1.0'}`;
   wrapper.appendChild(version);
 
   // Divider
   const divider = document.createElement('hr');
-  divider.style.cssText = 'border: none; border-top: 1px solid #333; width: 60%; margin: 0 auto 24px;';
+  divider.classList.add('welcome-divider');
   wrapper.appendChild(divider);
 
   // ── Two-column layout: Start (left) | Recent (right) ──
   const columns = document.createElement('div');
-  columns.style.cssText = 'display: flex; gap: 40px; text-align: left; margin-bottom: 32px;';
+  columns.classList.add('welcome-columns');
 
   // Left column: Getting Started
   const leftCol = document.createElement('div');
-  leftCol.style.cssText = 'flex: 1; min-width: 0;';
+  leftCol.classList.add('welcome-col');
   columns.appendChild(leftCol);
 
   const startTitle = document.createElement('h2');
-  startTitle.style.cssText = 'font-size: 16px; font-weight: 600; color: #e0e0e0; margin: 0 0 12px;';
+  startTitle.classList.add('welcome-section-title');
   startTitle.textContent = 'Start';
   leftCol.appendChild(startTitle);
 
@@ -123,15 +119,13 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
 
   for (const item of startItems) {
     const row = document.createElement('div');
-    row.style.cssText = 'display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer;';
-    row.addEventListener('mouseenter', () => { row.style.background = '#2a2d2e'; });
-    row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+    row.classList.add('welcome-action-row');
     const iconSpan = document.createElement('span');
     iconSpan.textContent = item.icon;
-    iconSpan.style.fontSize = '16px';
+    iconSpan.classList.add('welcome-action-icon');
     const textSpan = document.createElement('span');
     textSpan.textContent = item.text;
-    textSpan.style.color = '#3794ff';
+    textSpan.classList.add('welcome-action-text');
     row.appendChild(iconSpan);
     row.appendChild(textSpan);
     row.addEventListener('click', () => {
@@ -142,7 +136,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
 
   // Help sub-section
   const helpTitle = document.createElement('h2');
-  helpTitle.style.cssText = 'font-size: 16px; font-weight: 600; color: #e0e0e0; margin: 20px 0 12px;';
+  helpTitle.classList.add('welcome-section-title', 'welcome-section-title--help');
   helpTitle.textContent = 'Help';
   leftCol.appendChild(helpTitle);
 
@@ -154,18 +148,16 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
 
   for (const item of helpItems) {
     const row = document.createElement('div');
-    row.style.cssText = 'display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer;';
-    row.addEventListener('mouseenter', () => { row.style.background = '#2a2d2e'; });
-    row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+    row.classList.add('welcome-action-row');
     const iconSpan = document.createElement('span');
     iconSpan.textContent = item.icon;
-    iconSpan.style.fontSize = '16px';
+    iconSpan.classList.add('welcome-action-icon');
     const textSpan = document.createElement('span');
     textSpan.textContent = item.text;
-    textSpan.style.color = '#3794ff';
+    textSpan.classList.add('welcome-action-text');
     const hintSpan = document.createElement('span');
     hintSpan.textContent = item.hint;
-    hintSpan.style.cssText = 'color: #888; font-size: 12px; margin-left: auto;';
+    hintSpan.classList.add('welcome-action-hint');
     row.appendChild(iconSpan);
     row.appendChild(textSpan);
     row.appendChild(hintSpan);
@@ -177,11 +169,11 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
 
   // Right column: Recent
   const rightCol = document.createElement('div');
-  rightCol.style.cssText = 'flex: 1; min-width: 0;';
+  rightCol.classList.add('welcome-col');
   columns.appendChild(rightCol);
 
   const recentTitle = document.createElement('h2');
-  recentTitle.style.cssText = 'font-size: 16px; font-weight: 600; color: #e0e0e0; margin: 0 0 12px;';
+  recentTitle.classList.add('welcome-section-title');
   recentTitle.textContent = 'Recent';
   rightCol.appendChild(recentTitle);
 
@@ -192,14 +184,14 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
 
   if (recentWorkspaces.length === 0 && recentFiles.length === 0) {
     const emptyMsg = document.createElement('div');
-    emptyMsg.style.cssText = 'font-size: 13px; color: #888; padding: 4px 0;';
+    emptyMsg.classList.add('welcome-empty');
     emptyMsg.textContent = 'No recent items yet.';
     rightCol.appendChild(emptyMsg);
   }
 
   if (recentWorkspaces.length > 0) {
     const wsLabel = document.createElement('div');
-    wsLabel.style.cssText = 'font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; margin-bottom: 6px;';
+    wsLabel.classList.add('welcome-category-label');
     wsLabel.textContent = 'Workspaces';
     rightCol.appendChild(wsLabel);
 
@@ -213,7 +205,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
 
   if (recentFiles.length > 0) {
     const fileLabel = document.createElement('div');
-    fileLabel.style.cssText = 'font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; margin: 12px 0 6px;';
+    fileLabel.classList.add('welcome-category-label', 'welcome-category-label--files');
     fileLabel.textContent = 'Files';
     rightCol.appendChild(fileLabel);
 
@@ -231,7 +223,7 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
 
   // Footer
   const footer = document.createElement('div');
-  footer.style.cssText = 'font-size: 12px; color: #555; margin-top: 24px; text-align: center;';
+  footer.classList.add('welcome-footer');
   footer.textContent = 'Built-in tool — validates manifest loading, activation, editor API, commands, and state.';
   wrapper.appendChild(footer);
 
@@ -296,25 +288,22 @@ function _uriToDisplayPath(uri: string): string {
 /** Create a clickable recent item row. */
 function _createRecentRow(icon: string, label: string, detail: string, onClick: () => void): HTMLElement {
   const row = document.createElement('div');
-  row.style.cssText = 'display: flex; align-items: center; gap: 8px; padding: 3px 4px; font-size: 13px; cursor: pointer; border-radius: 3px;';
-  row.addEventListener('mouseenter', () => { row.style.background = '#2a2d2e'; });
-  row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+  row.classList.add('welcome-recent-row');
 
   const iconSpan = document.createElement('span');
   iconSpan.textContent = icon;
-  iconSpan.style.fontSize = '14px';
-  iconSpan.style.flexShrink = '0';
+  iconSpan.classList.add('welcome-recent-icon');
 
   const textWrap = document.createElement('div');
-  textWrap.style.cssText = 'min-width: 0; overflow: hidden;';
+  textWrap.classList.add('welcome-recent-text-wrap');
 
   const nameEl = document.createElement('div');
-  nameEl.style.cssText = 'color: #3794ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+  nameEl.classList.add('welcome-recent-name');
   nameEl.textContent = label;
 
   if (detail) {
     const detailEl = document.createElement('div');
-    detailEl.style.cssText = 'color: #888; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+    detailEl.classList.add('welcome-recent-detail');
     detailEl.textContent = detail;
     textWrap.appendChild(nameEl);
     textWrap.appendChild(detailEl);
