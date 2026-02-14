@@ -468,37 +468,37 @@ for tool extensions to consume via `when` clauses in their manifests.
 
 | # | Issue | Scope | Action |
 |---|-------|-------|--------|
-| 1 | `workbench.ts` is 3,933 lines | 1 file | Extract theme picker, zen mode, notification center, sidebar/panel setup, workspace transitions into separate modules |
-| 2 | `notificationService.ts` — 20 hardcoded dark-theme colors | 1 file | Move styling to CSS file using `var(--vscode-notifications-*)` tokens |
-| 3 | `dropOverlay.ts` — hardcoded drop colors | 1 file | Use registered `editorGroup.dropBackground` / `dropBorder` tokens |
+| 1 | `workbench.ts` is 3,933 lines | 1 file | ✅ Extracted theme picker, zen mode, notification center, sidebar/panel setup, workspace transitions into separate modules |
+| 2 | `notificationService.ts` — 20 hardcoded dark-theme colors | 1 file | ✅ Moved styling to CSS file using `var(--vscode-notifications-*)` tokens |
+| 3 | `dropOverlay.ts` — hardcoded drop colors | 1 file | ✅ Uses registered `editorGroup.dropBackground` / `dropBorder` tokens |
 
 ### P1 — High (code quality / consistency)
 
 | # | Issue | Scope | Action |
 |---|-------|-------|--------|
-| 4 | 6 built-in tools have no CSS file | 6 files | Create co-located CSS files for welcome, output, tool-gallery, search, notification, menu |
+| 4 | 6 built-in tools have no CSS file | 6 files | ✅ Created co-located CSS files for welcome, output, tool-gallery, search, notification, menu |
 | 5 | `editorGroupView.ts` builds tab bar manually | 1 file | ✅ Refactored to use `ui/TabBar`. Enhanced TabBar with scroll overflow, positional DnD, cross-bar drops, context menu, middle-click, actions slot. editorGroupView: 905→570 lines. Bundle: 913.6→870.2kb. |
-| 6 | 44 `style.display` toggles instead of `hide()`/`show()` | 15+ files | Adopt `ui/dom.ts` utilities |
-| 7 | 57 `.style.cssText` bulk assignments | 10+ files | Move to CSS classes |
-| 8 | `menuContribution.ts` uses custom CSS vars instead of `--vscode-*` | 1 file | Switch to standard theme tokens |
-| 9 | 25 registered theme tokens missing from all 4 theme files | 4 JSON files | Add missing token values |
-| 10 | 65% of registered theme tokens never consumed | CSS + TS | Migrate Part classes from inline styles to CSS `var(--vscode-*)` |
+| 6 | 44 `style.display` toggles instead of `hide()`/`show()` | 15+ files | ✅ Adopted `ui/dom.ts` utilities |
+| 7 | 57 `.style.cssText` bulk assignments | 10+ files | ✅ Moved to CSS classes |
+| 8 | `menuContribution.ts` uses custom CSS vars instead of `--vscode-*` | 1 file | ✅ Switched to standard theme tokens |
+| 9 | 25 registered theme tokens missing from all 4 theme files | 4 JSON files | ✅ Added missing token values |
+| 10 | 65% of registered theme tokens never consumed | CSS + TS | ✅ Migrated 44 legacy `--color-*` vars to `--vscode-*` in settingsEditorPane.css (26) and keybindingsEditorPane.css (18). Removed inline `_applyStyles()` in breadcrumbs.ts. Replaced 3 hardcoded canvas colors in textEditorPane.ts with `getComputedStyle` reads. |
 
 ### P2 — Medium (dead code / duplication)
 
 | # | Issue | Scope | Action |
 |---|-------|-------|--------|
-| 11 | ~60 genuinely dead exports | 15+ files | Remove after confirming not needed |
-| 12 | 5 duplicate logic patterns (~70 sites) | Codebase-wide | Extract shared utilities |
-| 13 | 3 unused npm packages (Jest infra) | `package.json` | Remove or implement unit tests |
-| 14 | All service registrations use `as any` casts | 2 files | Fix typed DI or remove decorator infra |
-| 15 | 280 raw `createElement` calls in feature code | 15+ files | Migrate to `ui/` components |
+| 11 | ~60 genuinely dead exports | 15+ files | ✅ Removed after confirming not needed |
+| 12 | 5 duplicate logic patterns (~70 sites) | Codebase-wide | ✅ Extracted shared utilities |
+| 13 | 3 unused npm packages (Jest infra) | `package.json` | ✅ Removed |
+| 14 | All service registrations use `as any` casts | 2 files | ✅ Fixed typed DI |
+| 15 | 280 raw `createElement` calls in feature code | 15+ files | ✅ Migrated 319 `document.createElement` → `$()` across 38 files. Added typed overloads to `$()` so `$('input')` returns `HTMLInputElement`, etc. Bundle: 913kb. |
 
 ### P3 — Low (nice-to-have)
 
 | # | Issue | Scope | Action |
 |---|-------|-------|--------|
-| 16 | Enable `noUnusedLocals` / `noUnusedParameters` | `tsconfig.json` | Catch dead code at compile time |
-| 17 | `.px-button:active` same as `:hover` | `ui/ui.css` | Add distinct pressed state |
+| 16 | Enable `noUnusedLocals` / `noUnusedParameters` | `tsconfig.json` | ✅ Enabled — catches dead code at compile time |
+| 17 | `.px-button:active` same as `:hover` | `ui/ui.css` | ✅ Added distinct pressed state |
 | 18 | 21 context keys set but unused in when-clauses | — | No action needed until tools consume them |
 | 19 | `@inject` DI infra unused | `platform/instantiation.ts` | Keep for future adoption |
