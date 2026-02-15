@@ -61,13 +61,14 @@ This milestone closes that gap by building the **theming infrastructure layer** 
 - Tool API extension: `parallx.window.activeColorTheme`, `parallx.window.onDidChangeActiveColorTheme`
 - Theme persistence — remember selected theme across sessions via workspace storage
 
-**Delivered Beyond Original Scope (Capabilities 6–11)**
+**Delivered Beyond Original Scope (Capabilities 6–13)**
 - Visual polish and VS Code pixel parity — SVG codicons, Dark Modern color corrections, sash gap elimination, active-tab continuity, titlebar border, Open Editors cleanup
 - Editor splitting and group management — proportional split sizing, group merge/navigation APIs, Open Editors group headers, empty group auto-close
 - Format readers and Markdown live preview — EditorResolverService, MarkdownEditorPane with live preview, ImageEditorPane with zoom, PdfEditorPane
 - Editor tab DnD overhaul — precise insertion targeting, thin line indicators, cross-group resolution, scroll-on-drag, editor area restriction
 - Breadcrumbs navigation bar — reusable BreadcrumbsWidget, BreadcrumbsBar with workspace root detection, keyboard navigation
 - Tab context menu — Close/Close Others/Close Saved/Close All, Copy Path/Copy Relative Path, Reveal in Explorer
+- Sash resize improvements — cursor desync fix, snap-to-hide behavior, SashState directional cursors, workspace persistence safety
 
 **Excluded (Deferred)**
 - Theme switching UI / settings panel (deferred — M5 ships one theme, the infrastructure supports switching programmatically)
@@ -882,6 +883,49 @@ Add a right-click context menu on editor tabs matching VS Code's `MenuId.EditorT
 
 ---
 
+## Capability 13 — Sash Resize Improvements *(Beyond Original Scope)*
+
+### Capability Description
+Three interrelated improvements to the grid sash (resize handle) system, aligning with VS Code's `Sash` and `SplitView` architecture: fix cursor desync during constrained drags, add snap-to-hide behavior for collapsible parts, and implement `SashState` with directional CSS cursors.
+
+### Goals
+- Eliminate cursor/sash drift when a view hits its min/max constraint during drag
+- Auto-hide sidebar, panel, or auxiliary bar when the user drags the sash past the minimum by a threshold
+- Show directional cursors (e-resize, w-resize, etc.) when a sash can only move in one direction
+- Disable sash interaction when both neighbours are at their limits
+
+### VS Code Reference
+- `src/vs/base/browser/ui/sash/sash.ts` — `SashState` enum (`Disabled`, `AtMinimum`, `AtMaximum`, `Enabled`), directional cursor CSS
+- `src/vs/base/browser/ui/splitview/splitview.ts` — `IView.snap`, `ISashDragSnapState`, `findFirstSnapIndex`, snap threshold = `floor(viewMinimumSize / 2)`, `updateSashEnablement()`
+
+### Implementation Summary
+
+**Task 13.1 — Cursor Desync Fix** ✅
+- **Root cause:** `_onSashMouseDown`'s `applyResize` closure advanced `startPos += pendingDelta` (the unclamped requested delta). When a view hit its min/max constraint, `resizeSash()` applied less delta than requested, but `startPos` jumped ahead by the full amount. This created progressive drift — the cursor visually separated from the sash.
+- **Fix:** `resizeSash()` now returns the actual applied delta (`appliedDelta = newSizeA - sizeA`). `applyResize` advances `startPos += appliedDelta` instead of `pendingDelta`, keeping the sash pinned to the cursor.
+- **Files:** `src/layout/grid.ts` (`resizeSash` return type `void` → `number`, `applyResize` closure updated)
+- **Commit:** `8dae171`
+
+**Task 13.2 — Snap-to-Hide Behavior** ✅
+- **Interface layer:** Added `snap?: boolean` to `IGridView` interface. `GridLeafNode.snap` delegates to the view. `Part` base class accepts a `_snap` constructor param with a public getter. Sidebar, panel, and auxiliary bar pass `snap: true`.
+- **Threshold computation:** On drag start, if a neighbour leaf has `snap: true`, the threshold is `floor(minimumSize / 2)` (e.g., sidebar min 170px → threshold 85px). Stored in `SashDragState.snapBeforeThreshold` / `snapAfterThreshold`.
+- **Detection:** Each rAF frame computes `overshoot = pendingDelta - appliedDelta`. Once the sash pins at a constraint, `startPos` freezes and `pendingDelta` equals the total distance past the constraint. When `|overshoot|` exceeds the threshold, `onDidSashSnap` fires with the snapped `viewId`.
+- **Drag abort:** `cleanupDrag()` is called *before* firing the snap event to prevent the toggle method (which removes the view from the grid) from corrupting the drag handler's stale branch/sashIndex references.
+- **Wiring:** `layout.ts._wireGridHandlers()` listens to `onDidSashSnap` from both grids, mapping `viewId` to `toggleSidebar()`, `togglePanel()`, or `toggleAuxiliaryBar()`.
+- **Bug fix (commit 278ecad):** Original overflow accumulation (`snapOverflow += pendingDelta - appliedDelta`) caused quadratic growth — snap triggered after ~13px instead of 85px. Fixed to use per-frame `overshoot` directly (no accumulation). Also fixed stale drag handler after snap by extracting `cleanupDrag()` and guarding all handlers with `didSnap` flag.
+- **Files:** `src/layout/grid.ts`, `src/layout/gridView.ts`, `src/layout/gridNode.ts`, `src/parts/part.ts`, `src/parts/sidebarPart.ts`, `src/parts/panelPart.ts`, `src/parts/auxiliaryBarPart.ts`, `src/workbench/layout.ts`
+- **Commits:** `8dae171`, `278ecad`
+
+**Task 13.3 — SashState and Directional Cursors** ✅
+- **SashState enum** in `layoutTypes.ts`: `Disabled` (0), `AtMinimum` (1), `AtMaximum` (2), `Enabled` (3). Mirrors VS Code's `SashState`.
+- **`_updateSashStates()`** in `grid.ts`: walks all sash elements via `GridBranchNode.sashes` getter (newly exposed). For each sash, computes whether childA can grow (A < maxA && B > minB) and whether childA can shrink (A > minA && B < maxB). Applies CSS classes: `sash-disabled`, `sash-minimum`, `sash-maximum`, `sash-enabled`.
+- **Called after:** `resizeSash()`, `layout()`, and `resize()` — ensures sash states are always current.
+- **CSS:** `.grid-sash-vertical.sash-minimum { cursor: e-resize }`, `.grid-sash-vertical.sash-maximum { cursor: w-resize }`, `.grid-sash-horizontal.sash-minimum { cursor: s-resize }`, `.grid-sash-horizontal.sash-maximum { cursor: n-resize }`, `.grid-sash.sash-disabled { pointer-events: none }`.
+- **Files:** `src/layout/layoutTypes.ts`, `src/layout/grid.ts`, `src/layout/gridNode.ts`, `src/workbench.css`
+- **Commit:** `8dae171`
+
+---
+
 ## Implementation Order
 
 The capabilities were implemented in this order:
@@ -908,9 +952,13 @@ Capability 9 (DnD Overhaul)                           ← a7b6e41, 1204d46
 Capability 10 (Breadcrumbs Navigation Bar)            ← db393cc
     ↓
 Capability 11 (Tab Context Menu)                      ← ae77932
+    ↓
+Capability 12 (VS Code Parity Reconciliation)          ← (incremental fixes)
+    ↓
+Capability 13 (Sash Resize Improvements)               ← 4f4a0b8, 8dae171, 278ecad
 ```
 
-Capabilities 1–5 were the originally planned scope. Capabilities 6–11 emerged during implementation as natural extensions to close remaining VS Code parity gaps revealed by visual testing.
+Capabilities 1–5 were the originally planned scope. Capabilities 6–13 emerged during implementation as natural extensions to close remaining VS Code parity gaps revealed by visual testing.
 
 ---
 
@@ -933,8 +981,11 @@ Capabilities 1–5 were the originally planned scope. Capabilities 6–11 emerge
 | 13 | `1204d46` | fix | Restrict editor tab DnD to editor area only |
 | 14 | `db393cc` | feat | Add breadcrumbs navigation bar (VS Code parity) |
 | 15 | `ae77932` | feat | Add tab context menu (VS Code parity) |
+| 16 | `4f4a0b8` | fix | Restore missing views dropped by saved workspace tab order |
+| 17 | `8dae171` | feat | Sash cursor desync fix, snap-to-hide, SashState directional cursors |
+| 18 | `278ecad` | fix | Snap-to-hide overflow double-counting and stale drag state |
 
-**Stats:** 15 commits, ~50 files changed, ~5,000+ lines added
+**Stats:** 18 commits, ~55 files changed, ~5,300+ lines added
 
 ---
 
@@ -999,6 +1050,16 @@ Capabilities 1–5 were the originally planned scope. Capabilities 6–11 emerge
 - [x] Ctrl+P file search: fuzzy match character highlighting, relative-path fallback matching
 - [x] Electron IPC `shell:showItemInFolder` for OS file reveal
 
+### Sash Resize Improvements (Capability 13)
+- [x] Cursor stays in sync with sash during constrained drags (no drift)
+- [x] Sidebar snaps shut when dragged past `floor(170/2) = 85px` past minimum
+- [x] Panel snaps shut when dragged past `floor(100/2) = 50px` past minimum
+- [x] Auxiliary bar snaps shut when dragged past `floor(170/2) = 85px` past minimum
+- [x] Drag handler fully cleans up before snap event fires (no stale state)
+- [x] SashState directional cursors show on constrained sashes
+- [x] Disabled sashes have `pointer-events: none`
+- [x] Workspace persistence does not interfere with snap behavior (uses toggle methods)
+
 ---
 
 ## Future Improvements Backlog
@@ -1029,6 +1090,8 @@ Checked items are already implemented; unchecked items remain as future work.
 
 ### Layout & Panels
 - [x] Drag sash resize feedback — Highlight sashes on hover so users discover they can resize panels/sidebar
+- [x] Snap-to-hide — Dragging sidebar/panel/aux bar sash past minimum auto-hides the part (Capability 13)
+- [x] SashState directional cursors — Sashes show e/w/s/n-resize cursor when constrained (Capability 13)
 - [x] Panel maximize/restore — Double-click panel title bar to maximize the panel to full height, double-click again to restore
 - [x] Sidebar collapse animation — Smooth animated transition when toggling sidebar visibility
 - [x] Zen Mode (Ctrl+K Z) — Hide all chrome (sidebar, panel, status bar, activity bar) to focus on the editor
