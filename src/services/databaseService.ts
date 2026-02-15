@@ -26,6 +26,7 @@ interface DatabaseIpcError {
 /** The database bridge exposed by preload.cjs. */
 interface DatabaseBridge {
   open(workspacePath: string, migrationsDir?: string): Promise<{ error: DatabaseIpcError | null; dbPath?: string }>;
+  migrate(migrationsDir: string): Promise<{ error: DatabaseIpcError | null }>;
   close(): Promise<{ error: DatabaseIpcError | null }>;
   run(sql: string, params?: unknown[]): Promise<{ error: DatabaseIpcError | null; changes?: number; lastInsertRowid?: number }>;
   get(sql: string, params?: unknown[]): Promise<{ error: DatabaseIpcError | null; row?: Record<string, unknown> | null }>;
@@ -104,6 +105,21 @@ export class DatabaseService extends Disposable {
     this._isOpen = false;
     this._dbPath = null;
     this._onDidClose.fire();
+  }
+
+  /**
+   * Run migrations from a directory on the currently-open database.
+   * Safe to call multiple times — already-applied migrations are skipped.
+   *
+   * @param migrationsDir — absolute path to the directory containing *.sql files
+   */
+  async migrate(migrationsDir: string): Promise<void> {
+    this._ensureOpen();
+    const result = await this._bridge.migrate(migrationsDir);
+    if (result.error) {
+      throw new Error(`[DatabaseService] Migration failed: ${result.error.message}`);
+    }
+    console.log(`[DatabaseService] Migrations applied from: ${migrationsDir}`);
   }
 
   /**

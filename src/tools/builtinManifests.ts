@@ -157,3 +157,34 @@ export const TOOL_GALLERY_MANIFEST: IToolManifest = {
     views: [{ id: 'view.tools', name: 'Installed Tools', defaultContainerId: 'tools-container' }],
   },
 };
+
+// ── Canvas ───────────────────────────────────────────────────────────────
+
+export const CANVAS_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.canvas',
+  name: 'Canvas',
+  version: '0.1.0',
+  publisher: 'parallx',
+  description: 'Canvas — create and organise pages with rich-text content.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'canvas.newPage', title: 'Canvas: New Page' },
+      { id: 'canvas.deletePage', title: 'Canvas: Delete Page' },
+      { id: 'canvas.renamePage', title: 'Canvas: Rename Page' },
+      { id: 'canvas.duplicatePage', title: 'Canvas: Duplicate Page' },
+    ],
+    keybindings: [
+      { command: 'canvas.newPage', key: 'Ctrl+N', when: "focusedView == 'view.canvas'" },
+    ],
+    viewContainers: [
+      { id: 'canvas-container', title: 'Canvas', icon: '📓', location: 'sidebar' as const },
+    ],
+    views: [
+      { id: 'view.canvas', name: 'Pages', defaultContainerId: 'canvas-container' },
+    ],
+  },
+};

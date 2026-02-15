@@ -508,7 +508,7 @@ The Canvas tool is a standard Parallx tool with a `parallx-manifest.json` declar
 
 #### Tasks
 
-**Task 3.1 — Create Canvas Tool Manifest**
+**Task 3.1 — Create Canvas Tool Manifest** ✅
 - **Task Description:** Add Canvas manifest to `src/tools/builtinManifests.ts` or create `src/built-in/canvas/parallx-manifest.json`.
 - **Output:** Canvas manifest registered as a built-in tool.
 - **Completion Criteria:**
@@ -525,7 +525,7 @@ The Canvas tool is a standard Parallx tool with a `parallx-manifest.json` declar
   - Manifest validated against `parallx-manifest.schema.json`
   - Added to built-in tool array in `builtinManifests.ts` as `CANVAS_MANIFEST`
 
-**Task 3.2 — Implement Canvas Tool Entry Point**
+**Task 3.2 — Implement Canvas Tool Entry Point** ✅
 - **Task Description:** Create `src/built-in/canvas/main.ts` with `activate()` and `deactivate()`.
 - **Output:** Canvas tool entry point following the standard tool pattern.
 - **Completion Criteria:**
@@ -540,7 +540,7 @@ The Canvas tool is a standard Parallx tool with a `parallx-manifest.json` declar
     2. Clears module-level state
   - Follows same pattern as `src/built-in/explorer/main.ts` (reference implementation)
 
-**Task 3.3 — Wire Canvas as Built-in Tool in Workbench**
+**Task 3.3 — Wire Canvas as Built-in Tool in Workbench** ✅
 - **Task Description:** Add Canvas to the built-in tool activation list in `src/workbench/workbench.ts`.
 - **Output:** Canvas tool activates during startup alongside Explorer, Search, etc.
 - **Completion Criteria:**

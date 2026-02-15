@@ -121,6 +121,7 @@ import * as WelcomeTool from '../built-in/welcome/main.js';
 import * as OutputTool from '../built-in/output/main.js';
 import * as ToolGalleryTool from '../built-in/tool-gallery/main.js';
 import * as FileEditorTool from '../built-in/editor/main.js';
+import * as CanvasTool from '../built-in/canvas/main.js';
 import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 import {
   EXPLORER_MANIFEST,
@@ -129,6 +130,7 @@ import {
   WELCOME_MANIFEST,
   OUTPUT_MANIFEST,
   TOOL_GALLERY_MANIFEST,
+  CANVAS_MANIFEST,
 } from '../tools/builtinManifests.js';
 
 // File Editor Resolver (M4 Capability 4)
@@ -2582,6 +2584,7 @@ export class Workbench extends Layout {
       { manifest: WELCOME_MANIFEST, module: WelcomeTool },
       { manifest: OUTPUT_MANIFEST, module: OutputTool },
       { manifest: TOOL_GALLERY_MANIFEST, module: ToolGalleryTool },
+      { manifest: CANVAS_MANIFEST, module: CanvasTool },
     ];
 
     const activationPromises: Promise<void>[] = [];

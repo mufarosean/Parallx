@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   platform: process.platform,
   testMode: process.env.PARALLX_TEST_MODE === '1',
 
+  /** Absolute path to the application root directory. */
+  appPath: process.cwd(),
+
   // ── Window controls for the custom titlebar ──
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
@@ -105,6 +108,14 @@ contextBridge.exposeInMainWorld('parallxElectron', {
      */
     open: (workspacePath, migrationsDir) =>
       ipcRenderer.invoke('database:open', workspacePath, migrationsDir),
+
+    /**
+     * Run migrations from a directory on the currently-open database.
+     * @param {string} migrationsDir — absolute path to migrations folder
+     * @returns {Promise<{ error: null } | { error: { code: string, message: string } }>}
+     */
+    migrate: (migrationsDir) =>
+      ipcRenderer.invoke('database:migrate', migrationsDir),
 
     /**
      * Close the current database.

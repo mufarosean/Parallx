@@ -451,6 +451,17 @@ ipcMain.handle('database:open', async (_event, workspacePath, migrationsDir) => 
   }
 });
 
+// ── database:migrate ──
+// Run migrations from a directory on the currently-open database.
+ipcMain.handle('database:migrate', async (_event, migrationsDir) => {
+  try {
+    databaseManager.migrate(migrationsDir);
+    return { error: null };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
 // ── database:close ──
 ipcMain.handle('database:close', async () => {
   try {
