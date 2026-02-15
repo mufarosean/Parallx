@@ -75,7 +75,15 @@ ipcMain.on('window:maximize', () => {
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() ?? false);
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  // Ensure user tools directory exists before anything tries to scan it
+  const userToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
+  try {
+    await fs.mkdir(userToolsDir, { recursive: true });
+  } catch { /* ignore — directory already exists */ }
+
+  createWindow();
+});
 
 // ── IPC handlers for tool scanning ──
 

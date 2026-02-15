@@ -91,6 +91,9 @@ import { ToolRegistry } from '../tools/toolRegistry.js';
 import { ActivationEventService } from '../tools/activationEventService.js';
 import { ToolErrorService } from '../tools/toolErrorIsolation.js';
 
+// Tool Scanner — external tool discovery (M6 Capability 0)
+import { ToolScanner } from '../tools/toolScanner.js';
+
 // Configuration (M2 Capability 4)
 import type { ConfigurationService } from '../configuration/configurationService.js';
 import type { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
@@ -2267,6 +2270,14 @@ export class Workbench extends Layout {
     // ── Register and activate built-in tools (M2 Capability 7) ──
     await this._registerAndActivateBuiltinTools(registry, activationEvents);
 
+    // ── Discover and register external tools (M6 Capability 0) ──
+    // Scans ~/.parallx/tools/ for user-installed tools with parallx-manifest.json.
+    // External tools are registered in the ToolRegistry and their activation events
+    // are wired up. Tools with `*` events are activated immediately. Tools with
+    // `onStartupFinished` will activate when fireStartupFinished() is called below.
+    // Tools with `onCommand:` / `onView:` activate lazily when those events fire.
+    await this._discoverAndRegisterExternalTools(registry, activationEvents);
+
     // Fire startup finished — triggers * and onStartupFinished activation events
     activationEvents.fireStartupFinished();
 
@@ -2673,6 +2684,113 @@ export class Workbench extends Layout {
 
     // Wait for all built-in tools to finish activating before returning
     await Promise.allSettled(activationPromises);
+  }
+
+  /**
+   * Discover external tools from the user's tools directory (~/.parallx/tools/)
+   * and register them in the ToolRegistry.
+   *
+   * This follows VS Code's extension discovery pattern:
+   * 1. Scan directories for manifests (parallx-manifest.json)
+   * 2. Validate each manifest
+   * 3. Register in the registry (starts in Registered state)
+   * 4. Wire activation events — lazy activation via onCommand:/onView:
+   * 5. Tools with `*` activation events are activated eagerly
+   *
+   * Called after built-in tool registration and before fireStartupFinished().
+   * The ActivationEventService handles `onStartupFinished` tools automatically
+   * when fireStartupFinished() is called.
+   *
+   * VS Code reference: ExtensionService._scanAndHandleExtensions()
+   */
+  private async _discoverAndRegisterExternalTools(
+    registry: ToolRegistry,
+    activationEvents: ActivationEventService,
+  ): Promise<void> {
+    const scanner = new ToolScanner();
+
+    let scanResult;
+    try {
+      scanResult = await scanner.scanDefaults();
+    } catch (err) {
+      console.error('[Workbench] External tool scanning failed:', err);
+      return;
+    }
+
+    // Log directory-level errors (non-fatal — e.g. builtin dir doesn't exist in dev)
+    for (const dirErr of scanResult.directoryErrors) {
+      console.warn(`[Workbench] Tool scan directory error: ${dirErr.directory} — ${dirErr.error}`);
+    }
+
+    // Log individual tool scan failures
+    for (const failure of scanResult.failures) {
+      console.warn(
+        `[Workbench] Tool scan failure at "${failure.toolPath}": ${failure.reason}`,
+        failure.validationErrors?.map(e => `  ${e.path}: ${e.message}`).join('\n') ?? '',
+      );
+    }
+
+    if (scanResult.tools.length === 0) {
+      console.log('[Workbench] No external tools discovered');
+      return;
+    }
+
+    console.log(`[Workbench] Discovered ${scanResult.tools.length} external tool(s)`);
+
+    const eagerActivationPromises: Promise<void>[] = [];
+
+    for (const toolDesc of scanResult.tools) {
+      const toolId = toolDesc.manifest.id;
+
+      // Skip tools already registered (prevents duplicates with built-ins)
+      if (registry.getById(toolId)) {
+        console.warn(`[Workbench] Skipping external tool "${toolId}" — already registered (duplicate ID)`);
+        continue;
+      }
+
+      try {
+        // Register the tool in the registry (Registered state)
+        registry.register(toolDesc);
+
+        // Register activation events so the system knows when to activate
+        activationEvents.registerToolEvents(toolId, toolDesc.manifest.activationEvents);
+
+        // Check enablement — disabled tools are registered but NOT activated
+        if (!this._toolEnablementService.isEnabled(toolId)) {
+          console.log(`[Workbench] External tool "${toolId}" registered but disabled — skipping activation`);
+          continue;
+        }
+
+        // Eager activation for tools with `*` activation event
+        // (onStartupFinished tools will be activated by fireStartupFinished() later)
+        const hasEagerEvent = toolDesc.manifest.activationEvents.includes('*');
+        if (hasEagerEvent) {
+          activationEvents.markActivated(toolId);
+          eagerActivationPromises.push(
+            this._toolActivator.activate(toolId).then(
+              (success) => {
+                if (!success) {
+                  console.error(`[Workbench] Failed to activate external tool "${toolId}"`);
+                }
+              },
+              (err) => {
+                console.error(`[Workbench] Error activating external tool "${toolId}":`, err);
+              },
+            ),
+          );
+        }
+
+        console.log(`[Workbench] Registered external tool "${toolId}" (${toolDesc.manifest.name})`);
+      } catch (err) {
+        console.error(`[Workbench] Failed to register external tool "${toolId}":`, err);
+      }
+    }
+
+    // Wait for eager activations to complete
+    if (eagerActivationPromises.length > 0) {
+      await Promise.allSettled(eagerActivationPromises);
+      console.log(`[Workbench] ${eagerActivationPromises.length} eager external tool(s) activated`);
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════

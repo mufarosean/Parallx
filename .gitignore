@@ -1,10 +1,12 @@
 node_modules/
 dist/
+.parallx/
 *.js
 *.d.ts
 *.js.map
 *.d.ts.map
 !jest.config.js
+!tools/samples/**/*.js
 test-results/
 test-results.txt
 test-output.txt

@@ -1,0 +1,42 @@
+{
+  "manifestVersion": 1,
+  "id": "parallx-samples.hello-world",
+  "name": "Hello World",
+  "version": "0.1.0",
+  "publisher": "parallx-samples",
+  "description": "A sample external tool demonstrating the Parallx tool API. Copy this folder to ~/.parallx/tools/ to test external tool loading.",
+  "main": "main.js",
+  "activationEvents": ["*"],
+  "engines": {
+    "parallx": "^0.1.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "id": "helloWorld.sayHello",
+        "title": "Hello World: Say Hello",
+        "category": "Hello World"
+      },
+      {
+        "id": "helloWorld.showTime",
+        "title": "Hello World: Show Current Time",
+        "category": "Hello World"
+      }
+    ],
+    "viewContainers": [
+      {
+        "id": "hello-world-container",
+        "title": "Hello World",
+        "icon": "codicon-smiley",
+        "location": "sidebar"
+      }
+    ],
+    "views": [
+      {
+        "id": "helloWorld.mainView",
+        "name": "Greeting",
+        "defaultContainerId": "hello-world-container"
+      }
+    ]
+  }
+}

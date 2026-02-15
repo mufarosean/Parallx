@@ -141,7 +141,16 @@ export class ToolModuleLoader {
 
   /**
    * Resolve the entry path for a tool module.
-   * For built-in tools, relative to source tree. For external, relative to toolPath.
+   *
+   * External tools live on disk and are loaded via dynamic `import()` in the
+   * Electron renderer. The browser's `import()` requires a URL, so we convert
+   * absolute filesystem paths to `file:///` URLs. This mirrors VS Code's
+   * extension loader which converts paths before calling `require()` /
+   * `import()` inside the Extension Host.
+   *
+   * The returned value is always a `file:///` URL for external (non-builtin)
+   * tools, ensuring the browser's module loader can find the file and resolve
+   * any relative imports within the tool directory.
    */
   private _resolveEntryPath(toolPath: string, mainEntry: string): string {
     // Security: reject http/https URLs to prevent remote code execution
@@ -152,13 +161,51 @@ export class ToolModuleLoader {
       );
     }
 
-    // If mainEntry is already an absolute path or file URL, use as-is
-    if (mainEntry.startsWith('/') || mainEntry.startsWith('file:')) {
+    // Already a file: URL — use as-is
+    if (mainEntry.startsWith('file:')) {
       return mainEntry;
     }
 
-    // Normalize tool path and entry
-    const base = toolPath.endsWith('/') ? toolPath : toolPath + '/';
-    return base + mainEntry;
+    // Absolute POSIX path
+    if (mainEntry.startsWith('/')) {
+      return this._pathToFileUrl(mainEntry);
+    }
+
+    // Absolute Windows path (e.g., C:\Users\...)
+    if (/^[A-Za-z]:[\\/]/.test(mainEntry)) {
+      return this._pathToFileUrl(mainEntry);
+    }
+
+    // Relative path — resolve against toolPath, then convert to file:// URL
+    const sep = toolPath.includes('\\') ? '\\' : '/';
+    const base = toolPath.endsWith('/') || toolPath.endsWith('\\')
+      ? toolPath
+      : toolPath + sep;
+    const resolved = base + mainEntry;
+
+    // If toolPath looks like a real filesystem path, convert to file:// URL
+    if (/^[A-Za-z]:[\\/]/.test(resolved) || resolved.startsWith('/')) {
+      return this._pathToFileUrl(resolved);
+    }
+
+    // Built-in tools use a virtual path like "built-in/parallx.explorer"
+    // — these are never loaded via ToolModuleLoader (activateBuiltin skips it)
+    return resolved;
+  }
+
+  /**
+   * Convert a filesystem path to a file:// URL.
+   * Handles Windows drive letters (C:\...) and POSIX paths alike.
+   */
+  private _pathToFileUrl(fsPath: string): string {
+    // Normalize backslashes to forward slashes
+    let normalized = fsPath.replace(/\\/g, '/');
+
+    // Windows drive letter: ensure leading slash (C:/... → /C:/...)
+    if (/^[A-Za-z]:\//.test(normalized)) {
+      normalized = '/' + normalized;
+    }
+
+    return 'file://' + normalized;
   }
 }
