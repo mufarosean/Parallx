@@ -448,7 +448,7 @@ A renderer-side data service that wraps the database IPC calls into a typed, eve
 
 #### Tasks
 
-**Task 2.1 — Define Page Data Types**
+**Task 2.1 — Define Page Data Types** ✅
 - **Task Description:** Create `src/built-in/canvas/canvasTypes.ts` with page data model types.
 - **Output:** `IPage`, `IPageTreeNode`, `PageChangeEvent`, `PageChangeKind` types.
 - **Completion Criteria:**
@@ -458,7 +458,7 @@ A renderer-side data service that wraps the database IPC calls into a typed, eve
   - `PageChangeEvent`: `{ kind: PageChangeKind; pageId: string; page?: IPage }`
   - All types exported
 
-**Task 2.2 — Implement CanvasDataService**
+**Task 2.2 — Implement CanvasDataService** ✅
 - **Task Description:** Create `src/built-in/canvas/canvasDataService.ts` wrapping IPC calls.
 - **Output:** `CanvasDataService` class with full page lifecycle operations.
 - **Completion Criteria:**
@@ -475,7 +475,7 @@ A renderer-side data service that wraps the database IPC calls into a typed, eve
   - All methods use `window.parallxElectron.database.*` IPC calls
   - UUID generation via `crypto.randomUUID()`
 
-**Task 2.3 — Implement Auto-Save Debounce**
+**Task 2.3 — Implement Auto-Save Debounce** ✅
 - **Task Description:** Add debounced content save to `CanvasDataService`.
 - **Output:** `scheduleContentSave(pageId, content)` method with 500ms debounce.
 - **Completion Criteria:**
