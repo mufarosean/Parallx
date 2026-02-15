@@ -11,14 +11,20 @@
     "build:watch": "tsc --watch",
     "start": "node scripts/build.mjs && electron .",
     "dev": "node scripts/build.mjs && electron .",
+    "rebuild": "electron-rebuild",
+    "postinstall": "electron-rebuild",
     "test:e2e": "npx playwright test",
     "test:e2e:headed": "npx playwright test --headed"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
     "@playwright/test": "^1.58.2",
     "electron": "^40.2.1",
     "esbuild": "^0.27.3",
     "playwright": "^1.58.2",
     "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2"
   }
 }

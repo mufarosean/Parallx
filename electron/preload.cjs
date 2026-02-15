@@ -92,6 +92,58 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
 
   // ══════════════════════════════════════════════════════════════════════════
+  // Database API (M6 Cap 1 — SQLite via main process)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  database: {
+    /**
+     * Open a workspace database. Creates <workspacePath>/.parallx/data.db
+     * and runs migrations from migrationsDir if provided.
+     * @param {string} workspacePath — absolute path to the workspace root
+     * @param {string} [migrationsDir] — absolute path to migrations folder
+     * @returns {Promise<{ error: null, dbPath: string } | { error: { code: string, message: string } }>}
+     */
+    open: (workspacePath, migrationsDir) =>
+      ipcRenderer.invoke('database:open', workspacePath, migrationsDir),
+
+    /**
+     * Close the current database.
+     * @returns {Promise<{ error: null } | { error: { code: string, message: string } }>}
+     */
+    close: () => ipcRenderer.invoke('database:close'),
+
+    /**
+     * Execute SQL (INSERT, UPDATE, DELETE, CREATE, etc.).
+     * @param {string} sql — SQL statement
+     * @param {any[]} [params] — bound parameters
+     * @returns {Promise<{ error: null, changes: number, lastInsertRowid: number } | { error: { code: string, message: string } }>}
+     */
+    run: (sql, params) => ipcRenderer.invoke('database:run', sql, params),
+
+    /**
+     * Fetch a single row. Returns null if no match.
+     * @param {string} sql — SQL query
+     * @param {any[]} [params] — bound parameters
+     * @returns {Promise<{ error: null, row: object | null } | { error: { code: string, message: string } }>}
+     */
+    get: (sql, params) => ipcRenderer.invoke('database:get', sql, params),
+
+    /**
+     * Fetch all matching rows.
+     * @param {string} sql — SQL query
+     * @param {any[]} [params] — bound parameters
+     * @returns {Promise<{ error: null, rows: object[] } | { error: { code: string, message: string } }>}
+     */
+    all: (sql, params) => ipcRenderer.invoke('database:all', sql, params),
+
+    /**
+     * Check if a database is currently open.
+     * @returns {Promise<{ isOpen: boolean }>}
+     */
+    isOpen: () => ipcRenderer.invoke('database:isOpen'),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Dialog API (M4 Cap 0)
   // ══════════════════════════════════════════════════════════════════════════
 

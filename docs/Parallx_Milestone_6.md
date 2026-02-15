@@ -337,7 +337,7 @@ A SQLite database layer in the Electron main process, providing structured data 
 
 #### Tasks
 
-**Task 1.1 — Install and Configure `better-sqlite3`**
+**Task 1.1 — Install and Configure `better-sqlite3`** ✅
 - **Task Description:** Add `better-sqlite3` to the project and configure the Electron build to include native modules.
 - **Output:** `better-sqlite3` importable in `electron/main.cjs`.
 - **Completion Criteria:**
@@ -347,7 +347,7 @@ A SQLite database layer in the Electron main process, providing structured data 
   - Verify `const Database = require('better-sqlite3')` works in main process
   - Build script (`scripts/build.mjs`) includes native module in packaged app
 
-**Task 1.2 — Implement Database Manager in Main Process**
+**Task 1.2 — Implement Database Manager in Main Process** ✅
 - **Task Description:** Create `electron/database.cjs` (or `.mjs`) managing SQLite database lifecycle.
 - **Output:** `DatabaseManager` class with open/close/migrate operations.
 - **Completion Criteria:**
@@ -362,7 +362,7 @@ A SQLite database layer in the Electron main process, providing structured data 
   - WAL mode for concurrent read performance
   - Error handling: corrupt database detection, migration failure recovery
 
-**Task 1.3 — Define Canvas Schema Migrations**
+**Task 1.3 — Define Canvas Schema Migrations** ✅
 - **Task Description:** Create SQL migration files for the Canvas data model.
 - **Output:** Migration files in `src/built-in/canvas/migrations/` (or bundled location).
 - **Completion Criteria:**
@@ -397,7 +397,7 @@ A SQLite database layer in the Electron main process, providing structured data 
   - Migrations are idempotent (`IF NOT EXISTS`)
   - A `_migrations` table tracks which migrations have been applied
 
-**Task 1.4 — Wire Database IPC Channels**
+**Task 1.4 — Wire Database IPC Channels** ✅
 - **Task Description:** Expose database operations via IPC channels in `electron/main.cjs` and `electron/preload.cjs`.
 - **Output:** Renderer can call database operations through `window.parallxElectron.database.*`.
 - **Completion Criteria:**
@@ -416,7 +416,7 @@ A SQLite database layer in the Electron main process, providing structured data 
   - All IPC calls return `Promise` (async IPC invoke pattern)
   - Error serialization: database errors are serialized across IPC boundary with helpful messages
 
-**Task 1.5 — Workspace Database Lifecycle**
+**Task 1.5 — Workspace Database Lifecycle** ✅
 - **Task Description:** Wire database open/close to workspace lifecycle events.
 - **Output:** Database opens when workspace loads, closes on workspace change/app quit.
 - **Completion Criteria:**

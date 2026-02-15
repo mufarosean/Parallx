@@ -5,6 +5,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
+const { databaseManager } = require('./database.cjs');
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
@@ -411,6 +412,101 @@ ipcMain.handle('dialog:showMessageBox', async (_event, options) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
+// Database IPC Handlers (M6 Cap 1 — Task 1.4)
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Exposes SQLite database operations via IPC invoke channels.
+// The renderer calls these through window.parallxElectron.database.*.
+// All operations are synchronous within the main process (better-sqlite3 is sync)
+// but exposed as async IPC invoke for the renderer.
+
+/**
+ * Serialize a database error for IPC transport.
+ * @param {Error} err
+ * @returns {{ code: string, message: string }}
+ */
+function normalizeDatabaseError(err) {
+  return {
+    code: err.code || 'SQLITE_ERROR',
+    message: err.message || String(err),
+  };
+}
+
+// ── database:open ──
+// Opens a database at <workspacePath>/.parallx/data.db and runs migrations.
+ipcMain.handle('database:open', async (_event, workspacePath, migrationsDir) => {
+  try {
+    const dbDir = path.join(workspacePath, '.parallx');
+    const dbPath = path.join(dbDir, 'data.db');
+    databaseManager.open(dbPath);
+
+    // Run migrations if a directory is provided
+    if (migrationsDir) {
+      databaseManager.migrate(migrationsDir);
+    }
+
+    return { error: null, dbPath };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
+// ── database:close ──
+ipcMain.handle('database:close', async () => {
+  try {
+    databaseManager.close();
+    return { error: null };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
+// ── database:run ──
+// Execute SQL (INSERT, UPDATE, DELETE, CREATE, etc.)
+ipcMain.handle('database:run', async (_event, sql, params) => {
+  try {
+    const result = databaseManager.run(sql, params || []);
+    return {
+      error: null,
+      changes: result.changes,
+      lastInsertRowid: typeof result.lastInsertRowid === 'bigint'
+        ? Number(result.lastInsertRowid)
+        : result.lastInsertRowid,
+    };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
+// ── database:get ──
+// Fetch a single row. Returns null if no match.
+ipcMain.handle('database:get', async (_event, sql, params) => {
+  try {
+    const row = databaseManager.get(sql, params || []);
+    return { error: null, row: row || null };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
+// ── database:all ──
+// Fetch all matching rows.
+ipcMain.handle('database:all', async (_event, sql, params) => {
+  try {
+    const rows = databaseManager.all(sql, params || []);
+    return { error: null, rows };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
+// ── database:isOpen ──
+// Check if a database is currently open.
+ipcMain.handle('database:isOpen', async () => {
+  return { isOpen: databaseManager.isOpen };
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
 // File Watcher IPC (M4 Cap 0 — Task 0.3)
 // ════════════════════════════════════════════════════════════════════════════════
 //
@@ -500,4 +596,6 @@ app.on('before-quit', () => {
   for (const [id] of _activeWatchers) {
     _cleanupWatcher(id);
   }
+  // Close the database cleanly on app quit
+  databaseManager.close();
 });

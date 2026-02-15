@@ -98,6 +98,10 @@ import type { ConfigurationRegistry } from '../configuration/configurationRegist
 // Tool Enablement (M6 Capability 0)
 import { ToolEnablementService } from '../tools/toolEnablementService.js';
 
+// Database Service (M6 Capability 1)
+import { DatabaseService } from '../services/databaseService.js';
+import { IDatabaseService } from '../services/serviceTypes.js';
+
 // Contribution Processors (M2 Capability 5)
 import { registerContributionProcessors, registerViewContributionProcessor } from './workbenchServices.js';
 import { formatKeybindingForDisplay } from '../contributions/keybindingContribution.js';
@@ -219,6 +223,9 @@ export class Workbench extends Layout {
   private _toolEnablementService!: ToolEnablementService;
   /** Cached built-in tool modules for re-activation after disable→enable. */
   private readonly _builtinModules = new Map<string, { activate: Function; deactivate?: Function }>();
+
+  // Database Service (M6 Capability 1)
+  private _databaseService!: DatabaseService;
 
   // Configuration (M2 Capability 4)
   private _configService!: ConfigurationService;
@@ -661,6 +668,10 @@ export class Workbench extends Layout {
       // Deactivate all tools before teardown
       if (this._toolActivator) {
         await this._toolActivator.deactivateAll();
+      }
+      // Close the database cleanly
+      if (this._databaseService?.isOpen) {
+        await this._databaseService.close();
       }
     });
 
@@ -2121,6 +2132,16 @@ export class Workbench extends Layout {
     // Wire enablement service into API factory deps (created before enablement service)
     (apiFactoryDeps as any).toolEnablementService = this._toolEnablementService;
 
+    // ── Database Service (M6 Capability 1) ──
+    this._databaseService = this._register(new DatabaseService());
+    this._services.registerInstance(IDatabaseService, this._databaseService);
+    // Open database for current workspace if a folder is open
+    await this._openDatabaseForWorkspace();
+    // React to workspace folder changes (open/close database)
+    this._register(this._workspace.onDidChangeFolders(() => {
+      this._openDatabaseForWorkspace();
+    }));
+
     // Create and register the activator
     this._toolActivator = this._register(
       new ToolActivator(registry, errorService, activationEvents, apiFactoryDeps, storageDeps),
@@ -2205,6 +2226,43 @@ export class Workbench extends Layout {
     this._wireUnsavedChangesGuard();
 
     console.log('[Workbench] Tool lifecycle initialized (with contribution processors)');
+  }
+
+  /**
+   * Open (or re-open) the database for the current workspace.
+   * Uses the first folder's filesystem path as the workspace root.
+   * If no folders are open, closes any open database.
+   *
+   * Migration files are resolved from the app's built-in canvas tool
+   * directory. This is called during Phase 5 init and on folder changes.
+   */
+  private async _openDatabaseForWorkspace(): Promise<void> {
+    const folders = this._workspace.folders;
+    if (folders.length === 0) {
+      // No folder open — close database if open
+      if (this._databaseService.isOpen) {
+        await this._databaseService.close();
+        console.log('[Workbench] Database closed (no workspace folder)');
+      }
+      return;
+    }
+
+    // Use the first folder's path as the workspace root for the database
+    const firstFolder = folders[0];
+    const folderPath = firstFolder.uri.path;
+
+    // Resolve the migrations directory — bundled with the app
+    // Canvas migrations live in src/built-in/canvas/migrations/ at dev time.
+    // At runtime, we need the absolute path. We'll use the electron IPC
+    // to resolve the app path plus relative migrations path.
+    // For now, migrations are passed as undefined — they'll be wired
+    // when Canvas tool activates and provides its migration path.
+    try {
+      await this._databaseService.openForWorkspace(folderPath);
+      console.log('[Workbench] Database opened for workspace folder: %s', folderPath);
+    } catch (err) {
+      console.error('[Workbench] Failed to open database for workspace:', err);
+    }
   }
 
   /**

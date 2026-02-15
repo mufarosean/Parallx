@@ -149,6 +149,17 @@ export interface IWorkspaceService extends IDisposable {
 
 export const IWorkspaceService = createServiceIdentifier<IWorkspaceService>('IWorkspaceService');
 
+// ─── IDatabaseService ────────────────────────────────────────────────────────
+
+import type { DatabaseService } from './databaseService.js';
+
+/**
+ * Service providing SQLite database access via IPC to the main process.
+ * Database is scoped to the active workspace folder.
+ */
+export type IDatabaseService = DatabaseService;
+export const IDatabaseService = createServiceIdentifier<IDatabaseService>('IDatabaseService');
+
 // ─── IEditorService ──────────────────────────────────────────────────────────
 
 import type { IEditorInput } from '../editor/editorInput.js';
