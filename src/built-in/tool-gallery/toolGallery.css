@@ -159,3 +159,55 @@
 .tool-gallery-detail-close {
   margin-top: 10px;
 }
+
+/* ── Enable/Disable Toggle (M6 Capability 0) ── */
+
+.tool-gallery-toggle {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--vscode-input-border, #555);
+  color: var(--vscode-foreground);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 80ms ease, border-color 80ms ease;
+}
+
+.tool-gallery-toggle:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.tool-gallery-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tool-gallery-toggle-enable {
+  color: var(--vscode-textLink-foreground, #569cd6);
+  border-color: var(--vscode-textLink-foreground, #569cd6);
+}
+
+.tool-gallery-toggle-enable:hover {
+  background: rgba(86, 156, 214, 0.15);
+}
+
+/* Disabled tool row styling */
+.tool-gallery-row-disabled {
+  opacity: 0.55;
+}
+
+.tool-gallery-row-disabled:hover {
+  opacity: 0.75;
+}
+
+.tool-gallery-row-badge-disabled {
+  color: var(--vscode-descriptionForeground, #888);
+  border-color: var(--vscode-descriptionForeground, #888);
+}
+
+/* Detail panel toggle button */
+.tool-gallery-detail-toggle {
+  margin-top: 10px;
+  margin-right: 8px;
+}

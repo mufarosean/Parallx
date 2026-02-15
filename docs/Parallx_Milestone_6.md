@@ -218,7 +218,7 @@ A runtime enable/disable system for Parallx tools. Users can toggle tools on/off
 
 #### Tasks
 
-**Task 0.1 — Define Tool Enablement Types**
+**Task 0.1 — Define Tool Enablement Types** ✅
 - **Task Description:** Add enablement types to `src/tools/toolManifest.ts` or a new `src/tools/toolEnablement.ts`.
 - **Output:** `ToolEnablementState` enum, `IToolEnablementService` interface, `ToolEnablementChangeEvent` type.
 - **Completion Criteria:**
@@ -228,7 +228,7 @@ A runtime enable/disable system for Parallx tools. Users can toggle tools on/off
   - `canChangeEnablement()` returns `false` for built-in tools
   - All types exported
 
-**Task 0.2 — Implement ToolEnablementService**
+**Task 0.2 — Implement ToolEnablementService** ✅
 - **Task Description:** Create `src/tools/toolEnablementService.ts` implementing `IToolEnablementService`.
 - **Output:** `ToolEnablementService` class with persistent storage.
 - **Completion Criteria:**
@@ -242,7 +242,7 @@ A runtime enable/disable system for Parallx tools. Users can toggle tools on/off
   - Fires `onDidChangeEnablement` event on every state change
   - Loads disabled set from storage on construction; handles missing/corrupt data gracefully
 
-**Task 0.3 — Wire Enablement into Workbench Startup**
+**Task 0.3 — Wire Enablement into Workbench Startup** ✅
 - **Task Description:** Modify `src/workbench/workbench.ts` to create `ToolEnablementService` during phase 5 (`_initializeToolLifecycle`) and respect enablement state during built-in tool activation.
 - **Output:** Disabled tools are skipped during `_registerAndActivateBuiltinTools()`.
 - **Completion Criteria:**
@@ -253,7 +253,7 @@ A runtime enable/disable system for Parallx tools. Users can toggle tools on/off
   - Service identifier added to `src/services/serviceTypes.ts` as `IToolEnablementService`
   - Registered in DI container so other components can consume it
 
-**Task 0.4 — Implement Enable Action (Tool Gallery → Activate)**
+**Task 0.4 — Implement Enable Action (Tool Gallery → Activate)** ✅
 - **Task Description:** Wire the enable action: when a tool is enabled via `setEnablement(toolId, true)`, re-process its contributions and activate it.
 - **Output:** Enabling a disabled tool fully restores its UI presence.
 - **Completion Criteria:**
@@ -266,7 +266,7 @@ A runtime enable/disable system for Parallx tools. Users can toggle tools on/off
   - Activity bar entry reappears if tool contributes a view container with `location: 'sidebar'`
   - All of this is orchestrated from within or listening to `ToolEnablementService` — not hardcoded in Tool Gallery
 
-**Task 0.5 — Implement Disable Action (Tool Gallery → Deactivate)**
+**Task 0.5 — Implement Disable Action (Tool Gallery → Deactivate)** ✅
 - **Task Description:** Wire the disable action: when a tool is disabled via `setEnablement(toolId, false)`, deactivate and remove all contributions.
 - **Output:** Disabling a tool fully removes its UI presence.
 - **Completion Criteria:**
@@ -280,7 +280,7 @@ A runtime enable/disable system for Parallx tools. Users can toggle tools on/off
   - Tool data (Memento state) is NOT deleted — preserved for re-enable
   - Disabled state persisted to storage
 
-**Task 0.6 — Update Tool Gallery UI**
+**Task 0.6 — Update Tool Gallery UI** ✅
 - **Task Description:** Modify `src/built-in/tool-gallery/main.ts` to show enable/disable toggle per tool in the tool list.
 - **Output:** Tool Gallery sidebar shows toggle switch or enable/disable button per tool.
 - **Completion Criteria:**
@@ -291,7 +291,7 @@ A runtime enable/disable system for Parallx tools. Users can toggle tools on/off
   - Visual indicator of current state: enabled tools show normally, disabled tools show greyed out with "(disabled)" label
   - CSS follows existing tool gallery patterns; new CSS in `src/built-in/tool-gallery/toolGallery.css`
 
-**Task 0.7 — Extend `parallx.tools` API**
+**Task 0.7 — Extend `parallx.tools` API** ✅
 - **Task Description:** Add enablement methods to `src/api/parallx.d.ts`, `src/api/apiFactory.ts`, and implement in a new or existing bridge.
 - **Output:** `parallx.tools.isEnabled()`, `parallx.tools.setEnabled()`, `parallx.tools.onDidChangeEnablement` available to all tools.
 - **Completion Criteria:**
@@ -303,7 +303,7 @@ A runtime enable/disable system for Parallx tools. Users can toggle tools on/off
   - `setEnabled()` respects `canChangeEnablement()` — throws if tool is built-in
   - Events fire for all tools' API instances (not scoped to calling tool)
 
-**Task 0.8 — ViewContributionProcessor: `updateViewManager()` for Re-Enable**
+**Task 0.8 — ViewContributionProcessor: `updateViewManager()` for Re-Enable** ✅
 - **Task Description:** Ensure `ViewContributionProcessor` can re-register views and containers when a tool is re-enabled after disable.
 - **Output:** `processContributions()` works correctly when called for a tool that was previously processed and then removed.
 - **Completion Criteria:**

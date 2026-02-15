@@ -169,11 +169,20 @@ export class ViewContributionProcessor extends Disposable implements IContributi
 
   /**
    * Process a tool's manifest contributions for viewContainers and views.
+   * Safe to call for re-enable after removeContributions — all state is
+   * cleaned up on remove so re-processing starts fresh.
    */
   processContributions(description: IToolDescription): void {
     const toolId = description.manifest.id;
     const contributes = description.manifest.contributes;
     if (!contributes) return;
+
+    // Safety: if contributions for this tool already exist (e.g., double-enable
+    // without disable), remove them first to avoid duplicates.
+    if (this._toolContainers.has(toolId) || this._toolViews.has(toolId)) {
+      console.log(`[ViewContribution] Re-processing contributions for "${toolId}" — clearing previous state`);
+      this.removeContributions(toolId);
+    }
 
     // ── Process viewContainers ──
     if (contributes.viewContainers && contributes.viewContainers.length > 0) {

@@ -455,6 +455,20 @@ export interface IToolActivatorService extends IDisposable {
 
 export const IToolActivatorService = createServiceIdentifier<IToolActivatorService>('IToolActivatorService');
 
+// ─── IToolEnablementService ──────────────────────────────────────────────────
+
+import type { IToolEnablementService as IToolEnablementServiceShape, ToolEnablementChangeEvent, ToolEnablementState } from '../tools/toolEnablement.js';
+
+/**
+ * Service interface for tool enable/disable state management (M6 Capability 0).
+ */
+export interface IToolEnablementService extends IToolEnablementServiceShape {}
+
+export const IToolEnablementService = createServiceIdentifier<IToolEnablementService>('IToolEnablementService');
+
+// Re-export types for convenience
+export type { ToolEnablementChangeEvent, ToolEnablementState };
+
 // ─── IConfigurationService ───────────────────────────────────────────────────
 
 import type {

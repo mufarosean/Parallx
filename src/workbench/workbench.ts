@@ -13,7 +13,7 @@ import { DisposableStore, IDisposable, toDisposable } from '../platform/lifecycl
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
 
@@ -94,6 +94,9 @@ import { ToolErrorService } from '../tools/toolErrorIsolation.js';
 // Configuration (M2 Capability 4)
 import type { ConfigurationService } from '../configuration/configurationService.js';
 import type { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
+
+// Tool Enablement (M6 Capability 0)
+import { ToolEnablementService } from '../tools/toolEnablementService.js';
 
 // Contribution Processors (M2 Capability 5)
 import { registerContributionProcessors, registerViewContributionProcessor } from './workbenchServices.js';
@@ -211,6 +214,11 @@ export class Workbench extends Layout {
 
   // Tool Lifecycle (M2 Capability 3)
   private _toolActivator!: ToolActivator;
+
+  // Tool Enablement (M6 Capability 0)
+  private _toolEnablementService!: ToolEnablementService;
+  /** Cached built-in tool modules for re-activation after disable→enable. */
+  private readonly _builtinModules = new Map<string, { activate: Function; deactivate?: Function }>();
 
   // Configuration (M2 Capability 4)
   private _configService!: ConfigurationService;
@@ -2093,6 +2101,7 @@ export class Workbench extends Layout {
       badgeHost: this._activityBarPart,
       statusBarPart: this._statusBar as unknown as StatusBarPart,
       themeService: this._services.has(IThemeService) ? this._services.get(IThemeService) : undefined,
+      toolEnablementService: undefined as any, // Placeholder — set after enablement service is created
     };
 
     // Storage dependencies for persistent tool mementos (Cap 4)
@@ -2101,6 +2110,16 @@ export class Workbench extends Layout {
       workspaceStorage: this._storage,
       configRegistry: this._configRegistry,
     };
+
+    // ── Tool Enablement Service (M6 Capability 0) ──
+    this._toolEnablementService = this._register(
+      new ToolEnablementService(this._storage, registry),
+    );
+    await this._toolEnablementService.load();
+    this._services.registerInstance(IToolEnablementService, this._toolEnablementService);
+
+    // Wire enablement service into API factory deps (created before enablement service)
+    (apiFactoryDeps as any).toolEnablementService = this._toolEnablementService;
 
     // Create and register the activator
     this._toolActivator = this._register(
@@ -2120,6 +2139,39 @@ export class Workbench extends Layout {
       keybindingContribution.removeContributions(event.toolId);
       menuContribution.removeContributions(event.toolId);
       this._viewContribution.removeContributions(event.toolId);
+    }));
+
+    // ── Tool Enable/Disable Orchestration (M6 Capability 0) ──
+    this._register(this._toolEnablementService.onDidChangeEnablement(async (e) => {
+      const { toolId, newState } = e;
+      const entry = registry.getById(toolId);
+      if (!entry) return;
+
+      if (newState === 'EnabledGlobally') {
+        // ── ENABLE: re-process contributions, then activate ──
+        console.log(`[Workbench] Enabling tool "${toolId}" — re-processing contributions and activating`);
+        commandContribution.processContributions(entry.description);
+        keybindingContribution.processContributions(entry.description);
+        menuContribution.processContributions(entry.description);
+        this._viewContribution.processContributions(entry.description);
+
+        // Re-register activation events
+        activationEvents.registerToolEvents(toolId, entry.description.manifest.activationEvents);
+
+        // Activate: use cached module for built-ins, otherwise standard activate
+        const builtinModule = this._builtinModules.get(toolId);
+        if (builtinModule) {
+          await this._toolActivator.activateBuiltin(toolId, builtinModule as any);
+        } else {
+          await this._toolActivator.activate(toolId);
+        }
+      } else {
+        // ── DISABLE: deactivate (contributions cleaned by onDidDeactivate) ──
+        console.log(`[Workbench] Disabling tool "${toolId}" — deactivating`);
+        await this._toolActivator.deactivate(toolId);
+        // Also clear activation tracking so re-enable starts fresh
+        activationEvents.clearActivated(toolId);
+      }
     }));
 
     // Wire contribution processors into the command palette for display
@@ -2483,10 +2535,20 @@ export class Workbench extends Layout {
         isBuiltin: true,
       };
 
+      // Cache the module for re-activation after disable→enable (M6)
+      this._builtinModules.set(manifest.id, module as { activate: Function; deactivate?: Function });
+
       try {
         registry.register(description);
         // Register activation events so the system knows about them
         activationEvents.registerToolEvents(manifest.id, manifest.activationEvents);
+
+        // Check enablement — disabled tools are registered but NOT activated
+        if (!this._toolEnablementService.isEnabled(manifest.id)) {
+          console.log(`[Workbench] Skipping activation for disabled tool "${manifest.id}"`);
+          continue;
+        }
+
         // Pre-mark as activated so fireStartupFinished() doesn't double-trigger
         // via the onStartupFinished event while activateBuiltin is still awaiting
         activationEvents.markActivated(manifest.id);

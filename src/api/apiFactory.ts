@@ -60,6 +60,8 @@ export interface ApiFactoryDependencies {
   readonly statusBarPart?: StatusBarPart;
   /** ThemeService for parallx.window.activeColorTheme / onDidChangeActiveColorTheme. */
   readonly themeService?: IThemeServiceShape;
+  /** ToolEnablementService for parallx.tools.isEnabled/setEnabled/onDidChangeEnablement. */
+  readonly toolEnablementService?: import('../tools/toolEnablement.js').IToolEnablementService;
 }
 
 // ─── API Shape ───────────────────────────────────────────────────────────────
@@ -126,6 +128,9 @@ export interface ParallxApiObject {
   readonly tools: {
     getAll(): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string }[];
     getById(id: string): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string } | undefined;
+    isEnabled(toolId: string): boolean;
+    setEnabled(toolId: string, enabled: boolean): Promise<void>;
+    onDidChangeEnablement: (listener: (e: { toolId: string; enabled: boolean }) => void) => IDisposable;
   };
   readonly env: {
     readonly appName: string;
@@ -376,6 +381,25 @@ export function createToolApi(
       getById: (id) => {
         const entry = deps.toolRegistry.getById(id);
         return entry ? _toolEntryToInfo(entry) : undefined;
+      },
+      isEnabled: (id: string) => {
+        const es = deps.toolEnablementService;
+        return es ? es.isEnabled(id) : true;
+      },
+      setEnabled: async (id: string, enabled: boolean) => {
+        const es = deps.toolEnablementService;
+        if (!es) throw new Error('ToolEnablementService not available');
+        if (!es.canChangeEnablement(id)) {
+          throw new Error(`Cannot change enablement for tool "${id}" (built-in or not registered)`);
+        }
+        await es.setEnablement(id, enabled);
+      },
+      onDidChangeEnablement: (listener: (e: { toolId: string; enabled: boolean }) => void) => {
+        const es = deps.toolEnablementService;
+        if (!es) return { dispose() {} };
+        return es.onDidChangeEnablement((e) => {
+          listener({ toolId: e.toolId, enabled: e.newState === 'EnabledGlobally' });
+        });
       },
     }),
 
