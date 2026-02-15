@@ -36,7 +36,7 @@ interface WorkbenchLike {
   selectColorTheme(): void;
   showSidebarView(viewId: string): void;
   readonly workspace: { readonly id: string; readonly name: string };
-  createWorkspace(name: string, path?: string, switchTo?: boolean): Promise<unknown>;
+  createWorkspace(name: string, path?: string, switchTo?: boolean, cloneState?: unknown): Promise<unknown>;
   switchWorkspace(targetId: string): Promise<void>;
   getRecentWorkspaces(): Promise<readonly { identity: { id: string; name: string }; metadata: { lastAccessedAt: string } }[]>;
   removeRecentWorkspace(workspaceId: string): Promise<void>;
@@ -72,7 +72,7 @@ interface WorkbenchLike {
     getViewSize(viewId: string): number | undefined;
     resizeSash(parentNode: unknown, sashIndex: number, delta: number): void;
   };
-  readonly _workspaceSaver: { save(): Promise<void> };
+  readonly _workspaceSaver: { save(): Promise<void>; collectState(): unknown };
   readonly _sidebarContainer: ViewContainerLike;
   readonly _panelContainer: ViewContainerLike;
   readonly _auxBarContainer: ViewContainerLike | undefined;
@@ -420,8 +420,10 @@ const workspaceDuplicate: CommandDescriptor = {
     const w = wb(ctx);
     // Save current so the clone captures latest state
     await w._workspaceSaver.save();
+    // Collect current live state to clone into the new workspace
+    const currentState = w._workspaceSaver.collectState();
     const newName = `${w.workspace.name} (Copy)`;
-    const newWs = await w.createWorkspace(newName, undefined, false);
+    const newWs = await w.createWorkspace(newName, undefined, false, currentState);
     console.log('[Command] Workspace duplicated as "%s" (id: %s)', newName, (newWs as any).id);
   },
 };
@@ -548,17 +550,10 @@ const workspaceOpenRecent: CommandDescriptor = {
   category: 'Workspace',
   handler: async (ctx) => {
     const w = wb(ctx);
-    const recents = await w.getRecentWorkspaces();
 
-    if (recents.length === 0) {
-      console.log('[Command] No recent workspaces');
-      return;
-    }
-
-    // Show quick pick with recent workspaces
-    // Use the command palette in quick-open mode which already shows workspace results
+    // Open Quick Access in general mode — the GeneralProvider already
+    // shows recent workspaces with switch actions.
     w.showQuickOpen();
-    return recents;
   },
 };
 
@@ -570,8 +565,27 @@ const workspaceSaveAs: CommandDescriptor = {
     const w = wb(ctx);
     // Save current state first
     await w._workspaceSaver.save();
-    const name = typeof newName === 'string' ? newName : `${w.workspace.name} (Copy)`;
-    const newWs = await w.createWorkspace(name, undefined, true);
+
+    // Prompt for a name if none was passed programmatically
+    let name: string;
+    if (typeof newName === 'string' && newName.length > 0) {
+      name = newName;
+    } else {
+      // Use the notification service's input box modal
+      const { showInputBoxModal } = await import('../api/notificationService.js');
+      const result = await showInputBoxModal(document.body, {
+        prompt: 'Workspace Name',
+        value: `${w.workspace.name} (Copy)`,
+        placeholder: 'Enter workspace name',
+        validateInput: (v) => (v.trim().length === 0 ? 'Name cannot be empty' : undefined),
+      });
+      if (!result) return; // cancelled
+      name = result.trim();
+    }
+
+    // Collect current live state to clone into the new workspace
+    const currentState = w._workspaceSaver.collectState();
+    const newWs = await w.createWorkspace(name, undefined, true, currentState);
     console.log('[Command] Workspace saved as "%s" (id: %s)', name, (newWs as any).id);
     return newWs;
   },

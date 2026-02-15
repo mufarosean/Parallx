@@ -387,15 +387,35 @@ export class Workbench extends Layout {
 
   /**
    * Create a brand-new workspace and optionally switch to it.
+   *
+   * @param cloneState  When provided, the new workspace is persisted with
+   *                    this state (identity/metadata overwritten) instead of
+   *                    a blank default.  Used by "Save As" and "Duplicate".
    */
-  async createWorkspace(name: string, path?: string, switchTo = true): Promise<Workspace> {
+  async createWorkspace(
+    name: string,
+    path?: string,
+    switchTo = true,
+    cloneState?: import('../workspace/workspaceTypes.js').WorkspaceState,
+  ): Promise<Workspace> {
     const ws = Workspace.create(name, path);
 
-    // Persist it immediately so it has an entry in storage
-    const state = ws.createDefaultState(
-      this._container.clientWidth,
-      this._container.clientHeight,
-    );
+    // Persist it immediately so it has an entry in storage.
+    // If a cloneState was provided, stamp it with the new identity;
+    // otherwise create a blank default state.
+    let state: import('../workspace/workspaceTypes.js').WorkspaceState;
+    if (cloneState) {
+      state = {
+        ...cloneState,
+        identity: ws.identity,
+        metadata: ws.metadata,
+      };
+    } else {
+      state = ws.createDefaultState(
+        this._container.clientWidth,
+        this._container.clientHeight,
+      );
+    }
     const key = workspaceStorageKey(ws.id);
     await this._storage.set(key, JSON.stringify(state));
 
@@ -946,6 +966,11 @@ export class Workbench extends Layout {
 
     // Configure the saver with live sources so subsequent saves capture real state
     this._configureSaver();
+
+    // Persist the initial state so there is always a storage entry for the
+    // active workspace. Without this, first-launch windows (or test-mode with
+    // cleared localStorage) have an activeWorkspaceId but no matching state blob.
+    await this._workspaceSaver.save();
 
     // Track as recent + persist active workspace ID
     await this._recentWorkspaces.add(this._workspace);

@@ -65,6 +65,11 @@ async function bootstrap(): Promise<void> {
   const workbench = new Workbench(container);
   await workbench.initialize();
 
+  // In test mode, expose the workbench instance for E2E test automation
+  if (window.parallxElectron?.testMode) {
+    (window as any).__parallx_workbench__ = workbench;
+  }
+
   // Electron shutdown hook — fire-and-forget async shutdown.
   // `beforeunload` cannot await, so we kick off shutdown synchronously
   // and rely on the lifecycle teardown chain saving state.

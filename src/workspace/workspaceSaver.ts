@@ -98,7 +98,7 @@ export class WorkspaceSaver extends Disposable {
 
     this._saving = true;
     try {
-      const state = this._collectState();
+      const state = this.collectState();
       const key = workspaceStorageKey(state.identity.id);
       const json = JSON.stringify(state);
       await this._storage.set(key, json);
@@ -147,7 +147,7 @@ export class WorkspaceSaver extends Disposable {
   /**
    * Collect a complete WorkspaceState snapshot from all sources.
    */
-  private _collectState(): WorkspaceState {
+  collectState(): WorkspaceState {
     const src = this._sources!;
     src.workspace.touch(); // update lastAccessedAt
 
