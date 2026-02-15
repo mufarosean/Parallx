@@ -922,20 +922,121 @@ Four workspace bugs fixed:
 
 ### E2E Tests: Workspace Management ✅
 
-**File:** `tests/e2e/08-workspaces.spec.ts` — 13 tests, all passing
+**Commit:** `2986811` (rewrite), `fa21959` (additions)
+
+**File:** `tests/e2e/08-workspaces.spec.ts` — 18 tests, all passing
+
+**Principle:** Every assertion answers "What does the user SEE right now?" Every step is either a user action (click, type, press key) or a visual assertion (element count, text content, visibility). No `evaluate()` calls to inspect localStorage or JavaScript objects.
 
 | # | Test | Validates |
 |---|------|-----------|
-| 1 | Default workspace created on first launch | Active ID exists, state in storage, recent list populated |
-| 2 | Workspace state saved with correct schema | Version 2, all required fields present (identity, metadata, layout, parts, viewContainers, views, editors, context, folders) |
-| 3 | Auto-save on layout changes | Toggling sidebar triggers debounced save, `lastAccessedAt` updated |
-| 4 | Open folder persists workspace folders | Folder path appears in saved state's `folders` array |
-| 5 | Duplicate workspace with full state cloning | New workspace ID in storage, name contains "(Copy)", folders/parts/viewContainers match original |
-| 6 | Save workspace as — name prompt + clone | Modal appears, default value contains "(Copy)", custom name accepted, switches to new workspace, folders cloned |
-| 7 | Save workspace as — Escape cancels | Modal dismissed, no new workspace created, active ID unchanged |
-| 8 | Switch workspace changes active workspace | After programmatic `switchWorkspace()`, active ID updates to target |
-| 9 | Open recent shows Quick Access | Quick Access overlay appears with workspace entries |
-| 10 | State roundtrip — saved matches live | Force save, read back, verify parts/viewContainers/folders populated |
-| 11 | Active workspace ID persists in storage | ID matches a stored workspace state |
-| 12 | Workspace folders saved correctly | Folder has `scheme: 'file'` and non-empty `path` |
-| 13 | Close folder removes all workspace folders | After File → Close Folder, `folders` array is empty |
+| 1 | Initial launch shows Explorer with no placeholder fake files | Header label count = 1, placeholder-tree-row count = 0, gear icon count = 1 |
+| 2 | Initial launch shows "No folder opened" empty state | No `.placeholder-explorer` element |
+| 3 | Open folder shows real files from disk | `.tree-node-label` contains README.md/src/docs, NOT workbench.css/lifecycle.ts |
+| 4 | Close folder removes tree and shows empty state | tree-node count = 0 after File → Close Folder |
+| 5 | Save As shows name prompt and switches to new workspace | Modal appears, default "(Copy)", titlebar updates to new name |
+| 6 | Save As does NOT duplicate sidebar elements | After Save As: header=1, gear=1, placeholder=0, explorer section=1 |
+| 7 | Save As preserves real Explorer (no fake placeholder files) | Open folder → Save As → placeholder count=0, real tree nodes present |
+| 8 | Save As can be cancelled with Escape | Modal → Escape → titlebar unchanged |
+| 9 | Duplicate Workspace does not switch away from current | Titlebar unchanged, no duplication |
+| 10 | Switching workspace updates titlebar and preserves UI integrity | Full UI integrity check after switch |
+| 11 | Switching back and forth does not accumulate elements | Two switches, still 1 header, 1 gear, 0 placeholders |
+| 12 | Opening a folder after Save As shows real files | Save As → open folder → real files appear |
+| 13 | Save As preserves Explorer tree immediately without app restart | Open folder → Save As → tree nodes > 0, placeholder = 0 |
+| 14 | Rename Workspace updates the titlebar name | Input contains current name, fill new name → titlebar shows it |
+| 15 | Rename Workspace can be cancelled with Escape | Fill "Should Not Apply" → Escape → name unchanged |
+| 16 | Rename Workspace modal has OK and Cancel buttons | OK/Cancel buttons visible and functional |
+| 17 | Open Recent shows the quick access overlay | `.command-palette-overlay` visible → Escape dismisses |
+| 18 | Ctrl+B toggles sidebar visibility | Sidebar hidden → shown via keyboard shortcut |
+
+### Fix 4: Preserve view providers across workspace switch ✅
+
+**Commit:** `2986811`
+
+Four bugs fixed in workspace switching:
+
+1. **Sidebar header not cleared during teardown.** `_teardownWorkspaceContent` cleared `.sidebar-views` innerHTML but not `.sidebar-header`. `_setupSidebarViews` appended new header label + actions, causing labels to accumulate on each switch. **Fix:** Added `sidebarHeader.innerHTML = ''` to teardown.
+
+2. **Gear icon not removed during teardown.** `_addManageGearIcon` appended to `.activity-bar-bottom` which teardown didn't touch. `getIcons()` doesn't return the gear (it's manually added, not tracked). **Fix:** Added `gearBtn?.remove()` to teardown.
+
+3. **View providers lost during workspace switch → placeholder fake files persisted.** Root cause: `removeContributions()` in teardown deletes the `_providers` map. Tools activate once on boot via `onStartupFinished` — they don't re-activate after a switch, so `registerViewProvider()` is never called again. `_replaceBuiltinPlaceholderIfNeeded` never triggers, and the `ExplorerPlaceholderView` with 12 hardcoded fake file rows stays forever. **Fix:** Save providers in `switchWorkspace()` BEFORE teardown via `getProviders()`, pass to `_rebuildWorkspaceContent(savedProviders)`, re-register after contribution replay. Added `getProviders(): ReadonlyMap` method to `ViewContributionProcessor`.
+
+4. **Container redirects not cleared during teardown.** `_containerRedirects` map accumulated stale entries across switches. **Fix:** Added `this._containerRedirects.clear()` to teardown.
+
+| File | Change |
+|------|--------|
+| `src/workbench/workbench.ts` | Teardown: clear sidebar header, remove gear icon, clear redirects. Switch: save providers before teardown, pass to rebuild |
+| `src/contributions/viewContribution.ts` | Added `getProviders()` method |
+
+### Fix 5: Explorer clears on Save As — folders not restored ✅
+
+**Commit:** `fa21959`
+
+**Problem:** Save As cleared Explorer items — only restarting the app brought them back. The root cause: `switchWorkspace()` fired `onDidSwitchWorkspace` AFTER calling `restoreFolders()`. `WorkspaceService._bindFolderEvents()` subscribes to the new workspace's `onDidChangeFolders` inside the `onDidSwitchWorkspace` handler. So when `restoreFolders()` fired `onDidChangeFolders`, WorkspaceService hadn't re-subscribed yet — the event was lost, and the Explorer was never notified about the restored folders.
+
+**Fix:** Moved `_onDidSwitchWorkspace.fire()` BEFORE `restoreFolders()` so that WorkspaceService re-binds folder events first, then `restoreFolders()` fires through the active subscription chain (Workspace → WorkspaceService → WorkspaceBridge → Explorer → `rebuildTree()`).
+
+| File | Change |
+|------|--------|
+| `src/workbench/workbench.ts` | Reordered: fire switch event before restoring folders |
+
+### Fix 6: Input modal UX improvements ✅
+
+**Commit:** `fa21959`
+
+**Problem:** The `showInputBoxModal` used for Save As naming had poor UX:
+- Text not pre-selected (user had to manually select-all to replace)
+- Clicking inside the input to position cursor dismissed the modal (click event bubbled to overlay)
+- Drag-to-select text dismissed the modal
+- No visible OK/Cancel buttons — only keyboard Enter/Escape
+- No focus ring on input
+
+**Fix:** Complete rewrite of `showInputBoxModal`:
+- `input.select()` on focus — text pre-selected for immediate typing
+- `box.addEventListener('mousedown/click', e.stopPropagation())` — prevents event bubbling to overlay dismiss handler
+- `-webkit-app-region: no-drag` on input — prevents titlebar drag interference
+- OK/Cancel buttons added (`.parallx-modal-btn--primary`, `.parallx-modal-btn--secondary`)
+- CSS for buttons: VS Code-style primary (blue) and secondary (gray) buttons with hover states
+- Focus ring on input (`:focus` border-color)
+- Double-resolve guard (`resolved` flag) prevents cleanup race conditions
+
+| File | Change |
+|------|--------|
+| `src/api/notificationService.ts` | Rewrote `showInputBoxModal` with buttons, text selection, event isolation |
+| `src/api/notificationService.css` | Added `.parallx-modal-btn`, primary/secondary variants, input focus ring |
+
+### Fix 7: Rename Workspace command ✅
+
+**Commit:** `fa21959`
+
+**Problem:** No way to rename an existing workspace. Users had to create a new workspace with the desired name and delete the old one.
+
+**Fix:** Added `workspace.rename` command that shows the improved input modal with the current workspace name pre-selected. On confirm:
+1. Calls `workspace.rename(newName)` (method already existed on `Workspace` class)
+2. Updates titlebar via `_titlebar.setWorkspaceName()`
+3. Updates window title via `_updateWindowTitle()`
+4. Persists via `_workspaceSaver.save()`
+
+Added to File menu between "Save Workspace As…" and "Duplicate Workspace".
+
+| File | Change |
+|------|--------|
+| `src/commands/structuralCommands.ts` | Added `workspaceRename` command + `WorkbenchLike` interface extensions (`_titlebar`, `_updateWindowTitle`, `workspace.rename`) |
+| `src/workbench/workbench.ts` | Added "Rename Workspace…" to File menu dropdown |
+
+### Fix 8: Explorer sub-folder expand state lost on file-watcher refresh ✅
+
+**Commit:** `3bb3b86`
+
+**Problem:** Expanding a sub-folder worked momentarily but collapsed ~300ms later. The file-system watcher fires `onDidFilesChange` events frequently. The debounced `refreshTree()` handler:
+1. Wiped all node children arrays recursively (`unload()`)
+2. Reloaded only root-level expanded nodes
+3. `loadChildren()` always created new child nodes with `expanded: false`
+
+All sub-folder expand state was destroyed every refresh cycle.
+
+**Fix:** Before wiping the tree, `refreshTree()` now collects all expanded URIs into a `Set`. New `loadChildrenDeep()` function checks each child directory's URI against this set — marking previously-expanded directories as `expanded: true` and recursively loading their children. `rebuildTree()` also updated to use `loadChildrenDeep()` with the persisted expand state so deep trees reopen correctly on folder changes.
+
+| File | Change |
+|------|--------|
+| `src/built-in/explorer/main.ts` | Added `loadChildrenDeep()`, `refreshTree()` captures expanded URIs before wipe, `rebuildTree()` uses `loadChildrenDeep()` |
