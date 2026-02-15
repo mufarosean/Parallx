@@ -293,17 +293,29 @@ export class NotificationService extends Disposable {
 // ─── Input Box / Quick Pick Modals ───────────────────────────────────────────
 
 /**
- * Show a modal input box overlay.
+ * Show a modal input box overlay with OK / Cancel buttons.
+ *
+ * The input text is pre-selected so the user can immediately type a
+ * replacement. Mouse interactions inside the dialog (click-to-position,
+ * drag-to-select, double-click-to-select-word) all work normally because
+ * the box stops event propagation before it reaches the overlay's dismiss
+ * handler.
  */
 export function showInputBoxModal(
   parent: HTMLElement,
   options: { prompt?: string; value?: string; placeholder?: string; password?: boolean; validateInput?: (v: string) => string | undefined | Promise<string | undefined> },
 ): Promise<string | undefined> {
   return new Promise(resolve => {
+    let resolved = false;
     const overlay = _createModalOverlay(parent);
 
     const box = $('div');
     box.className = 'parallx-modal-box';
+
+    // Prevent any mouse interaction inside the box from bubbling to the
+    // overlay's click-to-dismiss handler.
+    box.addEventListener('mousedown', (e) => e.stopPropagation());
+    box.addEventListener('click', (e) => e.stopPropagation());
 
     if (options.prompt) {
       const label = $('div');
@@ -317,41 +329,78 @@ export function showInputBoxModal(
     input.value = options.value ?? '';
     input.placeholder = options.placeholder ?? '';
     input.className = 'parallx-modal-input';
+    // Disable any drag-region interference from parent containers
+    input.style.webkitAppRegion = 'no-drag';
     box.appendChild(input);
 
     const errorLabel = $('div');
     errorLabel.className = 'parallx-modal-error';
     box.appendChild(errorLabel);
 
+    // ── Button row ──
+    const btnRow = $('div');
+    btnRow.className = 'parallx-modal-buttons';
+
+    const cancelBtn = $('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.className = 'parallx-modal-btn parallx-modal-btn--secondary';
+
+    const okBtn = $('button');
+    okBtn.type = 'button';
+    okBtn.textContent = 'OK';
+    okBtn.className = 'parallx-modal-btn parallx-modal-btn--primary';
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(okBtn);
+    box.appendChild(btnRow);
+
     overlay.appendChild(box);
 
-    const cleanup = () => { overlay.remove(); };
+    const cleanup = () => {
+      if (resolved) return;
+      resolved = true;
+      overlay.remove();
+    };
 
-    input.addEventListener('keydown', async (e) => {
-      if (e.key === 'Escape') {
-        cleanup();
-        resolve(undefined);
-      } else if (e.key === 'Enter') {
-        if (options.validateInput) {
-          const err = await options.validateInput(input.value);
-          if (err) {
-            errorLabel.textContent = err;
-            return;
-          }
+    const accept = async () => {
+      if (options.validateInput) {
+        const err = await options.validateInput(input.value);
+        if (err) {
+          errorLabel.textContent = err;
+          input.focus();
+          return;
         }
-        cleanup();
-        resolve(input.value);
       }
+      cleanup();
+      resolve(input.value);
+    };
+
+    const cancel = () => {
+      cleanup();
+      resolve(undefined);
+    };
+
+    // Keyboard
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { cancel(); }
+      else if (e.key === 'Enter') { accept(); }
     });
 
+    // Buttons
+    okBtn.addEventListener('click', () => accept());
+    cancelBtn.addEventListener('click', () => cancel());
+
+    // Click on translucent overlay background → cancel
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) {
-        cleanup();
-        resolve(undefined);
-      }
+      if (e.target === overlay) cancel();
     });
 
-    requestAnimationFrame(() => input.focus());
+    // Focus input and pre-select all text so the user can type immediately
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
   });
 }
 

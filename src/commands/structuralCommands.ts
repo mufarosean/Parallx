@@ -35,7 +35,7 @@ interface WorkbenchLike {
   showGoToLine(): void;
   selectColorTheme(): void;
   showSidebarView(viewId: string): void;
-  readonly workspace: { readonly id: string; readonly name: string };
+  readonly workspace: { readonly id: string; readonly name: string; rename(name: string): void };
   createWorkspace(name: string, path?: string, switchTo?: boolean, cloneState?: unknown): Promise<unknown>;
   switchWorkspace(targetId: string): Promise<void>;
   getRecentWorkspaces(): Promise<readonly { identity: { id: string; name: string }; metadata: { lastAccessedAt: string } }[]>;
@@ -73,6 +73,8 @@ interface WorkbenchLike {
     resizeSash(parentNode: unknown, sashIndex: number, delta: number): void;
   };
   readonly _workspaceSaver: { save(): Promise<void>; collectState(): unknown };
+  readonly _titlebar: { setWorkspaceName(name: string): void };
+  _updateWindowTitle(editor?: unknown): void;
   readonly _sidebarContainer: ViewContainerLike;
   readonly _panelContainer: ViewContainerLike;
   readonly _auxBarContainer: ViewContainerLike | undefined;
@@ -574,7 +576,7 @@ const workspaceSaveAs: CommandDescriptor = {
       // Use the notification service's input box modal
       const { showInputBoxModal } = await import('../api/notificationService.js');
       const result = await showInputBoxModal(document.body, {
-        prompt: 'Workspace Name',
+        prompt: 'Save Workspace As',
         value: `${w.workspace.name} (Copy)`,
         placeholder: 'Enter workspace name',
         validateInput: (v) => (v.trim().length === 0 ? 'Name cannot be empty' : undefined),
@@ -588,6 +590,31 @@ const workspaceSaveAs: CommandDescriptor = {
     const newWs = await w.createWorkspace(name, undefined, true, currentState);
     console.log('[Command] Workspace saved as "%s" (id: %s)', name, (newWs as any).id);
     return newWs;
+  },
+};
+
+const workspaceRename: CommandDescriptor = {
+  id: 'workspace.rename',
+  title: 'Rename Workspace...',
+  category: 'Workspace',
+  handler: async (ctx) => {
+    const w = wb(ctx);
+    const { showInputBoxModal } = await import('../api/notificationService.js');
+    const result = await showInputBoxModal(document.body, {
+      prompt: 'Rename Workspace',
+      value: w.workspace.name,
+      placeholder: 'Enter new workspace name',
+      validateInput: (v) => (v.trim().length === 0 ? 'Name cannot be empty' : undefined),
+    });
+    if (!result) return; // cancelled
+    const newName = result.trim();
+    if (newName === w.workspace.name) return; // no change
+
+    w.workspace.rename(newName);
+    w._titlebar.setWorkspaceName(newName);
+    w._updateWindowTitle();
+    await w._workspaceSaver.save();
+    console.log('[Command] Workspace renamed to "%s"', newName);
   },
 };
 
@@ -1294,6 +1321,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   workspaceCloseWindow,
   workspaceOpenRecent,
   workspaceSaveAs,
+  workspaceRename,
   workspaceOpenFolder,
   // File
   fileOpenFile,

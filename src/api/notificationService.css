@@ -149,11 +149,57 @@
   box-sizing: border-box;
 }
 
+.parallx-modal-input:focus {
+  border-color: var(--vscode-focusBorder, #007acc);
+}
+
 .parallx-modal-error {
   color: var(--vscode-notificationsErrorIcon-foreground, #f14c4c);
   font-size: 12px;
   margin-top: 4px;
   min-height: 16px;
+}
+
+/* ── Modal buttons ────────────────────────────────────────────────────── */
+
+.parallx-modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.parallx-modal-btn {
+  padding: 4px 14px;
+  font-size: 13px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  outline: none;
+  -webkit-app-region: no-drag;
+}
+
+.parallx-modal-btn:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007acc);
+  outline-offset: 1px;
+}
+
+.parallx-modal-btn--primary {
+  background-color: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+}
+
+.parallx-modal-btn--primary:hover {
+  background-color: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.parallx-modal-btn--secondary {
+  background-color: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #cccccc);
+}
+
+.parallx-modal-btn--secondary:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground, #45494e);
 }
 
 /* ── Quick pick modal ─────────────────────────────────────────────────── */

@@ -495,7 +495,14 @@ export class Workbench extends Layout {
       // 5. Apply restored state
       this._applyRestoredState();
 
-      // 5b. Restore workspace folders from saved state
+      // 5b. Fire workspace-switch event BEFORE restoring folders.
+      //     WorkspaceService._bindFolderEvents must subscribe to the new
+      //     workspace's onDidChangeFolders BEFORE restoreFolders fires it,
+      //     otherwise the Explorer never learns about restored folders.
+      this._onDidSwitchWorkspace.fire(this._workspace);
+
+      // 5c. Now restore workspace folders — the event flows through
+      //     WorkspaceService → WorkspaceBridge → Explorer → rebuildTree().
       if (this._restoredState?.folders) {
         this._workspace.restoreFolders(this._restoredState.folders);
       }
@@ -506,9 +513,6 @@ export class Workbench extends Layout {
       // 7. Update recent workspaces and active ID
       await this._recentWorkspaces.add(this._workspace);
       await this._workspaceLoader.setActiveWorkspaceId(this._workspace.id);
-
-      // 8. Notify
-      this._onDidSwitchWorkspace.fire(this._workspace);
 
       console.log('[Workbench] Switched to workspace "%s"', this._workspace.name);
     } catch (err) {
@@ -1323,7 +1327,8 @@ export class Workbench extends Layout {
       { commandId: 'workspace.openRecent', title: 'Open Recent…', group: '2_open', order: 3 },
       { commandId: 'workspace.addFolderToWorkspace', title: 'Add Folder to Workspace…', group: '3_workspace', order: 1 },
       { commandId: 'workspace.saveAs', title: 'Save Workspace As…', group: '3_workspace', order: 2 },
-      { commandId: 'workspace.duplicateWorkspace', title: 'Duplicate Workspace', group: '3_workspace', order: 3 },
+      { commandId: 'workspace.rename', title: 'Rename Workspace…', group: '3_workspace', order: 3 },
+      { commandId: 'workspace.duplicateWorkspace', title: 'Duplicate Workspace', group: '3_workspace', order: 4 },
       { commandId: 'file.save', title: 'Save', group: '4_save', order: 1, when: 'activeEditor' },
       { commandId: 'file.saveAs', title: 'Save As…', group: '4_save', order: 2, when: 'activeEditor' },
       { commandId: 'file.saveAll', title: 'Save All', group: '4_save', order: 3, when: 'activeEditor' },

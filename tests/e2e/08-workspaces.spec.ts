@@ -359,6 +359,97 @@ test.describe('Workspace Management — User Experience', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════
+  // 7b. Save As preserves Explorer items immediately (no relaunch needed)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  test('Save As preserves Explorer tree immediately without app restart', async ({ electronApp, window, workspacePath }) => {
+    // 1. Open a real folder
+    await openFolderViaMenu(electronApp, window, workspacePath);
+    await window.waitForTimeout(2000);
+    const treeNodes = window.locator('.tree-node-label');
+    const beforeCount = await treeNodes.count();
+    expect(beforeCount).toBeGreaterThan(0);
+
+    // 2. Save As
+    await clickFileMenuItem(window, 'Save Workspace As');
+    const modal = window.locator('.parallx-modal-overlay');
+    await expect(modal).toBeVisible({ timeout: 3000 });
+    const input = modal.locator('.parallx-modal-input');
+    await input.fill('Explorer Persist Test');
+    await input.press('Enter');
+    await waitForSwitchComplete(window);
+
+    // 3. Explorer tree items should still be visible immediately
+    const afterCount = await treeNodes.count();
+    expect(afterCount).toBeGreaterThan(0);
+
+    // 4. No placeholder fake files
+    const placeholders = window.locator('.placeholder-tree-row');
+    expect(await placeholders.count()).toBe(0);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 7c. Rename Workspace
+  // ═══════════════════════════════════════════════════════════════════════
+
+  test('Rename Workspace updates the titlebar name', async ({ window }) => {
+    const originalName = await getTitlebarWorkspaceName(window);
+
+    // File → Rename Workspace
+    await clickFileMenuItem(window, 'Rename Workspace');
+    const modal = window.locator('.parallx-modal-overlay');
+    await expect(modal).toBeVisible({ timeout: 3000 });
+
+    // The input should contain the current workspace name
+    const input = modal.locator('.parallx-modal-input');
+    const inputValue = await input.inputValue();
+    expect(inputValue).toBe(originalName);
+
+    // Type a new name
+    await input.fill('Renamed Workspace');
+    await input.press('Enter');
+    await window.waitForTimeout(500);
+
+    // Titlebar should show the new name
+    const newName = await getTitlebarWorkspaceName(window);
+    expect(newName).toBe('Renamed Workspace');
+  });
+
+  test('Rename Workspace can be cancelled with Escape', async ({ window }) => {
+    const originalName = await getTitlebarWorkspaceName(window);
+
+    await clickFileMenuItem(window, 'Rename Workspace');
+    const modal = window.locator('.parallx-modal-overlay');
+    await expect(modal).toBeVisible({ timeout: 3000 });
+
+    const input = modal.locator('.parallx-modal-input');
+    await input.fill('Should Not Apply');
+    await input.press('Escape');
+    await window.waitForTimeout(500);
+
+    // Name should be unchanged
+    const nameAfter = await getTitlebarWorkspaceName(window);
+    expect(nameAfter).toBe(originalName);
+  });
+
+  test('Rename Workspace modal has OK and Cancel buttons', async ({ window }) => {
+    await clickFileMenuItem(window, 'Rename Workspace');
+    const modal = window.locator('.parallx-modal-overlay');
+    await expect(modal).toBeVisible({ timeout: 3000 });
+
+    const okBtn = modal.locator('.parallx-modal-btn--primary');
+    const cancelBtn = modal.locator('.parallx-modal-btn--secondary');
+    await expect(okBtn).toBeVisible();
+    await expect(cancelBtn).toBeVisible();
+    expect(await okBtn.textContent()).toBe('OK');
+    expect(await cancelBtn.textContent()).toBe('Cancel');
+
+    // Click Cancel to dismiss
+    await cancelBtn.click();
+    await expect(modal).not.toBeVisible({ timeout: 2000 });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
   // 8. Open Recent
   // ═══════════════════════════════════════════════════════════════════════
 
