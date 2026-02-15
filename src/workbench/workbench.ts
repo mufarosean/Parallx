@@ -1506,7 +1506,8 @@ export class Workbench extends Layout {
       }
 
       if (dirtyModels.length === 0) {
-        // No unsaved changes — proceed to close
+        // No unsaved changes — flush layout state and proceed to close
+        await this._workspaceSaver.flushPendingSave();
         electron.confirmClose!();
         return;
       }
@@ -1540,7 +1541,9 @@ export class Workbench extends Layout {
         }
       }
 
-      // "Don't Save" (response === 1) or "Save All" succeeded — proceed
+      // "Don't Save" (response === 1) or "Save All" succeeded
+      // Flush any pending layout save before closing
+      await this._workspaceSaver.flushPendingSave();
       electron.confirmClose!();
     });
   }

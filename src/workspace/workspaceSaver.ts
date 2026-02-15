@@ -130,6 +130,18 @@ export class WorkspaceSaver extends Disposable {
     }, this._debounceMs);
   }
 
+  /**
+   * If a debounced save is pending, cancel the timer and save immediately.
+   * Returns a resolved promise if no save was pending.
+   */
+  async flushPendingSave(): Promise<void> {
+    if (this._debounceTimer !== undefined) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = undefined;
+      await this.save();
+    }
+  }
+
   // ── State collection ──
 
   /**

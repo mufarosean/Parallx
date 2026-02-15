@@ -207,7 +207,6 @@ html, body {
 
 .sidebar-header {
   height: 35px;
-  border-bottom: 1px solid var(--vscode-sideBar-border);
   padding: 0 8px;
   display: flex;
   align-items: center;
