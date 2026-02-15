@@ -10,7 +10,7 @@
 
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { $,  hide, show } from '../ui/dom.js';
+import { $ } from '../ui/dom.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { IContributionProcessor } from './contributionTypes.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -459,7 +459,7 @@ export class ViewContributionProcessor extends Disposable implements IContributi
         _element = $('div');
         _element.className = `view view-${viewId} contributed-view`;
         _element.setAttribute('data-view-id', viewId);
-        hide(_element); // hidden until setVisible(true)
+        // CSS `.view { display: none }` handles initial hiding; `.view.visible` shows it
         container.appendChild(_element);
 
         if (_provider) {
@@ -486,7 +486,8 @@ export class ViewContributionProcessor extends Disposable implements IContributi
 
       setVisible(visible: boolean): void {
         if (_element) {
-          visible ? show(_element) : hide(_element);
+          // Use the `.visible` class to match the `.view { display: none }` / `.view.visible { display: block }` pattern in workbench.css
+          _element.classList.toggle('visible', visible);
         }
         _onDidChangeVisibility.fire(visible);
       },

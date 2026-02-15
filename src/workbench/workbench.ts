@@ -2259,7 +2259,7 @@ export class Workbench extends Layout {
 
     // Use the first folder's path as the workspace root for the database
     const firstFolder = folders[0];
-    const folderPath = firstFolder.uri.path;
+    const folderPath = firstFolder.uri.fsPath;
 
     // Resolve the migrations directory — bundled with the app
     // Canvas migrations live in src/built-in/canvas/migrations/ at dev time.
