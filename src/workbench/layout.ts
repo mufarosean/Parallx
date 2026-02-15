@@ -102,6 +102,8 @@ export abstract class Layout extends Disposable {
   protected _lastSidebarWidth: number = DEFAULT_SIDEBAR_WIDTH;
   /** Last known panel height — restored on toggle / persisted across sessions. */
   protected _lastPanelHeight: number = DEFAULT_PANEL_HEIGHT;
+  /** Last known auxiliary bar width — restored on toggle / persisted across sessions. */
+  protected _lastAuxBarWidth: number = DEFAULT_AUX_BAR_WIDTH;
   /** Whether the panel is currently maximized (occupying all vertical space). */
   protected _panelMaximized = false;
   /** Whether Zen Mode is active (all chrome hidden). */
@@ -148,7 +150,7 @@ export abstract class Layout extends Disposable {
     const h = this._container.clientHeight;
     const bodyH = h - TITLE_HEIGHT - STATUS_HEIGHT;
     const sidebarW = this._sidebar.visible ? this._lastSidebarWidth : 0;
-    const auxBarW = this._auxiliaryBar.visible ? DEFAULT_AUX_BAR_WIDTH : 0;
+    const auxBarW = this._auxiliaryBar.visible ? this._lastAuxBarWidth : 0;
     const panelH = this._panel.visible ? DEFAULT_PANEL_HEIGHT : 0;
     const editorAreaW = Math.max(MIN_EDITOR_WIDTH, w - ACTIVITY_BAR_WIDTH - sidebarW - auxBarW);
     const editorH = bodyH - panelH;
@@ -365,6 +367,33 @@ export abstract class Layout extends Disposable {
         }
       }
     });
+
+    // Track auxiliary bar width after sash drags so toggleAuxiliaryBar() restores the right size
+    this._hGrid.onDidChange(() => {
+      if (this._auxBarVisible) {
+        const w = this._hGrid.getViewSize(this._auxiliaryBar.id);
+        if (w !== undefined && w > 0) {
+          this._lastAuxBarWidth = w;
+        }
+      }
+    });
+
+    // Double-click sash resets aux bar to default width (VS Code parity: Sash.onDidReset)
+    this._hGrid.onDidSashReset(({ sashIndex }) => {
+      // Aux bar sash is the last sash in hGrid (right side)
+      const auxSashIndex = this._hGrid.root.childCount - 2;
+      if (sashIndex === auxSashIndex && this._auxBarVisible) {
+        const currentWidth = this._hGrid.getViewSize(this._auxiliaryBar.id);
+        if (currentWidth !== undefined) {
+          const delta = DEFAULT_AUX_BAR_WIDTH - currentWidth;
+          if (delta !== 0) {
+            this._hGrid.resizeSash(this._hGrid.root, auxSashIndex, delta);
+            this._hGrid.layout();
+            this._lastAuxBarWidth = DEFAULT_AUX_BAR_WIDTH;
+          }
+        }
+      }
+    });
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -392,6 +421,11 @@ export abstract class Layout extends Disposable {
    */
   toggleAuxiliaryBar(): void {
     if (this._auxBarVisible) {
+      // Remember current width before hiding
+      const currentWidth = this._hGrid.getViewSize(this._auxiliaryBar.id);
+      if (currentWidth !== undefined && currentWidth > 0) {
+        this._lastAuxBarWidth = currentWidth;
+      }
       // Hide: remove from hGrid
       this._hGrid.removeView(this._auxiliaryBar.id);
       this._auxiliaryBar.setVisible(false);
@@ -399,7 +433,7 @@ export abstract class Layout extends Disposable {
     } else {
       // Show: add to hGrid at the end (right of editor column)
       this._auxiliaryBar.setVisible(true);
-      this._hGrid.addView(this._auxiliaryBar, DEFAULT_AUX_BAR_WIDTH);
+      this._hGrid.addView(this._auxiliaryBar, this._lastAuxBarWidth);
       this._auxBarVisible = true;
     }
     this._hGrid.layout();

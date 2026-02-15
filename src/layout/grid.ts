@@ -476,17 +476,44 @@ export class Grid extends Disposable {
     // Visual feedback: add active class to sash during drag
     target.classList.add('active');
 
+    // Hint the browser to optimise compositing for dimensions that change during drag
+    this._setWillChange(branch, sashIndex, true);
+
+    // Use rAF-throttling so layout runs at most once per frame
+    let rafId = 0;
+    let pendingDelta = 0;
+
+    const applyResize = () => {
+      rafId = 0;
+      if (!this._sashDragState || pendingDelta === 0) return;
+      this.resizeSash(this._sashDragState.branch, this._sashDragState.sashIndex, pendingDelta);
+      this._sashDragState.startPos += pendingDelta;
+      pendingDelta = 0;
+    };
+
     const onMouseMove = (moveEvent: MouseEvent) => {
       if (!this._sashDragState) return;
       const currentPos = isHorizontal ? moveEvent.clientX : moveEvent.clientY;
       const delta = currentPos - this._sashDragState.startPos;
       if (Math.abs(delta) < 1) return;
 
-      this.resizeSash(this._sashDragState.branch, this._sashDragState.sashIndex, delta);
-      this._sashDragState.startPos = currentPos;
+      pendingDelta = delta;
+      if (!rafId) {
+        rafId = requestAnimationFrame(applyResize);
+      }
     };
 
     const onMouseUp = () => {
+      // Flush any pending resize before cleanup
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      if (pendingDelta !== 0) {
+        applyResize();
+      }
+
+      this._setWillChange(branch, sashIndex, false);
       target.classList.remove('active');
       this._sashDragState = null;
       document.removeEventListener('mousemove', onMouseMove);
@@ -498,6 +525,24 @@ export class Grid extends Disposable {
     document.addEventListener('mouseup', onMouseUp);
     startDrag(isHorizontal ? 'col-resize' : 'row-resize');
   };
+
+  /**
+   * Toggle `will-change` on the two children adjacent to a sash so the
+   * browser can optimise compositing during drag.
+   */
+  private _setWillChange(branch: GridBranchNode, sashIndex: number, active: boolean): void {
+    const value = active ? 'width, height' : '';
+    const childA = branch.getChild(sashIndex);
+    const childB = branch.getChild(sashIndex + 1);
+    if (childA) {
+      const elA = childA.type === GridNodeType.Leaf ? childA.view.element : childA.element;
+      elA.style.willChange = value;
+    }
+    if (childB) {
+      const elB = childB.type === GridNodeType.Leaf ? childB.view.element : childB.element;
+      elB.style.willChange = value;
+    }
+  }
 
   // ── Private: Deserialization ──
 

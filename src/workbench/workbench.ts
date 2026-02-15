@@ -1045,27 +1045,53 @@ export class Workbench extends Layout {
       }
     }
 
-    // 1b. Restore sidebar width — resize grid node to match the saved width
+    // 1b. Restore sidebar width — always remember the saved width so that
+    //     toggleSidebar() uses it when the user re-shows the sidebar.
+    //     Only resize the live grid when the sidebar is currently visible.
     const sidebarSnap = state.parts.find(p => p.partId === PartId.Sidebar);
-    if (sidebarSnap?.width && sidebarSnap.width > 0 && this._sidebar.visible) {
+    if (sidebarSnap?.width && sidebarSnap.width > 0) {
       this._lastSidebarWidth = sidebarSnap.width;
-      const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
-      if (currentWidth !== undefined && currentWidth !== sidebarSnap.width) {
-        const delta = sidebarSnap.width - currentWidth;
-        this._hGrid.resizeSash(this._hGrid.root, 0, delta);
-        this._hGrid.layout();
+      if (this._sidebar.visible) {
+        const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
+        if (currentWidth !== undefined && currentWidth !== sidebarSnap.width) {
+          const delta = sidebarSnap.width - currentWidth;
+          this._hGrid.resizeSash(this._hGrid.root, 0, delta);
+          this._hGrid.layout();
+        }
       }
     }
 
-    // 1c. Restore panel height — resize vGrid node to match the saved height
+    // 1c. Restore panel height — always remember the saved height so that
+    //     togglePanel() uses it when the user re-shows the panel.
+    //     Only resize the live grid when the panel is currently visible.
     const panelSnap = state.parts.find(p => p.partId === PartId.Panel);
-    if (panelSnap?.height && panelSnap.height > 0 && this._panel.visible) {
+    if (panelSnap?.height && panelSnap.height > 0) {
       this._lastPanelHeight = panelSnap.height;
-      const currentHeight = this._vGrid.getViewSize(this._panel.id);
-      if (currentHeight !== undefined && currentHeight !== panelSnap.height) {
-        const delta = panelSnap.height - currentHeight;
-        this._vGrid.resizeSash(this._vGrid.root, 0, delta);
-        this._vGrid.layout();
+      if (this._panel.visible) {
+        const currentHeight = this._vGrid.getViewSize(this._panel.id);
+        if (currentHeight !== undefined && currentHeight !== panelSnap.height) {
+          const delta = panelSnap.height - currentHeight;
+          this._vGrid.resizeSash(this._vGrid.root, 0, delta);
+          this._vGrid.layout();
+        }
+      }
+    }
+
+    // 1d. Restore auxiliary bar width — always remember the saved width so
+    //     that toggleAuxiliaryBar() uses it when the user re-shows the bar.
+    //     Only resize the live grid when the aux bar is currently visible.
+    const auxBarSnap = state.parts.find(p => p.partId === PartId.AuxiliaryBar);
+    if (auxBarSnap?.width && auxBarSnap.width > 0) {
+      this._lastAuxBarWidth = auxBarSnap.width;
+      if (this._auxBarVisible) {
+        // Aux bar is the last child in hGrid; its sash is at index childCount - 2
+        const auxSashIndex = this._hGrid.root.childCount - 2;
+        const currentWidth = this._hGrid.getViewSize(this._auxiliaryBar.id);
+        if (currentWidth !== undefined && currentWidth !== auxBarSnap.width) {
+          const delta = auxBarSnap.width - currentWidth;
+          this._hGrid.resizeSash(this._hGrid.root, auxSashIndex, delta);
+          this._hGrid.layout();
+        }
       }
     }
 
