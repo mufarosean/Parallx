@@ -250,7 +250,8 @@ export abstract class Layout extends Disposable {
       layout(width: number, height: number, _orientation: Orientation): void {
         wrapper.style.width = `${width}px`;
         wrapper.style.height = `${height}px`;
-        vGrid.resize(width, height);
+        // Keep panel at its fixed height; only the editor absorbs the delta
+        vGrid.resizeWithFixedViews(width, height, 'workbench.parts.editor');
       },
       setVisible(visible: boolean): void {
         wrapper.classList.toggle('hidden', !visible);
@@ -292,8 +293,9 @@ export abstract class Layout extends Disposable {
       this._activityBarPart.layout(ACTIVITY_BAR_WIDTH, rbodyH, Orientation.Vertical);
     }
 
-    // Resize hGrid (cascades to vGrid via editorColumnAdapter)
-    this._hGrid.resize(rw - activityBarW, rbodyH);
+    // Resize hGrid — keep sidebar and aux bar at their current widths,
+    // let the editor column absorb the window size delta (VS Code parity).
+    this._hGrid.resizeWithFixedViews(rw - activityBarW, rbodyH, 'workbench.editorColumn');
 
     this._layoutViewContainers();
   };

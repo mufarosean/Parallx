@@ -241,6 +241,82 @@ export class Grid extends Disposable {
   }
 
   /**
+   * Resize the grid while keeping specific views at their current pixel
+   * sizes.  The size delta is absorbed entirely by a designated flexible
+   * view (typically the editor column).  Views not in `fixedViewIds` and
+   * not equal to `flexViewId` are also kept at their current sizes.
+   *
+   * This mirrors VS Code behaviour where the sidebar, panel, and
+   * auxiliary bar keep their widths/heights on window resize and only the
+   * editor area grows or shrinks.
+   */
+  resizeWithFixedViews(
+    width: number,
+    height: number,
+    flexViewId: string,
+  ): void {
+    this._width = width;
+    this._height = height;
+
+    // Walk the root branch and assign sizes: keep every child at its
+    // current size except the flex view, which gets the remainder.
+    this._distributeWithFlex(this._root, flexViewId);
+
+    this._layoutNode(this._root, width, height);
+    this._onDidChange.fire({ type: 'resize' });
+  }
+
+  /**
+   * For a branch node, keep all non-flex children at their current sizes
+   * and assign the remaining space to the flex child.
+   */
+  private _distributeWithFlex(
+    branch: GridBranchNode,
+    flexViewId: string,
+  ): void {
+    const isHorizontal = branch.orientation === Orientation.Horizontal;
+    const totalAvailable = isHorizontal ? this._width : this._height;
+
+    let fixedTotal = 0;
+    let flexChild: GridNode | null = null;
+
+    for (const child of branch.children) {
+      // Check if this child (or any descendant) contains the flex view
+      if (this._nodeContainsView(child, flexViewId)) {
+        flexChild = child;
+      } else {
+        fixedTotal += this._getNodeSize(child);
+      }
+    }
+
+    if (flexChild) {
+      const min = this._getMinSizeAlongOrientation(flexChild, branch.orientation);
+      const flexSize = Math.max(min, totalAvailable - fixedTotal);
+      this._setNodeSize(flexChild, flexSize);
+
+      // Recurse into flex child if it's a branch (e.g. editorColumnAdapter
+      // wrapping vGrid doesn't need this, but future-proofs the logic)
+      if (flexChild.type === GridNodeType.Branch) {
+        this._distributeWithFlex(flexChild, flexViewId);
+      }
+    }
+  }
+
+  /**
+   * Check whether a grid node (leaf or branch) contains a view with the
+   * given ID.
+   */
+  private _nodeContainsView(node: GridNode, viewId: string): boolean {
+    if (node.type === GridNodeType.Leaf) {
+      return node.view.id === viewId;
+    }
+    for (const child of node.children) {
+      if (this._nodeContainsView(child, viewId)) return true;
+    }
+    return false;
+  }
+
+  /**
    * Resize a specific sash between two children.
    *
    * @param parentNode - The branch containing the sash
