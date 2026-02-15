@@ -55,6 +55,10 @@ export class CanvasDataService extends Disposable {
   private readonly _onDidChangePage = this._register(new Emitter<PageChangeEvent>());
   readonly onDidChangePage: Event<PageChangeEvent> = this._onDidChangePage.event;
 
+  /** Fires after an auto-save flush completes for a specific page. */
+  private readonly _onDidSavePage = this._register(new Emitter<string>());
+  readonly onDidSavePage: Event<string> = this._onDidSavePage.event;
+
   // ── Auto-save debounce state ──
 
   /** Per-page debounce timers for content auto-save. */
@@ -313,6 +317,7 @@ export class CanvasDataService extends Disposable {
       this._pendingSaves.delete(pageId);
       try {
         await this.updatePage(pageId, { content });
+        this._onDidSavePage.fire(pageId);
       } catch (err) {
         console.error(`[CanvasDataService] Auto-save failed for page "${pageId}":`, err);
       }
@@ -333,6 +338,7 @@ export class CanvasDataService extends Disposable {
       clearTimeout(timer);
       try {
         await this.updatePage(pageId, { content });
+        this._onDidSavePage.fire(pageId);
       } catch (err) {
         console.error(`[CanvasDataService] Flush failed for page "${pageId}":`, err);
       }

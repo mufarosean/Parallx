@@ -78,6 +78,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
+  // 3a. Restore expanded state from workspace memento (Task 6.2)
+  const savedExpandedIds = context.workspaceState.get<string[]>('canvas.expandedPages', []);
+  if (savedExpandedIds.length > 0) {
+    _sidebar.setExpandedIds(savedExpandedIds);
+  }
+
+  // 3b. Persist expanded state on change (Task 6.2)
+  _sidebar.onExpandStateChanged = (expandedIds) => {
+    context.workspaceState.update('canvas.expandedPages', [...expandedIds]);
+  };
+
   // 4. Register editor provider for Canvas panes (Cap 5)
   const editorProvider = new CanvasEditorProvider(_dataService);
   context.subscriptions.push(
@@ -90,6 +101,24 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 5. Register command handlers
   _registerCommands(api, context);
+
+  // 6. Track last-opened page for persistence (Task 6.3)
+  context.subscriptions.push(
+    api.editors.onDidChangeOpenEditors(() => {
+      const editors = api.editors.openEditors;
+      const active = editors.find((e: any) => e.isActive);
+      if (!active) return;
+      // Extract page ID from editor ID (format: "parallx.canvas:canvas:<pageId>")
+      const parts = active.id.split(':');
+      if (parts.length >= 3 && parts[1] === 'canvas') {
+        const pageId = parts.slice(2).join(':');
+        context.workspaceState.update('canvas.lastOpenedPage', pageId);
+      }
+    }),
+  );
+
+  // 7. Restore last-opened page (Task 6.3)
+  await _restoreLastOpenedPage(api, context, _dataService);
 
   console.log('[Canvas] Tool activated');
 }
@@ -134,6 +163,31 @@ async function _runMigrations(): Promise<void> {
     console.error('[Canvas] Migration failed:', result.error.message);
   } else {
     console.log('[Canvas] Migrations applied from:', migrationsDir);
+  }
+}
+
+// ─── Restore Last-Opened Page (Task 6.3) ─────────────────────────────────────
+
+async function _restoreLastOpenedPage(api: ParallxApi, context: ToolContext, dataService: CanvasDataService): Promise<void> {
+  const lastPageId = context.workspaceState.get<string>('canvas.lastOpenedPage');
+  if (!lastPageId) return;
+
+  try {
+    const page = await dataService.getPage(lastPageId);
+    if (!page) {
+      // Page was deleted — clear stored value
+      await context.workspaceState.update('canvas.lastOpenedPage', undefined);
+      return;
+    }
+    await api.editors.openEditor({
+      typeId: 'canvas',
+      title: page.title,
+      icon: page.icon ?? '📄',
+      instanceId: page.id,
+    });
+  } catch (err) {
+    console.warn('[Canvas] Failed to restore last-opened page:', err);
+    await context.workspaceState.update('canvas.lastOpenedPage', undefined);
   }
 }
 

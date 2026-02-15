@@ -1531,8 +1531,12 @@ export class Workbench extends Layout {
       }
 
       if (dirtyModels.length === 0) {
-        // No unsaved changes — flush layout state and proceed to close
+        // No unsaved changes — flush layout state, deactivate tools, and proceed to close
         await this._workspaceSaver.flushPendingSave();
+        // Deactivate all tools so they can flush pending data (e.g. Canvas auto-save)
+        if (this._toolActivator) {
+          await this._toolActivator.deactivateAll();
+        }
         electron.confirmClose!();
         return;
       }
@@ -1569,6 +1573,10 @@ export class Workbench extends Layout {
       // "Don't Save" (response === 1) or "Save All" succeeded
       // Flush any pending layout save before closing
       await this._workspaceSaver.flushPendingSave();
+      // Deactivate all tools so they can flush pending data (e.g. Canvas auto-save)
+      if (this._toolActivator) {
+        await this._toolActivator.deactivateAll();
+      }
       electron.confirmClose!();
     });
   }

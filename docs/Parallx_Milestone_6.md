@@ -723,7 +723,7 @@ Canvas pages auto-save as the user types, with dirty state properly tracked and 
 
 #### Tasks
 
-**Task 6.1 — Integrate Dirty State with Editor Tab**
+**Task 6.1 — Integrate Dirty State with Editor Tab** ✅
 - **Task Description:** Wire `CanvasEditorInput.isDirty()` to `CanvasDataService` pending save state.
 - **Output:** Editor tab shows dirty indicator while content save is pending.
 - **Completion Criteria:**
@@ -733,7 +733,7 @@ Canvas pages auto-save as the user types, with dirty state properly tracked and 
   - `onDidChangeDirty` event fires on transitions
   - Window close prompt if any Canvas editors are dirty (via existing `lifecycle:beforeClose` integration)
 
-**Task 6.2 — Persist Sidebar Expanded State**
+**Task 6.2 — Persist Sidebar Expanded State** ✅
 - **Task Description:** Save and restore expanded tree nodes in workspace memento.
 - **Output:** Expanded/collapsed page nodes persist across sessions.
 - **Completion Criteria:**
@@ -742,7 +742,7 @@ Canvas pages auto-save as the user types, with dirty state properly tracked and 
   - On view creation: read stored set and apply expand state to tree
   - Handles stale IDs gracefully (deleted pages silently ignored)
 
-**Task 6.3 — Persist Last-Opened Page**
+**Task 6.3 — Persist Last-Opened Page** ✅
 - **Task Description:** Remember which page was last opened and restore it on next activation.
 - **Output:** Last-opened page reopens when Canvas activates.
 - **Completion Criteria:**
@@ -751,7 +751,7 @@ Canvas pages auto-save as the user types, with dirty state properly tracked and 
   - If page was deleted: clear stored value, show empty state
   - Update stored value whenever user opens a different page
 
-**Task 6.4 — Flush Pending Saves on Shutdown**
+**Task 6.4 — Flush Pending Saves on Shutdown** ✅
 - **Task Description:** Ensure all pending auto-saves complete before workspace close or tool deactivation.
 - **Output:** No data loss on app close.
 - **Completion Criteria:**

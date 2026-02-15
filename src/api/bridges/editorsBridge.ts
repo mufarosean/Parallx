@@ -222,6 +222,14 @@ class ToolEditorInput extends EditorInput {
   get name(): string { return this._name; }
   get description(): string { return `Tool editor: ${this.typeId}`; }
 
+  /**
+   * Widen access from protected → public so tool providers can control
+   * dirty state from their editor panes.
+   */
+  override setDirty(dirty: boolean): void {
+    super.setDirty(dirty);
+  }
+
   serialize(): SerializedEditorEntry {
     return {
       inputId: this.id,

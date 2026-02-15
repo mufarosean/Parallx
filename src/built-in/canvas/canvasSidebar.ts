@@ -45,6 +45,9 @@ export class CanvasSidebar {
   private _expandedIds = new Set<string>();
   private _tree: IPageTreeNode[] = [];
 
+  // ── Callbacks ──
+  private _onExpandStateChanged: ((expandedIds: ReadonlySet<string>) => void) | null = null;
+
   // ── Drag-and-drop state ──
   private _draggedPageId: string | null = null;
   private _dropIndicator: HTMLElement | null = null;
@@ -376,6 +379,8 @@ export class CanvasSidebar {
       this._expandedIds.add(pageId);
     }
     this._renderTree();
+    // Notify listener for persistence (Task 6.2)
+    this._onExpandStateChanged?.(this._expandedIds);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -557,5 +562,13 @@ export class CanvasSidebar {
   setSelectedPage(pageId: string | null): void {
     this._selectedPageId = pageId;
     this._renderTree();
+  }
+
+  /**
+   * Register a callback that fires whenever expanded node IDs change.
+   * Used by main.ts to persist expand state to workspace memento (Task 6.2).
+   */
+  set onExpandStateChanged(cb: ((expandedIds: ReadonlySet<string>) => void) | null) {
+    this._onExpandStateChanged = cb;
   }
 }

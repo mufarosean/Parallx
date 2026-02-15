@@ -75,7 +75,7 @@ export class CanvasEditorProvider {
    */
   createEditorPane(container: HTMLElement, input?: IEditorInput): IDisposable {
     const pageId = input?.id ?? '';
-    const pane = new CanvasEditorPane(container, pageId, this._dataService);
+    const pane = new CanvasEditorPane(container, pageId, this._dataService, input);
     pane.init();
     return pane;
   }
@@ -92,11 +92,13 @@ class CanvasEditorPane implements IDisposable {
   private _slashSelectedIndex = 0;
   private _disposed = false;
   private _suppressUpdate = false;
+  private readonly _saveDisposables: IDisposable[] = [];
 
   constructor(
     private readonly _container: HTMLElement,
     private readonly _pageId: string,
     private readonly _dataService: CanvasDataService,
+    private readonly _input: IEditorInput | undefined,
   ) {}
 
   async init(): Promise<void> {
@@ -137,6 +139,9 @@ class CanvasEditorPane implements IDisposable {
         const json = JSON.stringify(editor.getJSON());
         this._dataService.scheduleContentSave(this._pageId, json);
 
+        // Mark input dirty while save is pending
+        this._markDirty(true);
+
         // Check for slash command trigger
         this._checkSlashTrigger(editor);
       },
@@ -147,6 +152,15 @@ class CanvasEditorPane implements IDisposable {
 
     // Create slash menu (hidden by default)
     this._createSlashMenu();
+
+    // Subscribe to save completion to clear dirty state (Task 6.1)
+    this._saveDisposables.push(
+      this._dataService.onDidSavePage((savedPageId) => {
+        if (savedPageId === this._pageId) {
+          this._markDirty(false);
+        }
+      }),
+    );
   }
 
   private async _loadContent(): Promise<void> {
@@ -167,6 +181,22 @@ class CanvasEditorPane implements IDisposable {
       }
     } catch (err) {
       console.error(`[CanvasEditorPane] Failed to load page "${this._pageId}":`, err);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Dirty State (Task 6.1)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Set the dirty state on the editor input.
+   * ToolEditorInput.setDirty is public; we call it via runtime check
+   * to avoid importing the concrete class.
+   */
+  private _markDirty(dirty: boolean): void {
+    const input = this._input as any;
+    if (input && typeof input.setDirty === 'function') {
+      input.setDirty(dirty);
     }
   }
 
@@ -333,6 +363,10 @@ class CanvasEditorPane implements IDisposable {
     this._disposed = true;
 
     this._hideSlashMenu();
+
+    // Dispose save-state subscriptions
+    for (const d of this._saveDisposables) d.dispose();
+    this._saveDisposables.length = 0;
 
     if (this._editor) {
       this._editor.destroy();
