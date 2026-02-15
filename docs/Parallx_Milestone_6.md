@@ -573,7 +573,7 @@ A tree view in the Canvas sidebar showing the page hierarchy. Users can create, 
 
 #### Tasks
 
-**Task 4.1 — Implement Page Tree Renderer**
+**Task 4.1 — Implement Page Tree Renderer** ✅
 - **Task Description:** Create `src/built-in/canvas/canvasSidebar.ts` implementing the sidebar view provider.
 - **Output:** Tree view rendering page hierarchy with expand/collapse.
 - **Completion Criteria:**
@@ -585,7 +585,7 @@ A tree view in the Canvas sidebar showing the page hierarchy. Users can create, 
   - Empty state: "No pages yet. Click + to create one."
   - CSS in `src/built-in/canvas/canvas.css`
 
-**Task 4.2 — Implement Page Selection and Editor Opening**
+**Task 4.2 — Implement Page Selection and Editor Opening** ✅
 - **Task Description:** Wire page click to open the Canvas editor pane.
 - **Output:** Clicking a page opens it in the editor area.
 - **Completion Criteria:**
@@ -594,7 +594,7 @@ A tree view in the Canvas sidebar showing the page hierarchy. Users can create, 
   - Selected page in tree stays in sync with active editor tab
   - `api.editors.onDidChangeOpenEditors` listened to for syncing active state back to tree
 
-**Task 4.3 — Implement Create/Rename/Delete Actions**
+**Task 4.3 — Implement Create/Rename/Delete Actions** ✅
 - **Task Description:** Wire command handlers for page CRUD from the sidebar.
 - **Output:** Users can create, rename, and delete pages.
 - **Completion Criteria:**
@@ -603,7 +603,7 @@ A tree view in the Canvas sidebar showing the page hierarchy. Users can create, 
   - **Delete:** `canvas.deletePage` command → confirmation dialog via `api.window.showWarningMessage()` → `canvasDataService.deletePage()` → close editor if open → tree refreshes
   - All operations fire `PageChangeEvent` → tree listens and re-renders affected subtree
 
-**Task 4.4 — Implement Drag-and-Drop Reorder**
+**Task 4.4 — Implement Drag-and-Drop Reorder** ✅
 - **Task Description:** Add drag-and-drop to the page tree for reordering and reparenting.
 - **Output:** Users can drag pages to reorder within siblings or reparent under a different page.
 - **Completion Criteria:**

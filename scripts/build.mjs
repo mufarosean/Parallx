@@ -39,6 +39,8 @@ const outputCssPath = 'src/built-in/output/output.css';
 const outputCss = existsSync(outputCssPath) ? readFileSync(outputCssPath, 'utf-8') : '';
 const toolGalleryCssPath = 'src/built-in/tool-gallery/toolGallery.css';
 const toolGalleryCss = existsSync(toolGalleryCssPath) ? readFileSync(toolGalleryCssPath, 'utf-8') : '';
+const canvasCssPath = 'src/built-in/canvas/canvas.css';
+const canvasCss = existsSync(canvasCssPath) ? readFileSync(canvasCssPath, 'utf-8') : '';
 const notificationCssPath = 'src/api/notificationService.css';
 const notificationCss = existsSync(notificationCssPath) ? readFileSync(notificationCssPath, 'utf-8') : '';
 const menuCssPath = 'src/contributions/menuContribution.css';
@@ -47,6 +49,6 @@ const viewCssPath = 'src/contributions/viewContribution.css';
 const viewCss = existsSync(viewCssPath) ? readFileSync(viewCssPath, 'utf-8') : '';
 const dropCssPath = 'src/dnd/dropOverlay.css';
 const dropCss = existsSync(dropCssPath) ? readFileSync(dropCssPath, 'utf-8') : '';
-writeFileSync('dist/renderer/workbench.css', workbenchCss + '\n' + uiCss + '\n' + explorerCss + '\n' + editorCss + '\n' + markdownCss + '\n' + imageCss + '\n' + pdfCss + '\n' + settingsCss + '\n' + keybindingsCss + '\n' + welcomeCss + '\n' + outputCss + '\n' + toolGalleryCss + '\n' + notificationCss + '\n' + menuCss + '\n' + viewCss + '\n' + dropCss);
+writeFileSync('dist/renderer/workbench.css', workbenchCss + '\n' + uiCss + '\n' + explorerCss + '\n' + editorCss + '\n' + markdownCss + '\n' + imageCss + '\n' + pdfCss + '\n' + settingsCss + '\n' + keybindingsCss + '\n' + welcomeCss + '\n' + outputCss + '\n' + toolGalleryCss + '\n' + canvasCss + '\n' + notificationCss + '\n' + menuCss + '\n' + viewCss + '\n' + dropCss);
 
 console.log('Build complete.');

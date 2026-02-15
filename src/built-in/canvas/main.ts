@@ -11,6 +11,7 @@
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { CanvasDataService } from './canvasDataService.js';
+import { CanvasSidebar } from './canvasSidebar.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ interface ParallxApi {
 let _api: ParallxApi;
 let _context: ToolContext;
 let _dataService: CanvasDataService | null = null;
+let _sidebar: CanvasSidebar | null = null;
 
 // ─── Activation ──────────────────────────────────────────────────────────────
 
@@ -66,12 +68,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   context.subscriptions.push(_dataService);
 
   // 3. Register sidebar view provider for page tree (Cap 4)
-  // Placeholder: registers an empty view that will be implemented in Cap 4
+  _sidebar = new CanvasSidebar(_dataService, api);
   context.subscriptions.push(
     api.views.registerViewProvider('view.canvas', {
       createView(container: HTMLElement): IDisposable {
-        container.textContent = 'Canvas pages — coming in Capability 4';
-        return { dispose() {} };
+        return _sidebar!.createView(container);
       },
     }),
   );
@@ -101,6 +102,7 @@ export async function deactivate(): Promise<void> {
 
   // Clear module-level state
   _dataService = null;
+  _sidebar = null;
   _api = undefined!;
   _context = undefined!;
 
