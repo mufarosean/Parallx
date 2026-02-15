@@ -561,6 +561,7 @@ html, body {
   padding: 0 8px;
   display: flex;
   align-items: center;
+  border-bottom: 1px solid var(--vscode-sideBar-border);
 }
 
 .auxiliary-bar-header-label {
