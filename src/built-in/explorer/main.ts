@@ -228,10 +228,11 @@ function rebuildTree(): void {
 
   renderTree();
 
-  // Kick off lazy loading for expanded roots
+  // Kick off lazy loading for expanded roots, restoring sub-folder
+  // expand state from storage so deep trees reopen correctly.
   for (const root of _roots) {
     if (root.expanded && !root.loaded) {
-      loadChildren(root);
+      loadChildrenDeep(root, expandedSet);
     }
   }
 }
@@ -401,6 +402,55 @@ async function loadChildren(node: TreeNode): Promise<void> {
 
   node.loading = false;
   renderTree();
+}
+
+/**
+ * Like loadChildren, but after loading also restores expanded state for
+ * sub-folders that were previously expanded (based on the URI set), and
+ * recursively loads *their* children.  This preserves deep expand state
+ * across refreshTree() calls triggered by file-watcher events.
+ */
+async function loadChildrenDeep(
+  node: TreeNode,
+  expandedSet: ReadonlySet<string>,
+): Promise<void> {
+  if (node.loaded || node.loading) return;
+  node.loading = true;
+
+  try {
+    const entries = await readDirectory(node.uri);
+    node.children = entries
+      .filter(e => _showHidden || !e.name.startsWith('.'))
+      .sort(sortEntries)
+      .map(e => {
+        const childUri = joinUri(node.uri, e.name);
+        return {
+          uri: childUri,
+          name: e.name,
+          type: e.type,
+          depth: node.depth + 1,
+          expanded: e.type === FILE_TYPE_DIRECTORY && expandedSet.has(childUri),
+          loaded: false,
+          loading: false,
+          children: [],
+          parent: node,
+        };
+      });
+    node.loaded = true;
+  } catch (err) {
+    console.error('[Explorer] Failed to load directory:', node.uri, err);
+    node.children = [];
+    node.loaded = true;
+  }
+
+  node.loading = false;
+  renderTree();
+
+  // Recursively load children that should be expanded
+  const toExpand = node.children.filter(c => c.expanded && !c.loaded);
+  for (const child of toExpand) {
+    await loadChildrenDeep(child, expandedSet);
+  }
 }
 
 function sortEntries(a: { name: string; type: number }, b: { name: string; type: number }): number {
@@ -764,6 +814,20 @@ function collapseAll(node: TreeNode): void {
 }
 
 function refreshTree(): void {
+  // Capture which URIs were expanded BEFORE wiping the tree, so we can
+  // restore them after reloading.  Without this, sub-folder expand state
+  // is lost because loadChildren always creates children with expanded=false.
+  const previouslyExpanded = new Set<string>();
+  function collectExpanded(nodes: TreeNode[]): void {
+    for (const n of nodes) {
+      if (n.expanded) {
+        previouslyExpanded.add(n.uri);
+        collectExpanded(n.children);
+      }
+    }
+  }
+  collectExpanded(_roots);
+
   function unload(nodes: TreeNode[]): void {
     for (const n of nodes) {
       n.loaded = false;
@@ -777,7 +841,7 @@ function refreshTree(): void {
     root.loaded = false;
     root.children = [];
     if (root.expanded) {
-      loadChildren(root);
+      loadChildrenDeep(root, previouslyExpanded);
     }
   }
   renderTree();
