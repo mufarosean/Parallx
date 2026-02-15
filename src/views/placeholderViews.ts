@@ -189,24 +189,6 @@ export class TerminalPlaceholderView extends PlaceholderView {
 
   protected override createPlaceholderContent(container: HTMLElement): void {
     container.classList.add('placeholder-terminal');
-
-    const lines = [
-      '<span class="placeholder-terminal-prompt">$</span> npm run build',
-      '<span class="placeholder-terminal-cmd">esbuild</span> src/main.ts → dist/renderer/main.js',
-      '  <span class="placeholder-terminal-ok">✔</span> built in 48ms',
-      '',
-      '<span class="placeholder-terminal-prompt">$</span> npm start',
-      '<span class="placeholder-terminal-cmd">Electron</span> starting...',
-      '  <span class="placeholder-terminal-ok">✔</span> window ready (1280×800)',
-      '',
-      '<span class="placeholder-terminal-prompt">$</span> <span style="animation:blink 1s step-end infinite">▋</span>',
-    ];
-
-    for (const line of lines) {
-      const row = $('div');
-      row.innerHTML = line || '&nbsp;';
-      container.appendChild(row);
-    }
   }
 
   protected override saveViewState(): Record<string, unknown> {
@@ -241,22 +223,6 @@ export class OutputPlaceholderView extends PlaceholderView {
 
   protected override createPlaceholderContent(container: HTMLElement): void {
     container.classList.add('placeholder-output');
-
-    const entries = [
-      '[Info  - 10:01:23] Lifecycle service initialized',
-      '[Info  - 10:01:24] Layout renderer: rendering default layout',
-      '[Info  - 10:01:24] Part registry: 6 parts created',
-      '[Info  - 10:01:25] View manager: 4 descriptors registered',
-      '[Debug - 10:01:25] Storage: loaded 0 persisted keys',
-      '[Info  - 10:01:26] Workbench ready in 312ms',
-    ];
-
-    for (const entry of entries) {
-      const row = $('div');
-      row.classList.add('placeholder-output-line');
-      row.textContent = entry;
-      container.appendChild(row);
-    }
   }
 
   protected override saveViewState(): Record<string, unknown> {
