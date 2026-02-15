@@ -45,6 +45,14 @@ export interface IGridView extends IDisposable {
    * Event fired when size constraints change, so the grid can revalidate.
    */
   readonly onDidChangeConstraints: Event<void>;
+
+  /**
+   * Whether the view should snap (auto-hide) when dragged past its
+   * minimum size threshold, VS Code parity: IView.snap.
+   *
+   * @defaultValue `false`
+   */
+  readonly snap?: boolean;
 }
 
 /**

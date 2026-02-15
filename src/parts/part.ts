@@ -47,11 +47,17 @@ export abstract class Part extends Disposable implements IPart, IGridView {
     position: PartPosition,
     private readonly _constraints: SizeConstraints = DEFAULT_SIZE_CONSTRAINTS,
     defaultVisible = true,
+    private readonly _snap = false,
   ) {
     super();
     this._position = position;
     this._visible = defaultVisible;
   }
+
+  // ── IGridView — snap ──
+
+  /** Whether this part snaps (auto-hides) when dragged past minimum. */
+  get snap(): boolean { return this._snap; }
 
   // ── IGridView — element ──
 
@@ -80,6 +86,7 @@ export abstract class Part extends Disposable implements IPart, IGridView {
   // ── State ──
 
   get visible(): boolean { return this._visible; }
+  get constraints(): SizeConstraints { return this._constraints; }
   get position(): PartPosition { return this._position; }
   get width(): number { return this._width; }
   get height(): number { return this._height; }

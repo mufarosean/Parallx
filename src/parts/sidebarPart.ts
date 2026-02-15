@@ -35,6 +35,7 @@ export class SidebarPart extends Part {
       PartPosition.Left,
       SIDEBAR_CONSTRAINTS,
       true,
+      true, // snap: auto-hide when dragged past minimum
     );
   }
 

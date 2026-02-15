@@ -34,6 +34,7 @@ export class PanelPart extends Part {
       PartPosition.Bottom,
       PANEL_CONSTRAINTS,
       true,
+      true, // snap: auto-hide when dragged past minimum
     );
   }
 

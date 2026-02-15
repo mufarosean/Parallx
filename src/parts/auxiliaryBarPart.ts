@@ -34,6 +34,7 @@ export class AuxiliaryBarPart extends Part {
       PartPosition.Right,
       AUXILIARY_BAR_CONSTRAINTS,
       false, // hidden by default, like VS Code
+      true,  // snap: auto-hide when dragged past minimum
     );
   }
 

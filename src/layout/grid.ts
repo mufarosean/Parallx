@@ -3,7 +3,7 @@
 import { Disposable, DisposableStore, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { startDrag, endDrag } from '../ui/dom.js';
-import { Orientation, SizingMode } from './layoutTypes.js';
+import { Orientation, SizingMode, SashState } from './layoutTypes.js';
 import { IGridView } from './gridView.js';
 import { GridBranchNode, GridLeafNode, GridNode, GridNodeType } from './gridNode.js';
 import {
@@ -48,6 +48,16 @@ export class Grid extends Disposable {
   private readonly _onDidSashReset = this._register(new Emitter<{ branch: GridBranchNode; sashIndex: number }>());
   /** Fires when the user double-clicks a sash to request a size reset. */
   readonly onDidSashReset: Event<{ branch: GridBranchNode; sashIndex: number }> = this._onDidSashReset.event;
+
+  private readonly _onDidSashSnap = this._register(new Emitter<{ viewId: string }>());
+  /**
+   * Fires when the user drags a sash past a snap threshold, requesting
+   * that the adjacent snappable view be hidden.
+   *
+   * VS Code ref: `SplitView.onDidSashChange` → snap detection.
+   * The consumer (layout.ts) maps `viewId` to the appropriate toggle method.
+   */
+  readonly onDidSashSnap: Event<{ viewId: string }> = this._onDidSashSnap.event;
 
   constructor(rootOrientation: Orientation, width: number, height: number) {
     super();
@@ -237,6 +247,7 @@ export class Grid extends Disposable {
     }
 
     this._layoutNode(this._root, width, height);
+    this._updateSashStates();
     this._onDidChange.fire({ type: 'resize' });
   }
 
@@ -323,12 +334,12 @@ export class Grid extends Disposable {
    * @param sashIndex - Index of the sash (between child[sashIndex] and child[sashIndex+1])
    * @param delta - Pixels to move the sash (positive = increase first child)
    */
-  resizeSash(parentNode: GridBranchNode, sashIndex: number, delta: number): void {
+  resizeSash(parentNode: GridBranchNode, sashIndex: number, delta: number): number {
     const childA = parentNode.getChild(sashIndex);
     const childB = parentNode.getChild(sashIndex + 1);
 
     if (!childA || !childB) {
-      return;
+      return 0;
     }
 
     const sizeA = this._getNodeSize(childA);
@@ -347,6 +358,9 @@ export class Grid extends Disposable {
     let newSizeB = Math.min(maxB, Math.max(minB, total - newSizeA));
     // Re-clamp A to absorb any remainder from B's clamping
     newSizeA = Math.min(maxA, Math.max(minA, total - newSizeB));
+
+    // Compute the actual applied delta (may differ from requested due to clamping)
+    const appliedDelta = newSizeA - sizeA;
 
     this._setNodeSize(childA, newSizeA);
     this._setNodeSize(childB, newSizeB);
@@ -370,7 +384,11 @@ export class Grid extends Disposable {
       this._layoutNode(childB, crossSize, newSizeB);
     }
 
+    // Update sash enablement state after resize
+    this._updateSashStates();
+
     this._onDidChange.fire({ type: 'resize' });
+    return appliedDelta;
   }
 
   /**
@@ -378,6 +396,7 @@ export class Grid extends Disposable {
    */
   layout(): void {
     this._layoutNode(this._root, this._width, this._height);
+    this._updateSashStates();
   }
 
   /**
@@ -564,7 +583,33 @@ export class Grid extends Disposable {
     const isHorizontal = branch.orientation === Orientation.Horizontal;
     const startPos = isHorizontal ? e.clientX : e.clientY;
 
-    this._sashDragState = { branch, sashIndex, startPos, isHorizontal };
+    // ── Compute snap thresholds ──
+    // VS Code ref: SplitView.onSashStart — computes snapBefore/snapAfter.
+    // Threshold = floor(viewMinimumSize / 2). If the view is dragged past
+    // its minimum by more than this threshold, it snaps shut (auto-hide).
+    const childA = branch.getChild(sashIndex);
+    const childB = branch.getChild(sashIndex + 1);
+    let snapBeforeThreshold = 0;
+    let snapBeforeViewId: string | null = null;
+    let snapAfterThreshold = 0;
+    let snapAfterViewId: string | null = null;
+
+    if (childA?.type === GridNodeType.Leaf && childA.snap) {
+      const minA = this._getMinSizeAlongOrientation(childA, branch.orientation);
+      snapBeforeThreshold = Math.floor(minA / 2);
+      snapBeforeViewId = childA.id;
+    }
+    if (childB?.type === GridNodeType.Leaf && childB.snap) {
+      const minB = this._getMinSizeAlongOrientation(childB, branch.orientation);
+      snapAfterThreshold = Math.floor(minB / 2);
+      snapAfterViewId = childB.id;
+    }
+
+    this._sashDragState = {
+      branch, sashIndex, startPos, isHorizontal,
+      snapBeforeThreshold, snapBeforeViewId,
+      snapAfterThreshold, snapAfterViewId,
+    };
 
     // Visual feedback: add active class to sash during drag
     target.classList.add('active');
@@ -575,13 +620,37 @@ export class Grid extends Disposable {
     // Use rAF-throttling so layout runs at most once per frame
     let rafId = 0;
     let pendingDelta = 0;
+    /** Tracks how far past the constraint (clamped) the user has dragged. */
+    let snapOverflow = 0;
+    let didSnap = false;
 
     const applyResize = () => {
       rafId = 0;
       if (!this._sashDragState || pendingDelta === 0) return;
-      this.resizeSash(this._sashDragState.branch, this._sashDragState.sashIndex, pendingDelta);
-      this._sashDragState.startPos += pendingDelta;
+      const appliedDelta = this.resizeSash(this._sashDragState.branch, this._sashDragState.sashIndex, pendingDelta);
+      // Only advance startPos by the actually applied delta so the cursor
+      // stays in sync with the sash position (VS Code parity).
+      this._sashDragState.startPos += appliedDelta;
+
+      // Accumulate overflow: the difference between what the user asked
+      // for and what was actually applied (clamped). This grows when the
+      // user keeps dragging past a constraint boundary.
+      snapOverflow += pendingDelta - appliedDelta;
       pendingDelta = 0;
+
+      // ── Snap detection ──
+      // VS Code ref: SplitView.onSashChange — snap triggers when the
+      // accumulated overflow exceeds the snap threshold.
+      // Negative overflow = user is trying to shrink childA (move sash left/up)
+      // Positive overflow = user is trying to shrink childB (move sash right/down)
+      const state = this._sashDragState;
+      if (!didSnap && state.snapBeforeThreshold > 0 && snapOverflow < -state.snapBeforeThreshold) {
+        didSnap = true;
+        this._onDidSashSnap.fire({ viewId: state.snapBeforeViewId! });
+      } else if (!didSnap && state.snapAfterThreshold > 0 && snapOverflow > state.snapAfterThreshold) {
+        didSnap = true;
+        this._onDidSashSnap.fire({ viewId: state.snapAfterViewId! });
+      }
     };
 
     const onMouseMove = (moveEvent: MouseEvent) => {
@@ -634,6 +703,72 @@ export class Grid extends Disposable {
     if (childB) {
       const elB = childB.type === GridNodeType.Leaf ? childB.view.element : childB.element;
       elB.style.willChange = value;
+    }
+  }
+
+  // ── Private: Sash State ──
+
+  /**
+   * Walk every sash in the tree and update its CSS class to reflect the
+   * current constraint state (SashState).
+   *
+   * This mirrors VS Code's `SplitView.updateSashEnablement()` which sets
+   * `SashState.Disabled`, `AtMinimum`, `AtMaximum`, or `Enabled` on each
+   * sash after every resize, controlling directional CSS cursors so the
+   * user sees visual feedback about which direction the sash can still
+   * move.
+   */
+  private _updateSashStates(): void {
+    this._updateBranchSashStates(this._root);
+  }
+
+  /**
+   * Recursively update sash states for a single branch node.
+   */
+  private _updateBranchSashStates(branch: GridBranchNode): void {
+    const sashes = branch.sashes;
+
+    for (let i = 0; i < sashes.length; i++) {
+      const sash = sashes[i];
+      const childA = branch.getChild(i);
+      const childB = branch.getChild(i + 1);
+      if (!childA || !childB) continue;
+
+      const sizeA = this._getNodeSize(childA);
+      const sizeB = this._getNodeSize(childB);
+      const minA = this._getMinSizeAlongOrientation(childA, branch.orientation);
+      const maxA = this._getMaxSizeAlongOrientation(childA, branch.orientation);
+      const minB = this._getMinSizeAlongOrientation(childB, branch.orientation);
+      const maxB = this._getMaxSizeAlongOrientation(childB, branch.orientation);
+
+      // Can A grow? A grows if A < maxA AND B > minB (B can shrink to make room)
+      const canGrowA = sizeA < maxA && sizeB > minB;
+      // Can A shrink? A shrinks if A > minA AND B < maxB (B can grow to absorb)
+      const canShrinkA = sizeA > minA && sizeB < maxB;
+
+      let state: SashState;
+      if (!canGrowA && !canShrinkA) {
+        state = SashState.Disabled;
+      } else if (!canShrinkA) {
+        state = SashState.AtMinimum;
+      } else if (!canGrowA) {
+        state = SashState.AtMaximum;
+      } else {
+        state = SashState.Enabled;
+      }
+
+      // Apply CSS classes
+      sash.classList.toggle('sash-disabled', state === SashState.Disabled);
+      sash.classList.toggle('sash-minimum', state === SashState.AtMinimum);
+      sash.classList.toggle('sash-maximum', state === SashState.AtMaximum);
+      sash.classList.toggle('sash-enabled', state === SashState.Enabled);
+    }
+
+    // Recurse into child branches
+    for (const child of branch.children) {
+      if (child.type === GridNodeType.Branch) {
+        this._updateBranchSashStates(child);
+      }
     }
   }
 
@@ -819,4 +954,20 @@ interface SashDragState {
   sashIndex: number;
   startPos: number;
   isHorizontal: boolean;
+  /**
+   * Snap threshold for childA (the child before the sash).
+   * If childA.snap is true, this is `floor(minA / 2)` — the point past
+   * minimum where the view auto-hides. `0` means no snap for childA.
+   */
+  snapBeforeThreshold: number;
+  /** View ID of childA, used when firing onDidSashSnap. */
+  snapBeforeViewId: string | null;
+  /**
+   * Snap threshold for childB (the child after the sash).
+   * If childB.snap is true, this is `floor(minB / 2)` — the point past
+   * minimum where the view auto-hides. `0` means no snap for childB.
+   */
+  snapAfterThreshold: number;
+  /** View ID of childB, used when firing onDidSashSnap. */
+  snapAfterViewId: string | null;
 }

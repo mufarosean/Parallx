@@ -60,6 +60,25 @@ export interface Position {
 export interface Box extends Dimensions, Position {}
 
 /**
+ * Sash enablement state, mirroring VS Code's `SashState` enum.
+ *
+ * Controls the CSS cursor direction on sash handles so users get a visual
+ * hint about which direction the sash can still be dragged.
+ *
+ * VS Code ref: `src/vs/base/browser/ui/sash/sash.ts` — `SashState`
+ */
+export enum SashState {
+  /** Sash cannot be moved at all (both neighbours at limit). */
+  Disabled = 0,
+  /** Sash is at the minimum of the first child — can only move to increase it. */
+  AtMinimum = 1,
+  /** Sash is at the maximum of the first child — can only move to decrease it. */
+  AtMaximum = 2,
+  /** Sash is free to move in both directions. */
+  Enabled = 3,
+}
+
+/**
  * Which edge of a grid node a sash (resize handle) is on.
  */
 export enum SashEdge {

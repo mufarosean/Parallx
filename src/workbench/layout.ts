@@ -401,6 +401,24 @@ export abstract class Layout extends Disposable {
         }
       }
     });
+
+    // ── Snap-to-hide (VS Code parity: SplitView snap behaviour) ──
+    // When the user drags a sash past a snappable view's minimum by more
+    // than half its minimum size, the grid fires onDidSashSnap with the
+    // viewId. We map that to the appropriate toggle method to hide it.
+    this._hGrid.onDidSashSnap(({ viewId }) => {
+      if (viewId === this._sidebar.id && this._sidebar.visible) {
+        this.toggleSidebar();
+      } else if (viewId === this._auxiliaryBar.id && this._auxBarVisible) {
+        this.toggleAuxiliaryBar();
+      }
+    });
+
+    this._vGrid.onDidSashSnap(({ viewId }) => {
+      if (viewId === this._panel.id && this._panel.visible) {
+        this.togglePanel();
+      }
+    });
   }
 
   // ════════════════════════════════════════════════════════════════════════

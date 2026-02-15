@@ -852,6 +852,21 @@ html, body {
   margin-bottom: -2px;
 }
 
+/* ── Sash directional cursors (VS Code parity: SashState) ── */
+/* At minimum: sash can only move to grow the first child */
+.grid-sash-vertical.sash-minimum { cursor: e-resize; }
+.grid-sash-horizontal.sash-minimum { cursor: s-resize; }
+
+/* At maximum: sash can only move to shrink the first child */
+.grid-sash-vertical.sash-maximum { cursor: w-resize; }
+.grid-sash-horizontal.sash-maximum { cursor: n-resize; }
+
+/* Disabled: both neighbours at limit */
+.grid-sash.sash-disabled {
+  pointer-events: none;
+  cursor: default;
+}
+
 /* ── Grid branch container ── */
 .grid-branch {
   overflow: hidden;

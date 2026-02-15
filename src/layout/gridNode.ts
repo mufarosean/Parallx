@@ -34,6 +34,11 @@ export class GridBranchNode extends Disposable {
 
   private _children: GridNode[] = [];
   private _sashes: HTMLElement[] = [];
+
+  /** Public read-only access to sash DOM elements for state updates. */
+  get sashes(): readonly HTMLElement[] {
+    return this._sashes;
+  }
   private readonly _childConstraintListeners = new Map<GridNode, IDisposable>();
 
   private readonly _onDidChange = this._register(new Emitter<void>());
@@ -286,6 +291,10 @@ export class GridLeafNode extends Disposable {
   }
   get maximumHeight(): number {
     return this.view.maximumHeight;
+  }
+
+  get snap(): boolean {
+    return !!this.view.snap;
   }
 
   /**
