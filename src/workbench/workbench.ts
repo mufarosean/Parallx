@@ -1802,6 +1802,9 @@ export class Workbench extends Layout {
 
   private _setupAuxBarViews(): ViewContainer {
     const container = new ViewContainer('auxiliaryBar');
+    // Hide the built-in tab bar — the Part already has its own title area.
+    // Without this, a 35px empty tab bar renders below the header.
+    container.hideTabBar();
 
     // Mount into aux bar's view slot
     const auxBarPart = this._auxiliaryBar as unknown as AuxiliaryBarPart;
