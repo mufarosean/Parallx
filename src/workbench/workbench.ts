@@ -2939,26 +2939,6 @@ export class Workbench extends Layout {
       });
     }
 
-    // ── Left-aligned entries ──
-
-    const branchAccessor = sb.addEntry({
-      id: 'status.scm.branch',
-      text: '⎇ master',
-      alignment: StatusBarAlignment.Left,
-      priority: 100,
-      tooltip: 'Current branch',
-      name: 'Branch',
-    });
-
-    const errorsAccessor = sb.addEntry({
-      id: 'status.problems',
-      text: '⊘ 0  ⚠ 0',
-      alignment: StatusBarAlignment.Left,
-      priority: 90,
-      tooltip: 'Errors and warnings',
-      name: 'Problems',
-    });
-
     // ── Right-aligned editor indicators (VS Code parity) ──
     // Order from left to right in the right section:
     //   Cursor Position | Indentation | Encoding | EOL | Language
@@ -3012,8 +2992,6 @@ export class Workbench extends Layout {
 
     // Track accessors for dynamic updates
     this._statusBarAccessors = {
-      branch: branchAccessor,
-      errors: errorsAccessor,
       cursor: cursorAccessor,
       indent: indentAccessor,
       encoding: encodingAccessor,
@@ -3306,8 +3284,6 @@ export class Workbench extends Layout {
 
   /** Tracked status bar entry accessors for dynamic updates. */
   private _statusBarAccessors: {
-    branch?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
-    errors?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
     cursor?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
     indent?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
     encoding?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
