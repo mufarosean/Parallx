@@ -454,6 +454,13 @@ export class ViewContainer extends Disposable implements IGridView {
   restoreContainerState(state: ViewContainerState): void {
     if (state.tabOrder.length > 0) {
       this._tabOrder = state.tabOrder.filter(id => this._views.has(id));
+      // Append any views that exist but weren't in the saved tab order
+      // (e.g., views added to the codebase after the workspace was last saved).
+      for (const id of this._views.keys()) {
+        if (!this._tabOrder.includes(id)) {
+          this._tabOrder.push(id);
+        }
+      }
       if (this._mode !== 'stacked') {
         this._rebuildTabBar();
       }
