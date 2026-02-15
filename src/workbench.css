@@ -1695,7 +1695,7 @@ html, body {
 .parallx-notification-center {
   position: fixed;
   bottom: 28px;            /* just above status bar */
-  right: 8px;
+  left: 8px;
   width: 380px;
   max-height: 400px;
   display: flex;
