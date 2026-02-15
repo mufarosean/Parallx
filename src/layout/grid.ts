@@ -359,9 +359,9 @@ export class Grid extends Disposable {
     const branch = node;
     const isHorizontal = branch.orientation === Orientation.Horizontal;
     const totalAvailable = isHorizontal ? width : height;
-    const sashCount = Math.max(0, branch.childCount - 1);
-    const sashSpace = sashCount * 4; // 4px per sash
-    const availableForChildren = totalAvailable - sashSpace;
+    // Sashes use negative margins (−2 px each side) so they overlay
+    // adjacent children and consume zero net flex space.
+    const availableForChildren = totalAvailable;
 
     const sizes = this._distributeSizes(branch, availableForChildren);
 

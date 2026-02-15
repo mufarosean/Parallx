@@ -559,7 +559,6 @@ html, body {
 
 .auxiliary-bar-header {
   height: 35px;
-  border-bottom: 1px solid var(--vscode-auxiliaryBar-border);
   padding: 0 8px;
   display: flex;
   align-items: center;

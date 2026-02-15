@@ -150,8 +150,8 @@ export abstract class Layout extends Disposable {
     const sidebarW = this._sidebar.visible ? this._lastSidebarWidth : 0;
     const auxBarW = this._auxiliaryBar.visible ? DEFAULT_AUX_BAR_WIDTH : 0;
     const panelH = this._panel.visible ? DEFAULT_PANEL_HEIGHT : 0;
-    const editorAreaW = Math.max(MIN_EDITOR_WIDTH, w - ACTIVITY_BAR_WIDTH - sidebarW - auxBarW - 4);
-    const editorH = bodyH - panelH - (this._panel.visible ? 4 : 0);
+    const editorAreaW = Math.max(MIN_EDITOR_WIDTH, w - ACTIVITY_BAR_WIDTH - sidebarW - auxBarW);
+    const editorH = bodyH - panelH;
 
     // 4. Create parts into temporary container so their elements exist
     const tempDiv = $('div');

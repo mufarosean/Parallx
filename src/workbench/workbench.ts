@@ -990,22 +990,45 @@ export class Workbench extends Layout {
     const state = this._restoredState;
     if (!state) return;
 
-    // 1. Restore part visibility and sizes
+    // 1. Restore part visibility and sizes.
+    // Parts that live inside grids (sidebar, panel, aux bar) must use
+    // their toggle methods — not bare setVisible() — so the grid adds
+    // or removes the view correctly. A bare setVisible() only flips the
+    // CSS class and leaves the grid allocating space for a hidden part,
+    // causing the editor not to fill the full height when the panel was
+    // hidden at save-time.
     for (const partSnap of state.parts) {
       const part = this._partRegistry.getPart(partSnap.partId) as Part | undefined;
       if (!part) continue;
 
-      // Restore visibility
+      // Restore visibility — use toggle methods for grid-managed parts
       if (part.visible !== partSnap.visible) {
-        // Special handling for aux bar — use the toggle mechanism
-        if (partSnap.partId === PartId.AuxiliaryBar) {
-          if (partSnap.visible && !this._auxBarVisible) {
+        switch (partSnap.partId) {
+          case PartId.AuxiliaryBar:
             this.toggleAuxiliaryBar();
-          } else if (!partSnap.visible && this._auxBarVisible) {
-            this.toggleAuxiliaryBar();
-          }
-        } else {
-          part.setVisible(partSnap.visible);
+            break;
+          case PartId.Panel:
+            this.togglePanel();
+            break;
+          case PartId.Sidebar:
+            // Sidebar toggle has animation; skip it during restore.
+            // Directly remove from grid + set invisible.
+            if (part.visible && !partSnap.visible) {
+              this._hGrid.removeView(this._sidebar.id);
+              part.setVisible(false);
+              this._hGrid.layout();
+            } else if (!part.visible && partSnap.visible) {
+              part.setVisible(true);
+              this._hGrid.addView(this._sidebar as any, this._lastSidebarWidth, 0);
+              this._hGrid.layout();
+            }
+            break;
+          case PartId.StatusBar:
+            this.toggleStatusBar();
+            break;
+          default:
+            part.setVisible(partSnap.visible);
+            break;
         }
       }
 
