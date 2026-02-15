@@ -354,11 +354,13 @@ export abstract class Layout extends Disposable {
     });
 
     // Double-click sash resets panel to default height (VS Code parity: Sash.onDidReset)
+    // Panel is childB (index 1) so delta must be negated: moving the sash
+    // UP (negative delta) makes the editor smaller and panel taller.
     this._vGrid.onDidSashReset(({ sashIndex }) => {
       if (sashIndex === 0 && this._panel.visible) {
         const currentHeight = this._vGrid.getViewSize(this._panel.id);
         if (currentHeight !== undefined) {
-          const delta = DEFAULT_PANEL_HEIGHT - currentHeight;
+          const delta = currentHeight - DEFAULT_PANEL_HEIGHT;
           if (delta !== 0) {
             this._vGrid.resizeSash(this._vGrid.root, 0, delta);
             this._vGrid.layout();
@@ -381,13 +383,16 @@ export abstract class Layout extends Disposable {
     });
 
     // Double-click sash resets aux bar to default width (VS Code parity: Sash.onDidReset)
+    // Aux bar is childB (right of sash) so delta must be negated: moving
+    // the sash RIGHT (positive delta) makes the editor wider and aux bar
+    // narrower — we want the opposite to grow aux bar back to default.
     this._hGrid.onDidSashReset(({ sashIndex }) => {
       // Aux bar sash is the last sash in hGrid (right side)
       const auxSashIndex = this._hGrid.root.childCount - 2;
       if (sashIndex === auxSashIndex && this._auxBarVisible) {
         const currentWidth = this._hGrid.getViewSize(this._auxiliaryBar.id);
         if (currentWidth !== undefined) {
-          const delta = DEFAULT_AUX_BAR_WIDTH - currentWidth;
+          const delta = currentWidth - DEFAULT_AUX_BAR_WIDTH;
           if (delta !== 0) {
             this._hGrid.resizeSash(this._hGrid.root, auxSashIndex, delta);
             this._hGrid.layout();

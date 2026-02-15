@@ -1064,13 +1064,15 @@ export class Workbench extends Layout {
     // 1c. Restore panel height — always remember the saved height so that
     //     togglePanel() uses it when the user re-shows the panel.
     //     Only resize the live grid when the panel is currently visible.
+    //     Panel is childB (index 1, below the editor). resizeSash positive
+    //     delta grows childA (editor), so to grow the panel we negate.
     const panelSnap = state.parts.find(p => p.partId === PartId.Panel);
     if (panelSnap?.height && panelSnap.height > 0) {
       this._lastPanelHeight = panelSnap.height;
       if (this._panel.visible) {
         const currentHeight = this._vGrid.getViewSize(this._panel.id);
         if (currentHeight !== undefined && currentHeight !== panelSnap.height) {
-          const delta = panelSnap.height - currentHeight;
+          const delta = currentHeight - panelSnap.height;
           this._vGrid.resizeSash(this._vGrid.root, 0, delta);
           this._vGrid.layout();
         }
@@ -1080,6 +1082,8 @@ export class Workbench extends Layout {
     // 1d. Restore auxiliary bar width — always remember the saved width so
     //     that toggleAuxiliaryBar() uses it when the user re-shows the bar.
     //     Only resize the live grid when the aux bar is currently visible.
+    //     Aux bar is childB (right of its sash). resizeSash positive delta
+    //     grows childA (editor column), so to grow the aux bar we negate.
     const auxBarSnap = state.parts.find(p => p.partId === PartId.AuxiliaryBar);
     if (auxBarSnap?.width && auxBarSnap.width > 0) {
       this._lastAuxBarWidth = auxBarSnap.width;
@@ -1088,7 +1092,7 @@ export class Workbench extends Layout {
         const auxSashIndex = this._hGrid.root.childCount - 2;
         const currentWidth = this._hGrid.getViewSize(this._auxiliaryBar.id);
         if (currentWidth !== undefined && currentWidth !== auxBarSnap.width) {
-          const delta = auxBarSnap.width - currentWidth;
+          const delta = currentWidth - auxBarSnap.width;
           this._hGrid.resizeSash(this._hGrid.root, auxSashIndex, delta);
           this._hGrid.layout();
         }

@@ -334,24 +334,41 @@ export class Grid extends Disposable {
     const sizeA = this._getNodeSize(childA);
     const sizeB = this._getNodeSize(childB);
 
-    // Enforce constraints
+    // Enforce constraints while preserving the total (zero-sum).
+    // Two-pass clamping: first clamp A, then B, then re-clamp A against
+    // the remainder so the pair total never changes.
+    const total = sizeA + sizeB;
     const minA = this._getMinSizeAlongOrientation(childA, parentNode.orientation);
     const maxA = this._getMaxSizeAlongOrientation(childA, parentNode.orientation);
     const minB = this._getMinSizeAlongOrientation(childB, parentNode.orientation);
     const maxB = this._getMaxSizeAlongOrientation(childB, parentNode.orientation);
 
-    const newSizeA = Math.min(maxA, Math.max(minA, sizeA + delta));
-    const newSizeB = Math.min(maxB, Math.max(minB, sizeB - (newSizeA - sizeA)));
+    let newSizeA = Math.min(maxA, Math.max(minA, sizeA + delta));
+    let newSizeB = Math.min(maxB, Math.max(minB, total - newSizeA));
+    // Re-clamp A to absorb any remainder from B's clamping
+    newSizeA = Math.min(maxA, Math.max(minA, total - newSizeB));
 
     this._setNodeSize(childA, newSizeA);
     this._setNodeSize(childB, newSizeB);
 
-    // Re-layout from this branch
-    this._layoutNode(
-      parentNode,
-      this._getNodeWidth(parentNode),
-      this._getNodeHeight(parentNode)
-    );
+    // Re-layout only the two affected children so that sibling views
+    // (e.g. the sidebar) are never touched by _distributeSizes.
+    const isHorizontal = parentNode.orientation === Orientation.Horizontal;
+    const crossSize = isHorizontal
+      ? this._getNodeHeight(parentNode)
+      : this._getNodeWidth(parentNode);
+
+    if (isHorizontal) {
+      this._setNodeDimensions(childA, newSizeA, crossSize);
+      this._layoutNode(childA, newSizeA, crossSize);
+      this._setNodeDimensions(childB, newSizeB, crossSize);
+      this._layoutNode(childB, newSizeB, crossSize);
+    } else {
+      this._setNodeDimensions(childA, crossSize, newSizeA);
+      this._layoutNode(childA, crossSize, newSizeA);
+      this._setNodeDimensions(childB, crossSize, newSizeB);
+      this._layoutNode(childB, crossSize, newSizeB);
+    }
 
     this._onDidChange.fire({ type: 'resize' });
   }
