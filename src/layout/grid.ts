@@ -620,41 +620,53 @@ export class Grid extends Disposable {
     // Use rAF-throttling so layout runs at most once per frame
     let rafId = 0;
     let pendingDelta = 0;
-    /** Tracks how far past the constraint (clamped) the user has dragged. */
-    let snapOverflow = 0;
     let didSnap = false;
 
     const applyResize = () => {
       rafId = 0;
-      if (!this._sashDragState || pendingDelta === 0) return;
+      if (!this._sashDragState || pendingDelta === 0 || didSnap) return;
       const appliedDelta = this.resizeSash(this._sashDragState.branch, this._sashDragState.sashIndex, pendingDelta);
       // Only advance startPos by the actually applied delta so the cursor
       // stays in sync with the sash position (VS Code parity).
       this._sashDragState.startPos += appliedDelta;
 
-      // Accumulate overflow: the difference between what the user asked
-      // for and what was actually applied (clamped). This grows when the
-      // user keeps dragging past a constraint boundary.
-      snapOverflow += pendingDelta - appliedDelta;
+      // ── Snap detection ──
+      // Once the sash pins at a constraint (appliedDelta ≈ 0), startPos
+      // freezes at the constraint boundary.  From that point, each
+      // frame's `pendingDelta` already equals the total distance from
+      // the constraint (currentPos − frozenStartPos).  `overshoot` is
+      // the per-frame difference between what the user wants and what
+      // the grid allowed — which IS the total overshoot because startPos
+      // didn't move.  No accumulation needed.
+      //
+      // Negative overshoot = user is shrinking childA (sash moves left/up)
+      // Positive overshoot = user is shrinking childB (sash moves right/down)
+      //
+      // VS Code ref: SplitView.onSashChange — snap triggers when the
+      // drag overshoot exceeds floor(viewMinimumSize / 2).
+      const overshoot = pendingDelta - appliedDelta;
       pendingDelta = 0;
 
-      // ── Snap detection ──
-      // VS Code ref: SplitView.onSashChange — snap triggers when the
-      // accumulated overflow exceeds the snap threshold.
-      // Negative overflow = user is trying to shrink childA (move sash left/up)
-      // Positive overflow = user is trying to shrink childB (move sash right/down)
       const state = this._sashDragState;
-      if (!didSnap && state.snapBeforeThreshold > 0 && snapOverflow < -state.snapBeforeThreshold) {
+      if (state.snapBeforeThreshold > 0 && overshoot < -state.snapBeforeThreshold) {
         didSnap = true;
+        // Abort the drag before firing snap — toggleSidebar/togglePanel
+        // will remove the view from the grid, invalidating the sash and
+        // branch that this drag handler references.
+        cleanupDrag();
         this._onDidSashSnap.fire({ viewId: state.snapBeforeViewId! });
-      } else if (!didSnap && state.snapAfterThreshold > 0 && snapOverflow > state.snapAfterThreshold) {
+        return;
+      }
+      if (state.snapAfterThreshold > 0 && overshoot > state.snapAfterThreshold) {
         didSnap = true;
+        cleanupDrag();
         this._onDidSashSnap.fire({ viewId: state.snapAfterViewId! });
+        return;
       }
     };
 
     const onMouseMove = (moveEvent: MouseEvent) => {
-      if (!this._sashDragState) return;
+      if (!this._sashDragState || didSnap) return;
       const currentPos = isHorizontal ? moveEvent.clientX : moveEvent.clientY;
       const delta = currentPos - this._sashDragState.startPos;
       if (Math.abs(delta) < 1) return;
@@ -665,8 +677,23 @@ export class Grid extends Disposable {
       }
     };
 
+    /** Clean up drag state, listeners, and visual feedback. */
+    const cleanupDrag = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      this._setWillChange(branch, sashIndex, false);
+      target.classList.remove('active');
+      this._sashDragState = null;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      endDrag();
+    };
+
     const onMouseUp = () => {
       // Flush any pending resize before cleanup
+      if (didSnap) return; // Already cleaned up by snap handler
       if (rafId) {
         cancelAnimationFrame(rafId);
         rafId = 0;
@@ -674,13 +701,9 @@ export class Grid extends Disposable {
       if (pendingDelta !== 0) {
         applyResize();
       }
-
-      this._setWillChange(branch, sashIndex, false);
-      target.classList.remove('active');
-      this._sashDragState = null;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      endDrag();
+      if (!didSnap) {
+        cleanupDrag();
+      }
     };
 
     document.addEventListener('mousemove', onMouseMove);
