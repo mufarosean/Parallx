@@ -662,6 +662,7 @@ html, body {
 /* VS Code: .statusbar-item > .statusbar-item-label */
 .statusbar-item > .statusbar-item-label {
   display: flex;
+  gap: 3px;
   height: 100%;
   margin-right: 3px;
   margin-left: 3px;
@@ -673,6 +674,13 @@ html, body {
   outline-width: 0px;
   text-decoration: none;
   color: inherit;
+}
+
+/* SVG icon inside status bar item */
+.statusbar-item-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 /* First/last visible items: reduce margin (attach to edge) — VS Code parity */

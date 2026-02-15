@@ -3160,12 +3160,16 @@ export class Workbench extends Layout {
       : undefined;
     if (!notifService) return;
 
-    // Add bell entry to status bar (right-aligned, low priority = far right)
+    // VS Code codicon bell SVG (16×16 viewBox)
+    const bellSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M13.377 10.573a7.63 7.63 0 0 1-.383-2.38V6.195a5.115 5.115 0 0 0-1.268-3.446 5.138 5.138 0 0 0-3.242-1.722c-.694-.072-1.4 0-2.07.227-.67.215-1.28.574-1.794 1.053a4.923 4.923 0 0 0-1.208 1.675 5.067 5.067 0 0 0-.431 2.022v2.2a7.61 7.61 0 0 1-.383 2.37L2 12.343l.479.658h3.505c0 .526.215 1.04.586 1.412.37.37.885.586 1.412.586.526 0 1.04-.215 1.411-.586s.587-.886.587-1.412h3.505l.478-.658-.586-1.77zm-4.69 3.147a.997.997 0 0 1-.705.299.997.997 0 0 1-.706-.3.997.997 0 0 1-.3-.705h1.999a.939.939 0 0 1-.287.706zm-5.515-1.71l.371-1.114a8.633 8.633 0 0 0 .443-2.691V6.004c0-.563.12-1.113.347-1.616.227-.514.55-.969.96-1.35.41-.37.885-.66 1.408-.844a4.14 4.14 0 0 1 1.635-.193 4.13 4.13 0 0 1 2.617 1.377c.37.44.636.96.78 1.52.145.56.193 1.145.143 1.724v2.2c0 .907.152 1.808.443 2.659l.371 1.113H3.172z" fill="currentColor"/></svg>';
+
+    // Add bell entry to status bar (left-aligned, far left)
     const bellAccessor = sb.addEntry({
       id: 'status.notifications',
-      text: '🔔',
-      alignment: StatusBarAlignment.Right,
-      priority: -100, // far right
+      text: '',
+      iconSvg: bellSvg,
+      alignment: StatusBarAlignment.Left,
+      priority: 1000, // far left (highest priority = leftmost)
       tooltip: 'No new notifications',
       command: 'workbench.action.toggleNotificationCenter',
       name: 'Notifications',
@@ -3174,7 +3178,7 @@ export class Workbench extends Layout {
     // Update badge when notification count changes
     const updateBadge = (count: number) => {
       bellAccessor.update({
-        text: count > 0 ? `🔔 ${count}` : '🔔',
+        text: count > 0 ? `${count}` : '',
         tooltip: count > 0 ? `${count} notification${count > 1 ? 's' : ''}` : 'No new notifications',
       });
     };

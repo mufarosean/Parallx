@@ -63,6 +63,8 @@ export interface StatusBarEntry {
   readonly command?: string;
   /** Human-readable name for context-menu toggling (defaults to `text`). */
   readonly name?: string;
+  /** Optional SVG icon string rendered before the text. */
+  readonly iconSvg?: string;
 }
 
 /**
@@ -71,7 +73,7 @@ export interface StatusBarEntry {
  */
 export interface StatusBarEntryAccessor extends IDisposable {
   /** Update the entry's mutable properties. */
-  update(entry: Partial<Pick<StatusBarEntry, 'text' | 'tooltip' | 'command'>>): void;
+  update(entry: Partial<Pick<StatusBarEntry, 'text' | 'tooltip' | 'command' | 'iconSvg'>>): void;
 }
 
 // ─── Internal view-model entry ───────────────────────────────────────────────
@@ -200,6 +202,7 @@ export class StatusBarPart extends Part {
           ...(update.text !== undefined ? { text: update.text } : {}),
           ...(update.tooltip !== undefined ? { tooltip: update.tooltip } : {}),
           ...(update.command !== undefined ? { command: update.command } : {}),
+          ...(update.iconSvg !== undefined ? { iconSvg: update.iconSvg } : {}),
         };
         existing.entry = updated;
         this._applyEntryToLabel(existing.label, updated);
@@ -285,7 +288,27 @@ export class StatusBarPart extends Part {
    * we render them as plain text (matching milestone spec).
    */
   private _applyEntryToLabel(label: HTMLElement, entry: StatusBarEntry): void {
-    label.textContent = entry.text;
+    // Build content: optional SVG icon + text
+    label.textContent = '';
+    if (entry.iconSvg) {
+      const iconSpan = $('span');
+      iconSpan.className = 'statusbar-item-icon';
+      iconSpan.innerHTML = entry.iconSvg;
+      // Size the SVG to match status bar font size
+      const svg = iconSpan.querySelector('svg');
+      if (svg) {
+        svg.setAttribute('width', '14');
+        svg.setAttribute('height', '14');
+        svg.style.display = 'block';
+      }
+      label.appendChild(iconSpan);
+    }
+    if (entry.text) {
+      const textSpan = $('span');
+      textSpan.className = 'statusbar-item-text';
+      textSpan.textContent = entry.text;
+      label.appendChild(textSpan);
+    }
     if (entry.tooltip) {
       label.title = entry.tooltip;
     } else {
