@@ -640,7 +640,7 @@ A custom editor pane hosting a Tiptap rich text editor for editing Canvas pages.
 
 #### Tasks
 
-**Task 5.1 — Install Tiptap Dependencies**
+**Task 5.1 — Install Tiptap Dependencies** ✅
 - **Task Description:** Add Tiptap packages to the project.
 - **Output:** Tiptap available for import in Canvas tool code.
 - **Completion Criteria:**
@@ -648,7 +648,7 @@ A custom editor pane hosting a Tiptap rich text editor for editing Canvas pages.
   - Packages resolve correctly in the Electron renderer environment
   - Build system handles Tiptap's ESM/CJS correctly
 
-**Task 5.2 — Implement CanvasEditorInput**
+**Task 5.2 — Implement CanvasEditorInput** ✅
 - **Task Description:** Create `src/built-in/canvas/canvasEditorInput.ts` extending `EditorInput`.
 - **Output:** `CanvasEditorInput` class for the editor group system.
 - **Completion Criteria:**
@@ -662,7 +662,7 @@ A custom editor pane hosting a Tiptap rich text editor for editing Canvas pages.
   - `isDirty()` returns `true` if pending auto-save exists
   - Updates title/icon when page data changes
 
-**Task 5.3 — Implement CanvasEditorPane**
+**Task 5.3 — Implement CanvasEditorPane** ✅
 - **Task Description:** Create `src/built-in/canvas/canvasEditorPane.ts` extending `EditorPane`.
 - **Output:** Editor pane hosting Tiptap with full rich text editing.
 - **Completion Criteria:**
@@ -676,7 +676,7 @@ A custom editor pane hosting a Tiptap rich text editor for editing Canvas pages.
   - CSS styling follows the workbench theme tokens (editor background, foreground, selection colors)
   - CSS in `src/built-in/canvas/canvas.css`
 
-**Task 5.4 — Implement Slash Command Menu**
+**Task 5.4 — Implement Slash Command Menu** ✅
 - **Task Description:** Add a slash command popup menu triggered by typing `/` at the start of an empty line.
 - **Output:** Dropdown menu with block type options.
 - **Completion Criteria:**
@@ -688,7 +688,7 @@ A custom editor pane hosting a Tiptap rich text editor for editing Canvas pages.
   - Filter: typing after `/` filters the menu items (e.g., `/head` shows only heading options)
   - Vanilla TS+CSS implementation (not a Tiptap extension component) — styled with theme tokens
 
-**Task 5.5 — Implement Formatting Keyboard Shortcuts**
+**Task 5.5 — Implement Formatting Keyboard Shortcuts** ✅
 - **Task Description:** Wire common formatting keyboard shortcuts within the Tiptap editor.
 - **Output:** Standard formatting shortcuts work inside the editor.
 - **Completion Criteria:**

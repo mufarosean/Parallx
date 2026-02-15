@@ -233,7 +233,7 @@ class ToolEditorPane extends EditorPane {
     // Duck-type check for a tool editor provider
     const provider = (input as any).provider;
     if (provider && typeof provider.createEditorPane === 'function') {
-      this._providerDisposable = provider.createEditorPane(this._contentContainer);
+      this._providerDisposable = provider.createEditorPane(this._contentContainer, input);
     } else {
       // Fallback: show the input name
       const label = $('div');

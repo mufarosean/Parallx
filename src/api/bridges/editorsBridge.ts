@@ -38,7 +38,7 @@ export function setFileEditorResolver(resolver: FileEditorResolverFn): void {
  * A tool-provided editor provider that renders content into editor tabs.
  */
 export interface ToolEditorProvider {
-  createEditorPane(container: HTMLElement): IDisposable;
+  createEditorPane(container: HTMLElement, input?: IEditorInput): IDisposable;
 }
 
 export interface OpenEditorOptions {

@@ -12,6 +12,7 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { CanvasDataService } from './canvasDataService.js';
 import { CanvasSidebar } from './canvasSidebar.js';
+import { CanvasEditorProvider } from './canvasEditorProvider.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -78,12 +79,11 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   );
 
   // 4. Register editor provider for Canvas panes (Cap 5)
-  // Placeholder: registers a minimal editor that will be implemented in Cap 5
+  const editorProvider = new CanvasEditorProvider(_dataService);
   context.subscriptions.push(
     api.editors.registerEditorProvider('canvas', {
-      createEditorPane(container: HTMLElement): IDisposable {
-        container.textContent = 'Canvas editor — coming in Capability 5';
-        return { dispose() {} };
+      createEditorPane(container: HTMLElement, input?: any): IDisposable {
+        return editorProvider.createEditorPane(container, input);
       },
     }),
   );

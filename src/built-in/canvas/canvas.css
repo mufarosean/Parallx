@@ -181,3 +181,229 @@
 .canvas-children--collapsed {
   display: none;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Canvas Editor Pane (Tiptap)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-editor-wrapper {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-tiptap-editor {
+  flex: 1;
+  padding: 24px 48px;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  font-size: 15px;
+  line-height: 1.6;
+  outline: none;
+  caret-color: var(--vscode-editorCursor-foreground);
+}
+
+/* ProseMirror generated wrapper */
+.canvas-tiptap-editor .ProseMirror {
+  outline: none;
+  min-height: 200px;
+}
+
+/* Placeholder */
+.canvas-tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--vscode-input-placeholderForeground, #888);
+  pointer-events: none;
+  height: 0;
+  font-style: italic;
+}
+
+/* Headings */
+.canvas-tiptap-editor h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin: 0.5em 0 0.3em;
+  line-height: 1.2;
+  color: var(--vscode-editor-foreground);
+}
+
+.canvas-tiptap-editor h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin: 0.5em 0 0.3em;
+  line-height: 1.3;
+  color: var(--vscode-editor-foreground);
+}
+
+.canvas-tiptap-editor h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin: 0.5em 0 0.3em;
+  line-height: 1.4;
+  color: var(--vscode-editor-foreground);
+}
+
+/* Paragraphs */
+.canvas-tiptap-editor p {
+  margin: 0.3em 0;
+}
+
+/* Lists */
+.canvas-tiptap-editor ul,
+.canvas-tiptap-editor ol {
+  padding-left: 1.5em;
+  margin: 0.3em 0;
+}
+
+.canvas-tiptap-editor li {
+  margin: 0.1em 0;
+}
+
+/* Task list */
+.canvas-tiptap-editor ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.canvas-tiptap-editor ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.canvas-tiptap-editor ul[data-type="taskList"] li label {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.canvas-tiptap-editor ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  text-decoration: line-through;
+  color: var(--vscode-disabledForeground);
+}
+
+/* Blockquote */
+.canvas-tiptap-editor blockquote {
+  border-left: 3px solid var(--vscode-textBlockQuote-border, #555);
+  padding-left: 16px;
+  margin: 0.5em 0;
+  color: var(--vscode-textBlockQuote-foreground, #bbb);
+}
+
+/* Code */
+.canvas-tiptap-editor code {
+  background: var(--vscode-textCodeBlock-background, #1e1e1e);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+  font-size: 0.9em;
+}
+
+.canvas-tiptap-editor pre {
+  background: var(--vscode-textCodeBlock-background, #1e1e1e);
+  padding: 12px 16px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+.canvas-tiptap-editor pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Horizontal Rule */
+.canvas-tiptap-editor hr {
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border, #444);
+  margin: 1em 0;
+}
+
+/* Bold, Italic, Strike */
+.canvas-tiptap-editor strong {
+  font-weight: 700;
+}
+
+.canvas-tiptap-editor em {
+  font-style: italic;
+}
+
+.canvas-tiptap-editor s {
+  text-decoration: line-through;
+}
+
+/* Selection */
+.canvas-tiptap-editor ::selection {
+  background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.6));
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Slash Command Menu
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-slash-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 4px 0;
+}
+
+.canvas-slash-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  cursor: pointer;
+  gap: 10px;
+}
+
+.canvas-slash-item:hover,
+.canvas-slash-item--selected {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.canvas-slash-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--vscode-badge-background, #333);
+  border-radius: 4px;
+  color: var(--vscode-badge-foreground, #ccc);
+}
+
+.canvas-slash-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.canvas-slash-label {
+  font-size: 13px;
+  color: var(--vscode-foreground);
+}
+
+.canvas-slash-desc {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
