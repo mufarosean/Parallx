@@ -746,13 +746,20 @@ html, body {
 
 .view-container-tabs {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   flex-shrink: 0;
   overflow-x: auto;
   overflow-y: hidden;
   background: var(--vscode-sideBar-background);
-  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
   gap: 0;
+  position: relative;
+}
+
+/* Fill remaining tab bar space with bottom border (inactive region) */
+.view-container-tabs::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
 }
 
 .view-container-tabs.hidden {
@@ -777,7 +784,9 @@ html, body {
   font-size: 13px;
   color: var(--vscode-tab-inactiveForeground);
   border-right: 1px solid var(--vscode-tab-border);
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
   transition: color 0.15s, background-color 0.15s;
+  box-sizing: border-box;
 }
 
 .view-tab:hover {
@@ -788,7 +797,6 @@ html, body {
 .view-tab.tab-active {
   color: var(--vscode-tab-activeForeground);
   background-color: var(--vscode-tab-activeBackground);
-  margin-bottom: -1px;
   border-bottom: 1px solid var(--vscode-tab-activeBackground);
 }
 
