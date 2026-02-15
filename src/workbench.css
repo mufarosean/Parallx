@@ -47,7 +47,6 @@ html, body {
   flex-shrink: 0;
   align-self: stretch;
   height: auto !important; /* override JS pixel height — let flex stretch handle it */
-  border-top: 1px solid var(--vscode-sideBar-border);
 }
 
 .part.hidden {
