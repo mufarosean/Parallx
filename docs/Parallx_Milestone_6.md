@@ -862,3 +862,80 @@ Capability 6 (Auto-Save & Persistence)  ← Depends on Cap 4 + Cap 5
 | `electron/preload.cjs` | Database bridge |
 | `package.json` | `better-sqlite3`, Tiptap dependencies |
 | `ARCHITECTURE.md` | Update built-in tools section |
+
+---
+
+## Post-Milestone Bug Fixes
+
+### Fix 1: Contributed views invisible + database path doubling ✅
+
+**Commit:** `870c49f`
+
+Two bugs fixed:
+
+1. **Contributed sidebar views (Tools, Canvas) invisible.** The CSS rule `.view { display: none }` hid all view elements. The contributed view's `setVisible()` called `show()` which set `display=''` (empty string), removing the inline style but falling back to the CSS `display: none`. **Fix:** Toggle a `.visible` class via `classList.toggle()` instead of `show()`/`hide()`, matching the `.view.visible { display: block }` CSS rule.
+
+2. **Database path doubling on Windows.** `_openDatabaseForWorkspace()` used `firstFolder.uri.path` (returns `/D:/AI/Parallx` in URI format) instead of `uri.fsPath` (strips the leading slash for Windows drive letters → `D:/AI/Parallx`). Resulted in `ENOENT: mkdir d:\D:\AI\...`. **Fix:** `uri.path` → `uri.fsPath` in `workbench.ts`.
+
+| File | Change |
+|------|--------|
+| `src/contributions/viewContribution.ts` | `.visible` class toggle instead of `show()`/`hide()` |
+| `src/workbench/workbench.ts` | `uri.path` → `uri.fsPath` for database path |
+
+### Fix 2: Missing views dropped by saved tab order ✅
+
+**Commit:** separate commit on `milestone-6`
+
+**Problem:** `restoreContainerState()` replaced `_tabOrder` with the persisted array, then `_rebuildTabBar()` only re-appended tabs in that order. Views registered after the workspace was last saved (e.g. `view.output`) were orphaned — their tab elements existed but were never put back into the DOM.
+
+**Fix:** Append any registered-but-missing view IDs to the end of the restored tab order before rebuilding the tab bar.
+
+| File | Change |
+|------|--------|
+| `src/views/viewContainer.ts` | Append missing view IDs to restored tab order |
+
+### Fix 3: Workspace save-as/duplicate clone full state ✅
+
+**Commit:** `d738dc0`
+
+Four workspace bugs fixed:
+
+1. **`createWorkspace()` always persisted blank default state.** Save-as and duplicate produced empty workspaces because `createWorkspace()` always called `ws.createDefaultState()`. **Fix:** Added optional `cloneState` parameter. When provided, the new workspace is persisted with the cloned state (identity/metadata overwritten with the new workspace's).
+
+2. **`workspace.saveAs` silently appended "(Copy)".** No user prompt for a workspace name. **Fix:** Shows a modal input box (`showInputBoxModal`) prompting for a name (pre-filled with `"<current> (Copy)"`), with non-empty validation. Cancellable via Escape. Collects current live state via `collectState()` and clones it.
+
+3. **`workspace.duplicateWorkspace` created empty clone.** Same root cause as #1. **Fix:** Collects current live state and passes it as `cloneState` to `createWorkspace()`.
+
+4. **`workspace.openRecent` was non-functional in its original form.** **Fix:** Simplified to delegate directly to Quick Access general provider, which already lists and switches recent workspaces.
+
+**Additional improvements:**
+- `WorkspaceSaver._collectState()` made public as `collectState()` so commands can snapshot live state
+- Initial workspace save added to `_restoreWorkspace()` so storage always has an entry for the active workspace on first boot
+- Workbench instance exposed as `window.__parallx_workbench__` in test mode (`PARALLX_TEST_MODE=1`)
+
+| File | Change |
+|------|--------|
+| `src/workspace/workspaceSaver.ts` | `_collectState()` → public `collectState()` |
+| `src/workbench/workbench.ts` | `createWorkspace()` accepts `cloneState`; initial save on boot |
+| `src/commands/structuralCommands.ts` | `workspace.saveAs` shows input modal + clones state; `workspace.duplicateWorkspace` clones state; `workspace.openRecent` simplified |
+| `src/main.ts` | Expose workbench as `__parallx_workbench__` in test mode |
+
+### E2E Tests: Workspace Management ✅
+
+**File:** `tests/e2e/08-workspaces.spec.ts` — 13 tests, all passing
+
+| # | Test | Validates |
+|---|------|-----------|
+| 1 | Default workspace created on first launch | Active ID exists, state in storage, recent list populated |
+| 2 | Workspace state saved with correct schema | Version 2, all required fields present (identity, metadata, layout, parts, viewContainers, views, editors, context, folders) |
+| 3 | Auto-save on layout changes | Toggling sidebar triggers debounced save, `lastAccessedAt` updated |
+| 4 | Open folder persists workspace folders | Folder path appears in saved state's `folders` array |
+| 5 | Duplicate workspace with full state cloning | New workspace ID in storage, name contains "(Copy)", folders/parts/viewContainers match original |
+| 6 | Save workspace as — name prompt + clone | Modal appears, default value contains "(Copy)", custom name accepted, switches to new workspace, folders cloned |
+| 7 | Save workspace as — Escape cancels | Modal dismissed, no new workspace created, active ID unchanged |
+| 8 | Switch workspace changes active workspace | After programmatic `switchWorkspace()`, active ID updates to target |
+| 9 | Open recent shows Quick Access | Quick Access overlay appears with workspace entries |
+| 10 | State roundtrip — saved matches live | Force save, read back, verify parts/viewContainers/folders populated |
+| 11 | Active workspace ID persists in storage | ID matches a stored workspace state |
+| 12 | Workspace folders saved correctly | Folder has `scheme: 'file'` and non-empty `path` |
+| 13 | Close folder removes all workspace folders | After File → Close Folder, `folders` array is empty |
