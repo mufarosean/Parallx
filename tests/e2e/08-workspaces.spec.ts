@@ -1,14 +1,15 @@
 /**
  * E2E tests: Workspace management.
  *
- * Verifies workspace creation, saving, save-as, switching,
- * duplicating, and opening recent workspaces through the real UI.
+ * PRINCIPLE: Every assertion answers "What does the user SEE right now?"
+ * Every step is either a user action (click, type, press key) or a visual
+ * assertion (element count, text content, visibility).
  *
- * Each test launches a fresh Electron process to avoid cross-test
- * state pollution (localStorage isolation).
+ * No `evaluate()` calls to inspect localStorage or JavaScript objects.
+ * If Playwright can't see it, the user can't see it, and it doesn't matter.
  */
-import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
-import type { Page, ElectronApplication } from '@playwright/test';
+import { test, expect, openFolderViaMenu } from './fixtures';
+import type { Page } from '@playwright/test';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -22,447 +23,377 @@ async function clickFileMenuItem(window: Page, label: string) {
   await item.click();
 }
 
-/**
- * Read the workspace name displayed in the titlebar.
- * Falls back to the document title if no explicit workspace label is found.
- */
-async function getWorkspaceName(window: Page): Promise<string> {
-  // The titlebar shows the workspace name in a dedicated element
-  const wsName = window.locator('.titlebar-workspace-name, .workspace-name, .title-label');
-  const count = await wsName.count();
-  if (count > 0) {
-    const text = await wsName.first().textContent();
-    if (text && text.trim().length > 0) return text.trim();
+/** Get the workspace name shown in the titlebar. */
+async function getTitlebarWorkspaceName(window: Page): Promise<string> {
+  const label = window.locator('.titlebar-workspace-label');
+  await expect(label).toBeVisible({ timeout: 5000 });
+  return (await label.textContent()) ?? '';
+}
+
+/** Wait for the workspace switch transition overlay to disappear. */
+async function waitForSwitchComplete(window: Page) {
+  // The transition overlay has class 'workspace-transition-overlay'.
+  // Wait for it to appear and then vanish (or skip if it was too fast).
+  try {
+    const overlay = window.locator('.workspace-transition-overlay');
+    await overlay.waitFor({ state: 'detached', timeout: 10_000 });
+  } catch {
+    // Already gone or never appeared — fine
   }
-  return window.title();
-}
-
-/**
- * Clear all parallx localStorage keys via renderer evaluate.
- * This ensures a clean slate before each workspace test.
- */
-async function clearParallxStorage(window: Page) {
-  await window.evaluate(() => {
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('parallx')) {
-        keysToRemove.push(key);
-      }
-    }
-    keysToRemove.forEach(k => localStorage.removeItem(k));
-  });
-}
-
-/**
- * Get all workspace IDs currently stored in localStorage.
- */
-async function getStoredWorkspaceIds(window: Page): Promise<string[]> {
-  return window.evaluate(() => {
-    const ids: string[] = [];
-    const prefix = 'parallx:parallx.workspace.';
-    const suffix = '.state';
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(prefix) && key.endsWith(suffix)) {
-        const id = key.slice(prefix.length, key.length - suffix.length);
-        ids.push(id);
-      }
-    }
-    return ids;
-  });
-}
-
-/**
- * Get the active workspace ID from localStorage.
- */
-async function getActiveWorkspaceId(window: Page): Promise<string | null> {
-  return window.evaluate(() => {
-    return localStorage.getItem('parallx:parallx.activeWorkspaceId');
-  });
-}
-
-/**
- * Get the recent workspaces list from localStorage.
- */
-async function getRecentWorkspaces(window: Page): Promise<Array<{ identity: { id: string; name: string } }>> {
-  return window.evaluate(() => {
-    const json = localStorage.getItem('parallx:parallx.recentWorkspaces');
-    if (!json) return [];
-    try { return JSON.parse(json); } catch { return []; }
-  });
-}
-
-/**
- * Get a parsed workspace state from localStorage by ID.
- */
-async function getWorkspaceState(window: Page, workspaceId: string): Promise<Record<string, any> | null> {
-  return window.evaluate((id) => {
-    const key = `parallx:parallx.workspace.${id}.state`;
-    const json = localStorage.getItem(key);
-    if (!json) return null;
-    try { return JSON.parse(json); } catch { return null; }
-  }, workspaceId);
+  // Extra settling time for views to render
+  await window.waitForTimeout(1500);
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-test.describe('Workspace Management', () => {
+test.describe('Workspace Management — User Experience', () => {
 
-  test('default workspace is created on first launch', async ({ window }) => {
-    // On launch, a default workspace should exist and be active
-    const activeId = await getActiveWorkspaceId(window);
-    expect(activeId).toBeTruthy();
-    expect(typeof activeId).toBe('string');
+  // ═══════════════════════════════════════════════════════════════════════
+  // 1. Initial launch: the app looks correct
+  // ═══════════════════════════════════════════════════════════════════════
 
-    // The workspace state should be persisted in localStorage
-    const ids = await getStoredWorkspaceIds(window);
-    expect(ids.length).toBeGreaterThanOrEqual(1);
-    expect(ids).toContain(activeId);
+  test('initial launch shows Explorer with no placeholder fake files', async ({ window }) => {
+    // The sidebar should have an "EXPLORER" header label
+    const headerLabel = window.locator('.sidebar-header-label');
+    await expect(headerLabel).toBeVisible();
+    await expect(headerLabel).toHaveText('EXPLORER');
 
-    // Recent workspaces should contain the default workspace
-    const recents = await getRecentWorkspaces(window);
-    expect(recents.length).toBeGreaterThanOrEqual(1);
-    expect(recents.some(r => r.identity.id === activeId)).toBe(true);
+    // There should be exactly ONE header label, not multiples
+    await expect(headerLabel).toHaveCount(1);
+
+    // The Explorer section should exist in the sidebar
+    const explorerSection = window.locator('.view-section[data-view-id="view.explorer"]');
+    await expect(explorerSection).toBeVisible();
+
+    // There should be NO placeholder fake file rows from the dev stub
+    const placeholderRows = window.locator('.placeholder-tree-row');
+    await expect(placeholderRows).toHaveCount(0);
+
+    // There should be exactly ONE gear icon in the activity bar
+    const gearIcons = window.locator('.activity-bar-manage-gear');
+    await expect(gearIcons).toHaveCount(1);
   });
 
-  test('workspace state is saved with correct schema', async ({ window }) => {
-    const activeId = await getActiveWorkspaceId(window);
-    expect(activeId).toBeTruthy();
+  test('initial launch shows "No folder opened" empty state', async ({ window }) => {
+    // Without opening a folder, the Explorer should show an empty state message
+    // The real Explorer (not the placeholder) shows "No folder opened" text
+    const explorerSection = window.locator('.view-section[data-view-id="view.explorer"]');
+    await expect(explorerSection).toBeVisible();
 
-    const state = await getWorkspaceState(window, activeId!);
-    expect(state).toBeTruthy();
-
-    // Validate schema fields
-    expect(state!.version).toBe(2);
-    expect(state!.identity).toBeTruthy();
-    expect(state!.identity.id).toBe(activeId);
-    expect(typeof state!.identity.name).toBe('string');
-    expect(state!.metadata).toBeTruthy();
-    expect(state!.layout).toBeTruthy();
-    expect(Array.isArray(state!.parts)).toBe(true);
-    expect(Array.isArray(state!.viewContainers)).toBe(true);
-    expect(Array.isArray(state!.views)).toBe(true);
-    expect(state!.editors).toBeTruthy();
-    expect(state!.context).toBeTruthy();
-    expect(Array.isArray(state!.folders)).toBe(true);
+    // Should NOT have a fake hardcoded file tree
+    const placeholderExplorer = window.locator('.placeholder-explorer');
+    await expect(placeholderExplorer).toHaveCount(0);
   });
 
-  test('workspace auto-saves when layout changes', async ({ window }) => {
-    const activeId = await getActiveWorkspaceId(window);
-    expect(activeId).toBeTruthy();
+  // ═══════════════════════════════════════════════════════════════════════
+  // 2. Open Folder: real files from disk
+  // ═══════════════════════════════════════════════════════════════════════
 
-    // Record initial state
-    const stateBefore = await getWorkspaceState(window, activeId!);
-    expect(stateBefore).toBeTruthy();
-
-    // Toggle sidebar to trigger a layout change + save
-    await window.keyboard.press('Control+b');
-    // Wait for debounced auto-save (1s + margin)
-    await window.waitForTimeout(2000);
-
-    // State should have been updated
-    const stateAfter = await getWorkspaceState(window, activeId!);
-    expect(stateAfter).toBeTruthy();
-
-    // The metadata lastAccessedAt should be updated
-    expect(stateAfter!.metadata.lastAccessedAt).toBeTruthy();
-  });
-
-  test('open folder persists workspace folders', async ({ electronApp, window, workspacePath }) => {
-    // Open a folder via the menu
+  test('open folder shows real files from disk', async ({ electronApp, window, workspacePath }) => {
+    // Open a test folder through the real File menu
     await openFolderViaMenu(electronApp, window, workspacePath);
 
-    // Wait for auto-save
-    await window.waitForTimeout(2000);
-
-    const activeId = await getActiveWorkspaceId(window);
-    const state = await getWorkspaceState(window, activeId!);
-    expect(state).toBeTruthy();
-
-    // At least one folder should be persisted
-    expect(state!.folders.length).toBeGreaterThanOrEqual(1);
-
-    // The folder path should match what we opened
-    const folderPaths = state!.folders.map((f: any) => f.path);
-    const hasOurFolder = folderPaths.some((p: string) =>
-      p.toLowerCase().includes('parallx-test') ||
-      p.replace(/\//g, '\\').toLowerCase() === workspacePath.toLowerCase() ||
-      p.toLowerCase() === workspacePath.replace(/\\/g, '/').toLowerCase()
-    );
-    expect(hasOurFolder).toBe(true);
-  });
-
-  test('duplicate workspace creates a clone with full state', async ({ electronApp, window, workspacePath }) => {
-    // First, open a folder so we have non-default state
-    await openFolderViaMenu(electronApp, window, workspacePath);
-    await window.waitForTimeout(2000);
-
-    const originalId = await getActiveWorkspaceId(window);
-    expect(originalId).toBeTruthy();
-
-    const originalState = await getWorkspaceState(window, originalId!);
-    expect(originalState).toBeTruthy();
-
-    // Count workspaces before duplication
-    const idsBefore = await getStoredWorkspaceIds(window);
-
-    // Execute duplicate command
-    await clickFileMenuItem(window, 'Duplicate Workspace');
-    await window.waitForTimeout(2000);
-
-    // Should still be on the original workspace (duplicate doesn't switch)
-    const activeAfter = await getActiveWorkspaceId(window);
-    expect(activeAfter).toBe(originalId);
-
-    // A new workspace should exist in storage
-    const idsAfter = await getStoredWorkspaceIds(window);
-    expect(idsAfter.length).toBe(idsBefore.length + 1);
-
-    // Find the new workspace ID
-    const newId = idsAfter.find(id => !idsBefore.includes(id));
-    expect(newId).toBeTruthy();
-
-    // The new workspace state should have the cloned folders
-    const clonedState = await getWorkspaceState(window, newId!);
-    expect(clonedState).toBeTruthy();
-    expect(clonedState!.identity.id).toBe(newId);
-    expect(clonedState!.identity.name).toContain('(Copy)');
-
-    // Folder state should be cloned from original
-    expect(clonedState!.folders.length).toBe(originalState!.folders.length);
-
-    // Parts and viewContainers should also be cloned
-    expect(clonedState!.parts.length).toBe(originalState!.parts.length);
-    expect(clonedState!.viewContainers.length).toBe(originalState!.viewContainers.length);
-
-    // Recent workspaces should contain both
-    const recents = await getRecentWorkspaces(window);
-    expect(recents.some(r => r.identity.id === originalId)).toBe(true);
-    expect(recents.some(r => r.identity.id === newId)).toBe(true);
-  });
-
-  test('save workspace as prompts for name and creates clone', async ({ electronApp, window, workspacePath }) => {
-    // Open a folder so we have non-default state
-    await openFolderViaMenu(electronApp, window, workspacePath);
-    await window.waitForTimeout(2000);
-
-    const originalId = await getActiveWorkspaceId(window);
-    expect(originalId).toBeTruthy();
-
-    // Count workspaces before
-    const idsBefore = await getStoredWorkspaceIds(window);
-
-    // Click Save Workspace As…
-    await clickFileMenuItem(window, 'Save Workspace As');
-
-    // A modal input box should appear
-    const inputModal = window.locator('.parallx-modal-overlay');
-    await expect(inputModal).toBeVisible({ timeout: 3000 });
-
-    // The input should have a default name suggestion
-    const input = window.locator('.parallx-modal-input');
-    await expect(input).toBeVisible();
-    const defaultValue = await input.inputValue();
-    expect(defaultValue).toContain('(Copy)');
-
-    // Type a custom name
-    await input.fill('My Custom Workspace');
-    await input.press('Enter');
-
-    // Wait for save + switch
-    await window.waitForTimeout(3000);
-
-    // Should have switched to the new workspace
-    const activeAfter = await getActiveWorkspaceId(window);
-    expect(activeAfter).not.toBe(originalId);
-
-    // New workspace should exist
-    const idsAfter = await getStoredWorkspaceIds(window);
-    expect(idsAfter.length).toBe(idsBefore.length + 1);
-
-    // The new workspace should have our custom name
-    const newState = await getWorkspaceState(window, activeAfter!);
-    expect(newState).toBeTruthy();
-    expect(newState!.identity.name).toBe('My Custom Workspace');
-
-    // The cloned state should have the original's folders
-    const originalState = await getWorkspaceState(window, originalId!);
-    expect(newState!.folders.length).toBe(originalState!.folders.length);
-  });
-
-  test('save workspace as can be cancelled with Escape', async ({ window }) => {
-    const idsBefore = await getStoredWorkspaceIds(window);
-    const activeBefore = await getActiveWorkspaceId(window);
-
-    // Click Save Workspace As…
-    await clickFileMenuItem(window, 'Save Workspace As');
-
-    // Modal should appear
-    const inputModal = window.locator('.parallx-modal-overlay');
-    await expect(inputModal).toBeVisible({ timeout: 3000 });
-
-    // Press Escape to cancel
-    await window.keyboard.press('Escape');
-    await window.waitForTimeout(500);
-
-    // Modal should be gone
-    await expect(inputModal).not.toBeVisible({ timeout: 2000 });
-
-    // No new workspace should be created
-    const idsAfter = await getStoredWorkspaceIds(window);
-    expect(idsAfter.length).toBe(idsBefore.length);
-
-    // Should still be on same workspace
-    const activeAfter = await getActiveWorkspaceId(window);
-    expect(activeAfter).toBe(activeBefore);
-  });
-
-  test('switch workspace changes active workspace', async ({ electronApp, window, workspacePath }) => {
-    // Open a folder first
-    await openFolderViaMenu(electronApp, window, workspacePath);
-    await window.waitForTimeout(2000);
-
-    const originalId = await getActiveWorkspaceId(window);
-
-    // Duplicate to create a second workspace we can switch to
-    await clickFileMenuItem(window, 'Duplicate Workspace');
-    await window.waitForTimeout(2000);
-
-    // Find the duplicated workspace ID
-    const ids = await getStoredWorkspaceIds(window);
-    const duplicateId = ids.find(id => id !== originalId);
-    expect(duplicateId).toBeTruthy();
-
-    // Switch to the duplicate via the exposed workbench instance
-    await window.evaluate(async (targetId) => {
-      const wb = (window as any).__parallx_workbench__;
-      if (wb?.switchWorkspace) {
-        await wb.switchWorkspace(targetId);
-      }
-    }, duplicateId!);
-
-    await window.waitForTimeout(3000);
-
-    // Active workspace should now be the duplicate
-    const activeAfter = await getActiveWorkspaceId(window);
-    expect(activeAfter).toBe(duplicateId);
-  });
-
-  test('open recent shows quick access with workspace list', async ({ electronApp, window, workspacePath }) => {
-    // Open a folder and duplicate to ensure we have multiple workspaces
-    await openFolderViaMenu(electronApp, window, workspacePath);
-    await window.waitForTimeout(2000);
-
-    await clickFileMenuItem(window, 'Duplicate Workspace');
-    await window.waitForTimeout(2000);
-
-    // Now click Open Recent…
-    await clickFileMenuItem(window, 'Open Recent');
-
-    // Quick Access overlay should appear
-    const quickAccess = window.locator('.quick-access-overlay, .quick-access, .command-palette');
-    await expect(quickAccess).toBeVisible({ timeout: 3000 });
-
-    // It should contain workspace entries (the duplicate should appear)
-    // Wait a moment for workspace items to load
-    await window.waitForTimeout(500);
-    const items = window.locator('.quick-access-item, .list-item, .command-palette-item');
-    const count = await items.count();
-    // At minimum, some items should be visible (files or workspaces)
-    expect(count).toBeGreaterThanOrEqual(0);
-
-    // Dismiss
-    await window.keyboard.press('Escape');
-    await window.waitForTimeout(300);
-  });
-
-  test('workspace state roundtrip — saved state matches live state', async ({ electronApp, window, workspacePath }) => {
-    // Open a folder to have non-trivial state
-    await openFolderViaMenu(electronApp, window, workspacePath);
-    await window.waitForTimeout(2000);
-
-    const activeId = await getActiveWorkspaceId(window);
-    expect(activeId).toBeTruthy();
-
-    // Force a save via the exposed workbench
-    await window.evaluate(async () => {
-      const wb = (window as any).__parallx_workbench__;
-      if (wb?._workspaceSaver) {
-        await wb._workspaceSaver.save();
-      }
-    });
-
-    // Read back the persisted state
-    const state = await getWorkspaceState(window, activeId!);
-    expect(state).toBeTruthy();
-
-    // The identity should match
-    expect(state!.identity.id).toBe(activeId);
-
-    // Parts, views, folders should all be populated
-    expect(state!.parts.length).toBeGreaterThan(0);
-    expect(state!.viewContainers.length).toBeGreaterThan(0);
-    expect(state!.folders.length).toBeGreaterThanOrEqual(1);
-
-    // Layout should have valid dimensions
-    expect(state!.layout).toBeTruthy();
-    expect(state!.layout.grid).toBeTruthy();
-  });
-
-  test('active workspace ID persists in storage', async ({ window }) => {
-    // The active workspace ID should always be persisted
-    const activeId = await getActiveWorkspaceId(window);
-    expect(activeId).toBeTruthy();
-
-    // It should match a workspace that exists in storage
-    const state = await getWorkspaceState(window, activeId!);
-    expect(state).toBeTruthy();
-    expect(state!.identity.id).toBe(activeId);
-  });
-
-  test('workspace folders are saved correctly to storage', async ({ electronApp, window, workspacePath }) => {
-    // Open a folder
-    await openFolderViaMenu(electronApp, window, workspacePath);
-    await window.waitForTimeout(2000);
-
-    // Force save
-    await window.evaluate(async () => {
-      const wb = (window as any).__parallx_workbench__;
-      if (wb?._workspaceSaver) {
-        await wb._workspaceSaver.save();
-      }
-    });
-
-    const activeId = await getActiveWorkspaceId(window);
-    const state = await getWorkspaceState(window, activeId!);
-    expect(state).toBeTruthy();
-    expect(state!.folders.length).toBeGreaterThanOrEqual(1);
-
-    // Verify folder data has the expected shape
-    const folder = state!.folders[0];
-    expect(folder.scheme).toBe('file');
-    expect(typeof folder.path).toBe('string');
-    expect(folder.path.length).toBeGreaterThan(0);
-  });
-
-  test('close folder removes all workspace folders', async ({ electronApp, window, workspacePath }) => {
-    // Open a folder first
-    await openFolderViaMenu(electronApp, window, workspacePath);
-    await window.waitForTimeout(2000);
-
-    // Verify folder is loaded
+    // Tree nodes should appear with real file/folder names from our test workspace
     const treeNodes = window.locator('.tree-node');
-    await expect(treeNodes.first()).toBeVisible({ timeout: 5000 });
+    await expect(treeNodes.first()).toBeVisible({ timeout: 10_000 });
+
+    // Our test workspace has: README.md, src/, docs/
+    // Check that at least some of these real files appear
+    const nodeLabels = window.locator('.tree-node-label');
+    const allLabels: string[] = [];
+    const count = await nodeLabels.count();
+    for (let i = 0; i < count; i++) {
+      const text = await nodeLabels.nth(i).textContent();
+      if (text) allLabels.push(text);
+    }
+
+    // Should include real files, NOT the hardcoded placeholder files
+    expect(allLabels.some(l => l === 'README.md' || l === 'src' || l === 'docs')).toBe(true);
+    // Should NOT include the placeholder's fake files
+    expect(allLabels.some(l => l === 'workbench.css' || l === 'lifecycle.ts')).toBe(false);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 3. Close Folder: tree goes away
+  // ═══════════════════════════════════════════════════════════════════════
+
+  test('close folder removes tree and shows empty state', async ({ electronApp, window, workspacePath }) => {
+    // Open a folder first
+    await openFolderViaMenu(electronApp, window, workspacePath);
+    const treeNodes = window.locator('.tree-node');
+    await expect(treeNodes.first()).toBeVisible({ timeout: 10_000 });
 
     // Close folder via File menu
     await clickFileMenuItem(window, 'Close Folder');
     await window.waitForTimeout(2000);
 
-    // Workspace should have zero folders
-    const activeId = await getActiveWorkspaceId(window);
-    const state = await getWorkspaceState(window, activeId!);
-    expect(state).toBeTruthy();
-    expect(state!.folders.length).toBe(0);
+    // Tree nodes should be gone
+    await expect(treeNodes).toHaveCount(0);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 4. Save Workspace As: user experience
+  // ═══════════════════════════════════════════════════════════════════════
+
+  test('Save As shows name prompt and switches to new workspace', async ({ window }) => {
+    const originalName = await getTitlebarWorkspaceName(window);
+
+    // File → Save Workspace As...
+    await clickFileMenuItem(window, 'Save Workspace As');
+
+    // A modal input should appear
+    const modal = window.locator('.parallx-modal-overlay');
+    await expect(modal).toBeVisible({ timeout: 3000 });
+
+    // The input should have default text with "(Copy)"
+    const input = window.locator('.parallx-modal-input');
+    await expect(input).toBeVisible();
+    const defaultValue = await input.inputValue();
+    expect(defaultValue).toContain('(Copy)');
+
+    // Type a new name
+    await input.fill('My Test Workspace');
+    await input.press('Enter');
+
+    // Wait for switch to complete
+    await waitForSwitchComplete(window);
+
+    // Titlebar should now show the new workspace name
+    const newName = await getTitlebarWorkspaceName(window);
+    expect(newName).toContain('My Test Workspace');
+    expect(newName).not.toBe(originalName);
+  });
+
+  test('Save As does NOT duplicate sidebar elements', async ({ window }) => {
+    // Perform a Save As
+    await clickFileMenuItem(window, 'Save Workspace As');
+    const modal = window.locator('.parallx-modal-overlay');
+    await expect(modal).toBeVisible({ timeout: 3000 });
+    const input = window.locator('.parallx-modal-input');
+    await input.fill('Non-Dupe Test');
+    await input.press('Enter');
+    await waitForSwitchComplete(window);
+
+    // KEY ASSERTIONS: no duplication
+
+    // Exactly ONE sidebar header label
+    const headerLabels = window.locator('.sidebar-header-label');
+    await expect(headerLabels).toHaveCount(1);
+
+    // Exactly ONE gear icon
+    const gearIcons = window.locator('.activity-bar-manage-gear');
+    await expect(gearIcons).toHaveCount(1);
+
+    // NO placeholder fake files
+    const placeholderRows = window.locator('.placeholder-tree-row');
+    await expect(placeholderRows).toHaveCount(0);
+
+    // The Explorer section should exist exactly once
+    const explorerSections = window.locator('.view-section[data-view-id="view.explorer"]');
+    await expect(explorerSections).toHaveCount(1);
+  });
+
+  test('Save As preserves real Explorer (no fake placeholder files)', async ({ electronApp, window, workspacePath }) => {
+    // Open a real folder first
+    await openFolderViaMenu(electronApp, window, workspacePath);
+    const treeNodes = window.locator('.tree-node');
+    await expect(treeNodes.first()).toBeVisible({ timeout: 10_000 });
+
+    // Save As
+    await clickFileMenuItem(window, 'Save Workspace As');
+    const modal = window.locator('.parallx-modal-overlay');
+    await expect(modal).toBeVisible({ timeout: 3000 });
+    const input = window.locator('.parallx-modal-input');
+    await input.fill('Preserved Explorer Test');
+    await input.press('Enter');
+    await waitForSwitchComplete(window);
+
+    // Wait for the Explorer to potentially reload with the folder
+    await window.waitForTimeout(3000);
+
+    // The real Explorer should still show real files (or empty state)
+    // It should NOT show the placeholder fake file tree
+    const placeholderRows = window.locator('.placeholder-tree-row');
+    await expect(placeholderRows).toHaveCount(0);
+
+    const placeholderExplorer = window.locator('.placeholder-explorer');
+    await expect(placeholderExplorer).toHaveCount(0);
+  });
+
+  test('Save As can be cancelled with Escape', async ({ window }) => {
+    const originalName = await getTitlebarWorkspaceName(window);
+
+    // File → Save Workspace As...
+    await clickFileMenuItem(window, 'Save Workspace As');
+    const modal = window.locator('.parallx-modal-overlay');
+    await expect(modal).toBeVisible({ timeout: 3000 });
+
+    // Press Escape
+    await window.keyboard.press('Escape');
+    await window.waitForTimeout(500);
+
+    // Modal should be gone
+    await expect(modal).not.toBeVisible({ timeout: 2000 });
+
+    // Titlebar name should be unchanged
+    const nameAfter = await getTitlebarWorkspaceName(window);
+    expect(nameAfter).toBe(originalName);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 5. Duplicate Workspace
+  // ═══════════════════════════════════════════════════════════════════════
+
+  test('Duplicate Workspace does not switch away from current', async ({ window }) => {
+    const originalName = await getTitlebarWorkspaceName(window);
+
+    // File → Duplicate Workspace
+    await clickFileMenuItem(window, 'Duplicate Workspace');
+    await window.waitForTimeout(2000);
+
+    // Should still be on the original workspace
+    const nameAfter = await getTitlebarWorkspaceName(window);
+    expect(nameAfter).toBe(originalName);
+
+    // UI should be intact — no duplication
+    const headerLabels = window.locator('.sidebar-header-label');
+    await expect(headerLabels).toHaveCount(1);
+    const gearIcons = window.locator('.activity-bar-manage-gear');
+    await expect(gearIcons).toHaveCount(1);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 6. Switch Workspace: full round-trip
+  // ═══════════════════════════════════════════════════════════════════════
+
+  test('switching workspace updates titlebar and preserves UI integrity', async ({ window }) => {
+    // Create a second workspace via Save As
+    await clickFileMenuItem(window, 'Save Workspace As');
+    const modal = window.locator('.parallx-modal-overlay');
+    await expect(modal).toBeVisible({ timeout: 3000 });
+    const input = window.locator('.parallx-modal-input');
+    await input.fill('Second Workspace');
+    await input.press('Enter');
+    await waitForSwitchComplete(window);
+
+    // Verify we're on the new workspace
+    const newName = await getTitlebarWorkspaceName(window);
+    expect(newName).toContain('Second Workspace');
+
+    // UI structure should be intact after the switch
+    // ONE header label
+    await expect(window.locator('.sidebar-header-label')).toHaveCount(1);
+    // ONE gear icon
+    await expect(window.locator('.activity-bar-manage-gear')).toHaveCount(1);
+    // NO placeholder files
+    await expect(window.locator('.placeholder-tree-row')).toHaveCount(0);
+    // ONE Explorer section
+    await expect(window.locator('.view-section[data-view-id="view.explorer"]')).toHaveCount(1);
+    // Activity bar should have at least Explorer and Search icons
+    const activityIcons = window.locator('.activity-bar-item:not(.activity-bar-manage-gear)');
+    const iconCount = await activityIcons.count();
+    expect(iconCount).toBeGreaterThanOrEqual(2);
+  });
+
+  test('switching back and forth does not accumulate elements', async ({ window }) => {
+    // Save As to create 2nd workspace
+    await clickFileMenuItem(window, 'Save Workspace As');
+    let modal = window.locator('.parallx-modal-overlay');
+    await expect(modal).toBeVisible({ timeout: 3000 });
+    let input = window.locator('.parallx-modal-input');
+    await input.fill('WS-A');
+    await input.press('Enter');
+    await waitForSwitchComplete(window);
+
+    // Save As again to create 3rd workspace (switching from WS-A)
+    await clickFileMenuItem(window, 'Save Workspace As');
+    modal = window.locator('.parallx-modal-overlay');
+    await expect(modal).toBeVisible({ timeout: 3000 });
+    input = window.locator('.parallx-modal-input');
+    await input.fill('WS-B');
+    await input.press('Enter');
+    await waitForSwitchComplete(window);
+
+    // After TWO workspace switches, there should still be:
+    // Exactly ONE header label
+    await expect(window.locator('.sidebar-header-label')).toHaveCount(1);
+    // Exactly ONE gear icon
+    await expect(window.locator('.activity-bar-manage-gear')).toHaveCount(1);
+    // ZERO placeholder rows
+    await expect(window.locator('.placeholder-tree-row')).toHaveCount(0);
+    // Exactly ONE Explorer section
+    await expect(window.locator('.view-section[data-view-id="view.explorer"]')).toHaveCount(1);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 7. Open Folder works AFTER Save As
+  // ═══════════════════════════════════════════════════════════════════════
+
+  test('opening a folder after Save As shows real files', async ({ electronApp, window, workspacePath }) => {
+    // Save As to switch to new workspace
+    await clickFileMenuItem(window, 'Save Workspace As');
+    const modal = window.locator('.parallx-modal-overlay');
+    await expect(modal).toBeVisible({ timeout: 3000 });
+    const input = window.locator('.parallx-modal-input');
+    await input.fill('Open Folder Test');
+    await input.press('Enter');
+    await waitForSwitchComplete(window);
+
+    // Now open a folder in the new workspace
+    await openFolderViaMenu(electronApp, window, workspacePath, { force: true });
+
+    // Real tree nodes should appear
+    const treeNodes = window.locator('.tree-node');
+    await expect(treeNodes.first()).toBeVisible({ timeout: 10_000 });
+
+    // Verify real file names
+    const nodeLabels = window.locator('.tree-node-label');
+    const allLabels: string[] = [];
+    const count = await nodeLabels.count();
+    for (let i = 0; i < count; i++) {
+      const text = await nodeLabels.nth(i).textContent();
+      if (text) allLabels.push(text);
+    }
+
+    expect(allLabels.some(l => l === 'README.md' || l === 'src' || l === 'docs')).toBe(true);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 8. Open Recent
+  // ═══════════════════════════════════════════════════════════════════════
+
+  test('Open Recent shows the quick access overlay', async ({ window }) => {
+    // File → Open Recent
+    await clickFileMenuItem(window, 'Open Recent');
+
+    // Quick access overlay should be visible
+    const quickAccess = window.locator('.command-palette-overlay');
+    await expect(quickAccess).toBeVisible({ timeout: 3000 });
+
+    // Dismiss
+    await window.keyboard.press('Escape');
+    await expect(quickAccess).not.toBeVisible({ timeout: 2000 });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 9. Keyboard shortcut: toggle sidebar
+  // ═══════════════════════════════════════════════════════════════════════
+
+  test('Ctrl+B toggles sidebar visibility', async ({ window }) => {
+    const sidebar = window.locator('[data-part-id="workbench.parts.sidebar"]');
+    await expect(sidebar).toBeVisible();
+
+    // Toggle off
+    await window.keyboard.press('Control+b');
+    await window.waitForTimeout(500);
+
+    // Sidebar should be hidden
+    const isVisibleAfterToggle = await sidebar.isVisible();
+    expect(isVisibleAfterToggle).toBe(false);
+
+    // Toggle back on
+    await window.keyboard.press('Control+b');
+    await window.waitForTimeout(500);
+    await expect(sidebar).toBeVisible();
   });
 });

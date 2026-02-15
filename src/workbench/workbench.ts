@@ -464,6 +464,14 @@ export class Workbench extends Layout {
       // 1. Save current workspace
       await this._workspaceSaver.save();
 
+      // 1b. Save view providers BEFORE teardown. removeContributions() in
+      //     teardown deletes _providers, but tools don't re-activate after a
+      //     switch — their registerViewProvider() call was one-time during
+      //     initial activation. We must preserve and re-apply them.
+      const savedProviders = this._viewContribution
+        ? this._viewContribution.getProviders()
+        : new Map();
+
       // 2. Tear down current workspace content (views, containers, DnD)
       this._teardownWorkspaceContent();
 
@@ -482,7 +490,7 @@ export class Workbench extends Layout {
       }
 
       // 4. Rebuild views, containers, DnD inside existing layout
-      this._rebuildWorkspaceContent();
+      this._rebuildWorkspaceContent(savedProviders);
 
       // 5. Apply restored state
       this._applyRestoredState();
@@ -3585,6 +3593,10 @@ export class Workbench extends Layout {
     const sidebarViews = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
     if (sidebarViews) sidebarViews.innerHTML = '';
 
+    // 3b. Clear sidebar header (label + actions) to prevent accumulation
+    const sidebarHeader = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
+    if (sidebarHeader) sidebarHeader.innerHTML = '';
+
     const panelViews = this._panel.element.querySelector('.panel-views') as HTMLElement;
     if (panelViews) panelViews.innerHTML = '';
 
@@ -3598,6 +3610,14 @@ export class Workbench extends Layout {
     for (const icon of this._activityBarPart.getIcons()) {
       this._activityBarPart.removeIcon(icon.id);
     }
+
+    // 4b. Clear manage gear icon (not tracked by addIcon/removeIcon)
+    const bottomSection = this._activityBarPart.contentElement.querySelector('.activity-bar-bottom');
+    const gearBtn = bottomSection?.querySelector('.activity-bar-manage-gear');
+    gearBtn?.remove();
+
+    // 4c. Clear container redirects from previous workspace
+    this._containerRedirects.clear();
 
     // 5. Dispose the view manager (disposes all remaining view instances)
     this._viewManager?.dispose();
@@ -3621,8 +3641,14 @@ export class Workbench extends Layout {
    * Rebuild workspace-specific content after a switch.
    * Re-runs the same logic as Phase 3 (_initializeParts) but without
    * rebuilding the structural layout, titlebar, or status bar.
+   *
+   * @param savedProviders View providers saved before teardown. Tools don't
+   *   re-activate after a switch, so we must re-register their providers
+   *   to replace placeholder stubs with real views.
    */
-  private _rebuildWorkspaceContent(): void {
+  private _rebuildWorkspaceContent(
+    savedProviders: ReadonlyMap<string, import('../contributions/viewContribution.js').IToolViewProvider> = new Map(),
+  ): void {
     // 1. View system — register ALL descriptors, then create containers
     this._viewManager = new ViewManager();
     this._viewManager.registerMany(allPlaceholderViewDescriptors);
@@ -3650,12 +3676,13 @@ export class Workbench extends Layout {
 
       // Replay view contributions for all already-registered tools so
       // contributed containers and views are re-created in the new DOM.
+      //
+      // Providers were already saved in switchWorkspace() BEFORE teardown
+      // (which clears them) and passed in as the savedProviders parameter.
+
       const registry = this._services.get(IToolRegistryService) as unknown as ToolRegistry;
       if (registry) {
         for (const entry of registry.getAll()) {
-          // Only replay container/view additions — the processor tracks
-          // what it already knows and fires onDidAddContainer/onDidAddView
-          // for items that need DOM re-creation.
           const contributes = entry.description.manifest.contributes;
           if (contributes?.viewContainers || contributes?.views) {
             // Remove then re-process to rebuild DOM via events
@@ -3663,6 +3690,12 @@ export class Workbench extends Layout {
             this._viewContribution.processContributions(entry.description);
           }
         }
+      }
+
+      // Re-register saved providers — this triggers onDidRegisterProvider
+      // for each, which replaces placeholder view content with real tool views
+      for (const [viewId, provider] of savedProviders) {
+        this._viewContribution.registerProvider(viewId, provider);
       }
     }
 

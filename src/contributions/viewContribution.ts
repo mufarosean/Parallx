@@ -343,6 +343,15 @@ export class ViewContributionProcessor extends Disposable implements IContributi
     return this._providers.get(viewId);
   }
 
+  /**
+   * Get a snapshot of all currently-registered providers.
+   * Used to preserve providers across workspace switch (remove + re-process
+   * cycle) since tools don't re-activate and re-register their providers.
+   */
+  getProviders(): ReadonlyMap<string, IToolViewProvider> {
+    return new Map(this._providers);
+  }
+
   // ════════════════════════════════════════════════════════════════════════
   // Container Queries
   // ════════════════════════════════════════════════════════════════════════
