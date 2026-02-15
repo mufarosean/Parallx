@@ -1,0 +1,176 @@
+/* ── Welcome Page ────────────────────────────────────────────────────────── */
+
+/* Container — full-height centered layout */
+.welcome-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 40px;
+  overflow-y: auto;
+  background: var(--vscode-editor-background, #1e1e1e);
+  color: var(--vscode-foreground, #cccccc);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.welcome-wrapper {
+  max-width: 700px;
+  width: 100%;
+  text-align: center;
+}
+
+/* Logo */
+.welcome-logo {
+  margin-bottom: 12px;
+  user-select: none;
+  display: flex;
+  justify-content: center;
+}
+
+/* App title */
+.welcome-title {
+  font-size: 28px;
+  font-weight: 300;
+  color: var(--vscode-foreground, #e0e0e0);
+  margin: 0 0 4px;
+}
+
+/* Version label */
+.welcome-version {
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground, #888);
+  margin-bottom: 32px;
+}
+
+/* Divider */
+.welcome-divider {
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border, #333);
+  width: 60%;
+  margin: 0 auto 24px;
+}
+
+/* Two-column layout */
+.welcome-columns {
+  display: flex;
+  gap: 40px;
+  text-align: left;
+  margin-bottom: 32px;
+}
+
+.welcome-col {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Section headings (Start, Help, Recent) */
+.welcome-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vscode-foreground, #e0e0e0);
+  margin: 0 0 12px;
+}
+
+.welcome-section-title--help {
+  margin-top: 20px;
+}
+
+/* ── Action rows (start items, help items) ────────────────────────────── */
+
+.welcome-action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.welcome-action-row:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.welcome-action-icon {
+  font-size: 16px;
+}
+
+.welcome-action-text {
+  color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.welcome-action-hint {
+  color: var(--vscode-descriptionForeground, #888);
+  font-size: 12px;
+  margin-left: auto;
+}
+
+/* ── Recent section ───────────────────────────────────────────────────── */
+
+/* Category labels (Workspaces / Files) */
+.welcome-category-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-descriptionForeground, #888);
+  margin-bottom: 6px;
+}
+
+.welcome-category-label--files {
+  margin-top: 12px;
+}
+
+/* Empty placeholder */
+.welcome-empty {
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground, #888);
+  padding: 4px 0;
+}
+
+/* Recent item rows */
+.welcome-recent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.welcome-recent-row:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.welcome-recent-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.welcome-recent-text-wrap {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.welcome-recent-name {
+  color: var(--vscode-textLink-foreground, #3794ff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.welcome-recent-detail {
+  color: var(--vscode-descriptionForeground, #888);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Footer */
+.welcome-footer {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #555);
+  margin-top: 24px;
+  text-align: center;
+}

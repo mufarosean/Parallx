@@ -130,17 +130,17 @@ test.describe('Keyboard Shortcuts', () => {
 
   test('Ctrl+N creates a new untitled file', async ({ window }) => {
     // Count existing tabs
-    const tabsBefore = await window.locator('.editor-tab').count();
+    const tabsBefore = await window.locator('.ui-tab').count();
 
     await window.keyboard.press('Control+n');
     await window.waitForTimeout(500);
 
-    const tabsAfter = await window.locator('.editor-tab').count();
+    const tabsAfter = await window.locator('.ui-tab').count();
     expect(tabsAfter).toBe(tabsBefore + 1);
 
     // New tab should be active and say "Untitled"
-    const activeTab = window.locator('.editor-tab--active');
-    const label = await activeTab.locator('.editor-tab-label').textContent();
+    const activeTab = window.locator('.ui-tab--active');
+    const label = await activeTab.locator('.ui-tab-label').textContent();
     expect(label).toMatch(/Untitled/i);
   });
 
@@ -148,13 +148,13 @@ test.describe('Keyboard Shortcuts', () => {
     // Ensure we have a tab
     await window.keyboard.press('Control+n');
     await window.waitForTimeout(300);
-    const tabsBefore = await window.locator('.editor-tab').count();
+    const tabsBefore = await window.locator('.ui-tab').count();
     expect(tabsBefore).toBeGreaterThan(0);
 
     await window.keyboard.press('Control+w');
     await window.waitForTimeout(500);
 
-    const tabsAfter = await window.locator('.editor-tab').count();
+    const tabsAfter = await window.locator('.ui-tab').count();
     expect(tabsAfter).toBe(tabsBefore - 1);
   });
 });

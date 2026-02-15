@@ -4,9 +4,9 @@
 // It holds validated tool descriptions, tracks their lifecycle state,
 // and fires events when registrations or state transitions occur.
 
-import { IDisposable, Disposable } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { IToolManifest, IToolDescription } from './toolManifest.js';
+import { IToolDescription } from './toolManifest.js';
 
 // ─── Tool State ──────────────────────────────────────────────────────────────
 
@@ -236,7 +236,7 @@ export class ToolRegistry extends Disposable {
 
   override dispose(): void {
     // Dispose all remaining tool entries
-    for (const [toolId, entry] of this._entries) {
+    for (const [, entry] of this._entries) {
       if (entry.state !== ToolState.Disposed) {
         entry.state = ToolState.Disposed;
       }

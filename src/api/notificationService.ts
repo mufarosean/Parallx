@@ -5,8 +5,9 @@
 // Renders brief toast messages in the bottom-right corner of the workbench
 // with support for severity levels, action buttons, and auto-dismiss.
 
-import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -38,7 +39,6 @@ export interface NotificationResult {
 let _nextNotificationId = 1;
 
 const DEFAULT_TIMEOUT_MS = 5000;
-const NOTIFICATION_GAP_PX = 8;
 
 /**
  * Manages toast notifications displayed in the workbench.
@@ -95,9 +95,8 @@ export class NotificationService extends Disposable {
   attach(parent: HTMLElement): void {
     if (this._container) return;
 
-    this._container = document.createElement('div');
-    this._container.className = 'parallx-notification-container';
-    this._applyContainerStyles(this._container);
+    this._container = $('div');
+    this._container.className = 'parallx-notifications-container';
     parent.appendChild(this._container);
   }
 
@@ -211,55 +210,39 @@ export class NotificationService extends Disposable {
 
   private _createNotificationElement(
     notification: INotification,
-    resolve: (result: NotificationResult) => void,
+    _resolve: (result: NotificationResult) => void,
   ): HTMLElement {
-    const el = document.createElement('div');
+    const el = $('div');
     el.className = `parallx-notification parallx-notification-${notification.severity}`;
     el.dataset.notificationId = notification.id;
-    this._applyNotificationStyles(el, notification.severity);
 
     // Content row
-    const content = document.createElement('div');
+    const content = $('div');
     content.className = 'parallx-notification-content';
-    content.style.display = 'flex';
-    content.style.alignItems = 'flex-start';
-    content.style.gap = '8px';
-    content.style.flex = '1';
 
     // Severity icon
-    const icon = document.createElement('span');
+    const icon = $('span');
     icon.className = 'parallx-notification-icon';
     icon.textContent = this._getSeverityIcon(notification.severity);
-    icon.style.flexShrink = '0';
-    icon.style.fontSize = '14px';
-    icon.style.lineHeight = '20px';
     content.appendChild(icon);
 
     // Message
-    const msg = document.createElement('span');
+    const msg = $('span');
     msg.className = 'parallx-notification-message';
     msg.textContent = notification.message;
-    msg.style.flex = '1';
-    msg.style.lineHeight = '20px';
-    msg.style.wordBreak = 'break-word';
     content.appendChild(msg);
 
     el.appendChild(content);
 
     // Actions row
     if (notification.actions.length > 0) {
-      const actionsRow = document.createElement('div');
+      const actionsRow = $('div');
       actionsRow.className = 'parallx-notification-actions';
-      actionsRow.style.display = 'flex';
-      actionsRow.style.gap = '6px';
-      actionsRow.style.marginTop = '6px';
-      actionsRow.style.marginLeft = '22px';
 
       for (const action of notification.actions) {
-        const btn = document.createElement('button');
+        const btn = $('button');
         btn.className = 'parallx-notification-action-btn';
         btn.textContent = action.title;
-        this._applyButtonStyles(btn);
         btn.addEventListener('click', () => {
           this._dismiss(notification.id, action);
         });
@@ -270,10 +253,9 @@ export class NotificationService extends Disposable {
     }
 
     // Close button
-    const closeBtn = document.createElement('button');
+    const closeBtn = $('button');
     closeBtn.className = 'parallx-notification-close';
     closeBtn.textContent = '×';
-    this._applyCloseButtonStyles(closeBtn);
     closeBtn.addEventListener('click', () => {
       this._dismiss(notification.id, undefined);
     });
@@ -298,75 +280,6 @@ export class NotificationService extends Disposable {
     }
   }
 
-  private _getSeverityColor(severity: NotificationSeverity): string {
-    switch (severity) {
-      case NotificationSeverity.Information: return '#3794ff';
-      case NotificationSeverity.Warning: return '#cca700';
-      case NotificationSeverity.Error: return '#f14c4c';
-    }
-  }
-
-  // ── Styling ──
-
-  private _applyContainerStyles(el: HTMLElement): void {
-    el.style.position = 'fixed';
-    el.style.bottom = '40px'; // above status bar
-    el.style.right = '16px';
-    el.style.zIndex = '10000';
-    el.style.display = 'flex';
-    el.style.flexDirection = 'column';
-    el.style.gap = `${NOTIFICATION_GAP_PX}px`;
-    el.style.maxWidth = '420px';
-    el.style.pointerEvents = 'none'; // container is transparent to clicks
-  }
-
-  private _applyNotificationStyles(el: HTMLElement, severity: NotificationSeverity): void {
-    el.style.position = 'relative';
-    el.style.display = 'flex';
-    el.style.flexDirection = 'column';
-    el.style.padding = '10px 32px 10px 12px';
-    el.style.backgroundColor = '#252526';
-    el.style.color = '#cccccc';
-    el.style.fontSize = '13px';
-    el.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-    el.style.borderRadius = '4px';
-    el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
-    el.style.borderLeft = `3px solid ${this._getSeverityColor(severity)}`;
-    el.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
-    el.style.pointerEvents = 'auto'; // individual notifications are clickable
-    el.style.minWidth = '280px';
-  }
-
-  private _applyButtonStyles(btn: HTMLElement): void {
-    btn.style.padding = '3px 10px';
-    btn.style.fontSize = '12px';
-    btn.style.backgroundColor = '#0e639c';
-    btn.style.color = '#ffffff';
-    btn.style.border = 'none';
-    btn.style.borderRadius = '3px';
-    btn.style.cursor = 'pointer';
-    btn.style.lineHeight = '18px';
-  }
-
-  private _applyCloseButtonStyles(btn: HTMLElement): void {
-    btn.style.position = 'absolute';
-    btn.style.top = '6px';
-    btn.style.right = '6px';
-    btn.style.width = '20px';
-    btn.style.height = '20px';
-    btn.style.display = 'flex';
-    btn.style.alignItems = 'center';
-    btn.style.justifyContent = 'center';
-    btn.style.background = 'transparent';
-    btn.style.border = 'none';
-    btn.style.color = '#999999';
-    btn.style.cursor = 'pointer';
-    btn.style.fontSize = '16px';
-    btn.style.lineHeight = '1';
-    btn.style.padding = '0';
-    btn.style.borderRadius = '3px';
-  }
-
   // ── Disposal ──
 
   override dispose(): void {
@@ -389,43 +302,25 @@ export function showInputBoxModal(
   return new Promise(resolve => {
     const overlay = _createModalOverlay(parent);
 
-    const box = document.createElement('div');
-    box.style.backgroundColor = '#252526';
-    box.style.borderRadius = '6px';
-    box.style.padding = '16px';
-    box.style.minWidth = '400px';
-    box.style.maxWidth = '500px';
-    box.style.boxShadow = '0 8px 24px rgba(0,0,0,0.6)';
+    const box = $('div');
+    box.className = 'parallx-modal-box';
 
     if (options.prompt) {
-      const label = document.createElement('div');
+      const label = $('div');
       label.textContent = options.prompt;
-      label.style.color = '#cccccc';
-      label.style.fontSize = '13px';
-      label.style.marginBottom = '8px';
+      label.className = 'parallx-modal-label';
       box.appendChild(label);
     }
 
-    const input = document.createElement('input');
+    const input = $('input');
     input.type = options.password ? 'password' : 'text';
     input.value = options.value ?? '';
     input.placeholder = options.placeholder ?? '';
-    input.style.width = '100%';
-    input.style.padding = '6px 8px';
-    input.style.fontSize = '13px';
-    input.style.backgroundColor = '#3c3c3c';
-    input.style.color = '#cccccc';
-    input.style.border = '1px solid #474747';
-    input.style.borderRadius = '3px';
-    input.style.outline = 'none';
-    input.style.boxSizing = 'border-box';
+    input.className = 'parallx-modal-input';
     box.appendChild(input);
 
-    const errorLabel = document.createElement('div');
-    errorLabel.style.color = '#f14c4c';
-    errorLabel.style.fontSize = '12px';
-    errorLabel.style.marginTop = '4px';
-    errorLabel.style.minHeight = '16px';
+    const errorLabel = $('div');
+    errorLabel.className = 'parallx-modal-error';
     box.appendChild(errorLabel);
 
     overlay.appendChild(box);
@@ -471,37 +366,19 @@ export function showQuickPickModal(
   return new Promise(resolve => {
     const overlay = _createModalOverlay(parent);
 
-    const box = document.createElement('div');
-    box.style.backgroundColor = '#252526';
-    box.style.borderRadius = '6px';
-    box.style.minWidth = '400px';
-    box.style.maxWidth = '500px';
-    box.style.maxHeight = '400px';
-    box.style.display = 'flex';
-    box.style.flexDirection = 'column';
-    box.style.boxShadow = '0 8px 24px rgba(0,0,0,0.6)';
-    box.style.overflow = 'hidden';
+    const box = $('div');
+    box.className = 'parallx-quickpick-box';
 
     // Search input
-    const input = document.createElement('input');
+    const input = $('input');
     input.type = 'text';
     input.placeholder = options.placeholder ?? 'Select an item...';
-    input.style.width = '100%';
-    input.style.padding = '8px 12px';
-    input.style.fontSize = '13px';
-    input.style.backgroundColor = '#3c3c3c';
-    input.style.color = '#cccccc';
-    input.style.border = 'none';
-    input.style.borderBottom = '1px solid #474747';
-    input.style.outline = 'none';
-    input.style.boxSizing = 'border-box';
+    input.className = 'parallx-quickpick-input';
     box.appendChild(input);
 
     // Items list
-    const list = document.createElement('div');
-    list.style.overflowY = 'auto';
-    list.style.flex = '1';
-    list.style.padding = '4px 0';
+    const list = $('div');
+    list.className = 'parallx-quickpick-list';
     box.appendChild(list);
 
     const selected = new Set<number>();
@@ -515,26 +392,22 @@ export function showQuickPickModal(
       items.forEach((item, i) => {
         if (lowerFilter && !item.label.toLowerCase().includes(lowerFilter)) return;
 
-        const row = document.createElement('div');
-        row.style.padding = '4px 12px';
-        row.style.cursor = 'pointer';
-        row.style.fontSize = '13px';
-        row.style.color = '#cccccc';
+        const row = $('div');
+        row.className = 'parallx-quickpick-row';
         row.dataset.index = String(i);
 
         if (visibleIndex === highlightIndex) {
-          row.style.backgroundColor = '#04395e';
+          row.classList.add('parallx-quickpick-row--active');
         }
 
-        const labelEl = document.createElement('span');
+        const labelEl = $('span');
         labelEl.textContent = item.label;
         row.appendChild(labelEl);
 
         if (item.description) {
-          const desc = document.createElement('span');
+          const desc = $('span');
           desc.textContent = `  ${item.description}`;
-          desc.style.color = '#888888';
-          desc.style.fontSize = '12px';
+          desc.className = 'parallx-quickpick-desc';
           row.appendChild(desc);
         }
 
@@ -605,15 +478,8 @@ export function showQuickPickModal(
 // ── Modal overlay helper ──
 
 function _createModalOverlay(parent: HTMLElement): HTMLElement {
-  const overlay = document.createElement('div');
-  overlay.style.position = 'fixed';
-  overlay.style.inset = '0';
-  overlay.style.backgroundColor = 'rgba(0,0,0,0.4)';
-  overlay.style.display = 'flex';
-  overlay.style.alignItems = 'flex-start';
-  overlay.style.justifyContent = 'center';
-  overlay.style.paddingTop = '20vh';
-  overlay.style.zIndex = '20000';
+  const overlay = $('div');
+  overlay.className = 'parallx-modal-overlay';
   parent.appendChild(overlay);
   return overlay;
 }

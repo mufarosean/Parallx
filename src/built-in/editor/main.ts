@@ -35,12 +35,9 @@ interface ToolContext {
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
-let _api: ParallxApi;
-
 // ─── Activation ──────────────────────────────────────────────────────────────
 
 export function activate(api: ParallxApi, context: ToolContext): void {
-  _api = api;
 
   // ── editor.toggleWordWrap ──
   context.subscriptions.push(
@@ -69,20 +66,29 @@ export function deactivate(): void {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Find the active TextEditorPane's textarea in the DOM and toggle word wrap.
+ * Find the active TextEditorPane instance and call its toggleWordWrap() method.
  *
- * Approach: The workbench has at most one `.editor-pane .text-editor-textarea`
- * that's visible. We toggle the `--wrap` modifier on it.
+ * Approach: The active editor group is marked with `.editor-group--active`.
+ * Its textarea stores a back-reference to the TextEditorPane instance.
+ * Calling toggleWordWrap() properly updates internal state, CSS, the
+ * minimap, and fires the onDidToggleWordWrap event.
  */
 function toggleWordWrapOnActivePane(): void {
+  // Target the active group's textarea so multi-group layouts work correctly
   const textarea = document.querySelector(
-    '.editor-pane .text-editor-textarea',
-  ) as HTMLTextAreaElement | null;
+    '.editor-group--active .editor-pane .text-editor-textarea',
+  ) as (HTMLTextAreaElement & { __textEditorPane?: TextEditorPane }) | null;
 
   if (!textarea) {
     console.warn('[FileEditorTool] No active text editor to toggle word wrap on.');
     return;
   }
 
-  textarea.classList.toggle('text-editor-textarea--wrap');
+  const pane = textarea.__textEditorPane;
+  if (pane) {
+    pane.toggleWordWrap();
+  } else {
+    // Fallback: direct CSS toggle (should not happen)
+    textarea.classList.toggle('text-editor-textarea--wrap');
+  }
 }

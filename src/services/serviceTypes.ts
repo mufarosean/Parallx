@@ -1,6 +1,6 @@
 // serviceTypes.ts — service interface definitions
 
-import { ServiceIdentifier, createServiceIdentifier } from '../platform/types.js';
+import { createServiceIdentifier } from '../platform/types.js';
 import { IDisposable } from '../platform/lifecycle.js';
 import { Event } from '../platform/events.js';
 
@@ -218,11 +218,20 @@ export interface IEditorGroupService extends IDisposable {
   /** Get a group by ID. */
   getGroup(groupId: string): EditorGroupView | undefined;
 
-  /** Split a group in a direction. */
+  /** Split a group in a direction (creates new group, copies active editor). */
   splitGroup(sourceGroupId: string, direction: GroupDirection): EditorGroupView | undefined;
 
-  /** Remove a group (last group replaced by empty one). */
+  /** Add a group adjacent to the reference group (VS Code naming for splitGroup). */
+  addGroup(referenceGroupId: string, direction: GroupDirection): EditorGroupView | undefined;
+
+  /** Remove a group (merges editors into nearest group; last group replaced by empty one). */
   removeGroup(groupId: string): void;
+
+  /** Merge source group's editors into target group, then remove source. */
+  mergeGroup(sourceGroupId: string, targetGroupId: string): void;
+
+  /** Find a group adjacent to the source in the given direction. */
+  findGroup(direction: GroupDirection, sourceGroupId?: string): EditorGroupView | undefined;
 
   /** Activate a group by ID. */
   activateGroup(groupId: string): void;
@@ -233,10 +242,6 @@ export const IEditorGroupService = createServiceIdentifier<IEditorGroupService>(
 // ─── ICommandService ─────────────────────────────────────────────────────────
 
 import type {
-  CommandDescriptor,
-  CommandExecutedEvent,
-  CommandRegisteredEvent,
-  CommandUnregisteredEvent,
   ICommandServiceShape,
 } from '../commands/commandTypes.js';
 
@@ -454,10 +459,6 @@ export const IToolActivatorService = createServiceIdentifier<IToolActivatorServi
 
 import type {
   IConfigurationServiceShape,
-  IConfigurationChangeEvent,
-  IConfigurationPropertySchema,
-  IRegisteredConfigurationSection,
-  IWorkspaceConfiguration,
 } from '../configuration/configurationTypes.js';
 
 /**
@@ -470,7 +471,6 @@ export const IConfigurationService = createServiceIdentifier<IConfigurationServi
 // ─── ICommandContributionService ─────────────────────────────────────────────
 
 import type { IContributedCommand } from '../contributions/contributionTypes.js';
-import type { CommandContributionProcessor } from '../contributions/commandContribution.js';
 
 export interface ICommandContributionService {
   processContributions(toolDescription: IToolDescription): void;
@@ -486,7 +486,6 @@ export const ICommandContributionService = createServiceIdentifier<ICommandContr
 // ─── IKeybindingContributionService ──────────────────────────────────────────
 
 import type { IContributedKeybinding } from '../contributions/contributionTypes.js';
-import type { KeybindingContributionProcessor } from '../contributions/keybindingContribution.js';
 
 export interface IKeybindingContributionService {
   processContributions(toolDescription: IToolDescription): void;
@@ -500,7 +499,6 @@ export const IKeybindingContributionService = createServiceIdentifier<IKeybindin
 // ─── IMenuContributionService ────────────────────────────────────────────────
 
 import type { IContributedMenuItem, MenuLocationId } from '../contributions/contributionTypes.js';
-import type { MenuContributionProcessor } from '../contributions/menuContribution.js';
 
 export interface IMenuContributionService {
   processContributions(toolDescription: IToolDescription): void;
@@ -715,3 +713,26 @@ export interface ITextFileModelManager extends IDisposable {
 }
 
 export const ITextFileModelManager = createServiceIdentifier<ITextFileModelManager>('ITextFileModelManager');
+
+// ─── IThemeService (M5 Capability 3) ──────────────────────────────────────
+
+/**
+ * Manages color themes — loading, resolving, and injecting CSS custom properties.
+ *
+ * VS Code reference: IThemeService (src/vs/platform/theme/common/themeService.ts)
+ */
+export interface IThemeServiceShape extends IDisposable {
+  /** The currently applied color theme. */
+  readonly activeTheme: import('../theme/themeData.js').IColorTheme;
+
+  /** Fired when the active theme changes. */
+  readonly onDidChangeTheme: Event<import('../theme/themeData.js').IColorTheme>;
+
+  /** Resolve a color from the active theme, with registry default fallback. */
+  getColor(colorId: string): string;
+
+  /** Apply a parsed theme. */
+  applyTheme(theme: import('../theme/themeData.js').ColorThemeData): void;
+}
+
+export const IThemeService = createServiceIdentifier<IThemeServiceShape>('IThemeService');

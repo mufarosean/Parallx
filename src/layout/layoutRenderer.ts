@@ -1,11 +1,11 @@
 // layoutRenderer.ts — render UI from layout state
 
-import { Disposable, DisposableStore, toDisposable } from '../platform/lifecycle.js';
+import { Disposable, DisposableStore } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { Orientation } from './layoutTypes.js';
 import { IGridView } from './gridView.js';
 import { Grid } from './grid.js';
-import { SerializedGrid, SerializedLayoutState, createDefaultLayoutState } from './layoutModel.js';
+import { SerializedLayoutState, createDefaultLayoutState } from './layoutModel.js';
 
 /**
  * Renders and manages the grid layout within a container DOM element.
@@ -189,11 +189,7 @@ export class LayoutRenderer extends Disposable {
    * Apply base CSS classes and styles to the container.
    */
   private _applyContainerStyles(): void {
-    this._container.classList.add('parallx-layout-container');
-    this._container.style.overflow = 'hidden';
-    this._container.style.position = 'relative';
-    this._container.style.width = '100%';
-    this._container.style.height = '100%';
+    this._container.classList.add('parallx-layout-container', 'fill-container');
   }
 
   override dispose(): void {

@@ -7,7 +7,7 @@
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { $, append, addDisposableListener, toggleClass } from './dom.js';
+import { $, addDisposableListener, toggleClass } from './dom.js';
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 

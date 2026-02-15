@@ -19,7 +19,15 @@ import { IDisposable, toDisposable } from '../platform/lifecycle.js';
  * VS Code reference: `src/vs/base/browser/dom.ts` → `$()` helper.
  */
 export function $<K extends keyof HTMLElementTagNameMap>(
-  descriptor: K | string,
+  descriptor: K,
+  ...children: (HTMLElement | string)[]
+): HTMLElementTagNameMap[K];
+export function $(
+  descriptor: string,
+  ...children: (HTMLElement | string)[]
+): HTMLElement;
+export function $(
+  descriptor: string,
   ...children: (HTMLElement | string)[]
 ): HTMLElement {
   const parts = descriptor.split('.');
@@ -116,4 +124,25 @@ export function toggleClass(element: HTMLElement, className: string, condition: 
  */
 export function isAncestorOfActiveElement(element: HTMLElement): boolean {
   return element.contains(document.activeElement);
+}
+// ─── Drag Guard ──────────────────────────────────────────────────────────
+
+/**
+ * Set `document.body.style.cursor` and disable text selection while dragging.
+ * Call `endDrag()` on mouseup to restore.
+ *
+ * This prevents cursor flicker and accidental text selection during
+ * mouse-driven resize/drag operations (sashes, splitters, etc.).
+ */
+export function startDrag(cursor: string): void {
+  document.body.style.cursor = cursor;
+  document.body.style.userSelect = 'none';
+}
+
+/**
+ * Restore cursor and text selection after a drag operation.
+ */
+export function endDrag(): void {
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
 }

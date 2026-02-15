@@ -10,17 +10,13 @@
 import { Disposable, DisposableStore } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { EDITOR_TAB_DRAG_TYPE, EditorTabDragData, GroupDirection } from './editorTypes.js';
+import { $ } from '../ui/dom.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /** Fraction of the editor area width/height used as the edge split threshold. */
 const EDGE_THRESHOLD = 0.33;
 
-/** z-index for the overlay (matches VS Code: 10000). */
-const OVERLAY_Z_INDEX = '10000';
-
-/** Transition duration for the overlay indicator. */
-const TRANSITION_DURATION = '150ms';
 
 // ── Split Direction ──────────────────────────────────────────────────────────
 
@@ -34,7 +30,7 @@ enum OverlayPosition {
 
 // ── Drop Overlay Event ───────────────────────────────────────────────────────
 
-export interface EditorDropEvent {
+interface EditorDropEvent {
   /** The dragged tab data. */
   readonly data: EditorTabDragData;
   /** The target group element's data-editor-group-id. */
@@ -83,14 +79,14 @@ class EditorDropOverlay extends Disposable {
   // ── DOM creation ──
 
   private _createOverlayContainer(): HTMLElement {
-    const el = document.createElement('div');
+    const el = $('div');
     el.classList.add('editor-drop-overlay');
     // Positioning via .editor-drop-overlay CSS class (position absolute, inset 0, z-index, pointer-events)
     return el;
   }
 
   private _createIndicator(): HTMLElement {
-    const el = document.createElement('div');
+    const el = $('div');
     el.classList.add('editor-drop-overlay-indicator');
     return el;
   }
@@ -123,7 +119,7 @@ class EditorDropOverlay extends Disposable {
       this._enterCounter++;
     };
 
-    const onDragLeave = (e: DragEvent): void => {
+    const onDragLeave = (_e: DragEvent): void => {
       this._enterCounter--;
       if (this._enterCounter <= 0) {
         this._enterCounter = 0;
@@ -274,6 +270,7 @@ export class EditorDropTarget extends Disposable {
   readonly onDidDrop: Event<EditorDropEvent> = this._onDidDrop.event;
 
   private _activeOverlay: EditorDropOverlay | undefined;
+  private _activeOverlayGroupElement: HTMLElement | undefined;
   private readonly _overlayDisposables = this._register(new DisposableStore());
 
   constructor(
@@ -293,8 +290,18 @@ export class EditorDropTarget extends Disposable {
       const groupElement = this._findGroupElement(e.target as HTMLElement | null);
       if (!groupElement) return;
 
-      // Don't create overlay if we're over the tab bar area
-      if (this._isOverTabBar(e.target as HTMLElement | null)) return;
+      // Don't create overlay if we're over the tab bar area — UNLESS the
+      // group is empty (no tabs to act as drop targets). VS Code parity:
+      // empty groups accept drops on the tab bar via the pane overlay.
+      if (this._isOverTabBar(e.target as HTMLElement | null)) {
+        const hasEditors = groupElement.querySelectorAll('.ui-tab').length > 0;
+        if (hasEditors) return;
+      }
+
+      // VS Code parity: if the overlay belongs to a different group, switch it
+      if (this._activeOverlay && this._activeOverlayGroupElement !== groupElement) {
+        this._clearOverlay();
+      }
 
       // Create overlay if needed
       if (!this._activeOverlay) {
@@ -302,11 +309,26 @@ export class EditorDropTarget extends Disposable {
       }
     };
 
+    // Document-level dragover: dismiss the overlay when the cursor leaves
+    // the editor group container. This is more reliable than enter/leave
+    // counters which are notoriously flaky in HTML5 DnD.
+    const onDocumentDragOver = (e: DragEvent): void => {
+      if (!this._activeOverlay) return;
+      const rect = el.getBoundingClientRect();
+      const inside = e.clientX >= rect.left && e.clientX <= rect.right &&
+                     e.clientY >= rect.top && e.clientY <= rect.bottom;
+      if (!inside) {
+        this._clearOverlay();
+      }
+    };
+
     el.addEventListener('dragover', onDragOver, { capture: true });
+    document.addEventListener('dragover', onDocumentDragOver);
 
     this._register({
       dispose: () => {
         el.removeEventListener('dragover', onDragOver, { capture: true });
+        document.removeEventListener('dragover', onDocumentDragOver);
       },
     });
   }
@@ -316,6 +338,7 @@ export class EditorDropTarget extends Disposable {
 
     const overlay = new EditorDropOverlay(groupElement);
     this._activeOverlay = overlay;
+    this._activeOverlayGroupElement = groupElement;
 
     this._overlayDisposables.add(overlay);
 
@@ -332,6 +355,7 @@ export class EditorDropTarget extends Disposable {
 
     this._overlayDisposables.add(overlay.onDidDispose(() => {
       this._activeOverlay = undefined;
+      this._activeOverlayGroupElement = undefined;
       this._overlayDisposables.clear();
     }));
   }
@@ -340,6 +364,7 @@ export class EditorDropTarget extends Disposable {
     if (this._activeOverlay) {
       this._activeOverlay.dispose();
       this._activeOverlay = undefined;
+      this._activeOverlayGroupElement = undefined;
     }
   }
 

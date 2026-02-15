@@ -1,16 +1,17 @@
 // viewContainer.ts — container that hosts multiple views with tabbed UI
 
-import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS, Orientation } from '../layout/layoutTypes.js';
+import { Orientation } from '../layout/layoutTypes.js';
+import { $,  hide, show, startDrag, endDrag } from '../ui/dom.js';
 import { IGridView } from '../layout/gridView.js';
-import { IView, ViewState } from './view.js';
+import { IView } from './view.js';
 
 // ─── Tab State ───────────────────────────────────────────────────────────────
 
-export type ViewContainerMode = 'tabbed' | 'stacked';
+type ViewContainerMode = 'tabbed' | 'stacked';
 
-export interface TabInfo {
+interface TabInfo {
   readonly viewId: string;
   readonly name: string;
   readonly icon?: string;
@@ -53,7 +54,6 @@ export class ViewContainer extends Disposable implements IGridView {
 
   private _width = 0;
   private _height = 0;
-  private _visible = true;
   private _tabBarHeight = 35;
 
   // ── Stacked mode ──
@@ -61,8 +61,12 @@ export class ViewContainer extends Disposable implements IGridView {
   private _mode: ViewContainerMode = 'tabbed';
   private _collapsedSections = new Set<string>();
   private _sectionElements = new Map<string, { wrapper: HTMLElement; header: HTMLElement; body: HTMLElement; actionsSlot: HTMLElement }>();
+
+  /** Public accessor for a section's actions slot element. */
+  getSectionActionsSlot(viewId: string): HTMLElement | undefined {
+    return this._sectionElements.get(viewId)?.actionsSlot;
+  }
   private _sectionSashes: HTMLElement[] = [];
-  private _sectionSashDragState: { sashIndex: number; startY: number } | null = null;
 
   static readonly SECTION_HEADER_HEIGHT = 22;
   static readonly SECTION_SASH_HEIGHT = 4;
@@ -93,11 +97,11 @@ export class ViewContainer extends Disposable implements IGridView {
     super();
 
     // Root element
-    this._element = document.createElement('div');
+    this._element = $('div');
     this._element.classList.add('view-container', `view-container-${id}`);
 
     // Tab bar
-    this._tabBar = document.createElement('div');
+    this._tabBar = $('div');
     this._tabBar.classList.add('view-container-tabs');
     this._tabBar.style.height = `${this._tabBarHeight}px`;
     this._tabBar.setAttribute('role', 'tablist');
@@ -147,7 +151,7 @@ export class ViewContainer extends Disposable implements IGridView {
     });
 
     // Content area
-    this._contentArea = document.createElement('div');
+    this._contentArea = $('div');
     this._contentArea.classList.add('view-container-content');
     this._element.appendChild(this._contentArea);
   }
@@ -234,7 +238,6 @@ export class ViewContainer extends Disposable implements IGridView {
   }
 
   setVisible(visible: boolean): void {
-    this._visible = visible;
     this._element.classList.toggle('hidden', !visible);
   }
 
@@ -451,6 +454,13 @@ export class ViewContainer extends Disposable implements IGridView {
   restoreContainerState(state: ViewContainerState): void {
     if (state.tabOrder.length > 0) {
       this._tabOrder = state.tabOrder.filter(id => this._views.has(id));
+      // Append any views that exist but weren't in the saved tab order
+      // (e.g., views added to the codebase after the workspace was last saved).
+      for (const id of this._views.keys()) {
+        if (!this._tabOrder.includes(id)) {
+          this._tabOrder.push(id);
+        }
+      }
       if (this._mode !== 'stacked') {
         this._rebuildTabBar();
       }
@@ -482,7 +492,7 @@ export class ViewContainer extends Disposable implements IGridView {
     if (this._collapsedSections.has(viewId)) {
       // Expand
       this._collapsedSections.delete(viewId);
-      section.body.style.display = '';
+      show(section.body);
       section.header.setAttribute('aria-expanded', 'true');
       section.wrapper.classList.remove('collapsed');
       const chevron = section.header.querySelector('.view-section-chevron') as HTMLElement | null;
@@ -491,7 +501,7 @@ export class ViewContainer extends Disposable implements IGridView {
     } else {
       // Collapse
       this._collapsedSections.add(viewId);
-      section.body.style.display = 'none';
+      hide(section.body);
       section.header.setAttribute('aria-expanded', 'false');
       section.wrapper.classList.add('collapsed');
       const chevron = section.header.querySelector('.view-section-chevron') as HTMLElement | null;
@@ -506,36 +516,36 @@ export class ViewContainer extends Disposable implements IGridView {
    * Create a section wrapper for a view in stacked mode.
    */
   private _createSection(view: IView): void {
-    const wrapper = document.createElement('div');
+    const wrapper = $('div');
     wrapper.classList.add('view-section');
     wrapper.dataset.viewId = view.id;
 
     // Header
-    const header = document.createElement('div');
+    const header = $('div');
     header.classList.add('view-section-header');
     header.tabIndex = 0;
     header.setAttribute('role', 'button');
     header.setAttribute('aria-expanded', 'true');
 
-    const chevron = document.createElement('span');
+    const chevron = $('span');
     chevron.classList.add('view-section-chevron');
     chevron.textContent = '▾';
     header.appendChild(chevron);
 
-    const title = document.createElement('span');
+    const title = $('span');
     title.classList.add('view-section-title');
     title.textContent = view.name;
     header.appendChild(title);
 
     // Actions slot — consumers (workbench) can render action buttons here
-    const actionsSlot = document.createElement('div');
+    const actionsSlot = $('div');
     actionsSlot.classList.add('view-section-actions');
     header.appendChild(actionsSlot);
 
     wrapper.appendChild(header);
 
     // Body
-    const body = document.createElement('div');
+    const body = $('div');
     body.classList.add('view-section-body');
     wrapper.appendChild(body);
 
@@ -591,7 +601,7 @@ export class ViewContainer extends Disposable implements IGridView {
       .filter((s): s is NonNullable<typeof s> => s !== undefined);
 
     for (let i = 0; i < sections.length - 1; i++) {
-      const sash = document.createElement('div');
+      const sash = $('div');
       sash.classList.add('view-section-sash');
       sash.dataset.sashIndex = String(i);
 
@@ -610,7 +620,6 @@ export class ViewContainer extends Disposable implements IGridView {
    * Handle mousedown on a section sash for vertical resize between stacked sections.
    */
   private _onSectionSashMouseDown(sashIndex: number, startY: number): void {
-    this._sectionSashDragState = { sashIndex, startY };
 
     const expandedIds = this._tabOrder.filter(id => !this._collapsedSections.has(id));
     if (expandedIds.length < 2) return;
@@ -648,17 +657,14 @@ export class ViewContainer extends Disposable implements IGridView {
     };
 
     const onMouseUp = (): void => {
-      this._sectionSashDragState = null;
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      endDrag();
     };
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-    document.body.style.cursor = 'row-resize';
-    document.body.style.userSelect = 'none';
+    startDrag('row-resize');
   }
 
   /**
@@ -690,7 +696,6 @@ export class ViewContainer extends Disposable implements IGridView {
 
     const viewIds = this._tabOrder.filter(id => this._views.has(id));
     const expandedIds = viewIds.filter(id => !this._collapsedSections.has(id));
-    const collapsedIds = viewIds.filter(id => this._collapsedSections.has(id));
 
     // Space used by all section headers + collapsed sections + sashes
     const headerSpace = viewIds.length * headerH;
@@ -712,9 +717,9 @@ export class ViewContainer extends Disposable implements IGridView {
 
       if (this._collapsedSections.has(viewId)) {
         section.body.style.height = '0px';
-        section.body.style.display = 'none';
+        hide(section.body);
       } else {
-        section.body.style.display = '';
+        show(section.body);
         section.body.style.height = `${perSectionBodyH}px`;
         view.layout(this._width, perSectionBodyH);
       }
@@ -724,7 +729,7 @@ export class ViewContainer extends Disposable implements IGridView {
   // ── Tab DOM ──
 
   private _createTab(view: IView): void {
-    const tab = document.createElement('div');
+    const tab = $('div');
     tab.classList.add('view-tab');
     tab.dataset.viewId = view.id;
     tab.setAttribute('role', 'tab');
@@ -733,13 +738,13 @@ export class ViewContainer extends Disposable implements IGridView {
 
     // Icon
     if (view.icon) {
-      const iconEl = document.createElement('span');
+      const iconEl = $('span');
       iconEl.classList.add('view-tab-icon', view.icon);
       tab.appendChild(iconEl);
     }
 
     // Label
-    const label = document.createElement('span');
+    const label = $('span');
     label.classList.add('view-tab-label');
     label.textContent = view.name;
     tab.appendChild(label);
@@ -757,6 +762,8 @@ export class ViewContainer extends Disposable implements IGridView {
       tab.classList.remove('tab-dragging');
     });
     tab.addEventListener('dragover', (e) => {
+      // Reject editor-tab drags — only accept view-tab reorder drags
+      if (e.dataTransfer?.types.includes('application/parallx-editor-tab')) return;
       e.preventDefault();
       tab.classList.add('tab-drop-target');
     });

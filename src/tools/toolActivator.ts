@@ -13,7 +13,7 @@
 //   3. Clean up contributed entities (commands, views, context keys)
 //   4. Clear module references for GC
 
-import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { IStorage } from '../platform/storage.js';
 import { ToolRegistry, ToolState } from './toolRegistry.js';
@@ -22,9 +22,8 @@ import { ToolErrorService } from './toolErrorIsolation.js';
 import { ActivationEventService } from './activationEventService.js';
 import { createToolApi, ApiFactoryDependencies, ParallxApiObject } from '../api/apiFactory.js';
 import type { IToolDescription } from './toolManifest.js';
-import { ToolMemento, createToolMementos } from '../configuration/toolMemento.js';
+import { createToolMementos } from '../configuration/toolMemento.js';
 import type { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
-import type { IManifestConfigurationDescriptor } from './toolManifest.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

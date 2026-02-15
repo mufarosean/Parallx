@@ -6,8 +6,6 @@
 import {
   CURRENT_MANIFEST_VERSION,
   SUPPORTED_ACTIVATION_PREFIXES,
-  type IToolManifest,
-  type IManifestContributions,
 } from './toolManifest.js';
 
 // ─── Current Shell Version ───────────────────────────────────────────────────
@@ -27,7 +25,7 @@ export interface ValidationError {
   readonly message: string;
 }
 
-export interface ValidationWarning {
+interface ValidationWarning {
   /** Dot-path to the field that triggered the warning. */
   readonly path: string;
   /** Human-readable warning message. */
@@ -349,8 +347,8 @@ function _checkVersionCompatibility(required: string, current: string): VersionC
     return { compatible: false, reason: `Cannot parse required version: ${required}` };
   }
 
-  const [curMaj, curMin, curPatch] = currentParts;
-  const [reqMaj, reqMin, reqPatch] = requiredParts;
+  const [curMaj, curMin] = currentParts;
+  const [reqMaj, reqMin] = requiredParts;
 
   switch (prefix) {
     case '^':

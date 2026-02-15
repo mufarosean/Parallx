@@ -2,7 +2,8 @@
 
 import { IDisposable, Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS, Dimensions, Orientation } from './layoutTypes.js';
+import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS, Orientation } from './layoutTypes.js';
+import { $,  hide, show } from '../ui/dom.js';
 
 /**
  * Interface that views must implement to participate in the grid system.
@@ -44,6 +45,14 @@ export interface IGridView extends IDisposable {
    * Event fired when size constraints change, so the grid can revalidate.
    */
   readonly onDidChangeConstraints: Event<void>;
+
+  /**
+   * Whether the view should snap (auto-hide) when dragged past its
+   * minimum size threshold, VS Code parity: IView.snap.
+   *
+   * @defaultValue `false`
+   */
+  readonly snap?: boolean;
 }
 
 /**
@@ -73,7 +82,7 @@ export abstract class BaseGridView extends Disposable implements IGridView {
     private readonly _constraints: SizeConstraints = DEFAULT_SIZE_CONSTRAINTS
   ) {
     super();
-    this._element = document.createElement('div');
+    this._element = $('div');
     this._element.classList.add('grid-view', `grid-view-${id}`);
     this._element.style.overflow = 'hidden';
     this._element.style.position = 'relative';
@@ -118,7 +127,7 @@ export abstract class BaseGridView extends Disposable implements IGridView {
 
   setVisible(visible: boolean): void {
     this._visible = visible;
-    this._element.style.display = visible ? '' : 'none';
+    visible ? show(this._element) : hide(this._element);
   }
 
   toJSON(): object {

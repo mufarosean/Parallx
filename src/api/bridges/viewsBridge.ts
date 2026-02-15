@@ -6,6 +6,7 @@
 
 import { IDisposable, toDisposable } from '../../platform/lifecycle.js';
 import { Emitter } from '../../platform/events.js';
+import { $,  hide, show } from '../../ui/dom.js';
 import type { ViewManager } from '../../views/viewManager.js';
 import type { IView, ViewState } from '../../views/view.js';
 import { DEFAULT_SIZE_CONSTRAINTS } from '../../layout/layoutTypes.js';
@@ -136,7 +137,6 @@ export class ViewsBridge {
 function _createToolView(viewId: string, name: string, provider: ToolViewProvider): IView {
   let _element: HTMLElement | undefined;
   let _providerDisposable: IDisposable | undefined;
-  let _visible = false;
   let _disposed = false;
 
   const _onDidChangeConstraints = new Emitter<void>();
@@ -159,11 +159,8 @@ function _createToolView(viewId: string, name: string, provider: ToolViewProvide
 
     createElement(container: HTMLElement): void {
       if (_disposed) return;
-      _element = document.createElement('div');
-      _element.className = 'tool-view-content';
-      _element.style.width = '100%';
-      _element.style.height = '100%';
-      _element.style.overflow = 'auto';
+      _element = $('div');
+      _element.className = 'tool-view-content fill-container-scroll';
       container.appendChild(_element);
 
       try {
@@ -175,9 +172,8 @@ function _createToolView(viewId: string, name: string, provider: ToolViewProvide
     },
 
     setVisible(visible: boolean): void {
-      _visible = visible;
       if (_element) {
-        _element.style.display = visible ? '' : 'none';
+        visible ? show(_element) : hide(_element);
       }
       _onDidChangeVisibility.fire(visible);
     },

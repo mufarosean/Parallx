@@ -12,9 +12,8 @@ import {
   ACTIVE_WORKSPACE_KEY,
   WORKSPACE_STATE_VERSION,
   createDefaultEditorSnapshot,
-  createDefaultContextSnapshot,
 } from './workspaceTypes.js';
-import { SerializedLayoutState, createDefaultLayoutState } from '../layout/layoutModel.js';
+import { SerializedLayoutState } from '../layout/layoutModel.js';
 import { Workspace } from './workspace.js';
 import { Part } from '../parts/part.js';
 import { ViewContainer } from '../views/viewContainer.js';
@@ -129,6 +128,18 @@ export class WorkspaceSaver extends Disposable {
       this._debounceTimer = undefined;
       this.save();
     }, this._debounceMs);
+  }
+
+  /**
+   * If a debounced save is pending, cancel the timer and save immediately.
+   * Returns a resolved promise if no save was pending.
+   */
+  async flushPendingSave(): Promise<void> {
+    if (this._debounceTimer !== undefined) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = undefined;
+      await this.save();
+    }
   }
 
   // ── State collection ──

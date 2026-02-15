@@ -14,7 +14,7 @@ const SERVICE_DEPENDENCIES_KEY = Symbol('serviceDependencies');
 /**
  * Descriptor for a service dependency on a constructor parameter.
  */
-export interface ServiceDependency {
+interface ServiceDependency {
   readonly id: ServiceIdentifier<any>;
   readonly parameterIndex: number;
   readonly optional: boolean;
@@ -114,7 +114,7 @@ export interface IServiceProvider {
 /**
  * Thrown when a required service dependency cannot be resolved.
  */
-export class MissingDependencyError extends Error {
+class MissingDependencyError extends Error {
   constructor(
     ctor: Function,
     dep: ServiceDependency,

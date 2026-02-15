@@ -18,6 +18,7 @@ function createWindow() {
     // Frameless for custom titlebar (like VS Code)
     frame: false,
     titleBarStyle: 'hidden',
+    icon: path.join(__dirname, 'parallx.ico'),
     // Dark background while loading
     backgroundColor: '#1e1e1e',
     webPreferences: {
@@ -35,6 +36,21 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // ── Unsaved changes guard ──
+  // Intercept close to let the renderer check for dirty editors.
+  // The renderer will either confirm (send 'lifecycle:confirmClose') or
+  // veto (the user chose "Cancel" in the save dialog).
+  let closeConfirmed = false;
+  mainWindow.on('close', (e) => {
+    if (closeConfirmed) return; // already confirmed — let it close
+    e.preventDefault();
+    mainWindow?.webContents.send('lifecycle:beforeClose');
+  });
+  ipcMain.on('lifecycle:confirmClose', () => {
+    closeConfirmed = true;
+    mainWindow?.close();
   });
 
   // Notify renderer on maximize/unmaximize
@@ -304,6 +320,11 @@ ipcMain.handle('fs:delete', async (_event, filePath, options) => {
   } catch (err) {
     return { error: normalizeError(err, filePath) };
   }
+});
+
+// ── shell:showItemInFolder ──
+ipcMain.handle('shell:showItemInFolder', async (_event, filePath) => {
+  shell.showItemInFolder(filePath);
 });
 
 // ── fs:mkdir ──

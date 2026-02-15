@@ -121,6 +121,31 @@
 - Menu contribution processing (`menuContribution.ts`)
 - Shared contribution types (`contributionTypes.ts`)
 
+### `built-in/`
+**First-party features shipped with the workbench (not loaded as tools).**
+- `welcome/` — Welcome tab shown on startup with start actions (New File, Open File, Open Folder) and recent workspaces/files
+- `editor/` — Built-in editor panes for system UIs:
+  - Keyboard shortcuts viewer (`keybindingsEditorInput.ts`, `keybindingsEditorPane.ts`) — searchable table of all registered keybindings
+  - Settings editor (`settingsEditorInput.ts`, `settingsEditorPane.ts`) — grouped, searchable settings with type-appropriate controls (checkbox, select, number, text)
+- `explorer/` — Built-in file explorer view
+- `output/` — Output panel view
+- `tool-gallery/` — Tool discovery and installation view
+
+> Built-in features follow the same `EditorInput` / `EditorPane` patterns as tool-contributed editors.
+> They may depend on `platform`, `services` (interfaces), `editor` (abstract base classes), and `configuration`.
+
+### `electron/`
+**Electron main process and preload bridge (outside `src/`).**
+- `main.cjs` — Window creation, native menu, lifecycle management, IPC handlers
+  - Intercepts window close (`lifecycle:beforeClose` → renderer) to allow unsaved-changes prompts
+  - Confirms close via `lifecycle:confirmClose` IPC from renderer
+- `preload.cjs` — Context bridge exposing `window.parallxElectron` API to the renderer
+  - `onBeforeClose(callback)` — registers listener for close interception
+  - `confirmClose()` — signals main process to proceed with window close
+  - File system, dialog, and shell helpers
+
+> Renderer code must **never** use `ipcRenderer` directly — all IPC goes through the preload bridge.
+
 ---
 
 ## Dependency Rules

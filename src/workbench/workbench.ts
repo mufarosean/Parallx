@@ -9,51 +9,43 @@
 //   5. Ready — CSS ready class, log
 // Teardown reverses (5→1).
 
-import { Disposable, DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IWindowService, IFileService, ITextFileModelManager } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
 
+// Layout base class (VS Code: Layout → Workbench extends Layout)
+import {
+  Layout,
+} from './layout.js';
+
 // Parts
 import { Part } from '../parts/part.js';
-import { PartRegistry } from '../parts/partRegistry.js';
 import { PartId } from '../parts/partTypes.js';
-import { titlebarPartDescriptor, TitlebarPart } from '../parts/titlebarPart.js';
-import { activityBarPartDescriptor, ActivityBarPart } from '../parts/activityBarPart.js';
-import { sidebarPartDescriptor, SidebarPart } from '../parts/sidebarPart.js';
-import { editorPartDescriptor, EditorPart } from '../parts/editorPart.js';
-import { auxiliaryBarPartDescriptor } from '../parts/auxiliaryBarPart.js';
-import { panelPartDescriptor } from '../parts/panelPart.js';
-import { statusBarPartDescriptor, StatusBarPart, StatusBarAlignment } from '../parts/statusBarPart.js';
+import { EditorPart } from '../parts/editorPart.js';
+import { StatusBarPart, StatusBarAlignment } from '../parts/statusBarPart.js';
 
 // Layout
-import { Grid } from '../layout/grid.js';
 import { Orientation } from '../layout/layoutTypes.js';
-import { IGridView } from '../layout/gridView.js';
 import { LayoutRenderer } from '../layout/layoutRenderer.js';
 
 // Storage + Persistence
 import { LocalStorage, NamespacedStorage, IStorage } from '../platform/storage.js';
-import { LayoutPersistence } from '../layout/layoutPersistence.js';
 
 // Workspace
 import { Workspace } from '../workspace/workspace.js';
+import { RecentWorkspaces } from '../workspace/recentWorkspaces.js';
 import { WorkspaceLoader } from '../workspace/workspaceLoader.js';
-import { WorkspaceSaver, WorkspaceStateSources } from '../workspace/workspaceSaver.js';
+import { WorkspaceSaver } from '../workspace/workspaceSaver.js';
 import {
   WorkspaceState,
-  SerializedContextSnapshot,
-  createDefaultContextSnapshot,
   createDefaultEditorSnapshot,
   workspaceStorageKey,
-  RecentWorkspaceEntry,
-  RECENT_WORKSPACES_KEY,
-  DEFAULT_MAX_RECENT_WORKSPACES,
 } from '../workspace/workspaceTypes.js';
-import { createDefaultLayoutState, SerializedLayoutState } from '../layout/layoutModel.js';
+import { createDefaultLayoutState } from '../layout/layoutModel.js';
 
 // Commands
 import { CommandService } from '../commands/commandRegistry.js';
@@ -105,8 +97,7 @@ import type { ConfigurationRegistry } from '../configuration/configurationRegist
 
 // Contribution Processors (M2 Capability 5)
 import { registerContributionProcessors, registerViewContributionProcessor } from './workbenchServices.js';
-import type { CommandContributionProcessor } from '../contributions/commandContribution.js';
-import type { KeybindingContributionProcessor } from '../contributions/keybindingContribution.js';
+import { formatKeybindingForDisplay } from '../contributions/keybindingContribution.js';
 import type { MenuContributionProcessor } from '../contributions/menuContribution.js';
 
 // Keybinding Service (M3 Capability 0.3)
@@ -118,27 +109,57 @@ import type { IContributedContainer, IContributedView } from '../contributions/v
 
 // Built-in Tools (M2 Capability 7)
 import * as ExplorerTool from '../built-in/explorer/main.js';
+import * as SearchTool from '../built-in/search/main.js';
 import * as WelcomeTool from '../built-in/welcome/main.js';
 import * as OutputTool from '../built-in/output/main.js';
 import * as ToolGalleryTool from '../built-in/tool-gallery/main.js';
 import * as FileEditorTool from '../built-in/editor/main.js';
 import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
+import {
+  EXPLORER_MANIFEST,
+  SEARCH_MANIFEST,
+  TEXT_EDITOR_MANIFEST,
+  WELCOME_MANIFEST,
+  OUTPUT_MANIFEST,
+  TOOL_GALLERY_MANIFEST,
+} from '../tools/builtinManifests.js';
 
 // File Editor Resolver (M4 Capability 4)
 import { registerEditorPaneFactory } from '../editor/editorPane.js';
 import { setFileEditorResolver } from '../api/bridges/editorsBridge.js';
+import { GroupDirection } from '../editor/editorTypes.js';
 import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
 import { UntitledEditorInput } from '../built-in/editor/untitledEditorInput.js';
 import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
-// ── Layout constants ──
 
-const TITLE_HEIGHT = 30;
-const STATUS_HEIGHT = 22;
-const ACTIVITY_BAR_WIDTH = 48;
-const DEFAULT_SIDEBAR_WIDTH = 202;
-const DEFAULT_PANEL_HEIGHT = 200;
-const DEFAULT_AUX_BAR_WIDTH = 250;
-const MIN_EDITOR_WIDTH = 200;
+// Format Readers (EditorResolverService)
+import { EditorResolverService, EditorResolverPriority } from '../services/editorResolverService.js';
+import { MarkdownEditorPane } from '../built-in/editor/markdownEditorPane.js';
+import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
+import { ImageEditorInput } from '../built-in/editor/imageEditorInput.js';
+import { ImageEditorPane } from '../built-in/editor/imageEditorPane.js';
+import { PdfEditorInput } from '../built-in/editor/pdfEditorInput.js';
+import { PdfEditorPane } from '../built-in/editor/pdfEditorPane.js';
+
+// Keybindings & Settings Editor (QoL)
+import { KeybindingsEditorInput } from '../built-in/editor/keybindingsEditorInput.js';
+import { KeybindingsEditorPane } from '../built-in/editor/keybindingsEditorPane.js';
+import { SettingsEditorInput } from '../built-in/editor/settingsEditorInput.js';
+import { SettingsEditorPane } from '../built-in/editor/settingsEditorPane.js';
+
+// Theme System (M5 Capability 1–3)
+import { colorRegistry } from '../theme/colorRegistry.js';
+import '../theme/workbenchColors.js'; // side-effect: registers all color tokens
+import { ThemeService } from '../services/themeService.js';
+import {
+  findThemeById,
+  resolveTheme,
+  DEFAULT_THEME_ID,
+  THEME_STORAGE_KEY,
+} from '../theme/themeCatalog.js';
+import { showColorThemePicker } from './workbenchThemePicker.js';
+import { setupEditorWatermark, updateWatermarkKeybindings } from './workbenchWatermark.js';
+import { $ } from '../ui/dom.js';
 
 // ── Types ──
 
@@ -152,47 +173,36 @@ export enum WorkbenchState {
 
 /**
  * Root workbench shell. Creates and owns all subsystems.
+ *
+ * VS Code alignment: extends Layout which owns the grid system, part
+ * references, and layout-mutation methods (toggle sidebar/panel/etc).
+ * Workbench adds service wiring, tool registration, and lifecycle.
  */
-export class Workbench extends Disposable {
+export class Workbench extends Layout {
   private _state: WorkbenchState = WorkbenchState.Created;
   private readonly _services: ServiceCollection;
   private _lifecycle: LifecycleService | undefined;
 
   // ── Subsystem instances ──
 
-  private _partRegistry!: PartRegistry;
   private _viewManager!: ViewManager;
   private _dndController!: DragAndDropController;
-  private _hGrid!: Grid;
-  private _vGrid!: Grid;
-  private _editorColumnAdapter!: IGridView & { element: HTMLElement };
-  private _bodyRow!: HTMLElement;
   private _sidebarContainer!: ViewContainer;
   private _panelContainer!: ViewContainer;
   private _auxBarContainer!: ViewContainer;
   private _secondaryActivityBarEl!: HTMLElement;
-  private _auxBarVisible = false;
 
   // Storage + Persistence
   private _storage!: IStorage;
-  private _persistence!: LayoutPersistence;
   private _layoutRenderer!: LayoutRenderer;
 
   // Workspace
   private _workspace!: Workspace;
+  private _switching = false;
   private _workspaceLoader!: WorkspaceLoader;
   private _workspaceSaver!: WorkspaceSaver;
   private _saverListeners: IDisposable[] = [];
   private _restoredState: WorkspaceState | undefined;
-
-  // Part refs (cached after creation)
-  private _titlebar!: TitlebarPart;
-  private _activityBarPart!: ActivityBarPart;
-  private _sidebar!: Part;
-  private _editor!: Part;
-  private _auxiliaryBar!: Part;
-  private _panel!: Part;
-  private _statusBar!: Part;
 
   // Context (Capability 8)
   private _contextKeyService!: ContextKeyService;
@@ -208,8 +218,6 @@ export class Workbench extends Disposable {
   private _globalStorage!: IStorage;
 
   // Contribution Processors (M2 Capability 5)
-  private _commandContribution!: CommandContributionProcessor;
-  private _keybindingContribution!: KeybindingContributionProcessor;
   private _menuContribution!: MenuContributionProcessor;
 
   // View Contribution (M2 Capability 6)
@@ -231,12 +239,6 @@ export class Workbench extends Disposable {
   /** Header label element for the sidebar. */
   private _sidebarHeaderLabel: HTMLElement | undefined;
 
-  /** Last known sidebar width — used to restore on toggle / persist across sessions. */
-  private _lastSidebarWidth: number = DEFAULT_SIDEBAR_WIDTH;
-  /** Last known panel height — used to restore on toggle / persist across sessions. */
-  private _lastPanelHeight: number = DEFAULT_PANEL_HEIGHT;
-  /** Whether the panel is currently maximized (occupying all vertical space). */
-  private _panelMaximized = false;
   /** MutationObservers for tab drag wiring (disconnected on teardown). */
   private _tabObservers: MutationObserver[] = [];
 
@@ -264,10 +266,10 @@ export class Workbench extends Disposable {
   private readonly _folderWatchers = new Map<string, IDisposable>();
 
   constructor(
-    private readonly _container: HTMLElement,
+    container: HTMLElement,
     services?: ServiceCollection,
   ) {
-    super();
+    super(container);
     this._services = services ?? new ServiceCollection();
     this._register(this._services);
   }
@@ -276,33 +278,24 @@ export class Workbench extends Disposable {
 
   get state(): WorkbenchState { return this._state; }
   get services(): ServiceCollection { return this._services; }
-  get container(): HTMLElement { return this._container; }
 
   /**
    * Toggle visibility of the auxiliary bar (secondary sidebar).
-   * When shown, it appears on the right side of the editor area.
+   * Overrides Layout to handle secondary activity bar element + content setup.
    */
-  toggleAuxiliaryBar(): void {
-    if (this._auxBarVisible) {
-      // Hide: remove from hGrid
-      this._hGrid.removeView(this._auxiliaryBar.id);
-      this._auxiliaryBar.setVisible(false);
-      this._secondaryActivityBarEl.classList.add('hidden');
-      this._auxBarVisible = false;
-    } else {
-      // Show: add to hGrid at the end (right of editor column)
-      this._auxiliaryBar.setVisible(true);
-      this._hGrid.addView(this._auxiliaryBar, DEFAULT_AUX_BAR_WIDTH);
-      this._secondaryActivityBarEl.classList.remove('hidden');
-      this._auxBarVisible = true;
+  override toggleAuxiliaryBar(): void {
+    super.toggleAuxiliaryBar();
 
+    // Secondary activity bar element visibility
+    if (this._auxBarVisible) {
+      this._secondaryActivityBarEl.classList.remove('hidden');
       // Ensure the aux bar content is populated
       if (!this._auxBarContainer) {
         this._auxBarContainer = this._setupAuxBarViews();
       }
+    } else {
+      this._secondaryActivityBarEl.classList.add('hidden');
     }
-    this._hGrid.layout();
-    this._layoutViewContainers();
   }
 
   /**
@@ -323,6 +316,26 @@ export class Workbench extends Disposable {
     if (this._commandPalette) {
       this._commandPalette.show('');
     }
+  }
+
+  /**
+   * Open Quick Access in go-to-line mode (':' prefix).
+   * VS Code parity: `workbench.action.gotoLine` (Ctrl+G).
+   */
+  showGoToLine(): void {
+    if (this._commandPalette) {
+      this._commandPalette.show(':');
+    }
+  }
+
+  /**
+   * Show a quick pick for selecting the active color theme.
+   * Delegates to the extracted workbenchThemePicker module.
+   */
+  selectColorTheme(): void {
+    const themeService = this._services.get(IThemeService) as ThemeService | undefined;
+    if (!themeService) return;
+    showColorThemePicker(this._container, themeService);
   }
 
   // ── Focus Model (Cap 8) ────────────────────────────────────────────────
@@ -397,7 +410,7 @@ export class Workbench extends Disposable {
       console.warn('[Workbench] Cannot switch workspace while in state:', this._state);
       return;
     }
-    if ((this as any)._switching) {
+    if (this._switching) {
       console.warn('[Workbench] Workspace switch already in progress — ignoring');
       return;
     }
@@ -406,7 +419,7 @@ export class Workbench extends Disposable {
       return;
     }
 
-    (this as any)._switching = true;
+    this._switching = true;
     console.log('[Workbench] Switching workspace → %s', targetId);
     const overlay = this._showTransitionOverlay();
 
@@ -456,7 +469,7 @@ export class Workbench extends Disposable {
     } catch (err) {
       console.error('[Workbench] Workspace switch failed:', err);
     } finally {
-      (this as any)._switching = false;
+      this._switching = false;
       this._removeTransitionOverlay(overlay);
     }
   }
@@ -476,13 +489,24 @@ export class Workbench extends Disposable {
   }
 
   /**
+   * Push current workspace folders to the editor part so breadcrumbs
+   * can display workspace-relative paths.
+   */
+  private _updateEditorBreadcrumbs(): void {
+    if (!this._editor || !this._workspace) return;
+    const editorPart = this._editor as EditorPart;
+    const folders = this._workspace.folders.map(f => ({ uri: f.uri, name: f.name }));
+    editorPart.setWorkspaceFolders(folders);
+  }
+
+  /**
    * Start file watchers for all workspace folders.
    * When folders change (added/removed), update watchers accordingly.
    * File change events flow through IFileService.onDidFileChange.
    */
   private _startWorkspaceFolderWatchers(): void {
     if (!this._services.has(IFileService)) return;
-    const fileService = this._services.get(IFileService) as any;
+    const fileService = this._services.get(IFileService);
 
     // Watch each current folder
     const watchFolder = async (folderUri: string) => {
@@ -674,7 +698,7 @@ export class Workbench extends Disposable {
     this._globalStorage = new NamespacedStorage(rawStorage, 'parallx-global');
 
     // Layout persistence: save/load layout state via storage
-    this._persistence = new LayoutPersistence(this._storage);
+    // (handled by WorkspaceSaver — LayoutPersistence not needed directly)
 
     // Layout renderer: available for future serialized-state rendering
     this._layoutRenderer = this._register(new LayoutRenderer(this._container));
@@ -700,116 +724,29 @@ export class Workbench extends Disposable {
     // Window service — abstracts Electron IPC for window controls
     const windowService = this._register(new WindowService());
     this._services.registerInstance(IWindowService, windowService);
+
+    // ── Theme Service (M5 Capability 3) ──
+    // Must be applied before layout rendering to avoid flash of unstyled content.
+    // workbenchColors.ts import above ensures all tokens are registered.
+    // Restore persisted theme or fall back to Dark Modern.
+    const persistedThemeId = localStorage.getItem(THEME_STORAGE_KEY) ?? DEFAULT_THEME_ID;
+    const themeEntry = findThemeById(persistedThemeId) ?? findThemeById(DEFAULT_THEME_ID)!;
+    const themeData = resolveTheme(themeEntry, colorRegistry);
+    const themeService = this._register(new ThemeService(colorRegistry, themeData));
+    themeService.applyTheme(themeData);
+    this._services.registerInstance(IThemeService, themeService);
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // Phase 2 — Layout: create parts, build grids, assemble DOM
+  // Phase 2 — Layout: delegated to base class (Layout._initializeLayout)
   // ════════════════════════════════════════════════════════════════════════
 
-  private _initializeLayout(): void {
-    // 1. Create part registry and register all standard parts
-    this._partRegistry = this._register(new PartRegistry());
-    this._partRegistry.registerMany([
-      titlebarPartDescriptor,
-      activityBarPartDescriptor,
-      sidebarPartDescriptor,
-      editorPartDescriptor,
-      auxiliaryBarPartDescriptor,
-      panelPartDescriptor,
-      statusBarPartDescriptor,
-    ]);
-    this._partRegistry.createAll();
-
-    // 2. Cache part references
-    this._titlebar = this._partRegistry.requirePart(PartId.Titlebar) as TitlebarPart;
-    this._activityBarPart = this._partRegistry.requirePart(PartId.ActivityBar) as ActivityBarPart;
-    this._sidebar = this._partRegistry.requirePart(PartId.Sidebar) as Part;
-    this._editor = this._partRegistry.requirePart(PartId.Editor) as Part;
-    this._auxiliaryBar = this._partRegistry.requirePart(PartId.AuxiliaryBar) as Part;
-    this._panel = this._partRegistry.requirePart(PartId.Panel) as Part;
-    this._statusBar = this._partRegistry.requirePart(PartId.StatusBar) as Part;
-
-    // 2b. Inject services that parts need before create() — IWindowService for titlebar
+  /**
+   * Hook called by Layout._initializeLayout() after parts are registered
+   * but before Part.create().  Injects IWindowService into the titlebar.
+   */
+  protected override _onBeforePartsCreated(): void {
     this._titlebar.setWindowService(this._services.get(IWindowService));
-
-    // 3. Compute initial dimensions
-    const w = this._container.clientWidth;
-    const h = this._container.clientHeight;
-    const bodyH = h - TITLE_HEIGHT - STATUS_HEIGHT;
-    const sidebarW = this._sidebar.visible ? this._lastSidebarWidth : 0;
-    const auxBarW = this._auxiliaryBar.visible ? DEFAULT_AUX_BAR_WIDTH : 0;
-    const panelH = this._panel.visible ? DEFAULT_PANEL_HEIGHT : 0;
-    const editorAreaW = Math.max(MIN_EDITOR_WIDTH, w - ACTIVITY_BAR_WIDTH - sidebarW - auxBarW - 4);
-    const editorH = bodyH - panelH - (this._panel.visible ? 4 : 0);
-
-    // 4. Create parts into temporary container so their elements exist
-    const tempDiv = document.createElement('div');
-    tempDiv.classList.add('hidden');
-    document.body.appendChild(tempDiv);
-
-    this._titlebar.create(tempDiv);
-    this._activityBarPart.create(tempDiv);
-    this._sidebar.create(tempDiv);
-    this._editor.create(tempDiv);
-    this._auxiliaryBar.create(tempDiv);
-    this._panel.create(tempDiv);
-    this._statusBar.create(tempDiv);
-
-    // 5. Vertical grid: editor | panel (stacked in the right column)
-    this._vGrid = new Grid(Orientation.Vertical, editorAreaW, bodyH);
-    this._vGrid.addView(this._editor, editorH);
-    if (this._panel.visible) {
-      this._vGrid.addView(this._panel, panelH);
-    }
-    this._vGrid.layout();
-
-    // 6. Wrap vGrid in adapter so hGrid can manage it as a leaf
-    this._editorColumnAdapter = this._createEditorColumnAdapter(this._vGrid);
-
-    // 7. Horizontal grid: sidebar | editorColumn
-    const hGridW = w - ACTIVITY_BAR_WIDTH;
-    this._hGrid = new Grid(Orientation.Horizontal, hGridW, bodyH);
-    if (this._sidebar.visible) {
-      this._hGrid.addView(this._sidebar, sidebarW);
-    }
-    this._hGrid.addView(this._editorColumnAdapter, editorAreaW);
-    if (this._auxiliaryBar.visible) {
-      this._hGrid.addView(this._auxiliaryBar, auxBarW);
-    }
-    this._hGrid.layout();
-
-    // 8. Body row: activityBar (Part) + hGrid
-    this._bodyRow = document.createElement('div');
-    this._bodyRow.classList.add('workbench-middle');
-
-    // Mount the ActivityBarPart (M3 Capability 0.2) — replaces ad-hoc div.activity-bar
-    this._bodyRow.appendChild(this._activityBarPart.element);
-    this._activityBarPart.layout(ACTIVITY_BAR_WIDTH, bodyH, Orientation.Vertical);
-
-    // Hide the sidebar's internal activity bar slot (now owned by ActivityBarPart)
-    // CSS .sidebar-activity-bar already sets display:none
-
-    this._bodyRow.appendChild(this._hGrid.element);
-    this._hGrid.element.classList.add('workbench-hgrid');
-
-    this._editorColumnAdapter.element.appendChild(this._vGrid.element);
-    this._vGrid.element.classList.add('workbench-vgrid');
-
-    // 9. Assemble final DOM
-    this._container.appendChild(this._titlebar.element);
-    this._titlebar.layout(w, TITLE_HEIGHT, Orientation.Horizontal);
-
-    this._container.appendChild(this._bodyRow);
-    // .workbench-middle CSS already sets flex: 1 1 0 and min-height: 0
-
-    this._container.appendChild(this._statusBar.element);
-    this._statusBar.layout(w, STATUS_HEIGHT, Orientation.Horizontal);
-
-    tempDiv.remove();
-
-    // 10. Initialize sash drag on both grids
-    this._hGrid.initializeSashDrag();
-    this._vGrid.initializeSashDrag();
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -844,89 +781,39 @@ export class Workbench extends Disposable {
     // 4. Status bar entries
     this._setupStatusBar();
 
-    // 4b. Toggle aux bar button in activity bar (bottom)
-    this._addAuxBarToggle();
+    // 4c. Manage gear icon in activity bar (bottom) — VS Code parity
+    this._addManageGearIcon();
 
     // 5. DnD between parts
     this._dndController = this._setupDragAndDrop();
 
-    // 6. Layout view containers
+    // 6. Layout view containers + wire grid sash handlers (from Layout base)
     this._layoutViewContainers();
+    this._wireGridHandlers();
 
-    // 7. React to sash-drag grid changes
-    this._hGrid.onDidChange(() => this._layoutViewContainers());
-    this._vGrid.onDidChange(() => this._layoutViewContainers());
-
-    // 7a. Track sidebar width after sash drags so toggleSidebar() restores the right size
-    this._hGrid.onDidChange(() => {
-      if (this._sidebar.visible) {
-        const w = this._hGrid.getViewSize(this._sidebar.id);
-        if (w !== undefined && w > 0) {
-          this._lastSidebarWidth = w;
-        }
-      }
-    });
-
-    // 7b. Double-click sash resets sidebar to default width (VS Code parity: Sash.onDidReset)
-    this._hGrid.onDidSashReset(({ sashIndex }) => {
-      if (sashIndex === 0 && this._sidebar.visible) {
-        const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
-        if (currentWidth !== undefined) {
-          const delta = DEFAULT_SIDEBAR_WIDTH - currentWidth;
-          if (delta !== 0) {
-            this._hGrid.resizeSash(this._hGrid.root, 0, delta);
-            this._hGrid.layout();
-            this._lastSidebarWidth = DEFAULT_SIDEBAR_WIDTH;
-          }
-        }
-      }
-    });
-
-    // 7c. Track panel height after sash drags so togglePanel() restores the right size
-    //     Also reset _panelMaximized if user manually drags sash while maximized
-    //     (VS Code parity: isPanelMaximized() is derived from editor visibility,
-    //      so it auto-corrects; our boolean flag needs explicit reset)
-    this._vGrid.onDidChange(() => {
-      if (this._panel.visible) {
-        if (this._panelMaximized) {
-          // Any manual sash drag while maximized exits the maximized state
-          this._panelMaximized = false;
-          this._workbenchContext.setPanelMaximized(false);
-        }
-        const h = this._vGrid.getViewSize(this._panel.id);
-        if (h !== undefined && h > 0) {
-          this._lastPanelHeight = h;
-        }
-      }
-    });
-
-    // 7d. Double-click sash resets panel to default height (VS Code parity: Sash.onDidReset)
-    this._vGrid.onDidSashReset(({ sashIndex }) => {
-      if (sashIndex === 0 && this._panel.visible) {
-        const currentHeight = this._vGrid.getViewSize(this._panel.id);
-        if (currentHeight !== undefined) {
-          const delta = DEFAULT_PANEL_HEIGHT - currentHeight;
-          if (delta !== 0) {
-            this._vGrid.resizeSash(this._vGrid.root, 0, delta);
-            this._vGrid.layout();
-            this._lastPanelHeight = DEFAULT_PANEL_HEIGHT;
-            this._panelMaximized = false;
-            this._workbenchContext.setPanelMaximized(false);
-          }
-        }
-      }
-    });
-
-    // 8. Window resize handler
+    // 7. Window resize handler
     window.addEventListener('resize', this._onWindowResize);
 
-    // 9. Command system: wire up and register built-in commands
+    // 8. Command system: wire up and register built-in commands
     this._initializeCommands();
 
-    // 10. Context system (Capability 8): context keys, focus tracking, when-clause evaluation
+    // 9. Context system (Capability 8): context keys, focus tracking, when-clause evaluation
     this._initializeContext();
 
-    // 11. Wire view/title actions and context menus to stacked containers
+    // 9b. Subscribe to Layout events for context key updates
+    this._register(this.onDidChangeZenMode((active) => {
+      this._workbenchContext.setZenMode(active);
+    }));
+    this._register(this.onDidChangePanelMaximized((maximized) => {
+      this._workbenchContext.setPanelMaximized(maximized);
+    }));
+    this._register(this.onDidChangePartVisibility(({ partId }) => {
+      if (partId === PartId.StatusBar) {
+        this._workspaceSaver?.requestSave();
+      }
+    }));
+
+    // 10. Wire view/title actions and context menus to stacked containers
     for (const vc of this._builtinSidebarContainers.values()) {
       this._wireSectionMenus(vc);
     }
@@ -945,6 +832,12 @@ export class Workbench extends Disposable {
     // Quick Access — unified overlay for commands + workspace switching
     this._commandPalette = new QuickAccessWidget(cmdService, this._container);
     this._register(this._commandPalette);
+
+    // Wire editor group service for Go to Line provider
+    const editorGroupSvc = this._services.get(IEditorGroupService);
+    if (editorGroupSvc && this._commandPalette) {
+      this._commandPalette.setEditorGroupService(editorGroupSvc);
+    }
 
     console.log(
       '[Workbench] Registered %d built-in commands, command palette ready',
@@ -1055,8 +948,13 @@ export class Workbench extends Disposable {
           count === 0 ? 'empty' : 'folder',
         );
         this._updateWindowTitle();
+        // Update breadcrumbs in editor groups
+        this._updateEditorBreadcrumbs();
       }));
     }
+
+    // Push workspace folders to editor part for breadcrumbs
+    this._updateEditorBreadcrumbs();
 
     // Start file watchers for workspace folders (M4 — file watcher → tree refresh)
     this._startWorkspaceFolderWatchers();
@@ -1092,22 +990,45 @@ export class Workbench extends Disposable {
     const state = this._restoredState;
     if (!state) return;
 
-    // 1. Restore part visibility and sizes
+    // 1. Restore part visibility and sizes.
+    // Parts that live inside grids (sidebar, panel, aux bar) must use
+    // their toggle methods — not bare setVisible() — so the grid adds
+    // or removes the view correctly. A bare setVisible() only flips the
+    // CSS class and leaves the grid allocating space for a hidden part,
+    // causing the editor not to fill the full height when the panel was
+    // hidden at save-time.
     for (const partSnap of state.parts) {
       const part = this._partRegistry.getPart(partSnap.partId) as Part | undefined;
       if (!part) continue;
 
-      // Restore visibility
+      // Restore visibility — use toggle methods for grid-managed parts
       if (part.visible !== partSnap.visible) {
-        // Special handling for aux bar — use the toggle mechanism
-        if (partSnap.partId === PartId.AuxiliaryBar) {
-          if (partSnap.visible && !this._auxBarVisible) {
+        switch (partSnap.partId) {
+          case PartId.AuxiliaryBar:
             this.toggleAuxiliaryBar();
-          } else if (!partSnap.visible && this._auxBarVisible) {
-            this.toggleAuxiliaryBar();
-          }
-        } else {
-          part.setVisible(partSnap.visible);
+            break;
+          case PartId.Panel:
+            this.togglePanel();
+            break;
+          case PartId.Sidebar:
+            // Sidebar toggle has animation; skip it during restore.
+            // Directly remove from grid + set invisible.
+            if (part.visible && !partSnap.visible) {
+              this._hGrid.removeView(this._sidebar.id);
+              part.setVisible(false);
+              this._hGrid.layout();
+            } else if (!part.visible && partSnap.visible) {
+              part.setVisible(true);
+              this._hGrid.addView(this._sidebar as any, this._lastSidebarWidth, 0);
+              this._hGrid.layout();
+            }
+            break;
+          case PartId.StatusBar:
+            this.toggleStatusBar();
+            break;
+          default:
+            part.setVisible(partSnap.visible);
+            break;
         }
       }
 
@@ -1124,27 +1045,57 @@ export class Workbench extends Disposable {
       }
     }
 
-    // 1b. Restore sidebar width — resize grid node to match the saved width
+    // 1b. Restore sidebar width — always remember the saved width so that
+    //     toggleSidebar() uses it when the user re-shows the sidebar.
+    //     Only resize the live grid when the sidebar is currently visible.
     const sidebarSnap = state.parts.find(p => p.partId === PartId.Sidebar);
-    if (sidebarSnap?.width && sidebarSnap.width > 0 && this._sidebar.visible) {
+    if (sidebarSnap?.width && sidebarSnap.width > 0) {
       this._lastSidebarWidth = sidebarSnap.width;
-      const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
-      if (currentWidth !== undefined && currentWidth !== sidebarSnap.width) {
-        const delta = sidebarSnap.width - currentWidth;
-        this._hGrid.resizeSash(this._hGrid.root, 0, delta);
-        this._hGrid.layout();
+      if (this._sidebar.visible) {
+        const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
+        if (currentWidth !== undefined && currentWidth !== sidebarSnap.width) {
+          const delta = sidebarSnap.width - currentWidth;
+          this._hGrid.resizeSash(this._hGrid.root, 0, delta);
+          this._hGrid.layout();
+        }
       }
     }
 
-    // 1c. Restore panel height — resize vGrid node to match the saved height
+    // 1c. Restore panel height — always remember the saved height so that
+    //     togglePanel() uses it when the user re-shows the panel.
+    //     Only resize the live grid when the panel is currently visible.
+    //     Panel is childB (index 1, below the editor). resizeSash positive
+    //     delta grows childA (editor), so to grow the panel we negate.
     const panelSnap = state.parts.find(p => p.partId === PartId.Panel);
-    if (panelSnap?.height && panelSnap.height > 0 && this._panel.visible) {
+    if (panelSnap?.height && panelSnap.height > 0) {
       this._lastPanelHeight = panelSnap.height;
-      const currentHeight = this._vGrid.getViewSize(this._panel.id);
-      if (currentHeight !== undefined && currentHeight !== panelSnap.height) {
-        const delta = panelSnap.height - currentHeight;
-        this._vGrid.resizeSash(this._vGrid.root, 0, delta);
-        this._vGrid.layout();
+      if (this._panel.visible) {
+        const currentHeight = this._vGrid.getViewSize(this._panel.id);
+        if (currentHeight !== undefined && currentHeight !== panelSnap.height) {
+          const delta = currentHeight - panelSnap.height;
+          this._vGrid.resizeSash(this._vGrid.root, 0, delta);
+          this._vGrid.layout();
+        }
+      }
+    }
+
+    // 1d. Restore auxiliary bar width — always remember the saved width so
+    //     that toggleAuxiliaryBar() uses it when the user re-shows the bar.
+    //     Only resize the live grid when the aux bar is currently visible.
+    //     Aux bar is childB (right of its sash). resizeSash positive delta
+    //     grows childA (editor column), so to grow the aux bar we negate.
+    const auxBarSnap = state.parts.find(p => p.partId === PartId.AuxiliaryBar);
+    if (auxBarSnap?.width && auxBarSnap.width > 0) {
+      this._lastAuxBarWidth = auxBarSnap.width;
+      if (this._auxBarVisible) {
+        // Aux bar is the last child in hGrid; its sash is at index childCount - 2
+        const auxSashIndex = this._hGrid.root.childCount - 2;
+        const currentWidth = this._hGrid.getViewSize(this._auxiliaryBar.id);
+        if (currentWidth !== undefined && currentWidth !== auxBarSnap.width) {
+          const delta = currentWidth - auxBarSnap.width;
+          this._hGrid.resizeSash(this._hGrid.root, auxSashIndex, delta);
+          this._hGrid.layout();
+        }
       }
     }
 
@@ -1239,70 +1190,6 @@ export class Workbench extends Disposable {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // Window resize handler (arrow fn keeps `this` binding)
-  // ════════════════════════════════════════════════════════════════════════
-
-  /** Public relayout entry point for commands that change part visibility. */
-  _relayout(): void {
-    this._onWindowResize();
-  }
-
-  private _onWindowResize = (): void => {
-    const rw = this._container.clientWidth;
-    const rh = this._container.clientHeight;
-    const statusH = this._statusBar.visible ? STATUS_HEIGHT : 0;
-    const rbodyH = rh - TITLE_HEIGHT - statusH;
-
-    this._titlebar.layout(rw, TITLE_HEIGHT, Orientation.Horizontal);
-    if (this._statusBar.visible) {
-      this._statusBar.layout(rw, STATUS_HEIGHT, Orientation.Horizontal);
-    }
-
-    // Re-layout activity bar (not in hGrid, so must be done explicitly)
-    this._activityBarPart.layout(ACTIVITY_BAR_WIDTH, rbodyH, Orientation.Vertical);
-
-    // Resize hGrid (cascades to vGrid via editorColumnAdapter)
-    this._hGrid.resize(rw - ACTIVITY_BAR_WIDTH, rbodyH);
-
-    this._layoutViewContainers();
-  };
-
-  // ════════════════════════════════════════════════════════════════════════
-  // Editor Column Adapter
-  // ════════════════════════════════════════════════════════════════════════
-
-  private _createEditorColumnAdapter(vGrid: Grid): IGridView & { element: HTMLElement } {
-    const wrapper = document.createElement('div');
-    wrapper.classList.add('editor-column');
-
-    const emitter = new Emitter<void>();
-
-    return {
-      element: wrapper,
-      id: 'workbench.editorColumn',
-      minimumWidth: MIN_EDITOR_WIDTH,
-      maximumWidth: Number.POSITIVE_INFINITY,
-      minimumHeight: 0,
-      maximumHeight: Number.POSITIVE_INFINITY,
-      layout(width: number, height: number, _orientation: Orientation): void {
-        wrapper.style.width = `${width}px`;
-        wrapper.style.height = `${height}px`;
-        vGrid.resize(width, height);
-      },
-      setVisible(visible: boolean): void {
-        wrapper.classList.toggle('hidden', !visible);
-      },
-      toJSON(): object {
-        return { id: 'workbench.editorColumn', type: 'adapter' };
-      },
-      onDidChangeConstraints: emitter.event,
-      dispose(): void {
-        emitter.dispose();
-      },
-    };
-  }
-
-  // ════════════════════════════════════════════════════════════════════════
   // Titlebar setup (M3 Capability 1 — service-wired, data-driven)
   // ════════════════════════════════════════════════════════════════════════
 
@@ -1367,8 +1254,10 @@ export class Workbench extends Disposable {
       { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '1_nav', order: 1 },
       { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Sidebar', group: '2_appearance', order: 1 },
       { commandId: 'workbench.action.togglePanel', title: 'Toggle Panel', group: '2_appearance', order: 2 },
+      { commandId: 'workbench.action.toggleMaximizedPanel', title: 'Maximize Panel', group: '2_appearance', order: 2.5 },
       { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Auxiliary Bar', group: '2_appearance', order: 3 },
       { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
+      { commandId: 'workbench.action.toggleZenMode', title: 'Zen Mode', group: '2_appearance', order: 5 },
       { commandId: 'editor.toggleWordWrap', title: 'Word Wrap', group: '3_editor', order: 1, when: 'activeEditor' },
     ]));
 
@@ -1438,9 +1327,12 @@ export class Workbench extends Disposable {
     // and show only the active one.
     // ─────────────────────────────────────────────────────────────────────
 
+    // VS Code codicon-style SVG icons (24x24 viewBox, stroke-based, minimalist)
+    const codiconExplorer = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 0H8.5L7 1.5V6H2.5L1 7.5V22.5699L2.5 24H14.5699L16 22.5699V18H20.7L22 16.5699V4.5L17.5 0ZM17.5 2.12L19.88 4.5H17.5V2.12ZM14.5 22.5H2.5V7.5H7V16.5699L8.5 18H14.5V22.5ZM20.5 16.5H8.5V1.5H16V6H20.5V16.5Z" fill="currentColor"/></svg>';
+    const codiconSearch = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.25 1C11.524 1 8.5 4.024 8.5 7.75C8.5 9.247 9.012 10.622 9.873 11.72L1.939 19.655L3.0 20.716L10.934 12.781C12.06 13.7 13.49 14.25 15.05 14.25C18.776 14.25 21.8 11.226 21.8 7.5C21.8 3.774 18.776 0.75 15.05 0.75C15.117 0.75 15.183 0.753 15.25 0.757V1ZM15.25 2.5C17.873 2.5 20 4.627 20 7.25C20 9.873 17.873 12 15.25 12C12.627 12 10.5 9.873 10.5 7.25C10.5 4.627 12.627 2.5 15.25 2.5Z" fill="currentColor"/></svg>';
     const views = [
-      { id: 'view.explorer', icon: '📁', label: 'Explorer' },
-      { id: 'view.search', icon: '🔍', label: 'Search' },
+      { id: 'view.explorer', icon: codiconExplorer, label: 'Explorer', isSvg: true },
+      { id: 'view.search', icon: codiconSearch, label: 'Search', isSvg: true },
     ];
 
     const sidebarContent = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
@@ -1459,6 +1351,7 @@ export class Workbench extends Disposable {
         id: v.id,
         icon: v.icon,
         label: v.label,
+        isSvg: v.isSvg ?? false,
         source: 'builtin',
       });
 
@@ -1511,7 +1404,7 @@ export class Workbench extends Disposable {
       const icon = this._activityBarPart.getIcons().find((i) => i.id === event.iconId);
       ContextMenu.show({
         items: [
-          { id: 'hide', label: `Hide ${icon?.label ?? 'View'}`, group: '1_visibility' },
+          { id: 'hide', label: `Hide ${icon?.label ?? 'View'}`, group: '1_visibility', keybinding: this._keybindingHint('hide') },
         ],
         anchor: { x: event.x, y: event.y },
       });
@@ -1528,27 +1421,27 @@ export class Workbench extends Disposable {
     // VS Code pattern: compositePart.createTitleArea() → title label (left) + actions toolbar (right)
     const headerSlot = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
     if (headerSlot) {
-      const headerLabel = document.createElement('span');
+      const headerLabel = $('span');
       headerLabel.classList.add('sidebar-header-label');
       headerLabel.textContent = 'EXPLORER';
       headerSlot.appendChild(headerLabel);
 
       // Actions toolbar on the right (VS Code: `.title-actions` inside `.composite.title`)
-      const actionsContainer = document.createElement('div');
+      const actionsContainer = $('div');
       actionsContainer.classList.add('sidebar-header-actions');
 
       // "More actions" button (ellipsis)
-      const moreBtn = document.createElement('button');
+      const moreBtn = $('button');
       moreBtn.classList.add('sidebar-header-action-btn');
       moreBtn.title = 'More Actions…';
       moreBtn.setAttribute('aria-label', 'More Actions…');
       moreBtn.textContent = '⋯';
-      moreBtn.addEventListener('click', (e) => {
+      moreBtn.addEventListener('click', (_e) => {
         const rect = moreBtn.getBoundingClientRect();
         ContextMenu.show({
           items: [
-            { id: 'collapse-all', label: 'Collapse All', group: '1_actions' },
-            { id: 'refresh', label: 'Refresh', group: '1_actions' },
+            { id: 'collapse-all', label: 'Collapse All', group: '1_actions', keybinding: this._keybindingHint('collapse-all') },
+            { id: 'refresh', label: 'Refresh', group: '1_actions', keybinding: this._keybindingHint('refresh') },
           ],
           anchor: { x: rect.left, y: rect.bottom + 2 },
         });
@@ -1568,6 +1461,98 @@ export class Workbench extends Disposable {
   }
 
   // ════════════════════════════════════════════════════════════════════════
+  // Keybinding hint helper (QoL — keyboard shortcut hints in context menus)
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Look up the keybinding for a commandId and return a display-formatted
+   * string, or undefined if no keybinding is registered.
+   */
+  private _keybindingHint(commandId: string): string | undefined {
+    const kbService = this._services.has(IKeybindingService)
+      ? (this._services.get(IKeybindingService) as unknown as KeybindingService)
+      : undefined;
+    if (!kbService) return undefined;
+    const raw = kbService.lookupKeybinding(commandId);
+    if (!raw) return undefined;
+    return formatKeybindingForDisplay(raw);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Unsaved changes guard (QoL — prompt before window close)
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Wire the Electron `lifecycle:beforeClose` IPC to check for dirty editors
+   * and show a save dialog before allowing the window to close.
+   */
+  private _wireUnsavedChangesGuard(): void {
+    const electron = (window as any).parallxElectron as {
+      onBeforeClose?: (cb: () => void) => void;
+      confirmClose?: () => void;
+      dialog?: { showMessageBox: (opts: any) => Promise<{ response: number }> };
+    } | undefined;
+
+    if (!electron?.onBeforeClose || !electron?.confirmClose) return;
+
+    electron.onBeforeClose(async () => {
+      // Collect dirty models
+      const tfm = this._services.has(ITextFileModelManager)
+        ? this._services.get(ITextFileModelManager)
+        : undefined;
+      const dirtyModels: { name: string; isDirty: boolean; save: () => Promise<void> }[] = [];
+      if (tfm?.models) {
+        for (const model of tfm.models) {
+          if (model.isDirty && !model.isDisposed) {
+            dirtyModels.push({ name: model.uri.basename, isDirty: model.isDirty, save: () => model.save() });
+          }
+        }
+      }
+
+      if (dirtyModels.length === 0) {
+        // No unsaved changes — flush layout state and proceed to close
+        await this._workspaceSaver.flushPendingSave();
+        electron.confirmClose!();
+        return;
+      }
+
+      // Show native save dialog
+      const fileList = dirtyModels.map((m) => m.name).join(', ');
+      const result = await electron.dialog?.showMessageBox({
+        type: 'warning',
+        title: 'Unsaved Changes',
+        message: `You have ${dirtyModels.length} unsaved file${dirtyModels.length > 1 ? 's' : ''}.`,
+        detail: `${fileList}\n\nDo you want to save your changes before closing?`,
+        buttons: ['Save All', "Don't Save", 'Cancel'],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+      });
+
+      if (!result || result.response === 2) {
+        // Cancel — veto close (do nothing)
+        return;
+      }
+
+      if (result.response === 0) {
+        // Save All
+        try {
+          await tfm!.saveAll();
+        } catch (err) {
+          console.error('[Workbench] Error saving files before close:', err);
+          // If save fails, don't close — let user fix and try again
+          return;
+        }
+      }
+
+      // "Don't Save" (response === 1) or "Save All" succeeded
+      // Flush any pending layout save before closing
+      await this._workspaceSaver.flushPendingSave();
+      electron.confirmClose!();
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
   // Wire view/title actions and context menus to stacked section headers
   // ════════════════════════════════════════════════════════════════════════
 
@@ -1581,9 +1566,9 @@ export class Workbench extends Disposable {
 
     // Render actions for any sections already created
     for (const viewId of container.getViews().map(v => v.id)) {
-      const section = (container as any)._sectionElements?.get(viewId);
-      if (section?.actionsSlot) {
-        this._menuContribution.renderViewTitleActions(viewId, section.actionsSlot);
+      const actionsSlot = container.getSectionActionsSlot(viewId);
+      if (actionsSlot) {
+        this._menuContribution.renderViewTitleActions(viewId, actionsSlot);
       }
     }
 
@@ -1603,7 +1588,7 @@ export class Workbench extends Disposable {
       for (const action of actions) {
         const cmd = cmdService.getCommand(action.commandId);
         if (!cmd) continue;
-        items.push({ id: action.commandId, label: cmd.title });
+        items.push({ id: action.commandId, label: cmd.title, keybinding: this._keybindingHint(action.commandId) });
       }
       if (items.length === 0) return;
 
@@ -1636,6 +1621,20 @@ export class Workbench extends Disposable {
       panelContent.appendChild(container.element);
     }
 
+    // Double-click panel tab bar to maximize/restore
+    // VS Code parity: double-clicking the panel title bar toggles maximized state.
+    const tabBar = container.element.querySelector('.view-container-tabs') as HTMLElement;
+    if (tabBar) {
+      tabBar.addEventListener('dblclick', (e) => {
+        // Only respond to clicks on the tab bar itself or its empty space,
+        // not on individual tab buttons (which may have their own dblclick).
+        const target = e.target as HTMLElement;
+        if (target === tabBar || target.classList.contains('view-container-tabs')) {
+          this.toggleMaximizedPanel();
+        }
+      });
+    }
+
     // NOTE: Do not call viewManager.showView() here — the container
     // already activated the first view (Terminal) via addView.
 
@@ -1643,25 +1642,162 @@ export class Workbench extends Disposable {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // Activity bar toggle for aux bar
+  // Manage gear icon (VS Code: global-activity "Manage" button)
   // ════════════════════════════════════════════════════════════════════════
 
-  private _addAuxBarToggle(): void {
-    // The spacer and bottom section are already part of ActivityBarPart's
-    // createContent(). We just need to add the toggle icon to the bottom section.
+  /**
+   * Adds a gear icon to the activity bar bottom section that opens a
+   * settings/manage menu — mirrors VS Code's "Manage" gear icon.
+   *
+   * VS Code reference: src/vs/workbench/browser/parts/activitybar/activitybarActions.ts
+   *   → GlobalActivityActionViewItem
+   */
+  private _addManageGearIcon(): void {
     const bottomSection = this._activityBarPart.contentElement.querySelector('.activity-bar-bottom');
     if (!bottomSection) return;
 
-    const toggleBtn = document.createElement('button');
-    toggleBtn.classList.add('activity-bar-item');
-    toggleBtn.dataset.iconId = 'auxbar-toggle';
-    toggleBtn.title = 'Toggle Secondary Side Bar';
-    toggleBtn.textContent = '⊞';
-    toggleBtn.addEventListener('click', () => {
-      this.toggleAuxiliaryBar();
-      toggleBtn.classList.toggle('active', this._auxBarVisible);
+    const gearBtn = $('button');
+    gearBtn.classList.add('activity-bar-item', 'activity-bar-manage-gear');
+    gearBtn.dataset.iconId = 'manage-gear';
+    gearBtn.title = 'Manage';
+
+    // Use VS Code's codicon gear SVG (16×16 viewBox for proper sizing)
+    const iconLabel = $('span');
+    iconLabel.classList.add('activity-bar-icon-label');
+    iconLabel.innerHTML =
+      '<svg width="24" height="24" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">' +
+      '<path fill-rule="evenodd" clip-rule="evenodd" d="M14.54 11.81L13.12 ' +
+      '11.03L13.56 10.05L15.18 9.72L15.18 7.28L13.56 6.95L13.12 5.97L14.54 ' +
+      '4.19L12.81 2.46L11.03 3.88L10.05 3.44L9.72 1.82L7.28 1.82L6.95 ' +
+      '3.44L5.97 3.88L4.19 2.46L2.46 4.19L3.88 5.97L3.44 6.95L1.82 7.28' +
+      'L1.82 9.72L3.44 10.05L3.88 11.03L2.46 12.81L4.19 14.54L5.97 13.12' +
+      'L6.95 13.56L7.28 15.18L9.72 15.18L10.05 13.56L11.03 13.12L12.81 ' +
+      '14.54L14.54 11.81ZM8.5 11C9.88 11 11 9.88 11 8.5C11 7.12 9.88 6 ' +
+      '8.5 6C7.12 6 6 7.12 6 8.5C6 9.88 7.12 11 8.5 11Z" fill="currentColor"/></svg>';
+    gearBtn.appendChild(iconLabel);
+
+    // Toggle: click opens menu, click again closes it
+    gearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this._manageMenu) {
+        // Menu is open — dismiss it
+        this._manageMenu.dismiss();
+        return;
+      }
+      // Guard: if the menu was *just* dismissed (by the outside-click mousedown
+      // hitting this same button), skip re-opening. The mousedown fires before
+      // click, so dismiss() runs first and nulls _manageMenu; without this
+      // guard the click handler would immediately reopen the menu.
+      if (Date.now() - this._manageMenuDismissedAt < 300) {
+        return;
+      }
+      this._showManageMenu(gearBtn);
     });
-    bottomSection.appendChild(toggleBtn);
+
+    bottomSection.appendChild(gearBtn);
+  }
+
+  /** Tracks the currently-open manage menu so we can toggle it. */
+  private _manageMenu: ContextMenu | null = null;
+  /** Timestamp of the last manage-menu dismiss (used to defeat the mousedown/click race). */
+  private _manageMenuDismissedAt = 0;
+
+  /**
+   * Show the Manage menu anchored above the gear icon (opens upward like VS Code).
+   */
+  private _showManageMenu(anchor: HTMLElement): void {
+    const cmdService = this._services.get(ICommandService) as CommandService;
+    const rect = anchor.getBoundingClientRect();
+
+    const items: import('../ui/contextMenu.js').IContextMenuItem[] = [
+      {
+        id: 'workbench.action.showCommands',
+        label: 'Command Palette...',
+        keybinding: this._keybindingHint('workbench.action.showCommands'),
+        group: '1_commands',
+      },
+      {
+        id: 'manage.profiles',
+        label: 'Profiles',
+        group: '2_preferences',
+        disabled: true,
+      },
+      {
+        id: 'workbench.action.openSettings',
+        label: 'Settings',
+        keybinding: this._keybindingHint('workbench.action.openSettings'),
+        group: '2_preferences',
+      },
+      {
+        id: 'manage.extensions',
+        label: 'Extensions',
+        keybinding: 'Ctrl+Shift+X',
+        group: '2_preferences',
+        disabled: true,
+      },
+      {
+        id: 'workbench.action.openKeybindings',
+        label: 'Keyboard Shortcuts',
+        keybinding: this._keybindingHint('workbench.action.openKeybindings'),
+        group: '2_preferences',
+      },
+      {
+        id: 'manage.tasks',
+        label: 'Tasks',
+        group: '2_preferences',
+        disabled: true,
+      },
+      {
+        id: 'manage.themes',
+        label: 'Themes',
+        group: '3_themes',
+        submenu: [
+          { id: 'workbench.action.selectTheme', label: 'Color Theme', keybinding: 'Ctrl+T', group: '1_themes' },
+          { id: 'workbench.action.selectIconTheme', label: 'File Icon Theme', group: '1_themes', disabled: true },
+          { id: 'workbench.action.selectProductIconTheme', label: 'Product Icon Theme', group: '1_themes', disabled: true },
+        ],
+      },
+      {
+        id: 'manage.checkUpdates',
+        label: 'Check for Updates...',
+        group: '4_updates',
+        disabled: true,
+      },
+    ];
+
+    // Anchor above the gear icon (VS Code pattern: menu opens upward)
+    // We estimate a max height and position accordingly; viewport clamp handles overflows
+    const estimatedMenuHeight = items.length * 28 + 24; // rough: items + separators
+    const y = Math.max(8, rect.top - estimatedMenuHeight);
+
+    const ctxMenu = ContextMenu.show({
+      items,
+      anchor: { x: rect.right + 4, y },
+    });
+
+    // Track the menu for toggle behavior
+    this._manageMenu = ctxMenu;
+    anchor.classList.add('active');
+    ctxMenu.onDidDismiss(() => {
+      this._manageMenuDismissedAt = Date.now();
+      this._manageMenu = null;
+      anchor.classList.remove('active');
+    });
+
+    ctxMenu.onDidSelect(({ item }) => {
+      if (item.disabled) return;
+
+      // Handle theme commands specially
+      if (item.id === 'workbench.action.selectTheme') {
+        this.selectColorTheme();
+        return;
+      }
+
+      // Execute via command service for registered commands
+      cmdService.executeCommand(item.id).catch(err => {
+        console.error(`[Workbench] Manage menu action error:`, err);
+      });
+    });
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1670,6 +1806,9 @@ export class Workbench extends Disposable {
 
   private _setupAuxBarViews(): ViewContainer {
     const container = new ViewContainer('auxiliaryBar');
+    // Hide the built-in tab bar — the Part already has its own title area.
+    // Without this, a 35px empty tab bar renders below the header.
+    container.hideTabBar();
 
     // Mount into aux bar's view slot
     const auxBarPart = this._auxiliaryBar as unknown as AuxiliaryBarPart;
@@ -1681,7 +1820,7 @@ export class Workbench extends Disposable {
     // Header label — updates when extensions register and activate views
     const headerSlot = auxBarPart.headerSlot;
     if (headerSlot) {
-      const headerLabel = document.createElement('span');
+      const headerLabel = $('span');
       headerLabel.classList.add('auxiliary-bar-header-label');
       headerLabel.textContent = 'SECONDARY SIDE BAR';
       headerSlot.appendChild(headerLabel);
@@ -1704,7 +1843,7 @@ export class Workbench extends Disposable {
   // ════════════════════════════════════════════════════════════════════════
 
   private _setupSecondaryActivityBar(): void {
-    this._secondaryActivityBarEl = document.createElement('div');
+    this._secondaryActivityBarEl = $('div');
     this._secondaryActivityBarEl.classList.add('secondary-activity-bar', 'hidden');
 
     // No hardcoded view buttons — extensions will register their own
@@ -1719,63 +1858,12 @@ export class Workbench extends Disposable {
   // ════════════════════════════════════════════════════════════════════════
 
   private _setupEditorWatermark(): void {
-    const watermark = this._editor.element.querySelector('.editor-watermark') as HTMLElement;
-    if (watermark) {
-      // Initial watermark with static shortcuts (keybinding service not yet available)
-      this._renderWatermarkContent(watermark);
-    }
+    setupEditorWatermark(this._editor.element);
   }
 
-  /**
-   * Update the watermark keyboard shortcuts to reflect actual keybinding
-   * labels from the keybinding service. Called after keybindingService is
-   * available (Phase 5).
-   */
+  /** Update watermark shortcuts from live keybinding service. */
   private _updateWatermarkKeybindings(keybindingService: { lookupKeybinding(commandId: string): string | undefined }): void {
-    const watermark = this._editor.element.querySelector('.editor-watermark') as HTMLElement;
-    if (!watermark) return;
-    this._renderWatermarkContent(watermark, keybindingService);
-  }
-
-  /**
-   * Render the watermark content, optionally using the keybinding service
-   * for dynamic shortcut labels.
-   */
-  private _renderWatermarkContent(
-    watermark: HTMLElement,
-    keybindingService?: { lookupKeybinding(commandId: string): string | undefined },
-  ): void {
-    const shortcuts: { commandId: string; label: string; fallback: string }[] = [
-      { commandId: 'workbench.action.showCommands', label: 'Command Palette', fallback: 'Ctrl+Shift+P' },
-      { commandId: 'workbench.action.toggleSidebarVisibility', label: 'Toggle Sidebar', fallback: 'Ctrl+B' },
-      { commandId: 'workbench.action.togglePanel', label: 'Toggle Panel', fallback: 'Ctrl+J' },
-      { commandId: 'workbench.action.splitEditor', label: 'Split Editor', fallback: 'Ctrl+\\' },
-    ];
-
-    const entries = shortcuts.map(({ commandId, label, fallback }) => {
-      // Look up keybinding if service is available, else use fallback
-      let key = fallback;
-      if (keybindingService) {
-        const resolved = keybindingService.lookupKeybinding(commandId);
-        if (resolved) {
-          // Convert normalized format (ctrl+shift+p) to display format (Ctrl+Shift+P)
-          key = resolved.split('+').map(part =>
-            part.charAt(0).toUpperCase() + part.slice(1),
-          ).join('+');
-        }
-      }
-      return `<div class="editor-watermark-entry"><kbd>${key}</kbd> <span>${label}</span></div>`;
-    }).join('\n            ');
-
-    watermark.innerHTML = `
-        <div class="editor-watermark-content">
-          <div class="editor-watermark-icon">⊞</div>
-          <div class="editor-watermark-title">Parallx Workbench</div>
-          <div class="editor-watermark-shortcuts">
-            ${entries}
-          </div>
-        </div>
-      `;
+    updateWatermarkKeybindings(this._editor.element, keybindingService);
   }
 
   /**
@@ -1856,7 +1944,7 @@ export class Workbench extends Disposable {
 
     // Update resource context keys from active editor
     if (this._workbenchContext && editor) {
-      const editorUri = (editor as any).uri as string | undefined;
+      const editorUri = editor.uri?.toString();
       if (editorUri) {
         try {
           const uri = URI.parse(editorUri);
@@ -1887,7 +1975,17 @@ export class Workbench extends Disposable {
   private _registerFacadeServices(): void {
     // Layout service — delegates to grids
     const layoutService = new LayoutService();
-    layoutService.setHost(this as any);
+    // Adapter satisfies LayoutHost without `as any` on the Workbench's protected members
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
+    layoutService.setHost({
+      get container() { return self._container; },
+      get _hGrid() { return self._hGrid; },
+      get _vGrid() { return self._vGrid; },
+      _layoutViewContainers: () => this._layoutViewContainers(),
+      isPartVisible: (partId: string) => this.isPartVisible(partId),
+      setPartHidden: (hidden: boolean, partId: string) => this.setPartHidden(hidden, partId),
+    });
     this._register(layoutService);
     this._services.registerInstance(ILayoutService, layoutService);
 
@@ -1898,7 +1996,15 @@ export class Workbench extends Disposable {
 
     // Workspace service — delegates to workbench workspace operations
     const workspaceService = new WorkspaceService();
-    workspaceService.setHost(this as any);
+    workspaceService.setHost({
+      get workspace() { return self._workspace; },
+      get _workspaceSaver() { return self._workspaceSaver; },
+      createWorkspace: (name: string, path?: string, switchTo?: boolean) => self.createWorkspace(name, path, switchTo),
+      switchWorkspace: (id: string) => self.switchWorkspace(id),
+      getRecentWorkspaces: () => self.getRecentWorkspaces(),
+      removeRecentWorkspace: (id: string) => self.removeRecentWorkspace(id),
+      get onDidSwitchWorkspace() { return self.onDidSwitchWorkspace; },
+    });
     this._register(workspaceService);
     this._services.registerInstance(IWorkspaceService, workspaceService);
 
@@ -1914,7 +2020,7 @@ export class Workbench extends Disposable {
     // Notification service — attach toast container to the workbench DOM
     if (this._services.has(INotificationService)) {
       const notificationService = this._services.get(INotificationService);
-      (notificationService as any).attach(this._container);
+      notificationService.attach(this._container);
     }
 
     console.log('[Workbench] Facade services registered (layout, view, workspace)');
@@ -1934,14 +2040,12 @@ export class Workbench extends Disposable {
     const activationEvents = this._services.get(IActivationEventService) as unknown as ActivationEventService;
     const errorService = this._services.get(IToolErrorService) as unknown as ToolErrorService;
     const notificationService = this._services.has(INotificationService)
-      ? this._services.get(INotificationService) as any
+      ? this._services.get(INotificationService)
       : undefined;
 
     // Register contribution processors (M2 Capability 5)
     const { commandContribution, keybindingContribution, menuContribution, keybindingService } =
       registerContributionProcessors(this._services);
-    this._commandContribution = commandContribution;
-    this._keybindingContribution = keybindingContribution;
     this._menuContribution = menuContribution;
     this._register(commandContribution);
     this._register(keybindingContribution);
@@ -1981,13 +2085,14 @@ export class Workbench extends Disposable {
       services: this._services,
       viewManager: this._viewManager,
       toolRegistry: registry,
-      notificationService,
+      notificationService: notificationService!,
       workbenchContainer: this._container,
       configurationService: this._configService,
       commandContributionProcessor: commandContribution,
       viewContributionProcessor: this._viewContribution,
       badgeHost: this._activityBarPart,
       statusBarPart: this._statusBar as unknown as StatusBarPart,
+      themeService: this._services.has(IThemeService) ? this._services.get(IThemeService) : undefined,
     };
 
     // Storage dependencies for persistent tool mementos (Cap 4)
@@ -2001,7 +2106,7 @@ export class Workbench extends Disposable {
     this._toolActivator = this._register(
       new ToolActivator(registry, errorService, activationEvents, apiFactoryDeps, storageDeps),
     );
-    this._services.registerInstance(IToolActivatorService, this._toolActivator as any);
+    this._services.registerInstance(IToolActivatorService, this._toolActivator);
 
     // Wire activation events to the activator
     this._register(activationEvents.onActivationRequested(async (request) => {
@@ -2025,7 +2130,7 @@ export class Workbench extends Disposable {
 
     // Wire keybinding lookup and command executor into TitlebarPart (M3 Capability 1)
     this._titlebar.setKeybindingLookup(keybindingService);
-    this._titlebar.setCommandExecutor(this._services.get(ICommandService) as any);
+    this._titlebar.setCommandExecutor(this._services.get(ICommandService));
 
     // Wire context key evaluator for menu when-clause graying (M4)
     if (this._contextKeyService) {
@@ -2043,6 +2148,9 @@ export class Workbench extends Disposable {
 
     // Fire startup finished — triggers * and onStartupFinished activation events
     activationEvents.fireStartupFinished();
+
+    // ── Unsaved changes guard (QoL) ──
+    this._wireUnsavedChangesGuard();
 
     console.log('[Workbench] Tool lifecycle initialized (with contribution processors)');
   }
@@ -2091,26 +2199,115 @@ export class Workbench extends Disposable {
   /**
    * Wire the file editor resolver at the workbench level.
    *
-   * This connects three things:
-   *  1. A pane factory for FileEditorInput / UntitledEditorInput → TextEditorPane
-   *  2. A URI resolver for `file://` and `untitled://` → FileEditorInput / UntitledEditorInput
-   *  3. Exposes the resolver via setFileEditorResolver() so EditorsBridge.openFileEditor() works
+   * This connects four things:
+   *  1. An EditorResolverService with built-in format reader registrations
+   *  2. A pane factory that routes inputs to the correct EditorPane
+   *  3. A URI resolver that creates the correct EditorInput via the resolver
+   *  4. Exposes the resolver via setFileEditorResolver() so EditorsBridge.openFileEditor() works
+   *
+   * Built-in format readers:
+   *  - Markdown (.md, .markdown) → MarkdownEditorPane (rendered preview)
+   *  - Images (.png, .jpg, .gif, .svg, .webp, .bmp, .ico, .avif) → ImageEditorPane
+   *  - PDF (.pdf) → PdfEditorPane
+   *  - Text (fallback .*) → TextEditorPane
    *
    * Must be called AFTER services are registered but BEFORE built-in tools activate.
    */
   private _initFileEditorResolver(): void {
-    // ── 1. Pane factory ──
-    const paneFactoryDisposable = registerEditorPaneFactory((input) => {
-      if (input instanceof FileEditorInput || input instanceof UntitledEditorInput) {
-        return new TextEditorPane();
+    // ── 1. EditorResolverService ──
+    const resolver = new EditorResolverService();
+    this._register(resolver);
+
+    const textFileModelManager = this._services.get(ITextFileModelManager);
+    const fileService = this._services.get(IFileService);
+
+    // Helper: compute workspace-relative path for tab description
+    const getRelativePath = (uri: URI): string | undefined => {
+      const workspaceService = this._services.has(IWorkspaceService)
+        ? this._services.get(IWorkspaceService)
+        : undefined;
+      if (workspaceService?.folders) {
+        for (const folder of workspaceService.folders) {
+          const folderUri = typeof folder.uri === 'string' ? URI.parse(folder.uri) : folder.uri;
+          const folderPath = folderUri.fsPath;
+          if (uri.fsPath.startsWith(folderPath)) {
+            return uri.fsPath.substring(folderPath.length + 1).replace(/\\/g, '/');
+          }
+        }
       }
+      return undefined;
+    };
+
+    // ── Register built-in format readers (priority-sorted) ──
+
+    // Markdown: opens in text editor by default (editable). Preview is
+    // triggered via the "Markdown: Open Preview to the Side" command which
+    // creates a MarkdownPreviewInput in a split group.
+    // (No special resolver entry for .md — the wildcard text fallback handles it.)
+
+    // Image viewer
+    this._register(resolver.registerEditor({
+      id: ImageEditorInput.TYPE_ID,
+      name: 'Image Viewer',
+      extensions: ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.ico', '.avif'],
+      priority: EditorResolverPriority.Default,
+      createInput: (uri) => ImageEditorInput.create(uri),
+      createPane: () => new ImageEditorPane(),
+    }));
+
+    // PDF viewer
+    this._register(resolver.registerEditor({
+      id: PdfEditorInput.TYPE_ID,
+      name: 'PDF Viewer',
+      extensions: ['.pdf'],
+      priority: EditorResolverPriority.Default,
+      createInput: (uri) => PdfEditorInput.create(uri),
+      createPane: () => new PdfEditorPane(),
+    }));
+
+    // Text editor (fallback — matches everything)
+    this._register(resolver.registerEditor({
+      id: FileEditorInput.TYPE_ID,
+      name: 'Text Editor',
+      extensions: ['.*'],
+      priority: EditorResolverPriority.Builtin,
+      createInput: (uri) => FileEditorInput.create(uri, textFileModelManager, fileService, getRelativePath(uri)),
+      createPane: () => new TextEditorPane(),
+    }));
+
+    // ── 2. Pane factory (routes input → pane) ──
+    const services = this._services;
+    const paneFactoryDisposable = registerEditorPaneFactory((input) => {
+      // MarkdownPreviewInput → rendered preview pane
+      if (input instanceof MarkdownPreviewInput) return new MarkdownEditorPane();
+
+      // Image / PDF inputs → their dedicated panes
+      if (input instanceof ImageEditorInput) return new ImageEditorPane();
+      if (input instanceof PdfEditorInput) return new PdfEditorPane();
+
+      // Keybindings viewer (QoL)
+      if (input instanceof KeybindingsEditorInput) {
+        const kbService = services.has(IKeybindingService)
+          ? (services.get(IKeybindingService) as unknown as KeybindingService)
+          : undefined;
+        return new KeybindingsEditorPane(() => kbService?.getAllKeybindings() ?? []);
+      }
+
+      // Settings editor (QoL)
+      if (input instanceof SettingsEditorInput) {
+        return new SettingsEditorPane(services);
+      }
+
+      // FileEditorInput → always text editor (markdown is edited as text;
+      // preview is opened separately via command)
+      if (input instanceof FileEditorInput) return new TextEditorPane();
+
+      // UntitledEditorInput → always text
+      if (input instanceof UntitledEditorInput) return new TextEditorPane();
+
       return null;
     });
     this._register(paneFactoryDisposable);
-
-    // ── 2. Resolver services ──
-    const textFileModelManager = this._services.get(ITextFileModelManager) as any;
-    const fileService = this._services.get(IFileService) as any;
 
     // ── 3. URI resolver function ──
     setFileEditorResolver(async (uriString: string) => {
@@ -2124,45 +2321,67 @@ export class Workbench extends Disposable {
       if (uriString.startsWith('file://') || uriString.startsWith('file:///')) {
         uri = URI.parse(uriString);
       } else {
-        // Treat as fsPath
         uri = URI.file(uriString);
       }
 
-      // Check if there's already an open FileEditorInput for this URI
-      // (deduplication via URI key)
-      const existingInput = this._findOpenFileEditorInput(uri);
+      // Deduplication: check if already open
+      const existingInput = this._findOpenEditorInput(uri);
       if (existingInput) return existingInput;
 
-      // Compute workspace-relative path for description
-      let relativePath: string | undefined;
-      const workspaceService = this._services.has(IWorkspaceService)
-        ? this._services.get(IWorkspaceService) as any
-        : undefined;
-      if (workspaceService?.folders) {
-        for (const folder of workspaceService.folders) {
-          const folderUri = typeof folder.uri === 'string' ? URI.parse(folder.uri) : folder.uri;
-          const folderPath = folderUri.fsPath;
-          if (uri.fsPath.startsWith(folderPath)) {
-            relativePath = uri.fsPath.substring(folderPath.length + 1).replace(/\\/g, '/');
-            break;
-          }
-        }
-      }
+      // Consult the EditorResolverService for the right input
+      const resolution = resolver.resolve(uri);
+      if (resolution) return resolution.input;
 
-      return FileEditorInput.create(uri, textFileModelManager, fileService, relativePath);
+      // Absolute fallback — plain FileEditorInput
+      return FileEditorInput.create(uri, textFileModelManager, fileService, getRelativePath(uri));
     });
 
-    console.log('[Workbench] File editor resolver wired');
+    console.log('[Workbench] File editor resolver wired with format readers');
+
+    // ── 4. Markdown preview toolbar button handler ──
+    // When the user clicks the preview icon in the tab toolbar, open a
+    // MarkdownPreviewInput in a split-right group (same as the command).
+    const editorPart = this._editor as EditorPart;
+    this._register(editorPart.onDidRequestMarkdownPreview((sourceGroup) => {
+      const activeEditor = sourceGroup.model.activeEditor;
+      if (!(activeEditor instanceof FileEditorInput)) return;
+
+      const newGroup = editorPart.splitGroup(sourceGroup.id, GroupDirection.Right);
+      if (!newGroup) return;
+
+      // Close the duplicated text editor from split
+      if (newGroup.model.count > 0) {
+        newGroup.model.closeEditor(0, true);
+      }
+
+      const previewInput = MarkdownPreviewInput.create(activeEditor);
+      newGroup.openEditor(previewInput, { pinned: true });
+    }));
+
+    // ── 5. Tab context menu: Reveal in Explorer ──
+    // When the user selects "Reveal in Explorer" from a tab context menu,
+    // execute the explorer.revealInExplorer command with the URI.
+    this._register(editorPart.onDidRequestRevealInExplorer((uri) => {
+      const cmdService = this._services.get(ICommandService) as CommandService;
+      cmdService?.executeCommand('explorer.revealInExplorer', uri.toString());
+    }));
   }
 
   /**
-   * Find an already-open FileEditorInput by URI across all editor groups.
+   * Find an already-open editor by URI across all editor groups.
+   * Checks FileEditorInput, ImageEditorInput, and PdfEditorInput.
    */
-  private _findOpenFileEditorInput(uri: URI): FileEditorInput | undefined {
+  private _findOpenEditorInput(uri: URI): IEditorInput | undefined {
     const editorPart = this._editor as EditorPart;
     for (const group of editorPart.groups) {
       for (const editor of group.model.editors) {
         if (editor instanceof FileEditorInput && editor.uri.equals(uri)) {
+          return editor;
+        }
+        if (editor instanceof ImageEditorInput && editor.uri.equals(uri)) {
+          return editor;
+        }
+        if (editor instanceof PdfEditorInput && editor.uri.equals(uri)) {
           return editor;
         }
       }
@@ -2179,13 +2398,13 @@ export class Workbench extends Disposable {
     if (!this._commandPalette) return;
 
     const fileService = this._services.has(IFileService)
-      ? this._services.get(IFileService) as any
+      ? this._services.get(IFileService)
       : undefined;
     const workspaceService = this._services.has(IWorkspaceService)
-      ? this._services.get(IWorkspaceService) as any
+      ? this._services.get(IWorkspaceService)
       : undefined;
     const editorService = this._services.has(IEditorService)
-      ? this._services.get(IEditorService) as any
+      ? this._services.get(IEditorService)
       : undefined;
 
     if (!fileService || !workspaceService) {
@@ -2219,9 +2438,9 @@ export class Workbench extends Disposable {
       async (uriString: string) => {
         try {
           const uri = URI.parse(uriString);
-          const textFileModelManager = this._services.get(ITextFileModelManager) as any;
+          const textFileModelManager = this._services.get(ITextFileModelManager);
           // Deduplicate — reuse existing input if same file is already open
-          const existing = this._findOpenFileEditorInput(uri);
+          const existing = this._findOpenEditorInput(uri);
           const input = existing ?? FileEditorInput.create(
             uri, textFileModelManager, fileService, undefined,
           );
@@ -2247,125 +2466,12 @@ export class Workbench extends Disposable {
     activationEvents: ActivationEventService,
   ): Promise<void> {
     const builtins: { manifest: IToolManifest; module: { activate: Function; deactivate?: Function } }[] = [
-      {
-        manifest: {
-          manifestVersion: 1,
-          id: 'parallx.explorer',
-          name: 'Explorer',
-          version: '1.0.0',
-          publisher: 'parallx',
-          description: 'File Explorer — browse, create, rename, and delete files and folders.',
-          main: './main.js',
-          engines: { parallx: '^0.1.0' },
-          activationEvents: ['onStartupFinished'],
-          contributes: {
-            commands: [
-              { id: 'explorer.newFile', title: 'Explorer: New File...' },
-              { id: 'explorer.newFolder', title: 'Explorer: New Folder...' },
-              { id: 'explorer.rename', title: 'Explorer: Rename...' },
-              { id: 'explorer.delete', title: 'Explorer: Delete' },
-              { id: 'explorer.refresh', title: 'Explorer: Refresh' },
-              { id: 'explorer.collapse', title: 'Explorer: Collapse All' },
-              { id: 'explorer.revealInExplorer', title: 'Explorer: Reveal in Explorer' },
-              { id: 'explorer.toggleHiddenFiles', title: 'Explorer: Toggle Hidden Files' },
-            ],
-            keybindings: [
-              { command: 'explorer.rename', key: 'F2', when: "focusedView == 'view.explorer'" },
-              { command: 'explorer.delete', key: 'Delete', when: "focusedView == 'view.explorer'" },
-            ],
-            viewContainers: [
-              { id: 'explorer-container', title: 'Explorer', icon: '📁', location: 'sidebar' as const },
-            ],
-            views: [
-              { id: 'view.openEditors', name: 'Open Editors', defaultContainerId: 'explorer-container' },
-              { id: 'view.explorer', name: 'Explorer', defaultContainerId: 'explorer-container' },
-            ],
-          },
-        },
-        module: ExplorerTool,
-      },
-      {
-        manifest: {
-          manifestVersion: 1,
-          id: 'parallx.editor.text',
-          name: 'Text Editor',
-          version: '1.0.0',
-          publisher: 'parallx',
-          description: 'Built-in text editor for files and untitled documents.',
-          main: './main.js',
-          engines: { parallx: '^0.1.0' },
-          activationEvents: ['*'],
-          contributes: {
-            commands: [
-              { id: 'editor.toggleWordWrap', title: 'View: Toggle Word Wrap' },
-              { id: 'editor.changeEncoding', title: 'Change File Encoding' },
-            ],
-            keybindings: [
-              { command: 'editor.toggleWordWrap', key: 'Alt+Z' },
-            ],
-          },
-        },
-        module: FileEditorTool,
-      },
-      {
-        manifest: {
-          manifestVersion: 1,
-          id: 'parallx.welcome',
-          name: 'Welcome',
-          version: '1.0.0',
-          publisher: 'parallx',
-          description: 'Welcome page — shows getting-started content and recent workspaces.',
-          main: './main.js',
-          engines: { parallx: '^0.1.0' },
-          activationEvents: ['onStartupFinished'],
-          contributes: {
-            commands: [{ id: 'welcome.openWelcome', title: 'Welcome: Show Welcome Page' }],
-          },
-        },
-        module: WelcomeTool,
-      },
-      {
-        manifest: {
-          manifestVersion: 1,
-          id: 'parallx.output',
-          name: 'Output',
-          version: '1.0.0',
-          publisher: 'parallx',
-          description: 'Output panel — shows log messages from tools and the shell.',
-          main: './main.js',
-          engines: { parallx: '^0.1.0' },
-          activationEvents: ['onStartupFinished'],
-          contributes: {
-            commands: [
-              { id: 'output.clear', title: 'Output: Clear Log' },
-              { id: 'output.toggleTimestamps', title: 'Output: Toggle Timestamps' },
-            ],
-            views: [{ id: 'view.output', name: 'Output', defaultContainerId: 'panel' }],
-          },
-        },
-        module: OutputTool,
-      },
-      {
-        manifest: {
-          manifestVersion: 1,
-          id: 'parallx.tool-gallery',
-          name: 'Tools',
-          version: '1.0.0',
-          publisher: 'parallx',
-          description: 'Tool Gallery — shows all registered tools, their status, and contributions.',
-          main: './main.js',
-          engines: { parallx: '^0.1.0' },
-          activationEvents: ['onStartupFinished'],
-          contributes: {
-            commands: [{ id: 'tools.showInstalled', title: 'Tools: Show Installed Tools' }],
-            viewContainers: [
-              { id: 'tools-container', title: 'Tools', icon: '🧩', location: 'sidebar' as const },
-            ],
-            views: [{ id: 'view.tools', name: 'Installed Tools', defaultContainerId: 'tools-container' }],
-          },
-        },
-        module: ToolGalleryTool,
-      },
+      { manifest: EXPLORER_MANIFEST, module: ExplorerTool },
+      { manifest: SEARCH_MANIFEST, module: SearchTool },
+      { manifest: TEXT_EDITOR_MANIFEST, module: FileEditorTool },
+      { manifest: WELCOME_MANIFEST, module: WelcomeTool },
+      { manifest: OUTPUT_MANIFEST, module: OutputTool },
+      { manifest: TOOL_GALLERY_MANIFEST, module: ToolGalleryTool },
     ];
 
     const activationPromises: Promise<void>[] = [];
@@ -2465,11 +2571,8 @@ export class Workbench extends Disposable {
       sectionEl.innerHTML = '';
 
       // Create a content wrapper for the real tool view
-      const contentEl = document.createElement('div');
-      contentEl.className = 'tool-view-content';
-      contentEl.style.width = '100%';
-      contentEl.style.height = '100%';
-      contentEl.style.overflow = 'auto';
+      const contentEl = $('div');
+      contentEl.className = 'tool-view-content fill-container-scroll';
       sectionEl.appendChild(contentEl);
 
       // Resolve the real tool view into the container
@@ -2703,12 +2806,31 @@ export class Workbench extends Disposable {
    * Uses the ActivityBarPart's addIcon API (M3 Capability 0.2).
    */
   private _addContributedActivityBarIcon(info: IContributedContainer): void {
+    // Map known icon identifiers to SVG codicons
+    const svgIcon = this._resolveCodiconSvg(info.icon);
     this._activityBarPart.addIcon({
       id: info.id,
-      icon: info.icon ?? info.title.charAt(0).toUpperCase(),
+      icon: svgIcon ?? info.icon ?? info.title.charAt(0).toUpperCase(),
+      isSvg: svgIcon !== undefined,
       label: info.title,
       source: 'contributed',
     });
+  }
+
+  /**
+   * Resolve an icon identifier to a codicon SVG string.
+   * Known icons get proper SVG; unknown return undefined (falls back to text).
+   */
+  private _resolveCodiconSvg(icon?: string): string | undefined {
+    // Map emoji or codicon names to SVG paths
+    const codiconMap: Record<string, string> = {
+      // Extensions / puzzle piece
+      '🧩': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.5 7H16V4.5C16 3.12 14.88 2 13.5 2C12.12 2 11 3.12 11 4.5V7H6.5C5.67 7 5 7.67 5 8.5V13H7.5C8.88 13 10 14.12 10 15.5C10 16.88 8.88 18 7.5 18H5V22.5C5 23.33 5.67 24 6.5 24H11V21.5C11 20.12 12.12 19 13.5 19C14.88 19 16 20.12 16 21.5V24H20.5C21.33 24 22 23.33 22 22.5V18H19.5C18.12 18 17 16.88 17 15.5C17 14.12 18.12 13 19.5 13H22V8.5C22 7.67 21.33 7 20.5 7Z" fill="currentColor"/></svg>',
+      'codicon-extensions': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.5 7H16V4.5C16 3.12 14.88 2 13.5 2C12.12 2 11 3.12 11 4.5V7H6.5C5.67 7 5 7.67 5 8.5V13H7.5C8.88 13 10 14.12 10 15.5C10 16.88 8.88 18 7.5 18H5V22.5C5 23.33 5.67 24 6.5 24H11V21.5C11 20.12 12.12 19 13.5 19C14.88 19 16 20.12 16 21.5V24H20.5C21.33 24 22 23.33 22 22.5V18H19.5C18.12 18 17 16.88 17 15.5C17 14.12 18.12 13 19.5 13H22V8.5C22 7.67 21.33 7 20.5 7Z" fill="currentColor"/></svg>',
+      // Settings gear
+      '⚙️': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.85 8.75L18.01 8.07L19 6.54L17.46 5L15.93 5.99L15.25 4.15H13.25L12.57 5.99L11.04 5L9.5 6.54L10.49 8.07L8.65 8.75V10.75L10.49 11.43L9.5 12.96L11.04 14.5L12.57 13.51L13.25 15.35H15.25L15.93 13.51L17.46 14.5L19 12.96L18.01 11.43L19.85 10.75V8.75ZM14.25 12.5C13.01 12.5 12 11.49 12 10.25C12 9.01 13.01 8 14.25 8C15.49 8 16.5 9.01 16.5 10.25C16.5 11.49 15.49 12.5 14.25 12.5Z" fill="currentColor"/></svg>',
+    };
+    return icon ? codiconMap[icon] : undefined;
   }
 
   /**
@@ -2719,168 +2841,19 @@ export class Workbench extends Disposable {
   }
 
   /**
-   * Toggle primary sidebar visibility.
+   * Programmatically switch to a specific sidebar view and ensure sidebar is visible.
+   * Used by commands like `workbench.view.search` (Ctrl+Shift+F).
    *
-   * VS Code reference: ViewContainerActivityAction.run() — clicking active icon toggles sidebar.
-   * Remembers width before collapse and restores it on expand.
+   * VS Code reference: ViewsService.openView()
    */
-  toggleSidebar(): void {
-    if (this._sidebar.visible) {
-      // Save current width before collapsing so we can restore later
-      const currentWidth = this._hGrid.getViewSize(this._sidebar.id);
-      if (currentWidth !== undefined && currentWidth > 0) {
-        this._lastSidebarWidth = currentWidth;
-      }
-      this._hGrid.removeView(this._sidebar.id);
-      this._sidebar.setVisible(false);
-    } else {
-      this._sidebar.setVisible(true);
-      this._hGrid.addView(this._sidebar as any, this._lastSidebarWidth, 0); // index 0 = leftmost in hGrid
+  showSidebarView(viewId: string): void {
+    // Ensure sidebar is visible
+    if (!this._sidebar.visible) {
+      this.toggleSidebar();
     }
-    this._hGrid.layout();
-    this._layoutViewContainers();
-  }
-
-  /**
-   * Toggle panel visibility.
-   *
-   * VS Code reference: TogglePanelAction (workbench.action.togglePanel, Ctrl+J).
-   * Remembers height before collapse and restores it on expand.
-   */
-  togglePanel(): void {
-    if (this._panel.visible) {
-      // Save current height before collapsing
-      const currentHeight = this._vGrid.getViewSize(this._panel.id);
-      if (currentHeight !== undefined && currentHeight > 0) {
-        this._lastPanelHeight = currentHeight;
-      }
-      this._vGrid.removeView(this._panel.id);
-      this._panel.setVisible(false);
-      this._panelMaximized = false;
-      this._workbenchContext.setPanelMaximized(false);
-    } else {
-      this._panel.setVisible(true);
-      this._vGrid.addView(this._panel as any, this._lastPanelHeight);
-      this._panelMaximized = false;
-      this._workbenchContext.setPanelMaximized(false);
-    }
-    this._vGrid.layout();
-    this._layoutViewContainers();
-  }
-
-  /**
-   * Toggle panel between normal and maximized height.
-   *
-   * VS Code reference: toggleMaximizedPanel — stores non-maximized height,
-   * sets panel to fill all vertical space (editor gets minimum), restores on
-   * second toggle.
-   */
-  toggleMaximizedPanel(): void {
-    if (!this._panel.visible) {
-      // Show + maximize in one go
-      this._panel.setVisible(true);
-      this._vGrid.addView(this._panel as any, this._lastPanelHeight);
-      this._vGrid.layout();
-      // Now maximize
-    }
-
-    if (this._panelMaximized) {
-      // Restore to previous non-maximized height
-      const currentHeight = this._vGrid.getViewSize(this._panel.id);
-      if (currentHeight !== undefined) {
-        const delta = this._lastPanelHeight - currentHeight;
-        if (delta !== 0) {
-          this._vGrid.resizeSash(this._vGrid.root, 0, delta);
-          this._vGrid.layout();
-        }
-      }
-      this._panelMaximized = false;
-      this._workbenchContext.setPanelMaximized(false);
-    } else {
-      // Save current height, then maximize panel (give editor minimum)
-      const currentHeight = this._vGrid.getViewSize(this._panel.id);
-      if (currentHeight !== undefined && currentHeight > 0) {
-        this._lastPanelHeight = currentHeight;
-      }
-      // Calculate how much to grow: vGrid total height minus a thin editor minimum
-      const editorMin = 30; // minimal editor strip when maximized
-      const editorSize = this._vGrid.getViewSize(this._editor.id);
-      if (editorSize !== undefined) {
-        const delta = editorSize - editorMin;
-        if (delta > 0) {
-          this._vGrid.resizeSash(this._vGrid.root, 0, -delta);
-          this._vGrid.layout();
-        }
-      }
-      this._panelMaximized = true;
-      this._workbenchContext.setPanelMaximized(true);
-    }
-    this._layoutViewContainers();
-  }
-
-  /**
-   * Toggle status bar visibility.
-   *
-   * VS Code reference: ToggleStatusbarVisibilityAction
-   * (workbench.action.toggleStatusbarVisibility).
-   * Status bar is a fixed-height (22 px) strip — no sash resizing needed.
-   * Visibility is persisted through WorkspaceSaver (part snapshot).
-   */
-  toggleStatusBar(): void {
-    const visible = !this._statusBar.visible;
-    this._statusBar.setVisible(visible);
-    this._workbenchContext.setStatusBarVisible(visible);
-    this._relayout();
-    this._workspaceSaver.requestSave();
-  }
-
-  // ── LayoutHost Protocol ──────────────────────────────────────────────────
-  // These methods fulfil the LayoutHost interface expected by LayoutService.
-  // VS Code reference: IWorkbenchLayoutService.isVisible / setPartHidden.
-
-  /**
-   * Check whether a part is currently visible by its PartId.
-   */
-  isPartVisible(partId: string): boolean {
-    switch (partId) {
-      case PartId.Sidebar: return this._sidebar.visible;
-      case PartId.Panel: return this._panel.visible;
-      case PartId.AuxiliaryBar: return this._auxiliaryBar.visible;
-      case PartId.StatusBar: return this._statusBar!.visible;
-      case PartId.ActivityBar: return true; // always visible
-      case PartId.Titlebar: return true;    // always visible
-      case PartId.Editor: return true;      // always visible
-      default: return false;
-    }
-  }
-
-  /**
-   * Show or hide a part by its PartId.
-   * Dispatches to the relevant toggle method following VS Code's
-   * `setPartHidden → setSideBarHidden / setPanelHidden` pattern.
-   */
-  setPartHidden(hidden: boolean, partId: string): void {
-    const isVisible = this.isPartVisible(partId);
-    // No-op if already in the desired state
-    if (hidden === !isVisible) return;
-
-    switch (partId) {
-      case PartId.Sidebar:
-        this.toggleSidebar();
-        break;
-      case PartId.Panel:
-        this.togglePanel();
-        break;
-      case PartId.AuxiliaryBar:
-        this.toggleAuxiliaryBar();
-        break;
-      case PartId.StatusBar:
-        this.toggleStatusBar();
-        break;
-      // Titlebar, Editor, ActivityBar — not toggleable
-      default:
-        console.warn(`[Workbench] setPartHidden not supported for "${partId}"`);
-        break;
+    // Switch to the requested container (builtin containers use viewId as key)
+    if (this._builtinSidebarContainers.has(viewId) || this._contributedSidebarContainers.has(viewId)) {
+      this._switchSidebarContainer(viewId);
     }
   }
 
@@ -2959,53 +2932,75 @@ export class Workbench extends Disposable {
 
     // Wire command executor so entry clicks execute commands via CommandService
     // VS Code parity: StatusbarEntryItem uses ICommandService.executeCommand()
-    const commandService = this._services.get(ICommandService) as any;
+    const commandService = this._services.get(ICommandService);
     if (commandService) {
       sb.setCommandExecutor((cmdId: string) => {
         commandService.executeCommand(cmdId);
       });
     }
 
-    // Register default status bar entries through the contribution API
-    // (not hardcoded DOM — matches Task 6.1 requirement)
-    const branchAccessor = sb.addEntry({
-      id: 'status.scm.branch',
-      text: '⎇ master',
-      alignment: StatusBarAlignment.Left,
-      priority: 100,
-      tooltip: 'Current branch',
-      name: 'Branch',
-    });
+    // ── Right-aligned editor indicators (VS Code parity) ──
+    // Order from left to right in the right section:
+    //   Cursor Position | Indentation | Encoding | EOL | Language
+    // Higher priority = further right (row-reverse), so language = lowest priority.
 
-    const errorsAccessor = sb.addEntry({
-      id: 'status.problems',
-      text: '⊘ 0  ⚠ 0',
-      alignment: StatusBarAlignment.Left,
-      priority: 90,
-      tooltip: 'Errors and warnings',
-      name: 'Problems',
-    });
-
-    sb.addEntry({
+    const cursorAccessor = sb.addEntry({
       id: 'status.editor.selection',
       text: 'Ln 1, Col 1',
       alignment: StatusBarAlignment.Right,
       priority: 100,
-      tooltip: 'Go to Line/Column',
+      tooltip: 'Go to Line/Column (Ctrl+G)',
+      command: 'workbench.action.gotoLine',
       name: 'Cursor Position',
     });
 
-    sb.addEntry({
+    const indentAccessor = sb.addEntry({
+      id: 'status.editor.indentation',
+      text: 'Spaces: 2',
+      alignment: StatusBarAlignment.Right,
+      priority: 80,
+      tooltip: 'Indentation Settings',
+      name: 'Indentation',
+    });
+
+    const encodingAccessor = sb.addEntry({
       id: 'status.editor.encoding',
       text: 'UTF-8',
       alignment: StatusBarAlignment.Right,
-      priority: 90,
+      priority: 70,
       tooltip: 'Select Encoding',
       name: 'Encoding',
     });
 
-    // Track accessors so the workbench can update them later
-    this._statusBarAccessors = { branch: branchAccessor, errors: errorsAccessor };
+    const eolAccessor = sb.addEntry({
+      id: 'status.editor.eol',
+      text: 'LF',
+      alignment: StatusBarAlignment.Right,
+      priority: 60,
+      tooltip: 'End of Line Sequence',
+      name: 'End of Line',
+    });
+
+    const languageAccessor = sb.addEntry({
+      id: 'status.editor.language',
+      text: 'Plain Text',
+      alignment: StatusBarAlignment.Right,
+      priority: 50,
+      tooltip: 'Select Language Mode',
+      name: 'Language',
+    });
+
+    // Track accessors for dynamic updates
+    this._statusBarAccessors = {
+      cursor: cursorAccessor,
+      indent: indentAccessor,
+      encoding: encodingAccessor,
+      eol: eolAccessor,
+      language: languageAccessor,
+    };
+
+    // ── Wire active editor → status bar indicators ──
+    this._wireEditorStatusBarTracking();
 
     // Context menu on right-click — VS Code parity:
     // Shows "Hide Status Bar" + per-entry hide toggles
@@ -3017,6 +3012,7 @@ export class Workbench extends Disposable {
             id: 'hideStatusBar',
             label: 'Hide Status Bar',
             group: '0_visibility',
+            keybinding: this._keybindingHint('workbench.action.toggleStatusbarVisibility'),
           },
           ...entries.map((e) => ({
             id: e.id,
@@ -3037,6 +3033,120 @@ export class Workbench extends Disposable {
     this._setupNotificationBadge(sb);
   }
 
+  // ── Extension → Language display name map ──
+  private static readonly EXT_TO_LANGUAGE: Record<string, string> = {
+    '.ts': 'TypeScript', '.tsx': 'TypeScript React',
+    '.js': 'JavaScript', '.jsx': 'JavaScript React',
+    '.json': 'JSON', '.jsonc': 'JSON with Comments',
+    '.md': 'Markdown', '.markdown': 'Markdown',
+    '.html': 'HTML', '.htm': 'HTML',
+    '.css': 'CSS', '.scss': 'SCSS', '.less': 'Less',
+    '.py': 'Python', '.rb': 'Ruby', '.rs': 'Rust',
+    '.go': 'Go', '.java': 'Java', '.c': 'C', '.cpp': 'C++', '.h': 'C',
+    '.cs': 'C#', '.swift': 'Swift', '.kt': 'Kotlin',
+    '.sh': 'Shell Script', '.bash': 'Shell Script', '.zsh': 'Shell Script',
+    '.ps1': 'PowerShell', '.bat': 'Batch',
+    '.xml': 'XML', '.svg': 'XML', '.yaml': 'YAML', '.yml': 'YAML',
+    '.toml': 'TOML', '.ini': 'INI', '.cfg': 'INI',
+    '.sql': 'SQL',
+    '.r': 'R', '.R': 'R',
+    '.lua': 'Lua', '.php': 'PHP', '.pl': 'Perl',
+    '.txt': 'Plain Text', '.log': 'Log',
+    '.dockerfile': 'Dockerfile',
+    '.gitignore': 'Ignore', '.env': 'Properties',
+  };
+
+  /** Resolve a filename to a display language name. */
+  private _getLanguageFromFileName(name: string): string {
+    const lower = name.toLowerCase();
+    // Exact filename matches
+    if (lower === 'dockerfile') return 'Dockerfile';
+    if (lower === 'makefile') return 'Makefile';
+    if (lower === '.gitignore') return 'Ignore';
+    if (lower === '.env') return 'Properties';
+
+    const dotIdx = name.lastIndexOf('.');
+    if (dotIdx >= 0) {
+      const ext = name.substring(dotIdx).toLowerCase();
+      return (this.constructor as typeof Workbench).EXT_TO_LANGUAGE[ext] ?? 'Plain Text';
+    }
+    return 'Plain Text';
+  }
+
+  /**
+   * Wire active editor changes to update cursor position, language,
+   * encoding, indentation, and EOL status bar indicators.
+   *
+   * VS Code parity: `EditorStatus` contribution in
+   * `src/vs/workbench/browser/parts/editor/editorStatus.ts`.
+   */
+  private _wireEditorStatusBarTracking(): void {
+    const editorService = this._services.has(IEditorService)
+      ? this._services.get(IEditorService) as import('../services/editorService.js').EditorService
+      : undefined;
+    if (!editorService) return;
+
+    const editorPart = this._editor as EditorPart;
+    const acc = this._statusBarAccessors;
+
+    /** Disposable for the cursor-position listener on the current TextEditorPane. */
+    let cursorSub: IDisposable | undefined;
+
+    // ── Language indicator updates (immediate — file name is available right away) ──
+    const updateLanguage = (editor: IEditorInput | undefined) => {
+      if (!editor) {
+        acc.language?.update({ text: '' });
+        return;
+      }
+      const lang = this._getLanguageFromFileName(editor.name ?? '');
+      acc.language?.update({ text: lang, tooltip: `${lang} — Select Language Mode` });
+    };
+
+    // Fire on initial active editor and on every editor switch
+    updateLanguage(editorService.activeEditor);
+    this._register(editorService.onDidActiveEditorChange(updateLanguage));
+
+    // ── Pane-dependent indicators (cursor, encoding, eol, indent) ──
+    // These require the pane to be fully created. EditorGroupView fires
+    // onDidActivePaneChange AFTER the async pane.setInput() completes,
+    // so the pane is ready at that point.
+    const updatePaneIndicators = (pane: import('../editor/editorPane.js').EditorPane | undefined) => {
+      // Tear down previous cursor listener
+      cursorSub?.dispose();
+      cursorSub = undefined;
+
+      if (pane instanceof TextEditorPane) {
+        // Text editor — show all indicators
+        acc.encoding?.update({ text: 'UTF-8' });
+        acc.indent?.update({ text: 'Spaces: 2' });
+        acc.cursor?.update({
+          text: `Ln ${pane.cursorLine}, Col ${pane.cursorCol}`,
+        });
+        acc.eol?.update({ text: pane.eolLabel });
+
+        // Live cursor position tracking
+        cursorSub = pane.onDidChangeCursorPosition(({ line, col }) => {
+          acc.cursor?.update({ text: `Ln ${line}, Col ${col}` });
+        });
+      } else {
+        // No pane or non-text editor (image, markdown preview, etc.)
+        acc.cursor?.update({ text: '' });
+        acc.eol?.update({ text: '' });
+        acc.indent?.update({ text: '' });
+        acc.encoding?.update({ text: '' });
+      }
+    };
+
+    // Listen to the reliable pane-ready signal from EditorPart
+    this._register(editorPart.onDidActivePaneChange(updatePaneIndicators));
+
+    // Fire once for the initial active pane (if any)
+    updatePaneIndicators(editorPart.activeGroup?.activePane);
+
+    // Clean up cursor sub on dispose
+    this._register(toDisposable(() => cursorSub?.dispose()));
+  }
+
   /**
    * Set up the notification bell badge in the status bar and wire it to
    * the NotificationService. Clicking the badge toggles a notification
@@ -3050,12 +3160,16 @@ export class Workbench extends Disposable {
       : undefined;
     if (!notifService) return;
 
-    // Add bell entry to status bar (right-aligned, low priority = far right)
+    // VS Code codicon bell SVG (16×16 viewBox)
+    const bellSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M13.377 10.573a7.63 7.63 0 0 1-.383-2.38V6.195a5.115 5.115 0 0 0-1.268-3.446 5.138 5.138 0 0 0-3.242-1.722c-.694-.072-1.4 0-2.07.227-.67.215-1.28.574-1.794 1.053a4.923 4.923 0 0 0-1.208 1.675 5.067 5.067 0 0 0-.431 2.022v2.2a7.61 7.61 0 0 1-.383 2.37L2 12.343l.479.658h3.505c0 .526.215 1.04.586 1.412.37.37.885.586 1.412.586.526 0 1.04-.215 1.411-.586s.587-.886.587-1.412h3.505l.478-.658-.586-1.77zm-4.69 3.147a.997.997 0 0 1-.705.299.997.997 0 0 1-.706-.3.997.997 0 0 1-.3-.705h1.999a.939.939 0 0 1-.287.706zm-5.515-1.71l.371-1.114a8.633 8.633 0 0 0 .443-2.691V6.004c0-.563.12-1.113.347-1.616.227-.514.55-.969.96-1.35.41-.37.885-.66 1.408-.844a4.14 4.14 0 0 1 1.635-.193 4.13 4.13 0 0 1 2.617 1.377c.37.44.636.96.78 1.52.145.56.193 1.145.143 1.724v2.2c0 .907.152 1.808.443 2.659l.371 1.113H3.172z" fill="currentColor"/></svg>';
+
+    // Add bell entry to status bar (left-aligned, far left)
     const bellAccessor = sb.addEntry({
       id: 'status.notifications',
-      text: '🔔',
-      alignment: StatusBarAlignment.Right,
-      priority: -100, // far right
+      text: '',
+      iconSvg: bellSvg,
+      alignment: StatusBarAlignment.Left,
+      priority: 1000, // far left (highest priority = leftmost)
       tooltip: 'No new notifications',
       command: 'workbench.action.toggleNotificationCenter',
       name: 'Notifications',
@@ -3064,7 +3178,7 @@ export class Workbench extends Disposable {
     // Update badge when notification count changes
     const updateBadge = (count: number) => {
       bellAccessor.update({
-        text: count > 0 ? `🔔 ${count}` : '🔔',
+        text: count > 0 ? `${count}` : '',
         tooltip: count > 0 ? `${count} notification${count > 1 ? 's' : ''}` : 'No new notifications',
       });
     };
@@ -3082,23 +3196,23 @@ export class Workbench extends Disposable {
     const showCenter = () => {
       if (centerOverlay) { hideCenter(); return; }
 
-      const overlay = document.createElement('div');
+      const overlay = $('div');
       overlay.className = 'parallx-notification-center-overlay';
       overlay.addEventListener('mousedown', (e) => {
         if (e.target === overlay) hideCenter();
       });
 
-      const panel = document.createElement('div');
+      const panel = $('div');
       panel.className = 'parallx-notification-center';
 
       // Header
-      const header = document.createElement('div');
+      const header = $('div');
       header.className = 'parallx-notification-center-header';
-      const title = document.createElement('span');
+      const title = $('span');
       title.textContent = 'Notifications';
       header.appendChild(title);
 
-      const clearBtn = document.createElement('button');
+      const clearBtn = $('button');
       clearBtn.className = 'parallx-notification-center-clear';
       clearBtn.textContent = 'Clear All';
       clearBtn.title = 'Clear all notifications';
@@ -3111,32 +3225,32 @@ export class Workbench extends Disposable {
       panel.appendChild(header);
 
       // List
-      const list = document.createElement('div');
+      const list = $('div');
       list.className = 'parallx-notification-center-list';
 
       const history = notifService.history;
       if (history.length === 0) {
-        const empty = document.createElement('div');
+        const empty = $('div');
         empty.className = 'parallx-notification-center-empty';
         empty.textContent = 'No notifications';
         list.appendChild(empty);
       } else {
         for (const notif of history) {
-          const row = document.createElement('div');
+          const row = $('div');
           row.className = `parallx-notification-center-item parallx-notification-center-item-${notif.severity}`;
 
-          const icon = document.createElement('span');
+          const icon = $('span');
           icon.className = 'parallx-notification-center-icon';
           icon.textContent = notif.severity === 'information' ? 'ℹ' : notif.severity === 'warning' ? '⚠' : '✕';
           row.appendChild(icon);
 
-          const msg = document.createElement('span');
+          const msg = $('span');
           msg.className = 'parallx-notification-center-message';
           msg.textContent = notif.message;
           row.appendChild(msg);
 
           if (notif.source) {
-            const src = document.createElement('span');
+            const src = $('span');
             src.className = 'parallx-notification-center-source';
             src.textContent = notif.source;
             row.appendChild(src);
@@ -3162,23 +3276,30 @@ export class Workbench extends Disposable {
     };
 
     // Register the toggle command
-    const commandService = this._services.get(ICommandService) as any;
+    const commandService = this._services.get(ICommandService);
     if (commandService?.registerCommand) {
-      commandService.registerCommand('workbench.action.toggleNotificationCenter', () => showCenter());
+      commandService.registerCommand({
+        id: 'workbench.action.toggleNotificationCenter',
+        title: 'Toggle Notification Center',
+        handler: () => showCenter(),
+      });
     }
   }
 
   /** Tracked status bar entry accessors for dynamic updates. */
   private _statusBarAccessors: {
-    branch?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
-    errors?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
+    cursor?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
+    indent?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
+    encoding?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
+    eol?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
+    language?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
   } = {};
 
   // ════════════════════════════════════════════════════════════════════════
   // Layout view containers
   // ════════════════════════════════════════════════════════════════════════
 
-  private _layoutViewContainers(): void {
+  protected override _layoutViewContainers(): void {
     if (this._sidebar.visible && this._sidebar.width > 0) {
       const headerH = 35;
       const sidebarW = this._sidebar.width;
@@ -3355,8 +3476,8 @@ export class Workbench extends Disposable {
     this._panelContainer = this._setupPanelViews();
     this._auxBarContainer = this._setupAuxBarViews();
 
-    // 2. Aux bar toggle button
-    this._addAuxBarToggle();
+    // 2b. Manage gear icon
+    this._addManageGearIcon();
 
     // 3. DnD
     this._dndController = this._setupDragAndDrop();
@@ -3396,7 +3517,7 @@ export class Workbench extends Disposable {
    * Show a fade overlay during workspace switch.
    */
   private _showTransitionOverlay(): HTMLElement {
-    const overlay = document.createElement('div');
+    const overlay = $('div');
     overlay.classList.add('workspace-transition-overlay');
     overlay.textContent = 'Switching workspace…';
     this._container.appendChild(overlay);
@@ -3415,103 +3536,5 @@ export class Workbench extends Disposable {
     overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
     // Safety fallback
     setTimeout(() => { if (overlay.parentElement) overlay.remove(); }, 300);
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// RecentWorkspaces — manages the persisted list of recent workspaces
-// ════════════════════════════════════════════════════════════════════════════
-
-/**
- * Manages a capped, ordered list of recently accessed workspaces.
- * Stored in global (non-workspace-specific) storage.
- */
-export class RecentWorkspaces {
-  private _maxSize: number;
-
-  constructor(
-    private readonly _storage: IStorage,
-    maxSize = DEFAULT_MAX_RECENT_WORKSPACES,
-  ) {
-    this._maxSize = maxSize;
-  }
-
-  /**
-   * Get all recent workspace entries, sorted by lastAccessedAt descending.
-   */
-  async getAll(): Promise<readonly RecentWorkspaceEntry[]> {
-    try {
-      const json = await this._storage.get(RECENT_WORKSPACES_KEY);
-      if (!json) return [];
-
-      const parsed = JSON.parse(json);
-      if (!Array.isArray(parsed)) return [];
-
-      return parsed as RecentWorkspaceEntry[];
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * Add (or update) a workspace in the recent list.
-   * Moves it to the top and trims the list to maxSize.
-   */
-  async add(workspace: Workspace): Promise<void> {
-    const list = await this._getList();
-
-    // Remove existing entry with same ID
-    const filtered = list.filter(e => e.identity.id !== workspace.id);
-
-    // Prepend current workspace
-    workspace.touch();
-    const entry: RecentWorkspaceEntry = {
-      identity: workspace.identity,
-      metadata: workspace.metadata,
-    };
-    filtered.unshift(entry);
-
-    // Trim to max
-    const trimmed = filtered.slice(0, this._maxSize);
-    await this._saveList(trimmed);
-  }
-
-  /**
-   * Remove a workspace from the recent list.
-   */
-  async remove(workspaceId: string): Promise<void> {
-    const list = await this._getList();
-    const filtered = list.filter(e => e.identity.id !== workspaceId);
-    await this._saveList(filtered);
-  }
-
-  /**
-   * Clear the entire recent list.
-   */
-  async clear(): Promise<void> {
-    await this._storage.delete(RECENT_WORKSPACES_KEY);
-  }
-
-  /**
-   * Get the number of recent entries.
-   */
-  async count(): Promise<number> {
-    const list = await this._getList();
-    return list.length;
-  }
-
-  private async _getList(): Promise<RecentWorkspaceEntry[]> {
-    try {
-      const json = await this._storage.get(RECENT_WORKSPACES_KEY);
-      if (!json) return [];
-      const parsed = JSON.parse(json);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  private async _saveList(list: RecentWorkspaceEntry[]): Promise<void> {
-    await this._storage.set(RECENT_WORKSPACES_KEY, JSON.stringify(list));
   }
 }

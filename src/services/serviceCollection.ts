@@ -7,7 +7,7 @@ import { ServiceDescriptor, getServiceDependencies, IServiceProvider } from '../
 /**
  * Thrown when the service collection detects a circular dependency.
  */
-export class CircularDependencyError extends Error {
+class CircularDependencyError extends Error {
   constructor(chain: string[]) {
     super(`Circular dependency detected: ${chain.join(' → ')}`);
     this.name = 'CircularDependencyError';
@@ -17,7 +17,7 @@ export class CircularDependencyError extends Error {
 /**
  * Thrown when a required service is not registered.
  */
-export class ServiceNotFoundError extends Error {
+class ServiceNotFoundError extends Error {
   constructor(id: ServiceIdentifier<any>) {
     super(`Service not found: ${id.id}`);
     this.name = 'ServiceNotFoundError';

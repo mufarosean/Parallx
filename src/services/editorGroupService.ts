@@ -3,7 +3,7 @@
 // Thin façade over EditorPart that exposes group operations to the
 // service layer. Re-fires EditorPart events as service events.
 
-import { Disposable, DisposableStore } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { EditorPart } from '../parts/editorPart.js';
 import { EditorGroupView } from '../editor/editorGroupView.js';
@@ -51,8 +51,20 @@ export class EditorGroupService extends Disposable implements IEditorGroupServic
     return this._editorPart.splitGroup(sourceGroupId, direction);
   }
 
+  addGroup(referenceGroupId: string, direction: GroupDirection): EditorGroupView | undefined {
+    return this._editorPart.addGroup(referenceGroupId, direction);
+  }
+
   removeGroup(groupId: string): void {
     this._editorPart.removeGroup(groupId);
+  }
+
+  mergeGroup(sourceGroupId: string, targetGroupId: string): void {
+    this._editorPart.mergeGroup(sourceGroupId, targetGroupId);
+  }
+
+  findGroup(direction: GroupDirection, sourceGroupId?: string): EditorGroupView | undefined {
+    return this._editorPart.findGroup(direction, sourceGroupId);
   }
 
   activateGroup(groupId: string): void {

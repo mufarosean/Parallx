@@ -4,7 +4,7 @@
 // Mirrors VS Code's src/vs/platform/files/common/files.ts (subset for M4).
 
 import type { URI } from './uri.js';
-import type { Event } from './events.js';
+
 
 // ─── FileType ────────────────────────────────────────────────────────────────
 

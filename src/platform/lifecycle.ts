@@ -57,7 +57,7 @@ export interface IDisposable {
 /**
  * An object that performs asynchronous cleanup.
  */
-export interface IAsyncDisposable {
+interface IAsyncDisposable {
   disposeAsync(): Promise<void>;
 }
 
@@ -107,7 +107,7 @@ export function combinedDisposable(...disposables: IDisposable[]): IDisposable {
 /**
  * Check if a value is an IDisposable.
  */
-export function isDisposable(value: unknown): value is IDisposable {
+function isDisposable(value: unknown): value is IDisposable {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -222,7 +222,7 @@ export class DisposableStore implements IDisposable {
 /**
  * Like DisposableStore but supports async disposal.
  */
-export class AsyncDisposableStore implements IAsyncDisposable, IDisposable {
+class AsyncDisposableStore implements IAsyncDisposable, IDisposable {
   private readonly _disposables: (IDisposable | IAsyncDisposable)[] = [];
   private _isDisposed = false;
 

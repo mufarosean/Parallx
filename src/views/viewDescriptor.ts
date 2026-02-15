@@ -129,7 +129,7 @@ export class ViewDescriptorBuilder {
  * JSON-serialisable subset of IViewDescriptor (excludes factory).
  * Used for persisting registered view information.
  */
-export interface SerializedViewDescriptor {
+interface SerializedViewDescriptor {
   readonly id: string;
   readonly name: string;
   readonly icon?: string;

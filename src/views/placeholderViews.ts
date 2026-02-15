@@ -1,6 +1,7 @@
 // placeholderViews.ts — test / dummy views for development
-import { View, IView, ViewState } from './view.js';
+import { View } from './view.js';
 import { IViewDescriptor, ViewDescriptorBuilder } from './viewDescriptor.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Logging base class ─────────────────────────────────────────────────────
 
@@ -20,7 +21,7 @@ abstract class PlaceholderView extends View {
     console.log(`[View:${this.id}] createViewContent`);
 
     // Dimension badge
-    this._dimensionBadge = document.createElement('div');
+    this._dimensionBadge = $('div');
     this._dimensionBadge.classList.add('placeholder-dimension-badge');
     container.appendChild(this._dimensionBadge);
 
@@ -86,7 +87,7 @@ export class ExplorerPlaceholderView extends PlaceholderView {
     ];
 
     for (const item of tree) {
-      const row = document.createElement('div');
+      const row = $('div');
       row.classList.add('placeholder-tree-row');
       row.style.paddingLeft = `${item.indent * 16}px`;
       row.textContent = `${item.icon} ${item.label}`;
@@ -129,7 +130,7 @@ export class SearchPlaceholderView extends PlaceholderView {
     container.classList.add('placeholder-search-container');
 
     // Search input
-    const input = document.createElement('input');
+    const input = $('input');
     input.type = 'text';
     input.placeholder = 'Search…';
     input.classList.add('placeholder-search-input');
@@ -142,10 +143,10 @@ export class SearchPlaceholderView extends PlaceholderView {
       { file: 'grid.ts', line: 88, text: 'addView(view, sizing, ...)' },
     ];
 
-    const list = document.createElement('div');
+    const list = $('div');
     list.classList.add('placeholder-search-results');
     for (const r of results) {
-      const item = document.createElement('div');
+      const item = $('div');
       item.classList.add('placeholder-search-result-item');
       item.innerHTML = `<span class="placeholder-search-result-file">${r.file}</span>` +
         `<span class="placeholder-search-result-line">:${r.line}</span> ` +
@@ -169,16 +170,16 @@ export const searchViewDescriptor: IViewDescriptor = ViewDescriptorBuilder
   .factory(() => new SearchPlaceholderView())
   .build();
 
-// ─── Terminal View ───────────────────────────────────────────────────────────
+// ─── Console View ────────────────────────────────────────────────────────────
 
 /**
- * A fixed-height mock terminal view.
+ * A generic console view for the panel area.
  * min-height: 100px, max-height: 500px
  */
 export class TerminalPlaceholderView extends PlaceholderView {
 
   constructor() {
-    super('view.terminal', 'Terminal', 'codicon-terminal');
+    super('view.terminal', 'Console', 'codicon-terminal');
   }
 
   get minimumWidth(): number { return 200; }
@@ -188,24 +189,6 @@ export class TerminalPlaceholderView extends PlaceholderView {
 
   protected override createPlaceholderContent(container: HTMLElement): void {
     container.classList.add('placeholder-terminal');
-
-    const lines = [
-      '<span class="placeholder-terminal-prompt">$</span> npm run build',
-      '<span class="placeholder-terminal-cmd">esbuild</span> src/main.ts → dist/renderer/main.js',
-      '  <span class="placeholder-terminal-ok">✔</span> built in 48ms',
-      '',
-      '<span class="placeholder-terminal-prompt">$</span> npm start',
-      '<span class="placeholder-terminal-cmd">Electron</span> starting...',
-      '  <span class="placeholder-terminal-ok">✔</span> window ready (1280×800)',
-      '',
-      '<span class="placeholder-terminal-prompt">$</span> <span style="animation:blink 1s step-end infinite">▋</span>',
-    ];
-
-    for (const line of lines) {
-      const row = document.createElement('div');
-      row.innerHTML = line || '&nbsp;';
-      container.appendChild(row);
-    }
   }
 
   protected override saveViewState(): Record<string, unknown> {
@@ -214,7 +197,7 @@ export class TerminalPlaceholderView extends PlaceholderView {
 }
 
 export const terminalViewDescriptor: IViewDescriptor = ViewDescriptorBuilder
-  .create('view.terminal', 'Terminal')
+  .create('view.terminal', 'Console')
   .icon('codicon-terminal')
   .container('panel')
   .order(1)
@@ -240,22 +223,6 @@ export class OutputPlaceholderView extends PlaceholderView {
 
   protected override createPlaceholderContent(container: HTMLElement): void {
     container.classList.add('placeholder-output');
-
-    const entries = [
-      '[Info  - 10:01:23] Lifecycle service initialized',
-      '[Info  - 10:01:24] Layout renderer: rendering default layout',
-      '[Info  - 10:01:24] Part registry: 6 parts created',
-      '[Info  - 10:01:25] View manager: 4 descriptors registered',
-      '[Debug - 10:01:25] Storage: loaded 0 persisted keys',
-      '[Info  - 10:01:26] Workbench ready in 312ms',
-    ];
-
-    for (const entry of entries) {
-      const row = document.createElement('div');
-      row.classList.add('placeholder-output-line');
-      row.textContent = entry;
-      container.appendChild(row);
-    }
   }
 
   protected override saveViewState(): Record<string, unknown> {

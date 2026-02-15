@@ -7,9 +7,9 @@
 // M2 scope: basic keybinding map with single-key combos (no chords).
 // Full keybinding resolution system with chords and contexts deferred.
 
-import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import type { IToolDescription, IManifestKeybinding } from '../tools/toolManifest.js';
+import type { IToolDescription } from '../tools/toolManifest.js';
 import type { CommandService } from '../commands/commandRegistry.js';
 import type { IContributedKeybinding, IContributionProcessor } from './contributionTypes.js';
 
@@ -414,7 +414,6 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
           // This is a best-effort — if it causes issues, we skip
           const existing = this._commandService.getCommand(kb.commandId);
           if (existing) {
-            const updated: CommandService extends { updateCommandKeybinding?: any } ? never : void = undefined as any;
             // We can't mutate the descriptor, but the keybinding is stored
             // in the contributed record for palette lookup
           }

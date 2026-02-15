@@ -1,6 +1,6 @@
 /* explorer.css — Styles for the Explorer built-in tool
  *
- * Uses CSS custom properties (--color-*) defined by the workbench theme.
+ * Uses CSS custom properties (--vscode-*) injected by the workbench theme.
  * Visual properties are all in CSS — only computed dimensions may be inline.
  */
 
@@ -24,7 +24,7 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--color-section-header-foreground, #bbbbbb);
+  color: var(--vscode-sideBarSectionHeader-foreground);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -35,7 +35,7 @@
 
 .explorer-empty {
   padding: 16px;
-  color: var(--color-description-foreground, #999);
+  color: var(--vscode-descriptionForeground);
   font-size: 13px;
 }
 
@@ -43,7 +43,7 @@
   display: block;
   margin-top: 8px;
   cursor: pointer;
-  color: var(--color-link-foreground, #3794ff);
+  color: var(--vscode-textLink-foreground);
   background: none;
   border: none;
   font: inherit;
@@ -53,7 +53,7 @@
 }
 
 .explorer-empty-open-btn:hover {
-  color: var(--color-link-active-foreground, #3794ff);
+  color: var(--vscode-textLink-activeForeground);
 }
 
 /* ── Tree node ── */
@@ -69,19 +69,19 @@
   text-overflow: ellipsis;
   font-size: 13px;
   padding-right: 8px;
-  color: var(--color-foreground, #cccccc);
+  color: var(--vscode-foreground);
 }
 
 .tree-node:hover {
-  background-color: var(--color-list-hover-background, rgba(255, 255, 255, 0.04));
+  background-color: var(--vscode-list-hoverBackground);
 }
 
 .tree-node--selected {
-  background-color: var(--color-list-active-selection-background, rgba(255, 255, 255, 0.1));
+  background-color: var(--vscode-list-activeSelectionBackground);
 }
 
 .tree-node--selected:hover {
-  background-color: var(--color-list-active-selection-background, rgba(255, 255, 255, 0.1));
+  background-color: var(--vscode-list-activeSelectionBackground);
 }
 
 /* ── Chevron ── */
@@ -91,7 +91,7 @@
   flex-shrink: 0;
   text-align: center;
   font-size: 10px;
-  color: var(--color-foreground, #cccccc);
+  color: var(--vscode-foreground);
 }
 
 .tree-node-spacer {
@@ -119,7 +119,7 @@
 .tree-empty-dir {
   height: 22px;
   line-height: 22px;
-  color: var(--color-description-foreground, #888);
+  color: var(--vscode-descriptionForeground);
   font-size: 12px;
   font-style: italic;
 }
@@ -128,9 +128,9 @@
 
 .tree-inline-input {
   flex: 1;
-  border: 1px solid var(--color-focus-border, #007acc);
-  background: var(--color-input-background, #3c3c3c);
-  color: var(--color-input-foreground, #cccccc);
+  border: 1px solid var(--vscode-focusBorder);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
   font: inherit;
   font-size: 13px;
   padding: 0 2px;
@@ -163,43 +163,77 @@
 
 .open-editors-placeholder {
   padding: 8px 16px;
-  color: var(--color-description-foreground, #999);
+  color: var(--vscode-descriptionForeground);
   font-size: 12px;
   font-style: italic;
+}
+
+/* Group header shown when multiple editor groups exist (VS Code parity) */
+.open-editors-group-header {
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 10px;
+  height: 22px;
+  line-height: 22px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
 }
 
 .open-editors-item {
   display: flex;
   align-items: center;
-  padding: 2px 8px 2px 16px;
+  padding: 0 8px 0 20px;
   cursor: pointer;
   font-size: 13px;
   line-height: 22px;
+  height: 22px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--vscode-foreground);
+}
+
+/* Extra indent when showing group headers */
+.open-editors-item--grouped {
+  padding-left: 28px;
 }
 
 .open-editors-item:hover {
-  background: var(--color-list-hover-background, rgba(255, 255, 255, 0.04));
+  background: var(--vscode-list-hoverBackground);
 }
 
 .open-editors-item--active {
-  background: var(--color-list-active-selection-background, rgba(255, 255, 255, 0.08));
-  font-weight: 600;
+  background: var(--vscode-list-activeSelectionBackground);
 }
 
 .open-editors-dirty {
   flex-shrink: 0;
+  width: 6px;
+  height: 6px;
   margin-right: 4px;
-  font-size: 10px;
-  color: var(--color-editor-dirty-foreground, #e8e8e8);
+  border-radius: 50%;
+  background: var(--vscode-tab-modifiedBorder);
 }
 
 .open-editors-icon {
   flex-shrink: 0;
+  width: 16px;
+  height: 16px;
   margin-right: 4px;
-  font-size: 12px;
+  font-size: 9px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.8;
 }
 
 .open-editors-label {
@@ -210,15 +244,15 @@
 
 .open-editors-close {
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 12px;
   border-radius: 3px;
   opacity: 0;
-  color: var(--color-icon-foreground, #c5c5c5);
+  color: var(--vscode-icon-foreground);
   cursor: pointer;
 }
 
@@ -227,5 +261,5 @@
 }
 
 .open-editors-close:hover {
-  background: var(--color-toolbar-hover-background, rgba(255, 255, 255, 0.1));
+  background: var(--vscode-toolbar-hoverBackground);
 }

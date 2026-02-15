@@ -2,6 +2,7 @@
 import { IDisposable, Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS } from '../layout/layoutTypes.js';
+import { $ } from '../ui/dom.js';
 
 // ─── View State ──────────────────────────────────────────────────────────────
 
@@ -130,7 +131,7 @@ export abstract class View extends Disposable implements IView {
       return;
     }
 
-    this._element = document.createElement('div');
+    this._element = $('div');
     this._element.classList.add('view', `view-${this.id}`);
     this._element.setAttribute('data-view-id', this.id);
     // .view CSS: overflow hidden, position relative, width/height 100%, display none

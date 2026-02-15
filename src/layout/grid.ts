@@ -2,21 +2,20 @@
 
 import { Disposable, DisposableStore, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { Orientation, SizingMode, GridLocation, Dimensions } from './layoutTypes.js';
+import { startDrag, endDrag } from '../ui/dom.js';
+import { Orientation, SizingMode, SashState } from './layoutTypes.js';
 import { IGridView } from './gridView.js';
 import { GridBranchNode, GridLeafNode, GridNode, GridNodeType } from './gridNode.js';
 import {
   SerializedGrid,
-  SerializedGridNode,
   SerializedBranchNode,
-  SerializedLeafNode,
   SerializedNodeType,
 } from './layoutModel.js';
 
 /**
  * Event data for grid structural changes.
  */
-export interface GridChangeEvent {
+interface GridChangeEvent {
   readonly type: 'add' | 'remove' | 'resize' | 'structure';
   readonly viewId?: string;
 }
@@ -49,6 +48,16 @@ export class Grid extends Disposable {
   private readonly _onDidSashReset = this._register(new Emitter<{ branch: GridBranchNode; sashIndex: number }>());
   /** Fires when the user double-clicks a sash to request a size reset. */
   readonly onDidSashReset: Event<{ branch: GridBranchNode; sashIndex: number }> = this._onDidSashReset.event;
+
+  private readonly _onDidSashSnap = this._register(new Emitter<{ viewId: string }>());
+  /**
+   * Fires when the user drags a sash past a snap threshold, requesting
+   * that the adjacent snappable view be hidden.
+   *
+   * VS Code ref: `SplitView.onDidSashChange` → snap detection.
+   * The consumer (layout.ts) maps `viewId` to the appropriate toggle method.
+   */
+  readonly onDidSashSnap: Event<{ viewId: string }> = this._onDidSashSnap.event;
 
   constructor(rootOrientation: Orientation, width: number, height: number) {
     super();
@@ -151,13 +160,21 @@ export class Grid extends Disposable {
     const existingIndex = parent.indexOfChild(existingNode);
 
     if (parent.orientation === splitOrientation) {
-      // Same orientation — just add sibling
+      // Same orientation — add as sibling, splitting the existing view's space.
+      // VS Code parity: the new view gets half the existing view's current size.
+      // The `size` param is a hint, but we clamp to ensure correctness.
       const insertIndex = insertBefore ? existingIndex : existingIndex + 1;
-      // Shrink existing to make room
-      existingNode.cachedSize = Math.max(
-        existingNode.cachedSize - size,
-        this._getMinSizeAlongOrientation(existingNode, splitOrientation)
-      );
+      const existingSize = existingNode.cachedSize;
+      const minExisting = this._getMinSizeAlongOrientation(existingNode, splitOrientation);
+      const minNew = this._getMinSizeAlongOrientation(newLeaf, splitOrientation);
+
+      // Ensure the split is at most what the existing view can give
+      const clampedSize = Math.min(size, existingSize - minExisting);
+      const actualNewSize = Math.max(clampedSize, minNew);
+      const actualExistingSize = Math.max(existingSize - actualNewSize, minExisting);
+
+      existingNode.cachedSize = actualExistingSize;
+      newLeaf.cachedSize = actualNewSize;
       parent.addChild(newLeaf, insertIndex);
     } else {
       // Different orientation — wrap existing in a new branch
@@ -230,7 +247,84 @@ export class Grid extends Disposable {
     }
 
     this._layoutNode(this._root, width, height);
+    this._updateSashStates();
     this._onDidChange.fire({ type: 'resize' });
+  }
+
+  /**
+   * Resize the grid while keeping specific views at their current pixel
+   * sizes.  The size delta is absorbed entirely by a designated flexible
+   * view (typically the editor column).  Views not in `fixedViewIds` and
+   * not equal to `flexViewId` are also kept at their current sizes.
+   *
+   * This mirrors VS Code behaviour where the sidebar, panel, and
+   * auxiliary bar keep their widths/heights on window resize and only the
+   * editor area grows or shrinks.
+   */
+  resizeWithFixedViews(
+    width: number,
+    height: number,
+    flexViewId: string,
+  ): void {
+    this._width = width;
+    this._height = height;
+
+    // Walk the root branch and assign sizes: keep every child at its
+    // current size except the flex view, which gets the remainder.
+    this._distributeWithFlex(this._root, flexViewId);
+
+    this._layoutNode(this._root, width, height);
+    this._onDidChange.fire({ type: 'resize' });
+  }
+
+  /**
+   * For a branch node, keep all non-flex children at their current sizes
+   * and assign the remaining space to the flex child.
+   */
+  private _distributeWithFlex(
+    branch: GridBranchNode,
+    flexViewId: string,
+  ): void {
+    const isHorizontal = branch.orientation === Orientation.Horizontal;
+    const totalAvailable = isHorizontal ? this._width : this._height;
+
+    let fixedTotal = 0;
+    let flexChild: GridNode | null = null;
+
+    for (const child of branch.children) {
+      // Check if this child (or any descendant) contains the flex view
+      if (this._nodeContainsView(child, flexViewId)) {
+        flexChild = child;
+      } else {
+        fixedTotal += this._getNodeSize(child);
+      }
+    }
+
+    if (flexChild) {
+      const min = this._getMinSizeAlongOrientation(flexChild, branch.orientation);
+      const flexSize = Math.max(min, totalAvailable - fixedTotal);
+      this._setNodeSize(flexChild, flexSize);
+
+      // Recurse into flex child if it's a branch (e.g. editorColumnAdapter
+      // wrapping vGrid doesn't need this, but future-proofs the logic)
+      if (flexChild.type === GridNodeType.Branch) {
+        this._distributeWithFlex(flexChild, flexViewId);
+      }
+    }
+  }
+
+  /**
+   * Check whether a grid node (leaf or branch) contains a view with the
+   * given ID.
+   */
+  private _nodeContainsView(node: GridNode, viewId: string): boolean {
+    if (node.type === GridNodeType.Leaf) {
+      return node.view.id === viewId;
+    }
+    for (const child of node.children) {
+      if (this._nodeContainsView(child, viewId)) return true;
+    }
+    return false;
   }
 
   /**
@@ -240,37 +334,61 @@ export class Grid extends Disposable {
    * @param sashIndex - Index of the sash (between child[sashIndex] and child[sashIndex+1])
    * @param delta - Pixels to move the sash (positive = increase first child)
    */
-  resizeSash(parentNode: GridBranchNode, sashIndex: number, delta: number): void {
+  resizeSash(parentNode: GridBranchNode, sashIndex: number, delta: number): number {
     const childA = parentNode.getChild(sashIndex);
     const childB = parentNode.getChild(sashIndex + 1);
 
     if (!childA || !childB) {
-      return;
+      return 0;
     }
 
     const sizeA = this._getNodeSize(childA);
     const sizeB = this._getNodeSize(childB);
 
-    // Enforce constraints
+    // Enforce constraints while preserving the total (zero-sum).
+    // Two-pass clamping: first clamp A, then B, then re-clamp A against
+    // the remainder so the pair total never changes.
+    const total = sizeA + sizeB;
     const minA = this._getMinSizeAlongOrientation(childA, parentNode.orientation);
     const maxA = this._getMaxSizeAlongOrientation(childA, parentNode.orientation);
     const minB = this._getMinSizeAlongOrientation(childB, parentNode.orientation);
     const maxB = this._getMaxSizeAlongOrientation(childB, parentNode.orientation);
 
-    const newSizeA = Math.min(maxA, Math.max(minA, sizeA + delta));
-    const newSizeB = Math.min(maxB, Math.max(minB, sizeB - (newSizeA - sizeA)));
+    let newSizeA = Math.min(maxA, Math.max(minA, sizeA + delta));
+    let newSizeB = Math.min(maxB, Math.max(minB, total - newSizeA));
+    // Re-clamp A to absorb any remainder from B's clamping
+    newSizeA = Math.min(maxA, Math.max(minA, total - newSizeB));
+
+    // Compute the actual applied delta (may differ from requested due to clamping)
+    const appliedDelta = newSizeA - sizeA;
 
     this._setNodeSize(childA, newSizeA);
     this._setNodeSize(childB, newSizeB);
 
-    // Re-layout from this branch
-    this._layoutNode(
-      parentNode,
-      this._getNodeWidth(parentNode),
-      this._getNodeHeight(parentNode)
-    );
+    // Re-layout only the two affected children so that sibling views
+    // (e.g. the sidebar) are never touched by _distributeSizes.
+    const isHorizontal = parentNode.orientation === Orientation.Horizontal;
+    const crossSize = isHorizontal
+      ? this._getNodeHeight(parentNode)
+      : this._getNodeWidth(parentNode);
+
+    if (isHorizontal) {
+      this._setNodeDimensions(childA, newSizeA, crossSize);
+      this._layoutNode(childA, newSizeA, crossSize);
+      this._setNodeDimensions(childB, newSizeB, crossSize);
+      this._layoutNode(childB, newSizeB, crossSize);
+    } else {
+      this._setNodeDimensions(childA, crossSize, newSizeA);
+      this._layoutNode(childA, crossSize, newSizeA);
+      this._setNodeDimensions(childB, crossSize, newSizeB);
+      this._layoutNode(childB, crossSize, newSizeB);
+    }
+
+    // Update sash enablement state after resize
+    this._updateSashStates();
 
     this._onDidChange.fire({ type: 'resize' });
+    return appliedDelta;
   }
 
   /**
@@ -278,6 +396,7 @@ export class Grid extends Disposable {
    */
   layout(): void {
     this._layoutNode(this._root, this._width, this._height);
+    this._updateSashStates();
   }
 
   /**
@@ -352,9 +471,9 @@ export class Grid extends Disposable {
     const branch = node;
     const isHorizontal = branch.orientation === Orientation.Horizontal;
     const totalAvailable = isHorizontal ? width : height;
-    const sashCount = Math.max(0, branch.childCount - 1);
-    const sashSpace = sashCount * 4; // 4px per sash
-    const availableForChildren = totalAvailable - sashSpace;
+    // Sashes use negative margins (−2 px each side) so they overlay
+    // adjacent children and consume zero net flex space.
+    const availableForChildren = totalAvailable;
 
     const sizes = this._distributeSizes(branch, availableForChildren);
 
@@ -385,10 +504,8 @@ export class Grid extends Disposable {
     const children = branch.children;
     if (children.length === 0) return [];
 
-    const isHorizontal = branch.orientation === Orientation.Horizontal;
     const sizes: number[] = [];
     let totalFixed = 0;
-    let proportionalCount = 0;
 
     // First pass: collect current sizes
     for (const child of children) {
@@ -466,31 +583,217 @@ export class Grid extends Disposable {
     const isHorizontal = branch.orientation === Orientation.Horizontal;
     const startPos = isHorizontal ? e.clientX : e.clientY;
 
-    this._sashDragState = { branch, sashIndex, startPos, isHorizontal };
+    // ── Compute snap thresholds ──
+    // VS Code ref: SplitView.onSashStart — computes snapBefore/snapAfter.
+    // Threshold = floor(viewMinimumSize / 2). If the view is dragged past
+    // its minimum by more than this threshold, it snaps shut (auto-hide).
+    const childA = branch.getChild(sashIndex);
+    const childB = branch.getChild(sashIndex + 1);
+    let snapBeforeThreshold = 0;
+    let snapBeforeViewId: string | null = null;
+    let snapAfterThreshold = 0;
+    let snapAfterViewId: string | null = null;
+
+    if (childA?.type === GridNodeType.Leaf && childA.snap) {
+      const minA = this._getMinSizeAlongOrientation(childA, branch.orientation);
+      snapBeforeThreshold = Math.floor(minA / 2);
+      snapBeforeViewId = childA.id;
+    }
+    if (childB?.type === GridNodeType.Leaf && childB.snap) {
+      const minB = this._getMinSizeAlongOrientation(childB, branch.orientation);
+      snapAfterThreshold = Math.floor(minB / 2);
+      snapAfterViewId = childB.id;
+    }
+
+    this._sashDragState = {
+      branch, sashIndex, startPos, isHorizontal,
+      snapBeforeThreshold, snapBeforeViewId,
+      snapAfterThreshold, snapAfterViewId,
+    };
+
+    // Visual feedback: add active class to sash during drag
+    target.classList.add('active');
+
+    // Hint the browser to optimise compositing for dimensions that change during drag
+    this._setWillChange(branch, sashIndex, true);
+
+    // Use rAF-throttling so layout runs at most once per frame
+    let rafId = 0;
+    let pendingDelta = 0;
+    let didSnap = false;
+
+    const applyResize = () => {
+      rafId = 0;
+      if (!this._sashDragState || pendingDelta === 0 || didSnap) return;
+      const appliedDelta = this.resizeSash(this._sashDragState.branch, this._sashDragState.sashIndex, pendingDelta);
+      // Only advance startPos by the actually applied delta so the cursor
+      // stays in sync with the sash position (VS Code parity).
+      this._sashDragState.startPos += appliedDelta;
+
+      // ── Snap detection ──
+      // Once the sash pins at a constraint (appliedDelta ≈ 0), startPos
+      // freezes at the constraint boundary.  From that point, each
+      // frame's `pendingDelta` already equals the total distance from
+      // the constraint (currentPos − frozenStartPos).  `overshoot` is
+      // the per-frame difference between what the user wants and what
+      // the grid allowed — which IS the total overshoot because startPos
+      // didn't move.  No accumulation needed.
+      //
+      // Negative overshoot = user is shrinking childA (sash moves left/up)
+      // Positive overshoot = user is shrinking childB (sash moves right/down)
+      //
+      // VS Code ref: SplitView.onSashChange — snap triggers when the
+      // drag overshoot exceeds floor(viewMinimumSize / 2).
+      const overshoot = pendingDelta - appliedDelta;
+      pendingDelta = 0;
+
+      const state = this._sashDragState;
+      if (state.snapBeforeThreshold > 0 && overshoot < -state.snapBeforeThreshold) {
+        didSnap = true;
+        // Abort the drag before firing snap — toggleSidebar/togglePanel
+        // will remove the view from the grid, invalidating the sash and
+        // branch that this drag handler references.
+        cleanupDrag();
+        this._onDidSashSnap.fire({ viewId: state.snapBeforeViewId! });
+        return;
+      }
+      if (state.snapAfterThreshold > 0 && overshoot > state.snapAfterThreshold) {
+        didSnap = true;
+        cleanupDrag();
+        this._onDidSashSnap.fire({ viewId: state.snapAfterViewId! });
+        return;
+      }
+    };
 
     const onMouseMove = (moveEvent: MouseEvent) => {
-      if (!this._sashDragState) return;
+      if (!this._sashDragState || didSnap) return;
       const currentPos = isHorizontal ? moveEvent.clientX : moveEvent.clientY;
       const delta = currentPos - this._sashDragState.startPos;
       if (Math.abs(delta) < 1) return;
 
-      this.resizeSash(this._sashDragState.branch, this._sashDragState.sashIndex, delta);
-      this._sashDragState.startPos = currentPos;
+      pendingDelta = delta;
+      if (!rafId) {
+        rafId = requestAnimationFrame(applyResize);
+      }
     };
 
-    const onMouseUp = () => {
+    /** Clean up drag state, listeners, and visual feedback. */
+    const cleanupDrag = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      this._setWillChange(branch, sashIndex, false);
+      target.classList.remove('active');
       this._sashDragState = null;
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      endDrag();
+    };
+
+    const onMouseUp = () => {
+      // Flush any pending resize before cleanup
+      if (didSnap) return; // Already cleaned up by snap handler
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      if (pendingDelta !== 0) {
+        applyResize();
+      }
+      if (!didSnap) {
+        cleanupDrag();
+      }
     };
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-    document.body.style.cursor = isHorizontal ? 'col-resize' : 'row-resize';
-    document.body.style.userSelect = 'none';
+    startDrag(isHorizontal ? 'col-resize' : 'row-resize');
   };
+
+  /**
+   * Toggle `will-change` on the two children adjacent to a sash so the
+   * browser can optimise compositing during drag.
+   */
+  private _setWillChange(branch: GridBranchNode, sashIndex: number, active: boolean): void {
+    const value = active ? 'width, height' : '';
+    const childA = branch.getChild(sashIndex);
+    const childB = branch.getChild(sashIndex + 1);
+    if (childA) {
+      const elA = childA.type === GridNodeType.Leaf ? childA.view.element : childA.element;
+      elA.style.willChange = value;
+    }
+    if (childB) {
+      const elB = childB.type === GridNodeType.Leaf ? childB.view.element : childB.element;
+      elB.style.willChange = value;
+    }
+  }
+
+  // ── Private: Sash State ──
+
+  /**
+   * Walk every sash in the tree and update its CSS class to reflect the
+   * current constraint state (SashState).
+   *
+   * This mirrors VS Code's `SplitView.updateSashEnablement()` which sets
+   * `SashState.Disabled`, `AtMinimum`, `AtMaximum`, or `Enabled` on each
+   * sash after every resize, controlling directional CSS cursors so the
+   * user sees visual feedback about which direction the sash can still
+   * move.
+   */
+  private _updateSashStates(): void {
+    this._updateBranchSashStates(this._root);
+  }
+
+  /**
+   * Recursively update sash states for a single branch node.
+   */
+  private _updateBranchSashStates(branch: GridBranchNode): void {
+    const sashes = branch.sashes;
+
+    for (let i = 0; i < sashes.length; i++) {
+      const sash = sashes[i];
+      const childA = branch.getChild(i);
+      const childB = branch.getChild(i + 1);
+      if (!childA || !childB) continue;
+
+      const sizeA = this._getNodeSize(childA);
+      const sizeB = this._getNodeSize(childB);
+      const minA = this._getMinSizeAlongOrientation(childA, branch.orientation);
+      const maxA = this._getMaxSizeAlongOrientation(childA, branch.orientation);
+      const minB = this._getMinSizeAlongOrientation(childB, branch.orientation);
+      const maxB = this._getMaxSizeAlongOrientation(childB, branch.orientation);
+
+      // Can A grow? A grows if A < maxA AND B > minB (B can shrink to make room)
+      const canGrowA = sizeA < maxA && sizeB > minB;
+      // Can A shrink? A shrinks if A > minA AND B < maxB (B can grow to absorb)
+      const canShrinkA = sizeA > minA && sizeB < maxB;
+
+      let state: SashState;
+      if (!canGrowA && !canShrinkA) {
+        state = SashState.Disabled;
+      } else if (!canShrinkA) {
+        state = SashState.AtMinimum;
+      } else if (!canGrowA) {
+        state = SashState.AtMaximum;
+      } else {
+        state = SashState.Enabled;
+      }
+
+      // Apply CSS classes
+      sash.classList.toggle('sash-disabled', state === SashState.Disabled);
+      sash.classList.toggle('sash-minimum', state === SashState.AtMinimum);
+      sash.classList.toggle('sash-maximum', state === SashState.AtMaximum);
+      sash.classList.toggle('sash-enabled', state === SashState.Enabled);
+    }
+
+    // Recurse into child branches
+    for (const child of branch.children) {
+      if (child.type === GridNodeType.Branch) {
+        this._updateBranchSashStates(child);
+      }
+    }
+  }
 
   // ── Private: Deserialization ──
 
@@ -674,4 +977,20 @@ interface SashDragState {
   sashIndex: number;
   startPos: number;
   isHorizontal: boolean;
+  /**
+   * Snap threshold for childA (the child before the sash).
+   * If childA.snap is true, this is `floor(minA / 2)` — the point past
+   * minimum where the view auto-hides. `0` means no snap for childA.
+   */
+  snapBeforeThreshold: number;
+  /** View ID of childA, used when firing onDidSashSnap. */
+  snapBeforeViewId: string | null;
+  /**
+   * Snap threshold for childB (the child after the sash).
+   * If childB.snap is true, this is `floor(minB / 2)` — the point past
+   * minimum where the view auto-hides. `0` means no snap for childB.
+   */
+  snapAfterThreshold: number;
+  /** View ID of childB, used when firing onDidSashSnap. */
+  snapAfterViewId: string | null;
 }

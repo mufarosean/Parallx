@@ -7,7 +7,7 @@
 //
 // Tools access this through `parallx.workspace.getConfiguration(section)`.
 
-import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { IStorage } from '../platform/storage.js';
 import { ConfigurationRegistry } from './configurationRegistry.js';

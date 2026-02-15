@@ -10,7 +10,7 @@
 
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { testWhenClause, parseWhenClause, evaluateWhenClause } from './whenClause.js';
+import { testWhenClause } from './whenClause.js';
 import type { ContextKeyLookup } from './whenClause.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────

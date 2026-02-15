@@ -19,7 +19,7 @@ export const enum StorageErrorKind {
   Unknown = 'unknown',
 }
 
-export interface StorageError {
+interface StorageError {
   readonly kind: StorageErrorKind;
   readonly key: string;
   readonly message: string;
@@ -58,7 +58,7 @@ export interface IStorage {
 /**
  * Synchronous key-value storage interface for simple data.
  */
-export interface ISyncStorage {
+interface ISyncStorage {
   getSync(key: string): string | undefined;
   setSync(key: string, value: string): void;
   deleteSync(key: string): void;

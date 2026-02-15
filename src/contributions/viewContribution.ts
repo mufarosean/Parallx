@@ -10,6 +10,7 @@
 
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
+import { $,  hide, show } from '../ui/dom.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { IContributionProcessor } from './contributionTypes.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -385,7 +386,6 @@ export class ViewContributionProcessor extends Disposable implements IContributi
     let _placeholderEl: HTMLElement | undefined;
     let _contentEl: HTMLElement | undefined;
     let _providerDisposable: IDisposable | undefined;
-    let _visible = false;
     let _disposed = false;
     let _resolved = false;
     let _width = 0;
@@ -407,11 +407,8 @@ export class ViewContributionProcessor extends Disposable implements IContributi
 
       // Create content container
       if (_element) {
-        _contentEl = document.createElement('div');
+        _contentEl = $('div');
         _contentEl.className = 'tool-view-content';
-        _contentEl.style.width = '100%';
-        _contentEl.style.height = '100%';
-        _contentEl.style.overflow = 'auto';
         _element.appendChild(_contentEl);
 
         if (_width > 0 || _height > 0) {
@@ -450,14 +447,10 @@ export class ViewContributionProcessor extends Disposable implements IContributi
       createElement(container: HTMLElement): void {
         if (_disposed) return;
 
-        _element = document.createElement('div');
+        _element = $('div');
         _element.className = `view view-${viewId} contributed-view`;
         _element.setAttribute('data-view-id', viewId);
-        _element.style.overflow = 'hidden';
-        _element.style.position = 'relative';
-        _element.style.width = '100%';
-        _element.style.height = '100%';
-        _element.style.display = 'none'; // hidden until setVisible(true)
+        hide(_element); // hidden until setVisible(true)
         container.appendChild(_element);
 
         if (_provider) {
@@ -465,25 +458,17 @@ export class ViewContributionProcessor extends Disposable implements IContributi
           doResolve(_provider);
         } else {
           // Show placeholder until provider registers
-          _placeholderEl = document.createElement('div');
+          _placeholderEl = $('div');
           _placeholderEl.className = 'contributed-view-placeholder';
-          _placeholderEl.style.display = 'flex';
-          _placeholderEl.style.flexDirection = 'column';
-          _placeholderEl.style.alignItems = 'center';
-          _placeholderEl.style.justifyContent = 'center';
-          _placeholderEl.style.height = '100%';
-          _placeholderEl.style.color = '#6a6a6a';
-          _placeholderEl.style.fontSize = '13px';
 
-          const nameEl = document.createElement('div');
+          const nameEl = $('div');
           nameEl.textContent = name;
-          nameEl.style.fontWeight = '600';
-          nameEl.style.marginBottom = '8px';
+          nameEl.className = 'contributed-view-placeholder__name';
           _placeholderEl.appendChild(nameEl);
 
-          const msgEl = document.createElement('div');
+          const msgEl = $('div');
           msgEl.textContent = 'Waiting for view provider\u2026';
-          msgEl.style.fontStyle = 'italic';
+          msgEl.className = 'contributed-view-placeholder__msg';
           _placeholderEl.appendChild(msgEl);
 
           _element.appendChild(_placeholderEl);
@@ -491,9 +476,8 @@ export class ViewContributionProcessor extends Disposable implements IContributi
       },
 
       setVisible(visible: boolean): void {
-        _visible = visible;
         if (_element) {
-          _element.style.display = visible ? '' : 'none';
+          visible ? show(_element) : hide(_element);
         }
         _onDidChangeVisibility.fire(visible);
       },

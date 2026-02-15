@@ -1,15 +1,15 @@
 // gridNode.ts — internal grid tree structure
 
-import { Disposable, IDisposable, DisposableStore } from '../platform/lifecycle.js';
+import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { Orientation, SizingMode, GridLocation } from './layoutTypes.js';
+import { Orientation, SizingMode } from './layoutTypes.js';
 import { IGridView } from './gridView.js';
 import {
-  SerializedGridNode,
   SerializedBranchNode,
   SerializedLeafNode,
   SerializedNodeType,
 } from './layoutModel.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Node Types ─────────────────────────────────────────────────────────────
 
@@ -34,8 +34,12 @@ export class GridBranchNode extends Disposable {
 
   private _children: GridNode[] = [];
   private _sashes: HTMLElement[] = [];
+
+  /** Public read-only access to sash DOM elements for state updates. */
+  get sashes(): readonly HTMLElement[] {
+    return this._sashes;
+  }
   private readonly _childConstraintListeners = new Map<GridNode, IDisposable>();
-  private readonly _disposables = this._register(new DisposableStore());
 
   private readonly _onDidChange = this._register(new Emitter<void>());
   readonly onDidChange: Event<void> = this._onDidChange.event;
@@ -49,7 +53,7 @@ export class GridBranchNode extends Disposable {
     private _sizingMode: SizingMode = SizingMode.Pixel
   ) {
     super();
-    this.element = document.createElement('div');
+    this.element = $('div');
     this.element.classList.add('grid-branch');
     this._applyStyles();
   }
@@ -156,7 +160,7 @@ export class GridBranchNode extends Disposable {
    * Create a resize sash handle between two children.
    */
   private _createSash(index: number): HTMLElement {
-    const sash = document.createElement('div');
+    const sash = $('div');
     sash.classList.add('grid-sash');
 
     if (this.orientation === Orientation.Horizontal) {
@@ -236,7 +240,6 @@ export class GridBranchNode extends Disposable {
 export class GridLeafNode extends Disposable {
   readonly type = GridNodeType.Leaf;
   private _cachedSize = 0;
-  private readonly _constraintListener: IDisposable;
 
   private readonly _onDidChangeConstraints = this._register(new Emitter<void>());
   readonly onDidChangeConstraints: Event<void> = this._onDidChangeConstraints.event;
@@ -248,7 +251,7 @@ export class GridLeafNode extends Disposable {
     super();
 
     // Forward constraint changes from the view
-    this._constraintListener = this._register(
+    this._register(
       view.onDidChangeConstraints(() => {
         this._onDidChangeConstraints.fire();
       })
@@ -288,6 +291,10 @@ export class GridLeafNode extends Disposable {
   }
   get maximumHeight(): number {
     return this.view.maximumHeight;
+  }
+
+  get snap(): boolean {
+    return !!this.view.snap;
   }
 
   /**

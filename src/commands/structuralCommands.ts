@@ -16,6 +16,9 @@ import type { IDisposable } from '../platform/lifecycle.js';
 import type { IEditorGroupService, IFileService, IWorkspaceService, IEditorService } from '../services/serviceTypes.js';
 import { GroupDirection } from '../editor/editorTypes.js';
 import { URI } from '../platform/uri.js';
+import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
+import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
+import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
 
 // ─── Workbench type (avoids circular import) ────────────────────────────────
 // Command handlers access workbench via `ctx.workbench` cast to this shape.
@@ -26,8 +29,12 @@ interface WorkbenchLike {
   togglePanel(): void;
   toggleMaximizedPanel(): void;
   toggleStatusBar(): void;
+  toggleZenMode(): void;
   toggleCommandPalette(): void;
   showQuickOpen(): void;
+  showGoToLine(): void;
+  selectColorTheme(): void;
+  showSidebarView(viewId: string): void;
   readonly workspace: { readonly id: string; readonly name: string };
   createWorkspace(name: string, path?: string, switchTo?: boolean): Promise<unknown>;
   switchWorkspace(targetId: string): Promise<void>;
@@ -123,6 +130,26 @@ const quickOpen: CommandDescriptor = {
   },
 };
 
+const gotoLine: CommandDescriptor = {
+  id: 'workbench.action.gotoLine',
+  title: 'Go to Line/Column…',
+  category: 'Go',
+  keybinding: 'Ctrl+G',
+  handler(ctx) {
+    wb(ctx).showGoToLine();
+  },
+};
+
+const selectColorTheme: CommandDescriptor = {
+  id: 'workbench.action.selectTheme',
+  title: 'Color Theme',
+  category: 'Preferences',
+  keybinding: 'Ctrl+T',
+  handler(ctx) {
+    wb(ctx).selectColorTheme();
+  },
+};
+
 const toggleSidebar: CommandDescriptor = {
   id: 'workbench.action.toggleSidebar',
   title: 'Toggle Primary Sidebar',
@@ -171,6 +198,16 @@ const toggleStatusBar: CommandDescriptor = {
   },
 };
 
+const toggleZenMode: CommandDescriptor = {
+  id: 'workbench.action.toggleZenMode',
+  title: 'Toggle Zen Mode',
+  category: 'View',
+  keybinding: 'Ctrl+K Z',
+  handler(ctx) {
+    wb(ctx).toggleZenMode();
+  },
+};
+
 // ─── Editor Commands ─────────────────────────────────────────────────────────
 
 const splitEditor: CommandDescriptor = {
@@ -190,6 +227,67 @@ const splitEditor: CommandDescriptor = {
       return;
     }
     editorGroupService.splitGroup(activeGroup.id, GroupDirection.Right);
+  },
+};
+
+// ─── Markdown Preview Commands ───────────────────────────────────────────────
+
+/** Check if a filename has a markdown extension. */
+function isMarkdownFile(name: string): boolean {
+  const dotIdx = name.lastIndexOf('.');
+  const ext = dotIdx >= 0 ? name.substring(dotIdx).toLowerCase() : '';
+  return ext === '.md' || ext === '.markdown' || ext === '.mdx';
+}
+
+const markdownOpenPreviewToSide: CommandDescriptor = {
+  id: 'markdown.showPreviewToSide',
+  title: 'Markdown: Open Preview to the Side',
+  category: 'Markdown',
+  keybinding: 'Ctrl+K V',
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    if (!editorGroupService) return;
+
+    const activeGroup = editorGroupService.activeGroup;
+    if (!activeGroup) return;
+
+    const activeEditor = activeGroup.model.activeEditor;
+    if (!(activeEditor instanceof FileEditorInput)) return;
+    if (!isMarkdownFile(activeEditor.name)) return;
+
+    // Split right to create a new group
+    const newGroup = editorGroupService.splitGroup(activeGroup.id, GroupDirection.Right);
+    if (!newGroup) return;
+
+    // Close the duplicated text editor from the new group (split copies active editor)
+    if (newGroup.model.count > 0) {
+      newGroup.model.closeEditor(0, true);
+    }
+
+    // Create a MarkdownPreviewInput wrapping the source FileEditorInput
+    const previewInput = MarkdownPreviewInput.create(activeEditor);
+    newGroup.openEditor(previewInput, { pinned: true });
+  },
+};
+
+const markdownOpenPreview: CommandDescriptor = {
+  id: 'markdown.showPreview',
+  title: 'Markdown: Open Preview',
+  category: 'Markdown',
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    if (!editorGroupService) return;
+
+    const activeGroup = editorGroupService.activeGroup;
+    if (!activeGroup) return;
+
+    const activeEditor = activeGroup.model.activeEditor;
+    if (!(activeEditor instanceof FileEditorInput)) return;
+    if (!isMarkdownFile(activeEditor.name)) return;
+
+    // Open preview in the same group (replaces the text editor tab)
+    const previewInput = MarkdownPreviewInput.create(activeEditor);
+    activeGroup.openEditor(previewInput, { pinned: true });
   },
 };
 
@@ -809,10 +907,12 @@ const editFind: CommandDescriptor = {
   title: 'Find',
   category: 'Edit',
   keybinding: 'Ctrl+F',
-  handler: () => {
-    // Trigger browser-native find (works on textarea)
-    // Note: window.find() is deprecated but still functional in Electron
-    (globalThis as any).parallxElectron?.webContents?.find?.() ?? (window as any).find?.();
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    const pane = editorGroupService?.activeGroup?.activePane;
+    if (pane instanceof TextEditorPane) {
+      pane.showFind();
+    }
   },
 };
 
@@ -821,9 +921,12 @@ const editReplace: CommandDescriptor = {
   title: 'Replace',
   category: 'Edit',
   keybinding: 'Ctrl+H',
-  handler: () => {
-    // Browser-native find doesn't support replace — stub for M4
-    console.log('[Command] edit.replace — deferred to future milestone');
+  handler(ctx) {
+    const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
+    const pane = editorGroupService?.activeGroup?.activePane;
+    if (pane instanceof TextEditorPane) {
+      pane.showReplace();
+    }
   },
 };
 
@@ -1095,21 +1198,74 @@ const focusStatusBar: CommandDescriptor = {
   },
 };
 
+// ─── Sidebar view switch ─────────────────────────────────────────────────────
+
+const showSearchView: CommandDescriptor = {
+  id: 'workbench.view.search',
+  title: 'Search: Show Search',
+  category: 'View',
+  handler(ctx) {
+    wb(ctx).showSidebarView('view.search');
+  },
+};
+
+const showExplorerView: CommandDescriptor = {
+  id: 'workbench.view.explorer',
+  title: 'Explorer: Show Explorer',
+  category: 'View',
+  handler(ctx) {
+    wb(ctx).showSidebarView('view.explorer');
+  },
+};
+
+// ─── Preferences: Open Settings / Keyboard Shortcuts ─────────────────────────
+
+const openSettings: CommandDescriptor = {
+  id: 'workbench.action.openSettings',
+  title: 'Open Settings',
+  category: 'Preferences',
+  keybinding: 'Ctrl+,',
+  async handler(ctx) {
+    const editorService = ctx.getService<IEditorService>('IEditorService');
+    if (!editorService) return;
+    const { SettingsEditorInput } = await import('../built-in/editor/settingsEditorInput.js');
+    await editorService.openEditor(SettingsEditorInput.getInstance(), { pinned: true });
+  },
+};
+
+const openKeybindings: CommandDescriptor = {
+  id: 'workbench.action.openKeybindings',
+  title: 'Open Keyboard Shortcuts',
+  category: 'Preferences',
+  keybinding: 'Ctrl+K Ctrl+S',
+  async handler(ctx) {
+    const editorService = ctx.getService<IEditorService>('IEditorService');
+    if (!editorService) return;
+    const { KeybindingsEditorInput } = await import('../built-in/editor/keybindingsEditorInput.js');
+    await editorService.openEditor(KeybindingsEditorInput.getInstance(), { pinned: true });
+  },
+};
+
 // ─── All builtin commands ────────────────────────────────────────────────────
 
 const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // View
   showCommands,
   quickOpen,
+  gotoLine,
   toggleSidebar,
   togglePanel,
   toggleMaximizedPanel,
   toggleAuxiliaryBar,
   toggleStatusBar,
+  toggleZenMode,
   // Editor
   splitEditor,
   splitEditorOrthogonal,
   closeActiveEditor,
+  // Markdown
+  markdownOpenPreviewToSide,
+  markdownOpenPreview,
   nextEditor,
   previousEditor,
   // Layout
@@ -1154,6 +1310,13 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   focusPanel,
   focusActivityBar,
   focusStatusBar,
+  // Sidebar view switch
+  showSearchView,
+  showExplorerView,
+  // Preferences
+  openSettings,
+  openKeybindings,
+  selectColorTheme,
 ];
 
 /**

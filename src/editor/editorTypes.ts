@@ -4,8 +4,6 @@
 // These are imported by editorInput, editorGroupModel, editorPane,
 // editorGroupView, and the editor services.
 
-import type { IDisposable } from '../platform/lifecycle.js';
-import type { Event } from '../platform/events.js';
 
 // ─── Editor Open Options ─────────────────────────────────────────────────────
 

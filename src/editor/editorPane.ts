@@ -12,8 +12,9 @@
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import type { IEditorInput } from './editorInput.js';
-import type { SizeConstraints, Orientation, Dimensions } from '../layout/layoutTypes.js';
+import type { SizeConstraints } from '../layout/layoutTypes.js';
 import { DEFAULT_SIZE_CONSTRAINTS } from '../layout/layoutTypes.js';
+import { $ } from '../ui/dom.js';
 
 // ─── View State ──────────────────────────────────────────────────────────────
 
@@ -81,12 +82,8 @@ export abstract class EditorPane extends Disposable implements IEditorPane {
   create(container: HTMLElement): void {
     if (this._created) return;
 
-    this._element = document.createElement('div');
-    this._element.classList.add('editor-pane');
-    this._element.style.width = '100%';
-    this._element.style.height = '100%';
-    this._element.style.overflow = 'hidden';
-    this._element.style.position = 'relative';
+    this._element = $('div');
+    this._element.classList.add('editor-pane', 'fill-container');
 
     this.createPaneContent(this._element);
     this._created = true;
@@ -182,15 +179,10 @@ export class PlaceholderEditorPane extends EditorPane {
   }
 
   protected override createPaneContent(container: HTMLElement): void {
-    container.style.display = 'flex';
-    container.style.alignItems = 'center';
-    container.style.justifyContent = 'center';
+    container.classList.add('placeholder-pane-content');
 
-    this._label = document.createElement('div');
-    this._label.style.color = 'var(--color-text-muted, #888)';
-    this._label.style.fontSize = '14px';
-    this._label.style.textAlign = 'center';
-    this._label.style.padding = '16px';
+    this._label = $('div');
+    this._label.classList.add('placeholder-pane-label');
     this._label.textContent = 'No editor';
     container.appendChild(this._label);
   }
@@ -218,7 +210,7 @@ export class PlaceholderEditorPane extends EditorPane {
  * The input must have a `provider` property with `createEditorPane(container)`.
  * This is duck-typed to avoid a hard dependency on the API bridge layer.
  */
-export class ToolEditorPane extends EditorPane {
+class ToolEditorPane extends EditorPane {
   private _contentContainer: HTMLElement | undefined;
   private _providerDisposable: IDisposable | undefined;
 
@@ -227,10 +219,8 @@ export class ToolEditorPane extends EditorPane {
   }
 
   protected override createPaneContent(container: HTMLElement): void {
-    this._contentContainer = document.createElement('div');
-    this._contentContainer.style.width = '100%';
-    this._contentContainer.style.height = '100%';
-    this._contentContainer.style.overflow = 'auto';
+    this._contentContainer = $('div');
+    this._contentContainer.classList.add('fill-container-scroll');
     container.appendChild(this._contentContainer);
   }
 
@@ -246,7 +236,7 @@ export class ToolEditorPane extends EditorPane {
       this._providerDisposable = provider.createEditorPane(this._contentContainer);
     } else {
       // Fallback: show the input name
-      const label = document.createElement('div');
+      const label = $('div');
       label.style.cssText = 'color: var(--color-text-muted, #888); font-size: 14px; text-align: center; padding: 16px;';
       label.textContent = input.name;
       this._contentContainer.appendChild(label);

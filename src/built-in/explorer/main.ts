@@ -13,6 +13,7 @@
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
+import { $ } from '../../ui/dom.js';
 
 // ─── Types (avoid circular imports) ──────────────────────────────────────────
 
@@ -190,11 +191,11 @@ function rebuildTree(): void {
 
   if (!folders || folders.length === 0) {
     _treeContainer.innerHTML = '';
-    const empty = document.createElement('div');
+    const empty = $('div');
     empty.className = 'explorer-empty';
     empty.textContent = 'No folder opened. Open a folder to start.';
 
-    const openBtn = document.createElement('button');
+    const openBtn = $('button');
     openBtn.className = 'explorer-empty-open-btn';
     openBtn.textContent = 'Open Folder';
     openBtn.addEventListener('click', () => {
@@ -241,7 +242,7 @@ function renderTree(): void {
 
   // Multi-root workspace: show workspace name header (VS Code behaviour)
   if (_roots.length > 1) {
-    const header = document.createElement('div');
+    const header = $('div');
     header.className = 'explorer-workspace-header';
     const wsName = _api.workspace.name;
     const displayName = (!wsName || wsName === 'Default Workspace')
@@ -258,7 +259,7 @@ function renderTree(): void {
 
 function renderNodeFlat(container: HTMLElement, node: TreeNode): void {
   const depth = Math.max(0, node.depth);
-  const el = document.createElement('div');
+  const el = $('div');
   el.className = 'tree-node';
   if (_selectedNode === node) {
     el.classList.add('tree-node--selected');
@@ -270,24 +271,24 @@ function renderNodeFlat(container: HTMLElement, node: TreeNode): void {
 
   // Chevron for directories
   if (node.type === FILE_TYPE_DIRECTORY) {
-    const chevron = document.createElement('span');
+    const chevron = $('span');
     chevron.className = 'tree-node-chevron';
     chevron.textContent = node.expanded ? '▾' : '▸';
     el.appendChild(chevron);
   } else {
-    const spacer = document.createElement('span');
+    const spacer = $('span');
     spacer.className = 'tree-node-spacer';
     el.appendChild(spacer);
   }
 
   // Icon
-  const icon = document.createElement('span');
+  const icon = $('span');
   icon.className = 'tree-node-icon';
   icon.textContent = node.type === FILE_TYPE_DIRECTORY ? '📁' : '📄';
   el.appendChild(icon);
 
   // Label
-  const label = document.createElement('span');
+  const label = $('span');
   label.className = 'tree-node-label';
   label.textContent = node.name;
   el.appendChild(label);
@@ -320,7 +321,7 @@ function renderNodeFlat(container: HTMLElement, node: TreeNode): void {
     if (node.loading && !node.loaded) {
       container.appendChild(createLoadingElement(depth + 1));
     } else if (node.loaded && node.children.length === 0) {
-      const emptyEl = document.createElement('div');
+      const emptyEl = $('div');
       emptyEl.className = 'tree-empty-dir';
       // Computed layout dimension
       emptyEl.style.paddingLeft = `${(depth + 1) * INDENT_PX + 20}px`;
@@ -335,7 +336,7 @@ function renderNodeFlat(container: HTMLElement, node: TreeNode): void {
 }
 
 function createLoadingElement(depth: number): HTMLElement {
-  const el = document.createElement('div');
+  const el = $('div');
   el.className = 'tree-loading';
   // Computed layout dimension
   el.style.paddingLeft = `${depth * INDENT_PX + 20}px`;
@@ -608,17 +609,28 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
   if (node) {
     if (node.type === FILE_TYPE_FILE) {
       items.push({ id: 'open', label: 'Open', group: '1_open' });
-      items.push({ id: 'rename', label: 'Rename', group: '2_edit' });
-      items.push({ id: 'delete', label: 'Delete', group: '2_edit' });
-      items.push({ id: 'copyPath', label: 'Copy Path', group: '3_copy' });
+      items.push({ id: 'openToSide', label: 'Open to the Side', group: '1_open' });
+      items.push({ id: 'newFile', label: 'New File...', group: '2_create' });
+      items.push({ id: 'newFolder', label: 'New Folder...', group: '2_create' });
+      items.push({ id: 'rename', label: 'Rename', keybinding: 'F2', group: '3_edit' });
+      items.push({ id: 'delete', label: 'Delete', keybinding: 'Delete', group: '3_edit' });
+      items.push({ id: 'copyPath', label: 'Copy Path', group: '4_copy' });
+      items.push({ id: 'copyRelativePath', label: 'Copy Relative Path', group: '4_copy' });
+      items.push({ id: 'revealInFileExplorer', label: 'Reveal in File Explorer', group: '5_reveal' });
     } else {
+      // Folder context — hide rename/delete for workspace root folders
+      const isRootFolder = _roots.some(r => r.uri === node.uri);
       items.push({ id: 'newFile', label: 'New File...', group: '1_create' });
       items.push({ id: 'newFolder', label: 'New Folder...', group: '1_create' });
-      items.push({ id: 'rename', label: 'Rename', group: '2_edit' });
-      items.push({ id: 'delete', label: 'Delete', group: '2_edit' });
+      if (!isRootFolder) {
+        items.push({ id: 'rename', label: 'Rename', keybinding: 'F2', group: '2_edit' });
+        items.push({ id: 'delete', label: 'Delete', keybinding: 'Delete', group: '2_edit' });
+      }
       items.push({ id: 'copyPath', label: 'Copy Path', group: '3_copy' });
+      items.push({ id: 'copyRelativePath', label: 'Copy Relative Path', group: '3_copy' });
+      items.push({ id: 'revealInFileExplorer', label: 'Reveal in File Explorer', group: '4_reveal' });
       if (node.expanded) {
-        items.push({ id: 'collapseAll', label: 'Collapse All', group: '4_collapse' });
+        items.push({ id: 'collapseAll', label: 'Collapse All', group: '5_collapse' });
       }
     }
   } else {
@@ -638,12 +650,15 @@ function showContextMenu(x: number, y: number, node: TreeNode | null): void {
   menu.onDidSelect(({ item }) => {
     switch (item.id) {
       case 'open': if (node) openFile(node, true); break;
-      case 'newFile': startInlineCreate(node ?? getActiveRoot(), 'file'); break;
-      case 'newFolder': startInlineCreate(node ?? getActiveRoot(), 'folder'); break;
+      case 'openToSide': if (node) openFileToSide(node); break;
+      case 'newFile': startInlineCreate(node ? getParentForCreate(node) : getActiveRoot(), 'file'); break;
+      case 'newFolder': startInlineCreate(node ? getParentForCreate(node) : getActiveRoot(), 'folder'); break;
       case 'rename': if (node) startInlineRename(node); break;
       case 'delete': if (node) confirmDelete(node); break;
       case 'copyPath': if (node) copyToClipboard(uriToPath(node.uri)); break;
+      case 'copyRelativePath': if (node) copyToClipboard(getRelativePath(node)); break;
       case 'collapseAll': if (node) collapseAll(node); break;
+      case 'revealInFileExplorer': if (node) revealInOsExplorer(node); break;
       case 'refresh': refreshTree(); break;
     }
   });
@@ -662,6 +677,70 @@ function copyToClipboard(text: string): void {
   navigator.clipboard.writeText(text).catch(err => {
     console.error('[Explorer] Failed to copy to clipboard:', err);
   });
+}
+
+/**
+ * Get the parent folder for New File / New Folder operations.
+ * For files, returns the parent folder. For folders, returns the node itself.
+ */
+function getParentForCreate(node: TreeNode): TreeNode | null {
+  if (node.type === FILE_TYPE_FILE) {
+    return node.parent ?? getActiveRoot();
+  }
+  return node;
+}
+
+/**
+ * Open a file in a new editor group to the side (VS Code: "Open to the Side").
+ * Splits the active editor group and opens the file in the new group.
+ */
+function openFileToSide(node: TreeNode): void {
+  if (node.type !== FILE_TYPE_FILE) return;
+  // First split the editor, then open the file — the split becomes active
+  _api.commands.executeCommand('workbench.action.splitEditor').then(() => {
+    _api.editors.openFileEditor(node.uri, { pinned: true }).catch(err => {
+      console.error('[Explorer] Failed to open file to side:', node.uri, err);
+    });
+  }).catch(err => {
+    console.error('[Explorer] Failed to split editor:', err);
+  });
+}
+
+/**
+ * Compute workspace-relative path for a node.
+ * e.g. "src/editor/editorGroupView.ts" instead of the full absolute path.
+ */
+function getRelativePath(node: TreeNode): string {
+  const nodePath = uriToFsPath(node.uri);
+  // Find which workspace root contains this node
+  for (const root of _roots) {
+    const rootPath = uriToFsPath(root.uri);
+    // Normalize separators for comparison
+    const normNode = nodePath.replace(/\\/g, '/');
+    const normRoot = rootPath.replace(/\\/g, '/');
+    if (normNode.startsWith(normRoot)) {
+      let relative = normNode.slice(normRoot.length);
+      // Strip leading separator
+      if (relative.startsWith('/')) relative = relative.slice(1);
+      return relative || node.name;
+    }
+  }
+  // Fallback: return just the name
+  return node.name;
+}
+
+/**
+ * Reveal the file in the OS native file manager (Windows Explorer / macOS Finder).
+ * Uses Electron's shell.showItemInFolder IPC.
+ */
+function revealInOsExplorer(node: TreeNode): void {
+  const fsPath = uriToFsPath(node.uri);
+  const electronShell = (globalThis as any).parallxElectron?.shell;
+  if (electronShell?.showItemInFolder) {
+    electronShell.showItemInFolder(fsPath).catch((err: Error) => {
+      console.error('[Explorer] Failed to reveal in file explorer:', err);
+    });
+  }
 }
 
 function getActiveRoot(): TreeNode | null {
@@ -711,7 +790,7 @@ function startInlineRename(node: TreeNode): void {
   const labelEl = node.element.querySelector('.tree-node-label');
   if (!labelEl) return;
 
-  const input = document.createElement('input');
+  const input = $('input');
   input.type = 'text';
   input.className = 'tree-inline-input';
   input.value = node.name;
@@ -768,17 +847,17 @@ function insertCreateInput(parentNode: TreeNode, kind: 'file' | 'folder'): void 
   renderTree(); // re-render first to ensure DOM is current
 
   const depth = Math.max(0, parentNode.depth + 1);
-  const inputRow = document.createElement('div');
+  const inputRow = $('div');
   inputRow.className = 'tree-create-row';
   // Computed layout dimension
   inputRow.style.paddingLeft = `${depth * INDENT_PX + 20}px`;
 
-  const iconSpan = document.createElement('span');
+  const iconSpan = $('span');
   iconSpan.className = 'tree-create-icon';
   iconSpan.textContent = kind === 'folder' ? '📁' : '📄';
   inputRow.appendChild(iconSpan);
 
-  const input = document.createElement('input');
+  const input = $('input');
   input.type = 'text';
   input.className = 'tree-inline-input';
   input.placeholder = kind === 'folder' ? 'Folder name' : 'File name';
@@ -893,7 +972,7 @@ function renderOpenEditors(): void {
   const editors = _api.editors.openEditors;
 
   if (editors.length === 0) {
-    const placeholder = document.createElement('div');
+    const placeholder = $('div');
     placeholder.className = 'open-editors-placeholder';
     placeholder.textContent = 'No open editors';
     _openEditorsContainer.appendChild(placeholder);
@@ -903,80 +982,113 @@ function renderOpenEditors(): void {
 
   _openEditorsCountKey.set(editors.length);
 
+  // Group editors by group ID (preserving order)
+  const groupedEditors = new Map<string, typeof editors[number][]>();
   for (const editor of editors) {
-    const row = document.createElement('div');
-    row.className = 'open-editors-item';
-    if (editor.isActive) {
-      row.classList.add('open-editors-item--active');
+    const groupId = editor.groupId;
+    if (!groupedEditors.has(groupId)) {
+      groupedEditors.set(groupId, []);
     }
-    row.setAttribute('role', 'treeitem');
-    row.tabIndex = -1;
+    groupedEditors.get(groupId)!.push(editor);
+  }
 
-    // Dirty indicator
-    if (editor.isDirty) {
-      const dot = document.createElement('span');
-      dot.className = 'open-editors-dirty';
-      dot.textContent = '●';
-      dot.title = 'Unsaved changes';
-      row.appendChild(dot);
+  const multipleGroups = groupedEditors.size > 1;
+  let groupIndex = 0;
+
+  for (const [_groupId, groupEditors] of groupedEditors) {
+    groupIndex++;
+
+    // Show group header when there are multiple groups (VS Code parity)
+    if (multipleGroups) {
+      const header = $('div');
+      header.className = 'open-editors-group-header';
+      header.textContent = `Group ${groupIndex}`;
+      _openEditorsContainer.appendChild(header);
     }
 
-    // File icon (derive from name extension)
-    const icon = document.createElement('span');
-    icon.className = 'open-editors-icon';
-    icon.textContent = getFileIcon(editor.name);
-    row.appendChild(icon);
-
-    // Label
-    const label = document.createElement('span');
-    label.className = 'open-editors-label';
-    label.textContent = editor.name;
-    if (editor.description) {
-      label.title = editor.description;
+    for (const editor of groupEditors) {
+      _openEditorsContainer.appendChild(createOpenEditorRow(editor, multipleGroups));
     }
-    row.appendChild(label);
-
-    // Close button
-    const closeBtn = document.createElement('span');
-    closeBtn.className = 'open-editors-close';
-    closeBtn.textContent = '×';
-    closeBtn.title = 'Close';
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      _api.commands.executeCommand('workbench.action.closeActiveEditor');
-    });
-    row.appendChild(closeBtn);
-
-    // Click → focus that editor
-    const editorId = editor.id;
-    row.addEventListener('click', () => {
-      // Re-open the editor to focus it (the editor service deduplicates)
-      // Use the description as a heuristic for the URI
-      if (editor.description) {
-        _api.editors.openFileEditor(editor.description, { pinned: false }).catch(() => {
-          // Fallback — it might be a non-file editor
-          console.log('[Explorer] Could not re-focus editor:', editor.name);
-        });
-      }
-    });
-
-    _openEditorsContainer.appendChild(row);
   }
 }
 
-/** Simple icon picker based on file extension */
+/** Create a single row element for an open editor entry. */
+function createOpenEditorRow(
+  editor: { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string },
+  indented: boolean
+): HTMLElement {
+  const row = $('div');
+  row.className = 'open-editors-item';
+  if (indented) {
+    row.classList.add('open-editors-item--grouped');
+  }
+  if (editor.isActive) {
+    row.classList.add('open-editors-item--active');
+  }
+  row.setAttribute('role', 'treeitem');
+  row.tabIndex = -1;
+
+  // Dirty indicator
+  if (editor.isDirty) {
+    const dot = $('span');
+    dot.className = 'open-editors-dirty';
+    dot.title = 'Unsaved changes';
+    row.appendChild(dot);
+  }
+
+  // File icon (derive from name extension)
+  const icon = $('span');
+  icon.className = 'open-editors-icon';
+  icon.textContent = getFileIcon(editor.name);
+  row.appendChild(icon);
+
+  // Label
+  const label = $('span');
+  label.className = 'open-editors-label';
+  label.textContent = editor.name;
+  if (editor.description) {
+    label.title = editor.description;
+  }
+  row.appendChild(label);
+
+  // Close button
+  const closeBtn = $('span');
+  closeBtn.className = 'open-editors-close';
+  closeBtn.textContent = '×';
+  closeBtn.title = 'Close';
+  closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    _api.commands.executeCommand('workbench.action.closeActiveEditor');
+  });
+  row.appendChild(closeBtn);
+
+  // Click → focus that editor
+  row.addEventListener('click', () => {
+    // Re-open the editor to focus it (the editor service deduplicates)
+    // Use the description as a heuristic for the URI
+    if (editor.description) {
+      _api.editors.openFileEditor(editor.description, { pinned: false }).catch(() => {
+        // Fallback — it might be a non-file editor
+        console.log('[Explorer] Could not re-focus editor:', editor.name);
+      });
+    }
+  });
+
+  return row;
+}
+
+/** Simple icon picker based on file extension — returns a text glyph, not emoji */
 function getFileIcon(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
   switch (ext) {
-    case 'ts': case 'tsx': return '🟦';
-    case 'js': case 'jsx': return '🟨';
-    case 'json': return '📋';
-    case 'md': return '📝';
-    case 'css': return '🎨';
-    case 'html': return '🌐';
-    case 'svg': return '🖼️';
-    case 'png': case 'jpg': case 'jpeg': case 'gif': return '🖼️';
-    default: return '📄';
+    case 'ts': case 'tsx': return 'TS';
+    case 'js': case 'jsx': return 'JS';
+    case 'json': return '{}';
+    case 'md': return 'M↓';
+    case 'css': return '#';
+    case 'html': return '<>';
+    case 'svg': case 'png': case 'jpg': case 'jpeg': case 'gif': return '◻';
+    default: return '◇';
   }
 }
 

@@ -22,18 +22,20 @@
 
 import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import type { CommandDescriptor } from './commandTypes.js';
 import type { CommandService } from './commandRegistry.js';
+import { $ } from '../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MAX_VISIBLE_ITEMS = 15;
 const MAX_RECENT_COMMANDS = 5;
-const PALETTE_WIDTH = 600;
 const RECENT_STORAGE_KEY = 'parallx:commandPalette:recent';
 
 /** VS Code prefix for command mode. */
 const COMMAND_PREFIX = '>';
+
+/** VS Code prefix for go-to-line mode (`:123` or `:123:45`). */
+const GOTO_LINE_PREFIX = ':';
 
 // ── File picker constants (M4 Cap 6) ────────────────────────────────────────
 
@@ -49,28 +51,46 @@ const EXCLUDED_DIRS = new Set([
 
 // ─── Fuzzy match ─────────────────────────────────────────────────────────────
 
+/** Result of a fuzzy match: score (lower is better) and matched character indices. */
+interface FuzzyMatchResult {
+  score: number;
+  /** Indices in the target string that matched the query characters. */
+  matches: number[];
+}
+
 /**
  * Simple fuzzy match: every character in the query must appear in order
  * within the target (case-insensitive). Returns a score (lower is better)
- * or -1 if no match.
+ * and the matched character indices, or null if no match.
  */
-function fuzzyScore(query: string, target: string): number {
+function fuzzyMatch(query: string, target: string): FuzzyMatchResult | null {
   const q = query.toLowerCase();
   const t = target.toLowerCase();
   let qi = 0;
   let score = 0;
   let lastMatchIndex = -1;
+  const matches: number[] = [];
 
   for (let ti = 0; ti < t.length && qi < q.length; ti++) {
     if (t[ti] === q[qi]) {
       const gap = lastMatchIndex >= 0 ? ti - lastMatchIndex - 1 : ti;
       score += gap;
       lastMatchIndex = ti;
+      matches.push(ti);
       qi++;
     }
   }
 
-  return qi === q.length ? score : -1;
+  return qi === q.length ? { score, matches } : null;
+}
+
+/**
+ * Backward-compatible score-only wrapper. Returns score (lower is better)
+ * or -1 if no match.
+ */
+function fuzzyScore(query: string, target: string): number {
+  const result = fuzzyMatch(query, target);
+  return result ? result.score : -1;
 }
 
 // ─── Quick‑access item types ─────────────────────────────────────────────────
@@ -90,6 +110,10 @@ interface QuickAccessItem {
   group?: string;
   /** Fuzzy score for sorting. */
   score: number;
+  /** Indices of matched characters in the label (for highlight rendering). */
+  labelMatches?: number[];
+  /** Indices of matched characters in the detail (for highlight rendering). */
+  detailMatches?: number[];
   /** Callback when selected. */
   accept: () => void;
 }
@@ -184,8 +208,18 @@ class CommandsProvider implements IQuickAccessProvider {
       if (menuContribution && !menuContribution.isCommandVisibleInPalette(desc.id)) continue;
 
       const searchText = desc.category ? `${desc.category}: ${desc.title}` : desc.title;
-      const score = query.length > 0 ? fuzzyScore(query, searchText) : 0;
-      if (query.length > 0 && score < 0) continue;
+      let score = 0;
+      let labelMatches: number[] | undefined;
+      if (query.length > 0) {
+        const result = fuzzyMatch(query, searchText);
+        if (!result) continue;
+        score = result.score;
+        // Offset matches into the label portion (skip "Category: " prefix)
+        const labelOffset = desc.category ? desc.category.length + 2 : 0;
+        labelMatches = result.matches
+          .filter(i => i >= labelOffset)
+          .map(i => i - labelOffset);
+      }
 
       const keybinding = desc.keybinding
         ?? keybindingContribution?.getKeybindingForCommand(desc.id)?.key;
@@ -197,6 +231,7 @@ class CommandsProvider implements IQuickAccessProvider {
         keybinding,
         isRecent: recentSet.has(desc.id),
         score,
+        labelMatches,
         accept: () => this._executeCommand(desc.id),
       });
     }
@@ -215,6 +250,113 @@ class CommandsProvider implements IQuickAccessProvider {
     });
 
     return items;
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Go-to-Line Provider — jump to line[:column] under ':' prefix
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** Minimal shape for accessing the active text editor's textarea. */
+interface IEditorGroupServiceLike {
+  readonly activeGroup: {
+    readonly activePane: unknown;
+  } | undefined;
+}
+
+class GoToLineProvider implements IQuickAccessProvider {
+  readonly prefix = GOTO_LINE_PREFIX;
+  readonly placeholder = 'Type a line number, optionally followed by :column.';
+
+  private _editorGroupService: IEditorGroupServiceLike | undefined;
+
+  setEditorGroupService(service: IEditorGroupServiceLike): void {
+    this._editorGroupService = service;
+  }
+
+  getItems(query: string): QuickAccessItem[] {
+    const textarea = this._getActiveTextarea();
+    if (!textarea) {
+      return [{
+        id: 'goto-no-editor',
+        label: 'No active text editor',
+        score: 0,
+        accept: () => {},
+      }];
+    }
+
+    // Parse "line" or "line:column" or "line,column"
+    const trimmed = query.trim();
+    if (!trimmed) {
+      // Count total lines in current editor
+      const totalLines = textarea.value.split('\n').length;
+      return [{
+        id: 'goto-hint',
+        label: `Type a line number between 1 and ${totalLines}`,
+        detail: 'Use :column notation for column (e.g. 10:5)',
+        score: 0,
+        accept: () => {},
+      }];
+    }
+
+    const parts = trimmed.split(/[:,]/);
+    const lineNum = parseInt(parts[0], 10);
+    const colNum = parts.length > 1 ? parseInt(parts[1], 10) : undefined;
+
+    if (isNaN(lineNum) || lineNum < 1) {
+      return [{
+        id: 'goto-invalid',
+        label: `"${trimmed}" is not a valid line number`,
+        score: 0,
+        accept: () => {},
+      }];
+    }
+
+    const totalLines = textarea.value.split('\n').length;
+    const clampedLine = Math.min(lineNum, totalLines);
+    const labelText = colNum && !isNaN(colNum)
+      ? `Go to Line ${clampedLine}, Column ${colNum}`
+      : `Go to Line ${clampedLine}`;
+
+    return [{
+      id: 'goto-line',
+      label: labelText,
+      detail: totalLines > 0 ? `of ${totalLines} lines` : undefined,
+      score: 0,
+      accept: () => this._goToLine(textarea, clampedLine, colNum),
+    }];
+  }
+
+  private _goToLine(textarea: HTMLTextAreaElement, line: number, column?: number): void {
+    const lines = textarea.value.split('\n');
+    const targetLine = Math.max(1, Math.min(line, lines.length));
+
+    // Calculate offset to the start of the target line
+    let offset = 0;
+    for (let i = 0; i < targetLine - 1; i++) {
+      offset += lines[i].length + 1; // +1 for \n
+    }
+
+    // Add column offset
+    if (column && column > 1) {
+      const lineContent = lines[targetLine - 1] ?? '';
+      offset += Math.min(column - 1, lineContent.length);
+    }
+
+    textarea.focus();
+    textarea.setSelectionRange(offset, offset);
+
+    // Scroll into view
+    const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 18;
+    const desiredScrollTop = (targetLine - 3) * lineHeight;
+    if (desiredScrollTop < textarea.scrollTop || desiredScrollTop > textarea.scrollTop + textarea.clientHeight) {
+      textarea.scrollTop = Math.max(0, desiredScrollTop);
+    }
+  }
+
+  private _getActiveTextarea(): HTMLTextAreaElement | undefined {
+    const pane = this._editorGroupService?.activeGroup?.activePane;
+    return (pane as any)?.textarea as HTMLTextAreaElement | undefined;
   }
 }
 
@@ -276,9 +418,6 @@ class GeneralProvider implements IQuickAccessProvider {
 
   async getItems(query: string): Promise<QuickAccessItem[]> {
     const items: QuickAccessItem[] = [];
-    const hasWorkspaceFolders = this._fileScanner
-      && (this._fileScanner.cached?.length ?? 0) > 0
-      || this._fileScanner?.isScanning;
 
     // ── File results (M4 Cap 6) ─────────────────────────────────────────
     if (this._fileScanner) {
@@ -291,11 +430,24 @@ class GeneralProvider implements IQuickAccessProvider {
         const openFn = this._openFileEditor;
 
         // Score and collect
-        const scored: { entry: FilePickerEntry; score: number; isRecent: boolean }[] = [];
+        const scored: { entry: FilePickerEntry; score: number; isRecent: boolean; labelMatches?: number[]; detailMatches?: number[] }[] = [];
         for (const file of files) {
-          const score = query.length > 0 ? fuzzyScore(query, file.name) : 0;
-          if (query.length > 0 && score < 0) continue;
-          scored.push({ entry: file, score, isRecent: recentSet.has(file.uri) });
+          if (query.length > 0) {
+            // Match against filename first, then relative path
+            const nameResult = fuzzyMatch(query, file.name);
+            if (nameResult) {
+              scored.push({ entry: file, score: nameResult.score, isRecent: recentSet.has(file.uri), labelMatches: nameResult.matches });
+              continue;
+            }
+            const pathResult = fuzzyMatch(query, file.relativePath);
+            if (pathResult) {
+              scored.push({ entry: file, score: pathResult.score + 1, isRecent: recentSet.has(file.uri), detailMatches: pathResult.matches });
+              continue;
+            }
+            // No match
+            continue;
+          }
+          scored.push({ entry: file, score: 0, isRecent: recentSet.has(file.uri) });
         }
 
         // Sort: recent first (by recency order), then score, then alpha
@@ -311,7 +463,7 @@ class GeneralProvider implements IQuickAccessProvider {
 
         const limit = Math.min(scored.length, MAX_FILE_RESULTS);
         for (let i = 0; i < limit; i++) {
-          const { entry, score, isRecent } = scored[i];
+          const { entry, score, isRecent, labelMatches, detailMatches } = scored[i];
           items.push({
             id: `file:${entry.uri}`,
             label: entry.name,
@@ -319,6 +471,8 @@ class GeneralProvider implements IQuickAccessProvider {
             group: 'files',
             score: isRecent ? -1 : score,
             isRecent,
+            labelMatches,
+            detailMatches,
             accept: () => {
               this.pushRecentFile(entry.uri);
               openFn?.(entry.uri);
@@ -506,6 +660,48 @@ class WorkspaceFileScanner {
   }
 }
 
+// ─── Highlight helper ────────────────────────────────────────────────────────
+
+/**
+ * Append text to a container, wrapping matched character indices in
+ * `<span class="highlight">` elements. Mirrors VS Code's HighlightedLabel
+ * rendering in the quick pick.
+ *
+ * @param container The element to append text/highlight spans into.
+ * @param text The full text string.
+ * @param matches Optional sorted array of character indices to highlight.
+ */
+function _appendHighlighted(
+  container: HTMLElement,
+  text: string,
+  matches?: number[],
+): void {
+  if (!matches || matches.length === 0) {
+    container.appendChild(document.createTextNode(text));
+    return;
+  }
+
+  const matchSet = new Set(matches);
+  let pos = 0;
+
+  while (pos < text.length) {
+    if (matchSet.has(pos)) {
+      // Collect consecutive highlighted chars
+      const start = pos;
+      while (pos < text.length && matchSet.has(pos)) pos++;
+      const span = $('span');
+      span.className = 'highlight';
+      span.textContent = text.slice(start, pos);
+      container.appendChild(span);
+    } else {
+      // Collect consecutive non-highlighted chars
+      const start = pos;
+      while (pos < text.length && !matchSet.has(pos)) pos++;
+      container.appendChild(document.createTextNode(text.slice(start, pos)));
+    }
+  }
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // QuickAccessWidget — the unified overlay
 // ═════════════════════════════════════════════════════════════════════════════
@@ -525,6 +721,7 @@ export class QuickAccessWidget extends Disposable {
 
   // ── Providers ──────────────────────────────────────────────────────────
   private readonly _commandsProvider: CommandsProvider;
+  private readonly _goToLineProvider: GoToLineProvider;
   private readonly _generalProvider: GeneralProvider;
 
   // ── Dependency accessors ───────────────────────────────────────────────
@@ -563,6 +760,8 @@ export class QuickAccessWidget extends Disposable {
       (id) => this._executeCommandById(id),
     );
 
+    this._goToLineProvider = new GoToLineProvider();
+
     this._generalProvider = new GeneralProvider(
       () => this._workspaceService,
     );
@@ -588,6 +787,10 @@ export class QuickAccessWidget extends Disposable {
 
   setFocusTracker(tracker: { suspend(): void; resume(restore?: boolean): void }): void {
     this._focusTracker = tracker;
+  }
+
+  setEditorGroupService(service: IEditorGroupServiceLike): void {
+    this._goToLineProvider.setEditorGroupService(service);
   }
 
   /**
@@ -712,9 +915,21 @@ export class QuickAccessWidget extends Disposable {
    */
   private _resolveProviderAndUpdate(): void {
     const value = this._input?.value ?? '';
-    const provider = value.startsWith(COMMAND_PREFIX)
-      ? this._commandsProvider
-      : this._generalProvider;
+
+    // Determine provider by prefix (longest-prefix match — `:` before `>` before default)
+    let provider: IQuickAccessProvider;
+    let query: string;
+
+    if (value.startsWith(GOTO_LINE_PREFIX)) {
+      provider = this._goToLineProvider;
+      query = value.slice(GOTO_LINE_PREFIX.length);
+    } else if (value.startsWith(COMMAND_PREFIX)) {
+      provider = this._commandsProvider;
+      query = value.slice(COMMAND_PREFIX.length).trimStart();
+    } else {
+      provider = this._generalProvider;
+      query = value;
+    }
 
     const providerChanged = provider !== this._activeProvider;
     this._activeProvider = provider;
@@ -723,11 +938,6 @@ export class QuickAccessWidget extends Disposable {
     if (providerChanged && this._input) {
       this._input.placeholder = provider.placeholder;
     }
-
-    // Strip prefix to get the filter query
-    const query = value.startsWith(COMMAND_PREFIX)
-      ? value.slice(COMMAND_PREFIX.length).trimStart()
-      : value;
 
     this._updateItems(query);
   }
@@ -746,7 +956,7 @@ export class QuickAccessWidget extends Disposable {
 
   private _createDOM(): void {
     // Overlay backdrop
-    const overlay = document.createElement('div');
+    const overlay = $('div');
     overlay.className = 'command-palette-overlay';
     // Accessibility: modal overlay traps focus (Cap 8.3)
     overlay.setAttribute('role', 'dialog');
@@ -757,11 +967,11 @@ export class QuickAccessWidget extends Disposable {
     });
 
     // Palette container
-    const palette = document.createElement('div');
+    const palette = $('div');
     palette.className = 'command-palette';
 
     // Input
-    const input = document.createElement('input');
+    const input = $('input');
     input.className = 'command-palette-input';
     input.type = 'text';
     input.spellcheck = false;
@@ -770,7 +980,7 @@ export class QuickAccessWidget extends Disposable {
     input.addEventListener('keydown', (e) => this._onInputKeydown(e));
 
     // List
-    const list = document.createElement('div');
+    const list = $('div');
     list.className = 'command-palette-list';
     list.setAttribute('role', 'listbox');
 
@@ -867,7 +1077,7 @@ export class QuickAccessWidget extends Disposable {
     list.innerHTML = '';
 
     if (this._items.length === 0) {
-      const empty = document.createElement('div');
+      const empty = $('div');
       empty.className = 'command-palette-empty';
       empty.textContent = this._activeProvider === this._commandsProvider
         ? 'No matching commands'
@@ -886,7 +1096,7 @@ export class QuickAccessWidget extends Disposable {
       // Section separator — command mode: recent vs other
       if (this._activeProvider === this._commandsProvider) {
         if (lastWasRecent && !item.isRecent && (this._input?.value ?? '').trim() === COMMAND_PREFIX) {
-          const sep = document.createElement('div');
+          const sep = $('div');
           sep.className = 'command-palette-separator';
           list.appendChild(sep);
         }
@@ -894,7 +1104,7 @@ export class QuickAccessWidget extends Disposable {
       } else {
         // General mode: group separators
         if (item.group && item.group !== lastGroup) {
-          const sep = document.createElement('div');
+          const sep = $('div');
           sep.className = 'command-palette-group-label';
           sep.textContent = item.group;
           list.appendChild(sep);
@@ -902,7 +1112,7 @@ export class QuickAccessWidget extends Disposable {
         }
       }
 
-      const row = document.createElement('div');
+      const row = $('div');
       row.className = 'command-palette-item';
       row.tabIndex = -1; // Focusable for keyboard navigation (Cap 8.3)
       if (i === this._selectedIndex) row.classList.add('selected');
@@ -910,20 +1120,20 @@ export class QuickAccessWidget extends Disposable {
       row.setAttribute('aria-selected', i === this._selectedIndex ? 'true' : 'false');
 
       // Label
-      const labelEl = document.createElement('span');
+      const labelEl = $('span');
       labelEl.className = 'command-palette-item-label';
 
       if (item.category) {
-        const cat = document.createElement('span');
+        const cat = $('span');
         cat.className = 'command-palette-item-category';
         cat.textContent = `${item.category}: `;
         labelEl.appendChild(cat);
       }
-      labelEl.appendChild(document.createTextNode(item.label));
+      _appendHighlighted(labelEl, item.label, item.labelMatches);
 
       // "recently used" badge (command mode)
       if (item.isRecent && (this._input?.value ?? '').trim() === COMMAND_PREFIX) {
-        const badge = document.createElement('span');
+        const badge = $('span');
         badge.className = 'command-palette-recent-badge';
         badge.textContent = 'recently used';
         labelEl.appendChild(badge);
@@ -931,17 +1141,17 @@ export class QuickAccessWidget extends Disposable {
 
       row.appendChild(labelEl);
 
-      // Detail text (general mode — e.g. "2h ago")
+      // Detail text (general mode — e.g. relative path or "2h ago")
       if (item.detail) {
-        const detailEl = document.createElement('span');
+        const detailEl = $('span');
         detailEl.className = 'command-palette-item-detail';
-        detailEl.textContent = item.detail;
+        _appendHighlighted(detailEl, item.detail, item.detailMatches);
         row.appendChild(detailEl);
       }
 
       // Keybinding (command mode)
       if (item.keybinding) {
-        const kbd = document.createElement('span');
+        const kbd = $('span');
         kbd.className = 'command-palette-item-keybinding';
         kbd.textContent = item.keybinding;
         row.appendChild(kbd);
@@ -963,7 +1173,7 @@ export class QuickAccessWidget extends Disposable {
 
     // Overflow indicator
     if (this._items.length > MAX_VISIBLE_ITEMS) {
-      const more = document.createElement('div');
+      const more = $('div');
       more.className = 'command-palette-more';
       more.textContent = `${this._items.length - MAX_VISIBLE_ITEMS} more…`;
       list.appendChild(more);

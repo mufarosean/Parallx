@@ -11,7 +11,7 @@ import {
   type WorkspaceFoldersChangeEvent,
   type SerializedWorkspaceFolder,
 } from './workspaceTypes.js';
-import { createDefaultLayoutState, SerializedLayoutState } from '../layout/layoutModel.js';
+import { createDefaultLayoutState } from '../layout/layoutModel.js';
 import { URI } from '../platform/uri.js';
 import { Emitter, Event } from '../platform/events.js';
 

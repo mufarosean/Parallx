@@ -8,7 +8,7 @@
 //   src/vs/platform/files/common/fileService.ts — FileService
 //   src/vs/platform/files/node/diskFileSystemProvider.ts — Node.js operations
 
-import { Disposable, IDisposable, toDisposable, DisposableStore } from '../platform/lifecycle.js';
+import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { URI } from '../platform/uri.js';
 import {

@@ -3,7 +3,7 @@
  * All visual styling for reusable UI components lives here.
  * Components apply CSS classes — no inline styles for visual properties.
  *
- * Theme integration: uses CSS custom properties (--color-*) defined by
+ * Theme integration: uses CSS custom properties (--vscode-*) injected by
  * the workbench theme. Fallbacks ensure components render in isolation.
  */
 
@@ -25,8 +25,8 @@
   font-size: 13px;
   font-family: inherit;
   line-height: 20px;
-  color: var(--color-button-foreground, #ffffff);
-  background-color: var(--color-button-background, #0e639c);
+  color: var(--vscode-button-foreground);
+  background-color: var(--vscode-button-background);
   border: 1px solid transparent;
   border-radius: 3px;
   cursor: pointer;
@@ -37,26 +37,27 @@
 }
 
 .ui-button:hover {
-  background-color: var(--color-button-hover-background, #1177bb);
+  background-color: var(--vscode-button-hoverBackground);
 }
 
 .ui-button:active {
-  background-color: var(--color-button-active-background, #0d5689);
+  background-color: var(--vscode-button-background);
+  transform: translateY(1px);
 }
 
 .ui-button:focus-visible {
-  outline: 1px solid var(--color-focus-border, #007fd4);
+  outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 1px;
 }
 
 .ui-button--secondary {
-  color: var(--color-button-secondary-foreground, #cccccc);
-  background-color: var(--color-button-secondary-background, #3a3d41);
-  border-color: var(--color-border, #474747);
+  color: var(--vscode-button-secondaryForeground);
+  background-color: var(--vscode-button-secondaryBackground);
+  border-color: var(--vscode-input-border);
 }
 
 .ui-button--secondary:hover {
-  background-color: var(--color-button-secondary-hover-background, #45494e);
+  background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
 .ui-button--disabled {
@@ -69,12 +70,12 @@
   padding: 2px 4px;
   background: none;
   border: none;
-  color: var(--color-text-muted, #888);
+  color: var(--vscode-descriptionForeground);
   border-radius: 3px;
 }
 
 .ui-button--icon-only:hover {
-  background-color: var(--color-hover, rgba(255, 255, 255, 0.1));
+  background-color: var(--vscode-toolbar-hoverBackground);
 }
 
 .ui-button-icon {
@@ -101,29 +102,29 @@
   padding: 6px 8px;
   font-size: 13px;
   font-family: inherit;
-  color: var(--color-input-foreground, #cccccc);
-  background-color: var(--color-input-background, #3c3c3c);
-  border: 1px solid var(--color-input-border, #474747);
+  color: var(--vscode-input-foreground);
+  background-color: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
   border-radius: 3px;
   outline: none;
   box-sizing: border-box;
 }
 
 .ui-input-box-input::placeholder {
-  color: var(--color-input-placeholder, #888888);
+  color: var(--vscode-input-placeholderForeground);
 }
 
 .ui-input-box-input:focus {
-  border-color: var(--color-focus-border, #007fd4);
+  border-color: var(--vscode-focusBorder);
 }
 
 .ui-input-box--invalid .ui-input-box-input {
-  border-color: var(--color-error, #f14c4c);
+  border-color: var(--vscode-errorForeground);
 }
 
 .ui-input-box-validation {
   font-size: 12px;
-  color: var(--color-error, #f14c4c);
+  color: var(--vscode-errorForeground);
   margin-top: 4px;
   min-height: 0; /* Collapses when empty */
 }
@@ -138,62 +139,119 @@
 
 .ui-tab-bar {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   height: 35px;
   min-height: 35px;
   overflow: hidden;
-  border-bottom: 1px solid var(--color-border, #333);
-  background-color: var(--color-tab-bar-background, #1e1e1e);
+  background-color: var(--vscode-editorGroupHeader-tabsBackground);
 }
 
 .ui-tab-bar-tabs {
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative;
+}
+
+/* Border along empty space after the last tab */
+.ui-tab-bar-tabs::after {
+  content: '';
+  flex: 1 0 0;
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
+  align-self: stretch;
+}
+
+/* Scroll chevron buttons */
+.ui-tab-bar-scroll-btn {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 100%;
+  border: none;
+  background: var(--vscode-editorGroupHeader-tabsBackground);
+  color: var(--vscode-tab-inactiveForeground);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.ui-tab-bar-scroll-btn:hover {
+  color: var(--vscode-tab-activeForeground);
+  background: var(--vscode-tab-hoverBackground);
+}
+
+/* Actions slot (trailing toolbar area) */
+.ui-tab-bar-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
 }
 
 .ui-tab {
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  padding: 0 10px;
   height: 100%;
   cursor: pointer;
   white-space: nowrap;
   font-size: 13px;
   user-select: none;
   max-width: 200px;
-  color: var(--color-text-muted, #888);
-  background-color: var(--color-tab-inactive-background, #2d2d2d);
-  border-bottom: 2px solid transparent;
-  border-right: 1px solid var(--color-border, #333);
+  color: var(--vscode-tab-inactiveForeground);
+  background-color: var(--vscode-tab-inactiveBackground);
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
+  border-right: 1px solid var(--vscode-tab-border);
   transition: background-color 0.1s;
+  position: relative;
+  box-sizing: border-box;
 }
 
 .ui-tab:hover {
-  background-color: var(--color-tab-hover-background, #383838);
+  background-color: var(--vscode-tab-hoverBackground);
 }
 
 .ui-tab--active {
-  color: var(--color-text, #ccc);
-  background-color: var(--color-tab-active-background, #1e1e1e);
-  border-bottom-color: var(--color-accent, #007acc);
+  color: var(--vscode-tab-activeForeground);
+  background-color: var(--vscode-tab-activeBackground);
+  border-top-color: var(--vscode-tab-activeBorderTop, transparent);
+  border-bottom-color: var(--vscode-tab-activeBackground);
 }
 
 .ui-tab--italic .ui-tab-label {
   font-style: italic;
 }
 
-.ui-tab--sticky .ui-tab-icon::before {
-  content: '📌 ';
-  font-size: 10px;
-}
-
 .ui-tab--dragging {
   opacity: 0.5;
 }
 
-.ui-tab--drop-target {
-  border-left: 2px solid var(--color-accent, #007acc);
+/* Positional drop indicators — vertical line on left or right edge */
+.ui-tab--drop-before::before,
+.ui-tab--drop-after::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--vscode-focusBorder);
+  z-index: 1;
+}
+.ui-tab--drop-before::before { left: -1px; }
+.ui-tab--drop-after::after  { right: -1px; }
+
+/* Empty-bar drop target */
+.ui-tab-bar--drop-end {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}
+
+.ui-tab-sticky {
+  margin-right: 2px;
+  font-size: 10px;
 }
 
 .ui-tab-icon {
@@ -209,7 +267,7 @@
 
 .ui-tab-dirty {
   margin-left: 4px;
-  color: var(--color-dirty, #e8e8e8);
+  color: var(--vscode-tab-modifiedBorder);
   font-size: 12px;
 }
 
@@ -217,15 +275,52 @@
   margin-left: 6px;
   font-size: 14px;
   line-height: 1;
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: pointer;
   border-radius: 3px;
   padding: 0 2px;
 }
 
+/* Hide close button on inactive non-dirty tabs — show on hover (VS Code parity) */
+.ui-tab:not(.ui-tab--active) .ui-tab-close {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ui-tab:not(.ui-tab--active):hover .ui-tab-close {
+  opacity: 0.6;
+  pointer-events: auto;
+}
+
+/* Dirty inactive tabs: hide close until hover, then swap dirty dot for close */
+.ui-tab:not(.ui-tab--active):not(:hover) .ui-tab-close {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ui-tab:not(.ui-tab--active):hover .ui-tab-dirty {
+  display: none;
+}
+
 .ui-tab-close:hover {
   opacity: 1;
-  background-color: var(--color-hover, rgba(255, 255, 255, 0.1));
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/* Drag ghost image */
+.ui-tab-drag-image {
+  position: fixed;
+  top: -100px;
+  left: -100px;
+  padding: 4px 8px;
+  background: var(--vscode-tab-activeBackground, #1e1e1e);
+  color: var(--vscode-tab-activeForeground, #fff);
+  border: 1px solid var(--vscode-focusBorder, #007fd4);
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 99999;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -274,15 +369,15 @@
   padding: 4px 12px;
   cursor: pointer;
   font-size: 13px;
-  color: var(--color-text, #cccccc);
+  color: var(--vscode-foreground);
 }
 
 .ui-filterable-list-row:hover {
-  background-color: var(--color-list-hover-background, rgba(255, 255, 255, 0.04));
+  background-color: var(--vscode-list-hoverBackground);
 }
 
 .ui-filterable-list-row--selected {
-  background-color: var(--color-list-active-background, #04395e);
+  background-color: var(--vscode-quickInputList-focusBackground);
 }
 
 .ui-filterable-list-label {
@@ -294,7 +389,7 @@
 
 .ui-filterable-list-description {
   margin-left: 8px;
-  color: var(--color-text-muted, #888888);
+  color: var(--vscode-descriptionForeground);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -302,20 +397,20 @@
 .ui-filterable-list-badge {
   margin-left: 8px;
   font-size: 11px;
-  color: var(--color-text-muted, #888888);
+  color: var(--vscode-descriptionForeground);
   white-space: nowrap;
 }
 
 .ui-filterable-list-empty {
   padding: 8px 12px;
-  color: var(--color-text-muted, #888888);
+  color: var(--vscode-descriptionForeground);
   font-size: 13px;
   text-align: center;
 }
 
 .ui-filterable-list-more {
   padding: 4px 12px;
-  color: var(--color-text-muted, #888888);
+  color: var(--vscode-descriptionForeground);
   font-size: 12px;
   text-align: center;
 }
@@ -337,7 +432,7 @@
   padding: 2px 4px;
   background: none;
   border: none;
-  color: var(--color-text-muted, #888);
+  color: var(--vscode-descriptionForeground);
   cursor: pointer;
   font-size: 13px;
   font-family: inherit;
@@ -346,12 +441,12 @@
 }
 
 .ui-action-bar-item:hover {
-  background-color: var(--color-hover, rgba(255, 255, 255, 0.1));
-  color: var(--color-text, #ccc);
+  background-color: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
 }
 
 .ui-action-bar-item:focus-visible {
-  outline: 1px solid var(--color-focus-border, #007fd4);
+  outline: 1px solid var(--vscode-focusBorder);
 }
 
 .ui-action-bar-item--disabled {
@@ -383,8 +478,8 @@
   font-size: 11px;
   font-weight: 600;
   line-height: 18px;
-  color: var(--color-badge-foreground, #ffffff);
-  background-color: var(--color-badge-background, #4d4d4d);
+  color: var(--vscode-activityBarBadge-foreground);
+  background-color: var(--vscode-activityBarBadge-background);
   border-radius: 9px;
   white-space: nowrap;
 }
@@ -403,11 +498,11 @@
   min-width: 160px;
   max-width: 320px;
   padding: 4px 0;
-  background: var(--color-menu-background, #252526);
-  color: var(--color-menu-foreground, #cccccc);
-  border: 1px solid var(--color-menu-border, #454545);
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border);
   border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow);
   font-size: 13px;
   outline: none;
   overflow-y: auto;
@@ -427,8 +522,8 @@
 
 .context-menu-item:hover,
 .context-menu-item--selected {
-  background: var(--color-menu-selection-background, #04395e);
-  color: var(--color-menu-selection-foreground, #ffffff);
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
 }
 
 .context-menu-item--disabled {
@@ -458,5 +553,179 @@
 .context-menu-separator {
   height: 1px;
   margin: 4px 8px;
-  background: var(--color-menu-separator, #454545);
+  background: var(--vscode-menu-separatorBackground);
+}
+
+/* Submenu arrow indicator */
+.context-menu-submenu-arrow {
+  margin-left: 24px;
+  font-size: 10px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+/* Highlight row when its submenu is open */
+.context-menu-item--has-submenu:hover .context-menu-submenu-arrow,
+.context-menu-item--selected .context-menu-submenu-arrow {
+  opacity: 1;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Find & Replace Widget
+   VS Code reference: src/vs/editor/contrib/find/browser/findWidget.css
+   ════════════════════════════════════════════════════════════════════════════ */
+
+.find-replace-widget {
+  position: absolute;
+  top: 0;
+  right: 18px;
+  z-index: 10;
+  display: flex;
+  flex-direction: row;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+  padding: 4px 4px 4px 2px;
+  min-width: 340px;
+  max-width: 480px;
+}
+
+.find-replace-toggle-btn {
+  display: flex;
+  align-items: flex-start;
+  padding: 4px 2px;
+  background: none;
+  border: none;
+  color: var(--vscode-editorWidget-foreground, #cccccc);
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.find-replace-toggle-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.find-replace-toggle-btn.active {
+  color: var(--vscode-inputOption-activeForeground, #ffffff);
+}
+
+.find-replace-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.find-replace-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.find-replace-input {
+  flex: 1;
+  min-width: 100px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--vscode-inputOption-activeBackground, #007acc00);
+  border-color: var(--vscode-input-border, #3c3c3c);
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+
+.find-replace-input:focus {
+  border-color: var(--vscode-focusBorder, #007acc);
+}
+
+.find-replace-input::placeholder {
+  color: var(--vscode-input-placeholderForeground, #a0a0a0);
+}
+
+.find-replace-options {
+  display: flex;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.find-replace-option-btn {
+  width: 26px;
+  height: 24px;
+  font-size: 12px;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--vscode-editorWidget-foreground, #cccccc);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+}
+
+.find-replace-option-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.find-replace-option-btn.active {
+  background: var(--vscode-inputOption-activeBackground, #007acc66);
+  color: var(--vscode-inputOption-activeForeground, #ffffff);
+  border-color: var(--vscode-inputOption-activeBorder, #007acc);
+}
+
+.find-replace-match-count {
+  font-size: 11px;
+  color: var(--vscode-editorWidget-foreground, #cccccc);
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: center;
+  flex-shrink: 0;
+  padding: 0 4px;
+}
+
+.find-replace-match-count--no-results {
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+.find-replace-nav {
+  display: flex;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.find-replace-action-btn {
+  width: 26px;
+  height: 24px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--vscode-editorWidget-foreground, #cccccc);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+}
+
+.find-replace-action-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.find-replace-action-btn:active {
+  background: var(--vscode-toolbar-activeBackground, rgba(99, 102, 103, 0.4));
+}
+
+.find-replace-row--replace {
+  padding-left: 0;
 }

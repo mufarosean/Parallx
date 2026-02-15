@@ -5,6 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { $ } from '../../ui/dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -126,16 +127,8 @@ function refreshList(): void {
   if (!listEl) return;
   listEl.innerHTML = '';
   for (const entry of logEntries) {
-    const row = document.createElement('div');
+    const row = $('div');
     row.classList.add('output-row', `output-${entry.source}`);
-    row.style.cssText = `
-      padding: 2px 8px; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px;
-      border-bottom: 1px solid #2a2a2a; white-space: pre-wrap; word-break: break-all;
-    `;
-
-    if (entry.source === 'warn') row.style.color = '#cca700';
-    else if (entry.source === 'error') row.style.color = '#f44747';
-    else row.style.color = '#cccccc';
 
     let text = '';
     if (showTimestamps) {
@@ -154,25 +147,19 @@ function refreshList(): void {
 }
 
 function renderOutputView(container: HTMLElement): IDisposable {
-  container.style.cssText = `
-    display: flex; flex-direction: column; height: 100%;
-    background: #1e1e1e; overflow: hidden;
-  `;
+  container.classList.add('output-container');
 
   // Toolbar
-  const toolbar = document.createElement('div');
-  toolbar.style.cssText = `
-    display: flex; align-items: center; gap: 6px; padding: 4px 8px;
-    background: #252526; border-bottom: 1px solid #333; flex-shrink: 0;
-  `;
+  const toolbar = $('div');
+  toolbar.classList.add('output-toolbar');
 
-  const title = document.createElement('span');
-  title.style.cssText = 'color: #ccc; font-size: 12px; font-weight: 600; flex: 1;';
+  const title = $('span');
+  title.classList.add('output-toolbar-title');
   title.textContent = 'OUTPUT';
   toolbar.appendChild(title);
 
-  const tsBtn = document.createElement('button');
-  tsBtn.style.cssText = 'background: none; border: 1px solid #555; color: #ccc; font-size: 11px; padding: 2px 6px; cursor: pointer; border-radius: 3px;';
+  const tsBtn = $('button');
+  tsBtn.classList.add('output-toolbar-btn');
   tsBtn.textContent = '⏱ Timestamps';
   tsBtn.title = 'Toggle timestamps';
   tsBtn.addEventListener('click', () => {
@@ -181,8 +168,8 @@ function renderOutputView(container: HTMLElement): IDisposable {
   });
   toolbar.appendChild(tsBtn);
 
-  const clearBtn = document.createElement('button');
-  clearBtn.style.cssText = 'background: none; border: 1px solid #555; color: #ccc; font-size: 11px; padding: 2px 6px; cursor: pointer; border-radius: 3px;';
+  const clearBtn = $('button');
+  clearBtn.classList.add('output-toolbar-btn');
   clearBtn.textContent = '🗑 Clear';
   clearBtn.title = 'Clear output';
   clearBtn.addEventListener('click', () => {
@@ -194,8 +181,8 @@ function renderOutputView(container: HTMLElement): IDisposable {
   container.appendChild(toolbar);
 
   // Log list
-  const list = document.createElement('div');
-  list.style.cssText = 'flex: 1; overflow-y: auto; overflow-x: hidden;';
+  const list = $('div');
+  list.classList.add('output-list');
   container.appendChild(list);
 
   listEl = list;

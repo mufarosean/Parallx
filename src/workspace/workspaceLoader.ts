@@ -5,10 +5,7 @@ import {
   WORKSPACE_STATE_VERSION,
   workspaceStorageKey,
   ACTIVE_WORKSPACE_KEY,
-  createDefaultEditorSnapshot,
-  createDefaultContextSnapshot,
 } from './workspaceTypes.js';
-import { createDefaultLayoutState, LAYOUT_SCHEMA_VERSION } from '../layout/layoutModel.js';
 import { Workspace } from './workspace.js';
 
 // ─── WorkspaceLoader ────────────────────────────────────────────────────────
@@ -73,8 +70,8 @@ export class WorkspaceLoader {
    */
   async loadById(
     workspaceId: string,
-    fallbackWidth: number,
-    fallbackHeight: number,
+    _fallbackWidth: number,
+    _fallbackHeight: number,
   ): Promise<WorkspaceState | undefined> {
     const key = workspaceStorageKey(workspaceId);
 

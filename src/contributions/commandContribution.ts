@@ -9,9 +9,9 @@
 // Also manages the lifecycle of contributed commands — they are
 // unregistered when their owning tool is deactivated.
 
-import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { Disposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import type { IToolDescription, IManifestCommandDescriptor } from '../tools/toolManifest.js';
+import type { IToolDescription } from '../tools/toolManifest.js';
 import type { CommandService } from '../commands/commandRegistry.js';
 import type { CommandDescriptor, CommandExecutionContext } from '../commands/commandTypes.js';
 import type { ActivationEventService } from '../tools/activationEventService.js';
@@ -276,7 +276,7 @@ export class CommandContributionProcessor extends Disposable implements IContrib
    * Create a proxy handler that triggers tool activation and queues invocations.
    */
   private _createProxyHandler(commandId: string, toolId: string) {
-    return (ctx: CommandExecutionContext, ...args: unknown[]): Promise<unknown> => {
+    return (_ctx: CommandExecutionContext, ...args: unknown[]): Promise<unknown> => {
       // If the real handler is already wired, call it directly
       const realHandler = this._realHandlers.get(commandId);
       if (realHandler) {
