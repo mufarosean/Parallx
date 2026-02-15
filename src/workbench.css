@@ -788,7 +788,8 @@ html, body {
 .view-tab.tab-active {
   color: var(--vscode-tab-activeForeground);
   background-color: var(--vscode-tab-activeBackground);
-  border-bottom: 2px solid var(--vscode-tab-activeBorder);
+  margin-bottom: -1px;
+  border-bottom: 1px solid var(--vscode-tab-activeBackground);
 }
 
 .view-tab:focus {

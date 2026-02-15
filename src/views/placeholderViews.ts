@@ -170,16 +170,16 @@ export const searchViewDescriptor: IViewDescriptor = ViewDescriptorBuilder
   .factory(() => new SearchPlaceholderView())
   .build();
 
-// ─── Terminal View ───────────────────────────────────────────────────────────
+// ─── Console View ────────────────────────────────────────────────────────────
 
 /**
- * A fixed-height mock terminal view.
+ * A generic console view for the panel area.
  * min-height: 100px, max-height: 500px
  */
 export class TerminalPlaceholderView extends PlaceholderView {
 
   constructor() {
-    super('view.terminal', 'Terminal', 'codicon-terminal');
+    super('view.terminal', 'Console', 'codicon-terminal');
   }
 
   get minimumWidth(): number { return 200; }
@@ -197,7 +197,7 @@ export class TerminalPlaceholderView extends PlaceholderView {
 }
 
 export const terminalViewDescriptor: IViewDescriptor = ViewDescriptorBuilder
-  .create('view.terminal', 'Terminal')
+  .create('view.terminal', 'Console')
   .icon('codicon-terminal')
   .container('panel')
   .order(1)
