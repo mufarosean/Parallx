@@ -126,8 +126,8 @@ export interface ParallxApiObject {
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
   readonly tools: {
-    getAll(): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string }[];
-    getById(id: string): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string } | undefined;
+    getAll(): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string; state: string; activationEvents: readonly string[]; contributes: Record<string, unknown> }[];
+    getById(id: string): { id: string; name: string; version: string; publisher: string; description: string; isBuiltin: boolean; toolPath: string; state: string; activationEvents: readonly string[]; contributes: Record<string, unknown> } | undefined;
     isEnabled(toolId: string): boolean;
     setEnabled(toolId: string, enabled: boolean): Promise<void>;
     onDidChangeEnablement: (listener: (e: { toolId: string; enabled: boolean }) => void) => IDisposable;
@@ -452,6 +452,7 @@ function _themeTypeToKind(type: ThemeType): number {
 function _toolEntriesToInfo(entries: readonly IToolEntry[]): Array<{
   id: string; name: string; version: string; publisher: string;
   description: string; isBuiltin: boolean; toolPath: string;
+  state: string; activationEvents: readonly string[]; contributes: Record<string, unknown>;
 }> {
   return entries.map(_toolEntryToInfo);
 }
@@ -459,6 +460,7 @@ function _toolEntriesToInfo(entries: readonly IToolEntry[]): Array<{
 function _toolEntryToInfo(entry: IToolEntry): {
   id: string; name: string; version: string; publisher: string;
   description: string; isBuiltin: boolean; toolPath: string;
+  state: string; activationEvents: readonly string[]; contributes: Record<string, unknown>;
 } {
   const m = entry.description.manifest;
   return {
@@ -469,5 +471,8 @@ function _toolEntryToInfo(entry: IToolEntry): {
     description: m.description ?? '',
     isBuiltin: entry.description.isBuiltin,
     toolPath: entry.description.toolPath,
+    state: entry.state,
+    activationEvents: m.activationEvents ?? [],
+    contributes: (m.contributes ?? {}) as Record<string, unknown>,
   };
 }
