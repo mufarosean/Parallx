@@ -355,13 +355,29 @@ class CanvasEditorPane implements IDisposable {
           // underline: enabled by default via StarterKit, no extra config needed
         }),
         Placeholder.configure({
-          placeholder: ({ node }: { node: any }) => {
+          placeholder: ({ node, pos, editor }: { node: any; pos: number; editor: any }) => {
             if (node.type.name === 'heading') {
               return `Heading ${node.attrs.level}`;
             }
+            // Contextual placeholders for nested content — never show
+            // "Type '/' for commands..." inside wrapper blocks like callout,
+            // task item, or toggle list, as it conflicts with their UI elements.
+            if (node.type.name === 'paragraph') {
+              // Check if this paragraph is nested inside a wrapper block
+              const $pos = editor.state.doc.resolve(pos);
+              for (let d = $pos.depth; d > 0; d--) {
+                const ancestor = $pos.node(d);
+                const name = ancestor.type.name;
+                if (name === 'callout') return 'Type something…';
+                if (name === 'taskItem') return 'To-do';
+                if (name === 'detailsContent') return 'Hidden content…';
+                if (name === 'detailsSummary') return 'Toggle title…';
+                if (name === 'blockquote') return '';
+              }
+            }
             return "Type '/' for commands...";
           },
-          includeChildren: true,  // Show placeholders inside Details summary
+          includeChildren: true,
         }),
         TaskList,
         TaskItem.configure({

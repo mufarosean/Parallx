@@ -319,6 +319,15 @@
   font-style: normal;
 }
 
+/* Hide slash-hint placeholder inside wrapper blocks — these have their own
+   contextual placeholders set via the Placeholder extension config */
+.canvas-tiptap-editor .canvas-callout .is-empty::before,
+.canvas-tiptap-editor [data-type="taskItem"] .is-empty::before,
+.canvas-tiptap-editor [data-type="detailsContent"] .is-empty::before,
+.canvas-tiptap-editor [data-type="detailsSummary"] .is-empty::before {
+  float: none;
+}
+
 /* ── Headings — generous sizing like Notion/BlockNote ── */
 
 .canvas-tiptap-editor h1 {
