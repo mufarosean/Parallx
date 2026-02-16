@@ -1658,7 +1658,7 @@
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-cover-picker {
-  position: absolute;
+  position: fixed;
   z-index: 1003;
   width: 420px;
   background: #252525;
