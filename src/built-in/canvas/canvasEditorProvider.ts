@@ -248,12 +248,23 @@ class CanvasEditorPane implements IDisposable {
           codeBlock: false,  // Replaced by CodeBlockLowlight
           link: {
             openOnClick: false,
-            HTMLAttributes: { class: 'canvas-link' },
+            HTMLAttributes: {
+              class: 'canvas-link',
+            },
+          },
+          dropcursor: {
+            color: 'rgba(45, 170, 219, 0.4)',
+            width: 3,
           },
           // underline: enabled by default via StarterKit, no extra config needed
         }),
         Placeholder.configure({
-          placeholder: "Type '/' for commands...",
+          placeholder: ({ node }: { node: any }) => {
+            if (node.type.name === 'heading') {
+              return `Heading ${node.attrs.level}`;
+            }
+            return "Type '/' for commands...";
+          },
           includeChildren: true,  // Show placeholders inside Details summary
         }),
         TaskList,

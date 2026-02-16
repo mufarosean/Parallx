@@ -1188,3 +1188,29 @@ Research based on **Novel** (16k stars, gold-standard Notion-style TipTap editor
 4. ~~Code block syntax highlighting — `@tiptap/extension-code-block-lowlight` + lowlight + highlight.js~~ ✅
 5. ~~Character count — `@tiptap/extension-character-count`~~ ✅
 6. ~~Auto-joiner — `tiptap-extension-auto-joiner` (companion to drag handle)~~ ✅
+
+### Visual Overhaul — Modern Notion Feel ✅ COMPLETED
+
+After Tier 2 functional implementation, a comprehensive visual/UX overhaul was performed based on deep research of **Novel** (16k stars, gold standard Notion-like TipTap editor) and **BlockNote** (10k stars, professional block editor).
+
+**Research findings applied:**
+
+| Area | Before (IDE-like) | After (Notion-like) | Reference |
+|------|-------------------|---------------------|-----------|
+| **Font** | `var(--vscode-font-family)` 15px | Inter / system sans-serif stack, 16px | Novel, BlockNote |
+| **Headings** | h1=2em, h2=1.5em, h3=1.25em | h1=2.25em, h2=1.75em, h3=1.375em + letter-spacing | Notion, BlockNote (3em/2em/1.3em) |
+| **Editor padding** | 24px 48px | 48px 64px 96px (generous Notion-style) | Novel uses `p-12 px-8` |
+| **Block spacing** | 0.3em paragraph margin | Tighter 0.125em + generous heading margins | Notion |
+| **Inline code** | VS Code dark bg, 3px radius | `rgba(255,255,255,0.08)`, 4px radius, red text | Notion (red inline code) |
+| **Code blocks** | 4px radius, 12px pad, VS Code border | 8px radius, 20px pad, no border, `tab-size: 2` | Novel/BlockNote |
+| **Callout** | Left border + VS Code bg | No border, subtle `rgba(255,255,255,0.04)` bg | Notion |
+| **Toggle list** | Visible border, bg summary | Borderless, SVG chevron arrow, hover highlight | Notion |
+| **Table** | UPPERCASE headers, heavy borders | Normal case, rgba borders, soft header bg | Notion |
+| **Slash menu** | 4px radius, VS Code widget colors | 10px radius, 6px padding, 280px min-width, fade-in animation | Novel |
+| **Bubble menu** | VS Code widget chrome | Dark (#252525), 8px radius, smooth fade-in, clean buttons | Novel |
+| **Drag handle** | Radial gradient dots | SVG 6-dot pattern (matches Novel exactly), smooth transitions | Novel |
+| **Links** | Blue underline, `textLink-foreground` | Inherit color, subtle underline with `underline-offset: 3px` | Notion |
+| **Selection** | VS Code blue overlay | Soft `rgba(45,170,219,0.3)` blue | Notion |
+| **Checkboxes** | Native browser checkbox | Custom CSS: rounded, blue checked, white checkmark clip-path | Notion |
+| **Scrollbars** | Native | Thin 6px, transparent track, subtle thumb | Modern editors |
+| **Placeholder** | Italic, VS Code muted | `rgba(255,255,255,0.25)`, non-italic, heading-specific text | Novel |

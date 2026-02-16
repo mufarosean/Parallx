@@ -183,7 +183,10 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Canvas Editor Pane (Tiptap)
+ * Canvas Editor Pane (Tiptap) — Modern Notion-inspired styling
+ *
+ * Design references: Novel (novel.sh), BlockNote, Notion dark mode
+ * Font stack: Inter ➜ system sans-serif (matches BlockNote/Notion)
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-editor-wrapper {
@@ -192,81 +195,111 @@
   overflow: auto;
   display: flex;
   flex-direction: column;
+  background: var(--vscode-editor-background);
 }
 
 .canvas-tiptap-editor {
   flex: 1;
-  padding: 24px 48px;
-  max-width: 800px;
+  padding: 48px 64px 96px;
+  max-width: 860px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
   color: var(--vscode-editor-foreground);
-  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
-  font-size: 15px;
-  line-height: 1.6;
+  font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans',
+    'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-size: 16px;
+  line-height: 1.625;
   outline: none;
   caret-color: var(--vscode-editorCursor-foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ProseMirror generated wrapper — class is on the SAME element as canvas-tiptap-editor */
 .canvas-tiptap-editor.ProseMirror {
   outline: none;
-  min-height: 200px;
+  min-height: 300px;
 }
 
-/* Placeholder */
-.canvas-tiptap-editor.ProseMirror p.is-editor-empty:first-child::before {
+/* Placeholder — Notion-style muted italic */
+.canvas-tiptap-editor .is-editor-empty::before,
+.canvas-tiptap-editor .is-empty::before {
   content: attr(data-placeholder);
   float: left;
-  color: var(--vscode-input-placeholderForeground, #888);
+  color: rgba(255, 255, 255, 0.25);
   pointer-events: none;
   height: 0;
-  font-style: italic;
+  font-style: normal;
 }
 
-/* Headings */
+/* ── Headings — generous sizing like Notion/BlockNote ── */
+
 .canvas-tiptap-editor h1 {
-  font-size: 2em;
+  font-size: 2.25em;
   font-weight: 700;
-  margin: 0.5em 0 0.3em;
+  margin: 1em 0 0.25em;
   line-height: 1.2;
+  letter-spacing: -0.02em;
   color: var(--vscode-editor-foreground);
 }
 
 .canvas-tiptap-editor h2 {
-  font-size: 1.5em;
+  font-size: 1.75em;
   font-weight: 600;
-  margin: 0.5em 0 0.3em;
-  line-height: 1.3;
+  margin: 0.85em 0 0.2em;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
   color: var(--vscode-editor-foreground);
 }
 
 .canvas-tiptap-editor h3 {
-  font-size: 1.25em;
+  font-size: 1.375em;
   font-weight: 600;
-  margin: 0.5em 0 0.3em;
-  line-height: 1.4;
+  margin: 0.75em 0 0.15em;
+  line-height: 1.3;
   color: var(--vscode-editor-foreground);
 }
 
-/* Paragraphs */
+/* ── Paragraphs — relaxed spacing ── */
+
 .canvas-tiptap-editor p {
-  margin: 0.3em 0;
+  margin: 0.125em 0;
 }
 
-/* Lists */
+/* First paragraph after heading — no extra top margin */
+.canvas-tiptap-editor h1 + p,
+.canvas-tiptap-editor h2 + p,
+.canvas-tiptap-editor h3 + p {
+  margin-top: 0;
+}
+
+/* ── Lists — proper indentation and spacing ── */
+
 .canvas-tiptap-editor ul,
 .canvas-tiptap-editor ol {
-  padding-left: 1.5em;
-  margin: 0.3em 0;
+  padding-left: 1.625em;
+  margin: 0.25em 0;
 }
 
 .canvas-tiptap-editor li {
-  margin: 0.1em 0;
+  margin: 2px 0;
+  line-height: 1.5;
 }
 
-/* Task list */
+.canvas-tiptap-editor li p {
+  margin: 0;
+}
+
+/* Nested list spacing */
+.canvas-tiptap-editor li > ul,
+.canvas-tiptap-editor li > ol {
+  margin: 2px 0;
+}
+
+/* ── Task list — custom Notion-style checkboxes ── */
+
 .canvas-tiptap-editor ul[data-type="taskList"] {
   list-style: none;
   padding-left: 0;
@@ -275,62 +308,106 @@
 .canvas-tiptap-editor ul[data-type="taskList"] li {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: 8px;
+  padding: 3px 0;
 }
 
 .canvas-tiptap-editor ul[data-type="taskList"] li label {
   flex-shrink: 0;
-  margin-top: 3px;
+  margin-top: 2px;
+  user-select: none;
+}
+
+.canvas-tiptap-editor ul[data-type="taskList"] li label input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+  transition: all 0.15s ease;
+  margin: 0;
+}
+
+.canvas-tiptap-editor ul[data-type="taskList"] li label input[type="checkbox"]:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.canvas-tiptap-editor ul[data-type="taskList"] li label input[type="checkbox"]:checked {
+  background: #2383e2;
+  border-color: #2383e2;
+}
+
+.canvas-tiptap-editor ul[data-type="taskList"] li label input[type="checkbox"]:checked::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+  background: #fff;
+  transform: scale(1);
 }
 
 .canvas-tiptap-editor ul[data-type="taskList"] li[data-checked="true"] > div > p {
   text-decoration: line-through;
-  color: var(--vscode-disabledForeground);
+  color: rgba(255, 255, 255, 0.4);
 }
 
-/* Blockquote */
+/* ── Blockquote — clean border, Notion-style ── */
+
 .canvas-tiptap-editor blockquote {
-  border-left: 3px solid var(--vscode-textBlockQuote-border, #555);
+  border-left: 3px solid rgba(255, 255, 255, 0.4);
   padding-left: 16px;
-  margin: 0.5em 0;
-  color: var(--vscode-textBlockQuote-foreground, #bbb);
+  margin: 8px 0;
+  color: inherit;
 }
 
-/* Code */
+/* ── Inline Code — rounded pill style ── */
+
 .canvas-tiptap-editor code {
-  background: var(--vscode-textCodeBlock-background, #1e1e1e);
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
-  font-size: 0.9em;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'SFMono-Regular', 'Cascadia Code', 'Fira Code', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.875em;
+  color: #eb5757;
 }
+
+/* ── Code Blocks — base styles (overridden more specifically in Tier 2 section) ── */
 
 .canvas-tiptap-editor pre {
-  background: var(--vscode-textCodeBlock-background, #1e1e1e);
-  padding: 12px 16px;
-  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 20px 24px;
+  border-radius: 8px;
   overflow-x: auto;
-  margin: 0.5em 0;
+  margin: 8px 0;
 }
 
 .canvas-tiptap-editor pre code {
   background: none;
   padding: 0;
   border-radius: 0;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.6;
+  color: inherit;
 }
 
-/* Horizontal Rule */
+/* ── Horizontal Rule — subtle divider ── */
+
 .canvas-tiptap-editor hr {
   border: none;
-  border-top: 1px solid var(--vscode-panel-border, #444);
-  margin: 1em 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  margin: 24px 0;
 }
 
-/* Bold, Italic, Strike */
+/* ── Inline formatting ── */
+
 .canvas-tiptap-editor strong {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .canvas-tiptap-editor em {
@@ -341,96 +418,119 @@
   text-decoration: line-through;
 }
 
-/* Selection */
+/* ── Selection — soft blue ── */
+
 .canvas-tiptap-editor ::selection {
-  background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.6));
+  background: rgba(45, 170, 219, 0.3);
 }
 
 /* Underline */
 .canvas-tiptap-editor u {
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-/* Links */
+/* ── Links — Notion-style with underline offset ── */
+
 .canvas-tiptap-editor a,
 .canvas-tiptap-editor .canvas-link {
-  color: var(--vscode-textLink-foreground, #3794ff);
+  color: inherit;
   text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.4);
+  text-underline-offset: 3px;
   cursor: pointer;
+  transition: text-decoration-color 0.15s ease;
 }
 
 .canvas-tiptap-editor a:hover,
 .canvas-tiptap-editor .canvas-link:hover {
-  color: var(--vscode-textLink-activeForeground, #3794ff);
+  text-decoration-color: currentColor;
 }
 
-/* Highlight / mark */
+/* ── Highlight / mark ── */
+
 .canvas-tiptap-editor mark {
-  border-radius: 2px;
-  padding: 1px 2px;
+  border-radius: 3px;
+  padding: 2px 4px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
 
-/* Images */
+/* ── Images — clean with hover effect ── */
+
 .canvas-tiptap-editor img {
   max-width: 100%;
   height: auto;
-  border-radius: 4px;
-  margin: 0.5em 0;
+  border-radius: 6px;
+  margin: 8px 0;
   display: block;
+  transition: filter 0.15s ease;
+}
+
+.canvas-tiptap-editor img:hover {
+  filter: brightness(0.92);
+  cursor: pointer;
 }
 
 .canvas-tiptap-editor img.ProseMirror-selectednode {
-  outline: 2px solid var(--vscode-focusBorder, #007fd4);
-  outline-offset: 2px;
+  outline: 3px solid #5abbf7;
+  filter: brightness(0.92);
+}
+
+/* ── Node selection — soft highlight, no harsh outline ── */
+.canvas-tiptap-editor:not(.dragging) .ProseMirror-selectednode {
+  outline: none !important;
+  background-color: rgba(45, 170, 219, 0.15);
+  transition: background-color 0.15s ease;
+  border-radius: 4px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Global Drag Handle
+ * Global Drag Handle — Notion-style 6-dot grip
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .drag-handle {
   position: fixed;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.2s ease;
   cursor: grab;
   width: 20px;
-  height: 20px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
+  border-radius: 4px;
   z-index: 50;
+  background-size: calc(0.5em + 0.375rem) calc(0.5em + 0.375rem);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' style='fill: rgba(255, 255, 255, 0.35)'%3E%3Cpath d='M3,2 C2.44771525,2 2,1.55228475 2,1 C2,0.44771525 2.44771525,0 3,0 C3.55228475,0 4,0.44771525 4,1 C4,1.55228475 3.55228475,2 3,2 Z M3,6 C2.44771525,6 2,5.55228475 2,5 C2,4.44771525 2.44771525,4 3,4 C3.55228475,4 4,4.44771525 4,5 C4,5.55228475 3.55228475,6 3,6 Z M3,10 C2.44771525,10 2,9.55228475 2,9 C2,8.44771525 2.44771525,8 3,8 C3.55228475,8 4,8.44771525 4,9 C4,9.55228475 3.55228475,10 3,10 Z M7,2 C6.44771525,2 6,1.55228475 6,1 C6,0.44771525 6.44771525,0 7,0 C7.55228475,0 8,0.44771525 8,1 C8,1.55228475 7.55228475,2 7,2 Z M7,6 C6.44771525,6 6,5.55228475 6,5 C6,4.44771525 6.44771525,4 7,4 C7.55228475,4 8,4.44771525 8,5 C8,5.55228475 7.55228475,6 7,6 Z M7,10 C6.44771525,10 6,9.55228475 6,9 C6,8.44771525 6.44771525,8 7,8 C7.55228475,8 8,8.44771525 8,9 C8,9.55228475 7.55228475,10 7,10 Z'%3E%3C/path%3E%3C/svg%3E");
 }
 
 .drag-handle:hover {
   opacity: 1 !important;
-  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+  background-color: rgba(255, 255, 255, 0.08);
+  transition: background-color 0.15s ease;
 }
 
-.drag-handle::after {
-  content: '';
-  width: 8px;
-  height: 12px;
-  background-image: radial-gradient(circle, var(--vscode-icon-foreground, #c5c5c5) 1.2px, transparent 1.2px);
-  background-size: 4px 4px;
-  background-position: 0 0, 2px 2px;
-  opacity: 0.5;
+.drag-handle:active {
+  background-color: rgba(255, 255, 255, 0.12);
+  cursor: grabbing;
 }
 
-.drag-handle:hover::after {
-  opacity: 0.9;
+.drag-handle.hide {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Show handle on hover over editor content */
-.canvas-tiptap-editor .ProseMirror:hover ~ .drag-handle,
+.canvas-tiptap-editor:hover ~ .drag-handle,
 .drag-handle:hover {
-  opacity: 0.4;
+  opacity: 0.5;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Floating Bubble Menu (formatting toolbar)
+ * Floating Bubble Menu — Modern formatting toolbar (Notion-style)
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-bubble-menu {
@@ -440,47 +540,55 @@
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
-  gap: 1px;
-  padding: 3px;
-  background: var(--vscode-editorWidget-background, #252526);
-  border: 1px solid var(--vscode-editorWidget-border, #454545);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  gap: 2px;
+  padding: 4px 6px;
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.2);
   white-space: nowrap;
+  animation: bubbleMenuFadeIn 0.12s ease-out;
+}
+
+@keyframes bubbleMenuFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .canvas-bubble-btn {
   background: none;
   border: none;
-  color: var(--vscode-foreground, #ccc);
+  color: rgba(255, 255, 255, 0.8);
   cursor: pointer;
   font-size: 13px;
-  min-width: 28px;
-  height: 28px;
+  min-width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
-  padding: 0 5px;
+  border-radius: 5px;
+  padding: 0 6px;
   font-family: inherit;
+  transition: background-color 0.1s ease, color 0.1s ease;
 }
 
 .canvas-bubble-btn:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
 
 .canvas-bubble-btn--active {
-  background: var(--vscode-toolbar-activeBackground, rgba(99, 102, 106, 0.31));
-  color: var(--vscode-textLink-foreground, #3794ff);
+  background: rgba(45, 170, 219, 0.2);
+  color: #5bbdf5;
 }
 
 .canvas-bubble-highlight-icon {
-  background: #fef08a;
+  background: rgba(254, 240, 138, 0.9);
   color: #000;
   font-weight: 700;
   font-size: 11px;
-  padding: 1px 4px;
-  border-radius: 2px;
+  padding: 1px 5px;
+  border-radius: 3px;
 }
 
 /* ── Link input row inside bubble menu ── */
@@ -488,99 +596,110 @@
 .canvas-bubble-link-input {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 3px 4px;
+  gap: 4px;
+  padding: 4px 6px;
   width: 100%;
-  border-top: 1px solid var(--vscode-editorWidget-border, #454545);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   margin-top: 2px;
 }
 
 .canvas-bubble-link-field {
   flex: 1;
-  min-width: 160px;
-  border: 1px solid var(--vscode-input-border, #3c3c3c);
-  background: var(--vscode-input-background, #3c3c3c);
-  color: var(--vscode-input-foreground, #ccc);
+  min-width: 180px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
   font: inherit;
-  font-size: 12px;
-  padding: 3px 6px;
-  border-radius: 3px;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 5px;
   outline: none;
-  height: 24px;
+  height: 28px;
   box-sizing: border-box;
+  transition: border-color 0.15s ease;
 }
 
 .canvas-bubble-link-field:focus {
-  border-color: var(--vscode-focusBorder, #007fd4);
+  border-color: #2383e2;
 }
 
 .canvas-bubble-link-apply,
 .canvas-bubble-link-remove {
   background: none;
   border: none;
-  color: var(--vscode-foreground, #ccc);
+  color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
   font-size: 14px;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 3px;
-}
-
-.canvas-bubble-link-apply:hover {
-  background: var(--vscode-toolbar-hoverBackground);
-  color: #4ec9b0;
-}
-
-.canvas-bubble-link-remove:hover {
-  background: var(--vscode-toolbar-hoverBackground);
-  color: #f14c4c;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
- * Slash Command Menu
- * ───────────────────────────────────────────────────────────────────────────── */
-
-.canvas-slash-menu {
-  position: fixed;
-  z-index: 1000;
-  min-width: 240px;
-  max-height: 320px;
-  overflow-y: auto;
-  background: var(--vscode-editorWidget-background, #252526);
-  border: 1px solid var(--vscode-editorWidget-border, #454545);
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  padding: 4px 0;
-}
-
-.canvas-slash-item {
-  display: flex;
-  align-items: center;
-  padding: 6px 12px;
-  cursor: pointer;
-  gap: 10px;
-}
-
-.canvas-slash-item:hover,
-.canvas-slash-item--selected {
-  background: var(--vscode-list-hoverBackground, #2a2d2e);
-}
-
-.canvas-slash-icon {
   width: 28px;
   height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 5px;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.canvas-bubble-link-apply:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #4ec9b0;
+}
+
+.canvas-bubble-link-remove:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f14c4c;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Slash Command Menu — Modern dropdown (Notion-style)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-slash-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 280px;
+  max-height: 340px;
+  overflow-y: auto;
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  padding: 6px;
+  animation: slashMenuFadeIn 0.12s ease-out;
+}
+
+@keyframes slashMenuFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.canvas-slash-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  cursor: pointer;
+  gap: 12px;
+  border-radius: 6px;
+  transition: background-color 0.08s ease;
+}
+
+.canvas-slash-item:hover,
+.canvas-slash-item--selected {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.canvas-slash-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  background: var(--vscode-badge-background, #333);
-  border-radius: 4px;
-  color: var(--vscode-badge-foreground, #ccc);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .canvas-slash-text {
@@ -589,36 +708,37 @@
 }
 
 .canvas-slash-label {
-  font-size: 13px;
-  color: var(--vscode-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .canvas-slash-desc {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin-top: 1px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Tier 2 — Callout Block
+ * Tier 2 — Callout Block (Notion-style)
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-callout {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 16px;
-  margin: 8px 0;
+  padding: 16px 18px;
+  margin: 6px 0;
   border-radius: 6px;
-  background: var(--vscode-textBlockQuote-background, rgba(255, 255, 255, 0.05));
-  border-left: 3px solid var(--vscode-textLink-foreground, #3794ff);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .canvas-callout-emoji {
   font-size: 20px;
-  line-height: 24px;
+  line-height: 1.5;
   flex-shrink: 0;
   user-select: none;
   cursor: default;
@@ -638,28 +758,35 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Tier 2 — Toggle List (Details / Summary)
+ * Tier 2 — Toggle List (Details / Summary) — Notion-style borderless
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-tiptap-editor details,
 .canvas-tiptap-editor .canvas-details {
   margin: 4px 0;
-  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border: none;
   border-radius: 4px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .canvas-tiptap-editor details summary,
 .canvas-tiptap-editor .canvas-details summary {
-  padding: 8px 12px;
+  padding: 4px 2px;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 400;
   user-select: none;
   display: flex;
   align-items: center;
   gap: 4px;
   list-style: none;
-  background: var(--vscode-textBlockQuote-background, rgba(255, 255, 255, 0.03));
+  background: none;
+  border-radius: 4px;
+  transition: background-color 0.1s ease;
+}
+
+.canvas-tiptap-editor details summary:hover,
+.canvas-tiptap-editor .canvas-details summary:hover {
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .canvas-tiptap-editor details summary::-webkit-details-marker,
@@ -669,12 +796,15 @@
 
 .canvas-tiptap-editor details summary::before,
 .canvas-tiptap-editor .canvas-details summary::before {
-  content: '▶';
+  content: '';
   display: inline-block;
-  font-size: 10px;
-  margin-right: 6px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
   transition: transform 0.15s ease;
-  color: var(--vscode-descriptionForeground);
 }
 
 .canvas-tiptap-editor details[open] summary::before,
@@ -686,11 +816,11 @@
 
 .canvas-tiptap-editor details > div:last-child,
 .canvas-tiptap-editor .canvas-details > div:last-child {
-  padding: 8px 12px 12px;
+  padding: 2px 4px 8px 24px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Tier 2 — Table
+ * Tier 2 — Table (Notion-style clean lines)
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-tiptap-editor .canvas-table,
@@ -700,24 +830,24 @@
   margin: 8px 0;
   table-layout: fixed;
   overflow: hidden;
+  border-radius: 4px;
 }
 
 .canvas-tiptap-editor table td,
 .canvas-tiptap-editor table th {
-  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.15));
-  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 8px 12px;
   vertical-align: top;
   position: relative;
-  min-width: 60px;
+  min-width: 80px;
+  font-size: 15px;
 }
 
 .canvas-tiptap-editor table th {
-  background: var(--vscode-textBlockQuote-background, rgba(255, 255, 255, 0.05));
-  font-weight: 600;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  color: var(--vscode-descriptionForeground);
+  background: rgba(255, 255, 255, 0.04);
+  font-weight: 500;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .canvas-tiptap-editor table td > *:first-child,
@@ -735,7 +865,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.5));
+  background: rgba(45, 170, 219, 0.12);
   pointer-events: none;
   z-index: 1;
 }
@@ -747,7 +877,7 @@
   top: 0;
   bottom: -2px;
   width: 4px;
-  background-color: var(--vscode-textLink-foreground, #3794ff);
+  background-color: #2383e2;
   pointer-events: none;
   z-index: 2;
 }
@@ -758,20 +888,19 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Tier 2 — Code Block with Syntax Highlighting (lowlight / highlight.js)
+ * Tier 2 — Code Block with Syntax Highlighting (Notion/Novel-style)
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-tiptap-editor pre {
-  background: var(--vscode-textCodeBlock-background, rgba(30, 30, 30, 0.8));
-  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
-  border-radius: 6px;
-  padding: 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 20px 24px;
   margin: 8px 0;
   overflow-x: auto;
-  font-family: var(--vscode-editor-font-family, 'Cascadia Code', 'Fira Code', 'Consolas', monospace);
-  font-size: var(--vscode-editor-font-size, 13px);
-  line-height: 1.5;
-  tab-size: 4;
+  font-family: 'SFMono-Regular', 'Cascadia Code', 'Fira Code', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  tab-size: 2;
 }
 
 .canvas-tiptap-editor pre code {
@@ -779,10 +908,10 @@
   padding: 0;
   border: none;
   font-size: inherit;
-  color: var(--vscode-editor-foreground, #d4d4d4);
+  color: rgba(255, 255, 255, 0.85);
 }
 
-/* highlight.js token colors — VS Code Dark+ inspired */
+/* highlight.js token colors — refined dark palette */
 .canvas-tiptap-editor .hljs-comment,
 .canvas-tiptap-editor .hljs-quote {
   color: #6a9955;
@@ -852,4 +981,29 @@
 
 .canvas-tiptap-editor .hljs-strong {
   font-weight: bold;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Scrollbar styling for slash menu and editor
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-slash-menu::-webkit-scrollbar,
+.canvas-editor-wrapper::-webkit-scrollbar {
+  width: 6px;
+}
+
+.canvas-slash-menu::-webkit-scrollbar-track,
+.canvas-editor-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.canvas-slash-menu::-webkit-scrollbar-thumb,
+.canvas-editor-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+.canvas-slash-menu::-webkit-scrollbar-thumb:hover,
+.canvas-editor-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
