@@ -1040,3 +1040,86 @@ All sub-folder expand state was destroyed every refresh cycle.
 | File | Change |
 |------|--------|
 | `src/built-in/explorer/main.ts` | Added `loadChildrenDeep()`, `refreshTree()` captures expanded URIs before wipe, `rebuildTree()` uses `loadChildrenDeep()` |
+### Fix 9: Tool Gallery GUI overhaul + .plx package install/uninstall ✅
+
+**Problem:** The Tool Gallery used emoji icons, had no install/uninstall mechanism for external tools, and lacked a polished editor pane for tool details.
+
+**Fix — GUI overhaul:**
+- Replaced all emoji icons with monochrome SVG icons (`fill="currentColor"`) for built-in (document), external (plug), and install (download arrow) tools
+- Redesigned the Install button: primary blue `.tool-gallery-install-btn` with SVG download icon, sits beside the search bar
+- Added Canvas icon to the codicon map in `workbench.ts` (pen-on-page SVG)
+
+**Fix — .plx package install/uninstall pipeline:**
+The full pipeline for installing external tools from `.plx` (ZIP) packages at runtime without restart:
+
+1. **Main process** (`electron/main.cjs`): `tools:install-from-file` IPC handler opens native file dialog filtered for `.plx`, validates ZIP structure (requires `parallx-manifest.json` + `main.js`), extracts to `~/.parallx/tools/<tool-id>/`, returns manifest + path. `tools:uninstall` IPC handler removes the tool directory.
+2. **Preload bridge** (`electron/preload.cjs`): Exposes `installToolFromFile()` and `uninstallTool(toolId)`.
+3. **API surface** (`src/api/apiFactory.ts`): Added `tools.installFromFile()`, `tools.uninstall(toolId)`, `tools.onDidInstallTool`, `tools.onDidUninstallTool` to the `parallx.*` API. Install delegates to Electron bridge then to a late-bound workbench callback for registration + activation.
+4. **Workbench wiring** (`src/workbench/workbench.ts`): Late-bound `onToolInstalled` callback registers the tool in `ToolRegistry`, wires activation events, and activates immediately. `onToolUninstalled` callback deactivates, clears activation tracking, and unregisters.
+5. **Tool Gallery UI** (`src/built-in/tool-gallery/main.ts`): Install button calls `api.tools.installFromFile()`. Each external tool card gets an Uninstall button. Success/error shown via `api.window.showInformationMessage` / `showErrorMessage`. Sidebar rebuilds on `onDidInstallTool` / `onDidUninstallTool`.
+
+| File | Change |
+|------|--------|
+| `electron/main.cjs` | `tools:install-from-file` + `tools:uninstall` IPC handlers, AdmZip dependency |
+| `electron/preload.cjs` | `installToolFromFile()` + `uninstallTool()` bridge methods |
+| `src/api/apiFactory.ts` | `tools.installFromFile()`, `tools.uninstall()`, install/uninstall events, late-bound callbacks |
+| `src/workbench/workbench.ts` | `onToolInstalled` / `onToolUninstalled` callbacks, Canvas codicon SVG |
+| `src/built-in/tool-gallery/main.ts` | Install button, uninstall buttons, SVG icon constants, `window.*` API usage |
+| `src/built-in/tool-gallery/toolGallery.css` | `.tool-gallery-install-btn`, SVG icon sizing, card layout tweaks |
+| `package.json` | `adm-zip` dependency |
+
+### Fix 10: Canvas editor Notion-parity extensions + blank screen fix ✅
+
+**Problem:** The Canvas editor rendered a blank white area after upgrading to TipTap v3 with Notion-parity extensions. Three root causes:
+
+1. **Duplicate extensions.** StarterKit v3 bundles Link + Underline. Importing them separately caused `Duplicate extension names found: ['link', 'underline']` — TipTap refused to initialize.
+2. **Corrupted saved content.** Some pages had TipTap JSON with `type: undefined` nodes (saved during a crash). On load, TipTap threw `RangeError: Unknown node type: undefined`.
+3. **CSS selector mismatch.** Styles used `.canvas-tiptap-editor .ProseMirror` (child selector), but TipTap v3 puts both classes on the same `<div>` — needed `.canvas-tiptap-editor.ProseMirror` (same-element selector).
+
+**Fix — StarterKit v3 configuration:**
+Extensions now configured through StarterKit where bundled (link, underline) and separately for new additions:
+- `StarterKit.configure({ link: { openOnClick: false, autolink: true, linkOnPaste: true }, underline: {} })`
+- Separate: `TextStyle`, `Color`, `Highlight.configure({ multicolor: true })`, `Image`, `GlobalDragHandle`
+
+**Fix — Content validation:**
+`_loadContent()` filters corrupted nodes from saved JSON before passing to TipTap:
+```ts
+const filterInvalid = (node: any): any => {
+  if (!node || !node.type) return null;
+  if (node.content) node.content = node.content.map(filterInvalid).filter(Boolean);
+  return node;
+};
+```
+
+**Fix — Bubble menu:**
+Floating toolbar with 7 formatting buttons (bold, italic, underline, strikethrough, code, highlight, link) + collapsible link input. Shows on text selection, hidden on empty selection. Active states refresh on `selectionUpdate` and `transaction`.
+
+**New TipTap extension packages added:**
+- `@tiptap/extension-text-style` — required for Color
+- `@tiptap/extension-color` — text color via TextStyle mark
+- `@tiptap/extension-highlight` — background highlight with multicolor
+- `@tiptap/extension-image` — inline images
+- `@tiptap/suggestion` — slash command framework (peer dep)
+- `tiptap-extension-global-drag-handle` — Notion-style drag handle
+
+| File | Change |
+|------|--------|
+| `src/built-in/canvas/canvasEditorProvider.ts` | StarterKit v3 config, separate extensions, bubble menu, content validation, drag handle |
+| `src/built-in/canvas/canvas.css` | `.canvas-tiptap-editor.ProseMirror` selector fix, ~200 lines for drag handle, bubble menu, links, highlights, images |
+| `package.json` | 6 new TipTap extension dependencies |
+
+### Fix 11: Canvas slash command click handler ✅
+
+**Problem:** Clicking a slash menu item (`/heading`, `/bullet list`, etc.) did nothing. Two bugs:
+
+1. **`mouseenter` destroyed click target.** Hovering over a slash menu item called `_renderSlashMenuItems()` which did `innerHTML = ''` and recreated all DOM elements. The element being clicked was removed mid-click — the `mousedown` event target no longer existed when the browser tried to fire `click`.
+2. **Re-entrant `_checkSlashTrigger` during execution.** `_executeSlashItem()` called `deleteRange().run()` which fired TipTap's `onUpdate` → `_checkSlashTrigger()` → `_hideSlashMenu()`. The menu was hidden and state cleared mid-execution.
+
+**Fix:**
+- `mouseenter` now toggles CSS classes (`.active` on the new item, remove from the old item) instead of rebuilding the DOM
+- `_executeSlashItem()` wraps the command execution in `_suppressUpdate = true` to prevent `onUpdate` from triggering `_checkSlashTrigger` mid-execution
+- Added `stopPropagation()` to `mousedown` on slash menu items to prevent event bubbling
+
+| File | Change |
+|------|--------|
+| `src/built-in/canvas/canvasEditorProvider.ts` | `_renderSlashMenuItems()` uses class toggle; `_executeSlashItem()` suppresses updates; `mousedown` stopPropagation |

@@ -5,6 +5,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
+const AdmZip = require('adm-zip');
 const { databaseManager } = require('./database.cjs');
 
 /** @type {BrowserWindow | null} */
@@ -144,6 +145,150 @@ ipcMain.handle('tools:get-directories', async () => {
   const builtinDir = path.join(app.getAppPath(), 'tools');
   const userDir = path.join(app.getPath('home'), '.parallx', 'tools');
   return { builtinDir, userDir };
+});
+
+// ── IPC handlers for tool package installation/uninstallation ──
+
+/**
+ * Install a tool from a .plx package file.
+ *
+ * .plx files are ZIP archives containing:
+ *   - parallx-manifest.json (required)
+ *   - main.js (required — the tool entry point)
+ *   - additional assets (optional)
+ *
+ * Flow:
+ * 1. Opens native file dialog filtered for .plx files
+ * 2. Reads and validates the ZIP archive
+ * 3. Validates the manifest inside the archive
+ * 4. Extracts to ~/.parallx/tools/<tool-id>/
+ * 5. Returns the manifest + path for the renderer to register
+ *
+ * VS Code reference: ExtensionManagementService.install() for .vsix files
+ */
+ipcMain.handle('tools:install-from-file', async (_event) => {
+  try {
+    // 1. Open native file dialog
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Install Tool Package',
+      filters: [
+        { name: 'Parallx Tool Package', extensions: ['plx'] },
+      ],
+      properties: ['openFile'],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true };
+    }
+
+    const plxPath = result.filePaths[0];
+
+    // 2. Read and parse the ZIP archive
+    let zip;
+    try {
+      zip = new AdmZip(plxPath);
+    } catch (err) {
+      return { error: `Invalid package file: ${err.message}` };
+    }
+
+    // 3. Validate required files exist in the archive
+    const manifestEntry = zip.getEntry('parallx-manifest.json');
+    if (!manifestEntry) {
+      return { error: 'Invalid tool package: missing parallx-manifest.json' };
+    }
+
+    const mainEntry = zip.getEntry('main.js');
+    if (!mainEntry) {
+      return { error: 'Invalid tool package: missing main.js entry point' };
+    }
+
+    // 4. Parse and validate the manifest
+    let manifest;
+    try {
+      const manifestText = zip.readAsText(manifestEntry);
+      manifest = JSON.parse(manifestText);
+    } catch (err) {
+      return { error: `Invalid manifest JSON: ${err.message}` };
+    }
+
+    if (!manifest.id || typeof manifest.id !== 'string') {
+      return { error: 'Invalid manifest: missing or invalid "id" field' };
+    }
+    if (!manifest.name || typeof manifest.name !== 'string') {
+      return { error: 'Invalid manifest: missing or invalid "name" field' };
+    }
+    if (!manifest.version || typeof manifest.version !== 'string') {
+      return { error: 'Invalid manifest: missing or invalid "version" field' };
+    }
+
+    // 5. Extract to ~/.parallx/tools/<tool-id>/
+    const userToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
+    const toolDir = path.join(userToolsDir, manifest.id);
+
+    // Remove existing installation if present (upgrade flow)
+    try {
+      await fs.rm(toolDir, { recursive: true, force: true });
+    } catch { /* ignore — may not exist */ }
+
+    // Create the tool directory
+    await fs.mkdir(toolDir, { recursive: true });
+
+    // Extract all files from the ZIP into the tool directory
+    zip.extractAllTo(toolDir, /* overwrite */ true);
+
+    console.log(`[ToolInstall] Installed "${manifest.name}" (${manifest.id}) v${manifest.version} to ${toolDir}`);
+
+    return {
+      canceled: false,
+      error: null,
+      toolId: manifest.id,
+      toolPath: toolDir,
+      manifest,
+    };
+  } catch (err) {
+    return { error: `Installation failed: ${err.message}` };
+  }
+});
+
+/**
+ * Uninstall an external tool by removing its directory from ~/.parallx/tools/.
+ *
+ * @param {string} toolId — The tool's unique identifier (directory name).
+ * @returns {{ error: null }} on success or {{ error: string }} on failure.
+ */
+ipcMain.handle('tools:uninstall', async (_event, toolId) => {
+  try {
+    if (!toolId || typeof toolId !== 'string') {
+      return { error: 'Invalid tool ID' };
+    }
+
+    // Prevent path traversal attacks
+    if (toolId.includes('..') || toolId.includes('/') || toolId.includes('\\')) {
+      return { error: 'Invalid tool ID: path traversal not allowed' };
+    }
+
+    const userToolsDir = path.join(app.getPath('home'), '.parallx', 'tools');
+    const toolDir = path.join(userToolsDir, toolId);
+
+    // Verify the directory exists
+    try {
+      const stat = await fs.stat(toolDir);
+      if (!stat.isDirectory()) {
+        return { error: `Tool "${toolId}" is not installed` };
+      }
+    } catch {
+      return { error: `Tool "${toolId}" is not installed` };
+    }
+
+    // Remove the tool directory
+    await fs.rm(toolDir, { recursive: true, force: true });
+
+    console.log(`[ToolInstall] Uninstalled tool "${toolId}" from ${toolDir}`);
+
+    return { error: null };
+  } catch (err) {
+    return { error: `Uninstallation failed: ${err.message}` };
+  }
 });
 
 app.on('window-all-closed', () => {

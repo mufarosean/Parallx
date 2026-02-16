@@ -209,14 +209,14 @@
   caret-color: var(--vscode-editorCursor-foreground);
 }
 
-/* ProseMirror generated wrapper */
-.canvas-tiptap-editor .ProseMirror {
+/* ProseMirror generated wrapper — class is on the SAME element as canvas-tiptap-editor */
+.canvas-tiptap-editor.ProseMirror {
   outline: none;
   min-height: 200px;
 }
 
 /* Placeholder */
-.canvas-tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
+.canvas-tiptap-editor.ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
   color: var(--vscode-input-placeholderForeground, #888);
@@ -344,6 +344,199 @@
 /* Selection */
 .canvas-tiptap-editor ::selection {
   background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.6));
+}
+
+/* Underline */
+.canvas-tiptap-editor u {
+  text-decoration: underline;
+}
+
+/* Links */
+.canvas-tiptap-editor a,
+.canvas-tiptap-editor .canvas-link {
+  color: var(--vscode-textLink-foreground, #3794ff);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.canvas-tiptap-editor a:hover,
+.canvas-tiptap-editor .canvas-link:hover {
+  color: var(--vscode-textLink-activeForeground, #3794ff);
+}
+
+/* Highlight / mark */
+.canvas-tiptap-editor mark {
+  border-radius: 2px;
+  padding: 1px 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* Images */
+.canvas-tiptap-editor img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 0.5em 0;
+  display: block;
+}
+
+.canvas-tiptap-editor img.ProseMirror-selectednode {
+  outline: 2px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 2px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Global Drag Handle
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.drag-handle {
+  position: fixed;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  cursor: grab;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  z-index: 50;
+}
+
+.drag-handle:hover {
+  opacity: 1 !important;
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.drag-handle::after {
+  content: '';
+  width: 8px;
+  height: 12px;
+  background-image: radial-gradient(circle, var(--vscode-icon-foreground, #c5c5c5) 1.2px, transparent 1.2px);
+  background-size: 4px 4px;
+  background-position: 0 0, 2px 2px;
+  opacity: 0.5;
+}
+
+.drag-handle:hover::after {
+  opacity: 0.9;
+}
+
+/* Show handle on hover over editor content */
+.canvas-tiptap-editor .ProseMirror:hover ~ .drag-handle,
+.drag-handle:hover {
+  opacity: 0.4;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Floating Bubble Menu (formatting toolbar)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-bubble-menu {
+  position: fixed;
+  z-index: 1001;
+  display: none;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1px;
+  padding: 3px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+}
+
+.canvas-bubble-btn {
+  background: none;
+  border: none;
+  color: var(--vscode-foreground, #ccc);
+  cursor: pointer;
+  font-size: 13px;
+  min-width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  padding: 0 5px;
+  font-family: inherit;
+}
+
+.canvas-bubble-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.canvas-bubble-btn--active {
+  background: var(--vscode-toolbar-activeBackground, rgba(99, 102, 106, 0.31));
+  color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.canvas-bubble-highlight-icon {
+  background: #fef08a;
+  color: #000;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+/* ── Link input row inside bubble menu ── */
+
+.canvas-bubble-link-input {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 4px;
+  width: 100%;
+  border-top: 1px solid var(--vscode-editorWidget-border, #454545);
+  margin-top: 2px;
+}
+
+.canvas-bubble-link-field {
+  flex: 1;
+  min-width: 160px;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  outline: none;
+  height: 24px;
+  box-sizing: border-box;
+}
+
+.canvas-bubble-link-field:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.canvas-bubble-link-apply,
+.canvas-bubble-link-remove {
+  background: none;
+  border: none;
+  color: var(--vscode-foreground, #ccc);
+  cursor: pointer;
+  font-size: 14px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+}
+
+.canvas-bubble-link-apply:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: #4ec9b0;
+}
+
+.canvas-bubble-link-remove:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: #f14c4c;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

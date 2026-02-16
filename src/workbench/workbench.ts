@@ -2281,6 +2281,49 @@ export class Workbench extends Layout {
     // Fire startup finished — triggers * and onStartupFinished activation events
     activationEvents.fireStartupFinished();
 
+    // ── Wire tool install/uninstall callbacks for the API (M6 Package Install) ──
+    // These callbacks are invoked by api.tools.installFromFile() and api.tools.uninstall()
+    // to handle registration, contribution processing, and activation without restart.
+    (apiFactoryDeps as any).onToolInstalled = async (toolPath: string, manifest: any) => {
+      const description: IToolDescription = {
+        manifest,
+        toolPath,
+        isBuiltin: false,
+      };
+
+      // Register in the ToolRegistry (contributions auto-processed via onDidRegisterTool)
+      registry.register(description);
+
+      // Wire activation events
+      activationEvents.registerToolEvents(manifest.id, manifest.activationEvents ?? []);
+
+      // Activate immediately (user just chose to install — they want it active)
+      activationEvents.markActivated(manifest.id);
+      const success = await this._toolActivator.activate(manifest.id);
+      if (!success) {
+        console.error(`[Workbench] Failed to activate newly installed tool "${manifest.id}"`);
+      } else {
+        console.log(`[Workbench] Hot-installed and activated tool "${manifest.name}" (${manifest.id})`);
+      }
+
+      return { toolId: manifest.id };
+    };
+
+    (apiFactoryDeps as any).onToolUninstalled = async (toolId: string) => {
+      // Deactivate the tool if active
+      if (this._toolActivator.isActivated(toolId)) {
+        await this._toolActivator.deactivate(toolId);
+      }
+
+      // Clear activation tracking
+      activationEvents.clearActivated(toolId);
+
+      // Unregister from the ToolRegistry (cleans up contributions via onDidDeactivate)
+      registry.unregister(toolId);
+
+      console.log(`[Workbench] Uninstalled and unregistered tool "${toolId}"`);
+    };
+
     // ── Unsaved changes guard (QoL) ──
     this._wireUnsavedChangesGuard();
 
@@ -3116,6 +3159,8 @@ export class Workbench extends Layout {
       'codicon-extensions': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.5 7H16V4.5C16 3.12 14.88 2 13.5 2C12.12 2 11 3.12 11 4.5V7H6.5C5.67 7 5 7.67 5 8.5V13H7.5C8.88 13 10 14.12 10 15.5C10 16.88 8.88 18 7.5 18H5V22.5C5 23.33 5.67 24 6.5 24H11V21.5C11 20.12 12.12 19 13.5 19C14.88 19 16 20.12 16 21.5V24H20.5C21.33 24 22 23.33 22 22.5V18H19.5C18.12 18 17 16.88 17 15.5C17 14.12 18.12 13 19.5 13H22V8.5C22 7.67 21.33 7 20.5 7Z" fill="currentColor"/></svg>',
       // Settings gear
       '⚙️': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.85 8.75L18.01 8.07L19 6.54L17.46 5L15.93 5.99L15.25 4.15H13.25L12.57 5.99L11.04 5L9.5 6.54L10.49 8.07L8.65 8.75V10.75L10.49 11.43L9.5 12.96L11.04 14.5L12.57 13.51L13.25 15.35H15.25L15.93 13.51L17.46 14.5L19 12.96L18.01 11.43L19.85 10.75V8.75ZM14.25 12.5C13.01 12.5 12 11.49 12 10.25C12 9.01 13.01 8 14.25 8C15.49 8 16.5 9.01 16.5 10.25C16.5 11.49 15.49 12.5 14.25 12.5Z" fill="currentColor"/></svg>',
+      // Canvas – pen-on-page / edit-document icon
+      '📓': '<svg width="24" height="24" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L2 13.59 2.41 14l4.12-1.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.5 1.5-3.01 1.5zm3.52-2.02l-1.5-1.5L12 2.5l1.5 1.5-7.57 7.57z" fill="currentColor"/></svg>',
     };
     return icon ? codiconMap[icon] : undefined;
   }

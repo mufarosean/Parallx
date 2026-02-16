@@ -26,11 +26,20 @@
   },
   "dependencies": {
     "@tiptap/core": "^3.19.0",
+    "@tiptap/extension-color": "^3.19.0",
+    "@tiptap/extension-highlight": "^3.19.0",
+    "@tiptap/extension-image": "^3.19.0",
+    "@tiptap/extension-link": "^3.19.0",
     "@tiptap/extension-placeholder": "^3.19.0",
     "@tiptap/extension-task-item": "^3.19.0",
     "@tiptap/extension-task-list": "^3.19.0",
+    "@tiptap/extension-text-style": "^3.19.0",
+    "@tiptap/extension-underline": "^3.19.0",
     "@tiptap/pm": "^3.19.0",
     "@tiptap/starter-kit": "^3.19.0",
-    "better-sqlite3": "^12.6.2"
+    "@tiptap/suggestion": "^3.19.0",
+    "adm-zip": "^0.5.16",
+    "better-sqlite3": "^12.6.2",
+    "tiptap-extension-global-drag-handle": "^0.1.18"
   }
 }

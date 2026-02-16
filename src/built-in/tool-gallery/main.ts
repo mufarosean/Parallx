@@ -48,14 +48,39 @@ interface ParallxApi {
     registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement, input?: { id: string; name: string }): IDisposable }): IDisposable;
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
   };
+  window: {
+    showInformationMessage(message: string, ...actions: { title: string; isCloseAffordance?: boolean }[]): Promise<{ title: string } | undefined>;
+    showErrorMessage(message: string, ...actions: { title: string; isCloseAffordance?: boolean }[]): Promise<{ title: string } | undefined>;
+  };
   tools: {
     getAll(): ToolInfo[];
     getById(id: string): ToolInfo | undefined;
     isEnabled(toolId: string): boolean;
     setEnabled(toolId: string, enabled: boolean): Promise<void>;
     onDidChangeEnablement: (listener: (e: { toolId: string; enabled: boolean }) => void) => IDisposable;
+    installFromFile(): Promise<{ toolId: string } | { error: string } | { canceled: true }>;
+    uninstall(toolId: string): Promise<void>;
+    onDidInstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
+    onDidUninstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
   };
 }
+
+// ─── SVG Icon Constants ──────────────────────────────────────────────────────
+
+/** Built-in tool icon — package/cube (codicon-package style, 16×16). */
+const SVG_ICON_BUILTIN = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 4.5V14.5C14 15.33 13.33 16 12.5 16H3.5C2.67 16 2 15.33 2 14.5V1.5C2 0.67 2.67 0 3.5 0H9.5L14 4.5ZM9.5 1H3.5C3.22 1 3 1.22 3 1.5V14.5C3 14.78 3.22 15 3.5 15H12.5C12.78 15 13 14.78 13 14.5V5H10C9.72 5 9.5 4.78 9.5 4.5V1Z" fill="currentColor"/></svg>';
+
+/** External tool icon — plug (codicon-plug style, 16×16). */
+const SVG_ICON_EXTERNAL = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 1V5H5V1H6ZM11 1V5H10V1H11ZM3 6H13V8C13 9.86 11.72 11.41 10 11.87V15H6V11.87C4.28 11.41 3 9.86 3 8V6Z" fill="currentColor"/></svg>';
+
+/** Large built-in tool icon for editor pane header (28×28). */
+const SVG_ICON_BUILTIN_LG = '<svg width="28" height="28" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 4.5V14.5C14 15.33 13.33 16 12.5 16H3.5C2.67 16 2 15.33 2 14.5V1.5C2 0.67 2.67 0 3.5 0H9.5L14 4.5ZM9.5 1H3.5C3.22 1 3 1.22 3 1.5V14.5C3 14.78 3.22 15 3.5 15H12.5C12.78 15 13 14.78 13 14.5V5H10C9.72 5 9.5 4.78 9.5 4.5V1Z" fill="currentColor"/></svg>';
+
+/** Large external tool icon for editor pane header (28×28). */
+const SVG_ICON_EXTERNAL_LG = '<svg width="28" height="28" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 1V5H5V1H6ZM11 1V5H10V1H11ZM3 6H13V8C13 9.86 11.72 11.41 10 11.87V15H6V11.87C4.28 11.41 3 9.86 3 8V6Z" fill="currentColor"/></svg>';
+
+/** Install/download icon for the install button (14×14). */
+const SVG_ICON_INSTALL = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.5 1V9.79L11.15 7.15L12 8L8 12L4 8L4.85 7.15L7.5 9.79V1H8.5ZM3 13H13V14H3V13Z" fill="currentColor"/></svg>';
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -105,7 +130,7 @@ type FilterMode = 'installed' | 'enabled' | 'disabled' | 'builtin' | 'search';
 function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable {
   container.classList.add('tool-gallery-container');
 
-  // ── Search input ──
+  // ── Search bar with install action ──
   const searchWrap = $('div');
   searchWrap.classList.add('tool-gallery-search');
   const searchInput = $('input') as HTMLInputElement;
@@ -114,6 +139,40 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
   searchInput.placeholder = 'Search tools…  (@enabled, @disabled, @builtin)';
   searchInput.spellcheck = false;
   searchWrap.appendChild(searchInput);
+
+  const installBtn = $('button');
+  installBtn.classList.add('tool-gallery-install-btn');
+  installBtn.innerHTML = SVG_ICON_INSTALL;
+  installBtn.title = 'Install from .plx file';
+  installBtn.addEventListener('click', async () => {
+    installBtn.disabled = true;
+    try {
+      const result = await api.tools.installFromFile();
+      if ('canceled' in result) {
+        // User cancelled — no action needed
+      } else if ('error' in result) {
+        await api.window.showErrorMessage(`Installation failed: ${result.error}`);
+      } else {
+        await api.window.showInformationMessage(`Tool installed successfully.`);
+        const tool = api.tools.getById(result.toolId);
+        if (tool) {
+          api.editors.openEditor({
+            typeId: 'tool-detail',
+            title: tool.name,
+            icon: 'plug',
+            instanceId: tool.id,
+          }).catch(() => {});
+        }
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await api.window.showErrorMessage(`Installation failed: ${msg}`);
+    } finally {
+      installBtn.disabled = false;
+    }
+  });
+  searchWrap.appendChild(installBtn);
+
   container.appendChild(searchWrap);
 
   // ── Tool list ──
@@ -174,7 +233,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
     // Icon
     const icon = $('span');
     icon.classList.add('tool-gallery-row-icon');
-    icon.textContent = tool.isBuiltin ? '📦' : '🔌';
+    icon.innerHTML = tool.isBuiltin ? SVG_ICON_BUILTIN : SVG_ICON_EXTERNAL;
     row.appendChild(icon);
 
     // Info
@@ -253,7 +312,7 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
       api.editors.openEditor({
         typeId: 'tool-detail',
         title: tool.name,
-        icon: tool.isBuiltin ? '📦' : '🔌',
+        icon: tool.isBuiltin ? 'package' : 'plug',
         instanceId: tool.id,
       }).catch((err: unknown) => {
         console.error(`[ToolGallery] Failed to open tool editor for "${tool.id}":`, err);
@@ -348,6 +407,10 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
   // Listen for enablement changes
   const enablementListener = api.tools.onDidChangeEnablement(() => { refresh(); });
 
+  // Listen for tool install/uninstall events to auto-refresh
+  const installListener = api.tools.onDidInstallTool(() => { refresh(); });
+  const uninstallListener = api.tools.onDidUninstallTool(() => { refresh(); });
+
   _sidebarRefresh = refresh;
   refresh();
 
@@ -355,6 +418,8 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
     dispose() {
       _sidebarRefresh = null;
       enablementListener.dispose();
+      installListener.dispose();
+      uninstallListener.dispose();
       container.innerHTML = '';
     },
   };
@@ -384,7 +449,7 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
 
   const iconEl = $('div');
   iconEl.classList.add('tool-editor-header-icon');
-  iconEl.textContent = tool.isBuiltin ? '📦' : '🔌';
+  iconEl.innerHTML = tool.isBuiltin ? SVG_ICON_BUILTIN_LG : SVG_ICON_EXTERNAL_LG;
   header.appendChild(iconEl);
 
   const headerDetails = $('div');
@@ -434,6 +499,28 @@ function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: strin
     });
   }
   actions.appendChild(toggleBtn);
+
+  // Uninstall button (only for external tools)
+  if (!tool.isBuiltin) {
+    const uninstallBtn = $('button');
+    uninstallBtn.classList.add('tool-editor-action-btn', 'tool-editor-action-uninstall');
+    uninstallBtn.textContent = 'Uninstall';
+    uninstallBtn.title = `Uninstall ${tool.name}`;
+    uninstallBtn.addEventListener('click', async () => {
+      uninstallBtn.disabled = true;
+      uninstallBtn.textContent = 'Uninstalling…';
+      try {
+        await api.tools.uninstall(tool.id);
+        await api.window.showInformationMessage(`"${tool.name}" has been uninstalled.`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await api.window.showErrorMessage(`Uninstall failed: ${msg}`);
+        uninstallBtn.disabled = false;
+        uninstallBtn.textContent = 'Uninstall';
+      }
+    });
+    actions.appendChild(uninstallBtn);
+  }
 
   headerDetails.appendChild(actions);
   header.appendChild(headerDetails);

@@ -9,6 +9,7 @@
 // for cleanup.
 
 import { IDisposable } from '../platform/lifecycle.js';
+import { Emitter } from '../platform/events.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import {
@@ -62,6 +63,16 @@ export interface ApiFactoryDependencies {
   readonly themeService?: IThemeServiceShape;
   /** ToolEnablementService for parallx.tools.isEnabled/setEnabled/onDidChangeEnablement. */
   readonly toolEnablementService?: import('../tools/toolEnablement.js').IToolEnablementService;
+  /**
+   * Late-bound callback: handle tool installation from .plx file.
+   * Set by the workbench after all services are wired.
+   */
+  onToolInstalled?: (toolPath: string, manifest: any) => Promise<{ toolId: string }>;
+  /**
+   * Late-bound callback: handle tool uninstallation.
+   * Set by the workbench after all services are wired.
+   */
+  onToolUninstalled?: (toolId: string) => Promise<void>;
 }
 
 // ─── API Shape ───────────────────────────────────────────────────────────────
@@ -131,6 +142,14 @@ export interface ParallxApiObject {
     isEnabled(toolId: string): boolean;
     setEnabled(toolId: string, enabled: boolean): Promise<void>;
     onDidChangeEnablement: (listener: (e: { toolId: string; enabled: boolean }) => void) => IDisposable;
+    /** Install a tool from a .plx package file. Opens a native file dialog. */
+    installFromFile(): Promise<{ toolId: string } | { error: string } | { canceled: true }>;
+    /** Uninstall an external tool by ID. */
+    uninstall(toolId: string): Promise<void>;
+    /** Fires when a tool is installed. */
+    onDidInstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
+    /** Fires when a tool is uninstalled. */
+    onDidUninstallTool: (listener: (e: { toolId: string }) => void) => IDisposable;
   };
   readonly env: {
     readonly appName: string;
@@ -157,6 +176,11 @@ export function createToolApi(
 ): { api: ParallxApiObject; dispose: () => void } {
   const toolId = toolDescription.manifest.id;
   const subscriptions: IDisposable[] = [];
+
+  // Emitters for tool install/uninstall events (shared across all tool API instances)
+  const _toolInstallEmitter = new Emitter<{ toolId: string }>();
+  const _toolUninstallEmitter = new Emitter<{ toolId: string }>();
+  subscriptions.push(_toolInstallEmitter, _toolUninstallEmitter);
 
   // ── Resolve services ──
   const commandService = deps.services.has(ICommandService)
@@ -400,6 +424,57 @@ export function createToolApi(
         return es.onDidChangeEnablement((e) => {
           listener({ toolId: e.toolId, enabled: e.newState === 'EnabledGlobally' });
         });
+      },
+      installFromFile: async (): Promise<{ toolId: string } | { error: string } | { canceled: true }> => {
+        // Call Electron bridge to open file dialog and extract .plx package
+        const bridge = (globalThis as any).parallxElectron;
+        if (!bridge?.installToolFromFile) {
+          return { error: 'Tool installation not available (no Electron bridge)' };
+        }
+
+        const result = await bridge.installToolFromFile();
+        if (result.canceled) return { canceled: true as const };
+        if (result.error) return { error: result.error };
+
+        // Delegate registration + activation to the workbench callback
+        const handler = deps.onToolInstalled;
+        if (!handler) {
+          return { error: 'Tool install handler not wired' };
+        }
+
+        try {
+          await handler(result.toolPath, result.manifest);
+          _toolInstallEmitter.fire({ toolId: result.toolId });
+          return { toolId: result.toolId };
+        } catch (err: unknown) {
+          return { error: `Registration failed: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      },
+      uninstall: async (id: string): Promise<void> => {
+        const entry = deps.toolRegistry.getById(id);
+        if (!entry) throw new Error(`Tool "${id}" not found`);
+        if (entry.description.isBuiltin) throw new Error(`Cannot uninstall built-in tool "${id}"`);
+
+        // Delegate deactivation + unregistration to the workbench callback
+        const handler = deps.onToolUninstalled;
+        if (handler) {
+          await handler(id);
+        }
+
+        // Call Electron bridge to remove the tool directory
+        const bridge = (globalThis as any).parallxElectron;
+        if (bridge?.uninstallTool) {
+          const result = await bridge.uninstallTool(id);
+          if (result.error) throw new Error(result.error);
+        }
+
+        _toolUninstallEmitter.fire({ toolId: id });
+      },
+      onDidInstallTool: (listener: (e: { toolId: string }) => void) => {
+        return _toolInstallEmitter.event(listener);
+      },
+      onDidUninstallTool: (listener: (e: { toolId: string }) => void) => {
+        return _toolUninstallEmitter.event(listener);
       },
     }),
 

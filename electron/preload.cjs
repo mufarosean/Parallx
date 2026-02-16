@@ -34,6 +34,12 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   scanToolDirectory: (dirPath) => ipcRenderer.invoke('tools:scan-directory', dirPath),
   getToolDirectories: () => ipcRenderer.invoke('tools:get-directories'),
 
+  // ── Tool install/uninstall API ──
+  /** Open native file dialog for .plx files, extract and install. Returns install result. */
+  installToolFromFile: () => ipcRenderer.invoke('tools:install-from-file'),
+  /** Remove an external tool's directory. Returns { error: null } on success. */
+  uninstallTool: (toolId) => ipcRenderer.invoke('tools:uninstall', toolId),
+
   // ══════════════════════════════════════════════════════════════════════════
   // Filesystem API (M4 Cap 0)
   // ══════════════════════════════════════════════════════════════════════════

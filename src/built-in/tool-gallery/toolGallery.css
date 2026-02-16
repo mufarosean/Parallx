@@ -23,15 +23,19 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* ── Search input ── */
+/* ── Search input area (includes install action) ── */
 .tool-gallery-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--vscode-editorWidget-border, #333);
   flex-shrink: 0;
 }
 
 .tool-gallery-search-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   box-sizing: border-box;
   background: var(--vscode-input-background, #3c3c3c);
   color: var(--vscode-input-foreground, #ccc);
@@ -48,6 +52,37 @@
 
 .tool-gallery-search-input:focus {
   border-color: var(--vscode-focusBorder, #007acc);
+}
+
+/* ── Install button (icon action inside search bar) ── */
+.tool-gallery-install-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground, #888);
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  padding: 0;
+  transition: background 80ms ease, color 80ms ease;
+}
+
+.tool-gallery-install-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+  color: var(--vscode-foreground, #ccc);
+}
+
+.tool-gallery-install-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tool-gallery-install-btn svg {
+  display: block;
 }
 
 /* ── Tool list ── */
@@ -111,11 +146,18 @@
 }
 
 .tool-gallery-row-icon {
-  font-size: 20px;
-  width: 28px;
-  text-align: center;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
-  padding-top: 2px;
+  margin-top: 3px;
+  color: var(--vscode-descriptionForeground, #888);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tool-gallery-row-icon svg {
+  display: block;
 }
 
 .tool-gallery-row-info {
@@ -246,9 +288,17 @@
 }
 
 .tool-editor-header-icon {
-  font-size: 48px;
-  line-height: 1;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
+  color: var(--vscode-descriptionForeground, #888);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tool-editor-header-icon svg {
+  display: block;
 }
 
 .tool-editor-header-details {
@@ -315,6 +365,22 @@
 /* Built-in tool action button (greyed out) */
 .tool-editor-action-builtin {
   opacity: 0.4;
+  cursor: default;
+}
+
+/* Uninstall button — danger styling */
+.tool-editor-action-uninstall {
+  background: none;
+  border: 1px solid var(--vscode-errorForeground, #f44747);
+  color: var(--vscode-errorForeground, #f44747);
+}
+
+.tool-editor-action-uninstall:hover {
+  background: rgba(244, 71, 71, 0.15);
+}
+
+.tool-editor-action-uninstall:disabled {
+  opacity: 0.5;
   cursor: default;
 }
 
