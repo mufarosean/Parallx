@@ -22,7 +22,6 @@ import {
   EditorTabDragData,
   GroupDirection,
 } from './editorTypes.js';
-import { BreadcrumbsBar } from './breadcrumbsBar.js';
 import { URI } from '../platform/uri.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 import { TabBar, type ITabBarItem } from '../ui/tabBar.js';
@@ -51,7 +50,6 @@ export class EditorGroupView extends Disposable implements IGridView {
 
   private _element!: HTMLElement;
   private _tabs!: TabBar;
-  private _breadcrumbsBar!: BreadcrumbsBar;
   private _paneContainer!: HTMLElement;
   private _emptyMessage!: HTMLElement;
   private _workspaceFolders: readonly { uri: URI; name: string }[] = [];
@@ -148,9 +146,8 @@ export class EditorGroupView extends Disposable implements IGridView {
       this._element.style.height = `${height}px`;
     }
 
-    // Layout pane: subtract tab bar height and breadcrumbs height
-    const breadcrumbsH = this._breadcrumbsBar?.effectiveHeight ?? 0;
-    const paneH = Math.max(0, height - TAB_HEIGHT - breadcrumbsH);
+    // Layout pane: subtract tab bar height
+    const paneH = Math.max(0, height - TAB_HEIGHT);
     if (this._paneContainer) {
       this._paneContainer.style.height = `${paneH}px`;
     }
@@ -267,9 +264,6 @@ export class EditorGroupView extends Disposable implements IGridView {
       } catch { /* ignore bad data */ }
     }));
 
-    // Breadcrumbs bar — between tab bar and pane (VS Code placement)
-    this._breadcrumbsBar = this._register(new BreadcrumbsBar(this._element));
-
     // Pane container
     this._paneContainer = $('div');
     this._paneContainer.classList.add('editor-pane-container');
@@ -281,7 +275,6 @@ export class EditorGroupView extends Disposable implements IGridView {
     this._paneContainer.appendChild(this._emptyMessage);
 
     this._renderTabs();
-    this._updateBreadcrumbs();
     this._updateEmptyState();
   }
 
@@ -344,23 +337,6 @@ export class EditorGroupView extends Disposable implements IGridView {
    */
   setWorkspaceFolders(folders: readonly { uri: URI; name: string }[]): void {
     this._workspaceFolders = folders;
-    this._breadcrumbsBar?.setWorkspaceFolders(folders);
-    this._updateBreadcrumbs();
-  }
-
-  // ─── Breadcrumbs ───────────────────────────────────────────────────────
-
-  /**
-   * Update the breadcrumbs bar to reflect the currently active editor.
-   * Called on EditorActive model change and after setWorkspaceFolders.
-   */
-  private _updateBreadcrumbs(): void {
-    if (!this._breadcrumbsBar) return;
-    const changed = this._breadcrumbsBar.update(this.model.activeEditor);
-    // If visibility changed, re-layout to recalculate pane height
-    if (changed) {
-      this.layout(this._width, this._height, Orientation.Horizontal);
-    }
   }
 
   // ─── Model Change Handler ──────────────────────────────────────────────
@@ -378,11 +354,9 @@ export class EditorGroupView extends Disposable implements IGridView {
         break;
       case EditorGroupChangeKind.EditorClose:
         this._renderTabs();
-        this._updateBreadcrumbs(); // Hide breadcrumbs when last editor closes
         break;
       case EditorGroupChangeKind.EditorActive:
         this._renderTabs();
-        this._updateBreadcrumbs();
         await this._showActiveEditor();
         break;
     }
@@ -640,8 +614,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     this._paneDisposables.add(pane);
 
     // Layout
-    const breadcrumbsH = this._breadcrumbsBar?.effectiveHeight ?? 0;
-    const paneH = Math.max(0, this._height - TAB_HEIGHT - breadcrumbsH);
+    const paneH = Math.max(0, this._height - TAB_HEIGHT);
     pane.layout(this._width, paneH);
 
     this._activePane = pane;

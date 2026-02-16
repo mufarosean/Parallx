@@ -1065,6 +1065,76 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Top Ribbon — Breadcrumbs, Edited timestamp, Favorite, Page menu
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-top-ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  box-sizing: border-box;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.canvas-top-ribbon-left {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.canvas-top-ribbon-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.canvas-top-ribbon .canvas-breadcrumbs {
+  margin-bottom: 0;
+}
+
+.canvas-top-ribbon-edited {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  padding: 0 4px;
+  user-select: none;
+}
+
+.canvas-top-ribbon-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.1s ease, color 0.1s ease;
+  font-family: inherit;
+  padding: 0;
+}
+
+.canvas-top-ribbon-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.canvas-top-ribbon-favorite--active {
+  color: rgba(255, 200, 50, 0.85);
+}
+
+.canvas-top-ribbon-favorite--active:hover {
+  color: rgba(255, 200, 50, 1);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * Page Cover Image (Cap 8)
  * ───────────────────────────────────────────────────────────────────────────── */
 
@@ -1127,34 +1197,33 @@
   z-index: 10;
 }
 
-.canvas-cover-done-btn {
+.canvas-cover-reposition-actions {
   position: absolute;
   bottom: 12px;
   right: 16px;
-  background: #2383e2;
-  border: none;
-  color: #fff;
-  font-size: 12px;
-  padding: 4px 16px;
-  border-radius: 4px;
-  cursor: pointer;
+  display: flex;
+  gap: 6px;
   z-index: 11;
-  font-family: inherit;
 }
 
-.canvas-cover-done-btn:hover {
-  background: #1b6fc2;
+.canvas-cover-btn--primary {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.canvas-cover-btn--primary:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Page Header — Breadcrumbs, Icon, Title (Cap 7)
+ * Page Header — Icon, Title (Cap 7)
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-page-header {
   max-width: 860px;
   width: 100%;
   margin: 0 auto;
-  padding: 80px 64px 0;
+  padding: 40px 64px 0;
   box-sizing: border-box;
   flex-shrink: 0;
   position: relative;
@@ -1162,7 +1231,12 @@
 
 /* Less top padding when cover is present */
 .canvas-has-cover .canvas-page-header {
-  padding-top: 24px;
+  padding-top: 0;
+}
+
+/* Icon overlaps the cover bottom edge (Notion-style) */
+.canvas-has-cover .canvas-page-icon {
+  margin-top: -24px;
 }
 
 /* ── Breadcrumbs ── */
@@ -1173,7 +1247,7 @@
   gap: 4px;
   margin-bottom: 12px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.5);
   flex-wrap: wrap;
 }
 
@@ -1195,16 +1269,21 @@
   user-select: none;
 }
 
+.canvas-breadcrumb--current {
+  cursor: default;
+  color: rgba(255, 255, 255, 0.5);
+}
+
 /* ── Page Icon ── */
 
 .canvas-page-icon {
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
   margin-bottom: 4px;
   user-select: none;
   transition: transform 0.1s ease;
+  transform-origin: left center;
   color: var(--vscode-editor-foreground, rgba(255, 255, 255, 0.8));
 }
 
@@ -1276,34 +1355,7 @@
   pointer-events: none;
 }
 
-/* ── Page Menu Button (⋯) ── */
-
-.canvas-page-menu-btn {
-  order: -1;
-  position: sticky;
-  top: 8px;
-  align-self: flex-end;
-  z-index: 100;
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 20px;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.1s ease, color 0.1s ease;
-  margin: 8px 8px -40px 0;
-  font-family: inherit;
-}
-
-.canvas-page-menu-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.8);
-}
+/* ── Page Menu Dropdown ── */
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Page Menu Dropdown (Cap 9)
@@ -1791,37 +1843,48 @@
   padding-left: 12px;
 }
 
-/* ── Favorite Star ── */
+/* ── Node Hover Actions (⋯ and +) ── */
 
-.canvas-node-star {
+.canvas-node-actions {
   position: absolute;
-  right: 8px;
+  right: 4px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.2);
-  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 2px;
   opacity: 0;
-  transition: opacity 0.12s ease, color 0.1s ease;
-  user-select: none;
+  transition: opacity 0.12s ease;
 }
 
-.canvas-node:hover .canvas-node-star {
+.canvas-node:hover .canvas-node-actions {
   opacity: 1;
 }
 
-.canvas-node-star--favorited {
-  color: #f5a623;
-  opacity: 1;
+.canvas-node-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.4);
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.1s ease, color 0.1s ease;
 }
 
-.canvas-node-star:hover {
-  color: #f5a623;
+.canvas-node-action-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
 }
 
-/* Make room for the star */
+/* Make room for actions */
 .canvas-node {
   position: relative;
+  padding-right: 48px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

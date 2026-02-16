@@ -250,17 +250,28 @@ export class CanvasSidebar {
     label.textContent = page.title;
     row.appendChild(label);
 
-    // Unfavorite star on hover (SVG)
-    const star = $('span.canvas-node-star.canvas-node-star--favorited');
-    star.innerHTML = svgIcon('star-filled');
-    const starSvg = star.querySelector('svg');
-    if (starSvg) { starSvg.setAttribute('width', '12'); starSvg.setAttribute('height', '12'); }
-    star.title = 'Remove from Favorites';
-    star.addEventListener('click', (e) => {
+    // Hover actions: ⋯ menu + add child page (Notion-style)
+    const actions = $('div.canvas-node-actions');
+
+    const moreBtn = $('button.canvas-node-action-btn');
+    moreBtn.appendChild(createIconElement('ellipsis', 14));
+    moreBtn.title = 'More actions';
+    moreBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this._dataService.toggleFavorite(page.id);
+      this._showContextMenu(e, page);
     });
-    row.appendChild(star);
+    actions.appendChild(moreBtn);
+
+    const addBtn = $('button.canvas-node-action-btn');
+    addBtn.appendChild(createIconElement('plus', 14));
+    addBtn.title = 'Add a page inside';
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._createPage(page.id);
+    });
+    actions.appendChild(addBtn);
+
+    row.appendChild(actions);
 
     if (page.id === this._selectedPageId) {
       row.classList.add('canvas-node--selected');
@@ -367,18 +378,28 @@ export class CanvasSidebar {
     label.textContent = node.title;
     row.appendChild(label);
 
-    // Favorite star (SVG hover affordance)
-    const star = $('span.canvas-node-star');
-    star.innerHTML = svgIcon(node.isFavorited ? 'star-filled' : 'star');
-    const starSvg = star.querySelector('svg');
-    if (starSvg) { starSvg.setAttribute('width', '12'); starSvg.setAttribute('height', '12'); }
-    star.title = node.isFavorited ? 'Remove from Favorites' : 'Add to Favorites';
-    if (node.isFavorited) star.classList.add('canvas-node-star--favorited');
-    star.addEventListener('click', (e) => {
+    // Hover actions: ⋯ menu + add child page (Notion-style)
+    const nodeActions = $('div.canvas-node-actions');
+
+    const moreBtn = $('button.canvas-node-action-btn');
+    moreBtn.appendChild(createIconElement('ellipsis', 14));
+    moreBtn.title = 'More actions';
+    moreBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this._dataService.toggleFavorite(node.id);
+      this._showContextMenu(e, node);
     });
-    row.appendChild(star);
+    nodeActions.appendChild(moreBtn);
+
+    const addChildBtn = $('button.canvas-node-action-btn');
+    addChildBtn.appendChild(createIconElement('plus', 14));
+    addChildBtn.title = 'Add a page inside';
+    addChildBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._createPage(node.id);
+    });
+    nodeActions.appendChild(addChildBtn);
+
+    row.appendChild(nodeActions);
 
     // Selected state
     if (node.id === this._selectedPageId) {

@@ -1760,6 +1760,7 @@ Alternatively, install `turndown` (HTML → Markdown converter, 7k stars) and us
 **Task 10.5 — Breadcrumb Navigation** ✅
 - **Task Description:** Show a breadcrumb trail above the title in the editor header.
 - **Output:** Clickable path showing the current page's ancestor chain.
+- **Deviation:** Breadcrumbs were moved from `canvas-page-header` into a new **top ribbon bar** (`canvas-top-ribbon`) that sits between the tab bar and the cover image. The ribbon displays breadcrumbs on the left and "Edited X ago", favorite star, and ⋯ menu on the right — matching Notion's layout. The VS Code-style `BreadcrumbsBar` component (file-path breadcrumbs from `breadcrumbsBar.ts`) was removed from `EditorGroupView` since canvas pages use their own page-hierarchy breadcrumbs in the ribbon instead.
 - **Completion Criteria:**
   - `div.canvas-breadcrumbs` rendered above the icon/title in `canvas-page-header`
   - Shows: ancestor chain from root to current page's parent (not including current page)

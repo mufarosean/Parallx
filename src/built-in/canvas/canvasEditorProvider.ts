@@ -253,6 +253,9 @@ class CanvasEditorPane implements IDisposable {
   private readonly _saveDisposables: IDisposable[] = [];
 
   // ── Page header elements (Cap 7/8/9) ──
+  private _topRibbon: HTMLElement | null = null;
+  private _ribbonFavoriteBtn: HTMLElement | null = null;
+  private _ribbonEditedLabel: HTMLElement | null = null;
   private _pageHeader: HTMLElement | null = null;
   private _coverEl: HTMLElement | null = null;
   private _coverControls: HTMLElement | null = null;
@@ -292,14 +295,14 @@ class CanvasEditorPane implements IDisposable {
     // ── Apply page display settings CSS classes ──
     this._applyPageSettings();
 
+    // ── Top ribbon: breadcrumbs, edited timestamp, favorite star, ⋯ menu ──
+    this._createTopRibbon();
+
     // ── Cover image (Cap 8) ──
     this._createCover();
 
-    // ── Page header: breadcrumbs, icon, title, hover affordances ──
+    // ── Page header: icon, title, hover affordances ──
     this._createPageHeader();
-
-    // ── Page menu button ("⋯") at top-right (uses CSS order: -1 for visual ordering) ──
-    this._createPageMenu();
 
     // Create Tiptap editor with Notion-parity extensions
     // Link and Underline are part of StarterKit v3 — configure via StarterKit options
@@ -457,6 +460,9 @@ class CanvasEditorPane implements IDisposable {
         // Update cover
         this._refreshCover();
 
+        // Update ribbon (timestamp + favorite state)
+        this._refreshRibbon();
+
         // Update display settings
         this._applyPageSettings();
       }),
@@ -464,18 +470,102 @@ class CanvasEditorPane implements IDisposable {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Page Header — Title, Icon, Breadcrumbs (Cap 7)
+  // Top Ribbon — Breadcrumbs, Edited timestamp, Favorite, Page menu
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private _createTopRibbon(): void {
+    if (!this._editorContainer) return;
+
+    this._topRibbon = $('div.canvas-top-ribbon');
+
+    // ── Left: breadcrumbs ──
+    const ribbonLeft = $('div.canvas-top-ribbon-left');
+    this._breadcrumbsEl = $('div.canvas-breadcrumbs');
+    ribbonLeft.appendChild(this._breadcrumbsEl);
+    this._loadBreadcrumbs();
+    this._topRibbon.appendChild(ribbonLeft);
+
+    // ── Right: edited timestamp, favorite star, ⋯ menu ──
+    const ribbonRight = $('div.canvas-top-ribbon-right');
+
+    // Edited timestamp
+    this._ribbonEditedLabel = $('span.canvas-top-ribbon-edited');
+    this._ribbonEditedLabel.textContent = this._formatRelativeTime(this._currentPage?.updatedAt);
+    ribbonRight.appendChild(this._ribbonEditedLabel);
+
+    // Favorite star toggle
+    this._ribbonFavoriteBtn = $('button.canvas-top-ribbon-btn.canvas-top-ribbon-favorite');
+    this._ribbonFavoriteBtn.title = 'Add to Favorites';
+    this._updateFavoriteIcon();
+    this._ribbonFavoriteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._dataService.toggleFavorite(this._pageId);
+    });
+    ribbonRight.appendChild(this._ribbonFavoriteBtn);
+
+    // ⋯ Page menu button
+    this._pageMenuBtn = $('button.canvas-top-ribbon-btn.canvas-top-ribbon-menu');
+    this._pageMenuBtn.innerHTML = svgIcon('ellipsis');
+    const menuSvg = this._pageMenuBtn.querySelector('svg');
+    if (menuSvg) { menuSvg.setAttribute('width', '16'); menuSvg.setAttribute('height', '16'); }
+    this._pageMenuBtn.title = 'Page settings';
+    this._pageMenuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this._pageMenuDropdown) {
+        this._dismissPopups();
+        return;
+      }
+      this._showPageMenu();
+    });
+    ribbonRight.appendChild(this._pageMenuBtn);
+
+    this._topRibbon.appendChild(ribbonRight);
+    this._editorContainer.prepend(this._topRibbon);
+  }
+
+  private _updateFavoriteIcon(): void {
+    if (!this._ribbonFavoriteBtn) return;
+    const isFav = !!this._currentPage?.isFavorited;
+    const iconId = isFav ? 'star-filled' : 'star';
+    this._ribbonFavoriteBtn.innerHTML = svgIcon(iconId);
+    const svg = this._ribbonFavoriteBtn.querySelector('svg');
+    if (svg) { svg.setAttribute('width', '16'); svg.setAttribute('height', '16'); }
+    this._ribbonFavoriteBtn.classList.toggle('canvas-top-ribbon-favorite--active', isFav);
+    this._ribbonFavoriteBtn.title = isFav ? 'Remove from Favorites' : 'Add to Favorites';
+  }
+
+  private _refreshRibbon(): void {
+    // Update edited timestamp
+    if (this._ribbonEditedLabel) {
+      this._ribbonEditedLabel.textContent = this._formatRelativeTime(this._currentPage?.updatedAt);
+    }
+    // Update favorite icon
+    this._updateFavoriteIcon();
+  }
+
+  private _formatRelativeTime(isoStr?: string | null): string {
+    if (!isoStr) return '';
+    const diff = Date.now() - new Date(isoStr).getTime();
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 60) return 'Edited just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `Edited ${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `Edited ${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `Edited ${days}d ago`;
+    const months = Math.floor(days / 30);
+    return `Edited ${months}mo ago`;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Page Header — Title, Icon (Cap 7)
   // ══════════════════════════════════════════════════════════════════════════
 
   private _createPageHeader(): void {
     if (!this._editorContainer) return;
 
     this._pageHeader = $('div.canvas-page-header');
-
-    // ── Breadcrumbs ──
-    this._breadcrumbsEl = $('div.canvas-breadcrumbs');
-    this._pageHeader.appendChild(this._breadcrumbsEl);
-    this._loadBreadcrumbs();
 
     // ── Icon (large, clickable — SVG) ──
     this._iconEl = $('span.canvas-page-icon');
@@ -489,6 +579,9 @@ class CanvasEditorPane implements IDisposable {
       this._iconEl.style.display = 'none';
     }
     this._iconEl.title = 'Change icon';
+    this._iconEl.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // Prevent TipTap focus handling from swallowing the click
+    });
     this._iconEl.addEventListener('click', (e) => {
       e.stopPropagation();
       this._showIconPicker();
@@ -561,20 +654,22 @@ class CanvasEditorPane implements IDisposable {
 
     this._pageHeader.appendChild(this._titleEl);
 
-    // Insert header BEFORE the TipTap editor element
-    this._editorContainer.prepend(this._pageHeader);
+    // Insert header AFTER the cover element so DOM order is: cover → header → editor
+    if (this._coverEl) {
+      this._coverEl.after(this._pageHeader);
+    } else {
+      this._editorContainer.prepend(this._pageHeader);
+    }
   }
 
   private async _loadBreadcrumbs(): Promise<void> {
     if (!this._breadcrumbsEl || !this._pageId) return;
     try {
       const ancestors = await this._dataService.getAncestors(this._pageId);
-      if (ancestors.length === 0) {
-        this._breadcrumbsEl.style.display = 'none';
-        return;
-      }
       this._breadcrumbsEl.style.display = '';
       this._breadcrumbsEl.innerHTML = '';
+
+      // Show ancestor pages as clickable crumbs
       for (let i = 0; i < ancestors.length; i++) {
         const crumb = $('span.canvas-breadcrumb');
         const crumbIcon = createIconElement(resolvePageIcon(ancestors[i].icon), 12);
@@ -595,12 +690,20 @@ class CanvasEditorPane implements IDisposable {
           }
         });
         this._breadcrumbsEl.appendChild(crumb);
-        if (i < ancestors.length - 1) {
-          const sep = $('span.canvas-breadcrumb-sep');
-          sep.textContent = '›';
-          this._breadcrumbsEl.appendChild(sep);
-        }
+
+        const sep = $('span.canvas-breadcrumb-sep');
+        sep.textContent = '›';
+        this._breadcrumbsEl.appendChild(sep);
       }
+
+      // Always show current page as the last breadcrumb (non-clickable)
+      const currentCrumb = $('span.canvas-breadcrumb.canvas-breadcrumb--current');
+      const currentIcon = createIconElement(resolvePageIcon(this._currentPage?.icon), 12);
+      currentCrumb.appendChild(currentIcon);
+      const currentText = $('span');
+      currentText.textContent = ` ${this._currentPage?.title || 'Untitled'}`;
+      currentCrumb.appendChild(currentText);
+      this._breadcrumbsEl.appendChild(currentCrumb);
     } catch {
       this._breadcrumbsEl.style.display = 'none';
     }
@@ -616,7 +719,7 @@ class CanvasEditorPane implements IDisposable {
     this._coverEl = $('div.canvas-page-cover');
     this._coverControls = $('div.canvas-cover-controls');
 
-    const repositionBtn = $('button.canvas-cover-btn');
+    const repositionBtn = $('button.canvas-cover-btn.canvas-cover-reposition-btn');
     repositionBtn.textContent = 'Reposition';
     repositionBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -642,7 +745,12 @@ class CanvasEditorPane implements IDisposable {
     this._coverControls.appendChild(removeBtn);
     this._coverEl.appendChild(this._coverControls);
 
-    this._editorContainer.prepend(this._coverEl);
+    // Insert cover after the top ribbon (DOM order: ribbon → cover → header → editor)
+    if (this._topRibbon) {
+      this._topRibbon.after(this._coverEl);
+    } else {
+      this._editorContainer.prepend(this._coverEl);
+    }
     this._refreshCover();
   }
 
@@ -651,12 +759,15 @@ class CanvasEditorPane implements IDisposable {
     const url = this._currentPage?.coverUrl;
     if (!url) {
       this._coverEl.style.display = 'none';
+      // Update hover affordances so "Add cover" reappears
+      this._refreshHoverAffordances();
       return;
     }
     this._coverEl.style.display = '';
     const yPct = ((this._currentPage?.coverYOffset ?? 0.5) * 100).toFixed(1);
 
-    if (url.startsWith('linear-gradient') || url.startsWith('radial-gradient')) {
+    const isGradient = url.startsWith('linear-gradient') || url.startsWith('radial-gradient');
+    if (isGradient) {
       this._coverEl.style.backgroundImage = url;
       this._coverEl.style.backgroundPosition = '';
       this._coverEl.style.backgroundSize = '';
@@ -702,18 +813,28 @@ class CanvasEditorPane implements IDisposable {
     }
   }
 
+  private _isRepositioning = false;
+
   private _startCoverReposition(): void {
-    if (!this._coverEl || !this._currentPage?.coverUrl) return;
+    if (!this._coverEl || !this._currentPage?.coverUrl || this._isRepositioning) return;
+
+    this._isRepositioning = true;
 
     const overlay = $('div.canvas-cover-reposition-overlay');
-    overlay.textContent = 'Drag to reposition • Click Done when finished';
+    overlay.textContent = 'Drag image to reposition';
     this._coverEl.appendChild(overlay);
     this._coverEl.classList.add('canvas-cover--repositioning');
+
+    // Hide the normal cover controls while repositioning
+    if (this._coverControls) {
+      this._coverControls.style.display = 'none';
+    }
 
     let startY = 0;
     let startOffset = this._currentPage?.coverYOffset ?? 0.5;
 
     const onMouseDown = (e: MouseEvent) => {
+      e.preventDefault(); // Prevent text selection during drag
       startY = e.clientY;
       startOffset = this._currentPage?.coverYOffset ?? 0.5;
       document.addEventListener('mousemove', onMouseMove);
@@ -721,6 +842,7 @@ class CanvasEditorPane implements IDisposable {
     };
 
     const onMouseMove = (e: MouseEvent) => {
+      e.preventDefault();
       const delta = (startY - e.clientY) / (this._coverEl?.offsetHeight ?? 200);
       const newOffset = Math.max(0, Math.min(1, startOffset + delta));
       const yPct = (newOffset * 100).toFixed(1);
@@ -740,22 +862,57 @@ class CanvasEditorPane implements IDisposable {
       this._dataService.updatePage(this._pageId, { coverYOffset: finalOffset });
     };
 
+    // Save the original offset so Cancel can revert
+    const originalOffset = this._currentPage?.coverYOffset ?? 0.5;
+
     overlay.addEventListener('mousedown', onMouseDown);
 
-    // Done button
-    const doneBtn = $('button.canvas-cover-done-btn');
-    doneBtn.textContent = 'Done';
-    doneBtn.addEventListener('click', (e) => {
+    // Button container for Save / Cancel
+    const actionBar = $('div.canvas-cover-reposition-actions');
+
+    const cancelBtn = $('button.canvas-cover-btn');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      // Revert to original offset
+      if (this._currentPage) {
+        (this._currentPage as any).coverYOffset = originalOffset;
+      }
+      const yPct = (originalOffset * 100).toFixed(1);
+      if (this._coverEl) {
+        this._coverEl.style.backgroundPosition = `center ${yPct}%`;
+      }
+      overlay.remove();
+      actionBar.remove();
+      this._coverEl?.classList.remove('canvas-cover--repositioning');
+      if (this._coverControls) {
+        this._coverControls.style.display = '';
+      }
+      this._isRepositioning = false;
+    });
+    actionBar.appendChild(cancelBtn);
+
+    const saveBtn = $('button.canvas-cover-btn.canvas-cover-btn--primary');
+    saveBtn.textContent = 'Save position';
+    saveBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       overlay.remove();
-      doneBtn.remove();
+      actionBar.remove();
       this._coverEl?.classList.remove('canvas-cover--repositioning');
+      if (this._coverControls) {
+        this._coverControls.style.display = '';
+      }
+      this._isRepositioning = false;
       const finalOffset = this._currentPage?.coverYOffset ?? 0.5;
       this._dataService.updatePage(this._pageId, { coverYOffset: finalOffset });
     });
-    this._coverEl.appendChild(doneBtn);
+    actionBar.appendChild(saveBtn);
+
+    this._coverEl.appendChild(actionBar);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -818,25 +975,25 @@ class CanvasEditorPane implements IDisposable {
     const renderUpload = () => {
       content.innerHTML = '';
       const uploadBtn = $('button.canvas-cover-upload-btn');
-      uploadBtn.textContent = '📁 Choose an image';
+      uploadBtn.textContent = 'Choose an image';
       uploadBtn.addEventListener('click', async () => {
         try {
           const electron = (window as any).parallxElectron;
-          if (!electron?.showOpenDialog) return;
-          const result = await electron.showOpenDialog({
+          if (!electron?.dialog?.openFile) return;
+          const filePaths = await electron.dialog.openFile({
             filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
             properties: ['openFile'],
           });
-          if (result?.filePaths?.[0]) {
-            const filePath = result.filePaths[0];
-            // Read file as base64
-            const fileData = await electron.readFileBase64?.(filePath);
-            if (fileData) {
+          if (filePaths?.[0]) {
+            const filePath = filePaths[0];
+            // Read file — binary files auto-return as base64
+            const result = await electron.fs.readFile(filePath);
+            if (result?.content && result?.encoding === 'base64') {
               const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
               const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
-              const dataUrl = `data:${mime};base64,${fileData}`;
-              // Check rough size (2MB limit)
-              if (fileData.length > 2 * 1024 * 1024 * 1.37) {
+              const dataUrl = `data:${mime};base64,${result.content}`;
+              // Check rough size (2MB limit for base64)
+              if (result.content.length > 2 * 1024 * 1024 * 1.37) {
                 alert('Image is too large (max 2MB). Please choose a smaller image.');
                 return;
               }
@@ -993,25 +1150,6 @@ class CanvasEditorPane implements IDisposable {
   // ══════════════════════════════════════════════════════════════════════════
   // Page Menu — "⋯" dropdown (Cap 9)
   // ══════════════════════════════════════════════════════════════════════════
-
-  private _createPageMenu(): void {
-    if (!this._editorContainer) return;
-
-    this._pageMenuBtn = $('button.canvas-page-menu-btn');
-    this._pageMenuBtn.innerHTML = svgIcon('ellipsis');
-    const menuSvg = this._pageMenuBtn.querySelector('svg');
-    if (menuSvg) { menuSvg.setAttribute('width', '16'); menuSvg.setAttribute('height', '16'); }
-    this._pageMenuBtn.title = 'Page settings';
-    this._pageMenuBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (this._pageMenuDropdown) {
-        this._dismissPopups();
-        return;
-      }
-      this._showPageMenu();
-    });
-    this._editorContainer.appendChild(this._pageMenuBtn);
-  }
 
   private _showPageMenu(): void {
     this._dismissPopups();
@@ -1732,6 +1870,9 @@ class CanvasEditorPane implements IDisposable {
       this._bubbleMenu = null;
     }
 
+    this._topRibbon = null;
+    this._ribbonFavoriteBtn = null;
+    this._ribbonEditedLabel = null;
     this._pageHeader = null;
     this._coverEl = null;
     this._coverControls = null;
