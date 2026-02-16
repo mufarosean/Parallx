@@ -377,21 +377,21 @@ describe('tiptapJsonToMarkdown', () => {
   // ── Callout ───────────────────────────────────────────────────────────
 
   describe('callout', () => {
-    it('renders a callout with emoji prefix', () => {
+    it('renders a callout with icon label prefix', () => {
       const result = tiptapJsonToMarkdown(doc({
         type: 'callout',
-        attrs: { emoji: '⚠️' },
+        attrs: { emoji: 'bolt' },
         content: [p('Warning text')],
       }));
-      expect(result).toContain('> ⚠️ Warning text');
+      expect(result).toContain('> **Bolt:** Warning text');
     });
 
-    it('renders callout with default emoji when none specified', () => {
+    it('renders callout with default lightbulb label when none specified', () => {
       const result = tiptapJsonToMarkdown(doc({
         type: 'callout',
         content: [p('Info text')],
       }));
-      expect(result).toContain('> 💡 Info text');
+      expect(result).toContain('> **Note:** Info text');
     });
   });
 

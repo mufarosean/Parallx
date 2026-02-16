@@ -1,10 +1,10 @@
-// Canvas Built-In Tool — main activation entry point
+﻿// Canvas Built-In Tool â€” main activation entry point
 //
 // Implements:
-//   • CanvasDataService creation and migration (Task 3.2)
-//   • Sidebar view provider registration for page tree (deferred to Cap 4)
-//   • Editor provider registration for Canvas panes (deferred to Cap 5)
-//   • Command handlers for page CRUD
+//   â€¢ CanvasDataService creation and migration (Task 3.2)
+//   â€¢ Sidebar view provider registration for page tree (deferred to Cap 4)
+//   â€¢ Editor provider registration for Canvas panes (deferred to Cap 5)
+//   â€¢ Command handlers for page CRUD
 //
 // Follows the same pattern as src/built-in/explorer/main.ts.
 
@@ -14,7 +14,7 @@ import { CanvasDataService } from './canvasDataService.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface ParallxApi {
   views: {
@@ -49,13 +49,13 @@ interface ParallxApi {
   };
 }
 
-// ─── Module State ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Module State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 let _api: ParallxApi;
 let _dataService: CanvasDataService | null = null;
 let _sidebar: CanvasSidebar | null = null;
 
-// ─── Activation ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
   _api = api;
@@ -119,12 +119,12 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 7. Restore last-opened page (Task 6.3)
   await _restoreLastOpenedPage(api, context, _dataService);
 
-  // 8. Listen for workspace folder changes — run migrations when a folder is opened
+  // 8. Listen for workspace folder changes â€” run migrations when a folder is opened
   //    This handles the case where Canvas activates before any workspace is open.
   context.subscriptions.push(
     api.workspace.onDidChangeWorkspaceFolders(async (e) => {
       if (e.added.length > 0) {
-        // A folder was added — database should now be open. Run migrations.
+        // A folder was added â€” database should now be open. Run migrations.
         // Small delay to let the database service open the DB file.
         await new Promise(r => setTimeout(r, 500));
         await _runMigrations();
@@ -151,19 +151,19 @@ export async function deactivate(): Promise<void> {
   console.log('[Canvas] Tool deactivated');
 }
 
-// ─── Migrations ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Migrations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function _runMigrations(): Promise<void> {
   const electron = (window as any).parallxElectron;
   if (!electron?.database || !electron.appPath) {
-    console.warn('[Canvas] Cannot run migrations — database or appPath not available');
+    console.warn('[Canvas] Cannot run migrations â€” database or appPath not available');
     return;
   }
 
   // Check if database is open
   const status = await electron.database.isOpen();
   if (!status.isOpen) {
-    console.warn('[Canvas] Database not open — skipping migrations');
+    console.warn('[Canvas] Database not open â€” skipping migrations');
     return;
   }
 
@@ -179,7 +179,7 @@ async function _runMigrations(): Promise<void> {
   }
 }
 
-// ─── Restore Last-Opened Page (Task 6.3) ─────────────────────────────────────
+// â”€â”€â”€ Restore Last-Opened Page (Task 6.3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function _restoreLastOpenedPage(api: ParallxApi, context: ToolContext, dataService: CanvasDataService): Promise<void> {
   const lastPageId = context.workspaceState.get<string>('canvas.lastOpenedPage');
@@ -188,14 +188,14 @@ async function _restoreLastOpenedPage(api: ParallxApi, context: ToolContext, dat
   try {
     const page = await dataService.getPage(lastPageId);
     if (!page) {
-      // Page was deleted — clear stored value
+      // Page was deleted â€” clear stored value
       await context.workspaceState.update('canvas.lastOpenedPage', undefined);
       return;
     }
     await api.editors.openEditor({
       typeId: 'canvas',
       title: page.title,
-      icon: page.icon ?? '📄',
+      icon: page.icon ?? undefined,
       instanceId: page.id,
     });
   } catch (err) {
@@ -204,10 +204,10 @@ async function _restoreLastOpenedPage(api: ParallxApi, context: ToolContext, dat
   }
 }
 
-// ─── Commands ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function _registerCommands(api: ParallxApi, context: ToolContext): void {
-  // canvas.newPage — Create a new page at root level
+  // canvas.newPage â€” Create a new page at root level
   context.subscriptions.push(
     api.commands.registerCommand('canvas.newPage', async () => {
       if (!_dataService) return;
@@ -217,7 +217,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
         await api.editors.openEditor({
           typeId: 'canvas',
           title: page.title,
-          icon: page.icon ?? '📄',
+          icon: page.icon ?? undefined,
           instanceId: page.id,
         });
       } catch (err) {
@@ -227,7 +227,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // canvas.deletePage — Delete the selected page (requires pageId argument)
+  // canvas.deletePage â€” Delete the selected page (requires pageId argument)
   context.subscriptions.push(
     api.commands.registerCommand('canvas.deletePage', async (...args: unknown[]) => {
       if (!_dataService) return;
@@ -256,7 +256,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // canvas.renamePage — Rename a page (requires pageId argument)
+  // canvas.renamePage â€” Rename a page (requires pageId argument)
   context.subscriptions.push(
     api.commands.registerCommand('canvas.renamePage', async (...args: unknown[]) => {
       if (!_dataService) return;
@@ -281,7 +281,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // canvas.duplicatePage — Duplicate a page (requires pageId argument)
+  // canvas.duplicatePage â€” Duplicate a page (requires pageId argument)
   context.subscriptions.push(
     api.commands.registerCommand('canvas.duplicatePage', async (...args: unknown[]) => {
       if (!_dataService) return;
@@ -301,7 +301,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
         await api.editors.openEditor({
           typeId: 'canvas',
           title: copy.title,
-          icon: copy.icon ?? '📄',
+          icon: copy.icon ?? undefined,
           instanceId: copy.id,
         });
       } catch (err) {
@@ -312,7 +312,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
   );
 }
 
-// ─── Exported for internal use by sidebar / editor ───────────────────────────
+// â”€â”€â”€ Exported for internal use by sidebar / editor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Access the Canvas data service from other Canvas modules. */
 export function getDataService(): CanvasDataService | null {

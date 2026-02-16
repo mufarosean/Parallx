@@ -105,12 +105,14 @@ function renderNode(node: TipTapNode, depth: number): string {
       return '---\n';
 
     case 'callout': {
-      const emoji = (node.attrs?.emoji as string) || '💡';
+      const iconLabel = (node.attrs?.emoji as string) || 'lightbulb';
+      // Use a text prefix instead of emoji in markdown output
+      const prefix = iconLabel === 'lightbulb' ? 'Note' : iconLabel.charAt(0).toUpperCase() + iconLabel.slice(1);
       const inner = (node.content || [])
         .map(child => renderNode(child, depth))
         .join('')
         .trimEnd();
-      return inner.split('\n').map((line, i) => i === 0 ? `> ${emoji} ${line}` : `> ${line}`).join('\n') + '\n';
+      return inner.split('\n').map((line, i) => i === 0 ? `> **${prefix}:** ${line}` : `> ${line}`).join('\n') + '\n';
     }
 
     case 'details': {

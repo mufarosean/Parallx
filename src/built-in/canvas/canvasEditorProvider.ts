@@ -46,6 +46,7 @@ import AutoJoiner from 'tiptap-extension-auto-joiner';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
 import { tiptapJsonToMarkdown } from './markdownExport.js';
+import { createIconElement, resolvePageIcon, svgIcon, PAGE_ICON_IDS } from './canvasIcons.js';
 
 // ─── TipTap Command Augmentation ────────────────────────────────────────────
 declare module '@tiptap/core' {
@@ -62,8 +63,8 @@ declare module '@tiptap/core' {
 const lowlight = createLowlight(common);
 
 // ─── Custom Callout Node ────────────────────────────────────────────────────
-// Notion-style callout: a colored info box with an emoji icon and rich content.
-// Rendered as <div data-type="callout"> with a non-editable emoji and editable content area.
+// Notion-style callout: a colored info box with an SVG icon and rich content.
+// Rendered as <div data-type="callout"> with a non-editable icon and editable content area.
 
 const Callout = Node.create({
   name: 'callout',
@@ -74,8 +75,8 @@ const Callout = Node.create({
   addAttributes() {
     return {
       emoji: {
-        default: '💡',
-        parseHTML: (element: HTMLElement) => element.getAttribute('data-emoji') || '💡',
+        default: 'lightbulb',
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-emoji') || 'lightbulb',
         renderHTML: (attributes: Record<string, any>) => ({ 'data-emoji': attributes.emoji }),
       },
     };
@@ -97,12 +98,35 @@ const Callout = Node.create({
         {
           class: 'canvas-callout-emoji',
           contenteditable: 'false',
-          'data-emoji': HTMLAttributes['data-emoji'] || '💡',
+          'data-icon': HTMLAttributes['data-emoji'] || 'lightbulb',
         },
-        HTMLAttributes['data-emoji'] || '💡',
+        '',
       ],
       ['div', { class: 'canvas-callout-content' }, 0],
     ];
+  },
+
+  addNodeView() {
+    return ({ node }: any) => {
+      const dom = document.createElement('div');
+      dom.classList.add('canvas-callout');
+      dom.setAttribute('data-type', 'callout');
+
+      const iconSpan = document.createElement('span');
+      iconSpan.classList.add('canvas-callout-emoji');
+      iconSpan.contentEditable = 'false';
+      const iconId = resolvePageIcon(node.attrs.emoji);
+      iconSpan.innerHTML = svgIcon(iconId);
+      const svg = iconSpan.querySelector('svg');
+      if (svg) { svg.setAttribute('width', '20'); svg.setAttribute('height', '20'); }
+      dom.appendChild(iconSpan);
+
+      const contentDOM = document.createElement('div');
+      contentDOM.classList.add('canvas-callout-content');
+      dom.appendChild(contentDOM);
+
+      return { dom, contentDOM };
+    };
   },
 
   addCommands() {
@@ -148,45 +172,45 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   },
   // ── Lists ──
   {
-    label: 'Bullet List', icon: '•', description: 'Unordered list',
+    label: 'Bullet List', icon: 'bullet-list', description: 'Unordered list',
     action: (e) => e.chain().focus().toggleBulletList().run(),
   },
   {
-    label: 'Numbered List', icon: '1.', description: 'Ordered list',
+    label: 'Numbered List', icon: 'numbered-list', description: 'Ordered list',
     action: (e) => e.chain().focus().toggleOrderedList().run(),
   },
   {
-    label: 'To-Do List', icon: '☐', description: 'Task list with checkboxes',
+    label: 'To-Do List', icon: 'checklist', description: 'Task list with checkboxes',
     action: (e) => e.chain().focus().toggleTaskList().run(),
   },
   // ── Rich blocks ──
   {
-    label: 'Quote', icon: '❝', description: 'Block quote',
+    label: 'Quote', icon: 'quote', description: 'Block quote',
     action: (e) => e.chain().focus().toggleBlockquote().run(),
   },
   {
-    label: 'Code Block', icon: '{ }', description: 'Code with syntax highlighting',
+    label: 'Code Block', icon: 'code', description: 'Code with syntax highlighting',
     action: (e) => e.chain().focus().toggleCodeBlock().run(),
   },
   {
-    label: 'Divider', icon: '—', description: 'Horizontal rule',
+    label: 'Divider', icon: 'divider', description: 'Horizontal rule',
     action: (e) => e.chain().focus().setHorizontalRule().run(),
   },
   {
-    label: 'Callout', icon: '💡', description: 'Highlighted info box',
-    action: (e) => (e.commands as any).toggleCallout({ emoji: '💡' }),
+    label: 'Callout', icon: 'lightbulb', description: 'Highlighted info box',
+    action: (e) => (e.commands as any).toggleCallout({ emoji: 'lightbulb' }),
   },
   {
-    label: 'Toggle List', icon: '▶', description: 'Collapsible content',
+    label: 'Toggle List', icon: 'chevron-right', description: 'Collapsible content',
     action: (e) => e.chain().focus().setDetails().run(),
   },
   {
-    label: 'Table', icon: '▦', description: 'Insert a table',
+    label: 'Table', icon: 'grid', description: 'Insert a table',
     action: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
   },
   // ── Media ──
   {
-    label: 'Image', icon: '🖼', description: 'Embed an image from URL',
+    label: 'Image', icon: 'image', description: 'Embed an image from URL',
     action: (e) => {
       const url = prompt('Enter image URL:');
       if (url) e.chain().focus().setImage({ src: url }).run();
@@ -239,6 +263,7 @@ class CanvasEditorPane implements IDisposable {
   private _pageMenuBtn: HTMLElement | null = null;
   private _pageMenuDropdown: HTMLElement | null = null;
   private _emojiPicker: HTMLElement | null = null;
+  private _iconPicker: HTMLElement | null = null;
   private _coverPicker: HTMLElement | null = null;
 
   // ── Page state ──
@@ -411,13 +436,22 @@ class CanvasEditorPane implements IDisposable {
 
         // Update title if changed externally (e.g. sidebar rename)
         if (this._titleEl && event.page.title !== this._titleEl.textContent) {
-          this._titleEl.textContent = event.page.title || '';
+          // Show empty for 'Untitled' so placeholder displays
+          this._titleEl.textContent = (event.page.title && event.page.title !== 'Untitled') ? event.page.title : '';
         }
 
-        // Update icon
+        // Update icon (SVG)
         if (this._iconEl) {
-          this._iconEl.textContent = event.page.icon || '';
-          this._iconEl.style.display = event.page.icon ? '' : 'none';
+          if (event.page.icon) {
+            const iconId = resolvePageIcon(event.page.icon);
+            this._iconEl.innerHTML = svgIcon(iconId);
+            const svg = this._iconEl.querySelector('svg');
+            if (svg) { svg.setAttribute('width', '40'); svg.setAttribute('height', '40'); }
+            this._iconEl.style.display = '';
+          } else {
+            this._iconEl.innerHTML = '';
+            this._iconEl.style.display = 'none';
+          }
         }
 
         // Update cover
@@ -443,14 +477,21 @@ class CanvasEditorPane implements IDisposable {
     this._pageHeader.appendChild(this._breadcrumbsEl);
     this._loadBreadcrumbs();
 
-    // ── Icon (large, clickable) ──
+    // ── Icon (large, clickable — SVG) ──
     this._iconEl = $('span.canvas-page-icon');
-    this._iconEl.textContent = this._currentPage?.icon || '';
-    this._iconEl.style.display = this._currentPage?.icon ? '' : 'none';
+    const pageIconId = resolvePageIcon(this._currentPage?.icon);
+    if (this._currentPage?.icon) {
+      this._iconEl.innerHTML = svgIcon(pageIconId);
+      const svg = this._iconEl.querySelector('svg');
+      if (svg) { svg.setAttribute('width', '40'); svg.setAttribute('height', '40'); }
+      this._iconEl.style.display = '';
+    } else {
+      this._iconEl.style.display = 'none';
+    }
     this._iconEl.title = 'Change icon';
     this._iconEl.addEventListener('click', (e) => {
       e.stopPropagation();
-      this._showEmojiPicker();
+      this._showIconPicker();
     });
     this._pageHeader.appendChild(this._iconEl);
 
@@ -460,10 +501,12 @@ class CanvasEditorPane implements IDisposable {
     if (!this._currentPage?.icon) {
       const addIconBtn = $('button.canvas-affordance-btn');
       addIconBtn.dataset.action = 'add-icon';
-      addIconBtn.innerHTML = '😀 <span>Add icon</span>';
+      addIconBtn.appendChild(createIconElement('smile', 14));
+      const lbl = $('span'); lbl.textContent = 'Add icon';
+      addIconBtn.appendChild(lbl);
       addIconBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._showEmojiPicker();
+        this._showIconPicker();
       });
       this._hoverAffordances.appendChild(addIconBtn);
     }
@@ -471,7 +514,9 @@ class CanvasEditorPane implements IDisposable {
     if (!this._currentPage?.coverUrl) {
       const addCoverBtn = $('button.canvas-affordance-btn');
       addCoverBtn.dataset.action = 'add-cover';
-      addCoverBtn.innerHTML = '🖼️ <span>Add cover</span>';
+      addCoverBtn.appendChild(createIconElement('image', 14));
+      const lbl2 = $('span'); lbl2.textContent = 'Add cover';
+      addCoverBtn.appendChild(lbl2);
       addCoverBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this._showCoverPicker();
@@ -486,7 +531,9 @@ class CanvasEditorPane implements IDisposable {
     this._titleEl.contentEditable = 'true';
     this._titleEl.spellcheck = false;
     this._titleEl.setAttribute('data-placeholder', 'Untitled');
-    this._titleEl.textContent = this._currentPage?.title || '';
+    // Show empty (use CSS placeholder) if title is the default 'Untitled'
+    const displayTitle = this._currentPage?.title;
+    this._titleEl.textContent = (displayTitle && displayTitle !== 'Untitled') ? displayTitle : '';
 
     // Title input → debounced save
     this._titleEl.addEventListener('input', () => {
@@ -530,9 +577,11 @@ class CanvasEditorPane implements IDisposable {
       this._breadcrumbsEl.innerHTML = '';
       for (let i = 0; i < ancestors.length; i++) {
         const crumb = $('span.canvas-breadcrumb');
-        crumb.textContent = ancestors[i].icon
-          ? `${ancestors[i].icon} ${ancestors[i].title}`
-          : ancestors[i].title;
+        const crumbIcon = createIconElement(resolvePageIcon(ancestors[i].icon), 12);
+        crumb.appendChild(crumbIcon);
+        const crumbText = $('span');
+        crumbText.textContent = ` ${ancestors[i].title}`;
+        crumb.appendChild(crumbText);
         crumb.addEventListener('click', () => {
           // Navigate to ancestor by dispatching to the editor service
           const input = this._input as any;
@@ -540,7 +589,7 @@ class CanvasEditorPane implements IDisposable {
             input._api.editors.openEditor({
               typeId: 'canvas',
               title: ancestors[i].title,
-              icon: ancestors[i].icon ?? '📄',
+              icon: ancestors[i].icon ?? undefined,
               instanceId: ancestors[i].id,
             });
           }
@@ -629,10 +678,12 @@ class CanvasEditorPane implements IDisposable {
     if (!this._currentPage?.icon) {
       const addIconBtn = $('button.canvas-affordance-btn');
       addIconBtn.dataset.action = 'add-icon';
-      addIconBtn.innerHTML = '😀 <span>Add icon</span>';
+      addIconBtn.appendChild(createIconElement('smile', 14));
+      const lbl = $('span'); lbl.textContent = 'Add icon';
+      addIconBtn.appendChild(lbl);
       addIconBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._showEmojiPicker();
+        this._showIconPicker();
       });
       this._hoverAffordances.appendChild(addIconBtn);
     }
@@ -640,7 +691,9 @@ class CanvasEditorPane implements IDisposable {
     if (!this._currentPage?.coverUrl) {
       const addCoverBtn = $('button.canvas-affordance-btn');
       addCoverBtn.dataset.action = 'add-cover';
-      addCoverBtn.innerHTML = '🖼️ <span>Add cover</span>';
+      addCoverBtn.appendChild(createIconElement('image', 14));
+      const lbl2 = $('span'); lbl2.textContent = 'Add cover';
+      addCoverBtn.appendChild(lbl2);
       addCoverBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this._showCoverPicker();
@@ -849,128 +902,81 @@ class CanvasEditorPane implements IDisposable {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Emoji Picker (Cap 7 — Task 7.4)
+  // Icon Picker (SVG icons — replaces emoji picker)
   // ══════════════════════════════════════════════════════════════════════════
 
-  private static readonly EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
-    { label: 'Smileys', emojis: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🫡','🤐','🤨','😐','😑','😶','🫥','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🥵','🥶','🥴','😵','🤯','🤠','🥳','🥸','😎'] },
-    { label: 'People', emojis: ['👋','🤚','🖐️','✋','🖖','🫱','🫲','👌','🤌','🤏','✌️','🤞','🫰','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','🫵','👍','👎','✊','👊','🤛','🤜','👏','🙌','🫶','👐','🤲','🤝','🙏','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🧠','🫀','🫁','🦷','🦴','👀','👁️','👅','👄'] },
-    { label: 'Animals', emojis: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🪱','🐛','🦋','🐌','🐞','🐜','🪰','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑'] },
-    { label: 'Food', emojis: ['🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🫑','🌽','🥕','🫒','🧄','🧅','🥔','🍠','🫘','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆'] },
-    { label: 'Travel', emojis: ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵','🚲','🛴','🛹','🛼','🚏','🛣️','🛤️','⛽','🛞','🚨','🚥','🚦','🛑','🚧','⚓','🛟','⛵','🛶','🚤','🛳️','⛴️','🛥️','🚢','✈️','🛩️','🛫','🛬','🪂','💺','🚁','🚟','🚠','🚡','🛰️','🚀','🛸','🌍','🌎','🌏'] },
-    { label: 'Objects', emojis: ['💡','🔦','🏮','🪔','📔','📕','📖','📗','📘','📙','📚','📓','📒','📃','📜','📄','📰','🗞️','📑','🔖','🏷️','💰','🪙','💴','💵','💶','💷','💸','💳','🧾','💹','✉️','📧','📨','📩','📤','📥','📦','📫','📪','📬','📭','📮','🗳️','✏️','✒️','🖋️','🖊️','🖌️','🖍️','📝','💼','📁','📂','🗂️','📅','📆'] },
-    { label: 'Symbols', emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❤️‍🔥','❤️‍🩹','❣️','💕','💞','💓','💗','💖','💘','💝','⭐','🌟','✨','⚡','🔥','💥','🎯','💎','🔔','🎵','🎶','🔇','🔈','🔉','🔊','📢','📣','💬','💭','🗯️','♠️','♣️','♥️','♦️','🃏','🎴','🀄','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','✅','❌','⭕','❓','❗','‼️'] },
-    { label: 'Flags', emojis: ['🏁','🚩','🎌','🏴','🏳️','🏳️‍🌈','🏳️‍⚧️','🏴‍☠️','🇺🇸','🇬🇧','🇨🇦','🇦🇺','🇩🇪','🇫🇷','🇯🇵','🇰🇷','🇨🇳','🇮🇳','🇧🇷','🇲🇽','🇪🇸','🇮🇹','🇷🇺','🇳🇱','🇸🇪','🇳🇴','🇩🇰','🇫🇮','🇵🇱','🇹🇷','🇿🇦','🇪🇬','🇳🇬','🇰🇪','🇸🇦','🇦🇪','🇮🇱','🇹🇭','🇻🇳','🇮🇩','🇵🇭','🇸🇬','🇲🇾','🇳🇿','🇦🇷','🇨🇴','🇨🇱','🇵🇪'] },
-  ];
-
-  private _showEmojiPicker(): void {
+  private _showIconPicker(): void {
     this._dismissPopups();
 
-    this._emojiPicker = $('div.canvas-emoji-picker');
+    this._iconPicker = $('div.canvas-icon-picker');
 
     // Search
-    const searchInput = $('input.canvas-emoji-search') as HTMLInputElement;
+    const searchInput = $('input.canvas-icon-search') as HTMLInputElement;
     searchInput.type = 'text';
-    searchInput.placeholder = 'Search emoji…';
-    this._emojiPicker.appendChild(searchInput);
+    searchInput.placeholder = 'Search icons…';
+    this._iconPicker.appendChild(searchInput);
 
     // Remove button (if icon is set)
     if (this._currentPage?.icon) {
-      const removeBtn = $('button.canvas-emoji-remove');
-      removeBtn.textContent = '✕ Remove icon';
+      const removeBtn = $('button.canvas-icon-remove');
+      removeBtn.appendChild(createIconElement('close', 12));
+      const removeLbl = $('span');
+      removeLbl.textContent = ' Remove icon';
+      removeBtn.appendChild(removeLbl);
       removeBtn.addEventListener('click', () => {
         this._dataService.updatePage(this._pageId, { icon: null as any });
         this._dismissPopups();
       });
-      this._emojiPicker.appendChild(removeBtn);
+      this._iconPicker.appendChild(removeBtn);
     }
 
-    // Category tabs
-    const tabBar = $('div.canvas-emoji-tabs');
-    const contentArea = $('div.canvas-emoji-content');
+    // Icon grid
+    const contentArea = $('div.canvas-icon-content');
 
-    const cats = CanvasEditorPane.EMOJI_CATEGORIES;
-    const categoryLabels = cats.map(c => c.label);
-
-    const renderCategory = (catIndex: number) => {
+    const renderIcons = (filter?: string) => {
       contentArea.innerHTML = '';
-      const grid = $('div.canvas-emoji-grid');
-      for (const emoji of cats[catIndex].emojis) {
-        const btn = $('button.canvas-emoji-btn');
-        btn.textContent = emoji;
+      const grid = $('div.canvas-icon-grid');
+      const ids = filter
+        ? PAGE_ICON_IDS.filter(id => id.includes(filter.toLowerCase()))
+        : PAGE_ICON_IDS;
+      for (const id of ids) {
+        const btn = $('button.canvas-icon-btn');
+        btn.title = id;
+        btn.innerHTML = svgIcon(id);
+        const svg = btn.querySelector('svg');
+        if (svg) { svg.setAttribute('width', '22'); svg.setAttribute('height', '22'); }
         btn.addEventListener('click', () => {
-          this._dataService.updatePage(this._pageId, { icon: emoji });
+          this._dataService.updatePage(this._pageId, { icon: id });
           this._dismissPopups();
         });
         grid.appendChild(btn);
       }
-      contentArea.appendChild(grid);
-    };
-
-    const renderSearch = (query: string) => {
-      contentArea.innerHTML = '';
-      const grid = $('div.canvas-emoji-grid');
-      const q = query.toLowerCase();
-      let count = 0;
-      for (const cat of cats) {
-        for (const emoji of cat.emojis) {
-          // Simple fuzzy: match category name or emoji itself
-          if (cat.label.toLowerCase().includes(q) || count < 80) {
-            const btn = $('button.canvas-emoji-btn');
-            btn.textContent = emoji;
-            btn.addEventListener('click', () => {
-              this._dataService.updatePage(this._pageId, { icon: emoji });
-              this._dismissPopups();
-            });
-            grid.appendChild(btn);
-            count++;
-          }
-        }
+      if (ids.length === 0) {
+        const empty = $('div.canvas-icon-empty');
+        empty.textContent = 'No matching icons';
+        grid.appendChild(empty);
       }
       contentArea.appendChild(grid);
     };
 
-    categoryLabels.forEach((label, i) => {
-      const tab = $('button.canvas-emoji-tab');
-      tab.textContent = cats[i].emojis[0]; // First emoji as tab icon
-      tab.title = label;
-      if (i === 0) tab.classList.add('canvas-emoji-tab--active');
-      tab.addEventListener('click', () => {
-        tabBar.querySelectorAll('.canvas-emoji-tab').forEach(t => t.classList.remove('canvas-emoji-tab--active'));
-        tab.classList.add('canvas-emoji-tab--active');
-        searchInput.value = '';
-        renderCategory(i);
-      });
-      tabBar.appendChild(tab);
-    });
-
-    this._emojiPicker.appendChild(tabBar);
-    this._emojiPicker.appendChild(contentArea);
-
-    // Render first category
-    renderCategory(0);
+    renderIcons();
 
     // Search handler
     searchInput.addEventListener('input', () => {
       const q = searchInput.value.trim();
-      if (q.length > 0) {
-        renderSearch(q);
-      } else {
-        // Re-render active category
-        const activeIdx = [...tabBar.children].findIndex(t => t.classList.contains('canvas-emoji-tab--active'));
-        renderCategory(activeIdx >= 0 ? activeIdx : 0);
-      }
+      renderIcons(q || undefined);
     });
 
-    this._container.appendChild(this._emojiPicker);
+    this._iconPicker.appendChild(contentArea);
+    this._container.appendChild(this._iconPicker);
 
     // Position near icon
     if (this._iconEl || this._pageHeader) {
       const target = this._iconEl?.style.display !== 'none' ? this._iconEl : this._pageHeader;
       const rect = target?.getBoundingClientRect();
       if (rect) {
-        this._emojiPicker.style.left = `${rect.left}px`;
-        this._emojiPicker.style.top = `${rect.bottom + 4}px`;
+        this._iconPicker.style.left = `${rect.left}px`;
+        this._iconPicker.style.top = `${rect.bottom + 4}px`;
       }
     }
 
@@ -992,7 +998,9 @@ class CanvasEditorPane implements IDisposable {
     if (!this._editorContainer) return;
 
     this._pageMenuBtn = $('button.canvas-page-menu-btn');
-    this._pageMenuBtn.textContent = '⋯';
+    this._pageMenuBtn.innerHTML = svgIcon('ellipsis');
+    const menuSvg = this._pageMenuBtn.querySelector('svg');
+    if (menuSvg) { menuSvg.setAttribute('width', '16'); menuSvg.setAttribute('height', '16'); }
     this._pageMenuBtn.title = 'Page settings';
     this._pageMenuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1038,16 +1046,19 @@ class CanvasEditorPane implements IDisposable {
     this._pageMenuDropdown.appendChild(fontGroup);
 
     // ── Toggles ──
-    const toggles: { label: string; key: 'fullWidth' | 'smallText' | 'isLocked'; icon: string }[] = [
-      { label: 'Full width', key: 'fullWidth', icon: '↔' },
-      { label: 'Small text', key: 'smallText', icon: 'Aa' },
-      { label: 'Lock page', key: 'isLocked', icon: '🔒' },
+    const toggles: { label: string; key: 'fullWidth' | 'smallText' | 'isLocked'; iconId: string }[] = [
+      { label: 'Full width', key: 'fullWidth', iconId: 'expand-width' },
+      { label: 'Small text', key: 'smallText', iconId: 'text-size' },
+      { label: 'Lock page', key: 'isLocked', iconId: 'lock' },
     ];
 
     for (const toggle of toggles) {
       const row = $('div.canvas-page-menu-toggle');
       const label = $('span.canvas-page-menu-toggle-label');
-      label.textContent = `${toggle.icon}  ${toggle.label}`;
+      label.appendChild(createIconElement(toggle.iconId as any, 14));
+      const labelText = $('span');
+      labelText.textContent = ` ${toggle.label}`;
+      label.appendChild(labelText);
       const switchEl = $('div.canvas-page-menu-switch');
       const isOn = !!(page as any)?.[toggle.key];
       if (isOn) switchEl.classList.add('canvas-page-menu-switch--on');
@@ -1066,16 +1077,18 @@ class CanvasEditorPane implements IDisposable {
     this._pageMenuDropdown.appendChild($('div.canvas-page-menu-divider'));
 
     // ── Action buttons ──
-    const actions: { label: string; action: () => void; danger?: boolean }[] = [
+    const actions: { label: string; iconId: string; action: () => void; danger?: boolean }[] = [
       {
-        label: '⭐ Favorite',
+        label: 'Favorite',
+        iconId: 'star',
         action: () => {
           this._dataService.toggleFavorite(this._pageId);
           this._dismissPopups();
         },
       },
       {
-        label: '📋 Duplicate',
+        label: 'Duplicate',
+        iconId: 'duplicate',
         action: async () => {
           try {
             const newPage = await this._dataService.duplicatePage(this._pageId);
@@ -1085,7 +1098,7 @@ class CanvasEditorPane implements IDisposable {
               input._api.editors.openEditor({
                 typeId: 'canvas',
                 title: newPage.title,
-                icon: newPage.icon ?? '📄',
+                icon: newPage.icon ?? undefined,
                 instanceId: newPage.id,
               });
             }
@@ -1096,7 +1109,8 @@ class CanvasEditorPane implements IDisposable {
         },
       },
       {
-        label: '📥 Export Markdown',
+        label: 'Export Markdown',
+        iconId: 'export',
         action: async () => {
           try {
             await this._exportMarkdown();
@@ -1107,7 +1121,8 @@ class CanvasEditorPane implements IDisposable {
         },
       },
       {
-        label: '🗑️ Delete',
+        label: 'Delete',
+        iconId: 'trash',
         action: () => {
           this._dataService.archivePage(this._pageId);
           this._dismissPopups();
@@ -1118,12 +1133,16 @@ class CanvasEditorPane implements IDisposable {
 
     // Update favorite label based on current state
     if (page?.isFavorited) {
-      actions[0].label = '⭐ Remove from Favorites';
+      actions[0].label = 'Remove from Favorites';
+      actions[0].iconId = 'star-filled';
     }
 
     for (const act of actions) {
       const btn = $('button.canvas-page-menu-action');
-      btn.textContent = act.label;
+      btn.appendChild(createIconElement(act.iconId as any, 14));
+      const actLabel = $('span');
+      actLabel.textContent = ` ${act.label}`;
+      btn.appendChild(actLabel);
       if (act.danger) btn.classList.add('canvas-page-menu-action--danger');
       btn.addEventListener('click', act.action);
       this._pageMenuDropdown.appendChild(btn);
@@ -1214,6 +1233,10 @@ class CanvasEditorPane implements IDisposable {
       this._emojiPicker.remove();
       this._emojiPicker = null;
     }
+    if (this._iconPicker) {
+      this._iconPicker.remove();
+      this._iconPicker = null;
+    }
     if (this._coverPicker) {
       this._coverPicker.remove();
       this._coverPicker = null;
@@ -1230,6 +1253,7 @@ class CanvasEditorPane implements IDisposable {
     const target = e.target as HTMLElement;
     if (
       this._emojiPicker?.contains(target) ||
+      this._iconPicker?.contains(target) ||
       this._coverPicker?.contains(target) ||
       this._pageMenuDropdown?.contains(target) ||
       this._pageMenuBtn?.contains(target)
@@ -1335,7 +1359,7 @@ class CanvasEditorPane implements IDisposable {
         active: (e) => e.isActive('code'),
       },
       {
-        label: '🔗', title: 'Link',
+        label: svgIcon('link'), title: 'Link',
         command: () => this._toggleLinkInput(),
         active: (e) => e.isActive('link'),
       },
@@ -1370,7 +1394,9 @@ class CanvasEditorPane implements IDisposable {
     linkApply.textContent = '✓';
     linkApply.title = 'Apply link';
     const linkRemove = $('button.canvas-bubble-link-remove');
-    linkRemove.textContent = '✕';
+    linkRemove.innerHTML = svgIcon('close');
+    const lrSvg = linkRemove.querySelector('svg');
+    if (lrSvg) { lrSvg.setAttribute('width', '12'); lrSvg.setAttribute('height', '12'); }
     linkRemove.title = 'Remove link';
 
     linkApply.addEventListener('mousedown', (ev) => {
@@ -1575,7 +1601,15 @@ class CanvasEditorPane implements IDisposable {
       }
 
       const iconEl = $('span.canvas-slash-icon');
-      iconEl.textContent = item.icon;
+      // Render SVG icon if available, otherwise use text
+      const knownIcons = ['checklist','quote','code','divider','lightbulb','chevron-right','grid','image','bullet-list','numbered-list'];
+      if (knownIcons.includes(item.icon)) {
+        iconEl.innerHTML = svgIcon(item.icon as any);
+        const svg = iconEl.querySelector('svg');
+        if (svg) { svg.setAttribute('width', '18'); svg.setAttribute('height', '18'); }
+      } else {
+        iconEl.textContent = item.icon;
+      }
       row.appendChild(iconEl);
 
       const textEl = $('div.canvas-slash-text');

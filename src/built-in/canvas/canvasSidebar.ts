@@ -16,11 +16,11 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IPage, IPageTreeNode } from './canvasTypes.js';
 import { type CanvasDataService } from './canvasDataService.js';
 import { $ } from '../../ui/dom.js';
+import { createIconElement, resolvePageIcon, svgIcon, PAGE_ICON_IDS } from './canvasIcons.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const INDENT_PX = 20;
-const DEFAULT_PAGE_ICON = '📄';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -50,7 +50,10 @@ export class CanvasSidebar {
   // ── Favorites / Trash state ──
   private _favoritedPages: IPage[] = [];
   private _archivedPages: IPage[] = [];
-  private _trashExpanded = false;
+
+  // ── Trash panel ──
+  private _trashPanel: HTMLElement | null = null;
+  private _trashSearchQuery = '';
 
   // ── Context menu ──
   private _contextMenu: HTMLElement | null = null;
@@ -79,20 +82,24 @@ export class CanvasSidebar {
   createView(container: HTMLElement): IDisposable {
     container.classList.add('canvas-tree');
 
-    // Toolbar with + button
-    const toolbar = $('div.canvas-toolbar');
-    const addBtn = $('button.canvas-toolbar-btn');
-    addBtn.textContent = '+';
-    addBtn.title = 'New Page';
-    addBtn.addEventListener('click', () => this._createPage());
-    toolbar.appendChild(addBtn);
-    container.appendChild(toolbar);
-
-    // Tree list container
+    // Tree list container (toolbar is integrated into section headers)
     this._treeList = $('div.canvas-tree-list');
     this._treeList.tabIndex = 0;
     this._treeList.setAttribute('role', 'tree');
     container.appendChild(this._treeList);
+
+    // Fixed trash button at bottom of sidebar
+    const trashBtn = $('button.canvas-sidebar-trash-btn');
+    const trashIcon = createIconElement('trash', 14);
+    trashBtn.appendChild(trashIcon);
+    const trashText = $('span');
+    trashText.textContent = 'Trash';
+    trashBtn.appendChild(trashText);
+    trashBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._toggleTrashPanel();
+    });
+    container.appendChild(trashBtn);
 
     // Keyboard handler
     this._treeList.addEventListener('keydown', this._handleKeydown);
@@ -122,6 +129,7 @@ export class CanvasSidebar {
       dispose: () => {
         this._treeList?.removeEventListener('keydown', this._handleKeydown);
         this._dismissContextMenuCleanup();
+        this._dismissTrashPanel();
         this._treeList = null;
         for (const d of this._disposables) d.dispose();
         this._disposables.length = 0;
@@ -181,10 +189,21 @@ export class CanvasSidebar {
       this._treeList.appendChild(sep);
     }
 
-    // ── Pages section label ──
+    // ── Pages section header with inline + button ──
+    const pagesHeader = $('div.canvas-sidebar-section-header');
     const pagesLabel = $('div.canvas-sidebar-section-label');
     pagesLabel.textContent = 'PAGES';
-    this._treeList.appendChild(pagesLabel);
+    pagesHeader.appendChild(pagesLabel);
+
+    const addBtn = $('button.canvas-sidebar-add-btn');
+    addBtn.title = 'New Page';
+    addBtn.appendChild(createIconElement('plus', 14));
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._createPage();
+    });
+    pagesHeader.appendChild(addBtn);
+    this._treeList.appendChild(pagesHeader);
 
     // ── Main tree ──
     if (this._tree.length === 0) {
@@ -202,58 +221,17 @@ export class CanvasSidebar {
       }
     }
 
-    // ── Trash section ──
-    const trashSection = $('div.canvas-sidebar-section.canvas-sidebar-trash');
-
-    const trashHeader = $('div.canvas-sidebar-trash-header');
-    const trashChevron = $('span.canvas-sidebar-trash-chevron');
-    trashChevron.textContent = '▶';
-    if (this._trashExpanded) trashChevron.classList.add('canvas-sidebar-trash-chevron--expanded');
-    const trashLabel = $('span.canvas-sidebar-trash-label');
-    trashLabel.textContent = `TRASH${this._archivedPages.length > 0 ? ` (${this._archivedPages.length})` : ''}`;
-
-    trashHeader.appendChild(trashChevron);
-    trashHeader.appendChild(trashLabel);
-
-    if (this._archivedPages.length > 0 && this._trashExpanded) {
-      const emptyBtn = $('button.canvas-sidebar-trash-empty-btn');
-      emptyBtn.textContent = 'Empty';
-      emptyBtn.title = 'Permanently delete all';
-      emptyBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const result = await this._api.window.showWarningMessage(
-          `Permanently delete ${this._archivedPages.length} page(s) from trash? This cannot be undone.`,
-          { title: 'Delete All' },
-          { title: 'Cancel' },
-        );
-        if (result?.title === 'Delete All') {
-          for (const page of this._archivedPages) {
-            await this._dataService.permanentlyDeletePage(page.id);
-          }
-        }
-      });
-      trashHeader.appendChild(emptyBtn);
-    }
-
-    trashHeader.addEventListener('click', () => {
-      this._trashExpanded = !this._trashExpanded;
-      this._renderTree();
-    });
-    trashSection.appendChild(trashHeader);
-
-    if (this._trashExpanded && this._archivedPages.length > 0) {
-      const trashList = $('div.canvas-sidebar-trash-list');
-      for (const page of this._archivedPages) {
-        const row = this._renderTrashRow(page);
-        trashList.appendChild(row);
+    // Update trash count badge on the bottom button
+    const trashBtnEl = this._treeList.parentElement?.querySelector('.canvas-sidebar-trash-btn');
+    if (trashBtnEl) {
+      const existingBadge = trashBtnEl.querySelector('.canvas-sidebar-trash-badge');
+      if (existingBadge) existingBadge.remove();
+      if (this._archivedPages.length > 0) {
+        const badge = $('span.canvas-sidebar-trash-badge');
+        badge.textContent = String(this._archivedPages.length);
+        trashBtnEl.appendChild(badge);
       }
-      trashSection.appendChild(trashList);
     }
-
-    // Separator before trash
-    const trashSep = $('div.canvas-sidebar-separator');
-    this._treeList.appendChild(trashSep);
-    this._treeList.appendChild(trashSection);
   }
 
   // ── Render a favorites row ──
@@ -262,19 +240,21 @@ export class CanvasSidebar {
     const row = $('div.canvas-node.canvas-favorite-node');
     row.setAttribute('data-page-id', page.id);
 
-    // Icon
-    const icon = $('span.canvas-node-icon');
-    icon.textContent = page.icon || DEFAULT_PAGE_ICON;
-    row.appendChild(icon);
+    // Icon (SVG)
+    const iconEl = createIconElement(resolvePageIcon(page.icon), 14);
+    iconEl.classList.add('canvas-node-icon');
+    row.appendChild(iconEl);
 
     // Label
     const label = $('span.canvas-node-label');
     label.textContent = page.title;
     row.appendChild(label);
 
-    // Unfavorite star on hover
+    // Unfavorite star on hover (SVG)
     const star = $('span.canvas-node-star.canvas-node-star--favorited');
-    star.textContent = '★';
+    star.innerHTML = svgIcon('star-filled');
+    const starSvg = star.querySelector('svg');
+    if (starSvg) { starSvg.setAttribute('width', '12'); starSvg.setAttribute('height', '12'); }
     star.title = 'Remove from Favorites';
     star.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -301,23 +281,29 @@ export class CanvasSidebar {
 
   // ── Render a trash row ──
 
-  private _renderTrashRow(page: IPage): HTMLElement {
-    const row = $('div.canvas-node.canvas-trash-node');
+  private _renderTrashRow(page: IPage, container: HTMLElement): void {
+    const row = $('div.canvas-node.canvas-trash-panel-node');
     row.setAttribute('data-page-id', page.id);
 
-    // Icon
-    const icon = $('span.canvas-node-icon');
-    icon.textContent = page.icon || DEFAULT_PAGE_ICON;
-    row.appendChild(icon);
+    // Icon (SVG)
+    const iconEl = createIconElement(resolvePageIcon(page.icon), 14);
+    iconEl.classList.add('canvas-node-icon');
+    row.appendChild(iconEl);
 
-    // Label
+    // Label + date
+    const textCol = $('div.canvas-trash-panel-text');
     const label = $('span.canvas-node-label');
     label.textContent = page.title;
-    row.appendChild(label);
+    textCol.appendChild(label);
+    const date = $('span.canvas-trash-panel-date');
+    const d = new Date(page.updatedAt);
+    date.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    textCol.appendChild(date);
+    row.appendChild(textCol);
 
-    // Restore button
+    // Restore button (SVG)
     const restoreBtn = $('button.canvas-trash-restore-btn');
-    restoreBtn.textContent = '↩';
+    restoreBtn.appendChild(createIconElement('restore', 14));
     restoreBtn.title = 'Restore';
     restoreBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -325,9 +311,9 @@ export class CanvasSidebar {
     });
     row.appendChild(restoreBtn);
 
-    // Permanent delete button
+    // Permanent delete button (SVG)
     const deleteBtn = $('button.canvas-trash-delete-btn');
-    deleteBtn.textContent = '✕';
+    deleteBtn.appendChild(createIconElement('close', 14));
     deleteBtn.title = 'Delete permanently';
     deleteBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -342,7 +328,7 @@ export class CanvasSidebar {
     });
     row.appendChild(deleteBtn);
 
-    return row;
+    container.appendChild(row);
   }
 
   private _renderNode(parent: HTMLElement, node: IPageTreeNode, depth: number): void {
@@ -355,10 +341,12 @@ export class CanvasSidebar {
     const hasChildren = node.children.length > 0;
     const isExpanded = this._expandedIds.has(node.id);
 
-    // Chevron
+    // Chevron (SVG)
     if (hasChildren) {
       const chevron = $('span.canvas-node-chevron');
-      chevron.textContent = '▶';
+      chevron.innerHTML = svgIcon('chevron-right');
+      const chevSvg = chevron.querySelector('svg');
+      if (chevSvg) { chevSvg.setAttribute('width', '10'); chevSvg.setAttribute('height', '10'); }
       if (isExpanded) chevron.classList.add('canvas-node-chevron--expanded');
       chevron.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -369,19 +357,21 @@ export class CanvasSidebar {
       row.appendChild($('span.canvas-node-spacer'));
     }
 
-    // Icon
-    const icon = $('span.canvas-node-icon');
-    icon.textContent = node.icon || DEFAULT_PAGE_ICON;
-    row.appendChild(icon);
+    // Icon (SVG)
+    const iconEl = createIconElement(resolvePageIcon(node.icon), 14);
+    iconEl.classList.add('canvas-node-icon');
+    row.appendChild(iconEl);
 
     // Label
     const label = $('span.canvas-node-label');
     label.textContent = node.title;
     row.appendChild(label);
 
-    // Favorite star (hover affordance)
+    // Favorite star (SVG hover affordance)
     const star = $('span.canvas-node-star');
-    star.textContent = node.isFavorited ? '★' : '☆';
+    star.innerHTML = svgIcon(node.isFavorited ? 'star-filled' : 'star');
+    const starSvg = star.querySelector('svg');
+    if (starSvg) { starSvg.setAttribute('width', '12'); starSvg.setAttribute('height', '12'); }
     star.title = node.isFavorited ? 'Remove from Favorites' : 'Add to Favorites';
     if (node.isFavorited) star.classList.add('canvas-node-star--favorited');
     star.addEventListener('click', (e) => {
@@ -442,17 +432,17 @@ export class CanvasSidebar {
 
     this._contextMenu = $('div.canvas-context-menu');
 
-    const items: { label: string; action: () => void; danger?: boolean; divider?: boolean }[] = [
+    const items: { label: string; icon?: string; action: () => void; danger?: boolean; divider?: boolean }[] = [
       {
-        label: '📄 Open',
+        label: 'Open', icon: 'open',
         action: () => this._selectAndOpenPage(page),
       },
       {
-        label: '📝 New subpage',
+        label: 'New subpage', icon: 'new-page',
         action: () => this._createPage(page.id),
       },
       {
-        label: '✏️ Rename',
+        label: 'Rename', icon: 'edit',
         action: () => {
           const el = this._treeList?.querySelector(`[data-page-id="${page.id}"]`);
           if (el) {
@@ -471,13 +461,14 @@ export class CanvasSidebar {
 
     // Favorite toggle
     items.push({
-      label: page.isFavorited ? '☆ Remove from Favorites' : '⭐ Add to Favorites',
+      label: page.isFavorited ? 'Remove from Favorites' : 'Add to Favorites',
+      icon: page.isFavorited ? 'star' : 'star-filled',
       action: () => this._dataService.toggleFavorite(page.id),
     });
 
     // Duplicate
     items.push({
-      label: '📋 Duplicate',
+      label: 'Duplicate', icon: 'duplicate',
       action: async () => {
         try {
           const newPage = await this._dataService.duplicatePage(page.id);
@@ -490,7 +481,7 @@ export class CanvasSidebar {
 
     // Export (uses TipTap JSON from the page content)
     items.push({
-      label: '📥 Export as Markdown',
+      label: 'Export as Markdown', icon: 'export',
       action: async () => {
         try {
           const fullPage = await this._dataService.getPage(page.id);
@@ -525,7 +516,7 @@ export class CanvasSidebar {
 
     // Delete
     items.push({
-      label: '🗑️ Delete',
+      label: 'Delete', icon: 'trash',
       action: () => this._deletePage(page.id),
       danger: true,
     });
@@ -536,7 +527,12 @@ export class CanvasSidebar {
         continue;
       }
       const btn = $('button.canvas-context-menu-item');
-      btn.textContent = item.label;
+      if (item.icon) {
+        btn.appendChild(createIconElement(item.icon, 14));
+      }
+      const labelSpan = $('span');
+      labelSpan.textContent = item.label;
+      btn.appendChild(labelSpan);
       if (item.danger) btn.classList.add('canvas-context-menu-item--danger');
       btn.addEventListener('click', () => {
         this._dismissContextMenuCleanup();
@@ -581,6 +577,135 @@ export class CanvasSidebar {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // Trash Panel — Fixed bottom popup with search & date sorting
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private _toggleTrashPanel(): void {
+    if (this._trashPanel) {
+      this._dismissTrashPanel();
+    } else {
+      this._showTrashPanel();
+    }
+  }
+
+  private _showTrashPanel(): void {
+    this._dismissTrashPanel();
+
+    this._trashPanel = $('div.canvas-trash-panel');
+
+    // Header
+    const header = $('div.canvas-trash-panel-header');
+    const title = $('span.canvas-trash-panel-title');
+    title.textContent = 'Trash';
+    header.appendChild(title);
+
+    if (this._archivedPages.length > 0) {
+      const emptyBtn = $('button.canvas-trash-panel-empty-btn');
+      emptyBtn.textContent = 'Empty Trash';
+      emptyBtn.addEventListener('click', async () => {
+        const result = await this._api.window.showWarningMessage(
+          `Permanently delete ${this._archivedPages.length} page(s) from trash? This cannot be undone.`,
+          { title: 'Delete All' },
+          { title: 'Cancel' },
+        );
+        if (result?.title === 'Delete All') {
+          for (const p of this._archivedPages) {
+            await this._dataService.permanentlyDeletePage(p.id);
+          }
+        }
+      });
+      header.appendChild(emptyBtn);
+    }
+
+    const closeBtn = $('button.canvas-trash-panel-close');
+    closeBtn.appendChild(createIconElement('close', 14));
+    closeBtn.addEventListener('click', () => this._dismissTrashPanel());
+    header.appendChild(closeBtn);
+    this._trashPanel.appendChild(header);
+
+    // Search
+    const searchRow = $('div.canvas-trash-panel-search');
+    const searchIcon = createIconElement('search', 14);
+    searchRow.appendChild(searchIcon);
+    const searchInput = document.createElement('input') as HTMLInputElement;
+    searchInput.className = 'canvas-trash-panel-search-input';
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search trash...';
+    searchInput.value = this._trashSearchQuery;
+    searchRow.appendChild(searchInput);
+    this._trashPanel.appendChild(searchRow);
+
+    // List
+    const list = $('div.canvas-trash-panel-list');
+    this._trashPanel.appendChild(list);
+
+    const renderList = (query: string) => {
+      list.innerHTML = '';
+      const q = query.toLowerCase();
+      const filtered = this._archivedPages.filter(p =>
+        !q || p.title.toLowerCase().includes(q),
+      );
+      if (filtered.length === 0) {
+        const empty = $('div.canvas-trash-panel-empty');
+        empty.textContent = q ? 'No matching pages in trash.' : 'Trash is empty.';
+        list.appendChild(empty);
+      } else {
+        for (const page of filtered) {
+          this._renderTrashRow(page, list);
+        }
+      }
+    };
+
+    renderList(this._trashSearchQuery);
+
+    searchInput.addEventListener('input', () => {
+      this._trashSearchQuery = searchInput.value.trim();
+      renderList(this._trashSearchQuery);
+    });
+
+    // Position above the trash button
+    const trashBtn = this._treeList?.parentElement?.querySelector('.canvas-sidebar-trash-btn');
+    if (trashBtn) {
+      const rect = trashBtn.getBoundingClientRect();
+      const sidebarRect = this._treeList!.parentElement!.getBoundingClientRect();
+      this._trashPanel.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+      this._trashPanel.style.left = `${sidebarRect.left}px`;
+      this._trashPanel.style.width = `${Math.max(sidebarRect.width, 280)}px`;
+    }
+
+    document.body.appendChild(this._trashPanel);
+    setTimeout(() => searchInput.focus(), 50);
+
+    // Dismiss on click outside
+    setTimeout(() => {
+      document.addEventListener('mousedown', this._handleTrashOutsideClick);
+      document.addEventListener('keydown', this._handleTrashEscape);
+    }, 0);
+  }
+
+  private readonly _handleTrashOutsideClick = (e: MouseEvent): void => {
+    const target = e.target as HTMLElement;
+    if (this._trashPanel?.contains(target)) return;
+    // Don't dismiss if clicking the trash button itself (toggle handles it)
+    const trashBtn = this._treeList?.parentElement?.querySelector('.canvas-sidebar-trash-btn');
+    if (trashBtn?.contains(target)) return;
+    this._dismissTrashPanel();
+  };
+
+  private readonly _handleTrashEscape = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') this._dismissTrashPanel();
+  };
+
+  private _dismissTrashPanel(): void {
+    if (this._trashPanel) {
+      this._trashPanel.remove();
+      this._trashPanel = null;
+    }
+    document.removeEventListener('mousedown', this._handleTrashOutsideClick);
+    document.removeEventListener('keydown', this._handleTrashEscape);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Selection & Editor Opening (Task 4.2)
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -592,7 +717,7 @@ export class CanvasSidebar {
       await this._api.editors.openEditor({
         typeId: 'canvas',
         title: page.title,
-        icon: page.icon || DEFAULT_PAGE_ICON,
+        icon: page.icon || undefined,
         instanceId: page.id,
       });
     } catch (err) {
@@ -638,7 +763,7 @@ export class CanvasSidebar {
       await this._api.editors.openEditor({
         typeId: 'canvas',
         title: page.title,
-        icon: page.icon || DEFAULT_PAGE_ICON,
+        icon: page.icon || undefined,
         instanceId: page.id,
       });
       // After tree refreshes, start inline rename on the new page
