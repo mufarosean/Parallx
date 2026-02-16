@@ -166,87 +166,73 @@ interface SlashMenuItem {
   label: string;
   icon: string;
   description: string;
-  action: (editor: Editor) => void;
-  /** 'convert' (default) toggles/wraps the current block; 'insert' deletes the paragraph and inserts new content */
-  mode?: 'convert' | 'insert';
+  /** Each action receives the editor and the range of the '/' + filter text.
+   *  MUST delete the range AND apply the command in a SINGLE chain call,
+   *  exactly like Novel: editor.chain().focus().deleteRange(range).toggleX().run()
+   */
+  action: (editor: Editor, range: { from: number; to: number }) => void;
 }
 
 const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   // ── Basic blocks ──
+  // Following Novel's pattern: every action does deleteRange + command in ONE chain.
   {
     label: 'Heading 1', icon: 'H1', description: 'Large heading',
-    action: (e) => e.chain().focus().toggleHeading({ level: 1 }).run(),
+    action: (e, range) => e.chain().focus().deleteRange(range).toggleHeading({ level: 1 }).run(),
   },
   {
     label: 'Heading 2', icon: 'H2', description: 'Medium heading',
-    action: (e) => e.chain().focus().toggleHeading({ level: 2 }).run(),
+    action: (e, range) => e.chain().focus().deleteRange(range).toggleHeading({ level: 2 }).run(),
   },
   {
     label: 'Heading 3', icon: 'H3', description: 'Small heading',
-    action: (e) => e.chain().focus().toggleHeading({ level: 3 }).run(),
+    action: (e, range) => e.chain().focus().deleteRange(range).toggleHeading({ level: 3 }).run(),
   },
   // ── Lists ──
   {
     label: 'Bullet List', icon: 'bullet-list', description: 'Unordered list',
-    action: (e) => e.chain().focus().toggleBulletList().run(),
+    action: (e, range) => e.chain().focus().deleteRange(range).toggleBulletList().run(),
   },
   {
     label: 'Numbered List', icon: 'numbered-list', description: 'Ordered list',
-    action: (e) => e.chain().focus().toggleOrderedList().run(),
+    action: (e, range) => e.chain().focus().deleteRange(range).toggleOrderedList().run(),
   },
   {
     label: 'To-Do List', icon: 'checklist', description: 'Task list with checkboxes',
-    action: (e) => e.chain().focus().insertContent({
-      type: 'taskList',
-      content: [{
-        type: 'taskItem',
-        attrs: { checked: false },
-        content: [{ type: 'paragraph' }],
-      }],
-    }).run(),
-    mode: 'insert',
+    action: (e, range) => e.chain().focus().deleteRange(range).toggleTaskList().run(),
   },
   // ── Rich blocks ──
   {
     label: 'Quote', icon: 'quote', description: 'Block quote',
-    action: (e) => e.chain().focus().toggleBlockquote().run(),
+    action: (e, range) => e.chain().focus().deleteRange(range).toggleBlockquote().run(),
   },
   {
     label: 'Code Block', icon: 'code', description: 'Code with syntax highlighting',
-    action: (e) => e.chain().focus().toggleCodeBlock().run(),
+    action: (e, range) => e.chain().focus().deleteRange(range).toggleCodeBlock().run(),
   },
   {
     label: 'Divider', icon: 'divider', description: 'Horizontal rule',
-    action: (e) => e.chain().focus().setHorizontalRule().run(),
-    mode: 'insert',
+    action: (e, range) => e.chain().focus().deleteRange(range).setHorizontalRule().run(),
   },
   {
     label: 'Callout', icon: 'lightbulb', description: 'Highlighted info box',
-    action: (e) => e.chain().focus().insertContent({
-      type: 'callout',
-      attrs: { emoji: 'lightbulb' },
-      content: [{ type: 'paragraph' }],
-    }).run(),
-    mode: 'insert',
+    action: (e, range) => (e.chain().focus().deleteRange(range) as any).toggleCallout().run(),
   },
   {
     label: 'Toggle List', icon: 'chevron-right', description: 'Collapsible content',
-    action: (e) => e.chain().focus().setDetails().run(),
-    mode: 'insert',
+    action: (e, range) => e.chain().focus().deleteRange(range).setDetails().run(),
   },
   {
     label: 'Table', icon: 'grid', description: 'Insert a table',
-    action: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
-    mode: 'insert',
+    action: (e, range) => e.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
   },
   // ── Media ──
   {
     label: 'Image', icon: 'image', description: 'Embed an image from URL',
-    action: (e) => {
+    action: (e, range) => {
       const url = prompt('Enter image URL:');
-      if (url) e.chain().focus().setImage({ src: url }).run();
+      if (url) e.chain().focus().deleteRange(range).setImage({ src: url }).run();
     },
-    mode: 'insert',
   },
 ];
 
@@ -1883,26 +1869,14 @@ class CanvasEditorPane implements IDisposable {
     this._suppressUpdate = true;
 
     try {
+      // Compute the range of the '/' trigger + any filter text typed so far.
+      // Following Novel's pattern: pass this range to the action so it can
+      // deleteRange + apply the command in a single ProseMirror transaction.
       const { state } = editor;
       const { $from } = state.selection;
-
-      if (item.mode === 'insert') {
-        // Insert-mode: delete the ENTIRE paragraph node (not just its text)
-        // so that the inserted block (table, toggle list, divider, image)
-        // doesn't leave a ghost empty paragraph above it.
-        const nodeStart = $from.before($from.depth);
-        const nodeEnd = $from.after($from.depth);
-        editor.chain().focus().deleteRange({ from: nodeStart, to: nodeEnd }).run();
-      } else {
-        // Convert-mode (default): delete only the '/' and filter text,
-        // keeping the empty paragraph so toggle/wrap commands can act on it.
-        const lineStart = $from.start();
-        const lineEnd = $from.pos;
-        editor.chain().focus().deleteRange({ from: lineStart, to: lineEnd }).run();
-      }
-
-      // Execute the slash command action
-      item.action(editor);
+      const from = $from.start();                              // start of text content in this block
+      const to = from + $from.parent.textContent.length;       // end of all text (covers '/filter')
+      item.action(editor, { from, to });
     } finally {
       this._suppressUpdate = false;
     }
