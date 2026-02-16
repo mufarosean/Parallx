@@ -196,7 +196,15 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   },
   {
     label: 'To-Do List', icon: 'checklist', description: 'Task list with checkboxes',
-    action: (e) => e.chain().focus().toggleTaskList().run(),
+    action: (e) => e.chain().focus().insertContent({
+      type: 'taskList',
+      content: [{
+        type: 'taskItem',
+        attrs: { checked: false },
+        content: [{ type: 'paragraph' }],
+      }],
+    }).run(),
+    mode: 'insert',
   },
   // ── Rich blocks ──
   {
@@ -214,7 +222,12 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   },
   {
     label: 'Callout', icon: 'lightbulb', description: 'Highlighted info box',
-    action: (e) => e.chain().focus().toggleCallout({ emoji: 'lightbulb' }).run(),
+    action: (e) => e.chain().focus().insertContent({
+      type: 'callout',
+      attrs: { emoji: 'lightbulb' },
+      content: [{ type: 'paragraph' }],
+    }).run(),
+    mode: 'insert',
   },
   {
     label: 'Toggle List', icon: 'chevron-right', description: 'Collapsible content',
