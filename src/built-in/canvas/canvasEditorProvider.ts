@@ -166,72 +166,112 @@ interface SlashMenuItem {
   label: string;
   icon: string;
   description: string;
-  /** Each action receives the editor and the range of the '/' + filter text.
-   *  MUST delete the range AND apply the command in a SINGLE chain call,
-   *  exactly like Novel: editor.chain().focus().deleteRange(range).toggleX().run()
+  /**
+   * Each action receives the editor and the **block range** covering the
+   * entire paragraph node (including its boundaries).  Actions use
+   * `insertContentAt(range, nodeJSON)` to atomically REPLACE the paragraph
+   * with the desired block structure — this is the same pattern TipTap's
+   * own `setDetails()` command uses internally.  NO deleteRange needed.
+   *
+   * Why: complex commands like toggleTaskList, toggleCallout, and setDetails
+   * read from `state` (the original editor state) inside a chain, NOT from
+   * `tr` (the accumulated transaction).  So chaining them after deleteRange
+   * causes them to read stale positions and fail silently.
    */
   action: (editor: Editor, range: { from: number; to: number }) => void;
 }
 
 const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   // ── Basic blocks ──
-  // Following Novel's pattern: every action does deleteRange + command in ONE chain.
   {
     label: 'Heading 1', icon: 'H1', description: 'Large heading',
-    action: (e, range) => e.chain().focus().deleteRange(range).toggleHeading({ level: 1 }).run(),
+    action: (e, range) => e.chain().insertContentAt(range, { type: 'heading', attrs: { level: 1 } }).focus().run(),
   },
   {
     label: 'Heading 2', icon: 'H2', description: 'Medium heading',
-    action: (e, range) => e.chain().focus().deleteRange(range).toggleHeading({ level: 2 }).run(),
+    action: (e, range) => e.chain().insertContentAt(range, { type: 'heading', attrs: { level: 2 } }).focus().run(),
   },
   {
     label: 'Heading 3', icon: 'H3', description: 'Small heading',
-    action: (e, range) => e.chain().focus().deleteRange(range).toggleHeading({ level: 3 }).run(),
+    action: (e, range) => e.chain().insertContentAt(range, { type: 'heading', attrs: { level: 3 } }).focus().run(),
   },
   // ── Lists ──
   {
     label: 'Bullet List', icon: 'bullet-list', description: 'Unordered list',
-    action: (e, range) => e.chain().focus().deleteRange(range).toggleBulletList().run(),
+    action: (e, range) => e.chain().insertContentAt(range, {
+      type: 'bulletList',
+      content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }],
+    }).focus().run(),
   },
   {
     label: 'Numbered List', icon: 'numbered-list', description: 'Ordered list',
-    action: (e, range) => e.chain().focus().deleteRange(range).toggleOrderedList().run(),
+    action: (e, range) => e.chain().insertContentAt(range, {
+      type: 'orderedList',
+      content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }],
+    }).focus().run(),
   },
   {
     label: 'To-Do List', icon: 'checklist', description: 'Task list with checkboxes',
-    action: (e, range) => e.chain().focus().deleteRange(range).toggleTaskList().run(),
+    action: (e, range) => e.chain().insertContentAt(range, {
+      type: 'taskList',
+      content: [{
+        type: 'taskItem',
+        attrs: { checked: false },
+        content: [{ type: 'paragraph' }],
+      }],
+    }).focus().run(),
   },
   // ── Rich blocks ──
   {
     label: 'Quote', icon: 'quote', description: 'Block quote',
-    action: (e, range) => e.chain().focus().deleteRange(range).toggleBlockquote().run(),
+    action: (e, range) => e.chain().insertContentAt(range, {
+      type: 'blockquote',
+      content: [{ type: 'paragraph' }],
+    }).focus().run(),
   },
   {
     label: 'Code Block', icon: 'code', description: 'Code with syntax highlighting',
-    action: (e, range) => e.chain().focus().deleteRange(range).toggleCodeBlock().run(),
+    action: (e, range) => e.chain().insertContentAt(range, { type: 'codeBlock' }).focus().run(),
   },
   {
     label: 'Divider', icon: 'divider', description: 'Horizontal rule',
-    action: (e, range) => e.chain().focus().deleteRange(range).setHorizontalRule().run(),
+    action: (e, range) => e.chain().insertContentAt(range, { type: 'horizontalRule' }).focus().run(),
   },
   {
     label: 'Callout', icon: 'lightbulb', description: 'Highlighted info box',
-    action: (e, range) => (e.chain().focus().deleteRange(range) as any).toggleCallout().run(),
+    action: (e, range) => e.chain().insertContentAt(range, {
+      type: 'callout',
+      attrs: { emoji: 'lightbulb' },
+      content: [{ type: 'paragraph' }],
+    }).focus().run(),
   },
   {
     label: 'Toggle List', icon: 'chevron-right', description: 'Collapsible content',
-    action: (e, range) => e.chain().focus().deleteRange(range).setDetails().run(),
+    action: (e, range) => e.chain().insertContentAt(range, {
+      type: 'details',
+      content: [
+        { type: 'detailsSummary' },
+        { type: 'detailsContent', content: [{ type: 'paragraph' }] },
+      ],
+    }).focus().run(),
   },
   {
     label: 'Table', icon: 'grid', description: 'Insert a table',
-    action: (e, range) => e.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+    action: (e, range) => {
+      const headerCells = Array.from({ length: 3 }, () => ({ type: 'tableHeader', content: [{ type: 'paragraph' }] }));
+      const bodyRow = () => ({ type: 'tableRow', content: Array.from({ length: 3 }, () => ({ type: 'tableCell', content: [{ type: 'paragraph' }] })) });
+      e.chain().insertContentAt(range, {
+        type: 'table',
+        content: [{ type: 'tableRow', content: headerCells }, bodyRow(), bodyRow()],
+      }).focus().run();
+    },
   },
   // ── Media ──
   {
     label: 'Image', icon: 'image', description: 'Embed an image from URL',
     action: (e, range) => {
       const url = prompt('Enter image URL:');
-      if (url) e.chain().focus().deleteRange(range).setImage({ src: url }).run();
+      if (url) e.chain().insertContentAt(range, { type: 'image', attrs: { src: url } }).focus().run();
     },
   },
 ];
@@ -1885,14 +1925,15 @@ class CanvasEditorPane implements IDisposable {
     this._suppressUpdate = true;
 
     try {
-      // Compute the range of the '/' trigger + any filter text typed so far.
-      // Following Novel's pattern: pass this range to the action so it can
-      // deleteRange + apply the command in a single ProseMirror transaction.
-      const { state } = editor;
-      const { $from } = state.selection;
-      const from = $from.start();                              // start of text content in this block
-      const to = from + $from.parent.textContent.length;       // end of all text (covers '/filter')
-      item.action(editor, { from, to });
+      // Compute the BLOCK-LEVEL range covering the entire paragraph node
+      // (the one containing the '/filter' text).  Each action uses
+      // insertContentAt(range, nodeJSON) to atomically REPLACE the paragraph.
+      // This is the same pattern TipTap's own setDetails() uses internally.
+      const { $from, $to } = editor.state.selection;
+      const blockRange = $from.blockRange($to);
+      if (!blockRange) return;
+
+      item.action(editor, { from: blockRange.start, to: blockRange.end });
     } finally {
       this._suppressUpdate = false;
     }
