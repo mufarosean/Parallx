@@ -612,6 +612,7 @@ class CanvasEditorPane implements IDisposable {
       addIconBtn.appendChild(createIconElement('smile', 14));
       const lbl = $('span'); lbl.textContent = 'Add icon';
       addIconBtn.appendChild(lbl);
+      addIconBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addIconBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this._showIconPicker();
@@ -625,6 +626,7 @@ class CanvasEditorPane implements IDisposable {
       addCoverBtn.appendChild(createIconElement('image', 14));
       const lbl2 = $('span'); lbl2.textContent = 'Add cover';
       addCoverBtn.appendChild(lbl2);
+      addCoverBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addCoverBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this._showCoverPicker();
@@ -807,6 +809,7 @@ class CanvasEditorPane implements IDisposable {
       addIconBtn.appendChild(createIconElement('smile', 14));
       const lbl = $('span'); lbl.textContent = 'Add icon';
       addIconBtn.appendChild(lbl);
+      addIconBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addIconBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this._showIconPicker();
@@ -820,6 +823,7 @@ class CanvasEditorPane implements IDisposable {
       addCoverBtn.appendChild(createIconElement('image', 14));
       const lbl2 = $('span'); lbl2.textContent = 'Add cover';
       addCoverBtn.appendChild(lbl2);
+      addCoverBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addCoverBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this._showCoverPicker();
@@ -1433,7 +1437,9 @@ class CanvasEditorPane implements IDisposable {
       this._iconPicker?.contains(target) ||
       this._coverPicker?.contains(target) ||
       this._pageMenuDropdown?.contains(target) ||
-      this._pageMenuBtn?.contains(target)
+      this._pageMenuBtn?.contains(target) ||
+      this._iconEl?.contains(target) ||
+      this._hoverAffordances?.contains(target)
     ) return;
     this._dismissPopups();
   };
