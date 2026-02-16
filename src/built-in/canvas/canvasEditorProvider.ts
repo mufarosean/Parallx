@@ -526,10 +526,6 @@ class CanvasEditorPane implements IDisposable {
     this._pageMenuBtn.title = 'Page settings';
     this._pageMenuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (this._pageMenuDropdown) {
-        this._dismissPopups();
-        return;
-      }
       this._showPageMenu();
     });
     ribbonRight.appendChild(this._pageMenuBtn);
@@ -939,6 +935,7 @@ class CanvasEditorPane implements IDisposable {
   // ══════════════════════════════════════════════════════════════════════════
 
   private _showCoverPicker(): void {
+    if (this._coverPicker) { this._dismissPopups(); return; }
     this._dismissPopups();
 
     this._coverPicker = $('div.canvas-cover-picker');
@@ -1106,6 +1103,7 @@ class CanvasEditorPane implements IDisposable {
   // ══════════════════════════════════════════════════════════════════════════
 
   private _showIconPicker(): void {
+    if (this._iconPicker) { this._dismissPopups(); return; }
     this._dismissPopups();
 
     this._iconPicker = $('div.canvas-icon-picker');
@@ -1195,6 +1193,7 @@ class CanvasEditorPane implements IDisposable {
   // ══════════════════════════════════════════════════════════════════════════
 
   private _showPageMenu(): void {
+    if (this._pageMenuDropdown) { this._dismissPopups(); return; }
     this._dismissPopups();
 
     this._pageMenuDropdown = $('div.canvas-page-menu');
@@ -1439,7 +1438,8 @@ class CanvasEditorPane implements IDisposable {
       this._pageMenuDropdown?.contains(target) ||
       this._pageMenuBtn?.contains(target) ||
       this._iconEl?.contains(target) ||
-      this._hoverAffordances?.contains(target)
+      this._hoverAffordances?.contains(target) ||
+      this._coverControls?.contains(target)
     ) return;
     this._dismissPopups();
   };
