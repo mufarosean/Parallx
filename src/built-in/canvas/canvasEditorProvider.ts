@@ -273,7 +273,7 @@ class CanvasEditorPane implements IDisposable {
     // ── Page header: breadcrumbs, icon, title, hover affordances ──
     this._createPageHeader();
 
-    // ── Page menu button ("⋯") at top-right ──
+    // ── Page menu button ("⋯") at top-right (uses CSS order: -1 for visual ordering) ──
     this._createPageMenu();
 
     // Create Tiptap editor with Notion-parity extensions

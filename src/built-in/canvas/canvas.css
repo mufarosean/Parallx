@@ -1222,9 +1222,10 @@
 /* ── Page Menu Button (⋯) ── */
 
 .canvas-page-menu-btn {
+  order: -1;
   position: sticky;
   top: 8px;
-  float: right;
+  align-self: flex-end;
   z-index: 100;
   background: none;
   border: none;
@@ -1238,7 +1239,7 @@
   border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.1s ease, color 0.1s ease;
-  margin: 8px 8px 0 0;
+  margin: 8px 8px -40px 0;
   font-family: inherit;
 }
 
