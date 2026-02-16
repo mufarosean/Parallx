@@ -1065,6 +1065,15 @@ class CanvasEditorPane implements IDisposable {
 
     this._container.appendChild(this._coverPicker);
 
+    // Position below the cover, horizontally centered in view
+    if (this._coverEl) {
+      const coverRect = this._coverEl.getBoundingClientRect();
+      const containerRect = this._container.getBoundingClientRect();
+      // Anchor at bottom of cover, centered horizontally
+      this._coverPicker.style.top = `${coverRect.bottom - containerRect.top}px`;
+      this._coverPicker.style.left = `${(containerRect.width - 420) / 2}px`;
+    }
+
     // Dismiss on click outside
     setTimeout(() => {
       document.addEventListener('mousedown', this._handlePopupOutsideClick);
