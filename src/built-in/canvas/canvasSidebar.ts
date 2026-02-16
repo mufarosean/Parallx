@@ -45,6 +45,7 @@ export class CanvasSidebar {
   private _treeList: HTMLElement | null = null;
   private _selectedPageId: string | null = null;
   private _expandedIds = new Set<string>();
+  private _favExpandedIds = new Set<string>();
   private _tree: IPageTreeNode[] = [];
 
   // ── Favorites / Trash state ──
@@ -185,9 +186,9 @@ export class CanvasSidebar {
         const treeNode = this._findNode(this._tree, page.id);
         if (treeNode && treeNode.children.length > 0) {
           const childrenEl = $('div.canvas-children');
-          if (!this._expandedIds.has(page.id)) childrenEl.classList.add('canvas-children--collapsed');
+          if (!this._favExpandedIds.has(page.id)) childrenEl.classList.add('canvas-children--collapsed');
           for (const child of treeNode.children) {
-            this._renderNode(childrenEl, child as IPageTreeNode, 1);
+            this._renderNode(childrenEl, child as IPageTreeNode, 1, this._favExpandedIds);
           }
           favSection.appendChild(childrenEl);
         }
@@ -254,7 +255,7 @@ export class CanvasSidebar {
     // Check if this favorite has children in the main tree
     const treeNode = this._findNode(this._tree, page.id);
     const hasChildren = treeNode ? treeNode.children.length > 0 : false;
-    const isExpanded = this._expandedIds.has(page.id);
+    const isExpanded = this._favExpandedIds.has(page.id);
     if (hasChildren) {
       row.classList.add('canvas-node--has-children');
       if (isExpanded) row.classList.add('canvas-node--expanded');
@@ -274,7 +275,7 @@ export class CanvasSidebar {
       if (chevSvg) { chevSvg.setAttribute('width', '12'); chevSvg.setAttribute('height', '12'); }
       chevron.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._toggleExpand(page.id);
+        this._toggleFavExpand(page.id);
       });
       iconArea.appendChild(chevron);
     }
@@ -380,7 +381,8 @@ export class CanvasSidebar {
     container.appendChild(row);
   }
 
-  private _renderNode(parent: HTMLElement, node: IPageTreeNode, depth: number): void {
+  private _renderNode(parent: HTMLElement, node: IPageTreeNode, depth: number, expandSet?: Set<string>): void {
+    const exSet = expandSet ?? this._expandedIds;
     const row = $('div.canvas-node');
     row.setAttribute('role', 'treeitem');
     row.setAttribute('data-page-id', node.id);
@@ -388,7 +390,7 @@ export class CanvasSidebar {
     row.draggable = true;
 
     const hasChildren = node.children.length > 0;
-    const isExpanded = this._expandedIds.has(node.id);
+    const isExpanded = exSet.has(node.id);
 
     // Notion-style: chevron overlays icon on hover / when expanded
     if (hasChildren) {
@@ -412,7 +414,11 @@ export class CanvasSidebar {
       if (chevSvg) { chevSvg.setAttribute('width', '12'); chevSvg.setAttribute('height', '12'); }
       chevron.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._toggleExpand(node.id);
+        if (exSet === this._favExpandedIds) {
+          this._toggleFavExpand(node.id);
+        } else {
+          this._toggleExpand(node.id);
+        }
       });
       iconArea.appendChild(chevron);
     }
@@ -484,7 +490,7 @@ export class CanvasSidebar {
       const childrenEl = $('div.canvas-children');
       if (!isExpanded) childrenEl.classList.add('canvas-children--collapsed');
       for (const child of node.children) {
-        this._renderNode(childrenEl, child, depth + 1);
+        this._renderNode(childrenEl, child, depth + 1, exSet);
       }
       parent.appendChild(childrenEl);
     }
@@ -936,6 +942,15 @@ export class CanvasSidebar {
     this._renderTree();
     // Notify listener for persistence (Task 6.2)
     this._onExpandStateChanged?.(this._expandedIds);
+  }
+
+  private _toggleFavExpand(pageId: string): void {
+    if (this._favExpandedIds.has(pageId)) {
+      this._favExpandedIds.delete(pageId);
+    } else {
+      this._favExpandedIds.add(pageId);
+    }
+    this._renderTree();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
