@@ -844,64 +844,88 @@
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Tier 2 — Toggle List (Details / Summary) — Notion-style borderless
+ *
+ * TipTap @tiptap/extension-details renders:
+ *   <div data-type="details" class="canvas-details [is-open]">
+ *     <button type="button"/>     ← toggle button
+ *     <div>                       ← content wrapper
+ *       <summary>…</summary>     ← editable summary
+ *       <div data-type="detailsContent" [hidden]>  ← collapsible content
+ *         <p>…</p>
+ *       </div>
+ *     </div>
+ *   </div>
  * ───────────────────────────────────────────────────────────────────────────── */
 
-.canvas-tiptap-editor details,
-.canvas-tiptap-editor .canvas-details {
+.canvas-tiptap-editor [data-type="details"] {
   margin: 4px 0;
   border: none;
   border-radius: 4px;
   overflow: visible;
+  position: relative;
 }
 
-.canvas-tiptap-editor details summary,
-.canvas-tiptap-editor .canvas-details summary {
-  padding: 4px 2px;
+/* Toggle button rendered by the extension — style as Notion chevron */
+.canvas-tiptap-editor [data-type="details"] > button {
+  position: absolute;
+  top: 6px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
   cursor: pointer;
-  font-weight: 400;
-  user-select: none;
   display: flex;
   align-items: center;
-  gap: 4px;
-  list-style: none;
-  background: none;
-  border-radius: 4px;
+  justify-content: center;
+  z-index: 1;
+  border-radius: 3px;
   transition: background-color 0.1s ease;
 }
 
-.canvas-tiptap-editor details summary:hover,
-.canvas-tiptap-editor .canvas-details summary:hover {
-  background: rgba(255, 255, 255, 0.04);
+.canvas-tiptap-editor [data-type="details"] > button:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.canvas-tiptap-editor details summary::-webkit-details-marker,
-.canvas-tiptap-editor .canvas-details summary::-webkit-details-marker {
-  display: none;
-}
-
-.canvas-tiptap-editor details summary::before,
-.canvas-tiptap-editor .canvas-details summary::before {
+/* Chevron icon via ::before pseudo-element on the button */
+.canvas-tiptap-editor [data-type="details"] > button::before {
   content: '';
-  display: inline-block;
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
+  display: block;
+  width: 16px;
+  height: 16px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E");
   background-size: contain;
   background-repeat: no-repeat;
   transition: transform 0.15s ease;
 }
 
-.canvas-tiptap-editor details[open] summary::before,
-.canvas-tiptap-editor details.is-open summary::before,
-.canvas-tiptap-editor .canvas-details[open] summary::before,
-.canvas-tiptap-editor .canvas-details.is-open summary::before {
+/* Rotate chevron when open */
+.canvas-tiptap-editor [data-type="details"].is-open > button::before {
   transform: rotate(90deg);
 }
 
-.canvas-tiptap-editor details > div:last-child,
-.canvas-tiptap-editor .canvas-details > div:last-child {
-  padding: 2px 4px 8px 24px;
+/* Summary text — indent past the chevron */
+.canvas-tiptap-editor [data-type="details"] summary {
+  padding: 4px 2px 4px 26px;
+  cursor: text;
+  font-weight: 400;
+  display: block;
+  list-style: none;
+  background: none;
+  border-radius: 4px;
+  min-height: 28px;
+  line-height: 1.5;
+}
+
+.canvas-tiptap-editor [data-type="details"] summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Collapsible content area */
+.canvas-tiptap-editor [data-type="detailsContent"] {
+  padding: 2px 4px 8px 26px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
