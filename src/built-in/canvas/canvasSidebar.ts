@@ -240,10 +240,12 @@ export class CanvasSidebar {
     const row = $('div.canvas-node.canvas-favorite-node');
     row.setAttribute('data-page-id', page.id);
 
-    // Icon (SVG)
+    // Icon area (consistent alignment with tree nodes)
+    const iconArea = $('span.canvas-node-icon-area');
     const iconEl = createIconElement(resolvePageIcon(page.icon), 14);
     iconEl.classList.add('canvas-node-icon');
-    row.appendChild(iconEl);
+    iconArea.appendChild(iconEl);
+    row.appendChild(iconArea);
 
     // Label
     const label = $('span.canvas-node-label');
@@ -296,10 +298,12 @@ export class CanvasSidebar {
     const row = $('div.canvas-node.canvas-trash-panel-node');
     row.setAttribute('data-page-id', page.id);
 
-    // Icon (SVG)
+    // Icon area (consistent alignment)
+    const iconArea = $('span.canvas-node-icon-area');
     const iconEl = createIconElement(resolvePageIcon(page.icon), 14);
     iconEl.classList.add('canvas-node-icon');
-    row.appendChild(iconEl);
+    iconArea.appendChild(iconEl);
+    row.appendChild(iconArea);
 
     // Label + date
     const textCol = $('div.canvas-trash-panel-text');
@@ -352,26 +356,34 @@ export class CanvasSidebar {
     const hasChildren = node.children.length > 0;
     const isExpanded = this._expandedIds.has(node.id);
 
-    // Chevron (SVG)
+    // Notion-style: chevron overlays icon on hover / when expanded
+    if (hasChildren) {
+      row.classList.add('canvas-node--has-children');
+      if (isExpanded) row.classList.add('canvas-node--expanded');
+    }
+
+    // Icon area — shared container so chevron can overlay the icon
+    const iconArea = $('span.canvas-node-icon-area');
+
+    // Icon (SVG) — always present
+    const iconEl = createIconElement(resolvePageIcon(node.icon), 14);
+    iconEl.classList.add('canvas-node-icon');
+    iconArea.appendChild(iconEl);
+
+    // Chevron (SVG) — overlays icon; CSS toggles visibility
     if (hasChildren) {
       const chevron = $('span.canvas-node-chevron');
       chevron.innerHTML = svgIcon('chevron-right');
       const chevSvg = chevron.querySelector('svg');
-      if (chevSvg) { chevSvg.setAttribute('width', '10'); chevSvg.setAttribute('height', '10'); }
-      if (isExpanded) chevron.classList.add('canvas-node-chevron--expanded');
+      if (chevSvg) { chevSvg.setAttribute('width', '12'); chevSvg.setAttribute('height', '12'); }
       chevron.addEventListener('click', (e) => {
         e.stopPropagation();
         this._toggleExpand(node.id);
       });
-      row.appendChild(chevron);
-    } else {
-      row.appendChild($('span.canvas-node-spacer'));
+      iconArea.appendChild(chevron);
     }
 
-    // Icon (SVG)
-    const iconEl = createIconElement(resolvePageIcon(node.icon), 14);
-    iconEl.classList.add('canvas-node-icon');
-    row.appendChild(iconEl);
+    row.appendChild(iconArea);
 
     // Label
     const label = $('span.canvas-node-label');

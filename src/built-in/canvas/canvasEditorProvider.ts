@@ -220,8 +220,19 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
 
 // ─── Canvas Editor Provider ─────────────────────────────────────────────────
 
+export type OpenEditorFn = (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
+
 export class CanvasEditorProvider {
+  private _openEditor: OpenEditorFn | undefined;
+
   constructor(private readonly _dataService: CanvasDataService) {}
+
+  /**
+   * Set the openEditor callback so panes can navigate to other pages.
+   */
+  setOpenEditor(fn: OpenEditorFn): void {
+    this._openEditor = fn;
+  }
 
   /**
    * Create an editor pane for a Canvas page.
@@ -231,7 +242,7 @@ export class CanvasEditorProvider {
    */
   createEditorPane(container: HTMLElement, input?: IEditorInput): IDisposable {
     const pageId = input?.id ?? '';
-    const pane = new CanvasEditorPane(container, pageId, this._dataService, input);
+    const pane = new CanvasEditorPane(container, pageId, this._dataService, input, this._openEditor);
     pane.init();
     return pane;
   }
@@ -278,6 +289,7 @@ class CanvasEditorPane implements IDisposable {
     private readonly _pageId: string,
     private readonly _dataService: CanvasDataService,
     private readonly _input: IEditorInput | undefined,
+    private readonly _openEditor: OpenEditorFn | undefined,
   ) {}
 
   async init(): Promise<void> {
@@ -390,9 +402,6 @@ class CanvasEditorPane implements IDisposable {
         const json = JSON.stringify(editor.getJSON());
         this._dataService.scheduleContentSave(this._pageId, json);
 
-        // Mark input dirty while save is pending
-        this._markDirty(true);
-
         // Check for slash command trigger
         this._checkSlashTrigger(editor);
       },
@@ -422,11 +431,11 @@ class CanvasEditorPane implements IDisposable {
     // Create bubble menu (hidden by default)
     this._createBubbleMenu();
 
-    // Subscribe to save completion to clear dirty state (Task 6.1)
+    // Subscribe to save completion (Task 6.1)
     this._saveDisposables.push(
       this._dataService.onDidSavePage((savedPageId) => {
         if (savedPageId === this._pageId) {
-          this._markDirty(false);
+          // Auto-save completed — no dirty tracking needed for canvas
         }
       }),
     );
@@ -438,9 +447,15 @@ class CanvasEditorPane implements IDisposable {
         this._currentPage = event.page;
 
         // Update title if changed externally (e.g. sidebar rename)
-        if (this._titleEl && event.page.title !== this._titleEl.textContent) {
+        // Skip if user is actively editing the title to avoid race condition
+        const titleHasFocus = this._titleEl === document.activeElement;
+        if (this._titleEl && !titleHasFocus && event.page.title !== this._titleEl.textContent) {
           // Show empty for 'Untitled' so placeholder displays
           this._titleEl.textContent = (event.page.title && event.page.title !== 'Untitled') ? event.page.title : '';
+        }
+        // Always sync the tab label to match the page title
+        if (this._input && typeof (this._input as any).setName === 'function') {
+          (this._input as any).setName(event.page.title || 'Untitled');
         }
 
         // Update icon (SVG)
@@ -628,9 +643,13 @@ class CanvasEditorPane implements IDisposable {
     const displayTitle = this._currentPage?.title;
     this._titleEl.textContent = (displayTitle && displayTitle !== 'Untitled') ? displayTitle : '';
 
-    // Title input → debounced save
+    // Title input → debounced save + immediate tab label sync
     this._titleEl.addEventListener('input', () => {
       const newTitle = this._titleEl?.textContent?.trim() || 'Untitled';
+      // Update tab label immediately (no flicker)
+      if (this._input && typeof (this._input as any).setName === 'function') {
+        (this._input as any).setName(newTitle);
+      }
       if (this._titleSaveTimer) clearTimeout(this._titleSaveTimer);
       this._titleSaveTimer = setTimeout(() => {
         this._dataService.updatePage(this._pageId, { title: newTitle });
@@ -672,22 +691,18 @@ class CanvasEditorPane implements IDisposable {
       // Show ancestor pages as clickable crumbs
       for (let i = 0; i < ancestors.length; i++) {
         const crumb = $('span.canvas-breadcrumb');
-        const crumbIcon = createIconElement(resolvePageIcon(ancestors[i].icon), 12);
+        const crumbIcon = createIconElement(resolvePageIcon(ancestors[i].icon), 14);
         crumb.appendChild(crumbIcon);
         const crumbText = $('span');
-        crumbText.textContent = ` ${ancestors[i].title}`;
+        crumbText.textContent = ancestors[i].title;
         crumb.appendChild(crumbText);
         crumb.addEventListener('click', () => {
-          // Navigate to ancestor by dispatching to the editor service
-          const input = this._input as any;
-          if (input?._api?.editors) {
-            input._api.editors.openEditor({
-              typeId: 'canvas',
-              title: ancestors[i].title,
-              icon: ancestors[i].icon ?? undefined,
-              instanceId: ancestors[i].id,
-            });
-          }
+          this._openEditor?.({
+            typeId: 'canvas',
+            title: ancestors[i].title,
+            icon: ancestors[i].icon ?? undefined,
+            instanceId: ancestors[i].id,
+          });
         });
         this._breadcrumbsEl.appendChild(crumb);
 
@@ -698,10 +713,10 @@ class CanvasEditorPane implements IDisposable {
 
       // Always show current page as the last breadcrumb (non-clickable)
       const currentCrumb = $('span.canvas-breadcrumb.canvas-breadcrumb--current');
-      const currentIcon = createIconElement(resolvePageIcon(this._currentPage?.icon), 12);
+      const currentIcon = createIconElement(resolvePageIcon(this._currentPage?.icon), 14);
       currentCrumb.appendChild(currentIcon);
       const currentText = $('span');
-      currentText.textContent = ` ${this._currentPage?.title || 'Untitled'}`;
+      currentText.textContent = this._currentPage?.title || 'Untitled';
       currentCrumb.appendChild(currentText);
       this._breadcrumbsEl.appendChild(currentCrumb);
     } catch {
@@ -1826,7 +1841,6 @@ class CanvasEditorPane implements IDisposable {
     // Manually schedule save since onUpdate was suppressed
     const json = JSON.stringify(editor.getJSON());
     this._dataService.scheduleContentSave(this._pageId, json);
-    this._markDirty(true);
 
     this._hideSlashMenu();
   }

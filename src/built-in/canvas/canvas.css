@@ -162,32 +162,61 @@
   background-color: var(--vscode-list-activeSelectionBackground);
 }
 
-/* ── Chevron ── */
+/* ── Icon area (shared container for icon + chevron overlay) ── */
 
-.canvas-node-chevron {
-  width: 16px;
+.canvas-node-icon-area {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  text-align: center;
-  font-size: 10px;
-  color: var(--vscode-foreground);
-  transition: transform 0.1s ease;
-}
-
-.canvas-node-chevron--expanded {
-  transform: rotate(90deg);
-}
-
-.canvas-node-spacer {
-  width: 16px;
-  flex-shrink: 0;
+  margin-right: 4px;
 }
 
 /* ── Icon ── */
 
 .canvas-node-icon {
-  margin-right: 4px;
   flex-shrink: 0;
   font-size: 14px;
+  transition: opacity 0.12s ease;
+}
+
+/* ── Chevron (hidden by default, overlays icon on hover/expanded) ── */
+
+.canvas-node-chevron {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-foreground);
+  opacity: 0;
+  transition: transform 0.1s ease, opacity 0.12s ease;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.canvas-node-chevron:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* On hover: show chevron and hide icon (only for nodes with children) */
+.canvas-node--has-children:hover .canvas-node-chevron {
+  opacity: 1;
+}
+.canvas-node--has-children:hover > .canvas-node-icon-area > .canvas-node-icon {
+  opacity: 0;
+}
+
+/* When expanded: always show chevron rotated, hide icon */
+.canvas-node--expanded .canvas-node-chevron {
+  opacity: 1;
+  transform: rotate(90deg);
+}
+.canvas-node--expanded > .canvas-node-icon-area > .canvas-node-icon {
+  opacity: 0;
 }
 
 /* ── Label ── */
@@ -1253,6 +1282,9 @@
 
 .canvas-breadcrumb {
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   transition: color 0.1s ease;
   max-width: 150px;
   overflow: hidden;
@@ -1271,6 +1303,9 @@
 
 .canvas-breadcrumb--current {
   cursor: default;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   color: rgba(255, 255, 255, 0.5);
 }
 

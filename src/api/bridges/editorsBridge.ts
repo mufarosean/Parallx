@@ -201,7 +201,7 @@ export class EditorsBridge {
  */
 class ToolEditorInput extends EditorInput {
   readonly typeId: string;
-  private readonly _name: string;
+  private _name: string;
   private readonly _icon: string | undefined;
   readonly provider: ToolEditorProvider;
 
@@ -220,6 +220,15 @@ class ToolEditorInput extends EditorInput {
   }
 
   get name(): string { return this._name; }
+
+  /**
+   * Update the display name and notify listeners (tab bar, etc.).
+   */
+  setName(name: string): void {
+    if (this._name === name) return;
+    this._name = name;
+    this.fireLabelChange();
+  }
   get description(): string { return `Tool editor: ${this.typeId}`; }
 
   /**

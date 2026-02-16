@@ -90,6 +90,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 4. Register editor provider for Canvas panes (Cap 5)
   const editorProvider = new CanvasEditorProvider(_dataService);
+  editorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
   context.subscriptions.push(
     api.editors.registerEditorProvider('canvas', {
       createEditorPane(container: HTMLElement, input?: any): IDisposable {

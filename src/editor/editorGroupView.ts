@@ -343,7 +343,15 @@ export class EditorGroupView extends Disposable implements IGridView {
 
   private async _onModelChange(e: EditorModelChangeEvent): Promise<void> {
     switch (e.kind) {
-      case EditorGroupChangeKind.EditorOpen:
+      case EditorGroupChangeKind.EditorOpen: {
+        // Subscribe to label changes so tab updates when name changes
+        const editor = this.model.editors[this.model.editors.length - 1];
+        if (editor) {
+          this._register({ dispose: editor.onDidChangeLabel(() => this._renderTabs()) });
+        }
+        this._renderTabs();
+        break;
+      }
       case EditorGroupChangeKind.EditorMove:
       case EditorGroupChangeKind.EditorPin:
       case EditorGroupChangeKind.EditorUnpin:
