@@ -5,17 +5,27 @@
 // CanvasDataService, and auto-saves content changes.
 //
 // Extensions loaded (Notion-parity):
+//
+// Tier 1 (core Notion feel):
 //   • StarterKit (headings, bold, italic, strike, code, blockquote, lists,
-//     code block, hr, link, underline — all bundled in StarterKit v3)
+//     hr, link, underline — all bundled in StarterKit v3)
 //   • Placeholder, TaskList, TaskItem
 //   • TextStyle, Color, Highlight, Image
 //   • GlobalDragHandle (block drag-reorder)
 //   • Custom BubbleMenu (floating toolbar on text selection)
+//
+// Tier 2 (power-user Notion features):
+//   • Callout — custom Node.create() with emoji + colored background
+//   • Details / DetailsContent / DetailsSummary (toggle list / collapsible)
+//   • TableKit (Table + TableRow + TableCell + TableHeader, resizable)
+//   • CodeBlockLowlight (syntax-highlighted code blocks via lowlight/highlight.js)
+//   • CharacterCount (word/char counter)
+//   • AutoJoiner (companion to drag handle — joins same-type adjacent blocks)
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { CanvasDataService } from './canvasDataService.js';
-import { Editor } from '@tiptap/core';
+import { Editor, Node, mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
@@ -26,7 +36,90 @@ import { Color } from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import Image from '@tiptap/extension-image';
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
+// Tier 2 extensions
+import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details';
+import { TableKit } from '@tiptap/extension-table';
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import CharacterCount from '@tiptap/extension-character-count';
+import AutoJoiner from 'tiptap-extension-auto-joiner';
+import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
+
+// ─── TipTap Command Augmentation ────────────────────────────────────────────
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    callout: {
+      setCallout: (attrs?: { emoji?: string }) => ReturnType;
+      toggleCallout: (attrs?: { emoji?: string }) => ReturnType;
+      unsetCallout: () => ReturnType;
+    };
+  }
+}
+
+// Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
+const lowlight = createLowlight(common);
+
+// ─── Custom Callout Node ────────────────────────────────────────────────────
+// Notion-style callout: a colored info box with an emoji icon and rich content.
+// Rendered as <div data-type="callout"> with a non-editable emoji and editable content area.
+
+const Callout = Node.create({
+  name: 'callout',
+  group: 'block',
+  content: 'block+',
+  defining: true,
+
+  addAttributes() {
+    return {
+      emoji: {
+        default: '💡',
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-emoji') || '💡',
+        renderHTML: (attributes: Record<string, any>) => ({ 'data-emoji': attributes.emoji }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'div[data-type="callout"]' }];
+  },
+
+  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, any> }) {
+    return [
+      'div',
+      mergeAttributes(HTMLAttributes, {
+        'data-type': 'callout',
+        class: 'canvas-callout',
+      }),
+      [
+        'span',
+        {
+          class: 'canvas-callout-emoji',
+          contenteditable: 'false',
+          'data-emoji': HTMLAttributes['data-emoji'] || '💡',
+        },
+        HTMLAttributes['data-emoji'] || '💡',
+      ],
+      ['div', { class: 'canvas-callout-content' }, 0],
+    ];
+  },
+
+  addCommands() {
+    return {
+      setCallout:
+        (attrs?: { emoji?: string }) =>
+        ({ commands }: any) =>
+          commands.wrapIn(this.name, attrs),
+      toggleCallout:
+        (attrs?: { emoji?: string }) =>
+        ({ commands }: any) =>
+          commands.toggleWrap(this.name, attrs),
+      unsetCallout:
+        () =>
+        ({ commands }: any) =>
+          commands.lift(this.name),
+    };
+  },
+});
 
 // ─── Slash Command Types ────────────────────────────────────────────────────
 
@@ -77,6 +170,18 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
     label: 'Divider', icon: '—', description: 'Horizontal rule',
     action: (e) => e.chain().focus().setHorizontalRule().run(),
   },
+  {
+    label: 'Callout', icon: '💡', description: 'Highlighted info box',
+    action: (e) => (e.commands as any).toggleCallout({ emoji: '💡' }),
+  },
+  {
+    label: 'Toggle List', icon: '▶', description: 'Collapsible content',
+    action: (e) => e.chain().focus().setDetails().run(),
+  },
+  {
+    label: 'Table', icon: '▦', description: 'Insert a table',
+    action: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+  },
   // ── Media ──
   {
     label: 'Image', icon: '🖼', description: 'Embed an image from URL',
@@ -84,11 +189,6 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
       const url = prompt('Enter image URL:');
       if (url) e.chain().focus().setImage({ src: url }).run();
     },
-  },
-  // ── Inline formatting (quick access) ──
-  {
-    label: 'Callout', icon: '💡', description: 'Highlighted info box',
-    action: (e) => e.chain().focus().toggleBlockquote().run(),  // callout uses blockquote for now
   },
 ];
 
@@ -145,6 +245,7 @@ class CanvasEditorPane implements IDisposable {
       extensions: [
         StarterKit.configure({
           heading: { levels: [1, 2, 3] },
+          codeBlock: false,  // Replaced by CodeBlockLowlight
           link: {
             openOnClick: false,
             HTMLAttributes: { class: 'canvas-link' },
@@ -153,6 +254,7 @@ class CanvasEditorPane implements IDisposable {
         }),
         Placeholder.configure({
           placeholder: "Type '/' for commands...",
+          includeChildren: true,  // Show placeholders inside Details summary
         }),
         TaskList,
         TaskItem.configure({
@@ -171,6 +273,27 @@ class CanvasEditorPane implements IDisposable {
           dragHandleWidth: 24,
           scrollTreshold: 100,
         }),
+        // ── Tier 2 extensions ──
+        Callout,
+        Details.configure({
+          persist: true,
+          HTMLAttributes: { class: 'canvas-details' },
+        }),
+        DetailsSummary,
+        DetailsContent,
+        TableKit.configure({
+          table: {
+            resizable: true,
+            HTMLAttributes: { class: 'canvas-table' },
+          },
+        }),
+        CodeBlockLowlight.configure({
+          lowlight,
+          defaultLanguage: 'plaintext',
+          HTMLAttributes: { class: 'canvas-code-block' },
+        }),
+        CharacterCount,
+        AutoJoiner,
       ],
       content: '',
       editorProps: {

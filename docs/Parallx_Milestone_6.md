@@ -1123,3 +1123,68 @@ Floating toolbar with 7 formatting buttons (bold, italic, underline, strikethrou
 | File | Change |
 |------|--------|
 | `src/built-in/canvas/canvasEditorProvider.ts` | `_renderSlashMenuItems()` uses class toggle; `_executeSlashItem()` suppresses updates; `mousedown` stopPropagation |
+
+---
+
+## Canvas Editor — Notion Parity Gap Analysis
+
+Research based on **Novel** (16k stars, gold-standard Notion-style TipTap editor) and **tiptap-block-editor** by phyohtetarkar.
+
+### Architecture Notes
+
+- **No React needed.** Novel uses React, but all TipTap extensions are framework-agnostic. Parallx's vanilla TS `new Editor(...)` approach works perfectly — just add extensions to the array.
+- **Bubble menu needs custom DOM.** Since we can't use `@tiptap/react`, the floating toolbar is built as a vanilla TS ProseMirror plugin / TipTap `Extension.create()` that watches selection changes and positions a DOM overlay. Novel uses React's BubbleMenu, but the underlying ProseMirror plugin (`@tiptap/extension-bubble-menu`) works headlessly.
+- **Slash command upgrade path.** The current slash menu works but should ideally be refactored to use `@tiptap/suggestion` (the same approach Novel uses), which gives proper positioning, filtering, and keyboard navigation "for free."
+- **Callout node** — Notion's colored info boxes. Requires a custom TipTap node (`Node.create({ name: 'callout', ... })`) with an emoji picker and background color. No off-the-shelf npm package — both Novel and tiptap-block-editor implement this custom.
+- **Drag handle** — `tiptap-extension-global-drag-handle` (153 stars, used by Novel) is headless — needs CSS for the handle icon (a 6-dot grip). It gives every block a draggable handle that appears on hover.
+
+### Tier 1 — Essential (core Notion feel) ✅ COMPLETED
+
+| # | Feature | Extension | Status |
+|---|---------|-----------|--------|
+| 1 | Global drag handle | `tiptap-extension-global-drag-handle` | ✅ Implemented |
+| 2 | Link with preview | `@tiptap/extension-link` (via StarterKit v3) | ✅ Configured via StarterKit |
+| 3 | Underline | `@tiptap/extension-underline` (via StarterKit v3) | ✅ Configured via StarterKit |
+| 4 | Text color / highlight | `@tiptap/extension-color`, `@tiptap/extension-highlight`, `@tiptap/extension-text-style` | ✅ Implemented |
+| 5 | Image embed | `@tiptap/extension-image` | ✅ Implemented (URL-based) |
+| 6 | Floating toolbar (bubble menu) | Custom vanilla TS selection-based overlay | ✅ Implemented — 7 buttons + link input |
+| 7 | Slash command | Custom DOM implementation (functional, not `@tiptap/suggestion`) | ✅ Working — 11 items, keyboard nav, click fixed |
+
+**Packages added for Tier 1:** `@tiptap/extension-text-style`, `@tiptap/extension-color`, `@tiptap/extension-highlight`, `@tiptap/extension-image`, `@tiptap/suggestion`, `tiptap-extension-global-drag-handle`
+
+### Tier 2 — Important (power-user Notion features) ✅ COMPLETED
+
+| # | Feature | Extension | Status | Complexity |
+|---|---------|-----------|--------|------------|
+| 1 | **Callout / info box** | Custom node (`Node.create({ name: 'callout' })`) | ✅ Implemented — emoji + colored background box | Medium |
+| 2 | **Toggle list (collapsible)** | `@tiptap/extension-details` + DetailsSummary + DetailsContent (official v3) | ✅ Implemented — persist: true, animated arrow | Low |
+| 3 | **Table** | `TableKit` from `@tiptap/extension-table` (bundles Table + Row + Cell + Header) | ✅ Implemented — resizable columns, header row | Medium |
+| 4 | **Code block with syntax highlighting** | `@tiptap/extension-code-block-lowlight` + lowlight + highlight.js | ✅ Implemented — VS Code Dark+ token colors, common languages | Medium |
+| 5 | **Character count** | `@tiptap/extension-character-count` | ✅ Installed | Low |
+| 6 | **Auto-joiner** | `tiptap-extension-auto-joiner` | ✅ Installed — companion to drag handle | Low |
+
+### Tier 3 — Nice to Have ⬜ FUTURE
+
+| # | Feature | Extension | Status |
+|---|---------|-----------|--------|
+| 1 | YouTube / embed | `@tiptap/extension-youtube` | ⬜ Missing |
+| 2 | Mathematics / KaTeX | Custom + katex | ⬜ Missing |
+| 3 | Mention / page links | `@tiptap/extension-mention` + custom | ⬜ Missing |
+| 4 | AI writing assist | Custom + LLM API | ⬜ Missing |
+| 5 | Mermaid diagrams | Custom node | ⬜ Missing |
+
+### Implementation Priority (recommended order within each tier)
+
+**Tier 1** (completed):
+1. ~~Drag handle + link + underline + highlight/color~~ ✅
+2. ~~Bubble menu~~ ✅
+3. ~~Image support~~ ✅
+4. ~~Slash command fixes~~ ✅
+
+**Tier 2** (completed):
+1. ~~Callout block — custom TipTap node with emoji + colored background~~ ✅
+2. ~~Toggle list — `@tiptap/extension-details` (official v3 extension)~~ ✅
+3. ~~Table — `TableKit` from `@tiptap/extension-table` (resizable)~~ ✅
+4. ~~Code block syntax highlighting — `@tiptap/extension-code-block-lowlight` + lowlight + highlight.js~~ ✅
+5. ~~Character count — `@tiptap/extension-character-count`~~ ✅
+6. ~~Auto-joiner — `tiptap-extension-auto-joiner` (companion to drag handle)~~ ✅
