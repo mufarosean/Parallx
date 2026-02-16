@@ -42,7 +42,6 @@ interface CanvasSidebarApi {
 
 export class CanvasSidebar {
   private readonly _disposables: IDisposable[] = [];
-  private _container: HTMLElement | null = null;
   private _treeList: HTMLElement | null = null;
   private _selectedPageId: string | null = null;
   private _expandedIds = new Set<string>();
@@ -79,7 +78,6 @@ export class CanvasSidebar {
 
   createView(container: HTMLElement): IDisposable {
     container.classList.add('canvas-tree');
-    this._container = container;
 
     // Toolbar with + button
     const toolbar = $('div.canvas-toolbar');
@@ -124,7 +122,6 @@ export class CanvasSidebar {
       dispose: () => {
         this._treeList?.removeEventListener('keydown', this._handleKeydown);
         this._dismissContextMenuCleanup();
-        this._container = null;
         this._treeList = null;
         for (const d of this._disposables) d.dispose();
         this._disposables.length = 0;
@@ -135,6 +132,11 @@ export class CanvasSidebar {
   // ══════════════════════════════════════════════════════════════════════════
   // Tree Rendering
   // ══════════════════════════════════════════════════════════════════════════
+
+  /** Public entry point to re-fetch all data and re-render the sidebar tree. */
+  refresh(): void {
+    void this._refreshTree();
+  }
 
   private async _refreshTree(): Promise<void> {
     try {

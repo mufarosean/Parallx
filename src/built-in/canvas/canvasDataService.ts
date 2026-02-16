@@ -26,7 +26,8 @@ interface DatabaseBridge {
 
 // ─── Row → IPage mapping ────────────────────────────────────────────────────
 
-function rowToPage(row: Record<string, unknown>): IPage {
+/** @internal Exported for testing — converts a raw database row to an IPage. */
+export function rowToPage(row: Record<string, unknown>): IPage {
   return {
     id: row.id as string,
     parentId: (row.parent_id as string) ?? null,
@@ -317,7 +318,7 @@ export class CanvasDataService extends Disposable {
    * @param parentId — parent page ID (null for root level)
    * @param orderedIds — page IDs in desired order
    */
-  async reorderPages(parentId: string | null, orderedIds: string[]): Promise<void> {
+  async reorderPages(_parentId: string | null, orderedIds: string[]): Promise<void> {
     for (let i = 0; i < orderedIds.length; i++) {
       const result = await this._db.run(
         `UPDATE pages SET sort_order = ?, updated_at = datetime('now') WHERE id = ?`,

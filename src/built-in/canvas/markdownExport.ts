@@ -78,7 +78,12 @@ function renderNode(node: TipTapNode, depth: number): string {
     case 'taskItem': {
       const checked = node.attrs?.checked ? 'x' : ' ';
       const indent = '  '.repeat(depth);
-      const content = renderInlineContent(node.content);
+      // taskItem content is typically [paragraph, ...] — unwrap the first paragraph
+      const children = node.content || [];
+      const firstPara = children.find(c => c.type === 'paragraph');
+      const content = firstPara
+        ? renderInlineContent(firstPara.content)
+        : renderInlineContent(children);
       return `${indent}- [${checked}] ${content}`;
     }
 

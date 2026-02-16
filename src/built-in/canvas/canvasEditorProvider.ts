@@ -996,7 +996,7 @@ class CanvasEditorPane implements IDisposable {
     this._pageMenuBtn.title = 'Page settings';
     this._pageMenuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (this._pageMenuDropdown?.style.display !== 'none') {
+      if (this._pageMenuDropdown) {
         this._dismissPopups();
         return;
       }

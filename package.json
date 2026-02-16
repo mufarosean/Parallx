@@ -14,7 +14,9 @@
     "rebuild": "electron-rebuild",
     "postinstall": "electron-rebuild",
     "test:e2e": "npx playwright test",
-    "test:e2e:headed": "npx playwright test --headed"
+    "test:e2e:headed": "npx playwright test --headed",
+    "test:unit": "npx vitest run",
+    "test:unit:watch": "npx vitest"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",
@@ -22,7 +24,8 @@
     "electron": "^40.2.1",
     "esbuild": "^0.27.3",
     "playwright": "^1.58.2",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "@tiptap/core": "^3.19.0",

@@ -30,6 +30,7 @@ interface ParallxApi {
     getWorkspaceFolder(uri: string): { uri: string; name: string; index: number } | undefined;
     readonly name: string | undefined;
     getConfiguration(section?: string): { get<T>(key: string, defaultValue?: T): T | undefined; has(key: string): boolean };
+    readonly onDidChangeWorkspaceFolders: (listener: (e: { added: readonly { uri: string; name: string; index: number }[]; removed: readonly { uri: string; name: string; index: number }[] }) => void) => IDisposable;
   };
   window: {
     showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
@@ -51,7 +52,6 @@ interface ParallxApi {
 // ─── Module State ────────────────────────────────────────────────────────────
 
 let _api: ParallxApi;
-let _context: ToolContext;
 let _dataService: CanvasDataService | null = null;
 let _sidebar: CanvasSidebar | null = null;
 
@@ -59,7 +59,6 @@ let _sidebar: CanvasSidebar | null = null;
 
 export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
   _api = api;
-  _context = context;
 
   // 1. Run Canvas migrations on the open database
   await _runMigrations();
@@ -120,6 +119,21 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 7. Restore last-opened page (Task 6.3)
   await _restoreLastOpenedPage(api, context, _dataService);
 
+  // 8. Listen for workspace folder changes — run migrations when a folder is opened
+  //    This handles the case where Canvas activates before any workspace is open.
+  context.subscriptions.push(
+    api.workspace.onDidChangeWorkspaceFolders(async (e) => {
+      if (e.added.length > 0) {
+        // A folder was added — database should now be open. Run migrations.
+        // Small delay to let the database service open the DB file.
+        await new Promise(r => setTimeout(r, 500));
+        await _runMigrations();
+        // Refresh the sidebar to show data from the new workspace
+        _sidebar?.refresh();
+      }
+    }),
+  );
+
   console.log('[Canvas] Tool activated');
 }
 
@@ -133,7 +147,6 @@ export async function deactivate(): Promise<void> {
   _dataService = null;
   _sidebar = null;
   _api = undefined!;
-  _context = undefined!;
 
   console.log('[Canvas] Tool deactivated');
 }
