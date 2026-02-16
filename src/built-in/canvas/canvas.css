@@ -136,8 +136,8 @@
 /* ── Tree node ── */
 
 .canvas-node {
-  height: 22px;
-  line-height: 22px;
+  height: 28px;
+  line-height: 28px;
   display: flex;
   align-items: center;
   cursor: pointer;
@@ -145,7 +145,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 13px;
-  padding-right: 8px;
+  padding-right: 48px;
+  position: relative;
   color: var(--vscode-foreground);
 }
 
@@ -180,7 +181,6 @@
 .canvas-node-icon {
   flex-shrink: 0;
   font-size: 14px;
-  transition: opacity 0.12s ease;
 }
 
 /* ── Chevron (hidden by default, overlays icon on hover/expanded) ── */
@@ -193,7 +193,7 @@
   justify-content: center;
   color: var(--vscode-foreground);
   opacity: 0;
-  transition: transform 0.1s ease, opacity 0.12s ease;
+  transition: transform 0.15s ease;
   cursor: pointer;
   border-radius: 3px;
 }
@@ -1875,7 +1875,7 @@
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-sidebar-favorites .canvas-node {
-  padding-left: 12px;
+  padding-left: 8px;
 }
 
 /* ── Node Hover Actions (⋯ and +) ── */
@@ -1885,15 +1885,13 @@
   right: 4px;
   top: 50%;
   transform: translateY(-50%);
-  display: flex;
+  display: none;
   align-items: center;
   gap: 2px;
-  opacity: 0;
-  transition: opacity 0.12s ease;
 }
 
 .canvas-node:hover .canvas-node-actions {
-  opacity: 1;
+  display: flex;
 }
 
 .canvas-node-action-btn {
@@ -1916,11 +1914,7 @@
   color: rgba(255, 255, 255, 0.8);
 }
 
-/* Make room for actions */
-.canvas-node {
-  position: relative;
-  padding-right: 48px;
-}
+/* (position + padding-right moved to main .canvas-node rule) */
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Trash Panel Popup (replaces inline trash section)

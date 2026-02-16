@@ -180,6 +180,17 @@ export class CanvasSidebar {
       for (const page of this._favoritedPages) {
         const row = this._renderFavoriteRow(page);
         favSection.appendChild(row);
+
+        // Render children inline under favorites (Notion-style)
+        const treeNode = this._findNode(this._tree, page.id);
+        if (treeNode && treeNode.children.length > 0) {
+          const childrenEl = $('div.canvas-children');
+          if (!this._expandedIds.has(page.id)) childrenEl.classList.add('canvas-children--collapsed');
+          for (const child of treeNode.children) {
+            this._renderNode(childrenEl, child as IPageTreeNode, 1);
+          }
+          favSection.appendChild(childrenEl);
+        }
       }
 
       this._treeList.appendChild(favSection);
@@ -240,11 +251,34 @@ export class CanvasSidebar {
     const row = $('div.canvas-node.canvas-favorite-node');
     row.setAttribute('data-page-id', page.id);
 
+    // Check if this favorite has children in the main tree
+    const treeNode = this._findNode(this._tree, page.id);
+    const hasChildren = treeNode ? treeNode.children.length > 0 : false;
+    const isExpanded = this._expandedIds.has(page.id);
+    if (hasChildren) {
+      row.classList.add('canvas-node--has-children');
+      if (isExpanded) row.classList.add('canvas-node--expanded');
+    }
+
     // Icon area (consistent alignment with tree nodes)
     const iconArea = $('span.canvas-node-icon-area');
     const iconEl = createIconElement(resolvePageIcon(page.icon), 14);
     iconEl.classList.add('canvas-node-icon');
     iconArea.appendChild(iconEl);
+
+    // Chevron overlay (same as tree nodes)
+    if (hasChildren) {
+      const chevron = $('span.canvas-node-chevron');
+      chevron.innerHTML = svgIcon('chevron-right');
+      const chevSvg = chevron.querySelector('svg');
+      if (chevSvg) { chevSvg.setAttribute('width', '12'); chevSvg.setAttribute('height', '12'); }
+      chevron.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._toggleExpand(page.id);
+      });
+      iconArea.appendChild(chevron);
+    }
+
     row.appendChild(iconArea);
 
     // Label
@@ -350,7 +384,7 @@ export class CanvasSidebar {
     const row = $('div.canvas-node');
     row.setAttribute('role', 'treeitem');
     row.setAttribute('data-page-id', node.id);
-    row.style.paddingLeft = `${depth * INDENT_PX}px`;
+    row.style.paddingLeft = `${8 + depth * INDENT_PX}px`;
     row.draggable = true;
 
     const hasChildren = node.children.length > 0;
