@@ -1065,14 +1065,29 @@ class CanvasEditorPane implements IDisposable {
 
     this._container.appendChild(this._coverPicker);
 
-    // Position: fixed below the cover, horizontally centered in editor
-    if (this._coverEl) {
-      const coverRect = this._coverEl.getBoundingClientRect();
-      const wrapperRect = (this._editorContainer ?? this._container).getBoundingClientRect();
-      const pickerWidth = 420;
-      this._coverPicker.style.top = `${coverRect.bottom + 4}px`;
-      this._coverPicker.style.left = `${wrapperRect.left + (wrapperRect.width - pickerWidth) / 2}px`;
+    // Position: fixed, horizontally centered in editor area
+    const wrapperRect = (this._editorContainer ?? this._container).getBoundingClientRect();
+    const pickerWidth = 420;
+    const left = wrapperRect.left + (wrapperRect.width - pickerWidth) / 2;
+
+    // Anchor below cover if visible, otherwise below the page header
+    let top: number;
+    const coverVisible = this._coverEl && this._coverEl.style.display !== 'none';
+    if (coverVisible) {
+      top = this._coverEl!.getBoundingClientRect().bottom + 4;
+    } else if (this._pageHeader) {
+      top = this._pageHeader.getBoundingClientRect().top;
+    } else {
+      top = wrapperRect.top + 60;
     }
+
+    // Clamp so picker doesn't overflow the viewport bottom
+    const pickerHeight = 280; // approximate
+    top = Math.min(top, window.innerHeight - pickerHeight - 8);
+    top = Math.max(top, 8);
+
+    this._coverPicker.style.top = `${top}px`;
+    this._coverPicker.style.left = `${Math.max(8, left)}px`;
 
     // Dismiss on click outside
     setTimeout(() => {
