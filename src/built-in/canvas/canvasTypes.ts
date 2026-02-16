@@ -23,6 +23,20 @@ export interface IPage {
   readonly sortOrder: number;
   /** Whether the page is archived (soft-deleted). */
   readonly isArchived: boolean;
+  /** Cover image — base64 data URL or CSS gradient string, or null. */
+  readonly coverUrl: string | null;
+  /** Cover vertical crop offset (0.0 = top, 1.0 = bottom). */
+  readonly coverYOffset: number;
+  /** Font family preference: 'default' | 'serif' | 'mono'. */
+  readonly fontFamily: 'default' | 'serif' | 'mono';
+  /** Whether the page is displayed in full-width mode. */
+  readonly fullWidth: boolean;
+  /** Whether small text mode is enabled. */
+  readonly smallText: boolean;
+  /** Whether the page is locked (read-only). */
+  readonly isLocked: boolean;
+  /** Whether the page is pinned to the Favorites section. */
+  readonly isFavorited: boolean;
   /** ISO-8601 creation timestamp. */
   readonly createdAt: string;
   /** ISO-8601 last-modified timestamp. */

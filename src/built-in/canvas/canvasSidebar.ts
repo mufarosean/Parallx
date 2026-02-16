@@ -8,9 +8,12 @@
 //   • Delete via keyboard (Delete key)
 //   • Drag-and-drop to reorder and reparent
 //   • Reactive updates from CanvasDataService change events
+//   • Favorites section at top (Task 10.2)
+//   • Trash section at bottom (Task 10.3)
+//   • Right-click context menu (Task 10.7)
 
 import type { IDisposable } from '../../platform/lifecycle.js';
-import type { IPageTreeNode } from './canvasTypes.js';
+import type { IPage, IPageTreeNode } from './canvasTypes.js';
 import { type CanvasDataService } from './canvasDataService.js';
 import { $ } from '../../ui/dom.js';
 
@@ -44,6 +47,14 @@ export class CanvasSidebar {
   private _selectedPageId: string | null = null;
   private _expandedIds = new Set<string>();
   private _tree: IPageTreeNode[] = [];
+
+  // ── Favorites / Trash state ──
+  private _favoritedPages: IPage[] = [];
+  private _archivedPages: IPage[] = [];
+  private _trashExpanded = false;
+
+  // ── Context menu ──
+  private _contextMenu: HTMLElement | null = null;
 
   // ── Callbacks ──
   private _onExpandStateChanged: ((expandedIds: ReadonlySet<string>) => void) | null = null;
@@ -101,9 +112,18 @@ export class CanvasSidebar {
       this._api.editors.onDidChangeOpenEditors(() => this._syncSelectionFromEditor()),
     );
 
+    // Context menu dismiss on click outside
+    this._disposables.push({
+      dispose: () => {
+        document.removeEventListener('mousedown', this._dismissContextMenu);
+        document.removeEventListener('keydown', this._dismissContextMenuOnEscape);
+      },
+    });
+
     return {
       dispose: () => {
         this._treeList?.removeEventListener('keydown', this._handleKeydown);
+        this._dismissContextMenuCleanup();
         this._container = null;
         this._treeList = null;
         for (const d of this._disposables) d.dispose();
@@ -118,10 +138,19 @@ export class CanvasSidebar {
 
   private async _refreshTree(): Promise<void> {
     try {
-      this._tree = await this._dataService.getPageTree();
+      const [tree, favorites, archived] = await Promise.all([
+        this._dataService.getPageTree(),
+        this._dataService.getFavoritedPages(),
+        this._dataService.getArchivedPages(),
+      ]);
+      this._tree = tree;
+      this._favoritedPages = favorites;
+      this._archivedPages = archived;
     } catch (err) {
       console.error('[CanvasSidebar] Failed to load page tree:', err);
       this._tree = [];
+      this._favoritedPages = [];
+      this._archivedPages = [];
     }
     this._renderTree();
   }
@@ -130,6 +159,32 @@ export class CanvasSidebar {
     if (!this._treeList) return;
     this._treeList.innerHTML = '';
 
+    // ── Favorites section ──
+    if (this._favoritedPages.length > 0) {
+      const favSection = $('div.canvas-sidebar-section.canvas-sidebar-favorites');
+
+      const favLabel = $('div.canvas-sidebar-section-label');
+      favLabel.textContent = 'FAVORITES';
+      favSection.appendChild(favLabel);
+
+      for (const page of this._favoritedPages) {
+        const row = this._renderFavoriteRow(page);
+        favSection.appendChild(row);
+      }
+
+      this._treeList.appendChild(favSection);
+
+      // Separator
+      const sep = $('div.canvas-sidebar-separator');
+      this._treeList.appendChild(sep);
+    }
+
+    // ── Pages section label ──
+    const pagesLabel = $('div.canvas-sidebar-section-label');
+    pagesLabel.textContent = 'PAGES';
+    this._treeList.appendChild(pagesLabel);
+
+    // ── Main tree ──
     if (this._tree.length === 0) {
       const empty = $('div.canvas-empty');
       empty.textContent = 'No pages yet.';
@@ -139,12 +194,153 @@ export class CanvasSidebar {
       empty.appendChild($('br'));
       empty.appendChild(btn);
       this._treeList.appendChild(empty);
-      return;
+    } else {
+      for (const node of this._tree) {
+        this._renderNode(this._treeList, node, 0);
+      }
     }
 
-    for (const node of this._tree) {
-      this._renderNode(this._treeList, node, 0);
+    // ── Trash section ──
+    const trashSection = $('div.canvas-sidebar-section.canvas-sidebar-trash');
+
+    const trashHeader = $('div.canvas-sidebar-trash-header');
+    const trashChevron = $('span.canvas-sidebar-trash-chevron');
+    trashChevron.textContent = '▶';
+    if (this._trashExpanded) trashChevron.classList.add('canvas-sidebar-trash-chevron--expanded');
+    const trashLabel = $('span.canvas-sidebar-trash-label');
+    trashLabel.textContent = `TRASH${this._archivedPages.length > 0 ? ` (${this._archivedPages.length})` : ''}`;
+
+    trashHeader.appendChild(trashChevron);
+    trashHeader.appendChild(trashLabel);
+
+    if (this._archivedPages.length > 0 && this._trashExpanded) {
+      const emptyBtn = $('button.canvas-sidebar-trash-empty-btn');
+      emptyBtn.textContent = 'Empty';
+      emptyBtn.title = 'Permanently delete all';
+      emptyBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const result = await this._api.window.showWarningMessage(
+          `Permanently delete ${this._archivedPages.length} page(s) from trash? This cannot be undone.`,
+          { title: 'Delete All' },
+          { title: 'Cancel' },
+        );
+        if (result?.title === 'Delete All') {
+          for (const page of this._archivedPages) {
+            await this._dataService.permanentlyDeletePage(page.id);
+          }
+        }
+      });
+      trashHeader.appendChild(emptyBtn);
     }
+
+    trashHeader.addEventListener('click', () => {
+      this._trashExpanded = !this._trashExpanded;
+      this._renderTree();
+    });
+    trashSection.appendChild(trashHeader);
+
+    if (this._trashExpanded && this._archivedPages.length > 0) {
+      const trashList = $('div.canvas-sidebar-trash-list');
+      for (const page of this._archivedPages) {
+        const row = this._renderTrashRow(page);
+        trashList.appendChild(row);
+      }
+      trashSection.appendChild(trashList);
+    }
+
+    // Separator before trash
+    const trashSep = $('div.canvas-sidebar-separator');
+    this._treeList.appendChild(trashSep);
+    this._treeList.appendChild(trashSection);
+  }
+
+  // ── Render a favorites row ──
+
+  private _renderFavoriteRow(page: IPage): HTMLElement {
+    const row = $('div.canvas-node.canvas-favorite-node');
+    row.setAttribute('data-page-id', page.id);
+
+    // Icon
+    const icon = $('span.canvas-node-icon');
+    icon.textContent = page.icon || DEFAULT_PAGE_ICON;
+    row.appendChild(icon);
+
+    // Label
+    const label = $('span.canvas-node-label');
+    label.textContent = page.title;
+    row.appendChild(label);
+
+    // Unfavorite star on hover
+    const star = $('span.canvas-node-star.canvas-node-star--favorited');
+    star.textContent = '★';
+    star.title = 'Remove from Favorites';
+    star.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._dataService.toggleFavorite(page.id);
+    });
+    row.appendChild(star);
+
+    if (page.id === this._selectedPageId) {
+      row.classList.add('canvas-node--selected');
+    }
+
+    // Click → open
+    row.addEventListener('click', () => this._selectAndOpenPage(page));
+
+    // Right-click → context menu
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._showContextMenu(e, page);
+    });
+
+    return row;
+  }
+
+  // ── Render a trash row ──
+
+  private _renderTrashRow(page: IPage): HTMLElement {
+    const row = $('div.canvas-node.canvas-trash-node');
+    row.setAttribute('data-page-id', page.id);
+
+    // Icon
+    const icon = $('span.canvas-node-icon');
+    icon.textContent = page.icon || DEFAULT_PAGE_ICON;
+    row.appendChild(icon);
+
+    // Label
+    const label = $('span.canvas-node-label');
+    label.textContent = page.title;
+    row.appendChild(label);
+
+    // Restore button
+    const restoreBtn = $('button.canvas-trash-restore-btn');
+    restoreBtn.textContent = '↩';
+    restoreBtn.title = 'Restore';
+    restoreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._dataService.restorePage(page.id);
+    });
+    row.appendChild(restoreBtn);
+
+    // Permanent delete button
+    const deleteBtn = $('button.canvas-trash-delete-btn');
+    deleteBtn.textContent = '✕';
+    deleteBtn.title = 'Delete permanently';
+    deleteBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const result = await this._api.window.showWarningMessage(
+        `Permanently delete "${page.title}"? This cannot be undone.`,
+        { title: 'Delete' },
+        { title: 'Cancel' },
+      );
+      if (result?.title === 'Delete') {
+        await this._dataService.permanentlyDeletePage(page.id);
+      }
+    });
+    row.appendChild(deleteBtn);
+
+    return row;
   }
 
   private _renderNode(parent: HTMLElement, node: IPageTreeNode, depth: number): void {
@@ -181,6 +377,17 @@ export class CanvasSidebar {
     label.textContent = node.title;
     row.appendChild(label);
 
+    // Favorite star (hover affordance)
+    const star = $('span.canvas-node-star');
+    star.textContent = node.isFavorited ? '★' : '☆';
+    star.title = node.isFavorited ? 'Remove from Favorites' : 'Add to Favorites';
+    if (node.isFavorited) star.classList.add('canvas-node-star--favorited');
+    star.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._dataService.toggleFavorite(node.id);
+    });
+    row.appendChild(star);
+
     // Selected state
     if (node.id === this._selectedPageId) {
       row.classList.add('canvas-node--selected');
@@ -195,6 +402,13 @@ export class CanvasSidebar {
     label.addEventListener('dblclick', (e) => {
       e.stopPropagation();
       this._startInlineRename(row, label, node);
+    });
+
+    // Right-click → context menu
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._showContextMenu(e, node);
     });
 
     // ── Drag-and-drop ──
@@ -218,19 +432,166 @@ export class CanvasSidebar {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // Right-Click Context Menu (Task 10.7)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private _showContextMenu(e: MouseEvent, page: IPage | IPageTreeNode): void {
+    this._dismissContextMenuCleanup();
+
+    this._contextMenu = $('div.canvas-context-menu');
+
+    const items: { label: string; action: () => void; danger?: boolean; divider?: boolean }[] = [
+      {
+        label: '📄 Open',
+        action: () => this._selectAndOpenPage(page),
+      },
+      {
+        label: '📝 New subpage',
+        action: () => this._createPage(page.id),
+      },
+      {
+        label: '✏️ Rename',
+        action: () => {
+          const el = this._treeList?.querySelector(`[data-page-id="${page.id}"]`);
+          if (el) {
+            const label = el.querySelector('.canvas-node-label');
+            const node = this._findNode(this._tree, page.id);
+            if (label && node) {
+              this._startInlineRename(el as HTMLElement, label as HTMLElement, node);
+            }
+          }
+        },
+      },
+    ];
+
+    // Divider
+    items.push({ label: '', action: () => {}, divider: true });
+
+    // Favorite toggle
+    items.push({
+      label: page.isFavorited ? '☆ Remove from Favorites' : '⭐ Add to Favorites',
+      action: () => this._dataService.toggleFavorite(page.id),
+    });
+
+    // Duplicate
+    items.push({
+      label: '📋 Duplicate',
+      action: async () => {
+        try {
+          const newPage = await this._dataService.duplicatePage(page.id);
+          this._selectAndOpenPage(newPage);
+        } catch (err) {
+          console.error('[CanvasSidebar] Duplicate failed:', err);
+        }
+      },
+    });
+
+    // Export (uses TipTap JSON from the page content)
+    items.push({
+      label: '📥 Export as Markdown',
+      action: async () => {
+        try {
+          const fullPage = await this._dataService.getPage(page.id);
+          if (!fullPage) return;
+
+          // Dynamic import of the markdown converter
+          const { tiptapJsonToMarkdown } = await import('./markdownExport.js');
+          let doc: unknown = null;
+          try { doc = JSON.parse(fullPage.content); } catch { /* empty */ }
+
+          const markdown = tiptapJsonToMarkdown(doc, fullPage.title);
+          const safeName = fullPage.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100).trim() || 'Untitled';
+
+          const electron = (window as any).parallxElectron;
+          if (!electron?.dialog?.saveFile || !electron?.fs?.writeFile) return;
+
+          const filePath = await electron.dialog.saveFile({
+            filters: [{ name: 'Markdown', extensions: ['md'] }],
+            defaultName: `${safeName}.md`,
+          });
+          if (filePath) {
+            await electron.fs.writeFile(filePath, markdown, 'utf-8');
+          }
+        } catch (err) {
+          console.error('[CanvasSidebar] Export failed:', err);
+        }
+      },
+    });
+
+    // Divider
+    items.push({ label: '', action: () => {}, divider: true });
+
+    // Delete
+    items.push({
+      label: '🗑️ Delete',
+      action: () => this._deletePage(page.id),
+      danger: true,
+    });
+
+    for (const item of items) {
+      if (item.divider) {
+        this._contextMenu.appendChild($('div.canvas-context-menu-divider'));
+        continue;
+      }
+      const btn = $('button.canvas-context-menu-item');
+      btn.textContent = item.label;
+      if (item.danger) btn.classList.add('canvas-context-menu-item--danger');
+      btn.addEventListener('click', () => {
+        this._dismissContextMenuCleanup();
+        item.action();
+      });
+      this._contextMenu.appendChild(btn);
+    }
+
+    // Position at cursor, clipped to viewport
+    document.body.appendChild(this._contextMenu);
+    const menuRect = this._contextMenu.getBoundingClientRect();
+    let x = e.clientX;
+    let y = e.clientY;
+    if (x + menuRect.width > window.innerWidth) x = window.innerWidth - menuRect.width - 4;
+    if (y + menuRect.height > window.innerHeight) y = window.innerHeight - menuRect.height - 4;
+    this._contextMenu.style.left = `${Math.max(0, x)}px`;
+    this._contextMenu.style.top = `${Math.max(0, y)}px`;
+
+    // Dismiss on click outside or Escape
+    setTimeout(() => {
+      document.addEventListener('mousedown', this._dismissContextMenu);
+      document.addEventListener('keydown', this._dismissContextMenuOnEscape);
+    }, 0);
+  }
+
+  private readonly _dismissContextMenu = (e: MouseEvent): void => {
+    if (this._contextMenu?.contains(e.target as HTMLElement)) return;
+    this._dismissContextMenuCleanup();
+  };
+
+  private readonly _dismissContextMenuOnEscape = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') this._dismissContextMenuCleanup();
+  };
+
+  private _dismissContextMenuCleanup(): void {
+    if (this._contextMenu) {
+      this._contextMenu.remove();
+      this._contextMenu = null;
+    }
+    document.removeEventListener('mousedown', this._dismissContextMenu);
+    document.removeEventListener('keydown', this._dismissContextMenuOnEscape);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Selection & Editor Opening (Task 4.2)
   // ══════════════════════════════════════════════════════════════════════════
 
-  private async _selectAndOpenPage(node: IPageTreeNode): Promise<void> {
-    this._selectedPageId = node.id;
+  private async _selectAndOpenPage(page: IPage | IPageTreeNode): Promise<void> {
+    this._selectedPageId = page.id;
     this._renderTree();
 
     try {
       await this._api.editors.openEditor({
         typeId: 'canvas',
-        title: node.title,
-        icon: node.icon || DEFAULT_PAGE_ICON,
-        instanceId: node.id,
+        title: page.title,
+        icon: page.icon || DEFAULT_PAGE_ICON,
+        instanceId: page.id,
       });
     } catch (err) {
       console.error('[CanvasSidebar] Failed to open page:', err);
@@ -352,14 +713,14 @@ export class CanvasSidebar {
     if (!page) return;
 
     const result = await this._api.window.showWarningMessage(
-      `Delete "${page.title}"? This cannot be undone.`,
-      { title: 'Delete' },
+      `Move "${page.title}" to trash?`,
+      { title: 'Move to Trash' },
       { title: 'Cancel' },
     );
-    if (result?.title !== 'Delete') return;
+    if (result?.title !== 'Move to Trash') return;
 
     try {
-      await this._dataService.deletePage(pageId);
+      await this._dataService.archivePage(pageId);
       if (this._selectedPageId === pageId) {
         this._selectedPageId = null;
       }

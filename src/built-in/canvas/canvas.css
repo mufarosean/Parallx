@@ -200,7 +200,7 @@
 
 .canvas-tiptap-editor {
   flex: 1;
-  padding: 48px 64px 96px;
+  padding: 8px 64px 96px;
   max-width: 860px;
   margin: 0 auto;
   width: 100%;
@@ -1006,4 +1006,934 @@
 .canvas-slash-menu::-webkit-scrollbar-thumb:hover,
 .canvas-editor-wrapper::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Page Cover Image (Cap 8)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-page-cover {
+  width: 100%;
+  height: 200px;
+  background-size: cover;
+  background-position: center 50%;
+  background-repeat: no-repeat;
+  flex-shrink: 0;
+  position: relative;
+  cursor: default;
+}
+
+.canvas-page-cover:hover .canvas-cover-controls {
+  opacity: 1;
+}
+
+.canvas-cover-controls {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.canvas-cover-btn {
+  background: rgba(0, 0, 0, 0.55);
+  border: none;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+  font-family: inherit;
+}
+
+.canvas-cover-btn:hover {
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+}
+
+.canvas-cover--repositioning {
+  cursor: ns-resize;
+}
+
+.canvas-cover-reposition-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  cursor: ns-resize;
+  z-index: 10;
+}
+
+.canvas-cover-done-btn {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  background: #2383e2;
+  border: none;
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 11;
+  font-family: inherit;
+}
+
+.canvas-cover-done-btn:hover {
+  background: #1b6fc2;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Page Header — Breadcrumbs, Icon, Title (Cap 7)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-page-header {
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 80px 64px 0;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* Less top padding when cover is present */
+.canvas-has-cover .canvas-page-header {
+  padding-top: 24px;
+}
+
+/* ── Breadcrumbs ── */
+
+.canvas-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.35);
+  flex-wrap: wrap;
+}
+
+.canvas-breadcrumb {
+  cursor: pointer;
+  transition: color 0.1s ease;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-breadcrumb:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.canvas-breadcrumb-sep {
+  color: rgba(255, 255, 255, 0.2);
+  user-select: none;
+}
+
+/* ── Page Icon ── */
+
+.canvas-page-icon {
+  font-size: 40px;
+  line-height: 1;
+  cursor: pointer;
+  display: block;
+  margin-bottom: 4px;
+  user-select: none;
+  transition: transform 0.1s ease;
+}
+
+.canvas-page-icon:hover {
+  transform: scale(1.1);
+}
+
+/* ── Hover Affordances ── */
+
+.canvas-page-affordances {
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  margin-bottom: 4px;
+  min-height: 24px;
+}
+
+.canvas-page-header:hover .canvas-page-affordances {
+  opacity: 1;
+}
+
+.canvas-affordance-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background-color 0.1s ease, color 0.1s ease;
+  font-family: inherit;
+}
+
+.canvas-affordance-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.canvas-affordance-btn span {
+  font-size: 12px;
+}
+
+/* ── Title ── */
+
+.canvas-page-title {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--vscode-editor-foreground);
+  outline: none;
+  border: none;
+  background: none;
+  width: 100%;
+  padding: 0;
+  margin: 4px 0 2px;
+  caret-color: var(--vscode-editorCursor-foreground);
+  word-break: break-word;
+  -webkit-font-smoothing: antialiased;
+}
+
+.canvas-page-title:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+}
+
+/* ── Page Menu Button (⋯) ── */
+
+.canvas-page-menu-btn {
+  position: sticky;
+  top: 8px;
+  float: right;
+  z-index: 100;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 20px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.1s ease, color 0.1s ease;
+  margin: 8px 8px 0 0;
+  font-family: inherit;
+}
+
+.canvas-page-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Page Menu Dropdown (Cap 9)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-page-menu {
+  position: fixed;
+  z-index: 1002;
+  min-width: 240px;
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+  animation: slashMenuFadeIn 0.12s ease-out;
+}
+
+.canvas-page-menu-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 4px 8px;
+  letter-spacing: 0.05em;
+}
+
+.canvas-page-menu-font-group {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px 8px;
+}
+
+.canvas-page-menu-font-btn {
+  flex: 1;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+  font-family: inherit;
+}
+
+.canvas-page-menu-font-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.canvas-page-menu-font-btn--active {
+  border-color: #2383e2;
+  background: rgba(35, 131, 226, 0.12);
+  color: #5bbdf5;
+}
+
+.canvas-font-preview-serif {
+  font-family: Georgia, 'Times New Roman', ui-serif, serif;
+}
+
+.canvas-font-preview-mono {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 12px;
+}
+
+.canvas-page-menu-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.1s ease;
+}
+
+.canvas-page-menu-toggle:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.canvas-page-menu-toggle-label {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.canvas-page-menu-switch {
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.15);
+  position: relative;
+  transition: background-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.canvas-page-menu-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.canvas-page-menu-switch--on {
+  background: #2383e2;
+}
+
+.canvas-page-menu-switch--on::after {
+  transform: translateX(14px);
+  background: #fff;
+}
+
+.canvas-page-menu-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 4px 0;
+}
+
+.canvas-page-menu-action {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.1s ease;
+  font-family: inherit;
+}
+
+.canvas-page-menu-action:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.canvas-page-menu-action--danger {
+  color: #f14c4c;
+}
+
+.canvas-page-menu-action--danger:hover {
+  background: rgba(241, 76, 76, 0.1);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Emoji Picker (Cap 7 — Task 7.4)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-emoji-picker {
+  position: fixed;
+  z-index: 1003;
+  width: 340px;
+  max-height: 420px;
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  animation: slashMenuFadeIn 0.12s ease-out;
+}
+
+.canvas-emoji-search {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  outline: none;
+  margin-bottom: 6px;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.canvas-emoji-search:focus {
+  border-color: #2383e2;
+}
+
+.canvas-emoji-remove {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  font-family: inherit;
+}
+
+.canvas-emoji-remove:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.canvas-emoji-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px 0 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 6px;
+}
+
+.canvas-emoji-tab {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background-color 0.1s ease;
+  opacity: 0.5;
+}
+
+.canvas-emoji-tab:hover {
+  opacity: 0.8;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.canvas-emoji-tab--active {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.canvas-emoji-content {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 300px;
+}
+
+.canvas-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+}
+
+.canvas-emoji-btn {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: background-color 0.08s ease, transform 0.1s ease;
+}
+
+.canvas-emoji-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(1.15);
+}
+
+/* Emoji picker scrollbar */
+.canvas-emoji-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.canvas-emoji-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.canvas-emoji-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Cover Picker Popup (Cap 8 — Task 8.5)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-cover-picker {
+  position: fixed;
+  z-index: 1003;
+  width: 420px;
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: slashMenuFadeIn 0.12s ease-out;
+}
+
+.canvas-cover-picker-tabs {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 8px;
+}
+
+.canvas-cover-picker-tab {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  padding: 4px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.1s ease, color 0.1s ease;
+  font-family: inherit;
+}
+
+.canvas-cover-picker-tab:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.canvas-cover-picker-tab--active {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.canvas-cover-picker-content {
+  min-height: 100px;
+}
+
+.canvas-cover-gallery {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.canvas-cover-swatch {
+  height: 48px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.canvas-cover-swatch:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.canvas-cover-upload-btn {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+  font-family: inherit;
+}
+
+.canvas-cover-upload-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.canvas-cover-upload-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  text-align: center;
+  margin-top: 8px;
+}
+
+.canvas-cover-link-row {
+  display: flex;
+  gap: 8px;
+}
+
+.canvas-cover-link-input {
+  flex: 1;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  outline: none;
+  font-family: inherit;
+}
+
+.canvas-cover-link-input:focus {
+  border-color: #2383e2;
+}
+
+.canvas-cover-link-apply {
+  padding: 8px 16px;
+  background: #2383e2;
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.canvas-cover-link-apply:hover {
+  background: #1b6fc2;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Font Family Variants (Cap 9 — Task 9.3)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* Default font — already applied, no override needed */
+
+.canvas-font-serif .canvas-tiptap-editor {
+  font-family: Georgia, 'Times New Roman', ui-serif, serif;
+}
+
+.canvas-font-serif .canvas-page-title {
+  font-family: Georgia, 'Times New Roman', ui-serif, serif;
+}
+
+.canvas-font-mono .canvas-tiptap-editor {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 15px;
+}
+
+.canvas-font-mono .canvas-page-title {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 34px;
+}
+
+/* ── Full Width Mode ── */
+
+.canvas-full-width .canvas-tiptap-editor {
+  max-width: none;
+  transition: max-width 0.2s ease;
+}
+
+.canvas-full-width .canvas-page-header {
+  max-width: none;
+}
+
+/* ── Small Text Mode ── */
+
+.canvas-small-text .canvas-tiptap-editor {
+  font-size: 14px;
+}
+
+.canvas-small-text .canvas-tiptap-editor h1 {
+  font-size: 1.875em;
+}
+
+.canvas-small-text .canvas-tiptap-editor h2 {
+  font-size: 1.5em;
+}
+
+.canvas-small-text .canvas-tiptap-editor h3 {
+  font-size: 1.2em;
+}
+
+/* ── Locked Page State ── */
+
+.canvas-locked .canvas-page-title {
+  cursor: default;
+}
+
+.canvas-locked .canvas-page-affordances {
+  display: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Sidebar Section Labels (Cap 10 — Task 10.2 / 10.3)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-sidebar-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 12px 4px;
+  user-select: none;
+}
+
+.canvas-sidebar-separator {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 4px 12px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Sidebar Favorites Section (Cap 10 — Task 10.2)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-sidebar-favorites .canvas-node {
+  padding-left: 12px;
+}
+
+/* ── Favorite Star ── */
+
+.canvas-node-star {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.1s ease;
+  user-select: none;
+}
+
+.canvas-node:hover .canvas-node-star {
+  opacity: 1;
+}
+
+.canvas-node-star--favorited {
+  color: #f5a623;
+  opacity: 1;
+}
+
+.canvas-node-star:hover {
+  color: #f5a623;
+}
+
+/* Make room for the star */
+.canvas-node {
+  position: relative;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Sidebar Trash Section (Cap 10 — Task 10.3)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-sidebar-trash-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+  transition: background-color 0.1s ease;
+}
+
+.canvas-sidebar-trash-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.canvas-sidebar-trash-chevron {
+  display: inline-block;
+  font-size: 8px;
+  color: rgba(255, 255, 255, 0.4);
+  transition: transform 0.15s ease;
+}
+
+.canvas-sidebar-trash-chevron--expanded {
+  transform: rotate(90deg);
+}
+
+.canvas-sidebar-trash-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex: 1;
+}
+
+.canvas-sidebar-trash-empty-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 3px;
+  transition: background-color 0.1s ease, color 0.1s ease;
+  font-family: inherit;
+}
+
+.canvas-sidebar-trash-empty-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.canvas-sidebar-trash-list {
+  padding: 2px 0 4px;
+}
+
+.canvas-trash-node {
+  padding-left: 24px;
+  opacity: 0.6;
+}
+
+.canvas-trash-node:hover {
+  opacity: 1;
+}
+
+.canvas-trash-restore-btn,
+.canvas-trash-delete-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.1s ease, background-color 0.1s ease;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.canvas-trash-restore-btn {
+  right: 28px;
+}
+
+.canvas-trash-delete-btn {
+  right: 8px;
+  color: #e06c75;
+}
+
+.canvas-trash-node:hover .canvas-trash-restore-btn,
+.canvas-trash-node:hover .canvas-trash-delete-btn {
+  opacity: 1;
+}
+
+.canvas-trash-restore-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.canvas-trash-delete-btn:hover {
+  background: rgba(224, 108, 117, 0.15);
+  color: #e06c75;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Right-Click Context Menu (Cap 10 — Task 10.7)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-context-menu {
+  position: fixed;
+  z-index: 1010;
+  min-width: 200px;
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  animation: slashMenuFadeIn 0.1s ease-out;
+}
+
+.canvas-context-menu-item {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  padding: 6px 12px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.08s ease;
+  font-family: inherit;
+}
+
+.canvas-context-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.canvas-context-menu-item--danger {
+  color: #e06c75;
+}
+
+.canvas-context-menu-item--danger:hover {
+  background: rgba(224, 108, 117, 0.12);
+}
+
+.canvas-context-menu-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 4px 8px;
 }

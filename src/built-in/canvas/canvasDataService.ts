@@ -35,6 +35,13 @@ function rowToPage(row: Record<string, unknown>): IPage {
     content: row.content as string,
     sortOrder: row.sort_order as number,
     isArchived: !!(row.is_archived as number),
+    coverUrl: (row.cover_url as string) ?? null,
+    coverYOffset: (row.cover_y_offset as number) ?? 0.5,
+    fontFamily: (row.font_family as 'default' | 'serif' | 'mono') ?? 'default',
+    fullWidth: !!(row.full_width as number),
+    smallText: !!(row.small_text as number),
+    isLocked: !!(row.is_locked as number),
+    isFavorited: !!(row.is_favorited as number),
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -173,7 +180,7 @@ export class CanvasDataService extends Disposable {
    */
   async updatePage(
     pageId: string,
-    updates: Partial<Pick<IPage, 'title' | 'icon' | 'content'>>,
+    updates: Partial<Pick<IPage, 'title' | 'icon' | 'content' | 'coverUrl' | 'coverYOffset' | 'fontFamily' | 'fullWidth' | 'smallText' | 'isLocked' | 'isFavorited'>>,
   ): Promise<IPage> {
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -189,6 +196,34 @@ export class CanvasDataService extends Disposable {
     if (updates.content !== undefined) {
       sets.push('content = ?');
       params.push(updates.content);
+    }
+    if (updates.coverUrl !== undefined) {
+      sets.push('cover_url = ?');
+      params.push(updates.coverUrl);
+    }
+    if (updates.coverYOffset !== undefined) {
+      sets.push('cover_y_offset = ?');
+      params.push(updates.coverYOffset);
+    }
+    if (updates.fontFamily !== undefined) {
+      sets.push('font_family = ?');
+      params.push(updates.fontFamily);
+    }
+    if (updates.fullWidth !== undefined) {
+      sets.push('full_width = ?');
+      params.push(updates.fullWidth ? 1 : 0);
+    }
+    if (updates.smallText !== undefined) {
+      sets.push('small_text = ?');
+      params.push(updates.smallText ? 1 : 0);
+    }
+    if (updates.isLocked !== undefined) {
+      sets.push('is_locked = ?');
+      params.push(updates.isLocked ? 1 : 0);
+    }
+    if (updates.isFavorited !== undefined) {
+      sets.push('is_favorited = ?');
+      params.push(updates.isFavorited ? 1 : 0);
     }
 
     if (sets.length === 0) {
@@ -357,6 +392,180 @@ export class CanvasDataService extends Disposable {
    */
   hasPendingSave(pageId: string): boolean {
     return this._pendingSaves.has(pageId);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Favorites (Capability 10)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Toggle the favorite state of a page.
+   */
+  async toggleFavorite(pageId: string): Promise<IPage> {
+    const page = await this.getPage(pageId);
+    if (!page) throw new Error(`[CanvasDataService] Page "${pageId}" not found`);
+    return this.updatePage(pageId, { isFavorited: !page.isFavorited });
+  }
+
+  /**
+   * Get all favorited (non-archived) pages, ordered by title.
+   */
+  async getFavoritedPages(): Promise<IPage[]> {
+    const result = await this._db.all(
+      'SELECT * FROM pages WHERE is_favorited = 1 AND is_archived = 0 ORDER BY title',
+    );
+    if (result.error) throw new Error(result.error.message);
+    return (result.rows ?? []).map(rowToPage);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Archive / Trash (Capability 10)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Soft-delete a page by setting is_archived = 1.
+   */
+  async archivePage(pageId: string): Promise<void> {
+    const result = await this._db.run(
+      `UPDATE pages SET is_archived = 1, updated_at = datetime('now') WHERE id = ?`,
+      [pageId],
+    );
+    if (result.error) throw new Error(result.error.message);
+    this._cancelPendingSave(pageId);
+    this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId });
+  }
+
+  /**
+   * Restore an archived page.
+   */
+  async restorePage(pageId: string): Promise<IPage> {
+    const result = await this._db.run(
+      `UPDATE pages SET is_archived = 0, updated_at = datetime('now') WHERE id = ?`,
+      [pageId],
+    );
+    if (result.error) throw new Error(result.error.message);
+    const page = await this.getPage(pageId);
+    if (!page) throw new Error(`[CanvasDataService] Page "${pageId}" not found after restore`);
+    this._onDidChangePage.fire({ kind: PageChangeKind.Created, pageId, page });
+    return page;
+  }
+
+  /**
+   * Permanently delete a page (true delete, not soft).
+   */
+  async permanentlyDeletePage(pageId: string): Promise<void> {
+    const result = await this._db.run('DELETE FROM pages WHERE id = ?', [pageId]);
+    if (result.error) throw new Error(result.error.message);
+    this._cancelPendingSave(pageId);
+    this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId });
+  }
+
+  /**
+   * Get all archived pages, ordered by most recently deleted.
+   */
+  async getArchivedPages(): Promise<IPage[]> {
+    const result = await this._db.all(
+      'SELECT * FROM pages WHERE is_archived = 1 ORDER BY updated_at DESC',
+    );
+    if (result.error) throw new Error(result.error.message);
+    return (result.rows ?? []).map(rowToPage);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Breadcrumb Ancestors (Capability 10)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Walk up the parent chain to build a breadcrumb list.
+   * Returns ancestors from root → immediate parent (excludes the page itself).
+   */
+  async getAncestors(pageId: string): Promise<IPage[]> {
+    const ancestors: IPage[] = [];
+    let currentId: string | null = pageId;
+
+    // Safety limit to prevent infinite loops
+    const MAX_DEPTH = 50;
+    let depth = 0;
+
+    while (currentId && depth < MAX_DEPTH) {
+      const page = await this.getPage(currentId);
+      if (!page) break;
+      if (currentId !== pageId) {
+        ancestors.unshift(page); // prepend so order is root→parent
+      }
+      currentId = page.parentId;
+      depth++;
+    }
+
+    return ancestors;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Page Duplication (Capability 10 — Task 10.4)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Deep-copy a page and all its descendants.
+   * Returns the new root page. Child pages are recursively duplicated
+   * with new IDs while maintaining parent-child relationships.
+   */
+  async duplicatePage(pageId: string): Promise<IPage> {
+    const source = await this.getPage(pageId);
+    if (!source) throw new Error(`[CanvasDataService] Page "${pageId}" not found for duplication`);
+
+    // Calculate sort order: place after original among its siblings
+    const siblings = source.parentId === null
+      ? await this.getRootPages()
+      : await this.getChildren(source.parentId);
+    const maxSort = siblings.length > 0
+      ? Math.max(...siblings.map(s => s.sortOrder))
+      : 0;
+
+    const rootCopy = await this._duplicateRecursive(source, source.parentId, maxSort + 1, true);
+    return rootCopy;
+  }
+
+  private async _duplicateRecursive(
+    source: IPage,
+    newParentId: string | null,
+    sortOrder: number,
+    isRoot: boolean,
+  ): Promise<IPage> {
+    const newId = crypto.randomUUID();
+    const title = isRoot ? `Copy of ${source.title}` : source.title;
+
+    // Insert duplicated page (copy content, icon, cover, font, width, text — NOT favorite, locked)
+    const result = await this._db.run(
+      `INSERT INTO pages (id, parent_id, title, icon, content, sort_order, cover_url, cover_y_offset, font_family, full_width, small_text)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        newId,
+        newParentId,
+        title,
+        source.icon,
+        source.content,
+        sortOrder,
+        source.coverUrl,
+        source.coverYOffset,
+        source.fontFamily,
+        source.fullWidth ? 1 : 0,
+        source.smallText ? 1 : 0,
+      ],
+    );
+    if (result.error) throw new Error(result.error.message);
+
+    const newPage = await this.getPage(newId);
+    if (!newPage) throw new Error(`[CanvasDataService] Duplicated page "${newId}" not found after insert`);
+
+    this._onDidChangePage.fire({ kind: PageChangeKind.Created, pageId: newId, page: newPage });
+
+    // Recursively duplicate children
+    const children = await this.getChildren(source.id);
+    for (let i = 0; i < children.length; i++) {
+      await this._duplicateRecursive(children[i], newId, i + 1, false);
+    }
+
+    return newPage;
   }
 
   // ── Internal ──

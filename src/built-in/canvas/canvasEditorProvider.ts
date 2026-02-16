@@ -25,6 +25,7 @@
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { CanvasDataService } from './canvasDataService.js';
+import type { IPage } from './canvasTypes.js';
 import { Editor, Node, mergeAttributes } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -44,6 +45,7 @@ import CharacterCount from '@tiptap/extension-character-count';
 import AutoJoiner from 'tiptap-extension-auto-joiner';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
+import { tiptapJsonToMarkdown } from './markdownExport.js';
 
 // ─── TipTap Command Augmentation ────────────────────────────────────────────
 declare module '@tiptap/core' {
@@ -226,6 +228,23 @@ class CanvasEditorPane implements IDisposable {
   private _suppressUpdate = false;
   private readonly _saveDisposables: IDisposable[] = [];
 
+  // ── Page header elements (Cap 7/8/9) ──
+  private _pageHeader: HTMLElement | null = null;
+  private _coverEl: HTMLElement | null = null;
+  private _coverControls: HTMLElement | null = null;
+  private _breadcrumbsEl: HTMLElement | null = null;
+  private _iconEl: HTMLElement | null = null;
+  private _titleEl: HTMLElement | null = null;
+  private _hoverAffordances: HTMLElement | null = null;
+  private _pageMenuBtn: HTMLElement | null = null;
+  private _pageMenuDropdown: HTMLElement | null = null;
+  private _emojiPicker: HTMLElement | null = null;
+  private _coverPicker: HTMLElement | null = null;
+
+  // ── Page state ──
+  private _currentPage: IPage | null = null;
+  private _titleSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(
     private readonly _container: HTMLElement,
     private readonly _pageId: string,
@@ -237,6 +256,25 @@ class CanvasEditorPane implements IDisposable {
     // Create editor wrapper
     this._editorContainer = $('div.canvas-editor-wrapper');
     this._container.appendChild(this._editorContainer);
+
+    // ── Load page data for header rendering ──
+    try {
+      this._currentPage = await this._dataService.getPage(this._pageId) ?? null;
+    } catch {
+      this._currentPage = null;
+    }
+
+    // ── Apply page display settings CSS classes ──
+    this._applyPageSettings();
+
+    // ── Cover image (Cap 8) ──
+    this._createCover();
+
+    // ── Page header: breadcrumbs, icon, title, hover affordances ──
+    this._createPageHeader();
+
+    // ── Page menu button ("⋯") at top-right ──
+    this._createPageMenu();
 
     // Create Tiptap editor with Notion-parity extensions
     // Link and Underline are part of StarterKit v3 — configure via StarterKit options
@@ -364,7 +402,850 @@ class CanvasEditorPane implements IDisposable {
         }
       }),
     );
+
+    // Subscribe to page changes for bidirectional sync (Task 7.2)
+    this._saveDisposables.push(
+      this._dataService.onDidChangePage((event) => {
+        if (event.pageId !== this._pageId || !event.page) return;
+        this._currentPage = event.page;
+
+        // Update title if changed externally (e.g. sidebar rename)
+        if (this._titleEl && event.page.title !== this._titleEl.textContent) {
+          this._titleEl.textContent = event.page.title || '';
+        }
+
+        // Update icon
+        if (this._iconEl) {
+          this._iconEl.textContent = event.page.icon || '';
+          this._iconEl.style.display = event.page.icon ? '' : 'none';
+        }
+
+        // Update cover
+        this._refreshCover();
+
+        // Update display settings
+        this._applyPageSettings();
+      }),
+    );
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Page Header — Title, Icon, Breadcrumbs (Cap 7)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private _createPageHeader(): void {
+    if (!this._editorContainer) return;
+
+    this._pageHeader = $('div.canvas-page-header');
+
+    // ── Breadcrumbs ──
+    this._breadcrumbsEl = $('div.canvas-breadcrumbs');
+    this._pageHeader.appendChild(this._breadcrumbsEl);
+    this._loadBreadcrumbs();
+
+    // ── Icon (large, clickable) ──
+    this._iconEl = $('span.canvas-page-icon');
+    this._iconEl.textContent = this._currentPage?.icon || '';
+    this._iconEl.style.display = this._currentPage?.icon ? '' : 'none';
+    this._iconEl.title = 'Change icon';
+    this._iconEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._showEmojiPicker();
+    });
+    this._pageHeader.appendChild(this._iconEl);
+
+    // ── Hover affordances (Add icon / Add cover) ──
+    this._hoverAffordances = $('div.canvas-page-affordances');
+
+    if (!this._currentPage?.icon) {
+      const addIconBtn = $('button.canvas-affordance-btn');
+      addIconBtn.dataset.action = 'add-icon';
+      addIconBtn.innerHTML = '😀 <span>Add icon</span>';
+      addIconBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._showEmojiPicker();
+      });
+      this._hoverAffordances.appendChild(addIconBtn);
+    }
+
+    if (!this._currentPage?.coverUrl) {
+      const addCoverBtn = $('button.canvas-affordance-btn');
+      addCoverBtn.dataset.action = 'add-cover';
+      addCoverBtn.innerHTML = '🖼️ <span>Add cover</span>';
+      addCoverBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._showCoverPicker();
+      });
+      this._hoverAffordances.appendChild(addCoverBtn);
+    }
+
+    this._pageHeader.appendChild(this._hoverAffordances);
+
+    // ── Title (contenteditable) ──
+    this._titleEl = $('div.canvas-page-title');
+    this._titleEl.contentEditable = 'true';
+    this._titleEl.spellcheck = false;
+    this._titleEl.setAttribute('data-placeholder', 'Untitled');
+    this._titleEl.textContent = this._currentPage?.title || '';
+
+    // Title input → debounced save
+    this._titleEl.addEventListener('input', () => {
+      const newTitle = this._titleEl?.textContent?.trim() || 'Untitled';
+      if (this._titleSaveTimer) clearTimeout(this._titleSaveTimer);
+      this._titleSaveTimer = setTimeout(() => {
+        this._dataService.updatePage(this._pageId, { title: newTitle });
+      }, 300);
+    });
+
+    // Enter → move focus to editor, prevent newline
+    this._titleEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this._editor?.commands.focus('start');
+      }
+    });
+
+    // Paste → strip to plain text, prevent newlines
+    this._titleEl.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = e.clipboardData?.getData('text/plain')?.replace(/[\r\n]+/g, ' ') || '';
+      document.execCommand('insertText', false, text);
+    });
+
+    this._pageHeader.appendChild(this._titleEl);
+
+    // Insert header BEFORE the TipTap editor element
+    this._editorContainer.prepend(this._pageHeader);
+  }
+
+  private async _loadBreadcrumbs(): Promise<void> {
+    if (!this._breadcrumbsEl || !this._pageId) return;
+    try {
+      const ancestors = await this._dataService.getAncestors(this._pageId);
+      if (ancestors.length === 0) {
+        this._breadcrumbsEl.style.display = 'none';
+        return;
+      }
+      this._breadcrumbsEl.style.display = '';
+      this._breadcrumbsEl.innerHTML = '';
+      for (let i = 0; i < ancestors.length; i++) {
+        const crumb = $('span.canvas-breadcrumb');
+        crumb.textContent = ancestors[i].icon
+          ? `${ancestors[i].icon} ${ancestors[i].title}`
+          : ancestors[i].title;
+        crumb.addEventListener('click', () => {
+          // Navigate to ancestor by dispatching to the editor service
+          const input = this._input as any;
+          if (input?._api?.editors) {
+            input._api.editors.openEditor({
+              typeId: 'canvas',
+              title: ancestors[i].title,
+              icon: ancestors[i].icon ?? '📄',
+              instanceId: ancestors[i].id,
+            });
+          }
+        });
+        this._breadcrumbsEl.appendChild(crumb);
+        if (i < ancestors.length - 1) {
+          const sep = $('span.canvas-breadcrumb-sep');
+          sep.textContent = '›';
+          this._breadcrumbsEl.appendChild(sep);
+        }
+      }
+    } catch {
+      this._breadcrumbsEl.style.display = 'none';
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Cover Image (Cap 8)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private _createCover(): void {
+    if (!this._editorContainer) return;
+
+    this._coverEl = $('div.canvas-page-cover');
+    this._coverControls = $('div.canvas-cover-controls');
+
+    const repositionBtn = $('button.canvas-cover-btn');
+    repositionBtn.textContent = 'Reposition';
+    repositionBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._startCoverReposition();
+    });
+
+    const changeBtn = $('button.canvas-cover-btn');
+    changeBtn.textContent = 'Change cover';
+    changeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._showCoverPicker();
+    });
+
+    const removeBtn = $('button.canvas-cover-btn');
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._dataService.updatePage(this._pageId, { coverUrl: null });
+    });
+
+    this._coverControls.appendChild(repositionBtn);
+    this._coverControls.appendChild(changeBtn);
+    this._coverControls.appendChild(removeBtn);
+    this._coverEl.appendChild(this._coverControls);
+
+    this._editorContainer.prepend(this._coverEl);
+    this._refreshCover();
+  }
+
+  private _refreshCover(): void {
+    if (!this._coverEl || !this._coverControls) return;
+    const url = this._currentPage?.coverUrl;
+    if (!url) {
+      this._coverEl.style.display = 'none';
+      return;
+    }
+    this._coverEl.style.display = '';
+    const yPct = ((this._currentPage?.coverYOffset ?? 0.5) * 100).toFixed(1);
+
+    if (url.startsWith('linear-gradient') || url.startsWith('radial-gradient')) {
+      this._coverEl.style.backgroundImage = url;
+      this._coverEl.style.backgroundPosition = '';
+      this._coverEl.style.backgroundSize = '';
+    } else {
+      this._coverEl.style.backgroundImage = `url(${url})`;
+      this._coverEl.style.backgroundPosition = `center ${yPct}%`;
+      this._coverEl.style.backgroundSize = 'cover';
+    }
+
+    // Update hover affordances
+    this._refreshHoverAffordances();
+  }
+
+  private _refreshHoverAffordances(): void {
+    if (!this._hoverAffordances) return;
+    // Remove existing buttons and rebuild
+    this._hoverAffordances.innerHTML = '';
+
+    if (!this._currentPage?.icon) {
+      const addIconBtn = $('button.canvas-affordance-btn');
+      addIconBtn.dataset.action = 'add-icon';
+      addIconBtn.innerHTML = '😀 <span>Add icon</span>';
+      addIconBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._showEmojiPicker();
+      });
+      this._hoverAffordances.appendChild(addIconBtn);
+    }
+
+    if (!this._currentPage?.coverUrl) {
+      const addCoverBtn = $('button.canvas-affordance-btn');
+      addCoverBtn.dataset.action = 'add-cover';
+      addCoverBtn.innerHTML = '🖼️ <span>Add cover</span>';
+      addCoverBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._showCoverPicker();
+      });
+      this._hoverAffordances.appendChild(addCoverBtn);
+    }
+  }
+
+  private _startCoverReposition(): void {
+    if (!this._coverEl || !this._currentPage?.coverUrl) return;
+
+    const overlay = $('div.canvas-cover-reposition-overlay');
+    overlay.textContent = 'Drag to reposition • Click Done when finished';
+    this._coverEl.appendChild(overlay);
+    this._coverEl.classList.add('canvas-cover--repositioning');
+
+    let startY = 0;
+    let startOffset = this._currentPage?.coverYOffset ?? 0.5;
+
+    const onMouseDown = (e: MouseEvent) => {
+      startY = e.clientY;
+      startOffset = this._currentPage?.coverYOffset ?? 0.5;
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      const delta = (startY - e.clientY) / (this._coverEl?.offsetHeight ?? 200);
+      const newOffset = Math.max(0, Math.min(1, startOffset + delta));
+      const yPct = (newOffset * 100).toFixed(1);
+      if (this._coverEl) {
+        this._coverEl.style.backgroundPosition = `center ${yPct}%`;
+      }
+      // Store temporarily
+      if (this._currentPage) {
+        (this._currentPage as any).coverYOffset = newOffset;
+      }
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      const finalOffset = this._currentPage?.coverYOffset ?? 0.5;
+      this._dataService.updatePage(this._pageId, { coverYOffset: finalOffset });
+    };
+
+    overlay.addEventListener('mousedown', onMouseDown);
+
+    // Done button
+    const doneBtn = $('button.canvas-cover-done-btn');
+    doneBtn.textContent = 'Done';
+    doneBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      overlay.remove();
+      doneBtn.remove();
+      this._coverEl?.classList.remove('canvas-cover--repositioning');
+      const finalOffset = this._currentPage?.coverYOffset ?? 0.5;
+      this._dataService.updatePage(this._pageId, { coverYOffset: finalOffset });
+    });
+    this._coverEl.appendChild(doneBtn);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Cover Picker Popup (Cap 8)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private _showCoverPicker(): void {
+    this._dismissPopups();
+
+    this._coverPicker = $('div.canvas-cover-picker');
+
+    // ── Tab bar ──
+    const tabs = $('div.canvas-cover-picker-tabs');
+    const tabGallery = $('button.canvas-cover-picker-tab.canvas-cover-picker-tab--active');
+    tabGallery.textContent = 'Gallery';
+    const tabUpload = $('button.canvas-cover-picker-tab');
+    tabUpload.textContent = 'Upload';
+    const tabLink = $('button.canvas-cover-picker-tab');
+    tabLink.textContent = 'Link';
+    tabs.appendChild(tabGallery);
+    tabs.appendChild(tabUpload);
+    tabs.appendChild(tabLink);
+    this._coverPicker.appendChild(tabs);
+
+    // ── Content area ──
+    const content = $('div.canvas-cover-picker-content');
+    this._coverPicker.appendChild(content);
+
+    // Gallery (default view)
+    const GRADIENTS = [
+      'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+      'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+      'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+      'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+      'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
+      'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
+      'linear-gradient(135deg, #667eea 0%, #f093fb 100%)',
+      'linear-gradient(180deg, #2c3e50 0%, #3498db 100%)',
+      'linear-gradient(180deg, #141e30 0%, #243b55 100%)',
+      'linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 100%)',
+      'linear-gradient(180deg, #232526 0%, #414345 100%)',
+    ];
+
+    const renderGallery = () => {
+      content.innerHTML = '';
+      const grid = $('div.canvas-cover-gallery');
+      for (const grad of GRADIENTS) {
+        const swatch = $('div.canvas-cover-swatch');
+        swatch.style.background = grad;
+        swatch.addEventListener('click', () => {
+          this._dataService.updatePage(this._pageId, { coverUrl: grad });
+          this._dismissPopups();
+        });
+        grid.appendChild(swatch);
+      }
+      content.appendChild(grid);
+    };
+
+    const renderUpload = () => {
+      content.innerHTML = '';
+      const uploadBtn = $('button.canvas-cover-upload-btn');
+      uploadBtn.textContent = '📁 Choose an image';
+      uploadBtn.addEventListener('click', async () => {
+        try {
+          const electron = (window as any).parallxElectron;
+          if (!electron?.showOpenDialog) return;
+          const result = await electron.showOpenDialog({
+            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+            properties: ['openFile'],
+          });
+          if (result?.filePaths?.[0]) {
+            const filePath = result.filePaths[0];
+            // Read file as base64
+            const fileData = await electron.readFileBase64?.(filePath);
+            if (fileData) {
+              const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
+              const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+              const dataUrl = `data:${mime};base64,${fileData}`;
+              // Check rough size (2MB limit)
+              if (fileData.length > 2 * 1024 * 1024 * 1.37) {
+                alert('Image is too large (max 2MB). Please choose a smaller image.');
+                return;
+              }
+              this._dataService.updatePage(this._pageId, { coverUrl: dataUrl });
+              this._dismissPopups();
+            }
+          }
+        } catch (err) {
+          console.error('[CanvasEditorPane] Cover upload failed:', err);
+        }
+      });
+      content.appendChild(uploadBtn);
+      const hint = $('div.canvas-cover-upload-hint');
+      hint.textContent = 'Recommended: 1500×600px or wider. Max 2MB.';
+      content.appendChild(hint);
+    };
+
+    const renderLink = () => {
+      content.innerHTML = '';
+      const row = $('div.canvas-cover-link-row');
+      const input = $('input.canvas-cover-link-input') as HTMLInputElement;
+      input.type = 'url';
+      input.placeholder = 'Paste image URL…';
+      const applyBtn = $('button.canvas-cover-link-apply');
+      applyBtn.textContent = 'Apply';
+      applyBtn.addEventListener('click', () => {
+        const url = input.value.trim();
+        if (url) {
+          this._dataService.updatePage(this._pageId, { coverUrl: url });
+          this._dismissPopups();
+        }
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') applyBtn.click();
+        if (e.key === 'Escape') this._dismissPopups();
+      });
+      row.appendChild(input);
+      row.appendChild(applyBtn);
+      content.appendChild(row);
+    };
+
+    renderGallery();
+
+    // Tab switching
+    const allTabs = [tabGallery, tabUpload, tabLink];
+    const renderers = [renderGallery, renderUpload, renderLink];
+    allTabs.forEach((tab, i) => {
+      tab.addEventListener('click', () => {
+        allTabs.forEach(t => t.classList.remove('canvas-cover-picker-tab--active'));
+        tab.classList.add('canvas-cover-picker-tab--active');
+        renderers[i]();
+      });
+    });
+
+    this._container.appendChild(this._coverPicker);
+
+    // Dismiss on click outside
+    setTimeout(() => {
+      document.addEventListener('mousedown', this._handlePopupOutsideClick);
+    }, 0);
+    // Dismiss on Escape
+    document.addEventListener('keydown', this._handlePopupEscape);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Emoji Picker (Cap 7 — Task 7.4)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private static readonly EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
+    { label: 'Smileys', emojis: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🫡','🤐','🤨','😐','😑','😶','🫥','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🥵','🥶','🥴','😵','🤯','🤠','🥳','🥸','😎'] },
+    { label: 'People', emojis: ['👋','🤚','🖐️','✋','🖖','🫱','🫲','👌','🤌','🤏','✌️','🤞','🫰','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','🫵','👍','👎','✊','👊','🤛','🤜','👏','🙌','🫶','👐','🤲','🤝','🙏','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🧠','🫀','🫁','🦷','🦴','👀','👁️','👅','👄'] },
+    { label: 'Animals', emojis: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🐣','🐥','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🪱','🐛','🦋','🐌','🐞','🐜','🪰','🦟','🦗','🕷️','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑'] },
+    { label: 'Food', emojis: ['🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🫑','🌽','🥕','🫒','🧄','🧅','🥔','🍠','🫘','🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🧈','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟','🍕','🫓','🥪','🥙','🧆'] },
+    { label: 'Travel', emojis: ['🚗','🚕','🚙','🚌','🚎','🏎️','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍️','🛵','🚲','🛴','🛹','🛼','🚏','🛣️','🛤️','⛽','🛞','🚨','🚥','🚦','🛑','🚧','⚓','🛟','⛵','🛶','🚤','🛳️','⛴️','🛥️','🚢','✈️','🛩️','🛫','🛬','🪂','💺','🚁','🚟','🚠','🚡','🛰️','🚀','🛸','🌍','🌎','🌏'] },
+    { label: 'Objects', emojis: ['💡','🔦','🏮','🪔','📔','📕','📖','📗','📘','📙','📚','📓','📒','📃','📜','📄','📰','🗞️','📑','🔖','🏷️','💰','🪙','💴','💵','💶','💷','💸','💳','🧾','💹','✉️','📧','📨','📩','📤','📥','📦','📫','📪','📬','📭','📮','🗳️','✏️','✒️','🖋️','🖊️','🖌️','🖍️','📝','💼','📁','📂','🗂️','📅','📆'] },
+    { label: 'Symbols', emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❤️‍🔥','❤️‍🩹','❣️','💕','💞','💓','💗','💖','💘','💝','⭐','🌟','✨','⚡','🔥','💥','🎯','💎','🔔','🎵','🎶','🔇','🔈','🔉','🔊','📢','📣','💬','💭','🗯️','♠️','♣️','♥️','♦️','🃏','🎴','🀄','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','✅','❌','⭕','❓','❗','‼️'] },
+    { label: 'Flags', emojis: ['🏁','🚩','🎌','🏴','🏳️','🏳️‍🌈','🏳️‍⚧️','🏴‍☠️','🇺🇸','🇬🇧','🇨🇦','🇦🇺','🇩🇪','🇫🇷','🇯🇵','🇰🇷','🇨🇳','🇮🇳','🇧🇷','🇲🇽','🇪🇸','🇮🇹','🇷🇺','🇳🇱','🇸🇪','🇳🇴','🇩🇰','🇫🇮','🇵🇱','🇹🇷','🇿🇦','🇪🇬','🇳🇬','🇰🇪','🇸🇦','🇦🇪','🇮🇱','🇹🇭','🇻🇳','🇮🇩','🇵🇭','🇸🇬','🇲🇾','🇳🇿','🇦🇷','🇨🇴','🇨🇱','🇵🇪'] },
+  ];
+
+  private _showEmojiPicker(): void {
+    this._dismissPopups();
+
+    this._emojiPicker = $('div.canvas-emoji-picker');
+
+    // Search
+    const searchInput = $('input.canvas-emoji-search') as HTMLInputElement;
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search emoji…';
+    this._emojiPicker.appendChild(searchInput);
+
+    // Remove button (if icon is set)
+    if (this._currentPage?.icon) {
+      const removeBtn = $('button.canvas-emoji-remove');
+      removeBtn.textContent = '✕ Remove icon';
+      removeBtn.addEventListener('click', () => {
+        this._dataService.updatePage(this._pageId, { icon: null as any });
+        this._dismissPopups();
+      });
+      this._emojiPicker.appendChild(removeBtn);
+    }
+
+    // Category tabs
+    const tabBar = $('div.canvas-emoji-tabs');
+    const contentArea = $('div.canvas-emoji-content');
+
+    const cats = CanvasEditorPane.EMOJI_CATEGORIES;
+    const categoryLabels = cats.map(c => c.label);
+
+    const renderCategory = (catIndex: number) => {
+      contentArea.innerHTML = '';
+      const grid = $('div.canvas-emoji-grid');
+      for (const emoji of cats[catIndex].emojis) {
+        const btn = $('button.canvas-emoji-btn');
+        btn.textContent = emoji;
+        btn.addEventListener('click', () => {
+          this._dataService.updatePage(this._pageId, { icon: emoji });
+          this._dismissPopups();
+        });
+        grid.appendChild(btn);
+      }
+      contentArea.appendChild(grid);
+    };
+
+    const renderSearch = (query: string) => {
+      contentArea.innerHTML = '';
+      const grid = $('div.canvas-emoji-grid');
+      const q = query.toLowerCase();
+      let count = 0;
+      for (const cat of cats) {
+        for (const emoji of cat.emojis) {
+          // Simple fuzzy: match category name or emoji itself
+          if (cat.label.toLowerCase().includes(q) || count < 80) {
+            const btn = $('button.canvas-emoji-btn');
+            btn.textContent = emoji;
+            btn.addEventListener('click', () => {
+              this._dataService.updatePage(this._pageId, { icon: emoji });
+              this._dismissPopups();
+            });
+            grid.appendChild(btn);
+            count++;
+          }
+        }
+      }
+      contentArea.appendChild(grid);
+    };
+
+    categoryLabels.forEach((label, i) => {
+      const tab = $('button.canvas-emoji-tab');
+      tab.textContent = cats[i].emojis[0]; // First emoji as tab icon
+      tab.title = label;
+      if (i === 0) tab.classList.add('canvas-emoji-tab--active');
+      tab.addEventListener('click', () => {
+        tabBar.querySelectorAll('.canvas-emoji-tab').forEach(t => t.classList.remove('canvas-emoji-tab--active'));
+        tab.classList.add('canvas-emoji-tab--active');
+        searchInput.value = '';
+        renderCategory(i);
+      });
+      tabBar.appendChild(tab);
+    });
+
+    this._emojiPicker.appendChild(tabBar);
+    this._emojiPicker.appendChild(contentArea);
+
+    // Render first category
+    renderCategory(0);
+
+    // Search handler
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.trim();
+      if (q.length > 0) {
+        renderSearch(q);
+      } else {
+        // Re-render active category
+        const activeIdx = [...tabBar.children].findIndex(t => t.classList.contains('canvas-emoji-tab--active'));
+        renderCategory(activeIdx >= 0 ? activeIdx : 0);
+      }
+    });
+
+    this._container.appendChild(this._emojiPicker);
+
+    // Position near icon
+    if (this._iconEl || this._pageHeader) {
+      const target = this._iconEl?.style.display !== 'none' ? this._iconEl : this._pageHeader;
+      const rect = target?.getBoundingClientRect();
+      if (rect) {
+        this._emojiPicker.style.left = `${rect.left}px`;
+        this._emojiPicker.style.top = `${rect.bottom + 4}px`;
+      }
+    }
+
+    // Focus search
+    setTimeout(() => searchInput.focus(), 50);
+
+    // Dismiss
+    setTimeout(() => {
+      document.addEventListener('mousedown', this._handlePopupOutsideClick);
+    }, 0);
+    document.addEventListener('keydown', this._handlePopupEscape);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Page Menu — "⋯" dropdown (Cap 9)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private _createPageMenu(): void {
+    if (!this._editorContainer) return;
+
+    this._pageMenuBtn = $('button.canvas-page-menu-btn');
+    this._pageMenuBtn.textContent = '⋯';
+    this._pageMenuBtn.title = 'Page settings';
+    this._pageMenuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this._pageMenuDropdown?.style.display !== 'none') {
+        this._dismissPopups();
+        return;
+      }
+      this._showPageMenu();
+    });
+    this._editorContainer.appendChild(this._pageMenuBtn);
+  }
+
+  private _showPageMenu(): void {
+    this._dismissPopups();
+
+    this._pageMenuDropdown = $('div.canvas-page-menu');
+    const page = this._currentPage;
+
+    // ── Font selection ──
+    const fontLabel = $('div.canvas-page-menu-label');
+    fontLabel.textContent = 'Font';
+    this._pageMenuDropdown.appendChild(fontLabel);
+
+    const fonts: { id: 'default' | 'serif' | 'mono'; label: string }[] = [
+      { id: 'default', label: 'Default' },
+      { id: 'serif', label: 'Serif' },
+      { id: 'mono', label: 'Mono' },
+    ];
+
+    const fontGroup = $('div.canvas-page-menu-font-group');
+    for (const font of fonts) {
+      const btn = $('button.canvas-page-menu-font-btn');
+      btn.classList.add(`canvas-font-preview-${font.id}`);
+      btn.textContent = font.label;
+      if (page?.fontFamily === font.id) btn.classList.add('canvas-page-menu-font-btn--active');
+      btn.addEventListener('click', () => {
+        this._dataService.updatePage(this._pageId, { fontFamily: font.id });
+        fontGroup.querySelectorAll('.canvas-page-menu-font-btn').forEach(b => b.classList.remove('canvas-page-menu-font-btn--active'));
+        btn.classList.add('canvas-page-menu-font-btn--active');
+      });
+      fontGroup.appendChild(btn);
+    }
+    this._pageMenuDropdown.appendChild(fontGroup);
+
+    // ── Toggles ──
+    const toggles: { label: string; key: 'fullWidth' | 'smallText' | 'isLocked'; icon: string }[] = [
+      { label: 'Full width', key: 'fullWidth', icon: '↔' },
+      { label: 'Small text', key: 'smallText', icon: 'Aa' },
+      { label: 'Lock page', key: 'isLocked', icon: '🔒' },
+    ];
+
+    for (const toggle of toggles) {
+      const row = $('div.canvas-page-menu-toggle');
+      const label = $('span.canvas-page-menu-toggle-label');
+      label.textContent = `${toggle.icon}  ${toggle.label}`;
+      const switchEl = $('div.canvas-page-menu-switch');
+      const isOn = !!(page as any)?.[toggle.key];
+      if (isOn) switchEl.classList.add('canvas-page-menu-switch--on');
+
+      row.appendChild(label);
+      row.appendChild(switchEl);
+      row.addEventListener('click', () => {
+        const current = !!(this._currentPage as any)?.[toggle.key];
+        this._dataService.updatePage(this._pageId, { [toggle.key]: !current } as any);
+        switchEl.classList.toggle('canvas-page-menu-switch--on');
+      });
+      this._pageMenuDropdown.appendChild(row);
+    }
+
+    // ── Divider ──
+    this._pageMenuDropdown.appendChild($('div.canvas-page-menu-divider'));
+
+    // ── Action buttons ──
+    const actions: { label: string; action: () => void; danger?: boolean }[] = [
+      {
+        label: '⭐ Favorite',
+        action: () => {
+          this._dataService.toggleFavorite(this._pageId);
+          this._dismissPopups();
+        },
+      },
+      {
+        label: '📋 Duplicate',
+        action: async () => {
+          try {
+            const newPage = await this._dataService.duplicatePage(this._pageId);
+            // Open the duplicated page
+            const input = this._input as any;
+            if (input?._api?.editors) {
+              input._api.editors.openEditor({
+                typeId: 'canvas',
+                title: newPage.title,
+                icon: newPage.icon ?? '📄',
+                instanceId: newPage.id,
+              });
+            }
+          } catch (err) {
+            console.error('[Canvas] Duplicate failed:', err);
+          }
+          this._dismissPopups();
+        },
+      },
+      {
+        label: '📥 Export Markdown',
+        action: async () => {
+          try {
+            await this._exportMarkdown();
+          } catch (err) {
+            console.error('[Canvas] Export failed:', err);
+          }
+          this._dismissPopups();
+        },
+      },
+      {
+        label: '🗑️ Delete',
+        action: () => {
+          this._dataService.archivePage(this._pageId);
+          this._dismissPopups();
+        },
+        danger: true,
+      },
+    ];
+
+    // Update favorite label based on current state
+    if (page?.isFavorited) {
+      actions[0].label = '⭐ Remove from Favorites';
+    }
+
+    for (const act of actions) {
+      const btn = $('button.canvas-page-menu-action');
+      btn.textContent = act.label;
+      if (act.danger) btn.classList.add('canvas-page-menu-action--danger');
+      btn.addEventListener('click', act.action);
+      this._pageMenuDropdown.appendChild(btn);
+    }
+
+    this._container.appendChild(this._pageMenuDropdown);
+
+    // Position below menu button
+    if (this._pageMenuBtn) {
+      const rect = this._pageMenuBtn.getBoundingClientRect();
+      this._pageMenuDropdown.style.top = `${rect.bottom + 4}px`;
+      this._pageMenuDropdown.style.right = `${window.innerWidth - rect.right}px`;
+    }
+
+    setTimeout(() => {
+      document.addEventListener('mousedown', this._handlePopupOutsideClick);
+    }, 0);
+    document.addEventListener('keydown', this._handlePopupEscape);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Page Display Settings (Cap 9)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private _applyPageSettings(): void {
+    if (!this._editorContainer) return;
+    const page = this._currentPage;
+
+    // Font family
+    this._editorContainer.classList.remove('canvas-font-default', 'canvas-font-serif', 'canvas-font-mono');
+    this._editorContainer.classList.add(`canvas-font-${page?.fontFamily || 'default'}`);
+
+    // Full width
+    this._editorContainer.classList.toggle('canvas-full-width', !!page?.fullWidth);
+
+    // Small text
+    this._editorContainer.classList.toggle('canvas-small-text', !!page?.smallText);
+
+    // Lock page
+    if (this._editor) {
+      this._editor.setEditable(!page?.isLocked);
+    }
+    if (this._titleEl) {
+      this._titleEl.contentEditable = page?.isLocked ? 'false' : 'true';
+    }
+    this._editorContainer.classList.toggle('canvas-locked', !!page?.isLocked);
+
+    // Cover presence affects header padding
+    this._editorContainer.classList.toggle('canvas-has-cover', !!page?.coverUrl);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Markdown Export (Cap 10 — Task 10.6)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private async _exportMarkdown(): Promise<void> {
+    if (!this._editor || !this._currentPage) return;
+
+    const doc = this._editor.getJSON();
+    const title = this._currentPage.title || 'Untitled';
+    const markdown = tiptapJsonToMarkdown(doc, title);
+
+    // Sanitize filename
+    const safeName = title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100).trim() || 'Untitled';
+
+    const electron = (window as any).parallxElectron;
+    if (!electron?.dialog?.saveFile || !electron?.fs?.writeFile) {
+      console.error('[Canvas] Electron file dialog not available');
+      return;
+    }
+
+    const filePath = await electron.dialog.saveFile({
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+      defaultName: `${safeName}.md`,
+    });
+
+    if (!filePath) return; // User cancelled
+
+    await electron.fs.writeFile(filePath, markdown, 'utf-8');
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Popup dismiss helpers
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private _dismissPopups(): void {
+    if (this._emojiPicker) {
+      this._emojiPicker.remove();
+      this._emojiPicker = null;
+    }
+    if (this._coverPicker) {
+      this._coverPicker.remove();
+      this._coverPicker = null;
+    }
+    if (this._pageMenuDropdown) {
+      this._pageMenuDropdown.remove();
+      this._pageMenuDropdown = null;
+    }
+    document.removeEventListener('mousedown', this._handlePopupOutsideClick);
+    document.removeEventListener('keydown', this._handlePopupEscape);
+  }
+
+  private readonly _handlePopupOutsideClick = (e: MouseEvent): void => {
+    const target = e.target as HTMLElement;
+    if (
+      this._emojiPicker?.contains(target) ||
+      this._coverPicker?.contains(target) ||
+      this._pageMenuDropdown?.contains(target) ||
+      this._pageMenuBtn?.contains(target)
+    ) return;
+    this._dismissPopups();
+  };
+
+  private readonly _handlePopupEscape = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') {
+      this._dismissPopups();
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Content Loading
+  // ══════════════════════════════════════════════════════════════════════════
 
   private async _loadContent(): Promise<void> {
     if (!this._editor || !this._pageId) return;
@@ -788,6 +1669,10 @@ class CanvasEditorPane implements IDisposable {
 
     this._hideSlashMenu();
     this._hideBubbleMenu();
+    this._dismissPopups();
+
+    // Cancel pending title save
+    if (this._titleSaveTimer) clearTimeout(this._titleSaveTimer);
 
     // Dispose save-state subscriptions
     for (const d of this._saveDisposables) d.dispose();
@@ -812,5 +1697,15 @@ class CanvasEditorPane implements IDisposable {
       this._bubbleMenu.remove();
       this._bubbleMenu = null;
     }
+
+    this._pageHeader = null;
+    this._coverEl = null;
+    this._coverControls = null;
+    this._breadcrumbsEl = null;
+    this._iconEl = null;
+    this._titleEl = null;
+    this._hoverAffordances = null;
+    this._pageMenuBtn = null;
+    this._currentPage = null;
   }
 }

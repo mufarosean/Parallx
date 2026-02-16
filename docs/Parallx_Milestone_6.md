@@ -1214,3 +1214,674 @@ After Tier 2 functional implementation, a comprehensive visual/UX overhaul was p
 | **Checkboxes** | Native browser checkbox | Custom CSS: rounded, blue checked, white checkmark clip-path | Notion |
 | **Scrollbars** | Native | Thin 6px, transparent track, subtle thumb | Modern editors |
 | **Placeholder** | Italic, VS Code muted | `rgba(255,255,255,0.25)`, non-italic, heading-specific text | Novel |
+
+---
+
+## Canvas Page Experience — Notion Model Research & Implementation Plan
+
+> **Design Principle:** Working systems mean nothing if we cannot present a cohesive UI that is free of bugs, intuitive, and pleasing to use and look at. Every feature below must be evaluated not only for functional correctness but for visual polish, interaction smoothness, and consistency with the Notion-like experience users expect. If it doesn't *feel* right, it's not done.
+
+### Notion Page Model — Research Summary
+
+**How Notion works (single-user-relevant subset):**
+
+Notion's data model is: *everything is a block*. A page is a block. A database is a block. Content inside a page is blocks. For Parallx Canvas — a local, single-user app — we don't need the full block-as-entity abstraction (TipTap handles content blocks internally). What we *do* need is the **page-level metadata, UI chrome, and settings** that make Notion feel polished.
+
+A Notion page has five distinct zones:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  COVER IMAGE (full width, 280px tall, repositionable)    │
+├──────────────────────────────────────────────────────────┤
+│  ICON (large, overlapping cover bottom-left)             │
+│  TITLE (large editable text — IS the page name)          │
+│                                                          │
+│  PROPERTIES BAR (structured metadata below title)        │
+│  ┌─ Status: Draft ─┐ ┌─ Tags: design, ux ─┐            │
+│  └──────────────────┘ └────────────────────┘            │
+│  + Add a property                                        │
+│                                                          │
+│  ─────────────────────────────────────────────────── ─── │
+│                                                          │
+│  CONTENT BODY (TipTap editor — blocks)                   │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Key Notion behaviors researched:**
+
+1. **Title ↔ Sidebar sync.** The in-editor title IS the page name. Editing it instantly updates the sidebar label. There is no separate "rename" — the title is the first thing you see and edit on a page. The title is NOT part of the TipTap document body — it's a separate input element above the editor.
+
+2. **Icon system.** Each page has an emoji icon (or uploaded image in Notion Pro). The icon appears: (a) in the sidebar tree, (b) large above the title in the editor, (c) in editor tab labels. Clicking the icon opens an emoji picker. "Remove" option to clear it back to none (sidebar shows default page icon).
+
+3. **Cover image.** Full-width banner at top of page. ~280px tall. `object-fit: cover` with adjustable `object-position` (y-offset 0.0–1.0). Sources: upload from disk, paste URL, built-in gallery (gradients, photos). "Reposition" mode: drag vertically to adjust crop. "Change cover" / "Remove" buttons appear on hover.
+
+4. **Page settings.** Found in the "⋯" menu at top-right of page:
+   - **Full width** — widens content from ~720px to ~900px+
+   - **Small text** — reduces base font (16px → 14px)
+   - **Font** — three choices: Default (system sans), Serif, Mono
+   - **Lock page** — prevents editing (read-only mode)
+
+5. **Properties.** Structured metadata between title and content body. Each property has a type (text, number, select, multi-select, date, checkbox, URL, relation) and a value. Users can add/remove/reorder properties. Properties appear as a subtle key-value list. Our existing `page_properties` table already supports this — we need the UI.
+
+6. **Favorites / pinning.** Star a page to pin it to a "Favorites" section at the top of the sidebar. Quick access to frequently-used pages.
+
+7. **Trash / archive.** Deleted pages go to trash (soft-delete). Trash is viewable (sidebar section or modal). Pages can be restored or permanently deleted. We already have `is_archived` — we need the UI.
+
+8. **Duplicate.** Deep-copy a page including all content and child pages.
+
+9. **Breadcrumbs.** Path trail showing: Parent Page > Current Page. Clickable to navigate up.
+
+### What Already Exists in Our Codebase
+
+| System | File(s) | Status | Reuse Opportunity |
+|--------|---------|--------|-------------------|
+| Page data model | `canvasTypes.ts` → `IPage` | ✅ Has id, parentId, title, icon, content, sortOrder, isArchived, timestamps | Extend with new columns |
+| Page CRUD | `canvasDataService.ts` | ✅ Full CRUD, auto-save, tree assembly | Extend `updatePage()` to accept new fields |
+| Properties table | `002_page_properties.sql` | ✅ Schema exists — `page_properties(id, page_id, key, value_type, value)` | Add CRUD methods + UI |
+| Sidebar tree | `canvasSidebar.ts` | ✅ Full tree with DnD, rename, create, delete | Add Favorites section, Trash section |
+| Editor pane | `canvasEditorProvider.ts` | ✅ TipTap with 14 slash commands, bubble menu | Add title input, cover, icon, properties |
+| Page icon | `IPage.icon` column + sidebar display | 🟡 Stored in DB, shows in sidebar, no picker | Add emoji picker + editor header icon |
+| Soft delete | `IPage.isArchived` column | 🟡 Column exists, no UI for trash/restore | Add trash view |
+| Migration system | `electron/database.cjs` | ✅ Versioned SQL migrations | Create `003_page_settings.sql` |
+| CSS architecture | `canvas.css` | ✅ ~1000 lines, Notion-style dark theme | Extend with cover, title, properties, menu styles |
+| TipTap instance | `canvasEditorProvider.ts` → `CanvasEditorPane` | ✅ Full editor with extensions | Mount title/cover/props ABOVE the TipTap element |
+
+### Existing Libraries & Approaches to Leverage (Don't Reinvent the Wheel)
+
+| Need | Existing Solution | How We Use It |
+|------|-------------------|---------------|
+| **Emoji picker** | `emoji-mart` (11k stars) or `picmo` (1.3k stars) — both provide a standalone, framework-agnostic emoji picker component | Import and mount as a popup on icon click. `emoji-mart` has a vanilla JS version (`emoji-mart/element`). Alternatively, build a simpler inline grid of common emojis (Notion only shows ~200 in the quick picker). |
+| **Cover image positioning** | CSS `object-fit: cover` + `object-position: center {Y}%` | No library needed. Store Y offset (0–100), apply via inline style. Drag-to-reposition is a simple `mousedown` → `mousemove` → `mouseup` handler that updates the Y value. |
+| **Cover image gradients** | CSS `linear-gradient()` / `radial-gradient()` | Ship 10–15 built-in gradient presets as CSS strings. No images needed for these. |
+| **Date picker (for date properties)** | `flatpickr` (16k stars) — lightweight, no deps, dark theme | Mount inline in property editor row. Native `<input type="date">` is also viable for MVP but looks inconsistent across platforms. |
+| **Color picker (for select tag colors)** | Hardcoded palette of 10 Notion colors | Notion uses a fixed set: light gray, gray, brown, orange, yellow, green, blue, purple, pink, red. No color picker library needed — just a grid of swatches. |
+| **Multi-select tags** | Vanilla TS tokenized input | Standard pattern: input with pill/chip elements, backspace to remove, enter to add. No library needed. |
+| **Breadcrumbs** | We already have `breadcrumbsBar.ts` in `src/editor/` | Check if it can be adapted for Canvas parent chain display. May need custom renderer. |
+| **ContentEditable title** | Native `contenteditable="true"` on a `<div>` or `<h1>` | Simpler than a full `<input>`. Notion uses this. Handles multiline paste prevention, placeholder text via CSS `:empty::before`. |
+| **File upload (covers, images)** | Electron `dialog.showOpenDialog()` already exposed via IPC | We already have file dialog infrastructure. For covers: read file → convert to base64 → store in DB (local app, no CDN needed). |
+| **Markdown export** | TipTap `editor.getJSON()` → walk tree → emit Markdown | No library needed. TipTap's JSON is a clean AST. A 100-line recursive function handles all current block types. Alternatively, `@tiptap/html` exports HTML which can be piped through `turndown` (7k stars). |
+
+---
+
+## Capability 7 — Page Title & Icon Experience ✅
+
+### Capability Description
+
+The editor pane gains a dedicated title zone above the TipTap content area. The page title is rendered as a large `contenteditable` heading that syncs bidirectionally with the sidebar label. The page icon appears large and clickable next to the title, opening an emoji picker for changing it. This is the single most impactful UX change — it transforms the editor from "a text area with a tab" to "a page you can name and personalize."
+
+### UX Requirements (Non-Negotiable)
+
+- The title MUST feel like part of the page, not a form input. Large text (≥30px), no visible border, no background difference from the content area.
+- Typing in the title MUST update the sidebar label within 300ms (debounced, not on every keystroke).
+- Pressing Enter in the title MUST move focus to the first line of the TipTap body (not create a newline in the title).
+- The icon MUST be clickable. Clicking it opens an emoji picker popup. Selecting an emoji updates the icon everywhere (sidebar, tab, editor header) immediately.
+- An empty page (no title typed yet) MUST show placeholder text: "Untitled" in muted color.
+- If the page has no icon set, show a ghosted "Add icon" button that appears on hover over the title area.
+- Tab name in the editor group MUST reflect the current title (not a stale name from when the tab was opened).
+
+### Goals
+
+- `contenteditable` title element above TipTap editor, styled as large heading
+- Bidirectional sync: title edits → `dataService.updatePage(pageId, { title })` → `onDidChangePage` → sidebar re-renders label
+- Tab label updates via `EditorInput` name change propagation
+- Emoji picker for icon selection (lightweight, inline popup)
+- Icon displayed large (32–40px) in editor header, normal (14px) in sidebar
+- "Add icon" hover affordance when no icon is set
+
+### Dependencies
+
+- `canvasEditorProvider.ts` (editor pane — mount title element above TipTap)
+- `canvasDataService.ts` (updatePage for title/icon changes)
+- `canvasSidebar.ts` (already listens to `onDidChangePage` → re-renders)
+- `canvas.css` (new styles for title zone, icon, emoji picker)
+- Optional: `emoji-mart` npm package for full picker, or custom simple grid
+
+### Research — How Others Implement This
+
+**Notion:** Title is a `contenteditable` div with `data-content-editable-leaf="true"`. The icon sits to the left, slightly above. The entire title zone has generous padding (80px top when no cover, 36px when cover is present). Placeholder "Untitled" appears via CSS `:empty::before { content: "Untitled"; color: rgba(...) }`.
+
+**Novel:** Does not implement page titles (it's an editor component, not a full app). Title would be the host application's responsibility.
+
+**BlockNote:** No page-level title. Confirms this is an app-level feature, not an editor-library feature.
+
+**Approach for Parallx:** We add a `div.canvas-page-header` container above the TipTap element inside `canvas-editor-wrapper`. This container holds the icon element and the title element. The TipTap editor mounts below it. The header is NOT part of the TipTap document — it's separate DOM managed by `CanvasEditorPane`.
+
+#### Tasks
+
+**Task 7.1 — Add Title Element to Editor Pane** ✅
+- **Task Description:** Create a `contenteditable` title heading above the TipTap editor in `CanvasEditorPane.init()`.
+- **Output:** Large editable title rendered above the content body.
+- **Completion Criteria:**
+  - `div.canvas-page-header` inserted into `canvas-editor-wrapper` BEFORE the TipTap `<div>` element
+  - Inside the header: `div.canvas-page-title` with `contenteditable="true"`, `data-placeholder="Untitled"`, `spellcheck="false"`
+  - Title loaded from `IPage.title` via `_dataService.getPage(pageId)`
+  - CSS: font-size 40px, font-weight 700, line-height 1.2, no border, no outline, padding matches TipTap body (64px horizontal), max-width 860px
+  - Placeholder via CSS `:empty::before { content: attr(data-placeholder); color: rgba(255,255,255,0.2) }`
+  - Multiline prevention: `keydown` handler blocks Enter (moves focus to TipTap instead), blocks paste of newlines
+  - `input` event on title → debounced (300ms) → `_dataService.updatePage(pageId, { title: titleEl.textContent })`
+  - Title text rendered as plain text only (strip HTML on paste)
+
+**Task 7.2 — Bidirectional Title ↔ Sidebar Sync** ✅
+- **Task Description:** Ensure title changes in the editor propagate to the sidebar and vice versa.
+- **Output:** Editing the page title in the editor updates the sidebar label in real-time.
+- **Completion Criteria:**
+  - Editor title `input` event → debounced `updatePage()` → fires `onDidChangePage(Updated)` → sidebar `_refreshTree()` re-renders with new title
+  - Sidebar inline rename (F2 / double-click) → `updatePage()` → fires `onDidChangePage(Updated)` → editor pane listens to `onDidChangePage` and updates title element if `pageId` matches
+  - Editor tab label: `EditorInput.name` or display label updates when title changes. The editor group system picks up name changes via existing `onDidChangeLabel` or re-render logic.
+  - No circular updates: title element checks if new value differs from current before writing to DOM
+
+**Task 7.3 — Page Icon Display in Editor Header** ✅
+- **Task Description:** Show the page icon large in the editor header, clickable to change.
+- **Output:** Icon displayed at 32–40px above or beside the title.
+- **Completion Criteria:**
+  - `span.canvas-page-icon` element inside `canvas-page-header`, positioned above the title (Notion-style: icon sits above the title with slight left offset)
+  - If `page.icon` is set: display the emoji at 40px
+  - If `page.icon` is null: show nothing by default; on hover over the title area, show a ghosted "🖼 Add icon" button (muted text, appears on hover)
+  - Click on icon → opens emoji picker (Task 7.4)
+  - Click on "Add icon" hover button → opens emoji picker
+  - Icon updates via `_dataService.updatePage(pageId, { icon: selectedEmoji })`
+  - `onDidChangePage` updates icon in sidebar (already works — sidebar reads `node.icon`)
+
+**Task 7.4 — Emoji Picker for Icon Selection** ✅
+- **Task Description:** Implement or integrate an emoji picker popup for changing the page icon.
+- **Output:** Popup with emoji grid, search, and "Remove" option.
+- **Completion Criteria:**
+  - **Option A (Recommended for MVP):** Build a simple custom emoji grid:
+    - 8 category tabs: Smileys, People, Animals, Food, Travel, Activities, Objects, Symbols
+    - Grid of ~300 most-used emojis (Notion shows ~200 in quick picker)
+    - Search input at top: filters emojis by name/keyword
+    - "Remove" button to clear icon back to null
+    - Positioned as absolute popup below/beside the icon click target
+    - Click outside or Escape dismisses
+    - CSS: dark bg (#252525), rounded corners, max-height with scroll, same styling language as slash menu
+  - **Option B (Full-featured):** Install `emoji-mart` vanilla JS element:
+    - `npm install emoji-mart @emoji-mart/data`
+    - Mount `<em-emoji-picker>` web component in popup
+    - Configure: `theme="dark"`, `skinTonePosition="search"`, category icons
+    - On select: `event.detail.native` gives the emoji string
+    - Handles search, skin tones, recently-used automatically
+  - Either option: selected emoji → `_dataService.updatePage(pageId, { icon })` → UI updates everywhere
+
+---
+
+## Capability 8 — Cover Image System ✅
+
+### Capability Description
+
+Pages can have a full-width cover image displayed at the top of the editor pane, above the icon and title. Covers support local file upload, URL paste, and built-in gradient presets. Users can reposition covers by dragging vertically. Cover state persists in the database.
+
+### UX Requirements (Non-Negotiable)
+
+- Cover MUST be full-width within the editor wrapper (not constrained to max-width 860px — it bleeds edge-to-edge).
+- Cover height: ~200px (shorter than Notion's 280px to leave room for content in smaller windows).
+- Repositioning MUST feel like dragging a photo behind a window — smooth, no jank, instant feedback.
+- "Change cover" and "Remove" buttons appear on hover over the cover, anchored to the bottom-right.
+- When no cover is set: a subtle "Add cover" button appears on hover over the title area (alongside "Add icon").
+- The cover area MUST NOT push content down aggressively. When scrolling, the cover should scroll with the content (not sticky).
+
+### Goals
+
+- New database columns: `cover_url TEXT`, `cover_y_offset REAL DEFAULT 0.5` on `pages` table
+- Cover image rendered as `div.canvas-page-cover` with `background-image` and `background-position: center {Y}%`
+- Upload from disk via Electron file dialog (stored as base64 data URL in DB)
+- URL paste option
+- Built-in gallery: 12–15 gradient/color presets (CSS gradients, no image files needed)
+- Reposition mode: drag vertically to adjust Y offset, saved on mouseup
+- "Add cover" / "Change cover" / "Remove" hover controls
+
+### Dependencies
+
+- Migration `003_page_settings.sql` (new columns — shared with Capability 9)
+- `canvasEditorProvider.ts` (mount cover element)
+- `canvasDataService.ts` (extend `updatePage` to handle cover fields)
+- `canvasTypes.ts` (extend `IPage` with cover fields)
+- `canvas.css` (cover image styles, hover controls, reposition cursor)
+- Electron IPC: `dialog.showOpenDialog()` for file picker (already available)
+
+### Research — How Others Implement This
+
+**Notion:** Cover uses `<img>` with `object-fit: cover; object-position: center {Y}%`. Cover panel offers tabs: Upload, Link, Unsplash, Gallery. Reposition mode changes cursor to `ns-resize` and tracks mouse delta to adjust Y. Covers are stored as URLs (Notion uses S3/CDN). For local apps, base64 data URLs or local file paths are appropriate.
+
+**Implementation trade-offs for local storage:**
+- **Base64 in SQLite:** Simple, portable (database is self-contained), but large images bloat the DB. Limit to ~2MB per cover (reject larger files with a warning). A 2MB base64 string is ~2.6MB in the TEXT column — acceptable for SQLite.
+- **File path reference:** Store the file path, load from disk. Breaks if file moves. More complex but lighter DB.
+- **Recommendation:** Base64 for MVP (simplicity). Can migrate to file references later if DB size becomes an issue.
+
+**Built-in gradient presets (no files needed):**
+```css
+/* Example presets — pure CSS, no image download */
+linear-gradient(135deg, #667eea 0%, #764ba2 100%)   /* Purple haze */
+linear-gradient(135deg, #f093fb 0%, #f5576c 100%)   /* Pink sunset */
+linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)   /* Ocean blue */
+linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)   /* Mint green */
+linear-gradient(135deg, #fa709a 0%, #fee140 100%)   /* Warm flame */
+linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)   /* Lavender */
+linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)   /* Peach */
+linear-gradient(135deg, #667eea 0%, #f093fb 100%)   /* Twilight */
+linear-gradient(180deg, #2c3e50 0%, #3498db 100%)   /* Dark blue */
+linear-gradient(180deg, #141e30 0%, #243b55 100%)   /* Deep space */
+linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 100%)   /* Midnight */
+linear-gradient(180deg, #232526 0%, #414345 100%)   /* Charcoal */
+```
+
+#### Tasks
+
+**Task 8.1 — Database Migration for Cover and Page Settings Fields** ✅
+- **Task Description:** Create `003_page_settings.sql` adding cover and page settings columns to the `pages` table.
+- **Output:** New columns available for cover URL, cover Y offset, and page display settings.
+- **Completion Criteria:**
+  - Migration `003_page_settings.sql`:
+    ```sql
+    ALTER TABLE pages ADD COLUMN cover_url TEXT DEFAULT NULL;
+    ALTER TABLE pages ADD COLUMN cover_y_offset REAL NOT NULL DEFAULT 0.5;
+    ALTER TABLE pages ADD COLUMN font_family TEXT NOT NULL DEFAULT 'default';
+    ALTER TABLE pages ADD COLUMN full_width INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE pages ADD COLUMN small_text INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE pages ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE pages ADD COLUMN is_favorited INTEGER NOT NULL DEFAULT 0;
+    ```
+  - Migration is idempotent (safe to run on existing databases)
+  - Note: All Capability 7–10 columns added in one migration for efficiency
+
+**Task 8.2 — Extend IPage and Data Service for Cover** ✅
+- **Task Description:** Add cover fields to `IPage` interface and `updatePage()` method.
+- **Output:** Cover data flows through the full CRUD pipeline.
+- **Completion Criteria:**
+  - `IPage` gains: `coverUrl: string | null`, `coverYOffset: number`
+  - `rowToPage()` maps `cover_url` and `cover_y_offset` from DB rows
+  - `updatePage()` accepts `coverUrl` and `coverYOffset` in the updates partial
+  - `createPage()` defaults: `coverUrl = null`, `coverYOffset = 0.5`
+
+**Task 8.3 — Render Cover Image in Editor Pane** ✅
+- **Task Description:** Display the cover image at the top of the editor pane.
+- **Output:** Full-width cover image with CSS background positioning.
+- **Completion Criteria:**
+  - `div.canvas-page-cover` inserted as the FIRST child of `canvas-editor-wrapper` (above `canvas-page-header`)
+  - If `page.coverUrl` is set: `background-image: url(${coverUrl})`, `background-position: center ${Y}%`, `background-size: cover`, height 200px
+  - If `page.coverUrl` is a CSS gradient (starts with `linear-gradient` or `radial-gradient`): use `background` instead of `background-image`
+  - If `page.coverUrl` is null: cover element hidden (`display: none`)
+  - Cover is full-width (100% of editor wrapper, not constrained to 860px max-width)
+  - When cover is present: page header padding adjusts (less top padding since cover provides visual space)
+
+**Task 8.4 — Cover Hover Controls (Change / Remove)** ✅
+- **Task Description:** Show "Change cover" and "Remove" buttons on hover over the cover.
+- **Output:** Hover controls for managing the cover image.
+- **Completion Criteria:**
+  - `div.canvas-cover-controls` container, absolutely positioned at bottom-right of cover
+  - Visible only on hover over `canvas-page-cover` (CSS `:hover` or mouseenter/mouseleave)
+  - Two buttons: "Change cover" and "Remove"
+  - "Remove" → `updatePage(pageId, { coverUrl: null })` → cover hides
+  - "Change cover" → opens cover picker (Task 8.5)
+  - Buttons styled: semi-transparent dark background, white text, rounded, small font (12px)
+
+**Task 8.5 — Cover Picker Popup** ✅
+- **Task Description:** Create a popup for selecting a cover image (upload, URL, gallery).
+- **Output:** Tabbed popup with three cover sources.
+- **Completion Criteria:**
+  - Popup with three tabs/sections:
+    - **Gallery:** Grid of 12 built-in gradient thumbnails (40×30px previews). Click → applies as cover.
+    - **Upload:** Button that opens Electron file dialog filtered for images (png, jpg, jpeg, gif, webp). On select → reads file as base64 → `updatePage(pageId, { coverUrl: base64DataUrl })`. Reject files > 2MB with error.
+    - **Link:** Text input for pasting an image URL. "Apply" button → `updatePage(pageId, { coverUrl })`.
+  - Popup positioned below the "Change cover" button or centered above the cover
+  - Click outside or Escape dismisses
+  - CSS: matches slash menu visual language (dark bg, rounded, shadow, fade-in)
+
+**Task 8.6 — Cover Reposition (Drag to Adjust Y Offset)** ✅
+- **Task Description:** Allow users to drag the cover image vertically to adjust the crop position.
+- **Output:** Drag-to-reposition with immediate visual feedback.
+- **Completion Criteria:**
+  - "Reposition" button added to cover hover controls (or: hold click on cover activates reposition mode)
+  - In reposition mode: cursor changes to `ns-resize`, cover image follows mouse Y movement
+  - Implementation: `mousedown` captures start Y and start offset → `mousemove` calculates delta as percentage of cover height → updates `background-position` in real-time → `mouseup` saves new `coverYOffset` via `updatePage()`
+  - Y offset clamped to 0.0–1.0 range
+  - Semi-transparent overlay with "Drag to reposition" hint text during reposition mode
+  - Click "Done" button or click outside to exit reposition mode
+
+**Task 8.7 — "Add Cover" Hover Affordance** ✅
+- **Task Description:** Show an "Add cover" button when hovering over the title area of a page with no cover.
+- **Output:** Discoverable way to add a cover to pages that don't have one.
+- **Completion Criteria:**
+  - When `page.coverUrl` is null: hovering over `canvas-page-header` reveals a subtle "📷 Add cover" button
+  - Button is muted text, appears via CSS transition (opacity 0 → 1)
+  - Click → opens cover picker (same as Task 8.5)
+  - Similar to the "Add icon" affordance from Task 7.3 — both appear in the same hover zone
+
+---
+
+## Capability 9 — Page Display Settings ✅
+
+### Capability Description
+
+Per-page display settings that control the visual presentation of the content: font family, full-width mode, and text size. Accessed via a "⋯" menu at the top-right of the editor pane. Settings persist in the database per page.
+
+### UX Requirements (Non-Negotiable)
+
+- The "⋯" menu MUST be always visible (not just on hover) when the editor has a page open. Positioned at the top-right of the editor wrapper.
+- Font changes MUST apply instantly (no save/reload). The TipTap editor and title should immediately reflect the new font.
+- Full-width toggle MUST animate smoothly (max-width transition, ~200ms ease).
+- Small text toggle MUST NOT cause jarring content reflow — the font size change should feel natural.
+
+### Goals
+
+- "⋯" menu button at top-right of editor pane
+- Dropdown menu with: Font (Default / Serif / Mono), Full width toggle, Small text toggle, Lock page toggle
+- Per-page settings stored in `pages` table (`font_family`, `full_width`, `small_text`, `is_locked`)
+- Settings applied via CSS classes on the editor wrapper
+- Real-time application — no page reload needed
+
+### Dependencies
+
+- Migration `003_page_settings.sql` (columns already defined in Task 8.1)
+- `canvasEditorProvider.ts` (menu button, CSS class toggles)
+- `canvasDataService.ts` (extended `updatePage` for new fields)
+- `canvasTypes.ts` (extended `IPage` with new fields)
+- `canvas.css` (font-family variants, full-width mode, small-text mode, locked state)
+
+### Research — How Notion Implements This
+
+**Notion's three fonts:**
+- **Default:** `-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif` — the standard system font stack
+- **Serif:** `Lyon-Text, Georgia, ui-serif, serif` — Notion bundles Lyon-Text. We'd use `Georgia, "Times New Roman", ui-serif, serif`
+- **Mono:** `iawriter-mono, "Nitti", Menlo, Courier, monospace` — Notion bundles iawriter-mono. We'd use `"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace`
+
+**Full width:** Notion toggles `max-width` from `720px` to `none` (fills the viewport width up to ~1200px with padding). Transition is smooth CSS.
+
+**Small text:** Notion reduces font-size from `16px` to `14px` across body text. Headings scale proportionally.
+
+**Lock page:** Notion sets `contenteditable="false"` on the editor and shows a 🔒 indicator. This can be achieved by calling `editor.setEditable(false)` on the TipTap instance and disabling the title contenteditable.
+
+#### Tasks
+
+**Task 9.1 — Extend IPage and Data Service for Settings** ✅
+- **Task Description:** Add page display settings to `IPage` and the data service update flow.
+- **Output:** Font family, full width, small text, and lock state tracked per page.
+- **Completion Criteria:**
+  - `IPage` gains: `fontFamily: 'default' | 'serif' | 'mono'`, `fullWidth: boolean`, `smallText: boolean`, `isLocked: boolean`
+  - `rowToPage()` maps `font_family`, `full_width`, `small_text`, `is_locked` columns
+  - `updatePage()` accepts these fields in the updates partial
+  - Defaults: `fontFamily = 'default'`, `fullWidth = false`, `smallText = false`, `isLocked = false`
+
+**Task 9.2 — Page Menu ("⋯") Button and Dropdown** ✅
+- **Task Description:** Add a menu button to the top-right of the editor pane with display settings.
+- **Output:** Dropdown menu with font, width, text size, and lock toggles.
+- **Completion Criteria:**
+  - `button.canvas-page-menu-btn` positioned at top-right of `canvas-editor-wrapper` (fixed/sticky within the wrapper)
+  - Content: "⋯" (horizontal ellipsis) or three-dot SVG icon
+  - Click → shows dropdown (`div.canvas-page-menu`)
+  - Menu items:
+    - **Font:** Three-option radio group (Default / Serif / Mono) with visual label showing the font style. Currently active font has a check mark.
+    - **Full width:** Toggle switch with label. Shows current state.
+    - **Small text:** Toggle switch with label. Shows current state.
+    - **Lock page:** Toggle switch with label. Shows 🔒 when locked.
+    - Divider line
+    - **Duplicate:** Button to deep-copy the page (delegates to Capability 10)
+    - **Export as Markdown:** Button (delegates to Capability 10)
+    - **Delete:** Button (red text, delegates to existing delete with confirmation)
+  - Click outside or Escape dismisses
+  - CSS: matches other popup styling (dark bg, rounded, shadow)
+
+**Task 9.3 — Apply Font Family CSS Classes** ✅
+- **Task Description:** Apply the selected font family to the editor content.
+- **Output:** Content renders in the selected font instantly.
+- **Completion Criteria:**
+  - CSS classes on `canvas-editor-wrapper`: `.canvas-font-default`, `.canvas-font-serif`, `.canvas-font-mono`
+  - `.canvas-font-default` → Inter / system sans-serif (current default)
+  - `.canvas-font-serif` → `Georgia, "Times New Roman", ui-serif, serif` — body text only, headings stay sans-serif
+  - `.canvas-font-mono` → `"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace` — applies to all text
+  - Class applied/removed in `CanvasEditorPane` based on `page.fontFamily` when loading and on setting change
+  - Title element also inherits the font class
+
+**Task 9.4 — Apply Full Width and Small Text CSS Classes** ✅
+- **Task Description:** Toggle full-width and small-text modes via CSS classes.
+- **Output:** Content width and text size respond to settings.
+- **Completion Criteria:**
+  - `.canvas-full-width` on `canvas-editor-wrapper`: sets `max-width: none` on `.canvas-tiptap-editor` (with CSS transition: `max-width 0.2s ease`)
+  - `.canvas-small-text` on `canvas-editor-wrapper`: sets `font-size: 14px` on `.canvas-tiptap-editor`, proportionally reduces heading sizes
+  - Both classes applied in `CanvasEditorPane.init()` based on loaded page settings
+  - Toggling in the menu → `updatePage(pageId, { fullWidth: !current })` → re-apply class → content reflows
+
+**Task 9.5 — Lock Page (Read-Only Mode)** ✅
+- **Task Description:** Implement page lock toggle that prevents editing.
+- **Output:** Locked pages are visually distinct and non-editable.
+- **Completion Criteria:**
+  - When `page.isLocked` is true:
+    - `editor.setEditable(false)` on TipTap instance
+    - Title `contenteditable` set to `false`
+    - Lock icon (🔒) shown in editor header or tab
+    - Bubble menu and slash menu disabled
+    - Visual indicator: subtle banner or lock icon at top of page
+  - Toggling lock in menu → `updatePage(pageId, { isLocked: !current })` → immediately apply/remove editability
+  - Locked state persisted and restored when page reopens
+
+---
+
+## Capability 10 — Page Organization & Utilities ✅
+
+### Capability Description
+
+Additional page management features that round out the Notion-like experience: favorites/pinning, trash view with restore, page duplication, breadcrumb navigation, and Markdown export.
+
+### UX Requirements (Non-Negotiable)
+
+- Favorites section at the top of the sidebar MUST be visually distinct (separator line, "Favorites" label in muted text).
+- Trash view MUST be accessible without destroying the current page tree — either as a collapsible sidebar section at the bottom, or as a separate tab/view.
+- Duplicate MUST deep-copy content and all child pages recursively. The new page should appear in the sidebar immediately with title "Copy of {original}".
+- Breadcrumbs MUST be clickable. Clicking a parent page navigates to it.
+
+### Goals
+
+- Favorites section in sidebar showing pinned pages
+- Trash/archive view for soft-deleted pages with restore and permanent delete
+- Page duplication (deep copy with children)
+- Breadcrumb trail in editor header showing parent chain
+- Markdown export of page content
+
+### Dependencies
+
+- `canvasSidebar.ts` (favorites section, trash section)
+- `canvasDataService.ts` (favorite toggle, archive/restore, duplicate, breadcrumb data)
+- `canvasEditorProvider.ts` (breadcrumb display)
+- `canvasTypes.ts` (extended `IPage` with `isFavorited`)
+- Migration `003_page_settings.sql` (is_favorited column — already defined in Task 8.1)
+
+### Research — Existing Approaches
+
+**Favorites:** Simple — query `SELECT * FROM pages WHERE is_favorited = 1 AND is_archived = 0 ORDER BY title`. Render as a flat list above the tree. Toggle via right-click context menu or star icon on hover.
+
+**Trash:** Notion's trash is modal-based (search + list). For our sidebar approach: a collapsible "Trash" section at the bottom. Shows archived pages. Click "Restore" unsets `is_archived`, click "Delete permanently" runs actual `DELETE`.
+
+**Duplicate:** Recursive CTE or application-level recursion. For each page: `createPage()` with same parent (or new parent for root-level copy), copy content/icon/cover, then recursively duplicate children with new `parentId`.
+
+**Breadcrumbs:** Walk up the `parentId` chain from the current page to root. Render as: `Root > Parent > Current`. Use existing `breadcrumbsBar.ts` if compatible, or render simple inline spans with click handlers.
+
+**Markdown export:** Walk TipTap JSON AST → emit Markdown string:
+- `heading` → `# `, `## `, `### `
+- `paragraph` → text + `\n\n`
+- `bulletList` / `listItem` → `- item`
+- `orderedList` → `1. item`
+- `blockquote` → `> text`
+- `codeBlock` → `` ```lang\ncode\n``` ``
+- `taskList` → `- [ ] item` / `- [x] item`
+- `horizontalRule` → `---`
+- `callout` → `> {emoji} text`
+- Bold → `**text**`, Italic → `*text*`, Code → `` `text` ``, Link → `[text](url)`
+- Table → pipe-delimited markdown table
+- Image → `![alt](src)`
+
+Alternatively, install `turndown` (HTML → Markdown converter, 7k stars) and use `@tiptap/html` to get HTML first. But for our controlled set of block types, a custom converter is cleaner and has zero dependencies.
+
+#### Tasks
+
+**Task 10.1 — Extend Data Service for Favorites** ✅
+- **Task Description:** Add favorite/unfavorite methods and a query for favorited pages.
+- **Output:** Favorite pages queryable from data service.
+- **Completion Criteria:**
+  - `toggleFavorite(pageId: string): Promise<IPage>` — flips `is_favorited`, fires `onDidChangePage(Updated)`
+  - `getFavoritedPages(): Promise<IPage[]>` — `SELECT * FROM pages WHERE is_favorited = 1 AND is_archived = 0 ORDER BY title`
+  - Extend `rowToPage()` to include `isFavorited` field
+
+**Task 10.2 — Sidebar Favorites Section** ✅
+- **Task Description:** Add a "Favorites" section at the top of the sidebar tree showing pinned pages.
+- **Output:** Favorited pages appear in a dedicated section above the page tree.
+- **Completion Criteria:**
+  - "FAVORITES" label (muted text, small caps, 11px) appears above the tree if any pages are favorited
+  - Flat list (no nesting) of favorited pages, each clickable to open
+  - Star icon (★/☆) on hover over any page in the tree or favorites section — click toggles favorite
+  - Visual: separator line between Favorites section and "PAGES" section
+  - Favorites section collapses if empty
+  - Right-click context menu on any page includes "Add to Favorites" / "Remove from Favorites"
+
+**Task 10.3 — Page Trash View with Restore** ✅
+- **Task Description:** Add a "Trash" section at the bottom of the sidebar showing archived pages.
+- **Output:** Users can see, restore, or permanently delete archived pages.
+- **Completion Criteria:**
+  - "TRASH" label + chevron at the bottom of sidebar, collapsible
+  - Lists all pages where `is_archived = 1`, ordered by `updated_at DESC` (most recently deleted first)
+  - Each trash item shows title + delete date
+  - "Restore" button/action → sets `is_archived = 0` → page reappears in tree
+  - "Delete permanently" button/action → `DELETE FROM pages` (true delete, not soft) with confirmation
+  - "Empty trash" button in section header → permanently deletes ALL archived pages with confirmation
+  - Extend `canvasDataService`: `archivePage(pageId)` (sets `is_archived = 1`), `restorePage(pageId)` (sets `is_archived = 0`), `permanentlyDeletePage(pageId)`, `getArchivedPages(): Promise<IPage[]>`
+  - Update existing `deletePage()` to archive instead of delete: `this.archivePage(pageId)` (soft delete)
+
+**Task 10.4 — Page Duplication (Deep Copy)** ✅
+- **Task Description:** Implement deep-copy of a page and all its descendants.
+- **Output:** Duplicated page tree appears in sidebar with "Copy of" prefix.
+- **Completion Criteria:**
+  - `duplicatePage(pageId: string): Promise<IPage>` on `canvasDataService`
+  - Copies: title ("Copy of {title}"), icon, content, cover_url, cover_y_offset, font_family, full_width, small_text
+  - Does NOT copy: is_favorited, is_locked, sort_order (gets new sort_order at end of siblings)
+  - Recursively duplicates children, maintaining parent-child relationships with new IDs
+  - The new root copy is placed as a sibling of the original (same parent)
+  - Fires `onDidChangePage(Created)` for each new page
+  - UI: accessible via page menu (Capability 9) and right-click context menu
+
+**Task 10.5 — Breadcrumb Navigation** ✅
+- **Task Description:** Show a breadcrumb trail above the title in the editor header.
+- **Output:** Clickable path showing the current page's ancestor chain.
+- **Completion Criteria:**
+  - `div.canvas-breadcrumbs` rendered above the icon/title in `canvas-page-header`
+  - Shows: ancestor chain from root to current page's parent (not including current page)
+  - Each breadcrumb is a clickable link that opens that ancestor page in the editor
+  - Separator: `/` or `›` between crumbs
+  - Root-level pages show no breadcrumbs (or just "Pages" as a label)
+  - Data: walk up `parentId` chain via `_dataService.getPage(parentId)` recursively, or add `getAncestors(pageId): Promise<IPage[]>` to data service
+  - CSS: muted text (12px, `rgba(255,255,255,0.4)`), hover highlights individual crumbs
+  - Updates when page is reparented (via `onDidChangePage(Moved)`)
+
+**Task 10.6 — Markdown Export** ✅
+- **Task Description:** Export a page's content as a Markdown file.
+- **Output:** Downloads/saves a `.md` file of the page content.
+- **Completion Criteria:**
+  - Custom TipTap JSON → Markdown converter function (`tiptapJsonToMarkdown(doc: object): string`)
+  - Handles all current block types: paragraph, heading (1-3), bulletList, orderedList, taskList, blockquote, codeBlock (with language), horizontalRule, callout, details, table, image
+  - Handles all inline marks: bold, italic, strike, underline, code, link, highlight, color
+  - Output starts with `# {page title}` as the first line
+  - Triggered from page menu (Capability 9, Task 9.2) → "Export as Markdown"
+  - Uses Electron file dialog (`dialog.showSaveDialog`) to choose save location
+  - Filename default: `{page-title}.md` (sanitized for filesystem)
+  - IPC channel: `tools:save-file` or reuse existing file-write capability
+
+**Task 10.7 — Right-Click Context Menu for Pages** ✅
+- **Task Description:** Add a right-click context menu to page tree nodes in the sidebar.
+- **Output:** Context menu with common page actions.
+- **Completion Criteria:**
+  - Right-click on any page in sidebar tree → shows context menu
+  - Menu items:
+    - **Open** — opens page in editor
+    - **New subpage** — creates child page under this page
+    - **Rename** — starts inline rename
+    - Divider
+    - **Add to Favorites** / **Remove from Favorites** — toggles favorite state
+    - **Duplicate** — deep copies the page
+    - **Export as Markdown** — exports this page
+    - Divider
+    - **Delete** — moves to trash (with confirmation)
+  - Menu positioned at cursor, clipped to viewport
+  - Click outside or Escape dismisses
+  - CSS: matches page menu and slash menu styling
+
+---
+
+## Execution Order (Capabilities 7–10)
+
+```
+Capability 7 (Title & Icon)              ← Highest impact, do first
+    │
+    ├── Task 7.1: Title element
+    ├── Task 7.2: Title ↔ sidebar sync
+    ├── Task 7.3: Icon in editor header
+    └── Task 7.4: Emoji picker
+         │
+Capability 8 (Cover Image)              ← Second highest visual impact
+    │
+    ├── Task 8.1: DB migration (003)     ← Shared migration for all new columns
+    ├── Task 8.2: IPage + data service extensions
+    ├── Task 8.3: Cover rendering
+    ├── Task 8.4: Hover controls
+    ├── Task 8.5: Cover picker popup
+    ├── Task 8.6: Reposition drag
+    └── Task 8.7: "Add cover" affordance
+         │
+Capability 9 (Page Settings)            ← Depends on migration from Cap 8
+    │
+    ├── Task 9.1: IPage + data service for settings
+    ├── Task 9.2: Page menu dropdown
+    ├── Task 9.3: Font family CSS classes
+    ├── Task 9.4: Full width + small text CSS
+    └── Task 9.5: Lock page
+         │
+Capability 10 (Organization & Utilities) ← Independent tasks, parallelize
+    │
+    ├── Task 10.1: Favorites data service
+    ├── Task 10.2: Sidebar favorites section
+    ├── Task 10.3: Trash view
+    ├── Task 10.4: Page duplication
+    ├── Task 10.5: Breadcrumbs
+    ├── Task 10.6: Markdown export
+    └── Task 10.7: Context menu
+```
+
+### Estimated Scope (Capabilities 7–10)
+
+- **Capability 7:** 4 tasks — title, sync, icon, emoji picker
+- **Capability 8:** 7 tasks — migration, data, cover render, controls, picker, reposition, affordance
+- **Capability 9:** 5 tasks — data, menu, fonts, width/text, lock
+- **Capability 10:** 7 tasks — favorites, trash, duplicate, breadcrumbs, export, context menu
+
+**Total: 4 capabilities, 23 tasks**
+
+**Running total for Milestone 6: 11 capabilities (0–10), 55 tasks**
+
+### Files Changed / Created (Capabilities 7–10)
+
+**New Files:**
+| File | Purpose |
+|------|---------|
+| `src/built-in/canvas/migrations/003_page_settings.sql` | New columns: cover, font, width, text size, lock, favorite |
+| `src/built-in/canvas/emojiPicker.ts` | Emoji picker popup component (or npm package integration) |
+| `src/built-in/canvas/coverPicker.ts` | Cover image picker popup (gallery + upload + URL) |
+| `src/built-in/canvas/pageMenu.ts` | Page settings "⋯" dropdown menu |
+| `src/built-in/canvas/markdownExport.ts` | TipTap JSON → Markdown converter |
+
+**Modified Files:**
+| File | Changes |
+|------|---------|
+| `src/built-in/canvas/canvasTypes.ts` | Extend `IPage` with cover, font, width, text size, lock, favorite fields |
+| `src/built-in/canvas/canvasDataService.ts` | Extend `rowToPage()`, `updatePage()`, add `toggleFavorite()`, `archivePage()`, `restorePage()`, `permanentlyDeletePage()`, `getFavoritedPages()`, `getArchivedPages()`, `duplicatePage()`, `getAncestors()` |
+| `src/built-in/canvas/canvasEditorProvider.ts` | Add title element, icon element, cover element, page menu button, breadcrumbs, apply settings CSS classes, lock mode |
+| `src/built-in/canvas/canvasSidebar.ts` | Add favorites section, trash section, context menu, favorite star icon |
+| `src/built-in/canvas/canvas.css` | Title zone, cover image, cover controls, emoji picker, page menu, breadcrumbs, font variants, full-width mode, small-text mode, favorites section, trash section, context menu (~300–400 new lines) |
+| `electron/main.cjs` | File save dialog IPC for Markdown export (if not already available) |
+
+### Quality Gates (UX Acceptance Criteria)
+
+Every task must pass these before being considered complete:
+
+1. **Visual consistency:** Does the new UI element match the existing Notion-like styling language (dark bg, rgba borders, Inter font, rounded corners, subtle animations)?
+2. **Interaction smoothness:** Are there any jank, flickers, or layout jumps? Transitions should be ≤200ms.
+3. **Keyboard accessibility:** Can the feature be fully operated via keyboard? (Tab focus, Enter to confirm, Escape to dismiss)
+4. **Edge cases:** What happens with very long titles? Very large cover images? Empty pages? Pages with 10+ levels of nesting?
+5. **State persistence:** Does the feature survive: page close/reopen, app restart, workspace switch?
+6. **No regressions:** Does the change break any existing editor functionality (bubble menu, slash commands, drag handle, auto-save)?
