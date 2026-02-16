@@ -115,17 +115,30 @@ const Callout = Node.create({
       const iconSpan = document.createElement('span');
       iconSpan.classList.add('canvas-callout-emoji');
       iconSpan.contentEditable = 'false';
-      const iconId = resolvePageIcon(node.attrs.emoji);
-      iconSpan.innerHTML = svgIcon(iconId);
-      const svg = iconSpan.querySelector('svg');
-      if (svg) { svg.setAttribute('width', '20'); svg.setAttribute('height', '20'); }
+
+      const renderIcon = (emoji: string) => {
+        const iconId = resolvePageIcon(emoji);
+        iconSpan.innerHTML = svgIcon(iconId);
+        const svg = iconSpan.querySelector('svg');
+        if (svg) { svg.setAttribute('width', '20'); svg.setAttribute('height', '20'); }
+      };
+
+      renderIcon(node.attrs.emoji);
       dom.appendChild(iconSpan);
 
       const contentDOM = document.createElement('div');
       contentDOM.classList.add('canvas-callout-content');
       dom.appendChild(contentDOM);
 
-      return { dom, contentDOM };
+      return {
+        dom,
+        contentDOM,
+        update(updatedNode: any) {
+          if (updatedNode.type.name !== 'callout') return false;
+          renderIcon(updatedNode.attrs.emoji);
+          return true;
+        },
+      };
     };
   },
 
@@ -154,6 +167,8 @@ interface SlashMenuItem {
   icon: string;
   description: string;
   action: (editor: Editor) => void;
+  /** 'convert' (default) toggles/wraps the current block; 'insert' deletes the paragraph and inserts new content */
+  mode?: 'convert' | 'insert';
 }
 
 const SLASH_MENU_ITEMS: SlashMenuItem[] = [
@@ -195,18 +210,21 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   {
     label: 'Divider', icon: 'divider', description: 'Horizontal rule',
     action: (e) => e.chain().focus().setHorizontalRule().run(),
+    mode: 'insert',
   },
   {
     label: 'Callout', icon: 'lightbulb', description: 'Highlighted info box',
-    action: (e) => (e.commands as any).toggleCallout({ emoji: 'lightbulb' }),
+    action: (e) => e.chain().focus().toggleCallout({ emoji: 'lightbulb' }).run(),
   },
   {
     label: 'Toggle List', icon: 'chevron-right', description: 'Collapsible content',
     action: (e) => e.chain().focus().setDetails().run(),
+    mode: 'insert',
   },
   {
     label: 'Table', icon: 'grid', description: 'Insert a table',
     action: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+    mode: 'insert',
   },
   // ── Media ──
   {
@@ -215,6 +233,7 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
       const url = prompt('Enter image URL:');
       if (url) e.chain().focus().setImage({ src: url }).run();
     },
+    mode: 'insert',
   },
 ];
 
@@ -1851,16 +1870,23 @@ class CanvasEditorPane implements IDisposable {
     this._suppressUpdate = true;
 
     try {
-      // Delete the '/' and filter text first
       const { state } = editor;
       const { $from } = state.selection;
-      const lineStart = $from.start();
-      const lineEnd = $from.pos;
 
-      editor.chain()
-        .focus()
-        .deleteRange({ from: lineStart, to: lineEnd })
-        .run();
+      if (item.mode === 'insert') {
+        // Insert-mode: delete the ENTIRE paragraph node (not just its text)
+        // so that the inserted block (table, toggle list, divider, image)
+        // doesn't leave a ghost empty paragraph above it.
+        const nodeStart = $from.before($from.depth);
+        const nodeEnd = $from.after($from.depth);
+        editor.chain().focus().deleteRange({ from: nodeStart, to: nodeEnd }).run();
+      } else {
+        // Convert-mode (default): delete only the '/' and filter text,
+        // keeping the empty paragraph so toggle/wrap commands can act on it.
+        const lineStart = $from.start();
+        const lineEnd = $from.pos;
+        editor.chain().focus().deleteRange({ from: lineStart, to: lineEnd }).run();
+      }
 
       // Execute the slash command action
       item.action(editor);
