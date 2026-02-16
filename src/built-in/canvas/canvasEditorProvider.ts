@@ -399,21 +399,30 @@ class CanvasEditorPane implements IDisposable {
             if (node.type.name === 'heading') {
               return `Heading ${node.attrs.level}`;
             }
-            // Contextual placeholders for nested content — never show
-            // "Type '/' for commands..." inside wrapper blocks like callout,
-            // task item, or toggle list, as it conflicts with their UI elements.
-            if (node.type.name === 'paragraph') {
-              // Check if this paragraph is nested inside a wrapper block
-              const $pos = editor.state.doc.resolve(pos);
-              for (let d = $pos.depth; d > 0; d--) {
-                const ancestor = $pos.node(d);
-                const name = ancestor.type.name;
-                if (name === 'callout') return 'Type something…';
-                if (name === 'taskItem') return 'To-do';
-                if (name === 'detailsContent') return 'Hidden content…';
-                if (name === 'detailsSummary') return 'Toggle title…';
-                if (name === 'blockquote') return '';
-              }
+            // DetailsSummary has content:'text*' (no paragraphs), so handle it
+            // explicitly — it's an inline-text container that needs its own hint.
+            if (node.type.name === 'detailsSummary') {
+              return 'Toggle title…';
+            }
+            // Only show placeholders on paragraph nodes.
+            // All other node types (details, detailsContent, callout, taskList,
+            // taskItem, etc.) get empty string — the Placeholder extension adds
+            // `data-placeholder` and `.is-empty` to ANY empty node when
+            // includeChildren is true, and our CSS renders it via ::before,
+            // which causes "Type '/' for commands..." to overlay on top of
+            // block UI elements like toggle buttons, checkboxes, and callout icons.
+            if (node.type.name !== 'paragraph') {
+              return '';
+            }
+            // For paragraphs, check if nested inside a wrapper block
+            const $pos = editor.state.doc.resolve(pos);
+            for (let d = $pos.depth; d > 0; d--) {
+              const ancestor = $pos.node(d);
+              const name = ancestor.type.name;
+              if (name === 'callout') return 'Type something…';
+              if (name === 'taskItem') return 'To-do';
+              if (name === 'detailsContent') return 'Hidden content…';
+              if (name === 'blockquote') return '';
             }
             return "Type '/' for commands...";
           },
@@ -1840,11 +1849,12 @@ class CanvasEditorPane implements IDisposable {
 
   private _getFilteredItems(): SlashMenuItem[] {
     if (!this._slashFilterText) return SLASH_MENU_ITEMS;
-    return SLASH_MENU_ITEMS.filter(
-      item =>
-        item.label.toLowerCase().includes(this._slashFilterText) ||
-        item.description.toLowerCase().includes(this._slashFilterText),
-    );
+    const q = this._slashFilterText.replace(/[^a-z0-9]/g, '');
+    return SLASH_MENU_ITEMS.filter(item => {
+      const label = item.label.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const desc = item.description.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return label.includes(q) || desc.includes(q);
+    });
   }
 
   private _renderSlashMenuItems(items: SlashMenuItem[], editor: Editor): void {
