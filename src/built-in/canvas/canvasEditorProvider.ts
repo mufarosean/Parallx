@@ -274,10 +274,8 @@ function columnResizePlugin(): Plugin {
 
   interface DragState {
     startX: number;
-    leftCol: HTMLElement;
-    rightCol: HTMLElement;
-    leftStartWidth: number;  // percentage
-    rightStartWidth: number; // percentage
+    leftStartWidth: number;  // percentage at drag start
+    rightStartWidth: number; // percentage at drag start
     listEl: HTMLElement;     // the columnList container DOM
     leftIndex: number;       // 0-based child index in columnList
     rightIndex: number;
@@ -362,30 +360,31 @@ function columnResizePlugin(): Plugin {
     return null;
   }
 
-  /** Set all columns in a columnList to equal width (null → flex: 1). */
-  function equalizeColumns(view: EditorView, listEl: HTMLElement) {
-    const insidePos = view.posAtDOM(listEl, 0);
-    const $pos = view.state.doc.resolve(insidePos);
-    for (let d = $pos.depth; d >= 0; d--) {
-      if ($pos.node(d).type.name === 'columnList') {
-        const listNodePos = $pos.before(d);
-        const listNode = view.state.doc.nodeAt(listNodePos);
-        if (!listNode) return;
-        const { tr } = view.state;
-        let changed = false;
-        let offset = listNodePos + 1;
-        for (let i = 0; i < listNode.childCount; i++) {
-          const child = listNode.child(i);
-          if (child.type.name === 'column' && child.attrs.width !== null) {
-            tr.setNodeMarkup(offset, undefined, { ...child.attrs, width: null });
-            changed = true;
-          }
-          offset += child.nodeSize;
-        }
-        if (changed) view.dispatch(tr);
-        return;
-      }
-    }
+  /**
+   * Dispatch a ProseMirror transaction that updates two column widths.
+   * Returns true if the transaction was dispatched.
+   */
+  function applyColumnWidths(
+    view: EditorView,
+    listEl: HTMLElement,
+    leftIndex: number,
+    rightIndex: number,
+    leftW: number | null,
+    rightW: number | null,
+  ): boolean {
+    const leftPos = findColumnPos(view, listEl, leftIndex);
+    const rightPos = findColumnPos(view, listEl, rightIndex);
+    if (leftPos === null || rightPos === null) return false;
+
+    const leftNode = view.state.doc.nodeAt(leftPos);
+    const rightNode = view.state.doc.nodeAt(rightPos);
+    if (!leftNode || !rightNode) return false;
+
+    const { tr } = view.state;
+    tr.setNodeMarkup(leftPos, undefined, { ...leftNode.attrs, width: leftW });
+    tr.setNodeMarkup(rightPos, undefined, { ...rightNode.attrs, width: rightW });
+    view.dispatch(tr);
+    return true;
   }
 
   return new Plugin({
@@ -395,15 +394,23 @@ function columnResizePlugin(): Plugin {
       handleDOMEvents: {
         mousemove: (view: EditorView, event: MouseEvent) => {
           if (dragging) {
+            // Dispatch a real ProseMirror transaction on each frame so the
+            // DOM update is handled natively by PM — no DOMObserver conflicts.
             const delta = event.clientX - dragging.startX;
             const containerWidth = dragging.listEl.getBoundingClientRect().width;
+            if (containerWidth === 0) return true;
             const deltaPercent = (delta / containerWidth) * 100;
             const newLeft = Math.max(10, Math.min(90, dragging.leftStartWidth + deltaPercent));
             const newRight = Math.max(10, Math.min(90, dragging.rightStartWidth - deltaPercent));
-            dragging.leftCol.style.width = newLeft + '%';
-            dragging.leftCol.style.flex = 'none';
-            dragging.rightCol.style.width = newRight + '%';
-            dragging.rightCol.style.flex = 'none';
+            const leftW = Math.round(newLeft * 10) / 10;
+            const rightW = Math.round(newRight * 10) / 10;
+
+            applyColumnWidths(
+              view, dragging.listEl,
+              dragging.leftIndex, dragging.rightIndex,
+              leftW, rightW,
+            );
+
             event.preventDefault();
             return true;
           }
@@ -427,8 +434,6 @@ function columnResizePlugin(): Plugin {
 
           dragging = {
             startX: event.clientX,
-            leftCol,
-            rightCol,
             leftStartWidth: colPercent(leftCol, listEl),
             rightStartWidth: colPercent(rightCol, listEl),
             listEl,
@@ -438,34 +443,10 @@ function columnResizePlugin(): Plugin {
 
           document.body.classList.add('column-resizing');
 
-          const finish = (e: MouseEvent) => {
+          const finish = () => {
             window.removeEventListener('mouseup', finish);
-            if (!dragging) return;
-
-            const delta = e.clientX - dragging.startX;
-            const containerWidth = dragging.listEl.getBoundingClientRect().width;
-            const deltaPercent = (delta / containerWidth) * 100;
-            const newLeft = Math.max(10, Math.min(90, dragging.leftStartWidth + deltaPercent));
-            const newRight = Math.max(10, Math.min(90, dragging.rightStartWidth - deltaPercent));
-
-            // Resolve positions at commit time by walking document tree
-            const leftPos = findColumnPos(view, dragging.listEl, dragging.leftIndex);
-            const rightPos = findColumnPos(view, dragging.listEl, dragging.rightIndex);
-
-            if (leftPos !== null && rightPos !== null) {
-              const { tr } = view.state;
-              const leftNode = view.state.doc.nodeAt(leftPos);
-              const rightNode = view.state.doc.nodeAt(rightPos);
-
-              if (leftNode && rightNode) {
-                const leftW = Math.round(newLeft * 10) / 10;
-                const rightW = Math.round(newRight * 10) / 10;
-                tr.setNodeMarkup(leftPos, undefined, { ...leftNode.attrs, width: leftW });
-                tr.setNodeMarkup(rightPos, undefined, { ...rightNode.attrs, width: rightW });
-                view.dispatch(tr);
-              }
-            }
-
+            // Final widths are already committed by the last mousemove
+            // transaction — just clean up drag state.
             dragging = null;
             document.body.classList.remove('column-resizing');
             document.body.classList.remove('column-resize-hover');
@@ -479,7 +460,11 @@ function columnResizePlugin(): Plugin {
           const boundary = findBoundary(view, event.clientX, event.clientY, 12);
           if (!boundary) return false;
           event.preventDefault();
-          equalizeColumns(view, boundary.listEl);
+          applyColumnWidths(
+            view, boundary.listEl,
+            boundary.leftIndex, boundary.rightIndex,
+            null, null,
+          );
           return true;
         },
       },
