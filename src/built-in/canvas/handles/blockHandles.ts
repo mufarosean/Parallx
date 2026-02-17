@@ -230,20 +230,6 @@ export class BlockHandlesController {
       const domPos = view.posAtDOM(matchedEl, 0);
       const $pos = view.state.doc.resolve(domPos);
 
-      // ── columnList special case: resolve to first block in first column
-      //    (columnList is invisible — it has no handle of its own)
-      const depth1Pos = $pos.depth >= 1 ? $pos.before(1) : domPos;
-      const depth1Node = view.state.doc.nodeAt(depth1Pos);
-      if (depth1Node?.type.name === 'columnList') {
-        const firstCol = depth1Node.firstChild;
-        if (firstCol?.type.name === 'column' && firstCol.childCount > 0) {
-          const innerPos = depth1Pos + 1 + 1; // skip columnList open + column open
-          const innerNode = view.state.doc.nodeAt(innerPos);
-          return innerNode ? { pos: innerPos, node: innerNode } : { pos: depth1Pos, node: depth1Node };
-        }
-        return { pos: depth1Pos, node: depth1Node };
-      }
-
       // ── Universal page-container resolution ──
       // Walk ancestors from doc (depth 0) downward. Find the deepest
       // node that is a page-container. The target block is its direct child.

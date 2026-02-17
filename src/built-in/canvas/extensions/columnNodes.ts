@@ -62,7 +62,7 @@ export const Column = Node.create({
 export const ColumnList = Node.create({
   name: 'columnList',
   group: 'block',
-  content: 'column column+',
+  content: 'column+',
   isolating: true,
   defining: true,
 

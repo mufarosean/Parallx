@@ -183,6 +183,32 @@ export function columnDropPlugin(): Plugin {
       }
     }
 
+    // Fallback: cursor is in empty space (e.g. below last block or in
+    // editor padding).  Find the nearest top-level block by vertical
+    // distance so the user can always drop above/below the closest block.
+    const topBlocks = Array.from(proseMirror.children) as HTMLElement[];
+    let bestEl: HTMLElement | null = null;
+    let bestDist = Infinity;
+    for (const child of topBlocks) {
+      if (child.classList?.contains('column-drop-indicator') ||
+          child.classList?.contains('canvas-drop-guide')) continue;
+      const r = child.getBoundingClientRect();
+      // Vertical distance from cursor to block
+      const dist = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+      if (dist < bestDist) { bestDist = dist; bestEl = child; }
+    }
+    if (bestEl && bestDist < 100) {
+      try {
+        const inner = view.posAtDOM(bestEl, 0);
+        const $p = view.state.doc.resolve(inner);
+        const blockPos = $p.before(1);
+        const blockNode = view.state.doc.nodeAt(blockPos);
+        if (blockNode) {
+          return { blockEl: bestEl, blockPos, blockNode, columnPos: null, columnListPos: null, columnIndex: 0 };
+        }
+      } catch { /* fall through */ }
+    }
+
     return null;
   }
 
@@ -190,57 +216,36 @@ export function columnDropPlugin(): Plugin {
   // Left/right edges → vertical guide (column create/extend).
   // Centre area → horizontal guide (above/below reorder).
   // columnList targets only allow above/below (Rule 9 nesting prevention).
-  // Also prevent left/right when target is directly inside a column
-  // (would create columns-inside-columns, violating nesting constraint).
 
   function getZone(
-    view: EditorView,
     blockEl: HTMLElement,
-    blockPos: number,
     x: number,
     y: number,
     isColumnList: boolean,
   ): 'above' | 'below' | 'left' | 'right' {
     const r = blockEl.getBoundingClientRect();
-    const rx = x - r.left;
+    const rx = x - r.left;   // cursor X relative to block left edge
+
+    // Fixed-pixel edge zones: the leftmost / rightmost 50 px of the
+    // block are column-creation territory (left / right).  Everything
+    // else resolves to above / below by Y midpoint.  This matches
+    // Notion's behavior — column splits require a deliberate horizontal
+    // gesture into a narrow strip at the edge of the target block.
+    const EDGE = 50; // px
+
+    // Nesting constraint: columnList targets only allow above/below.
+    // Blocks INSIDE columns DO allow left/right — the drop handler
+    // inserts a new column into the existing columnList (no nesting).
+    const preventLeftRight = isColumnList;
+
+    if (!preventLeftRight && r.width > EDGE * 3) {
+      // Only allow left/right when cursor is inside the block bounds
+      // (rx < 0 means cursor is on the drag handle, outside the block)
+      if (rx >= 0 && rx < EDGE) return 'left';
+      if (rx <= r.width && rx > r.width - EDGE) return 'right';
+    }
+
     const ry = y - r.top;
-    const edge = Math.min(r.width * 0.15, 48);
-
-    // Vertical priority: when the cursor is near the top or bottom of the
-    // block, always return above/below regardless of horizontal position.
-    // This prevents unwanted column creation when dragging from the left-
-    // aligned handle straight down (cursor stays at x ≈ 12-24 px, which
-    // would otherwise fall inside the left-edge zone).
-    const vertEdge = Math.max(r.height * 0.3, 10);
-    if (ry < vertEdge || ry > r.height - vertEdge) {
-      return ry < r.height / 2 ? 'above' : 'below';
-    }
-
-    // Nesting constraint: no columnList directly inside a column.
-    // But columnList inside callout-inside-column IS allowed (callout
-    // acts as intermediary page-container).
-    let preventLeftRight = isColumnList;
-    if (!preventLeftRight) {
-      try {
-        const $p = view.state.doc.resolve(blockPos);
-        // Find the immediate page-container (the deepest one)
-        let containerDepth = 0;
-        for (let d = 1; d <= $p.depth; d++) {
-          if (PAGE_CONTAINERS.has($p.node(d).type.name)) {
-            containerDepth = d;
-          }
-        }
-        // If the immediate page-container is a column, prevent left/right
-        if (containerDepth > 0 && $p.node(containerDepth).type.name === 'column') {
-          preventLeftRight = true;
-        }
-      } catch { /* fall through */ }
-    }
-
-    if (!preventLeftRight) {
-      if (rx < edge) return 'left';
-      if (rx > r.width - edge) return 'right';
-    }
     return ry < r.height / 2 ? 'above' : 'below';
   }
 
@@ -341,7 +346,7 @@ export function columnDropPlugin(): Plugin {
           }
 
           const isCL = raw.blockNode.type.name === 'columnList';
-          const zone = getZone(view, raw.blockEl, raw.blockPos, x, y, isCL);
+          const zone = getZone(raw.blockEl, x, y, isCL);
           activeTarget = { ...raw, zone };
 
           const container = view.dom.parentElement;
