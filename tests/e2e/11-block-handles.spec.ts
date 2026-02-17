@@ -576,15 +576,14 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     });
     await window.waitForTimeout(300);
 
-    // Check that highlight mark was applied
-    const hasHighlight = await window.evaluate(() => {
+    // Check that block-level backgroundColor attribute was applied (not text highlight)
+    const hasBg = await window.evaluate(() => {
       const editor = (window as any).__tiptapEditor;
       if (!editor) return false;
       const json = editor.getJSON();
-      const content = json.content?.[0]?.content;
-      return content?.some((n: any) => n.marks?.some((m: any) => m.type === 'highlight'));
+      return json.content?.[0]?.attrs?.backgroundColor != null;
     });
-    expect(hasHighlight).toBe(true);
+    expect(hasBg).toBe(true);
   });
 
   // ── Duplicate Tests ───────────────────────────────────────────────────────

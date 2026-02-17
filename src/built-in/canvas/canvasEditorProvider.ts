@@ -71,6 +71,39 @@ declare module '@tiptap/core' {
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
 
+// ─── Block-level Background Color Extension ────────────────────────────────
+// Adds a `backgroundColor` attribute to all block-level nodes (paragraph,
+// heading, blockquote, codeBlock, callout, details, lists, etc.).
+// Renders as inline `style="background-color: <value>"` on the block element.
+// Mirror of Notion's block-color feature which paints the whole block, not text.
+
+const BLOCK_BG_TYPES = [
+  'paragraph', 'heading', 'blockquote', 'codeBlock',
+  'callout', 'details', 'bulletList', 'orderedList', 'taskList',
+];
+
+const BlockBackgroundColor = Extension.create({
+  name: 'blockBackgroundColor',
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: BLOCK_BG_TYPES,
+        attributes: {
+          backgroundColor: {
+            default: null,
+            parseHTML: (element: HTMLElement) => element.style.backgroundColor || null,
+            renderHTML: (attributes: Record<string, any>) => {
+              if (!attributes.backgroundColor) return {};
+              return { style: `background-color: ${attributes.backgroundColor}` };
+            },
+          },
+        },
+      },
+    ];
+  },
+});
+
 // ─── Custom Callout Node ────────────────────────────────────────────────────
 // Notion-style callout: a colored info box with an SVG icon and rich content.
 // Rendered as <div data-type="callout"> with a non-editable icon and editable content area.
@@ -1399,6 +1432,8 @@ class CanvasEditorPane implements IDisposable {
         // ── Columns ──
         Column,
         ColumnList,
+        // ── Block-level background color ──
+        BlockBackgroundColor,
       ],
       content: '',
       editorProps: {
@@ -3152,6 +3187,13 @@ class CanvasEditorPane implements IDisposable {
     this._blockAddBtn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
     this._dragHandleEl.addEventListener('click', this._onDragHandleClick);
 
+    // ── Prevent drag handle from hiding when mouse moves to the + button ──
+    // The library's `hideHandleOnEditorOut` listens for `mouseout` on the
+    // editor wrapper and hides the drag handle when relatedTarget isn't
+    // `.tiptap` or `.drag-handle`. We intercept that event in the
+    // capture phase so the + button is treated as part of the editor.
+    this._editorContainer.addEventListener('mouseout', this._onEditorMouseOut, true);
+
     // ── Create block action menu (hidden by default) ──
     this._createBlockActionMenu();
 
@@ -3171,6 +3213,18 @@ class CanvasEditorPane implements IDisposable {
     const found = document.elementsFromPoint(event.clientX + 74, event.clientY)
       .find((el: Element) => el.parentElement?.matches?.('.ProseMirror') || el.matches(selectors));
     if (found instanceof Element) this._currentBlockDom = found;
+  };
+
+  /** Intercept mouseout on the editor wrapper so the drag handle library
+   *  doesn't hide the handle when the mouse moves to the + button. */
+  private readonly _onEditorMouseOut = (event: MouseEvent): void => {
+    const related = event.relatedTarget as HTMLElement | null;
+    if (
+      related &&
+      (related.classList.contains('block-add-btn') || related.closest('.block-add-btn'))
+    ) {
+      event.stopPropagation();
+    }
   };
 
   /** Resolve a DOM element to its ProseMirror block position. */
@@ -3662,14 +3716,12 @@ class CanvasEditorPane implements IDisposable {
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
     this._hideBlockActionMenu();
-    const from = pos + 1;
-    const to = pos + node.nodeSize - 1;
-    if (from >= to) return;
-    if (value) {
-      this._editor.chain().setTextSelection({ from, to }).setHighlight({ color: value }).focus().run();
-    } else {
-      this._editor.chain().setTextSelection({ from, to }).unsetHighlight().focus().run();
-    }
+    // Set block-level backgroundColor attribute (not text highlight).
+    // This paints the entire block DOM element — matching Notion's behavior.
+    const tr = this._editor.view.state.tr;
+    tr.setNodeMarkup(pos, undefined, { ...node.attrs, backgroundColor: value });
+    this._editor.view.dispatch(tr);
+    this._editor.commands.focus();
     const json = JSON.stringify(this._editor.getJSON());
     this._dataService.scheduleContentSave(this._pageId, json);
   }
@@ -3714,6 +3766,7 @@ class CanvasEditorPane implements IDisposable {
     this._handleObserver?.disconnect();
     this._handleObserver = null;
     document.removeEventListener('mousedown', this._onDocClickOutside);
+    this._editorContainer?.removeEventListener('mouseout', this._onEditorMouseOut, true);
     if (this._blockAddBtn) { this._blockAddBtn.remove(); this._blockAddBtn = null; }
     if (this._blockActionMenu) { this._blockActionMenu.remove(); this._blockActionMenu = null; }
     if (this._turnIntoSubmenu) { this._turnIntoSubmenu.remove(); this._turnIntoSubmenu = null; }

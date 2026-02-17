@@ -591,6 +591,29 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Block-level Background Color — Notion-style block backgrounds
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-tiptap-editor p[style*="background-color"],
+.canvas-tiptap-editor h1[style*="background-color"],
+.canvas-tiptap-editor h2[style*="background-color"],
+.canvas-tiptap-editor h3[style*="background-color"],
+.canvas-tiptap-editor blockquote[style*="background-color"],
+.canvas-tiptap-editor pre[style*="background-color"],
+.canvas-tiptap-editor ul[style*="background-color"],
+.canvas-tiptap-editor ol[style*="background-color"],
+.canvas-tiptap-editor [data-type="taskList"][style*="background-color"] {
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Callout & details already have their own padding — just add border-radius */
+.canvas-tiptap-editor .canvas-callout[style*="background-color"],
+.canvas-tiptap-editor .canvas-details[style*="background-color"] {
+  border-radius: 6px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * Global Drag Handle — Notion-style 6-dot grip
  * ───────────────────────────────────────────────────────────────────────────── */
 
