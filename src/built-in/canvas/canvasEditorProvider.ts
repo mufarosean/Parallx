@@ -154,12 +154,15 @@ class CanvasEditorPane implements IDisposable {
         if (this._suppressUpdate) return;
         const json = JSON.stringify(editor.getJSON());
         this._dataService.scheduleContentSave(this._pageId, json);
-
-        // Check for slash command trigger
-        this._slashMenu.checkTrigger(editor);
+      },
+      onTransaction: ({ editor }) => {
+        if (this._suppressUpdate) return;
+        // Check for slash command trigger on every transaction
+        // (onTransaction fires for all state changes — more reliable than onUpdate)
+        this._slashMenu?.checkTrigger(editor);
       },
       onSelectionUpdate: ({ editor }) => {
-        this._bubbleMenu.update(editor);
+        this._bubbleMenu?.update(editor);
       },
       onBlur: () => {
         // Small delay so clicking bubble menu buttons doesn't dismiss it
@@ -277,11 +280,13 @@ class CanvasEditorPane implements IDisposable {
         } catch {
           // Content is not valid JSON or has incompatible nodes — start fresh
           console.warn(`[CanvasEditorPane] Invalid content for page "${this._pageId}", starting fresh`);
-          this._editor.commands.clearContent();
+          try { this._editor.commands.clearContent(); } catch { /* swallow */ }
+        } finally {
+          this._suppressUpdate = false;
         }
-        this._suppressUpdate = false;
       }
     } catch (err) {
+      this._suppressUpdate = false;
       console.error(`[CanvasEditorPane] Failed to load page "${this._pageId}":`, err);
     }
   }
