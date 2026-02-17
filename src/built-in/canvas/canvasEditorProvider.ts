@@ -3179,9 +3179,6 @@ class CanvasEditorPane implements IDisposable {
       attributeFilter: ['style', 'class'],
     });
 
-    // ── Track hovered block on mousemove ──
-    this._editorContainer.addEventListener('mousemove', this._onEditorMouseMove);
-
     // ── Event handlers ──
     this._blockAddBtn.addEventListener('click', this._onBlockAddClick);
     this._blockAddBtn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
@@ -3201,20 +3198,6 @@ class CanvasEditorPane implements IDisposable {
     document.addEventListener('mousedown', this._onDocClickOutside);
   }
 
-  /** Track which block the cursor is hovering over (mirrors the library's nodeDOMAtCoords logic). */
-  private readonly _onEditorMouseMove = (event: MouseEvent): void => {
-    if (!this._editor) return;
-    const selectors = [
-      'li', 'p:not(:first-child)', 'pre', 'blockquote',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      '[data-type=mathBlock]', '[data-type=columnList]',
-      '[data-type=callout]', '[data-type=details]',
-    ].join(', ');
-    const found = document.elementsFromPoint(event.clientX + 74, event.clientY)
-      .find((el: Element) => el.parentElement?.matches?.('.ProseMirror') || el.matches(selectors));
-    if (found instanceof Element) this._currentBlockDom = found;
-  };
-
   /** Intercept mouseout on the editor wrapper so the drag handle library
    *  doesn't hide the handle when the mouse moves to the + button. */
   private readonly _onEditorMouseOut = (event: MouseEvent): void => {
@@ -3227,27 +3210,51 @@ class CanvasEditorPane implements IDisposable {
     }
   };
 
-  /** Resolve a DOM element to its ProseMirror block position. */
-  private _resolveBlockPos(dom: Element): { pos: number; node: any } | null {
-    if (!this._editor) return null;
+  /**
+   * Find the top-level ProseMirror block the drag handle is currently next to.
+   *
+   * Instead of tracking mousemove or using fragile coordinate math, this
+   * uses the drag handle's Y position (which the library already calculates
+   * correctly for all block types) and finds the direct child of
+   * `.ProseMirror` at that Y.  Then `posAtDOM` gives us a reliable PM
+   * position, and we always resolve to depth 1 (the top-level block).
+   *
+   * This works uniformly for paragraphs, headings, lists, callouts,
+   * blockquotes, code blocks, details/toggle, columns, etc.
+   */
+  private _resolveBlockFromHandle(): { pos: number; node: any } | null {
+    if (!this._editor || !this._dragHandleEl) return null;
     const view = this._editor.view;
-    try {
-      const rect = dom.getBoundingClientRect();
-      const result = view.posAtCoords({ left: rect.left + 74, top: rect.top + 1 });
-      if (!result || result.inside == null || result.inside < 0) return null;
-      let pos = result.inside;
-      const $pos = view.state.doc.resolve(pos);
-      if ($pos.depth > 1) pos = $pos.before($pos.depth);
-      const node = view.state.doc.nodeAt(pos);
-      return node ? { pos, node } : null;
-    } catch { return null; }
+
+    // Get the drag handle's vertical centre.
+    const handleRect = this._dragHandleEl.getBoundingClientRect();
+    const handleY = handleRect.top + handleRect.height / 2;
+
+    // Walk the direct children of the editor (.ProseMirror) element and
+    // find the one whose bounding box contains handleY.
+    const editorEl = view.dom;
+    for (let i = 0; i < editorEl.children.length; i++) {
+      const child = editorEl.children[i];
+      const rect = child.getBoundingClientRect();
+      if (handleY >= rect.top && handleY <= rect.bottom) {
+        try {
+          const domPos = view.posAtDOM(child, 0);
+          const $pos = view.state.doc.resolve(domPos);
+          // Always resolve to depth 1 (top-level block).
+          const blockPos = $pos.depth >= 1 ? $pos.before(1) : domPos;
+          const node = view.state.doc.nodeAt(blockPos);
+          return node ? { pos: blockPos, node } : null;
+        } catch { continue; }
+      }
+    }
+    return null;
   }
 
   // ── Plus Button Click ──
 
   private readonly _onBlockAddClick = (e: MouseEvent): void => {
-    if (!this._editor || !this._currentBlockDom) return;
-    const block = this._resolveBlockPos(this._currentBlockDom);
+    if (!this._editor) return;
+    const block = this._resolveBlockFromHandle();
     if (!block) return;
     const { pos, node } = block;
     const isAbove = e.altKey;
@@ -3263,12 +3270,12 @@ class CanvasEditorPane implements IDisposable {
   // ── Drag Handle Click → Block Action Menu ──
 
   private readonly _onDragHandleClick = (_e: MouseEvent): void => {
-    if (!this._editor || !this._currentBlockDom) return;
+    if (!this._editor) return;
     if (this._blockActionMenu?.style.display === 'block') {
       this._hideBlockActionMenu();
       return;
     }
-    const block = this._resolveBlockPos(this._currentBlockDom);
+    const block = this._resolveBlockFromHandle();
     if (!block) return;
     this._actionBlockPos = block.pos;
     this._actionBlockNode = block.node;
