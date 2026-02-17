@@ -31,33 +31,12 @@ import type { IEditorInput } from '../../editor/editorInput.js';
 import type { CanvasDataService } from './canvasDataService.js';
 import type { IPage } from './canvasTypes.js';
 import { Editor } from '@tiptap/core';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
-// Link and Underline are included in StarterKit v3 — configure via StarterKit options
-import { TextStyle } from '@tiptap/extension-text-style';
-import { Color } from '@tiptap/extension-color';
-import Highlight from '@tiptap/extension-highlight';
-import Image from '@tiptap/extension-image';
-import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
-// Tier 2 extensions
-import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details';
-import { TableKit } from '@tiptap/extension-table';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import CharacterCount from '@tiptap/extension-character-count';
-import AutoJoiner from 'tiptap-extension-auto-joiner';
 import { common, createLowlight } from 'lowlight';
-import { InlineMathNode } from '@aarkue/tiptap-math-extension';
 import katex from 'katex';
 import { $ } from '../../ui/dom.js';
 import { tiptapJsonToMarkdown } from './markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, PAGE_ICON_IDS } from './canvasIcons.js';
-import { BlockBackgroundColor } from './extensions/blockBackground.js';
-import { Callout } from './extensions/calloutNode.js';
-import { Column, ColumnList } from './extensions/columnNodes.js';
-import { DetailsEnterHandler } from './extensions/detailsEnterHandler.js';
-import { MathBlock } from './extensions/mathBlockNode.js';
+import { createEditorExtensions } from './config/editorExtensions.js';
 import type { SlashMenuItem } from './menus/slashMenuItems.js';
 import { SLASH_MENU_ITEMS } from './menus/slashMenuItems.js';
 
@@ -179,113 +158,9 @@ class CanvasEditorPane implements IDisposable {
     this._createPageHeader();
 
     // Create Tiptap editor with Notion-parity extensions
-    // Link and Underline are part of StarterKit v3 — configure via StarterKit options
     this._editor = new Editor({
       element: this._editorContainer,
-      extensions: [
-        StarterKit.configure({
-          heading: { levels: [1, 2, 3] },
-          codeBlock: false,  // Replaced by CodeBlockLowlight
-          link: {
-            openOnClick: false,
-            HTMLAttributes: {
-              class: 'canvas-link',
-            },
-          },
-          dropcursor: {
-            color: 'rgba(45, 170, 219, 0.4)',
-            width: 3,
-          },
-          // underline: enabled by default via StarterKit, no extra config needed
-        }),
-        Placeholder.configure({
-          placeholder: ({ node, pos, editor, hasAnchor }: { node: any; pos: number; editor: any; hasAnchor: boolean }) => {
-            if (node.type.name === 'heading') {
-              return `Heading ${node.attrs.level}`;
-            }
-            // DetailsSummary has content:'text*' (no paragraphs), so handle it
-            // explicitly — it's an inline-text container that needs its own hint.
-            if (node.type.name === 'detailsSummary') {
-              return 'Toggle title…';
-            }
-            // Wrapper block nodes (details, callout, taskList, taskItem, etc.)
-            // always get empty placeholder — prevents overlay on UI elements.
-            if (node.type.name !== 'paragraph') {
-              return '';
-            }
-            // For paragraphs, check if nested inside a wrapper block —
-            // these get STABLE placeholders (always visible, not just when focused)
-            const $pos = editor.state.doc.resolve(pos);
-            for (let d = $pos.depth; d > 0; d--) {
-              const ancestor = $pos.node(d);
-              const name = ancestor.type.name;
-              if (name === 'callout') return 'Type something…';
-              if (name === 'taskItem') return 'To-do';
-              if (name === 'detailsContent') return 'Hidden content…';
-              if (name === 'blockquote') return '';
-              if (name === 'column') return hasAnchor ? "Type '/' for commands..." : '';
-            }
-            // Top-level paragraph: only show slash hint when cursor is here
-            return hasAnchor ? "Type '/' for commands..." : '';
-          },
-          // showOnlyCurrent:false ensures ALL empty nodes always get decorated,
-          // preventing layout shift when clicking in/out of wrapper blocks.
-          showOnlyCurrent: false,
-          includeChildren: true,
-        }),
-        TaskList,
-        TaskItem.configure({
-          nested: true,
-        }),
-        TextStyle,
-        Color,
-        Highlight.configure({
-          multicolor: true,
-        }),
-        Image.configure({
-          inline: false,
-          allowBase64: true,
-        }),
-        GlobalDragHandle.configure({
-          dragHandleWidth: 24,
-          scrollTreshold: 100,
-          customNodes: ['mathBlock', 'columnList'],
-        }),
-        // ── Tier 2 extensions ──
-        Callout,
-        Details.configure({
-          persist: true,
-          HTMLAttributes: { class: 'canvas-details' },
-        }),
-        DetailsSummary,
-        DetailsContent,
-        TableKit.configure({
-          table: {
-            resizable: true,
-            HTMLAttributes: { class: 'canvas-table' },
-          },
-        }),
-        CodeBlockLowlight.configure({
-          lowlight,
-          defaultLanguage: 'plaintext',
-          HTMLAttributes: { class: 'canvas-code-block' },
-        }),
-        CharacterCount,
-        AutoJoiner,
-        DetailsEnterHandler,
-        // ── Math / KaTeX ──
-        InlineMathNode.configure({
-          evaluation: false,
-          katexOptions: { throwOnError: false },
-          delimiters: 'dollar',
-        }),
-        MathBlock,
-        // ── Columns ──
-        Column,
-        ColumnList,
-        // ── Block-level background color ──
-        BlockBackgroundColor,
-      ],
+      extensions: createEditorExtensions(lowlight),
       content: '',
       editorProps: {
         attributes: {
