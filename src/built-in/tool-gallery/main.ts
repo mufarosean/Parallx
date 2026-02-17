@@ -432,14 +432,15 @@ function renderToolSidebar(container: HTMLElement, api: ParallxApi): IDisposable
 function renderToolEditor(container: HTMLElement, api: ParallxApi, toolId: string): IDisposable {
   container.classList.add('tool-editor');
 
-  const tool = api.tools.getById(toolId);
-  if (!tool) {
+  const maybeTool = api.tools.getById(toolId);
+  if (!maybeTool) {
     const msg = $('div');
     msg.classList.add('tool-editor-empty');
     msg.textContent = `Tool "${toolId}" not found.`;
     container.appendChild(msg);
     return { dispose() { container.innerHTML = ''; } };
   }
+  const tool: ToolInfo = maybeTool;
 
   const enabled = api.tools.isEnabled(tool.id);
 

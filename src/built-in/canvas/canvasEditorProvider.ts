@@ -187,7 +187,7 @@ const DetailsEnterHandler = Extension.create({
 
         // Check if the detailsContent is hidden (collapsed)
         const detailsContentPos = $head.after() + 1;
-        const domNode = editor.view.domAtPos(detailsContentPos).node;
+        const domNode = editor.view.domAtPos(detailsContentPos).node as HTMLElement;
         const isVisible = domNode.offsetParent !== null;
 
         if (isVisible) {
@@ -487,6 +487,7 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
           e.chain().setTextSelection(pos + 2).focus().run();
           return false;
         }
+        return true;
       });
     },
   },
@@ -507,6 +508,7 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
           e.chain().setTextSelection(pos + 1).focus().run();
           return false;
         }
+        return true;
       });
     },
   },
@@ -1850,21 +1852,6 @@ class CanvasEditorPane implements IDisposable {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Dirty State (Task 6.1)
-  // ══════════════════════════════════════════════════════════════════════════
-
-  /**
-   * Set the dirty state on the editor input.
-   * ToolEditorInput.setDirty is public; we call it via runtime check
-   * to avoid importing the concrete class.
-   */
-  private _markDirty(dirty: boolean): void {
-    const input = this._input as any;
-    if (input && typeof input.setDirty === 'function') {
-      input.setDirty(dirty);
-    }
-  }
-
   // ══════════════════════════════════════════════════════════════════════════
   // Floating Bubble Menu (formatting toolbar on text selection)
   // ══════════════════════════════════════════════════════════════════════════

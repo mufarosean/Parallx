@@ -330,7 +330,7 @@ export function showInputBoxModal(
     input.placeholder = options.placeholder ?? '';
     input.className = 'parallx-modal-input';
     // Disable any drag-region interference from parent containers
-    input.style.webkitAppRegion = 'no-drag';
+    (input.style as any).webkitAppRegion = 'no-drag';
     box.appendChild(input);
 
     const errorLabel = $('div');

@@ -16,7 +16,7 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IPage, IPageTreeNode } from './canvasTypes.js';
 import { type CanvasDataService } from './canvasDataService.js';
 import { $ } from '../../ui/dom.js';
-import { createIconElement, resolvePageIcon, svgIcon, PAGE_ICON_IDS } from './canvasIcons.js';
+import { createIconElement, resolvePageIcon, svgIcon } from './canvasIcons.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

@@ -40,6 +40,7 @@ export class ToolEnablementService extends Disposable implements IToolEnablement
   private readonly _disabled = new Set<string>();
 
   /** Whether initial load from storage is complete. */
+  // @ts-expect-error reserved for future guard
   private _loaded = false;
 
   // ── Events ──
