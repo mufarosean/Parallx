@@ -1,4 +1,4 @@
-# Milestone 7 — Canvas Editor Decomposition & Modular Architecture
+# Milestone 7 — Notion-Quality Canvas Editor
 
 > **Authoritative Scope Notice**
 >
@@ -11,73 +11,59 @@
 ## Milestone Definition
 
 ### Vision
-The Canvas editor becomes a **modular, maintainable system** — a set of focused, single-responsibility modules that compose together, replacing the current 4,530-line monolith (`canvasEditorProvider.ts`). Each module is independently testable, readable, and modifiable. The orchestrator file shrinks to ~400 lines of imports, wiring, and lifecycle management.
+
+The Canvas editor becomes a **Notion-quality block editor** — a modular, recursive container system where every surface that holds content follows the same interaction model. The "Everything is a Page" structural model (see `CANVAS_STRUCTURAL_MODEL.md`) is fully implemented: blocks behave identically regardless of nesting depth, HorizontalPartitions are the sole layout mechanism, and the codebase reflects the model's clean boundaries through modular architecture.
 
 ### Purpose
-Milestone 6 delivered a fully-functional Canvas tool with rich text editing, columns, drag-and-drop, slash menu, bubble menu, block action menus, math blocks, page headers, covers, and auto-save. But all of this was built in a single file — `canvasEditorProvider.ts` at **4,530 lines** — violating Parallx's core design philosophy of modularity.
 
-The rest of the codebase follows clean modular patterns:
-- `src/parts/` — 10 files, ~200-400 lines each (one per workbench part)
-- `src/services/` — 16 files, one per service
-- `src/contributions/` — 5 files, one per contribution type
-- `src/layout/` — 6 files, one per layout concern
+Milestone 6 delivered a functional Canvas tool with rich text editing, columns, drag-and-drop, slash menu, bubble menu, block action menus, math blocks, page headers, and covers. But two fundamental problems remain:
 
-The Canvas editor is the sole exception. This milestone fixes that by decomposing `canvasEditorProvider.ts` into ~15 focused modules averaging ~200-350 lines each.
+1. **The mental model is fragmented.** Columns, callouts, toggles, and the top-level page each have ad-hoc interaction rules. There is no unifying abstraction. This leads to inconsistencies, special cases, and behaviors that "feel off."
 
-### Why This Matters
-1. **Readability** — A developer looking for the slash menu implementation should open `menus/slashMenu.ts`, not scroll through 4,530 lines.
-2. **Testability** — Individual modules can have focused unit tests. Column plugins can be tested without instantiating the full editor.
-3. **Modifiability** — Changing the bubble menu doesn't risk breaking the column resize plugin. Git diffs are scoped to the module that changed.
-4. **Onboarding** — New contributors can understand one module at a time instead of parsing a monolith.
-5. **Future framework adoption** — If we later adopt Lit or Preact for menu components (discussion from M6 retrospective), modular boundaries make that a surgical change rather than a rewrite.
+2. **The codebase is a monolith.** All 4,530 lines of canvas editor logic live in a single file (`canvasEditorProvider.ts`), violating Parallx's core design philosophy of modularity. The rest of the codebase follows clean patterns — `src/parts/` (10 files), `src/services/` (16 files), `src/contributions/` (5 files) — but the canvas editor is the sole exception.
 
-### Background — What Exists Today
+Milestone 7 fixes both by implementing the recursive "Everything is a Page" model and decomposing the monolith into focused modules that reflect the model's clean boundaries.
 
-**Single file:** `src/built-in/canvas/canvasEditorProvider.ts` — 4,530 lines containing:
+### What Success Looks Like
 
-| Section | Lines | Description |
-|---------|-------|-------------|
-| Imports + type augmentation | 1–73 | TipTap/PM imports, `Commands` augmentation |
-| `BlockBackgroundColor` extension | 74–106 | Block-level background color via `GlobalAttributes` |
-| `Callout` node | 107–215 | Custom `Node.create()` with emoji, NodeView |
-| `Column` + `ColumnList` nodes | 216–630 | Column/ColumnList `Node.create()` with plugins array |
-| `columnAutoDissolvePlugin()` | 631–694 | `appendTransaction` to dissolve ≤1-column layouts |
-| `columnResizePlugin()` | 695–937 | Pointer-based column resize with undo batching |
-| `columnDropPlugin()` | 938–1321 | Full drag-and-drop engine (6 scenarios per Rules 3-4) |
-| `DetailsEnterHandler` extension | 1322–1373 | Enter on collapsed toggle → new toggle |
-| `MathBlock` node | 1374–1575 | Block equation with KaTeX, click-to-edit NodeView |
-| `SLASH_MENU_ITEMS` data | 1576–1805 | Slash command definitions (20 items with actions) |
-| `CanvasEditorProvider` class | 1806–1835 | 30-line orchestrator class |
-| `CanvasEditorPane` class | 1836–4530 | **2,694-line god class** — editor init, content load, top ribbon, page header, cover, icon picker, cover picker, page menu, inline math editor, bubble menu, slash menu, block handles, block action menu, turn-into submenu, color submenu, block operations, dispose |
-
-**Supporting files (already modular — no changes needed):**
-- `canvasDataService.ts` — Data layer (page CRUD, auto-save, IPC)
-- `canvasTypes.ts` — Type definitions (`IPage`, etc.)
-- `canvasIcons.ts` — SVG icon registry
-- `canvasSidebar.ts` — Sidebar tree view
-- `canvas.css` — All canvas styles (stays unified)
-- `markdownExport.ts` — Markdown export utility
+1. **Behavioral consistency** — A block inside a column, toggle, callout, or quote behaves identically to a block at top level. Same handle, same action menu, same drag-and-drop, same keyboard shortcuts.
+2. **Organic column management** — HorizontalPartitions are created by drag-to-side and dissolved by drag-out. No column-specific menu items. Column structures are invisible to the user.
+3. **Modular architecture** — Each concern is a separate module (~200-350 lines). The orchestrator file imports, wires, and manages lifecycle (~400 lines). Module boundaries reflect the structural model.
+4. **Complete interaction model** — All block interactions from `BLOCK_INTERACTION_RULES.md` work at every nesting level. Keyboard shortcuts (Ctrl+Shift+↑/↓, Ctrl+D, Esc) are implemented.
+5. **All existing tests pass** — 67 unit + 41 E2E tests remain green throughout. New tests validate recursive behavior.
 
 ### Structural Commitments
 
-- **Zero behavior change.** This is a pure refactor. All 41 E2E tests and 67 unit tests must pass identically before and after.
-- **No new dependencies.** No frameworks, no new npm packages. Same vanilla TypeScript + TipTap/ProseMirror stack.
+- **The structural model is law.** See `CANVAS_STRUCTURAL_MODEL.md`. Every implementation decision must trace back to the model.
+- **No new dependencies.** Same vanilla TypeScript + TipTap/ProseMirror stack. No UI frameworks (React, Vue, Lit) in this milestone.
+- **Decomposition first, features second.** The monolith must be split before new interaction behaviors are added. Clean module boundaries make behavioral changes surgical instead of risky.
 - **CSS stays in one file.** `canvas.css` is already scoped and cohesive. Fragmenting it across modules would make theming harder.
 - **Each module exports one thing.** A function, a class, a constant, or a TipTap extension. No barrel files, no re-exports.
 - **No circular dependencies.** Modules depend on `canvasTypes.ts`, TipTap/ProseMirror, and utility types — not on each other.
-- **`canvasEditorProvider.ts` becomes the orchestrator.** It imports modules, wires them together, and manages the editor pane lifecycle. Target: ~400 lines.
-- **Incremental extraction.** Each capability extracts one logical group. Build is verified after each extraction. Tests run after each extraction.
-
-### Architectural Principles
-
-- **Single Responsibility.** Each module handles one concern: one extension, one plugin, one menu, one UI component.
-- **Explicit Dependencies.** Each module imports exactly what it needs. No implicit globals, no `window` state sharing between modules.
-- **Interface Boundaries.** Where a module needs to communicate with the editor pane (e.g., slash menu needs the TipTap `Editor` instance), it accepts the dependency via constructor/function parameter — not by reaching into a parent class.
-- **Testable in Isolation.** A column plugin module can be unit-tested by constructing a minimal TipTap editor with just that plugin. A menu module can be tested by calling its render function with mock data.
+- **Incremental extraction.** Each phase is independently verifiable. Build + tests after every extraction.
 
 ---
 
-## Target File Structure
+## Authoritative References
+
+| Document | Role |
+|----------|------|
+| `CANVAS_STRUCTURAL_MODEL.md` | **The model** — "Everything is a Page," recursive containers, HorizontalPartition rules, block inventory |
+| `BLOCK_INTERACTION_RULES.md` | **The rules** — deterministic drop outcome matrix (4A–4F), auto-dissolve steps, handle resolution, keyboard shortcuts |
+| `NOTION_VS_PARALLX_GAP_ANALYSIS.md` | **The gaps** — Notion research, priority matrix, current status of each interaction |
+
+Read the structural model first. It provides the conceptual framework. The interaction rules provide the precise implementation spec.
+
+---
+
+## Phase 0 — Monolith Decomposition (Pre-work)
+
+> **Goal:** Split `canvasEditorProvider.ts` (4,530 lines) into ~18 focused modules.
+> **Constraint:** Zero behavior change. Pure refactor. All existing tests pass after every extraction.
+
+This is the foundation for all behavioral work. Clean module boundaries make Phase 1–3 changes surgical.
+
+### Target File Structure
 
 ```
 src/built-in/canvas/
@@ -98,17 +84,17 @@ src/built-in/canvas/
 │   └── detailsEnterHandler.ts   (~55 lines)   Enter on collapsed toggle extension
 │
 ├── plugins/
-│   ├── columnDropPlugin.ts      (~390 lines)  Drag-and-drop engine (Rules 3-4)
+│   ├── columnDropPlugin.ts      (~390 lines)  Drag-and-drop engine (Rules 3–4)
 │   ├── columnResizePlugin.ts    (~250 lines)  Pointer-based column resize
 │   └── columnAutoDissolve.ts    (~65 lines)   appendTransaction to dissolve ≤1-col layouts
 │
 ├── menus/
-│   ├── slashMenu.ts             (~340 lines)  Slash command menu (items, filtering, keyboard nav, rendering)
+│   ├── slashMenu.ts             (~340 lines)  Slash command menu
 │   ├── bubbleMenu.ts            (~230 lines)  Floating formatting toolbar
-│   └── blockActionMenu.ts       (~500 lines)  Handle-click context menu + turn-into + color submenus
+│   └── blockActionMenu.ts       (~500 lines)  Handle-click context menu + submenus
 │
 ├── handles/
-│   └── blockHandles.ts          (~200 lines)  + button, drag handle, handle resolution, keyboard movement
+│   └── blockHandles.ts          (~200 lines)  + button, drag handle, handle resolution
 │
 ├── header/
 │   ├── topRibbon.ts             (~100 lines)  Breadcrumbs, edited timestamp, favorite btn
@@ -123,400 +109,262 @@ src/built-in/canvas/
 │   └── inlineMathEditor.ts      (~140 lines)  Click-to-edit popup for inline math nodes
 │
 └── config/
-    └── editorExtensions.ts      (~90 lines)   Extension array assembly (StarterKit + all configs)
+    └── editorExtensions.ts      (~90 lines)   Extension array assembly
 ```
 
-**Module count:** ~18 new modules + orchestrator
-**Average module size:** ~200 lines
-**Orchestrator size:** ~400 lines
+### Extraction Order
+
+| Step | Extract | Target | Lines |
+|------|---------|--------|-------|
+| 0.1 | BlockBackgroundColor extension | `extensions/blockBackground.ts` | 74–106 |
+| 0.2 | Callout node + NodeView | `extensions/calloutNode.ts` | 107–215 |
+| 0.3 | Column + ColumnList nodes (schema only) | `extensions/columnNodes.ts` | 216–630 |
+| 0.4 | MathBlock node + KaTeX NodeView | `extensions/mathBlockNode.ts` | 1374–1575 |
+| 0.5 | DetailsEnterHandler extension | `extensions/detailsEnterHandler.ts` | 1322–1373 |
+| 1.1 | columnAutoDissolvePlugin | `plugins/columnAutoDissolve.ts` | 631–694 |
+| 1.2 | columnResizePlugin | `plugins/columnResizePlugin.ts` | 695–937 |
+| 1.3 | columnDropPlugin | `plugins/columnDropPlugin.ts` | 938–1321 |
+| 1.4 | Wire plugins into columnNodes.ts | (update) | — |
+| 2.1 | SlashMenu class | `menus/slashMenu.ts` | 1576–1805, 3539–3744 |
+| 2.2 | BubbleMenu class | `menus/bubbleMenu.ts` | 3311–3537 |
+| 2.3 | BlockActionMenu class | `menus/blockActionMenu.ts` | 3973–4530 |
+| 3.1 | BlockHandles class | `handles/blockHandles.ts` | 3745–3972 |
+| 4.1 | TopRibbon | `header/topRibbon.ts` | 2165–2249 |
+| 4.2 | PageHeader | `header/pageHeader.ts` | 2250–2614 |
+| 4.3 | PageMenu | `header/pageMenu.ts` | 2873–3088 |
+| 4.4 | IconPicker | `pickers/iconPicker.ts` | 2783–2872 |
+| 4.5 | CoverPicker | `pickers/coverPicker.ts` | 2615–2782 |
+| 5.1 | InlineMathEditor | `math/inlineMathEditor.ts` | 3175–3310 |
+| 5.2 | Editor extensions config | `config/editorExtensions.ts` | 1923–2040 |
+| 6.1 | Orchestrator cleanup | (final) | All dead code |
+| 6.2 | Full test suite verification | — | 67 unit + 41 E2E |
+| 6.3 | Line count audit | — | Orchestrator ≤ 500 lines |
+
+### Completion Criteria (Phase 0)
+
+- [ ] `canvasEditorProvider.ts` ≤ 500 lines
+- [ ] No module exceeds 500 lines
+- [ ] `npm run build` — zero errors
+- [ ] 67 unit tests pass
+- [ ] 41 E2E tests pass
+- [ ] Manual smoke test passes (create page, type, slash menu, columns, drag, bubble menu, block action menu, resize, toggle, math)
 
 ---
 
-## Capability 0 — TipTap Extensions Extraction
+## Phase 1 — Unified Interaction Model
 
-### Capability Description
-Extract all custom TipTap extensions and ProseMirror nodes from `canvasEditorProvider.ts` into the `extensions/` directory. Each extension becomes its own module exporting a single TipTap `Node` or `Extension`.
+> **Goal:** Make the single interaction model from `CANVAS_STRUCTURAL_MODEL.md` §5 work consistently at every nesting level.
+> **Prerequisite:** Phase 0 complete.
 
-### Goals
-- `BlockBackgroundColor` → `extensions/blockBackground.ts`
-- `Callout` (Node + NodeView) → `extensions/calloutNode.ts`
-- `Column` + `ColumnList` (Node definitions, schema only — plugins stay separate) → `extensions/columnNodes.ts`
-- `MathBlock` (Node + KaTeX NodeView) → `extensions/mathBlockNode.ts`
-- `DetailsEnterHandler` → `extensions/detailsEnterHandler.ts`
-- All imports in `canvasEditorProvider.ts` updated to reference new modules
-- Build passes, all tests pass
+### 1.1 Handle Resolution Consistency
 
-### Dependencies
-- `@tiptap/core` (Extension, Node, mergeAttributes)
-- `@tiptap/pm/model` (Fragment — used by Column/ColumnList)
-- `katex` (used by MathBlock)
-- `canvasIcons.ts` (used by Callout for emoji rendering)
+**Current state:** Handle resolution has special cases for columns but doesn't account for callouts, toggles, or quotes as containers.
 
-#### Tasks
+**Target:** Handle resolution follows `CANVAS_STRUCTURAL_MODEL.md` §5.1:
+- Leaf blocks → resolve to the block
+- Container blocks (toggle, callout, quote) → resolve to the container as a whole
+- HorizontalPartition → resolve to first block in first column
 
-**Task 0.1 — Extract BlockBackgroundColor**
-- **Source lines:** 74–106 of `canvasEditorProvider.ts`
-- **Target:** `src/built-in/canvas/extensions/blockBackground.ts`
-- **Export:** `const BlockBackgroundColor: Extension`
-- **Completion Criteria:**
-  - Module exports the extension, self-contained
-  - `canvasEditorProvider.ts` imports from new module
-  - Build passes, grep confirms no duplicate definition
+**Tasks:**
+- [ ] Audit `_resolveBlockFromHandle()` — ensure it handles all container block types
+- [ ] Test handle resolution inside toggles, callouts, quotes, and nested containers
+- [ ] Write E2E tests: handle click inside column-with-callout, toggle-with-list, etc.
 
-**Task 0.2 — Extract Callout Node**
-- **Source lines:** 107–215
-- **Target:** `src/built-in/canvas/extensions/calloutNode.ts`
-- **Export:** `const Callout: Node`
-- **Completion Criteria:**
-  - Node definition + full NodeView (emoji picker, contentDOM) in one module
-  - `canvasIcons.ts` import for emoji SVGs
-  - Build passes, Callout slash menu action still works
+### 1.2 Action Menu Consistency
 
-**Task 0.3 — Extract Column + ColumnList Nodes**
-- **Source lines:** 216–630 (schema definitions only — the `addProseMirrorPlugins()` array stays until Capability 1)
-- **Target:** `src/built-in/canvas/extensions/columnNodes.ts`
-- **Export:** `const Column: Node`, `const ColumnList: Node`
-- **Decision:** The `addProseMirrorPlugins()` method on ColumnList currently returns `[columnResizePlugin(), columnDropPlugin(), columnAutoDissolvePlugin()]`. After Capability 1 extracts the plugins, this method will import them from `plugins/`. The column node schema and the plugin wiring stay together in this module since TipTap couples them via `addProseMirrorPlugins()`.
-- **Completion Criteria:**
-  - Column schema (attributes, parseHTML, renderHTML) exported
-  - ColumnList schema + `addProseMirrorPlugins()` exported
-  - Plugin functions imported from `plugins/` (after Capability 1)
-  - Build passes, column creation via slash menu works
+**Current state:** The action menu is correct (no column-specific items after M6 Phase 1 cleanup), but it hasn't been verified inside all container types.
 
-**Task 0.4 — Extract MathBlock Node**
-- **Source lines:** 1374–1575
-- **Target:** `src/built-in/canvas/extensions/mathBlockNode.ts`
-- **Export:** `const MathBlock: Node`
-- **Completion Criteria:**
-  - Full NodeView (KaTeX render, click-to-edit textarea, auto-resize) self-contained
-  - `katex` import stays with this module
-  - Build passes, math block creation + editing works
+**Target:** The same action menu appears for any block at any nesting level. Turn-into, Color, Duplicate, Delete all work inside columns, toggles, callouts, and quotes.
 
-**Task 0.5 — Extract DetailsEnterHandler**
-- **Source lines:** 1322–1373
-- **Target:** `src/built-in/canvas/extensions/detailsEnterHandler.ts`
-- **Export:** `const DetailsEnterHandler: Extension`
-- **Completion Criteria:**
-  - Extension self-contained with keyboard shortcut handler
-  - Build passes, Enter on collapsed toggle creates new toggle
+**Tasks:**
+- [ ] Verify Turn-into works inside every container type (especially column → heading conversion)
+- [ ] Verify Duplicate inside containers (duplicate stays in the same container)
+- [ ] Verify Delete inside containers (delete triggers auto-dissolve if inside column)
+- [ ] Write E2E tests for action menu inside each container type
 
----
+### 1.3 Keyboard Shortcuts
 
-## Capability 1 — ProseMirror Plugins Extraction
+**Current state:** Ctrl+Shift+↑/↓ and Ctrl+D are partially implemented. Esc-to-select is not implemented.
 
-### Capability Description
-Extract all three column-related ProseMirror plugins into the `plugins/` directory. Each plugin becomes its own module exporting a factory function that returns a `Plugin` instance.
+**Target:** Full keyboard interaction model per `CANVAS_STRUCTURAL_MODEL.md` §5.4:
+- Ctrl+Shift+↑/↓ — move block within parent Page; at boundary, move to adjacent container
+- Ctrl+D — duplicate within same parent Page
+- Esc — select current block
 
-### Goals
-- `columnAutoDissolvePlugin()` → `plugins/columnAutoDissolve.ts`
-- `columnResizePlugin()` → `plugins/columnResizePlugin.ts`
-- `columnDropPlugin()` → `plugins/columnDropPlugin.ts`
-- `columnNodes.ts` imports plugin factories from `plugins/`
-- Build passes, all 41 E2E column tests pass
+**Tasks:**
+- [ ] Implement Ctrl+Shift+↑ block movement (with boundary crossing)
+- [ ] Implement Ctrl+Shift+↓ block movement (with boundary crossing)
+- [ ] Implement Ctrl+D as keyboard handler (not just action menu label)
+- [ ] Implement Esc to select block
+- [ ] Test keyboard movement inside columns, toggles, callouts
+- [ ] Test boundary crossing: move block out of column via keyboard → triggers auto-dissolve
 
-### Dependencies
-- `@tiptap/pm/state` (Plugin, PluginKey)
-- `@tiptap/pm/model` (Fragment — used by drop plugin)
-- `docs/BLOCK_INTERACTION_RULES.md` (behavioral specification for drop plugin)
+### 1.4 Drag-and-Drop at All Nesting Levels
 
-#### Tasks
+**Current state:** `columnDropPlugin` handles top-level-to-column and column-to-column scenarios (4A–4F). But drag-and-drop behavior inside other container types (toggle, callout, quote) is handled by TipTap's default drag, not the custom plugin.
 
-**Task 1.1 — Extract columnAutoDissolvePlugin**
-- **Source lines:** 631–694
-- **Target:** `src/built-in/canvas/plugins/columnAutoDissolve.ts`
-- **Export:** `function columnAutoDissolvePlugin(): Plugin`
-- **Completion Criteria:**
-  - Self-contained `appendTransaction` plugin
-  - Build passes, columns auto-dissolve when ≤1 column remains
+**Target:** The drag-and-drop rules from `BLOCK_INTERACTION_RULES.md` apply inside every container. Specifically:
+- Drag from inside a toggle to top level works
+- Drag from top level into a callout works
+- Drag between containers (toggle → callout, callout → column) works
+- Vertical guide (create HorizontalPartition) appears inside container blocks when appropriate
 
-**Task 1.2 — Extract columnResizePlugin**
-- **Source lines:** 695–937
-- **Target:** `src/built-in/canvas/plugins/columnResizePlugin.ts`
-- **Export:** `function columnResizePlugin(): Plugin`
-- **Completion Criteria:**
-  - Pointer tracking, undo batching, cursor management self-contained
-  - Build passes, column resize works with undo
+**Tasks:**
+- [ ] Audit which drag scenarios work today vs which need plugin extension
+- [ ] Extend `columnDropPlugin` (or create a unified drop plugin) to handle all container types
+- [ ] Test: drag block from callout to top level
+- [ ] Test: drag block from top level into toggle
+- [ ] Test: drag between columns across different container types
 
-**Task 1.3 — Extract columnDropPlugin**
-- **Source lines:** 938–1321
-- **Target:** `src/built-in/canvas/plugins/columnDropPlugin.ts`
-- **Export:** `function columnDropPlugin(): Plugin`
-- **Completion Criteria:**
-  - All 6 drop scenarios (4A–4F) preserved
-  - Drop indicators (vertical + horizontal) self-contained
-  - Build passes, all 41 column E2E tests pass
+### Completion Criteria (Phase 1)
 
-**Task 1.4 — Wire plugins into columnNodes.ts**
-- **Update:** `extensions/columnNodes.ts` `addProseMirrorPlugins()` imports from `plugins/`
-- **Completion Criteria:**
-  - `import { columnAutoDissolvePlugin } from '../plugins/columnAutoDissolve.js'`
-  - `import { columnResizePlugin } from '../plugins/columnResizePlugin.js'`
-  - `import { columnDropPlugin } from '../plugins/columnDropPlugin.js'`
-  - Build passes
+- [ ] A block at any nesting level has the same handle, same menu, same keyboard shortcuts
+- [ ] Drag-and-drop works between all container types
+- [ ] Auto-dissolve fires correctly when blocks are dragged out of columns at any depth
+- [ ] All existing + new E2E tests pass
 
 ---
 
-## Capability 2 — Menus Extraction
+## Phase 2 — Interaction Polish
 
-### Capability Description
-Extract all three menu systems (slash menu, bubble menu, block action menu) from the `CanvasEditorPane` class into the `menus/` directory. Each menu becomes a class or set of functions that accepts the TipTap `Editor` instance and a container element.
+> **Goal:** Close the remaining gaps from `NOTION_VS_PARALLX_GAP_ANALYSIS.md` priority matrix.
+> **Prerequisite:** Phase 1 complete.
 
-### Goals
-- Slash menu (items data + trigger detection + menu UI + keyboard nav + item execution) → `menus/slashMenu.ts`
-- Bubble menu (creation + positioning + active state tracking + link input) → `menus/bubbleMenu.ts`
-- Block action menu (menu creation + show/hide + turn-into submenu + color submenu + block operations) → `menus/blockActionMenu.ts`
-- `CanvasEditorPane` creates menu instances and delegates to them
-- Build passes, all menu interactions work identically
+### 2.1 Drag Guides
 
-### Interface Design
+**Current state:** Vertical drop indicator exists for column creation. Horizontal guide for above/below may be incomplete.
 
-```typescript
-// menus/slashMenu.ts
-export class SlashMenu {
-  constructor(container: HTMLElement, editor: Editor);
-  check(editor: Editor): void;       // called on editor update
-  show(editor: Editor): void;
-  hide(): void;
-  get isVisible(): boolean;
-  dispose(): void;
-}
+**Target:** Clear blue guides for all drop positions:
+- Horizontal line spanning parent Page width → "insert above/below"
+- Vertical line spanning block height → "create/extend HorizontalPartition"
 
-// menus/bubbleMenu.ts
-export class BubbleMenu {
-  constructor(container: HTMLElement, editor: Editor);
-  update(editor: Editor): void;      // called on selection change
-  hide(): void;
-  dispose(): void;
-}
+**Tasks:**
+- [ ] Audit current guide rendering for completeness
+- [ ] Ensure horizontal guides appear inside columns (spanning column width, not page width)
+- [ ] Ensure guides render at correct z-index inside nested containers
 
-// menus/blockActionMenu.ts
-export class BlockActionMenu {
-  constructor(container: HTMLElement, editor: Editor);
-  show(blockPos: number, blockNode: any, anchorEl: HTMLElement): void;
-  hide(): void;
-  dispose(): void;
-}
-```
+### 2.2 Alt+Drag to Duplicate
 
-### Dependencies
-- `@tiptap/core` (Editor)
-- `canvasIcons.ts` (menu item icons)
+**Current state:** Not implemented.
 
-#### Tasks
+**Target:** Holding Alt (or Option on Mac) while dragging creates a copy instead of moving the original.
 
-**Task 2.1 — Extract SlashMenu**
-- **Source lines:** 1576–1805 (SLASH_MENU_ITEMS data) + 3539–3744 (CanvasEditorPane methods: `_createSlashMenu`, `_checkSlashTrigger`, `_showSlashMenu`, `_hideSlashMenu`, `_getFilteredItems`, `_renderSlashMenuItems`, `_executeSlashItem`)
-- **Target:** `src/built-in/canvas/menus/slashMenu.ts`
-- **Export:** `class SlashMenu` + `SLASH_MENU_ITEMS` (exported for potential testing)
-- **Completion Criteria:**
-  - All slash menu state (`_slashMenuVisible`, `_slashFilterText`, `_slashSelectedIndex`) moves into the class
-  - Keyboard navigation (arrow keys, Enter, Escape) self-contained
-  - `/` trigger detection self-contained
-  - `CanvasEditorPane` creates `SlashMenu` instance in `init()`, calls `check()` on editor update
-  - Build passes, slash menu works identically
+**Tasks:**
+- [ ] Detect Alt key during drag operation
+- [ ] Clone source block instead of moving it
+- [ ] Apply same drop-zone logic (above/below/left/right determine placement of clone)
 
-**Task 2.2 — Extract BubbleMenu**
-- **Source lines:** 3311–3537 (CanvasEditorPane methods: `_createBubbleMenu`, `_toggleLinkInput`, `_updateBubbleMenu`, `_refreshBubbleActiveStates`, `_hideBubbleMenu`)
-- **Target:** `src/built-in/canvas/menus/bubbleMenu.ts`
-- **Export:** `class BubbleMenu`
-- **Completion Criteria:**
-  - Bubble menu DOM creation, positioning, button state management self-contained
-  - Link input toggle self-contained
-  - `CanvasEditorPane` creates `BubbleMenu` instance, calls `update()` on selection change
-  - Build passes, bubble menu works on text selection
+### 2.3 Resize Indicator Polish
 
-**Task 2.3 — Extract BlockActionMenu**
-- **Source lines:** 3973–4530 (CanvasEditorPane methods: `_createBlockActionMenu`, `_showBlockActionMenu`, `_hideBlockActionMenu`, `_createActionItem`, `_showTurnIntoSubmenu`, `_hideTurnIntoSubmenu`, `_showColorSubmenu`, `_hideColorSubmenu`, `_turnBlockInto`, `_turnBlockViaReplace`, `_extractBlockContent`, `_isCurrentBlockType`, `_getBlockLabel`, `_applyBlockTextColor`, `_applyBlockBgColor`, `_duplicateBlock`, `_deleteBlock`)
-- **Target:** `src/built-in/canvas/menus/blockActionMenu.ts`
-- **Export:** `class BlockActionMenu`
-- **Completion Criteria:**
-  - All block operations (turn into, duplicate, delete, color) self-contained
-  - Turn-into and color submenus self-contained with hover delay timers
-  - `CanvasEditorPane` creates `BlockActionMenu` instance, calls `show()`/`hide()` from handle click
-  - Build passes, block action menu works identically
+**Current state:** Blue gradient indicator between columns.
+
+**Target:** Subtle gray vertical line (matches Notion's description). Cosmetic change only.
+
+**Tasks:**
+- [ ] Update CSS for column resize indicator to gray
+- [ ] Test visual appearance at different column widths
+
+### Completion Criteria (Phase 2)
+
+- [ ] Blue guides render correctly at all nesting levels
+- [ ] Alt+drag creates a copy
+- [ ] Resize indicator is visually refined
+- [ ] All tests pass
 
 ---
 
-## Capability 3 — Block Handles Extraction
+## Phase 3 — Block Type Expansion
 
-### Capability Description
-Extract block handle setup (+ button, drag handle click, handle resolution, keyboard block movement) into its own module.
+> **Goal:** Add missing block types from the Notion inventory.
+> **Prerequisite:** Phases 0–2 complete. The structural model and interaction model are solid.
 
-### Goals
-- `_setupBlockHandles`, `_resolveBlockFromHandle`, `_resolveBlockFallback`, keyboard movement handlers → `handles/blockHandles.ts`
-- `CanvasEditorPane` creates handle manager after editor init
-- Build passes, drag handles and keyboard movement work
+This phase adds new leaf and container blocks. Because the interaction model is defined on the Page abstraction, new blocks automatically inherit all behaviors (drag, drop, action menu, keyboard). Each block is a new module in `extensions/`.
 
-#### Tasks
+### Priority 1 — High-value blocks
 
-**Task 3.1 — Extract BlockHandles**
-- **Source lines:** 3745–3972
-- **Target:** `src/built-in/canvas/handles/blockHandles.ts`
-- **Export:** `class BlockHandles`
-- **Completion Criteria:**
-  - `+ button` click → insert paragraph or show slash menu
-  - Drag handle click → show block action menu (delegates to `BlockActionMenu`)
-  - `_resolveBlockFromHandle()` logic (including column-drill-through per Axiom 2) self-contained
-  - `_resolveBlockFallback()` self-contained
-  - Keyboard movement (Ctrl+Shift+↑/↓, Ctrl+D) self-contained
-  - Build passes, all handle interactions work
+| Block | Type | Notes |
+|-------|------|-------|
+| Toggle heading | Container | Heading that collapses — combines Heading chrome with Toggle behavior |
+| Bookmark | Leaf | URL preview card — fetch title/description/favicon from URL |
+| Table of contents | Leaf | Auto-generated from headings in the page |
 
----
+### Priority 2 — Media blocks
 
-## Capability 4 — Page Header, Ribbon & Pickers Extraction
+| Block | Type | Notes |
+|-------|------|-------|
+| Video | Leaf | Embed with video player (URL or file) |
+| Audio | Leaf | Embed with audio player (URL or file) |
+| File attachment | Leaf | File block with download link |
 
-### Capability Description
-Extract the page chrome (top ribbon, page header with title/icon/cover, page menu, icon picker, cover picker) into the `header/` and `pickers/` directories.
+### Priority 3 — Reference blocks
 
-### Goals
-- Top ribbon (breadcrumbs, timestamp, favorite) → `header/topRibbon.ts`
-- Page header (title, icon, hover affordances, cover) → `header/pageHeader.ts`
-- Page menu (font, width, lock settings) → `header/pageMenu.ts`
-- Icon picker → `pickers/iconPicker.ts`
-- Cover picker → `pickers/coverPicker.ts`
-- `CanvasEditorPane` creates these components and delegates page data updates to them
+| Block | Type | Notes |
+|-------|------|-------|
+| Link to page | Leaf | Internal page reference with title preview |
+| Synced block | Container | Shared content block across pages |
+| Mention (@page) | Inline | Page reference within text — requires page search |
 
-#### Tasks
+### Completion Criteria (Phase 3)
 
-**Task 4.1 — Extract TopRibbon**
-- **Source lines:** 2165–2249
-- **Target:** `src/built-in/canvas/header/topRibbon.ts`
-- **Export:** `class TopRibbon`
-- **Completion Criteria:**
-  - Breadcrumbs, favorite button, edited timestamp self-contained
-  - `refresh(page)` method updates display from page data
-  - Build passes
-
-**Task 4.2 — Extract PageHeader**
-- **Source lines:** 2250–2614
-- **Target:** `src/built-in/canvas/header/pageHeader.ts`
-- **Export:** `class PageHeader`
-- **Completion Criteria:**
-  - Title (contenteditable), icon display, hover affordances, cover creation/display
-  - Cover reposition (drag-to-reposition) self-contained
-  - `refresh(page)` method updates all elements from page data
-  - Build passes
-
-**Task 4.3 — Extract PageMenu**
-- **Source lines:** 2873–3088
-- **Target:** `src/built-in/canvas/header/pageMenu.ts`
-- **Export:** `class PageMenu`
-- **Completion Criteria:**
-  - Font family, full width, page lock settings UI
-  - Applies settings to page via data service callback
-  - Build passes
-
-**Task 4.4 — Extract IconPicker**
-- **Source lines:** 2783–2872
-- **Target:** `src/built-in/canvas/pickers/iconPicker.ts`
-- **Export:** `class IconPicker`
-- **Completion Criteria:**
-  - Emoji/icon grid selection popup
-  - Fires selection callback, self-positions near anchor
-  - Build passes
-
-**Task 4.5 — Extract CoverPicker**
-- **Source lines:** 2615–2782
-- **Target:** `src/built-in/canvas/pickers/coverPicker.ts`
-- **Export:** `class CoverPicker`
-- **Completion Criteria:**
-  - Gradient swatches, solid colors, image URL input
-  - Remove cover action
-  - Fires selection callback
-  - Build passes
+- [ ] Each new block type has its own module in `extensions/`
+- [ ] Each new block type appears in the slash menu
+- [ ] Each new block type works inside columns, toggles, callouts (recursive model)
+- [ ] Each new block type is covered by E2E tests
 
 ---
 
-## Capability 5 — Inline Math Editor & Editor Config Extraction
+## Execution Order Summary
 
-### Capability Description
-Extract the inline math click-to-edit popup and the TipTap extension configuration array into their own modules.
+| Phase | Focus | Prerequisite | Scope |
+|-------|-------|-------------|-------|
+| **Phase 0** | Monolith decomposition | — | ~18 module extractions, zero behavior change |
+| **Phase 1** | Unified interaction model | Phase 0 | Handle resolution, action menu, keyboard, drag at all levels |
+| **Phase 2** | Interaction polish | Phase 1 | Drag guides, Alt+drag, resize indicator |
+| **Phase 3** | Block type expansion | Phase 2 | Toggle heading, bookmark, TOC, media blocks, references |
 
-### Goals
-- Inline math editor → `math/inlineMathEditor.ts`
-- Extension array assembly → `config/editorExtensions.ts`
-
-#### Tasks
-
-**Task 5.1 — Extract InlineMathEditor**
-- **Source lines:** 3175–3310
-- **Target:** `src/built-in/canvas/math/inlineMathEditor.ts`
-- **Export:** `class InlineMathEditor`
-- **Completion Criteria:**
-  - Popup DOM (textarea + preview + done button) self-contained
-  - `show(pos, latex, anchorEl)` / `hide()` / `commit()` interface
-  - Build passes, inline math click-to-edit works
-
-**Task 5.2 — Extract EditorExtensions config**
-- **Source lines:** 1923–2040 (the `extensions: [...]` array inside `new Editor({...})`)
-- **Target:** `src/built-in/canvas/config/editorExtensions.ts`
-- **Export:** `function createEditorExtensions(): Extension[]`
-- **Completion Criteria:**
-  - All extension imports (StarterKit, Placeholder, TaskList, etc.) move to this module
-  - Placeholder configuration (per-node-type logic) stays with this module
-  - `CanvasEditorPane` calls `createEditorExtensions()` when constructing the Editor
-  - Build passes, all block types work
+**Total estimated module count:** ~18 (Phase 0) + ~5 new blocks (Phase 3) = ~23 canvas modules.
 
 ---
 
-## Capability 6 — Orchestrator Cleanup & Verification
+## Excluded (Deferred to Future Milestones)
 
-### Capability Description
-Final cleanup of `canvasEditorProvider.ts`. Remove all extracted code, verify imports, run full test suite, measure final line count.
-
-### Goals
-- `canvasEditorProvider.ts` contains only: imports, `CanvasEditorProvider` class (~30 lines), `CanvasEditorPane` class with `init()`, `_loadContent()`, page change subscription, event wiring, `dispose()` (~370 lines)
-- Total orchestrator: ~400 lines
-- All 41 E2E tests pass
-- All 67 unit tests pass
-- Build passes with zero warnings
-
-#### Tasks
-
-**Task 6.1 — Remove dead code from orchestrator**
-- **Completion Criteria:**
-  - No extension definitions remain in `canvasEditorProvider.ts`
-  - No plugin functions remain
-  - No menu rendering code remains
-  - No block operation methods remain
-  - All functionality delegated to imported modules
-
-**Task 6.2 — Full test suite verification**
-- **Completion Criteria:**
-  - `npm run build` — zero errors
-  - 67 unit tests pass
-  - 41 E2E column tests pass
-  - Manual smoke test: create page, type content, use slash menu, create columns, drag blocks, use bubble menu, right-click block, resize columns, toggle list, math blocks
-
-**Task 6.3 — Line count audit**
-- **Completion Criteria:**
-  - `canvasEditorProvider.ts` ≤ 500 lines
-  - No module exceeds 500 lines
-  - Total line count across all canvas modules approximately equals the original 4,530 (accounting for new import/export boilerplate)
-  - Document final line counts in this section
+| Item | Reason |
+|------|--------|
+| **UI framework adoption** (Lit, Preact) | Decompose first, then reassess. If individual menu modules are still painful as vanilla DOM, framework can be scoped to `menus/` in a future milestone. |
+| **Database blocks** (Table view, Board, Gallery, Calendar) | Major feature category. Separate milestone. |
+| **Comments system** | Requires backend infrastructure. Separate milestone. |
+| **Move to** (page picker) | Requires page search + move infrastructure. Separate milestone. |
+| **CSS decomposition** | `canvas.css` stays as a single file. It's scoped and cohesive. |
+| **Synced blocks** | Requires shared-state infrastructure. Phase 3 Priority 3 at earliest. |
 
 ---
 
-## Execution Order
+## Background — Framework Evaluation Summary
 
-The capabilities must be executed in order because later extractions depend on earlier ones:
+During the transition from M6 to M7, several alternative frameworks were evaluated:
 
-1. **Capability 0** (Extensions) — Extracts standalone TipTap Node/Extension definitions first because they have zero dependencies on the CanvasEditorPane class.
-2. **Capability 1** (Plugins) — Extracts ProseMirror plugins, then wires them back into the column extension module from Capability 0.
-3. **Capability 2** (Menus) — The largest extraction. Requires defining class interfaces for slash/bubble/block-action menus that communicate with the editor.
-4. **Capability 3** (Block Handles) — Depends on Capability 2 because handles trigger the block action menu.
-5. **Capability 4** (Page Header/Pickers) — Independent of menus but done later because it's cosmetic, not behavioral.
-6. **Capability 5** (Math Editor + Config) — Small cleanup extractions.
-7. **Capability 6** (Verification) — Final cleanup and full test suite run.
+| Framework | Verdict | Reason |
+|-----------|---------|--------|
+| **TipTap Notion template** | Rejected | React-only, paid Cloud product, UI template not behavioral spec |
+| **Notitap** (sereneinserenade) | Rejected | Vue 3 demo, not a product. We already use the author's global-drag-handle. |
+| **BlockNote** | Rejected | Custom blocks require React (`createReactBlockSpec`). Vanilla JS mode loses all built-in UI. `xl-multi-column` is GPL-3.0 / $390/mo commercial. Would require full rewrite while solving none of the root causes. |
+| **TipTap/ProseMirror (current)** | **Confirmed** | Proven, framework-agnostic, full control over interaction model. The right choice. |
 
-**Estimated scope:** ~18 new files, 0 new dependencies, 0 behavior changes, 0 new tests (existing tests validate the refactor).
+The root causes of the canvas "feeling off" were not framework-related:
+1. No upfront structural model (assumption-driven development)
+2. No deterministic interaction rules (ad-hoc behavior)
+3. Columns treated as a special concept instead of a Page variant
+4. Monolith architecture preventing iterative improvement
+5. Tests validating wrong behavior (testing what was built, not what should be)
+
+Milestone 7 addresses all five root causes through the structural model, deterministic rules, recursive container abstraction, modular decomposition, and model-based testing.
 
 ---
 
-## Excluded (Deferred)
+## Lessons from Milestone 6
 
-- **UI framework adoption** (Lit, Preact, etc.) — Evaluated during M6 retrospective. Decision: decompose first, then reassess. If individual menu modules are still painful as vanilla DOM, framework can be scoped to `menus/` in a future milestone.
-- **New canvas features** — No new block types, no new interactions, no new slash menu items. This milestone is refactor-only.
-- **CSS decomposition** — `canvas.css` stays as a single file. It's already scoped and cohesive. Per-module CSS would complicate theming.
-- **Unit tests for individual modules** — The existing 41 E2E tests and 67 unit tests validate behavior. Per-module unit tests are a nice-to-have for a future milestone.
-- **canvasSidebar.ts decomposition** — Already a reasonable single module (~400 lines). Not in scope.
+1. **Model first, code second.** M6 built features without a structural model. M7 has `CANVAS_STRUCTURAL_MODEL.md` before any code.
+2. **Rules are deterministic.** M6 had ad-hoc edge case handling. M7 has `BLOCK_INTERACTION_RULES.md` with a complete drop outcome matrix.
+3. **Modular from the start.** M6 grew a monolith. M7 decomposes it (Phase 0) before adding features.
+4. **One abstraction, not many.** M6 had columns, callouts, toggles as separate concepts. M7 unifies them as Page variants.
+5. **Research before building.** M6 assumed Notion behavior. M7 documents Notion behavior (`NOTION_VS_PARALLX_GAP_ANALYSIS.md`) and builds to match.
