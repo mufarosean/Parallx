@@ -121,6 +121,29 @@ async function hoverBlockByIndex(page: Page, index: number): Promise<void> {
   await page.waitForTimeout(500);
 }
 
+/** Hover the gap between columns to trigger the columnList handle. */
+async function hoverColumnGap(page: Page): Promise<void> {
+  const col1 = page.locator('.canvas-column').first();
+  const col2 = page.locator('.canvas-column').nth(1);
+  const col1Box = await col1.boundingBox();
+  const col2Box = await col2.boundingBox();
+  if (col1Box && col2Box) {
+    const gapX = (col1Box.x + col1Box.width + col2Box.x) / 2;
+    const gapY = col1Box.y + col1Box.height / 2;
+    await page.mouse.move(gapX, gapY);
+    await page.waitForTimeout(500);
+  }
+}
+
+/** Open the block action menu by hovering the gap then clicking the drag handle. */
+async function openColumnListActionMenu(page: Page): Promise<void> {
+  await hoverColumnGap(page);
+  const dragHandle = page.locator('.drag-handle');
+  await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+  await dragHandle.click({ force: true });
+  await page.waitForTimeout(200);
+}
+
 /** Click the drag handle to open the block action menu. */
 async function openBlockActionMenu(page: Page, blockIndex: number): Promise<void> {
   await hoverBlockByIndex(page, blockIndex);
@@ -685,7 +708,7 @@ test.describe('Column Layout', () => {
   // ── Block Action Menu ─────────────────────────────────────────────────────
 
   test.describe('Block action menu', () => {
-    test('block action menu shows "Columns" label for columnList blocks', async ({
+    test('block inside column action menu shows Column layout section', async ({
       window,
       electronApp,
     }) => {
@@ -704,15 +727,30 @@ test.describe('Column Layout', () => {
         },
       ]);
 
-      // Hover over the columnList block (index 0 — it's the only top-level block)
-      await openBlockActionMenu(window, 0);
+      // Hover a block inside the column and open the action menu
+      const colParagraph = tiptap.locator('.canvas-column p', { hasText: 'Col A' });
+      await colParagraph.hover();
+      await window.waitForTimeout(500);
+      const dragHandle = window.locator('.drag-handle');
+      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+      await dragHandle.click({ force: true });
+      await window.waitForTimeout(200);
 
       const actionMenu = window.locator('.block-action-menu');
       await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
-      // Header should show "Columns"
-      const header = actionMenu.locator('.block-action-header');
-      await expect(header).toHaveText('Columns');
+      // First header should show block type "Text"
+      const blockHeader = actionMenu.locator('.block-action-header').first();
+      await expect(blockHeader).toHaveText('Text');
+
+      // Second header should show "Column layout"
+      const colHeader = actionMenu.locator('.block-action-header').nth(1);
+      await expect(colHeader).toHaveText('Column layout');
+
+      // Should have Unwrap columns, Duplicate column layout, Delete column layout
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' })).toBeVisible();
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Duplicate column layout' })).toBeVisible();
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Delete column layout' })).toBeVisible();
     });
 
     test('deleting a columnList via action menu removes it from document', async ({
@@ -736,14 +774,20 @@ test.describe('Column Layout', () => {
         { type: 'paragraph', content: [{ type: 'text', text: 'After columns' }] },
       ]);
 
-      // Open action menu on the columnList (it's at index 1)
-      await openBlockActionMenu(window, 1);
+      // Hover a block inside the columnList, use "Delete column layout" action
+      const colParagraph = tiptap.locator('.canvas-column p', { hasText: 'X' });
+      await colParagraph.hover();
+      await window.waitForTimeout(500);
+      const dragHandle = window.locator('.drag-handle');
+      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+      await dragHandle.click({ force: true });
+      await window.waitForTimeout(200);
 
       const actionMenu = window.locator('.block-action-menu');
       await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
-      // Click Delete
-      const deleteBtn = actionMenu.locator('.block-action-item', { hasText: 'Delete' });
+      // Click "Delete column layout" (in the Column layout section)
+      const deleteBtn = actionMenu.locator('.block-action-item', { hasText: 'Delete column layout' });
       await expect(deleteBtn).toBeVisible();
       await deleteBtn.click();
       await window.waitForTimeout(300);
@@ -775,12 +819,20 @@ test.describe('Column Layout', () => {
         },
       ]);
 
-      await openBlockActionMenu(window, 0);
+      // Hover a block inside the column and open the action menu
+      const colParagraph = tiptap.locator('.canvas-column p', { hasText: 'Dup test' }).first();
+      await colParagraph.hover();
+      await window.waitForTimeout(500);
+      const dragHandle = window.locator('.drag-handle');
+      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+      await dragHandle.click({ force: true });
+      await window.waitForTimeout(200);
 
       const actionMenu = window.locator('.block-action-menu');
       await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
-      const dupBtn = actionMenu.locator('.block-action-item', { hasText: 'Duplicate' });
+      // Click "Duplicate column layout" in the Column layout section
+      const dupBtn = actionMenu.locator('.block-action-item', { hasText: 'Duplicate column layout' });
       await expect(dupBtn).toBeVisible();
       await dupBtn.click();
       await window.waitForTimeout(300);
@@ -921,7 +973,7 @@ test.describe('Column Layout', () => {
   // ── Unwrap Columns ────────────────────────────────────────────────────────
 
   test.describe('Unwrap columns', () => {
-    test('block action menu shows "Unwrap columns" instead of "Turn into" for columnList', async ({
+    test('block inside column shows "Unwrap columns" in Column layout section', async ({
       window,
       electronApp,
     }) => {
@@ -934,22 +986,33 @@ test.describe('Column Layout', () => {
         {
           type: 'columnList',
           content: [
-            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col A' }] }] },
+            { type: 'column', content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'Col A' }] },
+              { type: 'paragraph', content: [{ type: 'text', text: 'Second' }] },
+            ] },
             { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col B' }] }] },
           ],
         },
       ]);
 
-      await openBlockActionMenu(window, 0);
+      // Hover a non-first paragraph inside the column
+      const secondPara = tiptap.locator('.canvas-column p', { hasText: 'Second' });
+      await secondPara.hover();
+      await window.waitForTimeout(500);
+      const dragHandle = window.locator('.drag-handle');
+      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+      await dragHandle.click({ force: true });
+      await window.waitForTimeout(200);
+
       const actionMenu = window.locator('.block-action-menu');
       await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
-      // Should show "Unwrap columns" instead of "Turn into"
+      // Should show BOTH "Turn into" (block actions) AND "Unwrap columns" (column layout)
+      const turnIntoItem = actionMenu.locator('.block-action-item', { hasText: 'Turn into' });
+      await expect(turnIntoItem).toBeVisible();
+
       const unwrapItem = actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' });
       await expect(unwrapItem).toBeVisible();
-
-      const turnIntoItem = actionMenu.locator('.block-action-item', { hasText: 'Turn into' });
-      await expect(turnIntoItem).not.toBeVisible();
     });
 
     test('unwrap columns extracts all content as sequential blocks', async ({
@@ -984,12 +1047,19 @@ test.describe('Column Layout', () => {
         { type: 'paragraph', content: [{ type: 'text', text: 'After' }] },
       ]);
 
-      // Open action menu on the columnList (index 1)
-      await openBlockActionMenu(window, 1);
+      // Hover a block inside the column, use "Unwrap columns" from Column layout section
+      const colParagraph = tiptap.locator('.canvas-column p', { hasText: 'Col1 Line1' });
+      await colParagraph.hover();
+      await window.waitForTimeout(500);
+      const dragHandle = window.locator('.drag-handle');
+      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+      await dragHandle.click({ force: true });
+      await window.waitForTimeout(200);
+
       const actionMenu = window.locator('.block-action-menu');
       await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
-      // Click Unwrap columns
+      // Click Unwrap columns (in the Column layout section)
       const unwrapItem = actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' });
       await unwrapItem.click();
       await window.waitForTimeout(300);
@@ -1195,6 +1265,222 @@ test.describe('Column Layout', () => {
         // Should have a visible gap (at least 10px)
         expect(gap).toBeGreaterThanOrEqual(10);
       }
+    });
+  });
+
+  // ── Column as Spatial Container ───────────────────────────────────────────
+  // Blocks inside columns should behave identically to top-level blocks:
+  // same drag handle, same +, same action menu, same interactions.
+
+  test.describe('Blocks inside columns', () => {
+    test('hovering a block inside a column shows the drag handle', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [
+              { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Col heading' }] },
+              { type: 'paragraph', content: [{ type: 'text', text: 'Col paragraph' }] },
+            ] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right' }] }] },
+          ],
+        },
+      ]);
+
+      // Hover the heading inside the first column
+      const heading = tiptap.locator('.canvas-column h2').first();
+      await heading.hover();
+      await window.waitForTimeout(500);
+
+      const dragHandle = window.locator('.drag-handle');
+      const isHidden = await dragHandle.evaluate(el => el.classList.contains('hide'));
+      expect(isHidden).toBe(false);
+    });
+
+    test('action menu for block inside column shows block type, not Column List', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [
+              { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Inner H1' }] },
+            ] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right' }] }] },
+          ],
+        },
+      ]);
+
+      // Hover the H1 inside the column and click the drag handle
+      const heading = tiptap.locator('.canvas-column h1').first();
+      await heading.hover();
+      await window.waitForTimeout(500);
+
+      const dragHandle = window.locator('.drag-handle');
+      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+      await dragHandle.click({ force: true });
+      await window.waitForTimeout(200);
+
+      // The action menu header should say "Heading 1", NOT "Column List"
+      const actionMenu = window.locator('.block-action-menu');
+      await expect(actionMenu).toBeVisible({ timeout: 3_000 });
+
+      const header = actionMenu.locator('.block-action-header').first();
+      const headerText = await header.textContent();
+      expect(headerText).not.toContain('Column List');
+      expect(headerText).toBe('Heading');
+
+      // Should show "Turn into" (block-level action) AND "Unwrap columns" (column layout section)
+      const turnInto = actionMenu.locator('.block-action-item', { hasText: 'Turn into' });
+      await expect(turnInto).toBeVisible();
+      // "Unwrap columns" appears in the "Column layout" section at bottom
+      const unwrap = actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' });
+      await expect(unwrap).toBeVisible();
+    });
+
+    test('plus button inside column inserts new block inside the column', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'Block A' }] },
+              { type: 'paragraph', content: [{ type: 'text', text: 'Block B' }] },
+            ] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right' }] }] },
+          ],
+        },
+      ]);
+
+      // Hover Block A (second paragraph inside first column, since first p might be the first child)
+      const blockB = tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Block B' });
+      await blockB.hover();
+      await window.waitForTimeout(500);
+
+      // Click the + button
+      const plusBtn = window.locator('.block-add-btn');
+      const isHidden = await plusBtn.evaluate(el => el.classList.contains('hide'));
+      if (!isHidden) {
+        await plusBtn.click({ force: true });
+        await window.waitForTimeout(500);
+      }
+
+      // After + click, a slash menu should appear
+      // Dismiss the slash menu by pressing Escape
+      await window.keyboard.press('Escape');
+      await window.waitForTimeout(200);
+
+      // Check the document — the first column should now have 3 blocks
+      const docJSON = await getDocJSON(window);
+      const columnList = docJSON.content.find((n: any) => n.type === 'columnList');
+      expect(columnList).toBeTruthy();
+      const firstColumn = columnList.content[0];
+      expect(firstColumn.content.length).toBe(3);
+    });
+
+    test('first paragraph in column gets a drag handle', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'First para' }] },
+            ] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right' }] }] },
+          ],
+        },
+      ]);
+
+      // Hover the first (and only) paragraph inside column 1
+      const firstPara = tiptap.locator('.canvas-column').first().locator('p').first();
+      await firstPara.hover();
+      await window.waitForTimeout(500);
+
+      // The drag handle should be visible (not hidden)
+      const dragHandle = window.locator('.drag-handle');
+      const isHidden = await dragHandle.evaluate(el => el.classList.contains('hide'));
+      expect(isHidden).toBe(false);
+    });
+
+    test('deleting a block inside column removes only that block', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [
+              { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Keep me' }] },
+              { type: 'paragraph', content: [{ type: 'text', text: 'Delete me' }] },
+            ] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right' }] }] },
+          ],
+        },
+      ]);
+
+      // Hover "Delete me" paragraph and open action menu
+      const target = tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Delete me' });
+      await target.hover();
+      await window.waitForTimeout(500);
+
+      const dragHandle = window.locator('.drag-handle');
+      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+      await dragHandle.click({ force: true });
+      await window.waitForTimeout(200);
+
+      const actionMenu = window.locator('.block-action-menu');
+      await expect(actionMenu).toBeVisible({ timeout: 3_000 });
+
+      // Click Delete (first one — block-level Delete, not "Delete column layout")
+      const delBtn = actionMenu.locator('.block-action-item--danger').first();
+      await delBtn.click();
+      await window.waitForTimeout(300);
+
+      // Column should still exist with just the heading
+      const docJSON = await getDocJSON(window);
+      const columnList = docJSON.content.find((n: any) => n.type === 'columnList');
+      expect(columnList).toBeTruthy();
+      const firstColumn = columnList.content[0];
+      // Should have 1 block left (the heading)
+      expect(firstColumn.content.length).toBe(1);
+      expect(firstColumn.content[0].type).toBe('heading');
     });
   });
 });

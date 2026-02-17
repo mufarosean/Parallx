@@ -12,7 +12,7 @@
     "start": "node scripts/build.mjs && electron .",
     "dev": "node scripts/build.mjs && electron .",
     "rebuild": "electron-rebuild",
-    "postinstall": "electron-rebuild",
+    "postinstall": "electron-rebuild && node scripts/patch-deps.mjs",
     "test:e2e": "npx playwright test",
     "test:e2e:headed": "npx playwright test --headed",
     "test:unit": "npx vitest run",

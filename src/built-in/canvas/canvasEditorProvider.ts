@@ -663,7 +663,10 @@ function columnResizePlugin(): Plugin {
             }
             dragging = null;
             document.body.classList.remove('column-resizing');
-            document.body.classList.remove('column-resize-hover');
+            // NOTE: column-resize-hover is NOT removed here — it's managed
+            // exclusively by the mousemove handler.  Removing it here would
+            // re-enable the drag handle between the two clicks of a dblclick,
+            // preventing the dblclick from reaching the resize zone.
           };
 
           window.addEventListener('mouseup', finish);
@@ -3403,27 +3406,92 @@ class CanvasEditorPane implements IDisposable {
   };
 
   /**
-   * Find the top-level ProseMirror block the drag handle is currently next to.
+   * Find the block the drag handle is currently next to.
    *
-   * Instead of tracking mousemove or using fragile coordinate math, this
-   * uses the drag handle's Y position (which the library already calculates
-   * correctly for all block types) and finds the direct child of
-   * `.ProseMirror` at that Y.  Then `posAtDOM` gives us a reliable PM
-   * position, and we always resolve to depth 1 (the top-level block).
-   *
-   * This works uniformly for paragraphs, headings, lists, callouts,
-   * blockquotes, code blocks, details/toggle, columns, etc.
+   * Replicates the library's `nodeDOMAtCoords` logic to find which DOM
+   * element the handle was positioned for, then maps that to a ProseMirror
+   * position.  Handles BOTH:
+   *  • Top-level blocks (resolved to depth 1)
+   *  • Blocks inside columns (resolved to direct child of the column)
+   *  • The columnList itself (when the library matched [data-type=columnList])
    */
   private _resolveBlockFromHandle(): { pos: number; node: any } | null {
     if (!this._editor || !this._dragHandleEl) return null;
     const view = this._editor.view;
 
-    // Get the drag handle's vertical centre.
     const handleRect = this._dragHandleEl.getBoundingClientRect();
     const handleY = handleRect.top + handleRect.height / 2;
 
-    // Walk the direct children of the editor (.ProseMirror) element and
-    // find the one whose bounding box contains handleY.
+    // Replicate the library's coordinate scan.
+    // The library scans at (event.clientX + 50 + dragHandleWidth, event.clientY).
+    // The handle's left = foundNode.left − dragHandleWidth.
+    // So foundNode.left ≈ handleRect.left + dragHandleWidth.
+    // Scan at foundNode.left + 50 + dragHandleWidth ≈ handleRect.left + 2×24 + 50.
+    // Simplified: just probe well into the content area past the handle.
+    const scanX = handleRect.right + 50;
+
+    // Match the same selectors the library uses (including our patch).
+    const selectors = [
+      'li', 'p:not(:first-child)', '.canvas-column > p',
+      'pre', 'blockquote',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      '[data-type=mathBlock]', '[data-type=columnList]',
+      '[data-type=callout]',
+    ].join(', ');
+
+    const matchedEl = document.elementsFromPoint(scanX, handleY)
+      .find((el: Element) =>
+        el.parentElement?.matches?.('.ProseMirror') ||
+        el.matches(selectors),
+      );
+
+    if (!matchedEl) {
+      // Fallback: walk direct children of .ProseMirror.
+      return this._resolveBlockFallback(handleY);
+    }
+
+    try {
+      const domPos = view.posAtDOM(matchedEl, 0);
+      const $pos = view.state.doc.resolve(domPos);
+
+      // CASE 1: Matched element is a direct child of .ProseMirror
+      // → this is a top-level block (including columnList). Resolve to depth 1.
+      if (matchedEl.parentElement?.matches?.('.ProseMirror')) {
+        const blockPos = $pos.depth >= 1 ? $pos.before(1) : domPos;
+        const node = view.state.doc.nodeAt(blockPos);
+        return node ? { pos: blockPos, node } : null;
+      }
+
+      // CASE 2: Matched element is inside a column
+      // → resolve to the direct child of the column.
+      const columnEl = matchedEl.closest('.canvas-column');
+      if (columnEl) {
+        for (let d = $pos.depth; d >= 1; d--) {
+          if ($pos.node(d).type.name === 'column') {
+            const targetDepth = d + 1;
+            if ($pos.depth >= targetDepth) {
+              const blockPos = $pos.before(targetDepth);
+              const node = view.state.doc.nodeAt(blockPos);
+              return node ? { pos: blockPos, node } : null;
+            }
+            break;
+          }
+        }
+      }
+
+      // CASE 3: Other matched element — resolve to depth 1.
+      const blockPos = $pos.depth >= 1 ? $pos.before(1) : domPos;
+      const node = view.state.doc.nodeAt(blockPos);
+      return node ? { pos: blockPos, node } : null;
+    } catch {
+      return this._resolveBlockFallback(handleY);
+    }
+  }
+
+  /** Fallback resolution: walk direct children of .ProseMirror by Y position. */
+  private _resolveBlockFallback(handleY: number): { pos: number; node: any } | null {
+    if (!this._editor) return null;
+    const view = this._editor.view;
     const editorEl = view.dom;
     for (let i = 0; i < editorEl.children.length; i++) {
       const child = editorEl.children[i];
@@ -3432,7 +3500,6 @@ class CanvasEditorPane implements IDisposable {
         try {
           const domPos = view.posAtDOM(child, 0);
           const $pos = view.state.doc.resolve(domPos);
-          // Always resolve to depth 1 (top-level block).
           const blockPos = $pos.depth >= 1 ? $pos.before(1) : domPos;
           const node = view.state.doc.nodeAt(blockPos);
           return node ? { pos: blockPos, node } : null;
@@ -3557,6 +3624,47 @@ class CanvasEditorPane implements IDisposable {
     delItem.classList.add('block-action-item--danger');
     delItem.addEventListener('mousedown', (e) => { e.preventDefault(); this._deleteBlock(); });
     this._blockActionMenu.appendChild(delItem);
+
+    // ── Column layout actions (shown for blocks inside a column) ──
+    if (!isColumnList && this._editor && this._actionBlockPos >= 0) {
+      const $pos = this._editor.state.doc.resolve(this._actionBlockPos);
+      let insideColumn = false;
+      for (let d = $pos.depth; d >= 1; d--) {
+        if ($pos.node(d).type.name === 'column') { insideColumn = true; break; }
+      }
+      if (insideColumn) {
+        this._blockActionMenu.appendChild($('div.block-action-separator'));
+        const colHeader = $('div.block-action-header');
+        colHeader.textContent = 'Column layout';
+        colHeader.style.fontSize = '11px';
+        colHeader.style.opacity = '0.6';
+        this._blockActionMenu.appendChild(colHeader);
+
+        const unwrapSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 2L1 8L4 14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 2L15 8L12 14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><line x1="6" y1="5" x2="10" y2="11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+        const unwrapItem = this._createActionItem('Unwrap columns', unwrapSvg, false);
+        unwrapItem.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          this._unwrapParentColumnList();
+        });
+        this._blockActionMenu.appendChild(unwrapItem);
+
+        const dupSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+        const dupLayoutItem = this._createActionItem('Duplicate column layout', dupSvg, false);
+        dupLayoutItem.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          this._duplicateParentColumnList();
+        });
+        this._blockActionMenu.appendChild(dupLayoutItem);
+
+        const delLayoutItem = this._createActionItem('Delete column layout', svgIcon('trash'), false);
+        delLayoutItem.classList.add('block-action-item--danger');
+        delLayoutItem.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          this._deleteParentColumnList();
+        });
+        this._blockActionMenu.appendChild(delLayoutItem);
+      }
+    }
 
     // Position below drag handle
     const rect = this._dragHandleEl.getBoundingClientRect();
@@ -3832,6 +3940,65 @@ class CanvasEditorPane implements IDisposable {
     }
     this._editor.view.dispatch(tr);
 
+    const json = JSON.stringify(this._editor.getJSON());
+    this._dataService.scheduleContentSave(this._pageId, json);
+  }
+
+  /**
+   * Find the parent columnList for the currently selected block.
+   * Returns { pos, node } of the columnList, or null if not inside one.
+   */
+  private _findParentColumnList(): { pos: number; node: any } | null {
+    if (!this._editor || this._actionBlockPos < 0) return null;
+    const $pos = this._editor.state.doc.resolve(this._actionBlockPos);
+    for (let d = $pos.depth; d >= 1; d--) {
+      if ($pos.node(d).type.name === 'columnList') {
+        const colListPos = $pos.before(d);
+        const colListNode = this._editor.state.doc.nodeAt(colListPos);
+        return colListNode ? { pos: colListPos, node: colListNode } : null;
+      }
+    }
+    return null;
+  }
+
+  /** Unwrap the parent columnList of the currently selected block. */
+  private _unwrapParentColumnList(): void {
+    const parent = this._findParentColumnList();
+    if (!parent || !this._editor) return;
+    // Temporarily store the columnList as the action target and unwrap it
+    const savedPos = this._actionBlockPos;
+    const savedNode = this._actionBlockNode;
+    this._actionBlockPos = parent.pos;
+    this._actionBlockNode = parent.node;
+    this._unwrapColumnList();
+    this._actionBlockPos = savedPos;
+    this._actionBlockNode = savedNode;
+  }
+
+  /** Delete the parent columnList of the currently selected block. */
+  private _deleteParentColumnList(): void {
+    const parent = this._findParentColumnList();
+    if (!parent || !this._editor) return;
+    this._hideBlockActionMenu();
+    this._editor.chain()
+      .deleteRange({ from: parent.pos, to: parent.pos + parent.node.nodeSize })
+      .focus()
+      .run();
+    const json = JSON.stringify(this._editor.getJSON());
+    this._dataService.scheduleContentSave(this._pageId, json);
+  }
+
+  /** Duplicate the parent columnList of the currently selected block. */
+  private _duplicateParentColumnList(): void {
+    const parent = this._findParentColumnList();
+    if (!parent || !this._editor) return;
+    this._hideBlockActionMenu();
+    const insertPos = parent.pos + parent.node.nodeSize;
+    const copy = parent.node.toJSON();
+    this._editor.chain()
+      .insertContentAt(insertPos, copy)
+      .focus()
+      .run();
     const json = JSON.stringify(this._editor.getJSON());
     this._dataService.scheduleContentSave(this._pageId, json);
   }

@@ -651,6 +651,14 @@
   pointer-events: none;
 }
 
+/* Hide handle when the mouse is near a column resize boundary so the
+   handle (z-index: 50) doesn't intercept events from the resize zone. */
+.column-resize-hover .drag-handle,
+.column-resizing .drag-handle {
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+
 /* Show handle on hover over editor content */
 .canvas-tiptap-editor:hover ~ .drag-handle,
 .drag-handle:hover {
@@ -2654,16 +2662,10 @@
   flex: none;
 }
 
-/* Subtle hover background on columns (Notion-style) */
-.canvas-column-list:hover .canvas-column {
-  background-color: rgba(255, 255, 255, 0.02);
-}
+/* Columns are invisible spatial partitions — no hover highlight.
+   The resize handle indicator is sufficient visual feedback. */
 
-.canvas-column:hover {
-  background-color: rgba(255, 255, 255, 0.04) !important;
-}
-
-/* Suppress hover backgrounds during resize to prevent flicker */
+/* Suppress any stray hover backgrounds during resize to prevent flicker */
 .column-resizing .canvas-column-list:hover .canvas-column,
 .column-resizing .canvas-column:hover {
   background-color: transparent !important;

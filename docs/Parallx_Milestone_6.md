@@ -2099,3 +2099,70 @@ Every task must pass these before being considered complete:
 |------|---------|
 | `src/built-in/canvas/canvasEditorProvider.ts` | Rewrite `columnResizePlugin()`, add `columnDropPlugin()`, import `Fragment` from `@tiptap/pm/model`, update `addProseMirrorPlugins()` to return both plugins |
 | `src/built-in/canvas/canvas.css` | Widen `::after` handle (24px), add `.column-resizing` cursor styles, add `.column-drop-indicator` styles, add `.column-resize-hover` indicator line |
+
+---
+
+## Fix 18: Column-as-Spatial-Container Model ✅
+
+### Mental Model
+
+Columns are invisible spatial partitions — containers that divide space so blocks can be arranged side-by-side. Nothing about how a block functions should change when it's inside a column. The column itself is NOT a block: it doesn't get its own handle, plus button, or action menu.
+
+### Issues Fixed
+
+1. **`_resolveBlockFromHandle()` always resolved to depth 1** — clicking a drag handle on a block inside a column resolved to the entire columnList instead of the individual block.
+2. **Block action menu showed columnList options** instead of block-specific options.
+3. **Plus button inserted after entire columnList** instead of after the block inside the column.
+4. **Dragging from handle inside column dragged the entire columnList** instead of the individual block.
+5. **First paragraph in each column never got a drag handle** — library's `p:not(:first-child)` selector excluded it.
+6. **Column hover background made columns feel like selectable blocks** — revealing infrastructure that should be invisible.
+7. **Drag handle overlapped resize zone** — the library patch caused drag handles for first paragraphs in column 2 to overlap the column boundary resize zone.
+8. **Double-click resize equalize broken** — the resize `finish` handler removed `column-resize-hover` class, re-enabling the drag handle between the two clicks of a dblclick.
+
+### Changes
+
+#### `_resolveBlockFromHandle()` — Complete Rewrite
+- Uses `document.elementsFromPoint(scanX, handleY)` with replicated library selectors to find the matched DOM element.
+- Three resolution cases: (1) Direct `.ProseMirror` child → depth 1, (2) Inside `.canvas-column` → walk depth to column's direct child, (3) Fallback → depth 1.
+
+#### Library Patch (`scripts/patch-deps.mjs`)
+- Postinstall script patches GlobalDragHandle to add `.canvas-column > p` alongside `p:not(:first-child)`, so first paragraphs inside columns get drag handles.
+- Idempotent — checks before patching. Patches all three dist files.
+
+#### Column Layout Section in Block Action Menu
+- When a block inside a column has its action menu open, a "Column layout" section appears at the bottom with:
+  - **Unwrap columns** — extracts all column content as sequential blocks
+  - **Duplicate column layout** — duplicates the entire columnList
+  - **Delete column layout** — removes the entire columnList
+
+#### CSS Changes
+- Removed column hover backgrounds (columns are invisible infrastructure).
+- Added `.column-resize-hover .drag-handle` suppression (prevents handle overlap with resize zone).
+
+#### New Helper Methods
+- `_findParentColumnList()` — walks ProseMirror ancestry to find enclosing columnList.
+- `_unwrapParentColumnList()` — unwraps the columnList from a nested block.
+- `_deleteParentColumnList()` — deletes the columnList from a nested block.
+- `_duplicateParentColumnList()` — duplicates the columnList from a nested block.
+
+### Tests
+
+5 new E2E tests (tests 27–31) verifying blocks-inside-columns behavior:
+- **27**: Drag handle visible for blocks inside columns
+- **28**: Action menu shows block type + Column layout section
+- **29**: Plus button inserts inside the column
+- **30**: First paragraph in column gets a drag handle
+- **31**: Deleting a block inside column removes only that block
+
+Existing tests 14–16, 20–21 updated to use the new model. **31 column E2E tests + 67 unit tests all passing.**
+
+### Files Changed
+
+| File | Changes |
+|------|---------|
+| `src/built-in/canvas/canvasEditorProvider.ts` | Rewrite `_resolveBlockFromHandle()`, add `_findParentColumnList()`, `_unwrapParentColumnList()`, `_deleteParentColumnList()`, `_duplicateParentColumnList()`, add Column layout section to `_showBlockActionMenu()`, fix resize finish handler |
+| `src/built-in/canvas/canvas.css` | Remove column hover backgrounds, add resize-hover drag handle suppression |
+| `scripts/patch-deps.mjs` | New — postinstall patch for GlobalDragHandle selectors |
+| `package.json` | Updated postinstall to include patch script |
+| `tests/e2e/12-columns.spec.ts` | 5 new tests, 5 updated tests, 2 new test helpers |
+| `docs/Parallx_Milestone_6.md` | This documentation |
