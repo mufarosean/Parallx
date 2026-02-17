@@ -32,13 +32,13 @@ import type { CanvasDataService } from './canvasDataService.js';
 import type { IPage } from './canvasTypes.js';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
-import katex from 'katex';
 import { $ } from '../../ui/dom.js';
 import { tiptapJsonToMarkdown } from './markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, PAGE_ICON_IDS } from './canvasIcons.js';
 import { createEditorExtensions } from './config/editorExtensions.js';
-import type { SlashMenuItem } from './menus/slashMenuItems.js';
-import { SLASH_MENU_ITEMS } from './menus/slashMenuItems.js';
+import { InlineMathEditorController } from './math/inlineMathEditor.js';
+import { BubbleMenuController } from './menus/bubbleMenu.js';
+import { SlashMenuController } from './menus/slashMenu.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -77,16 +77,9 @@ export class CanvasEditorProvider {
 class CanvasEditorPane implements IDisposable {
   private _editor: Editor | null = null;
   private _editorContainer: HTMLElement | null = null;
-  private _slashMenu: HTMLElement | null = null;
-  private _bubbleMenu: HTMLElement | null = null;
-  private _linkInput: HTMLElement | null = null;
-  private _inlineMathPopup: HTMLElement | null = null;
-  private _inlineMathInput: HTMLInputElement | null = null;
-  private _inlineMathPreview: HTMLElement | null = null;
-  private _inlineMathPos: number = -1;
-  private _slashMenuVisible = false;
-  private _slashFilterText = '';
-  private _slashSelectedIndex = 0;
+  private _slashMenu!: SlashMenuController;
+  private _bubbleMenu!: BubbleMenuController;
+  private _inlineMath!: InlineMathEditorController;
   private _disposed = false;
   private _suppressUpdate = false;
   private readonly _saveDisposables: IDisposable[] = [];
@@ -132,6 +125,16 @@ class CanvasEditorPane implements IDisposable {
     private readonly _input: IEditorInput | undefined,
     private readonly _openEditor: OpenEditorFn | undefined,
   ) {}
+
+  // ── Public accessors for controller hosts ──
+  get editor(): Editor | null { return this._editor; }
+  get container(): HTMLElement { return this._container; }
+  get editorContainer(): HTMLElement | null { return this._editorContainer; }
+  get inlineMath(): InlineMathEditorController { return this._inlineMath; }
+  get dataService(): CanvasDataService { return this._dataService; }
+  get pageId(): string { return this._pageId; }
+  get suppressUpdate(): boolean { return this._suppressUpdate; }
+  set suppressUpdate(v: boolean) { this._suppressUpdate = v; }
 
   async init(): Promise<void> {
     // Create editor wrapper
@@ -180,19 +183,19 @@ class CanvasEditorPane implements IDisposable {
         this._dataService.scheduleContentSave(this._pageId, json);
 
         // Check for slash command trigger
-        this._checkSlashTrigger(editor);
+        this._slashMenu.checkTrigger(editor);
       },
       onSelectionUpdate: ({ editor }) => {
-        this._updateBubbleMenu(editor);
+        this._bubbleMenu.update(editor);
       },
       onBlur: () => {
         // Small delay so clicking bubble menu buttons doesn't dismiss it
         setTimeout(() => {
           if (
-            !this._bubbleMenu?.contains(document.activeElement) &&
-            !this._inlineMathPopup?.contains(document.activeElement)
+            !this._bubbleMenu.menu?.contains(document.activeElement) &&
+            !this._inlineMath.popup?.contains(document.activeElement)
           ) {
-            this._hideBubbleMenu();
+            this._bubbleMenu.hide();
           }
         }, 150);
       },
@@ -211,13 +214,16 @@ class CanvasEditorPane implements IDisposable {
     }
 
     // Create slash menu (hidden by default)
-    this._createSlashMenu();
+    this._slashMenu = new SlashMenuController(this);
+    this._slashMenu.create();
 
     // Create bubble menu (hidden by default)
-    this._createBubbleMenu();
+    this._bubbleMenu = new BubbleMenuController(this);
+    this._bubbleMenu.create();
 
     // Create inline math editor popup (hidden by default)
-    this._createInlineMathEditor();
+    this._inlineMath = new InlineMathEditorController(this);
+    this._inlineMath.create();
 
     // Setup block handles (+ button, drag-handle click menu)
     this._setupBlockHandles();
@@ -232,7 +238,7 @@ class CanvasEditorPane implements IDisposable {
       const pos = this._editor.view.posAtDOM(target, 0);
       const node = this._editor.state.doc.nodeAt(pos);
       if (node && node.type.name === 'inlineMath') {
-        this._showInlineMathEditor(pos, node.attrs.latex || '', target as HTMLElement);
+        this._inlineMath.show(pos, node.attrs.latex || '', target as HTMLElement);
       }
     });
 
@@ -1304,576 +1310,6 @@ class CanvasEditorPane implements IDisposable {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Inline Math Editor Popup (click-to-edit for inline equations)
-  // ══════════════════════════════════════════════════════════════════════════
-
-  private _createInlineMathEditor(): void {
-    this._inlineMathPopup = $('div.canvas-inline-math-editor');
-    this._inlineMathPopup.style.display = 'none';
-
-    // Input field
-    this._inlineMathInput = $('input.canvas-inline-math-input') as HTMLInputElement;
-    this._inlineMathInput.type = 'text';
-    this._inlineMathInput.placeholder = 'Type LaTeX…';
-    this._inlineMathInput.spellcheck = false;
-
-    // Live preview
-    this._inlineMathPreview = $('div.canvas-inline-math-preview');
-
-    // Hint
-    const hint = $('div.canvas-inline-math-hint');
-    hint.textContent = 'Enter to confirm · Escape to cancel';
-
-    this._inlineMathPopup.appendChild(this._inlineMathInput);
-    this._inlineMathPopup.appendChild(this._inlineMathPreview);
-    this._inlineMathPopup.appendChild(hint);
-    this._container.appendChild(this._inlineMathPopup);
-
-    // ── Events ──
-    this._inlineMathInput.addEventListener('input', () => {
-      if (!this._inlineMathPreview || !this._inlineMathInput) return;
-      const val = this._inlineMathInput.value;
-      if (!val) {
-        this._inlineMathPreview.innerHTML = '<span class="canvas-inline-math-preview-empty">Preview</span>';
-      } else {
-        try {
-          katex.render(val, this._inlineMathPreview, { displayMode: false, throwOnError: false });
-        } catch {
-          this._inlineMathPreview.textContent = val;
-        }
-      }
-    });
-
-    this._inlineMathInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        this._commitInlineMathEdit();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        this._hideInlineMathEditor();
-        // Re-focus editor
-        this._editor?.commands.focus();
-      }
-      // Stop propagation to prevent TipTap/Parallx from handling these keys
-      e.stopPropagation();
-    });
-
-    this._inlineMathInput.addEventListener('blur', () => {
-      // Commit on blur (clicking outside)
-      setTimeout(() => {
-        if (!this._inlineMathPopup?.contains(document.activeElement)) {
-          this._commitInlineMathEdit();
-        }
-      }, 100);
-    });
-  }
-
-  private _showInlineMathEditor(pos: number, latex: string, anchorEl: HTMLElement): void {
-    if (!this._inlineMathPopup || !this._inlineMathInput || !this._inlineMathPreview) return;
-
-    this._inlineMathPos = pos;
-    this._inlineMathInput.value = latex;
-
-    // Render preview
-    if (latex) {
-      try {
-        katex.render(latex, this._inlineMathPreview, { displayMode: false, throwOnError: false });
-      } catch {
-        this._inlineMathPreview.textContent = latex;
-      }
-    } else {
-      this._inlineMathPreview.innerHTML = '<span class="canvas-inline-math-preview-empty">Preview</span>';
-    }
-
-    // Position below the anchor element
-    const rect = anchorEl.getBoundingClientRect();
-    const containerRect = this._container.getBoundingClientRect();
-    this._inlineMathPopup.style.display = 'flex';
-
-    requestAnimationFrame(() => {
-      if (!this._inlineMathPopup) return;
-      const popupWidth = this._inlineMathPopup.offsetWidth;
-      const left = Math.max(8, rect.left - containerRect.left + rect.width / 2 - popupWidth / 2);
-      this._inlineMathPopup.style.left = `${left}px`;
-      this._inlineMathPopup.style.top = `${rect.bottom - containerRect.top + 6}px`;
-    });
-
-    // Focus the input and select all
-    setTimeout(() => {
-      this._inlineMathInput?.focus();
-      this._inlineMathInput?.select();
-    }, 10);
-  }
-
-  private _commitInlineMathEdit(): void {
-    if (!this._editor || this._inlineMathPos < 0 || !this._inlineMathInput) return;
-
-    const newLatex = this._inlineMathInput.value.trim();
-    const node = this._editor.state.doc.nodeAt(this._inlineMathPos);
-
-    if (node && node.type.name === 'inlineMath' && newLatex !== node.attrs.latex) {
-      if (newLatex) {
-        this._editor.chain()
-          .command(({ tr }) => {
-            tr.setNodeAttribute(this._inlineMathPos, 'latex', newLatex);
-            return true;
-          })
-          .run();
-      } else {
-        // Empty latex — remove the node
-        this._editor.chain()
-          .command(({ tr }) => {
-            tr.delete(this._inlineMathPos, this._inlineMathPos + 1);
-            return true;
-          })
-          .run();
-      }
-    }
-
-    this._hideInlineMathEditor();
-  }
-
-  private _hideInlineMathEditor(): void {
-    if (!this._inlineMathPopup) return;
-    this._inlineMathPopup.style.display = 'none';
-    this._inlineMathPos = -1;
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // Floating Bubble Menu (formatting toolbar on text selection)
-  // ══════════════════════════════════════════════════════════════════════════
-
-  private _createBubbleMenu(): void {
-    this._bubbleMenu = $('div.canvas-bubble-menu');
-    this._bubbleMenu.style.display = 'none';
-
-    // ── Formatting buttons ──
-    const buttons: { label: string; title: string; command: (e: Editor) => void; active: (e: Editor) => boolean }[] = [
-      {
-        label: '<b>B</b>', title: 'Bold (Ctrl+B)',
-        command: (e) => e.chain().focus().toggleBold().run(),
-        active: (e) => e.isActive('bold'),
-      },
-      {
-        label: '<i>I</i>', title: 'Italic (Ctrl+I)',
-        command: (e) => e.chain().focus().toggleItalic().run(),
-        active: (e) => e.isActive('italic'),
-      },
-      {
-        label: '<u>U</u>', title: 'Underline (Ctrl+U)',
-        command: (e) => e.chain().focus().toggleUnderline().run(),
-        active: (e) => e.isActive('underline'),
-      },
-      {
-        label: '<s>S</s>', title: 'Strikethrough',
-        command: (e) => e.chain().focus().toggleStrike().run(),
-        active: (e) => e.isActive('strike'),
-      },
-      {
-        label: '<code>&lt;/&gt;</code>', title: 'Inline code',
-        command: (e) => e.chain().focus().toggleCode().run(),
-        active: (e) => e.isActive('code'),
-      },
-      {
-        label: svgIcon('link'), title: 'Link',
-        command: () => this._toggleLinkInput(),
-        active: (e) => e.isActive('link'),
-      },
-      {
-        label: '<span class="canvas-bubble-highlight-icon">H</span>', title: 'Highlight',
-        command: (e) => e.chain().focus().toggleHighlight({ color: '#fef08a' }).run(),
-        active: (e) => e.isActive('highlight'),
-      },
-      {
-        label: svgIcon('math'), title: 'Inline equation',
-        command: (e) => {
-          const { from, to } = e.state.selection;
-          const selectedText = e.state.doc.textBetween(from, to);
-          const latex = selectedText || 'x';
-          e.chain()
-            .focus()
-            .command(({ tr }) => {
-              const mathNode = e.schema.nodes.inlineMath.create({ latex, display: 'no' });
-              tr.replaceWith(from, to, mathNode);
-              return true;
-            })
-            .run();
-          // Open inline math editor for the newly created node
-          this._hideBubbleMenu();
-          setTimeout(() => {
-            if (!this._editor) return;
-            const mathEl = this._editor.view.nodeDOM(from) as HTMLElement | null;
-            if (mathEl) {
-              this._showInlineMathEditor(from, latex, mathEl);
-            } else {
-              // Fallback: find via DOM query
-              const allMath = this._editorContainer?.querySelectorAll('.tiptap-math.latex');
-              if (allMath && allMath.length > 0) {
-                const lastMath = allMath[allMath.length - 1] as HTMLElement;
-                const pos = this._editor!.view.posAtDOM(lastMath, 0);
-                const node = this._editor!.state.doc.nodeAt(pos);
-                if (node && node.type.name === 'inlineMath') {
-                  this._showInlineMathEditor(pos, node.attrs.latex || '', lastMath);
-                }
-              }
-            }
-          }, 50);
-        },
-        active: (_e) => false,  // inline math is a node, not a mark — never "active"
-      },
-    ];
-
-    for (const btn of buttons) {
-      const el = $('button.canvas-bubble-btn');
-      el.innerHTML = btn.label;
-      el.title = btn.title;
-      el.addEventListener('mousedown', (ev) => {
-        ev.preventDefault();  // prevent editor blur
-        if (this._editor) btn.command(this._editor);
-        // Refresh active states
-        setTimeout(() => { if (this._editor) this._refreshBubbleActiveStates(); }, 10);
-      });
-      el.dataset.action = btn.title;
-      this._bubbleMenu.appendChild(el);
-    }
-
-    // ── Link input row (hidden by default) ──
-    this._linkInput = $('div.canvas-bubble-link-input');
-    this._linkInput.style.display = 'none';
-    const linkField = $('input.canvas-bubble-link-field') as HTMLInputElement;
-    linkField.type = 'url';
-    linkField.placeholder = 'Paste link…';
-    const linkApply = $('button.canvas-bubble-link-apply');
-    linkApply.textContent = '✓';
-    linkApply.title = 'Apply link';
-    const linkRemove = $('button.canvas-bubble-link-remove');
-    linkRemove.innerHTML = svgIcon('close');
-    const lrSvg = linkRemove.querySelector('svg');
-    if (lrSvg) { lrSvg.setAttribute('width', '12'); lrSvg.setAttribute('height', '12'); }
-    linkRemove.title = 'Remove link';
-
-    linkApply.addEventListener('mousedown', (ev) => {
-      ev.preventDefault();
-      const url = linkField.value.trim();
-      if (url && this._editor) {
-        this._editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-      }
-      this._linkInput!.style.display = 'none';
-    });
-
-    linkRemove.addEventListener('mousedown', (ev) => {
-      ev.preventDefault();
-      if (this._editor) {
-        this._editor.chain().focus().extendMarkRange('link').unsetLink().run();
-      }
-      this._linkInput!.style.display = 'none';
-      linkField.value = '';
-    });
-
-    linkField.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter') {
-        ev.preventDefault();
-        linkApply.click();
-      } else if (ev.key === 'Escape') {
-        ev.preventDefault();
-        this._linkInput!.style.display = 'none';
-      }
-    });
-
-    this._linkInput.appendChild(linkField);
-    this._linkInput.appendChild(linkApply);
-    this._linkInput.appendChild(linkRemove);
-    this._bubbleMenu.appendChild(this._linkInput);
-
-    this._container.appendChild(this._bubbleMenu);
-  }
-
-  private _toggleLinkInput(): void {
-    if (!this._linkInput || !this._editor) return;
-    const visible = this._linkInput.style.display !== 'none';
-    if (visible) {
-      this._linkInput.style.display = 'none';
-    } else {
-      this._linkInput.style.display = 'flex';
-      const field = this._linkInput.querySelector('input') as HTMLInputElement;
-      // Pre-fill with existing link href
-      const attrs = this._editor.getAttributes('link');
-      field.value = attrs.href ?? '';
-      field.focus();
-      field.select();
-    }
-  }
-
-  private _updateBubbleMenu(editor: Editor): void {
-    if (!this._bubbleMenu) return;
-
-    const { from, to, empty } = editor.state.selection;
-    if (empty || from === to) {
-      this._hideBubbleMenu();
-      return;
-    }
-
-    // Don't show for code blocks or node selections
-    const { $from } = editor.state.selection;
-    if ($from.parent.type.name === 'codeBlock') {
-      this._hideBubbleMenu();
-      return;
-    }
-
-    // Position above selection
-    const start = editor.view.coordsAtPos(from);
-    const end = editor.view.coordsAtPos(to);
-    const midX = (start.left + end.left) / 2;
-    const topY = Math.min(start.top, end.top);
-
-    this._bubbleMenu.style.display = 'flex';
-
-    // Wait for layout to get accurate width
-    requestAnimationFrame(() => {
-      if (!this._bubbleMenu) return;
-      const menuWidth = this._bubbleMenu.offsetWidth;
-      this._bubbleMenu.style.left = `${Math.max(8, midX - menuWidth / 2)}px`;
-      this._bubbleMenu.style.top = `${topY - this._bubbleMenu.offsetHeight - 8}px`;
-    });
-
-    this._refreshBubbleActiveStates();
-    // Hide link input when selection changes
-    if (this._linkInput) this._linkInput.style.display = 'none';
-  }
-
-  private _refreshBubbleActiveStates(): void {
-    if (!this._bubbleMenu || !this._editor) return;
-    const buttons = this._bubbleMenu.querySelectorAll('.canvas-bubble-btn');
-    const activeChecks = [
-      (e: Editor) => e.isActive('bold'),
-      (e: Editor) => e.isActive('italic'),
-      (e: Editor) => e.isActive('underline'),
-      (e: Editor) => e.isActive('strike'),
-      (e: Editor) => e.isActive('code'),
-      (e: Editor) => e.isActive('link'),
-      (e: Editor) => e.isActive('highlight'),
-      (_e: Editor) => false,  // inline equation — node, never "active" as toggle
-    ];
-    buttons.forEach((btn, i) => {
-      if (i < activeChecks.length) {
-        btn.classList.toggle('canvas-bubble-btn--active', activeChecks[i](this._editor!));
-      }
-    });
-  }
-
-  private _hideBubbleMenu(): void {
-    if (!this._bubbleMenu) return;
-    this._bubbleMenu.style.display = 'none';
-    if (this._linkInput) this._linkInput.style.display = 'none';
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // Slash Command Menu (Task 5.4)
-  // ══════════════════════════════════════════════════════════════════════════
-
-  private _createSlashMenu(): void {
-    this._slashMenu = $('div.canvas-slash-menu');
-    this._slashMenu.style.display = 'none';
-    this._container.appendChild(this._slashMenu);
-  }
-
-  private _checkSlashTrigger(editor: Editor): void {
-    const { state } = editor;
-    const { $from } = state.selection;
-
-    // Only trigger at the start of an empty or text-only paragraph
-    if (!$from.parent.isTextblock) {
-      this._hideSlashMenu();
-      return;
-    }
-
-    const text = $from.parent.textContent;
-
-    // Look for '/' at the start of the line
-    if (text.startsWith('/')) {
-      this._slashFilterText = text.slice(1).toLowerCase();
-      this._showSlashMenu(editor);
-    } else {
-      this._hideSlashMenu();
-    }
-  }
-
-  private _showSlashMenu(editor: Editor): void {
-    if (!this._slashMenu) return;
-
-    const filtered = this._getFilteredItems();
-    if (filtered.length === 0) {
-      this._hideSlashMenu();
-      return;
-    }
-
-    this._slashSelectedIndex = 0;
-    this._slashMenuVisible = true;
-    this._renderSlashMenuItems(filtered, editor);
-
-    // Position below cursor
-    const coords = editor.view.coordsAtPos(editor.state.selection.from);
-    this._slashMenu.style.display = 'block';
-    this._slashMenu.style.left = `${coords.left}px`;
-    this._slashMenu.style.top = `${coords.bottom + 4}px`;
-
-    // Keyboard handler for menu
-    if (!this._slashMenu.dataset.listening) {
-      this._slashMenu.dataset.listening = '1';
-      editor.view.dom.addEventListener('keydown', this._handleSlashKeydown);
-    }
-  }
-
-  private _hideSlashMenu(): void {
-    if (!this._slashMenu || !this._slashMenuVisible) return;
-    this._slashMenu.style.display = 'none';
-    this._slashMenuVisible = false;
-    this._slashFilterText = '';
-    if (this._editor) {
-      this._editor.view.dom.removeEventListener('keydown', this._handleSlashKeydown);
-      delete this._slashMenu.dataset.listening;
-    }
-  }
-
-  private _getFilteredItems(): SlashMenuItem[] {
-    let items = SLASH_MENU_ITEMS;
-
-    // Hide column items when already inside a column (prevent nesting)
-    if (this._editor) {
-      const { $from } = this._editor.state.selection;
-      let insideColumn = false;
-      for (let d = $from.depth; d > 0; d--) {
-        if ($from.node(d).type.name === 'column') { insideColumn = true; break; }
-      }
-      if (insideColumn) {
-        items = items.filter(i => !i.label.includes('Columns'));
-      }
-    }
-
-    if (!this._slashFilterText) return items;
-    const q = this._slashFilterText.replace(/[^a-z0-9]/g, '');
-    return items.filter(item => {
-      const label = item.label.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const desc = item.description.toLowerCase().replace(/[^a-z0-9]/g, '');
-      return label.includes(q) || desc.includes(q);
-    });
-  }
-
-  private _renderSlashMenuItems(items: SlashMenuItem[], editor: Editor): void {
-    if (!this._slashMenu) return;
-    this._slashMenu.innerHTML = '';
-
-    items.forEach((item, index) => {
-      const row = $('div.canvas-slash-item');
-      if (index === this._slashSelectedIndex) {
-        row.classList.add('canvas-slash-item--selected');
-      }
-
-      const iconEl = $('span.canvas-slash-icon');
-      // Render SVG icon if available, otherwise use text
-      const knownIcons = ['checklist','quote','code','divider','lightbulb','chevron-right','grid','image','bullet-list','numbered-list','math','math-block'];
-      if (knownIcons.includes(item.icon)) {
-        iconEl.innerHTML = svgIcon(item.icon as any);
-        const svg = iconEl.querySelector('svg');
-        if (svg) { svg.setAttribute('width', '18'); svg.setAttribute('height', '18'); }
-      } else {
-        iconEl.textContent = item.icon;
-      }
-      row.appendChild(iconEl);
-
-      const textEl = $('div.canvas-slash-text');
-      const labelEl = $('div.canvas-slash-label');
-      labelEl.textContent = item.label;
-      const descEl = $('div.canvas-slash-desc');
-      descEl.textContent = item.description;
-      textEl.appendChild(labelEl);
-      textEl.appendChild(descEl);
-      row.appendChild(textEl);
-
-      row.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this._executeSlashItem(item, editor);
-      });
-
-      row.addEventListener('mouseenter', () => {
-        this._slashSelectedIndex = index;
-        // Update selection highlight without rebuilding DOM
-        const rows = this._slashMenu!.querySelectorAll('.canvas-slash-item');
-        rows.forEach((r, i) => {
-          r.classList.toggle('canvas-slash-item--selected', i === index);
-        });
-      });
-
-      this._slashMenu!.appendChild(row);
-    });
-  }
-
-  private readonly _handleSlashKeydown = (e: KeyboardEvent): void => {
-    if (!this._slashMenuVisible || !this._editor) return;
-
-    const filtered = this._getFilteredItems();
-    if (filtered.length === 0) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      this._slashSelectedIndex = (this._slashSelectedIndex + 1) % filtered.length;
-      this._renderSlashMenuItems(filtered, this._editor);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      this._slashSelectedIndex = (this._slashSelectedIndex - 1 + filtered.length) % filtered.length;
-      this._renderSlashMenuItems(filtered, this._editor);
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      this._executeSlashItem(filtered[this._slashSelectedIndex], this._editor);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      this._hideSlashMenu();
-    }
-  };
-
-  private _executeSlashItem(item: SlashMenuItem, editor: Editor): void {
-    // Suppress onUpdate to prevent _checkSlashTrigger from firing mid-execution
-    this._suppressUpdate = true;
-
-    try {
-      // Compute the BLOCK-LEVEL range covering the entire paragraph node
-      // (the one containing the '/filter' text).  Each action uses
-      // insertContentAt(range, nodeJSON) to atomically REPLACE the paragraph.
-      // This is the same pattern TipTap's own setDetails() uses internally.
-      const { $from, $to } = editor.state.selection;
-      const blockRange = $from.blockRange($to);
-      if (!blockRange) return;
-
-      item.action(editor, { from: blockRange.start, to: blockRange.end });
-    } finally {
-      this._suppressUpdate = false;
-    }
-
-    // Manually schedule save since onUpdate was suppressed
-    const json = JSON.stringify(editor.getJSON());
-    this._dataService.scheduleContentSave(this._pageId, json);
-
-    this._hideSlashMenu();
-
-    // Auto-open inline math editor if an inline equation was just inserted
-    if (item.label === 'Inline Equation') {
-      setTimeout(() => {
-        if (!this._editor) return;
-        const allMath = this._editorContainer?.querySelectorAll('.tiptap-math.latex');
-        if (allMath && allMath.length > 0) {
-          const lastMath = allMath[allMath.length - 1] as HTMLElement;
-          const pos = this._editor.view.posAtDOM(lastMath, 0);
-          const node = this._editor.state.doc.nodeAt(pos);
-          if (node && node.type.name === 'inlineMath') {
-            this._showInlineMathEditor(pos, node.attrs.latex || '', lastMath);
-          }
-        }
-      }, 80);
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
   // Block Handles — Plus Button (+) and Block Action Menu
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -2597,8 +2033,8 @@ class CanvasEditorPane implements IDisposable {
     if (this._disposed) return;
     this._disposed = true;
 
-    this._hideSlashMenu();
-    this._hideBubbleMenu();
+    this._slashMenu.hide();
+    this._bubbleMenu.hide();
     this._hideBlockActionMenu();
     this._dismissPopups();
 
@@ -2632,21 +2068,16 @@ class CanvasEditorPane implements IDisposable {
     }
 
     if (this._slashMenu) {
-      this._slashMenu.remove();
-      this._slashMenu = null;
+      this._slashMenu.dispose();
     }
 
     if (this._bubbleMenu) {
-      this._bubbleMenu.remove();
-      this._bubbleMenu = null;
+      this._bubbleMenu.dispose();
     }
 
-    if (this._inlineMathPopup) {
-      this._inlineMathPopup.remove();
-      this._inlineMathPopup = null;
+    if (this._inlineMath) {
+      this._inlineMath.dispose();
     }
-    this._inlineMathInput = null;
-    this._inlineMathPreview = null;
 
     this._topRibbon = null;
     this._ribbonFavoriteBtn = null;
