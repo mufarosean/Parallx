@@ -156,70 +156,105 @@ src/built-in/canvas/
 > **Goal:** Make the single interaction model from `CANVAS_STRUCTURAL_MODEL.md` §5 work consistently at every nesting level.
 > **Prerequisite:** Phase 0 complete.
 
-### 1.1 Handle Resolution Consistency
+### 1.1 Handle Resolution — Every Block Has a Handle
 
-**Current state:** Handle resolution has special cases for columns but doesn't account for callouts, toggles, or quotes as containers.
+**Current state:** Handle resolution has special cases for columns. Containers (callout, toggle, quote) and their inner blocks don't each get independent handles.
 
 **Target:** Handle resolution follows `CANVAS_STRUCTURAL_MODEL.md` §5.1:
-- Leaf blocks → resolve to the block
-- Container blocks (toggle, callout, quote) → resolve to the container as a whole
-- HorizontalPartition → resolve to first block in first column
+- Every block has its own handle — the handle is a component of the block's row
+- Container blocks (callout, toggle, quote) have a handle targeting the container
+- Blocks **inside** containers each have their own handles targeting the inner block
+- HorizontalPartition → resolve to first block in first column (invisible container)
+
+**Key principle:** A callout is a block with a handle. The paragraphs inside the callout are also blocks with their own handles. This is how every container works — it's a block that contains blocks.
 
 **Tasks:**
-- [ ] Audit `_resolveBlockFromHandle()` — ensure it handles all container block types
-- [ ] Test handle resolution inside toggles, callouts, quotes, and nested containers
-- [ ] Write E2E tests: handle click inside column-with-callout, toggle-with-list, etc.
+- [ ] Rewrite `_resolveBlockFromHandle()` to support handles at every nesting level
+- [ ] Container chrome hover → resolves to container; inner block hover → resolves to inner block
+- [ ] Test handle resolution inside callout (targeting callout vs targeting inner paragraph)
+- [ ] Test handle resolution inside toggle, quote, nested callout-in-column
+- [ ] Write E2E tests: handle click on callout, handle click on paragraph inside callout
 
-### 1.2 Action Menu Consistency
+### 1.2 Action Menu & Turn-Into Consistency
 
-**Current state:** The action menu is correct (no column-specific items after M6 Phase 1 cleanup), but it hasn't been verified inside all container types.
+**Current state:** The action menu is correct (no column-specific items), but container Turn-into operations are lossy — converting a callout to paragraph only keeps the first block's text.
 
-**Target:** The same action menu appears for any block at any nesting level. Turn-into, Color, Duplicate, Delete all work inside columns, toggles, callouts, and quotes.
+**Target:** Turn-into follows `CANVAS_STRUCTURAL_MODEL.md` §5.2.1:
+- Callout → Paragraph: unwrap (all inner blocks become siblings in parent Page)
+- Callout → Toggle: first inner block → summary, rest → toggle body
+- Toggle → Callout: wrap the toggle inside a callout (toggle stays intact)
+- Quote → Paragraph: unwrap inner blocks
+- Container → Leaf: extract first block's text (lossy, but deterministic)
+- Leaf → Container: wrap the leaf as the first block inside the new container
 
 **Tasks:**
-- [ ] Verify Turn-into works inside every container type (especially column → heading conversion)
+- [ ] Rewrite `_turnBlockViaReplace()` to implement unwrap/wrap/swap semantics for containers
+- [ ] Verify Turn-into works inside every container type
 - [ ] Verify Duplicate inside containers (duplicate stays in the same container)
 - [ ] Verify Delete inside containers (delete triggers auto-dissolve if inside column)
-- [ ] Write E2E tests for action menu inside each container type
+- [ ] Write E2E tests: callout → paragraph (unwrap), callout → toggle (reflow), toggle → callout (wrap)
 
-### 1.3 Keyboard Shortcuts
+### 1.3 Block Selection
 
-**Current state:** Ctrl+Shift+↑/↓ and Ctrl+D are partially implemented. Esc-to-select is not implemented.
+**Current state:** No block selection model. Esc-to-select is not implemented. No multi-select.
 
-**Target:** Full keyboard interaction model per `CANVAS_STRUCTURAL_MODEL.md` §5.4:
-- Ctrl+Shift+↑/↓ — move block within parent Page; at boundary, move to adjacent container
-- Ctrl+D — duplicate within same parent Page
-- Esc — select current block
+**Target:** Block selection per `CANVAS_STRUCTURAL_MODEL.md` §5.2.2:
+- Click handle → select that single block (visual blue highlight)
+- Drag from gutter area → lasso-select multiple blocks
+- Shift+Click handle → extend selection
+- Selected blocks can be: moved, turned-into, deleted, duplicated, colored as a group
 
 **Tasks:**
-- [ ] Implement Ctrl+Shift+↑ block movement (with boundary crossing)
-- [ ] Implement Ctrl+Shift+↓ block movement (with boundary crossing)
+- [ ] Implement single block selection (click handle)
+- [ ] Implement visual selection indicator (blue highlight/outline)
+- [ ] Implement gutter drag for multi-block selection
+- [ ] Implement Shift+Click to extend selection
+- [ ] Implement group operations: multi-delete, multi-duplicate, multi-turn-into, multi-move
+- [ ] Implement Esc to select current block (from cursor)
+- [ ] Write E2E tests: select, multi-select, group move, group delete
+
+### 1.4 Keyboard Shortcuts
+
+**Current state:** Ctrl+Shift+↑/↓ and Ctrl+D are partially implemented.
+
+**Target:** Full keyboard interaction model per `CANVAS_STRUCTURAL_MODEL.md` §5.4:
+- Ctrl+Shift+↑/↓ — move block within parent Page
+- Ctrl+D — duplicate within same parent Page
+
+**Note:** Keyboard boundary crossing (moving blocks between containers) is deferred.
+
+**Tasks:**
+- [ ] Implement Ctrl+Shift+↑ block movement within current container
+- [ ] Implement Ctrl+Shift+↓ block movement within current container
 - [ ] Implement Ctrl+D as keyboard handler (not just action menu label)
-- [ ] Implement Esc to select block
 - [ ] Test keyboard movement inside columns, toggles, callouts
-- [ ] Test boundary crossing: move block out of column via keyboard → triggers auto-dissolve
 
-### 1.4 Drag-and-Drop at All Nesting Levels
+### 1.5 Drag-and-Drop at All Nesting Levels
 
-**Current state:** `columnDropPlugin` handles top-level-to-column and column-to-column scenarios (4A–4F). But drag-and-drop behavior inside other container types (toggle, callout, quote) is handled by TipTap's default drag, not the custom plugin.
+**Current state:** `columnDropPlugin` handles top-level-to-column and column-to-column scenarios (4A–4F). Drag inside other container types (toggle, callout, quote) is handled by TipTap's default drag.
 
-**Target:** The drag-and-drop rules from `BLOCK_INTERACTION_RULES.md` apply inside every container. Specifically:
-- Drag from inside a toggle to top level works
-- Drag from top level into a callout works
-- Drag between containers (toggle → callout, callout → column) works
-- Vertical guide (create HorizontalPartition) appears inside container blocks when appropriate
+**Target:** The drag-and-drop rules apply inside every Page-container:
+- Drag from inside a callout to top level works (callout is just a Page)
+- Drag from top level into a callout works (blocks can be moved into any Page)
+- Drag to left/right edge inside a callout creates columns inside the callout
+- Between-container drag works (toggle → callout, callout → column)
+- A callout can have blocks moved into it — it's a page with a background and icon
 
 **Tasks:**
 - [ ] Audit which drag scenarios work today vs which need plugin extension
-- [ ] Extend `columnDropPlugin` (or create a unified drop plugin) to handle all container types
+- [ ] Extend drop plugin to detect drop zones inside callouts, toggles, quotes
+- [ ] Enable HorizontalPartition creation inside container blocks (columns inside callout)
 - [ ] Test: drag block from callout to top level
-- [ ] Test: drag block from top level into toggle
-- [ ] Test: drag between columns across different container types
+- [ ] Test: drag block from top level into callout
+- [ ] Test: create columns inside a callout via drag-to-side
+- [ ] Test: drag between containers across different types
 
 ### Completion Criteria (Phase 1)
 
-- [ ] A block at any nesting level has the same handle, same menu, same keyboard shortcuts
-- [ ] Drag-and-drop works between all container types
+- [ ] Every block at every nesting level has its own handle
+- [ ] Container Turn-into is non-lossy (unwrap/wrap/swap semantics)
+- [ ] Block selection works (single + multi)
+- [ ] Drag-and-drop works between all container types, including column creation inside containers
 - [ ] Auto-dissolve fires correctly when blocks are dragged out of columns at any depth
 - [ ] All existing + new E2E tests pass
 

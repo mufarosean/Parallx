@@ -36,15 +36,19 @@ Every block, when its ⋮⋮ handle is clicked, shows the **same** action menu:
 
 ## Rule 2: Handle Resolution
 
-The ⋮⋮ drag handle appears next to **blocks only**, never next to containers.
+Every block has its own ⋮⋮ drag handle. The handle is a component of the block’s row — it appears when the user hovers over that block. Container blocks (callout, toggle, quote) have their own handle, AND every block nested inside them also has its own handle.
+
+The handle never appears next to invisible structural containers (columnList).
 
 | Cursor position | Handle resolves to |
 |-----------------|-------------------|
 | Next to a top-level block | That block |
 | Next to a block inside a column | That block (within the column) |
+| Next to a container block (callout, toggle, quote) — hovering the container chrome | The container block as a whole |
+| Next to a block **inside** a container (callout content, toggle body, quote body) | That inner block (not the container) |
 | Next to a `columnList` element itself | The **first block** inside the **first column** — because the column structure is invisible; the first visible content is the first block |
-| Next to a block inside a callout | That block (within the callout) |
-| Next to a block inside a toggle | That block (within the toggle content) |
+
+**Key principle:** A callout has its own handle (targets the callout as a unit). The paragraphs inside the callout each have their own handles (target the individual paragraph). All content on the page is a block, and every block has a handle.
 
 **General rule:** The handle always resolves to the nearest **content block** — the deepest block that the cursor is next to. Never to a structural container (column, columnList, callout wrapper, toggle wrapper).
 

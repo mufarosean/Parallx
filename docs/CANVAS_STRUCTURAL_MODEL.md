@@ -207,7 +207,18 @@ Enforcement:
 
 ### 4.5 Container blocks inside columns
 
-**Container blocks (toggle, callout, quote) CAN be nested inside columns.** A callout inside a column is just a Page-inside-a-Page — the interaction model recurses naturally. Only HorizontalPartitions themselves are restricted from nesting.
+**Container blocks (toggle, callout, quote) CAN be nested inside columns.** A callout inside a column is just a Page-inside-a-Page — the interaction model recurses naturally. Only HorizontalPartitions themselves are restricted from nesting inside columns.
+
+### 4.6 HorizontalPartitions inside container blocks
+
+**HorizontalPartitions CAN be created inside callouts, toggles, and quotes.** A callout is a Page with a background and an icon — it does the exact same thing as any other Page, including supporting side-by-side column layouts.
+
+Examples:
+- A callout containing a 2-column layout: callout → columnList → [column, column] — valid.
+- A toggle body containing a 3-column layout: details → detailsContent → columnList → [column, column, column] — valid.
+- A callout inside a column containing its own columns: column → callout → columnList → [column, column] — valid. The nesting constraint (no columnList directly inside column) does not apply because the callout acts as an intermediary Page.
+
+**The nesting constraint restated precisely:** A `column` node's content spec does not include `columnList`. But a `column` CAN contain a `callout`, and a `callout`'s content spec (`block+`) DOES include `columnList` (since columnList is in group `block`). So columns-inside-callout-inside-column is structurally valid.
 
 ---
 
@@ -217,13 +228,18 @@ This section defines how blocks behave inside **any** Page-container. It applies
 
 ### 5.1 Handle Resolution
 
-The ⋮⋮ drag handle appears next to **blocks** and **container blocks**. Never next to invisible structural containers (HorizontalPartition/columnList).
+Every block has its own ⋮⋮ drag handle. The handle is a component of the block's row — it appears when the user hovers over that block. Container blocks (callout, toggle, quote) have their own handle **and** every block nested inside them also has its own handle.
+
+Never next to invisible structural containers (HorizontalPartition/columnList).
 
 | Cursor position | Handle resolves to |
 |-----------------|-------------------|
-| Next to a leaf block | That block |
-| Next to a container block (toggle, callout, quote) | The container block as a whole |
+| Next to a leaf block (any depth) | That block |
+| Next to a container block (toggle, callout, quote) — hovering the container chrome | The container block as a whole |
+| Next to a block **inside** a container (toggle body, callout content, quote body) | That inner block (not the container) |
 | Next to a HorizontalPartition | The **first block** inside the **first column** — because HorizontalPartitions are invisible |
+
+**Key principle:** A callout is a block on its own row — it has a handle. But the paragraphs, headings, and other blocks *inside* the callout are also blocks on their own rows — they each have their own handles too. Clicking the callout's handle targets the callout as a unit. Clicking an inner block's handle targets that inner block.
 
 ### 5.2 Action Menu
 
@@ -237,6 +253,45 @@ Every block and container block shows the same action menu:
 | **Delete** | Remove from parent Page |
 
 No location-specific items. A block inside a column gets the exact same menu as a block at top level.
+
+### 5.2.1 Turn-Into Rules for Container Conversions
+
+Containers (callout, toggle, quote) are just wrappers around blocks. Turn-into operations add, remove, or swap the wrapper — they do not destroy inner content.
+
+| Conversion | Rule |
+|-----------|------|
+| **Callout → Paragraph** | Remove the callout wrapper. All inner blocks are unwrapped into the parent Page at the callout's position. |
+| **Callout → Toggle** | First inner block becomes the toggle summary. Remaining inner blocks become the toggle body content. Callout wrapper is removed, toggle wrapper is added. |
+| **Callout → Quote** | Swap callout wrapper for quote wrapper. Inner blocks are preserved. |
+| **Toggle → Callout** | Wrap the entire toggle inside a callout container. The toggle remains intact inside the callout. |
+| **Toggle → Paragraph** | Remove the toggle wrapper. Summary content becomes a paragraph. Body blocks are unwrapped into the parent Page after the summary paragraph. |
+| **Toggle → Quote** | Wrap the toggle inside a quote container (same as Toggle → Callout but with quote chrome). |
+| **Quote → Paragraph** | Remove the quote wrapper. Inner blocks are unwrapped into the parent Page. |
+| **Quote → Callout** | Swap quote wrapper for callout wrapper. Inner blocks are preserved. |
+| **Quote → Toggle** | First inner block becomes the toggle summary. Remaining inner blocks become toggle body. |
+| **Container → Leaf (e.g., Callout → Code Block)** | Extract text content from the first inner block. Remaining inner blocks are discarded. The container is replaced with the leaf block. |
+| **Leaf → Container (e.g., Paragraph → Callout)** | The leaf block becomes the first (and only) inner block of the new container. |
+
+**General principle:** Removing a container = unwrap. Adding a container = wrap. Swapping containers = keep inner blocks, change chrome. Container → leaf = lossy (only first block's text kept).
+
+### 5.2.2 Block Selection
+
+Blocks can be selected individually or in groups:
+
+| Action | Result |
+|--------|--------|
+| **Click handle** | Select that single block (visual highlight). |
+| **Drag from gutter** | Lasso/drag-select multiple blocks. All blocks whose rows intersect the selection area are selected. |
+| **Shift+Click handle** | Extend selection to include all blocks between the current selection and the clicked handle. |
+
+**Selected block(s) can be:**
+- Moved via drag (all selected blocks move as a group)
+- Turned into (the Turn-into operation applies to each selected block)
+- Deleted (all selected blocks removed)
+- Duplicated (all selected blocks duplicated in order)
+- Colored (color applies to each selected block)
+
+**Visual indicator:** Selected blocks show a blue highlight/outline (matching Notion's block selection style).
 
 ### 5.3 Drag-and-Drop
 
