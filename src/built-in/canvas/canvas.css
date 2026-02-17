@@ -2238,18 +2238,9 @@
 /* ── Block equation ── */
 .canvas-math-block {
   position: relative;
-  margin: 8px 0;
-  padding: 16px 20px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  margin: 4px 0;
+  padding: 8px 0;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.canvas-math-block:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.1);
 }
 
 .canvas-math-block.ProseMirror-selectednode {
@@ -2323,4 +2314,73 @@
 
 .canvas-math-block-preview .katex {
   font-size: 1.1em;
+}
+
+/* ── Inline Math Editor Popup (click-to-edit) ── */
+.canvas-inline-math-editor {
+  position: absolute;
+  z-index: 100;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #252526;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  min-width: 240px;
+  max-width: 380px;
+}
+
+.canvas-inline-math-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.15s ease;
+  box-sizing: border-box;
+}
+
+.canvas-inline-math-input:focus {
+  border-color: rgba(45, 170, 219, 0.6);
+}
+
+.canvas-inline-math-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.canvas-inline-math-preview {
+  text-align: center;
+  min-height: 20px;
+  padding: 4px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.canvas-inline-math-preview .katex {
+  font-size: 1.1em;
+}
+
+.canvas-inline-math-preview-empty {
+  color: rgba(255, 255, 255, 0.25);
+  font-style: italic;
+  font-size: 12px;
+}
+
+.canvas-inline-math-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  text-align: center;
+}
+
+/* Bubble menu formula button icon sizing */
+.canvas-bubble-btn svg {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
 }

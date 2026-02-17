@@ -541,7 +541,7 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   {
     label: 'Inline Equation', icon: 'math', description: 'Inline math within text',
     action: (e, range) => {
-      e.chain().insertContentAt(range, { type: 'inlineMath', attrs: { latex: 'x', display: 'no' } }).focus().run();
+      e.chain().insertContentAt(range, { type: 'inlineMath', attrs: { latex: 'f(x)', display: 'no' } }).focus().run();
     },
   },
 ];
@@ -584,6 +584,10 @@ class CanvasEditorPane implements IDisposable {
   private _slashMenu: HTMLElement | null = null;
   private _bubbleMenu: HTMLElement | null = null;
   private _linkInput: HTMLElement | null = null;
+  private _inlineMathPopup: HTMLElement | null = null;
+  private _inlineMathInput: HTMLInputElement | null = null;
+  private _inlineMathPreview: HTMLElement | null = null;
+  private _inlineMathPos: number = -1;
   private _slashMenuVisible = false;
   private _slashFilterText = '';
   private _slashSelectedIndex = 0;
@@ -772,7 +776,10 @@ class CanvasEditorPane implements IDisposable {
       onBlur: () => {
         // Small delay so clicking bubble menu buttons doesn't dismiss it
         setTimeout(() => {
-          if (!this._bubbleMenu?.contains(document.activeElement)) {
+          if (
+            !this._bubbleMenu?.contains(document.activeElement) &&
+            !this._inlineMathPopup?.contains(document.activeElement)
+          ) {
             this._hideBubbleMenu();
           }
         }, 150);
@@ -791,6 +798,23 @@ class CanvasEditorPane implements IDisposable {
 
     // Create bubble menu (hidden by default)
     this._createBubbleMenu();
+
+    // Create inline math editor popup (hidden by default)
+    this._createInlineMathEditor();
+
+    // ── Click handler for inline math nodes (click-to-edit) ──
+    this._editorContainer.addEventListener('click', (e) => {
+      const target = (e.target as HTMLElement).closest('.tiptap-math.latex');
+      if (!target || !this._editor) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // Find ProseMirror position of the clicked node
+      const pos = this._editor.view.posAtDOM(target, 0);
+      const node = this._editor.state.doc.nodeAt(pos);
+      if (node && node.type.name === 'inlineMath') {
+        this._showInlineMathEditor(pos, node.attrs.latex || '', target as HTMLElement);
+      }
+    });
 
     // Subscribe to save completion (Task 6.1)
     this._saveDisposables.push(
@@ -1852,6 +1876,141 @@ class CanvasEditorPane implements IDisposable {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // Inline Math Editor Popup (click-to-edit for inline equations)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private _createInlineMathEditor(): void {
+    this._inlineMathPopup = $('div.canvas-inline-math-editor');
+    this._inlineMathPopup.style.display = 'none';
+
+    // Input field
+    this._inlineMathInput = $('input.canvas-inline-math-input') as HTMLInputElement;
+    this._inlineMathInput.type = 'text';
+    this._inlineMathInput.placeholder = 'Type LaTeX…';
+    this._inlineMathInput.spellcheck = false;
+
+    // Live preview
+    this._inlineMathPreview = $('div.canvas-inline-math-preview');
+
+    // Hint
+    const hint = $('div.canvas-inline-math-hint');
+    hint.textContent = 'Enter to confirm · Escape to cancel';
+
+    this._inlineMathPopup.appendChild(this._inlineMathInput);
+    this._inlineMathPopup.appendChild(this._inlineMathPreview);
+    this._inlineMathPopup.appendChild(hint);
+    this._container.appendChild(this._inlineMathPopup);
+
+    // ── Events ──
+    this._inlineMathInput.addEventListener('input', () => {
+      if (!this._inlineMathPreview || !this._inlineMathInput) return;
+      const val = this._inlineMathInput.value;
+      if (!val) {
+        this._inlineMathPreview.innerHTML = '<span class="canvas-inline-math-preview-empty">Preview</span>';
+      } else {
+        try {
+          katex.render(val, this._inlineMathPreview, { displayMode: false, throwOnError: false });
+        } catch {
+          this._inlineMathPreview.textContent = val;
+        }
+      }
+    });
+
+    this._inlineMathInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this._commitInlineMathEdit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        this._hideInlineMathEditor();
+        // Re-focus editor
+        this._editor?.commands.focus();
+      }
+      // Stop propagation to prevent TipTap/Parallx from handling these keys
+      e.stopPropagation();
+    });
+
+    this._inlineMathInput.addEventListener('blur', () => {
+      // Commit on blur (clicking outside)
+      setTimeout(() => {
+        if (!this._inlineMathPopup?.contains(document.activeElement)) {
+          this._commitInlineMathEdit();
+        }
+      }, 100);
+    });
+  }
+
+  private _showInlineMathEditor(pos: number, latex: string, anchorEl: HTMLElement): void {
+    if (!this._inlineMathPopup || !this._inlineMathInput || !this._inlineMathPreview) return;
+
+    this._inlineMathPos = pos;
+    this._inlineMathInput.value = latex;
+
+    // Render preview
+    if (latex) {
+      try {
+        katex.render(latex, this._inlineMathPreview, { displayMode: false, throwOnError: false });
+      } catch {
+        this._inlineMathPreview.textContent = latex;
+      }
+    } else {
+      this._inlineMathPreview.innerHTML = '<span class="canvas-inline-math-preview-empty">Preview</span>';
+    }
+
+    // Position below the anchor element
+    const rect = anchorEl.getBoundingClientRect();
+    const containerRect = this._container.getBoundingClientRect();
+    this._inlineMathPopup.style.display = 'flex';
+
+    requestAnimationFrame(() => {
+      if (!this._inlineMathPopup) return;
+      const popupWidth = this._inlineMathPopup.offsetWidth;
+      const left = Math.max(8, rect.left - containerRect.left + rect.width / 2 - popupWidth / 2);
+      this._inlineMathPopup.style.left = `${left}px`;
+      this._inlineMathPopup.style.top = `${rect.bottom - containerRect.top + 6}px`;
+    });
+
+    // Focus the input and select all
+    setTimeout(() => {
+      this._inlineMathInput?.focus();
+      this._inlineMathInput?.select();
+    }, 10);
+  }
+
+  private _commitInlineMathEdit(): void {
+    if (!this._editor || this._inlineMathPos < 0 || !this._inlineMathInput) return;
+
+    const newLatex = this._inlineMathInput.value.trim();
+    const node = this._editor.state.doc.nodeAt(this._inlineMathPos);
+
+    if (node && node.type.name === 'inlineMath' && newLatex !== node.attrs.latex) {
+      if (newLatex) {
+        this._editor.chain()
+          .command(({ tr }) => {
+            tr.setNodeAttribute(this._inlineMathPos, 'latex', newLatex);
+            return true;
+          })
+          .run();
+      } else {
+        // Empty latex — remove the node
+        this._editor.chain()
+          .command(({ tr }) => {
+            tr.delete(this._inlineMathPos, this._inlineMathPos + 1);
+            return true;
+          })
+          .run();
+      }
+    }
+
+    this._hideInlineMathEditor();
+  }
+
+  private _hideInlineMathEditor(): void {
+    if (!this._inlineMathPopup) return;
+    this._inlineMathPopup.style.display = 'none';
+    this._inlineMathPos = -1;
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // Floating Bubble Menu (formatting toolbar on text selection)
   // ══════════════════════════════════════════════════════════════════════════
@@ -1896,6 +2055,43 @@ class CanvasEditorPane implements IDisposable {
         label: '<span class="canvas-bubble-highlight-icon">H</span>', title: 'Highlight',
         command: (e) => e.chain().focus().toggleHighlight({ color: '#fef08a' }).run(),
         active: (e) => e.isActive('highlight'),
+      },
+      {
+        label: svgIcon('math'), title: 'Inline equation',
+        command: (e) => {
+          const { from, to } = e.state.selection;
+          const selectedText = e.state.doc.textBetween(from, to);
+          const latex = selectedText || 'x';
+          e.chain()
+            .focus()
+            .command(({ tr }) => {
+              const mathNode = e.schema.nodes.inlineMath.create({ latex, display: 'no' });
+              tr.replaceWith(from, to, mathNode);
+              return true;
+            })
+            .run();
+          // Open inline math editor for the newly created node
+          this._hideBubbleMenu();
+          setTimeout(() => {
+            if (!this._editor) return;
+            const mathEl = this._editor.view.nodeDOM(from) as HTMLElement | null;
+            if (mathEl) {
+              this._showInlineMathEditor(from, latex, mathEl);
+            } else {
+              // Fallback: find via DOM query
+              const allMath = this._editorContainer?.querySelectorAll('.tiptap-math.latex');
+              if (allMath && allMath.length > 0) {
+                const lastMath = allMath[allMath.length - 1] as HTMLElement;
+                const pos = this._editor!.view.posAtDOM(lastMath, 0);
+                const node = this._editor!.state.doc.nodeAt(pos);
+                if (node && node.type.name === 'inlineMath') {
+                  this._showInlineMathEditor(pos, node.attrs.latex || '', lastMath);
+                }
+              }
+            }
+          }, 50);
+        },
+        active: (_e) => false,  // inline math is a node, not a mark — never "active"
       },
     ];
 
@@ -2028,6 +2224,7 @@ class CanvasEditorPane implements IDisposable {
       (e: Editor) => e.isActive('code'),
       (e: Editor) => e.isActive('link'),
       (e: Editor) => e.isActive('highlight'),
+      (_e: Editor) => false,  // inline equation — node, never "active" as toggle
     ];
     buttons.forEach((btn, i) => {
       if (i < activeChecks.length) {
@@ -2216,6 +2413,22 @@ class CanvasEditorPane implements IDisposable {
     this._dataService.scheduleContentSave(this._pageId, json);
 
     this._hideSlashMenu();
+
+    // Auto-open inline math editor if an inline equation was just inserted
+    if (item.label === 'Inline Equation') {
+      setTimeout(() => {
+        if (!this._editor) return;
+        const allMath = this._editorContainer?.querySelectorAll('.tiptap-math.latex');
+        if (allMath && allMath.length > 0) {
+          const lastMath = allMath[allMath.length - 1] as HTMLElement;
+          const pos = this._editor.view.posAtDOM(lastMath, 0);
+          const node = this._editor.state.doc.nodeAt(pos);
+          if (node && node.type.name === 'inlineMath') {
+            this._showInlineMathEditor(pos, node.attrs.latex || '', lastMath);
+          }
+        }
+      }, 80);
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -2256,6 +2469,13 @@ class CanvasEditorPane implements IDisposable {
       this._bubbleMenu.remove();
       this._bubbleMenu = null;
     }
+
+    if (this._inlineMathPopup) {
+      this._inlineMathPopup.remove();
+      this._inlineMathPopup = null;
+    }
+    this._inlineMathInput = null;
+    this._inlineMathPreview = null;
 
     this._topRibbon = null;
     this._ribbonFavoriteBtn = null;

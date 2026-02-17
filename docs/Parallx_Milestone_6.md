@@ -1187,6 +1187,39 @@ Floating toolbar with 7 formatting buttons (bold, italic, underline, strikethrou
 
 ---
 
+### Fix 14: Inline Equation — Click-to-Edit Popup & Bubble Menu Integration ✅
+
+**Problem:** Three issues with inline equation UX:
+1. Inline equations created via slash menu render with a placeholder (`f(x)`) but users cannot edit them — the node is `atom: true` and has no interactive editing surface.
+2. No way to convert existing text to an inline equation — the bubble menu (text selection toolbar) had no formula option.
+3. The `$...$` input rule from the library works but is not the primary creation workflow most users expect.
+
+**Solution:**
+
+1. **Click-to-edit popup** — Clicking any inline math node opens a floating editor popup positioned below it with:
+   - Text input field for LaTeX source (monospace font, auto-focused with text selected)
+   - Live KaTeX preview below the input
+   - Enter to confirm, Escape to cancel, blur to auto-commit
+   - Empty input removes the node from the document
+   - Event delegation via click handler on editor container targeting `.tiptap-math.latex` elements
+
+2. **Bubble menu formula button** — Added formula icon (Σ) as 8th button in the floating toolbar:
+   - Appears when text is selected alongside Bold, Italic, Underline, Strikethrough, Code, Link, Highlight
+   - Converts selected text into an `inlineMath` node with the selected text as LaTeX content
+   - Auto-opens the inline math editor popup after conversion so users can refine the formula
+   - Hides the bubble menu when the math editor opens (no overlapping popups)
+
+3. **Auto-open editor on slash menu insert** — When "Inline Equation" is chosen from the slash menu, the inline math editor popup automatically opens for the newly inserted node.
+
+**Implementation approach:** Event delegation for clicks (no NodeView override needed), positioned popup similar to existing link-input pattern, integrated into existing bubble menu and slash menu flows.
+
+| File | Change |
+|------|--------|
+| `src/built-in/canvas/canvasEditorProvider.ts` | Added `_inlineMathPopup/Input/Preview/Pos` fields; `_createInlineMathEditor()`, `_showInlineMathEditor()`, `_commitInlineMathEdit()`, `_hideInlineMathEditor()` methods; click handler on editor container; formula button in bubble menu; auto-open in `_executeSlashItem()`; blur handler excludes popup; dispose cleanup |
+| `src/built-in/canvas/canvas.css` | Added `.canvas-inline-math-editor` popup styles (positioned, dark bg, border-radius, shadow), input, preview, hint, and empty states |
+
+---
+
 ## Canvas Editor — Notion Parity Gap Analysis
 
 Research based on **Novel** (16k stars, gold-standard Notion-style TipTap editor) and **tiptap-block-editor** by phyohtetarkar.
