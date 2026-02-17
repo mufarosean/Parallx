@@ -2238,40 +2238,8 @@
 .canvas-math-block {
   position: relative;
   margin: 4px 0;
-  padding: 8px 0 8px 28px;
+  padding: 8px 0;
   cursor: pointer;
-}
-
-/* Drag grip — visible on hover, left edge */
-.canvas-math-block-grip {
-  position: absolute;
-  left: 2px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 20px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: grab;
-  color: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
-  opacity: 0;
-  transition: opacity 0.15s ease, color 0.1s ease;
-  z-index: 5;
-}
-
-.canvas-math-block:hover .canvas-math-block-grip {
-  opacity: 1;
-}
-
-.canvas-math-block-grip:hover {
-  color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.canvas-math-block-grip:active {
-  cursor: grabbing;
 }
 
 .canvas-math-block--editing {

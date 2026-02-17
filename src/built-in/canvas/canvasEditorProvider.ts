@@ -787,28 +787,8 @@ const MathBlock = Node.create({
     return ({ node, getPos, editor }: any) => {
       // ── Container ──
       const dom = document.createElement('div');
-      dom.classList.add('canvas-math-block', 'not-draggable');
+      dom.classList.add('canvas-math-block');
       dom.setAttribute('data-type', 'mathBlock');
-      dom.draggable = true;
-
-      // ── Drag grip ──
-      // GlobalDragHandle can't resolve positions for atom NodeViews
-      // (posAtCoords().inside returns parent pos, not the atom).
-      // 'not-draggable' hides GlobalDragHandle; we add our own grip
-      // and let ProseMirror's native dragstart handler take over.
-      const grip = document.createElement('div');
-      grip.className = 'canvas-math-block-grip';
-      grip.contentEditable = 'false';
-      grip.innerHTML = '<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/><circle cx="2" cy="7" r="1.5"/><circle cx="8" cy="7" r="1.5"/><circle cx="2" cy="12" r="1.5"/><circle cx="8" cy="12" r="1.5"/></svg>';
-      grip.addEventListener('mousedown', (e) => {
-        e.stopPropagation();
-        // Create NodeSelection so ProseMirror's native dragstart serializes correctly
-        const pos = getPos();
-        if (typeof pos === 'number') {
-          editor.chain().setNodeSelection(pos).run();
-        }
-      });
-      dom.appendChild(grip);
 
       // ── Rendered KaTeX output (always visible) ──
       const renderArea = document.createElement('div');
@@ -892,7 +872,6 @@ const MathBlock = Node.create({
       // ── Events ──
       dom.addEventListener('click', (e) => {
         if (editorArea.contains(e.target as HTMLElement)) return;
-        if (grip.contains(e.target as HTMLElement)) return; // grip click → drag, not edit
         e.stopPropagation();
         if (!editing) startEdit();
       });
@@ -1374,7 +1353,7 @@ class CanvasEditorPane implements IDisposable {
         GlobalDragHandle.configure({
           dragHandleWidth: 24,
           scrollTreshold: 100,
-          customNodes: ['columnList'],
+          customNodes: ['mathBlock', 'columnList'],
         }),
         // ── Tier 2 extensions ──
         Callout,
