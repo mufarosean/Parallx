@@ -154,6 +154,16 @@ const Callout = Node.create({
       dom.classList.add('canvas-callout');
       dom.setAttribute('data-type', 'callout');
 
+      const applyBg = (attrs: any) => {
+        if (attrs.backgroundColor) {
+          dom.style.backgroundColor = attrs.backgroundColor;
+        } else {
+          dom.style.backgroundColor = '';
+        }
+      };
+
+      applyBg(node.attrs);
+
       const iconSpan = document.createElement('span');
       iconSpan.classList.add('canvas-callout-emoji');
       iconSpan.contentEditable = 'false';
@@ -178,6 +188,7 @@ const Callout = Node.create({
         update(updatedNode: any) {
           if (updatedNode.type.name !== 'callout') return false;
           renderIcon(updatedNode.attrs.emoji);
+          applyBg(updatedNode.attrs);
           return true;
         },
       };
@@ -1289,6 +1300,8 @@ class CanvasEditorPane implements IDisposable {
   private _blockActionMenu: HTMLElement | null = null;
   private _turnIntoSubmenu: HTMLElement | null = null;
   private _colorSubmenu: HTMLElement | null = null;
+  private _turnIntoHideTimer: ReturnType<typeof setTimeout> | null = null;
+  private _colorHideTimer: ReturnType<typeof setTimeout> | null = null;
   private _dragHandleEl: HTMLElement | null = null;
   private _handleObserver: MutationObserver | null = null;
   private _currentBlockDom: Element | null = null;
@@ -3312,20 +3325,30 @@ class CanvasEditorPane implements IDisposable {
     // Turn into
     const turnIntoSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 7C13 4.24 10.76 2 8 2C5.24 2 3 4.24 3 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M3 9C3 11.76 5.24 14 8 14C10.76 14 13 11.76 13 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M1 7L3 5L5 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 9L13 11L11 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     const turnIntoItem = this._createActionItem('Turn into', turnIntoSvg, true);
-    turnIntoItem.addEventListener('mouseenter', () => this._showTurnIntoSubmenu(turnIntoItem));
+    turnIntoItem.addEventListener('mouseenter', () => {
+      if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
+      this._showTurnIntoSubmenu(turnIntoItem);
+    });
     turnIntoItem.addEventListener('mouseleave', (e) => {
       const related = e.relatedTarget as HTMLElement;
-      if (!this._turnIntoSubmenu?.contains(related)) this._hideTurnIntoSubmenu();
+      if (!this._turnIntoSubmenu?.contains(related)) {
+        this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
+      }
     });
     this._blockActionMenu.appendChild(turnIntoItem);
 
     // Color
     const colorSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><text x="3" y="11" font-size="11" font-weight="700" fill="currentColor" font-family="sans-serif">A</text><rect x="2" y="13" width="12" height="2" rx="0.5" fill="currentColor" opacity="0.5"/></svg>';
     const colorItem = this._createActionItem('Color', colorSvg, true);
-    colorItem.addEventListener('mouseenter', () => this._showColorSubmenu(colorItem));
+    colorItem.addEventListener('mouseenter', () => {
+      if (this._colorHideTimer) { clearTimeout(this._colorHideTimer); this._colorHideTimer = null; }
+      this._showColorSubmenu(colorItem);
+    });
     colorItem.addEventListener('mouseleave', (e) => {
       const related = e.relatedTarget as HTMLElement;
-      if (!this._colorSubmenu?.contains(related)) this._hideColorSubmenu();
+      if (!this._colorSubmenu?.contains(related)) {
+        this._colorHideTimer = setTimeout(() => this._hideColorSubmenu(), 200);
+      }
     });
     this._blockActionMenu.appendChild(colorItem);
 
@@ -3400,9 +3423,14 @@ class CanvasEditorPane implements IDisposable {
     this._hideColorSubmenu();
     if (!this._turnIntoSubmenu) {
       this._turnIntoSubmenu = $('div.block-action-submenu');
+      this._turnIntoSubmenu.addEventListener('mouseenter', () => {
+        if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
+      });
       this._turnIntoSubmenu.addEventListener('mouseleave', (e) => {
         const related = (e as MouseEvent).relatedTarget as HTMLElement;
-        if (!this._blockActionMenu?.contains(related)) this._hideTurnIntoSubmenu();
+        if (!this._blockActionMenu?.contains(related)) {
+          this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
+        }
       });
       this._container.appendChild(this._turnIntoSubmenu);
     }
@@ -3471,6 +3499,7 @@ class CanvasEditorPane implements IDisposable {
   }
 
   private _hideTurnIntoSubmenu(): void {
+    if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
     if (this._turnIntoSubmenu) this._turnIntoSubmenu.style.display = 'none';
   }
 
@@ -3480,9 +3509,14 @@ class CanvasEditorPane implements IDisposable {
     this._hideTurnIntoSubmenu();
     if (!this._colorSubmenu) {
       this._colorSubmenu = $('div.block-action-submenu.block-color-submenu');
+      this._colorSubmenu.addEventListener('mouseenter', () => {
+        if (this._colorHideTimer) { clearTimeout(this._colorHideTimer); this._colorHideTimer = null; }
+      });
       this._colorSubmenu.addEventListener('mouseleave', (e) => {
         const related = (e as MouseEvent).relatedTarget as HTMLElement;
-        if (!this._blockActionMenu?.contains(related)) this._hideColorSubmenu();
+        if (!this._blockActionMenu?.contains(related)) {
+          this._colorHideTimer = setTimeout(() => this._hideColorSubmenu(), 200);
+        }
       });
       this._container.appendChild(this._colorSubmenu);
     }
@@ -3574,6 +3608,7 @@ class CanvasEditorPane implements IDisposable {
   }
 
   private _hideColorSubmenu(): void {
+    if (this._colorHideTimer) { clearTimeout(this._colorHideTimer); this._colorHideTimer = null; }
     if (this._colorSubmenu) this._colorSubmenu.style.display = 'none';
   }
 
