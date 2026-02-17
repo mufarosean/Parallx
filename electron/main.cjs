@@ -1,7 +1,7 @@
 // electron/main.cjs — Electron main process
 // Uses CommonJS because Electron's main process doesn't support ESM by default.
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
@@ -11,10 +11,68 @@ const { databaseManager } = require('./database.cjs');
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
 
+// ── Window bounds persistence ───────────────────────────────────────────────
+// Save position, size, and maximized state to a JSON file so the window
+// reopens on the same monitor in the same spot.
+
+const WINDOW_STATE_FILE = path.join(
+  app.getPath('userData'),
+  'window-state.json',
+);
+
+const DEFAULT_BOUNDS = { width: 1280, height: 800 };
+
+function loadWindowState() {
+  try {
+    const raw = fsSync.readFileSync(WINDOW_STATE_FILE, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function saveWindowState() {
+  if (!mainWindow) return;
+  const state = {
+    isMaximized: mainWindow.isMaximized(),
+    bounds: mainWindow.isMaximized()
+      ? mainWindow._lastNormalBounds ?? mainWindow.getNormalBounds()
+      : mainWindow.getBounds(),
+  };
+  try {
+    fsSync.writeFileSync(WINDOW_STATE_FILE, JSON.stringify(state), 'utf8');
+  } catch { /* non-critical */ }
+}
+
+/**
+ * Check that the saved bounds are still visible on a connected display.
+ * If the monitor was disconnected, fall back to defaults.
+ */
+function boundsOnScreen(bounds) {
+  const displays = screen.getAllDisplays();
+  // A window is "on screen" if at least 100px of it is visible on any display
+  return displays.some((d) => {
+    const { x, y, width, height } = d.workArea;
+    const overlapX = Math.max(
+      0,
+      Math.min(bounds.x + bounds.width, x + width) - Math.max(bounds.x, x),
+    );
+    const overlapY = Math.max(
+      0,
+      Math.min(bounds.y + bounds.height, y + height) - Math.max(bounds.y, y),
+    );
+    return overlapX > 100 && overlapY > 100;
+  });
+}
+
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+  const saved = loadWindowState();
+  const useSaved = saved?.bounds && boundsOnScreen(saved.bounds);
+
+  const opts = {
+    width: useSaved ? saved.bounds.width : DEFAULT_BOUNDS.width,
+    height: useSaved ? saved.bounds.height : DEFAULT_BOUNDS.height,
+    ...(useSaved ? { x: saved.bounds.x, y: saved.bounds.y } : {}),
     minWidth: 800,
     minHeight: 600,
     // Frameless for custom titlebar (like VS Code)
@@ -29,6 +87,26 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
     },
+  };
+
+  mainWindow = new BrowserWindow(opts);
+
+  if (saved?.isMaximized) {
+    mainWindow.maximize();
+  }
+
+  // Track normal (non-maximized) bounds so we can save them even when
+  // the window is maximized at quit time.
+  mainWindow._lastNormalBounds = mainWindow.getNormalBounds();
+  mainWindow.on('resize', () => {
+    if (!mainWindow.isMaximized()) {
+      mainWindow._lastNormalBounds = mainWindow.getBounds();
+    }
+  });
+  mainWindow.on('move', () => {
+    if (!mainWindow.isMaximized()) {
+      mainWindow._lastNormalBounds = mainWindow.getBounds();
+    }
   });
 
   mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
@@ -46,6 +124,8 @@ function createWindow() {
   // veto (the user chose "Cancel" in the save dialog).
   let closeConfirmed = false;
   mainWindow.on('close', (e) => {
+    // Save window position/size before anything else
+    saveWindowState();
     if (closeConfirmed) return; // already confirmed — let it close
     e.preventDefault();
     mainWindow?.webContents.send('lifecycle:beforeClose');
