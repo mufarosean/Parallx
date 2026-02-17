@@ -148,6 +148,8 @@ export class CanvasSidebar {
   }
 
   private async _refreshTree(): Promise<void> {
+    // Don't wipe the DOM while an inline rename is in progress
+    if (this._renamingPageId) return;
     try {
       const [tree, favorites, archived] = await Promise.all([
         this._dataService.getPageTree(),
@@ -517,14 +519,18 @@ export class CanvasSidebar {
       {
         label: 'Rename', icon: 'edit',
         action: () => {
-          const el = this._treeList?.querySelector(`[data-page-id="${page.id}"]`);
-          if (el) {
-            const label = el.querySelector('.canvas-node-label');
-            const node = this._findNode(this._tree, page.id);
-            if (label && node) {
-              this._startInlineRename(el as HTMLElement, label as HTMLElement, node);
+          // Defer to next frame so the context menu DOM removal
+          // doesn't steal focus away from the rename input
+          requestAnimationFrame(() => {
+            const el = this._treeList?.querySelector(`[data-page-id="${page.id}"]`);
+            if (el) {
+              const label = el.querySelector('.canvas-node-label');
+              const node = this._findNode(this._tree, page.id);
+              if (label && node) {
+                this._startInlineRename(el as HTMLElement, label as HTMLElement, node);
+              }
             }
-          }
+          });
         },
       },
     ];

@@ -1282,6 +1282,7 @@ class CanvasEditorPane implements IDisposable {
   private _coverEl: HTMLElement | null = null;
   private _coverControls: HTMLElement | null = null;
   private _breadcrumbsEl: HTMLElement | null = null;
+  private _breadcrumbCurrentText: HTMLElement | null = null;
   private _iconEl: HTMLElement | null = null;
   private _titleEl: HTMLElement | null = null;
   private _hoverAffordances: HTMLElement | null = null;
@@ -1549,6 +1550,10 @@ class CanvasEditorPane implements IDisposable {
         if (this._input && typeof (this._input as any).setName === 'function') {
           (this._input as any).setName(event.page.title || 'Untitled');
         }
+        // Sync breadcrumb current-page text
+        if (this._breadcrumbCurrentText) {
+          this._breadcrumbCurrentText.textContent = event.page.title || 'Untitled';
+        }
 
         // Update icon (SVG)
         if (this._iconEl) {
@@ -1733,12 +1738,16 @@ class CanvasEditorPane implements IDisposable {
     const displayTitle = this._currentPage?.title;
     this._titleEl.textContent = (displayTitle && displayTitle !== 'Untitled') ? displayTitle : '';
 
-    // Title input → debounced save + immediate tab label sync
+    // Title input → debounced save + immediate tab label + breadcrumb sync
     this._titleEl.addEventListener('input', () => {
       const newTitle = this._titleEl?.textContent?.trim() || 'Untitled';
       // Update tab label immediately (no flicker)
       if (this._input && typeof (this._input as any).setName === 'function') {
         (this._input as any).setName(newTitle);
+      }
+      // Update breadcrumb current-page text
+      if (this._breadcrumbCurrentText) {
+        this._breadcrumbCurrentText.textContent = newTitle;
       }
       if (this._titleSaveTimer) clearTimeout(this._titleSaveTimer);
       this._titleSaveTimer = setTimeout(() => {
@@ -1805,9 +1814,9 @@ class CanvasEditorPane implements IDisposable {
       const currentCrumb = $('span.canvas-breadcrumb.canvas-breadcrumb--current');
       const currentIcon = createIconElement(resolvePageIcon(this._currentPage?.icon), 14);
       currentCrumb.appendChild(currentIcon);
-      const currentText = $('span');
-      currentText.textContent = this._currentPage?.title || 'Untitled';
-      currentCrumb.appendChild(currentText);
+      this._breadcrumbCurrentText = $('span');
+      this._breadcrumbCurrentText.textContent = this._currentPage?.title || 'Untitled';
+      currentCrumb.appendChild(this._breadcrumbCurrentText);
       this._breadcrumbsEl.appendChild(currentCrumb);
     } catch {
       this._breadcrumbsEl.style.display = 'none';
