@@ -2720,6 +2720,7 @@
   z-index: 50;
   pointer-events: none;
   transition: top 0.08s ease, height 0.08s ease, left 0.08s ease;
+}
 
 /* Placeholder text style inside columns */
 .canvas-column .is-empty::before {
