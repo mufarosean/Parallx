@@ -416,7 +416,7 @@ class CanvasEditorPane implements IDisposable {
           // underline: enabled by default via StarterKit, no extra config needed
         }),
         Placeholder.configure({
-          placeholder: ({ node, pos, editor }: { node: any; pos: number; editor: any }) => {
+          placeholder: ({ node, pos, editor, hasAnchor }: { node: any; pos: number; editor: any; hasAnchor: boolean }) => {
             if (node.type.name === 'heading') {
               return `Heading ${node.attrs.level}`;
             }
@@ -425,17 +425,13 @@ class CanvasEditorPane implements IDisposable {
             if (node.type.name === 'detailsSummary') {
               return 'Toggle title…';
             }
-            // Only show placeholders on paragraph nodes.
-            // All other node types (details, detailsContent, callout, taskList,
-            // taskItem, etc.) get empty string — the Placeholder extension adds
-            // `data-placeholder` and `.is-empty` to ANY empty node when
-            // includeChildren is true, and our CSS renders it via ::before,
-            // which causes "Type '/' for commands..." to overlay on top of
-            // block UI elements like toggle buttons, checkboxes, and callout icons.
+            // Wrapper block nodes (details, callout, taskList, taskItem, etc.)
+            // always get empty placeholder — prevents overlay on UI elements.
             if (node.type.name !== 'paragraph') {
               return '';
             }
-            // For paragraphs, check if nested inside a wrapper block
+            // For paragraphs, check if nested inside a wrapper block —
+            // these get STABLE placeholders (always visible, not just when focused)
             const $pos = editor.state.doc.resolve(pos);
             for (let d = $pos.depth; d > 0; d--) {
               const ancestor = $pos.node(d);
@@ -445,8 +441,12 @@ class CanvasEditorPane implements IDisposable {
               if (name === 'detailsContent') return 'Hidden content…';
               if (name === 'blockquote') return '';
             }
-            return "Type '/' for commands...";
+            // Top-level paragraph: only show slash hint when cursor is here
+            return hasAnchor ? "Type '/' for commands..." : '';
           },
+          // showOnlyCurrent:false ensures ALL empty nodes always get decorated,
+          // preventing layout shift when clicking in/out of wrapper blocks.
+          showOnlyCurrent: false,
           includeChildren: true,
         }),
         TaskList,

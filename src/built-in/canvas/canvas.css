@@ -328,6 +328,15 @@
   float: none;
 }
 
+/* Stable min-height for empty paragraphs inside wrapper blocks —
+   prevents layout collapse/jump when cursor moves in or out. */
+.canvas-tiptap-editor .canvas-callout p,
+.canvas-tiptap-editor [data-type="taskItem"] > div > p,
+.canvas-tiptap-editor [data-type="detailsContent"] p,
+.canvas-tiptap-editor [data-type="detailsSummary"] {
+  min-height: 1.5em;
+}
+
 /* ── Headings — generous sizing like Notion/BlockNote ── */
 
 .canvas-tiptap-editor h1 {
