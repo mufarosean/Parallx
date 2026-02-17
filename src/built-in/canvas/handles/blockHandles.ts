@@ -9,6 +9,7 @@
 //   • Color submenu (10 text colours + 10 background colours)
 
 import type { Editor } from '@tiptap/core';
+import type { BlockSelectionController } from './blockSelection.js';
 import { $ } from '../../../ui/dom.js';
 import { svgIcon } from '../canvasIcons.js';
 
@@ -20,6 +21,7 @@ export interface BlockHandlesHost {
   readonly editorContainer: HTMLElement | null;
   readonly dataService: { scheduleContentSave(pageId: string, json: string): void };
   readonly pageId: string;
+  readonly blockSelection: BlockSelectionController;
 }
 
 // ── Controller ──────────────────────────────────────────────────────────────
@@ -143,7 +145,7 @@ export class BlockHandlesController {
 
   // ── Drag Handle Click → Block Action Menu ──
 
-  private readonly _onDragHandleClick = (_e: MouseEvent): void => {
+  private readonly _onDragHandleClick = (e: MouseEvent): void => {
     const editor = this._host.editor;
     if (!editor) return;
     if (this._blockActionMenu?.style.display === 'block') {
@@ -154,6 +156,14 @@ export class BlockHandlesController {
     if (!block) return;
     this._actionBlockPos = block.pos;
     this._actionBlockNode = block.node;
+
+    // Select the block (Shift+Click → extend selection)
+    if (e.shiftKey) {
+      this._host.blockSelection.extendTo(block.pos);
+    } else {
+      this._host.blockSelection.select(block.pos);
+    }
+
     this._showBlockActionMenu();
   };
 

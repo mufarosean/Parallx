@@ -35,8 +35,23 @@ function findBlockContext($pos: any): { containerDepth: number; blockDepth: numb
 export const BlockKeyboardShortcuts = Extension.create({
   name: 'blockKeyboardShortcuts',
 
+  addStorage() {
+    return {
+      /** Set by the orchestrator after editor creation.
+       *  Used by the Esc shortcut to trigger block selection. */
+      selectAtCursor: null as (() => boolean) | null,
+    };
+  },
+
   addKeyboardShortcuts() {
     return {
+      // ── Esc — Select block at cursor ──
+      Escape: () => {
+        const fn = this.storage.selectAtCursor;
+        if (fn) return fn();
+        return false;
+      },
+
       // ── Ctrl+Shift+↑ — Move block up ──
       'Ctrl-Shift-ArrowUp': ({ editor }) => {
         const { state } = editor;

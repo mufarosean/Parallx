@@ -100,75 +100,86 @@ export function columnDropPlugin(): Plugin {
   }
 
   // ── Target detection ──
-  // Walk up from elementsFromPoint hits to find the block-level element.
-  // Priority: blocks inside columns first (more specific), then top-level.
+  // Walk up from elementsFromPoint hits to find the nearest block-level
+  // element that is a direct child of a Page-container (doc, column,
+  // callout, detailsContent, blockquote).  Works at any nesting depth.
+
+  /** Node types that act as vertical block containers (Pages in the model). */
+  const PAGE_CONTAINERS = new Set([
+    'column', 'callout', 'detailsContent', 'blockquote',
+  ]);
+
+  /** DOM selectors for page-container elements. */
+  function isPageContainerDom(el: HTMLElement | null, proseMirrorRoot: HTMLElement): boolean {
+    if (!el) return false;
+    if (el === proseMirrorRoot) return true; // doc root
+    return (
+      el.classList.contains('canvas-column') ||
+      el.classList.contains('canvas-callout-content') ||
+      el.matches?.('[data-type=detailsContent]') ||
+      el.tagName === 'BLOCKQUOTE'
+    );
+  }
 
   function findTarget(view: EditorView, x: number, y: number): Omit<DropTarget, 'zone'> | null {
     const elements = document.elementsFromPoint(x, y);
+    const proseMirror = view.dom;
 
-    // Pass 1 — blocks inside columns
     for (const el of elements) {
       const htmlEl = el as HTMLElement;
       if (htmlEl.classList?.contains('column-drop-indicator') ||
           htmlEl.classList?.contains('canvas-drop-guide')) continue;
 
+      // Walk up from the hit element to find a block-level element
+      // whose parent is a page-container.
       let cur: HTMLElement | null = htmlEl;
-      while (cur && cur !== view.dom) {
+      while (cur && cur !== proseMirror) {
         const parent: HTMLElement | null = cur.parentElement;
         if (!parent) break;
-        if (parent.classList.contains('canvas-column') &&
-            parent.parentElement?.classList.contains('canvas-column-list') &&
-            parent.parentElement.parentElement === view.dom) {
+
+        if (isPageContainerDom(parent, proseMirror)) {
+          // `cur` is a direct child of a page-container — it's a block element
           try {
             const inner = view.posAtDOM(cur, 0);
             const $p = view.state.doc.resolve(inner);
-            let colD = -1;
-            for (let d = $p.depth; d >= 1; d--) {
-              if ($p.node(d).type.name === 'column') { colD = d; break; }
-            }
-            if (colD < 0) break;
-            const blkD = colD + 1;
-            if (blkD > $p.depth) break;
-            const blockPos = $p.before(blkD);
-            const blockNode = view.state.doc.nodeAt(blockPos);
-            if (!blockNode) break;
-            const columnPos = $p.before(colD);
-            const columnListPos = $p.before(colD - 1);
-            const clNode = view.state.doc.nodeAt(columnListPos);
-            let colIdx = 0;
-            if (clNode) {
-              let off = columnListPos + 1;
-              for (let i = 0; i < clNode.childCount; i++) {
-                if (off === columnPos) { colIdx = i; break; }
-                off += clNode.child(i).nodeSize;
+
+            // Find the deepest page-container ancestor in ProseMirror
+            let containerDepth = 0;
+            for (let d = 1; d <= $p.depth; d++) {
+              if (PAGE_CONTAINERS.has($p.node(d).type.name)) {
+                containerDepth = d;
               }
             }
+
+            const blockDepth = containerDepth + 1;
+            if (blockDepth > $p.depth) { cur = parent; continue; }
+
+            const blockPos = $p.before(blockDepth);
+            const blockNode = view.state.doc.nodeAt(blockPos);
+            if (!blockNode) { cur = parent; continue; }
+
+            // Determine column context
+            let columnPos: number | null = null;
+            let columnListPos: number | null = null;
+            let colIdx = 0;
+
+            if (containerDepth > 0 && $p.node(containerDepth).type.name === 'column') {
+              columnPos = $p.before(containerDepth);
+              columnListPos = $p.before(containerDepth - 1);
+              const clNode = view.state.doc.nodeAt(columnListPos);
+              if (clNode) {
+                let off = columnListPos + 1;
+                for (let i = 0; i < clNode.childCount; i++) {
+                  if (off === columnPos) { colIdx = i; break; }
+                  off += clNode.child(i).nodeSize;
+                }
+              }
+            }
+
             return { blockEl: cur, blockPos, blockNode, columnPos, columnListPos, columnIndex: colIdx };
           } catch { break; }
         }
         cur = parent;
-      }
-    }
-
-    // Pass 2 — top-level blocks
-    for (const el of elements) {
-      const htmlEl = el as HTMLElement;
-      if (htmlEl.classList?.contains('column-drop-indicator') ||
-          htmlEl.classList?.contains('canvas-drop-guide')) continue;
-
-      let cur: HTMLElement | null = htmlEl;
-      while (cur && cur !== view.dom) {
-        if (cur.parentElement === view.dom) {
-          try {
-            const inner = view.posAtDOM(cur, 0);
-            const $p = view.state.doc.resolve(inner);
-            const blockPos = $p.before(Math.min($p.depth, 1));
-            const blockNode = view.state.doc.nodeAt(blockPos);
-            if (!blockNode) break;
-            return { blockEl: cur, blockPos, blockNode, columnPos: null, columnListPos: null, columnIndex: 0 };
-          } catch { break; }
-        }
-        cur = cur.parentElement;
       }
     }
 
@@ -179,9 +190,13 @@ export function columnDropPlugin(): Plugin {
   // Left/right edges → vertical guide (column create/extend).
   // Centre area → horizontal guide (above/below reorder).
   // columnList targets only allow above/below (Rule 9 nesting prevention).
+  // Also prevent left/right when target is directly inside a column
+  // (would create columns-inside-columns, violating nesting constraint).
 
   function getZone(
+    view: EditorView,
     blockEl: HTMLElement,
+    blockPos: number,
     x: number,
     y: number,
     isColumnList: boolean,
@@ -190,7 +205,29 @@ export function columnDropPlugin(): Plugin {
     const rx = x - r.left;
     const ry = y - r.top;
     const edge = Math.min(r.width * 0.2, 60);
-    if (!isColumnList) {
+
+    // Nesting constraint: no columnList directly inside a column.
+    // But columnList inside callout-inside-column IS allowed (callout
+    // acts as intermediary page-container).
+    let preventLeftRight = isColumnList;
+    if (!preventLeftRight) {
+      try {
+        const $p = view.state.doc.resolve(blockPos);
+        // Find the immediate page-container (the deepest one)
+        let containerDepth = 0;
+        for (let d = 1; d <= $p.depth; d++) {
+          if (PAGE_CONTAINERS.has($p.node(d).type.name)) {
+            containerDepth = d;
+          }
+        }
+        // If the immediate page-container is a column, prevent left/right
+        if (containerDepth > 0 && $p.node(containerDepth).type.name === 'column') {
+          preventLeftRight = true;
+        }
+      } catch { /* fall through */ }
+    }
+
+    if (!preventLeftRight) {
       if (rx < edge) return 'left';
       if (rx > r.width - edge) return 'right';
     }
@@ -294,7 +331,7 @@ export function columnDropPlugin(): Plugin {
           }
 
           const isCL = raw.blockNode.type.name === 'columnList';
-          const zone = getZone(raw.blockEl, x, y, isCL);
+          const zone = getZone(view, raw.blockEl, raw.blockPos, x, y, isCL);
           activeTarget = { ...raw, zone };
 
           const container = view.dom.parentElement;

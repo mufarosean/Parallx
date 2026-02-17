@@ -37,6 +37,7 @@ import { InlineMathEditorController } from './math/inlineMathEditor.js';
 import { BubbleMenuController } from './menus/bubbleMenu.js';
 import { SlashMenuController } from './menus/slashMenu.js';
 import { BlockHandlesController } from './handles/blockHandles.js';
+import { BlockSelectionController } from './handles/blockSelection.js';
 import { PageChromeController } from './header/pageChrome.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
@@ -89,6 +90,9 @@ class CanvasEditorPane implements IDisposable {
   // ── Block handles controller ──
   private _blockHandles!: BlockHandlesController;
 
+  // ── Block selection controller ──
+  private _blockSelection!: BlockSelectionController;
+
   constructor(
     private readonly _container: HTMLElement,
     private readonly _pageId: string,
@@ -108,6 +112,7 @@ class CanvasEditorPane implements IDisposable {
   set suppressUpdate(v: boolean) { this._suppressUpdate = v; }
   get input(): IEditorInput | undefined { return this._input; }
   get openEditor(): OpenEditorFn | undefined { return this._openEditor; }
+  get blockSelection(): BlockSelectionController { return this._blockSelection; }
 
   async init(): Promise<void> {
     // Create editor wrapper
@@ -197,6 +202,18 @@ class CanvasEditorPane implements IDisposable {
     this._blockHandles = new BlockHandlesController(this);
     this._blockHandles.setup();
 
+    // Setup block selection model
+    this._blockSelection = new BlockSelectionController(this);
+    this._blockSelection.setup();
+
+    // Wire Esc shortcut → block selection (via extension storage)
+    const kbExt = this._editor.extensionManager.extensions.find(
+      (ext) => ext.name === 'blockKeyboardShortcuts',
+    );
+    if (kbExt) {
+      (kbExt.storage as any).selectAtCursor = () => this._blockSelection.selectAtCursor();
+    }
+
     // ── Click handler for inline math nodes (click-to-edit) ──
     this._editorContainer.addEventListener('click', (e) => {
       const target = (e.target as HTMLElement).closest('.tiptap-math.latex');
@@ -279,10 +296,12 @@ class CanvasEditorPane implements IDisposable {
     this._slashMenu.hide();
     this._bubbleMenu.hide();
     this._blockHandles.hide();
+    this._blockSelection.clear();
     this._pageChrome.dismissPopups();
 
     // Block handles cleanup
     this._blockHandles.dispose();
+    this._blockSelection.dispose();
 
     // Dispose save-state subscriptions
     for (const d of this._saveDisposables) d.dispose();

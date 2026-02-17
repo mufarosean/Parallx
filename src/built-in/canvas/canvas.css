@@ -590,6 +590,15 @@
   border-radius: 4px;
 }
 
+/* ── Block selection (handle-click / Esc / multi-select) ── */
+.canvas-tiptap-editor .block-selected {
+  outline: 2px solid rgba(45, 170, 219, 0.55);
+  outline-offset: -1px;
+  background-color: rgba(45, 170, 219, 0.08);
+  border-radius: 4px;
+  transition: outline-color 0.12s ease, background-color 0.12s ease;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
  * Block-level Background Color — Notion-style block backgrounds
  * ───────────────────────────────────────────────────────────────────────────── */
