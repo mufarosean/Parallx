@@ -24,6 +24,10 @@ import { Column, ColumnList } from '../extensions/columnNodes.js';
 import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
 import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
 import { MathBlock } from '../extensions/mathBlockNode.js';
+import { ToggleHeading, ToggleHeadingText } from '../extensions/toggleHeadingNode.js';
+import { Bookmark } from '../extensions/bookmarkNode.js';
+import { TableOfContents } from '../extensions/tableOfContentsNode.js';
+import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
 
 import type { Extensions } from '@tiptap/core';
 
@@ -54,6 +58,9 @@ export function createEditorExtensions(lowlight: any): Extensions {
         }
         if (node.type.name === 'detailsSummary') {
           return 'Toggle title…';
+        }
+        if (node.type.name === 'toggleHeadingText') {
+          return 'Toggle heading';
         }
         if (node.type.name !== 'paragraph') {
           return '';
@@ -89,7 +96,7 @@ export function createEditorExtensions(lowlight: any): Extensions {
     GlobalDragHandle.configure({
       dragHandleWidth: 24,
       scrollTreshold: 100,
-      customNodes: ['mathBlock', 'columnList', 'callout', 'details'],
+      customNodes: ['mathBlock', 'columnList', 'callout', 'details', 'toggleHeading', 'bookmark', 'tableOfContents', 'video', 'audio', 'fileAttachment'],
     }),
     // ── Tier 2 extensions ──
     Callout,
@@ -126,5 +133,13 @@ export function createEditorExtensions(lowlight: any): Extensions {
     ColumnList,
     // ── Block-level background color ──
     BlockBackgroundColor,
+    // ── Phase 3 blocks ──
+    ToggleHeading,
+    ToggleHeadingText,
+    Bookmark,
+    TableOfContents,
+    Video,
+    Audio,
+    FileAttachment,
   ];
 }

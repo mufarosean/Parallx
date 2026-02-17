@@ -117,6 +117,12 @@ const ICONS: Record<string, string> = {
   'quote': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 3V13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path d="M5.5 5H13M5.5 8H11M5.5 11H12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
   'divider': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 8H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M2 4H14M2 12H14" stroke="currentColor" stroke-width="0.8" stroke-linecap="round" opacity="0.3"/></svg>',
   'columns': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="2" width="5" height="12" rx="1" stroke="currentColor" stroke-width="1.2"/><rect x="9.5" y="2" width="5" height="12" rx="1" stroke="currentColor" stroke-width="1.2"/></svg>',
+
+  // ── Phase 3 block icons ──
+  'toc': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 3H14M4 6.5H12M4 10H13M2 13.5H14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  'video': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="2.5" width="13" height="11" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M6.5 5.5V10.5L11 8L6.5 5.5Z" fill="currentColor"/></svg>',
+  'audio': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 6V10H5L9 13V3L5 6H2Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M11.5 5.5C12.3 6.3 12.8 7.1 12.8 8C12.8 8.9 12.3 9.7 11.5 10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  'file-attachment': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 1H3.5C3.22 1 3 1.22 3 1.5V14.5C3 14.78 3.22 15 3.5 15H12.5C12.78 15 13 14.78 13 14.5V5L9 1Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M9 1V5H13" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
 };
 
 // ─── Icon IDs (for type safety) ──────────────────────────────────────────────

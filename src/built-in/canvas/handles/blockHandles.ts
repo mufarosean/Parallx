@@ -642,7 +642,7 @@ export class BlockHandlesController {
     const textContent = node.textContent || '';
 
     // ── Container source → special handling ──
-    const containerTypes = new Set(['callout', 'details', 'blockquote']);
+    const containerTypes = new Set(['callout', 'details', 'blockquote', 'toggleHeading']);
     const isSourceContainer = containerTypes.has(node.type.name);
     const isTargetContainer = containerTypes.has(targetType);
 
@@ -700,9 +700,18 @@ export class BlockHandlesController {
       // Toggle: summary content → first block, detailsContent children → rest
       node.forEach((child: any) => {
         if (child.type.name === 'detailsSummary') {
-          // Convert summary to a paragraph with its inline content
           const summaryContent = child.content.toJSON() || [];
           blocks.push({ type: 'paragraph', content: summaryContent });
+        } else if (child.type.name === 'detailsContent') {
+          child.forEach((inner: any) => blocks.push(inner.toJSON()));
+        }
+      });
+    } else if (node.type.name === 'toggleHeading') {
+      // Toggle heading: heading text → first block, detailsContent children → rest
+      node.forEach((child: any) => {
+        if (child.type.name === 'toggleHeadingText') {
+          const textContent = child.content.toJSON() || [];
+          blocks.push({ type: 'heading', attrs: { level: node.attrs.level }, content: textContent });
         } else if (child.type.name === 'detailsContent') {
           child.forEach((inner: any) => blocks.push(inner.toJSON()));
         }
@@ -758,6 +767,22 @@ export class BlockHandlesController {
           { type: 'detailsContent', content: bodyBlocks },
         ],
       };
+    } else if (targetType === 'toggleHeading') {
+      // → Toggle Heading: first inner block → heading text, rest → body
+      const headingContent = innerBlocks.length > 0
+        ? (innerBlocks[0].content || [])
+        : [];
+      const bodyBlocks = innerBlocks.length > 1
+        ? innerBlocks.slice(1)
+        : [{ type: 'paragraph' }];
+      newBlock = {
+        type: 'toggleHeading',
+        attrs: { level: attrs?.level || 1 },
+        content: [
+          { type: 'toggleHeadingText', content: headingContent },
+          { type: 'detailsContent', content: bodyBlocks },
+        ],
+      };
     } else if (targetType === 'callout') {
       // → Callout: wrap all inner blocks
       newBlock = {
@@ -792,6 +817,11 @@ export class BlockHandlesController {
       case 'details':
         return { type: 'details', content: [
           { type: 'detailsSummary', content: inlineContent },
+          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
+        ]};
+      case 'toggleHeading':
+        return { type: 'toggleHeading', attrs: { level: attrs?.level || 1 }, content: [
+          { type: 'toggleHeadingText', content: inlineContent },
           { type: 'detailsContent', content: [{ type: 'paragraph' }] },
         ]};
       case 'blockquote':

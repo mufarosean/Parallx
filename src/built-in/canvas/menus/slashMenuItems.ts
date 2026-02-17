@@ -222,4 +222,119 @@ export const SLASH_MENU_ITEMS: SlashMenuItem[] = [
       });
     },
   },
+  // ── Toggle Headings ──
+  {
+    label: 'Toggle Heading 1', icon: 'chevron-right', description: 'Collapsible large heading',
+    action: (e, range) => {
+      e.chain().insertContentAt(range, {
+        type: 'toggleHeading',
+        attrs: { level: 1 },
+        content: [
+          { type: 'toggleHeadingText' },
+          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
+        ],
+      }).run();
+      const { doc } = e.state;
+      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
+        if (node.type.name === 'toggleHeadingText') {
+          e.chain().setTextSelection(pos + 1).focus().run();
+          return false;
+        }
+        return true;
+      });
+    },
+  },
+  {
+    label: 'Toggle Heading 2', icon: 'chevron-right', description: 'Collapsible medium heading',
+    action: (e, range) => {
+      e.chain().insertContentAt(range, {
+        type: 'toggleHeading',
+        attrs: { level: 2 },
+        content: [
+          { type: 'toggleHeadingText' },
+          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
+        ],
+      }).run();
+      const { doc } = e.state;
+      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
+        if (node.type.name === 'toggleHeadingText') {
+          e.chain().setTextSelection(pos + 1).focus().run();
+          return false;
+        }
+        return true;
+      });
+    },
+  },
+  {
+    label: 'Toggle Heading 3', icon: 'chevron-right', description: 'Collapsible small heading',
+    action: (e, range) => {
+      e.chain().insertContentAt(range, {
+        type: 'toggleHeading',
+        attrs: { level: 3 },
+        content: [
+          { type: 'toggleHeadingText' },
+          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
+        ],
+      }).run();
+      const { doc } = e.state;
+      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
+        if (node.type.name === 'toggleHeadingText') {
+          e.chain().setTextSelection(pos + 1).focus().run();
+          return false;
+        }
+        return true;
+      });
+    },
+  },
+  // ── Advanced blocks ──
+  {
+    label: 'Bookmark', icon: 'globe', description: 'Link preview card',
+    action: (e, range) => {
+      const url = prompt('Enter URL:');
+      if (url) {
+        e.chain().insertContentAt(range, {
+          type: 'bookmark',
+          attrs: { url, title: url },
+        }).focus().run();
+      }
+    },
+  },
+  {
+    label: 'Table of Contents', icon: 'toc', description: 'Auto-generated from headings',
+    action: (e, range) => {
+      e.chain().insertContentAt(range, { type: 'tableOfContents' }).focus().run();
+    },
+  },
+  // ── Media ──
+  {
+    label: 'Video', icon: 'video', description: 'Embed a video',
+    action: (e, range) => {
+      const url = prompt('Enter video URL:');
+      if (url) {
+        e.chain().insertContentAt(range, { type: 'video', attrs: { src: url } }).focus().run();
+      }
+    },
+  },
+  {
+    label: 'Audio', icon: 'audio', description: 'Embed audio',
+    action: (e, range) => {
+      const url = prompt('Enter audio URL:');
+      if (url) {
+        e.chain().insertContentAt(range, { type: 'audio', attrs: { src: url } }).focus().run();
+      }
+    },
+  },
+  {
+    label: 'File', icon: 'file-attachment', description: 'Attach a file',
+    action: (e, range) => {
+      const url = prompt('Enter file URL:');
+      if (url) {
+        const filename = url.split('/').pop() || 'file';
+        e.chain().insertContentAt(range, {
+          type: 'fileAttachment',
+          attrs: { src: url, filename },
+        }).focus().run();
+      }
+    },
+  },
 ];

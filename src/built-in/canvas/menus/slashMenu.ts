@@ -143,7 +143,7 @@ export class SlashMenuController {
 
       const iconEl = $('span.canvas-slash-icon');
       // Render SVG icon if available, otherwise use text
-      const knownIcons = ['checklist','quote','code','divider','lightbulb','chevron-right','grid','image','bullet-list','numbered-list','math','math-block'];
+      const knownIcons = ['checklist','quote','code','divider','lightbulb','chevron-right','grid','image','bullet-list','numbered-list','math','math-block','columns','bookmark','globe','toc','video','audio','file-attachment'];
       if (knownIcons.includes(item.icon)) {
         iconEl.innerHTML = svgIcon(item.icon as any);
         const svg = iconEl.querySelector('svg');

@@ -1175,6 +1175,295 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Tier 2 — Toggle Heading (collapsible heading H1/H2/H3)
+ *
+ * Structure:
+ *   <div data-type="toggleHeading" class="canvas-toggle-heading [is-open]" data-level="1|2|3">
+ *     <button class="toggle-heading-chevron"/>   ← toggle button
+ *     <div class="toggle-heading-wrapper">       ← content wrapper
+ *       <div data-type="toggleHeadingText">…</div>       ← heading text
+ *       <div data-type="detailsContent" [hidden]>…</div> ← collapsible body
+ *     </div>
+ *   </div>
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-tiptap-editor .canvas-toggle-heading {
+  margin: 4px 0;
+  position: relative;
+  overflow: visible;
+  padding-top: 4px;
+}
+
+/* Chevron button */
+.canvas-tiptap-editor .toggle-heading-chevron {
+  position: absolute;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  border-radius: 3px;
+  transition: background-color 0.1s ease;
+}
+
+.canvas-tiptap-editor .toggle-heading-chevron:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.canvas-tiptap-editor .toggle-heading-chevron::before {
+  content: '';
+  display: block;
+  width: 16px;
+  height: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l6-6-6-6'/%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
+  transition: transform 0.15s ease;
+}
+
+.canvas-tiptap-editor .canvas-toggle-heading.is-open .toggle-heading-chevron::before {
+  transform: rotate(90deg);
+}
+
+/* Per-level chevron vertical alignment */
+.canvas-tiptap-editor .canvas-toggle-heading[data-level="1"] .toggle-heading-chevron { top: 10px; }
+.canvas-tiptap-editor .canvas-toggle-heading[data-level="2"] .toggle-heading-chevron { top: 6px; }
+.canvas-tiptap-editor .canvas-toggle-heading[data-level="3"] .toggle-heading-chevron { top: 4px; }
+
+/* Content wrapper — indent past chevron */
+.canvas-tiptap-editor .toggle-heading-wrapper {
+  padding-left: 24px;
+}
+
+/* Heading text styling by level */
+.canvas-tiptap-editor .canvas-toggle-heading[data-level="1"] [data-type="toggleHeadingText"] {
+  font-size: 1.875em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.canvas-tiptap-editor .canvas-toggle-heading[data-level="2"] [data-type="toggleHeadingText"] {
+  font-size: 1.5em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.canvas-tiptap-editor .canvas-toggle-heading[data-level="3"] [data-type="toggleHeadingText"] {
+  font-size: 1.25em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Hide body when collapsed */
+.canvas-tiptap-editor .canvas-toggle-heading:not(.is-open) [data-type="detailsContent"] {
+  display: none;
+}
+
+/* Body content */
+.canvas-tiptap-editor .canvas-toggle-heading [data-type="detailsContent"] {
+  padding: 0 4px 4px 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Tier 2 — Bookmark (URL preview card)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-tiptap-editor .canvas-bookmark {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: flex;
+  margin: 4px 0;
+}
+
+.canvas-tiptap-editor .canvas-bookmark:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.canvas-bookmark-info {
+  flex: 1;
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.canvas-bookmark-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-bookmark-description {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.canvas-bookmark-url {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.canvas-bookmark-favicon {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+}
+
+.canvas-bookmark-image {
+  width: 200px;
+  object-fit: cover;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Tier 2 — Table of Contents (auto-generated heading list)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-tiptap-editor .canvas-toc {
+  margin: 8px 0;
+  padding: 12px 16px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.canvas-toc-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 8px;
+}
+
+.canvas-toc-item {
+  padding: 3px 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: color 0.1s;
+}
+
+.canvas-toc-item:hover {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.canvas-toc-level-1 { padding-left: 0; }
+.canvas-toc-level-2 { padding-left: 16px; }
+.canvas-toc-level-3 { padding-left: 32px; }
+
+.canvas-toc-empty {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.3);
+  font-style: italic;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Tier 2 — Media blocks (Video, Audio, File Attachment)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-tiptap-editor .canvas-media {
+  margin: 8px 0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.canvas-tiptap-editor .canvas-media video,
+.canvas-tiptap-editor .canvas-media audio {
+  width: 100%;
+  border-radius: 4px;
+}
+
+.canvas-media-placeholder {
+  padding: 32px 16px;
+  text-align: center;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.canvas-media-placeholder:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.canvas-media-caption {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 4px 2px;
+}
+
+/* File attachment card */
+.canvas-tiptap-editor .canvas-file-attachment {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  margin: 4px 0;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.canvas-tiptap-editor .canvas-file-attachment:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.canvas-file-icon {
+  width: 32px;
+  height: 32px;
+  color: rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.canvas-file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.canvas-file-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-file-size {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 2px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * Tier 2 — Table (Notion-style clean lines)
  * ───────────────────────────────────────────────────────────────────────────── */
 
