@@ -204,7 +204,17 @@ export function columnDropPlugin(): Plugin {
     const r = blockEl.getBoundingClientRect();
     const rx = x - r.left;
     const ry = y - r.top;
-    const edge = Math.min(r.width * 0.2, 60);
+    const edge = Math.min(r.width * 0.15, 48);
+
+    // Vertical priority: when the cursor is near the top or bottom of the
+    // block, always return above/below regardless of horizontal position.
+    // This prevents unwanted column creation when dragging from the left-
+    // aligned handle straight down (cursor stays at x ≈ 12-24 px, which
+    // would otherwise fall inside the left-edge zone).
+    const vertEdge = Math.max(r.height * 0.3, 10);
+    if (ry < vertEdge || ry > r.height - vertEdge) {
+      return ry < r.height / 2 ? 'above' : 'below';
+    }
 
     // Nesting constraint: no columnList directly inside a column.
     // But columnList inside callout-inside-column IS allowed (callout
