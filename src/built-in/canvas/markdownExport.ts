@@ -150,6 +150,26 @@ function renderNode(node: TipTapNode, depth: number): string {
       return `$$\n${latex}\n$$\n`;
     }
 
+    case 'columnList': {
+      // Linearize columns — markdown has no native column concept.
+      // Render each column's content sequentially, separated by a divider comment.
+      const columns = (node.content || []).filter(c => c.type === 'column');
+      return columns
+        .map((col, i) => {
+          const colContent = (col.content || [])
+            .map(child => renderNode(child, depth))
+            .join('')
+            .trimEnd();
+          return i > 0 ? `\n<!-- column -->\n\n${colContent}` : colContent;
+        })
+        .join('\n') + '\n';
+    }
+
+    case 'column': {
+      // Should not be reached directly (handled by columnList), but handle gracefully
+      return (node.content || []).map(child => renderNode(child, depth)).join('');
+    }
+
     default:
       // Fallback: render content inline if present
       if (node.content) {

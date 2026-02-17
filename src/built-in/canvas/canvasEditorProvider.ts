@@ -23,12 +23,15 @@
 //   • AutoJoiner (companion to drag handle — joins same-type adjacent blocks)
 //   • MathExtension + InlineMathNode (@aarkue/tiptap-math-extension — inline LaTeX via $...$)
 //   • MathBlock (custom block-level equation node with click-to-edit + KaTeX)
+//   • Column + ColumnList (multi-column layout with drag-to-resize, slash menu)
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { CanvasDataService } from './canvasDataService.js';
 import type { IPage } from './canvasTypes.js';
 import { Editor, Extension, Node, mergeAttributes } from '@tiptap/core';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
@@ -163,6 +166,283 @@ const Callout = Node.create({
     };
   },
 });
+
+// ─── Column Layout Nodes ────────────────────────────────────────────────────
+// Notion-style multi-column layout. Two nodes:
+//   • ColumnList — flex wrapper, group 'block', content 'column column+' (min 2)
+//   • Column — individual column, content 'block+'
+// A ProseMirror plugin handles resize (drag column boundaries to adjust widths).
+
+const Column = Node.create({
+  name: 'column',
+  content: 'block+',
+  isolating: true,
+  defining: true,
+
+  addAttributes() {
+    return {
+      width: {
+        default: null, // null = equal width (flex: 1)
+        parseHTML: (element: HTMLElement) => {
+          const w = element.style.width;
+          if (w && w.endsWith('%')) return parseFloat(w);
+          return null;
+        },
+        renderHTML: (attributes: Record<string, any>) => {
+          if (attributes.width != null) {
+            return { style: `width: ${attributes.width}%` };
+          }
+          return {};
+        },
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'div[data-type="column"]' }];
+  },
+
+  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, any> }) {
+    return [
+      'div',
+      mergeAttributes(HTMLAttributes, {
+        'data-type': 'column',
+        class: 'canvas-column',
+      }),
+      0,
+    ];
+  },
+});
+
+const ColumnList = Node.create({
+  name: 'columnList',
+  group: 'block',
+  content: 'column column+',
+  isolating: true,
+  defining: true,
+
+  parseHTML() {
+    return [{ tag: 'div[data-type="columnList"]' }];
+  },
+
+  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, any> }) {
+    return [
+      'div',
+      mergeAttributes(HTMLAttributes, {
+        'data-type': 'columnList',
+        class: 'canvas-column-list',
+      }),
+      0,
+    ];
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      // Cmd/Ctrl+A inside a column → select column content, not entire doc
+      'Mod-a': ({ editor }) => {
+        const { selection } = editor.state;
+        const { $from } = selection;
+        for (let depth = $from.depth; depth > 0; depth--) {
+          const node = $from.node(depth);
+          if (node.type.name === 'column') {
+            const start = $from.start(depth);
+            const end = $from.end(depth);
+            editor.chain().setTextSelection({ from: start, to: end }).run();
+            return true;
+          }
+        }
+        return false;
+      },
+    };
+  },
+
+  addProseMirrorPlugins() {
+    return [columnResizePlugin()];
+  },
+});
+
+// ─── Column Resize ProseMirror Plugin ───────────────────────────────────────
+// Detects mouse near column boundaries, shows col-resize cursor, handles
+// drag to resize adjacent columns.  Commits width changes on mouseup only
+// (single transaction — clean undo history).  Double-click equalizes widths.
+
+function columnResizePlugin(): Plugin {
+  const pluginKey = new PluginKey('columnResize');
+
+  interface DragState {
+    startX: number;
+    leftCol: HTMLElement;
+    rightCol: HTMLElement;
+    leftStartWidth: number;  // percentage
+    rightStartWidth: number; // percentage
+    containerWidth: number;  // pixels (excludes gaps)
+    leftPos: number;         // ProseMirror node position of left column
+    rightPos: number;        // ProseMirror node position of right column
+  }
+
+  let dragging: DragState | null = null;
+  let cursorSet = false;
+
+  /** Find left+right columns straddling the mouse X position. */
+  function findBoundary(
+    event: MouseEvent,
+    handleWidth: number,
+  ): { leftCol: HTMLElement; rightCol: HTMLElement; container: HTMLElement } | null {
+    const target = event.target as HTMLElement;
+    if (!target) return null;
+    const container = target.closest('.canvas-column-list') as HTMLElement;
+    if (!container) return null;
+
+    const columns = Array.from(container.children).filter(
+      el => el.classList.contains('canvas-column'),
+    ) as HTMLElement[];
+
+    for (let i = 0; i < columns.length - 1; i++) {
+      const rect = columns[i].getBoundingClientRect();
+      if (
+        event.clientX >= rect.right - handleWidth &&
+        event.clientX <= rect.right + handleWidth + 8
+      ) {
+        return { leftCol: columns[i], rightCol: columns[i + 1], container };
+      }
+    }
+    return null;
+  }
+
+  /** Get the percentage width of a column relative to its container. */
+  function colPercent(col: HTMLElement, container: HTMLElement): number {
+    return (col.getBoundingClientRect().width / container.getBoundingClientRect().width) * 100;
+  }
+
+  /** Equalize all columns inside a columnList container. */
+  function equalizeColumns(view: EditorView, container: HTMLElement) {
+    const columns = Array.from(container.children).filter(
+      el => el.classList.contains('canvas-column'),
+    ) as HTMLElement[];
+    if (columns.length < 2) return;
+
+    const { tr } = view.state;
+    let changed = false;
+
+    for (const col of columns) {
+      const pos = view.posAtDOM(col, 0);
+      const $pos = view.state.doc.resolve(pos);
+      const nodePos = $pos.before($pos.depth);
+      const node = view.state.doc.nodeAt(nodePos);
+      if (node && node.type.name === 'column' && node.attrs.width !== null) {
+        tr.setNodeMarkup(nodePos, undefined, { ...node.attrs, width: null });
+        changed = true;
+      }
+    }
+
+    if (changed) view.dispatch(tr);
+  }
+
+  return new Plugin({
+    key: pluginKey,
+
+    props: {
+      handleDOMEvents: {
+        mousemove: (view: EditorView, event: MouseEvent) => {
+          if (dragging) {
+            // Currently dragging — update DOM widths for smooth visual feedback
+            const delta = event.clientX - dragging.startX;
+            const containerWidth = dragging.leftCol.parentElement!.getBoundingClientRect().width;
+            const deltaPercent = (delta / containerWidth) * 100;
+            const newLeft = Math.max(10, Math.min(90, dragging.leftStartWidth + deltaPercent));
+            const newRight = Math.max(10, Math.min(90, dragging.rightStartWidth - deltaPercent));
+            dragging.leftCol.style.width = newLeft + '%';
+            dragging.rightCol.style.width = newRight + '%';
+            event.preventDefault();
+            return true;
+          }
+
+          // Not dragging — check if near a column boundary and set cursor
+          const boundary = findBoundary(event, 4);
+          if (boundary) {
+            if (!cursorSet) {
+              (view.dom as HTMLElement).style.cursor = 'col-resize';
+              cursorSet = true;
+            }
+          } else if (cursorSet) {
+            (view.dom as HTMLElement).style.cursor = '';
+            cursorSet = false;
+          }
+          return false;
+        },
+
+        mousedown: (view: EditorView, event: MouseEvent) => {
+          const boundary = findBoundary(event, 4);
+          if (!boundary) return false;
+
+          event.preventDefault();
+
+          const { leftCol, rightCol, container } = boundary;
+          const leftWidth = colPercent(leftCol, container);
+          const rightWidth = colPercent(rightCol, container);
+
+          // Resolve ProseMirror positions for each column node
+          const leftPmPos = view.posAtDOM(leftCol, 0);
+          const rightPmPos = view.posAtDOM(rightCol, 0);
+          const left$pos = view.state.doc.resolve(leftPmPos);
+          const right$pos = view.state.doc.resolve(rightPmPos);
+
+          dragging = {
+            startX: event.clientX,
+            leftCol,
+            rightCol,
+            leftStartWidth: leftWidth,
+            rightStartWidth: rightWidth,
+            containerWidth: container.getBoundingClientRect().width,
+            leftPos: left$pos.before(left$pos.depth),
+            rightPos: right$pos.before(right$pos.depth),
+          };
+
+          // Listen on window for mouseup (in case mouse leaves the editor)
+          const finish = (e: MouseEvent) => {
+            window.removeEventListener('mouseup', finish);
+            if (!dragging) return;
+
+            const delta = e.clientX - dragging.startX;
+            const containerWidth = dragging.leftCol.parentElement!.getBoundingClientRect().width;
+            const deltaPercent = (delta / containerWidth) * 100;
+            const newLeft = Math.max(10, Math.min(90, dragging.leftStartWidth + deltaPercent));
+            const newRight = Math.max(10, Math.min(90, dragging.rightStartWidth - deltaPercent));
+
+            // Commit to ProseMirror document
+            const { tr } = view.state;
+            const leftNode = view.state.doc.nodeAt(dragging.leftPos);
+            const rightNode = view.state.doc.nodeAt(dragging.rightPos);
+
+            if (leftNode && rightNode) {
+              const leftW = Math.round(newLeft * 10) / 10;
+              const rightW = Math.round(newRight * 10) / 10;
+              tr.setNodeMarkup(dragging.leftPos, undefined, { ...leftNode.attrs, width: leftW });
+              tr.setNodeMarkup(dragging.rightPos, undefined, { ...rightNode.attrs, width: rightW });
+              view.dispatch(tr);
+            }
+
+            dragging = null;
+            (view.dom as HTMLElement).style.cursor = '';
+            cursorSet = false;
+          };
+
+          window.addEventListener('mouseup', finish);
+          return true;
+        },
+
+        dblclick: (view: EditorView, event: MouseEvent) => {
+          // Double-click on column boundary → equalize all columns
+          const boundary = findBoundary(event, 4);
+          if (!boundary) return false;
+          event.preventDefault();
+          equalizeColumns(view, boundary.container);
+          return true;
+        },
+      },
+    },
+  });
+}
 
 // ─── Enter on Collapsed Toggle → New Toggle ────────────────────────────────
 // TipTap's built-in Details Enter handler creates a plain paragraph when the
@@ -567,6 +847,84 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
       e.chain().insertContentAt(range, { type: 'inlineMath', attrs: { latex: 'f(x)', display: 'no' } }).focus().run();
     },
   },
+  // ── Layout ──
+  {
+    label: '2 Columns', icon: 'columns', description: 'Split into 2 columns',
+    action: (e, range) => {
+      // Prevent nesting columns inside columns
+      const { $from } = e.state.selection;
+      for (let d = $from.depth; d > 0; d--) {
+        if ($from.node(d).type.name === 'column') return;
+      }
+      e.chain().insertContentAt(range, {
+        type: 'columnList',
+        content: [
+          { type: 'column', content: [{ type: 'paragraph' }] },
+          { type: 'column', content: [{ type: 'paragraph' }] },
+        ],
+      }).focus().run();
+      // Place cursor in the first column's paragraph
+      const { doc } = e.state;
+      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
+        if (node.type.name === 'column') {
+          e.chain().setTextSelection(pos + 2).focus().run();
+          return false;
+        }
+        return true;
+      });
+    },
+  },
+  {
+    label: '3 Columns', icon: 'columns', description: 'Split into 3 columns',
+    action: (e, range) => {
+      const { $from } = e.state.selection;
+      for (let d = $from.depth; d > 0; d--) {
+        if ($from.node(d).type.name === 'column') return;
+      }
+      e.chain().insertContentAt(range, {
+        type: 'columnList',
+        content: [
+          { type: 'column', content: [{ type: 'paragraph' }] },
+          { type: 'column', content: [{ type: 'paragraph' }] },
+          { type: 'column', content: [{ type: 'paragraph' }] },
+        ],
+      }).focus().run();
+      const { doc } = e.state;
+      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
+        if (node.type.name === 'column') {
+          e.chain().setTextSelection(pos + 2).focus().run();
+          return false;
+        }
+        return true;
+      });
+    },
+  },
+  {
+    label: '4 Columns', icon: 'columns', description: 'Split into 4 columns',
+    action: (e, range) => {
+      const { $from } = e.state.selection;
+      for (let d = $from.depth; d > 0; d--) {
+        if ($from.node(d).type.name === 'column') return;
+      }
+      e.chain().insertContentAt(range, {
+        type: 'columnList',
+        content: [
+          { type: 'column', content: [{ type: 'paragraph' }] },
+          { type: 'column', content: [{ type: 'paragraph' }] },
+          { type: 'column', content: [{ type: 'paragraph' }] },
+          { type: 'column', content: [{ type: 'paragraph' }] },
+        ],
+      }).focus().run();
+      const { doc } = e.state;
+      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
+        if (node.type.name === 'column') {
+          e.chain().setTextSelection(pos + 2).focus().run();
+          return false;
+        }
+        return true;
+      });
+    },
+  },
 ];
 
 // ─── Canvas Editor Provider ─────────────────────────────────────────────────
@@ -716,6 +1074,7 @@ class CanvasEditorPane implements IDisposable {
               if (name === 'taskItem') return 'To-do';
               if (name === 'detailsContent') return 'Hidden content…';
               if (name === 'blockquote') return '';
+              if (name === 'column') return hasAnchor ? "Type '/' for commands..." : '';
             }
             // Top-level paragraph: only show slash hint when cursor is here
             return hasAnchor ? "Type '/' for commands..." : '';
@@ -741,7 +1100,7 @@ class CanvasEditorPane implements IDisposable {
         GlobalDragHandle.configure({
           dragHandleWidth: 24,
           scrollTreshold: 100,
-          customNodes: ['mathBlock'],
+          customNodes: ['mathBlock', 'columnList'],
         }),
         // ── Tier 2 extensions ──
         Callout,
@@ -772,6 +1131,9 @@ class CanvasEditorPane implements IDisposable {
           delimiters: 'dollar',
         }),
         MathBlock,
+        // ── Columns ──
+        Column,
+        ColumnList,
       ],
       content: '',
       editorProps: {
@@ -2332,9 +2694,23 @@ class CanvasEditorPane implements IDisposable {
   }
 
   private _getFilteredItems(): SlashMenuItem[] {
-    if (!this._slashFilterText) return SLASH_MENU_ITEMS;
+    let items = SLASH_MENU_ITEMS;
+
+    // Hide column items when already inside a column (prevent nesting)
+    if (this._editor) {
+      const { $from } = this._editor.state.selection;
+      let insideColumn = false;
+      for (let d = $from.depth; d > 0; d--) {
+        if ($from.node(d).type.name === 'column') { insideColumn = true; break; }
+      }
+      if (insideColumn) {
+        items = items.filter(i => !i.label.includes('Columns'));
+      }
+    }
+
+    if (!this._slashFilterText) return items;
     const q = this._slashFilterText.replace(/[^a-z0-9]/g, '');
-    return SLASH_MENU_ITEMS.filter(item => {
+    return items.filter(item => {
       const label = item.label.toLowerCase().replace(/[^a-z0-9]/g, '');
       const desc = item.description.toLowerCase().replace(/[^a-z0-9]/g, '');
       return label.includes(q) || desc.includes(q);

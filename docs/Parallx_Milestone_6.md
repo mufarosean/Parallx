@@ -2000,3 +2000,69 @@ Every task must pass these before being considered complete:
 4. **Edge cases:** What happens with very long titles? Very large cover images? Empty pages? Pages with 10+ levels of nesting?
 5. **State persistence:** Does the feature survive: page close/reopen, app restart, workspace switch?
 6. **No regressions:** Does the change break any existing editor functionality (bubble menu, slash commands, drag handle, auto-save)?
+
+---
+
+## Fix 16: Column Layout (Notion-style Multi-Column Blocks)
+
+### Research Summary
+
+**Notion's column model:**
+- Columns are created by dragging blocks side-by-side (no slash command in Notion)
+- Data model: `column_list` wrapper → 2+ `column` children → any block content
+- Width ratios stored per-column (0–1, summing to 1)
+- Resize via dragging the boundary between columns; double-click to equalize
+- Columns cannot be nested inside other columns
+- On mobile, columns stack vertically (linearized)
+- Any block type can live inside a column (except other columns)
+
+**Reference implementation:** GYHHAHA/prosemirror-columns (`tiptap-extension-multi-column` v0.0.2)
+- Inspired by `prosemirror-tables` — uses ProseMirror Plugin for resize
+- Uses pixel widths (we improve to percentage-based for responsiveness)
+- Column schema: `column { content: 'block+', attrs: { colWidth } }` + `column_container { content: 'column+' }`
+- Plugin: mouse event handlers detect column boundaries, show decoration, handle drag resize
+- Used in production by Docmost (19k-star open-source wiki)
+
+### Architecture
+
+**Two TipTap Node extensions (defined inline, same pattern as Callout/MathBlock):**
+- `ColumnList` — `group: 'block'`, `content: 'column column+'` (min 2), `isolating: true`
+- `Column` — `content: 'block+'`, `isolating: true`, attr: `width` (percentage number, default null = equal)
+
+**ProseMirror Plugin for resize:**
+- Detects mouse proximity to column boundaries in the DOM
+- Shows visual resize indicator (cursor change + blue line via CSS)
+- Handles drag resize: mousedown → track → mouseup → commit widths via `tr.setNodeMarkup()`
+- Only commits on mouseup (single transaction) — no noisy undo history
+- Double-click on boundary → equalize all columns in that columnList
+
+**Slash menu items (3 entries):**
+- "2 Columns" — creates columnList with 2 equal columns
+- "3 Columns" — creates columnList with 3 equal columns
+- "4 Columns" — creates columnList with 4 equal columns
+
+**CSS layout:**
+- `display: flex` on columnList, `gap: 16px`
+- Column widths via `flex: 0 0 X%` or `flex: 1` (equal)
+- Subtle hover background on columns (matching existing callout style)
+- Resize handle: `::after` pseudo-element on non-last columns, `col-resize` cursor
+- Active resize indicator: thin blue vertical line
+
+**Markdown export:**
+- Linearize columns into sequential content (markdown has no column concept)
+- Each column's content rendered with a `<!-- column -->` comment separator
+
+**Keyboard behavior:**
+- Cmd/Ctrl+A inside a column selects column content (not entire doc)
+- Enter creates new paragraph within same column (standard)
+- GlobalDragHandle works for blocks inside columns (selectors already match)
+
+### Files Changed
+
+| File | Changes |
+|------|---------|
+| `src/built-in/canvas/canvasEditorProvider.ts` | Add `Column` + `ColumnList` nodes, resize plugin, slash menu items, register extensions |
+| `src/built-in/canvas/canvas.css` | Column layout styles, resize handle, hover states |
+| `src/built-in/canvas/canvasIcons.ts` | Add 'columns' icon for slash menu |
+| `src/built-in/canvas/markdownExport.ts` | Handle `columnList` and `column` node types |
+| `docs/Parallx_Milestone_6.md` | This documentation |

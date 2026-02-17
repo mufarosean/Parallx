@@ -116,6 +116,7 @@ const ICONS: Record<string, string> = {
   'numbered-list': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><text x="1.5" y="5.5" font-size="5" font-weight="600" fill="currentColor" font-family="sans-serif">1</text><text x="1.5" y="9.5" font-size="5" font-weight="600" fill="currentColor" font-family="sans-serif">2</text><text x="1.5" y="13.5" font-size="5" font-weight="600" fill="currentColor" font-family="sans-serif">3</text><path d="M6.5 4H14M6.5 8H14M6.5 12H14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
   'quote': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 3V13" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path d="M5.5 5H13M5.5 8H11M5.5 11H12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
   'divider': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 8H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M2 4H14M2 12H14" stroke="currentColor" stroke-width="0.8" stroke-linecap="round" opacity="0.3"/></svg>',
+  'columns': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="2" width="5" height="12" rx="1" stroke="currentColor" stroke-width="1.2"/><rect x="9.5" y="2" width="5" height="12" rx="1" stroke="currentColor" stroke-width="1.2"/></svg>',
 };
 
 // ─── Icon IDs (for type safety) ──────────────────────────────────────────────
