@@ -1124,6 +1124,30 @@ Floating toolbar with 7 formatting buttons (bold, italic, underline, strikethrou
 |------|--------|
 | `src/built-in/canvas/canvasEditorProvider.ts` | `_renderSlashMenuItems()` uses class toggle; `_executeSlashItem()` suppresses updates; `mousedown` stopPropagation |
 
+### Fix 12: Placeholder, block alignment, and toggle Enter behaviour ✅
+
+**Problems:**
+
+1. **Placeholder indentation + cursor at end.** The `float: left; height: 0` technique for placeholder `::before` pushed the cursor to the right end of placeholder text inside callout/toggle/todo wrapper blocks. The content appeared indented compared to blocks with typed text.
+2. **Todo checkbox misaligned with text.** The `label` `margin-top: 2px` didn't center the 16px checkbox with the text line (line-height 1.625).
+3. **Toggle chevron and summary misaligned.** The `>` chevron button was offset (`left: 2px`) and the summary text had `padding-left: 26px`, causing the toggle to not align with surrounding blocks. The drag handle was also misaligned because the details container had no `padding-top` for the drag handle plugin to read.
+4. **Toggle content line spacing.** Summary `line-height: 1.5` differed from the editor's `1.625`, and excessive `min-height: 28px` and padding caused uneven vertical spacing.
+5. **Enter on collapsed toggle created paragraph.** TipTap's built-in Details extension Enter handler creates a plain `<p>` below a collapsed toggle. Notion creates a new toggle block instead.
+
+**Fixes:**
+
+- **Placeholder:** Replaced `float: left; height: 0` with `position: absolute` on `::before`. Added `position: relative` to `p`, `h1`–`h3`, and `detailsSummary` so the placeholder anchors to its parent block. Completely out-of-flow — no width reservation, no indentation, cursor always at left edge.
+- **Removed `float: none` override:** The earlier wrapper-block `float: none` override (lines 322–329) was removed since `position: absolute` makes it unnecessary.
+- **Todo checkbox:** `label` `margin-top: 2px` → `5px` to vertically center with text baseline.
+- **Toggle alignment:** Chevron `left: 0` (at text edge), summary `padding-left: 24px` (text after chevron), matching the todo checkbox+text pattern. Added `padding-top: 4px` to the details container so the drag handle plugin accounts for it.
+- **Toggle spacing:** Summary `line-height: 1.5` → `1.625` (matches editor), `min-height: 28px` → `24px`, tightened padding on summary and content area.
+- **Enter on collapsed toggle:** New `DetailsEnterHandler` TipTap Extension (priority 200) intercepts Enter when cursor is in a `detailsSummary` and the content is collapsed. Inserts a new `details` block below with cursor in the new summary. Falls through to built-in handler when toggle is open.
+
+| File | Change |
+|------|--------|
+| `src/built-in/canvas/canvas.css` | Placeholder `position: absolute` + `position: relative` on blocks; removed `float: none` override; todo label `margin-top: 5px`; toggle alignment and spacing fixes |
+| `src/built-in/canvas/canvasEditorProvider.ts` | Added `Extension` import; `DetailsEnterHandler` extension for collapsed toggle Enter; registered in editor extensions array |
+
 ---
 
 ## Canvas Editor — Notion Parity Gap Analysis
