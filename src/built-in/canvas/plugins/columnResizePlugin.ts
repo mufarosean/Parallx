@@ -4,6 +4,13 @@
 // detect column boundaries. Positions are resolved by walking the ProseMirror
 // document tree at commit time, avoiding stale-position bugs. Cursor is
 // managed via CSS class on document.body for reliable override.
+//
+// Boundary detection is done via a container-level mousemove listener (not
+// ProseMirror's handleDOMEvents) because the GlobalDragHandle's drag-handle
+// div (position: fixed, z-index: 50) can sit directly on top of column
+// boundaries. When that happens, ProseMirror never receives the mousemove
+// and the `column-resize-hover` CSS class never gets set. The container
+// listener catches events that bubble up from the drag handle.
 
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
@@ -134,6 +141,35 @@ export function columnResizePlugin(): Plugin {
   return new Plugin({
     key: pluginKey,
 
+    // Container-level boundary detection — works even when the drag handle
+    // (z-index: 50, position: fixed) sits directly over the column boundary
+    // and intercepts events that would otherwise reach ProseMirror's DOM.
+    // Events on the drag handle bubble up to the container, so this listener
+    // always fires regardless of what element is topmost.
+    view: (editorView: EditorView) => {
+      const container = editorView.dom.parentElement;
+
+      const onContainerMousemove = (event: MouseEvent) => {
+        if (dragging) return; // During active resize, cursor is managed by PM
+        const boundary = findBoundary(editorView, event.clientX, event.clientY, 12);
+        if (boundary) {
+          document.body.classList.add('column-resize-hover');
+        } else {
+          document.body.classList.remove('column-resize-hover');
+        }
+      };
+
+      container?.addEventListener('mousemove', onContainerMousemove);
+
+      return {
+        destroy: () => {
+          container?.removeEventListener('mousemove', onContainerMousemove);
+          document.body.classList.remove('column-resize-hover');
+          document.body.classList.remove('column-resizing');
+        },
+      };
+    },
+
     props: {
       handleDOMEvents: {
         mousemove: (view: EditorView, event: MouseEvent) => {
@@ -165,13 +201,8 @@ export function columnResizePlugin(): Plugin {
             return true;
           }
 
-          // Not dragging — show/hide resize cursor near column boundaries
-          const boundary = findBoundary(view, event.clientX, event.clientY, 12);
-          if (boundary) {
-            document.body.classList.add('column-resize-hover');
-          } else {
-            document.body.classList.remove('column-resize-hover');
-          }
+          // Boundary detection is handled by the container-level listener
+          // (see view() above). Nothing to do here when not dragging.
           return false;
         },
 
