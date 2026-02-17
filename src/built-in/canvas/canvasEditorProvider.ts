@@ -31,7 +31,7 @@ import type { IEditorInput } from '../../editor/editorInput.js';
 import type { CanvasDataService } from './canvasDataService.js';
 import type { IPage } from './canvasTypes.js';
 import { Editor, Extension, Node, mergeAttributes } from '@tiptap/core';
-import { Plugin, PluginKey, NodeSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Fragment } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
@@ -779,7 +779,8 @@ const MathBlock = Node.create({
     return [
       'div',
       mergeAttributes(HTMLAttributes, { 'data-type': 'mathBlock', class: 'canvas-math-block' }),
-      0,
+      // No content hole (0) — atom nodes are leaf nodes with no PM-managed content.
+      // The NodeView handles all rendering via its own DOM.
     ];
   },
 
@@ -1432,6 +1433,11 @@ class CanvasEditorPane implements IDisposable {
       console.warn('[CanvasEditorPane] Content loading failed, starting with empty editor:', err);
     }
 
+    // Expose editor for E2E tests (test mode only)
+    if ((window as any).parallxElectron?.testMode) {
+      (window as any).__tiptapEditor = this._editor;
+    }
+
     // Create slash menu (hidden by default)
     this._createSlashMenu();
 
@@ -1440,10 +1446,6 @@ class CanvasEditorPane implements IDisposable {
 
     // Create inline math editor popup (hidden by default)
     this._createInlineMathEditor();
-
-    // Fix drag-and-drop for atom nodes (mathBlock etc.)
-    // GlobalDragHandle uses posAtCoords().inside which returns -1 for atoms.
-    this._fixAtomNodeDrag();
 
     // ── Click handler for inline math nodes (click-to-edit) ──
     this._editorContainer.addEventListener('click', (e) => {
@@ -2516,95 +2518,6 @@ class CanvasEditorPane implements IDisposable {
     } catch (err) {
       console.error(`[CanvasEditorPane] Failed to load page "${this._pageId}":`, err);
     }
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // Atom Node Drag Fix
-  // ══════════════════════════════════════════════════════════════════════════
-  //
-  // The GlobalDragHandle library resolves node positions via
-  // posAtCoords().inside, which returns -1 for atom nodes (they have no
-  // "inside"). Its handleDragStart bails out when pos < 0, so atom nodes
-  // like MathBlock silently fail to drag.
-  //
-  // This fix adds a fallback dragstart listener on the drag handle element
-  // that fires AFTER the library's own listener. If the library didn't set
-  // view.dragging (meaning it bailed), we resolve the position with
-  // posAtDOM (which works for all node types) and set up the drag manually.
-  //
-  // This is a generic fix — it works for every atom-type custom node, not
-  // just MathBlock.
-  // ──────────────────────────────────────────────────────────────────────────
-
-  private _fixAtomNodeDrag(): void {
-    if (!this._editor) return;
-    const view = this._editor.view;
-    const dragHandle = view.dom.parentElement?.querySelector('.drag-handle');
-    if (!dragHandle) return;
-
-    dragHandle.addEventListener('dragstart', (e: Event) => {
-      const event = e as DragEvent;
-
-      // Library already handled this (non-atom nodes) — nothing to do
-      if ((view as any).dragging) return;
-      if (!event.dataTransfer) return;
-
-      // Find the custom node at the drag coordinates (same offset the library uses)
-      const DHW = 24; // dragHandleWidth
-      const x = event.clientX + 50 + DHW;
-      const y = event.clientY;
-
-      const targetEl = document.elementsFromPoint(x, y)
-        .find((el) => el.closest('.ProseMirror') && el.hasAttribute('data-type'));
-
-      if (!(targetEl instanceof Element)) return;
-
-      // Resolve ProseMirror position via posAtDOM (works for atoms)
-      let nodePos: number;
-      try {
-        const rawPos = view.posAtDOM(targetEl, 0);
-        const nodeAtRaw = view.state.doc.nodeAt(rawPos);
-        const dataType = targetEl.getAttribute('data-type');
-
-        if (nodeAtRaw && nodeAtRaw.type.name === dataType) {
-          // posAtDOM returned the atom position directly
-          nodePos = rawPos;
-        } else {
-          // posAtDOM returned a position inside the node — walk up
-          const $pos = view.state.doc.resolve(rawPos);
-          nodePos = rawPos;
-          for (let d = $pos.depth; d >= 1; d--) {
-            if ($pos.node(d).type.name === dataType) {
-              nodePos = $pos.before(d);
-              break;
-            }
-          }
-        }
-      } catch {
-        return;
-      }
-
-      // Verify we found a valid node
-      const pmNode = view.state.doc.nodeAt(nodePos);
-      if (!pmNode) return;
-
-      // Create NodeSelection and dispatch
-      const selection = NodeSelection.create(view.state.doc, nodePos);
-      view.dispatch(view.state.tr.setSelection(selection));
-
-      // Serialize for clipboard
-      const slice = selection.content();
-      if (typeof (view as any).serializeForClipboard !== 'function') return;
-      const { dom: serializedDom, text } = (view as any).serializeForClipboard(slice);
-
-      event.dataTransfer.clearData();
-      event.dataTransfer.setData('text/html', serializedDom.innerHTML);
-      event.dataTransfer.setData('text/plain', text);
-      event.dataTransfer.effectAllowed = 'copyMove';
-      event.dataTransfer.setDragImage(targetEl, 0, 0);
-
-      (view as any).dragging = { slice, move: event.ctrlKey };
-    });
   }
 
   // ══════════════════════════════════════════════════════════════════════════
