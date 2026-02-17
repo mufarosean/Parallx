@@ -319,12 +319,12 @@
   font-style: normal;
 }
 
-/* Hide slash-hint placeholder inside wrapper blocks — these have their own
-   contextual placeholders set via the Placeholder extension config */
+/* Contextual placeholder inside wrapper blocks — use static positioning
+   (not float) so the placeholder text aligns with the block's own layout. */
 .canvas-tiptap-editor .canvas-callout .is-empty::before,
 .canvas-tiptap-editor [data-type="taskItem"] .is-empty::before,
 .canvas-tiptap-editor [data-type="detailsContent"] .is-empty::before,
-.canvas-tiptap-editor [data-type="detailsSummary"] .is-empty::before {
+.canvas-tiptap-editor [data-type="detailsSummary"].is-empty::before {
   float: none;
 }
 
@@ -831,11 +831,15 @@
 }
 
 .canvas-callout-emoji {
-  font-size: 20px;
-  line-height: 1.5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  width: 24px;
+  height: 24px;
   user-select: none;
   cursor: default;
+  color: inherit;
 }
 
 .canvas-callout-content {
@@ -2195,12 +2199,4 @@
   gap: 4px;
 }
 
-/* ── Callout icon rendering (SVG instead of emoji) ── */
-
-.canvas-callout-emoji {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  flex-shrink: 0;
-  color: inherit;
-}
+/* (callout-emoji styles consolidated at line ~833) */

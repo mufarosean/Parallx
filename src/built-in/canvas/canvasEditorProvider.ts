@@ -239,21 +239,42 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   },
   {
     label: 'Callout', icon: 'lightbulb', description: 'Highlighted info box',
-    action: (e, range) => e.chain().insertContentAt(range, {
-      type: 'callout',
-      attrs: { emoji: 'lightbulb' },
-      content: [{ type: 'paragraph' }],
-    }).focus().run(),
+    action: (e, range) => {
+      e.chain().insertContentAt(range, {
+        type: 'callout',
+        attrs: { emoji: 'lightbulb' },
+        content: [{ type: 'paragraph' }],
+      }).run();
+      // Place cursor inside the callout's paragraph
+      const { doc } = e.state;
+      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
+        if (node.type.name === 'callout') {
+          // First paragraph inside callout content
+          e.chain().setTextSelection(pos + 2).focus().run();
+          return false;
+        }
+      });
+    },
   },
   {
     label: 'Toggle List', icon: 'chevron-right', description: 'Collapsible content',
-    action: (e, range) => e.chain().insertContentAt(range, {
-      type: 'details',
-      content: [
-        { type: 'detailsSummary' },
-        { type: 'detailsContent', content: [{ type: 'paragraph' }] },
-      ],
-    }).focus().run(),
+    action: (e, range) => {
+      e.chain().insertContentAt(range, {
+        type: 'details',
+        content: [
+          { type: 'detailsSummary' },
+          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
+        ],
+      }).run();
+      // Place cursor inside the detailsSummary so the user types the title
+      const { doc } = e.state;
+      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
+        if (node.type.name === 'detailsSummary') {
+          e.chain().setTextSelection(pos + 1).focus().run();
+          return false;
+        }
+      });
+    },
   },
   {
     label: 'Table', icon: 'grid', description: 'Insert a table',
