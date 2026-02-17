@@ -9,12 +9,13 @@
  * 4. Nesting prevention — column items hidden from slash menu inside a column
  * 5. Column resize — drag boundary to change widths, double-click to equalize
  * 6. Ctrl/Cmd+A inside column — selects column content, not entire doc
- * 7. Block action menu — shows "Columns" label on columnList blocks
- * 8. Delete columns — deleting a columnList via block action menu
- * 9. Unwrap columns — dissolves column layout into sequential blocks
- * 10. Backspace/Delete protection — prevents column structure destruction
- * 11. Auto-dissolve — removes columnList when only one column remains
- * 12. Alignment — column content aligns with top-level content (no offset)
+ * 7. Block action menu — blocks inside columns have the same action menu as any other block
+ * 8. Blocks inside columns — handles, action menu, plus button, delete
+ * 9. Backspace/Delete protection — prevents column structure destruction
+ * 10. Auto-dissolve — removes columnList when only one column remains
+ * 11. Alignment — column content aligns with top-level content (no offset)
+ * 12. Keyboard block movement — Ctrl+Shift+↑/↓ reorder, cross-container, Ctrl+D duplicate
+ * 13. Drop indicators — horizontal and vertical guide CSS classes
  */
 import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
 import type { Page, ElectronApplication } from '@playwright/test';
@@ -708,7 +709,7 @@ test.describe('Column Layout', () => {
   // ── Block Action Menu ─────────────────────────────────────────────────────
 
   test.describe('Block action menu', () => {
-    test('block inside column action menu shows Column layout section', async ({
+    test('block inside column action menu has same items as top-level block (no Column layout section)', async ({
       window,
       electronApp,
     }) => {
@@ -739,68 +740,24 @@ test.describe('Column Layout', () => {
       const actionMenu = window.locator('.block-action-menu');
       await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
-      // First header should show block type "Text"
-      const blockHeader = actionMenu.locator('.block-action-header').first();
-      await expect(blockHeader).toHaveText('Text');
+      // Only ONE header — the block type "Text". No "Column layout" header.
+      const headers = actionMenu.locator('.block-action-header');
+      await expect(headers).toHaveCount(1);
+      await expect(headers.first()).toHaveText('Text');
 
-      // Second header should show "Column layout"
-      const colHeader = actionMenu.locator('.block-action-header').nth(1);
-      await expect(colHeader).toHaveText('Column layout');
+      // Standard block actions should be present
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Color' })).toBeVisible();
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Duplicate' })).toBeVisible();
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Delete' })).toBeVisible();
 
-      // Should have Unwrap columns, Duplicate column layout, Delete column layout
-      await expect(actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' })).toBeVisible();
-      await expect(actionMenu.locator('.block-action-item', { hasText: 'Duplicate column layout' })).toBeVisible();
-      await expect(actionMenu.locator('.block-action-item', { hasText: 'Delete column layout' })).toBeVisible();
+      // Column-specific items should NOT exist
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' })).toHaveCount(0);
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Duplicate column layout' })).toHaveCount(0);
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Delete column layout' })).toHaveCount(0);
     });
 
-    test('deleting a columnList via action menu removes it from document', async ({
-      window,
-      electronApp,
-    }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
-      const tiptap = window.locator('.tiptap');
-      await tiptap.click();
-      await waitForEditor(window);
-
-      await setContent(window, [
-        { type: 'paragraph', content: [{ type: 'text', text: 'Before columns' }] },
-        {
-          type: 'columnList',
-          content: [
-            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'X' }] }] },
-            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Y' }] }] },
-          ],
-        },
-        { type: 'paragraph', content: [{ type: 'text', text: 'After columns' }] },
-      ]);
-
-      // Hover a block inside the columnList, use "Delete column layout" action
-      const colParagraph = tiptap.locator('.canvas-column p', { hasText: 'X' });
-      await colParagraph.hover();
-      await window.waitForTimeout(500);
-      const dragHandle = window.locator('.drag-handle');
-      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
-      await dragHandle.click({ force: true });
-      await window.waitForTimeout(200);
-
-      const actionMenu = window.locator('.block-action-menu');
-      await expect(actionMenu).toBeVisible({ timeout: 3_000 });
-
-      // Click "Delete column layout" (in the Column layout section)
-      const deleteBtn = actionMenu.locator('.block-action-item', { hasText: 'Delete column layout' });
-      await expect(deleteBtn).toBeVisible();
-      await deleteBtn.click();
-      await window.waitForTimeout(300);
-
-      // Verify columnList is gone
-      const structure = await getDocStructure(window);
-      expect(structure).not.toContain(expect.stringMatching(/columnList/));
-      // The two paragraphs should remain
-      expect(structure.find(s => s.includes('Before columns'))).toBeTruthy();
-      expect(structure.find(s => s.includes('After columns'))).toBeTruthy();
-    });
-
-    test('duplicating a columnList creates a copy below', async ({
+    test('handle on columnList resolves to first block inside first column', async ({
       window,
       electronApp,
     }) => {
@@ -813,15 +770,15 @@ test.describe('Column Layout', () => {
         {
           type: 'columnList',
           content: [
-            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Dup test' }] }] },
-            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Dup test 2' }] }] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'First Col' }] }] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Second Col' }] }] },
           ],
         },
       ]);
 
-      // Hover a block inside the column and open the action menu
-      const colParagraph = tiptap.locator('.canvas-column p', { hasText: 'Dup test' }).first();
-      await colParagraph.hover();
+      // Hover the first block in the first column — this triggers the drag handle
+      const firstColPara = tiptap.locator('.canvas-column p', { hasText: 'First Col' });
+      await firstColPara.hover();
       await window.waitForTimeout(500);
       const dragHandle = window.locator('.drag-handle');
       await expect(dragHandle).toBeVisible({ timeout: 3_000 });
@@ -831,16 +788,15 @@ test.describe('Column Layout', () => {
       const actionMenu = window.locator('.block-action-menu');
       await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
-      // Click "Duplicate column layout" in the Column layout section
-      const dupBtn = actionMenu.locator('.block-action-item', { hasText: 'Duplicate column layout' });
-      await expect(dupBtn).toBeVisible();
-      await dupBtn.click();
-      await window.waitForTimeout(300);
+      // Should show a block type header (e.g. "Text"), NOT "Columns"
+      const header = actionMenu.locator('.block-action-header').first();
+      const headerText = await header.textContent();
+      expect(headerText).not.toContain('Columns');
+      expect(headerText).not.toContain('Column List');
+      expect(headerText).toBe('Text');
 
-      // Should now have 2 columnLists
-      const structure = await getDocStructure(window);
-      const columnLists = structure.filter(s => s.startsWith('columnList'));
-      expect(columnLists.length).toBe(2);
+      // Should show standard block actions — Turn into, Color, etc.
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
     });
   });
 
@@ -972,8 +928,8 @@ test.describe('Column Layout', () => {
 
   // ── Unwrap Columns ────────────────────────────────────────────────────────
 
-  test.describe('Unwrap columns', () => {
-    test('block inside column shows "Unwrap columns" in Column layout section', async ({
+  test.describe('Unwrap columns (removed — columns dissolve organically)', () => {
+    test('action menu for block inside column shows Turn into but NOT Unwrap columns', async ({
       window,
       electronApp,
     }) => {
@@ -1007,71 +963,13 @@ test.describe('Column Layout', () => {
       const actionMenu = window.locator('.block-action-menu');
       await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
-      // Should show BOTH "Turn into" (block actions) AND "Unwrap columns" (column layout)
+      // Should show Turn into (standard block action)
       const turnIntoItem = actionMenu.locator('.block-action-item', { hasText: 'Turn into' });
       await expect(turnIntoItem).toBeVisible();
 
+      // Should NOT show Unwrap columns — columns are spatial partitions, not blocks
       const unwrapItem = actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' });
-      await expect(unwrapItem).toBeVisible();
-    });
-
-    test('unwrap columns extracts all content as sequential blocks', async ({
-      window,
-      electronApp,
-    }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
-      const tiptap = window.locator('.tiptap');
-      await tiptap.click();
-      await waitForEditor(window);
-
-      await setContent(window, [
-        { type: 'paragraph', content: [{ type: 'text', text: 'Before' }] },
-        {
-          type: 'columnList',
-          content: [
-            {
-              type: 'column',
-              content: [
-                { type: 'paragraph', content: [{ type: 'text', text: 'Col1 Line1' }] },
-                { type: 'paragraph', content: [{ type: 'text', text: 'Col1 Line2' }] },
-              ],
-            },
-            {
-              type: 'column',
-              content: [
-                { type: 'paragraph', content: [{ type: 'text', text: 'Col2 Line1' }] },
-              ],
-            },
-          ],
-        },
-        { type: 'paragraph', content: [{ type: 'text', text: 'After' }] },
-      ]);
-
-      // Hover a block inside the column, use "Unwrap columns" from Column layout section
-      const colParagraph = tiptap.locator('.canvas-column p', { hasText: 'Col1 Line1' });
-      await colParagraph.hover();
-      await window.waitForTimeout(500);
-      const dragHandle = window.locator('.drag-handle');
-      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
-      await dragHandle.click({ force: true });
-      await window.waitForTimeout(200);
-
-      const actionMenu = window.locator('.block-action-menu');
-      await expect(actionMenu).toBeVisible({ timeout: 3_000 });
-
-      // Click Unwrap columns (in the Column layout section)
-      const unwrapItem = actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' });
-      await unwrapItem.click();
-      await window.waitForTimeout(300);
-
-      // Verify: columnList is gone, content is now sequential blocks
-      const structure = await getDocStructure(window);
-      expect(structure).not.toContain(expect.stringMatching(/columnList/));
-      expect(structure.find(s => s.includes('Before'))).toBeTruthy();
-      expect(structure.find(s => s.includes('Col1 Line1'))).toBeTruthy();
-      expect(structure.find(s => s.includes('Col1 Line2'))).toBeTruthy();
-      expect(structure.find(s => s.includes('Col2 Line1'))).toBeTruthy();
-      expect(structure.find(s => s.includes('After'))).toBeTruthy();
+      await expect(unwrapItem).toHaveCount(0);
     });
   });
 
@@ -1268,6 +1166,371 @@ test.describe('Column Layout', () => {
     });
   });
 
+  // ── Keyboard Block Movement (Rule 6) ──────────────────────────────────────
+
+  test.describe('Keyboard block movement', () => {
+    test('Ctrl+Shift+↑ moves block up within top-level', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        { type: 'paragraph', content: [{ type: 'text', text: 'First' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Second' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Third' }] },
+      ]);
+
+      // Click in "Third" paragraph then move it up
+      await tiptap.locator('p', { hasText: 'Third' }).click();
+      await window.keyboard.press('Control+Shift+ArrowUp');
+      await window.waitForTimeout(300);
+
+      const structure = await getDocStructure(window);
+      expect(structure).toEqual(['p:First', 'p:Third', 'p:Second']);
+    });
+
+    test('Ctrl+Shift+↓ moves block down within top-level', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        { type: 'paragraph', content: [{ type: 'text', text: 'First' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Second' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Third' }] },
+      ]);
+
+      // Click in "First" then move it down
+      await tiptap.locator('p', { hasText: 'First' }).click();
+      await window.keyboard.press('Control+Shift+ArrowDown');
+      await window.waitForTimeout(300);
+
+      const structure = await getDocStructure(window);
+      expect(structure).toEqual(['p:Second', 'p:First', 'p:Third']);
+    });
+
+    test('Ctrl+Shift+↑ moves block up within a column', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'Col A1' }] },
+              { type: 'paragraph', content: [{ type: 'text', text: 'Col A2' }] },
+            ] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col B' }] }] },
+          ],
+        },
+      ]);
+
+      // Click in "Col A2" then move it up (swap within column)
+      await tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Col A2' }).click();
+      await window.keyboard.press('Control+Shift+ArrowUp');
+      await window.waitForTimeout(300);
+
+      const doc = await getDocJSON(window);
+      const cl = doc.content.find((n: any) => n.type === 'columnList');
+      expect(cl).toBeTruthy();
+      const col1 = cl.content[0];
+      // Col A2 should now be first, Col A1 second
+      expect(col1.content[0].content[0].text).toBe('Col A2');
+      expect(col1.content[1].content[0].text).toBe('Col A1');
+    });
+
+    test('Ctrl+Shift+↓ moves block down within a column', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'Col A1' }] },
+              { type: 'paragraph', content: [{ type: 'text', text: 'Col A2' }] },
+            ] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col B' }] }] },
+          ],
+        },
+      ]);
+
+      // Click in "Col A1" then move it down
+      await tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Col A1' }).click();
+      await window.keyboard.press('Control+Shift+ArrowDown');
+      await window.waitForTimeout(300);
+
+      const doc = await getDocJSON(window);
+      const cl = doc.content.find((n: any) => n.type === 'columnList');
+      expect(cl).toBeTruthy();
+      const col1 = cl.content[0];
+      expect(col1.content[0].content[0].text).toBe('Col A2');
+      expect(col1.content[1].content[0].text).toBe('Col A1');
+    });
+
+    test('Ctrl+Shift+↑ at top of column moves block above columnList', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Before' }] },
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'Top' }] },
+              { type: 'paragraph', content: [{ type: 'text', text: 'Bottom' }] },
+            ] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right' }] }] },
+          ],
+        },
+      ]);
+
+      // Click in "Top" (first block in first column) then move up
+      await tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Top' }).click();
+      await window.keyboard.press('Control+Shift+ArrowUp');
+      await window.waitForTimeout(300);
+
+      // "Top" should now be between "Before" and the columnList
+      const doc = await getDocJSON(window);
+      expect(doc.content[0].type).toBe('paragraph');
+      expect(doc.content[0].content[0].text).toBe('Before');
+      expect(doc.content[1].type).toBe('paragraph');
+      expect(doc.content[1].content[0].text).toBe('Top');
+      // columnList should still exist with "Bottom" in first column
+      const cl = doc.content.find((n: any) => n.type === 'columnList');
+      expect(cl).toBeTruthy();
+      expect(cl.content[0].content[0].content[0].text).toBe('Bottom');
+    });
+
+    test('Ctrl+Shift+↓ at bottom of column moves block below columnList', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'Top' }] },
+              { type: 'paragraph', content: [{ type: 'text', text: 'Bottom' }] },
+            ] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right' }] }] },
+          ],
+        },
+        { type: 'paragraph', content: [{ type: 'text', text: 'After' }] },
+      ]);
+
+      // Click in "Bottom" (last block in first column) then move down
+      await tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Bottom' }).click();
+      await window.keyboard.press('Control+Shift+ArrowDown');
+      await window.waitForTimeout(300);
+
+      // "Bottom" should be after the columnList, before "After"
+      const doc = await getDocJSON(window);
+      expect(doc.content[0].type).toBe('columnList');
+      // The paragraph right after the columnList
+      const afterCL = doc.content.slice(1);
+      const texts = afterCL.map((n: any) => n.content?.[0]?.text);
+      expect(texts).toContain('Bottom');
+      expect(texts).toContain('After');
+    });
+
+    test('Ctrl+Shift+↑ on only block in column dissolves column', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'Only block' }] },
+            ] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right' }] }] },
+          ],
+        },
+      ]);
+
+      // Click in "Only block" then move up — this empties the column
+      await tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Only block' }).click();
+      await window.keyboard.press('Control+Shift+ArrowUp');
+      await window.waitForTimeout(500);
+
+      // The columnList should dissolve (only 1 column remains after empty column removal)
+      const doc = await getDocJSON(window);
+      // "Only block" should be at top level, "Right" should be at top level (dissolved)
+      const types = doc.content.map((n: any) => n.type);
+      expect(types).not.toContain('columnList');
+      const texts = doc.content.map((n: any) => n.content?.[0]?.text).filter(Boolean);
+      expect(texts).toContain('Only block');
+      expect(texts).toContain('Right');
+    });
+
+    test('Ctrl+D duplicates block at top level', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Alpha' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Beta' }] },
+      ]);
+
+      // Click in "Alpha" then duplicate
+      await tiptap.locator('p', { hasText: 'Alpha' }).click();
+      await window.keyboard.press('Control+d');
+      await window.waitForTimeout(300);
+
+      const structure = await getDocStructure(window);
+      expect(structure).toEqual(['p:Alpha', 'p:Alpha', 'p:Beta']);
+    });
+
+    test('Ctrl+D duplicates block inside column', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'InCol' }] },
+            ] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right' }] }] },
+          ],
+        },
+      ]);
+
+      // Click in "InCol" then duplicate
+      await tiptap.locator('.canvas-column').first().locator('p', { hasText: 'InCol' }).click();
+      await window.keyboard.press('Control+d');
+      await window.waitForTimeout(300);
+
+      const doc = await getDocJSON(window);
+      const cl = doc.content.find((n: any) => n.type === 'columnList');
+      expect(cl).toBeTruthy();
+      const col1 = cl.content[0];
+      expect(col1.content.length).toBe(2);
+      expect(col1.content[0].content[0].text).toBe('InCol');
+      expect(col1.content[1].content[0].text).toBe('InCol');
+    });
+
+    test('Ctrl+Shift+↑ does nothing if already at top of doc', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Only' }] },
+      ]);
+
+      await tiptap.locator('p', { hasText: 'Only' }).click();
+      await window.keyboard.press('Control+Shift+ArrowUp');
+      await window.waitForTimeout(300);
+
+      const structure = await getDocStructure(window);
+      expect(structure).toEqual(['p:Only']);
+    });
+  });
+
+  // ── Drop Indicators ──────────────────────────────────────────────────────
+
+  test.describe('Drop indicators', () => {
+    test('horizontal drop guide CSS class exists', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      await waitForEditor(window);
+
+      // Verify the CSS rule for .canvas-drop-guide is defined
+      const hasRule = await window.evaluate(() => {
+        for (const sheet of document.styleSheets) {
+          try {
+            for (const rule of sheet.cssRules) {
+              if (rule instanceof CSSStyleRule && rule.selectorText === '.canvas-drop-guide') {
+                return true;
+              }
+            }
+          } catch { /* cross-origin sheet */ }
+        }
+        return false;
+      });
+      expect(hasRule).toBe(true);
+    });
+
+    test('vertical drop indicator CSS class exists', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      await waitForEditor(window);
+
+      const hasRule = await window.evaluate(() => {
+        for (const sheet of document.styleSheets) {
+          try {
+            for (const rule of sheet.cssRules) {
+              if (rule instanceof CSSStyleRule && rule.selectorText === '.column-drop-indicator') {
+                return true;
+              }
+            }
+          } catch { /* cross-origin sheet */ }
+        }
+        return false;
+      });
+      expect(hasRule).toBe(true);
+    });
+  });
+
   // ── Column as Spatial Container ───────────────────────────────────────────
   // Blocks inside columns should behave identically to top-level blocks:
   // same drag handle, same +, same action menu, same interactions.
@@ -1345,12 +1608,12 @@ test.describe('Column Layout', () => {
       expect(headerText).not.toContain('Column List');
       expect(headerText).toBe('Heading');
 
-      // Should show "Turn into" (block-level action) AND "Unwrap columns" (column layout section)
+      // Should show "Turn into" (block-level action) — same as any top-level block
       const turnInto = actionMenu.locator('.block-action-item', { hasText: 'Turn into' });
       await expect(turnInto).toBeVisible();
-      // "Unwrap columns" appears in the "Column layout" section at bottom
+      // Should NOT have "Unwrap columns" — columns are spatial partitions with no special menu items
       const unwrap = actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' });
-      await expect(unwrap).toBeVisible();
+      await expect(unwrap).toHaveCount(0);
     });
 
     test('plus button inside column inserts new block inside the column', async ({

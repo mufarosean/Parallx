@@ -2727,6 +2727,18 @@
   transition: top 0.08s ease, height 0.08s ease, left 0.08s ease;
 }
 
+/* Horizontal blue line shown when dragging a block above/below another. */
+.canvas-drop-guide {
+  display: none;
+  position: absolute;
+  height: 3px;
+  background: rgba(37, 99, 235, 0.7);
+  border-radius: 2px;
+  z-index: 50;
+  pointer-events: none;
+  transition: top 0.08s ease, width 0.08s ease, left 0.08s ease;
+}
+
 /* Placeholder text style inside columns */
 .canvas-column .is-empty::before {
   color: rgba(255, 255, 255, 0.2);

@@ -23,8 +23,8 @@
 //   • AutoJoiner (companion to drag handle — joins same-type adjacent blocks)
 //   • MathExtension + InlineMathNode (@aarkue/tiptap-math-extension — inline LaTeX via $...$)
 //   • MathBlock (custom block-level equation node with click-to-edit + KaTeX)
-//   • Column + ColumnList (multi-column layout with drag-to-resize, slash menu)
-//   • ColumnDrop plugin (drag block to side of another to create columns)
+//   • Column + ColumnList (spatial partitions — not blocks; created via slash menu or drag-and-drop)
+//   • ColumnDrop plugin (drag block to side of another to create/modify columns)
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
@@ -214,10 +214,15 @@ const Callout = Node.create({
 });
 
 // ─── Column Layout Nodes ────────────────────────────────────────────────────
-// Notion-style multi-column layout. Two nodes:
-//   • ColumnList — flex wrapper, group 'block', content 'column column+' (min 2)
-//   • Column — individual column, content 'block+'
-// A ProseMirror plugin handles resize (drag column boundaries to adjust widths).
+// Columns are spatial partitions, NOT blocks. Users interact with the blocks
+// inside columns, never with the column/columnList containers themselves.
+// Columns have no drag handles, no action menus, no block identity.
+// Two nodes:
+//   • ColumnList — invisible flex wrapper, group 'block', content 'column column+' (min 2)
+//   • Column — individual spatial partition, content 'block+'
+// Column structures are created via slash menu or drag-and-drop, and dissolve
+// automatically when ≤1 column remains (see columnAutoDissolvePlugin).
+// See docs/BLOCK_INTERACTION_RULES.md for the complete deterministic ruleset.
 
 const Column = Node.create({
   name: 'column',
@@ -304,7 +309,7 @@ const ColumnList = Node.create({
       // column structure.  If column has only one empty paragraph, remove
       // the column and dissolve columnList if only one column remains.
       'Backspace': ({ editor }) => {
-        const { selection, doc } = editor.state;
+        const { selection } = editor.state;
         const { $from } = selection;
         if (!selection.empty) return false;
 
@@ -390,6 +395,229 @@ const ColumnList = Node.create({
         if ($from.pos !== columnEnd) return false;
 
         // Prevent deletion across column boundary
+        return true;
+      },
+
+      // ── Keyboard Block Movement (Rule 6) ──────────────────────────────
+
+      // Ctrl/Cmd+Shift+↑ — Move current block up one position within its
+      // container.  If already at the top of a column, move above the
+      // columnList.
+      'Mod-Shift-ArrowUp': ({ editor }) => {
+        const { $from } = editor.state.selection;
+
+        // Locate the moveable block — direct child of column or doc
+        let blockDepth = -1;
+        let insideColumn = false;
+        let colDepth = -1;
+        for (let d = $from.depth; d >= 1; d--) {
+          if ($from.node(d).type.name === 'column') {
+            colDepth = d;
+            blockDepth = d + 1;
+            insideColumn = true;
+            break;
+          }
+        }
+        if (blockDepth < 0) blockDepth = 1; // top-level
+        if (blockDepth > $from.depth) return false;
+
+        const blockPos = $from.before(blockDepth);
+        const blockNode = editor.state.doc.nodeAt(blockPos);
+        if (!blockNode) return false;
+
+        const container = $from.node(blockDepth - 1);
+        const indexInParent = $from.index(blockDepth - 1);
+
+        if (indexInParent > 0) {
+          // Swap with previous sibling in the same container
+          const prevBlock = container.child(indexInParent - 1);
+          const prevPos = blockPos - prevBlock.nodeSize;
+          const { tr } = editor.state;
+          tr.delete(blockPos, blockPos + blockNode.nodeSize);
+          const mapped = tr.mapping.map(prevPos);
+          tr.insert(mapped, blockNode);
+          editor.view.dispatch(tr);
+          return true;
+        }
+
+        // Already at top of container — cross-container move?
+        if (insideColumn) {
+          const colNode = $from.node(colDepth);
+          const colPos = $from.before(colDepth);
+          const clDepth = colDepth - 1;
+          const clPos = $from.before(clDepth);
+          const clNode = $from.node(clDepth);
+          const { tr } = editor.state;
+
+          if (colNode.childCount <= 1 && clNode.childCount === 2) {
+            // Only block in column, 2-column layout → dissolve entire
+            // columnList.  Replace it with [blockNode, ...otherCol.content].
+            let otherIdx = -1;
+            let pos = clPos + 1;
+            for (let i = 0; i < clNode.childCount; i++) {
+              if (pos !== colPos) otherIdx = i;
+              pos += clNode.child(i).nodeSize;
+            }
+            if (otherIdx >= 0) {
+              const nodes: any[] = [blockNode];
+              clNode.child(otherIdx).forEach((ch: any) => nodes.push(ch));
+              tr.replaceWith(clPos, clPos + clNode.nodeSize, nodes);
+              editor.view.dispatch(tr);
+              return true;
+            }
+          } else if (colNode.childCount <= 1 && clNode.childCount > 2) {
+            // Only block in column, 3+ columns → delete column, insert
+            // block above columnList, redistribute widths.
+            tr.delete(colPos, colPos + colNode.nodeSize);
+            const mapped = tr.mapping.map(clPos);
+            tr.insert(mapped, blockNode);
+            // Reset widths
+            const mCL = tr.mapping.map(clPos);
+            const clNow = tr.doc.nodeAt(mCL);
+            if (clNow && clNow.type.name === 'columnList') {
+              let off = mCL + 1;
+              for (let i = 0; i < clNow.childCount; i++) {
+                const ch = clNow.child(i);
+                if (ch.type.name === 'column' && ch.attrs.width !== null) {
+                  tr.setNodeMarkup(off, undefined, { ...ch.attrs, width: null });
+                }
+                off += ch.nodeSize;
+              }
+            }
+            editor.view.dispatch(tr);
+            return true;
+          } else {
+            // Multiple blocks in column → move block above columnList
+            tr.delete(blockPos, blockPos + blockNode.nodeSize);
+            const mapped = tr.mapping.map(clPos);
+            tr.insert(mapped, blockNode);
+            editor.view.dispatch(tr);
+            return true;
+          }
+        }
+
+        return false;
+      },
+
+      // Ctrl/Cmd+Shift+↓ — Move current block down one position within
+      // its container.  If already at the bottom of a column, move below
+      // the columnList.
+      'Mod-Shift-ArrowDown': ({ editor }) => {
+        const { $from } = editor.state.selection;
+
+        let blockDepth = -1;
+        let insideColumn = false;
+        let colDepth = -1;
+        for (let d = $from.depth; d >= 1; d--) {
+          if ($from.node(d).type.name === 'column') {
+            colDepth = d;
+            blockDepth = d + 1;
+            insideColumn = true;
+            break;
+          }
+        }
+        if (blockDepth < 0) blockDepth = 1;
+        if (blockDepth > $from.depth) return false;
+
+        const blockPos = $from.before(blockDepth);
+        const blockNode = editor.state.doc.nodeAt(blockPos);
+        if (!blockNode) return false;
+
+        const container = $from.node(blockDepth - 1);
+        const indexInParent = $from.index(blockDepth - 1);
+
+        if (indexInParent < container.childCount - 1) {
+          // Swap with next sibling — insert after next, then delete source
+          const nextSibling = container.child(indexInParent + 1);
+          const afterNextPos = blockPos + blockNode.nodeSize + nextSibling.nodeSize;
+          const { tr } = editor.state;
+          tr.delete(blockPos, blockPos + blockNode.nodeSize);
+          const mapped = tr.mapping.map(afterNextPos);
+          tr.insert(mapped, blockNode);
+          editor.view.dispatch(tr);
+          return true;
+        }
+
+        // Already at bottom of container — cross-container move?
+        if (insideColumn) {
+          const colNode = $from.node(colDepth);
+          const colPos = $from.before(colDepth);
+          const clDepth = colDepth - 1;
+          const clPos = $from.before(clDepth);
+          const clNode = $from.node(clDepth);
+          const clEnd = clPos + clNode.nodeSize;
+          const { tr } = editor.state;
+
+          if (colNode.childCount <= 1 && clNode.childCount === 2) {
+            // Only block in column, 2-column layout → dissolve entire
+            // columnList.  Replace with [...otherCol.content, blockNode].
+            let otherIdx = -1;
+            let pos = clPos + 1;
+            for (let i = 0; i < clNode.childCount; i++) {
+              if (pos !== colPos) otherIdx = i;
+              pos += clNode.child(i).nodeSize;
+            }
+            if (otherIdx >= 0) {
+              const nodes: any[] = [];
+              clNode.child(otherIdx).forEach((ch: any) => nodes.push(ch));
+              nodes.push(blockNode);
+              tr.replaceWith(clPos, clPos + clNode.nodeSize, nodes);
+              editor.view.dispatch(tr);
+              return true;
+            }
+          } else if (colNode.childCount <= 1 && clNode.childCount > 2) {
+            // Only block in column, 3+ columns → delete column, insert
+            // block below columnList, redistribute widths.
+            tr.delete(colPos, colPos + colNode.nodeSize);
+            const mapped = tr.mapping.map(clEnd);
+            tr.insert(mapped, blockNode);
+            const mCL = tr.mapping.map(clPos);
+            const clNow = tr.doc.nodeAt(mCL);
+            if (clNow && clNow.type.name === 'columnList') {
+              let off = mCL + 1;
+              for (let i = 0; i < clNow.childCount; i++) {
+                const ch = clNow.child(i);
+                if (ch.type.name === 'column' && ch.attrs.width !== null) {
+                  tr.setNodeMarkup(off, undefined, { ...ch.attrs, width: null });
+                }
+                off += ch.nodeSize;
+              }
+            }
+            editor.view.dispatch(tr);
+            return true;
+          } else {
+            // Multiple blocks in column → move block below columnList
+            tr.delete(blockPos, blockPos + blockNode.nodeSize);
+            const mapped = tr.mapping.map(clEnd);
+            tr.insert(mapped, blockNode);
+            editor.view.dispatch(tr);
+            return true;
+          }
+        }
+
+        return false;
+      },
+
+      // Ctrl/Cmd+D — Duplicate the current block within its container
+      'Mod-d': ({ editor }) => {
+        const { $from } = editor.state.selection;
+
+        // Find the moveable block
+        let blockDepth = -1;
+        for (let d = $from.depth; d >= 1; d--) {
+          if ($from.node(d).type.name === 'column') { blockDepth = d + 1; break; }
+        }
+        if (blockDepth < 0) blockDepth = 1;
+        if (blockDepth > $from.depth) return false;
+
+        const blockPos = $from.before(blockDepth);
+        const blockNode = editor.state.doc.nodeAt(blockPos);
+        if (!blockNode) return false;
+
+        const endPos = blockPos + blockNode.nodeSize;
+        const { tr } = editor.state;
+        tr.insert(endPos, blockNode.copy(blockNode.content));
+        editor.view.dispatch(tr);
         return true;
       },
     };
@@ -690,170 +918,330 @@ function columnResizePlugin(): Plugin {
 }
 
 // ─── Column Drop ProseMirror Plugin ─────────────────────────────────────────
-// When the user drags a block (via GlobalDragHandle) to the left or right edge
-// of another block, a vertical blue indicator appears.  Dropping there wraps
-// both blocks in a columnList (Notion-style column creation by drag-and-drop).
+// Full drag-and-drop engine per docs/BLOCK_INTERACTION_RULES.md Rules 3-4.
+//
+// Two guide types:
+//   • Horizontal (above/below) — reorder blocks at any level
+//   • Vertical (left/right)    — create or extend column layouts
+//
+// Supports ALL drop scenarios:
+//   4A  top-level → top-level          (reorder or new columnList)
+//   4B  top-level → block in column    (insert into column or add column)
+//   4C  column → top-level             (extract or new columnList)
+//   4D  column → same column           (reorder or split column)
+//   4E  column → different column      (transfer or add column)
+//   4F  column → different columnList  (same as 4B from source)
+//
+// Empty-column cleanup is delegated to columnAutoDissolvePlugin.
+// Width redistribution is handled inline when columns are added/removed.
 
 function columnDropPlugin(): Plugin {
   const pluginKey = new PluginKey('columnDrop');
 
-  let indicatorEl: HTMLElement | null = null;
-  let activeTarget: {
-    pos: number;
-    side: 'left' | 'right';
+  // ── Indicator elements ──
+  let vertIndicator: HTMLElement | null = null;
+  let horzIndicator: HTMLElement | null = null;
+
+  interface DropTarget {
+    zone: 'above' | 'below' | 'left' | 'right';
     blockEl: HTMLElement;
-  } | null = null;
+    blockPos: number;
+    blockNode: any;
+    // Column context (null = top-level block)
+    columnPos: number | null;
+    columnListPos: number | null;
+    columnIndex: number;
+  }
 
-  function ensureIndicator(parentEl: HTMLElement): HTMLElement {
-    if (!indicatorEl) {
-      indicatorEl = document.createElement('div');
-      indicatorEl.className = 'column-drop-indicator';
-      parentEl.style.position = 'relative'; // needed for absolute indicator
-      parentEl.appendChild(indicatorEl);
+  let activeTarget: DropTarget | null = null;
+
+  // ── Indicator helpers ──
+
+  function ensureVert(container: HTMLElement): HTMLElement {
+    if (!vertIndicator) {
+      vertIndicator = document.createElement('div');
+      vertIndicator.className = 'column-drop-indicator';
     }
-    return indicatorEl;
+    if (vertIndicator.parentElement !== container) {
+      container.style.position = 'relative';
+      container.appendChild(vertIndicator);
+    }
+    return vertIndicator;
   }
 
-  function showIndicator(
-    parentEl: HTMLElement,
-    blockEl: HTMLElement,
-    side: 'left' | 'right',
-  ) {
-    const el = ensureIndicator(parentEl);
-    const blockRect = blockEl.getBoundingClientRect();
-    const parentRect = parentEl.getBoundingClientRect();
-    el.style.top = `${blockRect.top - parentRect.top}px`;
-    el.style.height = `${blockRect.height}px`;
-    el.style.left =
-      side === 'left'
-        ? `${blockRect.left - parentRect.left - 2}px`
-        : `${blockRect.right - parentRect.left}px`;
-    el.style.display = 'block';
+  function ensureHorz(container: HTMLElement): HTMLElement {
+    if (!horzIndicator) {
+      horzIndicator = document.createElement('div');
+      horzIndicator.className = 'canvas-drop-guide';
+    }
+    if (horzIndicator.parentElement !== container) {
+      container.style.position = 'relative';
+      container.appendChild(horzIndicator);
+    }
+    return horzIndicator;
   }
 
-  function hideIndicator() {
-    if (indicatorEl) indicatorEl.style.display = 'none';
+  function hideAll() {
+    if (vertIndicator) vertIndicator.style.display = 'none';
+    if (horzIndicator) horzIndicator.style.display = 'none';
     activeTarget = null;
   }
+
+  function showVert(container: HTMLElement, blockEl: HTMLElement, side: 'left' | 'right') {
+    const el = ensureVert(container);
+    const bRect = blockEl.getBoundingClientRect();
+    const cRect = container.getBoundingClientRect();
+    el.style.top = `${bRect.top - cRect.top}px`;
+    el.style.height = `${bRect.height}px`;
+    el.style.left = side === 'left'
+      ? `${bRect.left - cRect.left - 2}px`
+      : `${bRect.right - cRect.left}px`;
+    el.style.display = 'block';
+    if (horzIndicator) horzIndicator.style.display = 'none';
+  }
+
+  function showHorz(container: HTMLElement, blockEl: HTMLElement, pos: 'above' | 'below') {
+    const el = ensureHorz(container);
+    const bRect = blockEl.getBoundingClientRect();
+    const cRect = container.getBoundingClientRect();
+    el.style.top = pos === 'above'
+      ? `${bRect.top - cRect.top - 1}px`
+      : `${bRect.bottom - cRect.top + 1}px`;
+    el.style.left = `${bRect.left - cRect.left}px`;
+    el.style.width = `${bRect.width}px`;
+    el.style.display = 'block';
+    if (vertIndicator) vertIndicator.style.display = 'none';
+  }
+
+  // ── Target detection ──
+  // Walk up from elementsFromPoint hits to find the block-level element.
+  // Priority: blocks inside columns first (more specific), then top-level.
+
+  function findTarget(view: EditorView, x: number, y: number): Omit<DropTarget, 'zone'> | null {
+    const elements = document.elementsFromPoint(x, y);
+
+    // Pass 1 — blocks inside columns
+    for (const el of elements) {
+      const htmlEl = el as HTMLElement;
+      if (htmlEl.classList?.contains('column-drop-indicator') ||
+          htmlEl.classList?.contains('canvas-drop-guide')) continue;
+
+      let cur: HTMLElement | null = htmlEl;
+      while (cur && cur !== view.dom) {
+        const parent: HTMLElement | null = cur.parentElement;
+        if (!parent) break;
+        if (parent.classList.contains('canvas-column') &&
+            parent.parentElement?.classList.contains('canvas-column-list') &&
+            parent.parentElement.parentElement === view.dom) {
+          try {
+            const inner = view.posAtDOM(cur, 0);
+            const $p = view.state.doc.resolve(inner);
+            let colD = -1;
+            for (let d = $p.depth; d >= 1; d--) {
+              if ($p.node(d).type.name === 'column') { colD = d; break; }
+            }
+            if (colD < 0) break;
+            const blkD = colD + 1;
+            if (blkD > $p.depth) break;
+            const blockPos = $p.before(blkD);
+            const blockNode = view.state.doc.nodeAt(blockPos);
+            if (!blockNode) break;
+            const columnPos = $p.before(colD);
+            const columnListPos = $p.before(colD - 1);
+            const clNode = view.state.doc.nodeAt(columnListPos);
+            let colIdx = 0;
+            if (clNode) {
+              let off = columnListPos + 1;
+              for (let i = 0; i < clNode.childCount; i++) {
+                if (off === columnPos) { colIdx = i; break; }
+                off += clNode.child(i).nodeSize;
+              }
+            }
+            return { blockEl: cur, blockPos, blockNode, columnPos, columnListPos, columnIndex: colIdx };
+          } catch { break; }
+        }
+        cur = parent;
+      }
+    }
+
+    // Pass 2 — top-level blocks
+    for (const el of elements) {
+      const htmlEl = el as HTMLElement;
+      if (htmlEl.classList?.contains('column-drop-indicator') ||
+          htmlEl.classList?.contains('canvas-drop-guide')) continue;
+
+      let cur: HTMLElement | null = htmlEl;
+      while (cur && cur !== view.dom) {
+        if (cur.parentElement === view.dom) {
+          try {
+            const inner = view.posAtDOM(cur, 0);
+            const $p = view.state.doc.resolve(inner);
+            const blockPos = $p.before(Math.min($p.depth, 1));
+            const blockNode = view.state.doc.nodeAt(blockPos);
+            if (!blockNode) break;
+            return { blockEl: cur, blockPos, blockNode, columnPos: null, columnListPos: null, columnIndex: 0 };
+          } catch { break; }
+        }
+        cur = cur.parentElement;
+      }
+    }
+
+    return null;
+  }
+
+  // ── Drop zone detection ──
+  // Left/right edges → vertical guide (column create/extend).
+  // Centre area → horizontal guide (above/below reorder).
+  // columnList targets only allow above/below (Rule 9 nesting prevention).
+
+  function getZone(
+    blockEl: HTMLElement,
+    x: number,
+    y: number,
+    isColumnList: boolean,
+  ): 'above' | 'below' | 'left' | 'right' {
+    const r = blockEl.getBoundingClientRect();
+    const rx = x - r.left;
+    const ry = y - r.top;
+    const edge = Math.min(r.width * 0.2, 60);
+    if (!isColumnList) {
+      if (rx < edge) return 'left';
+      if (rx > r.width - edge) return 'right';
+    }
+    return ry < r.height / 2 ? 'above' : 'below';
+  }
+
+  // ── Source deletion helper ──
+  // Checks the source block's context in the CURRENT transaction doc
+  // (after any earlier inserts).  If the source is the last block in a
+  // column, deletes the entire column and redistributes widths.
+
+  function deleteSrc(tr: any, dragFrom: number, dragTo: number): void {
+    const mFrom = tr.mapping.map(dragFrom);
+    const mTo = tr.mapping.map(dragTo);
+    const $src = tr.doc.resolve(mFrom);
+
+    let colD = -1;
+    for (let d = $src.depth; d >= 1; d--) {
+      if ($src.node(d).type.name === 'column') { colD = d; break; }
+    }
+
+    if (colD >= 0) {
+      const colNode = $src.node(colD);
+      if (colNode.childCount <= 1) {
+        // Last block in column — delete the entire column.
+        // columnAutoDissolvePlugin will dissolve if ≤1 column remains.
+        const colStart = $src.before(colD);
+        const clPos = $src.before(colD - 1);
+        tr.delete(colStart, colStart + colNode.nodeSize);
+
+        // Redistribute widths in remaining columns to equal
+        const clNow = tr.doc.nodeAt(clPos);
+        if (clNow && clNow.type.name === 'columnList') {
+          let off = clPos + 1;
+          for (let i = 0; i < clNow.childCount; i++) {
+            const ch = clNow.child(i);
+            if (ch.type.name === 'column' && ch.attrs.width !== null) {
+              tr.setNodeMarkup(off, undefined, { ...ch.attrs, width: null });
+            }
+            off += ch.nodeSize;
+          }
+        }
+        return;
+      }
+    }
+
+    // Normal delete — block has siblings in its container
+    if (mTo > mFrom) tr.delete(mFrom, mTo);
+  }
+
+  // ── Width redistribution helper ──
+  // Resets all columns in a columnList to equal widths (null = flex: 1).
+
+  function resetWidths(tr: any, columnListPos: number): void {
+    const mPos = tr.mapping.map(columnListPos);
+    const cl = tr.doc.nodeAt(mPos);
+    if (!cl || cl.type.name !== 'columnList') return;
+    let off = mPos + 1;
+    for (let i = 0; i < cl.childCount; i++) {
+      const ch = cl.child(i);
+      if (ch.type.name === 'column' && ch.attrs.width !== null) {
+        tr.setNodeMarkup(off, undefined, { ...ch.attrs, width: null });
+      }
+      off += ch.nodeSize;
+    }
+  }
+
+  // ── Plugin ──
 
   return new Plugin({
     key: pluginKey,
 
     view: () => ({
       destroy: () => {
-        if (indicatorEl) {
-          indicatorEl.remove();
-          indicatorEl = null;
-        }
+        vertIndicator?.remove();
+        horzIndicator?.remove();
+        vertIndicator = null;
+        horzIndicator = null;
       },
     }),
 
     props: {
       handleDOMEvents: {
         dragover: (view: EditorView, event: DragEvent) => {
-          if (!view.dragging) {
-            hideIndicator();
-            return false;
-          }
+          if (!view.dragging) { hideAll(); return false; }
 
           const x = event.clientX;
           const y = event.clientY;
+          const raw = findTarget(view, x, y);
+          if (!raw) { hideAll(); return false; }
 
-          // Find the top-level block under the cursor.  A top-level block
-          // is a direct child of the ProseMirror editor DOM.
-          const elements = document.elementsFromPoint(x, y);
-          const blockEl = elements.find(
-            el => el.parentElement === view.dom,
-          ) as HTMLElement | undefined;
-
-          if (!blockEl) {
-            hideIndicator();
-            return false;
+          // Nesting prevention — skip if dragged content is a columnList
+          if (view.dragging.slice.content.firstChild?.type.name === 'columnList') {
+            hideAll(); return false;
           }
 
-          // Resolve ProseMirror position for this block
-          let blockPos: number;
-          try {
-            const inner = view.posAtDOM(blockEl, 0);
-            const $pos = view.state.doc.resolve(inner);
-            // Walk up to depth 1 (direct child of doc)
-            blockPos = $pos.before(Math.min($pos.depth, 1));
-          } catch {
-            hideIndicator();
-            return false;
+          // Skip if hovering over the source block
+          const { from: dF, to: dT } = view.state.selection;
+          if (raw.blockPos >= dF && raw.blockPos < dT) {
+            hideAll(); return false;
           }
 
-          const blockNode = view.state.doc.nodeAt(blockPos);
-          if (!blockNode) {
-            hideIndicator();
-            return false;
+          const isCL = raw.blockNode.type.name === 'columnList';
+          const zone = getZone(raw.blockEl, x, y, isCL);
+          activeTarget = { ...raw, zone };
+
+          const container = view.dom.parentElement;
+          if (!container) { hideAll(); return false; }
+
+          if (zone === 'left' || zone === 'right') {
+            showVert(container, raw.blockEl, zone);
+          } else {
+            showHorz(container, raw.blockEl, zone);
           }
 
-          // Skip columnList (would nest columns) and column nodes
-          if (
-            blockNode.type.name === 'columnList' ||
-            blockNode.type.name === 'column'
-          ) {
-            hideIndicator();
-            return false;
-          }
-
-          // Skip if dragging onto the selected (source) block
-          const { from: dragFrom, to: dragTo } = view.state.selection;
-          if (blockPos >= dragFrom && blockPos < dragTo) {
-            hideIndicator();
-            return false;
-          }
-
-          // Determine if mouse is in the left/right edge zone
-          const blockRect = blockEl.getBoundingClientRect();
-          const relativeX = x - blockRect.left;
-          const edgeThreshold = Math.min(blockRect.width * 0.2, 60);
-
-          let side: 'left' | 'right' | null = null;
-          if (relativeX < edgeThreshold) side = 'left';
-          else if (relativeX > blockRect.width - edgeThreshold) side = 'right';
-
-          if (side) {
-            activeTarget = { pos: blockPos, side, blockEl };
-            const parent = view.dom.parentElement;
-            if (parent) showIndicator(parent, blockEl, side);
-            event.preventDefault();
-            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-            return false; // let browser continue processing dragover
-          }
-
-          hideIndicator();
+          event.preventDefault();
+          if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
           return false;
         },
 
         dragleave: (view: EditorView, event: DragEvent) => {
           const rt = event.relatedTarget as HTMLElement | null;
-          if (!rt || !view.dom.contains(rt)) hideIndicator();
+          if (!rt || !view.dom.contains(rt)) hideAll();
           return false;
         },
 
         drop: (view: EditorView, event: DragEvent) => {
           if (!activeTarget) return false;
-
           const target = activeTarget;
-          hideIndicator();
+          hideAll();
 
-          // Get dragged content from view.dragging (set by GlobalDragHandle)
-          const draggingInfo = view.dragging;
-          if (!draggingInfo?.slice) return false;
-
-          const slice = draggingInfo.slice;
-
-          // Only handle full-block slices (skip inline / partial selections)
+          const dragging = view.dragging;
+          if (!dragging?.slice) return false;
+          const slice = dragging.slice;
           if (slice.openStart > 0 || slice.openEnd > 0) return false;
           if (slice.content.childCount === 0) return false;
-
-          // Skip if dragged content is a columnList (prevent nesting)
           if (slice.content.firstChild?.type.name === 'columnList') return false;
-
-          const targetNode = view.state.doc.nodeAt(target.pos);
-          if (!targetNode) return false;
 
           const { schema } = view.state;
           const columnType = schema.nodes.column;
@@ -863,50 +1251,67 @@ function columnDropPlugin(): Plugin {
           event.preventDefault();
           event.stopPropagation();
 
-          // Build two columns: one wrapping the target block, one with the
-          // dragged content.  Order depends on which side the drop happened.
-          let targetColumn: any;
-          let draggedColumn: any;
-          try {
-            targetColumn = columnType.create(null, Fragment.from(targetNode));
-            draggedColumn = columnType.create(null, slice.content);
-          } catch {
-            return false; // content incompatible with column spec
-          }
-
-          const columns =
-            target.side === 'left'
-              ? Fragment.from([draggedColumn, targetColumn])
-              : Fragment.from([targetColumn, draggedColumn]);
-
-          let columnList: any;
-          try {
-            columnList = columnListType.create(null, columns);
-          } catch {
-            return false;
-          }
-
-          const { tr } = view.state;
-          const targetFrom = target.pos;
-          const targetTo = target.pos + targetNode.nodeSize;
           const { from: dragFrom, to: dragTo } = view.state.selection;
+          const content = slice.content;
+          const { tr } = view.state;
 
-          // Replace the target block with the new column layout
-          tr.replaceWith(targetFrom, targetTo, columnList);
-
-          // Delete the original dragged content (move, not copy)
-          const mappedDragFrom = tr.mapping.map(dragFrom);
-          const mappedDragTo = tr.mapping.map(dragTo);
-          if (mappedDragTo > mappedDragFrom) {
-            tr.delete(mappedDragFrom, mappedDragTo);
+          // ── ABOVE / BELOW — reorder block at any level ──
+          if (target.zone === 'above' || target.zone === 'below') {
+            const insertPos = target.zone === 'above'
+              ? target.blockPos
+              : target.blockPos + target.blockNode.nodeSize;
+            tr.insert(insertPos, content);
+            deleteSrc(tr, dragFrom, dragTo);
+            view.dispatch(tr);
+            return true;
           }
 
+          // ── LEFT / RIGHT — create or extend columns ──
+
+          if (target.columnPos === null) {
+            // Target is a top-level block (4A, 4C) → create new columnList
+            const tNode = target.blockNode;
+            let tCol: any, dCol: any;
+            try {
+              tCol = columnType.create(null, Fragment.from(tNode));
+              dCol = columnType.create(null, content);
+            } catch { return false; }
+
+            const cols = target.zone === 'left'
+              ? Fragment.from([dCol, tCol])
+              : Fragment.from([tCol, dCol]);
+            let cl: any;
+            try { cl = columnListType.create(null, cols); } catch { return false; }
+
+            tr.replaceWith(target.blockPos, target.blockPos + tNode.nodeSize, cl);
+            deleteSrc(tr, dragFrom, dragTo);
+            view.dispatch(tr);
+            return true;
+          }
+
+          // Target is inside a column (4B, 4D, 4E, 4F) → add column to
+          // the existing columnList
+          const targetColNode = view.state.doc.nodeAt(target.columnPos);
+          if (!targetColNode) return false;
+
+          let newCol: any;
+          try { newCol = columnType.create(null, content); } catch { return false; }
+
+          const insertColPos = target.zone === 'left'
+            ? target.columnPos
+            : target.columnPos + targetColNode.nodeSize;
+
+          tr.insert(insertColPos, newCol);
+          deleteSrc(tr, dragFrom, dragTo);
+
+          // Reset all column widths to equal after adding a column
+          resetWidths(tr, target.columnListPos!);
           view.dispatch(tr);
           return true;
         },
 
         dragend: () => {
-          hideIndicator();
+          hideAll();
           return false;
         },
       },
@@ -1478,7 +1883,6 @@ class CanvasEditorPane implements IDisposable {
   private _colorHideTimer: ReturnType<typeof setTimeout> | null = null;
   private _dragHandleEl: HTMLElement | null = null;
   private _handleObserver: MutationObserver | null = null;
-  private _currentBlockDom: Element | null = null;
   private _actionBlockPos: number = -1;
   private _actionBlockNode: any = null;
 
@@ -3455,11 +3859,24 @@ class CanvasEditorPane implements IDisposable {
       const $pos = view.state.doc.resolve(domPos);
 
       // CASE 1: Matched element is a direct child of .ProseMirror
-      // → this is a top-level block (including columnList). Resolve to depth 1.
+      // → this is a top-level block. Resolve to depth 1.
+      // SPECIAL: if the resolved node is a columnList, drill into the
+      //   first block of the first column — because a columnList is an
+      //   invisible spatial container, NOT a block the user interacts with.
       if (matchedEl.parentElement?.matches?.('.ProseMirror')) {
         const blockPos = $pos.depth >= 1 ? $pos.before(1) : domPos;
         const node = view.state.doc.nodeAt(blockPos);
-        return node ? { pos: blockPos, node } : null;
+        if (!node) return null;
+        if (node.type.name === 'columnList') {
+          // Drill: columnList → first column → first block
+          const firstCol = node.firstChild;
+          if (firstCol && firstCol.type.name === 'column' && firstCol.childCount > 0) {
+            const innerPos = blockPos + 1 /* enter columnList */ + 1 /* enter column */;
+            const innerNode = view.state.doc.nodeAt(innerPos);
+            return innerNode ? { pos: innerPos, node: innerNode } : { pos: blockPos, node };
+          }
+        }
+        return { pos: blockPos, node };
       }
 
       // CASE 2: Matched element is inside a column
@@ -3568,33 +3985,20 @@ class CanvasEditorPane implements IDisposable {
     header.textContent = this._getBlockLabel(this._actionBlockNode.type.name);
     this._blockActionMenu.appendChild(header);
 
-    const isColumnList = this._actionBlockNode.type.name === 'columnList';
-
-    if (isColumnList) {
-      // Unwrap columns — replaces columnList with its columns' content
-      const unwrapSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 2L1 8L4 14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 2L15 8L12 14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><line x1="6" y1="5" x2="10" y2="11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
-      const unwrapItem = this._createActionItem('Unwrap columns', unwrapSvg, false);
-      unwrapItem.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        this._unwrapColumnList();
-      });
-      this._blockActionMenu.appendChild(unwrapItem);
-    } else {
-      // Turn into (not applicable for columnList)
-      const turnIntoSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 7C13 4.24 10.76 2 8 2C5.24 2 3 4.24 3 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M3 9C3 11.76 5.24 14 8 14C10.76 14 13 11.76 13 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M1 7L3 5L5 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 9L13 11L11 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      const turnIntoItem = this._createActionItem('Turn into', turnIntoSvg, true);
-      turnIntoItem.addEventListener('mouseenter', () => {
-        if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
-        this._showTurnIntoSubmenu(turnIntoItem);
-      });
-      turnIntoItem.addEventListener('mouseleave', (e) => {
-        const related = e.relatedTarget as HTMLElement;
-        if (!this._turnIntoSubmenu?.contains(related)) {
-          this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
-        }
-      });
-      this._blockActionMenu.appendChild(turnIntoItem);
-    }
+    // Turn into — available for all blocks (blocks are blocks regardless of location)
+    const turnIntoSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 7C13 4.24 10.76 2 8 2C5.24 2 3 4.24 3 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M3 9C3 11.76 5.24 14 8 14C10.76 14 13 11.76 13 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M1 7L3 5L5 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 9L13 11L11 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const turnIntoItem = this._createActionItem('Turn into', turnIntoSvg, true);
+    turnIntoItem.addEventListener('mouseenter', () => {
+      if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
+      this._showTurnIntoSubmenu(turnIntoItem);
+    });
+    turnIntoItem.addEventListener('mouseleave', (e) => {
+      const related = e.relatedTarget as HTMLElement;
+      if (!this._turnIntoSubmenu?.contains(related)) {
+        this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
+      }
+    });
+    this._blockActionMenu.appendChild(turnIntoItem);
 
     // Color
     const colorSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><text x="3" y="11" font-size="11" font-weight="700" fill="currentColor" font-family="sans-serif">A</text><rect x="2" y="13" width="12" height="2" rx="0.5" fill="currentColor" opacity="0.5"/></svg>';
@@ -3624,47 +4028,6 @@ class CanvasEditorPane implements IDisposable {
     delItem.classList.add('block-action-item--danger');
     delItem.addEventListener('mousedown', (e) => { e.preventDefault(); this._deleteBlock(); });
     this._blockActionMenu.appendChild(delItem);
-
-    // ── Column layout actions (shown for blocks inside a column) ──
-    if (!isColumnList && this._editor && this._actionBlockPos >= 0) {
-      const $pos = this._editor.state.doc.resolve(this._actionBlockPos);
-      let insideColumn = false;
-      for (let d = $pos.depth; d >= 1; d--) {
-        if ($pos.node(d).type.name === 'column') { insideColumn = true; break; }
-      }
-      if (insideColumn) {
-        this._blockActionMenu.appendChild($('div.block-action-separator'));
-        const colHeader = $('div.block-action-header');
-        colHeader.textContent = 'Column layout';
-        colHeader.style.fontSize = '11px';
-        colHeader.style.opacity = '0.6';
-        this._blockActionMenu.appendChild(colHeader);
-
-        const unwrapSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 2L1 8L4 14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 2L15 8L12 14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><line x1="6" y1="5" x2="10" y2="11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
-        const unwrapItem = this._createActionItem('Unwrap columns', unwrapSvg, false);
-        unwrapItem.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          this._unwrapParentColumnList();
-        });
-        this._blockActionMenu.appendChild(unwrapItem);
-
-        const dupSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5" y="5" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
-        const dupLayoutItem = this._createActionItem('Duplicate column layout', dupSvg, false);
-        dupLayoutItem.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          this._duplicateParentColumnList();
-        });
-        this._blockActionMenu.appendChild(dupLayoutItem);
-
-        const delLayoutItem = this._createActionItem('Delete column layout', svgIcon('trash'), false);
-        delLayoutItem.classList.add('block-action-item--danger');
-        delLayoutItem.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          this._deleteParentColumnList();
-        });
-        this._blockActionMenu.appendChild(delLayoutItem);
-      }
-    }
 
     // Position below drag handle
     const rect = this._dragHandleEl.getBoundingClientRect();
@@ -3914,95 +4277,6 @@ class CanvasEditorPane implements IDisposable {
 
   // ── Block Transform Execution ──
 
-  /** Unwrap a columnList — extract all columns' content as sequential blocks. */
-  private _unwrapColumnList(): void {
-    if (!this._editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
-    if (this._actionBlockNode.type.name !== 'columnList') return;
-    const pos = this._actionBlockPos;
-    const node = this._actionBlockNode;
-    this._hideBlockActionMenu();
-
-    // Collect all content from all columns
-    const { tr } = this._editor.state;
-    const fragments: any[] = [];
-    node.forEach((column: any) => {
-      if (column.type.name === 'column') {
-        column.forEach((block: any) => {
-          fragments.push(block);
-        });
-      }
-    });
-
-    if (fragments.length > 0) {
-      tr.replaceWith(pos, pos + node.nodeSize, fragments);
-    } else {
-      tr.delete(pos, pos + node.nodeSize);
-    }
-    this._editor.view.dispatch(tr);
-
-    const json = JSON.stringify(this._editor.getJSON());
-    this._dataService.scheduleContentSave(this._pageId, json);
-  }
-
-  /**
-   * Find the parent columnList for the currently selected block.
-   * Returns { pos, node } of the columnList, or null if not inside one.
-   */
-  private _findParentColumnList(): { pos: number; node: any } | null {
-    if (!this._editor || this._actionBlockPos < 0) return null;
-    const $pos = this._editor.state.doc.resolve(this._actionBlockPos);
-    for (let d = $pos.depth; d >= 1; d--) {
-      if ($pos.node(d).type.name === 'columnList') {
-        const colListPos = $pos.before(d);
-        const colListNode = this._editor.state.doc.nodeAt(colListPos);
-        return colListNode ? { pos: colListPos, node: colListNode } : null;
-      }
-    }
-    return null;
-  }
-
-  /** Unwrap the parent columnList of the currently selected block. */
-  private _unwrapParentColumnList(): void {
-    const parent = this._findParentColumnList();
-    if (!parent || !this._editor) return;
-    // Temporarily store the columnList as the action target and unwrap it
-    const savedPos = this._actionBlockPos;
-    const savedNode = this._actionBlockNode;
-    this._actionBlockPos = parent.pos;
-    this._actionBlockNode = parent.node;
-    this._unwrapColumnList();
-    this._actionBlockPos = savedPos;
-    this._actionBlockNode = savedNode;
-  }
-
-  /** Delete the parent columnList of the currently selected block. */
-  private _deleteParentColumnList(): void {
-    const parent = this._findParentColumnList();
-    if (!parent || !this._editor) return;
-    this._hideBlockActionMenu();
-    this._editor.chain()
-      .deleteRange({ from: parent.pos, to: parent.pos + parent.node.nodeSize })
-      .focus()
-      .run();
-    const json = JSON.stringify(this._editor.getJSON());
-    this._dataService.scheduleContentSave(this._pageId, json);
-  }
-
-  /** Duplicate the parent columnList of the currently selected block. */
-  private _duplicateParentColumnList(): void {
-    const parent = this._findParentColumnList();
-    if (!parent || !this._editor) return;
-    this._hideBlockActionMenu();
-    const insertPos = parent.pos + parent.node.nodeSize;
-    const copy = parent.node.toJSON();
-    this._editor.chain()
-      .insertContentAt(insertPos, copy)
-      .focus()
-      .run();
-    const json = JSON.stringify(this._editor.getJSON());
-    this._dataService.scheduleContentSave(this._pageId, json);
-  }
-
   private _turnBlockInto(targetType: string, attrs?: any): void {
     if (!this._editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
     const editor = this._editor;
@@ -4203,7 +4477,6 @@ class CanvasEditorPane implements IDisposable {
     if (this._turnIntoSubmenu) { this._turnIntoSubmenu.remove(); this._turnIntoSubmenu = null; }
     if (this._colorSubmenu) { this._colorSubmenu.remove(); this._colorSubmenu = null; }
     this._dragHandleEl = null;
-    this._currentBlockDom = null;
     this._actionBlockNode = null;
 
     // Cancel pending title save
