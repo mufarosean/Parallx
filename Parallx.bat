@@ -1,3 +1,4 @@
 @echo off
 cd /d "%~dp0"
-call npm run start
+start "" /B cmd /c "npm run start" >nul 2>&1
+exit
