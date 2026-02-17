@@ -2223,16 +2223,15 @@
   cursor: pointer;
   padding: 1px 3px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.04);
-  transition: background 0.15s ease;
+  background: none;
 }
 
 .canvas-tiptap-editor .tiptap-math.latex:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .canvas-tiptap-editor .tiptap-math.latex .katex {
-  font-size: 1em;
+  font-size: 1.15em;
 }
 
 /* ── Block equation ── */
@@ -2241,6 +2240,11 @@
   margin: 4px 0;
   padding: 8px 0;
   cursor: pointer;
+}
+
+.canvas-math-block--editing {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
 }
 
 .canvas-math-block.ProseMirror-selectednode {
@@ -2269,51 +2273,79 @@
   user-select: none;
 }
 
-/* ── Click-to-edit editor area ── */
+/* ── Floating editor popup (Notion-style) ── */
 .canvas-math-block-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: none;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: -6px;
+  translate: 0 100%;
+  z-index: 90;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 10px;
+  background: #2d2d2d;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  min-width: 600px;
+  max-width: 900px;
 }
 
 .canvas-math-block-input {
-  width: 100%;
-  padding: 8px 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
   font-family: 'Consolas', 'Courier New', monospace;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.4;
   color: rgba(255, 255, 255, 0.9);
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 4px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
   resize: none;
   overflow: hidden;
-  outline: none;
-  transition: border-color 0.15s ease;
+  word-wrap: break-word;
+  white-space: pre-wrap;
 }
 
 .canvas-math-block-input:focus {
-  border-color: rgba(45, 170, 219, 0.6);
+  border-color: rgba(45, 170, 219, 0.5);
 }
 
 .canvas-math-block-input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.25);
   font-family: inherit;
 }
 
-.canvas-math-block-preview {
-  text-align: center;
-  min-height: 20px;
-  padding: 4px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+.canvas-math-block-done {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 5px 10px;
+  margin-top: 1px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  background: #2563eb;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease;
 }
 
-.canvas-math-block-preview .katex-display {
-  margin: 0;
+.canvas-math-block-done:hover {
+  background: #1d4ed8;
 }
 
-.canvas-math-block-preview .katex {
-  font-size: 1.1em;
+.canvas-math-block-done-key {
+  font-size: 14px;
+  opacity: 0.7;
 }
 
 /* ── Inline Math Editor Popup (click-to-edit) ── */

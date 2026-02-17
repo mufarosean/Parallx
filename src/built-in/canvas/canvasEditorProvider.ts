@@ -257,23 +257,28 @@ const MathBlock = Node.create({
       dom.classList.add('canvas-math-block');
       dom.setAttribute('data-type', 'mathBlock');
 
-      // ── Rendered KaTeX output ──
+      // ── Rendered KaTeX output (always visible) ──
       const renderArea = document.createElement('div');
       renderArea.classList.add('canvas-math-block-render');
       dom.appendChild(renderArea);
 
-      // ── Editable input (hidden by default) ──
+      // ── Floating editor popup (hidden by default) ──
       const editorArea = document.createElement('div');
       editorArea.classList.add('canvas-math-block-editor');
       editorArea.style.display = 'none';
+
       const input = document.createElement('textarea');
       input.classList.add('canvas-math-block-input');
-      input.placeholder = 'Type a LaTeX equation…';
+      input.placeholder = 'Type LaTeX…';
+      input.spellcheck = false;
       input.rows = 1;
-      const preview = document.createElement('div');
-      preview.classList.add('canvas-math-block-preview');
+
+      const doneBtn = document.createElement('button');
+      doneBtn.classList.add('canvas-math-block-done');
+      doneBtn.innerHTML = 'Done <span class="canvas-math-block-done-key">↵</span>';
+
       editorArea.appendChild(input);
-      editorArea.appendChild(preview);
+      editorArea.appendChild(doneBtn);
       dom.appendChild(editorArea);
 
       let editing = false;
@@ -281,7 +286,7 @@ const MathBlock = Node.create({
 
       const renderKatex = (latex: string, target: HTMLElement, displayMode = true) => {
         if (!latex) {
-          target.innerHTML = '<span class="canvas-math-block-empty">Empty equation — click to edit</span>';
+          target.innerHTML = '<span class="canvas-math-block-empty">Click to add equation</span>';
           return;
         }
         try {
@@ -291,14 +296,8 @@ const MathBlock = Node.create({
         }
       };
 
-      const commitEdit = () => {
-        if (!editing) return;
-        editing = false;
-        const newLatex = input.value.trim();
-        editorArea.style.display = 'none';
-        renderArea.style.display = '';
-
-        if (newLatex !== currentLatex && typeof getPos === 'function') {
+      const updateLatex = (newLatex: string) => {
+        if (typeof getPos === 'function') {
           currentLatex = newLatex;
           editor.chain()
             .command(({ tr }: any) => {
@@ -307,60 +306,84 @@ const MathBlock = Node.create({
             })
             .run();
         }
-        renderKatex(currentLatex, renderArea);
+        renderKatex(newLatex, renderArea);
+      };
+
+      const commitEdit = () => {
+        if (!editing) return;
+        editing = false;
+        const newLatex = input.value.trim();
+        editorArea.style.display = 'none';
+        dom.classList.remove('canvas-math-block--editing');
+
+        if (newLatex !== currentLatex) {
+          updateLatex(newLatex);
+        }
       };
 
       const startEdit = () => {
         if (editing || !editor.isEditable) return;
         editing = true;
         input.value = currentLatex;
-        renderArea.style.display = 'none';
-        editorArea.style.display = '';
-        renderKatex(currentLatex, preview);
-        // Auto-resize then focus
-        autoResizeTextarea(input);
-        setTimeout(() => input.focus(), 0);
+        dom.classList.add('canvas-math-block--editing');
+        editorArea.style.display = 'flex';
+        autoResize();
+        setTimeout(() => { input.focus(); input.select(); }, 0);
       };
 
-      const autoResizeTextarea = (ta: HTMLTextAreaElement) => {
-        ta.style.height = 'auto';
-        ta.style.height = ta.scrollHeight + 'px';
+      const autoResize = () => {
+        input.style.height = 'auto';
+        input.style.height = input.scrollHeight + 'px';
       };
 
       // ── Events ──
       dom.addEventListener('click', (e) => {
+        if (editorArea.contains(e.target as HTMLElement)) return;
         e.stopPropagation();
         if (!editing) startEdit();
       });
 
       input.addEventListener('input', () => {
-        autoResizeTextarea(input);
-        renderKatex(input.value, preview);
+        // Live-update the rendered equation above
+        renderKatex(input.value || '', renderArea);
+        autoResize();
+      });
+
+      doneBtn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        commitEdit();
+        // Move cursor after the math block
+        if (typeof getPos === 'function') {
+          const pos = getPos() + 1;
+          editor.chain().setTextSelection(pos).focus().run();
+        }
       });
 
       input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key === 'Enter') {
           e.preventDefault();
           commitEdit();
-          // Move cursor after the math block
           if (typeof getPos === 'function') {
-            const pos = getPos() + 1;  // after the atom node
+            const pos = getPos() + 1;
             editor.chain().setTextSelection(pos).focus().run();
           }
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          input.value = currentLatex;  // revert
+          input.value = currentLatex;
+          renderKatex(currentLatex, renderArea);
           editing = false;
           editorArea.style.display = 'none';
-          renderArea.style.display = '';
+          dom.classList.remove('canvas-math-block--editing');
         }
-        // Stop all key events from propagating to TipTap
         e.stopPropagation();
       });
 
       input.addEventListener('blur', () => {
-        // Commit on blur (e.g., clicking outside)
-        setTimeout(() => commitEdit(), 100);
+        setTimeout(() => {
+          if (!editorArea.contains(document.activeElement)) {
+            commitEdit();
+          }
+        }, 100);
       });
 
       // Initial render
@@ -718,6 +741,7 @@ class CanvasEditorPane implements IDisposable {
         GlobalDragHandle.configure({
           dragHandleWidth: 24,
           scrollTreshold: 100,
+          customNodes: ['mathBlock'],
         }),
         // ── Tier 2 extensions ──
         Callout,

@@ -1220,6 +1220,26 @@ Floating toolbar with 7 formatting buttons (bold, italic, underline, strikethrou
 
 ---
 
+### Fix 15: Equation Editor UX Polish ✅
+
+**Changes:**
+1. **Inline math styling** — Removed grey background, increased font size from `1em` to `1.15em` for better readability within text.
+2. **Block equation drag handle** — Added `'mathBlock'` to `GlobalDragHandle.configure({ customNodes })` so equation blocks can be reordered via the drag handle (was missing from the selector list).
+3. **Block equation editor redesign (Notion-style)** — Replaced the full-width inline card editor with a floating popup that appears below the rendered equation:
+   - Rendered equation stays visible and updates live as you type (it *is* the preview)
+   - Floating popup: absolutely-positioned, centered, dark bg, rounded corners, drop shadow
+   - Minimal layout: textarea (monospace) + blue "Done ↵" button
+   - Textarea wraps text and expands height dynamically (auto-resize)
+   - Wide popup (600–900px) for comfortable editing of complex expressions
+   - Enter to confirm, Escape to revert, blur to auto-commit
+
+| File | Change |
+|------|--------|
+| `src/built-in/canvas/canvas.css` | Inline math: `background: none`, `font-size: 1.15em`. Block editor: floating popup with `position: absolute`, `translate`, `min-width: 600px`, textarea with `resize: none; overflow: hidden; white-space: pre-wrap`, blue Done button |
+| `src/built-in/canvas/canvasEditorProvider.ts` | Block equation NodeView: `<textarea>` instead of `<input>`, auto-resize on input, Done button with mousedown handler, live KaTeX update to render area; `GlobalDragHandle` `customNodes: ['mathBlock']` |
+
+---
+
 ## Canvas Editor — Notion Parity Gap Analysis
 
 Research based on **Novel** (16k stars, gold-standard Notion-style TipTap editor) and **tiptap-block-editor** by phyohtetarkar.
