@@ -2468,34 +2468,48 @@
 
 /* Resize handle zone — invisible but cursor changes on hover.
    Uses ::after on each column except the last to create a hit zone
-   between adjacent columns. */
+   between adjacent columns.  Zone is 24px wide (12px each side). */
 .canvas-column:not(:last-child)::after {
   content: '';
   position: absolute;
   right: -12px;
   top: 0;
   bottom: 0;
-  width: 16px;
+  width: 24px;
   cursor: col-resize;
   z-index: 10;
 }
 
-/* Blue resize indicator line on hover */
+/* Blue resize indicator line on hover (via class set by plugin) */
+.column-resize-hover .canvas-column:not(:last-child)::after,
 .canvas-column:not(:last-child):hover::after {
   background: linear-gradient(
     to right,
-    transparent 7px,
-    rgba(37, 99, 235, 0.4) 7px,
-    rgba(37, 99, 235, 0.4) 9px,
-    transparent 9px
+    transparent 11px,
+    rgba(37, 99, 235, 0.4) 11px,
+    rgba(37, 99, 235, 0.4) 13px,
+    transparent 13px
   );
 }
 
-/* During active resize, show cursor everywhere */
-.resize-cursor,
-.resize-cursor * {
+/* During active resize, override cursor on entire page */
+.column-resizing,
+.column-resizing * {
   cursor: col-resize !important;
+  user-select: none !important;
 }
+
+/* ─── Column Drop Indicator (drag-to-create columns) ────────────────────── */
+/* Vertical blue line shown when dragging a block to the side of another. */
+.column-drop-indicator {
+  display: none;
+  position: absolute;
+  width: 3px;
+  background: rgba(37, 99, 235, 0.7);
+  border-radius: 2px;
+  z-index: 50;
+  pointer-events: none;
+  transition: top 0.08s ease, height 0.08s ease, left 0.08s ease;
 
 /* Placeholder text style inside columns */
 .canvas-column .is-empty::before {

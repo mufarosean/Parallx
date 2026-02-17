@@ -2066,3 +2066,36 @@ Every task must pass these before being considered complete:
 | `src/built-in/canvas/canvasIcons.ts` | Add 'columns' icon for slash menu |
 | `src/built-in/canvas/markdownExport.ts` | Handle `columnList` and `column` node types |
 | `docs/Parallx_Milestone_6.md` | This documentation |
+
+---
+
+## Fix 17: Column Resize Fix + Drag-to-Create Columns ✅
+
+### Issues Fixed
+
+1. **Column resize broken**: `findBoundary()` relied on `event.target.closest('.canvas-column-list')` which fails when the mouse is over a GlobalDragHandle overlay or other element outside the column DOM tree. Positions were computed at mousedown and stored, risking stale references.
+2. **No drag-to-create columns**: Notion's primary column creation method (drag block to side of another) was not implemented — only slash menu existed.
+
+### Changes
+
+#### Resize Plugin Rewrite (`columnResizePlugin`)
+- **Coordinate-based boundary detection**: New `findBoundary()` scans all `.canvas-column-list` elements in the editor DOM using `querySelectorAll`, checking mouse coordinates against column boundaries. No longer depends on `event.target`.
+- **Document tree position resolution**: New `findColumnPos()` walks the ProseMirror document tree to resolve column positions at commit time (mouseup), avoiding stale position bugs. Uses column index within the columnList instead of stored positions.
+- **Wider tolerance**: 12px each side (24px total zone), matching the column padding.
+- **CSS class cursor management**: Uses `document.body.classList.add('column-resizing')` during drag for reliable cursor override across the entire page, including `user-select: none`.
+- **Explicit flex override**: Sets `style.flex = 'none'` during DOM drag alongside width, ensuring CSS `[style*="width"]` selector isn't needed during drag.
+
+#### Drag-to-Create Columns (`columnDropPlugin`)
+- **New ProseMirror plugin**: Detects when a block is dragged (via GlobalDragHandle) to the left/right edge of another top-level block.
+- **Visual indicator**: Vertical blue line (`.column-drop-indicator`) positioned at the target block's edge with smooth CSS transitions.
+- **Edge detection**: 20% of block width (max 60px) from each edge triggers the indicator.
+- **Drop handling**: Creates a `columnList` wrapping both blocks — the target block in one column, dragged content in the other. Order depends on drop side (left/right).
+- **Move semantics**: Deletes the original dragged content using `tr.mapping.map()` for correct position mapping after the column insertion.
+- **Safety checks**: Skips columnList targets (no nesting), skips inline/partial slices, skips drag-onto-self, try/catch for content validation.
+
+### Files Changed
+
+| File | Changes |
+|------|---------|
+| `src/built-in/canvas/canvasEditorProvider.ts` | Rewrite `columnResizePlugin()`, add `columnDropPlugin()`, import `Fragment` from `@tiptap/pm/model`, update `addProseMirrorPlugins()` to return both plugins |
+| `src/built-in/canvas/canvas.css` | Widen `::after` handle (24px), add `.column-resizing` cursor styles, add `.column-drop-indicator` styles, add `.column-resize-hover` indicator line |

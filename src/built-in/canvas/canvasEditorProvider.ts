@@ -24,6 +24,7 @@
 //   • MathExtension + InlineMathNode (@aarkue/tiptap-math-extension — inline LaTeX via $...$)
 //   • MathBlock (custom block-level equation node with click-to-edit + KaTeX)
 //   • Column + ColumnList (multi-column layout with drag-to-resize, slash menu)
+//   • ColumnDrop plugin (drag block to side of another to create columns)
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
@@ -31,6 +32,7 @@ import type { CanvasDataService } from './canvasDataService.js';
 import type { IPage } from './canvasTypes.js';
 import { Editor, Extension, Node, mergeAttributes } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Fragment } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -257,14 +259,15 @@ const ColumnList = Node.create({
   },
 
   addProseMirrorPlugins() {
-    return [columnResizePlugin()];
+    return [columnResizePlugin(), columnDropPlugin()];
   },
 });
 
 // ─── Column Resize ProseMirror Plugin ───────────────────────────────────────
-// Detects mouse near column boundaries, shows col-resize cursor, handles
-// drag to resize adjacent columns.  Commits width changes on mouseup only
-// (single transaction — clean undo history).  Double-click equalizes widths.
+// Scans all .canvas-column-list elements by coordinate (not event.target) to
+// detect column boundaries.  Positions are resolved by walking the ProseMirror
+// document tree at commit time, avoiding stale-position bugs.  Cursor is
+// managed via CSS class on document.body for reliable override.
 
 function columnResizePlugin(): Plugin {
   const pluginKey = new PluginKey('columnResize');
@@ -275,67 +278,114 @@ function columnResizePlugin(): Plugin {
     rightCol: HTMLElement;
     leftStartWidth: number;  // percentage
     rightStartWidth: number; // percentage
-    containerWidth: number;  // pixels (excludes gaps)
-    leftPos: number;         // ProseMirror node position of left column
-    rightPos: number;        // ProseMirror node position of right column
+    listEl: HTMLElement;     // the columnList container DOM
+    leftIndex: number;       // 0-based child index in columnList
+    rightIndex: number;
   }
 
   let dragging: DragState | null = null;
-  let cursorSet = false;
 
-  /** Find left+right columns straddling the mouse X position. */
+  /**
+   * Find column boundary nearest to (x, y) by scanning ALL column lists in
+   * the editor DOM.  Does NOT use event.target — works even when hovering over
+   * drag-handle overlays or pseudo-elements.
+   */
   function findBoundary(
-    event: MouseEvent,
-    handleWidth: number,
-  ): { leftCol: HTMLElement; rightCol: HTMLElement; container: HTMLElement } | null {
-    const target = event.target as HTMLElement;
-    if (!target) return null;
-    const container = target.closest('.canvas-column-list') as HTMLElement;
-    if (!container) return null;
+    view: EditorView,
+    x: number,
+    y: number,
+    tolerance: number,
+  ): {
+    leftCol: HTMLElement;
+    rightCol: HTMLElement;
+    listEl: HTMLElement;
+    leftIndex: number;
+    rightIndex: number;
+  } | null {
+    const lists = view.dom.querySelectorAll('.canvas-column-list');
+    for (const list of lists) {
+      const listRect = list.getBoundingClientRect();
+      if (y < listRect.top || y > listRect.bottom) continue;
 
-    const columns = Array.from(container.children).filter(
-      el => el.classList.contains('canvas-column'),
-    ) as HTMLElement[];
+      const columns = Array.from(list.children).filter(
+        el => (el as HTMLElement).classList.contains('canvas-column'),
+      ) as HTMLElement[];
 
-    for (let i = 0; i < columns.length - 1; i++) {
-      const rect = columns[i].getBoundingClientRect();
-      if (
-        event.clientX >= rect.right - handleWidth &&
-        event.clientX <= rect.right + handleWidth + 8
-      ) {
-        return { leftCol: columns[i], rightCol: columns[i + 1], container };
+      for (let i = 0; i < columns.length - 1; i++) {
+        const leftRect = columns[i].getBoundingClientRect();
+        const rightRect = columns[i + 1].getBoundingClientRect();
+        const boundaryX = (leftRect.right + rightRect.left) / 2;
+        if (Math.abs(x - boundaryX) <= tolerance) {
+          return {
+            leftCol: columns[i],
+            rightCol: columns[i + 1],
+            listEl: list as HTMLElement,
+            leftIndex: i,
+            rightIndex: i + 1,
+          };
+        }
       }
     }
     return null;
   }
 
-  /** Get the percentage width of a column relative to its container. */
+  /** Percentage width of a column relative to its container. */
   function colPercent(col: HTMLElement, container: HTMLElement): number {
     return (col.getBoundingClientRect().width / container.getBoundingClientRect().width) * 100;
   }
 
-  /** Equalize all columns inside a columnList container. */
-  function equalizeColumns(view: EditorView, container: HTMLElement) {
-    const columns = Array.from(container.children).filter(
-      el => el.classList.contains('canvas-column'),
-    ) as HTMLElement[];
-    if (columns.length < 2) return;
-
-    const { tr } = view.state;
-    let changed = false;
-
-    for (const col of columns) {
-      const pos = view.posAtDOM(col, 0);
-      const $pos = view.state.doc.resolve(pos);
-      const nodePos = $pos.before($pos.depth);
-      const node = view.state.doc.nodeAt(nodePos);
-      if (node && node.type.name === 'column' && node.attrs.width !== null) {
-        tr.setNodeMarkup(nodePos, undefined, { ...node.attrs, width: null });
-        changed = true;
+  /**
+   * Resolve the ProseMirror position of the Nth column inside a columnList by
+   * walking the document tree.  Uses posAtDOM only to locate the columnList
+   * ancestor, then iterates children by index.
+   */
+  function findColumnPos(
+    view: EditorView,
+    listEl: HTMLElement,
+    columnIndex: number,
+  ): number | null {
+    const insidePos = view.posAtDOM(listEl, 0);
+    const $pos = view.state.doc.resolve(insidePos);
+    for (let d = $pos.depth; d >= 0; d--) {
+      if ($pos.node(d).type.name === 'columnList') {
+        const listNodePos = $pos.before(d);
+        const listNode = view.state.doc.nodeAt(listNodePos);
+        if (!listNode) return null;
+        let offset = listNodePos + 1;
+        for (let i = 0; i < listNode.childCount; i++) {
+          if (i === columnIndex) return offset;
+          offset += listNode.child(i).nodeSize;
+        }
+        return null;
       }
     }
+    return null;
+  }
 
-    if (changed) view.dispatch(tr);
+  /** Set all columns in a columnList to equal width (null → flex: 1). */
+  function equalizeColumns(view: EditorView, listEl: HTMLElement) {
+    const insidePos = view.posAtDOM(listEl, 0);
+    const $pos = view.state.doc.resolve(insidePos);
+    for (let d = $pos.depth; d >= 0; d--) {
+      if ($pos.node(d).type.name === 'columnList') {
+        const listNodePos = $pos.before(d);
+        const listNode = view.state.doc.nodeAt(listNodePos);
+        if (!listNode) return;
+        const { tr } = view.state;
+        let changed = false;
+        let offset = listNodePos + 1;
+        for (let i = 0; i < listNode.childCount; i++) {
+          const child = listNode.child(i);
+          if (child.type.name === 'column' && child.attrs.width !== null) {
+            tr.setNodeMarkup(offset, undefined, { ...child.attrs, width: null });
+            changed = true;
+          }
+          offset += child.nodeSize;
+        }
+        if (changed) view.dispatch(tr);
+        return;
+      }
+    }
   }
 
   return new Plugin({
@@ -345,86 +395,80 @@ function columnResizePlugin(): Plugin {
       handleDOMEvents: {
         mousemove: (view: EditorView, event: MouseEvent) => {
           if (dragging) {
-            // Currently dragging — update DOM widths for smooth visual feedback
             const delta = event.clientX - dragging.startX;
-            const containerWidth = dragging.leftCol.parentElement!.getBoundingClientRect().width;
+            const containerWidth = dragging.listEl.getBoundingClientRect().width;
             const deltaPercent = (delta / containerWidth) * 100;
             const newLeft = Math.max(10, Math.min(90, dragging.leftStartWidth + deltaPercent));
             const newRight = Math.max(10, Math.min(90, dragging.rightStartWidth - deltaPercent));
             dragging.leftCol.style.width = newLeft + '%';
+            dragging.leftCol.style.flex = 'none';
             dragging.rightCol.style.width = newRight + '%';
+            dragging.rightCol.style.flex = 'none';
             event.preventDefault();
             return true;
           }
 
-          // Not dragging — check if near a column boundary and set cursor
-          const boundary = findBoundary(event, 4);
+          // Not dragging — show/hide resize cursor near column boundaries
+          const boundary = findBoundary(view, event.clientX, event.clientY, 12);
           if (boundary) {
-            if (!cursorSet) {
-              (view.dom as HTMLElement).style.cursor = 'col-resize';
-              cursorSet = true;
-            }
-          } else if (cursorSet) {
-            (view.dom as HTMLElement).style.cursor = '';
-            cursorSet = false;
+            document.body.classList.add('column-resize-hover');
+          } else {
+            document.body.classList.remove('column-resize-hover');
           }
           return false;
         },
 
         mousedown: (view: EditorView, event: MouseEvent) => {
-          const boundary = findBoundary(event, 4);
+          const boundary = findBoundary(view, event.clientX, event.clientY, 12);
           if (!boundary) return false;
 
           event.preventDefault();
-
-          const { leftCol, rightCol, container } = boundary;
-          const leftWidth = colPercent(leftCol, container);
-          const rightWidth = colPercent(rightCol, container);
-
-          // Resolve ProseMirror positions for each column node
-          const leftPmPos = view.posAtDOM(leftCol, 0);
-          const rightPmPos = view.posAtDOM(rightCol, 0);
-          const left$pos = view.state.doc.resolve(leftPmPos);
-          const right$pos = view.state.doc.resolve(rightPmPos);
+          const { leftCol, rightCol, listEl, leftIndex, rightIndex } = boundary;
 
           dragging = {
             startX: event.clientX,
             leftCol,
             rightCol,
-            leftStartWidth: leftWidth,
-            rightStartWidth: rightWidth,
-            containerWidth: container.getBoundingClientRect().width,
-            leftPos: left$pos.before(left$pos.depth),
-            rightPos: right$pos.before(right$pos.depth),
+            leftStartWidth: colPercent(leftCol, listEl),
+            rightStartWidth: colPercent(rightCol, listEl),
+            listEl,
+            leftIndex,
+            rightIndex,
           };
 
-          // Listen on window for mouseup (in case mouse leaves the editor)
+          document.body.classList.add('column-resizing');
+
           const finish = (e: MouseEvent) => {
             window.removeEventListener('mouseup', finish);
             if (!dragging) return;
 
             const delta = e.clientX - dragging.startX;
-            const containerWidth = dragging.leftCol.parentElement!.getBoundingClientRect().width;
+            const containerWidth = dragging.listEl.getBoundingClientRect().width;
             const deltaPercent = (delta / containerWidth) * 100;
             const newLeft = Math.max(10, Math.min(90, dragging.leftStartWidth + deltaPercent));
             const newRight = Math.max(10, Math.min(90, dragging.rightStartWidth - deltaPercent));
 
-            // Commit to ProseMirror document
-            const { tr } = view.state;
-            const leftNode = view.state.doc.nodeAt(dragging.leftPos);
-            const rightNode = view.state.doc.nodeAt(dragging.rightPos);
+            // Resolve positions at commit time by walking document tree
+            const leftPos = findColumnPos(view, dragging.listEl, dragging.leftIndex);
+            const rightPos = findColumnPos(view, dragging.listEl, dragging.rightIndex);
 
-            if (leftNode && rightNode) {
-              const leftW = Math.round(newLeft * 10) / 10;
-              const rightW = Math.round(newRight * 10) / 10;
-              tr.setNodeMarkup(dragging.leftPos, undefined, { ...leftNode.attrs, width: leftW });
-              tr.setNodeMarkup(dragging.rightPos, undefined, { ...rightNode.attrs, width: rightW });
-              view.dispatch(tr);
+            if (leftPos !== null && rightPos !== null) {
+              const { tr } = view.state;
+              const leftNode = view.state.doc.nodeAt(leftPos);
+              const rightNode = view.state.doc.nodeAt(rightPos);
+
+              if (leftNode && rightNode) {
+                const leftW = Math.round(newLeft * 10) / 10;
+                const rightW = Math.round(newRight * 10) / 10;
+                tr.setNodeMarkup(leftPos, undefined, { ...leftNode.attrs, width: leftW });
+                tr.setNodeMarkup(rightPos, undefined, { ...rightNode.attrs, width: rightW });
+                view.dispatch(tr);
+              }
             }
 
             dragging = null;
-            (view.dom as HTMLElement).style.cursor = '';
-            cursorSet = false;
+            document.body.classList.remove('column-resizing');
+            document.body.classList.remove('column-resize-hover');
           };
 
           window.addEventListener('mouseup', finish);
@@ -432,12 +476,236 @@ function columnResizePlugin(): Plugin {
         },
 
         dblclick: (view: EditorView, event: MouseEvent) => {
-          // Double-click on column boundary → equalize all columns
-          const boundary = findBoundary(event, 4);
+          const boundary = findBoundary(view, event.clientX, event.clientY, 12);
           if (!boundary) return false;
           event.preventDefault();
-          equalizeColumns(view, boundary.container);
+          equalizeColumns(view, boundary.listEl);
           return true;
+        },
+      },
+    },
+  });
+}
+
+// ─── Column Drop ProseMirror Plugin ─────────────────────────────────────────
+// When the user drags a block (via GlobalDragHandle) to the left or right edge
+// of another block, a vertical blue indicator appears.  Dropping there wraps
+// both blocks in a columnList (Notion-style column creation by drag-and-drop).
+
+function columnDropPlugin(): Plugin {
+  const pluginKey = new PluginKey('columnDrop');
+
+  let indicatorEl: HTMLElement | null = null;
+  let activeTarget: {
+    pos: number;
+    side: 'left' | 'right';
+    blockEl: HTMLElement;
+  } | null = null;
+
+  function ensureIndicator(parentEl: HTMLElement): HTMLElement {
+    if (!indicatorEl) {
+      indicatorEl = document.createElement('div');
+      indicatorEl.className = 'column-drop-indicator';
+      parentEl.style.position = 'relative'; // needed for absolute indicator
+      parentEl.appendChild(indicatorEl);
+    }
+    return indicatorEl;
+  }
+
+  function showIndicator(
+    parentEl: HTMLElement,
+    blockEl: HTMLElement,
+    side: 'left' | 'right',
+  ) {
+    const el = ensureIndicator(parentEl);
+    const blockRect = blockEl.getBoundingClientRect();
+    const parentRect = parentEl.getBoundingClientRect();
+    el.style.top = `${blockRect.top - parentRect.top}px`;
+    el.style.height = `${blockRect.height}px`;
+    el.style.left =
+      side === 'left'
+        ? `${blockRect.left - parentRect.left - 2}px`
+        : `${blockRect.right - parentRect.left}px`;
+    el.style.display = 'block';
+  }
+
+  function hideIndicator() {
+    if (indicatorEl) indicatorEl.style.display = 'none';
+    activeTarget = null;
+  }
+
+  return new Plugin({
+    key: pluginKey,
+
+    view: () => ({
+      destroy: () => {
+        if (indicatorEl) {
+          indicatorEl.remove();
+          indicatorEl = null;
+        }
+      },
+    }),
+
+    props: {
+      handleDOMEvents: {
+        dragover: (view: EditorView, event: DragEvent) => {
+          if (!view.dragging) {
+            hideIndicator();
+            return false;
+          }
+
+          const x = event.clientX;
+          const y = event.clientY;
+
+          // Find the top-level block under the cursor.  A top-level block
+          // is a direct child of the ProseMirror editor DOM.
+          const elements = document.elementsFromPoint(x, y);
+          const blockEl = elements.find(
+            el => el.parentElement === view.dom,
+          ) as HTMLElement | undefined;
+
+          if (!blockEl) {
+            hideIndicator();
+            return false;
+          }
+
+          // Resolve ProseMirror position for this block
+          let blockPos: number;
+          try {
+            const inner = view.posAtDOM(blockEl, 0);
+            const $pos = view.state.doc.resolve(inner);
+            // Walk up to depth 1 (direct child of doc)
+            blockPos = $pos.before(Math.min($pos.depth, 1));
+          } catch {
+            hideIndicator();
+            return false;
+          }
+
+          const blockNode = view.state.doc.nodeAt(blockPos);
+          if (!blockNode) {
+            hideIndicator();
+            return false;
+          }
+
+          // Skip columnList (would nest columns) and column nodes
+          if (
+            blockNode.type.name === 'columnList' ||
+            blockNode.type.name === 'column'
+          ) {
+            hideIndicator();
+            return false;
+          }
+
+          // Skip if dragging onto the selected (source) block
+          const { from: dragFrom, to: dragTo } = view.state.selection;
+          if (blockPos >= dragFrom && blockPos < dragTo) {
+            hideIndicator();
+            return false;
+          }
+
+          // Determine if mouse is in the left/right edge zone
+          const blockRect = blockEl.getBoundingClientRect();
+          const relativeX = x - blockRect.left;
+          const edgeThreshold = Math.min(blockRect.width * 0.2, 60);
+
+          let side: 'left' | 'right' | null = null;
+          if (relativeX < edgeThreshold) side = 'left';
+          else if (relativeX > blockRect.width - edgeThreshold) side = 'right';
+
+          if (side) {
+            activeTarget = { pos: blockPos, side, blockEl };
+            const parent = view.dom.parentElement;
+            if (parent) showIndicator(parent, blockEl, side);
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+            return false; // let browser continue processing dragover
+          }
+
+          hideIndicator();
+          return false;
+        },
+
+        dragleave: (view: EditorView, event: DragEvent) => {
+          const rt = event.relatedTarget as HTMLElement | null;
+          if (!rt || !view.dom.contains(rt)) hideIndicator();
+          return false;
+        },
+
+        drop: (view: EditorView, event: DragEvent) => {
+          if (!activeTarget) return false;
+
+          const target = activeTarget;
+          hideIndicator();
+
+          // Get dragged content from view.dragging (set by GlobalDragHandle)
+          const draggingInfo = view.dragging;
+          if (!draggingInfo?.slice) return false;
+
+          const slice = draggingInfo.slice;
+
+          // Only handle full-block slices (skip inline / partial selections)
+          if (slice.openStart > 0 || slice.openEnd > 0) return false;
+          if (slice.content.childCount === 0) return false;
+
+          // Skip if dragged content is a columnList (prevent nesting)
+          if (slice.content.firstChild?.type.name === 'columnList') return false;
+
+          const targetNode = view.state.doc.nodeAt(target.pos);
+          if (!targetNode) return false;
+
+          const { schema } = view.state;
+          const columnType = schema.nodes.column;
+          const columnListType = schema.nodes.columnList;
+          if (!columnType || !columnListType) return false;
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          // Build two columns: one wrapping the target block, one with the
+          // dragged content.  Order depends on which side the drop happened.
+          let targetColumn: any;
+          let draggedColumn: any;
+          try {
+            targetColumn = columnType.create(null, Fragment.from(targetNode));
+            draggedColumn = columnType.create(null, slice.content);
+          } catch {
+            return false; // content incompatible with column spec
+          }
+
+          const columns =
+            target.side === 'left'
+              ? Fragment.from([draggedColumn, targetColumn])
+              : Fragment.from([targetColumn, draggedColumn]);
+
+          let columnList: any;
+          try {
+            columnList = columnListType.create(null, columns);
+          } catch {
+            return false;
+          }
+
+          const { tr } = view.state;
+          const targetFrom = target.pos;
+          const targetTo = target.pos + targetNode.nodeSize;
+          const { from: dragFrom, to: dragTo } = view.state.selection;
+
+          // Replace the target block with the new column layout
+          tr.replaceWith(targetFrom, targetTo, columnList);
+
+          // Delete the original dragged content (move, not copy)
+          const mappedDragFrom = tr.mapping.map(dragFrom);
+          const mappedDragTo = tr.mapping.map(dragTo);
+          if (mappedDragTo > mappedDragFrom) {
+            tr.delete(mappedDragFrom, mappedDragTo);
+          }
+
+          view.dispatch(tr);
+          return true;
+        },
+
+        dragend: () => {
+          hideIndicator();
+          return false;
         },
       },
     },
