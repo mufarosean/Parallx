@@ -2212,3 +2212,115 @@
 }
 
 /* (callout-emoji styles consolidated at line ~833) */
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Math / KaTeX — Inline & Block Equations
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Inline math (from @aarkue/tiptap-math-extension) ── */
+.canvas-tiptap-editor .tiptap-math.latex {
+  display: inline;
+  cursor: pointer;
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.15s ease;
+}
+
+.canvas-tiptap-editor .tiptap-math.latex:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.canvas-tiptap-editor .tiptap-math.latex .katex {
+  font-size: 1em;
+}
+
+/* ── Block equation ── */
+.canvas-math-block {
+  position: relative;
+  margin: 8px 0;
+  padding: 16px 20px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.canvas-math-block:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.canvas-math-block.ProseMirror-selectednode {
+  outline: 2px solid rgba(45, 170, 219, 0.5);
+  outline-offset: 2px;
+}
+
+/* ── Rendered KaTeX output (display mode) ── */
+.canvas-math-block-render {
+  text-align: center;
+  min-height: 24px;
+}
+
+.canvas-math-block-render .katex-display {
+  margin: 0;
+}
+
+.canvas-math-block-render .katex {
+  font-size: 1.15em;
+}
+
+.canvas-math-block-empty {
+  color: rgba(255, 255, 255, 0.35);
+  font-style: italic;
+  font-size: 14px;
+  user-select: none;
+}
+
+/* ── Click-to-edit editor area ── */
+.canvas-math-block-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.canvas-math-block-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.canvas-math-block-input:focus {
+  border-color: rgba(45, 170, 219, 0.6);
+}
+
+.canvas-math-block-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+  font-family: inherit;
+}
+
+.canvas-math-block-preview {
+  text-align: center;
+  min-height: 20px;
+  padding: 4px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.canvas-math-block-preview .katex-display {
+  margin: 0;
+}
+
+.canvas-math-block-preview .katex {
+  font-size: 1.1em;
+}

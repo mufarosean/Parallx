@@ -145,6 +145,11 @@ function renderNode(node: TipTapNode, depth: number): string {
       return `![${alt}](${src})\n`;
     }
 
+    case 'mathBlock': {
+      const latex = (node.attrs?.latex as string) || '';
+      return `$$\n${latex}\n$$\n`;
+    }
+
     default:
       // Fallback: render content inline if present
       if (node.content) {
@@ -212,6 +217,13 @@ function renderTextWithMarks(node: TipTapNode): string {
     const src = (node.attrs?.src as string) || '';
     const alt = (node.attrs?.alt as string) || '';
     return `![${alt}](${src})`;
+  }
+
+  // Inline math node → $latex$
+  if (node.type === 'inlineMath') {
+    const latex = (node.attrs?.latex as string) || '';
+    const display = node.attrs?.display === 'yes';
+    return display ? `$$${latex}$$` : `$${latex}$`;
   }
 
   let text = node.text || '';

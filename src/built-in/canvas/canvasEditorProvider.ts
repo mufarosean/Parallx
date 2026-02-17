@@ -21,6 +21,8 @@
 //   • CodeBlockLowlight (syntax-highlighted code blocks via lowlight/highlight.js)
 //   • CharacterCount (word/char counter)
 //   • AutoJoiner (companion to drag handle — joins same-type adjacent blocks)
+//   • MathExtension + InlineMathNode (@aarkue/tiptap-math-extension — inline LaTeX via $...$)
+//   • MathBlock (custom block-level equation node with click-to-edit + KaTeX)
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
@@ -44,6 +46,8 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import CharacterCount from '@tiptap/extension-character-count';
 import AutoJoiner from 'tiptap-extension-auto-joiner';
 import { common, createLowlight } from 'lowlight';
+import { InlineMathNode } from '@aarkue/tiptap-math-extension';
+import katex from 'katex';
 import { $ } from '../../ui/dom.js';
 import { tiptapJsonToMarkdown } from './markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, PAGE_ICON_IDS } from './canvasIcons.js';
@@ -212,6 +216,184 @@ const DetailsEnterHandler = Extension.create({
   },
 });
 
+// ─── Math Block Node ────────────────────────────────────────────────────────
+// Block-level equation rendered via KaTeX in display mode.
+// Notion calls this "Block equation" — full-width, standalone math.
+// Click-to-edit: shows raw LaTeX input, live KaTeX preview, Enter to confirm.
+
+const MathBlock = Node.create({
+  name: 'mathBlock',
+  group: 'block',
+  atom: true,      // non-editable via ProseMirror — uses NodeView
+  selectable: true,
+  draggable: true,
+
+  addAttributes() {
+    return {
+      latex: {
+        default: '',
+        parseHTML: (element: HTMLElement) => element.getAttribute('data-latex') || '',
+        renderHTML: (attributes: Record<string, any>) => ({ 'data-latex': attributes.latex }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'div[data-type="mathBlock"]' }];
+  },
+
+  renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, any> }) {
+    return [
+      'div',
+      mergeAttributes(HTMLAttributes, { 'data-type': 'mathBlock', class: 'canvas-math-block' }),
+      0,
+    ];
+  },
+
+  addNodeView() {
+    return ({ node, getPos, editor }: any) => {
+      // ── Container ──
+      const dom = document.createElement('div');
+      dom.classList.add('canvas-math-block');
+      dom.setAttribute('data-type', 'mathBlock');
+
+      // ── Rendered KaTeX output ──
+      const renderArea = document.createElement('div');
+      renderArea.classList.add('canvas-math-block-render');
+      dom.appendChild(renderArea);
+
+      // ── Editable input (hidden by default) ──
+      const editorArea = document.createElement('div');
+      editorArea.classList.add('canvas-math-block-editor');
+      editorArea.style.display = 'none';
+      const input = document.createElement('textarea');
+      input.classList.add('canvas-math-block-input');
+      input.placeholder = 'Type a LaTeX equation…';
+      input.rows = 1;
+      const preview = document.createElement('div');
+      preview.classList.add('canvas-math-block-preview');
+      editorArea.appendChild(input);
+      editorArea.appendChild(preview);
+      dom.appendChild(editorArea);
+
+      let editing = false;
+      let currentLatex = node.attrs.latex || '';
+
+      const renderKatex = (latex: string, target: HTMLElement, displayMode = true) => {
+        if (!latex) {
+          target.innerHTML = '<span class="canvas-math-block-empty">Empty equation — click to edit</span>';
+          return;
+        }
+        try {
+          katex.render(latex, target, { displayMode, throwOnError: false });
+        } catch {
+          target.textContent = latex;
+        }
+      };
+
+      const commitEdit = () => {
+        if (!editing) return;
+        editing = false;
+        const newLatex = input.value.trim();
+        editorArea.style.display = 'none';
+        renderArea.style.display = '';
+
+        if (newLatex !== currentLatex && typeof getPos === 'function') {
+          currentLatex = newLatex;
+          editor.chain()
+            .command(({ tr }: any) => {
+              tr.setNodeAttribute(getPos(), 'latex', newLatex);
+              return true;
+            })
+            .run();
+        }
+        renderKatex(currentLatex, renderArea);
+      };
+
+      const startEdit = () => {
+        if (editing || !editor.isEditable) return;
+        editing = true;
+        input.value = currentLatex;
+        renderArea.style.display = 'none';
+        editorArea.style.display = '';
+        renderKatex(currentLatex, preview);
+        // Auto-resize then focus
+        autoResizeTextarea(input);
+        setTimeout(() => input.focus(), 0);
+      };
+
+      const autoResizeTextarea = (ta: HTMLTextAreaElement) => {
+        ta.style.height = 'auto';
+        ta.style.height = ta.scrollHeight + 'px';
+      };
+
+      // ── Events ──
+      dom.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!editing) startEdit();
+      });
+
+      input.addEventListener('input', () => {
+        autoResizeTextarea(input);
+        renderKatex(input.value, preview);
+      });
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          commitEdit();
+          // Move cursor after the math block
+          if (typeof getPos === 'function') {
+            const pos = getPos() + 1;  // after the atom node
+            editor.chain().setTextSelection(pos).focus().run();
+          }
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          input.value = currentLatex;  // revert
+          editing = false;
+          editorArea.style.display = 'none';
+          renderArea.style.display = '';
+        }
+        // Stop all key events from propagating to TipTap
+        e.stopPropagation();
+      });
+
+      input.addEventListener('blur', () => {
+        // Commit on blur (e.g., clicking outside)
+        setTimeout(() => commitEdit(), 100);
+      });
+
+      // Initial render
+      renderKatex(currentLatex, renderArea);
+
+      // If empty, start in edit mode
+      if (!currentLatex) {
+        setTimeout(() => startEdit(), 50);
+      }
+
+      return {
+        dom,
+        update(updatedNode: any) {
+          if (updatedNode.type.name !== 'mathBlock') return false;
+          currentLatex = updatedNode.attrs.latex || '';
+          if (!editing) {
+            renderKatex(currentLatex, renderArea);
+          }
+          return true;
+        },
+        stopEvent(_event: Event) {
+          // Let all events inside the math block be handled by our NodeView
+          if (editing) return true;
+          return false;
+        },
+        ignoreMutation() {
+          return true;
+        },
+      };
+    };
+  },
+});
+
 // ─── Slash Command Types ────────────────────────────────────────────────────
 
 interface SlashMenuItem {
@@ -345,6 +527,19 @@ const SLASH_MENU_ITEMS: SlashMenuItem[] = [
     action: (e, range) => {
       const url = prompt('Enter image URL:');
       if (url) e.chain().insertContentAt(range, { type: 'image', attrs: { src: url } }).focus().run();
+    },
+  },
+  // ── Math / Equations ──
+  {
+    label: 'Block Equation', icon: 'math-block', description: 'Full-width math equation',
+    action: (e, range) => {
+      e.chain().insertContentAt(range, { type: 'mathBlock', attrs: { latex: '' } }).focus().run();
+    },
+  },
+  {
+    label: 'Inline Equation', icon: 'math', description: 'Inline math within text',
+    action: (e, range) => {
+      e.chain().insertContentAt(range, { type: 'inlineMath', attrs: { latex: 'x', display: 'no' } }).focus().run();
     },
   },
 ];
@@ -540,6 +735,13 @@ class CanvasEditorPane implements IDisposable {
         CharacterCount,
         AutoJoiner,
         DetailsEnterHandler,
+        // ── Math / KaTeX ──
+        InlineMathNode.configure({
+          evaluation: false,
+          katexOptions: { throwOnError: false },
+          delimiters: 'dollar',
+        }),
+        MathBlock,
       ],
       content: '',
       editorProps: {
@@ -1943,7 +2145,7 @@ class CanvasEditorPane implements IDisposable {
 
       const iconEl = $('span.canvas-slash-icon');
       // Render SVG icon if available, otherwise use text
-      const knownIcons = ['checklist','quote','code','divider','lightbulb','chevron-right','grid','image','bullet-list','numbered-list'];
+      const knownIcons = ['checklist','quote','code','divider','lightbulb','chevron-right','grid','image','bullet-list','numbered-list','math','math-block'];
       if (knownIcons.includes(item.icon)) {
         iconEl.innerHTML = svgIcon(item.icon as any);
         const svg = iconEl.querySelector('svg');

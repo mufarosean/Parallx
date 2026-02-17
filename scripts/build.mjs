@@ -49,6 +49,15 @@ const viewCssPath = 'src/contributions/viewContribution.css';
 const viewCss = existsSync(viewCssPath) ? readFileSync(viewCssPath, 'utf-8') : '';
 const dropCssPath = 'src/dnd/dropOverlay.css';
 const dropCss = existsSync(dropCssPath) ? readFileSync(dropCssPath, 'utf-8') : '';
-writeFileSync('dist/renderer/workbench.css', workbenchCss + '\n' + uiCss + '\n' + explorerCss + '\n' + editorCss + '\n' + markdownCss + '\n' + imageCss + '\n' + pdfCss + '\n' + settingsCss + '\n' + keybindingsCss + '\n' + welcomeCss + '\n' + outputCss + '\n' + toolGalleryCss + '\n' + canvasCss + '\n' + notificationCss + '\n' + menuCss + '\n' + viewCss + '\n' + dropCss);
+const katexCssPath = 'node_modules/katex/dist/katex.min.css';
+const katexCss = existsSync(katexCssPath) ? readFileSync(katexCssPath, 'utf-8') : '';
+
+// Copy KaTeX font files so @font-face URLs resolve relative to workbench.css
+const katexFontsDir = 'node_modules/katex/dist/fonts';
+if (existsSync(katexFontsDir)) {
+  cpSync(katexFontsDir, 'dist/renderer/fonts', { recursive: true });
+}
+
+writeFileSync('dist/renderer/workbench.css', katexCss + '\n' + workbenchCss + '\n' + uiCss + '\n' + explorerCss + '\n' + editorCss + '\n' + markdownCss + '\n' + imageCss + '\n' + pdfCss + '\n' + settingsCss + '\n' + keybindingsCss + '\n' + welcomeCss + '\n' + outputCss + '\n' + toolGalleryCss + '\n' + canvasCss + '\n' + notificationCss + '\n' + menuCss + '\n' + viewCss + '\n' + dropCss);
 
 console.log('Build complete.');

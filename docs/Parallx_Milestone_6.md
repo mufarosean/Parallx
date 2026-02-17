@@ -1148,6 +1148,43 @@ Floating toolbar with 7 formatting buttons (bold, italic, underline, strikethrou
 | `src/built-in/canvas/canvas.css` | Placeholder `position: absolute` + `position: relative` on blocks; removed `float: none` override; todo label `margin-top: 5px`; toggle alignment and spacing fixes |
 | `src/built-in/canvas/canvasEditorProvider.ts` | Added `Extension` import; `DetailsEnterHandler` extension for collapsed toggle Enter; registered in editor extensions array |
 
+### Fix 13: Formula / Equation Rendering — Inline & Block (KaTeX) ✅
+
+**Feature:** Notion-parity formula rendering using KaTeX. Both inline equations (within text) and block equations (full-width standalone) are supported.
+
+**Research:**
+
+- Notion uses KaTeX for all math rendering. Two types: inline (`$...$`, Ctrl+Shift+E) and block (`/math`, `/block equation`). Click-to-edit UX with raw LaTeX input, live previews.
+- Evaluated existing TipTap extensions:
+  - `@aarkue/tiptap-math-extension` v1.4.0 — MIT, TipTap v3 compatible, ~4.7K weekly npm downloads, provides inline math node with `$...$` input rules and KaTeX rendering.
+  - `tiptap-math` (Buttondown) — TipTap v2 only, stale, block-only, 135 weekly downloads. Not viable.
+  - `@tiptap-pro/extension-mathematics` — Paid/Pro only. Not viable for open-source project.
+- KaTeX chosen over MathJax: faster (synchronous rendering), smaller bundle (~300KB vs ~1.5MB), used by Notion/Khan Academy/GitHub.
+
+**Implementation:**
+
+- **Inline math:** `@aarkue/tiptap-math-extension`'s `InlineMathNode` — automatically converts `$...$` (inline) and `$$...$$` (display) delimiters to rendered KaTeX nodes. Backspace to unwrap and re-edit.
+- **Block math:** Custom `MathBlock` TipTap Node (`atom: true`, `draggable: true`) with full NodeView:
+  - Click-to-edit: shows raw LaTeX `<textarea>` input with live KaTeX preview below
+  - Enter to confirm, Escape to revert, blur to auto-commit
+  - Empty blocks auto-open in edit mode with "Empty equation — click to edit" placeholder
+  - KaTeX `displayMode: true` for centered, full-width rendering
+- **Slash menu:** Two new items — "Block Equation" (`/equation`, `/math`) and "Inline Equation"
+- **Icons:** Two new SVG icons (`math`, `math-block`) added to icon system
+- **CSS:** KaTeX stylesheet (`katex.min.css`) concatenated first in `workbench.css`; KaTeX font files copied to `dist/renderer/fonts/`; custom styles for `.canvas-math-block`, `.canvas-math-block-editor`, `.tiptap-math.latex`
+- **Markdown export:** `mathBlock` → `$$\nlatex\n$$`, `inlineMath` → `$latex$` (or `$$latex$$` for display mode)
+
+**Dependencies added:** `katex@0.16.28`, `@aarkue/tiptap-math-extension@1.4.0`
+
+| File | Change |
+|------|--------|
+| `package.json` | Added `katex`, `@aarkue/tiptap-math-extension` dependencies |
+| `src/built-in/canvas/canvasEditorProvider.ts` | `InlineMathNode` + `MathBlock` custom node; slash menu items; import `katex` |
+| `src/built-in/canvas/canvas.css` | Inline math hover/styling; block math container, editor, preview, empty states |
+| `src/built-in/canvas/canvasIcons.ts` | Added `math` and `math-block` SVG icons |
+| `src/built-in/canvas/markdownExport.ts` | `mathBlock` → `$$...$$`; `inlineMath` → `$...$` in export |
+| `scripts/build.mjs` | KaTeX CSS concatenation + font file copy to `dist/renderer/fonts/` |
+
 ---
 
 ## Canvas Editor — Notion Parity Gap Analysis
