@@ -299,13 +299,164 @@ const ColumnList = Node.create({
         }
         return false;
       },
+
+      // Backspace at start of first block in a column → prevent destroying
+      // column structure.  If column has only one empty paragraph, remove
+      // the column and dissolve columnList if only one column remains.
+      'Backspace': ({ editor }) => {
+        const { selection, doc } = editor.state;
+        const { $from } = selection;
+        if (!selection.empty) return false;
+
+        // Find if we're inside a column
+        let columnDepth = -1;
+        for (let d = $from.depth; d > 0; d--) {
+          if ($from.node(d).type.name === 'column') { columnDepth = d; break; }
+        }
+        if (columnDepth < 0) return false;
+
+        // Only intercept if cursor is at the very start of the column's
+        // first content block.  $from.start($from.depth) is the start of
+        // the current textblock; compare with start of column content.
+        const columnStart = $from.start(columnDepth);
+        const textblockStart = $from.start($from.depth);
+        // Cursor must be at start of its textblock
+        if ($from.pos !== textblockStart) return false;
+        // That textblock must be the first child of the column
+        // (column content position + 0 offset = first child)
+        if (textblockStart !== columnStart + 1) return false;
+
+        // Check if column has only one empty paragraph
+        const columnNode = $from.node(columnDepth);
+        if (columnNode.childCount === 1 && columnNode.firstChild &&
+            columnNode.firstChild.type.name === 'paragraph' &&
+            columnNode.firstChild.content.size === 0) {
+          // Remove this column — dissolve logic will handle the rest
+          const columnListDepth = columnDepth - 1;
+          const columnListNode = $from.node(columnListDepth);
+          if (columnListNode.type.name === 'columnList' && columnListNode.childCount > 2) {
+            // More than 2 columns — just remove this one
+            const colPos = $from.before(columnDepth);
+            const { tr } = editor.state;
+            tr.delete(colPos, colPos + columnNode.nodeSize);
+            editor.view.dispatch(tr);
+            return true;
+          }
+          if (columnListNode.type.name === 'columnList' && columnListNode.childCount === 2) {
+            // Exactly 2 columns — dissolve: extract the OTHER column's content
+            // to replace the entire columnList
+            const colListPos = $from.before(columnListDepth);
+            let otherColumnIndex = -1;
+            // Find which column index we are
+            let colPos = colListPos + 1;
+            for (let i = 0; i < columnListNode.childCount; i++) {
+              const child = columnListNode.child(i);
+              if (colPos === $from.before(columnDepth)) {
+                // This is the column we're deleting
+              } else {
+                otherColumnIndex = i;
+              }
+              colPos += child.nodeSize;
+            }
+            if (otherColumnIndex >= 0) {
+              const otherCol = columnListNode.child(otherColumnIndex);
+              const { tr } = editor.state;
+              tr.replaceWith(colListPos, colListPos + columnListNode.nodeSize, otherCol.content);
+              editor.view.dispatch(tr);
+              return true;
+            }
+          }
+        }
+
+        // At start of column but content exists — just prevent destruction
+        return true;
+      },
+
+      // Delete at end of last block in a column → prevent merging with
+      // the next column or breaking column structure
+      'Delete': ({ editor }) => {
+        const { selection } = editor.state;
+        const { $from } = selection;
+        if (!selection.empty) return false;
+
+        let columnDepth = -1;
+        for (let d = $from.depth; d > 0; d--) {
+          if ($from.node(d).type.name === 'column') { columnDepth = d; break; }
+        }
+        if (columnDepth < 0) return false;
+
+        // Only intercept if cursor is at the very end of the column
+        const columnEnd = $from.end(columnDepth);
+        if ($from.pos !== columnEnd) return false;
+
+        // Prevent deletion across column boundary
+        return true;
+      },
     };
   },
 
   addProseMirrorPlugins() {
-    return [columnResizePlugin(), columnDropPlugin()];
+    return [columnResizePlugin(), columnDropPlugin(), columnAutoDissolvePlugin()];
   },
 });
+
+// ─── Column Auto-Dissolve Plugin ────────────────────────────────────────────
+// After every transaction, scan the document for columnList nodes that have
+// been reduced to a single column (e.g. after deleting a column's content or
+// dragging a block out).  Replace such columnLists with the remaining column's
+// content so the blocks become normal top-level blocks.
+
+function columnAutoDissolvePlugin(): Plugin {
+  return new Plugin({
+    key: new PluginKey('columnAutoDissolve'),
+    appendTransaction(transactions, _oldState, newState) {
+      // Only run if a transaction actually changed the doc
+      if (!transactions.some(tr => tr.docChanged)) return null;
+
+      const { tr } = newState;
+      let changed = false;
+
+      // Walk the doc in reverse to avoid position shifting issues
+      const positions: { pos: number; node: any }[] = [];
+      newState.doc.descendants((node, pos) => {
+        if (node.type.name === 'columnList') {
+          positions.push({ pos, node });
+          return false; // don't descend into columnList
+        }
+        return true;
+      });
+
+      // Process in reverse order (highest position first)
+      for (let i = positions.length - 1; i >= 0; i--) {
+        const { pos, node } = positions[i];
+        // Count actual column children
+        let columnCount = 0;
+        const columns: any[] = [];
+        node.forEach((child: any) => {
+          if (child.type.name === 'column') {
+            columnCount++;
+            columns.push(child);
+          }
+        });
+
+        if (columnCount <= 1 && columns.length > 0) {
+          // Dissolve: replace columnList with the single column's content
+          const col = columns[0];
+          const mappedPos = tr.mapping.map(pos);
+          tr.replaceWith(mappedPos, mappedPos + node.nodeSize, col.content);
+          changed = true;
+        } else if (columnCount === 0) {
+          // No columns at all — delete the empty columnList
+          const mappedPos = tr.mapping.map(pos);
+          tr.delete(mappedPos, mappedPos + node.nodeSize);
+          changed = true;
+        }
+      }
+
+      return changed ? tr : null;
+    },
+  });
+}
 
 // ─── Column Resize ProseMirror Plugin ───────────────────────────────────────
 // Scans all .canvas-column-list elements by coordinate (not event.target) to
@@ -323,6 +474,8 @@ function columnResizePlugin(): Plugin {
     listEl: HTMLElement;     // the columnList container DOM
     leftIndex: number;       // 0-based child index in columnList
     rightIndex: number;
+    lastLeftW?: number;      // last width set during drag (for final commit)
+    lastRightW?: number;
   }
 
   let dragging: DragState | null = null;
@@ -406,7 +559,8 @@ function columnResizePlugin(): Plugin {
 
   /**
    * Dispatch a ProseMirror transaction that updates two column widths.
-   * Returns true if the transaction was dispatched.
+   * When skipHistory is true, the transaction won't create an undo step
+   * (used during drag — only the final mouseup commits to history).
    */
   function applyColumnWidths(
     view: EditorView,
@@ -415,6 +569,7 @@ function columnResizePlugin(): Plugin {
     rightIndex: number,
     leftW: number | null,
     rightW: number | null,
+    skipHistory = false,
   ): boolean {
     const leftPos = findColumnPos(view, listEl, leftIndex);
     const rightPos = findColumnPos(view, listEl, rightIndex);
@@ -425,6 +580,7 @@ function columnResizePlugin(): Plugin {
     if (!leftNode || !rightNode) return false;
 
     const { tr } = view.state;
+    if (skipHistory) tr.setMeta('addToHistory', false);
     tr.setNodeMarkup(leftPos, undefined, { ...leftNode.attrs, width: leftW });
     tr.setNodeMarkup(rightPos, undefined, { ...rightNode.attrs, width: rightW });
     view.dispatch(tr);
@@ -440,6 +596,7 @@ function columnResizePlugin(): Plugin {
           if (dragging) {
             // Dispatch a real ProseMirror transaction on each frame so the
             // DOM update is handled natively by PM — no DOMObserver conflicts.
+            // Skip history for intermediate steps — only mouseup commits.
             const delta = event.clientX - dragging.startX;
             const containerWidth = dragging.listEl.getBoundingClientRect().width;
             if (containerWidth === 0) return true;
@@ -449,10 +606,15 @@ function columnResizePlugin(): Plugin {
             const leftW = Math.round(newLeft * 10) / 10;
             const rightW = Math.round(newRight * 10) / 10;
 
+            // Track last widths for the final history-enabled commit
+            dragging.lastLeftW = leftW;
+            dragging.lastRightW = rightW;
+
             applyColumnWidths(
               view, dragging.listEl,
               dragging.leftIndex, dragging.rightIndex,
               leftW, rightW,
+              true, // skipHistory — don't flood undo stack
             );
 
             event.preventDefault();
@@ -489,8 +651,16 @@ function columnResizePlugin(): Plugin {
 
           const finish = () => {
             window.removeEventListener('mouseup', finish);
-            // Final widths are already committed by the last mousemove
-            // transaction — just clean up drag state.
+            // Commit final widths as a single undoable transaction.
+            // All intermediate mousemove transactions were skipHistory.
+            if (dragging && dragging.lastLeftW != null && dragging.lastRightW != null) {
+              applyColumnWidths(
+                view, dragging.listEl,
+                dragging.leftIndex, dragging.rightIndex,
+                dragging.lastLeftW, dragging.lastRightW,
+                false, // commit to history
+              );
+            }
             dragging = null;
             document.body.classList.remove('column-resizing');
             document.body.classList.remove('column-resize-hover');
@@ -3331,20 +3501,33 @@ class CanvasEditorPane implements IDisposable {
     header.textContent = this._getBlockLabel(this._actionBlockNode.type.name);
     this._blockActionMenu.appendChild(header);
 
-    // Turn into
-    const turnIntoSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 7C13 4.24 10.76 2 8 2C5.24 2 3 4.24 3 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M3 9C3 11.76 5.24 14 8 14C10.76 14 13 11.76 13 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M1 7L3 5L5 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 9L13 11L11 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    const turnIntoItem = this._createActionItem('Turn into', turnIntoSvg, true);
-    turnIntoItem.addEventListener('mouseenter', () => {
-      if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
-      this._showTurnIntoSubmenu(turnIntoItem);
-    });
-    turnIntoItem.addEventListener('mouseleave', (e) => {
-      const related = e.relatedTarget as HTMLElement;
-      if (!this._turnIntoSubmenu?.contains(related)) {
-        this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
-      }
-    });
-    this._blockActionMenu.appendChild(turnIntoItem);
+    const isColumnList = this._actionBlockNode.type.name === 'columnList';
+
+    if (isColumnList) {
+      // Unwrap columns — replaces columnList with its columns' content
+      const unwrapSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 2L1 8L4 14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 2L15 8L12 14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><line x1="6" y1="5" x2="10" y2="11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+      const unwrapItem = this._createActionItem('Unwrap columns', unwrapSvg, false);
+      unwrapItem.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        this._unwrapColumnList();
+      });
+      this._blockActionMenu.appendChild(unwrapItem);
+    } else {
+      // Turn into (not applicable for columnList)
+      const turnIntoSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 7C13 4.24 10.76 2 8 2C5.24 2 3 4.24 3 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M3 9C3 11.76 5.24 14 8 14C10.76 14 13 11.76 13 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M1 7L3 5L5 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 9L13 11L11 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      const turnIntoItem = this._createActionItem('Turn into', turnIntoSvg, true);
+      turnIntoItem.addEventListener('mouseenter', () => {
+        if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
+        this._showTurnIntoSubmenu(turnIntoItem);
+      });
+      turnIntoItem.addEventListener('mouseleave', (e) => {
+        const related = e.relatedTarget as HTMLElement;
+        if (!this._turnIntoSubmenu?.contains(related)) {
+          this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
+        }
+      });
+      this._blockActionMenu.appendChild(turnIntoItem);
+    }
 
     // Color
     const colorSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><text x="3" y="11" font-size="11" font-weight="700" fill="currentColor" font-family="sans-serif">A</text><rect x="2" y="13" width="12" height="2" rx="0.5" fill="currentColor" opacity="0.5"/></svg>';
@@ -3622,6 +3805,36 @@ class CanvasEditorPane implements IDisposable {
   }
 
   // ── Block Transform Execution ──
+
+  /** Unwrap a columnList — extract all columns' content as sequential blocks. */
+  private _unwrapColumnList(): void {
+    if (!this._editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
+    if (this._actionBlockNode.type.name !== 'columnList') return;
+    const pos = this._actionBlockPos;
+    const node = this._actionBlockNode;
+    this._hideBlockActionMenu();
+
+    // Collect all content from all columns
+    const { tr } = this._editor.state;
+    const fragments: any[] = [];
+    node.forEach((column: any) => {
+      if (column.type.name === 'column') {
+        column.forEach((block: any) => {
+          fragments.push(block);
+        });
+      }
+    });
+
+    if (fragments.length > 0) {
+      tr.replaceWith(pos, pos + node.nodeSize, fragments);
+    } else {
+      tr.delete(pos, pos + node.nodeSize);
+    }
+    this._editor.view.dispatch(tr);
+
+    const json = JSON.stringify(this._editor.getJSON());
+    this._dataService.scheduleContentSave(this._pageId, json);
+  }
 
   private _turnBlockInto(targetType: string, attrs?: any): void {
     if (!this._editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;

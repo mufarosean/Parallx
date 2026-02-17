@@ -11,6 +11,10 @@
  * 6. Ctrl/Cmd+A inside column — selects column content, not entire doc
  * 7. Block action menu — shows "Columns" label on columnList blocks
  * 8. Delete columns — deleting a columnList via block action menu
+ * 9. Unwrap columns — dissolves column layout into sequential blocks
+ * 10. Backspace/Delete protection — prevents column structure destruction
+ * 11. Auto-dissolve — removes columnList when only one column remains
+ * 12. Alignment — column content aligns with top-level content (no offset)
  */
 import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
 import type { Page, ElectronApplication } from '@playwright/test';
@@ -122,7 +126,7 @@ async function openBlockActionMenu(page: Page, blockIndex: number): Promise<void
   await hoverBlockByIndex(page, blockIndex);
   const dragHandle = page.locator('.drag-handle');
   await expect(dragHandle).toBeVisible({ timeout: 3_000 });
-  await dragHandle.click();
+  await dragHandle.click({ force: true });
   await page.waitForTimeout(200);
 }
 
@@ -910,6 +914,286 @@ test.describe('Column Layout', () => {
           () => document.body.classList.contains('column-resize-hover'),
         );
         expect(hasClassAfter).toBe(false);
+      }
+    });
+  });
+
+  // ── Unwrap Columns ────────────────────────────────────────────────────────
+
+  test.describe('Unwrap columns', () => {
+    test('block action menu shows "Unwrap columns" instead of "Turn into" for columnList', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col A' }] }] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col B' }] }] },
+          ],
+        },
+      ]);
+
+      await openBlockActionMenu(window, 0);
+      const actionMenu = window.locator('.block-action-menu');
+      await expect(actionMenu).toBeVisible({ timeout: 3_000 });
+
+      // Should show "Unwrap columns" instead of "Turn into"
+      const unwrapItem = actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' });
+      await expect(unwrapItem).toBeVisible();
+
+      const turnIntoItem = actionMenu.locator('.block-action-item', { hasText: 'Turn into' });
+      await expect(turnIntoItem).not.toBeVisible();
+    });
+
+    test('unwrap columns extracts all content as sequential blocks', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Before' }] },
+        {
+          type: 'columnList',
+          content: [
+            {
+              type: 'column',
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'Col1 Line1' }] },
+                { type: 'paragraph', content: [{ type: 'text', text: 'Col1 Line2' }] },
+              ],
+            },
+            {
+              type: 'column',
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'Col2 Line1' }] },
+              ],
+            },
+          ],
+        },
+        { type: 'paragraph', content: [{ type: 'text', text: 'After' }] },
+      ]);
+
+      // Open action menu on the columnList (index 1)
+      await openBlockActionMenu(window, 1);
+      const actionMenu = window.locator('.block-action-menu');
+      await expect(actionMenu).toBeVisible({ timeout: 3_000 });
+
+      // Click Unwrap columns
+      const unwrapItem = actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' });
+      await unwrapItem.click();
+      await window.waitForTimeout(300);
+
+      // Verify: columnList is gone, content is now sequential blocks
+      const structure = await getDocStructure(window);
+      expect(structure).not.toContain(expect.stringMatching(/columnList/));
+      expect(structure.find(s => s.includes('Before'))).toBeTruthy();
+      expect(structure.find(s => s.includes('Col1 Line1'))).toBeTruthy();
+      expect(structure.find(s => s.includes('Col1 Line2'))).toBeTruthy();
+      expect(structure.find(s => s.includes('Col2 Line1'))).toBeTruthy();
+      expect(structure.find(s => s.includes('After'))).toBeTruthy();
+    });
+  });
+
+  // ── Backspace / Delete Protection ─────────────────────────────────────────
+
+  test.describe('Backspace and Delete protection', () => {
+    test('backspace at start of column does not destroy column structure', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Column A' }] }] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Column B' }] }] },
+          ],
+        },
+      ]);
+
+      // Click at the very start of the first column's text
+      const firstCol = tiptap.locator('.canvas-column').first();
+      await firstCol.locator('p').click();
+      await window.keyboard.press('Home');
+      await window.waitForTimeout(100);
+
+      // Press Backspace multiple times
+      await window.keyboard.press('Backspace');
+      await window.keyboard.press('Backspace');
+      await window.waitForTimeout(200);
+
+      // Column structure should still exist
+      const doc = await getDocJSON(window);
+      const colList = doc.content.find((n: any) => n.type === 'columnList');
+      expect(colList).toBeTruthy();
+      expect(colList.content.length).toBe(2);
+      // Text "Column A" should still be intact (cursor was at start)
+      expect(colList.content[0].content[0].content?.[0]?.text).toBe('Column A');
+    });
+
+    test('delete at end of column does not merge with next column', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col A' }] }] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col B' }] }] },
+          ],
+        },
+      ]);
+
+      // Click at the end of Col A
+      const firstCol = tiptap.locator('.canvas-column').first();
+      await firstCol.locator('p').click();
+      await window.keyboard.press('End');
+      await window.waitForTimeout(100);
+
+      // Press Delete multiple times
+      await window.keyboard.press('Delete');
+      await window.keyboard.press('Delete');
+      await window.waitForTimeout(200);
+
+      // Both columns should still exist with their text
+      const doc = await getDocJSON(window);
+      const colList = doc.content.find((n: any) => n.type === 'columnList');
+      expect(colList).toBeTruthy();
+      expect(colList.content.length).toBe(2);
+    });
+
+    test('backspace on empty column in 2-column layout dissolves to single block', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [{ type: 'paragraph' }] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Kept content' }] }] },
+          ],
+        },
+      ]);
+
+      // Click into the empty first column
+      const firstCol = tiptap.locator('.canvas-column').first();
+      await firstCol.locator('p').click();
+      await window.waitForTimeout(100);
+
+      // Press Backspace — should dissolve the empty column
+      await window.keyboard.press('Backspace');
+      await window.waitForTimeout(300);
+
+      // columnList should be dissolved — "Kept content" should be top-level
+      const doc = await getDocJSON(window);
+      const colList = doc.content.find((n: any) => n.type === 'columnList');
+      expect(colList).toBeFalsy(); // No more columnList
+      const hasKeptContent = doc.content.some((n: any) =>
+        n.type === 'paragraph' && n.content?.[0]?.text === 'Kept content'
+      );
+      expect(hasKeptContent).toBe(true);
+    });
+  });
+
+  // ── Content Alignment ─────────────────────────────────────────────────────
+
+  test.describe('Content alignment', () => {
+    test('column content aligns with top-level content (no indentation offset)', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Top-level paragraph' }] },
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Column text' }] }] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Second col' }] }] },
+          ],
+        },
+      ]);
+
+      // Get left edge of top-level paragraph
+      const topPara = tiptap.locator(':scope > p').first();
+      const topBox = await topPara.boundingBox();
+
+      // Get left edge of first column's paragraph
+      const colPara = tiptap.locator('.canvas-column').first().locator('p');
+      const colBox = await colPara.boundingBox();
+
+      expect(topBox).toBeTruthy();
+      expect(colBox).toBeTruthy();
+
+      if (topBox && colBox) {
+        // Column content should start at the same X as top-level content
+        // Allow 2px tolerance for sub-pixel rendering
+        expect(Math.abs(topBox.x - colBox.x)).toBeLessThanOrEqual(2);
+      }
+    });
+
+    test('columns have visible gap between them', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Left' }] }] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right' }] }] },
+          ],
+        },
+      ]);
+
+      const columns = tiptap.locator('.canvas-column');
+      const col1Box = await columns.nth(0).boundingBox();
+      const col2Box = await columns.nth(1).boundingBox();
+      expect(col1Box).toBeTruthy();
+      expect(col2Box).toBeTruthy();
+
+      if (col1Box && col2Box) {
+        // Gap between columns (right edge of col1 to left edge of col2)
+        const gap = col2Box.x - (col1Box.x + col1Box.width);
+        // Should have a visible gap (at least 10px)
+        expect(gap).toBeGreaterThanOrEqual(10);
       }
     });
   });
