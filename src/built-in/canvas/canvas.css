@@ -635,6 +635,187 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Block Add Button (+) — Notion-style add block button
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.block-add-btn {
+  position: fixed;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  cursor: pointer;
+  width: 20px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  z-index: 50;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.block-add-btn:hover {
+  opacity: 1 !important;
+  background-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.block-add-btn.hide {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.canvas-tiptap-editor:hover ~ .block-add-btn,
+.block-add-btn:hover {
+  opacity: 0.5;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Block Action Menu — Notion-style block context menu
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.block-action-menu,
+.block-action-submenu {
+  position: fixed;
+  z-index: 1002;
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.2);
+  padding: 4px;
+  min-width: 200px;
+  max-height: 70vh;
+  overflow-y: auto;
+  animation: blockMenuFadeIn 0.1s ease-out;
+}
+
+.block-action-submenu {
+  min-width: 180px;
+}
+
+@keyframes blockMenuFadeIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.block-action-header {
+  padding: 4px 8px 2px;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: capitalize;
+  user-select: none;
+}
+
+.block-action-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  transition: background-color 0.08s ease;
+}
+
+.block-action-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.block-action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.block-action-label {
+  flex: 1;
+  white-space: nowrap;
+}
+
+.block-action-shortcut {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
+  margin-left: auto;
+  font-family: inherit;
+}
+
+.block-action-arrow {
+  display: flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.25);
+  margin-left: auto;
+}
+
+.block-action-check {
+  font-size: 14px;
+  color: rgba(45, 170, 219, 0.8);
+  margin-left: auto;
+}
+
+.block-action-separator {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 0;
+}
+
+.block-action-item--danger .block-action-label {
+  color: #e06666;
+}
+
+.block-action-item--danger .block-action-icon {
+  color: #e06666;
+}
+
+/* ── Color Submenu ── */
+
+.block-color-submenu {
+  min-width: 220px;
+}
+
+.block-color-section-header {
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.35);
+  user-select: none;
+}
+
+.block-color-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  transition: background-color 0.08s ease;
+}
+
+.block-color-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.block-color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+  font-family: sans-serif;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * Floating Bubble Menu — Modern formatting toolbar (Notion-style)
  * ───────────────────────────────────────────────────────────────────────────── */
 
