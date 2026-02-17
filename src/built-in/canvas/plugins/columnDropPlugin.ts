@@ -344,7 +344,9 @@ export function columnDropPlugin(): Plugin {
           }
 
           event.preventDefault();
-          if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+          if (event.dataTransfer) {
+            event.dataTransfer.dropEffect = event.altKey ? 'copy' : 'move';
+          }
           return false;
         },
 
@@ -378,13 +380,16 @@ export function columnDropPlugin(): Plugin {
           const content = slice.content;
           const { tr } = view.state;
 
+          // Alt+Drag → duplicate (don't delete source)
+          const isDuplicate = event.altKey;
+
           // ── ABOVE / BELOW — reorder block at any level ──
           if (target.zone === 'above' || target.zone === 'below') {
             const insertPos = target.zone === 'above'
               ? target.blockPos
               : target.blockPos + target.blockNode.nodeSize;
             tr.insert(insertPos, content);
-            deleteSrc(tr, dragFrom, dragTo);
+            if (!isDuplicate) deleteSrc(tr, dragFrom, dragTo);
             view.dispatch(tr);
             return true;
           }
@@ -407,7 +412,7 @@ export function columnDropPlugin(): Plugin {
             try { cl = columnListType.create(null, cols); } catch { return false; }
 
             tr.replaceWith(target.blockPos, target.blockPos + tNode.nodeSize, cl);
-            deleteSrc(tr, dragFrom, dragTo);
+            if (!isDuplicate) deleteSrc(tr, dragFrom, dragTo);
             view.dispatch(tr);
             return true;
           }
@@ -425,7 +430,7 @@ export function columnDropPlugin(): Plugin {
             : target.columnPos + targetColNode.nodeSize;
 
           tr.insert(insertColPos, newCol);
-          deleteSrc(tr, dragFrom, dragTo);
+          if (!isDuplicate) deleteSrc(tr, dragFrom, dragTo);
 
           // Reset all column widths to equal after adding a column
           resetWidths(tr, target.columnListPos!);

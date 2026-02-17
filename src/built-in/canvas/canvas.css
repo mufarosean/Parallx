@@ -2704,14 +2704,14 @@
   z-index: 10;
 }
 
-/* Blue resize indicator line on hover (via class set by plugin) */
+/* Subtle gray resize indicator line on hover (Notion-style) */
 .column-resize-hover .canvas-column:not(:last-child)::after,
 .canvas-column:not(:last-child):hover::after {
   background: linear-gradient(
     to right,
     transparent 7px,
-    rgba(37, 99, 235, 0.4) 7px,
-    rgba(37, 99, 235, 0.4) 9px,
+    rgba(255, 255, 255, 0.15) 7px,
+    rgba(255, 255, 255, 0.15) 9px,
     transparent 9px
   );
 }
