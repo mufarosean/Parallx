@@ -169,15 +169,21 @@ export class BlockHandlesController {
 
   // ── Block Resolution ────────────────────────────────────────────────────
 
+  /** Node types whose children are "blocks" in the Page model. */
+  private static readonly _PAGE_CONTAINERS = new Set([
+    'column', 'callout', 'detailsContent', 'blockquote',
+  ]);
+
   /**
    * Find the block the drag handle is currently next to.
    *
-   * Replicates the library's `nodeDOMAtCoords` logic to find which DOM
-   * element the handle was positioned for, then maps that to a ProseMirror
-   * position.  Handles BOTH:
-   *  • Top-level blocks (resolved to depth 1)
-   *  • Blocks inside columns (resolved to direct child of the column)
-   *  • The columnList itself (when the library matched [data-type=columnList])
+   * Uses the "Everything is a Page" structural model: every vertical
+   * container of blocks (doc, column, callout, detailsContent, blockquote)
+   * is a Page-container.  The handle always resolves to the **direct child**
+   * of the deepest Page-container at the resolved position.
+   *
+   * This works at arbitrary nesting depth — callout-inside-column,
+   * toggle-inside-callout, etc. — without hardcoded special cases.
    */
   private _resolveBlockFromHandle(): { pos: number; node: any } | null {
     const editor = this._host.editor;
@@ -186,16 +192,18 @@ export class BlockHandlesController {
 
     const handleRect = this._dragHandleEl.getBoundingClientRect();
     const handleY = handleRect.top + handleRect.height / 2;
-
     const scanX = handleRect.right + 50;
 
-    // Match the same selectors the library uses (including our patch).
+    // Selectors covering all block-level elements at any nesting depth,
+    // plus container blocks themselves (callout, details, blockquote).
     const selectors = [
-      'li', 'p:not(:first-child)', '.canvas-column > p',
-      'pre', 'blockquote',
+      'li', 'p', 'pre', 'blockquote',
       'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
       '[data-type=mathBlock]', '[data-type=columnList]',
-      '[data-type=callout]',
+      '[data-type=callout]', '[data-type=details]',
+      '.canvas-callout-content > *',
+      '[data-type=detailsContent] > *',
+      'blockquote > *',
     ].join(', ');
 
     const matchedEl = document.elementsFromPoint(scanX, handleY)
@@ -212,40 +220,40 @@ export class BlockHandlesController {
       const domPos = view.posAtDOM(matchedEl, 0);
       const $pos = view.state.doc.resolve(domPos);
 
-      // CASE 1: Direct child of .ProseMirror
-      if (matchedEl.parentElement?.matches?.('.ProseMirror')) {
-        const blockPos = $pos.depth >= 1 ? $pos.before(1) : domPos;
+      // ── columnList special case: resolve to first block in first column
+      //    (columnList is invisible — it has no handle of its own)
+      const depth1Pos = $pos.depth >= 1 ? $pos.before(1) : domPos;
+      const depth1Node = view.state.doc.nodeAt(depth1Pos);
+      if (depth1Node?.type.name === 'columnList') {
+        const firstCol = depth1Node.firstChild;
+        if (firstCol?.type.name === 'column' && firstCol.childCount > 0) {
+          const innerPos = depth1Pos + 1 + 1; // skip columnList open + column open
+          const innerNode = view.state.doc.nodeAt(innerPos);
+          return innerNode ? { pos: innerPos, node: innerNode } : { pos: depth1Pos, node: depth1Node };
+        }
+        return { pos: depth1Pos, node: depth1Node };
+      }
+
+      // ── Universal page-container resolution ──
+      // Walk ancestors from doc (depth 0) downward. Find the deepest
+      // node that is a page-container. The target block is its direct child.
+      let containerDepth = 0; // doc root is always a page-container
+      for (let d = 1; d <= $pos.depth; d++) {
+        if (BlockHandlesController._PAGE_CONTAINERS.has($pos.node(d).type.name)) {
+          containerDepth = d;
+        }
+      }
+
+      const targetDepth = containerDepth + 1;
+      if ($pos.depth >= targetDepth) {
+        const blockPos = $pos.before(targetDepth);
         const node = view.state.doc.nodeAt(blockPos);
-        if (!node) return null;
-        if (node.type.name === 'columnList') {
-          const firstCol = node.firstChild;
-          if (firstCol && firstCol.type.name === 'column' && firstCol.childCount > 0) {
-            const innerPos = blockPos + 1 + 1;
-            const innerNode = view.state.doc.nodeAt(innerPos);
-            return innerNode ? { pos: innerPos, node: innerNode } : { pos: blockPos, node };
-          }
-        }
-        return { pos: blockPos, node };
+        return node ? { pos: blockPos, node } : null;
       }
 
-      // CASE 2: Inside a column
-      const columnEl = matchedEl.closest('.canvas-column');
-      if (columnEl) {
-        for (let d = $pos.depth; d >= 1; d--) {
-          if ($pos.node(d).type.name === 'column') {
-            const targetDepth = d + 1;
-            if ($pos.depth >= targetDepth) {
-              const blockPos = $pos.before(targetDepth);
-              const node = view.state.doc.nodeAt(blockPos);
-              return node ? { pos: blockPos, node } : null;
-            }
-            break;
-          }
-        }
-      }
-
-      // CASE 3: Other — resolve to depth 1
-      const blockPos = $pos.depth >= 1 ? $pos.before(1) : domPos;
+      // $pos.depth < targetDepth means we're ON the container node itself
+      // (e.g. hovering the container chrome). Resolve to whole container.
+      const blockPos = $pos.depth >= 1 ? $pos.before($pos.depth) : domPos;
       const node = view.state.doc.nodeAt(blockPos);
       return node ? { pos: blockPos, node } : null;
     } catch {
@@ -622,47 +630,207 @@ export class BlockHandlesController {
   private _turnBlockViaReplace(editor: Editor, pos: number, node: any, targetType: string, attrs?: any): void {
     const content = this._extractBlockContent(node);
     const textContent = node.textContent || '';
-    let newBlock: any;
-    switch (targetType) {
-      case 'paragraph':
-        newBlock = { type: 'paragraph', content };
-        break;
-      case 'heading':
-        newBlock = { type: 'heading', attrs, content };
-        break;
-      case 'bulletList':
-        newBlock = { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content }] }] };
-        break;
-      case 'orderedList':
-        newBlock = { type: 'orderedList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content }] }] };
-        break;
-      case 'taskList':
-        newBlock = { type: 'taskList', content: [{ type: 'taskItem', attrs: { checked: false }, content: [{ type: 'paragraph', content }] }] };
-        break;
-      case 'blockquote':
-        newBlock = { type: 'blockquote', content: [{ type: 'paragraph', content }] };
-        break;
-      case 'codeBlock':
-        newBlock = { type: 'codeBlock', content: textContent ? [{ type: 'text', text: textContent }] : [] };
-        break;
-      case 'callout':
-        newBlock = { type: 'callout', attrs: { emoji: 'lightbulb' }, content: [{ type: 'paragraph', content }] };
-        break;
-      case 'details':
-        newBlock = { type: 'details', content: [
-          { type: 'detailsSummary', content },
-          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
-        ]};
-        break;
-      case 'mathBlock':
-        newBlock = { type: 'mathBlock', attrs: { latex: textContent } };
-        break;
-      default: return;
+
+    // ── Container source → special handling ──
+    const containerTypes = new Set(['callout', 'details', 'blockquote']);
+    const isSourceContainer = containerTypes.has(node.type.name);
+    const isTargetContainer = containerTypes.has(targetType);
+
+    if (isSourceContainer) {
+      const innerBlocks = this._extractContainerBlocks(node);
+
+      if (targetType === 'paragraph') {
+        // Container → Paragraph: unwrap all inner blocks into parent
+        this._unwrapContainer(editor, pos, node, innerBlocks);
+        return;
+      }
+
+      if (isTargetContainer) {
+        // Container → Container: swap wrapper or reflow
+        this._swapContainer(editor, pos, node, targetType, innerBlocks, attrs);
+        return;
+      }
+
+      // Container → Leaf: lossy — extract first block's text
+      const firstBlockContent = innerBlocks.length > 0 ? innerBlocks[0] : content;
+      const leafContent = this._extractInlineContent(firstBlockContent);
+      const newBlock = this._buildLeafBlock(targetType, leafContent, textContent, attrs);
+      if (!newBlock) return;
+      editor.chain().insertContentAt({ from: pos, to: pos + node.nodeSize }, newBlock).focus().run();
+      return;
     }
+
+    // ── Leaf source → Container target: wrap ──
+    if (isTargetContainer) {
+      const newBlock = this._buildContainerBlock(targetType, content, attrs);
+      if (!newBlock) return;
+      editor.chain().insertContentAt({ from: pos, to: pos + node.nodeSize }, newBlock).focus().run();
+      return;
+    }
+
+    // ── Leaf → Leaf: existing behavior ──
+    const newBlock = this._buildLeafBlock(targetType, content, textContent, attrs);
+    if (!newBlock) return;
     editor.chain()
       .insertContentAt({ from: pos, to: pos + node.nodeSize }, newBlock)
       .focus()
       .run();
+  }
+
+  // ── Container Conversion Helpers ─────────────────────────────────────────
+
+  /**
+   * Extract all inner blocks from a container as JSON arrays.
+   * Handles callout (direct children), details (summary + content children),
+   * and blockquote (direct children).
+   */
+  private _extractContainerBlocks(node: any): any[] {
+    const blocks: any[] = [];
+    if (node.type.name === 'details') {
+      // Toggle: summary content → first block, detailsContent children → rest
+      node.forEach((child: any) => {
+        if (child.type.name === 'detailsSummary') {
+          // Convert summary to a paragraph with its inline content
+          const summaryContent = child.content.toJSON() || [];
+          blocks.push({ type: 'paragraph', content: summaryContent });
+        } else if (child.type.name === 'detailsContent') {
+          child.forEach((inner: any) => blocks.push(inner.toJSON()));
+        }
+      });
+    } else {
+      // callout, blockquote: direct children are blocks
+      node.forEach((child: any) => blocks.push(child.toJSON()));
+    }
+    return blocks;
+  }
+
+  /**
+   * Unwrap a container: replace it with its inner blocks in the parent Page.
+   * Callout → inner blocks become siblings. Toggle → summary + body blocks.
+   */
+  private _unwrapContainer(editor: Editor, pos: number, node: any, innerBlocks: any[]): void {
+    if (innerBlocks.length === 0) {
+      innerBlocks = [{ type: 'paragraph' }];
+    }
+    editor.chain()
+      .insertContentAt({ from: pos, to: pos + node.nodeSize }, innerBlocks)
+      .focus()
+      .run();
+  }
+
+  /**
+   * Swap one container for another, preserving inner blocks.
+   *
+   * Conversion rules from CANVAS_STRUCTURAL_MODEL.md §5.2.1:
+   *   Callout → Toggle: first inner → summary, rest → body
+   *   Callout → Quote:  swap wrapper, keep blocks
+   *   Toggle → Callout: wrap toggle inside callout (toggle stays intact) ...
+   *     ACTUALLY per spec: summary → first block, body blocks → rest, new callout wraps all
+   *   Toggle → Quote:   summary → first block, body blocks → rest, new quote wraps all
+   *   Quote → Callout:  swap wrapper, keep blocks
+   *   Quote → Toggle:   first inner → summary, rest → body
+   */
+  private _swapContainer(editor: Editor, pos: number, node: any, targetType: string, innerBlocks: any[], attrs?: any): void {
+    let newBlock: any;
+
+    if (targetType === 'details') {
+      // → Toggle: first inner block → summary, rest → body
+      const summaryContent = innerBlocks.length > 0
+        ? (innerBlocks[0].content || [])
+        : [];
+      const bodyBlocks = innerBlocks.length > 1
+        ? innerBlocks.slice(1)
+        : [{ type: 'paragraph' }];
+      newBlock = {
+        type: 'details',
+        content: [
+          { type: 'detailsSummary', content: summaryContent },
+          { type: 'detailsContent', content: bodyBlocks },
+        ],
+      };
+    } else if (targetType === 'callout') {
+      // → Callout: wrap all inner blocks
+      newBlock = {
+        type: 'callout',
+        attrs: { emoji: attrs?.emoji || 'lightbulb' },
+        content: innerBlocks.length > 0 ? innerBlocks : [{ type: 'paragraph' }],
+      };
+    } else if (targetType === 'blockquote') {
+      // → Quote: wrap all inner blocks
+      newBlock = {
+        type: 'blockquote',
+        content: innerBlocks.length > 0 ? innerBlocks : [{ type: 'paragraph' }],
+      };
+    } else {
+      return;
+    }
+
+    editor.chain()
+      .insertContentAt({ from: pos, to: pos + node.nodeSize }, newBlock)
+      .focus()
+      .run();
+  }
+
+  /**
+   * Build a container block wrapping a single leaf's content.
+   * Leaf → Container: the leaf becomes the first (and only) inner block.
+   */
+  private _buildContainerBlock(targetType: string, inlineContent: any[], attrs?: any): any | null {
+    switch (targetType) {
+      case 'callout':
+        return { type: 'callout', attrs: { emoji: attrs?.emoji || 'lightbulb' }, content: [{ type: 'paragraph', content: inlineContent }] };
+      case 'details':
+        return { type: 'details', content: [
+          { type: 'detailsSummary', content: inlineContent },
+          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
+        ]};
+      case 'blockquote':
+        return { type: 'blockquote', content: [{ type: 'paragraph', content: inlineContent }] };
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Build a leaf block from inline content and/or raw text.
+   */
+  private _buildLeafBlock(targetType: string, inlineContent: any[], textContent: string, attrs?: any): any | null {
+    switch (targetType) {
+      case 'paragraph':
+        return { type: 'paragraph', content: inlineContent };
+      case 'heading':
+        return { type: 'heading', attrs, content: inlineContent };
+      case 'bulletList':
+        return { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: inlineContent }] }] };
+      case 'orderedList':
+        return { type: 'orderedList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: inlineContent }] }] };
+      case 'taskList':
+        return { type: 'taskList', content: [{ type: 'taskItem', attrs: { checked: false }, content: [{ type: 'paragraph', content: inlineContent }] }] };
+      case 'codeBlock':
+        return { type: 'codeBlock', content: textContent ? [{ type: 'text', text: textContent }] : [] };
+      case 'mathBlock':
+        return { type: 'mathBlock', attrs: { latex: textContent } };
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Extract inline content from a block JSON object.
+   * Handles both leaf blocks (has .content directly) and wrapped blocks.
+   */
+  private _extractInlineContent(blockJson: any): any[] {
+    if (blockJson.content && Array.isArray(blockJson.content)) {
+      // Check if content items are inline (text nodes)
+      if (blockJson.content.length > 0 && blockJson.content[0].type === 'text') {
+        return blockJson.content;
+      }
+      // Nested — try first child
+      if (blockJson.content.length > 0) {
+        return this._extractInlineContent(blockJson.content[0]);
+      }
+    }
+    return [];
   }
 
   /** Extract inline content (text + marks) from the first textblock inside a node. */

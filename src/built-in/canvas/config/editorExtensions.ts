@@ -22,6 +22,7 @@ import { BlockBackgroundColor } from '../extensions/blockBackground.js';
 import { Callout } from '../extensions/calloutNode.js';
 import { Column, ColumnList } from '../extensions/columnNodes.js';
 import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
+import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
 import { MathBlock } from '../extensions/mathBlockNode.js';
 
 import type { Extensions } from '@tiptap/core';
@@ -88,7 +89,7 @@ export function createEditorExtensions(lowlight: any): Extensions {
     GlobalDragHandle.configure({
       dragHandleWidth: 24,
       scrollTreshold: 100,
-      customNodes: ['mathBlock', 'columnList'],
+      customNodes: ['mathBlock', 'columnList', 'callout', 'details'],
     }),
     // ── Tier 2 extensions ──
     Callout,
@@ -112,6 +113,7 @@ export function createEditorExtensions(lowlight: any): Extensions {
     CharacterCount,
     AutoJoiner,
     DetailsEnterHandler,
+    BlockKeyboardShortcuts,
     // ── Math / KaTeX ──
     InlineMathNode.configure({
       evaluation: false,
