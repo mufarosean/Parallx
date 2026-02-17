@@ -2456,6 +2456,12 @@
   background-color: rgba(255, 255, 255, 0.04) !important;
 }
 
+/* Suppress hover backgrounds during resize to prevent flicker */
+.column-resizing .canvas-column-list:hover .canvas-column,
+.column-resizing .canvas-column:hover {
+  background-color: transparent !important;
+}
+
 /* Remove top margin from first child inside column */
 .canvas-column > :first-child {
   margin-top: 0;
