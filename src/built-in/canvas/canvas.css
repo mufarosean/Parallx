@@ -2954,7 +2954,10 @@
 }
 
 /* Individual column — zero horizontal padding so column content aligns with
-   top-level editor content.  Vertical padding only for breathing room. */
+   top-level editor content.  Vertical padding only for breathing room.
+   No overflow:hidden — it would clip the resize-handle ::after pseudo-element
+   (positioned at right:-16px). Text wrapping is handled by the inherited
+   overflow-wrap:break-word from .canvas-tiptap-editor. */
 .canvas-column {
   flex: 1;
   min-width: 0;
@@ -2962,7 +2965,6 @@
   border-radius: 4px;
   padding: 4px 0;
   box-sizing: border-box;
-  overflow: hidden;
   transition: background-color 0.15s ease;
 }
 
