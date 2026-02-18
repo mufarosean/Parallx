@@ -675,9 +675,9 @@
   opacity: 0 !important;
 }
 
-/* Show handle on hover over editor content — only when not hidden */
-.canvas-tiptap-editor:hover ~ .drag-handle:not(.hide),
-.drag-handle:not(.hide):hover {
+/* Show handle on hover over editor content */
+.canvas-tiptap-editor:hover ~ .drag-handle,
+.drag-handle:hover {
   opacity: 0.5;
 }
 
@@ -712,8 +712,8 @@
   pointer-events: none;
 }
 
-.canvas-tiptap-editor:hover ~ .block-add-btn:not(.hide),
-.block-add-btn:not(.hide):hover {
+.canvas-tiptap-editor:hover ~ .block-add-btn,
+.block-add-btn:hover {
   opacity: 0.5;
 }
 
