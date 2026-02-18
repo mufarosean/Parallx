@@ -660,10 +660,12 @@
   pointer-events: none;
 }
 
-/* Hide handle when the mouse is near a column resize boundary so the
-   handle (z-index: 50) doesn't intercept events from the resize zone. */
+/* Hide handle and + button when the mouse is near a column resize boundary so
+   the handle (z-index: 50) doesn't intercept events from the resize zone. */
 .column-resize-hover .drag-handle,
-.column-resizing .drag-handle {
+.column-resizing .drag-handle,
+.column-resize-hover .block-add-btn,
+.column-resizing .block-add-btn {
   pointer-events: none !important;
   opacity: 0 !important;
 }
