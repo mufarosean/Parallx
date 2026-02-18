@@ -77,11 +77,13 @@ export function columnDropPlugin(): Plugin {
     const el = ensureVert(container);
     const bRect = blockEl.getBoundingClientRect();
     const cRect = container.getBoundingClientRect();
-    el.style.top = `${bRect.top - cRect.top}px`;
+    const sT = container.scrollTop;
+    const sL = container.scrollLeft;
+    el.style.top = `${bRect.top - cRect.top + sT}px`;
     el.style.height = `${bRect.height}px`;
     el.style.left = side === 'left'
-      ? `${bRect.left - cRect.left - 2}px`
-      : `${bRect.right - cRect.left}px`;
+      ? `${bRect.left - cRect.left + sL - 2}px`
+      : `${bRect.right - cRect.left + sL}px`;
     el.style.display = 'block';
     if (horzIndicator) horzIndicator.style.display = 'none';
   }
@@ -90,10 +92,12 @@ export function columnDropPlugin(): Plugin {
     const el = ensureHorz(container);
     const bRect = blockEl.getBoundingClientRect();
     const cRect = container.getBoundingClientRect();
+    const sT = container.scrollTop;
+    const sL = container.scrollLeft;
     el.style.top = pos === 'above'
-      ? `${bRect.top - cRect.top - 1}px`
-      : `${bRect.bottom - cRect.top + 1}px`;
-    el.style.left = `${bRect.left - cRect.left}px`;
+      ? `${bRect.top - cRect.top + sT - 1}px`
+      : `${bRect.bottom - cRect.top + sT + 1}px`;
+    el.style.left = `${bRect.left - cRect.left + sL}px`;
     el.style.width = `${bRect.width}px`;
     el.style.display = 'block';
     if (vertIndicator) vertIndicator.style.display = 'none';
