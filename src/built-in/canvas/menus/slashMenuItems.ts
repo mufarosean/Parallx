@@ -7,6 +7,7 @@
 // own `setDetails()` command uses internally.  NO deleteRange needed.
 
 import type { Editor } from '@tiptap/core';
+import { showImageInsertPopup } from './imageInsertPopup.js';
 
 export interface SlashMenuItem {
   label: string;
@@ -125,10 +126,9 @@ export const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   },
   // ── Media ──
   {
-    label: 'Image', icon: 'image', description: 'Embed an image from URL',
+    label: 'Image', icon: 'image', description: 'Upload or embed an image',
     action: (e, range) => {
-      const url = prompt('Enter image URL:');
-      if (url) e.chain().insertContentAt(range, { type: 'image', attrs: { src: url } }).focus().run();
+      showImageInsertPopup(e, range);
     },
   },
   // ── Math / Equations ──

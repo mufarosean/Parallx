@@ -2221,6 +2221,125 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Image Insert Popup (slash menu → Image)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-image-insert-popup {
+  position: fixed;
+  z-index: 1003;
+  width: 340px;
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+  animation: slashMenuFadeIn 0.12s ease-out;
+}
+
+.canvas-image-insert-tabs {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 8px;
+}
+
+.canvas-image-insert-tab {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  padding: 4px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.1s ease, color 0.1s ease;
+  font-family: inherit;
+}
+
+.canvas-image-insert-tab:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.canvas-image-insert-tab--active {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.canvas-image-insert-content {
+  min-height: 60px;
+}
+
+.canvas-image-insert-upload-btn {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+  font-family: inherit;
+}
+
+.canvas-image-insert-upload-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.canvas-image-insert-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  text-align: center;
+  margin-top: 8px;
+}
+
+.canvas-image-insert-link-row {
+  display: flex;
+  gap: 8px;
+}
+
+.canvas-image-insert-link-input {
+  flex: 1;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  outline: none;
+  font-family: inherit;
+}
+
+.canvas-image-insert-link-input:focus {
+  border-color: #2383e2;
+}
+
+.canvas-image-insert-link-apply {
+  padding: 8px 16px;
+  background: #2383e2;
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.canvas-image-insert-link-apply:hover {
+  background: #1b6fc2;
+}
+
+.canvas-image-insert-error {
+  font-size: 12px;
+  color: #e54d42;
+  margin-top: 8px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * Cover Picker Popup (Cap 8 — Task 8.5)
  * ───────────────────────────────────────────────────────────────────────────── */
 
