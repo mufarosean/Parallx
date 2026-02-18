@@ -9,6 +9,7 @@
 //   • Color submenu (10 text colours + 10 background colours)
 
 import type { Editor } from '@tiptap/core';
+import { NodeSelection } from '@tiptap/pm/state';
 import type { BlockSelectionController } from './blockSelection.js';
 import { $ } from '../../../ui/dom.js';
 import { svgIcon } from '../canvasIcons.js';
@@ -92,6 +93,15 @@ export class BlockHandlesController {
     this._blockAddBtn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
     this._dragHandleEl.addEventListener('click', this._onDragHandleClick);
 
+    // ── Fix GlobalDragHandle column mis-selection ──
+    // GlobalDragHandle's calcNodePos has a bug: for blocks inside columns,
+    // posAtCoords returns a position at the boundary between paragraphs.
+    // ProseMirror resolves boundary positions at the parent (column) level,
+    // so calcNodePos returns the column position instead of the paragraph.
+    // This listener fires AFTER GlobalDragHandle's dragstart handler and
+    // corrects the selection + dragging slice.
+    this._dragHandleEl.addEventListener('dragstart', this._onDragHandleFixSelection);
+
     // ── Prevent drag handle from hiding when mouse moves to the + button ──
     ec.addEventListener('mouseout', this._onEditorMouseOut, true);
 
@@ -165,6 +175,37 @@ export class BlockHandlesController {
     }
 
     this._showBlockActionMenu();
+  };
+
+  // ── Drag Handle Dragstart Fix ──
+  //
+  // GlobalDragHandle's `calcNodePos` resolves boundary positions between
+  // sibling paragraphs at the *parent* depth (column) instead of the child
+  // depth (paragraph).  This listener fires AFTER GlobalDragHandle's handler
+  // and corrects the selection + `view.dragging.slice` when a column was
+  // incorrectly selected instead of the individual block inside it.
+
+  private readonly _onDragHandleFixSelection = (): void => {
+    const editor = this._host.editor;
+    if (!editor) return;
+    const { state, view } = editor;
+
+    // Only act when GlobalDragHandle mis-selected a column
+    if (!(state.selection instanceof NodeSelection)) return;
+    if (state.selection.node.type.name !== 'column') return;
+
+    // Resolve the correct block (paragraph) via our own resolution logic
+    const block = this._resolveBlockFromHandle();
+    if (!block) return;
+
+    // Correct the selection to the paragraph
+    const tr = state.tr.setSelection(NodeSelection.create(state.doc, block.pos));
+    view.dispatch(tr);
+
+    // Correct view.dragging.slice so the drag carries the paragraph, not the column
+    if (view.dragging) {
+      view.dragging.slice = view.state.selection.content();
+    }
   };
 
   private readonly _onDocClickOutside = (e: MouseEvent): void => {
@@ -962,6 +1003,7 @@ export class BlockHandlesController {
     this._handleObserver = null;
     document.removeEventListener('mousedown', this._onDocClickOutside);
     this._host.editorContainer?.removeEventListener('mouseout', this._onEditorMouseOut, true);
+    this._dragHandleEl?.removeEventListener('dragstart', this._onDragHandleFixSelection);
     if (this._blockAddBtn) { this._blockAddBtn.remove(); this._blockAddBtn = null; }
     if (this._blockActionMenu) { this._blockActionMenu.remove(); this._blockActionMenu = null; }
     if (this._turnIntoSubmenu) { this._turnIntoSubmenu.remove(); this._turnIntoSubmenu = null; }
