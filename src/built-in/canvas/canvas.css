@@ -3010,16 +3010,16 @@
   z-index: 55;
 }
 
-/* Subtle gray resize indicator line — only the specific boundary being
-   hovered gets the visual indicator, not all boundaries at once. */
-.canvas-column.resize-handle-active:not(:last-child)::after {
-  background: linear-gradient(
-    to right,
-    transparent 7px,
-    rgba(255, 255, 255, 0.15) 7px,
-    rgba(255, 255, 255, 0.15) 9px,
-    transparent 9px
-  );
+/* Standalone resize indicator line — positioned by the resize plugin.
+   Lives outside ProseMirror's DOM so it can't be stripped by view updates. */
+.column-resize-indicator {
+  display: none;
+  position: absolute;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 55;
 }
 
 /* During active resize, override cursor on entire page */

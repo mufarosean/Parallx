@@ -149,22 +149,36 @@ export function columnResizePlugin(): Plugin {
     view: (editorView: EditorView) => {
       const container = editorView.dom.parentElement;
 
-      let hoverCol: HTMLElement | null = null;
+      // Standalone resize indicator line — lives outside ProseMirror's
+      // DOM control so it can't be stripped by view updates.
+      const resizeIndicator = document.createElement('div');
+      resizeIndicator.className = 'column-resize-indicator';
+      container?.appendChild(resizeIndicator);
+
+      const showIndicator = (leftCol: HTMLElement, listEl: HTMLElement) => {
+        const leftRect = leftCol.getBoundingClientRect();
+        const listRect = listEl.getBoundingClientRect();
+        // Position at the right edge of the left column, spanning
+        // the column-list height. Use listEl-relative coordinates.
+        resizeIndicator.style.left = `${leftRect.right - listRect.left + 7}px`;
+        resizeIndicator.style.top = `${listRect.top - (container?.getBoundingClientRect().top ?? 0)}px`;
+        resizeIndicator.style.height = `${listRect.height}px`;
+        resizeIndicator.style.display = 'block';
+      };
+
+      const hideIndicator = () => {
+        resizeIndicator.style.display = 'none';
+      };
 
       const onContainerMousemove = (event: MouseEvent) => {
         if (dragging) return; // During active resize, cursor is managed by PM
         const boundary = findBoundary(editorView, event.clientX, event.clientY, 12);
         if (boundary) {
           document.body.classList.add('column-resize-hover');
-          if (hoverCol !== boundary.leftCol) {
-            hoverCol?.classList.remove('resize-handle-active');
-            boundary.leftCol.classList.add('resize-handle-active');
-            hoverCol = boundary.leftCol;
-          }
+          showIndicator(boundary.leftCol, boundary.listEl);
         } else {
           document.body.classList.remove('column-resize-hover');
-          hoverCol?.classList.remove('resize-handle-active');
-          hoverCol = null;
+          hideIndicator();
         }
       };
 
@@ -173,8 +187,7 @@ export function columnResizePlugin(): Plugin {
       return {
         destroy: () => {
           container?.removeEventListener('mousemove', onContainerMousemove);
-          hoverCol?.classList.remove('resize-handle-active');
-          hoverCol = null;
+          resizeIndicator.remove();
           document.body.classList.remove('column-resize-hover');
           document.body.classList.remove('column-resizing');
         },
