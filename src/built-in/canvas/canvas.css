@@ -1675,6 +1675,7 @@
   top: 0;
   z-index: 50;
   background: var(--vscode-editor-background);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .canvas-top-ribbon-left {
