@@ -629,7 +629,6 @@
 .drag-handle {
   position: fixed;
   opacity: 0;
-  transition: opacity 0.2s ease;
   cursor: grab;
   width: 20px;
   height: 24px;
@@ -658,7 +657,7 @@
 }
 
 .drag-handle.hide {
-  opacity: 0;
+  opacity: 0 !important;
   pointer-events: none;
 }
 
@@ -672,9 +671,9 @@
   opacity: 0 !important;
 }
 
-/* Show handle on hover over editor content */
-.canvas-tiptap-editor:hover ~ .drag-handle,
-.drag-handle:hover {
+/* Show handle on hover over editor content — only when not hidden */
+.canvas-tiptap-editor:hover ~ .drag-handle:not(.hide),
+.drag-handle:not(.hide):hover {
   opacity: 0.5;
 }
 
@@ -685,7 +684,6 @@
 .block-add-btn {
   position: fixed;
   opacity: 0;
-  transition: opacity 0.2s ease;
   cursor: pointer;
   width: 20px;
   height: 24px;
@@ -706,12 +704,12 @@
 }
 
 .block-add-btn.hide {
-  opacity: 0;
+  opacity: 0 !important;
   pointer-events: none;
 }
 
-.canvas-tiptap-editor:hover ~ .block-add-btn,
-.block-add-btn:hover {
+.canvas-tiptap-editor:hover ~ .block-add-btn:not(.hide),
+.block-add-btn:not(.hide):hover {
   opacity: 0.5;
 }
 
