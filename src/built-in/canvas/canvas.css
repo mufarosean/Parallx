@@ -638,6 +638,8 @@
   justify-content: center;
   border-radius: 4px;
   z-index: 50;
+  /* Shift left to avoid overlapping the column resize boundary zone */
+  transform: translateX(-8px);
   background-size: calc(0.5em + 0.375rem) calc(0.5em + 0.375rem);
   background-repeat: no-repeat;
   background-position: center;
@@ -693,6 +695,8 @@
   border-radius: 4px;
   z-index: 50;
   color: rgba(255, 255, 255, 0.35);
+  /* Match drag-handle shift so they stay aligned */
+  transform: translateX(-8px);
 }
 
 .block-add-btn:hover {
