@@ -159,15 +159,11 @@ export function columnResizePlugin(): Plugin {
 
       const showIndicator = (leftCol: HTMLElement) => {
         if (!resizeIndicator || !container) return;
-        const leftRect = leftCol.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        // Center the 2px indicator in the 16px gap after the left column.
-        // Position relative to the container, accounting for scroll.
-        const x = leftRect.right - containerRect.left + 7;
-        const y = leftCol.offsetTop;
-        resizeIndicator.style.left = `${x}px`;
-        resizeIndicator.style.top = `${y}px`;
-        resizeIndicator.style.height = `${leftCol.offsetHeight}px`;
+        const colRect = leftCol.getBoundingClientRect();
+        const cRect = container.getBoundingClientRect();
+        resizeIndicator.style.left = `${colRect.right - cRect.left + 7}px`;
+        resizeIndicator.style.top = `${colRect.top - cRect.top + container.scrollTop}px`;
+        resizeIndicator.style.height = `${colRect.height}px`;
         resizeIndicator.style.display = 'block';
       };
 
