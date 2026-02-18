@@ -20,7 +20,10 @@ import { columnAutoDissolvePlugin } from '../plugins/columnAutoDissolve.js';
 
 export const Column = Node.create({
   name: 'column',
-  content: 'block+',
+  // Explicit content list — excludes columnList to prevent nested columns.
+  // ProseMirror enforces this at the schema level (paste, import, setContent).
+  // If you add a new block-level node, add it here too.
+  content: '(paragraph | heading | bulletList | orderedList | taskList | blockquote | codeBlock | horizontalRule | image | table | callout | details | toggleHeading | mathBlock | bookmark | tableOfContents | video | audio | fileAttachment)+',
   isolating: true,
   defining: true,
 

@@ -448,6 +448,22 @@ export function columnDropPlugin(): Plugin {
           const targetColNode = view.state.doc.nodeAt(target.columnPos);
           if (!targetColNode) return false;
 
+          // ── Compute target column's effective width before mutations ──
+          // Notion-style: only the target column's width is split in half;
+          // other sibling columns keep their current widths.
+          const oldCl = view.state.doc.nodeAt(target.columnListPos!);
+          const oldColCount = oldCl ? oldCl.childCount : 0;
+          let expSum = 0, nCount = 0;
+          if (oldCl) {
+            for (let i = 0; i < oldCl.childCount; i++) {
+              const w = oldCl.child(i).attrs.width;
+              if (w != null) expSum += w; else nCount++;
+            }
+          }
+          const nullEff = nCount > 0 ? (100 - expSum) / nCount : 0;
+          const targetEff = targetColNode.attrs.width ?? nullEff;
+          const half = parseFloat((targetEff / 2).toFixed(2));
+
           let newCol: any;
           try { newCol = columnType.create(null, content); } catch { return false; }
 
@@ -458,8 +474,43 @@ export function columnDropPlugin(): Plugin {
           tr.insert(insertColPos, newCol);
           if (!isDuplicate) deleteSrc(tr, dragFrom, dragTo);
 
-          // Reset all column widths to equal after adding a column
-          resetWidths(tr, target.columnListPos!);
+          // ── Width redistribution: Notion-style split ──
+          // Split the target column's width between itself and the new column.
+          // Other columns keep their current widths unchanged.
+          const mClPos = tr.mapping.map(target.columnListPos!);
+          const finalCl = tr.doc.nodeAt(mClPos);
+
+          if (finalCl && finalCl.type.name === 'columnList' &&
+              finalCl.childCount === oldColCount + 1) {
+            // Clean addition — no column removed from this list.
+            const mTargetPos = tr.mapping.map(target.columnPos);
+            let targetIdx = -1;
+            let off = mClPos + 1;
+            for (let i = 0; i < finalCl.childCount; i++) {
+              if (off === mTargetPos) { targetIdx = i; break; }
+              off += finalCl.child(i).nodeSize;
+            }
+            if (targetIdx >= 0) {
+              const newIdx = target.zone === 'left'
+                ? targetIdx - 1
+                : targetIdx + 1;
+              off = mClPos + 1;
+              for (let i = 0; i < finalCl.childCount; i++) {
+                const ch = finalCl.child(i);
+                if (i === targetIdx || i === newIdx) {
+                  tr.setNodeMarkup(off, undefined, { ...ch.attrs, width: half });
+                }
+                off += ch.nodeSize;
+              }
+            } else {
+              // Fallback — couldn't locate target; equalize
+              resetWidths(tr, target.columnListPos!);
+            }
+          } else {
+            // Source column was removed from same columnList — equalize
+            resetWidths(tr, target.columnListPos!);
+          }
+
           view.dispatch(tr);
           return true;
         },
