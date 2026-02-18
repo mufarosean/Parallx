@@ -2,6 +2,7 @@
 // Uses CommonJS because Electron's main process doesn't support ESM by default.
 
 const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
+const http = require('http');
 const path = require('path');
 const fs = require('fs/promises');
 const fsSync = require('fs');
@@ -10,6 +11,98 @@ const { databaseManager } = require('./database.cjs');
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
+/** @type {import('http').Server | null} */
+let rendererServer = null;
+/** @type {number | null} */
+let rendererServerPort = null;
+
+const RENDERER_ROOT = path.join(__dirname, '..');
+const RENDERER_PORT = 31789;
+
+function contentTypeFor(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  switch (ext) {
+    case '.html': return 'text/html; charset=utf-8';
+    case '.js': return 'application/javascript; charset=utf-8';
+    case '.mjs': return 'application/javascript; charset=utf-8';
+    case '.css': return 'text/css; charset=utf-8';
+    case '.json': return 'application/json; charset=utf-8';
+    case '.svg': return 'image/svg+xml';
+    case '.png': return 'image/png';
+    case '.jpg':
+    case '.jpeg': return 'image/jpeg';
+    case '.gif': return 'image/gif';
+    case '.webp': return 'image/webp';
+    case '.ico': return 'image/x-icon';
+    case '.map': return 'application/json; charset=utf-8';
+    default: return 'application/octet-stream';
+  }
+}
+
+function resolveRendererFile(requestPathname) {
+  const safePathname = decodeURIComponent(requestPathname || '/');
+  const normalizedPathname = safePathname === '/' ? '/index.html' : safePathname;
+  const candidate = path.normalize(path.join(RENDERER_ROOT, normalizedPathname));
+
+  if (!candidate.startsWith(RENDERER_ROOT)) {
+    return null;
+  }
+
+  if (fsSync.existsSync(candidate) && fsSync.statSync(candidate).isFile()) {
+    return candidate;
+  }
+
+  // SPA-style fallback for app routes
+  const indexFile = path.join(RENDERER_ROOT, 'index.html');
+  if (fsSync.existsSync(indexFile)) {
+    return indexFile;
+  }
+
+  return null;
+}
+
+async function ensureRendererServer() {
+  if (rendererServer && rendererServerPort) {
+    return `http://127.0.0.1:${rendererServerPort}/`;
+  }
+
+  rendererServer = http.createServer((req, res) => {
+    try {
+      const reqUrl = new URL(req.url || '/', 'http://127.0.0.1');
+      const filePath = resolveRendererFile(reqUrl.pathname);
+      if (!filePath) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Not found');
+        return;
+      }
+
+      const body = fsSync.readFileSync(filePath);
+      res.writeHead(200, {
+        'Content-Type': contentTypeFor(filePath),
+        'Cache-Control': 'no-cache',
+      });
+      res.end(body);
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(`Renderer server error: ${err?.message || 'unknown'}`);
+    }
+  });
+
+  await new Promise((resolve, reject) => {
+    rendererServer.once('error', reject);
+    rendererServer.listen(RENDERER_PORT, '127.0.0.1', () => {
+      const address = rendererServer.address();
+      if (address && typeof address === 'object') {
+        rendererServerPort = address.port;
+        resolve();
+      } else {
+        reject(new Error('Failed to bind renderer server'));
+      }
+    });
+  });
+
+  return `http://127.0.0.1:${rendererServerPort}/`;
+}
 
 // ── Window bounds persistence ───────────────────────────────────────────────
 // Save position, size, and maximized state to a JSON file so the window
@@ -65,7 +158,7 @@ function boundsOnScreen(bounds) {
   });
 }
 
-function createWindow() {
+async function createWindow() {
   const saved = loadWindowState();
   const useSaved = saved?.bounds && boundsOnScreen(saved.bounds);
 
@@ -109,7 +202,8 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
+  const rendererUrl = await ensureRendererServer();
+  mainWindow.loadURL(rendererUrl);
 
   // Open DevTools (uncomment for debugging)
   // mainWindow.webContents.openDevTools();
@@ -163,7 +257,15 @@ app.whenReady().then(async () => {
     await fs.mkdir(userToolsDir, { recursive: true });
   } catch { /* ignore — directory already exists */ }
 
-  createWindow();
+  await createWindow();
+});
+
+app.on('before-quit', () => {
+  if (rendererServer) {
+    try { rendererServer.close(); } catch { /* ignore */ }
+    rendererServer = null;
+    rendererServerPort = null;
+  }
 });
 
 // ── IPC handlers for tool scanning ──

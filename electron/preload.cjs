@@ -1,7 +1,7 @@
 // electron/preload.cjs — Electron preload script
 // Exposes a minimal API to the renderer via contextBridge.
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, clipboard } = require('electron');
 
 contextBridge.exposeInMainWorld('parallxElectron', {
   platform: process.platform,
@@ -179,5 +179,11 @@ contextBridge.exposeInMainWorld('parallxElectron', {
      * Returns { response: number, checkboxChecked: boolean }.
      */
     showMessageBox: (options) => ipcRenderer.invoke('dialog:showMessageBox', options),
+  },
+
+  // ── Clipboard API ──
+  clipboard: {
+    readText: () => clipboard.readText(),
+    writeText: (text) => clipboard.writeText(text ?? ''),
   },
 });

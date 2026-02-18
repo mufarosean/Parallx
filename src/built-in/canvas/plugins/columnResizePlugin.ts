@@ -30,6 +30,8 @@ export function columnResizePlugin(): Plugin {
   }
 
   let dragging: DragState | null = null;
+  let lastPointerClient: { x: number; y: number } | null = null;
+  let hoverSyncRaf: number | null = null;
 
   /**
    * Find column boundary nearest to (x, y) by scanning ALL column lists in
@@ -155,14 +157,13 @@ export function columnResizePlugin(): Plugin {
       // DOM control so it can't be stripped by view updates.
       resizeIndicator = document.createElement('div');
       resizeIndicator.className = 'column-resize-indicator';
-      container?.appendChild(resizeIndicator);
+      document.body.appendChild(resizeIndicator);
 
       const showIndicator = (leftCol: HTMLElement) => {
-        if (!resizeIndicator || !container) return;
+        if (!resizeIndicator) return;
         const colRect = leftCol.getBoundingClientRect();
-        const cRect = container.getBoundingClientRect();
-        resizeIndicator.style.left = `${colRect.right - cRect.left + 7}px`;
-        resizeIndicator.style.top = `${colRect.top - cRect.top + container.scrollTop}px`;
+        resizeIndicator.style.left = `${colRect.right + 7}px`;
+        resizeIndicator.style.top = `${colRect.top}px`;
         resizeIndicator.style.height = `${colRect.height}px`;
         resizeIndicator.style.display = 'block';
       };
@@ -171,9 +172,9 @@ export function columnResizePlugin(): Plugin {
         if (resizeIndicator) resizeIndicator.style.display = 'none';
       };
 
-      const onContainerMousemove = (event: MouseEvent) => {
-        if (dragging) return; // During active resize, cursor is managed by PM
-        const boundary = findBoundary(editorView, event.clientX, event.clientY, 12);
+      const refreshHoverState = (x: number, y: number) => {
+        if (dragging) return;
+        const boundary = findBoundary(editorView, x, y, 12);
         if (boundary) {
           document.body.classList.add('column-resize-hover');
           showIndicator(boundary.leftCol);
@@ -183,11 +184,34 @@ export function columnResizePlugin(): Plugin {
         }
       };
 
+      const onContainerMousemove = (event: MouseEvent) => {
+        lastPointerClient = { x: event.clientX, y: event.clientY };
+        refreshHoverState(event.clientX, event.clientY);
+      };
+
+      const onViewportGeometryChange = () => {
+        if (hoverSyncRaf != null) return;
+        hoverSyncRaf = window.requestAnimationFrame(() => {
+          hoverSyncRaf = null;
+          if (!lastPointerClient) return;
+          refreshHoverState(lastPointerClient.x, lastPointerClient.y);
+        });
+      };
+
       container?.addEventListener('mousemove', onContainerMousemove);
+      window.addEventListener('scroll', onViewportGeometryChange, true);
+      window.addEventListener('resize', onViewportGeometryChange);
 
       return {
         destroy: () => {
           container?.removeEventListener('mousemove', onContainerMousemove);
+          window.removeEventListener('scroll', onViewportGeometryChange, true);
+          window.removeEventListener('resize', onViewportGeometryChange);
+          if (hoverSyncRaf != null) {
+            window.cancelAnimationFrame(hoverSyncRaf);
+            hoverSyncRaf = null;
+          }
+          lastPointerClient = null;
           resizeIndicator?.remove();
           resizeIndicator = null;
           document.body.classList.remove('column-resize-hover');

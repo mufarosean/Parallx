@@ -1,0 +1,350 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://parallx.app/schemas/parallx-workspace.schema.json",
+  "title": "Parallx Workspace",
+  "description": "Canonical Parallx workspace manifest. Defines identity, workspace folders, boundary policy, settings, storage topology, and persisted workbench state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "identity",
+    "folders",
+    "boundary",
+    "settings",
+    "storage",
+    "state"
+  ],
+  "properties": {
+    "manifestVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Workspace manifest schema version."
+    },
+    "identity": {
+      "$ref": "#/$defs/workspaceIdentity"
+    },
+    "folders": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "$ref": "#/$defs/workspaceFolder"
+      },
+      "description": "Explicitly attached workspace folders."
+    },
+    "boundary": {
+      "$ref": "#/$defs/workspaceBoundary"
+    },
+    "settings": {
+      "$ref": "#/$defs/workspaceSettings"
+    },
+    "storage": {
+      "$ref": "#/$defs/workspaceStorage"
+    },
+    "state": {
+      "$ref": "#/$defs/workspaceStateEnvelope"
+    },
+    "meta": {
+      "$ref": "#/$defs/workspaceMeta"
+    }
+  },
+  "$defs": {
+    "workspaceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "iconOrColor": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "savedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sourceUri": {
+          "type": "string",
+          "description": "URI of this workspace manifest file when known."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "workspaceFolder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uri",
+        "name",
+        "index"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "addedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "trusted": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "workspaceBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "allowWorkspaceFoldersOnly",
+        "defaultFileAccess"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "strict"
+          ],
+          "description": "strict = deny access outside explicit workspace folders."
+        },
+        "allowWorkspaceFoldersOnly": {
+          "type": "boolean",
+          "const": true
+        },
+        "defaultFileAccess": {
+          "type": "string",
+          "enum": [
+            "deny"
+          ]
+        },
+        "allowlistedUris": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional explicitly approved additional paths/URIs."
+        },
+        "policyVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        }
+      }
+    },
+    "workspaceSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "global",
+        "tools"
+      ],
+      "properties": {
+        "global": {
+          "type": "object",
+          "description": "Top-level workspace settings map.",
+          "additionalProperties": true
+        },
+        "profiles": {
+          "type": "object",
+          "description": "Named workspace settings profiles.",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "tools": {
+          "type": "object",
+          "description": "Per-tool settings and persisted state configuration.",
+          "additionalProperties": {
+            "$ref": "#/$defs/toolSettings"
+          }
+        }
+      }
+    },
+    "toolSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "workspaceState": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "workspaceStorage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canvas",
+        "workspaceDataDir"
+      ],
+      "properties": {
+        "workspaceDataDir": {
+          "type": "string",
+          "default": ".parallx"
+        },
+        "canvas": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "database",
+            "migrations"
+          ],
+          "properties": {
+            "database": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "relativePath",
+                "strategy"
+              ],
+              "properties": {
+                "relativePath": {
+                  "type": "string",
+                  "default": ".parallx/data.db"
+                },
+                "strategy": {
+                  "type": "string",
+                  "enum": [
+                    "workspace-root-relative"
+                  ]
+                },
+                "journalMode": {
+                  "type": "string",
+                  "enum": [
+                    "WAL"
+                  ],
+                  "default": "WAL"
+                }
+              }
+            },
+            "migrations": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "source"
+              ],
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "bundled"
+                  ]
+                },
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "attachments": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "relativeDir": {
+              "type": "string",
+              "default": ".parallx/attachments"
+            },
+            "strategy": {
+              "type": "string",
+              "enum": [
+                "workspace-root-relative"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "workspaceStateEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workbench"
+      ],
+      "properties": {
+        "workbench": {
+          "type": "object",
+          "description": "Full serialized workbench state payload.",
+          "additionalProperties": true,
+          "required": [
+            "version",
+            "identity",
+            "metadata",
+            "layout",
+            "parts",
+            "viewContainers",
+            "views",
+            "editors",
+            "context"
+          ]
+        },
+        "checksums": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "workspaceMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exportedBy": {
+          "type": "string"
+        },
+        "exportedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -43,6 +43,7 @@ export const Bookmark = Node.create({
       dom.classList.add('canvas-bookmark');
       dom.setAttribute('data-type', 'bookmark');
       dom.contentEditable = 'false';
+      dom.draggable = false;
 
       const render = (attrs: any) => {
         dom.innerHTML = '';
@@ -106,6 +107,11 @@ export const Bookmark = Node.create({
       };
 
       render(node.attrs);
+
+      dom.addEventListener('dragstart', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
 
       return {
         dom,

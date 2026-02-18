@@ -110,6 +110,38 @@ function electronBridge(): ElectronBridge | undefined {
   return (globalThis as any).parallxElectron as ElectronBridge | undefined;
 }
 
+async function ensureUriWithinWorkspaceOrPrompt(
+  ctx: CommandExecutionContext,
+  uri: URI,
+  actionLabel: string,
+): Promise<boolean> {
+  const wsService = ctx.getService<IWorkspaceService>('IWorkspaceService');
+  if (!wsService) return true;
+
+  if (wsService.getWorkspaceFolder(uri)) return true;
+
+  const parentFolder = uri.dirname;
+  if (!parentFolder) return false;
+
+  const fileService = ctx.getService<IFileService>('IFileService');
+  const decision = fileService
+    ? await fileService.showMessageBox({
+        type: 'warning',
+        title: 'Path Outside Workspace',
+        message: `${actionLabel} is outside the current workspace. Add its folder to workspace first?`,
+        buttons: ['Add Folder & Continue', 'Cancel'],
+        defaultId: 0,
+        cancelId: 1,
+      })
+    : { response: 1, checkboxChecked: false };
+
+  if (decision.response !== 0) return false;
+
+  wsService.addFolder(parentFolder);
+  await wb(ctx)._workspaceSaver.save();
+  return true;
+}
+
 // ─── View Commands ───────────────────────────────────────────────────────────
 
 const showCommands: CommandDescriptor = {
@@ -653,6 +685,97 @@ const workspaceOpenFolder: CommandDescriptor = {
   },
 };
 
+const workspaceExportToFile: CommandDescriptor = {
+  id: 'workspace.exportToFile',
+  title: 'Save Workspace to File...',
+  category: 'Workspace',
+  handler: async (ctx) => {
+    const w = wb(ctx);
+    const fileService = ctx.getService<IFileService>('IFileService');
+    if (!fileService) {
+      console.warn('[Command] workspace.exportToFile — IFileService not available');
+      return;
+    }
+
+    await w._workspaceSaver.save();
+
+    const { createWorkspaceManifestFromState } = await import('../workspace/workspaceManifest.js');
+    const state = w._workspaceSaver.collectState() as import('../workspace/workspaceTypes.js').WorkspaceState;
+    const manifest = createWorkspaceManifestFromState(state, {
+      exportedBy: 'Parallx',
+    });
+
+    const safeName = w.workspace.name.replace(/[\\/:*?"<>|]/g, '_');
+    const target = await fileService.saveFileDialog({
+      defaultName: `${safeName}.parallx-workspace.json`,
+      filters: [
+        { name: 'Parallx Workspace', extensions: ['parallx-workspace.json', 'json'] },
+      ],
+    });
+    if (!target) return;
+
+    const allowed = await ensureUriWithinWorkspaceOrPrompt(
+      ctx,
+      target,
+      `Saving workspace file "${target.basename}"`,
+    );
+    if (!allowed) return;
+
+    await fileService.writeFile(target, JSON.stringify(manifest, null, 2));
+    console.log('[Command] workspace.exportToFile — saved "%s"', target.fsPath);
+  },
+};
+
+const workspaceImportFromFile: CommandDescriptor = {
+  id: 'workspace.importFromFile',
+  title: 'Open Workspace from File...',
+  category: 'Workspace',
+  handler: async (ctx) => {
+    const w = wb(ctx);
+    const fileService = ctx.getService<IFileService>('IFileService');
+    if (!fileService) {
+      console.warn('[Command] workspace.importFromFile — IFileService not available');
+      return;
+    }
+
+    const picked = await fileService.openFileDialog({
+      multiSelect: false,
+      filters: [
+        { name: 'Parallx Workspace', extensions: ['parallx-workspace.json', 'json'] },
+      ],
+    });
+    if (!picked || picked.length === 0) return;
+
+    const fileUri = picked[0];
+
+    const allowed = await ensureUriWithinWorkspaceOrPrompt(
+      ctx,
+      fileUri,
+      `Opening workspace file "${fileUri.basename}"`,
+    );
+    if (!allowed) return;
+
+    const file = await fileService.readFile(fileUri);
+
+    const {
+      parseWorkspaceManifest,
+      manifestToWorkspaceState,
+    } = await import('../workspace/workspaceManifest.js');
+
+    const manifest = parseWorkspaceManifest(file.content);
+    const restoredState = manifestToWorkspaceState(manifest);
+
+    await w.createWorkspace(
+      manifest.identity.name,
+      fileUri.fsPath,
+      true,
+      restoredState,
+    );
+
+    console.log('[Command] workspace.importFromFile — opened "%s"', fileUri.fsPath);
+  },
+};
+
 // ─── File Commands (M4 Cap 2.2) ──────────────────────────────────────────────
 
 const fileOpenFile: CommandDescriptor = {
@@ -681,6 +804,17 @@ const fileOpenFile: CommandDescriptor = {
 
     for (const filePath of result) {
       const uri = URI.file(filePath);
+
+      const allowed = await ensureUriWithinWorkspaceOrPrompt(
+        ctx,
+        uri,
+        `Opening file "${uri.basename}"`,
+      );
+      if (!allowed) {
+        console.warn('[Command] file.openFile — skipped outside-workspace file "%s"', filePath);
+        continue;
+      }
+
       if (textFileManager && fileService) {
         const { FileEditorInput } = await import('../built-in/editor/fileEditorInput.js');
         const input = FileEditorInput.create(uri, textFileManager, fileService);
@@ -809,6 +943,13 @@ const fileSaveAs: CommandDescriptor = {
     }
 
     const targetUri = URI.file(result);
+
+    const allowed = await ensureUriWithinWorkspaceOrPrompt(
+      ctx,
+      targetUri,
+      `Saving file "${targetUri.basename}"`,
+    );
+    if (!allowed) return;
 
     // Get content from text file model or editor
     const textFileManager = ctx.getService<import('../services/serviceTypes.js').ITextFileModelManager>('ITextFileModelManager');
@@ -1323,6 +1464,8 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   workspaceSaveAs,
   workspaceRename,
   workspaceOpenFolder,
+  workspaceExportToFile,
+  workspaceImportFromFile,
   // File
   fileOpenFile,
   fileNewTextFile,

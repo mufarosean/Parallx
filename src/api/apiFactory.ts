@@ -17,6 +17,7 @@ import {
   IContextKeyService,
   IEditorService,
   IWorkspaceService,
+  IWorkspaceBoundaryService,
   IFileService,
 } from '../services/serviceTypes.js';
 import type { ContextKeyValue } from '../context/contextKey.js';
@@ -203,6 +204,10 @@ export function createToolApi(
     ? deps.services.get(IFileService)
     : undefined;
 
+  const workspaceBoundaryService = deps.services.has(IWorkspaceBoundaryService)
+    ? deps.services.get(IWorkspaceBoundaryService)
+    : undefined;
+
   // ── Create bridges ──
   const commandsBridge = commandService
     ? new CommandsBridge(toolId, commandService as any, subscriptions, deps.commandContributionProcessor)
@@ -229,6 +234,7 @@ export function createToolApi(
         toolId,
         fileService as any,
         () => (workspaceService as any).folders.map((f: { uri: import('../platform/uri.js').URI }) => f.uri),
+        workspaceBoundaryService as any,
       )
     : undefined;
 

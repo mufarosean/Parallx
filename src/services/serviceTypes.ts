@@ -149,6 +149,19 @@ export interface IWorkspaceService extends IDisposable {
 
 export const IWorkspaceService = createServiceIdentifier<IWorkspaceService>('IWorkspaceService');
 
+// ─── IWorkspaceBoundaryService ───────────────────────────────────────────────
+
+import type { WorkspaceBoundaryService } from './workspaceBoundaryService.js';
+
+/**
+ * Centralized workspace boundary policy service.
+ *
+ * Enforces that file URI access stays within explicitly attached workspace
+ * folders unless explicitly allowlisted by future policy extensions.
+ */
+export type IWorkspaceBoundaryService = WorkspaceBoundaryService;
+export const IWorkspaceBoundaryService = createServiceIdentifier<IWorkspaceBoundaryService>('IWorkspaceBoundaryService');
+
 // ─── IDatabaseService ────────────────────────────────────────────────────────
 
 import type { DatabaseService } from './databaseService.js';
@@ -656,6 +669,13 @@ export const IWindowService = createServiceIdentifier<IWindowService>('IWindowSe
  * VS Code reference: IFileService (src/vs/platform/files/common/files.ts)
  */
 export interface IFileService extends IDisposable {
+  /**
+   * Install (or clear) a boundary checker invoked before filesystem operations.
+   *
+   * The checker can throw to deny access for out-of-scope URIs.
+   */
+  setBoundaryChecker(checker: ((uri: import('../platform/uri.js').URI, operation: string) => void) | undefined): void;
+
   /** Read a file's content. */
   readFile(uri: import('../platform/uri.js').URI): Promise<import('../platform/fileTypes.js').FileContent>;
 

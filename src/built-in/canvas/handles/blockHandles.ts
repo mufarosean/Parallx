@@ -52,6 +52,8 @@ export class BlockHandlesController {
   private _actionBlockPos: number = -1;
   private _actionBlockNode: any = null;
   private _lastHoverElement: HTMLElement | null = null;
+  private _lastPointerClient: { x: number; y: number } | null = null;
+  private _scrollSyncRaf: number | null = null;
 
   constructor(private readonly _host: BlockHandlesHost) {}
 
@@ -120,6 +122,7 @@ export class BlockHandlesController {
     ec.addEventListener('mouseout', this._onEditorMouseOut, true);
     ec.addEventListener('mousemove', this._onEditorMouseMove, true);
     ec.addEventListener('mouseleave', this._onEditorMouseLeave, true);
+    window.addEventListener('scroll', this._onScrollSync, true);
 
     // ── Create block action menu (hidden by default) ──
     this._createBlockActionMenu();
@@ -171,6 +174,7 @@ export class BlockHandlesController {
   private readonly _onEditorMouseMove = (event: MouseEvent): void => {
     const editor = this._host.editor;
     if (!editor) return;
+    this._lastPointerClient = { x: event.clientX, y: event.clientY };
     const target = event.target as HTMLElement | null;
     if (!target) return;
     if (!editor.view.dom.contains(target)) return;
@@ -180,6 +184,34 @@ export class BlockHandlesController {
 
   private readonly _onEditorMouseLeave = (): void => {
     this._lastHoverElement = null;
+  };
+
+  private readonly _onScrollSync = (): void => {
+    if (this._scrollSyncRaf != null) return;
+
+    this._scrollSyncRaf = window.requestAnimationFrame(() => {
+      this._scrollSyncRaf = null;
+
+      const editor = this._host.editor;
+      const pointer = this._lastPointerClient;
+      if (!editor || !pointer) return;
+
+      const { x, y } = pointer;
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return;
+
+      const hovered = document.elementFromPoint(x, y) as HTMLElement | null;
+      if (!hovered || !editor.view.dom.contains(hovered)) return;
+
+      this._lastHoverElement = hovered;
+
+      const syncMove = new MouseEvent('mousemove', {
+        bubbles: true,
+        cancelable: false,
+        clientX: x,
+        clientY: y,
+      });
+      hovered.dispatchEvent(syncMove);
+    });
   };
 
   // ── Plus Button Click ──
@@ -1005,6 +1037,7 @@ export class BlockHandlesController {
     this._host.editorContainer?.removeEventListener('mouseout', this._onEditorMouseOut, true);
     this._host.editorContainer?.removeEventListener('mousemove', this._onEditorMouseMove, true);
     this._host.editorContainer?.removeEventListener('mouseleave', this._onEditorMouseLeave, true);
+    window.removeEventListener('scroll', this._onScrollSync, true);
     this._dragHandleEl?.removeEventListener('dragstart', this._onDragHandleDragStart, true);
     this._dragHandleEl?.removeEventListener('dragend', this._onDragHandleDragEnd);
     this._dragHandleEl?.removeEventListener('mousedown', this._onDragHandleMouseDown, true);
@@ -1012,6 +1045,10 @@ export class BlockHandlesController {
     if (this._interactionReleaseTimer) {
       clearTimeout(this._interactionReleaseTimer);
       this._interactionReleaseTimer = null;
+    }
+    if (this._scrollSyncRaf != null) {
+      window.cancelAnimationFrame(this._scrollSyncRaf);
+      this._scrollSyncRaf = null;
     }
     this._setHandleInteractionLock(false);
     if (this._blockAddBtn) { this._blockAddBtn.remove(); this._blockAddBtn = null; }
@@ -1021,5 +1058,6 @@ export class BlockHandlesController {
     this._dragHandleEl = null;
     this._actionBlockNode = null;
     this._lastHoverElement = null;
+    this._lastPointerClient = null;
   }
 }

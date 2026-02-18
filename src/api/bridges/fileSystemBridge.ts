@@ -8,6 +8,7 @@
 import { URI } from '../../platform/uri.js';
 import type { FileStat, FileEntry } from '../../platform/fileTypes.js';
 import type { IFileService } from '../../services/serviceTypes.js';
+import type { WorkspaceBoundaryService } from '../../services/workspaceBoundaryService.js';
 
 /**
  * Bridge for `parallx.workspace.fs` — scoped filesystem access for tools.
@@ -22,6 +23,7 @@ export class FileSystemBridge {
     private readonly _toolId: string,
     private readonly _fileService: IFileService,
     private readonly _getWorkspaceFolderUris: () => URI[],
+    private readonly _boundaryService?: WorkspaceBoundaryService,
   ) {}
 
   // ── Public API (matches parallx.workspace.fs) ────────────────────────
@@ -91,6 +93,11 @@ export class FileSystemBridge {
   private _validateScope(uri: URI): void {
     if (uri.scheme !== 'file') {
       throw new Error(`[FileSystemBridge] Only file:// URIs are supported (got ${uri.scheme}://)`);
+    }
+
+    if (this._boundaryService) {
+      this._boundaryService.assertUriWithinWorkspace(uri, `Tool "${this._toolId}"`);
+      return;
     }
 
     const folders = this._getWorkspaceFolderUris();

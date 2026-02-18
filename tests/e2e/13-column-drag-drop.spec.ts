@@ -105,6 +105,7 @@ async function startDragFromBlock(page: Page, blockIndex: number): Promise<{ fro
     // Set view.dragging (mimics GlobalDragHandle's handleDragStart)
     const slice = view.state.selection.content();
     view.dragging = { slice, move: true };
+    view.dom.classList.add('dragging');
 
     return { from: view.state.selection.from, to: view.state.selection.to };
   }, blockIndex);
@@ -192,6 +193,7 @@ async function dispatchDrop(page: Page, x: number, y: number, altKey = false): P
 
     // Clear view.dragging after drop
     view.dragging = null;
+    view.dom.classList.remove('dragging');
 
     return true;
   }, { cx: x, cy: y, alt: altKey });
@@ -238,6 +240,7 @@ async function clearDrag(page: Page): Promise<void> {
     if (!editor) return;
     const view = editor.view;
     view.dragging = null;
+    view.dom.classList.remove('dragging');
 
     // Hide indicators
     const vert = document.querySelector('.column-drop-indicator') as HTMLElement;
@@ -245,6 +248,15 @@ async function clearDrag(page: Page): Promise<void> {
     if (vert) vert.style.display = 'none';
     if (horz) horz.style.display = 'none';
   });
+}
+
+async function getTopLevelBlockIndexBySelector(page: Page, selector: string): Promise<number> {
+  return page.evaluate((sel) => {
+    const tiptap = document.querySelector('.tiptap') as HTMLElement | null;
+    if (!tiptap) return -1;
+    const blocks = Array.from(tiptap.children) as HTMLElement[];
+    return blocks.findIndex((el) => !!el.matches(sel));
+  }, selector);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1034,6 +1046,30 @@ test.describe('Column Drag-Drop', () => {
         targetType: 'video',
         targetNode: { type: 'video', attrs: { src: '', title: 'Video target' } },
       },
+      {
+        label: 'audio',
+        targetType: 'audio',
+        targetNode: { type: 'audio', attrs: { src: '', title: 'Audio target' } },
+      },
+      {
+        label: 'fileAttachment',
+        targetType: 'fileAttachment',
+        targetNode: { type: 'fileAttachment', attrs: { src: '', filename: 'Spec.pdf', size: '2 MB' } },
+      },
+      {
+        label: 'bookmark',
+        targetType: 'bookmark',
+        targetNode: {
+          type: 'bookmark',
+          attrs: {
+            url: 'https://example.com',
+            title: 'Bookmark target',
+            description: 'Target bookmark block',
+            favicon: '',
+            image: '',
+          },
+        },
+      },
     ];
 
     for (const scenario of cases) {
@@ -1097,5 +1133,50 @@ test.describe('Column Drag-Drop', () => {
       expect(verification.targetIndex, `${scenario.label} target missing: ${JSON.stringify(verification)}`).toBeGreaterThanOrEqual(0);
       expect(verification.movedIndex, `${scenario.label} moved block missing: ${JSON.stringify(verification)}`).toBeGreaterThan(verification.targetIndex);
     }
+  });
+
+  test('can split into columns next to a video embed block (universal drag/drop logic)', async ({
+    window: page,
+    electronApp,
+  }) => {
+    await setupCanvasPage(page, electronApp, wsPath);
+    await waitForEditor(page);
+
+    await setContent(page, [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Move me' }] },
+      { type: 'video', attrs: { src: 'https://www.youtube.com/watch?v=0dcFWLV_OlI', title: 'Video' } },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Tail' }] },
+    ]);
+
+    await startDragFromBlock(page, 0);
+
+    const videoIndex = await getTopLevelBlockIndexBySelector(page, '[data-type="video"]');
+    expect(videoIndex).toBeGreaterThanOrEqual(0);
+
+    const videoRect = await getBlockRect(page, videoIndex);
+    const dragResult = await dispatchDragover(
+      page,
+      videoRect.left + 10,
+      videoRect.top + videoRect.height / 2,
+    );
+
+    expect(dragResult.vertVisible).toBe(true);
+    expect(dragResult.horzVisible).toBe(false);
+
+    await dispatchDrop(
+      page,
+      videoRect.left + 10,
+      videoRect.top + videoRect.height / 2,
+    );
+
+    const doc = await getDocJSON(page);
+    expect(doc?.type).toBe('doc');
+    expect(doc.content?.[0]?.type).toBe('columnList');
+    expect(doc.content?.[0]?.content?.length).toBe(2);
+    expect(doc.content?.[0]?.content?.[0]?.content?.[0]?.type).toBe('paragraph');
+    expect(doc.content?.[0]?.content?.[0]?.content?.[0]?.content?.[0]?.text).toBe('Move me');
+    expect(doc.content?.[0]?.content?.[1]?.content?.[0]?.type).toBe('video');
+    expect(doc.content?.[1]?.type).toBe('paragraph');
+    expect(doc.content?.[1]?.content?.[0]?.text).toBe('Tail');
   });
 });

@@ -8,6 +8,7 @@ This document captures the full implementation batch completed for Canvas intera
 - Eliminate drag/drop target ambiguity in columns for callout/image/math/video and similar node-views.
 - Fix visual quality issues for horizontal drop guides and image sizing inside columns.
 - Make callout icons user-editable from the block itself.
+- Make slash-created bookmark/video/audio/file blocks complete end-to-end (menu-driven upload/link flows) instead of placeholder/no-op behavior.
 - Add targeted E2E coverage for all newly hardened behaviors.
 
 ## Code Changes
@@ -82,6 +83,37 @@ Updated `src/built-in/canvas/canvas.css`:
   - pointer cursor
   - subtle hover background
 
+### 7) Slash media/bookmark insertion completeness
+
+Updated `src/built-in/canvas/menus/slashMenuItems.ts` and added popup controllers:
+
+- Added `src/built-in/canvas/menus/mediaInsertPopup.ts`.
+  - Used by slash `Video`, `Audio`, and `File` actions.
+  - Presents Upload / Embed link tabs (same insertion model as image popup).
+  - Upload path uses Electron file dialog + base64 read to produce deterministic data URLs.
+  - Link path inserts direct URL-backed embeds/attachments.
+  - Cancel path restores the slash paragraph to a plain paragraph.
+- Added `src/built-in/canvas/menus/bookmarkInsertPopup.ts`.
+  - Used by slash `Bookmark` action.
+  - Prompts for URL with explicit `Create bookmark` action.
+  - Inserts a bookmark card node with deterministic attrs (`url`, derived `title`, etc.).
+  - Cancel path restores the slash paragraph to a plain paragraph.
+- Added popup styles in `src/built-in/canvas/canvas.css` for both new popup types.
+
+### 8) Versatile video embed parity (provider-aware)
+
+Updated `src/built-in/canvas/extensions/mediaNodes.ts` + `canvas.css`:
+
+- Video node view now resolves URL type at render time:
+  - **Direct file URLs** (`.mp4`, `.webm`, `.ogg`, `.mov`, etc.) render native `<video controls>`
+  - **Provider links** render responsive iframe embeds
+- Added provider-aware embed transforms for major video platforms:
+  - YouTube (`watch`, `youtu.be`, `shorts`) → `youtube-nocookie` embed
+  - Vimeo, Dailymotion, Loom, Wistia
+  - Fallback to generic iframe for other valid HTTP(S) video-host links
+- Added responsive iframe shell styles (`.canvas-video-embed`, `.canvas-video-embed-frame`) to match block layout behavior.
+- Extended slash insertion E2E assertion in `tests/e2e/12-columns.spec.ts` to verify pasted YouTube links render as iframe embeds (`youtube-nocookie`) instead of being treated as file URLs.
+
 ## Test Additions and Updates
 
 ### `tests/e2e/11-block-handles.spec.ts`
@@ -111,6 +143,15 @@ Added/updated:
 - New guide-geometry assertions:
   - top-level above/below horizontal guide width matches target block width.
 
+### Slash insertion E2E hardening
+
+Updated `tests/e2e/12-columns.spec.ts`:
+
+- Replaced placeholder-only assertion with true end-to-end slash coverage:
+  - slash item selection opens the correct insert popup (`bookmark` vs `media/file`)
+  - URL submission creates the expected block type
+  - inserted node attrs reflect submitted links (`bookmark.url`, `video/audio.src`, `fileAttachment.src/filename`)
+
 ### `tests/e2e/14-column-integration.spec.ts`
 
 - Aligned dissolve expectation with structural-only normalization contract.
@@ -125,6 +166,8 @@ Validated repeatedly with focused runs and full-spec reruns across touched behav
 - `npm run test:e2e -- tests/e2e/11-block-handles.spec.ts --grep "paragraph.*callout"`
 - `npm run test:e2e -- tests/e2e/12-columns.spec.ts` (targeted grep runs for keyboard/image regressions)
 - `npm run test:e2e -- tests/e2e/13-column-drag-drop.spec.ts`
+- `npm run test:e2e -- tests/e2e/12-columns.spec.ts --grep "slash menu opens media/bookmark insert menus and creates blocks from links"`
+- `npm run test:e2e -- tests/e2e/12-columns.spec.ts` (full suite)
 - `npm run test:e2e -- tests/e2e/14-column-integration.spec.ts` (targeted expectations and consistency checks)
 - Additional targeted reruns of `15`, `16`, and `17` interaction/arbitration paths as part of stabilization checks.
 
@@ -136,6 +179,7 @@ Validated repeatedly with focused runs and full-spec reruns across touched behav
 - Backspace/remove in mixed image+empty column scenarios no longer cascades incorrectly.
 - Math block body drag no longer triggers implicit duplicate/move side effects.
 - Callout icon can now be changed directly from the callout block itself.
+- Slash `Bookmark`, `Video`, `Audio`, and `File` now open completion popups and create actual usable blocks via upload/link flows instead of non-deterministic prompt/no-op behavior.
 
 ## Notes
 

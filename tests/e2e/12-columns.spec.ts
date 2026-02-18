@@ -179,6 +179,8 @@ test.describe('Column Layout', () => {
       await tiptap.click();
       await waitForEditor(window);
 
+      await window.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+
       // Clear content and type /
       await setContent(window, [
         { type: 'paragraph', content: [{ type: 'text', text: '' }] },
@@ -281,6 +283,157 @@ test.describe('Column Layout', () => {
 
       const columns = columnList.locator('.canvas-column');
       await expect(columns).toHaveCount(4);
+    });
+
+    test('slash menu opens media/bookmark insert menus and creates blocks from pasted links (Ctrl+V + context-menu path)', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      const cases = [
+        {
+          label: 'Bookmark',
+          nodeType: 'bookmark',
+          selector: '[data-type="bookmark"]',
+          url: 'https://example.com/docs',
+        },
+        {
+          label: 'Video',
+          nodeType: 'video',
+          selector: '[data-type="video"]',
+          url: 'https://www.youtube.com/watch?v=0dcFWLV_OlI',
+        },
+        {
+          label: 'Audio',
+          nodeType: 'audio',
+          selector: '[data-type="audio"]',
+          url: 'https://example.com/clip.mp3',
+        },
+        {
+          label: 'File',
+          nodeType: 'fileAttachment',
+          selector: '[data-type="fileAttachment"]',
+          url: 'https://example.com/guide.pdf',
+        },
+      ];
+
+      for (const testCase of cases) {
+        await setContent(window, [{ type: 'paragraph', content: [{ type: 'text', text: '' }] }]);
+        await tiptap.locator('p').first().click();
+
+        await insertViaSlashMenu(window, testCase.label);
+
+        if (testCase.nodeType === 'bookmark') {
+          const popup = window.locator('.canvas-bookmark-insert-popup');
+          await expect(popup).toBeVisible({ timeout: 3_000 });
+          const bookmarkInput = popup.locator('.canvas-bookmark-insert-input');
+
+          // Method 1: actual keyboard paste (Ctrl+V) using Electron clipboard
+          await electronApp.evaluate(({ clipboard }, value) => {
+            clipboard.writeText(value);
+          }, testCase.url);
+          await window.evaluate(async (value) => {
+            try { await navigator.clipboard.writeText(value); } catch { /* ignore */ }
+          }, testCase.url);
+          await bookmarkInput.click();
+          await window.keyboard.down('Control');
+          await window.keyboard.press('KeyV');
+          await window.keyboard.up('Control');
+          const bookmarkCtrlVPasteValue = await bookmarkInput.inputValue();
+          console.log('[paste-check] bookmark ctrl+v value:', bookmarkCtrlVPasteValue);
+
+          // Method 2: right-click context-menu path (real menu click)
+          await bookmarkInput.fill('');
+          await electronApp.evaluate(({ clipboard }, value) => {
+            clipboard.writeText(value);
+          }, testCase.url);
+          await bookmarkInput.evaluate((el) => {
+            const input = el as HTMLInputElement;
+            const rect = input.getBoundingClientRect();
+            input.dispatchEvent(new MouseEvent('contextmenu', {
+              bubbles: true,
+              cancelable: true,
+              clientX: rect.left + 8,
+              clientY: rect.top + 8,
+              button: 2,
+            }));
+            const pasteBtn = document.querySelector('.canvas-input-paste-menu-item') as HTMLButtonElement | null;
+            pasteBtn?.click();
+          });
+          await expect(bookmarkInput).toHaveValue(testCase.url);
+
+          await popup.locator('.canvas-bookmark-insert-create').click();
+        } else {
+          const popup = window.locator('.canvas-media-insert-popup');
+          await expect(popup).toBeVisible({ timeout: 3_000 });
+          await popup.locator('.canvas-media-insert-tab', { hasText: 'Embed link' }).click();
+
+          const mediaInput = popup.locator('.canvas-media-insert-link-input');
+
+          // Method 1: actual keyboard paste (Ctrl+V) using Electron clipboard
+          await electronApp.evaluate(({ clipboard }, value) => {
+            clipboard.writeText(value);
+          }, testCase.url);
+          await window.evaluate(async (value) => {
+            try { await navigator.clipboard.writeText(value); } catch { /* ignore */ }
+          }, testCase.url);
+          await mediaInput.click();
+          await window.keyboard.down('Control');
+          await window.keyboard.press('KeyV');
+          await window.keyboard.up('Control');
+          const mediaCtrlVPasteValue = await mediaInput.inputValue();
+          console.log('[paste-check] media ctrl+v value:', mediaCtrlVPasteValue);
+
+          // Method 2: right-click context-menu path (real menu click)
+          await mediaInput.fill('');
+          await electronApp.evaluate(({ clipboard }, value) => {
+            clipboard.writeText(value);
+          }, testCase.url);
+          await mediaInput.evaluate((el) => {
+            const input = el as HTMLInputElement;
+            const rect = input.getBoundingClientRect();
+            input.dispatchEvent(new MouseEvent('contextmenu', {
+              bubbles: true,
+              cancelable: true,
+              clientX: rect.left + 8,
+              clientY: rect.top + 8,
+              button: 2,
+            }));
+            const pasteBtn = document.querySelector('.canvas-input-paste-menu-item') as HTMLButtonElement | null;
+            pasteBtn?.click();
+          });
+          await expect(mediaInput).toHaveValue(testCase.url);
+
+          await popup.locator('.canvas-media-insert-link-apply').click();
+        }
+
+        await expect(tiptap.locator(testCase.selector).first()).toBeVisible({ timeout: 3_000 });
+
+        const doc = await getDocJSON(window);
+        expect(doc.content?.[0]?.type).toBe(testCase.nodeType);
+
+        if (testCase.nodeType === 'bookmark') {
+          expect(doc.content?.[0]?.attrs?.url).toBe(testCase.url);
+        }
+        if (testCase.nodeType === 'video' || testCase.nodeType === 'audio') {
+          expect(doc.content?.[0]?.attrs?.src).toBe(testCase.url);
+        }
+        if (testCase.nodeType === 'fileAttachment') {
+          expect(doc.content?.[0]?.attrs?.src).toBe(testCase.url);
+          expect(doc.content?.[0]?.attrs?.filename).toBe('guide.pdf');
+        }
+
+        if (testCase.nodeType === 'video') {
+          const iframe = tiptap.locator('[data-type="video"] iframe.canvas-video-embed-frame').first();
+          await expect(iframe).toBeVisible({ timeout: 3_000 });
+          const iframeSrc = await iframe.getAttribute('src');
+          expect(iframeSrc).toContain('youtube-nocookie.com/embed/');
+        }
+      }
     });
   });
 
@@ -2320,6 +2473,79 @@ test.describe('Column Layout', () => {
 
       expect(result.draggingStayedOff).toBe(true);
       expect(result.unchanged).toBe(true);
+    });
+
+    test('dragstart on bookmark/video/audio/file bodies is blocked (handle-only drag policy)', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            {
+              type: 'column',
+              content: [
+                {
+                  type: 'bookmark',
+                  attrs: {
+                    url: 'https://example.com',
+                    title: 'Bookmark title',
+                    description: 'Bookmark description',
+                    favicon: '',
+                    image: '',
+                  },
+                },
+                { type: 'video', attrs: { src: '', title: 'Video title' } },
+                { type: 'audio', attrs: { src: '', title: 'Audio title' } },
+                { type: 'fileAttachment', attrs: { src: '', filename: 'Doc.pdf', size: '1 MB' } },
+              ],
+            },
+            {
+              type: 'column',
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'Target col' }] },
+              ],
+            },
+          ],
+        },
+      ]);
+
+      const result = await window.evaluate(() => {
+        const editor = (window as any).__tiptapEditor;
+        const before = editor.getJSON();
+
+        const selectors = [
+          '[data-type="bookmark"]',
+          '[data-type="video"]',
+          '[data-type="audio"]',
+          '[data-type="fileAttachment"]',
+        ];
+
+        const perBlock = selectors.map((selector) => {
+          const hadDraggingBefore = !!editor.view.dragging;
+          const dom = document.querySelector(selector) as HTMLElement | null;
+          if (!dom) return { selector, blocked: false };
+          const event = new DragEvent('dragstart', { bubbles: true, cancelable: true });
+          dom.dispatchEvent(event);
+          const blocked = !hadDraggingBefore && !editor.view.dragging;
+          return { selector, blocked };
+        });
+
+        const after = editor.getJSON();
+        const unchanged = JSON.stringify(before) === JSON.stringify(after);
+        return { unchanged, perBlock };
+      });
+
+      expect(result.unchanged).toBe(true);
+      for (const block of result.perBlock) {
+        expect(block.blocked, `drag policy failed for ${block.selector}`).toBe(true);
+      }
     });
   });
 });

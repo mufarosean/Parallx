@@ -1421,6 +1421,31 @@
   border-radius: 4px;
 }
 
+.canvas-video-embed {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.canvas-video-embed-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* During active block drag, embedded frames must not capture pointer events,
+   otherwise dragover/drop can fail near embed blocks (video/bookmark previews,
+   etc.). This keeps drop arbitration fully type-agnostic. */
+.canvas-tiptap-editor.dragging iframe {
+  pointer-events: none;
+}
+
 .canvas-media-placeholder {
   padding: 32px 16px;
   text-align: center;
@@ -2369,6 +2394,223 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Media/File Insert Popup (slash menu → Video/Audio/File)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-media-insert-popup {
+  position: fixed;
+  z-index: 1003;
+  width: 360px;
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+  animation: slashMenuFadeIn 0.12s ease-out;
+}
+
+.canvas-media-insert-tabs {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 8px;
+}
+
+.canvas-media-insert-tab {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  padding: 4px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.1s ease, color 0.1s ease;
+  font-family: inherit;
+}
+
+.canvas-media-insert-tab:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.canvas-media-insert-tab--active {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.canvas-media-insert-content {
+  min-height: 60px;
+}
+
+.canvas-media-insert-upload-btn {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+  font-family: inherit;
+}
+
+.canvas-media-insert-upload-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.canvas-media-insert-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  text-align: center;
+  margin-top: 8px;
+}
+
+.canvas-media-insert-link-row {
+  display: flex;
+  gap: 8px;
+}
+
+.canvas-media-insert-link-input {
+  flex: 1;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  outline: none;
+  font-family: inherit;
+}
+
+.canvas-media-insert-link-input:focus {
+  border-color: #2383e2;
+}
+
+.canvas-media-insert-link-apply {
+  padding: 8px 16px;
+  background: #2383e2;
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.canvas-media-insert-link-apply:hover {
+  background: #1b6fc2;
+}
+
+.canvas-media-insert-error {
+  font-size: 12px;
+  color: #e54d42;
+  margin-top: 8px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Bookmark Insert Popup (slash menu → Bookmark)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-bookmark-insert-popup {
+  position: fixed;
+  z-index: 1003;
+  width: 420px;
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  padding: 10px;
+  animation: slashMenuFadeIn 0.12s ease-out;
+}
+
+.canvas-bookmark-insert-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  margin-bottom: 8px;
+}
+
+.canvas-bookmark-insert-row {
+  display: flex;
+  gap: 8px;
+}
+
+.canvas-bookmark-insert-input {
+  flex: 1;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  outline: none;
+  font-family: inherit;
+}
+
+.canvas-bookmark-insert-input:focus {
+  border-color: #2383e2;
+}
+
+.canvas-bookmark-insert-create {
+  padding: 8px 14px;
+  background: #2383e2;
+  border: none;
+  color: #fff;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.canvas-bookmark-insert-create:hover {
+  background: #1b6fc2;
+}
+
+.canvas-bookmark-insert-error {
+  font-size: 12px;
+  color: #e54d42;
+  margin-top: 8px;
+  min-height: 16px;
+}
+
+/* Input paste context menu (bookmark/media URL inputs) */
+.canvas-input-paste-menu {
+  position: fixed;
+  z-index: 1100;
+  min-width: 120px;
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  animation: slashMenuFadeIn 0.1s ease-out;
+}
+
+.canvas-input-paste-menu-item {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  padding: 6px 10px;
+  text-align: left;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.canvas-input-paste-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * Cover Picker Popup (Cap 8 — Task 8.5)
  * ───────────────────────────────────────────────────────────────────────────── */
 
@@ -3152,7 +3394,7 @@
    Lives outside ProseMirror's DOM so it can't be stripped by view updates. */
 .column-resize-indicator {
   display: none;
-  position: absolute;
+  position: fixed;
   width: 2px;
   background: rgba(255, 255, 255, 0.15);
   border-radius: 1px;

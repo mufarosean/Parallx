@@ -95,6 +95,7 @@ export interface ToolStorageDependencies {
   readonly globalStorage: IStorage;
   readonly workspaceStorage: IStorage;
   readonly configRegistry?: ConfigurationRegistry;
+  readonly workspaceIdProvider?: () => string | undefined;
 }
 
 // ─── ToolActivator ───────────────────────────────────────────────────────────
@@ -494,6 +495,7 @@ export class ToolActivator extends Disposable {
         this._storageDeps.globalStorage,
         this._storageDeps.workspaceStorage,
         description.manifest.id,
+        this._storageDeps.workspaceIdProvider,
       );
       // Load persisted data into cache
       await mementos.globalState.load();

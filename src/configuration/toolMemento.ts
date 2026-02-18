@@ -49,6 +49,7 @@ export class ToolMemento implements Memento {
     private readonly _storage: IStorage,
     private readonly _toolId: string,
     private readonly _scope: 'global' | 'workspace',
+    private readonly _workspaceIdProvider?: () => string | undefined,
   ) {}
 
   // ── Memento interface ────────────────────────────────────────────────
@@ -197,6 +198,10 @@ export class ToolMemento implements Memento {
    */
   private _keyPrefix(): string {
     const scopePrefix = this._scope === 'global' ? GLOBAL_PREFIX : WORKSPACE_PREFIX;
+    if (this._scope === 'workspace') {
+      const workspaceId = this._workspaceIdProvider?.() ?? '__default__';
+      return `${scopePrefix}:${this._toolId}:${workspaceId}/`;
+    }
     return `${scopePrefix}:${this._toolId}/`;
   }
 
@@ -217,9 +222,10 @@ export function createToolMementos(
   globalStorage: IStorage,
   workspaceStorage: IStorage,
   toolId: string,
+  workspaceIdProvider?: () => string | undefined,
 ): { globalState: ToolMemento; workspaceState: ToolMemento } {
   return {
     globalState: new ToolMemento(globalStorage, toolId, 'global'),
-    workspaceState: new ToolMemento(workspaceStorage, toolId, 'workspace'),
+    workspaceState: new ToolMemento(workspaceStorage, toolId, 'workspace', workspaceIdProvider),
   };
 }

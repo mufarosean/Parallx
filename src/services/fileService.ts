@@ -155,6 +155,7 @@ export class FileService extends Disposable implements IFileService {
 
   // ── Cache ──
   private readonly _contentCache = new LRUCache<string, FileContent>(20);
+  private _boundaryChecker: ((uri: URI, operation: string) => void) | undefined;
 
   constructor() {
     super();
@@ -170,9 +171,14 @@ export class FileService extends Disposable implements IFileService {
     }
   }
 
+  setBoundaryChecker(checker: ((uri: URI, operation: string) => void) | undefined): void {
+    this._boundaryChecker = checker;
+  }
+
   // ── File Operations ────────────────────────────────────────────────────
 
   async readFile(uri: URI): Promise<FileContent> {
+    this._assertBoundary(uri, 'readFile');
     // Check cache first
     const cached = this._contentCache.get(uri.toKey());
     if (cached) return cached;
@@ -197,6 +203,7 @@ export class FileService extends Disposable implements IFileService {
   }
 
   async writeFile(uri: URI, content: string): Promise<void> {
+    this._assertBoundary(uri, 'writeFile');
     const fs = getElectronFs();
     const result = await fs.writeFile(uri.fsPath, content);
     throwIfError(result, uri);
@@ -206,6 +213,7 @@ export class FileService extends Disposable implements IFileService {
   }
 
   async stat(uri: URI): Promise<FileStat> {
+    this._assertBoundary(uri, 'stat');
     const fs = getElectronFs();
     const result = await fs.stat(uri.fsPath);
     throwIfError(result, uri);
@@ -221,6 +229,7 @@ export class FileService extends Disposable implements IFileService {
   }
 
   async readdir(uri: URI): Promise<FileEntry[]> {
+    this._assertBoundary(uri, 'readdir');
     const fs = getElectronFs();
     const result = await fs.readdir(uri.fsPath);
     throwIfError(result, uri);
@@ -235,11 +244,14 @@ export class FileService extends Disposable implements IFileService {
   }
 
   async exists(uri: URI): Promise<boolean> {
+    this._assertBoundary(uri, 'exists');
     const fs = getElectronFs();
     return fs.exists(uri.fsPath);
   }
 
   async rename(source: URI, target: URI): Promise<void> {
+    this._assertBoundary(source, 'rename:source');
+    this._assertBoundary(target, 'rename:target');
     const fs = getElectronFs();
     const result = await fs.rename(source.fsPath, target.fsPath);
     throwIfError(result, source);
@@ -248,6 +260,7 @@ export class FileService extends Disposable implements IFileService {
   }
 
   async delete(uri: URI, options?: FileDeleteOptions): Promise<void> {
+    this._assertBoundary(uri, 'delete');
     const fs = getElectronFs();
     const result = await fs.delete(uri.fsPath, {
       useTrash: options?.useTrash !== false,
@@ -258,12 +271,15 @@ export class FileService extends Disposable implements IFileService {
   }
 
   async mkdir(uri: URI): Promise<void> {
+    this._assertBoundary(uri, 'mkdir');
     const fs = getElectronFs();
     const result = await fs.mkdir(uri.fsPath);
     throwIfError(result, uri);
   }
 
   async copy(source: URI, target: URI): Promise<void> {
+    this._assertBoundary(source, 'copy:source');
+    this._assertBoundary(target, 'copy:target');
     const fs = getElectronFs();
     const result = await fs.copy(source.fsPath, target.fsPath);
     throwIfError(result, source);
@@ -272,6 +288,7 @@ export class FileService extends Disposable implements IFileService {
   // ── Watchers ───────────────────────────────────────────────────────────
 
   async watch(uri: URI): Promise<IDisposable> {
+    this._assertBoundary(uri, 'watch');
     const fs = getElectronFs();
     const result = await fs.watch(uri.fsPath, { recursive: true });
     throwIfError(result, uri);
@@ -311,6 +328,10 @@ export class FileService extends Disposable implements IFileService {
   async showMessageBox(options: MessageBoxOptions): Promise<MessageBoxResult> {
     const dlg = getElectronDialog();
     return dlg.showMessageBox(options);
+  }
+
+  private _assertBoundary(uri: URI, operation: string): void {
+    this._boundaryChecker?.(uri, operation);
   }
 
   // ── Event Handling ─────────────────────────────────────────────────────

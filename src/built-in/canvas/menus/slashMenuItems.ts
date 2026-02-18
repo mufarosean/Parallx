@@ -9,6 +9,8 @@
 import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { showImageInsertPopup } from './imageInsertPopup.js';
+import { showMediaInsertPopup } from './mediaInsertPopup.js';
+import { showBookmarkInsertPopup } from './bookmarkInsertPopup.js';
 
 export interface SlashMenuItem {
   label: string;
@@ -257,13 +259,7 @@ export const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   {
     label: 'Bookmark', icon: 'globe', description: 'Link preview card',
     action: (e, range) => {
-      const url = prompt('Enter URL:');
-      if (url) {
-        e.chain().insertContentAt(range, {
-          type: 'bookmark',
-          attrs: { url, title: url },
-        }).focus().run();
-      }
+      showBookmarkInsertPopup(e, range);
     },
   },
   {
@@ -276,32 +272,19 @@ export const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   {
     label: 'Video', icon: 'video', description: 'Embed a video',
     action: (e, range) => {
-      const url = prompt('Enter video URL:');
-      if (url) {
-        e.chain().insertContentAt(range, { type: 'video', attrs: { src: url } }).focus().run();
-      }
+      showMediaInsertPopup(e, range, 'video');
     },
   },
   {
     label: 'Audio', icon: 'audio', description: 'Embed audio',
     action: (e, range) => {
-      const url = prompt('Enter audio URL:');
-      if (url) {
-        e.chain().insertContentAt(range, { type: 'audio', attrs: { src: url } }).focus().run();
-      }
+      showMediaInsertPopup(e, range, 'audio');
     },
   },
   {
     label: 'File', icon: 'file-attachment', description: 'Attach a file',
     action: (e, range) => {
-      const url = prompt('Enter file URL:');
-      if (url) {
-        const filename = url.split('/').pop() || 'file';
-        e.chain().insertContentAt(range, {
-          type: 'fileAttachment',
-          attrs: { src: url, filename },
-        }).focus().run();
-      }
+      showMediaInsertPopup(e, range, 'fileAttachment');
     },
   },
 ];

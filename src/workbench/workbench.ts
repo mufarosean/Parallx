@@ -13,7 +13,7 @@ import { DisposableStore, IDisposable, toDisposable } from '../platform/lifecycl
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, IWorkspaceBoundaryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
 
@@ -72,6 +72,7 @@ import type { IEditorInput } from '../editor/editorInput.js';
 import { LayoutService } from '../services/layoutService.js';
 import { ViewService } from '../services/viewService.js';
 import { WorkspaceService } from '../services/workspaceService.js';
+import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
 import { WindowService } from '../services/windowService.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 
@@ -2078,6 +2079,22 @@ export class Workbench extends Layout {
     this._register(workspaceService);
     this._services.registerInstance(IWorkspaceService, workspaceService);
 
+    // Workspace boundary service — centralized path policy used by tool FS bridge
+    const workspaceBoundaryService = new WorkspaceBoundaryService();
+    workspaceBoundaryService.setHost({
+      get folders() { return workspaceService.folders; },
+    });
+    this._register(workspaceBoundaryService);
+    this._services.registerInstance(IWorkspaceBoundaryService, workspaceBoundaryService);
+
+    // Enforce workspace boundary centrally for all file-service filesystem operations.
+    if (this._services.has(IFileService)) {
+      const fileService = this._services.get(IFileService);
+      fileService.setBoundaryChecker((uri, operation) => {
+        workspaceBoundaryService.assertUriWithinWorkspace(uri, `FileService.${operation}`);
+      });
+    }
+
     // Wire workspace service into Quick Access for workspace switching
     if (this._commandPalette) {
       this._commandPalette.setWorkspaceService({
@@ -2171,6 +2188,7 @@ export class Workbench extends Layout {
       globalStorage: this._globalStorage,
       workspaceStorage: this._storage,
       configRegistry: this._configRegistry,
+      workspaceIdProvider: () => this._workspace?.id,
     };
 
     // ── Tool Enablement Service (M6 Capability 0) ──

@@ -350,6 +350,11 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
    */
   private _installGlobalListener(): void {
     this._keydownHandler = (e: KeyboardEvent) => {
+      const target = e.target as Element | null;
+      if (this._isEditableTarget(target)) {
+        return;
+      }
+
       const normalizedKey = keyFromEvent(e);
       if (!normalizedKey) return;
 
@@ -397,6 +402,25 @@ export class KeybindingContributionProcessor extends Disposable implements ICont
         this._keydownHandler = undefined;
       }
     }));
+  }
+
+  private _isEditableTarget(target: Element | null): boolean {
+    if (!target) return false;
+
+    const editableAncestor = target.closest('input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]') as HTMLElement | null;
+    if (!editableAncestor) return false;
+
+    if (editableAncestor instanceof HTMLInputElement) {
+      const type = (editableAncestor.type || 'text').toLowerCase();
+      const nonTextTypes = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']);
+      return !nonTextTypes.has(type) && !editableAncestor.readOnly && !editableAncestor.disabled;
+    }
+
+    if (editableAncestor instanceof HTMLTextAreaElement) {
+      return !editableAncestor.readOnly && !editableAncestor.disabled;
+    }
+
+    return editableAncestor.isContentEditable;
   }
 
   /**
