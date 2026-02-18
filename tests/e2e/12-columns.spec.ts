@@ -402,10 +402,10 @@ test.describe('Column Layout', () => {
     });
   });
 
-  // ── Nesting Prevention ────────────────────────────────────────────────────
+  // ── Nested Column Creation ───────────────────────────────────────────────
 
-  test.describe('Nesting prevention', () => {
-    test('slash menu hides column options when cursor is inside a column', async ({
+  test.describe('Nested column creation', () => {
+    test('slash menu shows and executes column options when cursor is inside a column', async ({
       window,
       electronApp,
     }) => {
@@ -419,15 +419,17 @@ test.describe('Column Layout', () => {
         {
           type: 'columnList',
           content: [
-            { type: 'column', content: [{ type: 'paragraph' }] },
-            { type: 'column', content: [{ type: 'paragraph' }] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col A' }] }] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col B' }] }] },
           ],
         },
       ]);
 
       // Click inside the first column
       const firstCol = tiptap.locator('.canvas-column').first();
-      await firstCol.locator('p').click();
+      await firstCol.locator('p', { hasText: 'Col A' }).click();
+      await window.keyboard.press('End');
+      await window.keyboard.press('Enter');
       await window.waitForTimeout(200);
 
       // Open slash menu
@@ -438,14 +440,26 @@ test.describe('Column Layout', () => {
       await window.keyboard.type('columns');
       await window.waitForTimeout(300);
 
-      // Column items should NOT be visible
+      // Column items should be visible in recursive model
       const menu = window.locator('.canvas-slash-menu');
-      const colItems = menu.locator('.canvas-slash-item', { hasText: /Columns/ });
-      const count = await colItems.count();
-      expect(count).toBe(0);
+      const col2 = menu.locator('.canvas-slash-item', { hasText: '2 Columns' });
+      await expect(col2).toBeVisible({ timeout: 2_000 });
 
-      // Close slash menu
-      await window.keyboard.press('Escape');
+      await col2.click();
+      await window.waitForTimeout(300);
+
+      const doc = await getDocJSON(window);
+      const outer = doc.content[0];
+      expect(outer.type).toBe('columnList');
+      expect(outer.content.length).toBe(2);
+      const firstOuterColumnContent = outer.content[0].content;
+      const nested = firstOuterColumnContent.find((node: any) => node.type === 'columnList');
+      expect(nested).toBeTruthy();
+      expect(nested.type).toBe('columnList');
+      expect(nested.content.length).toBe(2);
+
+      const slash = window.locator('.canvas-slash-menu');
+      await expect(slash).not.toBeVisible();
     });
 
     test('slash menu shows column options when cursor is outside columns', async ({
@@ -798,6 +812,117 @@ test.describe('Column Layout', () => {
       // Should show standard block actions — Turn into, Color, etc.
       await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
     });
+
+    test('block action menu remains open when pointer passes through resize-hover zone', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Left block' }] }] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right block' }] }] },
+          ],
+        },
+      ]);
+
+      const leftPara = tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Left block' });
+      await leftPara.hover();
+      await window.waitForTimeout(500);
+
+      const dragHandle = window.locator('.drag-handle');
+      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+      await dragHandle.click({ force: true });
+      await window.waitForTimeout(200);
+
+      const actionMenu = window.locator('.block-action-menu');
+      await expect(actionMenu).toBeVisible({ timeout: 3_000 });
+
+      const columns = tiptap.locator('.canvas-column');
+      const col1Box = await columns.nth(0).boundingBox();
+      expect(col1Box).toBeTruthy();
+      if (col1Box) {
+        const boundaryX = col1Box.x + col1Box.width;
+        const boundaryY = col1Box.y + col1Box.height / 2;
+        await window.mouse.move(boundaryX, boundaryY);
+        await window.waitForTimeout(120);
+      }
+
+      const isResizeHover = await window.evaluate(
+        () => document.body.classList.contains('column-resize-hover'),
+      );
+      expect(isResizeHover).toBe(true);
+
+      await expect(actionMenu).toBeVisible();
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
+    });
+
+    test('Turn into inside column can split block into nested columns', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'Intro in col 1' }] },
+              { type: 'paragraph', content: [{ type: 'text', text: 'Split me in place' }] },
+            ] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col 2' }] }] },
+          ],
+        },
+      ]);
+
+      const targetPara = tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Split me in place' });
+      await targetPara.hover();
+      await window.waitForTimeout(500);
+
+      const dragHandle = window.locator('.drag-handle');
+      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+      await dragHandle.click({ force: true });
+      await window.waitForTimeout(200);
+
+      const actionMenu = window.locator('.block-action-menu');
+      await expect(actionMenu).toBeVisible({ timeout: 3_000 });
+
+      const turnInto = actionMenu.locator('.block-action-item', { hasText: 'Turn into' });
+      await turnInto.hover();
+      await window.waitForTimeout(300);
+
+      const turnIntoSubmenu = window.locator('.block-action-submenu:not(.block-color-submenu)');
+      const twoCols = turnIntoSubmenu.locator('.block-action-item', { hasText: '2 columns' });
+      await expect(twoCols).toBeVisible({ timeout: 3_000 });
+      await twoCols.click();
+      await window.waitForTimeout(300);
+
+      const doc = await getDocJSON(window);
+      const outerColumnList = doc.content[0];
+      expect(outerColumnList.type).toBe('columnList');
+      expect(outerColumnList.content.length).toBe(2);
+
+      const firstOuterColumn = outerColumnList.content[0];
+      expect(firstOuterColumn.content[0].type).toBe('paragraph');
+      expect(firstOuterColumn.content[0].content?.[0]?.text).toBe('Intro in col 1');
+
+      const nested = firstOuterColumn.content[1];
+      expect(nested.type).toBe('columnList');
+      expect(nested.content.length).toBe(2);
+      expect(nested.content[0].content[0].type).toBe('paragraph');
+      expect(nested.content[0].content[0].content?.[0]?.text).toBe('Split me in place');
+      expect(nested.content[1].content[0].type).toBe('paragraph');
+    });
   });
 
   // ── Column DOM Structure ──────────────────────────────────────────────────
@@ -1089,6 +1214,78 @@ test.describe('Column Layout', () => {
       );
       expect(hasKeptContent).toBe(true);
     });
+
+    test('backspace removing empty middle column in 3-column layout redistributes width with no dead area', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            {
+              type: 'column',
+              attrs: { width: 50 },
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Col 1' }] }],
+            },
+            {
+              type: 'column',
+              attrs: { width: 25 },
+              content: [{ type: 'paragraph' }],
+            },
+            {
+              type: 'column',
+              attrs: { width: 25 },
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Redo column' }] }],
+            },
+          ],
+        },
+      ]);
+
+      const middleCol = tiptap.locator('.canvas-column').nth(1);
+      await middleCol.locator('p').click();
+      await window.waitForTimeout(100);
+
+      await window.keyboard.press('Backspace');
+      await window.waitForTimeout(300);
+
+      const doc = await getDocJSON(window);
+      const colList = doc.content.find((n: any) => n.type === 'columnList');
+      expect(colList).toBeTruthy();
+      expect(colList.content).toHaveLength(2);
+      expect(colList.content[0].attrs?.width ?? null).toBeNull();
+      expect(colList.content[1].attrs?.width ?? null).toBeNull();
+
+      const geometry = await window.evaluate(() => {
+        const list = document.querySelector('.canvas-column-list') as HTMLElement | null;
+        if (!list) return null;
+        const cols = Array.from(list.querySelectorAll(':scope > .canvas-column')) as HTMLElement[];
+        if (cols.length !== 2) return null;
+
+        const listRect = list.getBoundingClientRect();
+        const leftRect = cols[0].getBoundingClientRect();
+        const rightRect = cols[1].getBoundingClientRect();
+
+        return {
+          listRight: listRect.right,
+          rightColRight: rightRect.right,
+          leftWidth: leftRect.width,
+          rightWidth: rightRect.width,
+        };
+      });
+
+      expect(geometry).toBeTruthy();
+      if (geometry) {
+        expect(Math.abs(geometry.listRight - geometry.rightColRight)).toBeLessThanOrEqual(2);
+        expect(Math.abs(geometry.leftWidth - geometry.rightWidth)).toBeLessThanOrEqual(2);
+      }
+    });
+
   });
 
   // ── Content Alignment ─────────────────────────────────────────────────────
@@ -1590,6 +1787,38 @@ test.describe('Column Layout', () => {
       const dragHandle = window.locator('.drag-handle');
       const isHidden = await dragHandle.evaluate(el => el.classList.contains('hide'));
       expect(isHidden).toBe(false);
+    });
+    test('divider inside column has drag handle and block action menu', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            { type: 'column', content: [{ type: 'horizontalRule' }, { type: 'paragraph', content: [{ type: 'text', text: 'After' }] }] },
+            { type: 'column', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Other column' }] }] },
+          ],
+        },
+      ]);
+
+      const divider = tiptap.locator('.canvas-column').first().locator('hr').first();
+      await divider.hover();
+      await window.waitForTimeout(500);
+
+      const dragHandle = window.locator('.drag-handle');
+      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+      await dragHandle.click({ force: true });
+      await window.waitForTimeout(200);
+
+      const actionMenu = window.locator('.block-action-menu');
+      await expect(actionMenu).toBeVisible({ timeout: 3_000 });
+      await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
     });
 
     test('action menu for block inside column shows block type, not Column List', async ({

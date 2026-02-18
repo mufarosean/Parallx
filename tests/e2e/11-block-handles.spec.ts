@@ -84,6 +84,14 @@ async function getDocStructure(page: Page): Promise<string[]> {
   });
 }
 
+async function getDocJSON(page: Page): Promise<any> {
+  return page.evaluate(() => {
+    const editor = (window as any).__tiptapEditor;
+    if (!editor) return null;
+    return editor.getJSON();
+  });
+}
+
 /** Hover over a specific block by index to trigger the drag handle to appear. */
 async function hoverBlockByIndex(page: Page, index: number): Promise<void> {
   const tiptap = page.locator('.tiptap');
@@ -98,7 +106,7 @@ async function openBlockActionMenu(page: Page, blockIndex: number): Promise<void
   await hoverBlockByIndex(page, blockIndex);
   const dragHandle = page.locator('.drag-handle');
   await expect(dragHandle).toBeVisible({ timeout: 3_000 });
-  await dragHandle.click();
+  await dragHandle.click({ force: true });
   await page.waitForTimeout(200);
 }
 
@@ -148,6 +156,72 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     if (handleBox && addBox) {
       expect(addBox.x).toBeLessThan(handleBox.x);
     }
+  });
+
+  test('divider block shows drag handle and plus affordance', async ({
+    window,
+    electronApp,
+  }) => {
+    await setupCanvasPage(window, electronApp, wsPath);
+    const tiptap = window.locator('.tiptap');
+    await tiptap.click();
+    await waitForEditor(window);
+
+    await setContent(window, [
+      { type: 'horizontalRule' },
+      { type: 'paragraph', content: [{ type: 'text', text: 'After divider' }] },
+    ]);
+
+    await hoverBlockByIndex(window, 0);
+
+    const dragHandle = window.locator('.drag-handle');
+    const addBtn = window.locator('.block-add-btn');
+    await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+    await expect(addBtn).toBeVisible({ timeout: 3_000 });
+
+    // Plus should work on divider just like any block and insert below it.
+    await window.evaluate(() => {
+      const btn = document.querySelector('.block-add-btn');
+      if (!btn) throw new Error('No plus button');
+      btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await window.waitForTimeout(300);
+
+    const structure = await getDocStructure(window);
+    expect(structure[0]).toBe('horizontalRule');
+    expect(structure).toContain('p:/');
+  });
+
+  test('divider uses row-height layout for centered handle alignment', async ({
+    window,
+    electronApp,
+  }) => {
+    await setupCanvasPage(window, electronApp, wsPath);
+    const tiptap = window.locator('.tiptap');
+    await tiptap.click();
+    await waitForEditor(window);
+
+    await setContent(window, [
+      { type: 'horizontalRule' },
+      { type: 'paragraph', content: [{ type: 'text', text: 'After divider' }] },
+    ]);
+
+    const dividerMetrics = await window.evaluate(() => {
+      const hr = document.querySelector('.canvas-tiptap-editor hr');
+      if (!hr) return null;
+      const styles = getComputedStyle(hr);
+      return {
+        height: styles.height,
+        marginTop: styles.marginTop,
+        marginBottom: styles.marginBottom,
+      };
+    });
+
+    expect(dividerMetrics).toEqual({
+      height: '24px',
+      marginTop: '2px',
+      marginBottom: '2px',
+    });
   });
 
   test('plus button click inserts paragraph below and triggers slash menu', async ({
@@ -232,6 +306,94 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     await expect(header).toHaveText('Text');
   });
 
+  test('drag handle remains clickable for paragraph below an image block', async ({
+    window,
+    electronApp,
+  }) => {
+    await setupCanvasPage(window, electronApp, wsPath);
+    const tiptap = window.locator('.tiptap');
+    await tiptap.click();
+    await waitForEditor(window);
+
+    await setContent(window, [
+      { type: 'image', attrs: { src: 'https://example.com/test-image.png', alt: 'Test image' } },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Paragraph after image' }] },
+    ]);
+
+    await openBlockActionMenu(window, 1);
+
+    const actionMenu = window.locator('.block-action-menu');
+    await expect(actionMenu).toBeVisible({ timeout: 3_000 });
+    await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
+  });
+
+  test('image blocks use normalized top spacing for alignment', async ({
+    window,
+    electronApp,
+  }) => {
+    await setupCanvasPage(window, electronApp, wsPath);
+    const tiptap = window.locator('.tiptap');
+    await tiptap.click();
+    await waitForEditor(window);
+
+    await setContent(window, [
+      { type: 'image', attrs: { src: 'https://example.com/test-image.png', alt: 'Test image' } },
+      { type: 'paragraph', attrs: { backgroundColor: 'rgba(70,160,230,0.2)' }, content: [{ type: 'text', text: 'Color block' }] },
+    ]);
+
+    const marginTop = await window.evaluate(() => {
+      const img = document.querySelector('.canvas-tiptap-editor img');
+      if (!img) return null;
+      return getComputedStyle(img).marginTop;
+    });
+
+    expect(marginTop).toBe('2px');
+  });
+
+  test('drag handles remain clickable across mixed block types', async ({
+    window,
+    electronApp,
+  }) => {
+    await setupCanvasPage(window, electronApp, wsPath);
+    const tiptap = window.locator('.tiptap');
+    await tiptap.click();
+    await waitForEditor(window);
+
+    await setContent(window, [
+      { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Heading block' }] },
+      { type: 'image', attrs: { src: 'https://example.com/test-image.png', alt: 'Test image' } },
+      { type: 'blockquote', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Quote block' }] }] },
+      { type: 'codeBlock', content: [{ type: 'text', text: 'const x = 1;' }] },
+      { type: 'mathBlock', attrs: { latex: 'x^2 + y^2 = z^2' } },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Final paragraph' }] },
+    ]);
+
+    // Validate that we can reliably click handles for multiple targets even
+    // when different neighboring block DOM structures are present.
+    await openBlockActionMenu(window, 0);
+    let actionMenu = window.locator('.block-action-menu');
+    await expect(actionMenu).toBeVisible({ timeout: 3_000 });
+    await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
+
+    // Close via handle toggle
+    const dragHandle = window.locator('.drag-handle');
+    await dragHandle.click({ force: true });
+    await window.waitForTimeout(180);
+
+    await openBlockActionMenu(window, 2); // quote
+    actionMenu = window.locator('.block-action-menu');
+    await expect(actionMenu).toBeVisible({ timeout: 3_000 });
+    await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
+
+    await dragHandle.click({ force: true });
+    await window.waitForTimeout(180);
+
+    await openBlockActionMenu(window, 5);
+    actionMenu = window.locator('.block-action-menu');
+    await expect(actionMenu).toBeVisible({ timeout: 3_000 });
+    await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
+  });
+
   test('clicking drag handle again closes the menu', async ({
     window,
     electronApp,
@@ -278,6 +440,40 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     await tiptap.click({ position: { x: 300, y: 300 } });
     await window.waitForTimeout(300);
     await expect(actionMenu).not.toBeVisible();
+  });
+
+  test('drag-handle gesture does not open bubble formatting menu', async ({
+    window,
+    electronApp,
+  }) => {
+    await setupCanvasPage(window, electronApp, wsPath);
+    const tiptap = window.locator('.tiptap');
+    await tiptap.click();
+    await waitForEditor(window);
+
+    await setContent(window, [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Drag handle should not trigger formatting bubble menu.' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Second line' }] },
+    ]);
+
+    await hoverBlockByIndex(window, 0);
+    const dragHandle = window.locator('.drag-handle');
+    await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+
+    const handleBox = await dragHandle.boundingBox();
+    expect(handleBox).toBeTruthy();
+    if (handleBox) {
+      const startX = handleBox.x + handleBox.width / 2;
+      const startY = handleBox.y + handleBox.height / 2;
+      await window.mouse.move(startX, startY);
+      await window.mouse.down();
+      await window.mouse.move(startX + 50, startY + 16, { steps: 4 });
+      await window.mouse.up();
+      await window.waitForTimeout(220);
+    }
+
+    const bubble = window.locator('.canvas-bubble-menu');
+    await expect(bubble).not.toBeVisible();
   });
 
   // ── Turn Into Submenu Tests ───────────────────────────────────────────────
@@ -378,6 +574,42 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
 
     const structure = await getDocStructure(window);
     expect(structure[0]).toBe('bulletList');
+  });
+
+  test('Turn Into: paragraph → 3 columns', async ({
+    window,
+    electronApp,
+  }) => {
+    await setupCanvasPage(window, electronApp, wsPath);
+    const tiptap = window.locator('.tiptap');
+    await tiptap.click();
+    await waitForEditor(window);
+
+    await setContent(window, [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Split this block' }] },
+    ]);
+
+    await openBlockActionMenu(window, 0);
+
+    const turnInto = window.locator('.block-action-menu .block-action-item', { hasText: 'Turn into' });
+    await turnInto.hover();
+    await window.waitForTimeout(300);
+
+    const turnIntoSubmenu = window.locator('.block-action-submenu:not(.block-color-submenu)');
+    await expect(turnIntoSubmenu.locator('.block-action-item', { hasText: '2 columns' })).toBeVisible();
+    await expect(turnIntoSubmenu.locator('.block-action-item', { hasText: '3 columns' })).toBeVisible();
+    await expect(turnIntoSubmenu.locator('.block-action-item', { hasText: '4 columns' })).toBeVisible();
+
+    const threeCols = turnIntoSubmenu.locator('.block-action-item', { hasText: '3 columns' });
+    await threeCols.click();
+    await window.waitForTimeout(300);
+
+    const doc = await getDocJSON(window);
+    expect(doc.content[0].type).toBe('columnList');
+    expect(doc.content[0].content.length).toBe(3);
+    expect(doc.content[0].content[0].type).toBe('column');
+    expect(doc.content[0].content[0].content[0].type).toBe('paragraph');
+    expect(doc.content[0].content[0].content[0].content?.[0]?.text).toBe('Split this block');
   });
 
   test('Turn Into: heading → paragraph', async ({

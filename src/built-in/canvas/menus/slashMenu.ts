@@ -80,7 +80,7 @@ export class SlashMenuController {
 
   private _isInteractionArbitrationLocked(editor: Editor): boolean {
     const body = document.body;
-    if (body.classList.contains('column-resizing') || body.classList.contains('column-resize-hover')) {
+    if (body.classList.contains('column-resizing')) {
       return true;
     }
     if (editor.view.dom.classList.contains('dragging')) {
@@ -129,20 +129,7 @@ export class SlashMenuController {
   }
 
   private _getFilteredItems(): SlashMenuItem[] {
-    let items: SlashMenuItem[] = SLASH_MENU_ITEMS;
-    const editor = this._host.editor;
-
-    // Hide column items when already inside a column (prevent nesting)
-    if (editor) {
-      const { $from } = editor.state.selection;
-      let insideColumn = false;
-      for (let d = $from.depth; d > 0; d--) {
-        if ($from.node(d).type.name === 'column') { insideColumn = true; break; }
-      }
-      if (insideColumn) {
-        items = items.filter(i => !i.label.includes('Columns'));
-      }
-    }
+    const items: SlashMenuItem[] = SLASH_MENU_ITEMS;
 
     if (!this._filterText) return items;
     const q = this._filterText.replace(/[^a-z0-9]/g, '');
@@ -232,11 +219,15 @@ export class SlashMenuController {
     this._host.suppressUpdate = true;
 
     try {
-      const { $from, $to } = editor.state.selection;
-      const blockRange = $from.blockRange($to);
-      if (!blockRange) return;
+      const { $from } = editor.state.selection;
+      if ($from.depth < 1) return;
 
-      item.action(editor, { from: blockRange.start, to: blockRange.end });
+      const blockDepth = $from.depth;
+      const blockPos = $from.before(blockDepth);
+      const blockNode = editor.state.doc.nodeAt(blockPos);
+      if (!blockNode) return;
+
+      item.action(editor, { from: blockPos, to: blockPos + blockNode.nodeSize });
     } finally {
       this._host.suppressUpdate = false;
     }

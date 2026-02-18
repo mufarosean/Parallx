@@ -7,6 +7,7 @@
 // own `setDetails()` command uses internally.  NO deleteRange needed.
 
 import type { Editor } from '@tiptap/core';
+import { TextSelection } from '@tiptap/pm/state';
 import { showImageInsertPopup } from './imageInsertPopup.js';
 
 export interface SlashMenuItem {
@@ -14,6 +15,31 @@ export interface SlashMenuItem {
   icon: string;
   description: string;
   action: (editor: Editor, range: { from: number; to: number }) => void;
+}
+
+function replaceBlockWithColumns(editor: Editor, range: { from: number; to: number }, columnCount: number): void {
+  const { schema } = editor.state;
+  const columnType = schema.nodes.column;
+  const columnListType = schema.nodes.columnList;
+  const paragraphType = schema.nodes.paragraph;
+
+  if (!columnType || !columnListType || !paragraphType || columnCount < 2) {
+    return;
+  }
+
+  const columns: any[] = [];
+  for (let i = 0; i < columnCount; i++) {
+    const paragraph = paragraphType.createAndFill();
+    if (!paragraph) return;
+    columns.push(columnType.create({ width: null }, [paragraph]));
+  }
+
+  const columnList = columnListType.create(null, columns);
+  const tr = editor.state.tr.replaceWith(range.from, range.to, columnList);
+  const selectionPos = Math.min(range.from + 3, tr.doc.content.size);
+  tr.setSelection(TextSelection.near(tr.doc.resolve(selectionPos), 1));
+  editor.view.dispatch(tr);
+  editor.commands.focus();
 }
 
 export const SLASH_MENU_ITEMS: SlashMenuItem[] = [
@@ -148,78 +174,19 @@ export const SLASH_MENU_ITEMS: SlashMenuItem[] = [
   {
     label: '2 Columns', icon: 'columns', description: 'Split into 2 columns',
     action: (e, range) => {
-      // Prevent nesting columns inside columns
-      const { $from } = e.state.selection;
-      for (let d = $from.depth; d > 0; d--) {
-        if ($from.node(d).type.name === 'column') return;
-      }
-      e.chain().insertContentAt(range, {
-        type: 'columnList',
-        content: [
-          { type: 'column', content: [{ type: 'paragraph' }] },
-          { type: 'column', content: [{ type: 'paragraph' }] },
-        ],
-      }).focus().run();
-      // Place cursor in the first column's paragraph
-      const { doc } = e.state;
-      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
-        if (node.type.name === 'column') {
-          e.chain().setTextSelection(pos + 2).focus().run();
-          return false;
-        }
-        return true;
-      });
+      replaceBlockWithColumns(e, range, 2);
     },
   },
   {
     label: '3 Columns', icon: 'columns', description: 'Split into 3 columns',
     action: (e, range) => {
-      const { $from } = e.state.selection;
-      for (let d = $from.depth; d > 0; d--) {
-        if ($from.node(d).type.name === 'column') return;
-      }
-      e.chain().insertContentAt(range, {
-        type: 'columnList',
-        content: [
-          { type: 'column', content: [{ type: 'paragraph' }] },
-          { type: 'column', content: [{ type: 'paragraph' }] },
-          { type: 'column', content: [{ type: 'paragraph' }] },
-        ],
-      }).focus().run();
-      const { doc } = e.state;
-      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
-        if (node.type.name === 'column') {
-          e.chain().setTextSelection(pos + 2).focus().run();
-          return false;
-        }
-        return true;
-      });
+      replaceBlockWithColumns(e, range, 3);
     },
   },
   {
     label: '4 Columns', icon: 'columns', description: 'Split into 4 columns',
     action: (e, range) => {
-      const { $from } = e.state.selection;
-      for (let d = $from.depth; d > 0; d--) {
-        if ($from.node(d).type.name === 'column') return;
-      }
-      e.chain().insertContentAt(range, {
-        type: 'columnList',
-        content: [
-          { type: 'column', content: [{ type: 'paragraph' }] },
-          { type: 'column', content: [{ type: 'paragraph' }] },
-          { type: 'column', content: [{ type: 'paragraph' }] },
-          { type: 'column', content: [{ type: 'paragraph' }] },
-        ],
-      }).focus().run();
-      const { doc } = e.state;
-      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
-        if (node.type.name === 'column') {
-          e.chain().setTextSelection(pos + 2).focus().run();
-          return false;
-        }
-        return true;
-      });
+      replaceBlockWithColumns(e, range, 4);
     },
   },
   // ── Toggle Headings ──

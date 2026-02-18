@@ -19,17 +19,20 @@ import { columnDropPlugin } from '../plugins/columnDropPlugin.js';
 import { columnAutoDissolvePlugin } from '../plugins/columnAutoDissolve.js';
 import {
   duplicateBlockAt,
+  isColumnEffectivelyEmpty,
   moveBlockAcrossColumnBoundary,
   moveBlockDownWithinPageFlow,
   moveBlockUpWithinPageFlow,
+  normalizeColumnListAfterMutation,
 } from '../mutations/blockMutations.js';
 
 export const Column = Node.create({
   name: 'column',
-  // Explicit content list — excludes columnList to prevent nested columns.
+  // Explicit content list including columnList to allow split-within-split
+  // layouts from Turn into → 2/3/4 columns.
   // ProseMirror enforces this at the schema level (paste, import, setContent).
   // If you add a new block-level node, add it here too.
-  content: '(paragraph | heading | bulletList | orderedList | taskList | blockquote | codeBlock | horizontalRule | image | table | callout | details | toggleHeading | mathBlock | bookmark | tableOfContents | video | audio | fileAttachment)+',
+  content: '(paragraph | heading | bulletList | orderedList | taskList | blockquote | codeBlock | horizontalRule | image | table | callout | details | toggleHeading | mathBlock | bookmark | tableOfContents | video | audio | fileAttachment | columnList)+',
   isolating: true,
   defining: true,
 
@@ -132,43 +135,20 @@ export const ColumnList = Node.create({
         // That textblock must be the first child of the column
         if (textblockStart !== columnStart + 1) return false;
 
-        // Check if column has only one empty paragraph
+        // Check if column is effectively empty (placeholder-only counts as empty)
         const columnNode = $from.node(columnDepth);
-        if (columnNode.childCount === 1 && columnNode.firstChild &&
-            columnNode.firstChild.type.name === 'paragraph' &&
-            columnNode.firstChild.content.size === 0) {
+        if (isColumnEffectivelyEmpty(columnNode)) {
           // Remove this column — dissolve logic will handle the rest
           const columnListDepth = columnDepth - 1;
           const columnListNode = $from.node(columnListDepth);
-          if (columnListNode.type.name === 'columnList' && columnListNode.childCount > 2) {
-            // More than 2 columns — just remove this one
+          if (columnListNode.type.name === 'columnList' && columnListNode.childCount >= 2) {
             const colPos = $from.before(columnDepth);
+            const colListPos = $from.before(columnListDepth);
             const { tr } = editor.state;
             tr.delete(colPos, colPos + columnNode.nodeSize);
+            normalizeColumnListAfterMutation(tr, colListPos);
             editor.view.dispatch(tr);
             return true;
-          }
-          if (columnListNode.type.name === 'columnList' && columnListNode.childCount === 2) {
-            // Exactly 2 columns — dissolve: extract the OTHER column's content
-            const colListPos = $from.before(columnListDepth);
-            let otherColumnIndex = -1;
-            let colPos = colListPos + 1;
-            for (let i = 0; i < columnListNode.childCount; i++) {
-              const child = columnListNode.child(i);
-              if (colPos === $from.before(columnDepth)) {
-                // This is the column we're deleting
-              } else {
-                otherColumnIndex = i;
-              }
-              colPos += child.nodeSize;
-            }
-            if (otherColumnIndex >= 0) {
-              const otherCol = columnListNode.child(otherColumnIndex);
-              const { tr } = editor.state;
-              tr.replaceWith(colListPos, colListPos + columnListNode.nodeSize, otherCol.content);
-              editor.view.dispatch(tr);
-              return true;
-            }
           }
         }
 

@@ -43,6 +43,7 @@ export class BlockHandlesController {
   // Timers
   private _turnIntoHideTimer: ReturnType<typeof setTimeout> | null = null;
   private _colorHideTimer: ReturnType<typeof setTimeout> | null = null;
+  private _interactionReleaseTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Observer
   private _handleObserver: MutationObserver | null = null;
@@ -50,6 +51,7 @@ export class BlockHandlesController {
   // Action target
   private _actionBlockPos: number = -1;
   private _actionBlockNode: any = null;
+  private _lastHoverElement: HTMLElement | null = null;
 
   constructor(private readonly _host: BlockHandlesHost) {}
 
@@ -78,7 +80,9 @@ export class BlockHandlesController {
       if (!this._dragHandleEl || !this._blockAddBtn) return;
       if (this._isResizeInteractionActive()) {
         this._blockAddBtn.classList.add('hide');
-        this._hideBlockActionMenu();
+        if (this._isColumnResizing()) {
+          this._hideBlockActionMenu();
+        }
         return;
       }
       const isHidden = this._dragHandleEl.classList.contains('hide');
@@ -102,6 +106,8 @@ export class BlockHandlesController {
     this._blockAddBtn.addEventListener('click', this._onBlockAddClick);
     this._blockAddBtn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
     this._dragHandleEl.addEventListener('click', this._onDragHandleClick);
+    this._dragHandleEl.addEventListener('mousedown', this._onDragHandleMouseDown, true);
+    document.addEventListener('mouseup', this._onGlobalMouseUp, true);
 
     // ── Canvas-owned drag lifecycle ──
     // Single source of truth for dragstart/dragend on the block handle.
@@ -112,6 +118,8 @@ export class BlockHandlesController {
 
     // ── Prevent drag handle from hiding when mouse moves to the + button ──
     ec.addEventListener('mouseout', this._onEditorMouseOut, true);
+    ec.addEventListener('mousemove', this._onEditorMouseMove, true);
+    ec.addEventListener('mouseleave', this._onEditorMouseLeave, true);
 
     // ── Create block action menu (hidden by default) ──
     this._createBlockActionMenu();
@@ -132,15 +140,46 @@ export class BlockHandlesController {
   // ── Event Handlers (arrow functions to preserve `this`) ─────────────────
 
   /** Intercept mouseout on the editor wrapper so the drag handle library
-   *  doesn't hide the handle when the mouse moves to the + button. */
+   *  doesn't hide the handle when the mouse moves to handle-adjacent UI. */
   private readonly _onEditorMouseOut = (event: MouseEvent): void => {
     const related = event.relatedTarget as HTMLElement | null;
+    if (!related) return;
+
+    // Any transition that stays within the editor surface should not trigger
+    // handle-hide behavior. This keeps drag-handle clickability stable across
+    // all block types (image, code, callout, math, etc.) whose DOM may include
+    // nested wrappers/overlays.
+    if (this._host.editorContainer?.contains(related)) {
+      event.stopPropagation();
+      return;
+    }
+
     if (
-      related &&
-      (related.classList.contains('block-add-btn') || related.closest('.block-add-btn'))
+      related.classList.contains('block-add-btn') ||
+      !!related.closest('.block-add-btn') ||
+      related.classList.contains('drag-handle') ||
+      !!related.closest('.drag-handle') ||
+      related.classList.contains('block-action-menu') ||
+      !!related.closest('.block-action-menu') ||
+      related.classList.contains('block-action-submenu') ||
+      !!related.closest('.block-action-submenu')
     ) {
       event.stopPropagation();
     }
+  };
+
+  private readonly _onEditorMouseMove = (event: MouseEvent): void => {
+    const editor = this._host.editor;
+    if (!editor) return;
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    if (!editor.view.dom.contains(target)) return;
+    if (this._isIgnoredOverlayElement(target)) return;
+    this._lastHoverElement = target;
+  };
+
+  private readonly _onEditorMouseLeave = (): void => {
+    this._lastHoverElement = null;
   };
 
   // ── Plus Button Click ──
@@ -198,6 +237,8 @@ export class BlockHandlesController {
 
     const { view } = editor;
 
+    this._setHandleInteractionLock(true);
+
     // Prevent parallel dragstart handling from external extension listeners.
     event.stopImmediatePropagation();
 
@@ -231,11 +272,43 @@ export class BlockHandlesController {
     if (!editor) return;
     editor.view.dragging = null as any;
     editor.view.dom.classList.remove('dragging');
+    this._scheduleHandleInteractionUnlock();
   };
+
+  private readonly _onDragHandleMouseDown = (): void => {
+    if (this._isResizeInteractionActive()) return;
+    this._setHandleInteractionLock(true);
+  };
+
+  private readonly _onGlobalMouseUp = (): void => {
+    this._scheduleHandleInteractionUnlock();
+  };
+
+  private _setHandleInteractionLock(locked: boolean): void {
+    if (locked) {
+      if (this._interactionReleaseTimer) {
+        clearTimeout(this._interactionReleaseTimer);
+        this._interactionReleaseTimer = null;
+      }
+      document.body.classList.add('block-handle-interacting');
+      return;
+    }
+    document.body.classList.remove('block-handle-interacting');
+  }
+
+  private _scheduleHandleInteractionUnlock(): void {
+    if (this._interactionReleaseTimer) {
+      clearTimeout(this._interactionReleaseTimer);
+    }
+    this._interactionReleaseTimer = setTimeout(() => {
+      this._interactionReleaseTimer = null;
+      this._setHandleInteractionLock(false);
+    }, 120);
+  }
 
   private readonly _onDocClickOutside = (e: MouseEvent): void => {
     if (!this._blockActionMenu || this._blockActionMenu.style.display !== 'block') return;
-    if (this._isResizeInteractionActive()) {
+    if (this._isColumnResizing()) {
       this._hideBlockActionMenu();
       return;
     }
@@ -273,85 +346,269 @@ export class BlockHandlesController {
     const handleRect = this._dragHandleEl.getBoundingClientRect();
     const handleY = handleRect.top + handleRect.height / 2;
     const scanX = handleRect.right + 50;
+    const sampleYs = [
+      handleRect.top - 8,
+      handleRect.top + 1,
+      handleRect.top + 2,
+      handleY,
+      handleRect.bottom - 2,
+    ].map((y) => Math.max(1, Math.min(window.innerHeight - 1, y)));
 
-    // Selectors covering all block-level elements at any nesting depth,
-    // plus container blocks themselves (callout, details, blockquote).
-    const selectors = [
-      'li', 'p', 'pre', 'blockquote',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-      '[data-type=mathBlock]', '[data-type=columnList]',
-      '[data-type=callout]', '[data-type=details]',
-      '.canvas-callout-content > *',
-      '[data-type=detailsContent] > *',
-      'blockquote > *',
-    ].join(', ');
-
-    const matchedEl = document.elementsFromPoint(scanX, handleY)
-      .find((el: Element) =>
-        el.parentElement?.matches?.('.ProseMirror') ||
-        el.matches(selectors),
-      );
-
-    if (!matchedEl) {
-      return this._resolveBlockFallback(handleY);
+    const hoverResolved = this._lastHoverElement
+      ? this._resolveBlockFromDomElement(view, this._lastHoverElement)
+      : null;
+    if (hoverResolved) {
+      const distance = this._distanceFromHandleToBlockCenter(handleY, hoverResolved.pos, view);
+      if (distance <= 180) {
+        return { pos: hoverResolved.pos, node: hoverResolved.node };
+      }
     }
+    let best: { pos: number; node: any; depth: number; distance: number } | null = null;
 
-    try {
-      const domPos = view.posAtDOM(matchedEl, 0);
-      const $pos = view.state.doc.resolve(domPos);
+    for (const sampleY of sampleYs) {
+      const hits = document.elementsFromPoint(scanX, sampleY);
+      for (const hit of hits) {
+        const element = hit as HTMLElement;
+        if (!view.dom.contains(element)) continue;
+        if (this._isIgnoredOverlayElement(element)) continue;
 
-      // ── Universal page-container resolution ──
-      // Walk ancestors from doc (depth 0) downward. Find the deepest
-      // node that is a page-container. The target block is its direct child.
-      let containerDepth = 0; // doc root is always a page-container
-      for (let d = 1; d <= $pos.depth; d++) {
-        if (BlockHandlesController._PAGE_CONTAINERS.has($pos.node(d).type.name)) {
-          containerDepth = d;
+        const resolved = this._resolveBlockFromDomElement(view, element);
+        if (!resolved) continue;
+
+        const distance = this._distanceFromHandleToBlockCenter(handleY, resolved.pos, view);
+        if (
+          !best ||
+          this._shouldPreferCandidate(best, {
+            pos: resolved.pos,
+            node: resolved.node,
+            depth: resolved.depth,
+            distance,
+          })
+        ) {
+          best = { ...resolved, distance };
         }
       }
+    }
 
-      const targetDepth = containerDepth + 1;
-      if ($pos.depth >= targetDepth) {
-        const blockPos = $pos.before(targetDepth);
-        const node = view.state.doc.nodeAt(blockPos);
-        return node ? { pos: blockPos, node } : null;
+    if (best) {
+      return { pos: best.pos, node: best.node };
+    }
+
+    return this._resolveBlockFallback(handleY);
+  }
+
+  private _resolveBlockFromDomElement(
+    view: any,
+    element: HTMLElement,
+  ): { pos: number; node: any; depth: number } | null {
+    let current: HTMLElement | null = element;
+
+    while (current && current !== view.dom) {
+      try {
+        const domPos = view.posAtDOM(current, 0);
+        const resolved = this._resolveBlockFromDocPos(view, domPos);
+        if (resolved) return resolved;
+      } catch {
+        // Keep walking upward until a mappable DOM node is found.
+      }
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
+  private _resolveBlockFromDocPos(view: any, docPos: number): { pos: number; node: any; depth: number } | null {
+    const $pos = view.state.doc.resolve(docPos);
+
+    let containerDepth = 0;
+    for (let d = 1; d <= $pos.depth; d++) {
+      if (BlockHandlesController._PAGE_CONTAINERS.has($pos.node(d).type.name)) {
+        containerDepth = d;
+      }
+    }
+
+    const targetDepth = containerDepth + 1;
+    let blockPos: number;
+
+    if ($pos.depth >= targetDepth) {
+      blockPos = $pos.before(targetDepth);
+    } else {
+      blockPos = $pos.depth >= 1 ? $pos.before($pos.depth) : docPos;
+    }
+
+    const node = view.state.doc.nodeAt(blockPos);
+    if (!node) return null;
+
+    if (node.type.name === 'columnList') {
+      return this._resolveFirstBlockInsideColumnList(view, blockPos, node, targetDepth + 1) ?? { pos: blockPos, node, depth: targetDepth };
+    }
+
+    return { pos: blockPos, node, depth: targetDepth };
+  }
+
+  private _resolveFirstBlockInsideColumnList(
+    view: any,
+    columnListPos: number,
+    columnListNode: any,
+    startDepth: number,
+  ): { pos: number; node: any; depth: number } | null {
+    let currentPos = columnListPos;
+    let currentNode = columnListNode;
+    let depth = startDepth;
+
+    for (let guard = 0; guard < 16; guard++) {
+      if (!currentNode || currentNode.type.name !== 'columnList') return null;
+      if (currentNode.childCount === 0) return null;
+
+      const firstColumn = currentNode.child(0);
+      if (!firstColumn || firstColumn.type.name !== 'column' || firstColumn.childCount === 0) {
+        return null;
       }
 
-      // $pos.depth < targetDepth means we're ON the container node itself
-      // (e.g. hovering the container chrome). Resolve to whole container.
-      const blockPos = $pos.depth >= 1 ? $pos.before($pos.depth) : domPos;
-      const node = view.state.doc.nodeAt(blockPos);
-      return node ? { pos: blockPos, node } : null;
+      const firstBlockPos = currentPos + 2;
+      const firstBlockNode = view.state.doc.nodeAt(firstBlockPos);
+      if (!firstBlockNode) return null;
+
+      if (firstBlockNode.type.name !== 'columnList') {
+        return { pos: firstBlockPos, node: firstBlockNode, depth };
+      }
+
+      currentPos = firstBlockPos;
+      currentNode = firstBlockNode;
+      depth += 2;
+    }
+
+    return null;
+  }
+
+  private _shouldPreferCandidate(
+    current: { pos: number; node: any; depth: number; distance: number },
+    next: { pos: number; node: any; depth: number; distance: number },
+  ): boolean {
+    const distanceDelta = next.distance - current.distance;
+
+    if (distanceDelta < -1) {
+      return true;
+    }
+
+    const withinSameLane = Math.abs(distanceDelta) <= 8;
+    if (withinSameLane) {
+      if (next.depth > current.depth) {
+        return true;
+      }
+
+      const nextContainer = this._isContainerBlockType(next.node?.type?.name);
+      const currentContainer = this._isContainerBlockType(current.node?.type?.name);
+      if (currentContainer && !nextContainer) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private _isContainerBlockType(typeName: string | undefined): boolean {
+    if (!typeName) return false;
+    return typeName === 'callout' || typeName === 'details' || typeName === 'toggleHeading' || typeName === 'blockquote';
+  }
+
+  private _distanceFromHandleToBlockCenter(handleY: number, blockPos: number, view: any): number {
+    try {
+      const blockDom = view.nodeDOM(blockPos) as HTMLElement | null;
+      if (!blockDom) return Number.POSITIVE_INFINITY;
+      const rect = blockDom.getBoundingClientRect();
+      return Math.abs((rect.top + rect.bottom) / 2 - handleY);
     } catch {
-      return this._resolveBlockFallback(handleY);
+      return Number.POSITIVE_INFINITY;
     }
   }
 
-  /** Fallback resolution: walk direct children of .ProseMirror by Y position. */
+  private _isIgnoredOverlayElement(element: HTMLElement): boolean {
+    return (
+      element.classList.contains('drag-handle') ||
+      element.classList.contains('block-add-btn') ||
+      element.classList.contains('block-action-menu') ||
+      element.classList.contains('block-action-submenu') ||
+      element.classList.contains('column-drop-indicator') ||
+      element.classList.contains('canvas-drop-guide') ||
+      !!element.closest('.block-action-menu') ||
+      !!element.closest('.block-action-submenu')
+    );
+  }
+
+  private _isPageContainerDom(el: HTMLElement | null, proseMirrorRoot: HTMLElement): boolean {
+    if (!el) return false;
+    if (el === proseMirrorRoot) return true;
+
+    return (
+      el.classList.contains('canvas-column') ||
+      el.classList.contains('canvas-callout-content') ||
+      el.matches?.('[data-type=detailsContent]') ||
+      el.tagName === 'BLOCKQUOTE'
+    );
+  }
+
+  private _collectBlockDomCandidates(view: any): HTMLElement[] {
+    const proseMirrorRoot = view.dom as HTMLElement;
+    const all = [proseMirrorRoot, ...Array.from(proseMirrorRoot.querySelectorAll('*'))] as HTMLElement[];
+
+    const result: HTMLElement[] = [];
+    const seen = new Set<HTMLElement>();
+
+    for (const element of all) {
+      if (this._isIgnoredOverlayElement(element)) continue;
+      const parent = element.parentElement;
+      if (!this._isPageContainerDom(parent, proseMirrorRoot)) continue;
+      if (seen.has(element)) continue;
+      seen.add(element);
+      result.push(element);
+    }
+
+    return result;
+  }
+
+  /** Fallback resolution: nearest block candidate by vertical proximity. */
   private _resolveBlockFallback(handleY: number): { pos: number; node: any } | null {
     const editor = this._host.editor;
     if (!editor) return null;
     const view = editor.view;
-    const editorEl = view.dom;
-    for (let i = 0; i < editorEl.children.length; i++) {
-      const child = editorEl.children[i];
-      const rect = child.getBoundingClientRect();
-      if (handleY >= rect.top && handleY <= rect.bottom) {
-        try {
-          const domPos = view.posAtDOM(child, 0);
-          const $pos = view.state.doc.resolve(domPos);
-          const blockPos = $pos.depth >= 1 ? $pos.before(1) : domPos;
-          const node = view.state.doc.nodeAt(blockPos);
-          return node ? { pos: blockPos, node } : null;
-        } catch { continue; }
+    const candidates = this._collectBlockDomCandidates(view);
+    let best: { pos: number; node: any; depth: number; distance: number } | null = null;
+
+    for (const candidate of candidates) {
+      const rect = candidate.getBoundingClientRect();
+      const distance = handleY < rect.top
+        ? rect.top - handleY
+        : handleY > rect.bottom
+          ? handleY - rect.bottom
+          : 0;
+
+      const resolved = this._resolveBlockFromDomElement(view, candidate);
+      if (!resolved) continue;
+
+      if (
+        !best ||
+        this._shouldPreferCandidate(best, {
+          pos: resolved.pos,
+          node: resolved.node,
+          depth: resolved.depth,
+          distance,
+        })
+      ) {
+        best = { ...resolved, distance };
       }
     }
-    return null;
+
+    return best ? { pos: best.pos, node: best.node } : null;
   }
 
   private _isResizeInteractionActive(): boolean {
     const body = document.body;
     return body.classList.contains('column-resize-hover') || body.classList.contains('column-resizing');
+  }
+
+  private _isColumnResizing(): boolean {
+    return document.body.classList.contains('column-resizing');
   }
 
   // ── Block Action Menu ───────────────────────────────────────────────────
@@ -494,6 +751,9 @@ export class BlockHandlesController {
       { label: 'Numbered list', icon: 'numbered-list', type: 'orderedList' },
       { label: 'To-do list', icon: 'checklist', type: 'taskList' },
       { label: 'Toggle list', icon: 'chevron-right', type: 'details' },
+      { label: '2 columns', icon: 'columns', type: 'columnList', attrs: { columns: 2 } },
+      { label: '3 columns', icon: 'columns', type: 'columnList', attrs: { columns: 3 } },
+      { label: '4 columns', icon: 'columns', type: 'columnList', attrs: { columns: 4 } },
       { label: 'Code', icon: 'code', type: 'codeBlock' },
       { label: 'Quote', icon: 'quote', type: 'blockquote' },
       { label: 'Callout', icon: 'lightbulb', type: 'callout' },
@@ -743,13 +1003,23 @@ export class BlockHandlesController {
     this._handleObserver = null;
     document.removeEventListener('mousedown', this._onDocClickOutside);
     this._host.editorContainer?.removeEventListener('mouseout', this._onEditorMouseOut, true);
+    this._host.editorContainer?.removeEventListener('mousemove', this._onEditorMouseMove, true);
+    this._host.editorContainer?.removeEventListener('mouseleave', this._onEditorMouseLeave, true);
     this._dragHandleEl?.removeEventListener('dragstart', this._onDragHandleDragStart, true);
     this._dragHandleEl?.removeEventListener('dragend', this._onDragHandleDragEnd);
+    this._dragHandleEl?.removeEventListener('mousedown', this._onDragHandleMouseDown, true);
+    document.removeEventListener('mouseup', this._onGlobalMouseUp, true);
+    if (this._interactionReleaseTimer) {
+      clearTimeout(this._interactionReleaseTimer);
+      this._interactionReleaseTimer = null;
+    }
+    this._setHandleInteractionLock(false);
     if (this._blockAddBtn) { this._blockAddBtn.remove(); this._blockAddBtn = null; }
     if (this._blockActionMenu) { this._blockActionMenu.remove(); this._blockActionMenu = null; }
     if (this._turnIntoSubmenu) { this._turnIntoSubmenu.remove(); this._turnIntoSubmenu = null; }
     if (this._colorSubmenu) { this._colorSubmenu.remove(); this._colorSubmenu = null; }
     this._dragHandleEl = null;
     this._actionBlockNode = null;
+    this._lastHoverElement = null;
   }
 }

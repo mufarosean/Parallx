@@ -354,4 +354,63 @@ test.describe('Column Drag Undo/Redo Matrix', () => {
     await redo(page);
     expect(await getColumnLists(page)).toEqual(afterLists);
   });
+
+  test('moving out last meaningful block removes placeholder-only source column and rebalances widths', async ({ window: page, electronApp }) => {
+    await setupCanvasPage(page, electronApp, wsPath);
+    await setContent(page, [
+      p('Top-A'),
+      {
+        type: 'columnList',
+        content: [
+          {
+            type: 'column',
+            attrs: { width: 50 },
+            content: [
+              p('Move-Me'),
+              { type: 'paragraph' },
+            ],
+          },
+          {
+            type: 'column',
+            attrs: { width: 25 },
+            content: [p('Keep-B')],
+          },
+          {
+            type: 'column',
+            attrs: { width: 25 },
+            content: [p('Keep-C')],
+          },
+        ],
+      },
+      p('Top-Z'),
+    ]);
+
+    const beforeLists = await getColumnLists(page);
+
+    const list = page.locator('.canvas-column-list').first();
+    const sourceCol = list.locator('.canvas-column').nth(0);
+    const target = await getBlockBox(page, 'Top-Z');
+    expect(target).toBeTruthy();
+    expect(await dragBlockByText(page, 'Move-Me', target!.x + target!.width / 2, target!.y + target!.height * 0.2, sourceCol)).toBe(true);
+
+    const afterLists = await getColumnLists(page);
+    expect(afterLists[0]).toEqual([
+      ['Keep-B'],
+      ['Keep-C'],
+    ]);
+
+    const afterWidths = await page.evaluate(() => {
+      const json = (window as any).__tiptapEditor.getJSON();
+      const cl = (json.content || []).find((n: any) => n.type === 'columnList');
+      if (!cl) return [];
+      return (cl.content || []).map((col: any) => col.attrs?.width ?? null);
+    });
+    expect(afterWidths).toEqual([null, null]);
+
+    await undo(page);
+    expect(await getColumnLists(page)).toEqual(beforeLists);
+
+    await redo(page);
+    expect(await getColumnLists(page)).toEqual(afterLists);
+  });
 });

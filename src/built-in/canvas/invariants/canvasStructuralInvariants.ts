@@ -90,7 +90,7 @@ function validateColumnList(ctx: TraversalContext, issues: CanvasInvariantIssue[
 }
 
 function validateColumn(ctx: TraversalContext, issues: CanvasInvariantIssue[]): void {
-  const { node, parent } = ctx;
+  const { parent } = ctx;
 
   if (!parent || parent.type.name !== 'columnList') {
     pushIssue(
@@ -101,18 +101,6 @@ function validateColumn(ctx: TraversalContext, issues: CanvasInvariantIssue[]): 
       'Move/unwrap column content into a valid parent and remove orphan columns.',
     );
   }
-
-  node.forEach((child, _offset, index) => {
-    if (child.type.name === 'columnList') {
-      issues.push({
-        code: 'PX-COL-004',
-        message: 'column cannot directly contain a nested columnList.',
-        path: pathToString([...ctx.path, index]),
-        nodeType: child.type.name,
-        suggestion: 'Flatten nested partitions or wrap via another container block.',
-      });
-    }
-  });
 }
 
 function validateDetails(ctx: TraversalContext, issues: CanvasInvariantIssue[]): void {

@@ -249,6 +249,9 @@ export class BubbleMenuController {
     if (body.classList.contains('column-resizing') || body.classList.contains('column-resize-hover')) {
       return true;
     }
+    if (body.classList.contains('block-handle-interacting')) {
+      return true;
+    }
     if (editor.view.dom.classList.contains('dragging')) {
       return true;
     }

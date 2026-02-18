@@ -29,27 +29,32 @@ export function columnAutoDissolvePlugin(): Plugin {
 
       // Process in reverse order (highest position first)
       for (let i = positions.length - 1; i >= 0; i--) {
-        const { pos, node } = positions[i];
+        const { pos } = positions[i];
+        const mappedPos = tr.mapping.map(pos);
+        const liveNode = tr.doc.nodeAt(mappedPos);
+        if (!liveNode || liveNode.type.name !== 'columnList') {
+          continue;
+        }
+
         // Count actual column children
-        let columnCount = 0;
         const columns: any[] = [];
-        node.forEach((child: any) => {
+        liveNode.forEach((child: any) => {
           if (child.type.name === 'column') {
-            columnCount++;
             columns.push(child);
           }
         });
 
-        if (columnCount <= 1 && columns.length > 0) {
-          // Dissolve: replace columnList with the single column's content
+        if (columns.length <= 1 && columns.length > 0) {
+          // Dissolve: replace columnList with the single remaining column's content
           const col = columns[0];
-          const mappedPos = tr.mapping.map(pos);
-          tr.replaceWith(mappedPos, mappedPos + node.nodeSize, col.content);
+          tr.replaceWith(mappedPos, mappedPos + liveNode.nodeSize, col.content);
           changed = true;
-        } else if (columnCount === 0) {
+          continue;
+        }
+
+        if (columns.length === 0) {
           // No columns at all — delete the empty columnList
-          const mappedPos = tr.mapping.map(pos);
-          tr.delete(mappedPos, mappedPos + node.nodeSize);
+          tr.delete(mappedPos, mappedPos + liveNode.nodeSize);
           changed = true;
         }
       }

@@ -15,6 +15,97 @@ const PAGE_SURFACE_NODES = new Set([
   'column', 'callout', 'detailsContent', 'blockquote',
 ]);
 
+export function isColumnEffectivelyEmpty(columnNode: any): boolean {
+  if (!columnNode || columnNode.type?.name !== 'column') {
+    return false;
+  }
+
+  return !nodeHasMeaningfulContent(columnNode);
+}
+
+function nodeHasMeaningfulContent(node: any): boolean {
+  if (!node) return false;
+
+  if (node.isText) {
+    const text = String(node.text ?? '');
+    return text.replace(/[\s\u200B-\u200D\uFEFF]/g, '').length > 0;
+  }
+
+  if (node.type?.name === 'hardBreak') {
+    return false;
+  }
+
+  if (node.childCount === 0) {
+    return !!node.isAtom;
+  }
+
+  let meaningful = false;
+  node.forEach((child: any) => {
+    if (!meaningful && nodeHasMeaningfulContent(child)) {
+      meaningful = true;
+    }
+  });
+  return meaningful;
+}
+
+export function normalizeColumnListAfterMutation(tr: any, columnListPos: number): void {
+  let targetPos = columnListPos;
+  let columnListNode = tr.doc.nodeAt(targetPos);
+
+  if (!columnListNode || columnListNode.type.name !== 'columnList') {
+    targetPos = tr.mapping.map(columnListPos, -1);
+    columnListNode = tr.doc.nodeAt(targetPos);
+  }
+
+  if (!columnListNode || columnListNode.type.name !== 'columnList') return;
+
+  const allColumns: any[] = [];
+  const meaningfulColumns: any[] = [];
+  columnListNode.forEach((child: any) => {
+    if (child.type.name === 'column') {
+      allColumns.push(child);
+      if (!isColumnEffectivelyEmpty(child)) {
+        meaningfulColumns.push(child);
+      }
+    }
+  });
+
+  if (allColumns.length === 0) {
+    tr.delete(targetPos, targetPos + columnListNode.nodeSize);
+    return;
+  }
+
+  if (allColumns.length === 1) {
+    tr.replaceWith(targetPos, targetPos + columnListNode.nodeSize, allColumns[0].content);
+    return;
+  }
+
+  if (meaningfulColumns.length === 1 && meaningfulColumns.length < allColumns.length) {
+    tr.replaceWith(targetPos, targetPos + columnListNode.nodeSize, meaningfulColumns[0].content);
+    return;
+  }
+
+  if (meaningfulColumns.length >= 2 && meaningfulColumns.length < allColumns.length) {
+    const normalizedColumnList = columnListNode.type.create(columnListNode.attrs, meaningfulColumns);
+    tr.replaceWith(targetPos, targetPos + columnListNode.nodeSize, normalizedColumnList);
+  }
+
+  resetColumnListWidthsInTransaction(tr, targetPos);
+}
+
+function normalizeAllColumnListsAfterMutation(tr: any): void {
+  const columnListPositions: number[] = [];
+  tr.doc.descendants((node: any, pos: number) => {
+    if (node.type?.name === 'columnList') {
+      columnListPositions.push(pos);
+    }
+  });
+
+  for (let i = columnListPositions.length - 1; i >= 0; i--) {
+    normalizeColumnListAfterMutation(tr, columnListPositions[i]);
+  }
+}
+
 export function duplicateBlockAt(
   editor: Editor,
   pos: number,
@@ -121,7 +212,6 @@ export function moveBlockAcrossColumnBoundary(
   const blockNode = editor.state.doc.nodeAt(blockPos);
   if (!blockNode) return false;
 
-  const colNode = $from.node(colDepth);
   const colPos = $from.before(colDepth);
   const clDepth = colDepth - 1;
   const clPos = $from.before(clDepth);
@@ -129,19 +219,33 @@ export function moveBlockAcrossColumnBoundary(
   const clEnd = clPos + clNode.nodeSize;
   const { tr } = editor.state;
 
-  if (colNode.childCount <= 1 && clNode.childCount === 2) {
-    let otherIdx = -1;
-    let pos = clPos + 1;
+  const probe = editor.state.tr;
+  probe.delete(blockPos, blockPos + blockNode.nodeSize);
+  const probeColPos = probe.mapping.map(colPos, -1);
+  const probeColNode = probe.doc.nodeAt(probeColPos);
+  const sourceWillBeEmptyAfterMove = !probeColNode
+    || (probeColNode.type.name === 'column' && isColumnEffectivelyEmpty(probeColNode));
+
+  if (sourceWillBeEmptyAfterMove && clNode.childCount === 2) {
+    let sourceIndex = -1;
+    let scanPos = clPos + 1;
     for (let i = 0; i < clNode.childCount; i++) {
-      if (pos !== colPos) otherIdx = i;
-      pos += clNode.child(i).nodeSize;
+      if (scanPos === colPos) {
+        sourceIndex = i;
+        break;
+      }
+      scanPos += clNode.child(i).nodeSize;
     }
-    if (otherIdx >= 0) {
+
+    const otherIndex = sourceIndex === 0 ? 1 : sourceIndex === 1 ? 0 : -1;
+    if (otherIndex >= 0) {
       const nodes: any[] = [];
       if (direction === 'up') {
         nodes.push(blockNode);
       }
-      clNode.child(otherIdx).forEach((ch: any) => nodes.push(ch));
+      clNode.child(otherIndex).forEach((child: any) => {
+        nodes.push(child);
+      });
       if (direction === 'down') {
         nodes.push(blockNode);
       }
@@ -149,20 +253,23 @@ export function moveBlockAcrossColumnBoundary(
       editor.view.dispatch(tr);
       return true;
     }
-  } else if (colNode.childCount <= 1 && clNode.childCount > 2) {
-    tr.delete(colPos, colPos + colNode.nodeSize);
-    const mapped = tr.mapping.map(direction === 'up' ? clPos : clEnd);
-    tr.insert(mapped, blockNode);
-    resetColumnListWidthsInTransaction(tr, clPos);
-    editor.view.dispatch(tr);
-    return true;
-  } else {
-    tr.delete(blockPos, blockPos + blockNode.nodeSize);
-    const mapped = tr.mapping.map(direction === 'up' ? clPos : clEnd);
-    tr.insert(mapped, blockNode);
-    editor.view.dispatch(tr);
-    return true;
   }
+
+  tr.delete(blockPos, blockPos + blockNode.nodeSize);
+
+  const mappedColPos = tr.mapping.map(colPos, -1);
+  const mappedColNode = tr.doc.nodeAt(mappedColPos);
+  if (mappedColNode && mappedColNode.type.name === 'column' && isColumnEffectivelyEmpty(mappedColNode)) {
+    tr.delete(mappedColPos, mappedColPos + mappedColNode.nodeSize);
+  }
+
+  normalizeColumnListAfterMutation(tr, clPos);
+
+  const mapped = tr.mapping.map(direction === 'up' ? clPos : clEnd);
+  tr.insert(mapped, blockNode);
+  normalizeAllColumnListsAfterMutation(tr);
+  editor.view.dispatch(tr);
+  return true;
 
   return false;
 }
@@ -174,6 +281,14 @@ export function turnBlockWithSharedStrategy(
   targetType: string,
   attrs?: any,
 ): void {
+  if (targetType === 'columnList') {
+    const columnCount = Number(attrs?.columns ?? attrs?.count ?? 2);
+    const converted = turnBlockIntoColumns(editor, pos, node, columnCount);
+    if (converted) {
+      return;
+    }
+  }
+
   const srcType = node.type.name;
   const simpleTextBlock = ['paragraph', 'heading'].includes(srcType);
   const simpleTarget = ['paragraph', 'heading', 'bulletList', 'orderedList', 'taskList', 'blockquote', 'codeBlock'].includes(targetType);
@@ -214,6 +329,54 @@ export function turnBlockWithSharedStrategy(
   turnBlockViaReplace(editor, pos, node, targetType, attrs);
 }
 
+export function turnBlockIntoColumns(
+  editor: Editor,
+  pos: number,
+  node: any,
+  columnCount: number,
+): boolean {
+  if (!Number.isFinite(columnCount) || columnCount < 2) {
+    return false;
+  }
+
+  if (node.type.name === 'columnList') {
+    return false;
+  }
+
+  const { schema } = editor.state;
+  const columnNodeType = schema.nodes.column;
+  const columnListNodeType = schema.nodes.columnList;
+  const paragraphNodeType = schema.nodes.paragraph;
+
+  if (!columnNodeType || !columnListNodeType || !paragraphNodeType) {
+    return false;
+  }
+
+  const sourceBlock = schema.nodeFromJSON(node.toJSON());
+  const fallbackParagraph = paragraphNodeType.createAndFill();
+  if (!fallbackParagraph) {
+    return false;
+  }
+
+  const columns: any[] = [];
+  for (let i = 0; i < columnCount; i++) {
+    const content = i === 0 ? [sourceBlock] : [fallbackParagraph];
+    columns.push(columnNodeType.create({ width: null }, content));
+  }
+
+  const columnList = columnListNodeType.create(null, columns);
+
+  const { tr } = editor.state;
+  tr.replaceWith(pos, pos + node.nodeSize, columnList);
+
+  const selectionAnchor = Math.min(pos + 3, tr.doc.content.size);
+  tr.setSelection(TextSelection.near(tr.doc.resolve(selectionAnchor), 1));
+
+  editor.view.dispatch(tr);
+  editor.commands.focus();
+  return true;
+}
+
 export function deleteDraggedSourceFromTransaction(
   tr: any,
   dragFrom: number,
@@ -222,6 +385,8 @@ export function deleteDraggedSourceFromTransaction(
   const mFrom = tr.mapping.map(dragFrom);
   const mTo = tr.mapping.map(dragTo);
   const $src = tr.doc.resolve(mFrom);
+  let sourceColumnStartPos: number | null = null;
+  let sourceColumnListPos: number | null = null;
 
   let colD = -1;
   for (let d = $src.depth; d >= 1; d--) {
@@ -230,27 +395,34 @@ export function deleteDraggedSourceFromTransaction(
 
   if (colD >= 0) {
     const colNode = $src.node(colD);
-    if (colNode.childCount <= 1) {
+    sourceColumnStartPos = $src.before(colD);
+    sourceColumnListPos = $src.before(colD - 1);
+    if (isColumnEffectivelyEmpty(colNode)) {
       const colStart = $src.before(colD);
       const clPos = $src.before(colD - 1);
       tr.delete(colStart, colStart + colNode.nodeSize);
 
-      const clNow = tr.doc.nodeAt(clPos);
-      if (clNow && clNow.type.name === 'columnList') {
-        let off = clPos + 1;
-        for (let i = 0; i < clNow.childCount; i++) {
-          const ch = clNow.child(i);
-          if (ch.type.name === 'column' && ch.attrs.width !== null) {
-            tr.setNodeMarkup(off, undefined, { ...ch.attrs, width: null });
-          }
-          off += ch.nodeSize;
-        }
-      }
+      normalizeColumnListAfterMutation(tr, clPos);
       return;
     }
   }
 
   if (mTo > mFrom) tr.delete(mFrom, mTo);
+
+  if (sourceColumnStartPos == null || sourceColumnListPos == null) {
+    return;
+  }
+
+  const mappedColumnStart = tr.mapping.map(sourceColumnStartPos, -1);
+  const maybeColumn = tr.doc.nodeAt(mappedColumnStart);
+  if (!maybeColumn || maybeColumn.type.name !== 'column') {
+    return;
+  }
+
+  if (isColumnEffectivelyEmpty(maybeColumn)) {
+    tr.delete(mappedColumnStart, mappedColumnStart + maybeColumn.nodeSize);
+    normalizeColumnListAfterMutation(tr, sourceColumnListPos);
+  }
 }
 
 export function resetColumnListWidthsInTransaction(tr: any, columnListPos: number): void {

@@ -508,8 +508,21 @@
 
 .canvas-tiptap-editor hr {
   border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  margin: 24px 0;
+  height: 24px;
+  margin: 2px 0;
+  margin-inline: -6px;
+  padding: 0;
+  padding-inline: 0;
+  width: calc(100% + 12px);
+  max-width: calc(100% + 12px);
+  background-repeat: no-repeat;
+  background-image: linear-gradient(
+    to bottom,
+    transparent calc(50% - 0.5px),
+    rgba(255, 255, 255, 0.12) calc(50% - 0.5px),
+    rgba(255, 255, 255, 0.12) calc(50% + 0.5px),
+    transparent calc(50% + 0.5px)
+  );
 }
 
 /* ── Inline formatting ── */
@@ -570,7 +583,12 @@
   max-width: 100%;
   height: auto;
   border-radius: 6px;
-  margin: 8px 0;
+  margin: 2px 0;
+  margin-inline: -6px;
+  padding: 0;
+  padding-inline: 0;
+  width: calc(100% + 12px);
+  max-width: calc(100% + 12px);
   display: block;
   transition: filter 0.15s ease;
 }
@@ -619,7 +637,6 @@
   padding-block: 0;
   padding-inline: 6px;
   margin-inline: -6px;
-  border-radius: 4px;
 }
 
 /* Callout & details already have their own padding — just add border-radius */
@@ -1549,6 +1566,9 @@
   background: rgba(0, 0, 0, 0.3);
   border-radius: 8px;
   padding: 20px 24px;
+  margin-inline: 0;
+  padding: 0;
+  padding-inline: 0;
   margin: 8px 0;
   overflow-x: auto;
   font-family: 'SFMono-Regular', 'Cascadia Code', 'Fira Code', 'Consolas', 'Liberation Mono', 'Courier New', monospace;

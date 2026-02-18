@@ -348,6 +348,7 @@ export function columnDropPlugin(): Plugin {
           const { from: dragFrom, to: dragTo } = view.state.selection;
           const content = slice.content;
           const { tr } = view.state;
+          tr.setMeta('addToHistory', true);
 
           // Alt+Drag → duplicate (don't delete source)
           const isDuplicate = event.altKey;
