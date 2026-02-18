@@ -149,13 +149,22 @@ export function columnResizePlugin(): Plugin {
     view: (editorView: EditorView) => {
       const container = editorView.dom.parentElement;
 
+      let hoverCol: HTMLElement | null = null;
+
       const onContainerMousemove = (event: MouseEvent) => {
         if (dragging) return; // During active resize, cursor is managed by PM
         const boundary = findBoundary(editorView, event.clientX, event.clientY, 12);
         if (boundary) {
           document.body.classList.add('column-resize-hover');
+          if (hoverCol !== boundary.leftCol) {
+            hoverCol?.classList.remove('resize-handle-active');
+            boundary.leftCol.classList.add('resize-handle-active');
+            hoverCol = boundary.leftCol;
+          }
         } else {
           document.body.classList.remove('column-resize-hover');
+          hoverCol?.classList.remove('resize-handle-active');
+          hoverCol = null;
         }
       };
 
@@ -164,6 +173,8 @@ export function columnResizePlugin(): Plugin {
       return {
         destroy: () => {
           container?.removeEventListener('mousemove', onContainerMousemove);
+          hoverCol?.classList.remove('resize-handle-active');
+          hoverCol = null;
           document.body.classList.remove('column-resize-hover');
           document.body.classList.remove('column-resizing');
         },

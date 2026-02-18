@@ -3010,9 +3010,9 @@
   z-index: 55;
 }
 
-/* Subtle gray resize indicator line on hover (Notion-style) */
-.column-resize-hover .canvas-column:not(:last-child)::after,
-.canvas-column:not(:last-child):hover::after {
+/* Subtle gray resize indicator line — only the specific boundary being
+   hovered gets the visual indicator, not all boundaries at once. */
+.canvas-column.resize-handle-active:not(:last-child)::after {
   background: linear-gradient(
     to right,
     transparent 7px,
