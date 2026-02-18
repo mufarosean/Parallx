@@ -523,6 +523,7 @@ Recent stabilization and consistency fixes applied after initial R5/R6 implement
 - **Column-collapse consistency on backspace-remove:** when an empty column is removed from a multi-column split via backspace, remaining sibling columns now have width attrs reset for redistribution, eliminating dead non-editable space on the right.
 - **Slash menu column creation parity:** `/` menu `2/3/4 Columns` now performs deterministic block-node replacement via transaction (instead of fragile chain behavior), restoring reliable split creation at top-level and inside nested columns.
 - **Auto-dissolve scope correction:** automatic dissolve is constrained to structural invalid states (`<= 1` actual column). Empty sibling columns no longer trigger spontaneous layout collapse during normal typing; empty-column pruning remains mutation-driven (drag/backspace/keyboard move).
+- ✅ **February 18, 2026 hardening batch completed:** non-text in-column drop targeting parity (callout/image/math/video), top-level horizontal drop-guide width containment, callout icon click-to-change picker, and supporting regression coverage are implemented and validated. Detailed implementation log: `docs/FEB18_2026_CANVAS_INTERACTION_HARDENING.md`.
 
 Validation notes:
 - Build + targeted unit/E2E checks repeatedly passed for the affected surfaces (`12-columns`, `13-column-drag-drop`, `15-column-real-interactions`, `16-column-undo-redo`, `17-canvas-interaction-arbitration`, plus new invariant/content/save-state unit suites).

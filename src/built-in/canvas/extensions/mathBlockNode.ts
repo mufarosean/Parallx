@@ -42,6 +42,9 @@ export const MathBlock = Node.create({
       const dom = document.createElement('div');
       dom.classList.add('canvas-math-block');
       dom.setAttribute('data-type', 'mathBlock');
+      // Explicit policy: block movement is owned by the drag handle, not by
+      // implicit native dragging from block body interactions.
+      dom.draggable = false;
 
       // ── Rendered KaTeX output (always visible) ──
       const renderArea = document.createElement('div');
@@ -123,6 +126,11 @@ export const MathBlock = Node.create({
       };
 
       // ── Events ──
+      dom.addEventListener('dragstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+
       dom.addEventListener('click', (e) => {
         if (editorArea.contains(e.target as HTMLElement)) return;
         e.stopPropagation();

@@ -323,7 +323,8 @@ test.describe('Column Integration — Real User Workflow', () => {
     await page.waitForTimeout(500);
     doc = await getDocStructure(page);
     console.log('After dissolve:', doc);
-    expect(doc.every(s => !s.startsWith('cols:'))).toBe(true);
+    expect(doc.some(s => s === 'p[bg]:Purple Note')).toBe(true);
+    expect(doc.some(s => s.startsWith('cols:'))).toBe(true);
     await shot(page, '12-dissolved');
 
     // ═══ STEP 11: Re-create columns from scratch ═══

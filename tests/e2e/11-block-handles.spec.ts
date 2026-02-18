@@ -671,6 +671,42 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('callout');
   });
 
+  test('callout icon is clickable and updates icon selection', async ({
+    window,
+    electronApp,
+  }) => {
+    await setupCanvasPage(window, electronApp, wsPath);
+    const tiptap = window.locator('.tiptap');
+    await tiptap.click();
+    await waitForEditor(window);
+
+    await setContent(window, [
+      {
+        type: 'callout',
+        attrs: { emoji: 'lightbulb' },
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Icon me' }] }],
+      },
+    ]);
+
+    const icon = window.locator('.canvas-callout .canvas-callout-emoji').first();
+    await expect(icon).toBeVisible({ timeout: 3_000 });
+
+    await icon.click();
+    const picker = window.locator('.canvas-icon-picker');
+    await expect(picker).toBeVisible({ timeout: 3_000 });
+
+    const targetIcon = picker.locator('.canvas-icon-btn[title="rocket"]').first();
+    await targetIcon.click();
+    await window.waitForTimeout(200);
+
+    await expect(picker).not.toBeVisible();
+
+    const doc = await getDocJSON(window);
+    const callout = doc.content?.[0];
+    expect(callout?.type).toBe('callout');
+    expect(callout?.attrs?.emoji).toBe('rocket');
+  });
+
   test('Turn Into: paragraph → code block', async ({
     window,
     electronApp,

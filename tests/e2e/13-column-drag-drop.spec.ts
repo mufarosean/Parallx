@@ -336,6 +336,7 @@ test.describe('Column Drag-Drop', () => {
     expect(s3.hasDragging).toBe(true);
     expect(s3.horzVisible).toBe(true);
     expect(s3.vertVisible).toBe(false);
+    expect(Math.abs(parseFloat(s3.horzWidth) - bravoRect.width)).toBeLessThanOrEqual(2);
 
     await clearDrag(page);
 
@@ -358,6 +359,7 @@ test.describe('Column Drag-Drop', () => {
     expect(s4.hasDragging).toBe(true);
     expect(s4.horzVisible).toBe(true);
     expect(s4.vertVisible).toBe(false);
+    expect(Math.abs(parseFloat(s4.horzWidth) - bravoRect.width)).toBeLessThanOrEqual(2);
 
     await clearDrag(page);
 
@@ -856,5 +858,244 @@ test.describe('Column Drag-Drop', () => {
     expect(col1WidthAfter).toBeGreaterThan(col1WidthBefore);
 
     console.log('\n═══ ALL SCENARIOS COMPLETE ═══');
+  });
+
+  test('moves top-level block into a column that contains an image', async ({
+    window: page,
+    electronApp,
+  }) => {
+    await setupCanvasPage(page, electronApp, wsPath);
+    await waitForEditor(page);
+
+    await setContent(page, [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Move into image column' }] },
+      {
+        type: 'columnList',
+        content: [
+          {
+            type: 'column',
+            content: [
+              { type: 'image', attrs: { src: 'https://example.com/test-image.png', alt: 'Target image' } },
+            ],
+          },
+          {
+            type: 'column',
+            content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'Right col' }] },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    await startDragFromBlock(page, 0);
+    const targetRect = await getColumnBlockRect(page, 0, 1, 0);
+
+    await dispatchDragover(
+      page,
+      targetRect.left + targetRect.width / 2,
+      targetRect.top + 6,
+    );
+    await dispatchDrop(
+      page,
+      targetRect.left + targetRect.width / 2,
+      targetRect.top + 6,
+    );
+    await page.waitForTimeout(300);
+
+    const doc = await getDocJSON(page);
+    const topLevel = doc.content ?? [];
+    const columnListNode = topLevel.find((n: any) => n.type === 'columnList');
+    expect(columnListNode).toBeTruthy();
+
+    const collectNodes = (node: any, acc: any[] = []): any[] => {
+      if (!node || typeof node !== 'object') return acc;
+      acc.push(node);
+      const content = Array.isArray(node.content) ? node.content : [];
+      for (const child of content) collectNodes(child, acc);
+      return acc;
+    };
+
+    const nestedNodes = collectNodes(columnListNode);
+    const hasImage = nestedNodes.some((n) => n.type === 'image');
+    const movedInsideColumnList = nestedNodes.some((n) => n.type === 'paragraph' && n.content?.[0]?.text === 'Move into image column');
+    const movedStillTopLevel = topLevel.some((n: any) => n.type === 'paragraph' && n.content?.[0]?.text === 'Move into image column');
+
+    expect(hasImage).toBe(true);
+    expect(movedInsideColumnList).toBe(true);
+    expect(movedStillTopLevel).toBe(false);
+  });
+
+  test('moves paragraph out of a column that also contains an image', async ({
+    window: page,
+    electronApp,
+  }) => {
+    await setupCanvasPage(page, electronApp, wsPath);
+    await waitForEditor(page);
+
+    await setContent(page, [
+      {
+        type: 'columnList',
+        content: [
+          {
+            type: 'column',
+            content: [
+              { type: 'image', attrs: { src: 'https://example.com/test-image.png', alt: 'Sticky image' } },
+              { type: 'paragraph', content: [{ type: 'text', text: 'Move me out' }] },
+            ],
+          },
+          {
+            type: 'column',
+            content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'Right keep' }] },
+            ],
+          },
+        ],
+      },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Below target' }] },
+    ]);
+
+    await page.evaluate(() => {
+      const editor = (window as any).__tiptapEditor;
+      if (!editor) throw new Error('No editor');
+      const view = editor.view;
+      const doc = view.state.doc;
+
+      let targetPos = -1;
+      doc.descendants((node: any, pos: number) => {
+        if (node.type.name === 'paragraph' && node.textContent === 'Move me out') {
+          targetPos = pos;
+          return false;
+        }
+        return true;
+      });
+
+      if (targetPos < 0) throw new Error('Move me out paragraph not found');
+
+      editor.commands.setNodeSelection(targetPos);
+      const slice = view.state.selection.content();
+      view.dragging = { slice, move: true };
+    });
+
+    const belowRect = await getBlockRect(page, 1);
+    await dispatchDragover(
+      page,
+      belowRect.left + belowRect.width / 2,
+      belowRect.bottom - 4,
+    );
+    await dispatchDrop(
+      page,
+      belowRect.left + belowRect.width / 2,
+      belowRect.bottom - 4,
+    );
+    await page.waitForTimeout(300);
+
+    const doc = await getDocJSON(page);
+    expect(doc.content[0].type).toBe('columnList');
+
+    const firstColumn = doc.content[0].content[0];
+    expect(firstColumn.content).toHaveLength(1);
+    expect(firstColumn.content[0].type).toBe('image');
+
+    const movedTopLevelParagraph = doc.content[2];
+    expect(movedTopLevelParagraph.type).toBe('paragraph');
+    expect(movedTopLevelParagraph.content?.[0]?.text).toBe('Move me out');
+  });
+
+  test('shows below drop zone and inserts under non-text blocks inside columns', async ({
+    window: page,
+    electronApp,
+  }) => {
+    await setupCanvasPage(page, electronApp, wsPath);
+    await waitForEditor(page);
+
+    const cases: Array<{ label: string; targetType: string; targetNode: any }> = [
+      {
+        label: 'callout',
+        targetType: 'callout',
+        targetNode: {
+          type: 'callout',
+          attrs: { emoji: 'lightbulb' },
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Callout target' }] }],
+        },
+      },
+      {
+        label: 'image',
+        targetType: 'image',
+        targetNode: { type: 'image', attrs: { src: 'https://example.com/special-target.png', alt: 'Special target image' } },
+      },
+      {
+        label: 'mathBlock',
+        targetType: 'mathBlock',
+        targetNode: { type: 'mathBlock', attrs: { latex: 'x^2 + y^2 = z^2' } },
+      },
+      {
+        label: 'video',
+        targetType: 'video',
+        targetNode: { type: 'video', attrs: { src: '', title: 'Video target' } },
+      },
+    ];
+
+    for (const scenario of cases) {
+      await setContent(page, [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Drag me below target' }] },
+        {
+          type: 'columnList',
+          content: [
+            {
+              type: 'column',
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Left column' }] }],
+            },
+            {
+              type: 'column',
+              content: [scenario.targetNode],
+            },
+          ],
+        },
+      ]);
+
+      await startDragFromBlock(page, 0);
+      const targetRect = await getColumnBlockRect(page, 0, 1, 0);
+      const dragoverResult = await dispatchDragover(
+        page,
+        targetRect.left + targetRect.width / 2,
+        targetRect.bottom - 2,
+      );
+
+      expect(dragoverResult.horzVisible).toBe(true);
+      expect(dragoverResult.vertVisible).toBe(false);
+
+      await dispatchDrop(
+        page,
+        targetRect.left + targetRect.width / 2,
+        targetRect.bottom - 2,
+      );
+      await page.waitForTimeout(300);
+
+      const verification = await page.evaluate((targetType) => {
+        const editor = (window as any).__tiptapEditor;
+        if (!editor) throw new Error('No editor');
+        const doc = editor.getJSON();
+        const columnList = (doc.content || []).find((node: any) => node.type === 'columnList');
+        if (!columnList) throw new Error('No columnList found');
+
+        const secondColumnContent = columnList.content?.[1]?.content || [];
+        const targetIndex = secondColumnContent.findIndex((node: any) => node.type === targetType);
+        const movedIndex = secondColumnContent.findIndex(
+          (node: any) => node.type === 'paragraph' && node.content?.[0]?.text === 'Drag me below target',
+        );
+
+        return {
+          targetIndex,
+          movedIndex,
+          secondColumnTypes: secondColumnContent.map((node: any) => node.type),
+          secondColumnTexts: secondColumnContent.map((node: any) => node.content?.[0]?.text || ''),
+          topLevelTypes: (doc.content || []).map((node: any) => node.type),
+        };
+      }, scenario.targetType);
+
+      expect(verification.targetIndex, `${scenario.label} target missing: ${JSON.stringify(verification)}`).toBeGreaterThanOrEqual(0);
+      expect(verification.movedIndex, `${scenario.label} moved block missing: ${JSON.stringify(verification)}`).toBeGreaterThan(verification.targetIndex);
+    }
   });
 });

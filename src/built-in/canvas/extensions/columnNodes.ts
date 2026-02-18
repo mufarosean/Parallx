@@ -17,6 +17,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { columnResizePlugin } from '../plugins/columnResizePlugin.js';
 import { columnDropPlugin } from '../plugins/columnDropPlugin.js';
 import { columnAutoDissolvePlugin } from '../plugins/columnAutoDissolve.js';
+import { COLUMN_CONTENT_EXPRESSION } from '../config/blockCapabilities.js';
 import {
   duplicateBlockAt,
   isColumnEffectivelyEmpty,
@@ -28,11 +29,9 @@ import {
 
 export const Column = Node.create({
   name: 'column',
-  // Explicit content list including columnList to allow split-within-split
-  // layouts from Turn into → 2/3/4 columns.
-  // ProseMirror enforces this at the schema level (paste, import, setContent).
-  // If you add a new block-level node, add it here too.
-  content: '(paragraph | heading | bulletList | orderedList | taskList | blockquote | codeBlock | horizontalRule | image | table | callout | details | toggleHeading | mathBlock | bookmark | tableOfContents | video | audio | fileAttachment | columnList)+',
+  // Includes nested columnList to allow split-within-split layouts.
+  // The allowed node set is centralized in config/blockCapabilities.ts.
+  content: COLUMN_CONTENT_EXPRESSION,
   isolating: true,
   defining: true,
 

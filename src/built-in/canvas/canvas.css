@@ -580,15 +580,12 @@
 /* ── Images — clean with hover effect ── */
 
 .canvas-tiptap-editor img {
+  width: 100%;
   max-width: 100%;
   height: auto;
   border-radius: 6px;
   margin: 2px 0;
-  margin-inline: -6px;
   padding: 0;
-  padding-inline: 0;
-  width: calc(100% + 12px);
-  max-width: calc(100% + 12px);
   display: block;
   transition: filter 0.15s ease;
 }
@@ -1097,8 +1094,13 @@
   width: 24px;
   height: 24px;
   user-select: none;
-  cursor: default;
+  cursor: pointer;
   color: inherit;
+  border-radius: 4px;
+}
+
+.canvas-callout-emoji:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .canvas-callout-content {

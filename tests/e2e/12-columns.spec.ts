@@ -425,24 +425,33 @@ test.describe('Column Layout', () => {
         },
       ]);
 
-      // Click inside the first column
-      const firstCol = tiptap.locator('.canvas-column').first();
-      await firstCol.locator('p', { hasText: 'Col A' }).click();
-      await window.keyboard.press('End');
-      await window.keyboard.press('Enter');
+      // Put cursor explicitly inside the first column paragraph
+      await window.evaluate(() => {
+        const editor = (window as any).__tiptapEditor;
+        let targetPos = 2;
+        editor.state.doc.descendants((node: any, pos: number) => {
+          if (node.type?.name === 'paragraph' && node.textContent === 'Col A') {
+            targetPos = pos + Math.max(1, node.nodeSize - 1);
+            return false;
+          }
+          return true;
+        });
+        editor.commands.setTextSelection(targetPos);
+        editor.commands.enter();
+      });
       await window.waitForTimeout(200);
 
       // Open slash menu
       await window.keyboard.type('/');
-      await window.waitForSelector('.canvas-slash-menu', { timeout: 3_000 });
+      const slashMenu = window.locator('.canvas-slash-menu');
+      await expect(slashMenu).toBeVisible({ timeout: 3_000 });
 
       // Type 'columns' to search
       await window.keyboard.type('columns');
       await window.waitForTimeout(300);
 
       // Column items should be visible in recursive model
-      const menu = window.locator('.canvas-slash-menu');
-      const col2 = menu.locator('.canvas-slash-item', { hasText: '2 Columns' });
+      const col2 = slashMenu.locator('.canvas-slash-item', { hasText: '2 Columns' });
       await expect(col2).toBeVisible({ timeout: 2_000 });
 
       await col2.click();
@@ -458,8 +467,7 @@ test.describe('Column Layout', () => {
       expect(nested.type).toBe('columnList');
       expect(nested.content.length).toBe(2);
 
-      const slash = window.locator('.canvas-slash-menu');
-      await expect(slash).not.toBeVisible();
+      await expect(slashMenu).not.toBeVisible();
     });
 
     test('slash menu shows column options when cursor is outside columns', async ({
@@ -1286,6 +1294,104 @@ test.describe('Column Layout', () => {
       }
     });
 
+    test('backspace on empty middle column keeps neighboring image column and redistributes width', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            {
+              type: 'column',
+              attrs: { width: 50 },
+              content: [{ type: 'image', attrs: { src: 'https://example.com/test-image.png', alt: 'Left image' } }],
+            },
+            {
+              type: 'column',
+              attrs: { width: 25 },
+              content: [{ type: 'paragraph' }],
+            },
+            {
+              type: 'column',
+              attrs: { width: 25 },
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Right text' }] }],
+            },
+          ],
+        },
+      ]);
+
+      const middleCol = tiptap.locator('.canvas-column').nth(1);
+      await middleCol.locator('p').click();
+      await window.waitForTimeout(100);
+
+      await window.keyboard.press('Backspace');
+      await window.waitForTimeout(300);
+
+      const doc = await getDocJSON(window);
+      const colList = doc.content.find((n: any) => n.type === 'columnList');
+      expect(colList).toBeTruthy();
+      expect(colList.content).toHaveLength(2);
+      expect(colList.content[0].content[0].type).toBe('image');
+      expect(colList.content[1].content[0].type).toBe('paragraph');
+      expect(colList.content[0].attrs?.width ?? null).toBeNull();
+      expect(colList.content[1].attrs?.width ?? null).toBeNull();
+    });
+
+    test('backspace on empty last column in image+empty+empty 3-column layout removes only one column', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            {
+              type: 'column',
+              attrs: { width: 34 },
+              content: [{ type: 'image', attrs: { src: 'https://example.com/test-image.png', alt: 'Pinned image' } }],
+            },
+            {
+              type: 'column',
+              attrs: { width: 33 },
+              content: [{ type: 'paragraph' }],
+            },
+            {
+              type: 'column',
+              attrs: { width: 33 },
+              content: [{ type: 'paragraph' }],
+            },
+          ],
+        },
+      ]);
+
+      const lastCol = tiptap.locator('.canvas-column').nth(2);
+      await lastCol.locator('p').click();
+      await window.waitForTimeout(100);
+
+      await window.keyboard.press('Backspace');
+      await window.waitForTimeout(300);
+
+      const doc = await getDocJSON(window);
+      const colList = doc.content.find((n: any) => n.type === 'columnList');
+      expect(colList).toBeTruthy();
+      expect(colList.content).toHaveLength(2);
+      expect(colList.content[0].content[0].type).toBe('image');
+      expect(colList.content[1].content[0].type).toBe('paragraph');
+      expect(colList.content[0].attrs?.width ?? null).toBeNull();
+      expect(colList.content[1].attrs?.width ?? null).toBeNull();
+    });
+
   });
 
   // ── Content Alignment ─────────────────────────────────────────────────────
@@ -1405,8 +1511,19 @@ test.describe('Column Layout', () => {
         { type: 'paragraph', content: [{ type: 'text', text: 'Third' }] },
       ]);
 
-      // Click in "First" then move it down
-      await tiptap.locator('p', { hasText: 'First' }).click();
+      // Put cursor explicitly inside "First" then move it down
+      await window.evaluate(() => {
+        const editor = (window as any).__tiptapEditor;
+        let targetPos = 2;
+        editor.state.doc.descendants((node: any, pos: number) => {
+          if (node.type?.name === 'paragraph' && node.textContent === 'First') {
+            targetPos = pos + 1;
+            return false;
+          }
+          return true;
+        });
+        editor.commands.setTextSelection(targetPos);
+      });
       await window.keyboard.press('Control+Shift+ArrowDown');
       await window.waitForTimeout(300);
 
@@ -1530,8 +1647,19 @@ test.describe('Column Layout', () => {
         },
       ]);
 
-      // Click in "Top" (first block in first column) then move up
-      await tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Top' }).click();
+      // Put cursor explicitly inside "Top" (first block in first column)
+      await window.evaluate(() => {
+        const editor = (window as any).__tiptapEditor;
+        let targetPos = 2;
+        editor.state.doc.descendants((node: any, pos: number) => {
+          if (node.type?.name === 'paragraph' && node.textContent === 'Top') {
+            targetPos = pos + 1;
+            return false;
+          }
+          return true;
+        });
+        editor.commands.setTextSelection(targetPos);
+      });
       await window.keyboard.press('Control+Shift+ArrowUp');
       await window.waitForTimeout(300);
 
@@ -1570,8 +1698,19 @@ test.describe('Column Layout', () => {
         { type: 'paragraph', content: [{ type: 'text', text: 'After' }] },
       ]);
 
-      // Click in "Bottom" (last block in first column) then move down
-      await tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Bottom' }).click();
+      // Put cursor explicitly inside "Bottom" (last block in first column)
+      await window.evaluate(() => {
+        const editor = (window as any).__tiptapEditor;
+        let targetPos = 2;
+        editor.state.doc.descendants((node: any, pos: number) => {
+          if (node.type?.name === 'paragraph' && node.textContent === 'Bottom') {
+            targetPos = pos + 1;
+            return false;
+          }
+          return true;
+        });
+        editor.commands.setTextSelection(targetPos);
+      });
       await window.keyboard.press('Control+Shift+ArrowDown');
       await window.waitForTimeout(300);
 
@@ -1667,8 +1806,19 @@ test.describe('Column Layout', () => {
         },
       ]);
 
-      // Click in "InCol" then duplicate
-      await tiptap.locator('.canvas-column').first().locator('p', { hasText: 'InCol' }).click();
+      // Put cursor explicitly inside "InCol" then duplicate
+      await window.evaluate(() => {
+        const editor = (window as any).__tiptapEditor;
+        let targetPos = 2;
+        editor.state.doc.descendants((node: any, pos: number) => {
+          if (node.type?.name === 'paragraph' && node.textContent === 'InCol') {
+            targetPos = pos + 1;
+            return false;
+          }
+          return true;
+        });
+        editor.commands.setTextSelection(targetPos);
+      });
       await window.keyboard.press('Control+d');
       await window.waitForTimeout(300);
 
@@ -1819,6 +1969,130 @@ test.describe('Column Layout', () => {
       const actionMenu = window.locator('.block-action-menu');
       await expect(actionMenu).toBeVisible({ timeout: 3_000 });
       await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
+    });
+
+    test('image block inside column stays within column bounds', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            {
+              type: 'column',
+              content: [
+                { type: 'image', attrs: { src: 'https://example.com/test-image.png', alt: 'Col image' } },
+              ],
+            },
+            {
+              type: 'column',
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'Right column text' }] },
+              ],
+            },
+          ],
+        },
+      ]);
+
+      const geometry = await window.evaluate(() => {
+        const firstCol = document.querySelector('.canvas-column-list > .canvas-column') as HTMLElement | null;
+        const img = firstCol?.querySelector('img') as HTMLImageElement | null;
+        if (!firstCol || !img) return null;
+
+        const colRect = firstCol.getBoundingClientRect();
+        const imgRect = img.getBoundingClientRect();
+
+        return {
+          colLeft: colRect.left,
+          colRight: colRect.right,
+          imgLeft: imgRect.left,
+          imgRight: imgRect.right,
+          imgWidth: imgRect.width,
+          colWidth: colRect.width,
+        };
+      });
+
+      expect(geometry).toBeTruthy();
+      if (geometry) {
+        expect(geometry.imgLeft).toBeGreaterThanOrEqual(geometry.colLeft - 1);
+        expect(geometry.imgRight).toBeLessThanOrEqual(geometry.colRight + 1);
+        expect(geometry.imgWidth).toBeLessThanOrEqual(geometry.colWidth + 1);
+      }
+    });
+
+    test('image block inside column can be turned into nested 2 columns', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            {
+              type: 'column',
+              content: [
+                { type: 'image', attrs: { src: 'https://example.com/test-image.png', alt: 'Split image' } },
+              ],
+            },
+            {
+              type: 'column',
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'Right column text' }] },
+              ],
+            },
+          ],
+        },
+      ]);
+
+      const image = tiptap.locator('.canvas-column').first().locator('img').first();
+      await image.hover();
+      await window.waitForTimeout(500);
+
+      const dragHandle = window.locator('.drag-handle');
+      await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+      await dragHandle.click({ force: true });
+      await window.waitForTimeout(200);
+
+      const actionMenu = window.locator('.block-action-menu');
+      await expect(actionMenu).toBeVisible({ timeout: 3_000 });
+
+      const turnInto = actionMenu.locator('.block-action-item', { hasText: 'Turn into' });
+      await turnInto.hover();
+      await window.waitForTimeout(300);
+
+      const turnIntoSubmenu = window.locator('.block-action-submenu:not(.block-color-submenu)');
+      const twoCols = turnIntoSubmenu.locator('.block-action-item', { hasText: '2 columns' });
+      await expect(twoCols).toBeVisible({ timeout: 3_000 });
+      await twoCols.click();
+      await window.waitForTimeout(300);
+
+      const doc = await getDocJSON(window);
+      const createdColumnList = doc.content.find((n: any) => n.type === 'columnList');
+      expect(createdColumnList).toBeTruthy();
+
+      const collectTypes = (node: any, acc: string[] = []): string[] => {
+        if (!node || typeof node !== 'object') return acc;
+        if (typeof node.type === 'string') acc.push(node.type);
+        const content = Array.isArray(node.content) ? node.content : [];
+        for (const child of content) collectTypes(child, acc);
+        return acc;
+      };
+
+      const allTypes = collectTypes(createdColumnList);
+      expect(allTypes.filter((t) => t === 'column').length).toBeGreaterThanOrEqual(2);
+      expect(allTypes.includes('image')).toBe(true);
+      expect(allTypes.includes('paragraph')).toBe(true);
     });
 
     test('action menu for block inside column shows block type, not Column List', async ({
@@ -1997,6 +2271,55 @@ test.describe('Column Layout', () => {
       // Should have 1 block left (the heading)
       expect(firstColumn.content.length).toBe(1);
       expect(firstColumn.content[0].type).toBe('heading');
+    });
+
+    test('dragstart on math block body is blocked (handle-only drag policy)', async ({
+      window,
+      electronApp,
+    }) => {
+      await setupCanvasPage(window, electronApp, wsPath);
+      const tiptap = window.locator('.tiptap');
+      await tiptap.click();
+      await waitForEditor(window);
+
+      await setContent(window, [
+        {
+          type: 'columnList',
+          content: [
+            {
+              type: 'column',
+              content: [
+                { type: 'mathBlock', attrs: { latex: 'x^2' } },
+              ],
+            },
+            {
+              type: 'column',
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'Target col' }] },
+              ],
+            },
+          ],
+        },
+      ]);
+
+      const result = await window.evaluate(() => {
+        const editor = (window as any).__tiptapEditor;
+        const before = editor.getJSON();
+        const hadDraggingBefore = !!editor.view.dragging;
+        const mathDom = document.querySelector('[data-type="mathBlock"]') as HTMLElement | null;
+        if (!mathDom) return { unchanged: false, draggingStayedOff: false };
+
+        const event = new DragEvent('dragstart', { bubbles: true, cancelable: true });
+        mathDom.dispatchEvent(event);
+
+        const after = editor.getJSON();
+        const unchanged = JSON.stringify(before) === JSON.stringify(after);
+        const draggingStayedOff = !hadDraggingBefore && !editor.view.dragging;
+        return { unchanged, draggingStayedOff };
+      });
+
+      expect(result.draggingStayedOff).toBe(true);
+      expect(result.unchanged).toBe(true);
     });
   });
 });

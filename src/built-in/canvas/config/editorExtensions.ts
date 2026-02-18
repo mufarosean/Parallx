@@ -29,6 +29,7 @@ import { ToggleHeading, ToggleHeadingText } from '../extensions/toggleHeadingNod
 import { Bookmark } from '../extensions/bookmarkNode.js';
 import { TableOfContents } from '../extensions/tableOfContentsNode.js';
 import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
+import { DRAG_HANDLE_CUSTOM_NODE_TYPES } from './blockCapabilities.js';
 
 import type { Extensions } from '@tiptap/core';
 
@@ -99,7 +100,7 @@ export function createEditorExtensions(lowlight: any): Extensions {
       // columnList intentionally excluded — per Rule 10, columnList has no
       // drag handle. Blocks inside columns are still draggable via their own
       // selectors (p, h1-h6, etc. + .canvas-column > p).
-      customNodes: ['mathBlock', 'callout', 'details', 'toggleHeading', 'bookmark', 'tableOfContents', 'video', 'audio', 'fileAttachment', 'horizontalRule', 'image'],
+      customNodes: [...DRAG_HANDLE_CUSTOM_NODE_TYPES],
     }),
     // ── Tier 2 extensions ──
     Callout,

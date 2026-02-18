@@ -60,13 +60,9 @@ export function normalizeColumnListAfterMutation(tr: any, columnListPos: number)
   if (!columnListNode || columnListNode.type.name !== 'columnList') return;
 
   const allColumns: any[] = [];
-  const meaningfulColumns: any[] = [];
   columnListNode.forEach((child: any) => {
     if (child.type.name === 'column') {
       allColumns.push(child);
-      if (!isColumnEffectivelyEmpty(child)) {
-        meaningfulColumns.push(child);
-      }
     }
   });
 
@@ -78,16 +74,6 @@ export function normalizeColumnListAfterMutation(tr: any, columnListPos: number)
   if (allColumns.length === 1) {
     tr.replaceWith(targetPos, targetPos + columnListNode.nodeSize, allColumns[0].content);
     return;
-  }
-
-  if (meaningfulColumns.length === 1 && meaningfulColumns.length < allColumns.length) {
-    tr.replaceWith(targetPos, targetPos + columnListNode.nodeSize, meaningfulColumns[0].content);
-    return;
-  }
-
-  if (meaningfulColumns.length >= 2 && meaningfulColumns.length < allColumns.length) {
-    const normalizedColumnList = columnListNode.type.create(columnListNode.attrs, meaningfulColumns);
-    tr.replaceWith(targetPos, targetPos + columnListNode.nodeSize, normalizedColumnList);
   }
 
   resetColumnListWidthsInTransaction(tr, targetPos);
@@ -257,7 +243,7 @@ export function moveBlockAcrossColumnBoundary(
 
   tr.delete(blockPos, blockPos + blockNode.nodeSize);
 
-  const mappedColPos = tr.mapping.map(colPos, -1);
+  const mappedColPos = tr.mapping.map(colPos, 1);
   const mappedColNode = tr.doc.nodeAt(mappedColPos);
   if (mappedColNode && mappedColNode.type.name === 'column' && isColumnEffectivelyEmpty(mappedColNode)) {
     tr.delete(mappedColPos, mappedColPos + mappedColNode.nodeSize);
@@ -382,9 +368,9 @@ export function deleteDraggedSourceFromTransaction(
   dragFrom: number,
   dragTo: number,
 ): void {
-  const mFrom = tr.mapping.map(dragFrom);
-  const mTo = tr.mapping.map(dragTo);
-  const $src = tr.doc.resolve(mFrom);
+  const initialDoc = Array.isArray(tr.docs) && tr.docs.length > 0 ? tr.docs[0] : tr.doc;
+  const safeFrom = Math.max(0, Math.min(dragFrom, initialDoc.content.size));
+  const $src = initialDoc.resolve(safeFrom);
   let sourceColumnStartPos: number | null = null;
   let sourceColumnListPos: number | null = null;
 
@@ -394,18 +380,12 @@ export function deleteDraggedSourceFromTransaction(
   }
 
   if (colD >= 0) {
-    const colNode = $src.node(colD);
     sourceColumnStartPos = $src.before(colD);
     sourceColumnListPos = $src.before(colD - 1);
-    if (isColumnEffectivelyEmpty(colNode)) {
-      const colStart = $src.before(colD);
-      const clPos = $src.before(colD - 1);
-      tr.delete(colStart, colStart + colNode.nodeSize);
-
-      normalizeColumnListAfterMutation(tr, clPos);
-      return;
-    }
   }
+
+  const mFrom = tr.mapping.map(dragFrom);
+  const mTo = tr.mapping.map(dragTo);
 
   if (mTo > mFrom) tr.delete(mFrom, mTo);
 
@@ -413,7 +393,7 @@ export function deleteDraggedSourceFromTransaction(
     return;
   }
 
-  const mappedColumnStart = tr.mapping.map(sourceColumnStartPos, -1);
+  const mappedColumnStart = tr.mapping.map(sourceColumnStartPos, 1);
   const maybeColumn = tr.doc.nodeAt(mappedColumnStart);
   if (!maybeColumn || maybeColumn.type.name !== 'column') {
     return;
@@ -422,7 +402,37 @@ export function deleteDraggedSourceFromTransaction(
   if (isColumnEffectivelyEmpty(maybeColumn)) {
     tr.delete(mappedColumnStart, mappedColumnStart + maybeColumn.nodeSize);
     normalizeColumnListAfterMutation(tr, sourceColumnListPos);
+    return;
   }
+
+  // Fallback for extraction flows where mapping cannot re-resolve the original
+  // source column start precisely after prior tr steps. Keep this structural and
+  // conservative: only remove one empty column from a 2-column list.
+  const mappedColumnListPos = tr.mapping.map(sourceColumnListPos, -1);
+  const columnListNode = tr.doc.nodeAt(mappedColumnListPos);
+  if (!columnListNode || columnListNode.type.name !== 'columnList') {
+    return;
+  }
+
+  if (columnListNode.childCount !== 2) {
+    return;
+  }
+
+  const emptyColumns: Array<{ pos: number; nodeSize: number }> = [];
+  let scanPos = mappedColumnListPos + 1;
+  columnListNode.forEach((child: any) => {
+    if (child.type?.name === 'column' && isColumnEffectivelyEmpty(child)) {
+      emptyColumns.push({ pos: scanPos, nodeSize: child.nodeSize });
+    }
+    scanPos += child.nodeSize;
+  });
+
+  if (emptyColumns.length !== 1) {
+    return;
+  }
+
+  tr.delete(emptyColumns[0].pos, emptyColumns[0].pos + emptyColumns[0].nodeSize);
+  normalizeColumnListAfterMutation(tr, mappedColumnListPos);
 }
 
 export function resetColumnListWidthsInTransaction(tr: any, columnListPos: number): void {
