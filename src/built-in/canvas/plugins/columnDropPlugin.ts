@@ -230,19 +230,22 @@ export function columnDropPlugin(): Plugin {
     const r = blockEl.getBoundingClientRect();
     const rx = x - r.left;   // cursor X relative to block left edge
 
-    // Fixed-pixel edge zones: the leftmost / rightmost 50 px of the
+    // Fixed-pixel edge zones: the leftmost / rightmost portion of the
     // block are column-creation territory (left / right).  Everything
     // else resolves to above / below by Y midpoint.  This matches
     // Notion's behavior — column splits require a deliberate horizontal
     // gesture into a narrow strip at the edge of the target block.
-    const EDGE = 50; // px
+    //
+    // For wide blocks (≥150px) use 50px edges; for narrower blocks
+    // scale down to 20% of width so side-drop always remains reachable.
+    const EDGE = r.width >= 150 ? 50 : Math.max(16, r.width * 0.2);
 
     // Nesting constraint: columnList targets only allow above/below.
     // Blocks INSIDE columns DO allow left/right — the drop handler
     // inserts a new column into the existing columnList (no nesting).
     const preventLeftRight = isColumnList;
 
-    if (!preventLeftRight && r.width > EDGE * 3) {
+    if (!preventLeftRight) {
       // Only allow left/right when cursor is inside the block bounds
       // (rx < 0 means cursor is on the drag handle, outside the block)
       if (rx >= 0 && rx < EDGE) return 'left';
