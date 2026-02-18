@@ -2966,9 +2966,11 @@
   transition: background-color 0.15s ease;
 }
 
-/* When column has explicit width, use it instead of flex:1 */
+/* When column has explicit width, use it instead of flex:1.
+   flex: 0 1 auto — don't grow, but DO shrink so the gap (16px per boundary)
+   is absorbed proportionally and columns never overflow the container. */
 .canvas-column[style*="width"] {
-  flex: none;
+  flex: 0 1 auto;
 }
 
 /* Columns are invisible spatial partitions — no hover highlight.

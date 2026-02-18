@@ -69,11 +69,6 @@ export class BlockHandlesController {
     ec.appendChild(this._blockAddBtn);
 
     // ── Position + button alongside drag handle via MutationObserver ──
-    // Also correct the drag handle's horizontal position so it consistently
-    // aligns with the block's left edge. GlobalDragHandle's nodeDOMAtCoords
-    // can resolve to different DOM elements depending on exact mouse position,
-    // producing inconsistent left values. We re-derive left from the block
-    // element that our own _resolveBlockFromHandle finds via elementsFromPoint.
     this._handleObserver = new MutationObserver(() => {
       if (!this._dragHandleEl || !this._blockAddBtn) return;
       const isHidden = this._dragHandleEl.classList.contains('hide');
@@ -83,34 +78,9 @@ export class BlockHandlesController {
       }
       this._blockAddBtn.classList.remove('hide');
       this._blockAddBtn.style.top = this._dragHandleEl.style.top;
-
-      // ── Correct horizontal position ──
-      // Find the actual block element at the handle's vertical center
-      const handleRect = this._dragHandleEl.getBoundingClientRect();
-      const handleY = handleRect.top + handleRect.height / 2;
-      const scanX = handleRect.right + 50;
-      const selectors = [
-        'li', 'p', 'pre', 'blockquote',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        '[data-type=mathBlock]', '[data-type=columnList]',
-        '[data-type=callout]', '[data-type=details]',
-      ].join(', ');
-      const blockEl = document.elementsFromPoint(scanX, handleY)
-        .find((el: Element) =>
-          el.parentElement?.matches?.('.ProseMirror') ||
-          el.matches(selectors),
-        );
-      if (blockEl) {
-        const blockLeft = blockEl.getBoundingClientRect().left;
-        const handleWidth = 24; // matches GlobalDragHandle's dragHandleWidth
-        const correctedLeft = blockLeft - handleWidth;
-        this._dragHandleEl.style.left = `${correctedLeft}px`;
-        this._blockAddBtn.style.left = `${correctedLeft - 22}px`;
-      } else {
-        const handleLeft = parseFloat(this._dragHandleEl.style.left);
-        if (!isNaN(handleLeft)) {
-          this._blockAddBtn.style.left = `${handleLeft - 22}px`;
-        }
+      const handleLeft = parseFloat(this._dragHandleEl.style.left);
+      if (!isNaN(handleLeft)) {
+        this._blockAddBtn.style.left = `${handleLeft - 22}px`;
       }
     });
     this._handleObserver.observe(this._dragHandleEl, {
