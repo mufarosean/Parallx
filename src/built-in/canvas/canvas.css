@@ -373,7 +373,7 @@
 /* ── Paragraphs — relaxed spacing ── */
 
 .canvas-tiptap-editor p {
-  margin: 0.125em 0;
+  margin: 2px 0;
 }
 
 /* First paragraph after heading — no extra top margin */
@@ -615,7 +615,10 @@
 .canvas-tiptap-editor ul[style*="background-color"],
 .canvas-tiptap-editor ol[style*="background-color"],
 .canvas-tiptap-editor [data-type="taskList"][style*="background-color"] {
-  padding: 4px 8px;
+  /* Keep vertical geometry stable while extending bg slightly around text. */
+  padding-block: 0;
+  padding-inline: 6px;
+  margin-inline: -6px;
   border-radius: 4px;
 }
 
@@ -3086,7 +3089,7 @@
   min-width: 0;
   position: relative;
   border-radius: 4px;
-  padding: 4px 0;
+  padding: 0;
   box-sizing: border-box;
   transition: background-color 0.15s ease;
 }
@@ -3105,16 +3108,6 @@
 .column-resizing .canvas-column-list:hover .canvas-column,
 .column-resizing .canvas-column:hover {
   background-color: transparent !important;
-}
-
-/* Remove top margin from first child inside column */
-.canvas-column > :first-child {
-  margin-top: 0;
-}
-
-/* Remove bottom margin from last child inside column */
-.canvas-column > :last-child {
-  margin-bottom: 0;
 }
 
 /* Resize handle zone — invisible but cursor changes on hover.

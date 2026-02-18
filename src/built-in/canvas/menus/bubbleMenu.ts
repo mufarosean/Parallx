@@ -29,6 +29,11 @@ export class BubbleMenuController {
   /** The menu element (for contains-checks in blur handlers). */
   get menu(): HTMLElement | null { return this._menu; }
 
+  /** Whether the bubble menu is currently visible. */
+  get visible(): boolean {
+    return !!this._menu && this._menu.style.display !== 'none';
+  }
+
   /** Build the hidden bubble menu DOM and attach it to the container. */
   create(): void {
     this._menu = $('div.canvas-bubble-menu');
@@ -200,6 +205,11 @@ export class BubbleMenuController {
   update(editor: Editor): void {
     if (!this._menu) return;
 
+    if (this._isInteractionArbitrationLocked(editor)) {
+      this.hide();
+      return;
+    }
+
     const { from, to, empty } = editor.state.selection;
     if (empty || from === to) {
       this.hide();
@@ -232,6 +242,17 @@ export class BubbleMenuController {
     this._refreshActiveStates();
     // Hide link input when selection changes
     if (this._linkInput) this._linkInput.style.display = 'none';
+  }
+
+  private _isInteractionArbitrationLocked(editor: Editor): boolean {
+    const body = document.body;
+    if (body.classList.contains('column-resizing') || body.classList.contains('column-resize-hover')) {
+      return true;
+    }
+    if (editor.view.dom.classList.contains('dragging')) {
+      return true;
+    }
+    return false;
   }
 
   private _refreshActiveStates(): void {

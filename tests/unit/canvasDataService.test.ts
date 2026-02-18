@@ -16,6 +16,7 @@ function fullRow(overrides: Partial<Record<string, unknown>> = {}): Record<strin
     title: 'Test Page',
     icon: '📄',
     content: '{"type":"doc","content":[]}',
+    content_schema_version: 2,
     sort_order: 0,
     is_archived: 0,
     cover_url: null,
@@ -45,6 +46,7 @@ describe('rowToPage', () => {
     expect(page.title).toBe('Test Page');
     expect(page.icon).toBe('📄');
     expect(page.content).toBe('{"type":"doc","content":[]}');
+    expect(page.contentSchemaVersion).toBe(2);
     expect(page.sortOrder).toBe(0);
     expect(page.isArchived).toBe(false);
     expect(page.coverUrl).toBeNull();

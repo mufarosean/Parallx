@@ -20,6 +20,10 @@
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Fragment } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
+import {
+  deleteDraggedSourceFromTransaction,
+  resetColumnListWidthsInTransaction,
+} from '../mutations/blockMutations.js';
 
 export function columnDropPlugin(): Plugin {
   const pluginKey = new PluginKey('columnDrop');
@@ -260,67 +264,6 @@ export function columnDropPlugin(): Plugin {
     return ry < r.height / 2 ? 'above' : 'below';
   }
 
-  // ── Source deletion helper ──
-  // Checks the source block's context in the CURRENT transaction doc
-  // (after any earlier inserts). If the source is the last block in a
-  // column, deletes the entire column and redistributes widths.
-
-  function deleteSrc(tr: any, dragFrom: number, dragTo: number): void {
-    const mFrom = tr.mapping.map(dragFrom);
-    const mTo = tr.mapping.map(dragTo);
-    const $src = tr.doc.resolve(mFrom);
-
-    let colD = -1;
-    for (let d = $src.depth; d >= 1; d--) {
-      if ($src.node(d).type.name === 'column') { colD = d; break; }
-    }
-
-    if (colD >= 0) {
-      const colNode = $src.node(colD);
-      if (colNode.childCount <= 1) {
-        // Last block in column — delete the entire column.
-        // columnAutoDissolvePlugin will dissolve if ≤1 column remains.
-        const colStart = $src.before(colD);
-        const clPos = $src.before(colD - 1);
-        tr.delete(colStart, colStart + colNode.nodeSize);
-
-        // Redistribute widths in remaining columns to equal
-        const clNow = tr.doc.nodeAt(clPos);
-        if (clNow && clNow.type.name === 'columnList') {
-          let off = clPos + 1;
-          for (let i = 0; i < clNow.childCount; i++) {
-            const ch = clNow.child(i);
-            if (ch.type.name === 'column' && ch.attrs.width !== null) {
-              tr.setNodeMarkup(off, undefined, { ...ch.attrs, width: null });
-            }
-            off += ch.nodeSize;
-          }
-        }
-        return;
-      }
-    }
-
-    // Normal delete — block has siblings in its container
-    if (mTo > mFrom) tr.delete(mFrom, mTo);
-  }
-
-  // ── Width redistribution helper ──
-  // Resets all columns in a columnList to equal widths (null = flex: 1).
-
-  function resetWidths(tr: any, columnListPos: number): void {
-    const mPos = tr.mapping.map(columnListPos);
-    const cl = tr.doc.nodeAt(mPos);
-    if (!cl || cl.type.name !== 'columnList') return;
-    let off = mPos + 1;
-    for (let i = 0; i < cl.childCount; i++) {
-      const ch = cl.child(i);
-      if (ch.type.name === 'column' && ch.attrs.width !== null) {
-        tr.setNodeMarkup(off, undefined, { ...ch.attrs, width: null });
-      }
-      off += ch.nodeSize;
-    }
-  }
-
   // ── Plugin ──
 
   return new Plugin({
@@ -415,7 +358,7 @@ export function columnDropPlugin(): Plugin {
               ? target.blockPos
               : target.blockPos + target.blockNode.nodeSize;
             tr.insert(insertPos, content);
-            if (!isDuplicate) deleteSrc(tr, dragFrom, dragTo);
+            if (!isDuplicate) deleteDraggedSourceFromTransaction(tr, dragFrom, dragTo);
             view.dispatch(tr);
             return true;
           }
@@ -438,7 +381,7 @@ export function columnDropPlugin(): Plugin {
             try { cl = columnListType.create(null, cols); } catch { return false; }
 
             tr.replaceWith(target.blockPos, target.blockPos + tNode.nodeSize, cl);
-            if (!isDuplicate) deleteSrc(tr, dragFrom, dragTo);
+            if (!isDuplicate) deleteDraggedSourceFromTransaction(tr, dragFrom, dragTo);
             view.dispatch(tr);
             return true;
           }
@@ -472,7 +415,7 @@ export function columnDropPlugin(): Plugin {
             : target.columnPos + targetColNode.nodeSize;
 
           tr.insert(insertColPos, newCol);
-          if (!isDuplicate) deleteSrc(tr, dragFrom, dragTo);
+          if (!isDuplicate) deleteDraggedSourceFromTransaction(tr, dragFrom, dragTo);
 
           // ── Width redistribution: Notion-style split ──
           // Split the target column's width between itself and the new column.
@@ -504,11 +447,11 @@ export function columnDropPlugin(): Plugin {
               }
             } else {
               // Fallback — couldn't locate target; equalize
-              resetWidths(tr, target.columnListPos!);
+              resetColumnListWidthsInTransaction(tr, target.columnListPos!);
             }
           } else {
             // Source column was removed from same columnList — equalize
-            resetWidths(tr, target.columnListPos!);
+            resetColumnListWidthsInTransaction(tr, target.columnListPos!);
           }
 
           view.dispatch(tr);

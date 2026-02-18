@@ -38,6 +38,17 @@ export class BlockSelectionController {
   private _editorChangeHandler: (() => void) | null = null;
   private _docClickHandler: ((e: MouseEvent) => void) | null = null;
 
+  private static readonly _DEV_MODE = (() => {
+    if (typeof window !== 'undefined' && (window as any).parallxElectron?.testMode) {
+      return true;
+    }
+    const proc = (globalThis as any).process;
+    if (proc?.env?.NODE_ENV) {
+      return proc.env.NODE_ENV !== 'production';
+    }
+    return true;
+  })();
+
   constructor(private readonly _host: BlockSelectionHost) {}
 
   // ── Setup / Teardown ──────────────────────────────────────────────────
@@ -75,6 +86,7 @@ export class BlockSelectionController {
 
   /** Snapshot of currently selected positions. */
   get positions(): number[] {
+    this._sanitizeSelectionReferences();
     return [...this._selected].sort((a, b) => a - b);
   }
 
@@ -228,6 +240,7 @@ export class BlockSelectionController {
   // ── Visual Rendering ──────────────────────────────────────────────────
 
   private _renderSelection(): void {
+    this._sanitizeSelectionReferences();
     this._clearVisual();
     const editor = this._host.editor;
     if (!editor) return;
@@ -288,6 +301,29 @@ export class BlockSelectionController {
     if (!ec) return;
     const selected = ec.querySelectorAll(`.${BlockSelectionController._SEL_CLASS}`);
     selected.forEach((el) => el.classList.remove(BlockSelectionController._SEL_CLASS));
+  }
+
+  private _sanitizeSelectionReferences(): void {
+    const editor = this._host.editor;
+    if (!editor || this._selected.size === 0) return;
+
+    const stale: number[] = [];
+    for (const pos of this._selected) {
+      const node = editor.state.doc.nodeAt(pos);
+      if (!node) {
+        stale.push(pos);
+      }
+    }
+
+    if (stale.length === 0) return;
+
+    for (const pos of stale) {
+      this._selected.delete(pos);
+    }
+
+    if (BlockSelectionController._DEV_MODE) {
+      console.warn('[Canvas Invariants] Dropped stale block selection references', { stale });
+    }
   }
 
   // ── Dispose ─────────────────────────────────────────────────────────────

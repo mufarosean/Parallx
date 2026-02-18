@@ -1239,8 +1239,19 @@ test.describe('Column Layout', () => {
         },
       ]);
 
-      // Click in "Col A2" then move it up (swap within column)
-      await tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Col A2' }).click();
+      // Put cursor explicitly inside "Col A2" then move it up (swap within column)
+      await window.evaluate(() => {
+        const editor = (window as any).__tiptapEditor;
+        let targetPos = 2;
+        editor.state.doc.descendants((node: any, pos: number) => {
+          if (node.type?.name === 'paragraph' && node.textContent === 'Col A2') {
+            targetPos = pos + 1;
+            return false;
+          }
+          return true;
+        });
+        editor.commands.setTextSelection(targetPos);
+      });
       await window.keyboard.press('Control+Shift+ArrowUp');
       await window.waitForTimeout(300);
 
@@ -1275,8 +1286,19 @@ test.describe('Column Layout', () => {
         },
       ]);
 
-      // Click in "Col A1" then move it down
-      await tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Col A1' }).click();
+      // Put cursor explicitly inside "Col A1" then move it down
+      await window.evaluate(() => {
+        const editor = (window as any).__tiptapEditor;
+        let targetPos = 2;
+        editor.state.doc.descendants((node: any, pos: number) => {
+          if (node.type?.name === 'paragraph' && node.textContent === 'Col A1') {
+            targetPos = pos + 1;
+            return false;
+          }
+          return true;
+        });
+        editor.commands.setTextSelection(targetPos);
+      });
       await window.keyboard.press('Control+Shift+ArrowDown');
       await window.waitForTimeout(300);
 
@@ -1416,8 +1438,10 @@ test.describe('Column Layout', () => {
         { type: 'paragraph', content: [{ type: 'text', text: 'Beta' }] },
       ]);
 
-      // Click in "Alpha" then duplicate
-      await tiptap.locator('p', { hasText: 'Alpha' }).click();
+      // Put cursor explicitly inside "Alpha" then duplicate
+      await window.evaluate(() => {
+        (window as any).__tiptapEditor.commands.setTextSelection(2);
+      });
       await window.keyboard.press('Control+d');
       await window.waitForTimeout(300);
 

@@ -24,13 +24,14 @@ async function openCanvasSidebar(page: import('@playwright/test').Page): Promise
 
   // Wait for the canvas sidebar content to render
   await page.waitForSelector('.canvas-tree', { timeout: 10_000 });
+  await page.waitForSelector('.canvas-sidebar-add-btn', { timeout: 10_000 });
 }
 
 /**
  * Create a new page by clicking the + button in the Canvas toolbar.
  */
 async function createNewPage(page: import('@playwright/test').Page): Promise<void> {
-  const addBtn = page.locator('.canvas-toolbar-btn');
+  const addBtn = page.locator('.canvas-sidebar-add-btn');
   await addBtn.click();
 
   // Wait for a canvas node to appear in the tree
@@ -53,7 +54,7 @@ test.describe('Canvas Tool', () => {
 
     test('clicking Canvas icon shows the Canvas sidebar with toolbar', async ({ window }) => {
       await openCanvasSidebar(window);
-      const toolbar = window.locator('.canvas-toolbar');
+      const toolbar = window.locator('.canvas-sidebar-section-header');
       await expect(toolbar).toBeVisible();
     });
   });
@@ -82,7 +83,7 @@ test.describe('Canvas Tool', () => {
 
       // ── Step 3: Create a new page via + button ──
       const nodesBefore = await window.locator('.canvas-node').count();
-      const addBtn = window.locator('.canvas-toolbar-btn');
+      const addBtn = window.locator('.canvas-sidebar-add-btn');
       await addBtn.click();
 
       // Wait for the canvas node to appear
@@ -116,7 +117,7 @@ test.describe('Canvas Tool', () => {
       await expect(tiptap).toBeVisible();
 
       // ── Step 8: Verify page menu button ──
-      const menuBtn = window.locator('.canvas-page-menu-btn');
+      const menuBtn = window.locator('.canvas-top-ribbon-menu');
       await expect(menuBtn).toBeVisible();
     });
 
@@ -126,14 +127,14 @@ test.describe('Canvas Tool', () => {
       await openCanvasSidebar(window);
 
       // Create a page and open it
-      const addBtn = window.locator('.canvas-toolbar-btn');
+      const addBtn = window.locator('.canvas-sidebar-add-btn');
       await addBtn.click();
       await window.waitForSelector('.canvas-node', { timeout: 10_000 });
       await window.locator('.canvas-node').first().click();
-      await window.waitForSelector('.canvas-page-menu-btn', { timeout: 10_000 });
+      await window.waitForSelector('.canvas-top-ribbon-menu', { timeout: 10_000 });
 
       // Click the menu button
-      await window.locator('.canvas-page-menu-btn').click();
+      await window.locator('.canvas-top-ribbon-menu').click();
       const pageMenu = window.locator('.canvas-page-menu');
       await expect(pageMenu).toBeVisible({ timeout: 3_000 });
     });
@@ -144,7 +145,7 @@ test.describe('Canvas Tool', () => {
       await openCanvasSidebar(window);
 
       // Create a page
-      const addBtn = window.locator('.canvas-toolbar-btn');
+      const addBtn = window.locator('.canvas-sidebar-add-btn');
       await addBtn.click();
       await window.waitForSelector('.canvas-node', { timeout: 10_000 });
 
@@ -165,7 +166,7 @@ test.describe('Canvas Tool', () => {
       await openCanvasSidebar(window);
 
       // Create a page
-      const addBtn = window.locator('.canvas-toolbar-btn');
+      const addBtn = window.locator('.canvas-sidebar-add-btn');
       await addBtn.click();
       await window.waitForSelector('.canvas-node', { timeout: 10_000 });
 
@@ -197,7 +198,7 @@ test.describe('Canvas Tool', () => {
       if (await deleteItem.count() > 0) {
         await deleteItem.click();
         await window.waitForTimeout(500);
-        const trashSection = window.locator('.canvas-sidebar-trash-label');
+        const trashSection = window.locator('.canvas-sidebar-trash-btn');
         await expect(trashSection).toBeVisible({ timeout: 3_000 });
       }
     });

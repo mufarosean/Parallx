@@ -207,8 +207,16 @@ export function columnResizePlugin(): Plugin {
             const containerWidth = dragging.listEl.getBoundingClientRect().width;
             if (containerWidth === 0) return true;
             const deltaPercent = (delta / containerWidth) * 100;
-            const newLeft = Math.max(10, Math.min(90, dragging.leftStartWidth + deltaPercent));
-            const newRight = Math.max(10, Math.min(90, dragging.rightStartWidth - deltaPercent));
+
+            // Clamp drag delta once so the boundary hard-stops when either
+            // side reaches min width. This preserves the pair sum and avoids
+            // pushing the non-dragged outer edge.
+            const minDelta = 10 - dragging.leftStartWidth;
+            const maxDelta = dragging.rightStartWidth - 10;
+            const clampedDelta = Math.max(minDelta, Math.min(maxDelta, deltaPercent));
+
+            const newLeft = dragging.leftStartWidth + clampedDelta;
+            const newRight = dragging.rightStartWidth - clampedDelta;
             const leftW = Math.round(newLeft * 10) / 10;
             const rightW = Math.round(newRight * 10) / 10;
 

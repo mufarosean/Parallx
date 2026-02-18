@@ -13,6 +13,13 @@ import { NodeSelection } from '@tiptap/pm/state';
 import type { BlockSelectionController } from './blockSelection.js';
 import { $ } from '../../../ui/dom.js';
 import { svgIcon } from '../canvasIcons.js';
+import {
+  applyBackgroundColorToBlock,
+  applyTextColorToBlock,
+  deleteBlockAt,
+  duplicateBlockAt,
+  turnBlockWithSharedStrategy,
+} from '../mutations/blockMutations.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 
@@ -20,8 +27,6 @@ export interface BlockHandlesHost {
   readonly editor: Editor | null;
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
-  readonly dataService: { scheduleContentSave(pageId: string, json: string): void };
-  readonly pageId: string;
   readonly blockSelection: BlockSelectionController;
 }
 
@@ -71,6 +76,11 @@ export class BlockHandlesController {
     // ── Position + button alongside drag handle via MutationObserver ──
     this._handleObserver = new MutationObserver(() => {
       if (!this._dragHandleEl || !this._blockAddBtn) return;
+      if (this._isResizeInteractionActive()) {
+        this._blockAddBtn.classList.add('hide');
+        this._hideBlockActionMenu();
+        return;
+      }
       const isHidden = this._dragHandleEl.classList.contains('hide');
       if (isHidden) {
         this._blockAddBtn.classList.add('hide');
@@ -93,14 +103,12 @@ export class BlockHandlesController {
     this._blockAddBtn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
     this._dragHandleEl.addEventListener('click', this._onDragHandleClick);
 
-    // ── Fix GlobalDragHandle column mis-selection ──
-    // GlobalDragHandle's calcNodePos has a bug: for blocks inside columns,
-    // posAtCoords returns a position at the boundary between paragraphs.
-    // ProseMirror resolves boundary positions at the parent (column) level,
-    // so calcNodePos returns the column position instead of the paragraph.
-    // This listener fires AFTER GlobalDragHandle's dragstart handler and
-    // corrects the selection + dragging slice.
-    this._dragHandleEl.addEventListener('dragstart', this._onDragHandleFixSelection);
+    // ── Canvas-owned drag lifecycle ──
+    // Single source of truth for dragstart/dragend on the block handle.
+    // We capture dragstart so the external extension does not mutate selection
+    // or drag payload in parallel.
+    this._dragHandleEl.addEventListener('dragstart', this._onDragHandleDragStart, true);
+    this._dragHandleEl.addEventListener('dragend', this._onDragHandleDragEnd);
 
     // ── Prevent drag handle from hiding when mouse moves to the + button ──
     ec.addEventListener('mouseout', this._onEditorMouseOut, true);
@@ -158,6 +166,7 @@ export class BlockHandlesController {
   private readonly _onDragHandleClick = (e: MouseEvent): void => {
     const editor = this._host.editor;
     if (!editor) return;
+    if (this._isResizeInteractionActive()) return;
     if (this._blockActionMenu?.style.display === 'block') {
       this._hideBlockActionMenu();
       return;
@@ -177,39 +186,59 @@ export class BlockHandlesController {
     this._showBlockActionMenu();
   };
 
-  // ── Drag Handle Dragstart Fix ──
-  //
-  // GlobalDragHandle's `calcNodePos` resolves boundary positions between
-  // sibling paragraphs at the *parent* depth (column) instead of the child
-  // depth (paragraph).  This listener fires AFTER GlobalDragHandle's handler
-  // and corrects the selection + `view.dragging.slice` when a column was
-  // incorrectly selected instead of the individual block inside it.
+  // ── Drag Handle Drag Lifecycle (single owner) ──
 
-  private readonly _onDragHandleFixSelection = (): void => {
+  private readonly _onDragHandleDragStart = (event: DragEvent): void => {
     const editor = this._host.editor;
     if (!editor) return;
-    const { state, view } = editor;
+    if (this._isResizeInteractionActive()) {
+      event.preventDefault();
+      return;
+    }
 
-    // Only act when GlobalDragHandle mis-selected a column
-    if (!(state.selection instanceof NodeSelection)) return;
-    if (state.selection.node.type.name !== 'column') return;
+    const { view } = editor;
 
-    // Resolve the correct block (paragraph) via our own resolution logic
+    // Prevent parallel dragstart handling from external extension listeners.
+    event.stopImmediatePropagation();
+
     const block = this._resolveBlockFromHandle();
-    if (!block) return;
+    if (!block) {
+      event.preventDefault();
+      return;
+    }
 
-    // Correct the selection to the paragraph
-    const tr = state.tr.setSelection(NodeSelection.create(state.doc, block.pos));
+    const tr = view.state.tr.setSelection(NodeSelection.create(view.state.doc, block.pos));
     view.dispatch(tr);
 
-    // Correct view.dragging.slice so the drag carries the paragraph, not the column
-    if (view.dragging) {
-      view.dragging.slice = view.state.selection.content();
+    if (event.dataTransfer) {
+      try {
+        event.dataTransfer.effectAllowed = 'copyMove';
+        event.dataTransfer.setData('text/plain', 'parallx-canvas-block-drag');
+      } catch {
+        // Best-effort: drag payload setup is browser-dependent.
+      }
     }
+
+    view.dragging = {
+      slice: view.state.selection.content(),
+      move: true,
+    } as any;
+    view.dom.classList.add('dragging');
+  };
+
+  private readonly _onDragHandleDragEnd = (): void => {
+    const editor = this._host.editor;
+    if (!editor) return;
+    editor.view.dragging = null as any;
+    editor.view.dom.classList.remove('dragging');
   };
 
   private readonly _onDocClickOutside = (e: MouseEvent): void => {
     if (!this._blockActionMenu || this._blockActionMenu.style.display !== 'block') return;
+    if (this._isResizeInteractionActive()) {
+      this._hideBlockActionMenu();
+      return;
+    }
     const target = e.target as HTMLElement;
     if (this._blockActionMenu.contains(target)) return;
     if (this._turnIntoSubmenu?.contains(target)) return;
@@ -318,6 +347,11 @@ export class BlockHandlesController {
       }
     }
     return null;
+  }
+
+  private _isResizeInteractionActive(): boolean {
+    const body = document.body;
+    return body.classList.contains('column-resize-hover') || body.classList.contains('column-resizing');
   }
 
   // ── Block Action Menu ───────────────────────────────────────────────────
@@ -634,287 +668,10 @@ export class BlockHandlesController {
     if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
-    const srcType = node.type.name;
     this._hideBlockActionMenu();
     if (this._isCurrentBlockType(targetType, attrs)) return;
 
-    const simpleTextBlock = ['paragraph', 'heading'].includes(srcType);
-    const simpleTarget = ['paragraph', 'heading', 'bulletList', 'orderedList', 'taskList', 'blockquote', 'codeBlock'].includes(targetType);
-
-    if (simpleTextBlock && simpleTarget) {
-      try {
-        editor.chain().setTextSelection(pos + 1).run();
-        switch (targetType) {
-          case 'paragraph': editor.chain().setParagraph().focus().run(); break;
-          case 'heading': editor.chain().setHeading(attrs).focus().run(); break;
-          case 'bulletList': editor.chain().toggleBulletList().focus().run(); break;
-          case 'orderedList': editor.chain().toggleOrderedList().focus().run(); break;
-          case 'taskList': editor.chain().toggleTaskList().focus().run(); break;
-          case 'blockquote': editor.chain().toggleBlockquote().focus().run(); break;
-          case 'codeBlock': editor.chain().toggleCodeBlock().focus().run(); break;
-        }
-      } catch {
-        this._turnBlockViaReplace(editor, pos, node, targetType, attrs);
-      }
-    } else {
-      this._turnBlockViaReplace(editor, pos, node, targetType, attrs);
-    }
-
-    const json = JSON.stringify(editor.getJSON());
-    this._host.dataService.scheduleContentSave(this._host.pageId, json);
-  }
-
-  private _turnBlockViaReplace(editor: Editor, pos: number, node: any, targetType: string, attrs?: any): void {
-    const content = this._extractBlockContent(node);
-    const textContent = node.textContent || '';
-
-    // ── Container source → special handling ──
-    const containerTypes = new Set(['callout', 'details', 'blockquote', 'toggleHeading']);
-    const isSourceContainer = containerTypes.has(node.type.name);
-    const isTargetContainer = containerTypes.has(targetType);
-
-    if (isSourceContainer) {
-      const innerBlocks = this._extractContainerBlocks(node);
-
-      if (targetType === 'paragraph') {
-        // Container → Paragraph: unwrap all inner blocks into parent
-        this._unwrapContainer(editor, pos, node, innerBlocks);
-        return;
-      }
-
-      if (isTargetContainer) {
-        // Container → Container: swap wrapper or reflow
-        this._swapContainer(editor, pos, node, targetType, innerBlocks, attrs);
-        return;
-      }
-
-      // Container → Leaf: lossy — extract first block's text
-      const firstBlockContent = innerBlocks.length > 0 ? innerBlocks[0] : content;
-      const leafContent = this._extractInlineContent(firstBlockContent);
-      const newBlock = this._buildLeafBlock(targetType, leafContent, textContent, attrs);
-      if (!newBlock) return;
-      editor.chain().insertContentAt({ from: pos, to: pos + node.nodeSize }, newBlock).focus().run();
-      return;
-    }
-
-    // ── Leaf source → Container target: wrap ──
-    if (isTargetContainer) {
-      const newBlock = this._buildContainerBlock(targetType, content, attrs);
-      if (!newBlock) return;
-      editor.chain().insertContentAt({ from: pos, to: pos + node.nodeSize }, newBlock).focus().run();
-      return;
-    }
-
-    // ── Leaf → Leaf: existing behavior ──
-    const newBlock = this._buildLeafBlock(targetType, content, textContent, attrs);
-    if (!newBlock) return;
-    editor.chain()
-      .insertContentAt({ from: pos, to: pos + node.nodeSize }, newBlock)
-      .focus()
-      .run();
-  }
-
-  // ── Container Conversion Helpers ─────────────────────────────────────────
-
-  /**
-   * Extract all inner blocks from a container as JSON arrays.
-   * Handles callout (direct children), details (summary + content children),
-   * and blockquote (direct children).
-   */
-  private _extractContainerBlocks(node: any): any[] {
-    const blocks: any[] = [];
-    if (node.type.name === 'details') {
-      // Toggle: summary content → first block, detailsContent children → rest
-      node.forEach((child: any) => {
-        if (child.type.name === 'detailsSummary') {
-          const summaryContent = child.content.toJSON() || [];
-          blocks.push({ type: 'paragraph', content: summaryContent });
-        } else if (child.type.name === 'detailsContent') {
-          child.forEach((inner: any) => blocks.push(inner.toJSON()));
-        }
-      });
-    } else if (node.type.name === 'toggleHeading') {
-      // Toggle heading: heading text → first block, detailsContent children → rest
-      node.forEach((child: any) => {
-        if (child.type.name === 'toggleHeadingText') {
-          const textContent = child.content.toJSON() || [];
-          blocks.push({ type: 'heading', attrs: { level: node.attrs.level }, content: textContent });
-        } else if (child.type.name === 'detailsContent') {
-          child.forEach((inner: any) => blocks.push(inner.toJSON()));
-        }
-      });
-    } else {
-      // callout, blockquote: direct children are blocks
-      node.forEach((child: any) => blocks.push(child.toJSON()));
-    }
-    return blocks;
-  }
-
-  /**
-   * Unwrap a container: replace it with its inner blocks in the parent Page.
-   * Callout → inner blocks become siblings. Toggle → summary + body blocks.
-   */
-  private _unwrapContainer(editor: Editor, pos: number, node: any, innerBlocks: any[]): void {
-    if (innerBlocks.length === 0) {
-      innerBlocks = [{ type: 'paragraph' }];
-    }
-    editor.chain()
-      .insertContentAt({ from: pos, to: pos + node.nodeSize }, innerBlocks)
-      .focus()
-      .run();
-  }
-
-  /**
-   * Swap one container for another, preserving inner blocks.
-   *
-   * Conversion rules from CANVAS_STRUCTURAL_MODEL.md §5.2.1:
-   *   Callout → Toggle: first inner → summary, rest → body
-   *   Callout → Quote:  swap wrapper, keep blocks
-   *   Toggle → Callout: wrap toggle inside callout (toggle stays intact) ...
-   *     ACTUALLY per spec: summary → first block, body blocks → rest, new callout wraps all
-   *   Toggle → Quote:   summary → first block, body blocks → rest, new quote wraps all
-   *   Quote → Callout:  swap wrapper, keep blocks
-   *   Quote → Toggle:   first inner → summary, rest → body
-   */
-  private _swapContainer(editor: Editor, pos: number, node: any, targetType: string, innerBlocks: any[], attrs?: any): void {
-    let newBlock: any;
-
-    if (targetType === 'details') {
-      // → Toggle: first inner block → summary, rest → body
-      const summaryContent = innerBlocks.length > 0
-        ? (innerBlocks[0].content || [])
-        : [];
-      const bodyBlocks = innerBlocks.length > 1
-        ? innerBlocks.slice(1)
-        : [{ type: 'paragraph' }];
-      newBlock = {
-        type: 'details',
-        content: [
-          { type: 'detailsSummary', content: summaryContent },
-          { type: 'detailsContent', content: bodyBlocks },
-        ],
-      };
-    } else if (targetType === 'toggleHeading') {
-      // → Toggle Heading: first inner block → heading text, rest → body
-      const headingContent = innerBlocks.length > 0
-        ? (innerBlocks[0].content || [])
-        : [];
-      const bodyBlocks = innerBlocks.length > 1
-        ? innerBlocks.slice(1)
-        : [{ type: 'paragraph' }];
-      newBlock = {
-        type: 'toggleHeading',
-        attrs: { level: attrs?.level || 1 },
-        content: [
-          { type: 'toggleHeadingText', content: headingContent },
-          { type: 'detailsContent', content: bodyBlocks },
-        ],
-      };
-    } else if (targetType === 'callout') {
-      // → Callout: wrap all inner blocks
-      newBlock = {
-        type: 'callout',
-        attrs: { emoji: attrs?.emoji || 'lightbulb' },
-        content: innerBlocks.length > 0 ? innerBlocks : [{ type: 'paragraph' }],
-      };
-    } else if (targetType === 'blockquote') {
-      // → Quote: wrap all inner blocks
-      newBlock = {
-        type: 'blockquote',
-        content: innerBlocks.length > 0 ? innerBlocks : [{ type: 'paragraph' }],
-      };
-    } else {
-      return;
-    }
-
-    editor.chain()
-      .insertContentAt({ from: pos, to: pos + node.nodeSize }, newBlock)
-      .focus()
-      .run();
-  }
-
-  /**
-   * Build a container block wrapping a single leaf's content.
-   * Leaf → Container: the leaf becomes the first (and only) inner block.
-   */
-  private _buildContainerBlock(targetType: string, inlineContent: any[], attrs?: any): any | null {
-    switch (targetType) {
-      case 'callout':
-        return { type: 'callout', attrs: { emoji: attrs?.emoji || 'lightbulb' }, content: [{ type: 'paragraph', content: inlineContent }] };
-      case 'details':
-        return { type: 'details', content: [
-          { type: 'detailsSummary', content: inlineContent },
-          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
-        ]};
-      case 'toggleHeading':
-        return { type: 'toggleHeading', attrs: { level: attrs?.level || 1 }, content: [
-          { type: 'toggleHeadingText', content: inlineContent },
-          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
-        ]};
-      case 'blockquote':
-        return { type: 'blockquote', content: [{ type: 'paragraph', content: inlineContent }] };
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Build a leaf block from inline content and/or raw text.
-   */
-  private _buildLeafBlock(targetType: string, inlineContent: any[], textContent: string, attrs?: any): any | null {
-    switch (targetType) {
-      case 'paragraph':
-        return { type: 'paragraph', content: inlineContent };
-      case 'heading':
-        return { type: 'heading', attrs, content: inlineContent };
-      case 'bulletList':
-        return { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: inlineContent }] }] };
-      case 'orderedList':
-        return { type: 'orderedList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: inlineContent }] }] };
-      case 'taskList':
-        return { type: 'taskList', content: [{ type: 'taskItem', attrs: { checked: false }, content: [{ type: 'paragraph', content: inlineContent }] }] };
-      case 'codeBlock':
-        return { type: 'codeBlock', content: textContent ? [{ type: 'text', text: textContent }] : [] };
-      case 'mathBlock':
-        return { type: 'mathBlock', attrs: { latex: textContent } };
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Extract inline content from a block JSON object.
-   * Handles both leaf blocks (has .content directly) and wrapped blocks.
-   */
-  private _extractInlineContent(blockJson: any): any[] {
-    if (blockJson.content && Array.isArray(blockJson.content)) {
-      // Check if content items are inline (text nodes)
-      if (blockJson.content.length > 0 && blockJson.content[0].type === 'text') {
-        return blockJson.content;
-      }
-      // Nested — try first child
-      if (blockJson.content.length > 0) {
-        return this._extractInlineContent(blockJson.content[0]);
-      }
-    }
-    return [];
-  }
-
-  /** Extract inline content (text + marks) from the first textblock inside a node. */
-  private _extractBlockContent(node: any): any[] {
-    if (node.isTextblock) return node.content.toJSON() || [];
-    let result: any[] = [];
-    node.descendants((child: any) => {
-      if (child.isTextblock && result.length === 0) {
-        result = child.content.toJSON() || [];
-        return false;
-      }
-      return true;
-    });
-    if (result.length === 0 && node.textContent) {
-      result = [{ type: 'text', text: node.textContent }];
-    }
-    return result;
+    turnBlockWithSharedStrategy(editor, pos, node, targetType, attrs);
   }
 
   private _isCurrentBlockType(targetType: string, attrs?: any): boolean {
@@ -945,16 +702,8 @@ export class BlockHandlesController {
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
     this._hideBlockActionMenu();
-    const from = pos + 1;
-    const to = pos + node.nodeSize - 1;
-    if (from >= to) return;
-    if (value) {
-      editor.chain().setTextSelection({ from, to }).setColor(value).focus().run();
-    } else {
-      editor.chain().setTextSelection({ from, to }).unsetColor().focus().run();
-    }
-    const json = JSON.stringify(editor.getJSON());
-    this._host.dataService.scheduleContentSave(this._host.pageId, json);
+    const changed = applyTextColorToBlock(editor, pos, node, value);
+    if (!changed) return;
   }
 
   private _applyBlockBgColor(value: string | null): void {
@@ -963,12 +712,7 @@ export class BlockHandlesController {
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
     this._hideBlockActionMenu();
-    const tr = editor.view.state.tr;
-    tr.setNodeMarkup(pos, undefined, { ...node.attrs, backgroundColor: value });
-    editor.view.dispatch(tr);
-    editor.commands.focus();
-    const json = JSON.stringify(editor.getJSON());
-    this._host.dataService.scheduleContentSave(this._host.pageId, json);
+    applyBackgroundColorToBlock(editor, pos, node, value);
   }
 
   // ── Duplicate / Delete ─────────────────────────────────────────────────
@@ -979,10 +723,8 @@ export class BlockHandlesController {
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
     this._hideBlockActionMenu();
-    const json = node.toJSON();
-    editor.chain().insertContentAt(pos + node.nodeSize, json).focus().run();
-    const docJson = JSON.stringify(editor.getJSON());
-    this._host.dataService.scheduleContentSave(this._host.pageId, docJson);
+    duplicateBlockAt(editor, pos, node);
+    editor.commands.focus();
   }
 
   private _deleteBlock(): void {
@@ -991,9 +733,7 @@ export class BlockHandlesController {
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
     this._hideBlockActionMenu();
-    editor.chain().deleteRange({ from: pos, to: pos + node.nodeSize }).focus().run();
-    const json = JSON.stringify(editor.getJSON());
-    this._host.dataService.scheduleContentSave(this._host.pageId, json);
+    deleteBlockAt(editor, pos, node);
   }
 
   // ── Dispose ─────────────────────────────────────────────────────────────
@@ -1003,7 +743,8 @@ export class BlockHandlesController {
     this._handleObserver = null;
     document.removeEventListener('mousedown', this._onDocClickOutside);
     this._host.editorContainer?.removeEventListener('mouseout', this._onEditorMouseOut, true);
-    this._dragHandleEl?.removeEventListener('dragstart', this._onDragHandleFixSelection);
+    this._dragHandleEl?.removeEventListener('dragstart', this._onDragHandleDragStart, true);
+    this._dragHandleEl?.removeEventListener('dragend', this._onDragHandleDragEnd);
     if (this._blockAddBtn) { this._blockAddBtn.remove(); this._blockAddBtn = null; }
     if (this._blockActionMenu) { this._blockActionMenu.remove(); this._blockActionMenu = null; }
     if (this._turnIntoSubmenu) { this._turnIntoSubmenu.remove(); this._turnIntoSubmenu = null; }

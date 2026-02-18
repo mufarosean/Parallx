@@ -10,7 +10,6 @@ import { svgIcon } from '../canvasIcons.js';
 import type { SlashMenuItem } from './slashMenuItems.js';
 import { SLASH_MENU_ITEMS } from './slashMenuItems.js';
 import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
-import type { CanvasDataService } from '../canvasDataService.js';
 
 // ── Dependency interface ────────────────────────────────────────────────────
 
@@ -19,8 +18,7 @@ export interface SlashMenuHost {
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
   readonly inlineMath: InlineMathEditorController;
-  readonly dataService: CanvasDataService;
-  readonly pageId: string;
+  requestSave(reason: string): void;
   /** Toggle the suppress-update flag to prevent re-entrant slash checks. */
   suppressUpdate: boolean;
 }
@@ -38,6 +36,9 @@ export class SlashMenuController {
   /** The menu element (for DOM identity checks). */
   get menu(): HTMLElement | null { return this._menu; }
 
+  /** Whether the slash menu is currently visible. */
+  get visible(): boolean { return this._visible; }
+
   /** Build the hidden slash menu DOM and attach it to the container. */
   create(): void {
     this._menu = $('div.canvas-slash-menu');
@@ -47,7 +48,17 @@ export class SlashMenuController {
 
   /** Called on every editor update — check if the user typed '/'. */
   checkTrigger(editor: Editor): void {
+    if (this._isInteractionArbitrationLocked(editor)) {
+      this.hide();
+      return;
+    }
+
     const { state } = editor;
+    if (!state.selection.empty) {
+      this.hide();
+      return;
+    }
+
     const { $from } = state.selection;
 
     // Only trigger at the start of an empty or text-only paragraph
@@ -65,6 +76,17 @@ export class SlashMenuController {
     } else {
       this.hide();
     }
+  }
+
+  private _isInteractionArbitrationLocked(editor: Editor): boolean {
+    const body = document.body;
+    if (body.classList.contains('column-resizing') || body.classList.contains('column-resize-hover')) {
+      return true;
+    }
+    if (editor.view.dom.classList.contains('dragging')) {
+      return true;
+    }
+    return false;
   }
 
   private _show(editor: Editor): void {
@@ -219,9 +241,8 @@ export class SlashMenuController {
       this._host.suppressUpdate = false;
     }
 
-    // Manually schedule save since onUpdate was suppressed
-    const json = JSON.stringify(editor.getJSON());
-    this._host.dataService.scheduleContentSave(this._host.pageId, json);
+    // Explicit exceptional save path: slash execution suppresses onUpdate checks.
+    this._host.requestSave('slash-execute');
 
     this.hide();
 

@@ -23,6 +23,7 @@ import { Callout } from '../extensions/calloutNode.js';
 import { Column, ColumnList } from '../extensions/columnNodes.js';
 import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
 import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
+import { StructuralInvariantGuard } from '../extensions/structuralInvariantGuard.js';
 import { MathBlock } from '../extensions/mathBlockNode.js';
 import { ToggleHeading, ToggleHeadingText } from '../extensions/toggleHeadingNode.js';
 import { Bookmark } from '../extensions/bookmarkNode.js';
@@ -46,10 +47,9 @@ export function createEditorExtensions(lowlight: any): Extensions {
           class: 'canvas-link',
         },
       },
-      dropcursor: {
-        color: 'rgba(45, 170, 219, 0.4)',
-        width: 3,
-      },
+      // Canvas provides its own drag/drop guides via columnDropPlugin.
+      // Keep ProseMirror dropcursor disabled to avoid double indicators.
+      dropcursor: false,
     }),
     Placeholder.configure({
       placeholder: ({ node, pos, editor, hasAnchor }: { node: any; pos: number; editor: any; hasAnchor: boolean }) => {
@@ -124,6 +124,7 @@ export function createEditorExtensions(lowlight: any): Extensions {
     AutoJoiner,
     DetailsEnterHandler,
     BlockKeyboardShortcuts,
+    StructuralInvariantGuard,
     // ── Math / KaTeX ──
     InlineMathNode.configure({
       evaluation: false,

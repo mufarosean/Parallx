@@ -361,6 +361,173 @@ This phase adds new leaf and container blocks. Because the interaction model is 
 
 ---
 
+## Milestone 7 Refinement — Robustness, Stability, and Notion Parity
+
+> **Goal:** Improve reliability and interaction consistency of the Canvas editor without removing or regressing any existing functionality.
+
+### Refinement Principles
+
+1. **No functional regression** — current user-visible behavior remains valid unless explicitly superseded by structural model rules.
+2. **Single source of mutation truth** — all block mutations funnel through shared transaction helpers.
+3. **Invariant-driven quality** — structural constraints are validated continuously in development and tests.
+4. **Atomic interactions** — each user intent maps to a deterministic, undo-friendly transaction.
+
+### Shortcut Scope Policy (Interim)
+
+To avoid shortcut collisions as the workbench evolves, use explicit ownership tiers:
+
+1. **Canvas-local (current default for block editing)**
+    - Examples: block move/duplicate/selection shortcuts (`Ctrl/Cmd+Shift+↑/↓`, `Ctrl/Cmd+D`, `Esc` in block context)
+    - Owner: Canvas editor extensions only
+    - Rule: these shortcuts must be handled by one canonical canvas keyboard layer (no parallel handlers for the same chord)
+
+2. **Tool-scoped universal (future)**
+    - Shared across tools with tool-specific behavior contracts
+    - Owner: workbench command layer routing to active tool implementation
+
+3. **App-global universal (future)**
+    - Navigation/workbench actions independent of active editor content
+    - Owner: global keybinding service
+
+Implementation note (now): keep block-editing chords Canvas-local and documented in one place until cross-tool contracts are defined.
+
+### Model Clarification (Refinement)
+
+- **Columns are spatial partitions, not block-identity containers.**
+- Shared movement and selection logic should be framed as operations on the **current page flow** (the visible vertical block sequence at a given depth), not as special-case container behavior.
+- Wrapper extraction/traversal logic is allowed only for explicit wrapper-conversion operations (e.g. Turn-into unwrap/wrap/swap), not for normal drag/selection/move semantics.
+
+### R1 — Centralize Block Mutation Logic
+
+**Problem:** Mutation behavior is distributed across handle menus, keyboard handlers, drag/drop, and slash actions.
+
+**Target:** Introduce a shared mutation layer (e.g., block transform service/utilities) used by:
+- `handles/blockHandles.ts` (turn into, duplicate, delete, color)
+- `extensions/blockKeyboardShortcuts.ts` (move, duplicate)
+- `plugins/columnDropPlugin.ts` (drop outcomes)
+- `menus/slashMenuItems.ts` (structural insertions)
+
+**Completion criteria:**
+- [x] Shared mutation utilities extracted for duplicate/delete/text-color/background-color and wired into handles + Ctrl+D keyboard path ✅
+- [x] Turn-into replace-path logic extracted into shared mutation module and wired through block handles ✅
+- [x] Ctrl+Shift+↑/↓ page-flow movement extracted to shared mutation helpers and consumed by block keyboard shortcuts ✅
+- [x] Column keyboard in-page-flow move/duplicate paths migrated to shared mutation helpers while preserving cross-flow semantics ✅
+- [x] Drag/drop source cleanup + column width reset logic extracted to shared transaction helpers and wired into columnDropPlugin ✅
+- [x] Turn-into, duplicate, delete, and move use shared helpers instead of duplicated per-surface logic ✅ (turn strategy + page-flow move + cross-flow boundary move centralized in `mutations/blockMutations.ts`)
+- [x] Equivalent operations from menu/keyboard/drag produce structurally identical documents ✅ (shared mutation paths now back all three surfaces for the covered operations; build verified)
+
+### R2 — Structural Invariant Validation
+
+**Problem:** Complex nested operations can silently drift from model constraints.
+
+**Target:** Add model-first structural validators (derived from verified block/layout behavior and current node contracts), including:
+- **Spatial partition validity:** `columnList` represents a real partition (`>= 2` columns) and only contains `column` children
+- **Column parentage integrity:** every `column` is directly parented by `columnList`
+- **Direct partition nesting prevention:** `column` cannot directly contain `columnList`
+- **Toggle container shape:** `details` must be exactly `[detailsSummary, detailsContent]`
+- **Toggle heading shape:** `toggleHeading` must be exactly `[toggleHeadingText, detailsContent]` with valid heading level (1–3)
+- **Detail subnode parent integrity:** `detailsSummary` and `detailsContent` are only attached to valid container parents
+- **Selection reference integrity:** stale block-selection positions are pruned and surfaced in dev diagnostics
+
+**Completion criteria:**
+- [x] Dev-mode invariant checks run after critical transactions ✅ (`structuralInvariantPlugin` runs after every doc-changing transaction)
+- [x] Failing invariants are surfaced with actionable diagnostics ✅ (grouped console diagnostics + `parallx:canvas-structural-invariants` event + stale selection reference warnings)
+
+### R3 — Transaction Atomicity and Undo Quality
+
+**Problem:** Multi-step operations can create brittle intermediate states and poor undo behavior.
+
+**Target:** Ensure each high-level action is applied as one deterministic transaction group:
+- Drag/drop + source cleanup + width normalization
+- Container conversions (unwrap/wrap/swap)
+- Group operations on multi-selection
+
+**Completion criteria:**
+- [x] Turn-into fast-path transforms now execute as single-chain/single-dispatch transactions (no pre-selection dispatch split) ✅
+- [x] Undo/redo replays user intent as expected for all Rule 4A–4F scenarios ✅ (`tests/e2e/16-column-undo-redo.spec.ts` covers one real drag+undo+redo path for each 4A–4F source/target scenario)
+- [x] No partial intermediate states are visible to the user ✅ (critical drag paths validated end-to-end in `tests/e2e/15-column-real-interactions.spec.ts` and `tests/e2e/16-column-undo-redo.spec.ts`; dev-time structural invariant guard catches/diagnoses transient structural drift)
+
+### R4 — Persistence and Recovery Hardening
+
+**Problem:** Rich nested JSON content needs stronger migration and recovery guarantees.
+
+**Target:**
+- Add content schema version metadata for stored TipTap JSON
+- Add migration guards for legacy/invalid content
+- Preserve autosave reliability with explicit pending/flush/failure observability
+
+**Completion criteria:**
+- [x] Content migrations are deterministic and non-lossy for supported versions ✅ (v1 legacy doc JSON auto-upgrades to versioned envelope; valid envelopes preserved; invalid content recovers to safe doc with repair write)
+- [x] Autosave failure paths are test-covered and user-safe ✅ (`SaveStateKind` pending/flushing/saved/failed lifecycle + targeted unit tests for debounce failure and repair-write failure)
+
+### Save Scheduling Ownership (Follow-up Hardening)
+
+**Problem:** Save scheduling currently has multiple initiators (editor `onUpdate` + explicit action-path scheduling), which can cause duplicate scheduling for one user intent and make behavior harder to reason about.
+
+**Recommendation (single-writer model):**
+- Make `CanvasEditorPane` `onUpdate` the canonical autosave scheduler for document edits.
+- Replace direct `scheduleContentSave(...)` calls in mutation surfaces with a single pane-level `requestSave(reason)` API only for non-`onUpdate` paths (if any remain).
+- Keep debounce + save-state events in `CanvasDataService`; remove per-feature scheduling responsibility.
+- Add focused tests asserting “one logical user action → one pending save scheduling event”.
+
+**Migration steps:**
+1. Inventory and remove redundant direct save scheduling in handles/menus where `onUpdate` already fires.
+2. Introduce `requestSave(reason)` for exceptional flows only (e.g., non-editor state changes that still need persistence).
+3. Validate with targeted unit + keyboard/drag E2E smoke checks.
+
+### R5 — Notion-Parity Interaction Hardening
+
+**Problem:** Interaction race conditions can occur between drag handle, resize, bubble menu, slash menu, and inline editors.
+
+**Target:** Define and enforce explicit interaction arbitration rules:
+- Resize has priority over drag handle near column boundaries
+- Slash/bubble visibility rules are deterministic during selection and blur transitions
+- Container-vs-inner-block handle targeting remains stable at any nesting depth
+
+**Completion criteria:**
+- [x] No flicker/ownership conflicts between interaction surfaces under rapid input ✅ (single-owner drag lifecycle, resize-vs-drag arbitration, slash/bubble ownership gates; validated via targeted E2E in `tests/e2e/15-column-real-interactions.spec.ts` and `tests/e2e/17-canvas-interaction-arbitration.spec.ts`)
+- [x] Handle resolution remains correct in nested callout/toggle/quote/column combinations ✅ (`tests/e2e/17-canvas-interaction-arbitration.spec.ts` nested handle-targeting test)
+
+### R6 — Regression and Property-Based Testing Expansion
+
+**Problem:** Existing tests cover many flows but not all structural invariants under randomized sequences.
+
+**Target:** Expand test strategy:
+- Golden regression tests for key transforms (turn-into variants, unwrap/wrap/swap)
+- Drop-matrix verification for Rule 4A–4F across nesting levels
+- Property-style/fuzz tests for random operation sequences with invariant checks
+
+**Completion criteria:**
+- [ ] Existing canvas suites remain green
+- [x] New tests fail on invariant breakage before user-visible regressions ✅ (`tests/unit/canvasStructuralInvariants.test.ts` property-style invalid mutation coverage + invariant plugin diagnostics)
+
+### Post-R5/R6 Hardening Notes (February 2026)
+
+Recent stabilization and consistency fixes applied after initial R5/R6 implementation:
+
+- **Single drag owner (no dual systems):** `BlockHandlesController` now owns dragstart/dragend for block-handle drags; removed corrective dual-handler path.
+- **Single save-writer policy:** autosave scheduling standardized around editor `onUpdate`; explicit `requestSave(reason)` retained only for exceptional non-standard flows (e.g., slash execute path).
+- **Drop indicator ownership clarified:** ProseMirror dropcursor disabled; Canvas drop guides are the only drag indicators.
+- **Resize boundary correctness:** column resize now clamps drag delta as a pair so hitting min width hard-stops without pushing non-resized outer edges.
+- **Block background consistency:** one global rule for colored blocks (no column special-casing), no height expansion, and consistent text/highlight inset across all block contexts.
+- **Row spacing consistency:** paragraph spacing normalized to fixed pixel margins to avoid fractional/subpixel jitter artifacts.
+
+Validation notes:
+- Build + targeted unit/E2E checks repeatedly passed for the affected surfaces (`12-columns`, `13-column-drag-drop`, `15-column-real-interactions`, `16-column-undo-redo`, `17-canvas-interaction-arbitration`, plus new invariant/content/save-state unit suites).
+
+### Suggested Execution Order (Refinement)
+
+| Step | Focus | Outcome |
+|------|-------|---------|
+| **R1** | Lock baseline behavior with regression tests | Refactor safety net established |
+| **R2** | Add invariant validators | Structural drift detected early |
+| **R3** | Centralize mutation engine | Reduced code duplication + fewer edge-case divergences |
+| **R4** | Improve transaction grouping/undo semantics | Notion-like operation feel |
+| **R5** | Harden persistence and recovery | Better resilience under failure conditions |
+| **R6** | Expand parity/polish tests | Confidence for ongoing feature growth |
+
+---
+
 ## Excluded (Deferred to Future Milestones)
 
 | Item | Reason |

@@ -15,6 +15,26 @@ import {
   type PageChangeEvent,
   PageChangeKind,
 } from './canvasTypes.js';
+import {
+  CURRENT_CANVAS_CONTENT_SCHEMA_VERSION,
+  decodeCanvasContent,
+  encodeCanvasContentFromDoc,
+  normalizeCanvasContentForStorage,
+} from './contentSchema.js';
+
+export const enum SaveStateKind {
+  Pending = 'Pending',
+  Flushing = 'Flushing',
+  Saved = 'Saved',
+  Failed = 'Failed',
+}
+
+export interface SaveStateEvent {
+  readonly pageId: string;
+  readonly kind: SaveStateKind;
+  readonly source: 'debounce' | 'flush' | 'repair';
+  readonly error?: string;
+}
 
 // ─── Database Bridge Type ────────────────────────────────────────────────────
 
@@ -34,6 +54,7 @@ export function rowToPage(row: Record<string, unknown>): IPage {
     title: row.title as string,
     icon: (row.icon as string) ?? null,
     content: row.content as string,
+    contentSchemaVersion: (row.content_schema_version as number) ?? CURRENT_CANVAS_CONTENT_SCHEMA_VERSION,
     sortOrder: row.sort_order as number,
     isArchived: !!(row.is_archived as number),
     coverUrl: (row.cover_url as string) ?? null,
@@ -66,6 +87,10 @@ export class CanvasDataService extends Disposable {
   /** Fires after an auto-save flush completes for a specific page. */
   private readonly _onDidSavePage = this._register(new Emitter<string>());
   readonly onDidSavePage: Event<string> = this._onDidSavePage.event;
+
+  /** Fires when save lifecycle state changes (pending/flushing/saved/failed). */
+  private readonly _onDidChangeSaveState = this._register(new Emitter<SaveStateEvent>());
+  readonly onDidChangeSaveState: Event<SaveStateEvent> = this._onDidChangeSaveState.event;
 
   // ── Auto-save debounce state ──
 
@@ -116,9 +141,11 @@ export class CanvasDataService extends Disposable {
     if (maxResult.error) throw new Error(maxResult.error.message);
     const sortOrder = ((maxResult.row?.max_sort as number) ?? 0) + 1;
 
+    const initialContent = encodeCanvasContentFromDoc({ type: 'doc', content: [{ type: 'paragraph' }] });
+
     const result = await this._db.run(
-      `INSERT INTO pages (id, parent_id, title, sort_order) VALUES (?, ?, ?, ?)`,
-      [id, parent, pageTitle, sortOrder],
+      `INSERT INTO pages (id, parent_id, title, content, content_schema_version, sort_order) VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, parent, pageTitle, initialContent.storedContent, initialContent.schemaVersion, sortOrder],
     );
     if (result.error) throw new Error(result.error.message);
 
@@ -181,7 +208,7 @@ export class CanvasDataService extends Disposable {
    */
   async updatePage(
     pageId: string,
-    updates: Partial<Pick<IPage, 'title' | 'icon' | 'content' | 'coverUrl' | 'coverYOffset' | 'fontFamily' | 'fullWidth' | 'smallText' | 'isLocked' | 'isFavorited'>>,
+    updates: Partial<Pick<IPage, 'title' | 'icon' | 'content' | 'coverUrl' | 'coverYOffset' | 'fontFamily' | 'fullWidth' | 'smallText' | 'isLocked' | 'isFavorited' | 'contentSchemaVersion'>>,
   ): Promise<IPage> {
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -195,8 +222,15 @@ export class CanvasDataService extends Disposable {
       params.push(updates.icon);
     }
     if (updates.content !== undefined) {
+      const normalized = normalizeCanvasContentForStorage(updates.content);
       sets.push('content = ?');
-      params.push(updates.content);
+      params.push(normalized.storedContent);
+      sets.push('content_schema_version = ?');
+      params.push(normalized.schemaVersion);
+    }
+    if (updates.contentSchemaVersion !== undefined && updates.content === undefined) {
+      sets.push('content_schema_version = ?');
+      params.push(updates.contentSchemaVersion);
     }
     if (updates.coverUrl !== undefined) {
       sets.push('cover_url = ?');
@@ -346,20 +380,34 @@ export class CanvasDataService extends Disposable {
    * @param content — stringified Tiptap JSON content
    */
   scheduleContentSave(pageId: string, content: string): void {
+    const normalized = normalizeCanvasContentForStorage(content);
+
     // Cancel existing timer for this page
     this._cancelPendingSave(pageId);
 
     const timer = setTimeout(async () => {
       this._pendingSaves.delete(pageId);
+      this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'debounce' });
       try {
-        await this.updatePage(pageId, { content });
+        await this.updatePage(pageId, {
+          content: normalized.storedContent,
+          contentSchemaVersion: normalized.schemaVersion,
+        });
         this._onDidSavePage.fire(pageId);
+        this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'debounce' });
       } catch (err) {
         console.error(`[CanvasDataService] Auto-save failed for page "${pageId}":`, err);
+        this._onDidChangeSaveState.fire({
+          pageId,
+          kind: SaveStateKind.Failed,
+          source: 'debounce',
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }, this._autoSaveMs);
 
-    this._pendingSaves.set(pageId, { timer, content });
+    this._pendingSaves.set(pageId, { timer, content: normalized.storedContent });
+    this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Pending, source: 'debounce' });
   }
 
   /**
@@ -372,13 +420,56 @@ export class CanvasDataService extends Disposable {
 
     for (const [pageId, { timer, content }] of pending) {
       clearTimeout(timer);
+      this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'flush' });
       try {
-        await this.updatePage(pageId, { content });
+        const normalized = normalizeCanvasContentForStorage(content);
+        await this.updatePage(pageId, {
+          content: normalized.storedContent,
+          contentSchemaVersion: normalized.schemaVersion,
+        });
         this._onDidSavePage.fire(pageId);
+        this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'flush' });
       } catch (err) {
         console.error(`[CanvasDataService] Flush failed for page "${pageId}":`, err);
+        this._onDidChangeSaveState.fire({
+          pageId,
+          kind: SaveStateKind.Failed,
+          source: 'flush',
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
+  }
+
+  /**
+   * Decode page content for editor usage and auto-heal malformed/legacy storage.
+   * Returns a valid TipTap document object in all cases.
+   */
+  async decodePageContentForEditor(page: IPage): Promise<{ doc: any; recovered: boolean }> {
+    const decoded = decodeCanvasContent(page.content);
+
+    if (decoded.needsRepair) {
+      console.warn(
+        `[CanvasDataService] Content repair for page "${page.id}" (${decoded.reason ?? 'normalization'})`,
+      );
+      try {
+        await this.updatePage(page.id, {
+          content: decoded.repairedStoredContent,
+          contentSchemaVersion: decoded.schemaVersion,
+        });
+        this._onDidChangeSaveState.fire({ pageId: page.id, kind: SaveStateKind.Saved, source: 'repair' });
+      } catch (err) {
+        console.error(`[CanvasDataService] Content repair write failed for page "${page.id}":`, err);
+        this._onDidChangeSaveState.fire({
+          pageId: page.id,
+          kind: SaveStateKind.Failed,
+          source: 'repair',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return { doc: decoded.doc, recovered: decoded.needsRepair };
   }
 
   /**
@@ -537,14 +628,15 @@ export class CanvasDataService extends Disposable {
 
     // Insert duplicated page (copy content, icon, cover, font, width, text — NOT favorite, locked)
     const result = await this._db.run(
-      `INSERT INTO pages (id, parent_id, title, icon, content, sort_order, cover_url, cover_y_offset, font_family, full_width, small_text)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO pages (id, parent_id, title, icon, content, content_schema_version, sort_order, cover_url, cover_y_offset, font_family, full_width, small_text)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         newId,
         newParentId,
         title,
         source.icon,
         source.content,
+        source.contentSchemaVersion,
         sortOrder,
         source.coverUrl,
         source.coverYOffset,

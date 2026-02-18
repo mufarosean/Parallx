@@ -19,6 +19,8 @@ export interface IPage {
   readonly icon: string | null;
   /** Page content as stringified Tiptap JSON. */
   readonly content: string;
+  /** Stored content schema version for migration/recovery logic. */
+  readonly contentSchemaVersion: number;
   /** Sort position among siblings (REAL for O(1) insertion). */
   readonly sortOrder: number;
   /** Whether the page is archived (soft-deleted). */

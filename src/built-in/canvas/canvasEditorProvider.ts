@@ -114,6 +114,12 @@ class CanvasEditorPane implements IDisposable {
   get openEditor(): OpenEditorFn | undefined { return this._openEditor; }
   get blockSelection(): BlockSelectionController { return this._blockSelection; }
 
+  requestSave(_reason: string): void {
+    if (!this._editor || !this._pageId) return;
+    const json = JSON.stringify(this._editor.getJSON());
+    this._dataService.scheduleContentSave(this._pageId, json);
+  }
+
   async init(): Promise<void> {
     // Create editor wrapper
     this._editorContainer = $('div.canvas-editor-wrapper');
@@ -160,8 +166,17 @@ class CanvasEditorPane implements IDisposable {
         // Check for slash command trigger on every transaction
         // (onTransaction fires for all state changes — more reliable than onUpdate)
         this._slashMenu?.checkTrigger(editor);
+
+        // Keep menu ownership deterministic: slash and bubble should not compete.
+        if (this._slashMenu?.visible) {
+          this._bubbleMenu?.hide();
+        }
       },
       onSelectionUpdate: ({ editor }) => {
+        // Non-collapsed selections belong to bubble menu, not slash menu.
+        if (!editor.state.selection.empty) {
+          this._slashMenu?.hide();
+        }
         this._bubbleMenu?.update(editor);
       },
       onBlur: () => {
@@ -172,6 +187,10 @@ class CanvasEditorPane implements IDisposable {
             !this._inlineMath.popup?.contains(document.activeElement)
           ) {
             this._bubbleMenu.hide();
+          }
+
+          if (!this._slashMenu.menu?.contains(document.activeElement)) {
+            this._slashMenu.hide();
           }
         }, 150);
       },
@@ -261,26 +280,11 @@ class CanvasEditorPane implements IDisposable {
       if (page && page.content) {
         this._suppressUpdate = true;
         try {
-          const parsed = JSON.parse(page.content);
-          // Validate that parsed content has a valid TipTap document structure
-          if (parsed && parsed.type === 'doc' && Array.isArray(parsed.content)) {
-            // Filter out nodes with undefined/missing type (corrupted data)
-            parsed.content = parsed.content.filter(
-              (node: any) => node && typeof node.type === 'string',
-            );
-            // Only set content if there are valid nodes remaining
-            if (parsed.content.length > 0) {
-              this._editor.commands.setContent(parsed);
-            }
-          } else if (typeof parsed === 'string') {
-            // Plain text content — set as paragraph
-            this._editor.commands.setContent(`<p>${parsed}</p>`);
+          const decoded = await this._dataService.decodePageContentForEditor(page);
+          this._editor.commands.setContent(decoded.doc);
+          if (decoded.recovered) {
+            console.warn(`[CanvasEditorPane] Recovered and normalized content for page "${this._pageId}"`);
           }
-          // If parsed is empty or invalid, editor keeps its default empty state
-        } catch {
-          // Content is not valid JSON or has incompatible nodes — start fresh
-          console.warn(`[CanvasEditorPane] Invalid content for page "${this._pageId}", starting fresh`);
-          try { this._editor.commands.clearContent(); } catch { /* swallow */ }
         } finally {
           this._suppressUpdate = false;
         }
