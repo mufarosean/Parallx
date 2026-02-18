@@ -138,6 +138,8 @@ export function columnResizePlugin(): Plugin {
     return true;
   }
 
+  let resizeIndicator: HTMLElement | null = null;
+
   return new Plugin({
     key: pluginKey,
 
@@ -151,23 +153,26 @@ export function columnResizePlugin(): Plugin {
 
       // Standalone resize indicator line — lives outside ProseMirror's
       // DOM control so it can't be stripped by view updates.
-      const resizeIndicator = document.createElement('div');
+      resizeIndicator = document.createElement('div');
       resizeIndicator.className = 'column-resize-indicator';
       container?.appendChild(resizeIndicator);
 
-      const showIndicator = (leftCol: HTMLElement, listEl: HTMLElement) => {
+      const showIndicator = (leftCol: HTMLElement) => {
+        if (!resizeIndicator || !container) return;
         const leftRect = leftCol.getBoundingClientRect();
-        const listRect = listEl.getBoundingClientRect();
-        // Position at the right edge of the left column, spanning
-        // the column-list height. Use listEl-relative coordinates.
-        resizeIndicator.style.left = `${leftRect.right - listRect.left + 7}px`;
-        resizeIndicator.style.top = `${listRect.top - (container?.getBoundingClientRect().top ?? 0)}px`;
-        resizeIndicator.style.height = `${listRect.height}px`;
+        const containerRect = container.getBoundingClientRect();
+        // Center the 2px indicator in the 16px gap after the left column.
+        // Position relative to the container, accounting for scroll.
+        const x = leftRect.right - containerRect.left + 7;
+        const y = leftCol.offsetTop;
+        resizeIndicator.style.left = `${x}px`;
+        resizeIndicator.style.top = `${y}px`;
+        resizeIndicator.style.height = `${leftCol.offsetHeight}px`;
         resizeIndicator.style.display = 'block';
       };
 
       const hideIndicator = () => {
-        resizeIndicator.style.display = 'none';
+        if (resizeIndicator) resizeIndicator.style.display = 'none';
       };
 
       const onContainerMousemove = (event: MouseEvent) => {
@@ -175,7 +180,7 @@ export function columnResizePlugin(): Plugin {
         const boundary = findBoundary(editorView, event.clientX, event.clientY, 12);
         if (boundary) {
           document.body.classList.add('column-resize-hover');
-          showIndicator(boundary.leftCol, boundary.listEl);
+          showIndicator(boundary.leftCol);
         } else {
           document.body.classList.remove('column-resize-hover');
           hideIndicator();
@@ -187,7 +192,8 @@ export function columnResizePlugin(): Plugin {
       return {
         destroy: () => {
           container?.removeEventListener('mousemove', onContainerMousemove);
-          resizeIndicator.remove();
+          resizeIndicator?.remove();
+          resizeIndicator = null;
           document.body.classList.remove('column-resize-hover');
           document.body.classList.remove('column-resizing');
         },
@@ -247,6 +253,8 @@ export function columnResizePlugin(): Plugin {
           };
 
           document.body.classList.add('column-resizing');
+          // Hide the hover indicator during active resize
+          if (resizeIndicator) resizeIndicator.style.display = 'none';
 
           const finish = () => {
             window.removeEventListener('mouseup', finish);
