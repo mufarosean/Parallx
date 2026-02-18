@@ -94,11 +94,15 @@ export function columnDropPlugin(): Plugin {
     const cRect = container.getBoundingClientRect();
     const sT = container.scrollTop;
     const sL = container.scrollLeft;
+    // Span the full width of the block's parent container (column or editor),
+    // not just the target block — per BLOCK_INTERACTION_RULES.md Rule 3.
+    const parent = blockEl.parentElement;
+    const pRect = parent ? parent.getBoundingClientRect() : bRect;
     el.style.top = pos === 'above'
       ? `${bRect.top - cRect.top + sT - 1}px`
       : `${bRect.bottom - cRect.top + sT + 1}px`;
-    el.style.left = `${bRect.left - cRect.left + sL}px`;
-    el.style.width = `${bRect.width}px`;
+    el.style.left = `${pRect.left - cRect.left + sL}px`;
+    el.style.width = `${pRect.width}px`;
     el.style.display = 'block';
     if (vertIndicator) vertIndicator.style.display = 'none';
   }
