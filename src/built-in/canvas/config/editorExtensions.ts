@@ -99,7 +99,7 @@ export function createEditorExtensions(lowlight: any): Extensions {
       // columnList intentionally excluded — per Rule 10, columnList has no
       // drag handle. Blocks inside columns are still draggable via their own
       // selectors (p, h1-h6, etc. + .canvas-column > p).
-      customNodes: ['mathBlock', 'callout', 'details', 'toggleHeading', 'bookmark', 'tableOfContents', 'video', 'audio', 'fileAttachment'],
+      customNodes: ['mathBlock', 'callout', 'details', 'toggleHeading', 'bookmark', 'tableOfContents', 'video', 'audio', 'fileAttachment', 'horizontalRule', 'image'],
     }),
     // ── Tier 2 extensions ──
     Callout,
