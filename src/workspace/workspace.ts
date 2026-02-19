@@ -38,6 +38,7 @@ function generateUUID(): string {
 export class Workspace {
   private _identity: WorkspaceIdentity;
   private _metadata: WorkspaceMetadata;
+  private _disposed = false;
 
   // ── Folders (M4 Cap 2) ──
   private _folders: WorkspaceFolder[] = [];
@@ -283,6 +284,17 @@ export class Workspace {
   /**
    * Serialize identity + metadata only (for the recent workspaces list).
    */
+  /**
+   * Dispose emitters to prevent memory leaks.
+   * VS Code pattern: every class with Emitters must have dispose().
+   */
+  dispose(): void {
+    if (this._disposed) return;
+    this._disposed = true;
+    this._onDidChangeFolders.dispose();
+    this._onDidChangeState.dispose();
+  }
+
   toJSON(): { identity: WorkspaceIdentity; metadata: WorkspaceMetadata } {
     return {
       identity: this._identity,

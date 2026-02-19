@@ -565,12 +565,21 @@ class WorkspaceFileScanner {
   private _cache: FilePickerEntry[] | null = null;
   private _scanPromise: Promise<void> | null = null;
   private _version = 0;
+  private _disposed = false;
 
   private readonly _onDidScan = new Emitter<void>();
   readonly onDidScan: Event<void> = this._onDidScan.event;
 
   constructor(private readonly _delegate: IFilePickerDelegate) {
     _delegate.onDidChangeFolders(() => this.invalidate());
+  }
+
+  dispose(): void {
+    if (this._disposed) return;
+    this._disposed = true;
+    this._onDidScan.dispose();
+    this._cache = null;
+    this._scanPromise = null;
   }
 
   invalidate(): void {
@@ -652,11 +661,6 @@ class WorkspaceFileScanner {
     } catch (err) {
       console.warn('[FileScanner] readdir failed:', dirUri, err);
     }
-  }
-
-  dispose(): void {
-    this._onDidScan.dispose();
-    this._version++;
   }
 }
 

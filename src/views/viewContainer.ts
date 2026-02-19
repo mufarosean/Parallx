@@ -3,7 +3,7 @@
 import { Disposable, DisposableStore, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { Orientation } from '../layout/layoutTypes.js';
-import { $,  hide, show, startDrag, endDrag } from '../ui/dom.js';
+import { $, addDisposableListener, hide, show, startDrag, endDrag } from '../ui/dom.js';
 import { IGridView } from '../layout/gridView.js';
 import { IView } from './view.js';
 
@@ -49,6 +49,7 @@ export class ViewContainer extends Disposable implements IGridView {
   private readonly _views: Map<string, IView> = new Map();
   private readonly _viewDisposables: Map<string, IDisposable> = new Map();
   private readonly _tabElements: Map<string, HTMLElement> = new Map();
+  private readonly _tabDisposables: Map<string, DisposableStore> = new Map();
   private _tabOrder: string[] = [];
   private _activeViewId: string | undefined;
 
@@ -110,7 +111,7 @@ export class ViewContainer extends Disposable implements IGridView {
     this._element.appendChild(this._tabBar);
 
     // Keyboard navigation for tabs (VS Code parity: ArrowLeft/Right, Home/End)
-    this._tabBar.addEventListener('keydown', (e) => {
+    this._register(addDisposableListener(this._tabBar, 'keydown', (e) => {
       const tabs = Array.from(this._tabBar.querySelectorAll<HTMLElement>('.view-tab'));
       if (tabs.length === 0) return;
 
@@ -149,7 +150,7 @@ export class ViewContainer extends Disposable implements IGridView {
         const viewId = tabs[nextIdx].dataset.viewId;
         if (viewId) this.activateView(viewId);
       }
-    });
+    }));
 
     // Content area
     this._contentArea = $('div');
@@ -322,6 +323,8 @@ export class ViewContainer extends Disposable implements IGridView {
       const tab = this._tabElements.get(viewId);
       tab?.remove();
       this._tabElements.delete(viewId);
+      this._tabDisposables.get(viewId)?.dispose();
+      this._tabDisposables.delete(viewId);
     }
 
     // Dispose per-view listener
@@ -763,35 +766,37 @@ export class ViewContainer extends Disposable implements IGridView {
     tab.appendChild(label);
 
     // Click to activate
-    tab.addEventListener('click', () => this.activateView(view.id));
+    const tabStore = new DisposableStore();
+    tabStore.add(addDisposableListener(tab, 'click', () => this.activateView(view.id)));
 
     // Drag-and-drop reordering
     tab.draggable = true;
-    tab.addEventListener('dragstart', (e) => {
+    tabStore.add(addDisposableListener(tab, 'dragstart', (e) => {
       e.dataTransfer?.setData('text/plain', view.id);
       tab.classList.add('tab-dragging');
-    });
-    tab.addEventListener('dragend', () => {
+    }));
+    tabStore.add(addDisposableListener(tab, 'dragend', () => {
       tab.classList.remove('tab-dragging');
-    });
-    tab.addEventListener('dragover', (e) => {
+    }));
+    tabStore.add(addDisposableListener(tab, 'dragover', (e) => {
       // Reject editor-tab drags — only accept view-tab reorder drags
       if (e.dataTransfer?.types.includes('application/parallx-editor-tab')) return;
       e.preventDefault();
       tab.classList.add('tab-drop-target');
-    });
-    tab.addEventListener('dragleave', () => {
+    }));
+    tabStore.add(addDisposableListener(tab, 'dragleave', () => {
       tab.classList.remove('tab-drop-target');
-    });
-    tab.addEventListener('drop', (e) => {
+    }));
+    tabStore.add(addDisposableListener(tab, 'drop', (e) => {
       e.preventDefault();
       tab.classList.remove('tab-drop-target');
       const draggedId = e.dataTransfer?.getData('text/plain');
       if (draggedId && draggedId !== view.id) {
         this._moveTab(draggedId, view.id);
       }
-    });
+    }));
 
+    this._tabDisposables.set(view.id, tabStore);
     this._tabElements.set(view.id, tab);
     this._tabBar.appendChild(tab);
   }
@@ -833,6 +838,10 @@ export class ViewContainer extends Disposable implements IGridView {
       d.dispose();
     }
     this._viewDisposables.clear();
+    for (const d of this._tabDisposables.values()) {
+      d.dispose();
+    }
+    this._tabDisposables.clear();
     for (const view of this._views.values()) {
       view.dispose();
     }

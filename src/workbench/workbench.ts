@@ -10,6 +10,7 @@
 // Teardown reverses (5→1).
 
 import { DisposableStore, IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
@@ -223,7 +224,7 @@ export class Workbench extends Layout {
   private _switching = false;
   private _workspaceLoader!: WorkspaceLoader;
   private _workspaceSaver!: WorkspaceSaver;
-  private _saverListeners = new DisposableStore();
+  private _saverListeners = this._register(new DisposableStore());
   private _restoredState: WorkspaceState | undefined;
 
   // Context (Capability 8)
@@ -659,8 +660,7 @@ export class Workbench extends Layout {
       await this._lifecycle.teardown();
     }
 
-    // Remove window resize listener
-    window.removeEventListener('resize', this._onWindowResize);
+    // Window resize listener cleaned up by _register(addDisposableListener(...))
 
     // Fire onDidShutdown BEFORE dispose() so listeners can still receive it
     this._onDidShutdown.fire();
@@ -881,7 +881,7 @@ export class Workbench extends Layout {
     this._wireGridHandlers();
 
     // 7. Window resize handler
-    window.addEventListener('resize', this._onWindowResize);
+    this._register(addDisposableListener(window, 'resize', this._onWindowResize));
 
     // 8. Command system: wire up and register built-in commands
     this._initializeCommands();
@@ -1451,7 +1451,7 @@ export class Workbench extends Layout {
       moreBtn.title = 'More Actions…';
       moreBtn.setAttribute('aria-label', 'More Actions…');
       moreBtn.textContent = '⋯';
-      moreBtn.addEventListener('click', (_e) => {
+      this._register(addDisposableListener(moreBtn, 'click', (_e) => {
         const rect = moreBtn.getBoundingClientRect();
         ContextMenu.show({
           items: [
@@ -1460,7 +1460,7 @@ export class Workbench extends Layout {
           ],
           anchor: { x: rect.left, y: rect.bottom + 2 },
         });
-      });
+      }));
       actionsContainer.appendChild(moreBtn);
       headerSlot.appendChild(actionsContainer);
 
@@ -1650,14 +1650,14 @@ export class Workbench extends Layout {
     // VS Code parity: double-clicking the panel title bar toggles maximized state.
     const tabBar = container.element.querySelector('.view-container-tabs') as HTMLElement;
     if (tabBar) {
-      tabBar.addEventListener('dblclick', (e) => {
+      this._register(addDisposableListener(tabBar, 'dblclick', (e) => {
         // Only respond to clicks on the tab bar itself or its empty space,
         // not on individual tab buttons (which may have their own dblclick).
         const target = e.target as HTMLElement;
         if (target === tabBar || target.classList.contains('view-container-tabs')) {
           this.toggleMaximizedPanel();
         }
-      });
+      }));
     }
 
     // NOTE: Do not call viewManager.showView() here — the container

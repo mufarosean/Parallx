@@ -26,7 +26,7 @@ import { BreadcrumbsBar } from './breadcrumbsBar.js';
 import { URI } from '../platform/uri.js';
 import { ContextMenu, type IContextMenuItem } from '../ui/contextMenu.js';
 import { TabBar, type ITabBarItem } from '../ui/tabBar.js';
-import { $ } from '../ui/dom.js';
+import { $, addDisposableListener } from '../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -188,7 +188,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     this._element.tabIndex = -1;
 
     // Focus tracking
-    this._element.addEventListener('focusin', () => this._onDidFocus.fire());
+    this._register(addDisposableListener(this._element, 'focusin', () => this._onDidFocus.fire()));
 
     // Tab bar — delegates to ui/TabBar component
     const tabBarHost = $('div');

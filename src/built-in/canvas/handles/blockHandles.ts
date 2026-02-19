@@ -1069,6 +1069,14 @@ export class BlockHandlesController {
     this._dragHandleEl?.removeEventListener('dragend', this._onDragHandleDragEnd);
     this._dragHandleEl?.removeEventListener('mousedown', this._onDragHandleMouseDown, true);
     document.removeEventListener('mouseup', this._onGlobalMouseUp, true);
+    if (this._turnIntoHideTimer) {
+      clearTimeout(this._turnIntoHideTimer);
+      this._turnIntoHideTimer = null;
+    }
+    if (this._colorHideTimer) {
+      clearTimeout(this._colorHideTimer);
+      this._colorHideTimer = null;
+    }
     if (this._interactionReleaseTimer) {
       clearTimeout(this._interactionReleaseTimer);
       this._interactionReleaseTimer = null;
