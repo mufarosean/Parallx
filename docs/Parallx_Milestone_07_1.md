@@ -1123,11 +1123,11 @@ Add an `npm run build:prod` script in `package.json`.
 - [x] 1.5 Canvas editor ready-gate — `canvasEditorProvider.ts`: `_initComplete` flag guards `requestSave()`, `.catch()` on fire-and-forget `init()`, `_disposed` bail-out after async `_loadContent()`, null-safe `?.` on all controllers in `dispose()`
 - [x] 1.6 Database open mutex — `databaseService.ts`: `_openPromise` mutex on `openForWorkspace()`, extracted `_doOpenForWorkspace()`, immediate state reset in `dispose()` before fire-and-forget close
 
-**Tier 2 — Structural Improvements**
-- [ ] 2.1 Decompose workbench.ts (6 extractions)
-- [ ] 2.2 Migrate CSS to esbuild imports
-- [ ] 2.3 Async tool disposal
-- [ ] 2.4 Fix global event emitters
+**Tier 2 — Structural Improvements** ✅ COMPLETE
+- [x] 2.1 Decompose workbench.ts (partial — 2 of 6 extractions) — extracted `menuBuilder.ts` (~297 lines: menu bar registration, manage gear icon, manage menu popup) and `statusBarController.ts` (~310 lines: status bar setup, editor tracking indicators, notification badge, window title). workbench.ts reduced 3,920→3,275 lines (~17% reduction). Remaining methods (tool lifecycle ~1,027 lines, workspace switching, view contribution events) required 15+ dependencies each — deferred to avoid regression risk.
+- [x] 2.2 Migrate CSS to esbuild imports — added co-located `import './component.css'` to 15 .ts files (16 total with 2 existing). KaTeX CSS imported via `canvas/main.ts`, fonts handled by esbuild `file` loader with `assetNames: 'fonts/[name]'`. Removed 60-line manual CSS concatenation + KaTeX font copy from `build.mjs`. `index.html` now loads esbuild-produced `main.css` (181KB). New CSS files are automatically bundled — no manual build.mjs edits needed.
+- [x] 2.3 Async tool disposal — `toolActivator.ts`: added `disposeAsync()` that calls `await this.deactivateAll()` then `this.dispose()`. Simplified synchronous `dispose()` to iterate remaining tools, dispose subscriptions + API, set state to Deactivated, clear map — no fire-and-forget `deactivate()` calls.
+- [x] 2.4 Fix global event emitters — `apiFactory.ts`: moved `_toolInstallEmitter` and `_toolUninstallEmitter` to module-level singletons (`_globalToolInstallEmitter`, `_globalToolUninstallEmitter`). All tool instances share a single emitter pair. Per-tool subscriptions pushed to cleanup array and disposed on tool deactivation.
 
 **Tier 3 — Hardening**
 - [ ] 3.1 `_saverListeners` → DisposableStore
