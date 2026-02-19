@@ -236,8 +236,7 @@ class ToolEditorPane extends EditorPane {
       this._providerDisposable = provider.createEditorPane(this._contentContainer, input);
     } else {
       // Fallback: show the input name
-      const label = $('div');
-      label.style.cssText = 'color: var(--color-text-muted, #888); font-size: 14px; text-align: center; padding: 16px;';
+      const label = $('div.editor-pane-fallback-label');
       label.textContent = input.name;
       this._contentContainer.appendChild(label);
     }

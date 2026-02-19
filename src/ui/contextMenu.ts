@@ -30,6 +30,10 @@ export interface IContextMenuItem {
   readonly disabled?: boolean;
   /** Optional submenu items — renders an arrow indicator and opens a child menu on hover. */
   readonly submenu?: readonly IContextMenuItem[];
+  /** Optional icon renderer — appends an icon element into the provided container span. */
+  readonly renderIcon?: (container: HTMLElement) => void;
+  /** Optional extra CSS class(es) added to the row element (e.g. for danger styling). */
+  readonly className?: string;
 }
 
 /** Anchor specification for positioning the menu. */
@@ -170,7 +174,18 @@ export class ContextMenu extends Disposable {
       if (item.disabled) {
         row.classList.add('context-menu-item--disabled');
       }
+      if (item.className) {
+        row.classList.add(item.className);
+      }
       row.setAttribute('role', 'menuitem');
+
+      // Icon (optional)
+      if (item.renderIcon) {
+        const iconSpan = document.createElement('span');
+        iconSpan.classList.add('context-menu-item-icon');
+        item.renderIcon(iconSpan);
+        row.appendChild(iconSpan);
+      }
 
       // Label
       const label = document.createElement('span');

@@ -6,6 +6,7 @@
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import { PAGE_ICON_IDS, resolvePageIcon, svgIcon } from '../canvasIcons.js';
+import { IconPicker } from '../../../ui/iconPicker.js';
 import type { CanvasDataService } from '../canvasDataService.js';
 import { deleteDraggedSourceFromTransaction } from '../mutations/blockMutations.js';
 import {
@@ -86,7 +87,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
       let resolvedTitle = attrs.title || 'Untitled';
       let resolvedIcon: string | null = attrs.icon ?? null;
       let previewPopup: HTMLElement | null = null;
-      let iconPicker: HTMLElement | null = null;
+      let iconPicker: IconPicker | null = null;
       let previewTimer: ReturnType<typeof setTimeout> | null = null;
       let hidePreviewTimer: ReturnType<typeof setTimeout> | null = null;
       let loadingPreview = 0;
@@ -127,7 +128,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
 
       const closeIconPicker = () => {
         if (iconPicker) {
-          iconPicker.remove();
+          iconPicker.dismiss();
           iconPicker = null;
         }
       };
@@ -189,14 +190,28 @@ export const PageBlock = Node.create<PageBlockOptions>({
         }
         closePreview();
 
-        iconPicker = document.createElement('div');
-        iconPicker.classList.add('canvas-page-block-icon-picker');
+        iconPicker = new IconPicker(document.body, {
+          anchor: dom,
+          icons: PAGE_ICON_IDS,
+          renderIcon: (id, _size) => svgIcon(id),
+          showSearch: false,
+          showRemove: true,
+          iconSize: 18,
+        });
 
-        const removeBtn = document.createElement('button');
-        removeBtn.classList.add('canvas-page-block-icon-remove');
-        removeBtn.type = 'button';
-        removeBtn.textContent = 'Remove icon';
-        removeBtn.addEventListener('click', () => {
+        iconPicker.onDidSelectIcon((iconId) => {
+          const pageId = attrs.pageId;
+          if (pageId && dataService) {
+            void (async () => {
+              await dataService.updatePage(pageId, { icon: iconId });
+              resolvedIcon = iconId;
+              render();
+              updateAttributes({ icon: iconId });
+            })();
+          }
+        });
+
+        iconPicker.onDidRemoveIcon(() => {
           const pageId = attrs.pageId;
           if (pageId && dataService) {
             void (async () => {
@@ -206,53 +221,11 @@ export const PageBlock = Node.create<PageBlockOptions>({
               updateAttributes({ icon: null });
             })();
           }
-          closeIconPicker();
         });
-        iconPicker.appendChild(removeBtn);
 
-        const grid = document.createElement('div');
-        grid.classList.add('canvas-page-block-icon-grid');
-        for (const iconId of PAGE_ICON_IDS) {
-          const btn = document.createElement('button');
-          btn.classList.add('canvas-page-block-icon-option');
-          btn.type = 'button';
-          btn.title = iconId;
-          btn.innerHTML = svgIcon(iconId);
-          const svg = btn.querySelector('svg');
-          if (svg) {
-            svg.setAttribute('width', '18');
-            svg.setAttribute('height', '18');
-          }
-          btn.addEventListener('click', () => {
-            const pageId = attrs.pageId;
-            if (pageId && dataService) {
-              void (async () => {
-                await dataService.updatePage(pageId, { icon: iconId });
-                resolvedIcon = iconId;
-                render();
-                updateAttributes({ icon: iconId });
-              })();
-            }
-            closeIconPicker();
-          });
-          grid.appendChild(btn);
-        }
-        iconPicker.appendChild(grid);
-
-        document.body.appendChild(iconPicker);
-        positionPopup(iconPicker);
-
-        const handleOutside = (event: MouseEvent) => {
-          const target = event.target as globalThis.Node | null;
-          if (!target) return;
-          if (iconPicker?.contains(target) || dom.contains(target)) return;
-          document.removeEventListener('mousedown', handleOutside);
-          closeIconPicker();
-        };
-
-        setTimeout(() => {
-          document.addEventListener('mousedown', handleOutside);
-        }, 0);
+        iconPicker.onDidDismiss(() => {
+          iconPicker = null;
+        });
       };
 
       const showPreview = async () => {

@@ -16,6 +16,8 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IPage, IPageTreeNode } from './canvasTypes.js';
 import { type CanvasDataService } from './canvasDataService.js';
 import { $ } from '../../ui/dom.js';
+import { InputBox } from '../../ui/inputBox.js';
+import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
 import { createIconElement, resolvePageIcon, svgIcon } from './canvasIcons.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -57,7 +59,7 @@ export class CanvasSidebar {
   private _trashSearchQuery = '';
 
   // ── Context menu ──
-  private _contextMenu: HTMLElement | null = null;
+  private _contextMenu: ContextMenu | null = null;
 
   // ── Callbacks ──
   private _onExpandStateChanged: ((expandedIds: ReadonlySet<string>) => void) | null = null;
@@ -117,14 +119,6 @@ export class CanvasSidebar {
     this._disposables.push(
       this._api.editors.onDidChangeOpenEditors(() => this._syncSelectionFromEditor()),
     );
-
-    // Context menu dismiss on click outside
-    this._disposables.push({
-      dispose: () => {
-        document.removeEventListener('mousedown', this._dismissContextMenu);
-        document.removeEventListener('keydown', this._dismissContextMenuOnEscape);
-      },
-    });
 
     return {
       dispose: () => {
@@ -505,154 +499,115 @@ export class CanvasSidebar {
   private _showContextMenu(e: MouseEvent, page: IPage | IPageTreeNode): void {
     this._dismissContextMenuCleanup();
 
-    this._contextMenu = $('div.canvas-context-menu');
+    const icon = (name: string) => (el: HTMLElement) => el.appendChild(createIconElement(name, 14));
 
-    const items: { label: string; icon?: string; action: () => void; danger?: boolean; divider?: boolean }[] = [
+    const actions = new Map<string, () => void>();
+
+    const items: IContextMenuItem[] = [
       {
-        label: 'Open', icon: 'open',
-        action: () => this._selectAndOpenPage(page),
+        id: 'open', label: 'Open', group: '1_nav',
+        renderIcon: icon('open'),
       },
       {
-        label: 'New subpage', icon: 'new-page',
-        action: () => this._createPage(page.id),
+        id: 'new-subpage', label: 'New subpage', group: '1_nav',
+        renderIcon: icon('new-page'),
       },
       {
-        label: 'Rename', icon: 'edit',
-        action: () => {
-          // Defer to next frame so the context menu DOM removal
-          // doesn't steal focus away from the rename input
-          requestAnimationFrame(() => {
-            const el = this._treeList?.querySelector(`[data-page-id="${page.id}"]`);
-            if (el) {
-              const label = el.querySelector('.canvas-node-label');
-              const node = this._findNode(this._tree, page.id);
-              if (label && node) {
-                this._startInlineRename(el as HTMLElement, label as HTMLElement, node);
-              }
-            }
-          });
-        },
+        id: 'rename', label: 'Rename', group: '1_nav',
+        renderIcon: icon('edit'),
+      },
+      {
+        id: 'favorite', group: '2_edit',
+        label: page.isFavorited ? 'Remove from Favorites' : 'Add to Favorites',
+        renderIcon: icon(page.isFavorited ? 'star' : 'star-filled'),
+      },
+      {
+        id: 'duplicate', label: 'Duplicate', group: '2_edit',
+        renderIcon: icon('duplicate'),
+      },
+      {
+        id: 'export-md', label: 'Export as Markdown', group: '2_edit',
+        renderIcon: icon('export'),
+      },
+      {
+        id: 'delete', label: 'Delete', group: '3_danger',
+        renderIcon: icon('trash'),
+        className: 'context-menu-item--danger',
       },
     ];
 
-    // Divider
-    items.push({ label: '', action: () => {}, divider: true });
-
-    // Favorite toggle
-    items.push({
-      label: page.isFavorited ? 'Remove from Favorites' : 'Add to Favorites',
-      icon: page.isFavorited ? 'star' : 'star-filled',
-      action: () => this._dataService.toggleFavorite(page.id),
-    });
-
-    // Duplicate
-    items.push({
-      label: 'Duplicate', icon: 'duplicate',
-      action: async () => {
-        try {
-          const newPage = await this._dataService.duplicatePage(page.id);
-          this._selectAndOpenPage(newPage);
-        } catch (err) {
-          console.error('[CanvasSidebar] Duplicate failed:', err);
-        }
-      },
-    });
-
-    // Export (uses TipTap JSON from the page content)
-    items.push({
-      label: 'Export as Markdown', icon: 'export',
-      action: async () => {
-        try {
-          const fullPage = await this._dataService.getPage(page.id);
-          if (!fullPage) return;
-
-          // Dynamic import of the markdown converter
-          const { tiptapJsonToMarkdown } = await import('./markdownExport.js');
-          let doc: unknown = null;
-          try { doc = JSON.parse(fullPage.content); } catch { /* empty */ }
-
-          const markdown = tiptapJsonToMarkdown(doc, fullPage.title);
-          const safeName = fullPage.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100).trim() || 'Untitled';
-
-          const electron = (window as any).parallxElectron;
-          if (!electron?.dialog?.saveFile || !electron?.fs?.writeFile) return;
-
-          const filePath = await electron.dialog.saveFile({
-            filters: [{ name: 'Markdown', extensions: ['md'] }],
-            defaultName: `${safeName}.md`,
-          });
-          if (filePath) {
-            await electron.fs.writeFile(filePath, markdown, 'utf-8');
+    actions.set('open', () => this._selectAndOpenPage(page));
+    actions.set('new-subpage', () => this._createPage(page.id));
+    actions.set('rename', () => {
+      requestAnimationFrame(() => {
+        const el = this._treeList?.querySelector(`[data-page-id="${page.id}"]`);
+        if (el) {
+          const label = el.querySelector('.canvas-node-label');
+          const node = this._findNode(this._tree, page.id);
+          if (label && node) {
+            this._startInlineRename(el as HTMLElement, label as HTMLElement, node);
           }
-        } catch (err) {
-          console.error('[CanvasSidebar] Export failed:', err);
         }
-      },
-    });
-
-    // Divider
-    items.push({ label: '', action: () => {}, divider: true });
-
-    // Delete
-    items.push({
-      label: 'Delete', icon: 'trash',
-      action: () => this._deletePage(page.id),
-      danger: true,
-    });
-
-    for (const item of items) {
-      if (item.divider) {
-        this._contextMenu.appendChild($('div.canvas-context-menu-divider'));
-        continue;
-      }
-      const btn = $('button.canvas-context-menu-item');
-      if (item.icon) {
-        btn.appendChild(createIconElement(item.icon, 14));
-      }
-      const labelSpan = $('span');
-      labelSpan.textContent = item.label;
-      btn.appendChild(labelSpan);
-      if (item.danger) btn.classList.add('canvas-context-menu-item--danger');
-      btn.addEventListener('click', () => {
-        this._dismissContextMenuCleanup();
-        item.action();
       });
-      this._contextMenu.appendChild(btn);
-    }
+    });
+    actions.set('favorite', () => this._dataService.toggleFavorite(page.id));
+    actions.set('duplicate', async () => {
+      try {
+        const newPage = await this._dataService.duplicatePage(page.id);
+        this._selectAndOpenPage(newPage);
+      } catch (err) {
+        console.error('[CanvasSidebar] Duplicate failed:', err);
+      }
+    });
+    actions.set('export-md', async () => {
+      try {
+        const fullPage = await this._dataService.getPage(page.id);
+        if (!fullPage) return;
 
-    // Position at cursor, clipped to viewport
-    document.body.appendChild(this._contextMenu);
-    const menuRect = this._contextMenu.getBoundingClientRect();
-    let x = e.clientX;
-    let y = e.clientY;
-    if (x + menuRect.width > window.innerWidth) x = window.innerWidth - menuRect.width - 4;
-    if (y + menuRect.height > window.innerHeight) y = window.innerHeight - menuRect.height - 4;
-    this._contextMenu.style.left = `${Math.max(0, x)}px`;
-    this._contextMenu.style.top = `${Math.max(0, y)}px`;
+        const { tiptapJsonToMarkdown } = await import('./markdownExport.js');
+        let doc: unknown = null;
+        try { doc = JSON.parse(fullPage.content); } catch { /* empty */ }
 
-    // Dismiss on click outside or Escape
-    setTimeout(() => {
-      document.addEventListener('mousedown', this._dismissContextMenu);
-      document.addEventListener('keydown', this._dismissContextMenuOnEscape);
-    }, 0);
+        const markdown = tiptapJsonToMarkdown(doc, fullPage.title);
+        const safeName = fullPage.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100).trim() || 'Untitled';
+
+        const electron = (window as any).parallxElectron;
+        if (!electron?.dialog?.saveFile || !electron?.fs?.writeFile) return;
+
+        const filePath = await electron.dialog.saveFile({
+          filters: [{ name: 'Markdown', extensions: ['md'] }],
+          defaultName: `${safeName}.md`,
+        });
+        if (filePath) {
+          await electron.fs.writeFile(filePath, markdown, 'utf-8');
+        }
+      } catch (err) {
+        console.error('[CanvasSidebar] Export failed:', err);
+      }
+    });
+    actions.set('delete', () => this._deletePage(page.id));
+
+    this._contextMenu = ContextMenu.show({
+      items,
+      anchor: { x: e.clientX, y: e.clientY },
+      className: 'canvas-context-menu',
+    });
+
+    this._contextMenu.onDidSelect(({ item }) => {
+      const action = actions.get(item.id);
+      if (action) action();
+    });
+
+    this._contextMenu.onDidDismiss(() => {
+      this._contextMenu = null;
+    });
   }
-
-  private readonly _dismissContextMenu = (e: MouseEvent): void => {
-    if (this._contextMenu?.contains(e.target as HTMLElement)) return;
-    this._dismissContextMenuCleanup();
-  };
-
-  private readonly _dismissContextMenuOnEscape = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape') this._dismissContextMenuCleanup();
-  };
 
   private _dismissContextMenuCleanup(): void {
     if (this._contextMenu) {
-      this._contextMenu.remove();
+      this._contextMenu.dismiss();
       this._contextMenu = null;
     }
-    document.removeEventListener('mousedown', this._dismissContextMenu);
-    document.removeEventListener('keydown', this._dismissContextMenuOnEscape);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -706,12 +661,11 @@ export class CanvasSidebar {
     const searchRow = $('div.canvas-trash-panel-search');
     const searchIcon = createIconElement('search', 14);
     searchRow.appendChild(searchIcon);
-    const searchInput = document.createElement('input') as HTMLInputElement;
-    searchInput.className = 'canvas-trash-panel-search-input';
-    searchInput.type = 'text';
-    searchInput.placeholder = 'Search trash...';
-    searchInput.value = this._trashSearchQuery;
-    searchRow.appendChild(searchInput);
+    const searchBox = new InputBox(searchRow, {
+      placeholder: 'Search trash...',
+      value: this._trashSearchQuery,
+    });
+    searchBox.inputElement.classList.add('canvas-trash-panel-search-input');
     this._trashPanel.appendChild(searchRow);
 
     // List
@@ -737,8 +691,8 @@ export class CanvasSidebar {
 
     renderList(this._trashSearchQuery);
 
-    searchInput.addEventListener('input', () => {
-      this._trashSearchQuery = searchInput.value.trim();
+    searchBox.onDidChange((value) => {
+      this._trashSearchQuery = value.trim();
       renderList(this._trashSearchQuery);
     });
 
@@ -753,7 +707,7 @@ export class CanvasSidebar {
     }
 
     document.body.appendChild(this._trashPanel);
-    setTimeout(() => searchInput.focus(), 50);
+    setTimeout(() => searchBox.focus(), 50);
 
     // Dismiss on click outside
     setTimeout(() => {
@@ -865,19 +819,16 @@ export class CanvasSidebar {
     if (this._renamingPageId) return; // already renaming
     this._renamingPageId = node.id;
 
-    const input = document.createElement('input');
-    input.className = 'canvas-inline-input';
-    input.type = 'text';
-    input.value = node.title;
+    const renameBox = new InputBox(row, { value: node.title });
+    renameBox.inputElement.classList.add('canvas-inline-input');
 
     // Replace label with input
     label.style.display = 'none';
-    row.appendChild(input);
-    input.focus();
-    input.select();
+    renameBox.focus();
+    renameBox.select();
 
     const commit = async () => {
-      const newTitle = input.value.trim() || 'Untitled';
+      const newTitle = renameBox.value.trim() || 'Untitled';
       cleanup();
       if (newTitle !== node.title) {
         try {
@@ -894,24 +845,15 @@ export class CanvasSidebar {
 
     const cleanup = () => {
       this._renamingPageId = null;
-      input.removeEventListener('blur', commit);
-      input.removeEventListener('keydown', onKeydown);
-      if (input.parentElement) input.remove();
+      renameBox.inputElement.removeEventListener('blur', commit);
+      renameBox.element.remove();
+      renameBox.dispose();
       label.style.display = '';
     };
 
-    const onKeydown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        commit();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        cancel();
-      }
-    };
-
-    input.addEventListener('blur', commit);
-    input.addEventListener('keydown', onKeydown);
+    renameBox.onDidSubmit(() => commit());
+    renameBox.onDidCancel(() => cancel());
+    renameBox.inputElement.addEventListener('blur', commit);
   }
 
   private async _deletePage(pageId: string): Promise<void> {

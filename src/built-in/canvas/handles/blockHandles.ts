@@ -824,8 +824,7 @@ export class BlockHandlesController {
       const iconEl = $('span.block-action-icon');
       if (item.isText) {
         iconEl.textContent = item.icon;
-        iconEl.style.fontWeight = '700';
-        iconEl.style.fontSize = '14px';
+        iconEl.classList.add('block-action-icon--text');
       } else {
         iconEl.innerHTML = svgIcon(item.icon as any);
         const isvg = iconEl.querySelector('svg');

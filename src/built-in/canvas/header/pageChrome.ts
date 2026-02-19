@@ -10,6 +10,7 @@ import type { CanvasDataService } from '../canvasDataService.js';
 import type { IPage } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
 import { $ } from '../../../ui/dom.js';
+import { IconPicker } from '../../../ui/iconPicker.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, PAGE_ICON_IDS } from '../canvasIcons.js';
 
@@ -43,7 +44,7 @@ export class PageChromeController {
   private _pageMenuBtn: HTMLElement | null = null;
   private _pageMenuDropdown: HTMLElement | null = null;
   private _emojiPicker: HTMLElement | null = null;
-  private _iconPicker: HTMLElement | null = null;
+  private _iconPicker: IconPicker | null = null;
   private _coverPicker: HTMLElement | null = null;
 
   // ── Page state ──
@@ -176,7 +177,7 @@ export class PageChromeController {
       this._emojiPicker = null;
     }
     if (this._iconPicker) {
-      this._iconPicker.remove();
+      this._iconPicker.dismiss();
       this._iconPicker = null;
     }
     if (this._coverPicker) {
@@ -814,83 +815,30 @@ export class PageChromeController {
     if (this._iconPicker) { this.dismissPopups(); return; }
     this.dismissPopups();
 
-    this._iconPicker = $('div.canvas-icon-picker');
+    const anchor = (this._iconEl?.style.display !== 'none' ? this._iconEl : this._pageHeader) ?? this._host.container;
 
-    // Search
-    const searchInput = $('input.canvas-icon-search') as HTMLInputElement;
-    searchInput.type = 'text';
-    searchInput.placeholder = 'Search icons…';
-    this._iconPicker.appendChild(searchInput);
-
-    // Remove button (if icon is set)
-    if (this._currentPage?.icon) {
-      const removeBtn = $('button.canvas-icon-remove');
-      removeBtn.appendChild(createIconElement('close', 12));
-      const removeLbl = $('span');
-      removeLbl.textContent = ' Remove icon';
-      removeBtn.appendChild(removeLbl);
-      removeBtn.addEventListener('click', () => {
-        this._host.dataService.updatePage(this._host.pageId, { icon: null as any });
-        this.dismissPopups();
-      });
-      this._iconPicker.appendChild(removeBtn);
-    }
-
-    // Icon grid
-    const contentArea = $('div.canvas-icon-content');
-
-    const renderIcons = (filter?: string) => {
-      contentArea.innerHTML = '';
-      const grid = $('div.canvas-icon-grid');
-      const ids = filter
-        ? PAGE_ICON_IDS.filter(id => id.includes(filter.toLowerCase()))
-        : PAGE_ICON_IDS;
-      for (const id of ids) {
-        const btn = $('button.canvas-icon-btn');
-        btn.title = id;
-        btn.innerHTML = svgIcon(id);
-        const svg = btn.querySelector('svg');
-        if (svg) { svg.setAttribute('width', '22'); svg.setAttribute('height', '22'); }
-        btn.addEventListener('click', () => {
-          this._host.dataService.updatePage(this._host.pageId, { icon: id });
-          this.dismissPopups();
-        });
-        grid.appendChild(btn);
-      }
-      if (ids.length === 0) {
-        const empty = $('div.canvas-icon-empty');
-        empty.textContent = 'No matching icons';
-        grid.appendChild(empty);
-      }
-      contentArea.appendChild(grid);
-    };
-
-    renderIcons();
-
-    searchInput.addEventListener('input', () => {
-      const q = searchInput.value.trim();
-      renderIcons(q || undefined);
+    this._iconPicker = new IconPicker(this._host.container, {
+      anchor,
+      icons: PAGE_ICON_IDS,
+      renderIcon: (id, _size) => svgIcon(id),
+      showSearch: true,
+      showRemove: !!this._currentPage?.icon,
+      iconSize: 22,
     });
 
-    this._iconPicker.appendChild(contentArea);
-    this._host.container.appendChild(this._iconPicker);
+    this._iconPicker.onDidSelectIcon((id) => {
+      this._host.dataService.updatePage(this._host.pageId, { icon: id });
+      this.dismissPopups();
+    });
 
-    // Position near icon
-    if (this._iconEl || this._pageHeader) {
-      const target = this._iconEl?.style.display !== 'none' ? this._iconEl : this._pageHeader;
-      const rect = target?.getBoundingClientRect();
-      if (rect) {
-        this._iconPicker.style.left = `${rect.left}px`;
-        this._iconPicker.style.top = `${rect.bottom + 4}px`;
-      }
-    }
+    this._iconPicker.onDidRemoveIcon(() => {
+      this._host.dataService.updatePage(this._host.pageId, { icon: null as any });
+      this.dismissPopups();
+    });
 
-    setTimeout(() => searchInput.focus(), 50);
-
-    setTimeout(() => {
-      document.addEventListener('mousedown', this._handlePopupOutsideClick);
-    }, 0);
-    document.addEventListener('keydown', this._handlePopupEscape);
+    this._iconPicker.onDidDismiss(() => {
+      this._iconPicker = null;
+    });
   }
 
   // ── Page Menu ───────────────────────────────────────────────────────────
@@ -1055,7 +1003,7 @@ export class PageChromeController {
     const target = e.target as HTMLElement;
     if (
       this._emojiPicker?.contains(target) ||
-      this._iconPicker?.contains(target) ||
+      this._iconPicker?.element.contains(target) ||
       this._coverPicker?.contains(target) ||
       this._pageMenuDropdown?.contains(target) ||
       this._pageMenuBtn?.contains(target) ||

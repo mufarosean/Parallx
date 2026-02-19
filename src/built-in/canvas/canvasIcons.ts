@@ -169,10 +169,7 @@ export function createIconElement(id: string, size = 16): HTMLElement {
     svg.setAttribute('width', String(size));
     svg.setAttribute('height', String(size));
   }
-  span.style.display = 'inline-flex';
-  span.style.alignItems = 'center';
-  span.style.justifyContent = 'center';
-  span.style.flexShrink = '0';
+  // Visual layout set in CSS (.canvas-svg-icon); only computed dimensions inline
   span.style.width = `${size}px`;
   span.style.height = `${size}px`;
   return span;

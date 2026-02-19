@@ -5,6 +5,7 @@
 
 import { Node, mergeAttributes } from '@tiptap/core';
 import { PAGE_ICON_IDS, resolvePageIcon, svgIcon } from '../canvasIcons.js';
+import { IconPicker } from '../../../ui/iconPicker.js';
 
 // ─── TipTap Command Augmentation ────────────────────────────────────────────
 declare module '@tiptap/core' {
@@ -85,14 +86,12 @@ export const Callout = Node.create({
         if (svg) { svg.setAttribute('width', '20'); svg.setAttribute('height', '20'); }
       };
 
-      let iconPicker: HTMLElement | null = null;
+      let iconPicker: IconPicker | null = null;
 
       const closeIconPicker = () => {
         if (!iconPicker) return;
-        iconPicker.remove();
+        iconPicker.dismiss();
         iconPicker = null;
-        document.removeEventListener('mousedown', handleOutsideClick, true);
-        document.removeEventListener('keydown', handleEscape, true);
       };
 
       const setEmoji = (emoji: string) => {
@@ -103,44 +102,6 @@ export const Callout = Node.create({
         editor.view.dispatch(tr);
       };
 
-      const renderPickerIcons = (contentArea: HTMLElement, filter?: string) => {
-        contentArea.innerHTML = '';
-        const grid = document.createElement('div');
-        grid.classList.add('canvas-icon-grid');
-        const ids = filter
-          ? PAGE_ICON_IDS.filter(id => id.includes(filter.toLowerCase()))
-          : PAGE_ICON_IDS;
-
-        for (const id of ids) {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.classList.add('canvas-icon-btn');
-          btn.title = id;
-          btn.innerHTML = svgIcon(id);
-          const svg = btn.querySelector('svg');
-          if (svg) {
-            svg.setAttribute('width', '22');
-            svg.setAttribute('height', '22');
-          }
-          btn.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setEmoji(id);
-            closeIconPicker();
-          });
-          grid.appendChild(btn);
-        }
-
-        if (ids.length === 0) {
-          const empty = document.createElement('div');
-          empty.classList.add('canvas-icon-empty');
-          empty.textContent = 'No matching icons';
-          grid.appendChild(empty);
-        }
-
-        contentArea.appendChild(grid);
-      };
-
       const openIconPicker = () => {
         if (!editor.isEditable) return;
         if (iconPicker) {
@@ -148,54 +109,22 @@ export const Callout = Node.create({
           return;
         }
 
-        iconPicker = document.createElement('div');
-        iconPicker.classList.add('canvas-icon-picker');
-
-        const searchInput = document.createElement('input');
-        searchInput.type = 'text';
-        searchInput.placeholder = 'Search icons…';
-        searchInput.classList.add('canvas-icon-search');
-        iconPicker.appendChild(searchInput);
-
-        const contentArea = document.createElement('div');
-        contentArea.classList.add('canvas-icon-content');
-        renderPickerIcons(contentArea);
-        iconPicker.appendChild(contentArea);
-
-        document.body.appendChild(iconPicker);
-
-        const rect = iconSpan.getBoundingClientRect();
-        let left = rect.left;
-        let top = rect.bottom + 4;
-        const pickerRect = iconPicker.getBoundingClientRect();
-        left = Math.min(left, window.innerWidth - pickerRect.width - 8);
-        top = Math.min(top, window.innerHeight - pickerRect.height - 8);
-        iconPicker.style.left = `${Math.max(8, left)}px`;
-        iconPicker.style.top = `${Math.max(8, top)}px`;
-
-        searchInput.addEventListener('input', () => {
-          const q = searchInput.value.trim();
-          renderPickerIcons(contentArea, q || undefined);
+        iconPicker = new IconPicker(document.body, {
+          anchor: iconSpan,
+          icons: PAGE_ICON_IDS,
+          renderIcon: (id, _size) => svgIcon(id),
+          showSearch: true,
+          showRemove: false,
+          iconSize: 22,
         });
 
-        setTimeout(() => searchInput.focus(), 0);
-        setTimeout(() => {
-          document.addEventListener('mousedown', handleOutsideClick, true);
-        }, 0);
-        document.addEventListener('keydown', handleEscape, true);
-      };
+        iconPicker.onDidSelectIcon((id) => {
+          setEmoji(id);
+        });
 
-      const handleOutsideClick = (event: MouseEvent) => {
-        if (!iconPicker) return;
-        const target = event.target as HTMLElement | null;
-        if (!target) return;
-        if (iconPicker.contains(target) || iconSpan.contains(target)) return;
-        closeIconPicker();
-      };
-
-      const handleEscape = (event: KeyboardEvent) => {
-        if (event.key !== 'Escape') return;
-        closeIconPicker();
+        iconPicker.onDidDismiss(() => {
+          iconPicker = null;
+        });
       };
 
       renderIcon(node.attrs.emoji);

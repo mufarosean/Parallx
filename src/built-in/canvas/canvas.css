@@ -797,6 +797,11 @@
   flex-shrink: 0;
 }
 
+.block-action-icon--text {
+  font-weight: 700;
+  font-size: 14px;
+}
+
 .block-action-label {
   flex: 1;
   white-space: nowrap;
