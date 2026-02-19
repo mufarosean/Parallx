@@ -17,6 +17,13 @@ export interface DatabaseRunResult {
   lastInsertRowid: number;
 }
 
+/** A single operation within a batched transaction. */
+export interface TransactionOp {
+  type: 'run' | 'get' | 'all';
+  sql: string;
+  params?: unknown[];
+}
+
 /** IPC error shape from the main process. */
 interface DatabaseIpcError {
   code: string;
@@ -32,6 +39,7 @@ interface DatabaseBridge {
   get(sql: string, params?: unknown[]): Promise<{ error: DatabaseIpcError | null; row?: Record<string, unknown> | null }>;
   all(sql: string, params?: unknown[]): Promise<{ error: DatabaseIpcError | null; rows?: Record<string, unknown>[] }>;
   isOpen(): Promise<{ isOpen: boolean }>;
+  runTransaction(operations: TransactionOp[]): Promise<{ error: DatabaseIpcError | null; results?: unknown[] }>;
 }
 
 // ─── DatabaseService ─────────────────────────────────────────────────────────
@@ -191,6 +199,24 @@ export class DatabaseService extends Disposable {
       throw new Error(`[DatabaseService] SQL error: ${result.error.message}`);
     }
     return (result.rows as T[]) ?? [];
+  }
+
+  /**
+   * Execute multiple operations inside a single IMMEDIATE transaction.
+   * Returns an array of results in the same order as operations.
+   *
+   * Each result's shape depends on the op type:
+   * - 'run' → `{ changes, lastInsertRowid }`
+   * - 'get' → `{ row }` (or `{ row: null }`)
+   * - 'all' → `{ rows }`
+   */
+  async runTransaction(operations: TransactionOp[]): Promise<unknown[]> {
+    this._ensureOpen();
+    const result = await this._bridge.runTransaction(operations);
+    if (result.error) {
+      throw new Error(`[DatabaseService] Transaction error: ${result.error.message}`);
+    }
+    return result.results ?? [];
   }
 
   // ── Internal ──

@@ -26,7 +26,7 @@
 //   • Column + ColumnList (spatial partitions — not blocks; created via slash menu or drag-and-drop)
 //   • ColumnDrop plugin (drag block to side of another to create/modify columns)
 
-import type { IDisposable } from '../../platform/lifecycle.js';
+import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { CanvasDataService } from './canvasDataService.js';
 import { Editor } from '@tiptap/core';
@@ -137,7 +137,7 @@ class CanvasEditorPane implements IDisposable {
   private _disposed = false;
   private _initComplete = false;
   private _suppressUpdate = false;
-  private readonly _saveDisposables: IDisposable[] = [];
+  private readonly _saveDisposables = new DisposableStore();
 
   // ── Page chrome controller ──
   private _pageChrome!: PageChromeController;
@@ -317,7 +317,7 @@ class CanvasEditorPane implements IDisposable {
     });
 
     // Subscribe to save completion (Task 6.1)
-    this._saveDisposables.push(
+    this._saveDisposables.add(
       this._dataService.onDidSavePage((savedPageId) => {
         if (savedPageId === this._pageId) {
           // Auto-save completed — no dirty tracking needed for canvas
@@ -326,7 +326,7 @@ class CanvasEditorPane implements IDisposable {
     );
 
     // Subscribe to page changes for bidirectional sync (Task 7.2)
-    this._saveDisposables.push(
+    this._saveDisposables.add(
       this._dataService.onDidChangePage((event) => {
         if (event.pageId !== this._pageId || !event.page) return;
         this._pageChrome.syncPageChange(event.page);
@@ -336,7 +336,7 @@ class CanvasEditorPane implements IDisposable {
 
     // Register page-menu handler so the external ribbon's ⋯ button can
     // trigger the full page menu (which lives in PageChromeController).
-    this._saveDisposables.push(
+    this._saveDisposables.add(
       this._provider.registerPageMenuHandler(this._pageId, () => {
         this._pageChrome.showPageMenu();
       }),
@@ -389,8 +389,7 @@ class CanvasEditorPane implements IDisposable {
     this._blockSelection?.dispose();
 
     // Dispose save-state subscriptions
-    for (const d of this._saveDisposables) d.dispose();
-    this._saveDisposables.length = 0;
+    this._saveDisposables.dispose();
 
     if (this._editor) {
       this._editor.destroy();

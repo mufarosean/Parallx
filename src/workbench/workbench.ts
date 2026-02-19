@@ -222,7 +222,7 @@ export class Workbench extends Layout {
   private _switching = false;
   private _workspaceLoader!: WorkspaceLoader;
   private _workspaceSaver!: WorkspaceSaver;
-  private _saverListeners: IDisposable[] = [];
+  private _saverListeners = new DisposableStore();
   private _restoredState: WorkspaceState | undefined;
 
   // Context (Capability 8)
@@ -1270,11 +1270,9 @@ export class Workbench extends Layout {
     });
 
     // Wire auto-save on structural changes (dispose old listeners first)
-    for (const d of this._saverListeners) d.dispose();
-    this._saverListeners = [
-      this._hGrid.onDidChange(() => this._workspaceSaver.requestSave()),
-      this._vGrid.onDidChange(() => this._workspaceSaver.requestSave()),
-    ];
+    this._saverListeners.clear();
+    this._saverListeners.add(this._hGrid.onDidChange(() => this._workspaceSaver.requestSave()));
+    this._saverListeners.add(this._vGrid.onDidChange(() => this._workspaceSaver.requestSave()));
   }
 
   // ════════════════════════════════════════════════════════════════════════

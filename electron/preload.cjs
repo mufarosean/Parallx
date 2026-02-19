@@ -158,6 +158,15 @@ contextBridge.exposeInMainWorld('parallxElectron', {
      * @returns {Promise<{ isOpen: boolean }>}
      */
     isOpen: () => ipcRenderer.invoke('database:isOpen'),
+
+    /**
+     * Execute multiple operations inside a single IMMEDIATE transaction.
+     * Each op is { type: 'run'|'get'|'all', sql: string, params?: any[] }.
+     * @param {{ type: string, sql: string, params?: any[] }[]} operations
+     * @returns {Promise<{ error: null, results: any[] } | { error: { code: string, message: string } }>}
+     */
+    runTransaction: (operations) =>
+      ipcRenderer.invoke('database:runTransaction', operations),
   },
 
   // ══════════════════════════════════════════════════════════════════════════

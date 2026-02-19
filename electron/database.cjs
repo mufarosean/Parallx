@@ -196,6 +196,44 @@ class DatabaseManager {
     return this._db.prepare(sql).all(...params);
   }
 
+  /**
+   * Execute multiple operations inside a single IMMEDIATE transaction.
+   *
+   * Each operation is `{ type: 'run' | 'get' | 'all', sql: string, params?: any[] }`.
+   * Returns an array of results in the same order. For 'run' operations the
+   * result is `{ changes, lastInsertRowid }`; for 'get' it is the row or
+   * undefined; for 'all' it is the array of rows.
+   *
+   * @param {{ type: 'run' | 'get' | 'all', sql: string, params?: any[] }[]} operations
+   * @returns {any[]}
+   */
+  runTransaction(operations) {
+    this._ensureOpen();
+
+    const txn = this._db.transaction(() => {
+      const results = [];
+      for (const op of operations) {
+        const params = op.params || [];
+        switch (op.type) {
+          case 'run':
+            results.push(this._db.prepare(op.sql).run(...params));
+            break;
+          case 'get':
+            results.push(this._db.prepare(op.sql).get(...params));
+            break;
+          case 'all':
+            results.push(this._db.prepare(op.sql).all(...params));
+            break;
+          default:
+            throw new Error(`[DatabaseManager] Unknown operation type: ${op.type}`);
+        }
+      }
+      return results;
+    });
+
+    return txn.immediate();
+  }
+
   // ── Internal ──
 
   /**

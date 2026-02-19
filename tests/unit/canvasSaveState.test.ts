@@ -39,7 +39,7 @@ function makePage(overrides: Partial<IPage> = {}): IPage {
 }
 
 describe('CanvasDataService save-state observability', () => {
-  it('emits pending -> flushing -> failed for debounce save failures', async () => {
+  it('emits pending -> flushing -> retrying for debounce save failures', async () => {
     vi.useFakeTimers();
     const service = new FailingSaveService(5);
     const events: SaveStateEvent[] = [];
@@ -50,10 +50,11 @@ describe('CanvasDataService save-state observability', () => {
     await vi.advanceTimersByTimeAsync(10);
     await Promise.resolve();
 
+    // After Tier 1 retry queue: failure triggers Retrying (not immediate Failed)
     expect(events.map((e) => e.kind)).toEqual([
       SaveStateKind.Pending,
       SaveStateKind.Flushing,
-      SaveStateKind.Failed,
+      SaveStateKind.Retrying,
     ]);
 
     disposable.dispose();

@@ -323,7 +323,7 @@ export function createToolApi(
               command: _command,
               name: _name,
             });
-            subscriptions.push(_accessor);
+            // NOT pushed to subscriptions — lifecycle is managed by show/hide/dispose
           },
           hide() {
             if (!_visible || !_accessor) return;

@@ -288,7 +288,13 @@ export class EditorPart extends Part {
       ) {
         // Defer removal to after the current event cycle completes so that any
         // in-flight tab-render or pane-update in the group view finishes first.
-        queueMicrotask(() => this.removeGroup(group.id));
+        queueMicrotask(() => {
+          // Guard: only remove if still empty (a new editor may have opened in this group
+          // during the microtask queue, e.g. from drag-and-drop or command)
+          if (group.model.isEmpty) {
+            this.removeGroup(group.id);
+          }
+        });
       }
     }));
 

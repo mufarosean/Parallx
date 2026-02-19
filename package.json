@@ -23,6 +23,7 @@
     "@playwright/test": "^1.58.2",
     "electron": "^40.2.1",
     "esbuild": "^0.27.3",
+    "jsdom": "^28.1.0",
     "playwright": "^1.58.2",
     "typescript": "^5.5.0",
     "vitest": "^4.0.18"

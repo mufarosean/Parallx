@@ -852,6 +852,34 @@ ipcMain.handle('database:isOpen', async () => {
   return { isOpen: databaseManager.isOpen };
 });
 
+// ── database:runTransaction ──
+// Execute multiple operations inside a single IMMEDIATE transaction.
+ipcMain.handle('database:runTransaction', async (_event, operations) => {
+  try {
+    const rawResults = databaseManager.runTransaction(operations);
+    // Normalize results for IPC (BigInt → Number for lastInsertRowid)
+    const results = rawResults.map((r, i) => {
+      const op = operations[i];
+      if (op.type === 'run') {
+        return {
+          changes: r.changes,
+          lastInsertRowid: typeof r.lastInsertRowid === 'bigint'
+            ? Number(r.lastInsertRowid)
+            : r.lastInsertRowid,
+        };
+      }
+      if (op.type === 'get') {
+        return { row: r || null };
+      }
+      // 'all'
+      return { rows: r };
+    });
+    return { error: null, results };
+  } catch (err) {
+    return { error: normalizeDatabaseError(err) };
+  }
+});
+
 // ════════════════════════════════════════════════════════════════════════════════
 // File Watcher IPC (M4 Cap 0 — Task 0.3)
 // ════════════════════════════════════════════════════════════════════════════════

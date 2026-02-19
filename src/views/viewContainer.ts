@@ -1,6 +1,6 @@
 // viewContainer.ts — container that hosts multiple views with tabbed UI
 
-import { Disposable, IDisposable } from '../platform/lifecycle.js';
+import { Disposable, DisposableStore, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { Orientation } from '../layout/layoutTypes.js';
 import { $,  hide, show, startDrag, endDrag } from '../ui/dom.js';
@@ -61,6 +61,7 @@ export class ViewContainer extends Disposable implements IGridView {
   private _mode: ViewContainerMode = 'tabbed';
   private _collapsedSections = new Set<string>();
   private _sectionElements = new Map<string, { wrapper: HTMLElement; header: HTMLElement; body: HTMLElement; actionsSlot: HTMLElement }>();
+  private _sectionDisposables = new Map<string, DisposableStore>();
 
   /** Public accessor for a section's actions slot element. */
   getSectionActionsSlot(viewId: string): HTMLElement | undefined {
@@ -552,23 +553,33 @@ export class ViewContainer extends Disposable implements IGridView {
     // Mount the view inside the body
     view.createElement(body);
 
+    // Track section listeners in a DisposableStore for explicit cleanup
+    const sectionStore = new DisposableStore();
+
     // Click header toggles collapse
-    header.addEventListener('click', () => this.toggleSectionCollapse(view.id));
+    const clickHandler = () => this.toggleSectionCollapse(view.id);
+    header.addEventListener('click', clickHandler);
+    sectionStore.add({ dispose: () => header.removeEventListener('click', clickHandler) });
 
     // Keyboard: Enter/Space toggles collapse
-    header.addEventListener('keydown', (e) => {
+    const keyHandler = (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         this.toggleSectionCollapse(view.id);
       }
-    });
+    };
+    header.addEventListener('keydown', keyHandler);
+    sectionStore.add({ dispose: () => header.removeEventListener('keydown', keyHandler) });
 
     // Right-click context menu
-    header.addEventListener('contextmenu', (e) => {
+    const ctxHandler = (e: MouseEvent) => {
       e.preventDefault();
       this._onDidContextMenuSection.fire({ viewId: view.id, x: e.clientX, y: e.clientY, event: e });
-    });
+    };
+    header.addEventListener('contextmenu', ctxHandler);
+    sectionStore.add({ dispose: () => header.removeEventListener('contextmenu', ctxHandler) });
 
+    this._sectionDisposables.set(view.id, sectionStore);
     this._sectionElements.set(view.id, { wrapper, header, body, actionsSlot });
     this._onDidCreateSection.fire({ viewId: view.id, actionsSlot });
     this._contentArea.appendChild(wrapper);
@@ -578,6 +589,8 @@ export class ViewContainer extends Disposable implements IGridView {
    * Remove a section from stacked mode DOM.
    */
   private _removeSection(viewId: string): void {
+    this._sectionDisposables.get(viewId)?.dispose();
+    this._sectionDisposables.delete(viewId);
     const section = this._sectionElements.get(viewId);
     if (section) {
       section.wrapper.remove();
@@ -826,6 +839,8 @@ export class ViewContainer extends Disposable implements IGridView {
     this._views.clear();
     this._tabElements.clear();
     this._sectionElements.clear();
+    for (const d of this._sectionDisposables.values()) d.dispose();
+    this._sectionDisposables.clear();
     this._sectionSashes = [];
     this._collapsedSections.clear();
     this._tabOrder = [];
