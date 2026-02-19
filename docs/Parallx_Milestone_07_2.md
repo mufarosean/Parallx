@@ -168,55 +168,55 @@ This audit compared every major Parallx subsystem against VS Code's actual imple
 ### Phase A — Disposal & Lifecycle Bugs (Category A)
 **Risk: LOW | Impact: Prevents runtime memory leaks | Effort: SMALL**
 
-- [ ] A.1 — Wrap all 14 untracked `addEventListener` calls with `_register(addDisposableListener(...))` or equivalent
-- [ ] A.2 — Clear `_turnIntoHideTimer` and `_colorHideTimer` in `BlockHandlesController.dispose()`
-- [ ] A.3 — Register `_saverListeners` with `this._register()` in Workbench
-- [ ] A.4 — Add `dispose()` to `WorkspaceFileScanner`
-- [ ] A.5 — Add lifecycle management to `Workspace` class emitters
-- [ ] A.6 — Track orphaned emitters in bridge modules
+- [x] A.1 — Wrap all 14 untracked `addEventListener` calls with `_register(addDisposableListener(...))` or equivalent
+- [x] A.2 — Clear `_turnIntoHideTimer` and `_colorHideTimer` in `BlockHandlesController.dispose()`
+- [x] A.3 — Register `_saverListeners` with `this._register()` in Workbench
+- [x] A.4 — Add `dispose()` to `WorkspaceFileScanner`
+- [x] A.5 — Add lifecycle management to `Workspace` class emitters
+- [x] A.6 — Track orphaned emitters in bridge modules
 
 ### Phase B — Dependency Violation Fixes (Category B)
 **Risk: LOW | Impact: Enforces architectural boundaries | Effort: MEDIUM**
 
-- [ ] B.0 — **Update ARCHITECTURE.md**: Allow `layout/ → ui/` and `parts/ → editor/` (matches VS Code)
-- [ ] B.3 — Decouple `structuralCommands.ts` from `editor/`, `built-in/`, `parts/` — use service interfaces
-- [ ] B.4 — Convert `workspace/` imports to type-only where needed
-- [ ] B.5 — Move `DEFAULT_SIZE_CONSTRAINTS` out of `layout/`
-- [ ] B.6 — Move `Memento` type to `configurationTypes.ts`
-- [ ] B.7 — Decouple `apiFactory.ts` from concrete service imports
-- [ ] B.8 — Inject `DatabaseService` into `canvasDataService.ts`
+- [x] B.0 — **Update ARCHITECTURE.md**: Allow `layout/ → ui/` and `parts/ → editor/` (matches VS Code)
+- [x] B.3 — Decouple `structuralCommands.ts` from `editor/`, `built-in/`, `parts/` — use service interfaces
+- [x] B.4 — Convert `workspace/` imports to type-only where needed
+- [x] B.5 — Move `DEFAULT_SIZE_CONSTRAINTS` out of `layout/`
+- [x] B.6 — Move `Memento` type to `configurationTypes.ts`
+- [x] B.7 — Decouple `apiFactory.ts` from concrete service imports
+- [x] B.8 — Inject `DatabaseService` into `canvasDataService.ts`
 
 ### Phase C — Workbench Decomposition (Category D)
 **Risk: MEDIUM | Impact: Largest structural improvement | Effort: LARGE**
 
 Following VS Code's pattern where `Workbench extends Layout` is thin:
 
-- [ ] D.1 — Extract `WorkbenchContributionHandler`: tool container/view contribution wiring
-- [ ] D.2 — Extract `WorkbenchFacadeFactory`: facade service registration
-- [ ] D.3 — Extract `WorkbenchFileEditorSetup`: file editor resolver + quick access file picker
-- [ ] D.4 — Move workspace CRUD to `WorkspaceService`
-- [ ] D.5 — Split `structuralCommands.ts` by command family
+- [x] D.1 — Extract `WorkbenchContributionHandler`: tool container/view contribution wiring
+- [x] D.2 — Extract `WorkbenchFacadeFactory`: facade service registration
+- [x] D.3 — Extract `WorkbenchFileEditorSetup`: file editor resolver + quick access file picker
+- [x] D.4 — Move workspace CRUD to `WorkspaceService`
+- [x] D.5 — Split `structuralCommands.ts` by command family
 
 ### Phase D — Convention Alignment (Category C)
 **Risk: LOW | Impact: Naming coherence, discoverability | Effort: MEDIUM**
 
-- [ ] C.1 — Create `toolTypes.ts`, `viewTypes.ts`
-- [ ] C.2 — Create `contextTypes.ts`, `themeTypes.ts`
-- [ ] C.3 — Resolve duplicate `IThemeService` interfaces
-- [ ] C.4 — Create proper `IDatabaseService` / `IWorkspaceBoundaryService` interfaces
-- [ ] C.5 — Add `IEditorResolverService` to serviceTypes.ts
-- [ ] C.6 — Rename 11 emitters to `_onDid*` / `_onWill*` pattern
-- [ ] C.7 — Split `structuralCommands.ts` by command family (shared with D.5)
+- [x] C.1 — Create `toolTypes.ts`, `viewTypes.ts`
+- [x] C.2 — Create `contextTypes.ts`, `themeTypes.ts`
+- [x] C.3 — Resolve duplicate `IThemeService` interfaces
+- [x] C.4 — Create proper `IDatabaseService` / `IWorkspaceBoundaryService` interfaces
+- [x] C.5 — Add `IEditorResolverService` to serviceTypes.ts
+- [x] C.6 — Rename 11 emitters to `_onDid*` / `_onWill*` pattern
+- [x] C.7 — Split `structuralCommands.ts` by command family (shared with D.5)
 
 ### Phase E — UI Component Rules (Category E)
 **Risk: LOW | Impact: Consistent component usage | Effort: SMALL**
 
-- [ ] E.1 — Create `src/ui/iconPicker.ts` — extract shared icon picker widget
-- [ ] E.2 — Replace raw `<input>` with `InputBox` in canvasSidebar
-- [ ] E.3 — Replace raw context menu with `ContextMenu` component
-- [ ] E.4 — Replace `.style.cssText` with CSS classes in editorPane
-- [ ] E.5 — Move inline visual styles to CSS classes in canvasIcons
-- [ ] E.6 — Move inline `fontWeight`/`fontSize` to CSS in blockHandles
+- [x] E.1 — Create `src/ui/iconPicker.ts` — extract shared icon picker widget
+- [x] E.2 — Replace raw `<input>` with `InputBox` in canvasSidebar
+- [x] E.3 — Replace raw context menu with `ContextMenu` component
+- [x] E.4 — Replace `.style.cssText` with CSS classes in editorPane
+- [x] E.5 — Move inline visual styles to CSS classes in canvasIcons
+- [x] E.6 — Move inline `fontWeight`/`fontSize` to CSS in blockHandles
 
 ---
 
