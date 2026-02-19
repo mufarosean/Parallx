@@ -1199,9 +1199,63 @@ function registerCommands(api: ParallxApi, context: ToolContext): void {
   );
 
   context.subscriptions.push(
-    api.commands.registerCommand('explorer.revealInExplorer', (_uri?: unknown) => {
-      // TODO: Find and select the node matching the given URI, expanding parents as needed
-      console.log('[Explorer] revealInExplorer — not yet implemented');
+    api.commands.registerCommand('explorer.revealInExplorer', async (_uri?: unknown) => {
+      if (typeof _uri !== 'string') return;
+      const targetUri = _uri;
+
+      // Normalise path separators for comparison
+      const normalise = (p: string): string => p.replace(/\\/g, '/');
+      const targetNorm = normalise(targetUri);
+
+      // 1. Find which root contains this URI
+      let matchingRoot: TreeNode | null = null;
+      for (const root of _roots) {
+        if (targetNorm.startsWith(normalise(root.uri))) {
+          matchingRoot = root;
+          break;
+        }
+      }
+      if (!matchingRoot) return;
+
+      // 2. Build the chain of path segments from root to target
+      const rootNorm = normalise(matchingRoot.uri);
+      const remainder = targetNorm.slice(rootNorm.length).replace(/^\//, '');
+      const segments = remainder ? remainder.split('/') : [];
+
+      // 3. Walk down the tree, expanding and loading each ancestor
+      let current: TreeNode = matchingRoot;
+      if (!current.expanded) {
+        current.expanded = true;
+        if (!current.loaded) await loadChildren(current);
+      }
+
+      for (const seg of segments) {
+        const child = current.children.find(
+          c => c.name.toLowerCase() === seg.toLowerCase()
+        );
+        if (!child) break;
+        current = child;
+        if (child.type === FILE_TYPE_DIRECTORY && !child.expanded) {
+          child.expanded = true;
+          if (!child.loaded) await loadChildren(child);
+        }
+      }
+
+      // 4. Re-render so all expanded ancestors are visible
+      renderTree();
+      saveExpandState();
+
+      // 5. Select the target node and apply a temporary flash highlight
+      const revealed = findNodeByUri(current.uri);
+      if (revealed) {
+        selectNode(revealed);
+        if (revealed.element) {
+          revealed.element.classList.add('tree-node--flash');
+          setTimeout(() => {
+            revealed.element?.classList.remove('tree-node--flash');
+          }, 1500);
+        }
+      }
     }),
   );
 

@@ -84,6 +84,16 @@
   background-color: var(--vscode-list-activeSelectionBackground);
 }
 
+/* Flash highlight — temporary cue when revealing via breadcrumbs / Reveal in Explorer */
+@keyframes tree-node-flash {
+  0%   { background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 180, 82, 0.45)); }
+  100% { background-color: transparent; }
+}
+
+.tree-node--flash {
+  animation: tree-node-flash 1.5s ease-out forwards;
+}
+
 /* ── Chevron ── */
 
 .tree-node-chevron {
