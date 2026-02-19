@@ -1875,6 +1875,7 @@
   z-index: 50;
   background: var(--vscode-editor-background);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
 }
 
 .canvas-top-ribbon-left {
@@ -1883,6 +1884,7 @@
   min-width: 0;
   flex: 1;
   overflow: hidden;
+  height: 100%;
 }
 
 .canvas-top-ribbon-right {
@@ -1894,6 +1896,9 @@
 
 .canvas-top-ribbon .canvas-breadcrumbs {
   margin-bottom: 0;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .canvas-top-ribbon-edited {

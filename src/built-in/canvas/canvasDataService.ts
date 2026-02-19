@@ -781,11 +781,15 @@ export class CanvasDataService extends Disposable {
     const ancestors: IPage[] = [];
     let currentId: string | null = pageId;
 
-    // Safety limit to prevent infinite loops
-    const MAX_DEPTH = 50;
+    // Visited set prevents infinite loops from circular parentId chains
+    const visited = new Set<string>();
+    const MAX_DEPTH = 30;
     let depth = 0;
 
     while (currentId && depth < MAX_DEPTH) {
+      if (visited.has(currentId)) break; // cycle detected
+      visited.add(currentId);
+
       const page = await this.getPage(currentId);
       if (!page) break;
       if (currentId !== pageId) {
