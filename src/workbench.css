@@ -1280,21 +1280,14 @@ html, body {
   align-items: center;
   margin-right: 4px;
   opacity: 0.85;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
-.breadcrumb-icon--folder::before {
-  content: '\1F4C1';
-  font-size: 12px;
-}
-
-.breadcrumb-icon--file::before {
-  content: '';
-  /* File icon is omitted — the label without icon is cleaner for files (VS Code behavior) */
-}
-
-/* Root folder gets a different icon */
-.parallx-breadcrumb-item.root-folder .breadcrumb-icon--folder::before {
-  content: '\1F4C9';
+.breadcrumb-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .breadcrumb-label {

@@ -27,6 +27,10 @@ import { $ } from '../ui/dom.js';
 
 export const BREADCRUMBS_HEIGHT = 22; // VS Code: BreadcrumbsControl.HEIGHT = 22
 
+// Codicon-style SVG icons (16×16 viewBox, currentColor, matches project convention)
+const FOLDER_ICON_SVG = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 2.5H6L7.5 4H14.5V13.5H1.5V2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
+const FILE_ICON_SVG = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.5 1H3.5C3.22 1 3 1.22 3 1.5V14.5C3 14.78 3.22 15 3.5 15H12.5C12.78 15 13 14.78 13 14.5V3.5L10.5 1Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M10 1V4H13" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';
+
 // ─── FileElement ─────────────────────────────────────────────────────────────
 
 /**
@@ -63,14 +67,14 @@ class FileBreadcrumbItem extends BreadcrumbsItem {
   }
 
   render(container: HTMLElement): void {
-    // Icon (optional — file icon for files, folder icon for folders)
+    // Icon — codicon-style SVG for folders and files
     if (this._showIcon) {
       const icon = $('span');
       icon.className = 'breadcrumb-icon';
       if (this.element.kind === 'file') {
-        icon.classList.add('breadcrumb-icon--file');
+        icon.innerHTML = FILE_ICON_SVG;
       } else {
-        icon.classList.add('breadcrumb-icon--folder');
+        icon.innerHTML = FOLDER_ICON_SVG;
       }
       container.appendChild(icon);
     }
