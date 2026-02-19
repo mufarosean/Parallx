@@ -2,6 +2,7 @@
 import { IDisposable, Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS } from '../layout/layoutTypes.js';
+export { DEFAULT_SIZE_CONSTRAINTS };
 import { $ } from '../ui/dom.js';
 
 // ─── View State ──────────────────────────────────────────────────────────────

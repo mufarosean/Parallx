@@ -17,7 +17,7 @@ import type { IToolDescription } from '../tools/toolManifest.js';
 import type { IContributionProcessor } from './contributionTypes.js';
 import type { ViewManager } from '../views/viewManager.js';
 import type { IView, ViewState } from '../views/view.js';
-import { DEFAULT_SIZE_CONSTRAINTS } from '../layout/layoutTypes.js';
+import { DEFAULT_SIZE_CONSTRAINTS } from '../views/view.js';
 
 // ─── Container Location ──────────────────────────────────────────────────────
 

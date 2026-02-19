@@ -218,7 +218,10 @@ export const IEditorService = createServiceIdentifier<IEditorService>('IEditorSe
 // ─── IEditorGroupService ─────────────────────────────────────────────────────
 
 import type { EditorGroupView } from '../editor/editorGroupView.js';
-import type { GroupDirection } from '../editor/editorTypes.js';
+import { GroupDirection } from '../editor/editorTypes.js';
+export { GroupDirection };
+import { PartId } from '../parts/partTypes.js';
+export { PartId };
 
 /**
  * Manages editor group lifecycle and layout.
@@ -781,3 +784,51 @@ export interface IThemeServiceShape extends IDisposable {
 }
 
 export const IThemeService = createServiceIdentifier<IThemeServiceShape>('IThemeService');
+
+// ─── Status Bar Types ────────────────────────────────────────────────────────
+
+/**
+ * Status bar alignment for items.
+ * VS Code reference: StatusbarAlignment (src/vs/workbench/services/statusbar/browser/statusbar.ts)
+ */
+export enum StatusBarAlignment {
+  Left = 'left',
+  Right = 'right',
+}
+
+/**
+ * Descriptor for a status bar entry.
+ * VS Code reference: IStatusbarEntry
+ */
+export interface StatusBarEntry {
+  readonly id: string;
+  /** Display text. Supports `$(icon-name)` codicon placeholders. */
+  readonly text: string;
+  readonly alignment: StatusBarAlignment;
+  /** Sort order: higher priority = closer to the edge. */
+  readonly priority?: number;
+  readonly tooltip?: string;
+  /** Command ID to execute on click. */
+  readonly command?: string;
+  /** Human-readable name for context-menu toggling. */
+  readonly name?: string;
+  /** Optional SVG icon string rendered before the text. */
+  readonly iconSvg?: string;
+}
+
+/**
+ * Accessor returned when adding an entry — allows updating or removing it.
+ * VS Code reference: IStatusbarEntryAccessor
+ */
+export interface StatusBarEntryAccessor extends IDisposable {
+  /** Update the entry's mutable properties. */
+  update(entry: Partial<Pick<StatusBarEntry, 'text' | 'tooltip' | 'command' | 'iconSvg'>>): void;
+}
+
+/**
+ * Minimal interface for status bar part operations needed by API consumers.
+ * VS Code reference: IStatusbarService
+ */
+export interface IStatusBarPart {
+  addEntry(entry: StatusBarEntry): StatusBarEntryAccessor;
+}

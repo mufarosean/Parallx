@@ -11,7 +11,7 @@
 // Integrates with M1's IStorage abstraction.
 
 import { IStorage } from '../platform/storage.js';
-import type { Memento } from '../tools/toolModuleLoader.js';
+import type { Memento } from './configurationTypes.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

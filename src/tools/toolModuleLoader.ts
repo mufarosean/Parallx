@@ -30,14 +30,10 @@ export interface ToolContext {
 
 /**
  * Minimal Memento interface for tool state.
- * Full implementation lives in Cap 4 (ToolMemento).
+ * Canonical definition lives in configuration/configurationTypes.ts.
  */
-export interface Memento {
-  get<T>(key: string): T | undefined;
-  get<T>(key: string, defaultValue: T): T;
-  update(key: string, value: unknown): Promise<void>;
-  keys(): readonly string[];
-}
+import type { Memento } from '../configuration/configurationTypes.js';
+export type { Memento };
 
 /**
  * The activate function signature.

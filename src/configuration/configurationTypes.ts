@@ -7,6 +7,19 @@
 import { Event } from '../platform/events.js';
 import { IDisposable } from '../platform/lifecycle.js';
 
+// ─── Memento Interface ───────────────────────────────────────────────────────────────────
+
+/**
+ * Minimal Memento interface for tool state persistence.
+ * Used by both ToolMemento (configuration/) and ToolContext (tools/).
+ */
+export interface Memento {
+  get<T>(key: string): T | undefined;
+  get<T>(key: string, defaultValue: T): T;
+  update(key: string, value: unknown): Promise<void>;
+  keys(): readonly string[];
+}
+
 // ─── Configuration Values ────────────────────────────────────────────────────
 
 /**

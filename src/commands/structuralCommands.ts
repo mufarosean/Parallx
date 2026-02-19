@@ -14,11 +14,8 @@ import type { CommandDescriptor, CommandExecutionContext } from './commandTypes.
 import type { CommandService } from './commandRegistry.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { IEditorGroupService, IFileService, IWorkspaceService, IEditorService } from '../services/serviceTypes.js';
-import { GroupDirection } from '../editor/editorTypes.js';
+import { GroupDirection, PartId } from '../services/serviceTypes.js';
 import { URI } from '../platform/uri.js';
-import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
-import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
-import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
 
 // ─── Workbench type (avoids circular import) ────────────────────────────────
 // Command handlers access workbench via `ctx.workbench` cast to this shape.
@@ -278,7 +275,7 @@ const markdownOpenPreviewToSide: CommandDescriptor = {
   title: 'Markdown: Open Preview to the Side',
   category: 'Markdown',
   keybinding: 'Ctrl+K V',
-  handler(ctx) {
+  async handler(ctx) {
     const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
     if (!editorGroupService) return;
 
@@ -286,7 +283,7 @@ const markdownOpenPreviewToSide: CommandDescriptor = {
     if (!activeGroup) return;
 
     const activeEditor = activeGroup.model.activeEditor;
-    if (!(activeEditor instanceof FileEditorInput)) return;
+    if (!activeEditor || activeEditor.typeId !== 'parallx.editor.file') return;
     if (!isMarkdownFile(activeEditor.name)) return;
 
     // Split right to create a new group
@@ -298,8 +295,9 @@ const markdownOpenPreviewToSide: CommandDescriptor = {
       newGroup.model.closeEditor(0, true);
     }
 
-    // Create a MarkdownPreviewInput wrapping the source FileEditorInput
-    const previewInput = MarkdownPreviewInput.create(activeEditor);
+    // Create a MarkdownPreviewInput wrapping the source FileEditorInput (dynamic import)
+    const { MarkdownPreviewInput } = await import('../built-in/editor/markdownPreviewInput.js');
+    const previewInput = MarkdownPreviewInput.create(activeEditor as any);
     newGroup.openEditor(previewInput, { pinned: true });
   },
 };
@@ -308,7 +306,7 @@ const markdownOpenPreview: CommandDescriptor = {
   id: 'markdown.showPreview',
   title: 'Markdown: Open Preview',
   category: 'Markdown',
-  handler(ctx) {
+  async handler(ctx) {
     const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
     if (!editorGroupService) return;
 
@@ -316,11 +314,12 @@ const markdownOpenPreview: CommandDescriptor = {
     if (!activeGroup) return;
 
     const activeEditor = activeGroup.model.activeEditor;
-    if (!(activeEditor instanceof FileEditorInput)) return;
+    if (!activeEditor || activeEditor.typeId !== 'parallx.editor.file') return;
     if (!isMarkdownFile(activeEditor.name)) return;
 
     // Open preview in the same group (replaces the text editor tab)
-    const previewInput = MarkdownPreviewInput.create(activeEditor);
+    const { MarkdownPreviewInput } = await import('../built-in/editor/markdownPreviewInput.js');
+    const previewInput = MarkdownPreviewInput.create(activeEditor as any);
     activeGroup.openEditor(previewInput, { pinned: true });
   },
 };
@@ -1092,8 +1091,8 @@ const editFind: CommandDescriptor = {
   handler(ctx) {
     const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
     const pane = editorGroupService?.activeGroup?.activePane;
-    if (pane instanceof TextEditorPane) {
-      pane.showFind();
+    if (pane && typeof (pane as any).showFind === 'function') {
+      (pane as any).showFind();
     }
   },
 };
@@ -1106,8 +1105,8 @@ const editReplace: CommandDescriptor = {
   handler(ctx) {
     const editorGroupService = ctx.getService<IEditorGroupService>('IEditorGroupService');
     const pane = editorGroupService?.activeGroup?.activePane;
-    if (pane instanceof TextEditorPane) {
-      pane.showReplace();
+    if (pane && typeof (pane as any).showReplace === 'function') {
+      (pane as any).showReplace();
     }
   },
 };
@@ -1229,8 +1228,6 @@ function _resolveGridForPart(w: WorkbenchLike, partId: string): WorkbenchLike['_
 }
 
 // ─── Focus Commands (Cap 8) ──────────────────────────────────────────────────
-
-import { PartId } from '../parts/partTypes.js';
 
 /**
  * Cycling order for F6/Shift+F6 (matches VS Code navigationActions.ts):

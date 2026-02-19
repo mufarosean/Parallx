@@ -20,9 +20,13 @@
 import { Part } from './part.js';
 import { PartId, PartPosition, PartDescriptor } from './partTypes.js';
 import { SizeConstraints } from '../layout/layoutTypes.js';
+import { StatusBarAlignment, StatusBarEntry, StatusBarEntryAccessor } from '../services/serviceTypes.js';
 import { Emitter, Event } from '../platform/events.js';
-import { IDisposable, toDisposable } from '../platform/lifecycle.js';
+import { toDisposable } from '../platform/lifecycle.js';
 import { $ } from '../ui/dom.js';
+
+export { StatusBarAlignment };
+export type { StatusBarEntry, StatusBarEntryAccessor };
 
 /** Fixed status bar height — matches VS Code's `StatusbarPart.HEIGHT = 22`. */
 export const STATUS_BAR_HEIGHT = 22;
@@ -33,48 +37,6 @@ const STATUSBAR_CONSTRAINTS: SizeConstraints = {
   minimumHeight: STATUS_BAR_HEIGHT,
   maximumHeight: STATUS_BAR_HEIGHT,
 };
-
-// ─── Alignment ───────────────────────────────────────────────────────────────
-
-/**
- * Status bar alignment for items.
- * Matches VS Code's `StatusbarAlignment` enum.
- */
-export enum StatusBarAlignment {
-  Left = 'left',
-  Right = 'right',
-}
-
-// ─── Entry Types ─────────────────────────────────────────────────────────────
-
-/**
- * Descriptor for a status bar entry.
- * Matches VS Code's `IStatusbarEntry` (simplified for M3).
- */
-export interface StatusBarEntry {
-  readonly id: string;
-  /** Display text. Supports `$(icon-name)` codicon placeholders (rendered as text in M3). */
-  readonly text: string;
-  readonly alignment: StatusBarAlignment;
-  /** Sort order: higher priority = closer to the edge. Left: higher = further left. Right: higher = further right. */
-  readonly priority?: number;
-  readonly tooltip?: string;
-  /** Command ID to execute on click. */
-  readonly command?: string;
-  /** Human-readable name for context-menu toggling (defaults to `text`). */
-  readonly name?: string;
-  /** Optional SVG icon string rendered before the text. */
-  readonly iconSvg?: string;
-}
-
-/**
- * Accessor returned when adding an entry — allows updating or removing it.
- * Matches VS Code's `IStatusbarEntryAccessor`.
- */
-export interface StatusBarEntryAccessor extends IDisposable {
-  /** Update the entry's mutable properties. */
-  update(entry: Partial<Pick<StatusBarEntry, 'text' | 'tooltip' | 'command' | 'iconSvg'>>): void;
-}
 
 // ─── Internal view-model entry ───────────────────────────────────────────────
 

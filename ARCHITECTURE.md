@@ -146,29 +146,40 @@
 
 > Renderer code must **never** use `ipcRenderer` directly — all IPC goes through the preload bridge.
 
+### `ui/`
+**Reusable UI primitives shared across feature modules.**
+- Mirrors VS Code's `src/vs/base/browser/ui/` pattern
+- Components: `inputBox`, `contextMenu`, `button`, `overlay`, `list`, `breadcrumbs`, `tabBar`, `dialog`, `findReplaceWidget`
+- DOM helpers: `$()` element factory, `addDisposableListener()`, visibility toggles, drag helpers
+- All components extend `Disposable`, accept `(container, options?)`, use co-located CSS
+- Context-agnostic — components don't know which part hosts them
+
+> `ui/` may depend on `platform/` only (events, lifecycle, types).
+
 ---
 
 ## Dependency Rules
 
 ### Dependency Matrix
 
-| Module ↓ may depend on → | platform | services | workbench | layout | parts | views | editor | workspace | commands | context | dnd | tools | api | configuration | contributions |
-|--------------------------|:--------:|:--------:|:---------:|:------:|:-----:|:-----:|:------:|:---------:|:--------:|:-------:|:---:|:-----:|:---:|:-------------:|:-------------:|
-| **platform**             |    —     |    ✗     |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **services**             |    ✓     |    —     |     ✗     |   ✓    |   ✓   |   ✓   |   ✓    |     ✓     |    ✓     |    ✓    |  ✓  |   ✓   |  ✗  |       ✓       |       ✗       |
-| **workbench**            |    ✓     |    ✓     |     —     |   ✓    |   ✓   |   ✓   |   ✓    |     ✓     |    ✓     |    ✓    |  ✓  |   ✓   |  ✓  |       ✓       |       ✓       |
-| **layout**               |    ✓     |    ✗     |     ✗     |   —    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **parts**                |    ✓     |    ✓*    |     ✗     |   ✓    |   —   |   ✗   |   ✓†   |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **views**                |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   —   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **editor**               |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   —    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **workspace**            |    ✓     |    ✓*    |     ✗     |   ✓†   |   ✓†  |   ✓†  |   ✗    |     —     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **commands**             |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    —     |    ✓    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **context**              |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    —    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **dnd**                  |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   ✗    |     ✗     |    ✗     |    ✗    |  —  |   ✗   |  ✗  |       ✗       |       ✗       |
-| **tools**                |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   —   |  ✓  |       ✓       |       ✗       |
-| **api**                  |    ✓     |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   ✓    |     ✗     |    ✓     |    ✓    |  ✗  |   ✓†  |  —  |       ✓       |       ✓†      |
-| **configuration**        |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       —       |       ✗       |
-| **contributions**        |    ✓     |    ✓*    |     ✗     |   ✗    |   ✗   |   ✓   |   ✗    |     ✗     |    ✓     |    ✓    |  ✗  |   ✓†  |  ✗  |       ✗       |       —       |
+| Module ↓ may depend on → | platform | ui | services | workbench | layout | parts | views | editor | workspace | commands | context | dnd | tools | api | configuration | contributions |
+|--------------------------|:--------:|:--:|:--------:|:---------:|:------:|:-----:|:-----:|:------:|:---------:|:--------:|:-------:|:---:|:-----:|:---:|:-------------:|:-------------:|
+| **platform**             |    —     | ✗  |    ✗     |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **ui**                   |    ✓     | —  |    ✗     |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **services**             |    ✓     | ✗  |    —     |     ✗     |   ✓    |   ✓   |   ✓   |   ✓    |     ✓     |    ✓     |    ✓    |  ✓  |   ✓   |  ✗  |       ✓       |       ✗       |
+| **workbench**            |    ✓     | ✓  |    ✓     |     —     |   ✓    |   ✓   |   ✓   |   ✓    |     ✓     |    ✓     |    ✓    |  ✓  |   ✓   |  ✓  |       ✓       |       ✓       |
+| **layout**               |    ✓     | ✓  |    ✗     |     ✗     |   —    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **parts**                |    ✓     | ✓  |    ✓*    |     ✗     |   ✓    |   —   |   ✗   |   ✓    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **views**                |    ✓     | ✓  |    ✓*    |     ✗     |   ✓    |   ✗   |   —   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **editor**               |    ✓     | ✓  |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   —    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **workspace**            |    ✓     | ✗  |    ✓*    |     ✗     |   ✓†   |   ✓†  |   ✓†  |   ✗    |     —     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **commands**             |    ✓     | ✗  |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    —     |    ✓    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **context**              |    ✓     | ✗  |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    —    |  ✗  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **dnd**                  |    ✓     | ✓  |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   ✗    |     ✗     |    ✗     |    ✗    |  —  |   ✗   |  ✗  |       ✗       |       ✗       |
+| **tools**                |    ✓     | ✗  |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   —   |  ✓  |       ✓       |       ✗       |
+| **api**                  |    ✓     | ✓  |    ✓*    |     ✗     |   ✓    |   ✗   |   ✓   |   ✓    |     ✗     |    ✓     |    ✓    |  ✗  |   ✓†  |  —  |       ✓       |       ✓†      |
+| **configuration**        |    ✓     | ✗  |    ✓*    |     ✗     |   ✗    |   ✗   |   ✗   |   ✗    |     ✗     |    ✗     |    ✗    |  ✗  |   ✗   |  ✗  |       —       |       ✗       |
+| **contributions**        |    ✓     | ✓  |    ✓*    |     ✗     |   ✗    |   ✗   |   ✓   |   ✗    |     ✗     |    ✓     |    ✓    |  ✗  |   ✓†  |  ✗  |       ✗       |       —       |
 
 > `✓*` = May depend on service **interfaces** only (from `services/serviceTypes.ts`), never on concrete implementations.
 >
@@ -177,20 +188,21 @@
 ### Rules in Plain Language
 
 1. **`platform` depends on nothing.** It is the foundational layer.
-2. **`layout` depends only on `platform`.** Grid and layout logic is self-contained.
-3. **`parts` depend on `platform`, `layout`, `editor` (type-only†), and service interfaces.** EditorPart integrates with EditorGroupView for editor group management.
-4. **`views` depend on `platform`, `layout`, and service interfaces.** Views participate in layout but don't know about parts or editors.
-5. **`editor` depends on `platform`, `layout`, `views`, and service interfaces.** Editors extend view concepts but don't depend on parts directly.
-6. **`workspace` depends on `platform`, `layout`†, `views`†, `parts`† (type-only), and service interfaces.** Workspace serialization references layout models, view descriptors, and part types for state persistence.
-7. **`commands` depend on `platform`, `context`, and service interfaces.** Commands evaluate context and call services.
-8. **`context` depends on `platform` and service interfaces.** Context is a data tracking layer.
-9. **`dnd` depends on `platform`, `layout`, `views`, and service interfaces.** DnD coordinates view movement through layout.
-10. **`tools` depend on `platform`, `api`, `configuration`, and service interfaces.** Tool lifecycle management loads, validates, and activates tools.
-11. **`api` depends on `platform`, `layout`, `views`, `editor`, `commands`, `context`, `configuration`, `tools`† (type-only), `contributions`† (type-only), and service interfaces.** API bridges connect tool calls to internal services; the factory imports tool manifest types and contribution processor types.
-12. **`configuration` depends on `platform` and service interfaces.** Configuration is a data/schema concern.
-13. **`contributions` depend on `platform`, `views`, `commands`, `context`, `tools`† (type-only), and service interfaces.** Contributions process manifest declarations into registered entities; they import tool manifest types and activation event interfaces.
-14. **`services` depend on `platform` and may import from any module** to provide concrete implementations behind interfaces.
-15. **`workbench` is the composition root.** It may depend on everything to wire the system together.
+2. **`ui` depends only on `platform`.** Reusable UI primitives. Mirrors VS Code's `base/browser/ui/`.
+3. **`layout` depends on `platform` and `ui`.** Grid and layout logic uses UI primitives (VS Code: grid IS in `base/browser/ui/grid/`).
+4. **`parts` depend on `platform`, `ui`, `layout`, `editor`, and service interfaces.** EditorPart integrates with EditorGroupView at runtime — mirroring VS Code's `EditorPart` → `EditorGroupView` pattern.
+5. **`views` depend on `platform`, `ui`, `layout`, and service interfaces.** Views participate in layout but don't know about parts or editors.
+6. **`editor` depends on `platform`, `ui`, `layout`, `views`, and service interfaces.** Editors extend view concepts but don't depend on parts directly.
+7. **`workspace` depends on `platform`, `layout`†, `views`†, `parts`† (type-only), and service interfaces.** Workspace serialization references layout models, view descriptors, and part types for state persistence.
+8. **`commands` depend on `platform`, `context`, and service interfaces.** Commands evaluate context and call services — never import concrete editor/part/built-in types.
+9. **`context` depends on `platform` and service interfaces.** Context is a data tracking layer.
+10. **`dnd` depends on `platform`, `ui`, `layout`, `views`, and service interfaces.** DnD coordinates view movement through layout.
+11. **`tools` depend on `platform`, `api`, `configuration`, and service interfaces.** Tool lifecycle management loads, validates, and activates tools.
+12. **`api` depends on `platform`, `ui`, `layout`, `views`, `editor`, `commands`, `context`, `configuration`, `tools`† (type-only), `contributions`† (type-only), and service interfaces.** API bridges connect tool calls to internal services; the factory imports tool manifest types and contribution processor types.
+13. **`configuration` depends on `platform` and service interfaces.** Configuration is a data/schema concern.
+14. **`contributions` depend on `platform`, `ui`, `views`, `commands`, `context`, `tools`† (type-only), and service interfaces.** Contributions process manifest declarations into registered entities.
+15. **`services` depend on `platform` and may import from any module** to provide concrete implementations behind interfaces.
+16. **`workbench` is the composition root.** It may depend on everything to wire the system together.
 
 ### Absolute Prohibitions
 

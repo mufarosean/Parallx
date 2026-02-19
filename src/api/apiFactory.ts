@@ -23,8 +23,8 @@ import {
 import type { ContextKeyValue } from '../context/contextKey.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { ToolRegistry, IToolEntry } from '../tools/toolRegistry.js';
-import type { StatusBarPart, StatusBarEntryAccessor } from '../parts/statusBarPart.js';
-import { StatusBarAlignment } from '../parts/statusBarPart.js';
+import type { StatusBarEntryAccessor } from '../services/serviceTypes.js';
+import { StatusBarAlignment } from '../services/serviceTypes.js';
 import { PARALLX_VERSION } from './apiVersionValidation.js';
 import type { INotificationService } from '../services/serviceTypes.js';
 import { CommandsBridge } from './bridges/commandsBridge.js';
@@ -59,7 +59,7 @@ export interface ApiFactoryDependencies {
   /** ActivityBarPart badge host for parallx.views.setBadge(). */
   readonly badgeHost?: { setBadge(iconId: string, badge: { count?: number; dot?: boolean } | undefined): void };
   /** StatusBarPart for parallx.window.createStatusBarItem(). */
-  readonly statusBarPart?: StatusBarPart;
+  readonly statusBarPart?: import('../services/serviceTypes.js').IStatusBarPart;
   /** ThemeService for parallx.window.activeColorTheme / onDidChangeActiveColorTheme. */
   readonly themeService?: IThemeServiceShape;
   /** ToolEnablementService for parallx.tools.isEnabled/setEnabled/onDidChangeEnablement. */
