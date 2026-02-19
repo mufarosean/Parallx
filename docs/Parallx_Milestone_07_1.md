@@ -1129,15 +1129,15 @@ Add an `npm run build:prod` script in `package.json`.
 - [x] 2.3 Async tool disposal — `toolActivator.ts`: added `disposeAsync()` that calls `await this.deactivateAll()` then `this.dispose()`. Simplified synchronous `dispose()` to iterate remaining tools, dispose subscriptions + API, set state to Deactivated, clear map — no fire-and-forget `deactivate()` calls.
 - [x] 2.4 Fix global event emitters — `apiFactory.ts`: moved `_toolInstallEmitter` and `_toolUninstallEmitter` to module-level singletons (`_globalToolInstallEmitter`, `_globalToolUninstallEmitter`). All tool instances share a single emitter pair. Per-tool subscriptions pushed to cleanup array and disposed on tool deactivation.
 
-**Tier 3 — Hardening**
-- [ ] 3.1 `_saverListeners` → DisposableStore
-- [ ] 3.2 StatusBar subscription growth fix
-- [ ] 3.3 ViewContainer section listener cleanup
-- [ ] 3.4 Canvas `_saveDisposables` → DisposableStore
-- [ ] 3.5 Bundle canvas transactions as single IPC
-- [ ] 3.6 Cancel auto-save on archive/reorder
-- [ ] 3.7 EditorPart microtask editor check
-- [ ] 3.8 Add unit tests for core systems
+**Tier 3 — Hardening** ✅ COMPLETE
+- [x] 3.1 `_saverListeners` → DisposableStore — `workbench.ts`: replaced plain `IDisposable[]` with `DisposableStore`, `.clear()` + `.add()` pattern
+- [x] 3.2 StatusBar subscription growth fix — `apiFactory.ts`: removed spurious `subscriptions.push(_accessor)` from `show()` that leaked disposed accessors
+- [x] 3.3 ViewContainer section listener cleanup — `viewContainer.ts`: per-section `DisposableStore` map wrapping header `addEventListener` calls, cleanup in `_removeSection()` and `dispose()`
+- [x] 3.4 Canvas `_saveDisposables` → DisposableStore — `canvasEditorProvider.ts`: same mechanical change as 3.1
+- [x] 3.5 Bundle canvas transactions as single IPC — `database.cjs`: `runTransaction()` using `better-sqlite3` `.transaction().immediate()`. `main.cjs`/`preload.cjs`: new IPC handler + bridge. `databaseService.ts`: `TransactionOp` type + `runTransaction()`. `canvasDataService.ts`: `moveBlocksBetweenPagesAtomic()` refactored from 8 IPC calls to 3 (2 parallel pre-reads + 1 bundled transaction)
+- [x] 3.6 Cancel auto-save on archive/reorder — `canvasDataService.ts`: `_cancelPendingSave()` loop in `reorderPages()` prevents `updated_at` timestamp conflicts
+- [x] 3.7 EditorPart microtask editor check — `editorPart.ts`: added `group.model.isEmpty` guard inside microtask callback to prevent race with new editor opening
+- [x] 3.8 Add unit tests for core systems — 4 new test files (62 tests): `grid.test.ts` (19), `fileService.test.ts` (10), `commandContribution.test.ts` (16), `keybindingService.test.ts` (17). Fixed pre-existing `canvasSaveState.test.ts` (Retrying vs Failed). Total: 143/143 passing
 
 **Tier 4 — Polish**
 - [ ] 4.1 Extract magic numbers to constants
