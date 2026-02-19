@@ -3,6 +3,8 @@
 // Provides the shell's notification overlay UI, backing
 // `parallx.window.showInformationMessage()` and friends.
 // Renders brief toast messages in the bottom-right corner of the workbench
+
+import './notificationService.css';
 // with support for severity levels, action buttons, and auto-dismiss.
 
 import { Disposable } from '../platform/lifecycle.js';

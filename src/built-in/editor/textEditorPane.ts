@@ -9,6 +9,7 @@
 // VS Code reference (architecture only — implementation differs):
 //   src/vs/editor/browser/widget/codeEditor/codeEditorWidget.ts
 
+import './textEditorPane.css';
 import { EditorPane, type EditorPaneViewState } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import { DisposableStore } from '../../platform/lifecycle.js';

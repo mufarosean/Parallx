@@ -3,6 +3,7 @@
 // Provides a scrollable log viewer in the panel area.
 // Demonstrates: panel view contribution, commands, workspace state.
 
+import './output.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';

@@ -3,6 +3,8 @@
 // Processes the `contributes.menus` section from tool manifests.
 // Manages three menu locations:
 //   - commandPalette: controls command visibility in the palette
+
+import './menuContribution.css';
 //   - view/title: adds action buttons to view title bars
 //   - view/context: adds items to view right-click context menus
 //

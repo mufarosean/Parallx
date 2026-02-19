@@ -9,6 +9,7 @@
 //   src/vs/workbench/contrib/files/browser/editors/binaryFileEditor.ts
 //   src/vs/workbench/browser/parts/editor/binaryEditor.ts
 
+import './imageEditorPane.css';
 import { EditorPane } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import { ImageEditorInput } from './imageEditorInput.js';

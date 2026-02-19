@@ -8,6 +8,7 @@
 //   src/vs/workbench/contrib/markdown/browser/markdownDocumentRenderer.ts
 //   (VS Code uses a webview; we render directly into the DOM for simplicity.)
 
+import './markdownEditorPane.css';
 import { EditorPane } from '../../editor/editorPane.js';
 import { type IEditorInput } from '../../editor/editorInput.js';
 import { DisposableStore } from '../../platform/lifecycle.js';

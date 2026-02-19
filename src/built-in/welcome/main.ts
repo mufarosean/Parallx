@@ -3,6 +3,7 @@
 // Shows a welcome page in the editor area on first launch.
 // Demonstrates: editor opening API, command contribution, globalState.
 
+import './welcome.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';

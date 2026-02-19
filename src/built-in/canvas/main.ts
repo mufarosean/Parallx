@@ -8,6 +8,8 @@
 //
 // Follows the same pattern as src/built-in/explorer/main.ts.
 
+import './canvas.css';
+import 'katex/dist/katex.min.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { CanvasDataService } from './canvasDataService.js';

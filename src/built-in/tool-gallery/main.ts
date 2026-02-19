@@ -8,6 +8,7 @@
 //   VS Code extensionsViewlet.ts — sidebar list, search, grouping
 //   VS Code extensionEditor.ts — editor pane, header, tabs, contribution tables
 
+import './toolGallery.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $, clearNode } from '../../ui/dom.js';

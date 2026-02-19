@@ -1,5 +1,6 @@
 // dropOverlay.ts — visual drop feedback overlay
 
+import './dropOverlay.css';
 import { Disposable } from '../platform/lifecycle.js';
 import { DropPosition } from './dndTypes.js';
 import { $ } from '../ui/dom.js';

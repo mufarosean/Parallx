@@ -159,6 +159,12 @@ export interface ParallxApiObject {
   };
 }
 
+// ─── Global Tool Lifecycle Emitters ──────────────────────────────────────────
+// These are module-level singletons so every tool's API shares the same
+// emitters.  When any tool installs/uninstalls, ALL subscribers are notified.
+const _globalToolInstallEmitter = new Emitter<{ toolId: string }>();
+const _globalToolUninstallEmitter = new Emitter<{ toolId: string }>();
+
 // ─── API Factory ─────────────────────────────────────────────────────────────
 
 /**
@@ -178,10 +184,8 @@ export function createToolApi(
   const toolId = toolDescription.manifest.id;
   const subscriptions: IDisposable[] = [];
 
-  // Emitters for tool install/uninstall events (shared across all tool API instances)
-  const _toolInstallEmitter = new Emitter<{ toolId: string }>();
-  const _toolUninstallEmitter = new Emitter<{ toolId: string }>();
-  subscriptions.push(_toolInstallEmitter, _toolUninstallEmitter);
+  // Per-tool subscriptions to global emitters are tracked for cleanup.
+  // The emitters themselves are module-level singletons (see above).
 
   // ── Resolve services ──
   const commandService = deps.services.has(ICommandService)
@@ -450,7 +454,7 @@ export function createToolApi(
 
         try {
           await handler(result.toolPath, result.manifest);
-          _toolInstallEmitter.fire({ toolId: result.toolId });
+          _globalToolInstallEmitter.fire({ toolId: result.toolId });
           return { toolId: result.toolId };
         } catch (err: unknown) {
           return { error: `Registration failed: ${err instanceof Error ? err.message : String(err)}` };
@@ -474,13 +478,17 @@ export function createToolApi(
           if (result.error) throw new Error(result.error);
         }
 
-        _toolUninstallEmitter.fire({ toolId: id });
+        _globalToolUninstallEmitter.fire({ toolId: id });
       },
       onDidInstallTool: (listener: (e: { toolId: string }) => void) => {
-        return _toolInstallEmitter.event(listener);
+        const sub = _globalToolInstallEmitter.event(listener);
+        subscriptions.push(sub);
+        return sub;
       },
       onDidUninstallTool: (listener: (e: { toolId: string }) => void) => {
-        return _toolUninstallEmitter.event(listener);
+        const sub = _globalToolUninstallEmitter.event(listener);
+        subscriptions.push(sub);
+        return sub;
       },
     }),
 

@@ -2,6 +2,7 @@
 // Boots the Parallx workbench inside the Electron renderer process.
 // Delegates all orchestration to the Workbench class and its lifecycle phases.
 
+import './workbench.css';
 import { Workbench } from './workbench/workbench.js';
 
 // ── Electron window controls bridge ──

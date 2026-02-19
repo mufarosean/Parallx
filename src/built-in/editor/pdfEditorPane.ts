@@ -7,6 +7,7 @@
 //   VS Code opens PDFs in an external application or via extensions.
 //   We use the built-in Chromium PDF viewer for simplicity.
 
+import './pdfEditorPane.css';
 import { EditorPane } from '../../editor/editorPane.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import { PdfEditorInput } from './pdfEditorInput.js';

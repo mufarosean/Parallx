@@ -26,7 +26,7 @@ import {
 import { Part } from '../parts/part.js';
 import { PartId } from '../parts/partTypes.js';
 import { EditorPart } from '../parts/editorPart.js';
-import { StatusBarPart, StatusBarAlignment } from '../parts/statusBarPart.js';
+import { StatusBarPart } from '../parts/statusBarPart.js';
 
 // Layout
 import { Orientation } from '../layout/layoutTypes.js';
@@ -174,6 +174,10 @@ import { showColorThemePicker } from './workbenchThemePicker.js';
 import { setupEditorWatermark, updateWatermarkKeybindings } from './workbenchWatermark.js';
 import { $ } from '../ui/dom.js';
 
+// Extracted modules (Fix 2.1 — decompose workbench.ts)
+import { MenuBuilder } from './menuBuilder.js';
+import { StatusBarController } from './statusBarController.js';
+
 // ── Types ──
 
 export enum WorkbenchState {
@@ -197,6 +201,10 @@ export class Workbench extends Layout {
   private _lifecycle: LifecycleService | undefined;
 
   // ── Subsystem instances ──
+
+  // Extracted controllers (Fix 2.1)
+  private _menuBuilder!: MenuBuilder;
+  private _statusBarController!: StatusBarController;
 
   private _viewManager!: ViewManager;
   private _dndController!: DragAndDropController;
@@ -703,9 +711,9 @@ export class Workbench extends Layout {
 
     lc.onTeardown(LifecyclePhase.Ready, async () => {
       this._container.classList.remove('parallx-ready');
-      // Deactivate all tools before teardown
+      // Async disposal: awaits all tool deactivations before synchronous cleanup
       if (this._toolActivator) {
-        await this._toolActivator.deactivateAll();
+        await this._toolActivator.disposeAsync();
       }
       // Close the database cleanly
       if (this._databaseService?.isOpen) {
@@ -811,6 +819,24 @@ export class Workbench extends Layout {
   // ════════════════════════════════════════════════════════════════════════
 
   private _initializeParts(): void {
+    // 0. Create extracted controllers
+    this._menuBuilder = this._register(new MenuBuilder({
+      titlebar: this._titlebar,
+      activityBarPart: this._activityBarPart,
+      services: this._services,
+      selectColorTheme: () => this.selectColorTheme(),
+    }));
+    this._statusBarController = this._register(new StatusBarController({
+      statusBar: this._statusBar as unknown as StatusBarPart,
+      editorPart: this._editor as EditorPart,
+      services: this._services,
+      container: this._container,
+      keybindingHint: (cmd) => this._keybindingHint(cmd),
+      toggleStatusBar: () => this.toggleStatusBar(),
+      getWorkspace: () => this._workspace,
+      getWorkbenchContext: () => this._workbenchContext,
+    }));
+
     // 1. Titlebar: app icon + menu bar + window controls
     this._setupTitlebar();
 
@@ -836,10 +862,10 @@ export class Workbench extends Layout {
     this._registerFacadeServices();
 
     // 4. Status bar entries
-    this._setupStatusBar();
+    this._statusBarController.setupStatusBar();
 
     // 4c. Manage gear icon in activity bar (bottom) — VS Code parity
-    this._addManageGearIcon();
+    this._menuBuilder.addManageGearIcon();
 
     // 5. DnD between parts
     this._dndController = this._setupDragAndDrop();
@@ -1009,7 +1035,7 @@ export class Workbench extends Layout {
         this._workbenchContext.setWorkbenchState(
           count === 0 ? 'empty' : 'folder',
         );
-        this._updateWindowTitle();
+        this._statusBarController.updateWindowTitle();
         // Update breadcrumbs in editor groups
         this._updateEditorBreadcrumbs();
       }));
@@ -1265,7 +1291,7 @@ export class Workbench extends Layout {
     }));
 
     // Task 1.2: Register default menu bar items via contribution system
-    this._registerDefaultMenuBarItems();
+    this._menuBuilder.registerDefaultMenuBarItems();
 
     // Task 1.1: Clicking workspace name opens Quick Access in general mode
     this._register(this._titlebar.onDidClickWorkspaceName(() => {
@@ -1289,88 +1315,6 @@ export class Workbench extends Layout {
     }
 
     console.log('[Workbench] Title bar wired to services');
-  }
-
-  /**
-   * Register the default (shell) menu bar items via TitlebarPart's
-   * registration API. These are not hardcoded DOM — they go through
-   * the same registration path that tools can use.
-   */
-  private _registerDefaultMenuBarItems(): void {
-    const defaultMenus = [
-      { id: 'file', label: 'File', order: 10 },
-      { id: 'edit', label: 'Edit', order: 20 },
-      { id: 'selection', label: 'Selection', order: 30 },
-      { id: 'view', label: 'View', order: 40 },
-      { id: 'go', label: 'Go', order: 50 },
-      { id: 'tools', label: 'Tools', order: 60 },
-      { id: 'help', label: 'Help', order: 70 },
-    ];
-
-    for (const menu of defaultMenus) {
-      this._register(this._titlebar.registerMenuBarItem(menu));
-    }
-
-    // Register dropdown items for View menu — delegates to structural commands
-    this._register(this._titlebar.registerMenuBarDropdownItems('view', [
-      { commandId: 'workbench.action.showCommands', title: 'Command Palette…', group: '1_nav', order: 1 },
-      { commandId: 'workbench.action.toggleSidebar', title: 'Toggle Sidebar', group: '2_appearance', order: 1 },
-      { commandId: 'workbench.action.togglePanel', title: 'Toggle Panel', group: '2_appearance', order: 2 },
-      { commandId: 'workbench.action.toggleMaximizedPanel', title: 'Maximize Panel', group: '2_appearance', order: 2.5 },
-      { commandId: 'workbench.action.toggleAuxiliaryBar', title: 'Toggle Auxiliary Bar', group: '2_appearance', order: 3 },
-      { commandId: 'workbench.action.toggleStatusbarVisibility', title: 'Toggle Status Bar', group: '2_appearance', order: 4 },
-      { commandId: 'workbench.action.toggleZenMode', title: 'Zen Mode', group: '2_appearance', order: 5 },
-      { commandId: 'editor.toggleWordWrap', title: 'Word Wrap', group: '3_editor', order: 1, when: 'activeEditor' },
-    ]));
-
-    // Register dropdown items for File menu
-    this._register(this._titlebar.registerMenuBarDropdownItems('file', [
-      { commandId: 'file.newTextFile', title: 'New Text File', group: '1_new', order: 1 },
-      { commandId: 'file.openFile', title: 'Open File…', group: '2_open', order: 1 },
-      { commandId: 'workspace.openFolder', title: 'Open Folder…', group: '2_open', order: 2 },
-      { commandId: 'workspace.openRecent', title: 'Open Recent…', group: '2_open', order: 3 },
-      { commandId: 'workspace.addFolderToWorkspace', title: 'Add Folder to Workspace…', group: '3_workspace', order: 1 },
-      { commandId: 'workspace.saveAs', title: 'Save Workspace As…', group: '3_workspace', order: 2 },
-      { commandId: 'workspace.rename', title: 'Rename Workspace…', group: '3_workspace', order: 3 },
-      { commandId: 'workspace.duplicateWorkspace', title: 'Duplicate Workspace', group: '3_workspace', order: 4 },
-      { commandId: 'file.save', title: 'Save', group: '4_save', order: 1, when: 'activeEditor' },
-      { commandId: 'file.saveAs', title: 'Save As…', group: '4_save', order: 2, when: 'activeEditor' },
-      { commandId: 'file.saveAll', title: 'Save All', group: '4_save', order: 3, when: 'activeEditor' },
-      { commandId: 'file.revert', title: 'Revert File', group: '5_close', order: 1, when: 'activeEditorIsDirty' },
-      { commandId: 'workbench.action.closeActiveEditor', title: 'Close Editor', group: '5_close', order: 2, when: 'activeEditor' },
-      { commandId: 'workspace.closeFolder', title: 'Close Folder', group: '5_close', order: 3, when: 'workspaceFolderCount > 0' },
-      { commandId: 'workspace.closeWindow', title: 'Close Window', group: '5_close', order: 4 },
-    ]));
-
-    // Register dropdown items for Edit menu
-    this._register(this._titlebar.registerMenuBarDropdownItems('edit', [
-      { commandId: 'edit.undo', title: 'Undo', group: '1_undo', order: 1, when: 'activeEditor' },
-      { commandId: 'edit.redo', title: 'Redo', group: '1_undo', order: 2, when: 'activeEditor' },
-      { commandId: 'edit.cut', title: 'Cut', group: '2_clipboard', order: 1, when: 'activeEditor' },
-      { commandId: 'edit.copy', title: 'Copy', group: '2_clipboard', order: 2, when: 'activeEditor' },
-      { commandId: 'edit.paste', title: 'Paste', group: '2_clipboard', order: 3, when: 'activeEditor' },
-      { commandId: 'edit.find', title: 'Find', group: '3_find', order: 1, when: 'activeEditor' },
-      { commandId: 'edit.replace', title: 'Replace', group: '3_find', order: 2, when: 'activeEditor' },
-    ]));
-
-    // Register dropdown items for Go menu
-    this._register(this._titlebar.registerMenuBarDropdownItems('go', [
-      { commandId: 'workbench.action.quickOpen', title: 'Go to File…', group: '1_go', order: 1 },
-      { commandId: 'workbench.action.showCommands', title: 'Go to Command…', group: '1_go', order: 2 },
-    ]));
-
-    // Register dropdown items for Tools menu
-    this._register(this._titlebar.registerMenuBarDropdownItems('tools', [
-      { commandId: 'tools.showInstalled', title: 'Tool Gallery', group: '1_tools', order: 1 },
-    ]));
-
-    // Register dropdown items for Help menu
-    this._register(this._titlebar.registerMenuBarDropdownItems('help', [
-      { commandId: 'welcome.openWelcome', title: 'Welcome', group: '1_welcome', order: 1 },
-      { commandId: 'workbench.action.showCommands', title: 'Show All Commands', group: '2_commands', order: 1 },
-    ]));
-
-    console.log('[Workbench] Default menu bar items registered (%d menus)', defaultMenus.length);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1713,165 +1657,6 @@ export class Workbench extends Layout {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // Manage gear icon (VS Code: global-activity "Manage" button)
-  // ════════════════════════════════════════════════════════════════════════
-
-  /**
-   * Adds a gear icon to the activity bar bottom section that opens a
-   * settings/manage menu — mirrors VS Code's "Manage" gear icon.
-   *
-   * VS Code reference: src/vs/workbench/browser/parts/activitybar/activitybarActions.ts
-   *   → GlobalActivityActionViewItem
-   */
-  private _addManageGearIcon(): void {
-    const bottomSection = this._activityBarPart.contentElement.querySelector('.activity-bar-bottom');
-    if (!bottomSection) return;
-
-    const gearBtn = $('button');
-    gearBtn.classList.add('activity-bar-item', 'activity-bar-manage-gear');
-    gearBtn.dataset.iconId = 'manage-gear';
-    gearBtn.title = 'Manage';
-
-    // Use VS Code's codicon gear SVG (16×16 viewBox for proper sizing)
-    const iconLabel = $('span');
-    iconLabel.classList.add('activity-bar-icon-label');
-    iconLabel.innerHTML =
-      '<svg width="24" height="24" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">' +
-      '<path fill-rule="evenodd" clip-rule="evenodd" d="M14.54 11.81L13.12 ' +
-      '11.03L13.56 10.05L15.18 9.72L15.18 7.28L13.56 6.95L13.12 5.97L14.54 ' +
-      '4.19L12.81 2.46L11.03 3.88L10.05 3.44L9.72 1.82L7.28 1.82L6.95 ' +
-      '3.44L5.97 3.88L4.19 2.46L2.46 4.19L3.88 5.97L3.44 6.95L1.82 7.28' +
-      'L1.82 9.72L3.44 10.05L3.88 11.03L2.46 12.81L4.19 14.54L5.97 13.12' +
-      'L6.95 13.56L7.28 15.18L9.72 15.18L10.05 13.56L11.03 13.12L12.81 ' +
-      '14.54L14.54 11.81ZM8.5 11C9.88 11 11 9.88 11 8.5C11 7.12 9.88 6 ' +
-      '8.5 6C7.12 6 6 7.12 6 8.5C6 9.88 7.12 11 8.5 11Z" fill="currentColor"/></svg>';
-    gearBtn.appendChild(iconLabel);
-
-    // Toggle: click opens menu, click again closes it
-    gearBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (this._manageMenu) {
-        // Menu is open — dismiss it
-        this._manageMenu.dismiss();
-        return;
-      }
-      // Guard: if the menu was *just* dismissed (by the outside-click mousedown
-      // hitting this same button), skip re-opening. The mousedown fires before
-      // click, so dismiss() runs first and nulls _manageMenu; without this
-      // guard the click handler would immediately reopen the menu.
-      if (Date.now() - this._manageMenuDismissedAt < 300) {
-        return;
-      }
-      this._showManageMenu(gearBtn);
-    });
-
-    bottomSection.appendChild(gearBtn);
-  }
-
-  /** Tracks the currently-open manage menu so we can toggle it. */
-  private _manageMenu: ContextMenu | null = null;
-  /** Timestamp of the last manage-menu dismiss (used to defeat the mousedown/click race). */
-  private _manageMenuDismissedAt = 0;
-
-  /**
-   * Show the Manage menu anchored above the gear icon (opens upward like VS Code).
-   */
-  private _showManageMenu(anchor: HTMLElement): void {
-    const cmdService = this._services.get(ICommandService) as CommandService;
-    const rect = anchor.getBoundingClientRect();
-
-    const items: import('../ui/contextMenu.js').IContextMenuItem[] = [
-      {
-        id: 'workbench.action.showCommands',
-        label: 'Command Palette...',
-        keybinding: this._keybindingHint('workbench.action.showCommands'),
-        group: '1_commands',
-      },
-      {
-        id: 'manage.profiles',
-        label: 'Profiles',
-        group: '2_preferences',
-        disabled: true,
-      },
-      {
-        id: 'workbench.action.openSettings',
-        label: 'Settings',
-        keybinding: this._keybindingHint('workbench.action.openSettings'),
-        group: '2_preferences',
-      },
-      {
-        id: 'manage.extensions',
-        label: 'Extensions',
-        keybinding: 'Ctrl+Shift+X',
-        group: '2_preferences',
-        disabled: true,
-      },
-      {
-        id: 'workbench.action.openKeybindings',
-        label: 'Keyboard Shortcuts',
-        keybinding: this._keybindingHint('workbench.action.openKeybindings'),
-        group: '2_preferences',
-      },
-      {
-        id: 'manage.tasks',
-        label: 'Tasks',
-        group: '2_preferences',
-        disabled: true,
-      },
-      {
-        id: 'manage.themes',
-        label: 'Themes',
-        group: '3_themes',
-        submenu: [
-          { id: 'workbench.action.selectTheme', label: 'Color Theme', keybinding: 'Ctrl+T', group: '1_themes' },
-          { id: 'workbench.action.selectIconTheme', label: 'File Icon Theme', group: '1_themes', disabled: true },
-          { id: 'workbench.action.selectProductIconTheme', label: 'Product Icon Theme', group: '1_themes', disabled: true },
-        ],
-      },
-      {
-        id: 'manage.checkUpdates',
-        label: 'Check for Updates...',
-        group: '4_updates',
-        disabled: true,
-      },
-    ];
-
-    // Anchor above the gear icon (VS Code pattern: menu opens upward)
-    // We estimate a max height and position accordingly; viewport clamp handles overflows
-    const estimatedMenuHeight = items.length * 28 + 24; // rough: items + separators
-    const y = Math.max(8, rect.top - estimatedMenuHeight);
-
-    const ctxMenu = ContextMenu.show({
-      items,
-      anchor: { x: rect.right + 4, y },
-    });
-
-    // Track the menu for toggle behavior
-    this._manageMenu = ctxMenu;
-    anchor.classList.add('active');
-    ctxMenu.onDidDismiss(() => {
-      this._manageMenuDismissedAt = Date.now();
-      this._manageMenu = null;
-      anchor.classList.remove('active');
-    });
-
-    ctxMenu.onDidSelect(({ item }) => {
-      if (item.disabled) return;
-
-      // Handle theme commands specially
-      if (item.id === 'workbench.action.selectTheme') {
-        this.selectColorTheme();
-        return;
-      }
-
-      // Execute via command service for registered commands
-      cmdService.executeCommand(item.id).catch(err => {
-        console.error(`[Workbench] Manage menu action error:`, err);
-      });
-    });
-  }
-
-  // ════════════════════════════════════════════════════════════════════════
   // Auxiliary bar views
   // ════════════════════════════════════════════════════════════════════════
 
@@ -1980,63 +1765,10 @@ export class Workbench extends Layout {
       }
 
       // Update window title
-      this._updateWindowTitle(editor);
+      this._statusBarController.updateWindowTitle(editor);
     });
 
     console.log('[Workbench] Editor services registered (Capability 9)');
-  }
-
-  /**
-   * Update the window title based on the active editor.
-   */
-  private _updateWindowTitle(editor?: IEditorInput): void {
-    const parts: string[] = [];
-
-    // {dirty}{filename}
-    if (editor) {
-      parts.push(editor.isDirty ? `● ${editor.name}` : editor.name);
-    }
-
-    // {folderName} or {workspaceName}
-    const folders = this._workspace?.folders;
-    if (folders && folders.length === 1) {
-      // Single folder — show folder name
-      parts.push(folders[0].name);
-    } else {
-      // Multi-folder, no folders, or no workspace — show workspace name
-      const wsName = this._workspace?.name;
-      if (wsName) {
-        parts.push(wsName);
-      }
-    }
-
-    parts.push('Parallx');
-    document.title = parts.join(' — ');
-
-    // Update resource context keys from active editor
-    if (this._workbenchContext && editor) {
-      const editorUri = editor.uri?.toString();
-      if (editorUri) {
-        try {
-          const uri = URI.parse(editorUri);
-          this._workbenchContext.setResourceScheme(uri.scheme);
-          this._workbenchContext.setResourceExtname(uri.extname);
-          this._workbenchContext.setResourceFilename(uri.basename);
-        } catch {
-          this._workbenchContext.setResourceScheme('');
-          this._workbenchContext.setResourceExtname('');
-          this._workbenchContext.setResourceFilename('');
-        }
-      } else {
-        this._workbenchContext.setResourceScheme('');
-        this._workbenchContext.setResourceExtname('');
-        this._workbenchContext.setResourceFilename('');
-      }
-    } else if (this._workbenchContext) {
-      this._workbenchContext.setResourceScheme('');
-      this._workbenchContext.setResourceExtname('');
-      this._workbenchContext.setResourceFilename('');
-    }
   }
 
   /**
@@ -3274,382 +3006,6 @@ export class Workbench extends Layout {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // Status bar
-  // ════════════════════════════════════════════════════════════════════════
-
-  private _setupStatusBar(): void {
-    const sb = this._statusBar as unknown as StatusBarPart;
-
-    // Wire command executor so entry clicks execute commands via CommandService
-    // VS Code parity: StatusbarEntryItem uses ICommandService.executeCommand()
-    const commandService = this._services.get(ICommandService);
-    if (commandService) {
-      sb.setCommandExecutor((cmdId: string) => {
-        commandService.executeCommand(cmdId);
-      });
-    }
-
-    // ── Right-aligned editor indicators (VS Code parity) ──
-    // Order from left to right in the right section:
-    //   Cursor Position | Indentation | Encoding | EOL | Language
-    // Higher priority = further right (row-reverse), so language = lowest priority.
-
-    const cursorAccessor = sb.addEntry({
-      id: 'status.editor.selection',
-      text: 'Ln 1, Col 1',
-      alignment: StatusBarAlignment.Right,
-      priority: 100,
-      tooltip: 'Go to Line/Column (Ctrl+G)',
-      command: 'workbench.action.gotoLine',
-      name: 'Cursor Position',
-    });
-
-    const indentAccessor = sb.addEntry({
-      id: 'status.editor.indentation',
-      text: 'Spaces: 2',
-      alignment: StatusBarAlignment.Right,
-      priority: 80,
-      tooltip: 'Indentation Settings',
-      name: 'Indentation',
-    });
-
-    const encodingAccessor = sb.addEntry({
-      id: 'status.editor.encoding',
-      text: 'UTF-8',
-      alignment: StatusBarAlignment.Right,
-      priority: 70,
-      tooltip: 'Select Encoding',
-      name: 'Encoding',
-    });
-
-    const eolAccessor = sb.addEntry({
-      id: 'status.editor.eol',
-      text: 'LF',
-      alignment: StatusBarAlignment.Right,
-      priority: 60,
-      tooltip: 'End of Line Sequence',
-      name: 'End of Line',
-    });
-
-    const languageAccessor = sb.addEntry({
-      id: 'status.editor.language',
-      text: 'Plain Text',
-      alignment: StatusBarAlignment.Right,
-      priority: 50,
-      tooltip: 'Select Language Mode',
-      name: 'Language',
-    });
-
-    // Track accessors for dynamic updates
-    this._statusBarAccessors = {
-      cursor: cursorAccessor,
-      indent: indentAccessor,
-      encoding: encodingAccessor,
-      eol: eolAccessor,
-      language: languageAccessor,
-    };
-
-    // ── Wire active editor → status bar indicators ──
-    this._wireEditorStatusBarTracking();
-
-    // Context menu on right-click — VS Code parity:
-    // Shows "Hide Status Bar" + per-entry hide toggles
-    this._register(sb.onDidContextMenu((event) => {
-      const entries = sb.getEntries();
-      const ctxMenu = ContextMenu.show({
-        items: [
-          {
-            id: 'hideStatusBar',
-            label: 'Hide Status Bar',
-            group: '0_visibility',
-            keybinding: this._keybindingHint('workbench.action.toggleStatusbarVisibility'),
-          },
-          ...entries.map((e) => ({
-            id: e.id,
-            label: e.name || e.text,
-            group: '1_entries',
-          })),
-        ],
-        anchor: { x: event.x, y: event.y },
-      });
-      ctxMenu.onDidSelect((e) => {
-        if (e.item.id === 'hideStatusBar') {
-          this.toggleStatusBar();
-        }
-      });
-    }));
-
-    // ── Notification Center Badge (Cap 9) ──
-    this._setupNotificationBadge(sb);
-  }
-
-  // ── Extension → Language display name map ──
-  private static readonly EXT_TO_LANGUAGE: Record<string, string> = {
-    '.ts': 'TypeScript', '.tsx': 'TypeScript React',
-    '.js': 'JavaScript', '.jsx': 'JavaScript React',
-    '.json': 'JSON', '.jsonc': 'JSON with Comments',
-    '.md': 'Markdown', '.markdown': 'Markdown',
-    '.html': 'HTML', '.htm': 'HTML',
-    '.css': 'CSS', '.scss': 'SCSS', '.less': 'Less',
-    '.py': 'Python', '.rb': 'Ruby', '.rs': 'Rust',
-    '.go': 'Go', '.java': 'Java', '.c': 'C', '.cpp': 'C++', '.h': 'C',
-    '.cs': 'C#', '.swift': 'Swift', '.kt': 'Kotlin',
-    '.sh': 'Shell Script', '.bash': 'Shell Script', '.zsh': 'Shell Script',
-    '.ps1': 'PowerShell', '.bat': 'Batch',
-    '.xml': 'XML', '.svg': 'XML', '.yaml': 'YAML', '.yml': 'YAML',
-    '.toml': 'TOML', '.ini': 'INI', '.cfg': 'INI',
-    '.sql': 'SQL',
-    '.r': 'R', '.R': 'R',
-    '.lua': 'Lua', '.php': 'PHP', '.pl': 'Perl',
-    '.txt': 'Plain Text', '.log': 'Log',
-    '.dockerfile': 'Dockerfile',
-    '.gitignore': 'Ignore', '.env': 'Properties',
-  };
-
-  /** Resolve a filename to a display language name. */
-  private _getLanguageFromFileName(name: string): string {
-    const lower = name.toLowerCase();
-    // Exact filename matches
-    if (lower === 'dockerfile') return 'Dockerfile';
-    if (lower === 'makefile') return 'Makefile';
-    if (lower === '.gitignore') return 'Ignore';
-    if (lower === '.env') return 'Properties';
-
-    const dotIdx = name.lastIndexOf('.');
-    if (dotIdx >= 0) {
-      const ext = name.substring(dotIdx).toLowerCase();
-      return (this.constructor as typeof Workbench).EXT_TO_LANGUAGE[ext] ?? 'Plain Text';
-    }
-    return 'Plain Text';
-  }
-
-  /**
-   * Wire active editor changes to update cursor position, language,
-   * encoding, indentation, and EOL status bar indicators.
-   *
-   * VS Code parity: `EditorStatus` contribution in
-   * `src/vs/workbench/browser/parts/editor/editorStatus.ts`.
-   */
-  private _wireEditorStatusBarTracking(): void {
-    const editorService = this._services.has(IEditorService)
-      ? this._services.get(IEditorService) as import('../services/editorService.js').EditorService
-      : undefined;
-    if (!editorService) return;
-
-    const editorPart = this._editor as EditorPart;
-    const acc = this._statusBarAccessors;
-
-    /** Disposable for the cursor-position listener on the current TextEditorPane. */
-    let cursorSub: IDisposable | undefined;
-
-    // ── Language indicator updates (immediate — file name is available right away) ──
-    const updateLanguage = (editor: IEditorInput | undefined) => {
-      if (!editor) {
-        acc.language?.update({ text: '' });
-        return;
-      }
-      const lang = this._getLanguageFromFileName(editor.name ?? '');
-      acc.language?.update({ text: lang, tooltip: `${lang} — Select Language Mode` });
-    };
-
-    // Fire on initial active editor and on every editor switch
-    updateLanguage(editorService.activeEditor);
-    this._register(editorService.onDidActiveEditorChange(updateLanguage));
-
-    // ── Pane-dependent indicators (cursor, encoding, eol, indent) ──
-    // These require the pane to be fully created. EditorGroupView fires
-    // onDidActivePaneChange AFTER the async pane.setInput() completes,
-    // so the pane is ready at that point.
-    const updatePaneIndicators = (pane: import('../editor/editorPane.js').EditorPane | undefined) => {
-      // Tear down previous cursor listener
-      cursorSub?.dispose();
-      cursorSub = undefined;
-
-      if (pane instanceof TextEditorPane) {
-        // Text editor — show all indicators
-        acc.encoding?.update({ text: 'UTF-8' });
-        acc.indent?.update({ text: 'Spaces: 2' });
-        acc.cursor?.update({
-          text: `Ln ${pane.cursorLine}, Col ${pane.cursorCol}`,
-        });
-        acc.eol?.update({ text: pane.eolLabel });
-
-        // Live cursor position tracking
-        cursorSub = pane.onDidChangeCursorPosition(({ line, col }) => {
-          acc.cursor?.update({ text: `Ln ${line}, Col ${col}` });
-        });
-      } else {
-        // No pane or non-text editor (image, markdown preview, etc.)
-        acc.cursor?.update({ text: '' });
-        acc.eol?.update({ text: '' });
-        acc.indent?.update({ text: '' });
-        acc.encoding?.update({ text: '' });
-      }
-    };
-
-    // Listen to the reliable pane-ready signal from EditorPart
-    this._register(editorPart.onDidActivePaneChange(updatePaneIndicators));
-
-    // Fire once for the initial active pane (if any)
-    updatePaneIndicators(editorPart.activeGroup?.activePane);
-
-    // Clean up cursor sub on dispose
-    this._register(toDisposable(() => cursorSub?.dispose()));
-  }
-
-  /**
-   * Set up the notification bell badge in the status bar and wire it to
-   * the NotificationService. Clicking the badge toggles a notification
-   * center dropdown showing recent notifications.
-   *
-   * VS Code parity: `src/vs/workbench/browser/parts/notifications`
-   */
-  private _setupNotificationBadge(sb: StatusBarPart): void {
-    const notifService = this._services.has(INotificationService)
-      ? this._services.get(INotificationService) as import('../api/notificationService.js').NotificationService
-      : undefined;
-    if (!notifService) return;
-
-    // VS Code codicon bell SVG (16×16 viewBox)
-    const bellSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M13.377 10.573a7.63 7.63 0 0 1-.383-2.38V6.195a5.115 5.115 0 0 0-1.268-3.446 5.138 5.138 0 0 0-3.242-1.722c-.694-.072-1.4 0-2.07.227-.67.215-1.28.574-1.794 1.053a4.923 4.923 0 0 0-1.208 1.675 5.067 5.067 0 0 0-.431 2.022v2.2a7.61 7.61 0 0 1-.383 2.37L2 12.343l.479.658h3.505c0 .526.215 1.04.586 1.412.37.37.885.586 1.412.586.526 0 1.04-.215 1.411-.586s.587-.886.587-1.412h3.505l.478-.658-.586-1.77zm-4.69 3.147a.997.997 0 0 1-.705.299.997.997 0 0 1-.706-.3.997.997 0 0 1-.3-.705h1.999a.939.939 0 0 1-.287.706zm-5.515-1.71l.371-1.114a8.633 8.633 0 0 0 .443-2.691V6.004c0-.563.12-1.113.347-1.616.227-.514.55-.969.96-1.35.41-.37.885-.66 1.408-.844a4.14 4.14 0 0 1 1.635-.193 4.13 4.13 0 0 1 2.617 1.377c.37.44.636.96.78 1.52.145.56.193 1.145.143 1.724v2.2c0 .907.152 1.808.443 2.659l.371 1.113H3.172z" fill="currentColor"/></svg>';
-
-    // Add bell entry to status bar (left-aligned, far left)
-    const bellAccessor = sb.addEntry({
-      id: 'status.notifications',
-      text: '',
-      iconSvg: bellSvg,
-      alignment: StatusBarAlignment.Left,
-      priority: 1000, // far left (highest priority = leftmost)
-      tooltip: 'No new notifications',
-      command: 'workbench.action.toggleNotificationCenter',
-      name: 'Notifications',
-    });
-
-    // Update badge when notification count changes
-    const updateBadge = (count: number) => {
-      bellAccessor.update({
-        text: count > 0 ? `${count}` : '',
-        tooltip: count > 0 ? `${count} notification${count > 1 ? 's' : ''}` : 'No new notifications',
-      });
-    };
-    this._register(notifService.onDidChangeCount(updateBadge));
-
-    // Notification center overlay state
-    let centerOverlay: HTMLElement | null = null;
-    let centerKeyHandler: ((e: KeyboardEvent) => void) | null = null;
-    const hideCenter = () => {
-      if (centerKeyHandler) {
-        document.removeEventListener('keydown', centerKeyHandler);
-        centerKeyHandler = null;
-      }
-      if (centerOverlay) {
-        centerOverlay.remove();
-        centerOverlay = null;
-      }
-    };
-
-    const showCenter = () => {
-      if (centerOverlay) { hideCenter(); return; }
-
-      const overlay = $('div');
-      overlay.className = 'parallx-notification-center-overlay';
-      overlay.addEventListener('mousedown', (e) => {
-        if (e.target === overlay) hideCenter();
-      });
-
-      const panel = $('div');
-      panel.className = 'parallx-notification-center';
-
-      // Header
-      const header = $('div');
-      header.className = 'parallx-notification-center-header';
-      const title = $('span');
-      title.textContent = 'Notifications';
-      header.appendChild(title);
-
-      const clearBtn = $('button');
-      clearBtn.className = 'parallx-notification-center-clear';
-      clearBtn.textContent = 'Clear All';
-      clearBtn.title = 'Clear all notifications';
-      clearBtn.addEventListener('click', () => {
-        notifService.dismissAll();
-        notifService.clearHistory();
-        hideCenter();
-      });
-      header.appendChild(clearBtn);
-      panel.appendChild(header);
-
-      // List
-      const list = $('div');
-      list.className = 'parallx-notification-center-list';
-
-      const history = notifService.history;
-      if (history.length === 0) {
-        const empty = $('div');
-        empty.className = 'parallx-notification-center-empty';
-        empty.textContent = 'No notifications';
-        list.appendChild(empty);
-      } else {
-        for (const notif of history) {
-          const row = $('div');
-          row.className = `parallx-notification-center-item parallx-notification-center-item-${notif.severity}`;
-
-          const icon = $('span');
-          icon.className = 'parallx-notification-center-icon';
-          icon.textContent = notif.severity === 'information' ? 'ℹ' : notif.severity === 'warning' ? '⚠' : '✕';
-          row.appendChild(icon);
-
-          const msg = $('span');
-          msg.className = 'parallx-notification-center-message';
-          msg.textContent = notif.message;
-          row.appendChild(msg);
-
-          if (notif.source) {
-            const src = $('span');
-            src.className = 'parallx-notification-center-source';
-            src.textContent = notif.source;
-            row.appendChild(src);
-          }
-
-          list.appendChild(row);
-        }
-      }
-      panel.appendChild(list);
-
-      overlay.appendChild(panel);
-      this._container.appendChild(overlay);
-      centerOverlay = overlay;
-
-      // Close on Escape — handler is cleaned up in hideCenter()
-      centerKeyHandler = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
-          hideCenter();
-        }
-      };
-      document.addEventListener('keydown', centerKeyHandler);
-    };
-
-    // Register the toggle command
-    const commandService = this._services.get(ICommandService);
-    if (commandService?.registerCommand) {
-      commandService.registerCommand({
-        id: 'workbench.action.toggleNotificationCenter',
-        title: 'Toggle Notification Center',
-        handler: () => showCenter(),
-      });
-    }
-  }
-
-  /** Tracked status bar entry accessors for dynamic updates. */
-  private _statusBarAccessors: {
-    cursor?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
-    indent?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
-    encoding?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
-    eol?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
-    language?: import('../parts/statusBarPart.js').StatusBarEntryAccessor;
-  } = {};
-
-  // ════════════════════════════════════════════════════════════════════════
   // Layout view containers
   // ════════════════════════════════════════════════════════════════════════
 
@@ -3849,7 +3205,7 @@ export class Workbench extends Layout {
     this._auxBarContainer = this._setupAuxBarViews();
 
     // 2b. Manage gear icon
-    this._addManageGearIcon();
+    this._menuBuilder.addManageGearIcon();
 
     // 3. DnD
     this._dndController = this._setupDragAndDrop();

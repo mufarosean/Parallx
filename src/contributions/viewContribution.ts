@@ -3,6 +3,8 @@
 // Handles declarative view and view container contributions from tool manifests.
 // Creates view containers in the appropriate workbench parts and registers
 // view descriptors with the ViewManager. Manages the view provider registry
+
+import './viewContribution.css';
 // that bridges manifest declarations to runtime view content.
 //
 // Tasks: 6.1 (ViewContainer contribution), 6.2 (View contribution),

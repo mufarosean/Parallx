@@ -540,21 +540,26 @@ export class ToolActivator extends Disposable {
 
   // ── Disposal ──
 
-  override dispose(): void {
-    // Deactivate all tools synchronously on dispose
-    for (const [toolId, activated] of this._activatedTools) {
-      try {
-        if (activated.module.deactivate) {
-          activated.module.deactivate();
-        }
-      } catch { /* best effort */ }
+  /**
+   * Async disposal: properly awaits all tool deactivations before
+   * synchronous cleanup. The workbench shutdown path should call
+   * this instead of relying on the synchronous `dispose()`.
+   */
+  async disposeAsync(): Promise<void> {
+    await this.deactivateAll();
+    this.dispose();
+  }
 
+  override dispose(): void {
+    // Synchronous-only cleanup. If disposeAsync() (or deactivateAll()) was
+    // called first, the map is already empty and this is a no-op loop.
+    // If dispose() is called directly (abnormal teardown), we do best-effort
+    // synchronous cleanup without awaiting async deactivate handlers.
+    for (const [toolId, activated] of this._activatedTools) {
       for (const sub of activated.context.subscriptions) {
         try { sub.dispose(); } catch { /* best effort */ }
       }
-
       try { activated.disposeApi(); } catch { /* best effort */ }
-
       this._safeSetState(toolId, ToolState.Deactivated);
     }
     this._activatedTools.clear();

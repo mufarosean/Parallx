@@ -4,6 +4,8 @@
 // Mirrors the subset of VS Code's `src/vs/base/browser/dom.ts` needed
 // by the component library.
 
+import './ui.css';
+
 import { IDisposable, toDisposable } from '../platform/lifecycle.js';
 
 // ─── Element Creation ────────────────────────────────────────────────────────

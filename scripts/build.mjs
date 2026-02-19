@@ -1,8 +1,11 @@
 // scripts/build.mjs — Build renderer bundle with esbuild
+//
+// CSS is bundled automatically: each .ts file imports its co-located .css,
+// and esbuild extracts them into dist/renderer/main.css alongside main.js.
+// KaTeX fonts are handled via the 'file' loader so @font-face urls resolve.
 import { build } from 'esbuild';
-import { cpSync, readFileSync, writeFileSync, existsSync } from 'fs';
 
-// Bundle the renderer entry point
+// Bundle the renderer entry point (JS + CSS)
 await build({
   entryPoints: ['src/main.ts'],
   bundle: true,
@@ -13,51 +16,12 @@ await build({
   sourcemap: true,
   minify: false,
   logLevel: 'info',
+  loader: {
+    '.woff2': 'file',
+    '.woff': 'file',
+    '.ttf': 'file',
+  },
+  assetNames: 'fonts/[name]',
 });
-
-// Concatenate CSS: workbench base + ui component styles + built-in tool styles
-const workbenchCss = readFileSync('src/workbench.css', 'utf-8');
-const uiCssPath = 'src/ui/ui.css';
-const uiCss = existsSync(uiCssPath) ? readFileSync(uiCssPath, 'utf-8') : '';
-const explorerCssPath = 'src/built-in/explorer/explorer.css';
-const explorerCss = existsSync(explorerCssPath) ? readFileSync(explorerCssPath, 'utf-8') : '';
-const editorCssPath = 'src/built-in/editor/textEditorPane.css';
-const editorCss = existsSync(editorCssPath) ? readFileSync(editorCssPath, 'utf-8') : '';
-const markdownCssPath = 'src/built-in/editor/markdownEditorPane.css';
-const markdownCss = existsSync(markdownCssPath) ? readFileSync(markdownCssPath, 'utf-8') : '';
-const imageCssPath = 'src/built-in/editor/imageEditorPane.css';
-const imageCss = existsSync(imageCssPath) ? readFileSync(imageCssPath, 'utf-8') : '';
-const pdfCssPath = 'src/built-in/editor/pdfEditorPane.css';
-const pdfCss = existsSync(pdfCssPath) ? readFileSync(pdfCssPath, 'utf-8') : '';
-const settingsCssPath = 'src/built-in/editor/settingsEditorPane.css';
-const settingsCss = existsSync(settingsCssPath) ? readFileSync(settingsCssPath, 'utf-8') : '';
-const keybindingsCssPath = 'src/built-in/editor/keybindingsEditorPane.css';
-const keybindingsCss = existsSync(keybindingsCssPath) ? readFileSync(keybindingsCssPath, 'utf-8') : '';
-const welcomeCssPath = 'src/built-in/welcome/welcome.css';
-const welcomeCss = existsSync(welcomeCssPath) ? readFileSync(welcomeCssPath, 'utf-8') : '';
-const outputCssPath = 'src/built-in/output/output.css';
-const outputCss = existsSync(outputCssPath) ? readFileSync(outputCssPath, 'utf-8') : '';
-const toolGalleryCssPath = 'src/built-in/tool-gallery/toolGallery.css';
-const toolGalleryCss = existsSync(toolGalleryCssPath) ? readFileSync(toolGalleryCssPath, 'utf-8') : '';
-const canvasCssPath = 'src/built-in/canvas/canvas.css';
-const canvasCss = existsSync(canvasCssPath) ? readFileSync(canvasCssPath, 'utf-8') : '';
-const notificationCssPath = 'src/api/notificationService.css';
-const notificationCss = existsSync(notificationCssPath) ? readFileSync(notificationCssPath, 'utf-8') : '';
-const menuCssPath = 'src/contributions/menuContribution.css';
-const menuCss = existsSync(menuCssPath) ? readFileSync(menuCssPath, 'utf-8') : '';
-const viewCssPath = 'src/contributions/viewContribution.css';
-const viewCss = existsSync(viewCssPath) ? readFileSync(viewCssPath, 'utf-8') : '';
-const dropCssPath = 'src/dnd/dropOverlay.css';
-const dropCss = existsSync(dropCssPath) ? readFileSync(dropCssPath, 'utf-8') : '';
-const katexCssPath = 'node_modules/katex/dist/katex.min.css';
-const katexCss = existsSync(katexCssPath) ? readFileSync(katexCssPath, 'utf-8') : '';
-
-// Copy KaTeX font files so @font-face URLs resolve relative to workbench.css
-const katexFontsDir = 'node_modules/katex/dist/fonts';
-if (existsSync(katexFontsDir)) {
-  cpSync(katexFontsDir, 'dist/renderer/fonts', { recursive: true });
-}
-
-writeFileSync('dist/renderer/workbench.css', katexCss + '\n' + workbenchCss + '\n' + uiCss + '\n' + explorerCss + '\n' + editorCss + '\n' + markdownCss + '\n' + imageCss + '\n' + pdfCss + '\n' + settingsCss + '\n' + keybindingsCss + '\n' + welcomeCss + '\n' + outputCss + '\n' + toolGalleryCss + '\n' + canvasCss + '\n' + notificationCss + '\n' + menuCss + '\n' + viewCss + '\n' + dropCss);
 
 console.log('Build complete.');

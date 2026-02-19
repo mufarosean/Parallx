@@ -10,6 +10,7 @@
 //   src/vs/workbench/contrib/files/browser/views/explorerViewer.ts
 //   src/vs/workbench/contrib/files/browser/explorerService.ts
 
+import './explorer.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
