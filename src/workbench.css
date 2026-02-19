@@ -1190,6 +1190,117 @@ html, body {
 }
 
 /* Active group indicator — removed, accent is on active tab top border */
+
+/* ── Breadcrumbs Bar ── */
+/* VS Code ref: breadcrumbsWidget.css + breadcrumbscontrol.css */
+
+.breadcrumbs-control {
+  display: flex;
+  align-items: center;
+  background-color: var(--vscode-breadcrumb-background, var(--vscode-editor-background));
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-border, transparent);
+  overflow: hidden;
+}
+
+.breadcrumbs-control.hidden {
+  display: none;
+}
+
+.parallx-breadcrumbs {
+  user-select: none;
+  display: flex;
+  flex-direction: row;
+}
+
+/* Hide scrollbar visually by default, show on hover (matches VS Code) */
+.parallx-breadcrumbs::-webkit-scrollbar {
+  height: 3px;
+}
+.parallx-breadcrumbs::-webkit-scrollbar-thumb {
+  background-color: transparent;
+}
+.parallx-breadcrumbs:hover::-webkit-scrollbar-thumb {
+  background-color: var(--vscode-scrollbarSlider-background);
+}
+
+.parallx-breadcrumb-item {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  cursor: pointer;
+  height: 100%;
+  font-size: 12px;
+  color: var(--vscode-breadcrumb-foreground, var(--vscode-foreground));
+  outline: none;
+  line-height: 22px;
+}
+
+.parallx-breadcrumbs.disabled .parallx-breadcrumb-item {
+  cursor: default;
+}
+
+.parallx-breadcrumb-item:hover:not(.focused):not(.selected) {
+  color: var(--vscode-breadcrumb-focusForeground, var(--vscode-foreground));
+}
+
+.parallx-breadcrumb-item.focused {
+  color: var(--vscode-breadcrumb-focusForeground, var(--vscode-foreground));
+}
+
+.parallx-breadcrumb-item.focused .breadcrumb-label,
+.parallx-breadcrumb-item.selected .breadcrumb-label {
+  text-decoration: underline;
+}
+
+.parallx-breadcrumb-item.focused.selected {
+  color: var(--vscode-breadcrumb-activeSelectionForeground, var(--vscode-foreground));
+}
+
+/* Breadcrumb separator — chevron between items */
+.breadcrumb-separator {
+  margin: 0 2px;
+  opacity: 0.7;
+  font-size: 14px;
+  color: inherit;
+}
+
+/* Hide separator after the last breadcrumb item */
+.parallx-breadcrumb-item:last-child .breadcrumb-separator {
+  display: none;
+}
+
+/* First item gets a small leading space (VS Code uses ::before { content: ' ' }) */
+.parallx-breadcrumb-item:first-of-type {
+  padding-left: 2px;
+}
+
+/* Breadcrumb icons */
+.breadcrumb-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 4px;
+  opacity: 0.85;
+}
+
+.breadcrumb-icon--folder::before {
+  content: '\1F4C1';
+  font-size: 12px;
+}
+
+.breadcrumb-icon--file::before {
+  content: '';
+  /* File icon is omitted — the label without icon is cleaner for files (VS Code behavior) */
+}
+
+/* Root folder gets a different icon */
+.parallx-breadcrumb-item.root-folder .breadcrumb-icon--folder::before {
+  content: '\1F4C9';
+}
+
+.breadcrumb-label {
+  white-space: nowrap;
+}
+
 /* ── View (base class) ── */
 .view {
   overflow: hidden;
