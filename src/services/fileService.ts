@@ -155,6 +155,8 @@ export class FileService extends Disposable implements IFileService {
 
   // ── Cache ──
   private readonly _contentCache = new LRUCache<string, FileContent>(20);
+  /** Per-URI generation counter to prevent TOCTOU stale-cache races. */
+  private readonly _cacheGeneration = new Map<string, number>();
   private _boundaryChecker: ((uri: URI, operation: string) => void) | undefined;
 
   constructor() {
@@ -179,9 +181,14 @@ export class FileService extends Disposable implements IFileService {
 
   async readFile(uri: URI): Promise<FileContent> {
     this._assertBoundary(uri, 'readFile');
+    const cacheKey = uri.toKey();
+
     // Check cache first
-    const cached = this._contentCache.get(uri.toKey());
+    const cached = this._contentCache.get(cacheKey);
     if (cached) return cached;
+
+    // Capture generation before IPC to detect concurrent writes
+    const genBefore = this._cacheGeneration.get(cacheKey) ?? 0;
 
     const fs = getElectronFs();
     const result = await fs.readFile(uri.fsPath);
@@ -194,9 +201,12 @@ export class FileService extends Disposable implements IFileService {
       mtime: result.mtime,
     };
 
-    // Cache (only text content, not binary base64)
+    // Only cache if no write occurred during our async read (TOCTOU guard)
     if (result.encoding !== 'base64') {
-      this._contentCache.set(uri.toKey(), content);
+      const genAfter = this._cacheGeneration.get(cacheKey) ?? 0;
+      if (genAfter === genBefore) {
+        this._contentCache.set(cacheKey, content);
+      }
     }
 
     return content;
@@ -204,12 +214,15 @@ export class FileService extends Disposable implements IFileService {
 
   async writeFile(uri: URI, content: string): Promise<void> {
     this._assertBoundary(uri, 'writeFile');
+    const cacheKey = uri.toKey();
+
+    // Bump generation BEFORE IPC to invalidate any in-flight reads (TOCTOU guard)
+    this._cacheGeneration.set(cacheKey, (this._cacheGeneration.get(cacheKey) ?? 0) + 1);
+    this._contentCache.delete(cacheKey);
+
     const fs = getElectronFs();
     const result = await fs.writeFile(uri.fsPath, content);
     throwIfError(result, uri);
-
-    // Invalidate cache
-    this._contentCache.delete(uri.toKey());
   }
 
   async stat(uri: URI): Promise<FileStat> {
@@ -389,6 +402,7 @@ export class FileService extends Disposable implements IFileService {
 
     // Clear cache
     this._contentCache.clear();
+    this._cacheGeneration.clear();
 
     super.dispose();
   }

@@ -48,6 +48,8 @@ interface DatabaseBridge {
 export class DatabaseService extends Disposable {
   private _isOpen = false;
   private _dbPath: string | null = null;
+  /** Mutex: if non-null, an open operation is already in progress. */
+  private _openPromise: Promise<void> | null = null;
 
   private readonly _onDidOpen = this._register(new Emitter<string>());
   readonly onDidOpen: Event<string> = this._onDidOpen.event;
@@ -75,6 +77,20 @@ export class DatabaseService extends Disposable {
    * @param migrationsDir — optional absolute path to the migrations directory
    */
   async openForWorkspace(workspacePath: string, migrationsDir?: string): Promise<void> {
+    // If already opening, reuse the pending promise (mutex)
+    if (this._openPromise) {
+      return this._openPromise;
+    }
+
+    this._openPromise = this._doOpenForWorkspace(workspacePath, migrationsDir);
+    try {
+      await this._openPromise;
+    } finally {
+      this._openPromise = null;
+    }
+  }
+
+  private async _doOpenForWorkspace(workspacePath: string, migrationsDir?: string): Promise<void> {
     // Close any previously open database first
     if (this._isOpen) {
       await this.close();
@@ -186,9 +202,15 @@ export class DatabaseService extends Disposable {
   }
 
   override dispose(): void {
+    // Prevent post-dispose queries by clearing state immediately
+    const wasOpen = this._isOpen;
+    this._isOpen = false;
+    this._dbPath = null;
+    this._openPromise = null;
+
     // Best-effort close on dispose (fire-and-forget)
-    if (this._isOpen) {
-      this.close().catch(err =>
+    if (wasOpen) {
+      this._bridge.close().catch(err =>
         console.error('[DatabaseService] Error closing on dispose:', err),
       );
     }

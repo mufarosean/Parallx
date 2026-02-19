@@ -276,8 +276,14 @@ export class TextFileModelManager extends Disposable {
     this._models.set(uri, model);
     model.addRef();
 
-    // Load content from disk
-    await model.resolve();
+    // Load content from disk — remove from map on failure to prevent zombie models
+    try {
+      await model.resolve();
+    } catch (err) {
+      this._models.delete(uri);
+      model.dispose();
+      throw err;
+    }
 
     this._onDidCreate.fire(model);
     return model;

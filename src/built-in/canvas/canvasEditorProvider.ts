@@ -67,7 +67,9 @@ export class CanvasEditorProvider {
   createEditorPane(container: HTMLElement, input?: IEditorInput): IDisposable {
     const pageId = input?.id ?? '';
     const pane = new CanvasEditorPane(container, pageId, this._dataService, input, this._openEditor);
-    pane.init();
+    pane.init().catch(err => {
+      console.error('[CanvasEditorProvider] Editor pane initialization failed:', err);
+    });
     return pane;
   }
 }
@@ -81,6 +83,7 @@ class CanvasEditorPane implements IDisposable {
   private _bubbleMenu!: BubbleMenuController;
   private _inlineMath!: InlineMathEditorController;
   private _disposed = false;
+  private _initComplete = false;
   private _suppressUpdate = false;
   private readonly _saveDisposables: IDisposable[] = [];
 
@@ -115,7 +118,7 @@ class CanvasEditorPane implements IDisposable {
   get blockSelection(): BlockSelectionController { return this._blockSelection; }
 
   requestSave(_reason: string): void {
-    if (!this._editor || !this._pageId) return;
+    if (!this._editor || !this._pageId || !this._initComplete) return;
     const json = JSON.stringify(this._editor.getJSON());
     this._dataService.scheduleContentSave(this._pageId, json);
   }
@@ -207,6 +210,9 @@ class CanvasEditorPane implements IDisposable {
       console.warn('[CanvasEditorPane] Content loading failed, starting with empty editor:', err);
     }
 
+    // Bail out if disposed during async content load
+    if (this._disposed) return;
+
     // Expose editor for E2E tests (test mode only)
     if ((window as any).parallxElectron?.testMode) {
       (window as any).__tiptapEditor = this._editor;
@@ -271,6 +277,8 @@ class CanvasEditorPane implements IDisposable {
         this._pageChrome.applyPageSettings();
       }),
     );
+
+    this._initComplete = true;
   }
 
   // ══════════════════════════════════════════════════════════════════════════  // Content Loading
@@ -306,15 +314,15 @@ class CanvasEditorPane implements IDisposable {
     if (this._disposed) return;
     this._disposed = true;
 
-    this._slashMenu.hide();
-    this._bubbleMenu.hide();
-    this._blockHandles.hide();
-    this._blockSelection.clear();
-    this._pageChrome.dismissPopups();
+    this._slashMenu?.hide();
+    this._bubbleMenu?.hide();
+    this._blockHandles?.hide();
+    this._blockSelection?.clear();
+    this._pageChrome?.dismissPopups();
 
     // Block handles cleanup
-    this._blockHandles.dispose();
-    this._blockSelection.dispose();
+    this._blockHandles?.dispose();
+    this._blockSelection?.dispose();
 
     // Dispose save-state subscriptions
     for (const d of this._saveDisposables) d.dispose();
@@ -342,6 +350,6 @@ class CanvasEditorPane implements IDisposable {
       this._inlineMath.dispose();
     }
 
-    this._pageChrome.dispose();
+    this._pageChrome?.dispose();
   }
 }

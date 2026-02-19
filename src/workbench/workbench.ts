@@ -3536,7 +3536,12 @@ export class Workbench extends Layout {
 
     // Notification center overlay state
     let centerOverlay: HTMLElement | null = null;
+    let centerKeyHandler: ((e: KeyboardEvent) => void) | null = null;
     const hideCenter = () => {
+      if (centerKeyHandler) {
+        document.removeEventListener('keydown', centerKeyHandler);
+        centerKeyHandler = null;
+      }
       if (centerOverlay) {
         centerOverlay.remove();
         centerOverlay = null;
@@ -3615,14 +3620,13 @@ export class Workbench extends Layout {
       this._container.appendChild(overlay);
       centerOverlay = overlay;
 
-      // Close on Escape
-      const onKey = (e: KeyboardEvent) => {
+      // Close on Escape — handler is cleaned up in hideCenter()
+      centerKeyHandler = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
           hideCenter();
-          document.removeEventListener('keydown', onKey);
         }
       };
-      document.addEventListener('keydown', onKey);
+      document.addEventListener('keydown', centerKeyHandler);
     };
 
     // Register the toggle command

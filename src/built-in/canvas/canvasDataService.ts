@@ -27,6 +27,7 @@ export const enum SaveStateKind {
   Flushing = 'Flushing',
   Saved = 'Saved',
   Failed = 'Failed',
+  Retrying = 'Retrying',
 }
 
 export interface SaveStateEvent {
@@ -106,6 +107,14 @@ export class CanvasDataService extends Disposable {
 
   /** Per-page debounce timers for content auto-save. */
   private readonly _pendingSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; content: string; expectedRevision?: number }>();
+
+  /** Per-page retry state for failed auto-saves (exponential backoff). */
+  private readonly _retryQueue = new Map<string, { timer: ReturnType<typeof setTimeout>; content: string; retries: number; expectedRevision?: number }>();
+
+  /** Max retry attempts before giving up. */
+  private static readonly MAX_RETRIES = 3;
+  /** Base delay for retry backoff in ms (doubles each retry: 1s, 2s, 4s). */
+  private static readonly RETRY_BASE_MS = 1000;
 
   /** Last known committed revision per page. */
   private readonly _knownRevisions = new Map<string, number>();
@@ -466,6 +475,7 @@ export class CanvasDataService extends Disposable {
 
     // Cancel any pending auto-save for this page
     this._cancelPendingSave(pageId);
+    this._cancelRetry(pageId);
 
     this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId });
     this._knownRevisions.delete(pageId);
@@ -560,6 +570,8 @@ export class CanvasDataService extends Disposable {
 
     // Cancel existing timer for this page
     this._cancelPendingSave(pageId);
+    // New content supersedes any pending retry (newer content wins)
+    this._cancelRetry(pageId);
 
     const timer = setTimeout(async () => {
       this._pendingSaves.delete(pageId);
@@ -576,19 +588,23 @@ export class CanvasDataService extends Disposable {
       } catch (err) {
         console.error(`[CanvasDataService] Auto-save failed for page "${pageId}":`, err);
         if (err instanceof Error && err.message.includes('Revision conflict')) {
+          // Revision conflicts need fresh revision — don't retry with stale data
           try {
             const latest = await this.getPage(pageId);
             if (latest) this._knownRevisions.set(pageId, latest.revision);
           } catch {
             // ignore refresh failure
           }
+          this._onDidChangeSaveState.fire({
+            pageId,
+            kind: SaveStateKind.Failed,
+            source: 'debounce',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        } else {
+          // Non-revision-conflict failure — schedule retry with backoff
+          this._scheduleRetry(pageId, normalized.storedContent, normalized.schemaVersion, 0);
         }
-        this._onDidChangeSaveState.fire({
-          pageId,
-          kind: SaveStateKind.Failed,
-          source: 'debounce',
-          error: err instanceof Error ? err.message : String(err),
-        });
       }
     }, this._autoSaveMs);
 
@@ -712,6 +728,7 @@ export class CanvasDataService extends Disposable {
     );
     if (result.error) throw new Error(result.error.message);
     this._cancelPendingSave(pageId);
+    this._cancelRetry(pageId);
     this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId });
   }
 
@@ -737,6 +754,7 @@ export class CanvasDataService extends Disposable {
     const result = await this._db.run('DELETE FROM pages WHERE id = ?', [pageId]);
     if (result.error) throw new Error(result.error.message);
     this._cancelPendingSave(pageId);
+    this._cancelRetry(pageId);
     this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId });
   }
 
@@ -860,6 +878,74 @@ export class CanvasDataService extends Disposable {
   }
 
   /**
+   * Cancel a pending retry for a page.
+   */
+  private _cancelRetry(pageId: string): void {
+    const retry = this._retryQueue.get(pageId);
+    if (retry) {
+      clearTimeout(retry.timer);
+      this._retryQueue.delete(pageId);
+    }
+  }
+
+  /**
+   * Schedule a retry for a failed auto-save with exponential backoff.
+   * Delays: 1s, 2s, 4s. After MAX_RETRIES failures, fires SaveStateKind.Failed.
+   */
+  private _scheduleRetry(
+    pageId: string,
+    storedContent: string,
+    schemaVersion: number,
+    attempt: number,
+  ): void {
+    if (attempt >= CanvasDataService.MAX_RETRIES) {
+      console.error(`[CanvasDataService] Auto-save retry exhausted for page "${pageId}" after ${attempt} attempts`);
+      this._retryQueue.delete(pageId);
+      this._onDidChangeSaveState.fire({
+        pageId,
+        kind: SaveStateKind.Failed,
+        source: 'debounce',
+        error: `Auto-save failed after ${attempt} retry attempts`,
+      });
+      return;
+    }
+
+    const delayMs = CanvasDataService.RETRY_BASE_MS * Math.pow(2, attempt);
+    this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Retrying, source: 'debounce' });
+
+    const timer = setTimeout(async () => {
+      this._retryQueue.delete(pageId);
+      this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'debounce' });
+      try {
+        // Re-fetch latest revision for the retry attempt
+        const freshRevision = this._knownRevisions.get(pageId);
+        const page = await this.updatePage(pageId, {
+          content: storedContent,
+          contentSchemaVersion: schemaVersion,
+          expectedRevision: freshRevision,
+        });
+        this._knownRevisions.set(pageId, page.revision);
+        this._onDidSavePage.fire(pageId);
+        this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'debounce' });
+      } catch (retryErr) {
+        console.error(`[CanvasDataService] Retry ${attempt + 1}/${CanvasDataService.MAX_RETRIES} failed for page "${pageId}":`, retryErr);
+        if (retryErr instanceof Error && retryErr.message.includes('Revision conflict')) {
+          // Revision conflict during retry — refresh revision and try again
+          try {
+            const latest = await this.getPage(pageId);
+            if (latest) this._knownRevisions.set(pageId, latest.revision);
+          } catch {
+            // ignore
+          }
+        }
+        this._scheduleRetry(pageId, storedContent, schemaVersion, attempt + 1);
+      }
+    }, delayMs);
+
+    this._retryQueue.set(pageId, { timer, content: storedContent, retries: attempt, expectedRevision: this._knownRevisions.get(pageId) });
+  }
+
+  /**
    * Assemble a flat list of pages into a tree structure.
    */
   private _assembleTree(pages: IPage[]): IPageTreeNode[] {
@@ -891,11 +977,18 @@ export class CanvasDataService extends Disposable {
   }
 
   override dispose(): void {
-    // Cancel all pending timers
+    // Cancel all pending debounce timers
     for (const { timer } of this._pendingSaves.values()) {
       clearTimeout(timer);
     }
     this._pendingSaves.clear();
+
+    // Cancel all pending retry timers
+    for (const { timer } of this._retryQueue.values()) {
+      clearTimeout(timer);
+    }
+    this._retryQueue.clear();
+
     super.dispose();
   }
 }
