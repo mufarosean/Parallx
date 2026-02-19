@@ -12,35 +12,11 @@ import { Emitter, Event } from '../platform/events.js';
 import { IColorRegistry } from '../theme/colorRegistry.js';
 import { IColorTheme, ColorThemeData } from '../theme/themeData.js';
 import { $ } from '../ui/dom.js';
+import type { IThemeService } from './serviceTypes.js';
 
 // ─── Style element ID ────────────────────────────────────────────────────────
 
 const THEME_STYLE_ID = 'parallx-theme-colors';
-
-// ─── IThemeService ───────────────────────────────────────────────────────────
-
-/**
- * Service interface for theme management.
- */
-export interface IThemeService {
-  /** The currently applied color theme. */
-  readonly activeTheme: IColorTheme;
-
-  /** Fired when the active theme changes. */
-  readonly onDidChangeTheme: Event<IColorTheme>;
-
-  /**
-   * Resolves a color from the active theme, falling back to the
-   * registry default if the theme does not specify it.
-   */
-  getColor(colorId: string): string;
-
-  /**
-   * Apply a theme by providing its parsed data.
-   * Generates and injects CSS custom properties.
-   */
-  applyTheme(theme: ColorThemeData): void;
-}
 
 // ─── ThemeService Implementation ─────────────────────────────────────────────
 

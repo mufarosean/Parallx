@@ -1,12 +1,13 @@
 import { Disposable } from '../platform/lifecycle.js';
 import { URI } from '../platform/uri.js';
 import type { WorkspaceFolder } from '../workspace/workspaceTypes.js';
+import type { IWorkspaceBoundaryService } from './serviceTypes.js';
 
 export interface WorkspaceBoundaryHost {
   readonly folders: readonly WorkspaceFolder[];
 }
 
-export class WorkspaceBoundaryService extends Disposable {
+export class WorkspaceBoundaryService extends Disposable implements IWorkspaceBoundaryService {
   private _host: WorkspaceBoundaryHost | undefined;
 
   setHost(host: WorkspaceBoundaryHost): void {

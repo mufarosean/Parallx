@@ -56,11 +56,8 @@ type WhenClauseNode =
 
 // ─── Context Lookup ──────────────────────────────────────────────────────────
 
-/**
- * Function that resolves a context key to its current value.
- * Returns undefined if the key is not set.
- */
-export type ContextKeyLookup = (key: string) => unknown;
+import type { ContextKeyLookup } from './contextTypes.js';
+export type { ContextKeyLookup } from './contextTypes.js';
 
 // ─── Tokenizer ───────────────────────────────────────────────────────────────
 

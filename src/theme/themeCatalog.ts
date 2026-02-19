@@ -3,7 +3,10 @@
 // VS Code reference: src/vs/workbench/services/themes/browser/colorThemeStore.ts
 // Provides a catalog of available color themes for the theme picker.
 
-import { ColorThemeData, ThemeSource } from './themeData.js';
+import { ColorThemeData } from './themeData.js';
+import type { ThemeSource } from './themeTypes.js';
+import type { ThemeCatalogEntry } from './themeTypes.js';
+export type { ThemeCatalogEntry } from './themeTypes.js';
 import { IColorRegistry } from './colorRegistry.js';
 
 // ─── Static imports of built-in theme JSON ───────────────────────────────────
@@ -12,15 +15,6 @@ import darkModernTheme from './themes/dark-modern.json';
 import lightModernTheme from './themes/light-modern.json';
 import hcDarkTheme from './themes/hc-dark.json';
 import hcLightTheme from './themes/hc-light.json';
-
-// ─── Theme catalog entry ─────────────────────────────────────────────────────
-
-export interface ThemeCatalogEntry {
-  readonly id: string;
-  readonly label: string;
-  readonly uiTheme: string;
-  readonly source: ThemeSource;
-}
 
 // ─── Built-in themes ─────────────────────────────────────────────────────────
 

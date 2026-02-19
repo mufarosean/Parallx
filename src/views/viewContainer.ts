@@ -6,6 +6,8 @@ import { Orientation } from '../layout/layoutTypes.js';
 import { $, addDisposableListener, hide, show, startDrag, endDrag } from '../ui/dom.js';
 import { IGridView } from '../layout/gridView.js';
 import { IView } from './view.js';
+import type { ViewContainerState } from './viewTypes.js';
+export type { ViewContainerState } from './viewTypes.js';
 
 // ─── Tab State ───────────────────────────────────────────────────────────────
 
@@ -15,12 +17,6 @@ interface TabInfo {
   readonly viewId: string;
   readonly name: string;
   readonly icon?: string;
-}
-
-export interface ViewContainerState {
-  readonly activeViewId: string | undefined;
-  readonly tabOrder: readonly string[];
-  readonly collapsedSections?: readonly string[];
 }
 
 // ─── ViewContainer ───────────────────────────────────────────────────────────

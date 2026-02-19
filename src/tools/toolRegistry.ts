@@ -6,23 +6,11 @@
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { IToolDescription } from './toolManifest.js';
-
-// ─── Tool State ──────────────────────────────────────────────────────────────
-
-/**
- * Lifecycle states a tool can be in.
- * Transitions are validated — see `_validateTransition`.
- */
-export enum ToolState {
-  Discovered = 'discovered',
-  Registered = 'registered',
-  Activating = 'activating',
-  Activated = 'activated',
-  Deactivating = 'deactivating',
-  Deactivated = 'deactivated',
-  Disposed = 'disposed',
-}
+import type { IToolDescription } from './toolManifest.js';
+import { ToolState } from './toolTypes.js';
+import type { IToolEntry, ToolRegisteredEvent, ToolStateChangedEvent, ContributionPoint } from './toolTypes.js';
+export { ToolState } from './toolTypes.js';
+export type { IToolEntry, ToolRegisteredEvent, ToolStateChangedEvent, ContributionPoint } from './toolTypes.js';
 
 /** Valid state transitions. */
 const VALID_TRANSITIONS: ReadonlyMap<ToolState, readonly ToolState[]> = new Map([
@@ -35,38 +23,6 @@ const VALID_TRANSITIONS: ReadonlyMap<ToolState, readonly ToolState[]> = new Map(
   [ToolState.Disposed, []],
 ]);
 
-// ─── Tool Entry ──────────────────────────────────────────────────────────────
-
-/** Internal entry for a registered tool. */
-export interface IToolEntry {
-  /** Validated tool description (manifest + metadata). */
-  readonly description: IToolDescription;
-  /** Current lifecycle state. */
-  readonly state: ToolState;
-}
-
-// ─── Events ──────────────────────────────────────────────────────────────────
-
-export interface ToolRegisteredEvent {
-  readonly toolId: string;
-  readonly description: IToolDescription;
-}
-
-export interface ToolStateChangedEvent {
-  readonly toolId: string;
-  readonly previousState: ToolState;
-  readonly newState: ToolState;
-}
-
-// ─── Contribution point name constants ───────────────────────────────────────
-
-export type ContributionPoint =
-  | 'views'
-  | 'viewContainers'
-  | 'commands'
-  | 'configuration'
-  | 'menus'
-  | 'keybindings';
 
 // ─── Tool Registry ───────────────────────────────────────────────────────────
 

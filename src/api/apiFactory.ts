@@ -34,7 +34,7 @@ import { ContextBridge } from './bridges/contextBridge.js';
 import { WorkspaceBridge } from './bridges/workspaceBridge.js';
 import { FileSystemBridge } from './bridges/fileSystemBridge.js';
 import { EditorsBridge } from './bridges/editorsBridge.js';
-import type { IThemeServiceShape } from '../services/serviceTypes.js';
+import type { IThemeService } from '../services/serviceTypes.js';
 import { ThemeType } from '../theme/colorRegistry.js';
 import type { ViewManager } from '../views/viewManager.js';
 import type { ConfigurationService } from '../configuration/configurationService.js';
@@ -61,7 +61,7 @@ export interface ApiFactoryDependencies {
   /** StatusBarPart for parallx.window.createStatusBarItem(). */
   readonly statusBarPart?: import('../services/serviceTypes.js').IStatusBarPart;
   /** ThemeService for parallx.window.activeColorTheme / onDidChangeActiveColorTheme. */
-  readonly themeService?: IThemeServiceShape;
+  readonly themeService?: IThemeService;
   /** ToolEnablementService for parallx.tools.isEnabled/setEnabled/onDidChangeEnablement. */
   readonly toolEnablementService?: import('../tools/toolEnablement.js').IToolEnablementService;
   /**

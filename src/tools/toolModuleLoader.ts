@@ -5,28 +5,8 @@
 // in-process — no separate worker or extension host process.
 
 import type { IToolDescription } from './toolManifest.js';
-import type { IDisposable } from '../platform/lifecycle.js';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-/**
- * Context passed to a tool's `activate()` function.
- * See parallx.d.ts → ToolContext.
- */
-export interface ToolContext {
-  /** Disposables registered by the tool. All disposed on deactivation. */
-  readonly subscriptions: IDisposable[];
-  /** Global state (Memento) — persists across workspaces. */
-  readonly globalState: Memento;
-  /** Workspace state (Memento) — persists within current workspace. */
-  readonly workspaceState: Memento;
-  /** Absolute path to the tool's root directory. */
-  readonly toolPath: string;
-  /** URI string for the tool's root. */
-  readonly toolUri: string;
-  /** Placeholder for future environment variable collection. */
-  readonly environmentVariableCollection: Record<string, string>;
-}
+import type { ToolModule, ActivateFunction, DeactivateFunction } from './toolTypes.js';
+export type { ToolContext, ActivateFunction, DeactivateFunction, ToolModule } from './toolTypes.js';
 
 /**
  * Minimal Memento interface for tool state.
@@ -34,30 +14,6 @@ export interface ToolContext {
  */
 import type { Memento } from '../configuration/configurationTypes.js';
 export type { Memento };
-
-/**
- * The activate function signature.
- * Tools export: `export function activate(api, context)`
- */
-export type ActivateFunction = (api: unknown, context: ToolContext) => void | Promise<void>;
-
-/**
- * The deactivate function signature (optional).
- * Tools export: `export function deactivate()`
- */
-export type DeactivateFunction = () => void | Promise<void>;
-
-/**
- * Loaded tool module with extracted exports.
- */
-export interface ToolModule {
-  /** The tool's activate function. */
-  readonly activate: ActivateFunction;
-  /** The tool's optional deactivate function. */
-  readonly deactivate?: DeactivateFunction;
-  /** The raw module for diagnostics. */
-  readonly rawModule: Record<string, unknown>;
-}
 
 /**
  * Result of a module load attempt.

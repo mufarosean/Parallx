@@ -7,6 +7,8 @@ import {
   CURRENT_MANIFEST_VERSION,
   SUPPORTED_ACTIVATION_PREFIXES,
 } from './toolManifest.js';
+import type { ValidationError, ValidationResult, ValidationWarning } from './toolTypes.js';
+export type { ValidationError, ValidationResult } from './toolTypes.js';
 
 // ─── Current Shell Version ───────────────────────────────────────────────────
 
@@ -15,31 +17,6 @@ import {
  * In production this would be derived from package.json at build time.
  */
 export const PARALLX_VERSION = '0.2.0';
-
-// ─── Validation Result ───────────────────────────────────────────────────────
-
-export interface ValidationError {
-  /** Dot-path to the offending field (e.g., 'contributes.views[0].id'). */
-  readonly path: string;
-  /** Human-readable error message. */
-  readonly message: string;
-}
-
-interface ValidationWarning {
-  /** Dot-path to the field that triggered the warning. */
-  readonly path: string;
-  /** Human-readable warning message. */
-  readonly message: string;
-}
-
-export interface ValidationResult {
-  /** Whether the manifest is valid (no errors). Warnings don't fail validation. */
-  readonly valid: boolean;
-  /** Validation errors (each prevents registration). */
-  readonly errors: readonly ValidationError[];
-  /** Validation warnings (informational, don't prevent registration). */
-  readonly warnings: readonly ValidationWarning[];
-}
 
 // ─── Validator ───────────────────────────────────────────────────────────────
 

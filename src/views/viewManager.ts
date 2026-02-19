@@ -3,22 +3,10 @@ import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { IView, ViewState } from './view.js';
 import { IViewDescriptor } from './viewDescriptor.js';
-
-// ─── Lifecycle Events ────────────────────────────────────────────────────────
-
-export enum ViewLifecyclePhase {
-  Registered = 'registered',
-  Created = 'created',
-  Visible = 'visible',
-  Hidden = 'hidden',
-  Focused = 'focused',
-  Disposed = 'disposed',
-}
-
-export interface ViewLifecycleEvent {
-  readonly viewId: string;
-  readonly phase: ViewLifecyclePhase;
-}
+import { ViewLifecyclePhase } from './viewTypes.js';
+import type { ViewLifecycleEvent } from './viewTypes.js';
+export { ViewLifecyclePhase } from './viewTypes.js';
+export type { ViewLifecycleEvent } from './viewTypes.js';
 
 // ─── ViewManager ─────────────────────────────────────────────────────────────
 

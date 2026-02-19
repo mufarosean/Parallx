@@ -61,14 +61,14 @@ export class LifecycleService extends Disposable {
   private readonly _errors: LifecyclePhaseError[] = [];
 
   // Events
-  private readonly _onPhaseStarted = this._register(new Emitter<LifecyclePhaseEvent>());
-  readonly onPhaseStarted: Event<LifecyclePhaseEvent> = this._onPhaseStarted.event;
+  private readonly _onDidPhaseStart = this._register(new Emitter<LifecyclePhaseEvent>());
+  readonly onDidPhaseStart: Event<LifecyclePhaseEvent> = this._onDidPhaseStart.event;
 
-  private readonly _onPhaseCompleted = this._register(new Emitter<LifecyclePhaseEvent>());
-  readonly onPhaseCompleted: Event<LifecyclePhaseEvent> = this._onPhaseCompleted.event;
+  private readonly _onDidPhaseComplete = this._register(new Emitter<LifecyclePhaseEvent>());
+  readonly onDidPhaseComplete: Event<LifecyclePhaseEvent> = this._onDidPhaseComplete.event;
 
-  private readonly _onPhaseError = this._register(new Emitter<LifecyclePhaseError>());
-  readonly onPhaseError: Event<LifecyclePhaseError> = this._onPhaseError.event;
+  private readonly _onDidPhaseError = this._register(new Emitter<LifecyclePhaseError>());
+  readonly onDidPhaseError: Event<LifecyclePhaseError> = this._onDidPhaseError.event;
 
   /**
    * Current lifecycle phase, or undefined if not yet started.
@@ -194,7 +194,7 @@ export class LifecycleService extends Disposable {
   ): Promise<void> {
     this._currentPhase = phase;
     this._phaseReached.set(phase, true);
-    this._onPhaseStarted.fire({ phase });
+    this._onDidPhaseStart.fire({ phase });
 
     const hooks = hookMap.get(phase) ?? [];
     for (const hook of hooks) {
@@ -208,7 +208,7 @@ export class LifecycleService extends Disposable {
       }
     }
 
-    this._onPhaseCompleted.fire({ phase });
+    this._onDidPhaseComplete.fire({ phase });
   }
 
   /**
@@ -218,6 +218,6 @@ export class LifecycleService extends Disposable {
     const error = err instanceof Error ? err : new Error(String(err));
     const phaseError: LifecyclePhaseError = { phase, error };
     this._errors.push(phaseError);
-    this._onPhaseError.fire(phaseError);
+    this._onDidPhaseError.fire(phaseError);
   }
 }

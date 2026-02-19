@@ -50,7 +50,7 @@ export interface IStorage {
   clear(): Promise<void>;
 
   /** Fires when a storage operation fails (e.g. quota exceeded). */
-  readonly onError?: Event<StorageError>;
+  readonly onDidError?: Event<StorageError>;
 }
 
 // ─── ISyncStorage ────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ interface ISyncStorage {
   keysSync(prefix?: string): string[];
   clearSync(): void;
 
-  readonly onError?: Event<StorageError>;
+  readonly onDidError?: Event<StorageError>;
 }
 
 // ─── NamespacedStorage ───────────────────────────────────────────────────────
@@ -113,8 +113,8 @@ export class NamespacedStorage implements IStorage {
     }
   }
 
-  get onError(): Event<StorageError> | undefined {
-    return this._inner.onError;
+  get onDidError(): Event<StorageError> | undefined {
+    return this._inner.onDidError;
   }
 }
 
@@ -149,7 +149,7 @@ export class NamespacedSyncStorage implements ISyncStorage {
     }
   }
 
-  get onError(): Event<StorageError> | undefined { return this._inner.onError; }
+  get onDidError(): Event<StorageError> | undefined { return this._inner.onDidError; }
 }
 
 // ─── InMemoryStorage ─────────────────────────────────────────────────────────
@@ -195,11 +195,11 @@ export class InMemoryStorage implements IStorage, ISyncStorage {
 /**
  * localStorage-backed storage implementation.
  * Implements both IStorage (async) and ISyncStorage (sync).
- * Reports quota-exceeded and access errors via onError.
+ * Reports quota-exceeded and access errors via onDidError.
  */
 export class LocalStorage implements IStorage, ISyncStorage, IDisposable {
-  private readonly _onError = new Emitter<StorageError>();
-  readonly onError: Event<StorageError> = this._onError.event;
+  private readonly _onDidError = new Emitter<StorageError>();
+  readonly onDidError: Event<StorageError> = this._onDidError.event;
 
   // ── Helpers ──
 
@@ -213,7 +213,7 @@ export class LocalStorage implements IStorage, ISyncStorage, IDisposable {
         kind = StorageErrorKind.AccessDenied;
       }
     }
-    this._onError.fire({ kind, key, message: msg });
+    this._onDidError.fire({ kind, key, message: msg });
   }
 
   // ── Async ──
@@ -304,7 +304,7 @@ export class LocalStorage implements IStorage, ISyncStorage, IDisposable {
   }
 
   dispose(): void {
-    this._onError.dispose();
+    this._onDidError.dispose();
   }
 }
 
@@ -323,8 +323,8 @@ export class IndexedDBStorage implements IStorage, IDisposable {
   private readonly _storeName: string;
   private _opening: Promise<IDBDatabase> | undefined;
 
-  private readonly _onError = new Emitter<StorageError>();
-  readonly onError: Event<StorageError> = this._onError.event;
+  private readonly _onDidError = new Emitter<StorageError>();
+  readonly onDidError: Event<StorageError> = this._onDidError.event;
 
   constructor(dbName: string = IDB_DEFAULT_DB, storeName: string = IDB_DEFAULT_STORE) {
     this._dbName = dbName;
@@ -449,13 +449,13 @@ export class IndexedDBStorage implements IStorage, IDisposable {
         kind = StorageErrorKind.AccessDenied;
       }
     }
-    this._onError.fire({ kind, key, message: msg });
+    this._onDidError.fire({ kind, key, message: msg });
   }
 
   dispose(): void {
     this._db?.close();
     this._db = undefined;
-    this._onError.dispose();
+    this._onDidError.dispose();
   }
 }
 

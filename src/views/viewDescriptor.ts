@@ -1,62 +1,8 @@
 // viewDescriptor.ts — view metadata and registration
 import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS } from '../layout/layoutTypes.js';
-import { IView } from './view.js';
-
-// ─── View Descriptor ─────────────────────────────────────────────────────────
-
-/**
- * Declarative metadata describing a view before it is instantiated.
- *
- * Descriptors are registered with the ViewManager and used to:
- * - populate menus and palettes
- * - defer view creation until actually needed (lazy instantiation)
- * - persist view registration info as JSON
- */
-export interface IViewDescriptor {
-  /** Unique view ID. */
-  readonly id: string;
-
-  /** Human-readable name shown in tabs and menus. */
-  readonly name: string;
-
-  /** Icon identifier (CSS class or codicon name). */
-  readonly icon?: string;
-
-  /** ID of the part / view container this view belongs to by default. */
-  readonly containerId: string;
-
-  /**
-   * When clause — a string expression evaluated against the context key
-   * service. The view is only shown when this evaluates to true.
-   * If undefined the view is always available.
-   */
-  readonly when?: string;
-
-  /** Default size constraints for the view. */
-  readonly constraints: SizeConstraints;
-
-  /**
-   * Whether the view should grab focus when first activated.
-   */
-  readonly focusOnActivate: boolean;
-
-  /**
-   * Optional keyboard shortcut to toggle / focus this view.
-   * Format: modifier keys + key, e.g. "Ctrl+Shift+E".
-   */
-  readonly keybinding?: string;
-
-  /**
-   * Priority for ordering within a container (lower = earlier).
-   */
-  readonly order: number;
-
-  /**
-   * Factory function that creates the view instance.
-   * Called lazily the first time the view is needed.
-   */
-  readonly factory: () => IView | Promise<IView>;
-}
+import type { IView } from './viewTypes.js';
+import type { IViewDescriptor } from './viewTypes.js';
+export type { IViewDescriptor } from './viewTypes.js';
 
 // ─── Builder ─────────────────────────────────────────────────────────────────
 

@@ -1857,7 +1857,7 @@ export class Workbench extends Layout {
     this._services.registerInstance(IToolActivatorService, this._toolActivator);
 
     // Wire activation events to the activator
-    this._register(activationEvents.onActivationRequested(async (request) => {
+    this._register(activationEvents.onDidRequestActivation(async (request) => {
       console.log(`[Workbench] Activation requested for tool "${request.toolId}" (event: ${request.event.raw})`);
       await this._toolActivator.activate(request.toolId);
     }));
@@ -2308,7 +2308,7 @@ export class Workbench extends Layout {
     this._makeTabsDraggable(dnd, this._panelContainer, this._panel.id);
     this._makeTabsDraggable(dnd, this._auxBarContainer, this._auxiliaryBar.id);
 
-    dnd.onDropCompleted((result: DropResult) => {
+    dnd.onDidDropComplete((result: DropResult) => {
       console.log('Drop completed:', result);
     });
 

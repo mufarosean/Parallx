@@ -25,17 +25,17 @@ export class DragAndDropController extends Disposable {
 
   // ── Events ──
 
-  private readonly _onDragStart = this._register(new Emitter<DragPayload>());
+  private readonly _onDidDragStart = this._register(new Emitter<DragPayload>());
   /** Fires when a drag begins. */
-  readonly onDragStart: Event<DragPayload> = this._onDragStart.event;
+  readonly onDidDragStart: Event<DragPayload> = this._onDidDragStart.event;
 
-  private readonly _onDropCompleted = this._register(new Emitter<DropResult>());
+  private readonly _onDidDropComplete = this._register(new Emitter<DropResult>());
   /** Fires when a drop successfully completes. */
-  readonly onDropCompleted: Event<DropResult> = this._onDropCompleted.event;
+  readonly onDidDropComplete: Event<DropResult> = this._onDidDropComplete.event;
 
-  private readonly _onDragEnd = this._register(new Emitter<void>());
+  private readonly _onDidDragEnd = this._register(new Emitter<void>());
   /** Fires when a drag ends (dropped or cancelled). */
-  readonly onDragEnd: Event<void> = this._onDragEnd.event;
+  readonly onDidDragEnd: Event<void> = this._onDidDragEnd.event;
 
   // ── Drag initiation ──
 
@@ -62,13 +62,13 @@ export class DragAndDropController extends Disposable {
       element.classList.add('dragging');
       element.setAttribute('aria-grabbed', 'true');
 
-      this._onDragStart.fire(payload);
+      this._onDidDragStart.fire(payload);
     };
 
     const onDragEnd = (): void => {
       element.classList.remove('dragging');
       element.setAttribute('aria-grabbed', 'false');
-      this._onDragEnd.fire();
+      this._onDidDragEnd.fire();
     };
 
     element.addEventListener('dragstart', onDragStart);
@@ -104,7 +104,7 @@ export class DragAndDropController extends Disposable {
 
     // Forward drop events to the global stream
     this._register(zone.onDidDrop((result) => {
-      this._onDropCompleted.fire(result);
+      this._onDidDropComplete.fire(result);
     }));
 
     return zone;
@@ -134,7 +134,7 @@ export class DragAndDropController extends Disposable {
     if (!target.accepts(payload)) return;
 
     const result: DropResult = { payload, targetPartId, position };
-    this._onDropCompleted.fire(result);
+    this._onDidDropComplete.fire(result);
   }
 
   // ── Query ──

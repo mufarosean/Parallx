@@ -8,6 +8,7 @@
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
+import type { IDatabaseService } from './serviceTypes.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -53,7 +54,7 @@ interface DatabaseBridge {
  *   const rows = await db.all('SELECT * FROM pages');
  *   await db.close();
  */
-export class DatabaseService extends Disposable {
+export class DatabaseService extends Disposable implements IDatabaseService {
   private _isOpen = false;
   private _dbPath: string | null = null;
   /** Mutex: if non-null, an open operation is already in progress. */

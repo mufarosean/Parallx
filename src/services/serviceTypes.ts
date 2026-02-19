@@ -151,7 +151,7 @@ export const IWorkspaceService = createServiceIdentifier<IWorkspaceService>('IWo
 
 // ─── IWorkspaceBoundaryService ───────────────────────────────────────────────
 
-import type { WorkspaceBoundaryService } from './workspaceBoundaryService.js';
+import type { URI } from '../platform/uri.js';
 
 /**
  * Centralized workspace boundary policy service.
@@ -159,19 +159,104 @@ import type { WorkspaceBoundaryService } from './workspaceBoundaryService.js';
  * Enforces that file URI access stays within explicitly attached workspace
  * folders unless explicitly allowlisted by future policy extensions.
  */
-export type IWorkspaceBoundaryService = WorkspaceBoundaryService;
+export interface IWorkspaceBoundaryService extends IDisposable {
+  /** Set the host providing folder access. */
+  setHost(host: { readonly folders: readonly WorkspaceFolder[] }): void;
+
+  /** Returns the current workspace folders. */
+  readonly folders: readonly WorkspaceFolder[];
+
+  /** Returns true if the URI is within the workspace folder tree. */
+  isUriWithinWorkspace(uri: URI): boolean;
+
+  /** Throws if the URI is not within the workspace folder tree. */
+  assertUriWithinWorkspace(uri: URI, requester: string): void;
+}
+
 export const IWorkspaceBoundaryService = createServiceIdentifier<IWorkspaceBoundaryService>('IWorkspaceBoundaryService');
 
 // ─── IDatabaseService ────────────────────────────────────────────────────────
-
-import type { DatabaseService } from './databaseService.js';
 
 /**
  * Service providing SQLite database access via IPC to the main process.
  * Database is scoped to the active workspace folder.
  */
-export type IDatabaseService = DatabaseService;
+export interface IDatabaseService extends IDisposable {
+  /** Whether a database is currently open. */
+  readonly isOpen: boolean;
+
+  /** The path to the currently open database, or null. */
+  readonly currentPath: string | null;
+
+  /** Fires after a database is opened (payload: dbPath). */
+  readonly onDidOpen: Event<string>;
+
+  /** Fires after a database is closed. */
+  readonly onDidClose: Event<void>;
+
+  /** Open a database for the given workspace path. */
+  openForWorkspace(workspacePath: string, migrationsDir?: string): Promise<void>;
+
+  /** Close the current database. */
+  close(): Promise<void>;
+
+  /** Run migration scripts. */
+  migrate(migrationsDir: string): Promise<void>;
+
+  /** Execute a write statement. */
+  run(sql: string, params?: unknown[]): Promise<import('./databaseService.js').DatabaseRunResult>;
+
+  /** Execute a query returning a single row. */
+  get<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | null>;
+
+  /** Execute a query returning all rows. */
+  all<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
+
+  /** Execute multiple operations in a transaction. */
+  runTransaction(operations: import('./databaseService.js').TransactionOp[]): Promise<unknown[]>;
+}
+
 export const IDatabaseService = createServiceIdentifier<IDatabaseService>('IDatabaseService');
+
+// ─── IEditorResolverService ──────────────────────────────────────────────────
+
+import type { EditorResolverRegistration, EditorResolution } from './editorResolverService.js';
+export type { EditorResolverRegistration, EditorResolution };
+
+/**
+ * Maps file extensions to appropriate EditorInput + EditorPane creators.
+ * Mirrors VS Code's IEditorResolverService.
+ */
+export interface IEditorResolverService extends IDisposable {
+  /**
+   * Register an editor for a set of file extensions.
+   * Returns a disposable to unregister.
+   */
+  registerEditor(registration: EditorResolverRegistration): IDisposable;
+
+  /**
+   * Resolve a URI to the best matching EditorInput + EditorPane.
+   * Returns undefined if no registration matches.
+   */
+  resolve(uri: import('../platform/uri.js').URI): EditorResolution | undefined;
+
+  /**
+   * Find the registration that would handle a given URI, without creating instances.
+   */
+  findRegistration(uri: import('../platform/uri.js').URI): EditorResolverRegistration | undefined;
+
+  /**
+   * Find a registration by its ID.
+   */
+  findById(id: string): EditorResolverRegistration | undefined;
+
+  /**
+   * Get all registrations.
+   */
+  getRegistrations(): readonly EditorResolverRegistration[];
+}
+
+export const IEditorResolverService = createServiceIdentifier<IEditorResolverService>('IEditorResolverService');
 
 // ─── IEditorService ──────────────────────────────────────────────────────────
 
@@ -419,7 +504,7 @@ export interface IActivationEventService extends IDisposable {
   /** Whether startup has finished. */
   readonly startupFinished: boolean;
   /** Fires when the system determines a tool should be activated. */
-  readonly onActivationRequested: Event<ActivationRequest>;
+  readonly onDidRequestActivation: Event<ActivationRequest>;
   /** Fires when any activation event fires (observability). */
   readonly onDidFireEvent: Event<ParsedActivationEvent>;
 }
@@ -449,7 +534,7 @@ export interface IToolErrorService extends IDisposable {
   /** Fires whenever a tool error is recorded. */
   readonly onDidRecordError: Event<ToolErrorEvent>;
   /** Fires when a tool should be force-deactivated. */
-  readonly onShouldForceDeactivate: Event<string>;
+  readonly onWillForceDeactivate: Event<string>;
 }
 
 export const IToolErrorService = createServiceIdentifier<IToolErrorService>('IToolErrorService');
@@ -769,7 +854,7 @@ export const ITextFileModelManager = createServiceIdentifier<ITextFileModelManag
  *
  * VS Code reference: IThemeService (src/vs/platform/theme/common/themeService.ts)
  */
-export interface IThemeServiceShape extends IDisposable {
+export interface IThemeService extends IDisposable {
   /** The currently applied color theme. */
   readonly activeTheme: import('../theme/themeData.js').IColorTheme;
 
@@ -783,7 +868,7 @@ export interface IThemeServiceShape extends IDisposable {
   applyTheme(theme: import('../theme/themeData.js').ColorThemeData): void;
 }
 
-export const IThemeService = createServiceIdentifier<IThemeServiceShape>('IThemeService');
+export const IThemeService = createServiceIdentifier<IThemeService>('IThemeService');
 
 // ─── Status Bar Types ────────────────────────────────────────────────────────
 

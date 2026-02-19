@@ -7,29 +7,8 @@
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-/**
- * A recorded tool error.
- */
-export interface ToolError {
-  /** Tool ID that caused the error. */
-  readonly toolId: string;
-  /** Human-readable error message. */
-  readonly message: string;
-  /** Stack trace (if available). */
-  readonly stack?: string;
-  /** When the error occurred. */
-  readonly timestamp: number;
-  /** Context where the error happened (activation, command, view, etc.). */
-  readonly context: string;
-}
-
-/**
- * Event fired when a tool error is recorded.
- */
-export interface ToolErrorEvent extends ToolError {}
+import type { ToolError, ToolErrorEvent } from './toolTypes.js';
+export type { ToolError, ToolErrorEvent } from './toolTypes.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -71,9 +50,9 @@ export class ToolErrorService extends Disposable {
   /** Fires whenever a tool error is recorded. */
   readonly onDidRecordError: Event<ToolErrorEvent> = this._onDidRecordError.event;
 
-  private readonly _onShouldForceDeactivate = this._register(new Emitter<string>());
+  private readonly _onWillForceDeactivate = this._register(new Emitter<string>());
   /** Fires when a tool has exceeded the error threshold and should be deactivated. */
-  readonly onShouldForceDeactivate: Event<string> = this._onShouldForceDeactivate.event;
+  readonly onWillForceDeactivate: Event<string> = this._onWillForceDeactivate.event;
 
   constructor() {
     super();
@@ -218,7 +197,7 @@ export class ToolErrorService extends Disposable {
         `[ToolErrorService] Tool "${toolId}" exceeded ${MAX_ERRORS_BEFORE_FORCE_DEACTIVATE} errors. ` +
         `Signalling force-deactivation.`,
       );
-      this._onShouldForceDeactivate.fire(toolId);
+      this._onWillForceDeactivate.fire(toolId);
     }
   }
 

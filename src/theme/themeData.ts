@@ -3,36 +3,10 @@
 // Defines the JSON format for theme files and provides a typed parser.
 // VS Code reference: src/vs/workbench/services/themes/common/colorThemeData.ts
 
-import { ThemeType, IColorRegistry } from './colorRegistry.js';
-
-// ─── Theme Source (raw JSON input) ───────────────────────────────────────────
-
-/**
- * The raw structure of a theme JSON file.
- * Compatible subset of VS Code's theme format.
- */
-export interface ThemeSource {
-  readonly id: string;
-  readonly label: string;
-  readonly uiTheme: 'vs-dark' | 'vs' | 'hc-black' | 'hc-light';
-  readonly colors: Record<string, string>;
-}
-
-// ─── IColorTheme ─────────────────────────────────────────────────────────────
-
-/**
- * A resolved color theme.
- */
-export interface IColorTheme {
-  readonly id: string;
-  readonly label: string;
-  readonly type: ThemeType;
-
-  /**
-   * Returns the theme's value for a color, or undefined if not specified.
-   */
-  getColor(colorId: string): string | undefined;
-}
+import { ThemeType } from './themeTypes.js';
+import type { ThemeSource, IColorTheme } from './themeTypes.js';
+export type { ThemeSource, IColorTheme } from './themeTypes.js';
+import { IColorRegistry } from './colorRegistry.js';
 
 // ─── ColorThemeData ──────────────────────────────────────────────────────────
 

@@ -8,9 +8,11 @@
 // WorkbenchContextManager is a Disposable that subscribes to workbench events
 // and synchronously updates the ContextKeyService whenever state changes.
 
-import { Disposable, IDisposable } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { ContextKeyService, IContextKey } from './contextKey.js';
 import { FocusTracker } from './focusTracker.js';
+import type { TrackablePart, TrackableViewManager } from './contextTypes.js';
+export type { TrackablePart, TrackableViewManager } from './contextTypes.js';
 
 // ─── Standard Context Key Names ──────────────────────────────────────────────
 // Exported so consumers can reference them without magic strings.
@@ -43,20 +45,6 @@ export const CTX_WORKSPACE_HAS_FOLDER = 'workspaceHasFolder';
 export const CTX_RESOURCE_SCHEME = 'resourceScheme';
 export const CTX_RESOURCE_EXTNAME = 'resourceExtname';
 export const CTX_RESOURCE_FILENAME = 'resourceFilename';
-
-// ─── WorkbenchParts interface ────────────────────────────────────────────────
-// Minimal shape of the parts we track. Avoids importing the Workbench class.
-
-export interface TrackablePart {
-  readonly id: string;
-  readonly visible: boolean;
-  readonly onDidChangeVisibility: (listener: (visible: boolean) => void) => IDisposable;
-}
-
-export interface TrackableViewManager {
-  readonly activeViewId: string | undefined;
-  readonly onDidChangeActiveView: (listener: (viewId: string | undefined) => void) => IDisposable;
-}
 
 // ─── WorkbenchContextManager ─────────────────────────────────────────────────
 

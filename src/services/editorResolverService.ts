@@ -28,7 +28,7 @@ export const enum EditorResolverPriority {
   Exclusive = 300,
 }
 
-interface EditorResolverRegistration {
+export interface EditorResolverRegistration {
   /** Unique id for this registration (e.g., `parallx.editor.image`). */
   id: string;
   /** Human-readable name (e.g., "Image Viewer"). */
@@ -43,15 +43,17 @@ interface EditorResolverRegistration {
   createPane: () => EditorPane;
 }
 
-interface EditorResolution {
+export interface EditorResolution {
   input: IEditorInput;
   pane: EditorPane;
   registration: EditorResolverRegistration;
 }
 
+import type { IEditorResolverService } from './serviceTypes.js';
+
 // ─── EditorResolverService ───────────────────────────────────────────────────
 
-export class EditorResolverService extends Disposable {
+export class EditorResolverService extends Disposable implements IEditorResolverService {
   private readonly _registrations: EditorResolverRegistration[] = [];
 
   constructor() {

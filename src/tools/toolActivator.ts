@@ -15,47 +15,17 @@
 
 import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-import { IStorage } from '../platform/storage.js';
 import { ToolRegistry, ToolState } from './toolRegistry.js';
-import { ToolModuleLoader, ToolModule, ToolContext, Memento, ActivateFunction, DeactivateFunction } from './toolModuleLoader.js';
+import { ToolModuleLoader } from './toolModuleLoader.js';
+import type { ToolModule, ToolContext, ActivateFunction, DeactivateFunction } from './toolTypes.js';
+import type { Memento } from '../configuration/configurationTypes.js';
 import { ToolErrorService } from './toolErrorIsolation.js';
 import { ActivationEventService } from './activationEventService.js';
-import { createToolApi, ApiFactoryDependencies, ParallxApiObject } from '../api/apiFactory.js';
+import { createToolApi, ApiFactoryDependencies } from '../api/apiFactory.js';
 import type { IToolDescription } from './toolManifest.js';
 import { createToolMementos } from '../configuration/toolMemento.js';
-import type { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-/**
- * Record of an activated tool.
- */
-export interface ActivatedTool {
-  /** The tool's validated description. */
-  readonly description: IToolDescription;
-  /** The loaded module. */
-  readonly module: ToolModule;
-  /** The tool context passed to activate(). */
-  readonly context: ToolContext;
-  /** The scoped API object. */
-  readonly api: ParallxApiObject;
-  /** Function to dispose the API bridges. */
-  readonly disposeApi: () => void;
-  /** Timestamp when activation completed. */
-  readonly activatedAt: number;
-  /** Duration of activation in ms. */
-  readonly activationDurationMs: number;
-}
-
-/**
- * Event fired on activation/deactivation.
- */
-export interface ToolActivationEvent {
-  readonly toolId: string;
-  readonly success: boolean;
-  readonly durationMs: number;
-  readonly error?: string;
-}
+import type { ActivatedTool, ToolActivationEvent, ToolStorageDependencies } from './toolTypes.js';
+export type { ActivatedTool, ToolActivationEvent, ToolStorageDependencies } from './toolTypes.js';
 
 // ─── Placeholder Memento ─────────────────────────────────────────────────────
 
@@ -83,19 +53,6 @@ class InMemoryMemento implements Memento {
   keys(): readonly string[] {
     return [...this._data.keys()];
   }
-}
-
-// ─── Storage Dependencies ────────────────────────────────────────────────────
-
-/**
- * Optional storage dependencies for persistent mementos.
- * When provided, ToolMemento is used instead of InMemoryMemento.
- */
-export interface ToolStorageDependencies {
-  readonly globalStorage: IStorage;
-  readonly workspaceStorage: IStorage;
-  readonly configRegistry?: ConfigurationRegistry;
-  readonly workspaceIdProvider?: () => string | undefined;
 }
 
 // ─── ToolActivator ───────────────────────────────────────────────────────────
@@ -141,7 +98,7 @@ export class ToolActivator extends Disposable {
     super();
 
     // Listen for force-deactivation signals from error service
-    this._register(this._errorService.onShouldForceDeactivate((toolId) => {
+    this._register(this._errorService.onWillForceDeactivate((toolId) => {
       console.error(`[ToolActivator] Force-deactivating tool "${toolId}" due to excessive errors`);
       this.deactivate(toolId).catch(err => {
         console.error(`[ToolActivator] Error during force-deactivation of "${toolId}":`, err);

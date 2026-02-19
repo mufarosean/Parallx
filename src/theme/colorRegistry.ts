@@ -6,17 +6,8 @@
 //
 // VS Code reference: src/vs/platform/theme/common/colorRegistry.ts
 
-// ─── Theme Type ──────────────────────────────────────────────────────────────
-
-/**
- * The type of a color theme, matching VS Code's ColorSchemeType.
- */
-export enum ThemeType {
-  DARK = 'dark',
-  LIGHT = 'light',
-  HIGH_CONTRAST_DARK = 'hc-dark',
-  HIGH_CONTRAST_LIGHT = 'hc-light',
-}
+import { ThemeType } from './themeTypes.js';
+export { ThemeType } from './themeTypes.js';
 
 // ─── Color Default ───────────────────────────────────────────────────────────
 

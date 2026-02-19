@@ -1,77 +1,11 @@
 // view.ts — generic view interface with lifecycle
-import { IDisposable, Disposable } from '../platform/lifecycle.js';
+import { Disposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { SizeConstraints, DEFAULT_SIZE_CONSTRAINTS } from '../layout/layoutTypes.js';
 export { DEFAULT_SIZE_CONSTRAINTS };
 import { $ } from '../ui/dom.js';
-
-// ─── View State ──────────────────────────────────────────────────────────────
-
-/**
- * Serialisable state blob returned by a view's `saveState()`.
- */
-export type ViewState = Record<string, unknown>;
-
-// ─── IView ───────────────────────────────────────────────────────────────────
-
-/**
- * Contract for content-based UI elements hosted inside parts.
- *
- * Views are layout-agnostic — they receive dimensions but don't control
- * their placement. They manage their own internal state and DOM.
- *
- * Lifecycle: createElement → setVisible(true) → layout → focus → … → dispose
- */
-export interface IView extends IDisposable {
-  /** Unique identifier. */
-  readonly id: string;
-
-  /** Human-readable name shown in tabs. */
-  readonly name: string;
-
-  /** Optional icon identifier (CSS class or codicon). */
-  readonly icon?: string;
-
-  /** The root DOM element (available after createElement). */
-  readonly element: HTMLElement | undefined;
-
-  // ── Size Constraints ──
-
-  readonly minimumWidth: number;
-  readonly maximumWidth: number;
-  readonly minimumHeight: number;
-  readonly maximumHeight: number;
-
-  // ── Lifecycle ──
-
-  /** Create the view's DOM structure inside the given container. */
-  createElement(container: HTMLElement): void;
-
-  /** Show or hide the view without disposing it. */
-  setVisible(visible: boolean): void;
-
-  /** Respond to dimension changes. */
-  layout(width: number, height: number): void;
-
-  /** Receive keyboard focus. */
-  focus(): void;
-
-  // ── State ──
-
-  /** Persist view-specific state. */
-  saveState(): ViewState;
-
-  /** Restore view-specific state. */
-  restoreState(state: ViewState): void;
-
-  // ── Events ──
-
-  /** Fires when size constraints change. */
-  readonly onDidChangeConstraints: Event<void>;
-
-  /** Fires when visibility changes. */
-  readonly onDidChangeVisibility: Event<boolean>;
-}
+import type { IView, ViewState } from './viewTypes.js';
+export type { IView, ViewState } from './viewTypes.js';
 
 // ─── Base View ───────────────────────────────────────────────────────────────
 

@@ -11,31 +11,9 @@
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { testWhenClause } from './whenClause.js';
-import type { ContextKeyLookup } from './whenClause.js';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-/** Allowed context key value types. */
-export type ContextKeyValue = string | number | boolean | string[] | Record<string, unknown> | undefined;
-
-/** Event payload when context keys change. */
-export interface ContextKeyChangeEvent {
-  /** The keys that changed. */
-  readonly affectedKeys: ReadonlySet<string>;
-}
-
-// ─── IContextKey ─────────────────────────────────────────────────────────────
-
-/**
- * A typed handle to a single context key. Allows setting and resetting
- * values with proper change tracking.
- */
-export interface IContextKey<T extends ContextKeyValue = ContextKeyValue> {
-  readonly key: string;
-  get(): T;
-  set(value: T): void;
-  reset(): void;
-}
+import type { ContextKeyLookup } from './contextTypes.js';
+import type { ContextKeyValue, ContextKeyChangeEvent, IContextKey } from './contextTypes.js';
+export type { ContextKeyValue, ContextKeyChangeEvent, IContextKey } from './contextTypes.js';
 
 // ─── ContextKeyScope ─────────────────────────────────────────────────────────
 

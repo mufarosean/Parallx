@@ -6,42 +6,10 @@
 
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-/**
- * Activation event kinds supported in M2.
- */
-export enum ActivationEventKind {
-  /** Eager — activates immediately on startup. */
-  Star = '*',
-  /** After shell init completes. */
-  OnStartupFinished = 'onStartupFinished',
-  /** When a specific command is first invoked. */
-  OnCommand = 'onCommand',
-  /** When a specific view is first shown. */
-  OnView = 'onView',
-}
-
-/**
- * A parsed activation event.
- */
-export interface ParsedActivationEvent {
-  readonly kind: ActivationEventKind;
-  /** The qualifier after the colon, e.g., the commandId in `onCommand:myTool.doSomething`. */
-  readonly qualifier?: string;
-  /** Original event string. */
-  readonly raw: string;
-}
-
-/**
- * Fired when the system determines a tool should be activated.
- */
-export interface ActivationRequest {
-  readonly toolId: string;
-  readonly event: ParsedActivationEvent;
-  readonly timestamp: number;
-}
+import { ActivationEventKind } from './toolTypes.js';
+import type { ParsedActivationEvent, ActivationRequest } from './toolTypes.js';
+export { ActivationEventKind } from './toolTypes.js';
+export type { ParsedActivationEvent, ActivationRequest } from './toolTypes.js';
 
 // ─── Parsing ─────────────────────────────────────────────────────────────────
 
@@ -99,9 +67,9 @@ export class ActivationEventService extends Disposable {
 
   // ── Events ──
 
-  private readonly _onActivationRequested = this._register(new Emitter<ActivationRequest>());
+  private readonly _onDidRequestActivation = this._register(new Emitter<ActivationRequest>());
   /** Fires when the system determines a tool should be activated. */
-  readonly onActivationRequested: Event<ActivationRequest> = this._onActivationRequested.event;
+  readonly onDidRequestActivation: Event<ActivationRequest> = this._onDidRequestActivation.event;
 
   private readonly _onDidFireEvent = this._register(new Emitter<ParsedActivationEvent>());
   /** Fires whenever an activation event fires (for observability/diagnostics). */
@@ -265,7 +233,7 @@ export class ActivationEventService extends Disposable {
   private _requestActivation(toolId: string, event: ParsedActivationEvent): void {
     if (this._activatedTools.has(toolId)) return;
 
-    this._onActivationRequested.fire({
+    this._onDidRequestActivation.fire({
       toolId,
       event,
       timestamp: Date.now(),
