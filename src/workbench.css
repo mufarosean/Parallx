@@ -1191,7 +1191,19 @@ html, body {
 
 /* Active group indicator — removed, accent is on active tab top border */
 
-/* ── Breadcrumbs Bar ── */
+/* ── Editor Ribbon (unified slot for breadcrumbs / tool-specific ribbons) ── */
+/* Each editor type populates this: file editors show breadcrumbs,
+   canvas shows page-hierarchy breadcrumbs + timestamp + star + ⋯ menu. */
+
+.editor-ribbon {
+  flex-shrink: 0;
+}
+
+.editor-ribbon.hidden {
+  display: none;
+}
+
+/* ── Breadcrumbs Bar (default ribbon content for file editors) ── */
 /* VS Code ref: breadcrumbsWidget.css + breadcrumbscontrol.css */
 
 .breadcrumbs-control {

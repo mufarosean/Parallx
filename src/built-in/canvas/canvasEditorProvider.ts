@@ -49,6 +49,18 @@ export type OpenEditorFn = (options: { typeId: string; title: string; icon?: str
 export class CanvasEditorProvider {
   private _openEditor: OpenEditorFn | undefined;
 
+  /**
+   * External ribbon containers for editor-group-level rendering.
+   * Keyed by pageId; populated by createRibbon(), consumed by pane init().
+   */
+  private readonly _ribbonContainers = new Map<string, HTMLElement>();
+
+  /**
+   * Page-menu handlers registered by initialised panes.
+   * The ribbon's ⋯ button invokes these to show the full PageChromeController menu.
+   */
+  private readonly _pageMenuHandlers = new Map<string, () => void>();
+
   constructor(private readonly _dataService: CanvasDataService) {}
 
   /**
@@ -66,11 +78,51 @@ export class CanvasEditorProvider {
    */
   createEditorPane(container: HTMLElement, input?: IEditorInput): IDisposable {
     const pageId = input?.id ?? '';
-    const pane = new CanvasEditorPane(container, pageId, this._dataService, input, this._openEditor);
+    const pane = new CanvasEditorPane(container, pageId, this._dataService, input, this._openEditor, this);
     pane.init().catch(err => {
       console.error('[CanvasEditorProvider] Editor pane initialization failed:', err);
     });
     return pane;
+  }
+
+  /**
+   * Provide custom ribbon content for the editor group ribbon slot.
+   *
+   * Called by EditorGroupView before the pane has finished initializing.
+   * We store the container reference so the pane's PageChromeController can
+   * render into it once async init completes.
+   */
+  createRibbon(container: HTMLElement, input?: IEditorInput): IDisposable {
+    const pageId = input?.id ?? '';
+    this._ribbonContainers.set(pageId, container);
+
+    // Set min-height so layout calculates correctly before pane fills it
+    container.style.minHeight = '28px';
+
+    return {
+      dispose: () => {
+        this._ribbonContainers.delete(pageId);
+        this._pageMenuHandlers.delete(pageId);
+        container.style.minHeight = '';
+        container.innerHTML = '';
+      },
+    };
+  }
+
+  /** Get the external ribbon container stored by createRibbon(). */
+  getRibbonContainer(pageId: string): HTMLElement | undefined {
+    return this._ribbonContainers.get(pageId);
+  }
+
+  /** Register a page-menu handler (called by pane after init). */
+  registerPageMenuHandler(pageId: string, handler: () => void): IDisposable {
+    this._pageMenuHandlers.set(pageId, handler);
+    return { dispose: () => { this._pageMenuHandlers.delete(pageId); } };
+  }
+
+  /** Get the page-menu handler (called by ribbon ⋯ button). */
+  getPageMenuHandler(pageId: string): (() => void) | undefined {
+    return this._pageMenuHandlers.get(pageId);
   }
 }
 
@@ -102,6 +154,7 @@ class CanvasEditorPane implements IDisposable {
     private readonly _dataService: CanvasDataService,
     private readonly _input: IEditorInput | undefined,
     private readonly _openEditor: OpenEditorFn | undefined,
+    private readonly _provider: CanvasEditorProvider,
   ) {}
 
   // ── Public accessors for controller hosts ──
@@ -140,7 +193,10 @@ class CanvasEditorPane implements IDisposable {
     this._pageChrome.applyPageSettings();
 
     // ── Create page chrome (ribbon, cover, header) ──
-    this._pageChrome.createChrome();
+    // If an external ribbon container was provided by createRibbon(),
+    // PageChromeController renders the ribbon there (editor-group level).
+    const externalRibbon = this._provider.getRibbonContainer(this._pageId);
+    this._pageChrome.createChrome(externalRibbon);
 
     // Create Tiptap editor with Notion-parity extensions
     this._editor = new Editor({
@@ -275,6 +331,14 @@ class CanvasEditorPane implements IDisposable {
         if (event.pageId !== this._pageId || !event.page) return;
         this._pageChrome.syncPageChange(event.page);
         this._pageChrome.applyPageSettings();
+      }),
+    );
+
+    // Register page-menu handler so the external ribbon's ⋯ button can
+    // trigger the full page menu (which lives in PageChromeController).
+    this._saveDisposables.push(
+      this._provider.registerPageMenuHandler(this._pageId, () => {
+        this._pageChrome.showPageMenu();
       }),
     );
 

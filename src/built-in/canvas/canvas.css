@@ -1870,9 +1870,8 @@
   box-sizing: border-box;
   height: 28px;
   flex-shrink: 0;
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  /* No sticky positioning — when in the editor-group ribbon slot the
+     ribbon is already above the scrollable pane container. */
   background: var(--vscode-editor-background);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   overflow: hidden;

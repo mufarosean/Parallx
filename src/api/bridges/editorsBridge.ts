@@ -39,6 +39,17 @@ export function setFileEditorResolver(resolver: FileEditorResolverFn): void {
  */
 export interface ToolEditorProvider {
   createEditorPane(container: HTMLElement, input?: IEditorInput): IDisposable;
+
+  /**
+   * Optional: provide custom ribbon content for the editor group ribbon slot.
+   *
+   * When implemented, the editor group shows this instead of the default
+   * file-path breadcrumbs bar. For example, canvas pages use this to show
+   * page-hierarchy breadcrumbs, "Edited X ago", favorite star, and ⋯ menu.
+   *
+   * The returned IDisposable should clean up all DOM and subscriptions.
+   */
+  createRibbon?(container: HTMLElement, input?: IEditorInput): IDisposable;
 }
 
 export interface OpenEditorOptions {

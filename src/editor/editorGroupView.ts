@@ -8,7 +8,7 @@
 // and events. EditorGroupView maps the model to `ITabBarItem[]` and
 // wires TabBar events back to the model.
 
-import { Disposable, DisposableStore } from '../platform/lifecycle.js';
+import { Disposable, DisposableStore, type IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { EditorGroupModel, EditorModelChangeEvent } from './editorGroupModel.js';
 import { EditorPane, PlaceholderEditorPane } from './editorPane.js';
@@ -51,7 +51,9 @@ export class EditorGroupView extends Disposable implements IGridView {
 
   private _element!: HTMLElement;
   private _tabs!: TabBar;
+  private _ribbonContainer!: HTMLElement;
   private _breadcrumbsBar!: BreadcrumbsBar;
+  private _ribbonDisposable: IDisposable | undefined;
   private _paneContainer!: HTMLElement;
   private _emptyMessage!: HTMLElement;
   private _workspaceFolders: readonly { uri: URI; name: string }[] = [];
@@ -148,13 +150,30 @@ export class EditorGroupView extends Disposable implements IGridView {
       this._element.style.height = `${height}px`;
     }
 
-    // Layout pane: subtract tab bar height and breadcrumbs height
-    const breadcrumbsH = this._breadcrumbsBar?.effectiveHeight ?? 0;
-    const paneH = Math.max(0, height - TAB_HEIGHT - breadcrumbsH);
+    // Layout pane: subtract tab bar height and ribbon height
+    const ribbonH = this._getRibbonHeight();
+    const paneH = Math.max(0, height - TAB_HEIGHT - ribbonH);
     if (this._paneContainer) {
       this._paneContainer.style.height = `${paneH}px`;
     }
     this._activePane?.layout(width, paneH);
+  }
+
+  /**
+   * Current ribbon height: custom ribbon uses offsetHeight (auto-sized),
+   * default breadcrumbs uses the BreadcrumbsBar's known effective height,
+   * hidden ribbon returns 0.
+   */
+  private _getRibbonHeight(): number {
+    if (!this._ribbonContainer || this._ribbonContainer.classList.contains('hidden')) {
+      return 0;
+    }
+    // Custom ribbon is sized by its content
+    if (this._ribbonDisposable) {
+      return this._ribbonContainer.offsetHeight || 0;
+    }
+    // Default breadcrumbs bar
+    return this._breadcrumbsBar?.effectiveHeight ?? 0;
   }
 
   // ─── Create ────────────────────────────────────────────────────────────
@@ -267,8 +286,20 @@ export class EditorGroupView extends Disposable implements IGridView {
       } catch { /* ignore bad data */ }
     }));
 
-    // Breadcrumbs bar — between tab bar and pane (VS Code placement)
-    this._breadcrumbsBar = this._register(new BreadcrumbsBar(this._element));
+    // Unified ribbon container — between tab bar and pane.
+    // Each editor type populates this: file editors get breadcrumbs,
+    // canvas gets its own ribbon (breadcrumbs + timestamp + star + menu).
+    this._ribbonContainer = $('div');
+    this._ribbonContainer.classList.add('editor-ribbon');
+    this._element.appendChild(this._ribbonContainer);
+
+    // Default content: file-path breadcrumbs (hidden when custom ribbon is active)
+    this._breadcrumbsBar = this._register(new BreadcrumbsBar(this._ribbonContainer));
+
+    // When a breadcrumb segment is clicked, reveal it in Explorer
+    this._register(this._breadcrumbsBar.onDidSelectSegment((segment) => {
+      this._onDidRequestRevealInExplorer.fire(segment.uri);
+    }));
 
     // Pane container
     this._paneContainer = $('div');
@@ -281,7 +312,7 @@ export class EditorGroupView extends Disposable implements IGridView {
     this._paneContainer.appendChild(this._emptyMessage);
 
     this._renderTabs();
-    this._updateBreadcrumbs();
+    this._updateRibbon(this.model.activeEditor);
     this._updateEmptyState();
   }
 
@@ -345,19 +376,54 @@ export class EditorGroupView extends Disposable implements IGridView {
   setWorkspaceFolders(folders: readonly { uri: URI; name: string }[]): void {
     this._workspaceFolders = folders;
     this._breadcrumbsBar?.setWorkspaceFolders(folders);
-    this._updateBreadcrumbs();
+    this._updateRibbon(this.model.activeEditor);
   }
 
-  // ─── Breadcrumbs ───────────────────────────────────────────────────────
+  // ─── Ribbon ────────────────────────────────────────────────────────────
 
   /**
-   * Update the breadcrumbs bar to reflect the currently active editor.
-   * Called on EditorActive model change and after setWorkspaceFolders.
+   * Update the ribbon to reflect the currently active editor.
+   *
+   * If the editor's tool provider implements `createRibbon()`, the ribbon
+   * container is handed to the provider for custom content. Otherwise the
+   * default file-path BreadcrumbsBar fills the ribbon.
+   *
+   * Called on EditorActive model change, setWorkspaceFolders, and after
+   * the pane is swapped in _showActiveEditor.
    */
-  private _updateBreadcrumbs(): void {
-    if (!this._breadcrumbsBar) return;
-    const changed = this._breadcrumbsBar.update(this.model.activeEditor);
-    // If visibility changed, re-layout to recalculate pane height
+  private _updateRibbon(input: IEditorInput | undefined): void {
+    // Dispose previous custom ribbon content
+    if (this._ribbonDisposable) {
+      this._ribbonDisposable.dispose();
+      this._ribbonDisposable = undefined;
+    }
+
+    if (!input) {
+      this._breadcrumbsBar.hide();
+      this._ribbonContainer.classList.add('hidden');
+      this.layout(this._width, this._height, Orientation.Horizontal);
+      return;
+    }
+
+    // Check if the editor's provider offers a custom ribbon
+    const provider = (input as any).provider;
+    if (provider && typeof provider.createRibbon === 'function') {
+      // Hide default breadcrumbs
+      this._breadcrumbsBar.hide();
+      // Provider fills the ribbon container
+      this._ribbonDisposable = provider.createRibbon(this._ribbonContainer, input);
+      this._ribbonContainer.classList.remove('hidden');
+      this.layout(this._width, this._height, Orientation.Horizontal);
+      return;
+    }
+
+    // Default: file-path breadcrumbs
+    const changed = this._breadcrumbsBar.update(input);
+    if (this._breadcrumbsBar.isVisible) {
+      this._ribbonContainer.classList.remove('hidden');
+    } else {
+      this._ribbonContainer.classList.add('hidden');
+    }
     if (changed) {
       this.layout(this._width, this._height, Orientation.Horizontal);
     }
@@ -386,11 +452,10 @@ export class EditorGroupView extends Disposable implements IGridView {
         break;
       case EditorGroupChangeKind.EditorClose:
         this._renderTabs();
-        this._updateBreadcrumbs(); // Hide breadcrumbs when last editor closes
+        this._updateRibbon(this.model.activeEditor); // Hide ribbon when last editor closes
         break;
       case EditorGroupChangeKind.EditorActive:
         this._renderTabs();
-        this._updateBreadcrumbs();
         await this._showActiveEditor();
         break;
     }
@@ -647,9 +712,12 @@ export class EditorGroupView extends Disposable implements IGridView {
     // This call is the latest — track the pane in the disposable store
     this._paneDisposables.add(pane);
 
+    // Update ribbon for the new editor THEN layout
+    this._updateRibbon(activeInput);
+
     // Layout
-    const breadcrumbsH = this._breadcrumbsBar?.effectiveHeight ?? 0;
-    const paneH = Math.max(0, this._height - TAB_HEIGHT - breadcrumbsH);
+    const ribbonH = this._getRibbonHeight();
+    const paneH = Math.max(0, this._height - TAB_HEIGHT - ribbonH);
     pane.layout(this._width, paneH);
 
     this._activePane = pane;
@@ -665,6 +733,10 @@ export class EditorGroupView extends Disposable implements IGridView {
   // ─── Dispose ───────────────────────────────────────────────────────────
 
   override dispose(): void {
+    if (this._ribbonDisposable) {
+      this._ribbonDisposable.dispose();
+      this._ribbonDisposable = undefined;
+    }
     this._paneDisposables.clear();
     this._activePane = undefined;
     super.dispose();

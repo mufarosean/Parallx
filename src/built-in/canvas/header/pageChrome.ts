@@ -67,9 +67,14 @@ export class PageChromeController {
   /** The icon element. */
   get iconEl(): HTMLElement | null { return this._iconEl; }
 
-  /** Create all page chrome (ribbon, cover, header). */
-  createChrome(): void {
-    this._createTopRibbon();
+  /** Create all page chrome (ribbon, cover, header).
+   *
+   * @param externalRibbonContainer — If provided, the ribbon is rendered into
+   *   this external container (e.g. the editor group's unified ribbon slot)
+   *   instead of being prepended to the editor container.
+   */
+  createChrome(externalRibbonContainer?: HTMLElement): void {
+    this._createTopRibbon(externalRibbonContainer);
     this._createCover();
     this._createPageHeader();
   }
@@ -205,9 +210,15 @@ export class PageChromeController {
 
   // ── Top Ribbon ──────────────────────────────────────────────────────────
 
-  private _createTopRibbon(): void {
+  /**
+   * Build the top ribbon (breadcrumbs + timestamp + star + ⋯ menu).
+   *
+   * @param externalContainer — If provided, the ribbon is appended here
+   *   (the editor-group-level ribbon slot) instead of prepended to `ec`.
+   */
+  private _createTopRibbon(externalContainer?: HTMLElement): void {
     const ec = this._host.editorContainer;
-    if (!ec) return;
+    if (!ec && !externalContainer) return;
 
     this._topRibbon = $('div.canvas-top-ribbon');
 
@@ -249,7 +260,13 @@ export class PageChromeController {
     ribbonRight.appendChild(this._pageMenuBtn);
 
     this._topRibbon.appendChild(ribbonRight);
-    ec.prepend(this._topRibbon);
+
+    // Mount into the provided external container, or prepend in-pane
+    if (externalContainer) {
+      externalContainer.appendChild(this._topRibbon);
+    } else if (ec) {
+      ec.prepend(this._topRibbon);
+    }
   }
 
   private _updateFavoriteIcon(): void {
@@ -877,6 +894,11 @@ export class PageChromeController {
   }
 
   // ── Page Menu ───────────────────────────────────────────────────────────
+
+  /** Show the page settings menu (callable from external ribbon ⋯ button). */
+  showPageMenu(): void {
+    this._showPageMenu();
+  }
 
   private _showPageMenu(): void {
     if (this._pageMenuDropdown) { this.dismissPopups(); return; }
