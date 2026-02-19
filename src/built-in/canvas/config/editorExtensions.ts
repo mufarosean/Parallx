@@ -29,6 +29,9 @@ import { ToggleHeading, ToggleHeadingText } from '../extensions/toggleHeadingNod
 import { Bookmark } from '../extensions/bookmarkNode.js';
 import { TableOfContents } from '../extensions/tableOfContentsNode.js';
 import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
+import { PageBlock } from '../extensions/pageBlockNode.js';
+import type { CanvasDataService } from '../canvasDataService.js';
+import type { OpenEditorFn } from '../canvasEditorProvider.js';
 import { DRAG_HANDLE_CUSTOM_NODE_TYPES } from './blockCapabilities.js';
 
 import type { Extensions } from '@tiptap/core';
@@ -37,7 +40,13 @@ import type { Extensions } from '@tiptap/core';
  * Build the full set of TipTap extensions for a canvas editor instance.
  * @param lowlight - Pre-configured lowlight instance for syntax highlighting
  */
-export function createEditorExtensions(lowlight: any): Extensions {
+export interface EditorExtensionContext {
+  readonly dataService?: CanvasDataService;
+  readonly pageId?: string;
+  readonly openEditor?: OpenEditorFn;
+}
+
+export function createEditorExtensions(lowlight: any, context?: EditorExtensionContext): Extensions {
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
@@ -142,6 +151,11 @@ export function createEditorExtensions(lowlight: any): Extensions {
     ToggleHeading,
     ToggleHeadingText,
     Bookmark,
+    PageBlock.configure({
+      dataService: context?.dataService,
+      currentPageId: context?.pageId,
+      openEditor: context?.openEditor,
+    }),
     TableOfContents,
     Video,
     Audio,

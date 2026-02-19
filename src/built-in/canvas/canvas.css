@@ -1364,6 +1364,155 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Tier 2 — Page Block (sub-page embed card)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.canvas-tiptap-editor .canvas-page-block {
+  margin: 2px 0;
+}
+
+.canvas-page-block-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  transition: color 0.15s;
+  min-height: 0;
+  background: transparent;
+}
+
+.canvas-page-block-card:hover {
+  background: transparent;
+  border-color: transparent;
+}
+
+.canvas-page-block--drop-target .canvas-page-block-card {
+  border-color: transparent;
+  background: transparent;
+}
+
+.canvas-page-block-icon {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.canvas-page-block-icon:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.canvas-page-block-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.canvas-page-block-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.canvas-page-block-preview {
+  position: fixed;
+  z-index: 60;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #151515;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.canvas-page-block-preview-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.canvas-page-block-preview-snippet {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.65);
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.canvas-page-block-icon-picker {
+  position: fixed;
+  z-index: 65;
+  width: 300px;
+  max-width: calc(100vw - 16px);
+  max-height: min(360px, calc(100vh - 16px));
+  padding: 10px;
+  overflow: auto;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #1b1b1b;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.canvas-page-block-icon-remove {
+  width: 100%;
+  padding: 7px 8px;
+  margin-bottom: 8px;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.canvas-page-block-icon-remove:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.canvas-page-block-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.canvas-page-block-icon-option {
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.canvas-page-block-icon-option:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * Tier 2 — Table of Contents (auto-generated heading list)
  * ───────────────────────────────────────────────────────────────────────────── */
 

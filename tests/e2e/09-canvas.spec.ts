@@ -202,5 +202,68 @@ test.describe('Canvas Tool', () => {
         await expect(trashSection).toBeVisible({ timeout: 3_000 });
       }
     });
+
+    test('slash /page creates sub-page block and opens linked page', async ({ window, electronApp }) => {
+      await openFolderViaMenu(electronApp, window, wsPath);
+      await window.waitForTimeout(2000);
+      await openCanvasSidebar(window);
+
+      // Create parent page and open it.
+      const rootIdsBefore = await window.locator('.canvas-node[role="treeitem"]').evaluateAll((nodes) =>
+        nodes
+          .map((node) => node.getAttribute('data-page-id'))
+          .filter((id): id is string => !!id),
+      );
+      await createNewPage(window);
+      const rootIdsAfter = await window.locator('.canvas-node[role="treeitem"]').evaluateAll((nodes) =>
+        nodes
+          .map((node) => node.getAttribute('data-page-id'))
+          .filter((id): id is string => !!id),
+      );
+      const parentPageId = rootIdsAfter.find((id) => !rootIdsBefore.includes(id)) ?? rootIdsAfter[rootIdsAfter.length - 1];
+      await window.locator(`.canvas-node[role="treeitem"][data-page-id="${parentPageId}"]`).first().click();
+      await window.waitForSelector('.canvas-editor-wrapper', { timeout: 10_000 });
+
+      const tiptap = window.locator('.tiptap').first();
+      await tiptap.click();
+      const nodesBefore = await window.locator('.canvas-node').count();
+      await window.keyboard.type('/page');
+
+      const slashPageItem = window.locator('.canvas-slash-item', { hasText: 'Page' }).first();
+      await expect(slashPageItem).toBeVisible({ timeout: 5_000 });
+      await slashPageItem.click();
+
+      await expect.poll(async () => window.locator('.canvas-node').count(), {
+        timeout: 10_000,
+      }).toBeGreaterThan(nodesBefore);
+
+      // Re-open parent and verify embedded page block exists.
+      await window.locator(`.canvas-node[role="treeitem"][data-page-id="${parentPageId}"]`).first().click();
+      await expect(window.locator('.canvas-page-block')).toBeVisible({ timeout: 10_000 });
+
+      // Set child icon from parent block controls.
+      await window.locator('.canvas-page-block-icon').first().click();
+      await expect(window.locator('.canvas-page-block-icon-picker')).toBeVisible({ timeout: 5_000 });
+      await window.locator('.canvas-page-block-icon-option[title="rocket"]').first().click();
+
+      // Clicking the page block navigates into the linked child page editor.
+      await window.locator('.canvas-page-block-card').first().click();
+      await expect(window.locator('.canvas-page-block')).toHaveCount(0, { timeout: 10_000 });
+
+      // Child page reflects icon change.
+      await expect(window.locator('.canvas-page-icon')).toBeVisible({ timeout: 10_000 });
+
+      // Rename child page title.
+      const childTitle = window.locator('.canvas-page-title').first();
+      await childTitle.click();
+      await window.keyboard.press('Control+A');
+      await window.keyboard.type('Child Synced Title');
+      await window.keyboard.press('Enter');
+      await window.waitForTimeout(450);
+
+      // Parent block title auto-syncs from child rename.
+      await window.locator(`.canvas-node[role="treeitem"][data-page-id="${parentPageId}"]`).first().click();
+      await expect(window.locator('.canvas-page-block-title').first()).toHaveText('Child Synced Title', { timeout: 10_000 });
+    });
   });
 });

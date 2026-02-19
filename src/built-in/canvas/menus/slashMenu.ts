@@ -8,8 +8,10 @@ import type { Editor } from '@tiptap/core';
 import { $ } from '../../../ui/dom.js';
 import { svgIcon } from '../canvasIcons.js';
 import type { SlashMenuItem } from './slashMenuItems.js';
+import type { SlashActionContext } from './slashMenuItems.js';
 import { SLASH_MENU_ITEMS } from './slashMenuItems.js';
 import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
+import type { CanvasDataService } from '../canvasDataService.js';
 
 // ── Dependency interface ────────────────────────────────────────────────────
 
@@ -18,6 +20,9 @@ export interface SlashMenuHost {
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
   readonly inlineMath: InlineMathEditorController;
+  readonly dataService?: CanvasDataService;
+  readonly pageId?: string;
+  readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
   requestSave(reason: string): void;
   /** Toggle the suppress-update flag to prevent re-entrant slash checks. */
   suppressUpdate: boolean;
@@ -152,7 +157,7 @@ export class SlashMenuController {
 
       const iconEl = $('span.canvas-slash-icon');
       // Render SVG icon if available, otherwise use text
-      const knownIcons = ['checklist','quote','code','divider','lightbulb','chevron-right','grid','image','bullet-list','numbered-list','math','math-block','columns','bookmark','globe','toc','video','audio','file-attachment'];
+      const knownIcons = ['page','checklist','quote','code','divider','lightbulb','chevron-right','grid','image','bullet-list','numbered-list','math','math-block','columns','bookmark','globe','toc','video','audio','file-attachment'];
       if (knownIcons.includes(item.icon)) {
         iconEl.innerHTML = svgIcon(item.icon as any);
         const svg = iconEl.querySelector('svg');
@@ -174,7 +179,7 @@ export class SlashMenuController {
       row.addEventListener('mousedown', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this._execute(item, editor);
+        void this._execute(item, editor);
       });
 
       row.addEventListener('mouseenter', () => {
@@ -207,14 +212,14 @@ export class SlashMenuController {
       this._renderItems(filtered, editor);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      this._execute(filtered[this._selectedIndex], editor);
+      void this._execute(filtered[this._selectedIndex], editor);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       this.hide();
     }
   };
 
-  private _execute(item: SlashMenuItem, editor: Editor): void {
+  private async _execute(item: SlashMenuItem, editor: Editor): Promise<void> {
     // Suppress onUpdate to prevent checkTrigger from firing mid-execution
     this._host.suppressUpdate = true;
 
@@ -227,7 +232,13 @@ export class SlashMenuController {
       const blockNode = editor.state.doc.nodeAt(blockPos);
       if (!blockNode) return;
 
-      item.action(editor, { from: blockPos, to: blockPos + blockNode.nodeSize });
+      const context: SlashActionContext = {
+        pageId: this._host.pageId,
+        dataService: this._host.dataService,
+        openEditor: this._host.openEditor,
+      };
+
+      await item.action(editor, { from: blockPos, to: blockPos + blockNode.nodeSize }, context);
     } finally {
       this._host.suppressUpdate = false;
     }

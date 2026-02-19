@@ -14,6 +14,11 @@ import type { BlockSelectionController } from './blockSelection.js';
 import { $ } from '../../../ui/dom.js';
 import { svgIcon } from '../canvasIcons.js';
 import {
+  CANVAS_BLOCK_DRAG_MIME,
+  clearActiveCanvasDragSession,
+  setActiveCanvasDragSession,
+} from '../dnd/dragSession.js';
+import {
   applyBackgroundColorToBlock,
   applyTextColorToBlock,
   deleteBlockAt,
@@ -27,6 +32,7 @@ export interface BlockHandlesHost {
   readonly editor: Editor | null;
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
+  readonly pageId: string;
   readonly blockSelection: BlockSelectionController;
 }
 
@@ -287,6 +293,13 @@ export class BlockHandlesController {
       try {
         event.dataTransfer.effectAllowed = 'copyMove';
         event.dataTransfer.setData('text/plain', 'parallx-canvas-block-drag');
+        event.dataTransfer.setData(CANVAS_BLOCK_DRAG_MIME, JSON.stringify({
+          sourcePageId: this._host.pageId,
+          from: block.pos,
+          to: block.pos + block.node.nodeSize,
+          nodes: [block.node.toJSON()],
+          startedAt: Date.now(),
+        }));
       } catch {
         // Best-effort: drag payload setup is browser-dependent.
       }
@@ -295,7 +308,18 @@ export class BlockHandlesController {
     view.dragging = {
       slice: view.state.selection.content(),
       move: true,
+      from: block.pos,
+      to: block.pos + block.node.nodeSize,
     } as any;
+
+    setActiveCanvasDragSession({
+      sourcePageId: this._host.pageId,
+      from: block.pos,
+      to: block.pos + block.node.nodeSize,
+      nodes: [block.node.toJSON()],
+      startedAt: Date.now(),
+    });
+
     view.dom.classList.add('dragging');
   };
 
@@ -304,6 +328,9 @@ export class BlockHandlesController {
     if (!editor) return;
     editor.view.dragging = null as any;
     editor.view.dom.classList.remove('dragging');
+    setTimeout(() => {
+      clearActiveCanvasDragSession();
+    }, 0);
     this._scheduleHandleInteractionUnlock();
   };
 

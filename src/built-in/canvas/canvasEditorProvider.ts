@@ -142,7 +142,11 @@ class CanvasEditorPane implements IDisposable {
     // Create Tiptap editor with Notion-parity extensions
     this._editor = new Editor({
       element: this._editorContainer,
-      extensions: createEditorExtensions(lowlight),
+      extensions: createEditorExtensions(lowlight, {
+        dataService: this._dataService,
+        pageId: this._pageId,
+        openEditor: this._openEditor,
+      }),
       content: '',
       editorProps: {
         attributes: {

@@ -2065,10 +2065,7 @@ Every task must pass these before being considered complete:
 | `src/built-in/canvas/canvas.css` | Column layout styles, resize handle, hover states |
 | `src/built-in/canvas/canvasIcons.ts` | Add 'columns' icon for slash menu |
 | `src/built-in/canvas/markdownExport.ts` | Handle `columnList` and `column` node types |
-| `docs/Parallx_Milestone_6.md` | This documentation |
-
----
-
+| `docs/Parallx_Milestone_06.md` | This documentation |
 ## Fix 17: Column Resize Fix + Drag-to-Create Columns ✅
 
 ### Issues Fixed
@@ -2165,4 +2162,4 @@ Existing tests 14–16, 20–21 updated to use the new model. **31 column E2E te
 | `scripts/patch-deps.mjs` | New — postinstall patch for GlobalDragHandle selectors |
 | `package.json` | Updated postinstall to include patch script |
 | `tests/e2e/12-columns.spec.ts` | 5 new tests, 5 updated tests, 2 new test helpers |
-| `docs/Parallx_Milestone_6.md` | This documentation |
+| `docs/Parallx_Milestone_06.md` | This documentation |

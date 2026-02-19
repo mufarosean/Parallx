@@ -36,6 +36,15 @@ export interface SaveStateEvent {
   readonly error?: string;
 }
 
+interface CrossPageMoveParams {
+  readonly sourcePageId: string;
+  readonly targetPageId: string;
+  readonly sourceDoc: any;
+  readonly appendedNodes: any[];
+  readonly expectedSourceRevision?: number;
+  readonly expectedTargetRevision?: number;
+}
+
 // ─── Database Bridge Type ────────────────────────────────────────────────────
 
 interface DatabaseBridge {
@@ -55,6 +64,7 @@ export function rowToPage(row: Record<string, unknown>): IPage {
     icon: (row.icon as string) ?? null,
     content: row.content as string,
     contentSchemaVersion: (row.content_schema_version as number) ?? CURRENT_CANVAS_CONTENT_SCHEMA_VERSION,
+    revision: (row.revision as number) ?? 1,
     sortOrder: row.sort_order as number,
     isArchived: !!(row.is_archived as number),
     coverUrl: (row.cover_url as string) ?? null,
@@ -95,7 +105,10 @@ export class CanvasDataService extends Disposable {
   // ── Auto-save debounce state ──
 
   /** Per-page debounce timers for content auto-save. */
-  private readonly _pendingSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; content: string }>();
+  private readonly _pendingSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; content: string; expectedRevision?: number }>();
+
+  /** Last known committed revision per page. */
+  private readonly _knownRevisions = new Map<string, number>();
 
   /** Debounce interval in ms. */
   private readonly _autoSaveMs: number;
@@ -153,6 +166,7 @@ export class CanvasDataService extends Disposable {
     if (!page) throw new Error(`[CanvasDataService] Created page "${id}" not found after insert`);
 
     this._onDidChangePage.fire({ kind: PageChangeKind.Created, pageId: id, page });
+    this._knownRevisions.set(id, page.revision);
     return page;
   }
 
@@ -162,7 +176,11 @@ export class CanvasDataService extends Disposable {
   async getPage(pageId: string): Promise<IPage | null> {
     const result = await this._db.get('SELECT * FROM pages WHERE id = ?', [pageId]);
     if (result.error) throw new Error(result.error.message);
-    return result.row ? rowToPage(result.row) : null;
+    const page = result.row ? rowToPage(result.row) : null;
+    if (page) {
+      this._knownRevisions.set(page.id, page.revision);
+    }
+    return page;
   }
 
   /**
@@ -208,8 +226,9 @@ export class CanvasDataService extends Disposable {
    */
   async updatePage(
     pageId: string,
-    updates: Partial<Pick<IPage, 'title' | 'icon' | 'content' | 'coverUrl' | 'coverYOffset' | 'fontFamily' | 'fullWidth' | 'smallText' | 'isLocked' | 'isFavorited' | 'contentSchemaVersion'>>,
+    updates: Partial<Pick<IPage, 'title' | 'icon' | 'content' | 'coverUrl' | 'coverYOffset' | 'fontFamily' | 'fullWidth' | 'smallText' | 'isLocked' | 'isFavorited' | 'contentSchemaVersion'>> & { expectedRevision?: number },
   ): Promise<IPage> {
+    const expectedRevision = updates.expectedRevision;
     const sets: string[] = [];
     const params: unknown[] = [];
 
@@ -268,19 +287,174 @@ export class CanvasDataService extends Disposable {
     }
 
     sets.push("updated_at = datetime('now')");
+    sets.push('revision = revision + 1');
     params.push(pageId);
 
+    const whereClause = expectedRevision === undefined
+      ? 'id = ?'
+      : 'id = ? AND revision = ?';
+    if (expectedRevision !== undefined) {
+      params.push(expectedRevision);
+    }
+
     const result = await this._db.run(
-      `UPDATE pages SET ${sets.join(', ')} WHERE id = ?`,
+      `UPDATE pages SET ${sets.join(', ')} WHERE ${whereClause}`,
       params,
     );
     if (result.error) throw new Error(result.error.message);
+    if ((result.changes ?? 0) === 0 && expectedRevision !== undefined) {
+      throw new Error(`[CanvasDataService] Revision conflict for page "${pageId}"`);
+    }
 
     const page = await this.getPage(pageId);
     if (!page) throw new Error(`[CanvasDataService] Page "${pageId}" not found after update`);
 
+    this._knownRevisions.set(pageId, page.revision);
     this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page });
     return page;
+  }
+
+  /**
+   * Append block JSON nodes to the end of a page document.
+   * Used for copy-style drops where source content is unchanged.
+   */
+  async appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<IPage> {
+    if (!Array.isArray(appendedNodes) || appendedNodes.length === 0) {
+      const existing = await this.getPage(targetPageId);
+      if (!existing) throw new Error(`[CanvasDataService] Page "${targetPageId}" not found`);
+      return existing;
+    }
+
+    this._cancelPendingSave(targetPageId);
+
+    const target = await this.getPage(targetPageId);
+    if (!target) throw new Error(`[CanvasDataService] Page "${targetPageId}" not found`);
+
+    const decodedTarget = decodeCanvasContent(target.content);
+    const targetContent = Array.isArray(decodedTarget.doc?.content) ? decodedTarget.doc.content : [];
+    const mergedDoc = {
+      type: 'doc',
+      content: [...targetContent, ...appendedNodes],
+    };
+
+    return this.updatePage(targetPageId, {
+      content: encodeCanvasContentFromDoc(mergedDoc).storedContent,
+      contentSchemaVersion: CURRENT_CANVAS_CONTENT_SCHEMA_VERSION,
+      expectedRevision: this._knownRevisions.get(targetPageId),
+    });
+  }
+
+  /**
+   * Atomically move blocks across pages by persisting source and target updates
+   * in a single database transaction.
+   */
+  async moveBlocksBetweenPagesAtomic(params: CrossPageMoveParams): Promise<{ sourcePage: IPage; targetPage: IPage }> {
+    const {
+      sourcePageId,
+      targetPageId,
+      sourceDoc,
+      appendedNodes,
+      expectedSourceRevision,
+      expectedTargetRevision,
+    } = params;
+
+    if (!sourcePageId || !targetPageId) {
+      throw new Error('[CanvasDataService] Source and target page IDs are required');
+    }
+    if (sourcePageId === targetPageId) {
+      throw new Error('[CanvasDataService] Cross-page move requires different source and target pages');
+    }
+    if (!Array.isArray(appendedNodes) || appendedNodes.length === 0) {
+      throw new Error('[CanvasDataService] Cannot move empty block set');
+    }
+
+    const resolvedExpectedSource = expectedSourceRevision ?? this._knownRevisions.get(sourcePageId);
+    const resolvedExpectedTarget = expectedTargetRevision ?? this._knownRevisions.get(targetPageId);
+
+    this._cancelPendingSave(sourcePageId);
+    this._cancelPendingSave(targetPageId);
+
+    await this._db.run('BEGIN IMMEDIATE TRANSACTION');
+
+    try {
+      const sourceRowResult = await this._db.get('SELECT * FROM pages WHERE id = ?', [sourcePageId]);
+      if (sourceRowResult.error) throw new Error(sourceRowResult.error.message);
+      if (!sourceRowResult.row) throw new Error(`[CanvasDataService] Source page "${sourcePageId}" not found`);
+
+      const targetRowResult = await this._db.get('SELECT * FROM pages WHERE id = ?', [targetPageId]);
+      if (targetRowResult.error) throw new Error(targetRowResult.error.message);
+      if (!targetRowResult.row) throw new Error(`[CanvasDataService] Target page "${targetPageId}" not found`);
+
+      const sourcePageBefore = rowToPage(sourceRowResult.row);
+      const targetPageBefore = rowToPage(targetRowResult.row);
+
+      if (resolvedExpectedSource !== undefined && sourcePageBefore.revision !== resolvedExpectedSource) {
+        throw new Error(`[CanvasDataService] Revision conflict for source page "${sourcePageId}"`);
+      }
+      if (resolvedExpectedTarget !== undefined && targetPageBefore.revision !== resolvedExpectedTarget) {
+        throw new Error(`[CanvasDataService] Revision conflict for target page "${targetPageId}"`);
+      }
+
+      const sourceEncoded = encodeCanvasContentFromDoc(sourceDoc);
+      const decodedTarget = decodeCanvasContent(targetPageBefore.content);
+      const targetContent = Array.isArray(decodedTarget.doc?.content) ? decodedTarget.doc.content : [];
+      const mergedTargetDoc = {
+        type: 'doc',
+        content: [...targetContent, ...appendedNodes],
+      };
+      const targetEncoded = encodeCanvasContentFromDoc(mergedTargetDoc);
+
+      const updateSourceResult = await this._db.run(
+        `UPDATE pages
+         SET content = ?, content_schema_version = ?, revision = revision + 1, updated_at = datetime('now')
+         WHERE id = ? AND revision = ?`,
+        [sourceEncoded.storedContent, sourceEncoded.schemaVersion, sourcePageId, sourcePageBefore.revision],
+      );
+      if (updateSourceResult.error) throw new Error(updateSourceResult.error.message);
+      if ((updateSourceResult.changes ?? 0) === 0) {
+        throw new Error(`[CanvasDataService] Revision conflict while updating source page "${sourcePageId}"`);
+      }
+
+      const updateTargetResult = await this._db.run(
+        `UPDATE pages
+         SET content = ?, content_schema_version = ?, revision = revision + 1, updated_at = datetime('now')
+         WHERE id = ? AND revision = ?`,
+        [targetEncoded.storedContent, targetEncoded.schemaVersion, targetPageId, targetPageBefore.revision],
+      );
+      if (updateTargetResult.error) throw new Error(updateTargetResult.error.message);
+      if ((updateTargetResult.changes ?? 0) === 0) {
+        throw new Error(`[CanvasDataService] Revision conflict while updating target page "${targetPageId}"`);
+      }
+
+      const sourceAfterResult = await this._db.get('SELECT * FROM pages WHERE id = ?', [sourcePageId]);
+      if (sourceAfterResult.error) throw new Error(sourceAfterResult.error.message);
+      if (!sourceAfterResult.row) throw new Error(`[CanvasDataService] Source page "${sourcePageId}" missing after move`);
+
+      const targetAfterResult = await this._db.get('SELECT * FROM pages WHERE id = ?', [targetPageId]);
+      if (targetAfterResult.error) throw new Error(targetAfterResult.error.message);
+      if (!targetAfterResult.row) throw new Error(`[CanvasDataService] Target page "${targetPageId}" missing after move`);
+
+      const sourcePage = rowToPage(sourceAfterResult.row);
+      const targetPage = rowToPage(targetAfterResult.row);
+
+      const commitResult = await this._db.run('COMMIT');
+      if (commitResult.error) throw new Error(commitResult.error.message);
+
+      this._knownRevisions.set(sourcePageId, sourcePage.revision);
+      this._knownRevisions.set(targetPageId, targetPage.revision);
+
+      this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId: sourcePageId, page: sourcePage });
+      this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId: targetPageId, page: targetPage });
+
+      return { sourcePage, targetPage };
+    } catch (err) {
+      try {
+        await this._db.run('ROLLBACK');
+      } catch {
+        // Ignore rollback failures; original error is more actionable.
+      }
+      throw err;
+    }
   }
 
   /**
@@ -294,6 +468,7 @@ export class CanvasDataService extends Disposable {
     this._cancelPendingSave(pageId);
 
     this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId });
+    this._knownRevisions.delete(pageId);
   }
 
   /**
@@ -381,6 +556,7 @@ export class CanvasDataService extends Disposable {
    */
   scheduleContentSave(pageId: string, content: string): void {
     const normalized = normalizeCanvasContentForStorage(content);
+    const expectedRevision = this._knownRevisions.get(pageId);
 
     // Cancel existing timer for this page
     this._cancelPendingSave(pageId);
@@ -389,14 +565,24 @@ export class CanvasDataService extends Disposable {
       this._pendingSaves.delete(pageId);
       this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'debounce' });
       try {
-        await this.updatePage(pageId, {
+        const page = await this.updatePage(pageId, {
           content: normalized.storedContent,
           contentSchemaVersion: normalized.schemaVersion,
+          expectedRevision,
         });
+        this._knownRevisions.set(pageId, page.revision);
         this._onDidSavePage.fire(pageId);
         this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'debounce' });
       } catch (err) {
         console.error(`[CanvasDataService] Auto-save failed for page "${pageId}":`, err);
+        if (err instanceof Error && err.message.includes('Revision conflict')) {
+          try {
+            const latest = await this.getPage(pageId);
+            if (latest) this._knownRevisions.set(pageId, latest.revision);
+          } catch {
+            // ignore refresh failure
+          }
+        }
         this._onDidChangeSaveState.fire({
           pageId,
           kind: SaveStateKind.Failed,
@@ -406,7 +592,7 @@ export class CanvasDataService extends Disposable {
       }
     }, this._autoSaveMs);
 
-    this._pendingSaves.set(pageId, { timer, content: normalized.storedContent });
+    this._pendingSaves.set(pageId, { timer, content: normalized.storedContent, expectedRevision });
     this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Pending, source: 'debounce' });
   }
 
@@ -418,15 +604,17 @@ export class CanvasDataService extends Disposable {
     const pending = [...this._pendingSaves.entries()];
     this._pendingSaves.clear();
 
-    for (const [pageId, { timer, content }] of pending) {
+    for (const [pageId, { timer, content, expectedRevision }] of pending) {
       clearTimeout(timer);
       this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'flush' });
       try {
         const normalized = normalizeCanvasContentForStorage(content);
-        await this.updatePage(pageId, {
+        const page = await this.updatePage(pageId, {
           content: normalized.storedContent,
           contentSchemaVersion: normalized.schemaVersion,
+          expectedRevision,
         });
+        this._knownRevisions.set(pageId, page.revision);
         this._onDidSavePage.fire(pageId);
         this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'flush' });
       } catch (err) {

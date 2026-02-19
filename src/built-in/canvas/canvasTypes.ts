@@ -21,6 +21,8 @@ export interface IPage {
   readonly content: string;
   /** Stored content schema version for migration/recovery logic. */
   readonly contentSchemaVersion: number;
+  /** Monotonic page revision used for optimistic concurrency control. */
+  readonly revision: number;
   /** Sort position among siblings (REAL for O(1) insertion). */
   readonly sortOrder: number;
   /** Whether the page is archived (soft-deleted). */

@@ -11,12 +11,20 @@ import { TextSelection } from '@tiptap/pm/state';
 import { showImageInsertPopup } from './imageInsertPopup.js';
 import { showMediaInsertPopup } from './mediaInsertPopup.js';
 import { showBookmarkInsertPopup } from './bookmarkInsertPopup.js';
+import type { CanvasDataService } from '../canvasDataService.js';
+import { encodeCanvasContentFromDoc } from '../contentSchema.js';
+
+export interface SlashActionContext {
+  readonly pageId?: string;
+  readonly dataService?: CanvasDataService;
+  readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
+}
 
 export interface SlashMenuItem {
   label: string;
   icon: string;
   description: string;
-  action: (editor: Editor, range: { from: number; to: number }) => void;
+  action: (editor: Editor, range: { from: number; to: number }, context?: SlashActionContext) => void | Promise<void>;
 }
 
 function replaceBlockWithColumns(editor: Editor, range: { from: number; to: number }, columnCount: number): void {
@@ -45,6 +53,84 @@ function replaceBlockWithColumns(editor: Editor, range: { from: number; to: numb
 }
 
 export const SLASH_MENU_ITEMS: SlashMenuItem[] = [
+  {
+    label: 'Page', icon: 'page', description: 'Create and open a nested sub-page',
+    action: async (editor, range, context) => {
+      if (!context?.dataService || !context.pageId) return;
+
+      let child: Awaited<ReturnType<CanvasDataService['createPage']>> | null = null;
+      try {
+        child = await context.dataService.createPage(context.pageId, 'Untitled');
+        const childPage = child;
+        const pageBlockAttrs = {
+          pageId: childPage.id,
+          title: childPage.title,
+          icon: childPage.icon,
+          parentPageId: context.pageId,
+        };
+
+        let inserted = editor
+          .chain()
+          .insertContentAt(range, {
+            type: 'pageBlock',
+            attrs: pageBlockAttrs,
+          })
+          .focus()
+          .run();
+
+        if (!inserted) {
+          const pageBlockType = editor.state.schema.nodes.pageBlock;
+          if (!pageBlockType) {
+            throw new Error('pageBlock schema node is unavailable');
+          }
+          const node = pageBlockType.create(pageBlockAttrs);
+          const tr = editor.state.tr.replaceWith(range.from, range.to, node);
+          editor.view.dispatch(tr);
+          editor.commands.focus();
+          inserted = true;
+        }
+
+        if (!inserted) {
+          throw new Error('Failed to insert pageBlock');
+        }
+
+        const docJson = editor.getJSON();
+        const hasInsertedPageBlock = Array.isArray(docJson?.content)
+          && docJson.content.some((node: any) => node?.type === 'pageBlock' && node?.attrs?.pageId === childPage.id);
+        if (!hasInsertedPageBlock) {
+          throw new Error('Inserted pageBlock not found in parent doc');
+        }
+
+        const encoded = encodeCanvasContentFromDoc(docJson);
+        await context.dataService.updatePage(context.pageId, {
+          content: encoded.storedContent,
+          contentSchemaVersion: encoded.schemaVersion,
+        });
+
+        // Replace any stale pending save (e.g. literal '/page' text) with final parent snapshot
+        // before navigation potentially disposes this editor pane.
+        context.dataService.scheduleContentSave(context.pageId, JSON.stringify(docJson));
+
+        if (context.openEditor) {
+          await context.openEditor({
+            typeId: 'canvas',
+            title: childPage.title,
+            icon: childPage.icon ?? undefined,
+            instanceId: childPage.id,
+          });
+        }
+      } catch (error) {
+        if (child) {
+          try {
+            await context.dataService.deletePage(child.id);
+          } catch {
+            // Best-effort rollback only.
+          }
+        }
+        throw error;
+      }
+    },
+  },
   // ── Basic blocks ──
   {
     label: 'Heading 1', icon: 'H1', description: 'Large heading',
