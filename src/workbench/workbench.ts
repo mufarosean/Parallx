@@ -14,7 +14,7 @@ import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, ILayoutService, IViewService, IWorkspaceService, IWorkspaceBoundaryService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
 
@@ -68,13 +68,10 @@ import {
 // Editor services (Capability 9)
 import { EditorService } from '../services/editorService.js';
 import { EditorGroupService } from '../services/editorGroupService.js';
-import type { IEditorInput } from '../editor/editorInput.js';
 
 // Service facades (Capability 0 gap cleanup)
-import { LayoutService } from '../services/layoutService.js';
-import { ViewService } from '../services/viewService.js';
-import { WorkspaceService } from '../services/workspaceService.js';
-import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
+import { registerFacadeServices } from './workbenchFacadeFactory.js';
+import type { FacadeFactoryHost } from './workbenchFacadeFactory.js';
 import { WindowService } from '../services/windowService.js';
 import { ContextMenu } from '../ui/contextMenu.js';
 
@@ -118,7 +115,9 @@ import type { KeybindingService } from '../services/keybindingService.js';
 
 // View Contribution (M2 Capability 6)
 import { ViewContributionProcessor } from '../contributions/viewContribution.js';
-import type { IContributedContainer, IContributedView } from '../contributions/viewContribution.js';
+
+// Contribution handler (D.1 extraction)
+import { WorkbenchContributionHandler } from './workbenchContributionHandler.js';
 
 // Built-in Tools (M2 Capability 7)
 import * as ExplorerTool from '../built-in/explorer/main.js';
@@ -140,27 +139,8 @@ import {
 } from '../tools/builtinManifests.js';
 
 // File Editor Resolver (M4 Capability 4)
-import { registerEditorPaneFactory } from '../editor/editorPane.js';
-import { setFileEditorResolver } from '../api/bridges/editorsBridge.js';
-import { GroupDirection } from '../editor/editorTypes.js';
-import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
-import { UntitledEditorInput } from '../built-in/editor/untitledEditorInput.js';
-import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
+import { initFileEditorSetup } from './workbenchFileEditorSetup.js';
 
-// Format Readers (EditorResolverService)
-import { EditorResolverService, EditorResolverPriority } from '../services/editorResolverService.js';
-import { MarkdownEditorPane } from '../built-in/editor/markdownEditorPane.js';
-import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
-import { ImageEditorInput } from '../built-in/editor/imageEditorInput.js';
-import { ImageEditorPane } from '../built-in/editor/imageEditorPane.js';
-import { PdfEditorInput } from '../built-in/editor/pdfEditorInput.js';
-import { PdfEditorPane } from '../built-in/editor/pdfEditorPane.js';
-
-// Keybindings & Settings Editor (QoL)
-import { KeybindingsEditorInput } from '../built-in/editor/keybindingsEditorInput.js';
-import { KeybindingsEditorPane } from '../built-in/editor/keybindingsEditorPane.js';
-import { SettingsEditorInput } from '../built-in/editor/settingsEditorInput.js';
-import { SettingsEditorPane } from '../built-in/editor/settingsEditorPane.js';
 
 // Theme System (M5 Capability 1–3)
 import { colorRegistry } from '../theme/colorRegistry.js';
@@ -208,6 +188,9 @@ export class Workbench extends Layout {
   private _menuBuilder!: MenuBuilder;
   private _statusBarController!: StatusBarController;
 
+  // Contribution handler (D.1 extraction — owns container maps, contribution events)
+  private _contributionHandler!: WorkbenchContributionHandler;
+
   private _viewManager!: ViewManager;
   private _dndController!: DragAndDropController;
   private _sidebarContainer!: ViewContainer;
@@ -253,30 +236,6 @@ export class Workbench extends Layout {
 
   // View Contribution (M2 Capability 6)
   private _viewContribution!: ViewContributionProcessor;
-  /** Disposable store for view contribution event listeners (cleared on workspace switch). */
-  private readonly _viewContribListeners = this._register(new DisposableStore());
-  /** Built-in sidebar containers keyed by activity-bar icon ID (e.g. 'view.explorer'). */
-  private _builtinSidebarContainers = new Map<string, ViewContainer>();
-  /** Tool-contributed sidebar containers (keyed by container ID). */
-  private _contributedSidebarContainers = new Map<string, ViewContainer>();
-  /** Tool-contributed panel containers (keyed by container ID). */
-  private _contributedPanelContainers = new Map<string, ViewContainer>();
-  /** Tool-contributed auxiliary bar containers (keyed by container ID). */
-  private _contributedAuxBarContainers = new Map<string, ViewContainer>();
-  /** Map of contributed container IDs → built-in container view IDs (redirect targets). */
-  private _containerRedirects = new Map<string, string>();
-  /** Which sidebar container is currently active: undefined = built-in default. */
-  private _activeSidebarContainerId: string | undefined;
-  /** Header label element for the sidebar. */
-  private _sidebarHeaderLabel: HTMLElement | undefined;
-
-  // ── Cached DOM mount-point elements (queried once, reused everywhere) ──
-  private _sidebarViewsSlot: HTMLElement | undefined;
-  private _sidebarHeaderSlot: HTMLElement | undefined;
-  private _panelViewsSlot: HTMLElement | undefined;
-
-  /** MutationObservers for tab drag wiring (disconnected on teardown). */
-  private _tabObservers: MutationObserver[] = [];
 
   // ── Events ──
 
@@ -843,6 +802,17 @@ export class Workbench extends Layout {
       getWorkbenchContext: () => this._workbenchContext,
     }));
 
+    // Contribution handler (D.1 extraction — view container/contribution event management)
+    this._contributionHandler = this._register(new WorkbenchContributionHandler({
+      sidebar: this._sidebar,
+      panel: this._panel,
+      auxiliaryBar: this._auxiliaryBar,
+      activityBarPart: this._activityBarPart,
+      toggleSidebar: () => this.toggleSidebar(),
+      layoutViewContainers: () => this._layoutViewContainers(),
+    }));
+    this._contributionHandler.setWorkbenchContext(this._workbenchContext);
+
     // 1. Titlebar: app icon + menu bar + window controls
     this._setupTitlebar();
 
@@ -854,6 +824,11 @@ export class Workbench extends Layout {
     this._sidebarContainer = this._setupSidebarViews();
     this._panelContainer = this._setupPanelViews();
     this._auxBarContainer = this._setupAuxBarViews();
+
+    // Wire generic containers + view manager into contribution handler
+    this._contributionHandler.setViewManager(this._viewManager);
+    this._contributionHandler.setGenericContainers(this._sidebarContainer, this._panelContainer, this._auxBarContainer);
+    this._contributionHandler.panelViewsSlot = this._panel.element.querySelector('.panel-views') as HTMLElement;
 
     // 2b. Secondary activity bar (right edge, for aux bar views)
     this._setupSecondaryActivityBar();
@@ -903,8 +878,8 @@ export class Workbench extends Layout {
     }));
 
     // 10. Wire view/title actions and context menus to stacked containers
-    for (const vc of this._builtinSidebarContainers.values()) {
-      this._wireSectionMenus(vc);
+    for (const vc of this._contributionHandler.builtinSidebarContainers.values()) {
+      this._wireSectionMenus(vc as ViewContainer);
     }
   }
 
@@ -1199,8 +1174,8 @@ export class Workbench extends Layout {
       ['panel', this._panelContainer],
     ]);
     // Also include all built-in sidebar containers by their IDs
-    for (const [id, vc] of this._builtinSidebarContainers) {
-      containerMap.set(id, vc);
+    for (const [id, vc] of this._contributionHandler.builtinSidebarContainers) {
+      containerMap.set(id, vc as ViewContainer);
     }
     if (this._auxBarContainer) {
       containerMap.set('auxiliaryBar', this._auxBarContainer);
@@ -1249,7 +1224,7 @@ export class Workbench extends Layout {
       this._statusBar,
     ];
 
-    const allContainers: ViewContainer[] = [...this._builtinSidebarContainers.values(), this._panelContainer];
+    const allContainers: ViewContainer[] = [...this._contributionHandler.builtinSidebarContainers.values() as IterableIterator<ViewContainer>, this._panelContainer];
     if (this._auxBarContainer) {
       allContainers.push(this._auxBarContainer);
     }
@@ -1332,13 +1307,8 @@ export class Workbench extends Layout {
     // etc. are separate containers — clicking an icon *switches* which
     // container is visible rather than showing stacked sections inside a
     // single container.
-    //
-    // We create one ViewContainer per built-in activity-bar icon, store
-    // them in `_builtinSidebarContainers`, mount all into `.sidebar-views`,
-    // and show only the active one.
     // ─────────────────────────────────────────────────────────────────────
 
-    // VS Code codicon-style SVG icons (24x24 viewBox, stroke-based, minimalist)
     const codiconExplorer = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 0H8.5L7 1.5V6H2.5L1 7.5V22.5699L2.5 24H14.5699L16 22.5699V18H20.7L22 16.5699V4.5L17.5 0ZM17.5 2.12L19.88 4.5H17.5V2.12ZM14.5 22.5H2.5V7.5H7V16.5699L8.5 18H14.5V22.5ZM20.5 16.5H8.5V1.5H16V6H20.5V16.5Z" fill="currentColor"/></svg>';
     const codiconSearch = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.25 1C11.524 1 8.5 4.024 8.5 7.75C8.5 9.247 9.012 10.622 9.873 11.72L1.939 19.655L3.0 20.716L10.934 12.781C12.06 13.7 13.49 14.25 15.05 14.25C18.776 14.25 21.8 11.226 21.8 7.5C21.8 3.774 18.776 0.75 15.05 0.75C15.117 0.75 15.183 0.753 15.25 0.757V1ZM15.25 2.5C17.873 2.5 20 4.627 20 7.25C20 9.873 17.873 12 15.25 12C12.627 12 10.5 9.873 10.5 7.25C10.5 4.627 12.627 2.5 15.25 2.5Z" fill="currentColor"/></svg>';
     const views = [
@@ -1346,9 +1316,9 @@ export class Workbench extends Layout {
       { id: 'view.search', icon: codiconSearch, label: 'Search', isSvg: true },
     ];
 
-    // Cache sidebar views slot for reuse throughout lifecycle
-    this._sidebarViewsSlot = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
-    const sidebarContent = this._sidebarViewsSlot;
+    // Cache sidebar views slot in contribution handler
+    this._contributionHandler.sidebarViewsSlot = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
+    const sidebarContent = this._contributionHandler.sidebarViewsSlot;
 
     for (const v of views) {
       const vc = new ViewContainer(`sidebar.${v.id}`);
@@ -1357,9 +1327,8 @@ export class Workbench extends Layout {
       const view = this._viewManager.createViewSync(v.id)!;
       vc.addView(view);
 
-      this._builtinSidebarContainers.set(v.id, vc);
+      this._contributionHandler.registerBuiltinSidebarContainer(v.id, vc);
 
-      // Activity bar: register built-in icons via ActivityBarPart (M3 Capability 0.2)
       this._activityBarPart.addIcon({
         id: v.id,
         icon: v.icon,
@@ -1368,48 +1337,33 @@ export class Workbench extends Layout {
         source: 'builtin',
       });
 
-      // Mount into sidebar slot; only the first container is initially visible
       if (sidebarContent) {
         sidebarContent.appendChild(vc.element);
       }
     }
 
-    // The default (first) container is the Explorer
-    const defaultContainer = this._builtinSidebarContainers.get('view.explorer')!;
+    const defaultContainer = this._contributionHandler.builtinSidebarContainers.get('view.explorer')! as ViewContainer;
 
-    // Hide all others
-    for (const [id, vc] of this._builtinSidebarContainers) {
+    for (const [id, vc] of this._contributionHandler.builtinSidebarContainers) {
       if (id !== 'view.explorer') {
-        vc.setVisible(false);
+        (vc as ViewContainer).setVisible(false);
       }
     }
 
-    // Wire icon click events to switch containers
-    // VS Code reference: ViewContainerActivityAction.run()
-    // - Click inactive icon → show sidebar + switch to that container
-    // - Click active icon while sidebar visible → hide sidebar
-    // - Click active icon while sidebar hidden → show sidebar
+    // Wire icon click events — delegate container switching to handler
     this._register(this._activityBarPart.onDidClickIcon((event) => {
       const isAlreadyActive = event.iconId === this._activityBarPart.activeIconId;
 
       if (isAlreadyActive) {
-        // Toggle sidebar visibility (VS Code parity: click active icon toggles sidebar)
         this.toggleSidebar();
         return;
       }
 
-      // Ensure sidebar is visible
       if (!this._sidebar.visible) {
         this.toggleSidebar();
       }
 
-      if (event.source === 'builtin') {
-        // Switch to the target built-in container
-        this._switchSidebarContainer(event.iconId);
-      } else if (event.source === 'contributed') {
-        // Switch to contributed sidebar container
-        this._switchSidebarContainer(event.iconId);
-      }
+      this._contributionHandler.switchSidebarContainer(event.iconId);
     }));
 
     // P2.7: Activity bar icon context menu
@@ -1423,29 +1377,22 @@ export class Workbench extends Layout {
       });
     }));
 
-    // Activate the first icon by default
     this._activityBarPart.setActiveIcon('view.explorer');
-    // Track it as the active container
-    this._activeSidebarContainerId = 'view.explorer';
-    // Update activeViewContainer context key (Capability 2 deferred item)
+    this._contributionHandler.setActiveSidebarContainerId('view.explorer');
     this._workbenchContext?.setActiveViewContainer('view.explorer');
 
     // Sidebar header label + toolbar
-    // VS Code pattern: compositePart.createTitleArea() → title label (left) + actions toolbar (right)
-    // Cache sidebar header slot for reuse throughout lifecycle
-    this._sidebarHeaderSlot = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
-    const headerSlot = this._sidebarHeaderSlot;
+    this._contributionHandler.sidebarHeaderSlot = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
+    const headerSlot = this._contributionHandler.sidebarHeaderSlot;
     if (headerSlot) {
       const headerLabel = $('span');
       headerLabel.classList.add('sidebar-header-label');
       headerLabel.textContent = 'EXPLORER';
       headerSlot.appendChild(headerLabel);
 
-      // Actions toolbar on the right (VS Code: `.title-actions` inside `.composite.title`)
       const actionsContainer = $('div');
       actionsContainer.classList.add('sidebar-header-actions');
 
-      // "More actions" button (ellipsis)
       const moreBtn = $('button');
       moreBtn.classList.add('sidebar-header-action-btn');
       moreBtn.title = 'More Actions…';
@@ -1464,13 +1411,8 @@ export class Workbench extends Layout {
       actionsContainer.appendChild(moreBtn);
       headerSlot.appendChild(actionsContainer);
 
-      // Store reference for dynamic container switching (Cap 6)
-      this._sidebarHeaderLabel = headerLabel;
+      this._contributionHandler.sidebarHeaderLabel = headerLabel;
     }
-
-    // NOTE: Do not call viewManager.showView() here — it bypasses
-    // ViewContainer's tab-switching logic and makes both views visible.
-    // The container's addView already activated the first view (Explorer).
 
     return defaultContainer;
   }
@@ -1639,9 +1581,9 @@ export class Workbench extends Layout {
     container.addView(terminalView);
     container.addView(outputView);
 
-    // Cache panel views slot for reuse throughout lifecycle
-    this._panelViewsSlot = this._panel.element.querySelector('.panel-views') as HTMLElement;
-    const panelContent = this._panelViewsSlot;
+    // Cache panel views slot (note: also set in _initializeParts via contributionHandler)
+    const panelViewsSlot = this._panel.element.querySelector('.panel-views') as HTMLElement;
+    const panelContent = panelViewsSlot;
     if (panelContent) {
       panelContent.appendChild(container.element);
     }
@@ -1783,77 +1725,30 @@ export class Workbench extends Layout {
 
   /**
    * Register facade services (Capability 0 gap cleanup).
-   * Called in Phase 3 after grids, ViewManager, and workspace exist.
+   * Delegated to workbenchFacadeFactory.ts (D.2 extraction).
    */
   private _registerFacadeServices(): void {
-    // Layout service — delegates to grids
-    const layoutService = new LayoutService();
-    // Adapter satisfies LayoutHost without `as any` on the Workbench's protected members
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
-    layoutService.setHost({
+    const host: FacadeFactoryHost = {
       get container() { return self._container; },
       get _hGrid() { return self._hGrid; },
       get _vGrid() { return self._vGrid; },
+      get workspace() { return self._workspace; },
+      get _workspaceSaver() { return self._workspaceSaver; },
       _layoutViewContainers: () => this._layoutViewContainers(),
       isPartVisible: (partId: string) => this.isPartVisible(partId),
       setPartHidden: (hidden: boolean, partId: string) => this.setPartHidden(hidden, partId),
       onDidChangePartVisibility: this.onDidChangePartVisibility,
-    });
-    this._register(layoutService);
-    this._services.registerInstance(ILayoutService, layoutService);
-
-    // View service — placeholder for M2 tool API surface
-    const viewService = new ViewService();
-    this._register(viewService);
-    this._services.registerInstance(IViewService, viewService);
-
-    // Workspace service — delegates to workbench workspace operations
-    const workspaceService = new WorkspaceService();
-    workspaceService.setHost({
-      get workspace() { return self._workspace; },
-      get _workspaceSaver() { return self._workspaceSaver; },
-      createWorkspace: (name: string, path?: string, switchTo?: boolean) => self.createWorkspace(name, path, switchTo),
-      switchWorkspace: (id: string) => self.switchWorkspace(id),
-      getRecentWorkspaces: () => self.getRecentWorkspaces(),
-      removeRecentWorkspace: (id: string) => self.removeRecentWorkspace(id),
-      get onDidSwitchWorkspace() { return self.onDidSwitchWorkspace; },
-    });
-    this._register(workspaceService);
-    this._services.registerInstance(IWorkspaceService, workspaceService);
-
-    // Workspace boundary service — centralized path policy used by tool FS bridge
-    const workspaceBoundaryService = new WorkspaceBoundaryService();
-    workspaceBoundaryService.setHost({
-      get folders() { return workspaceService.folders; },
-    });
-    this._register(workspaceBoundaryService);
-    this._services.registerInstance(IWorkspaceBoundaryService, workspaceBoundaryService);
-
-    // Enforce workspace boundary centrally for all file-service filesystem operations.
-    if (this._services.has(IFileService)) {
-      const fileService = this._services.get(IFileService);
-      fileService.setBoundaryChecker((uri, operation) => {
-        workspaceBoundaryService.assertUriWithinWorkspace(uri, `FileService.${operation}`);
-      });
+      createWorkspace: (name, path, switchTo) => this.createWorkspace(name, path, switchTo),
+      switchWorkspace: (id) => this.switchWorkspace(id),
+      getRecentWorkspaces: () => this.getRecentWorkspaces(),
+      removeRecentWorkspace: (id) => this.removeRecentWorkspace(id),
+      onDidSwitchWorkspace: this.onDidSwitchWorkspace,
+    };
+    for (const d of registerFacadeServices({ services: this._services, host, commandPalette: this._commandPalette })) {
+      this._register(d);
     }
-
-    // Wire workspace service into Quick Access for workspace switching
-    if (this._commandPalette) {
-      this._commandPalette.setWorkspaceService({
-        workspace: this._workspace,
-        getRecentWorkspaces: () => this.getRecentWorkspaces(),
-        switchWorkspace: (id: string) => this.switchWorkspace(id),
-      });
-    }
-
-    // Notification service — attach toast container to the workbench DOM
-    if (this._services.has(INotificationService)) {
-      const notificationService = this._services.get(INotificationService);
-      notificationService.attach(this._container);
-    }
-
-    console.log('[Workbench] Facade services registered (layout, view, workspace)');
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1891,7 +1786,8 @@ export class Workbench extends Layout {
     // Register view contribution processor (M2 Capability 6)
     this._viewContribution = registerViewContributionProcessor(this._services, this._viewManager);
     this._register(this._viewContribution);
-    this._wireViewContributionEvents();
+    this._contributionHandler.setViewContribution(this._viewContribution);
+    this._contributionHandler.wireViewContributionEvents();
 
     // Process contributions from already-registered tools
     for (const entry of registry.getAll()) {
@@ -2024,9 +1920,6 @@ export class Workbench extends Layout {
 
     // ── Wire file editor resolver (M4 Capability 4) ──
     this._initFileEditorResolver();
-
-    // ── Wire file picker into Quick Access (M4 Capability 6) ──
-    this._initQuickAccessFilePicker();
 
     // ── Register and activate built-in tools (M2 Capability 7) ──
     await this._registerAndActivateBuiltinTools(registry, activationEvents);
@@ -2186,247 +2079,15 @@ export class Workbench extends Layout {
    *
    * Must be called AFTER services are registered but BEFORE built-in tools activate.
    */
+  /**
+   * Wire the file editor resolver (D.3 — delegated to workbenchFileEditorSetup.ts).
+   */
   private _initFileEditorResolver(): void {
-    // ── 1. EditorResolverService ──
-    const resolver = new EditorResolverService();
-    this._register(resolver);
-
-    const textFileModelManager = this._services.get(ITextFileModelManager);
-    const fileService = this._services.get(IFileService);
-
-    // Helper: compute workspace-relative path for tab description
-    const getRelativePath = (uri: URI): string | undefined => {
-      const workspaceService = this._services.has(IWorkspaceService)
-        ? this._services.get(IWorkspaceService)
-        : undefined;
-      if (workspaceService?.folders) {
-        for (const folder of workspaceService.folders) {
-          const folderUri = typeof folder.uri === 'string' ? URI.parse(folder.uri) : folder.uri;
-          const folderPath = folderUri.fsPath;
-          if (uri.fsPath.startsWith(folderPath)) {
-            return uri.fsPath.substring(folderPath.length + 1).replace(/\\/g, '/');
-          }
-        }
-      }
-      return undefined;
-    };
-
-    // ── Register built-in format readers (priority-sorted) ──
-
-    // Markdown: opens in text editor by default (editable). Preview is
-    // triggered via the "Markdown: Open Preview to the Side" command which
-    // creates a MarkdownPreviewInput in a split group.
-    // (No special resolver entry for .md — the wildcard text fallback handles it.)
-
-    // Image viewer
-    this._register(resolver.registerEditor({
-      id: ImageEditorInput.TYPE_ID,
-      name: 'Image Viewer',
-      extensions: ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.ico', '.avif'],
-      priority: EditorResolverPriority.Default,
-      createInput: (uri) => ImageEditorInput.create(uri),
-      createPane: () => new ImageEditorPane(),
+    this._register(initFileEditorSetup({
+      services: this._services,
+      editorPart: this._editor as EditorPart,
+      commandPalette: this._commandPalette,
     }));
-
-    // PDF viewer
-    this._register(resolver.registerEditor({
-      id: PdfEditorInput.TYPE_ID,
-      name: 'PDF Viewer',
-      extensions: ['.pdf'],
-      priority: EditorResolverPriority.Default,
-      createInput: (uri) => PdfEditorInput.create(uri),
-      createPane: () => new PdfEditorPane(),
-    }));
-
-    // Text editor (fallback — matches everything)
-    this._register(resolver.registerEditor({
-      id: FileEditorInput.TYPE_ID,
-      name: 'Text Editor',
-      extensions: ['.*'],
-      priority: EditorResolverPriority.Builtin,
-      createInput: (uri) => FileEditorInput.create(uri, textFileModelManager, fileService, getRelativePath(uri)),
-      createPane: () => new TextEditorPane(),
-    }));
-
-    // ── 2. Pane factory (routes input → pane) ──
-    const services = this._services;
-    const paneFactoryDisposable = registerEditorPaneFactory((input) => {
-      // MarkdownPreviewInput → rendered preview pane
-      if (input instanceof MarkdownPreviewInput) return new MarkdownEditorPane();
-
-      // Image / PDF inputs → their dedicated panes
-      if (input instanceof ImageEditorInput) return new ImageEditorPane();
-      if (input instanceof PdfEditorInput) return new PdfEditorPane();
-
-      // Keybindings viewer (QoL)
-      if (input instanceof KeybindingsEditorInput) {
-        const kbService = services.has(IKeybindingService)
-          ? (services.get(IKeybindingService) as unknown as KeybindingService)
-          : undefined;
-        return new KeybindingsEditorPane(() => kbService?.getAllKeybindings() ?? []);
-      }
-
-      // Settings editor (QoL)
-      if (input instanceof SettingsEditorInput) {
-        return new SettingsEditorPane(services);
-      }
-
-      // FileEditorInput → always text editor (markdown is edited as text;
-      // preview is opened separately via command)
-      if (input instanceof FileEditorInput) return new TextEditorPane();
-
-      // UntitledEditorInput → always text
-      if (input instanceof UntitledEditorInput) return new TextEditorPane();
-
-      return null;
-    });
-    this._register(paneFactoryDisposable);
-
-    // ── 3. URI resolver function ──
-    setFileEditorResolver(async (uriString: string) => {
-      // Handle untitled scheme
-      if (uriString.startsWith('untitled://') || uriString.startsWith('untitled:')) {
-        return UntitledEditorInput.create();
-      }
-
-      // Handle file scheme or plain fsPath
-      let uri: URI;
-      if (uriString.startsWith('file://') || uriString.startsWith('file:///')) {
-        uri = URI.parse(uriString);
-      } else {
-        uri = URI.file(uriString);
-      }
-
-      // Deduplication: check if already open
-      const existingInput = this._findOpenEditorInput(uri);
-      if (existingInput) return existingInput;
-
-      // Consult the EditorResolverService for the right input
-      const resolution = resolver.resolve(uri);
-      if (resolution) return resolution.input;
-
-      // Absolute fallback — plain FileEditorInput
-      return FileEditorInput.create(uri, textFileModelManager, fileService, getRelativePath(uri));
-    });
-
-    console.log('[Workbench] File editor resolver wired with format readers');
-
-    // ── 4. Markdown preview toolbar button handler ──
-    // When the user clicks the preview icon in the tab toolbar, open a
-    // MarkdownPreviewInput in a split-right group (same as the command).
-    const editorPart = this._editor as EditorPart;
-    this._register(editorPart.onDidRequestMarkdownPreview((sourceGroup) => {
-      const activeEditor = sourceGroup.model.activeEditor;
-      if (!(activeEditor instanceof FileEditorInput)) return;
-
-      const newGroup = editorPart.splitGroup(sourceGroup.id, GroupDirection.Right);
-      if (!newGroup) return;
-
-      // Close the duplicated text editor from split
-      if (newGroup.model.count > 0) {
-        newGroup.model.closeEditor(0, true);
-      }
-
-      const previewInput = MarkdownPreviewInput.create(activeEditor);
-      newGroup.openEditor(previewInput, { pinned: true });
-    }));
-
-    // ── 5. Tab context menu: Reveal in Explorer ──
-    // When the user selects "Reveal in Explorer" from a tab context menu,
-    // execute the explorer.revealInExplorer command with the URI.
-    this._register(editorPart.onDidRequestRevealInExplorer((uri) => {
-      const cmdService = this._services.get(ICommandService) as CommandService;
-      cmdService?.executeCommand('explorer.revealInExplorer', uri.toString());
-    }));
-  }
-
-  /**
-   * Find an already-open editor by URI across all editor groups.
-   * Checks FileEditorInput, ImageEditorInput, and PdfEditorInput.
-   */
-  private _findOpenEditorInput(uri: URI): IEditorInput | undefined {
-    const editorPart = this._editor as EditorPart;
-    for (const group of editorPart.groups) {
-      for (const editor of group.model.editors) {
-        if (editor instanceof FileEditorInput && editor.uri.equals(uri)) {
-          return editor;
-        }
-        if (editor instanceof ImageEditorInput && editor.uri.equals(uri)) {
-          return editor;
-        }
-        if (editor instanceof PdfEditorInput && editor.uri.equals(uri)) {
-          return editor;
-        }
-      }
-    }
-    return undefined;
-  }
-
-  /**
-   * Wire the file picker delegate into the Quick Access widget (M4 Cap 6).
-   * When Ctrl+P is pressed with workspace folders open, the user sees
-   * workspace files matching their query, sorted by recency and fuzzy score.
-   */
-  private _initQuickAccessFilePicker(): void {
-    if (!this._commandPalette) return;
-
-    const fileService = this._services.has(IFileService)
-      ? this._services.get(IFileService)
-      : undefined;
-    const workspaceService = this._services.has(IWorkspaceService)
-      ? this._services.get(IWorkspaceService)
-      : undefined;
-    const editorService = this._services.has(IEditorService)
-      ? this._services.get(IEditorService)
-      : undefined;
-
-    if (!fileService || !workspaceService) {
-      console.warn('[Workbench] File picker not wired — missing fileService or workspaceService');
-      return;
-    }
-
-    // Build delegate using minimal shapes to avoid leaking service internals
-    this._commandPalette.setFilePickerDelegate(
-      {
-        getWorkspaceFolders: () => {
-          return (workspaceService.folders ?? []).map((f: any) => ({
-            uri: f.uri.toString(),
-            name: f.name,
-          }));
-        },
-        readDirectory: async (dirUri: string) => {
-          const uri = URI.parse(dirUri);
-          const entries: any[] = await fileService.readdir(uri);
-          return entries.map((e: any) => ({
-            name: e.name,
-            uri: e.uri.toString(),
-            type: e.type as number,
-          }));
-        },
-        onDidChangeFolders: (listener: () => void) => {
-          return workspaceService.onDidChangeFolders(listener);
-        },
-      },
-      // openFileEditor callback — reuses the existing file editor resolver
-      async (uriString: string) => {
-        try {
-          const uri = URI.parse(uriString);
-          const textFileModelManager = this._services.get(ITextFileModelManager);
-          // Deduplicate — reuse existing input if same file is already open
-          const existing = this._findOpenEditorInput(uri);
-          const input = existing ?? FileEditorInput.create(
-            uri, textFileModelManager, fileService, undefined,
-          );
-          if (editorService) {
-            await editorService.openEditor(input, { pinned: true });
-          }
-        } catch (err) {
-          console.error('[QuickAccess] Failed to open file:', uriString, err);
-        }
-      },
-    );
-
-    console.log('[Workbench] Quick Access file picker wired');
   }
 
   /**
@@ -2597,423 +2258,12 @@ export class Workbench extends Layout {
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // View Contribution Events (M2 Capability 6)
-  // ════════════════════════════════════════════════════════════════════════
-
-  /**
-   * Wire events from the ViewContributionProcessor to the workbench DOM.
-   * Called once during _initializeToolLifecycle().
-   */
-  private _wireViewContributionEvents(): void {
-    // Clear previous listeners (prevents duplication on workspace switch)
-    this._viewContribListeners.clear();
-
-    // When a tool contributes a new container → create DOM + activity bar icon
-    this._viewContribListeners.add(this._viewContribution.onDidAddContainer((container) => {
-      this._onToolContainerAdded(container);
-    }));
-
-    // When a tool's container is removed → tear down DOM + remove icon
-    this._viewContribListeners.add(this._viewContribution.onDidRemoveContainer((containerId) => {
-      this._onToolContainerRemoved(containerId);
-    }));
-
-    // When a tool contributes a view → create it and add to the correct container
-    this._viewContribListeners.add(this._viewContribution.onDidAddView((view) => {
-      this._onToolViewAdded(view);
-    }));
-
-    // When a tool's view is removed → container will handle via ViewManager unregister
-    this._viewContribListeners.add(this._viewContribution.onDidRemoveView((viewId) => {
-      this._onToolViewRemoved(viewId);
-    }));
-
-    // When a provider is registered → if the view is in a visible container, ensure it's rendered
-    this._viewContribListeners.add(this._viewContribution.onDidRegisterProvider(({ viewId }) => {
-      console.log(`[Workbench] View provider registered for "${viewId}"`);
-      // If the view lives in a built-in sidebar container (as a placeholder),
-      // replace the placeholder content with the real tool view content.
-      this._replaceBuiltinPlaceholderIfNeeded(viewId);
-    }));
-  }
-
-  /**
-   * When a tool registers a view provider for a view that already exists in
-   * a built-in sidebar container (as a placeholder), replace the placeholder
-   * content with the real tool view content.
-   */
-  private _replaceBuiltinPlaceholderIfNeeded(viewId: string): void {
-    // Find the built-in sidebar container that holds this view
-    for (const [_id, vc] of this._builtinSidebarContainers) {
-      const existingView = vc.getView(viewId);
-      if (!existingView) continue;
-
-      // Found the placeholder view in a built-in container.
-      // Get the provider from the ViewContributionProcessor.
-      const provider = this._viewContribution.getProvider(viewId);
-      if (!provider) return;
-
-      // Get the section body element where the placeholder is rendered
-      const sectionEl = vc.element.querySelector(`[data-view-id="${viewId}"] .view-section-body`) as HTMLElement;
-      if (!sectionEl) return;
-
-      // Clear the placeholder content
-      sectionEl.innerHTML = '';
-
-      // Create a content wrapper for the real tool view
-      const contentEl = $('div');
-      contentEl.className = 'tool-view-content fill-container-scroll';
-      sectionEl.appendChild(contentEl);
-
-      // Resolve the real tool view into the container
-      try {
-        provider.resolveView(viewId, contentEl);
-        console.log(`[Workbench] Replaced placeholder for "${viewId}" with real tool view`);
-      } catch (err) {
-        console.error(`[Workbench] Failed to resolve tool view for "${viewId}":`, err);
-      }
-      return;
-    }
-  }
-
-  /**
-   * Handle a tool contributing a new view container.
-   * Creates the ViewContainer DOM and adds an activity bar / panel tab icon.
-   *
-   * VS Code parity: If a contributed sidebar container's title matches a
-   * built-in sidebar container's view name (e.g. both are "Explorer"),
-   * skip creating the duplicate container and icon. The container's views
-   * will be redirected to the built-in container by _onToolViewAdded.
-   */
-  private _onToolContainerAdded(info: IContributedContainer): void {
-    // ── Skip duplicate sidebar containers that overlap with built-ins ──
-    if (info.location === 'sidebar') {
-      for (const [builtinViewId, builtinVc] of this._builtinSidebarContainers) {
-        const views = builtinVc.getViews();
-        const matchesTitle = views.some(
-          (v) => v.name.toLowerCase() === info.title.toLowerCase(),
-        );
-        if (matchesTitle) {
-          // Record a redirect: views targeting this contributed container
-          // will be added to the built-in container instead.
-          this._containerRedirects.set(info.id, builtinViewId);
-          console.log(
-            `[Workbench] Skipped duplicate sidebar container "${info.id}" — ` +
-            `redirecting views to built-in "${builtinViewId}"`,
-          );
-          return;
-        }
-      }
-    }
-
-    const vc = new ViewContainer(info.id);
-
-    if (info.location === 'sidebar') {
-      vc.hideTabBar(); // sidebar containers use the activity bar, not tabs
-      vc.setVisible(false);
-
-      // Mount into sidebar's view slot (hidden until its icon is clicked)
-      const sidebarContent = this._sidebarViewsSlot;
-      if (sidebarContent) {
-        sidebarContent.appendChild(vc.element);
-      }
-      this._contributedSidebarContainers.set(info.id, vc);
-
-      // Add activity bar icon (after separator)
-      this._addContributedActivityBarIcon(info);
-      console.log(`[Workbench] Added sidebar container "${info.id}" (${info.title})`);
-
-    } else if (info.location === 'panel') {
-      vc.setVisible(false);
-
-      const panelContent = this._panelViewsSlot;
-      if (panelContent) {
-        panelContent.appendChild(vc.element);
-      }
-      this._contributedPanelContainers.set(info.id, vc);
-      console.log(`[Workbench] Added panel container "${info.id}" (${info.title})`);
-
-    } else if (info.location === 'auxiliaryBar') {
-      vc.hideTabBar();
-      vc.setVisible(false);
-
-      const auxBarPart = this._auxiliaryBar as unknown as AuxiliaryBarPart;
-      const viewSlot = auxBarPart.viewContainerSlot;
-      if (viewSlot) {
-        viewSlot.appendChild(vc.element);
-      }
-      this._contributedAuxBarContainers.set(info.id, vc);
-      console.log(`[Workbench] Added auxiliary bar container "${info.id}" (${info.title})`);
-    }
-  }
-
-  /**
-   * Handle a tool's view container being removed (tool deactivation).
-   */
-  private _onToolContainerRemoved(containerId: string): void {
-    // Check if this container was redirected (no real container was created)
-    if (this._containerRedirects.has(containerId)) {
-      this._containerRedirects.delete(containerId);
-      return;
-    }
-
-    // Sidebar
-    const sidebarVc = this._contributedSidebarContainers.get(containerId);
-    if (sidebarVc) {
-      // If this was the active sidebar container, switch back to default
-      if (this._activeSidebarContainerId === containerId) {
-        this._switchSidebarContainer(undefined);
-      }
-      sidebarVc.dispose();
-      this._contributedSidebarContainers.delete(containerId);
-      this._removeContributedActivityBarIcon(containerId);
-      return;
-    }
-
-    // Panel
-    const panelVc = this._contributedPanelContainers.get(containerId);
-    if (panelVc) {
-      panelVc.dispose();
-      this._contributedPanelContainers.delete(containerId);
-      return;
-    }
-
-    // Auxiliary bar
-    const auxVc = this._contributedAuxBarContainers.get(containerId);
-    if (auxVc) {
-      auxVc.dispose();
-      this._contributedAuxBarContainers.delete(containerId);
-      return;
-    }
-  }
-
-  /**
-   * Handle a tool contributing a new view.
-   * The view is created from its registered descriptor and added to the appropriate container.
-   */
-  private _onToolViewAdded(info: IContributedView): void {
-    let containerId = info.containerId;
-
-    // If this view already exists in a built-in sidebar container (as a placeholder),
-    // skip adding it to the contributed container. The placeholder will be replaced
-    // when the tool registers its view provider (via onDidRegisterProvider).
-    for (const [_id, vc] of this._builtinSidebarContainers) {
-      if (vc.getView(info.id)) {
-        console.log(`[Workbench] View "${info.id}" already in built-in container — skipping contributed add`);
-        return;
-      }
-    }
-
-    // If the target container was redirected to a built-in container,
-    // add this view to the built-in container instead.
-    const redirectTarget = this._containerRedirects.get(containerId);
-    if (redirectTarget) {
-      const builtinVc = this._builtinSidebarContainers.get(redirectTarget);
-      if (builtinVc) {
-        console.log(`[Workbench] Redirecting view "${info.id}" to built-in container "${redirectTarget}"`);
-        this._addViewToContainer(info, builtinVc);
-        return;
-      }
-    }
-
-    // Check if the container is a contributed container
-    const sidebarVc = this._contributedSidebarContainers.get(containerId);
-    if (sidebarVc) {
-      this._addViewToContainer(info, sidebarVc);
-      return;
-    }
-
-    const panelVc = this._contributedPanelContainers.get(containerId);
-    if (panelVc) {
-      this._addViewToContainer(info, panelVc);
-      return;
-    }
-
-    const auxVc = this._contributedAuxBarContainers.get(containerId);
-    if (auxVc) {
-      this._addViewToContainer(info, auxVc);
-      return;
-    }
-
-    // Check built-in container IDs
-    if (containerId === 'sidebar' || containerId === 'workbench.parts.sidebar') {
-      this._addViewToContainer(info, this._sidebarContainer);
-      return;
-    }
-    if (containerId === 'panel' || containerId === 'workbench.parts.panel') {
-      this._addViewToContainer(info, this._panelContainer);
-      return;
-    }
-    if (containerId === 'auxiliaryBar' || containerId === 'workbench.parts.auxiliarybar') {
-      this._addViewToContainer(info, this._auxBarContainer);
-      return;
-    }
-
-    console.warn(`[Workbench] View "${info.id}" targets unknown container "${containerId}"`);
-  }
-
-  /**
-   * Create a view from its descriptor and add it to a ViewContainer.
-   */
-  private async _addViewToContainer(info: IContributedView, container: ViewContainer): Promise<void> {
-    try {
-      const view = await this._viewManager.createView(info.id);
-      container.addView(view);
-    } catch (err) {
-      console.error(`[Workbench] Failed to add view "${info.id}" to container:`, err);
-    }
-  }
-
-  /**
-   * Handle a tool's view being removed.
-   */
-  private _onToolViewRemoved(viewId: string): void {
-    // The ViewManager.unregister() already disposes the view.
-    // We also need to remove it from its container.
-    for (const vc of [...this._builtinSidebarContainers.values(), this._panelContainer, this._auxBarContainer]) {
-      if (vc?.getView(viewId)) {
-        vc.removeView(viewId);
-        return;
-      }
-    }
-    for (const vc of this._contributedSidebarContainers.values()) {
-      if (vc.getView(viewId)) { vc.removeView(viewId); return; }
-    }
-    for (const vc of this._contributedPanelContainers.values()) {
-      if (vc.getView(viewId)) { vc.removeView(viewId); return; }
-    }
-    for (const vc of this._contributedAuxBarContainers.values()) {
-      if (vc.getView(viewId)) { vc.removeView(viewId); return; }
-    }
-  }
-
-  // ════════════════════════════════════════════════════════════════════════
-  // Activity Bar — Dynamic Icons (M2 Capability 6, Task 6.4)
-  // ════════════════════════════════════════════════════════════════════════
-
-  /**
-   * Add an activity bar icon for a tool-contributed sidebar container.
-   * Uses the ActivityBarPart's addIcon API (M3 Capability 0.2).
-   */
-  private _addContributedActivityBarIcon(info: IContributedContainer): void {
-    // Map known icon identifiers to SVG codicons
-    const svgIcon = this._resolveCodiconSvg(info.icon);
-    this._activityBarPart.addIcon({
-      id: info.id,
-      icon: svgIcon ?? info.icon ?? info.title.charAt(0).toUpperCase(),
-      isSvg: svgIcon !== undefined,
-      label: info.title,
-      source: 'contributed',
-    });
-  }
-
-  /**
-   * Resolve an icon identifier to a codicon SVG string.
-   * Known icons get proper SVG; unknown return undefined (falls back to text).
-   */
-  private _resolveCodiconSvg(icon?: string): string | undefined {
-    // Map emoji or codicon names to SVG paths
-    const codiconMap: Record<string, string> = {
-      // Extensions / puzzle piece
-      '🧩': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.5 7H16V4.5C16 3.12 14.88 2 13.5 2C12.12 2 11 3.12 11 4.5V7H6.5C5.67 7 5 7.67 5 8.5V13H7.5C8.88 13 10 14.12 10 15.5C10 16.88 8.88 18 7.5 18H5V22.5C5 23.33 5.67 24 6.5 24H11V21.5C11 20.12 12.12 19 13.5 19C14.88 19 16 20.12 16 21.5V24H20.5C21.33 24 22 23.33 22 22.5V18H19.5C18.12 18 17 16.88 17 15.5C17 14.12 18.12 13 19.5 13H22V8.5C22 7.67 21.33 7 20.5 7Z" fill="currentColor"/></svg>',
-      'codicon-extensions': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.5 7H16V4.5C16 3.12 14.88 2 13.5 2C12.12 2 11 3.12 11 4.5V7H6.5C5.67 7 5 7.67 5 8.5V13H7.5C8.88 13 10 14.12 10 15.5C10 16.88 8.88 18 7.5 18H5V22.5C5 23.33 5.67 24 6.5 24H11V21.5C11 20.12 12.12 19 13.5 19C14.88 19 16 20.12 16 21.5V24H20.5C21.33 24 22 23.33 22 22.5V18H19.5C18.12 18 17 16.88 17 15.5C17 14.12 18.12 13 19.5 13H22V8.5C22 7.67 21.33 7 20.5 7Z" fill="currentColor"/></svg>',
-      // Settings gear
-      '⚙️': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.85 8.75L18.01 8.07L19 6.54L17.46 5L15.93 5.99L15.25 4.15H13.25L12.57 5.99L11.04 5L9.5 6.54L10.49 8.07L8.65 8.75V10.75L10.49 11.43L9.5 12.96L11.04 14.5L12.57 13.51L13.25 15.35H15.25L15.93 13.51L17.46 14.5L19 12.96L18.01 11.43L19.85 10.75V8.75ZM14.25 12.5C13.01 12.5 12 11.49 12 10.25C12 9.01 13.01 8 14.25 8C15.49 8 16.5 9.01 16.5 10.25C16.5 11.49 15.49 12.5 14.25 12.5Z" fill="currentColor"/></svg>',
-      // Canvas – pen-on-page / edit-document icon
-      '📓': '<svg width="24" height="24" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L2 13.59 2.41 14l4.12-1.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.5 1.5-3.01 1.5zm3.52-2.02l-1.5-1.5L12 2.5l1.5 1.5-7.57 7.57z" fill="currentColor"/></svg>',
-    };
-    return icon ? codiconMap[icon] : undefined;
-  }
-
-  /**
-   * Remove an activity bar icon for a deactivated tool container.
-   */
-  private _removeContributedActivityBarIcon(containerId: string): void {
-    this._activityBarPart.removeIcon(containerId);
-  }
-
   /**
    * Programmatically switch to a specific sidebar view and ensure sidebar is visible.
    * Used by commands like `workbench.view.search` (Ctrl+Shift+F).
-   *
-   * VS Code reference: ViewsService.openView()
    */
   showSidebarView(viewId: string): void {
-    // Ensure sidebar is visible
-    if (!this._sidebar.visible) {
-      this.toggleSidebar();
-    }
-    // Switch to the requested container (builtin containers use viewId as key)
-    if (this._builtinSidebarContainers.has(viewId) || this._contributedSidebarContainers.has(viewId)) {
-      this._switchSidebarContainer(viewId);
-    }
-  }
-
-  /**
-   * Switch the active sidebar container.
-   *
-   * @param containerId - ID of a contributed container, or `undefined` for the built-in default.
-   */
-  private _switchSidebarContainer(containerId: string | undefined): void {
-    if (this._activeSidebarContainerId === containerId) return;
-
-    // Hide current active container (check builtin → contributed → fallback)
-    if (this._activeSidebarContainerId) {
-      const current =
-        this._builtinSidebarContainers.get(this._activeSidebarContainerId) ??
-        this._contributedSidebarContainers.get(this._activeSidebarContainerId);
-      current?.setVisible(false);
-    } else {
-      this._sidebarContainer.setVisible(false);
-    }
-
-    // Show new container
-    this._activeSidebarContainerId = containerId;
-    // Update activeViewContainer context key (Capability 2 deferred item)
-    this._workbenchContext?.setActiveViewContainer(containerId ?? 'view.explorer');
-    if (containerId) {
-      const next =
-        this._builtinSidebarContainers.get(containerId) ??
-        this._contributedSidebarContainers.get(containerId);
-      if (next) {
-        next.setVisible(true);
-        this._layoutViewContainers();
-      }
-    } else {
-      this._sidebarContainer.setVisible(true);
-      this._layoutViewContainers();
-    }
-
-    // Update activity bar highlight via ActivityBarPart (M3 Capability 0.2)
-    if (containerId) {
-      this._activityBarPart.setActiveIcon(containerId);
-    } else {
-      // Switch back to built-in: re-activate the first built-in icon
-      this._activityBarPart.setActiveIcon('view.explorer');
-    }
-
-    // Update sidebar header label
-    if (this._sidebarHeaderLabel) {
-      if (containerId) {
-        // Check if it's a built-in container first
-        const builtinVc = this._builtinSidebarContainers.get(containerId);
-        if (builtinVc) {
-          // Use the first view's name as the header label
-          const views = builtinVc.getViews();
-          this._sidebarHeaderLabel.textContent = (views[0]?.name ?? 'SIDEBAR').toUpperCase();
-        } else {
-          // Contributed container — use container title
-          const info = this._viewContribution.getContainer(containerId);
-          this._sidebarHeaderLabel.textContent = (info?.title ?? 'SIDEBAR').toUpperCase();
-        }
-      } else {
-        // Restore to the active view name in the built-in container
-        const activeId = this._sidebarContainer.activeViewId;
-        const activeView = activeId ? this._sidebarContainer.getView(activeId) : undefined;
-        this._sidebarHeaderLabel.textContent = (activeView?.name ?? 'EXPLORER').toUpperCase();
-      }
-    }
+    this._contributionHandler.showSidebarView(viewId);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -3021,32 +2271,23 @@ export class Workbench extends Layout {
   // ════════════════════════════════════════════════════════════════════════
 
   protected override _layoutViewContainers(): void {
-    if (this._sidebar.visible && this._sidebar.width > 0) {
-      const sidebarW = this._sidebar.width;
-      const sidebarH = this._sidebar.height - PART_HEADER_HEIGHT_PX;
-      // Layout the active sidebar container (built-in or contributed)
-      if (this._activeSidebarContainerId) {
-        const active =
-          this._builtinSidebarContainers.get(this._activeSidebarContainerId) ??
-          this._contributedSidebarContainers.get(this._activeSidebarContainerId);
-        active?.layout(sidebarW, sidebarH, Orientation.Vertical);
-      } else {
-        this._sidebarContainer.layout(sidebarW, sidebarH, Orientation.Vertical);
-      }
-    }
+    // Layout the builtin panel + aux bar containers (always)
     if (this._panel.visible && this._panel.height > 0) {
       this._panelContainer.layout(this._panel.width, this._panel.height, Orientation.Horizontal);
-      // Layout any contributed panel containers
-      for (const vc of this._contributedPanelContainers.values()) {
-        vc.layout(this._panel.width, this._panel.height, Orientation.Horizontal);
-      }
     }
     if (this._auxBarVisible && this._auxiliaryBar.width > 0) {
       this._auxBarContainer?.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - PART_HEADER_HEIGHT_PX, Orientation.Vertical);
-      for (const vc of this._contributedAuxBarContainers.values()) {
-        vc.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - PART_HEADER_HEIGHT_PX, Orientation.Vertical);
-      }
     }
+
+    // Delegate sidebar switching + contributed container layout to handler
+    this._contributionHandler.layoutContainers(
+      { visible: this._sidebar.visible, width: this._sidebar.width, height: this._sidebar.height },
+      { visible: this._panel.visible, width: this._panel.width, height: this._panel.height },
+      { visible: this._auxBarVisible, width: this._auxiliaryBar.width, height: this._auxiliaryBar.height },
+      PART_HEADER_HEIGHT_PX,
+      { horizontal: Orientation.Horizontal, vertical: Orientation.Vertical },
+      this._sidebarContainer,
+    );
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -3061,8 +2302,8 @@ export class Workbench extends Layout {
     dnd.registerTarget(this._panel.id, this._panel.element);
     dnd.registerTarget(this._auxiliaryBar.id, this._auxiliaryBar.element);
 
-    for (const vc of this._builtinSidebarContainers.values()) {
-      this._makeTabsDraggable(dnd, vc, this._sidebar.id);
+    for (const vc of this._contributionHandler.builtinSidebarContainers.values()) {
+      this._makeTabsDraggable(dnd, vc as ViewContainer, this._sidebar.id);
     }
     this._makeTabsDraggable(dnd, this._panelContainer, this._panel.id);
     this._makeTabsDraggable(dnd, this._auxBarContainer, this._auxiliaryBar.id);
@@ -3091,7 +2332,7 @@ export class Workbench extends Layout {
 
     const observer = new MutationObserver(() => wireExisting());
     observer.observe(tabBar, { childList: true });
-    this._tabObservers.push(observer);
+    this._contributionHandler.tabObservers.push(observer);
     wireExisting();
   }
 
@@ -3111,46 +2352,21 @@ export class Workbench extends Layout {
    * while keeping the structural layout (grids, parts elements) intact.
    */
   private _teardownWorkspaceContent(): void {
-    // 0. Disconnect tab MutationObservers
-    for (const obs of this._tabObservers) obs.disconnect();
-    this._tabObservers = [];
-
-    // 0b. Clear view contribution event listeners (H7)
-    this._viewContribListeners.clear();
-
-    // 0c. Clear view contribution processor's internal maps so stale refs don't persist (M6)
-    if (this._viewContribution) {
-      for (const toolId of this._viewContribution.getContributedToolIds()) {
-        this._viewContribution.removeContributions(toolId);
-      }
-    }
+    // 0. Tear down contribution handler state (tab observers, view contrib listeners,
+    //    builtin + contributed containers, container redirects)
+    this._contributionHandler.teardown();
 
     // 1. Dispose DnD controller
     this._dndController?.dispose();
 
-    // 2. Dispose view containers (which dispose their child views)
-    for (const vc of this._builtinSidebarContainers.values()) vc.dispose();
-    this._builtinSidebarContainers.clear();
+    // 2. Dispose generic view containers (builtin sidebar containers were disposed by handler)
     this._panelContainer?.dispose();
     this._auxBarContainer?.dispose();
 
-    // 2b. Dispose contributed containers (Cap 6)
-    for (const vc of this._contributedSidebarContainers.values()) vc.dispose();
-    this._contributedSidebarContainers.clear();
-    for (const vc of this._contributedPanelContainers.values()) vc.dispose();
-    this._contributedPanelContainers.clear();
-    for (const vc of this._contributedAuxBarContainers.values()) vc.dispose();
-    this._contributedAuxBarContainers.clear();
-    this._activeSidebarContainerId = undefined;
-    this._sidebarHeaderLabel = undefined;
-
     // 3. Clear view container mount points in parts
-    if (this._sidebarViewsSlot) this._sidebarViewsSlot.innerHTML = '';
-
-    // 3b. Clear sidebar header (label + actions) to prevent accumulation
-    if (this._sidebarHeaderSlot) this._sidebarHeaderSlot.innerHTML = '';
-
-    if (this._panelViewsSlot) this._panelViewsSlot.innerHTML = '';
+    if (this._contributionHandler.sidebarViewsSlot) this._contributionHandler.sidebarViewsSlot.innerHTML = '';
+    if (this._contributionHandler.sidebarHeaderSlot) this._contributionHandler.sidebarHeaderSlot.innerHTML = '';
+    if (this._contributionHandler.panelViewsSlot) this._contributionHandler.panelViewsSlot.innerHTML = '';
 
     const auxBarPart = this._auxiliaryBar as unknown as AuxiliaryBarPart;
     const auxViewSlot = auxBarPart.viewContainerSlot;
@@ -3167,9 +2383,6 @@ export class Workbench extends Layout {
     const bottomSection = this._activityBarPart.contentElement.querySelector('.activity-bar-bottom');
     const gearBtn = bottomSection?.querySelector('.activity-bar-manage-gear');
     gearBtn?.remove();
-
-    // 4c. Clear container redirects from previous workspace
-    this._containerRedirects.clear();
 
     // 5. Dispose the view manager (disposes all remaining view instances)
     this._viewManager?.dispose();
@@ -3210,6 +2423,11 @@ export class Workbench extends Layout {
     this._panelContainer = this._setupPanelViews();
     this._auxBarContainer = this._setupAuxBarViews();
 
+    // Wire new containers + view manager into contribution handler
+    this._contributionHandler.setViewManager(this._viewManager);
+    this._contributionHandler.setGenericContainers(this._sidebarContainer, this._panelContainer, this._auxBarContainer);
+    this._contributionHandler.panelViewsSlot = this._panel.element.querySelector('.panel-views') as HTMLElement;
+
     // 2b. Manage gear icon
     this._menuBuilder.addManageGearIcon();
 
@@ -3221,10 +2439,9 @@ export class Workbench extends Layout {
 
     // 5. Re-wire view contribution events (Cap 6)
     if (this._viewContribution) {
-      // Update the ViewContribution's ViewManager reference to the new one
-      // and re-register all existing view descriptors into the new ViewManager
       this._viewContribution.updateViewManager(this._viewManager);
-      this._wireViewContributionEvents();
+      this._contributionHandler.setViewContribution(this._viewContribution);
+      this._contributionHandler.wireViewContributionEvents();
 
       // Replay view contributions for all already-registered tools so
       // contributed containers and views are re-created in the new DOM.
