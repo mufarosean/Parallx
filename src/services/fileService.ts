@@ -154,7 +154,8 @@ export class FileService extends Disposable implements IFileService {
   private _changeListenerDispose: (() => void) | null = null;
 
   // ── Cache ──
-  private readonly _contentCache = new LRUCache<string, FileContent>(20);
+  private static readonly LRU_MAX_ENTRIES = 20;
+  private readonly _contentCache = new LRUCache<string, FileContent>(FileService.LRU_MAX_ENTRIES);
   /** Per-URI generation counter to prevent TOCTOU stale-cache races. */
   private readonly _cacheGeneration = new Map<string, number>();
   private _boundaryChecker: ((uri: URI, operation: string) => void) | undefined;

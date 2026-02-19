@@ -20,6 +20,7 @@ import { registerWorkbenchServices, registerConfigurationServices } from './work
 // Layout base class (VS Code: Layout → Workbench extends Layout)
 import {
   Layout,
+  PART_HEADER_HEIGHT_PX,
 } from './layout.js';
 
 // Parts
@@ -267,6 +268,11 @@ export class Workbench extends Layout {
   private _activeSidebarContainerId: string | undefined;
   /** Header label element for the sidebar. */
   private _sidebarHeaderLabel: HTMLElement | undefined;
+
+  // ── Cached DOM mount-point elements (queried once, reused everywhere) ──
+  private _sidebarViewsSlot: HTMLElement | undefined;
+  private _sidebarHeaderSlot: HTMLElement | undefined;
+  private _panelViewsSlot: HTMLElement | undefined;
 
   /** MutationObservers for tab drag wiring (disconnected on teardown). */
   private _tabObservers: MutationObserver[] = [];
@@ -573,7 +579,7 @@ export class Workbench extends Layout {
     const watchFolder = async (folderUri: string) => {
       if (this._folderWatchers.has(folderUri)) return;
       try {
-        const uri = (await import('../platform/uri.js')).URI.parse(folderUri);
+        const uri = URI.parse(folderUri);
         const disposable = await fileService.watch(uri);
         this._folderWatchers.set(folderUri, disposable);
         console.log('[Workbench] Started file watcher for:', folderUri);
@@ -1340,7 +1346,9 @@ export class Workbench extends Layout {
       { id: 'view.search', icon: codiconSearch, label: 'Search', isSvg: true },
     ];
 
-    const sidebarContent = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
+    // Cache sidebar views slot for reuse throughout lifecycle
+    this._sidebarViewsSlot = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
+    const sidebarContent = this._sidebarViewsSlot;
 
     for (const v of views) {
       const vc = new ViewContainer(`sidebar.${v.id}`);
@@ -1424,7 +1432,9 @@ export class Workbench extends Layout {
 
     // Sidebar header label + toolbar
     // VS Code pattern: compositePart.createTitleArea() → title label (left) + actions toolbar (right)
-    const headerSlot = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
+    // Cache sidebar header slot for reuse throughout lifecycle
+    this._sidebarHeaderSlot = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
+    const headerSlot = this._sidebarHeaderSlot;
     if (headerSlot) {
       const headerLabel = $('span');
       headerLabel.classList.add('sidebar-header-label');
@@ -1629,7 +1639,9 @@ export class Workbench extends Layout {
     container.addView(terminalView);
     container.addView(outputView);
 
-    const panelContent = this._panel.element.querySelector('.panel-views') as HTMLElement;
+    // Cache panel views slot for reuse throughout lifecycle
+    this._panelViewsSlot = this._panel.element.querySelector('.panel-views') as HTMLElement;
+    const panelContent = this._panelViewsSlot;
     if (panelContent) {
       panelContent.appendChild(container.element);
     }
@@ -1786,6 +1798,7 @@ export class Workbench extends Layout {
       _layoutViewContainers: () => this._layoutViewContainers(),
       isPartVisible: (partId: string) => this.isPartVisible(partId),
       setPartHidden: (hidden: boolean, partId: string) => this.setPartHidden(hidden, partId),
+      onDidChangePartVisibility: this.onDidChangePartVisibility,
     });
     this._register(layoutService);
     this._services.registerInstance(ILayoutService, layoutService);
@@ -2701,7 +2714,7 @@ export class Workbench extends Layout {
       vc.setVisible(false);
 
       // Mount into sidebar's view slot (hidden until its icon is clicked)
-      const sidebarContent = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
+      const sidebarContent = this._sidebarViewsSlot;
       if (sidebarContent) {
         sidebarContent.appendChild(vc.element);
       }
@@ -2714,7 +2727,7 @@ export class Workbench extends Layout {
     } else if (info.location === 'panel') {
       vc.setVisible(false);
 
-      const panelContent = this._panel.element.querySelector('.panel-views') as HTMLElement;
+      const panelContent = this._panelViewsSlot;
       if (panelContent) {
         panelContent.appendChild(vc.element);
       }
@@ -3009,9 +3022,8 @@ export class Workbench extends Layout {
 
   protected override _layoutViewContainers(): void {
     if (this._sidebar.visible && this._sidebar.width > 0) {
-      const headerH = 35;
       const sidebarW = this._sidebar.width;
-      const sidebarH = this._sidebar.height - headerH;
+      const sidebarH = this._sidebar.height - PART_HEADER_HEIGHT_PX;
       // Layout the active sidebar container (built-in or contributed)
       if (this._activeSidebarContainerId) {
         const active =
@@ -3030,10 +3042,9 @@ export class Workbench extends Layout {
       }
     }
     if (this._auxBarVisible && this._auxiliaryBar.width > 0) {
-      const auxHeaderH = 35;
-      this._auxBarContainer?.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - auxHeaderH, Orientation.Vertical);
+      this._auxBarContainer?.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - PART_HEADER_HEIGHT_PX, Orientation.Vertical);
       for (const vc of this._contributedAuxBarContainers.values()) {
-        vc.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - auxHeaderH, Orientation.Vertical);
+        vc.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - PART_HEADER_HEIGHT_PX, Orientation.Vertical);
       }
     }
   }
@@ -3134,15 +3145,12 @@ export class Workbench extends Layout {
     this._sidebarHeaderLabel = undefined;
 
     // 3. Clear view container mount points in parts
-    const sidebarViews = this._sidebar.element.querySelector('.sidebar-views') as HTMLElement;
-    if (sidebarViews) sidebarViews.innerHTML = '';
+    if (this._sidebarViewsSlot) this._sidebarViewsSlot.innerHTML = '';
 
     // 3b. Clear sidebar header (label + actions) to prevent accumulation
-    const sidebarHeader = this._sidebar.element.querySelector('.sidebar-header') as HTMLElement;
-    if (sidebarHeader) sidebarHeader.innerHTML = '';
+    if (this._sidebarHeaderSlot) this._sidebarHeaderSlot.innerHTML = '';
 
-    const panelViews = this._panel.element.querySelector('.panel-views') as HTMLElement;
-    if (panelViews) panelViews.innerHTML = '';
+    if (this._panelViewsSlot) this._panelViewsSlot.innerHTML = '';
 
     const auxBarPart = this._auxiliaryBar as unknown as AuxiliaryBarPart;
     const auxViewSlot = auxBarPart.viewContainerSlot;
@@ -3268,6 +3276,7 @@ export class Workbench extends Layout {
     overlay.classList.remove('visible');
     overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
     // Safety fallback
-    setTimeout(() => { if (overlay.parentElement) overlay.remove(); }, 300);
+    const TRANSITION_FALLBACK_MS = 300;
+    setTimeout(() => { if (overlay.parentElement) overlay.remove(); }, TRANSITION_FALLBACK_MS);
   }
 }

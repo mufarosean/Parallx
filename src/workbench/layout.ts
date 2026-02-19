@@ -32,6 +32,7 @@ import { $ } from '../ui/dom.js';
 export const TITLE_HEIGHT = 30;
 export const STATUS_HEIGHT = 22;
 export const ACTIVITY_BAR_WIDTH = 48;
+export const PART_HEADER_HEIGHT_PX = 35;
 export const DEFAULT_SIDEBAR_WIDTH = 202;
 export const DEFAULT_PANEL_HEIGHT = 200;
 export const DEFAULT_AUX_BAR_WIDTH = 250;

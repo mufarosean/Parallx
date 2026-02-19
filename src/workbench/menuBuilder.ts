@@ -187,7 +187,8 @@ export class MenuBuilder extends Disposable {
       }
       // Guard: if the menu was *just* dismissed (by the outside-click mousedown
       // hitting this same button), skip re-opening.
-      if (Date.now() - this._manageMenuDismissedAt < 300) {
+      const MENU_DISMISS_GUARD_MS = 300;
+      if (Date.now() - this._manageMenuDismissedAt < MENU_DISMISS_GUARD_MS) {
         return;
       }
       this._showManageMenu(gearBtn);

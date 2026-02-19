@@ -1139,13 +1139,13 @@ Add an `npm run build:prod` script in `package.json`.
 - [x] 3.7 EditorPart microtask editor check — `editorPart.ts`: added `group.model.isEmpty` guard inside microtask callback to prevent race with new editor opening
 - [x] 3.8 Add unit tests for core systems — 4 new test files (62 tests): `grid.test.ts` (19), `fileService.test.ts` (10), `commandContribution.test.ts` (16), `keybindingService.test.ts` (17). Fixed pre-existing `canvasSaveState.test.ts` (Retrying vs Failed). Total: 143/143 passing
 
-**Tier 4 — Polish**
-- [ ] 4.1 Extract magic numbers to constants
-- [ ] 4.2 Remove redundant dynamic URI import
-- [ ] 4.3 Deduplicate container lookup chains
-- [ ] 4.4 Move EXT_TO_LANGUAGE map
-- [ ] 4.5 Eliminate dual layout events
-- [ ] 4.6 Add production build mode
+**Tier 4 — Polish** ✅ COMPLETE
+- [x] 4.1 Extract magic numbers to named constants — `layout.ts`: added `PART_HEADER_HEIGHT_PX = 35`. `workbench.ts`: uses constant for sidebar/auxbar header height, `TRANSITION_FALLBACK_MS` for overlay. `menuBuilder.ts`: `MENU_DISMISS_GUARD_MS`. `fileService.ts`: `LRU_MAX_ENTRIES`. `commandContribution.ts`: `PROXY_TIMEOUT_MS`. (`keybindingService.ts` already had `CHORD_TIMEOUT_MS`)
+- [x] 4.2 Remove redundant dynamic URI import — `workbench.ts`: replaced `(await import('../platform/uri.js')).URI.parse()` with static `URI.parse()` (already imported at top)
+- [x] 4.3 Deduplicate container lookup chains — `workbench.ts`: cached `.sidebar-views`, `.sidebar-header`, `.panel-views` DOM elements as `_sidebarViewsSlot`, `_sidebarHeaderSlot`, `_panelViewsSlot` fields. Queried once during setup, reused in 6 subsequent call sites
+- [x] 4.4 Move EXT_TO_LANGUAGE map — created `src/services/languageDetection.ts` with `getLanguageForFileName()` and `getAllKnownLanguages()`. Removed 40-line map + method from `statusBarController.ts`, replaced with import
+- [x] 4.5 Eliminate dual layout event emission — `layoutService.ts`: added `onDidChangePartVisibility` to `LayoutHost` interface, subscribes to host event in `setHost()` and relays it. Removed manual `fire()` from `setPartHidden()`. `workbench.ts`: exposed `onDidChangePartVisibility` on host adapter
+- [x] 4.6 Add production build mode — `scripts/build.mjs`: `--production` flag enables `minify: true` + `sourcemap: 'external'`. `package.json`: added `build:prod` script. JS 3.2MB→1.6MB (50% reduction), CSS 183KB→152KB
 
 ---
 

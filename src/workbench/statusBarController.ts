@@ -13,6 +13,7 @@ import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ICommandService, IEditorService, INotificationService } from '../services/serviceTypes.js';
 import { StatusBarPart, StatusBarAlignment, StatusBarEntryAccessor } from '../parts/statusBarPart.js';
+import { getLanguageForFileName } from '../services/languageDetection.js';
 import { EditorPart } from '../parts/editorPart.js';
 import { TextEditorPane } from '../built-in/editor/textEditorPane.js';
 import { ContextMenu } from '../ui/contextMenu.js';
@@ -169,45 +170,6 @@ export class StatusBarController extends Disposable {
     this._setupNotificationBadge(sb);
   }
 
-  // ── Extension → Language mapping ───────────────────────────────────────
-
-  private static readonly EXT_TO_LANGUAGE: Record<string, string> = {
-    '.ts': 'TypeScript', '.tsx': 'TypeScript React',
-    '.js': 'JavaScript', '.jsx': 'JavaScript React',
-    '.json': 'JSON', '.jsonc': 'JSON with Comments',
-    '.md': 'Markdown', '.markdown': 'Markdown',
-    '.html': 'HTML', '.htm': 'HTML',
-    '.css': 'CSS', '.scss': 'SCSS', '.less': 'Less',
-    '.py': 'Python', '.rb': 'Ruby', '.rs': 'Rust',
-    '.go': 'Go', '.java': 'Java', '.c': 'C', '.cpp': 'C++', '.h': 'C',
-    '.cs': 'C#', '.swift': 'Swift', '.kt': 'Kotlin',
-    '.sh': 'Shell Script', '.bash': 'Shell Script', '.zsh': 'Shell Script',
-    '.ps1': 'PowerShell', '.bat': 'Batch',
-    '.xml': 'XML', '.svg': 'XML', '.yaml': 'YAML', '.yml': 'YAML',
-    '.toml': 'TOML', '.ini': 'INI', '.cfg': 'INI',
-    '.sql': 'SQL',
-    '.r': 'R', '.R': 'R',
-    '.lua': 'Lua', '.php': 'PHP', '.pl': 'Perl',
-    '.txt': 'Plain Text', '.log': 'Log',
-    '.dockerfile': 'Dockerfile',
-    '.gitignore': 'Ignore', '.env': 'Properties',
-  };
-
-  private _getLanguageFromFileName(name: string): string {
-    const lower = name.toLowerCase();
-    if (lower === 'dockerfile') return 'Dockerfile';
-    if (lower === 'makefile') return 'Makefile';
-    if (lower === '.gitignore') return 'Ignore';
-    if (lower === '.env') return 'Properties';
-
-    const dotIdx = name.lastIndexOf('.');
-    if (dotIdx >= 0) {
-      const ext = name.substring(dotIdx).toLowerCase();
-      return StatusBarController.EXT_TO_LANGUAGE[ext] ?? 'Plain Text';
-    }
-    return 'Plain Text';
-  }
-
   // ── Editor status tracking ─────────────────────────────────────────────
 
   private _wireEditorStatusBarTracking(): void {
@@ -226,7 +188,7 @@ export class StatusBarController extends Disposable {
         acc.language?.update({ text: '' });
         return;
       }
-      const lang = this._getLanguageFromFileName(editor.name ?? '');
+      const lang = getLanguageForFileName(editor.name ?? '');
       acc.language?.update({ text: lang, tooltip: `${lang} — Select Language Mode` });
     };
 

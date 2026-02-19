@@ -20,6 +20,8 @@ interface LayoutHost {
   isPartVisible(partId: string): boolean;
   /** Show or hide a part by its Part ID. */
   setPartHidden(hidden: boolean, partId: string): void;
+  /** Part visibility change event from the layout host (single source of truth). */
+  readonly onDidChangePartVisibility: Event<PartVisibilityChangeEvent>;
 }
 
 /**
@@ -42,9 +44,14 @@ export class LayoutService extends Disposable implements ILayoutService {
 
   /**
    * Bind the layout host (Workbench). Called once during Phase 3.
+   * Subscribes to the host's visibility event and relays it so
+   * external consumers have a single authoritative event source.
    */
   setHost(host: LayoutHost): void {
     this._host = host;
+    // Relay host events — this is the single source of truth for consumers.
+    // The host (Layout base class) fires on every sidebar/panel/auxbar/statusbar toggle.
+    this._register(host.onDidChangePartVisibility(e => this._onDidChangePartVisibility.fire(e)));
   }
 
   get container(): HTMLElement | undefined {
@@ -70,12 +77,13 @@ export class LayoutService extends Disposable implements ILayoutService {
   /**
    * Show or hide a workbench part.
    * VS Code reference: setPartHidden(hidden, part) → dispatches to setSideBarHidden etc.
+   *
+   * NOTE: The visibility event is NOT fired here — it is relayed from the
+   * host's event in setHost(). This eliminates dual-emission when consumers
+   * listen on both the Layout host and this service.
    */
   setPartHidden(hidden: boolean, partId: string): void {
     if (!this._host) return;
     this._host.setPartHidden(hidden, partId);
-    // The host fires part visibility change events, but we also emit here
-    // so external consumers (tools, contributions) can listen on the service.
-    this._onDidChangePartVisibility.fire({ partId, visible: !hidden });
   }
 }

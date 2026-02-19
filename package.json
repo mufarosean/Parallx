@@ -7,6 +7,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "build": "tsc --noEmit && node scripts/build.mjs",
+    "build:prod": "tsc --noEmit && node scripts/build.mjs --production",
     "build:renderer": "node scripts/build.mjs",
     "build:watch": "tsc --watch",
     "start": "node scripts/build.mjs && electron .",

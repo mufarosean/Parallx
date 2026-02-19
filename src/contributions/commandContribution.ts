@@ -39,6 +39,9 @@ interface QueuedInvocation {
  */
 export class CommandContributionProcessor extends Disposable implements IContributionProcessor {
 
+  /** Timeout (ms) before a queued proxy invocation is rejected. */
+  static readonly PROXY_TIMEOUT_MS = 10_000;
+
   /** Contributed command metadata, keyed by command ID. */
   private readonly _contributed = new Map<string, IContributedCommand>();
 
@@ -292,7 +295,7 @@ export class CommandContributionProcessor extends Disposable implements IContrib
         queue.push({ args, resolve, reject });
         this._pendingInvocations.set(commandId, queue);
 
-        // Timeout after 10s to prevent indefinite hanging
+        // Timeout after PROXY_TIMEOUT_MS to prevent indefinite hanging
         setTimeout(() => {
           const currentQueue = this._pendingInvocations.get(commandId);
           if (currentQueue) {
@@ -305,7 +308,7 @@ export class CommandContributionProcessor extends Disposable implements IContrib
               ));
             }
           }
-        }, 10_000);
+        }, CommandContributionProcessor.PROXY_TIMEOUT_MS);
       });
     };
   }
