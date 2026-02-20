@@ -319,6 +319,42 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   /**
+   * Encode a raw TipTap doc JSON via the content schema and immediately
+   * persist it for the given page, cancelling any pending debounced save.
+   *
+   * This is the single entry point for "encode-and-save" — consumers
+   * never import contentSchema directly.
+   */
+  async flushContentSave(pageId: string, docJson: any): Promise<void> {
+    // Cancel any stale pending/retry saves — this content supersedes them.
+    this._cancelPendingSave(pageId);
+    this._cancelRetry(pageId);
+
+    const encoded = encodeCanvasContentFromDoc(docJson);
+    const expectedRevision = this._knownRevisions.get(pageId);
+
+    this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'flush' });
+    try {
+      const page = await this.updatePage(pageId, {
+        content: encoded.storedContent,
+        contentSchemaVersion: encoded.schemaVersion,
+        expectedRevision,
+      });
+      this._knownRevisions.set(pageId, page.revision);
+      this._onDidSavePage.fire(pageId);
+      this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'flush' });
+    } catch (err) {
+      this._onDidChangeSaveState.fire({
+        pageId,
+        kind: SaveStateKind.Failed,
+        source: 'flush',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  }
+
+  /**
    * Append block JSON nodes to the end of a page document.
    * Used for copy-style drops where source content is unchanged.
    */

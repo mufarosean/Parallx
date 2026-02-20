@@ -224,12 +224,12 @@ describe('blockRegistry', () => {
       expect(new Set(labels)).toEqual(new Set(ORIGINAL_SLASH_LABELS));
     });
 
-    it('every item has label, icon, description, and action', () => {
+    it('every item has blockId, label, icon, and description', () => {
       for (const item of SLASH_MENU_ITEMS) {
+        expect(item.blockId).toBeTruthy();
         expect(item.label).toBeTruthy();
         expect(item.icon).toBeTruthy();
         expect(item.description).toBeTruthy();
-        expect(typeof item.action).toBe('function');
       }
     });
 

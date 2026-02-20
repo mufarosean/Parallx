@@ -8,9 +8,8 @@ import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
 import { svgIcon } from './canvasMenuRegistry.js';
 import type { SlashMenuItem } from './slashMenuItems.js';
-import type { SlashActionContext, ISlashPageCommands } from './slashMenuItems.js';
 import { buildSlashMenuItems } from './slashMenuItems.js';
-import type { ICanvasMenu } from './canvasMenuRegistry.js';
+import type { ICanvasMenu, InsertActionContext } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
 
@@ -20,9 +19,9 @@ export interface SlashMenuHost {
   readonly editor: Editor | null;
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
-  readonly dataService?: ISlashPageCommands;
+  readonly dataService?: InsertActionContext['dataService'];
   readonly pageId?: string;
-  readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
+  readonly openEditor?: InsertActionContext['openEditor'];
   requestSave(reason: string): void;
   /** Toggle the suppress-update flag to prevent re-entrant slash checks. */
   suppressUpdate: boolean;
@@ -233,13 +232,14 @@ export class SlashMenuController implements ICanvasMenu {
       const blockNode = editor.state.doc.nodeAt(blockPos);
       if (!blockNode) return;
 
-      const context: SlashActionContext = {
+      await this._registry.executeBlockInsert(item.blockId, editor, {
+        from: blockPos,
+        to: blockPos + blockNode.nodeSize,
+      }, {
         pageId: this._host.pageId,
         dataService: this._host.dataService,
         openEditor: this._host.openEditor,
-      };
-
-      await item.action(editor, { from: blockPos, to: blockPos + blockNode.nodeSize }, context);
+      });
     } finally {
       this._host.suppressUpdate = false;
     }

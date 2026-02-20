@@ -31,9 +31,15 @@ import { PageBlock } from '../extensions/pageBlockNode.js';
 import { TableOfContents } from '../extensions/tableOfContentsNode.js';
 import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
 // Types
-import type { AnyExtension } from '@tiptap/core';
+import type { AnyExtension, Editor } from '@tiptap/core';
+import { TextSelection } from '@tiptap/pm/state';
 import type { ICanvasDataService } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
+
+// Popup insertion helpers (block-owned insertion UI)
+import { showImageInsertPopup } from '../menus/imageInsertPopup.js';
+import { showMediaInsertPopup } from '../menus/mediaInsertPopup.js';
+import { showBookmarkInsertPopup } from '../menus/bookmarkInsertPopup.js';
 
 // ── EditorExtensionContext ──────────────────────────────────────────────────
 // Runtime dependencies passed to extension factories that need configuration.
@@ -54,6 +60,16 @@ export interface EditorExtensionContext {
   readonly pageId?: string;
   readonly openEditor?: OpenEditorFn;
   readonly showIconPicker?: (options: ShowIconPickerOptions) => void;
+}
+
+// ── InsertActionContext ─────────────────────────────────────────────────────
+// Runtime dependencies passed to insertAction callbacks at slash-menu
+// execution time.  The menu registry constructs this from the editor pane.
+
+export interface InsertActionContext {
+  readonly pageId?: string;
+  readonly dataService?: ICanvasDataService;
+  readonly openEditor?: OpenEditorFn;
 }
 
 // ── BlockDefinition Interface ───────────────────────────────────────────────
@@ -126,6 +142,24 @@ export interface BlockDefinition {
    * carries the factory — the rest leave it undefined.
    */
   readonly extension?: (context: EditorExtensionContext) => AnyExtension | AnyExtension[];
+
+  /**
+   * Custom insertion logic executed when the user picks this block from the
+   * slash menu (or any future insertion surface).
+   *
+   * When present, the menu registry calls this instead of the simple
+   * `insertContentAt(range, defaultContent)` fallback.  Blocks that need
+   * async operations (page creation), popup UI (image/video/audio/bookmark),
+   * or cursor-placement (callout, toggle) define an insertAction.
+   *
+   * The block registry is the single owner of block insertion semantics —
+   * menu files never contain orchestration logic.
+   */
+  readonly insertAction?: (
+    editor: Editor,
+    range: { from: number; to: number },
+    context: InsertActionContext,
+  ) => void | Promise<void>;
 }
 
 // ── Default capabilities (DRY helpers) ──────────────────────────────────────
@@ -157,6 +191,53 @@ const PAGE_CONTAINER_CAP: BlockCapabilities = {
   isPageContainer: true,
   suppressBubbleMenu: false,
 };
+
+// ── Insertion helpers (used by insertAction callbacks) ───────────────────────
+
+/** Insert content at a range and place cursor inside a target child node. */
+function _insertAndFocusChild(
+  editor: Editor,
+  range: { from: number; to: number },
+  content: Record<string, any>,
+  targetNodeName: string,
+  cursorOffset: number = 1,
+): void {
+  editor.chain().insertContentAt(range, content).run();
+  const { doc } = editor.state;
+  doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
+    if (node.type.name === targetNodeName) {
+      editor.chain().setTextSelection(pos + cursorOffset).focus().run();
+      return false;
+    }
+    return true;
+  });
+}
+
+/** Replace a block with a columnList containing N columns. */
+function _replaceBlockWithColumns(editor: Editor, range: { from: number; to: number }, columnCount: number): void {
+  const { schema } = editor.state;
+  const columnType = schema.nodes.column;
+  const columnListType = schema.nodes.columnList;
+  const paragraphType = schema.nodes.paragraph;
+
+  if (!columnType || !columnListType || !paragraphType || columnCount < 2) {
+    return;
+  }
+
+  const columns: any[] = [];
+  for (let i = 0; i < columnCount; i++) {
+    const paragraph = paragraphType.createAndFill();
+    if (!paragraph) return;
+    columns.push(columnType.create({ width: null }, [paragraph]));
+  }
+
+  const columnList = columnListType.create(null, columns);
+  const tr = editor.state.tr.replaceWith(range.from, range.to, columnList);
+  const selectionPos = Math.min(range.from + 3, tr.doc.content.size);
+  tr.setSelection(TextSelection.near(tr.doc.resolve(selectionPos), 1));
+  editor.view.dispatch(tr);
+  editor.commands.focus();
+}
 
 // ── Block Definitions ───────────────────────────────────────────────────────
 
@@ -329,7 +410,8 @@ const definitions: BlockDefinition[] = [
     capabilities: CUSTOM_DRAG,
     slashMenu: { description: 'Upload or embed an image', order: 30, category: 'media' },
     turnInto: undefined,
-    defaultContent: undefined, // Uses custom popup action
+    defaultContent: undefined,
+    insertAction: (editor, range) => showImageInsertPopup(editor, range),
     extension: () => Image.configure({ inline: false, allowBase64: true }),
   },
   {
@@ -349,6 +431,15 @@ const definitions: BlockDefinition[] = [
         { type: 'detailsContent', content: [{ type: 'paragraph' }] },
       ],
     },
+    insertAction: (editor, range) => {
+      _insertAndFocusChild(editor, range, {
+        type: 'details',
+        content: [
+          { type: 'detailsSummary' },
+          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
+        ],
+      }, 'detailsSummary', 1);
+    },
     extension: () => Details.configure({ persist: true, HTMLAttributes: { class: 'canvas-details' } }),
   },
   {
@@ -361,7 +452,22 @@ const definitions: BlockDefinition[] = [
     capabilities: { ...STD_LEAF, allowInColumn: true },
     slashMenu: { description: 'Insert a table', order: 24, category: 'rich' },
     turnInto: undefined,
-    defaultContent: undefined, // Complex insert action
+    defaultContent: undefined,
+    insertAction: (editor, range) => {
+      const headerCells = Array.from({ length: 3 }, () => ({
+        type: 'tableHeader', content: [{ type: 'paragraph' }],
+      }));
+      const bodyRow = () => ({
+        type: 'tableRow',
+        content: Array.from({ length: 3 }, () => ({
+          type: 'tableCell', content: [{ type: 'paragraph' }],
+        })),
+      });
+      editor.chain().insertContentAt(range, {
+        type: 'table',
+        content: [{ type: 'tableRow', content: headerCells }, bodyRow(), bodyRow()],
+      }).focus().run();
+    },
     extension: () => TableKit.configure({
       table: { resizable: true, HTMLAttributes: { class: 'canvas-table' } },
     }),
@@ -402,6 +508,13 @@ const definitions: BlockDefinition[] = [
       attrs: { emoji: 'lightbulb' },
       content: [{ type: 'paragraph' }],
     },
+    insertAction: (editor, range) => {
+      _insertAndFocusChild(editor, range, {
+        type: 'callout',
+        attrs: { emoji: 'lightbulb' },
+        content: [{ type: 'paragraph' }],
+      }, 'callout', 2);
+    },
     extension: (ctx) => Callout.configure({
       showIconPicker: ctx.showIconPicker,
     }),
@@ -438,6 +551,16 @@ const definitions: BlockDefinition[] = [
         { type: 'detailsContent', content: [{ type: 'paragraph' }] },
       ],
     },
+    insertAction: (editor, range) => {
+      _insertAndFocusChild(editor, range, {
+        type: 'toggleHeading',
+        attrs: { level: 1 },
+        content: [
+          { type: 'toggleHeadingText' },
+          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
+        ],
+      }, 'toggleHeadingText', 1);
+    },
     extension: () => [ToggleHeading, ToggleHeadingText],
   },
   {
@@ -459,6 +582,16 @@ const definitions: BlockDefinition[] = [
         { type: 'detailsContent', content: [{ type: 'paragraph' }] },
       ],
     },
+    insertAction: (editor, range) => {
+      _insertAndFocusChild(editor, range, {
+        type: 'toggleHeading',
+        attrs: { level: 2 },
+        content: [
+          { type: 'toggleHeadingText' },
+          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
+        ],
+      }, 'toggleHeadingText', 1);
+    },
   },
   {
     id: 'toggleHeading-3',
@@ -479,6 +612,16 @@ const definitions: BlockDefinition[] = [
         { type: 'detailsContent', content: [{ type: 'paragraph' }] },
       ],
     },
+    insertAction: (editor, range) => {
+      _insertAndFocusChild(editor, range, {
+        type: 'toggleHeading',
+        attrs: { level: 3 },
+        content: [
+          { type: 'toggleHeadingText' },
+          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
+        ],
+      }, 'toggleHeadingText', 1);
+    },
   },
   {
     id: 'columnList-2',
@@ -491,7 +634,8 @@ const definitions: BlockDefinition[] = [
     capabilities: { ...STD_LEAF, allowInColumn: false },
     slashMenu: { description: 'Split into 2 columns', order: 60, category: 'layout' },
     turnInto: { order: 8, },
-    defaultContent: undefined, // Uses custom column insertion logic
+    defaultContent: undefined,
+    insertAction: (editor, range) => _replaceBlockWithColumns(editor, range, 2),
     extension: () => [Column, ColumnList],
   },
   {
@@ -506,6 +650,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Split into 3 columns', order: 61, category: 'layout' },
     turnInto: { order: 9, },
     defaultContent: undefined,
+    insertAction: (editor, range) => _replaceBlockWithColumns(editor, range, 3),
   },
   {
     id: 'columnList-4',
@@ -519,6 +664,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Split into 4 columns', order: 62, category: 'layout' },
     turnInto: { order: 10, },
     defaultContent: undefined,
+    insertAction: (editor, range) => _replaceBlockWithColumns(editor, range, 4),
   },
   {
     id: 'bookmark',
@@ -530,7 +676,8 @@ const definitions: BlockDefinition[] = [
     capabilities: CUSTOM_DRAG,
     slashMenu: { description: 'Link preview card', order: 70, category: 'advanced' },
     turnInto: undefined,
-    defaultContent: undefined, // Uses custom popup action
+    defaultContent: undefined,
+    insertAction: (editor, range) => showBookmarkInsertPopup(editor, range),
     extension: () => Bookmark,
   },
   {
@@ -544,7 +691,75 @@ const definitions: BlockDefinition[] = [
     capabilities: CUSTOM_DRAG,
     slashMenu: { description: 'Create and open a nested sub-page', order: 0, category: 'basic' },
     turnInto: undefined,
-    defaultContent: undefined, // Uses custom async page creation action
+    defaultContent: undefined,
+    insertAction: async (editor, range, context) => {
+      if (!context?.dataService || !context.pageId) return;
+
+      let child: { id: string; title: string; icon: string | null } | null = null;
+      try {
+        child = await context.dataService.createPage(context.pageId, 'Untitled');
+        const childPage = child;
+        const pageBlockAttrs = {
+          pageId: childPage.id,
+          title: childPage.title,
+          icon: childPage.icon,
+          parentPageId: context.pageId,
+        };
+
+        let inserted = editor
+          .chain()
+          .insertContentAt(range, {
+            type: 'pageBlock',
+            attrs: pageBlockAttrs,
+          })
+          .focus()
+          .run();
+
+        if (!inserted) {
+          const pageBlockType = editor.state.schema.nodes.pageBlock;
+          if (!pageBlockType) {
+            throw new Error('pageBlock schema node is unavailable');
+          }
+          const node = pageBlockType.create(pageBlockAttrs);
+          const tr = editor.state.tr.replaceWith(range.from, range.to, node);
+          editor.view.dispatch(tr);
+          editor.commands.focus();
+          inserted = true;
+        }
+
+        if (!inserted) {
+          throw new Error('Failed to insert pageBlock');
+        }
+
+        const docJson = editor.getJSON();
+        const hasInsertedPageBlock = Array.isArray(docJson?.content)
+          && docJson.content.some((n: any) => n?.type === 'pageBlock' && n?.attrs?.pageId === childPage.id);
+        if (!hasInsertedPageBlock) {
+          throw new Error('Inserted pageBlock not found in parent doc');
+        }
+
+        // Flush parent doc content through data service (encodes internally)
+        await context.dataService.flushContentSave(context.pageId, docJson);
+
+        if (context.openEditor) {
+          await context.openEditor({
+            typeId: 'canvas',
+            title: childPage.title,
+            icon: childPage.icon ?? undefined,
+            instanceId: childPage.id,
+          });
+        }
+      } catch (error) {
+        if (child) {
+          try {
+            await context.dataService.deletePage(child.id);
+          } catch {
+            // Best-effort rollback only.
+          }
+        }
+        throw error;
+      }
+    },
     extension: (ctx) => PageBlock.configure({
       dataService: ctx.dataService,
       currentPageId: ctx.pageId,
@@ -575,7 +790,8 @@ const definitions: BlockDefinition[] = [
     capabilities: CUSTOM_DRAG,
     slashMenu: { description: 'Embed a video', order: 31, category: 'media' },
     turnInto: undefined,
-    defaultContent: undefined, // Uses custom popup action
+    defaultContent: undefined,
+    insertAction: (editor, range) => showMediaInsertPopup(editor, range, 'video'),
     extension: () => Video,
   },
   {
@@ -589,6 +805,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Embed audio', order: 32, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined,
+    insertAction: (editor, range) => showMediaInsertPopup(editor, range, 'audio'),
     extension: () => Audio,
   },
   {
@@ -602,6 +819,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Attach a file', order: 33, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined,
+    insertAction: (editor, range) => showMediaInsertPopup(editor, range, 'fileAttachment'),
     extension: () => FileAttachment,
   },
 

@@ -27,7 +27,12 @@ import {
   getBlockLabel as _getBlockLabel,
   getBlockByName as _getBlockByName,
   BLOCK_REGISTRY as _BLOCK_REGISTRY,
+  type InsertActionContext as _InsertActionContext,
 } from '../config/blockRegistry.js';
+
+// Re-export InsertActionContext so menu children (slashMenu.ts) get it
+// through their parent registry rather than importing blockRegistry directly.
+export type InsertActionContext = _InsertActionContext;
 
 // ── Icon Access (registry-to-registry gate) ─────────────────────────────────
 // MenuRegistry talks to IconRegistry so that individual menu files never
@@ -341,6 +346,34 @@ export class CanvasMenuRegistry {
   shouldSuppressBubbleMenu(typeName: string): boolean {
     const def = _getBlockByName(typeName);
     return def?.capabilities.suppressBubbleMenu ?? false;
+  }
+
+  // ── Block insert delegation ─────────────────────────────────────────────
+
+  /**
+   * Execute the insertion action for a block.
+   *
+   * Looks up the block definition by ID and delegates to its `insertAction`
+   * callback when present.  Blocks without `insertAction` fall back to the
+   * simple `insertContentAt(range, defaultContent).focus().run()` path.
+   *
+   * This is the single entry point for block insertion from any menu surface.
+   * Menu children never contain orchestration logic — they call this method.
+   */
+  async executeBlockInsert(
+    blockId: string,
+    editor: Editor,
+    range: { from: number; to: number },
+    context: _InsertActionContext,
+  ): Promise<void> {
+    const def = _BLOCK_REGISTRY.get(blockId);
+    if (!def) return;
+
+    if (def.insertAction) {
+      await def.insertAction(editor, range, context);
+    } else if (def.defaultContent) {
+      editor.chain().insertContentAt(range, def.defaultContent).focus().run();
+    }
   }
 
   // ── Dispose ─────────────────────────────────────────────────────────────

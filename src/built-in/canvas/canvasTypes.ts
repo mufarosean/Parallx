@@ -147,6 +147,15 @@ export interface ICanvasDataService {
   moveBlocksBetweenPagesAtomic(params: CrossPageMoveParams): Promise<{ sourcePage: IPage; targetPage: IPage }>;
   decodePageContentForEditor(page: IPage): Promise<{ doc: any; recovered: boolean }>;
 
+  /**
+   * Encode a raw TipTap doc JSON via the content schema and immediately
+   * persist it for the given page, cancelling any pending debounced save.
+   *
+   * This is the single entry point for "encode‑and‑save" — consumers
+   * never import contentSchema directly.
+   */
+  flushContentSave(pageId: string, docJson: any): Promise<void>;
+
   // ── Tree / hierarchy ──
 
   movePage(pageId: string, newParentId: string | null, afterSiblingId?: string): Promise<void>;
