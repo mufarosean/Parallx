@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Canvas Tool — Graph View</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:#1a1a2e;font-family:-apple-system,"Segoe UI",sans-serif;color:#dcddde}
+canvas{display:block;width:100%;height:100%;cursor:default}
+canvas.grabbing{cursor:grabbing}
+
+/* Floating panels */
+.top-bar{position:fixed;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;z-index:10;background:rgba(30,30,50,.85);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:6px 14px}
+.top-bar h1{font-size:14px;font-weight:600;letter-spacing:.3px;color:#c4b5fd}
+.top-bar .sep{width:1px;height:16px;background:rgba(255,255,255,.12)}
+.top-bar .stat{font-size:11px;color:#9ca3af}
+.top-bar .stat b{color:#c4b5fd}
+
+.search-box{position:fixed;top:12px;left:12px;z-index:10}
+.search-box input{width:200px;background:rgba(30,30,50,.85);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:7px 10px 7px 30px;color:#dcddde;font:12px -apple-system,"Segoe UI",sans-serif;outline:none;transition:border-color .2s}
+.search-box input:focus{border-color:rgba(167,139,250,.5)}
+.search-box input::placeholder{color:#6b7280}
+.search-box svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none}
+
+.controls{position:fixed;bottom:12px;left:12px;display:flex;gap:6px;z-index:10}
+.controls button{background:rgba(30,30,50,.85);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:6px 12px;color:#9ca3af;font:11px -apple-system,"Segoe UI",sans-serif;cursor:pointer;transition:all .2s}
+.controls button:hover{color:#e5e7eb;border-color:rgba(167,139,250,.4)}
+
+.legend-panel{position:fixed;bottom:12px;right:12px;background:rgba(30,30,50,.85);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:8px 12px;z-index:10;display:flex;flex-wrap:wrap;gap:8px 14px;max-width:420px}
+.legend-panel .item{display:flex;align-items:center;gap:5px;font-size:10px;color:#9ca3af;white-space:nowrap}
+.legend-panel .dot{width:8px;height:8px;border-radius:50%}
+
+/* Inspector */
+.inspector{position:fixed;top:52px;right:12px;width:300px;max-height:calc(100vh - 80px);background:rgba(22,22,40,.92);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden;z-index:10;display:none;flex-direction:column}
+.inspector.open{display:flex}
+.inspector .head{padding:12px 14px 10px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;align-items:flex-start}
+.inspector .head .title{font-size:14px;font-weight:600;color:#e5e7eb}
+.inspector .head .dir{font-size:10px;color:#8b5cf6;text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.inspector .head .close{background:none;border:none;color:#6b7280;cursor:pointer;font-size:16px;padding:0 2px}
+.inspector .head .close:hover{color:#dcddde}
+.inspector .body{padding:12px 14px;overflow-y:auto;flex:1}
+.inspector .desc{font-size:12px;color:#9ca3af;line-height:1.5;margin-bottom:12px}
+.inspector .section{margin-bottom:12px}
+.inspector .section:last-child{margin:0}
+.inspector .section h4{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.inspector .exports{font-family:"Cascadia Mono",Consolas,monospace;font-size:11px;color:#a78bfa;line-height:1.8}
+.inspector .dep-btn{display:block;width:100%;text-align:left;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:5px 8px;margin-bottom:4px;cursor:pointer;transition:all .15s;color:#dcddde;font:12px -apple-system,"Segoe UI",sans-serif}
+.inspector .dep-btn:hover{border-color:rgba(167,139,250,.4);background:rgba(167,139,250,.08)}
+.inspector .dep-btn .sub{font-size:10px;color:#6b7280;font-family:"Cascadia Mono",monospace;display:block;margin-top:1px}
+.inspector .ext{font-family:"Cascadia Mono",Consolas,monospace;font-size:10px;color:#6b7280;line-height:1.8}
+.inspector .empty{font-size:11px;color:#4b5563;font-style:italic}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="search-box">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+  <input id="search" placeholder="Filter files..." autocomplete="off" spellcheck="false">
+</div>
+
+<div class="top-bar">
+  <h1>Canvas Tool Graph</h1>
+  <div class="sep"></div>
+  <div class="stat"><b id="nodeCount">38</b> files</div>
+  <div class="sep"></div>
+  <div class="stat"><b id="edgeCount">0</b> links</div>
+</div>
+
+<div class="controls">
+  <button onclick="fitAll()">Fit All</button>
+  <button id="physBtn" onclick="togglePhysics()">Pause Physics</button>
+  <button onclick="releaseAll()">Unpin All</button>
+</div>
+
+<div class="legend-panel">
+  <div class="item"><div class="dot" style="background:#f9a825"></div>Entry</div>
+  <div class="item"><div class="dot" style="background:#7c9cbf"></div>Root</div>
+  <div class="item"><div class="dot" style="background:#4db6ac"></div>Config</div>
+  <div class="item"><div class="dot" style="background:#ef5350"></div>Extension</div>
+  <div class="item"><div class="dot" style="background:#ab47bc"></div>Plugin</div>
+  <div class="item"><div class="dot" style="background:#ffa726"></div>Menu</div>
+  <div class="item"><div class="dot" style="background:#ec407a"></div>Handle</div>
+  <div class="item"><div class="dot" style="background:#42a5f5"></div>Header</div>
+  <div class="item"><div class="dot" style="background:#66bb6a"></div>Mutation</div>
+  <div class="item"><div class="dot" style="background:#78909c"></div>Other</div>
+</div>
+
+<div class="inspector" id="inspector">
+  <div class="head">
+    <div><div class="title" id="insTitle"></div><div class="dir" id="insDir"></div></div>
+    <button class="close" onclick="closeInspector()">&times;</button>
+  </div>
+  <div class="body" id="insBody"></div>
+</div>
+
+<script>
+(()=>{
+/* ═══════════════════════════════════════════
+   DATA
+   ═══════════════════════════════════════════ */
+const FILES=[
+{id:'main',path:'main.ts',dir:'root',desc:'Entry point — migrations, data service, sidebar, editor provider, commands.',exports:['activate()','deactivate()','getDataService()','getApi()'],imports:['canvasDataService','canvasSidebar','canvasEditorProvider'],external:['platform/lifecycle','tools/toolModuleLoader']},
+{id:'canvasTypes',path:'canvasTypes.ts',dir:'root',desc:'Pure type definitions — IPage, IPageTreeNode, PageChangeKind, PageChangeEvent.',exports:['IPage','IPageTreeNode','PageChangeKind','PageChangeEvent'],imports:[],external:[]},
+{id:'contentSchema',path:'contentSchema.ts',dir:'root',desc:'Versioned JSON envelope — decode, encode, normalize, auto-repair page content.',exports:['CURRENT_CANVAS_CONTENT_SCHEMA_VERSION','decodeCanvasContent()','encodeCanvasContentFromDoc()','normalizeCanvasContentForStorage()'],imports:[],external:[]},
+{id:'canvasDataService',path:'canvasDataService.ts',dir:'root',desc:'Page CRUD over IPC — change events, debounced auto-save with retry, tree assembly.',exports:['SaveStateKind','CanvasDataService','rowToPage()'],imports:['canvasTypes','contentSchema'],external:['platform/lifecycle','platform/events']},
+{id:'canvasEditorProvider',path:'canvasEditorProvider.ts',dir:'root',desc:'Creates Tiptap editor per pane, wires all controllers (slash, bubble, handles, chrome).',exports:['OpenEditorFn','CanvasEditorProvider'],imports:['canvasDataService','editorExtensions','inlineMathEditor','bubbleMenu','slashMenu','blockHandles','blockSelection','pageChrome'],external:['platform/lifecycle','@tiptap/core','lowlight','ui/dom']},
+{id:'canvasSidebar',path:'canvasSidebar.ts',dir:'root',desc:'Page tree sidebar — expand/collapse, rename, drag reorder, favorites, trash.',exports:['CanvasSidebar'],imports:['canvasTypes','canvasDataService','canvasIcons'],external:['ui/dom','ui/inputBox','ui/contextMenu']},
+{id:'canvasIcons',path:'canvasIcons.ts',dir:'root',desc:'SVG icon system — 50+ monochrome icons for pages and UI controls.',exports:['ICON_IDS','PAGE_ICON_IDS','svgIcon()','createIconElement()','resolvePageIcon()'],imports:[],external:[]},
+{id:'markdownExport',path:'markdownExport.ts',dir:'root',desc:'Tiptap JSON to Markdown converter for all block types.',exports:['tiptapJsonToMarkdown()'],imports:[],external:[]},
+{id:'blockCapabilities',path:'config/blockCapabilities.ts',dir:'config',desc:'Single-source block node name registry — column types, content expressions.',exports:['COLUMN_BLOCK_NODE_TYPES','COLUMN_CONTENT_EXPRESSION','DRAG_HANDLE_CUSTOM_NODE_TYPES'],imports:[],external:[]},
+{id:'editorExtensions',path:'config/editorExtensions.ts',dir:'config',desc:'Factory assembling Tiptap extension array — StarterKit + all custom nodes + plugins.',exports:['createEditorExtensions()'],imports:['blockBackground','calloutNode','columnNodes','detailsEnterHandler','blockKeyboardShortcuts','structuralInvariantGuard','mathBlockNode','toggleHeadingNode','bookmarkNode','tableOfContentsNode','mediaNodes','pageBlockNode','canvasDataService','canvasEditorProvider','blockCapabilities'],external:['@tiptap/starter-kit','@tiptap/extension-*']},
+{id:'dragSession',path:'dnd/dragSession.ts',dir:'dnd',desc:'Global drag session state for cross-page block DnD.',exports:['CANVAS_BLOCK_DRAG_MIME','setActiveCanvasDragSession()','getActiveCanvasDragSession()','clearActiveCanvasDragSession()'],imports:[],external:[]},
+{id:'blockBackground',path:'extensions/blockBackground.ts',dir:'extensions',desc:'backgroundColor global attribute on block-level nodes.',exports:['BlockBackgroundColor'],imports:[],external:['@tiptap/core']},
+{id:'blockKeyboardShortcuts',path:'extensions/blockKeyboardShortcuts.ts',dir:'extensions',desc:'Global shortcuts — Esc triggers block selection.',exports:['BlockKeyboardShortcuts'],imports:[],external:['@tiptap/core']},
+{id:'bookmarkNode',path:'extensions/bookmarkNode.ts',dir:'extensions',desc:'URL bookmark preview card (atom block).',exports:['Bookmark'],imports:['canvasIcons'],external:['@tiptap/core']},
+{id:'calloutNode',path:'extensions/calloutNode.ts',dir:'extensions',desc:'Notion-style callout block with icon picker.',exports:['Callout'],imports:['canvasIcons'],external:['@tiptap/core','ui/iconPicker']},
+{id:'columnNodes',path:'extensions/columnNodes.ts',dir:'extensions',desc:'Column + ColumnList with keyboard shortcuts and plugin wiring.',exports:['Column','ColumnList'],imports:['columnResizePlugin','columnDropPlugin','columnAutoDissolve','blockCapabilities','blockMutations'],external:['@tiptap/core']},
+{id:'detailsEnterHandler',path:'extensions/detailsEnterHandler.ts',dir:'extensions',desc:'Enter on collapsed toggle inserts new details block below.',exports:['DetailsEnterHandler'],imports:[],external:['@tiptap/core']},
+{id:'mathBlockNode',path:'extensions/mathBlockNode.ts',dir:'extensions',desc:'Block-level equation — LaTeX input + KaTeX preview.',exports:['MathBlock'],imports:[],external:['@tiptap/core','katex']},
+{id:'mediaNodes',path:'extensions/mediaNodes.ts',dir:'extensions',desc:'Video (oEmbed), Audio, File Attachment leaf blocks.',exports:['Video','Audio','FileAttachment'],imports:['canvasIcons'],external:['@tiptap/core']},
+{id:'pageBlockNode',path:'extensions/pageBlockNode.ts',dir:'extensions',desc:'Embedded sub-page block — icon editing, drop-to-move.',exports:['PageBlock'],imports:['canvasIcons','canvasDataService','blockMutations','dragSession'],external:['@tiptap/core','ui/iconPicker','ui/dom']},
+{id:'structuralInvariantGuard',path:'extensions/structuralInvariantGuard.ts',dir:'extensions',desc:'Wraps structural invariant plugin at priority 1000.',exports:['StructuralInvariantGuard'],imports:['structuralInvariantPlugin'],external:['@tiptap/core']},
+{id:'tableOfContentsNode',path:'extensions/tableOfContentsNode.ts',dir:'extensions',desc:'Auto-generated TOC from headings.',exports:['TableOfContents'],imports:[],external:['@tiptap/core']},
+{id:'toggleHeadingNode',path:'extensions/toggleHeadingNode.ts',dir:'extensions',desc:'Collapsible heading H1-H3 with chevron.',exports:['ToggleHeading','ToggleHeadingText'],imports:[],external:['@tiptap/core']},
+{id:'blockHandles',path:'handles/blockHandles.ts',dir:'handles',desc:'Block handles — + button, drag handle, action menu (turn-into, color, dup, delete).',exports:['BlockHandlesController'],imports:['blockSelection','canvasIcons','dragSession','blockMutations'],external:['@tiptap/core','ui/dom']},
+{id:'blockSelection',path:'handles/blockSelection.ts',dir:'handles',desc:'Single/multi block selection — Shift+Click, Esc, highlight.',exports:['BlockSelectionController'],imports:[],external:['@tiptap/core']},
+{id:'pageChrome',path:'header/pageChrome.ts',dir:'header',desc:'Ribbon, header (icon+title), breadcrumbs, cover, settings, export.',exports:['PageChromeController'],imports:['canvasDataService','canvasTypes','canvasEditorProvider','markdownExport','canvasIcons'],external:['@tiptap/core','ui/dom','ui/iconPicker']},
+{id:'canvasStructuralInvariants',path:'invariants/canvasStructuralInvariants.ts',dir:'invariants',desc:'Schema-aware structural validation with diagnostic codes.',exports:['validateCanvasStructuralInvariants()','reportCanvasInvariantIssues()'],imports:[],external:['@tiptap/pm/model']},
+{id:'inlineMathEditor',path:'math/inlineMathEditor.ts',dir:'math',desc:'Floating LaTeX editor for inline equations.',exports:['InlineMathEditorController'],imports:[],external:['@tiptap/core','katex','ui/dom']},
+{id:'bookmarkInsertPopup',path:'menus/bookmarkInsertPopup.ts',dir:'menus',desc:'URL input popup for bookmark block creation.',exports:['showBookmarkInsertPopup()'],imports:[],external:['@tiptap/core','ui/dom']},
+{id:'bubbleMenu',path:'menus/bubbleMenu.ts',dir:'menus',desc:'Floating toolbar on selection — bold, italic, code, link, etc.',exports:['BubbleMenuController'],imports:['canvasIcons','inlineMathEditor'],external:['@tiptap/core','ui/dom']},
+{id:'imageInsertPopup',path:'menus/imageInsertPopup.ts',dir:'menus',desc:'Image insert — Upload + Embed link tabs.',exports:['showImageInsertPopup()'],imports:[],external:['@tiptap/core','ui/dom']},
+{id:'mediaInsertPopup',path:'menus/mediaInsertPopup.ts',dir:'menus',desc:'Video/audio/file insert — upload + embed.',exports:['showMediaInsertPopup()'],imports:[],external:['@tiptap/core','ui/dom']},
+{id:'slashMenu',path:'menus/slashMenu.ts',dir:'menus',desc:'Slash command menu — "/" trigger, filter, keyboard nav.',exports:['SlashMenuController'],imports:['canvasIcons','slashMenuItems','inlineMathEditor','canvasDataService'],external:['@tiptap/core','ui/dom']},
+{id:'slashMenuItems',path:'menus/slashMenuItems.ts',dir:'menus',desc:'20+ block type definitions with insert actions.',exports:['SLASH_MENU_ITEMS'],imports:['imageInsertPopup','mediaInsertPopup','bookmarkInsertPopup','canvasDataService','contentSchema'],external:['@tiptap/core','@tiptap/pm/state']},
+{id:'columnAutoDissolve',path:'plugins/columnAutoDissolve.ts',dir:'plugins',desc:'Dissolves columnList with 0-1 columns.',exports:['columnAutoDissolvePlugin()'],imports:[],external:['@tiptap/pm/state']},
+{id:'columnDropPlugin',path:'plugins/columnDropPlugin.ts',dir:'plugins',desc:'Full column DnD engine — 6 drop scenarios.',exports:['columnDropPlugin()'],imports:['blockMutations'],external:['@tiptap/pm/state','@tiptap/pm/view']},
+{id:'columnResizePlugin',path:'plugins/columnResizePlugin.ts',dir:'plugins',desc:'Pointer-based column resize with % widths.',exports:['columnResizePlugin()'],imports:[],external:['@tiptap/pm/state','@tiptap/pm/view']},
+{id:'structuralInvariantPlugin',path:'plugins/structuralInvariantPlugin.ts',dir:'plugins',desc:'Dev-time invariant checks after every transaction.',exports:['structuralInvariantPlugin()'],imports:['canvasStructuralInvariants'],external:['@tiptap/pm/state']},
+{id:'blockMutations',path:'mutations/blockMutations.ts',dir:'mutations',desc:'Centralized helpers — duplicate, move, turn-into, delete, color, column ops.',exports:['duplicateBlockAt()','moveBlockUpWithinPageFlow()','moveBlockDownWithinPageFlow()','turnBlockWithSharedStrategy()','deleteBlockAt()','applyTextColorToBlock()','applyBackgroundColorToBlock()'],imports:[],external:['@tiptap/core','@tiptap/pm/state']},
+];
+
+const DIR_COLORS={
+  root:'#7c9cbf',config:'#4db6ac',dnd:'#78909c',extensions:'#ef5350',
+  plugins:'#ab47bc',menus:'#ffa726',handles:'#ec407a',header:'#42a5f5',
+  invariants:'#78909c',math:'#78909c',mutations:'#66bb6a'
+};
+
+/* ═══════════════════════════════════════════
+   GRAPH STATE
+   ═══════════════════════════════════════════ */
+const byId=new Map();
+const nodes=FILES.map(f=>{
+  const n={...f,
+    x:0,y:0,vx:0,vy:0,pinned:false,
+    radius:8,
+    color:f.id==='main'?'#f9a825':(DIR_COLORS[f.dir]||'#78909c'),
+    match:true
+  };
+  byId.set(n.id,n);
+  return n;
+});
+
+const edges=[];
+for(const n of nodes){
+  for(const imp of n.imports){
+    if(byId.has(imp)) edges.push({source:n.id,target:imp});
+  }
+}
+document.getElementById('edgeCount').textContent=edges.length;
+
+// Size by importance
+const usedByCount=new Map();
+for(const e of edges) usedByCount.set(e.target,(usedByCount.get(e.target)||0)+1);
+for(const n of nodes){
+  const ub=usedByCount.get(n.id)||0;
+  const dep=n.imports.length;
+  if(n.id==='main') n.radius=24;
+  else if(n.id==='canvasEditorProvider') n.radius=20;
+  else if(n.id==='editorExtensions') n.radius=19;
+  else if(ub>=7) n.radius=18;
+  else if(ub>=4) n.radius=15;
+  else if(ub>=2||dep>=4) n.radius=13;
+  else if(dep>=2) n.radius=11;
+  else if(dep>=1||ub>=1) n.radius=9;
+  else n.radius=7;
+}
+
+/* ═══════════════════════════════════════════
+   INITIAL LAYOUT — clustered scatter
+   ═══════════════════════════════════════════ */
+const CX=900,CY=650;
+const CL={
+  root:{x:CX,y:CY,r:180},
+  config:{x:CX+380,y:CY-300,r:80},
+  extensions:{x:CX-400,y:CY+80,r:220},
+  plugins:{x:CX+420,y:CY+160,r:100},
+  menus:{x:CX+140,y:CY+350,r:140},
+  handles:{x:CX-100,y:CY-350,r:80},
+  header:{x:CX+400,y:CY-80,r:40},
+  dnd:{x:CX-400,y:CY-280,r:30},
+  invariants:{x:CX+260,y:CY+200,r:40},
+  math:{x:CX-240,y:CY-280,r:30},
+  mutations:{x:CX-200,y:CY+350,r:50},
+};
+for(const n of nodes){
+  const c=CL[n.dir]||CL.root;
+  const a=Math.random()*Math.PI*2, r=Math.random()*c.r*.65;
+  n.x=c.x+Math.cos(a)*r; n.y=c.y+Math.sin(a)*r;
+}
+
+/* ═══════════════════════════════════════════
+   PHYSICS
+   ═══════════════════════════════════════════ */
+let physicsOn=true;
+const REPEL=7000,ATTRACT=.035,REST=140,DAMP=.86,GRAV=.0008,CPULL=.004;
+
+function tick(){
+  if(!physicsOn) return;
+  for(let i=0;i<nodes.length;i++){
+    const a=nodes[i];
+    for(let j=i+1;j<nodes.length;j++){
+      const b=nodes[j];
+      let dx=a.x-b.x, dy=a.y-b.y, d2=dx*dx+dy*dy;
+      if(d2<1)d2=1; if(d2>600000) continue;
+      const dist=Math.sqrt(d2), f=REPEL/d2;
+      const fx=dx/dist*f, fy=dy/dist*f;
+      if(!a.pinned){a.vx+=fx;a.vy+=fy}
+      if(!b.pinned){b.vx-=fx;b.vy-=fy}
+    }
+  }
+  for(const e of edges){
+    const a=byId.get(e.source), b=byId.get(e.target);
+    if(!a||!b) continue;
+    const dx=b.x-a.x, dy=b.y-a.y, dist=Math.sqrt(dx*dx+dy*dy)||1;
+    const f=ATTRACT*(dist-REST);
+    if(!a.pinned){a.vx+=dx/dist*f;a.vy+=dy/dist*f}
+    if(!b.pinned){b.vx-=dx/dist*f;b.vy-=dy/dist*f}
+  }
+  // Cluster cohesion
+  const cls={};
+  for(const n of nodes){
+    if(!cls[n.dir]) cls[n.dir]={sx:0,sy:0,c:0};
+    cls[n.dir].sx+=n.x;cls[n.dir].sy+=n.y;cls[n.dir].c++;
+  }
+  for(const n of nodes){
+    if(n.pinned) continue;
+    const cl=cls[n.dir];
+    n.vx+=(cl.sx/cl.c-n.x)*CPULL;
+    n.vy+=(cl.sy/cl.c-n.y)*CPULL;
+    n.vx+=(CX-n.x)*GRAV; n.vy+=(CY-n.y)*GRAV;
+    n.vx*=DAMP; n.vy*=DAMP;
+    n.x+=n.vx; n.y+=n.vy;
+  }
+}
+for(let i=0;i<280;i++) tick();
+
+/* ═══════════════════════════════════════════
+   CANVAS
+   ═══════════════════════════════════════════ */
+const cvs=document.getElementById('c');
+const ctx=cvs.getContext('2d');
+let dpr=Math.max(1,devicePixelRatio||1);
+let view={x:0,y:0,s:1};
+let selected=null, hovered=null, drag=null;
+
+function resize(){
+  dpr=Math.max(1,devicePixelRatio||1);
+  cvs.width=Math.floor(cvs.clientWidth*dpr);
+  cvs.height=Math.floor(cvs.clientHeight*dpr);
+}
+function fitAll(){
+  const w=cvs.clientWidth, h=cvs.clientHeight;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const n of nodes){if(!n.match)continue;x0=Math.min(x0,n.x-40);y0=Math.min(y0,n.y-40);x1=Math.max(x1,n.x+40);y1=Math.max(y1,n.y+40)}
+  if(!isFinite(x0)){x0=-100;y0=-100;x1=100;y1=100}
+  const s=Math.min((w-80)/(x1-x0),(h-80)/(y1-y0),1.5);
+  view.s=s;view.x=w/2-(x0+x1)/2*s;view.y=h/2-(y0+y1)/2*s;
+}
+window.fitAll=()=>{fitAll();draw()};
+window.togglePhysics=()=>{physicsOn=!physicsOn;document.getElementById('physBtn').textContent=physicsOn?'Pause Physics':'Resume Physics'};
+window.releaseAll=()=>{for(const n of nodes)n.pinned=false};
+
+function s2w(sx,sy){return{x:(sx-view.x)/view.s,y:(sy-view.y)/view.s}}
+function rgba(hex,a){const c=hex.replace('#','');return `rgba(${parseInt(c.slice(0,2),16)},${parseInt(c.slice(2,4),16)},${parseInt(c.slice(4,6),16)},${a})`}
+
+function hitTest(sx,sy){
+  const p=s2w(sx,sy);
+  let best=null, bd=Infinity;
+  for(const n of nodes){
+    if(!n.match) continue;
+    const d=Math.hypot(n.x-p.x,n.y-p.y);
+    if(d<n.radius+8/Math.max(.3,view.s)&&d<bd){best=n;bd=d}
+  }
+  return best;
+}
+function getConn(id){
+  const s=new Set();
+  for(const e of edges){if(e.source===id)s.add(e.target);if(e.target===id)s.add(e.source)}
+  return s;
+}
+
+function draw(){
+  const w=cvs.clientWidth, h=cvs.clientHeight;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  ctx.save();
+  ctx.translate(view.x,view.y);
+  ctx.scale(view.s,view.s);
+
+  const conn=selected?getConn(selected.id):new Set();
+  const hasSel=!!selected;
+
+  // Cluster halos
+  const clm={};
+  for(const n of nodes){if(!n.match)continue;if(!clm[n.dir])clm[n.dir]=[];clm[n.dir].push(n)}
+  for(const [dir,ns] of Object.entries(clm)){
+    if(ns.length<2)continue;
+    let cx=0,cy=0;for(const n of ns){cx+=n.x;cy+=n.y}cx/=ns.length;cy/=ns.length;
+    let mr=0;for(const n of ns)mr=Math.max(mr,Math.hypot(n.x-cx,n.y-cy));
+    const col=DIR_COLORS[dir]||'#78909c';
+    ctx.beginPath();ctx.arc(cx,cy,mr+55,0,Math.PI*2);
+    ctx.fillStyle=rgba(col,.025);ctx.strokeStyle=rgba(col,.05);ctx.lineWidth=1;
+    ctx.fill();ctx.stroke();
+    if(view.s>.18){
+      ctx.font=`600 ${Math.round(11/Math.max(.4,view.s))}px -apple-system,"Segoe UI",sans-serif`;
+      ctx.fillStyle=rgba(col,.28);ctx.textAlign='center';
+      ctx.fillText(dir==='root'?'root':dir+'/',cx,cy-mr-22);
+    }
+  }
+
+  // Edges
+  for(const e of edges){
+    const a=byId.get(e.source),b=byId.get(e.target);
+    if(!a||!b||!a.match||!b.match)continue;
+    const hl=hasSel&&(e.source===selected.id||e.target===selected.id);
+    const dim=hasSel&&!hl;
+    if(dim&&view.s<.35)continue;
+    const dx=b.x-a.x,dy=b.y-a.y,dist=Math.hypot(dx,dy)||1;
+    const bend=Math.min(30,dist*.08);
+    const mx=(a.x+b.x)/2-dy/dist*bend, my=(a.y+b.y)/2+dx/dist*bend;
+    ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.quadraticCurveTo(mx,my,b.x,b.y);
+    if(hl){
+      ctx.strokeStyle=rgba(selected.color,.45);ctx.lineWidth=2.2;
+      ctx.shadowColor=rgba(selected.color,.2);ctx.shadowBlur=10;
+    } else {
+      ctx.strokeStyle=dim?'rgba(255,255,255,.015)':'rgba(255,255,255,.055)';ctx.lineWidth=1;ctx.shadowBlur=0;
+    }
+    ctx.stroke();ctx.shadowBlur=0;
+    // Arrow
+    if(hl||(!dim&&view.s>.3)){
+      const t=.8;
+      const px=a.x*(1-t)*(1-t)+mx*2*(1-t)*t+b.x*t*t;
+      const py=a.y*(1-t)*(1-t)+my*2*(1-t)*t+b.y*t*t;
+      const t2=t+.02;
+      const px2=a.x*(1-t2)*(1-t2)+mx*2*(1-t2)*t2+b.x*t2*t2;
+      const py2=a.y*(1-t2)*(1-t2)+my*2*(1-t2)*t2+b.y*t2*t2;
+      const ang=Math.atan2(py2-py,px2-px), sz=hl?6:3.5;
+      ctx.beginPath();
+      ctx.moveTo(px+Math.cos(ang)*sz,py+Math.sin(ang)*sz);
+      ctx.lineTo(px+Math.cos(ang+2.5)*sz*.6,py+Math.sin(ang+2.5)*sz*.6);
+      ctx.lineTo(px+Math.cos(ang-2.5)*sz*.6,py+Math.sin(ang-2.5)*sz*.6);
+      ctx.closePath();
+      ctx.fillStyle=hl?rgba(selected.color,.45):'rgba(255,255,255,.06)';ctx.fill();
+    }
+  }
+
+  // Nodes
+  for(const n of nodes){
+    if(!n.match) continue;
+    const isSel=selected&&n.id===selected.id;
+    const isHov=hovered&&n.id===hovered.id;
+    const isConn=hasSel&&conn.has(n.id);
+    const dim=hasSel&&!isSel&&!isConn;
+    const r=n.radius*(isSel?1.12:isHov?1.06:1);
+
+    // Glow
+    if(isSel||isConn){
+      const g=ctx.createRadialGradient(n.x,n.y,r*.5,n.x,n.y,r+10);
+      g.addColorStop(0,rgba(n.color,isSel?.2:.08));
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.beginPath();ctx.arc(n.x,n.y,r+10,0,Math.PI*2);
+      ctx.fillStyle=g;ctx.fill();
+    }
+
+    // Circle
+    ctx.beginPath();ctx.arc(n.x,n.y,r,0,Math.PI*2);
+    ctx.fillStyle=rgba(n.color,dim?.1:.8);ctx.fill();
+    ctx.lineWidth=isSel?2.5:isHov?1.8:1;
+    ctx.strokeStyle=isSel?'rgba(255,255,255,.85)':isHov?'rgba(255,255,255,.5)':rgba(n.color,dim?.08:.3);
+    ctx.stroke();
+
+    // Pin dot
+    if(n.pinned&&!dim){
+      ctx.beginPath();ctx.arc(n.x+r*.65,n.y-r*.65,2.5,0,Math.PI*2);
+      ctx.fillStyle='rgba(255,255,255,.5)';ctx.fill();
+    }
+
+    // Label
+    const show=view.s>.28||isSel||isHov||isConn;
+    if(show&&!dim){
+      const name=n.path.includes('/')?n.path.split('/').pop():n.path;
+      const fs=Math.max(7,Math.min(11,10/Math.max(.45,view.s)));
+      ctx.font=`${isSel?'600':'400'} ${fs}px "Cascadia Mono",Consolas,monospace`;
+      const tw=ctx.measureText(name).width;
+      const px=n.x, py=n.y-r-fs*.6-5;
+      const pw=tw+8, ph=fs+4;
+      ctx.beginPath();
+      const rr=3, bx=px-pw/2, by=py-ph/2;
+      ctx.moveTo(bx+rr,by);ctx.lineTo(bx+pw-rr,by);ctx.quadraticCurveTo(bx+pw,by,bx+pw,by+rr);
+      ctx.lineTo(bx+pw,by+ph-rr);ctx.quadraticCurveTo(bx+pw,by+ph,bx+pw-rr,by+ph);
+      ctx.lineTo(bx+rr,by+ph);ctx.quadraticCurveTo(bx,by+ph,bx,by+ph-rr);
+      ctx.lineTo(bx,by+rr);ctx.quadraticCurveTo(bx,by,bx+rr,by);
+      ctx.fillStyle=isSel?'rgba(30,30,55,.92)':'rgba(26,26,46,.78)';ctx.fill();
+      ctx.fillStyle=isSel?'#fff':isConn?'#ddd':'#bbb';
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(name,px,py);
+    }
+  }
+  ctx.restore();
+}
+
+/* ═══════════════════════════════════════════
+   INSPECTOR
+   ═══════════════════════════════════════════ */
+const insPanel=document.getElementById('inspector');
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+function openInspector(n){
+  selected=n;
+  insPanel.classList.add('open');
+  document.getElementById('insTitle').textContent=n.path.includes('/')?n.path.split('/').pop():n.path;
+  document.getElementById('insDir').textContent='src/built-in/canvas/'+n.path;
+  const deps=n.imports.filter(id=>byId.has(id));
+  const usedBy=nodes.filter(o=>o.imports.includes(n.id));
+  const ext=n.external||[];
+  let html=`<div class="desc">${esc(n.desc)}</div>`;
+  html+=`<div class="section"><h4>Exports (${n.exports.length})</h4><div class="exports">${n.exports.map(e=>`<div>${esc(e)}</div>`).join('')}</div></div>`;
+  html+=`<div class="section"><h4>Depends On (${deps.length})</h4>`;
+  if(deps.length) html+=deps.map(id=>{const t=byId.get(id);return `<button class="dep-btn" data-id="${id}"><span style="color:${t.color}">\u25CF</span> ${esc(t.path.includes('/')?t.path.split('/').pop():t.path)}<span class="sub">${esc(t.path)}</span></button>`}).join('');
+  else html+='<div class="empty">Leaf — no canvas dependencies</div>';
+  html+=`</div>`;
+  html+=`<div class="section"><h4>Used By (${usedBy.length})</h4>`;
+  if(usedBy.length) html+=usedBy.map(o=>`<button class="dep-btn" data-id="${o.id}"><span style="color:${o.color}">\u25CF</span> ${esc(o.path.includes('/')?o.path.split('/').pop():o.path)}<span class="sub">${esc(o.path)}</span></button>`).join('');
+  else html+='<div class="empty">Not imported by any canvas file</div>';
+  html+=`</div>`;
+  if(ext.length) html+=`<div class="section"><h4>External (${ext.length})</h4><div class="ext">${ext.map(e=>`<div>${esc(e)}</div>`).join('')}</div></div>`;
+  document.getElementById('insBody').innerHTML=html;
+  for(const btn of document.querySelectorAll('.dep-btn')){
+    btn.onclick=()=>{
+      const t=byId.get(btn.dataset.id);
+      if(t){view.x=cvs.clientWidth/2-t.x*view.s;view.y=cvs.clientHeight/2-t.y*view.s;openInspector(t);draw()}
+    };
+  }
+  draw();
+}
+function closeInspector(){selected=null;insPanel.classList.remove('open');draw()}
+window.closeInspector=closeInspector;
+
+/* ═══════════════════════════════════════════
+   INPUT
+   ═══════════════════════════════════════════ */
+function pt(ev){const r=cvs.getBoundingClientRect();return{x:ev.clientX-r.left,y:ev.clientY-r.top}}
+
+cvs.addEventListener('pointerdown',ev=>{
+  const p=pt(ev), node=hitTest(p.x,p.y);
+  if(node){
+    drag={type:'node',node,sx:p.x,sy:p.y,moved:false};
+    node.pinned=true;
+  } else {
+    drag={type:'pan',sx:p.x,sy:p.y,vx:view.x,vy:view.y,moved:false};
+  }
+  cvs.setPointerCapture(ev.pointerId);
+});
+cvs.addEventListener('pointermove',ev=>{
+  const p=pt(ev);
+  if(drag){
+    const dx=p.x-drag.sx,dy=p.y-drag.sy;
+    if(Math.abs(dx)>2||Math.abs(dy)>2) drag.moved=true;
+    if(drag.type==='pan'){view.x=drag.vx+dx;view.y=drag.vy+dy;cvs.classList.add('grabbing')}
+    else {const w=s2w(p.x,p.y);drag.node.x=w.x;drag.node.y=w.y;drag.node.vx=0;drag.node.vy=0}
+    return; // draw happens in loop
+  }
+  const node=hitTest(p.x,p.y);
+  if(hovered!==node){hovered=node;cvs.style.cursor=node?'pointer':'default'}
+});
+cvs.addEventListener('pointerup',ev=>{
+  cvs.classList.remove('grabbing');
+  if(drag&&!drag.moved){
+    if(drag.type==='node'){openInspector(drag.node);drag.node.pinned=false}
+    else closeInspector();
+  }
+  drag=null;
+});
+cvs.addEventListener('wheel',ev=>{
+  ev.preventDefault();
+  const p=pt(ev),w=s2w(p.x,p.y);
+  view.s=Math.max(.06,Math.min(4,view.s*Math.exp(-ev.deltaY*.0015)));
+  view.x=p.x-w.x*view.s;view.y=p.y-w.y*view.s;
+},{passive:false});
+cvs.addEventListener('dblclick',ev=>{
+  const p=pt(ev),n=hitTest(p.x,p.y);
+  if(n){view.x=cvs.clientWidth/2-n.x*view.s;view.y=cvs.clientHeight/2-n.y*view.s;openInspector(n)}
+});
+
+// Search
+document.getElementById('search').addEventListener('input',function(){
+  const q=this.value.trim().toLowerCase();
+  for(const n of nodes) n.match=!q||n.id.toLowerCase().includes(q)||n.path.toLowerCase().includes(q)||n.dir.toLowerCase().includes(q)||n.desc.toLowerCase().includes(q);
+  draw();
+});
+
+/* ═══════════════════════════════════════════
+   LOOP
+   ═══════════════════════════════════════════ */
+function loop(){tick();draw();requestAnimationFrame(loop)}
+window.addEventListener('resize',resize);
+resize();fitAll();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
