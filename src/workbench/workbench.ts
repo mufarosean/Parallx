@@ -74,6 +74,7 @@ import { registerFacadeServices } from './workbenchFacadeFactory.js';
 import type { FacadeFactoryHost } from './workbenchFacadeFactory.js';
 import { WindowService } from '../services/windowService.js';
 import { ContextMenu } from '../ui/contextMenu.js';
+import { EditableContextMenu } from '../contributions/editableContextMenu.js';
 
 // Views
 import { ViewManager } from '../views/viewManager.js';
@@ -667,6 +668,9 @@ export class Workbench extends Layout {
     lc.onStartup(LifecyclePhase.Ready, async () => {
       this._container.classList.add('parallx-workbench');
       this._container.classList.add('parallx-ready');
+
+      // Universal right-click context menu for all editable text surfaces
+      this._register(new EditableContextMenu());
 
       // Initialize tool activator and fire startup finished
       await this._initializeToolLifecycle();

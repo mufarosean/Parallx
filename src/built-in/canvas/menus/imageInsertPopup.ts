@@ -8,7 +8,7 @@
 // slash menu and cover picker.
 
 import type { Editor } from '@tiptap/core';
-import { $ } from '../../../ui/dom.js';
+import { $, layoutPopup } from '../../../ui/dom.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -24,15 +24,9 @@ export function showImageInsertPopup(
   // Position at cursor
   const coords = editor.view.coordsAtPos(editor.state.selection.from);
 
-  // Container = the scroll wrapper that holds the slash menu too
-  const container = editor.view.dom.closest('.canvas-editor-wrapper')
-    ?? editor.view.dom.parentElement!;
-
   // ── Build popup DOM ─────────────────────────────────────────────────────
 
   const popup = $('div.canvas-image-insert-popup');
-  popup.style.left = `${coords.left}px`;
-  popup.style.top  = `${coords.bottom + 4}px`;
 
   // Tabs
   const tabBar  = $('div.canvas-image-insert-tabs');
@@ -202,5 +196,6 @@ export function showImageInsertPopup(
   // ── Mount ─────────────────────────────────────────────────────────────
 
   activate('upload');
-  container.appendChild(popup);
+  document.body.appendChild(popup);
+  layoutPopup(popup, { x: coords.left, y: coords.bottom }, { gap: 4 });
 }

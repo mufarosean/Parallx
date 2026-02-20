@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/core';
-import { $ } from '../../../ui/dom.js';
+import { $, layoutPopup } from '../../../ui/dom.js';
 
 type MediaKind = 'video' | 'audio' | 'fileAttachment';
 
@@ -33,12 +33,8 @@ export function showMediaInsertPopup(
   kind: MediaKind,
 ): void {
   const coords = editor.view.coordsAtPos(editor.state.selection.from);
-  const container = editor.view.dom.closest('.canvas-editor-wrapper')
-    ?? editor.view.dom.parentElement!;
 
   const popup = $('div.canvas-media-insert-popup');
-  popup.style.left = `${coords.left}px`;
-  popup.style.top = `${coords.bottom + 4}px`;
 
   const tabBar = $('div.canvas-media-insert-tabs');
   const tabUpload = $('button.canvas-media-insert-tab');
@@ -326,5 +322,6 @@ export function showMediaInsertPopup(
   });
 
   activate('upload');
-  container.appendChild(popup);
+  document.body.appendChild(popup);
+  layoutPopup(popup, { x: coords.left, y: coords.bottom }, { gap: 4 });
 }

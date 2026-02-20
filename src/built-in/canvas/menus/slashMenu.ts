@@ -5,7 +5,7 @@
 // keyboard navigation, and executing the selected command.
 
 import type { Editor } from '@tiptap/core';
-import { $ } from '../../../ui/dom.js';
+import { $, layoutPopup } from '../../../ui/dom.js';
 import { svgIcon } from '../canvasIcons.js';
 import type { SlashMenuItem } from './slashMenuItems.js';
 import type { SlashActionContext } from './slashMenuItems.js';
@@ -48,7 +48,7 @@ export class SlashMenuController {
   create(): void {
     this._menu = $('div.canvas-slash-menu');
     this._menu.style.display = 'none';
-    this._host.container.appendChild(this._menu);
+    document.body.appendChild(this._menu);
   }
 
   /** Called on every editor update — check if the user typed '/'. */
@@ -110,8 +110,7 @@ export class SlashMenuController {
     // Position below cursor
     const coords = editor.view.coordsAtPos(editor.state.selection.from);
     this._menu.style.display = 'block';
-    this._menu.style.left = `${coords.left}px`;
-    this._menu.style.top = `${coords.bottom + 4}px`;
+    layoutPopup(this._menu, { x: coords.left, y: coords.bottom }, { gap: 4 });
 
     // Keyboard handler for menu
     if (!this._menu.dataset.listening) {

@@ -11,6 +11,7 @@
 
 import { Disposable, toDisposable, IDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
+import { layoutPopup } from './dom.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -46,8 +47,14 @@ export interface IContextMenuAnchor {
 export interface IContextMenuOptions {
   /** Items to show. */
   readonly items: readonly IContextMenuItem[];
-  /** Where to position the menu. */
-  readonly anchor: IContextMenuAnchor;
+  /** Where to position the menu — a point `{x, y}` or a `DOMRect`. */
+  readonly anchor: IContextMenuAnchor | DOMRect;
+  /**
+   * Preferred placement relative to a DOMRect anchor.
+   * Ignored for point anchors. Default: `'below'`.
+   * Passed through to `layoutPopup`.
+   */
+  readonly anchorPosition?: 'below' | 'above' | 'right' | 'left';
   /** Whether to auto-select the first item. Default false. */
   readonly autoSelectFirst?: boolean;
   /** Additional CSS class(es) for the root element. */
@@ -113,15 +120,14 @@ export class ContextMenu extends Disposable {
     // Render items
     this._renderItems(_options.items);
 
-    // Position (computed layout — allowed inline)
-    this._el.style.left = `${_options.anchor.x}px`;
-    this._el.style.top = `${_options.anchor.y}px`;
-
-    // Mount
+    // Mount (must be in DOM before layoutPopup can measure)
     document.body.appendChild(this._el);
 
-    // Adjust position if overflowing viewport
-    this._clampToViewport();
+    // Position via universal viewport-aware utility
+    layoutPopup(this._el, _options.anchor, {
+      position: _options.anchorPosition,
+      gap: 2,
+    });
 
     // Auto-select first if requested
     if (_options.autoSelectFirst && this._itemEls.length > 0) {
@@ -285,11 +291,12 @@ export class ContextMenu extends Disposable {
       this._activeSubmenu = null;
     }
 
-    // Position to the right of the parent row
+    // Position to the right of the parent row (layoutPopup handles flipping)
     const rowRect = row.getBoundingClientRect();
     const sub = ContextMenu.show({
       items: item.submenu,
-      anchor: { x: rowRect.right - 2, y: rowRect.top },
+      anchor: rowRect,
+      anchorPosition: 'right',
       className: 'context-menu--submenu',
     });
 
@@ -400,18 +407,4 @@ export class ContextMenu extends Disposable {
     });
   }
 
-  // ── Viewport clamping ──────────────────────────────────────────────────
-
-  private _clampToViewport(): void {
-    const rect = this._el.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-
-    if (rect.right > vw) {
-      this._el.style.left = `${Math.max(0, vw - rect.width)}px`;
-    }
-    if (rect.bottom > vh) {
-      this._el.style.top = `${Math.max(0, vh - rect.height)}px`;
-    }
-  }
 }

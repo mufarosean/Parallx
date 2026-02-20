@@ -8,6 +8,7 @@
 
 import { Disposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
+import { layoutPopup } from './dom.js';
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -208,18 +209,8 @@ export class IconPicker extends Disposable {
   // ── Positioning ────────────────────────────────────────────────────────
 
   private _positionNearAnchor(): void {
-    const rect = this._options.anchor.getBoundingClientRect();
-    const pickerRect = this._el.getBoundingClientRect();
-
-    let left = rect.left;
-    let top = rect.bottom + 4;
-
-    // Clamp to viewport
-    left = Math.min(left, window.innerWidth - pickerRect.width - 8);
-    top = Math.min(top, window.innerHeight - pickerRect.height - 8);
-
-    this._el.style.left = `${Math.max(8, left)}px`;
-    this._el.style.top = `${Math.max(8, top)}px`;
+    const anchorRect = this._options.anchor.getBoundingClientRect();
+    layoutPopup(this._el, anchorRect, { position: 'below', gap: 4 });
   }
 
   // ── Dismiss listeners ──────────────────────────────────────────────────

@@ -9,7 +9,7 @@ import type { IEditorInput } from '../../../editor/editorInput.js';
 import type { CanvasDataService } from '../canvasDataService.js';
 import type { IPage } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
-import { $ } from '../../../ui/dom.js';
+import { $, layoutPopup } from '../../../ui/dom.js';
 import { IconPicker } from '../../../ui/iconPicker.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, PAGE_ICON_IDS } from '../canvasIcons.js';
@@ -779,7 +779,7 @@ export class PageChromeController {
       });
     });
 
-    this._host.container.appendChild(this._coverPicker);
+    document.body.appendChild(this._coverPicker);
 
     // Position: fixed, horizontally centered in editor area
     const wrapperRect = (this._host.editorContainer ?? this._host.container).getBoundingClientRect();
@@ -796,12 +796,7 @@ export class PageChromeController {
       top = wrapperRect.top + 60;
     }
 
-    const pickerHeight = 280;
-    top = Math.min(top, window.innerHeight - pickerHeight - 8);
-    top = Math.max(top, 8);
-
-    this._coverPicker.style.top = `${top}px`;
-    this._coverPicker.style.left = `${Math.max(8, left)}px`;
+    layoutPopup(this._coverPicker, { x: left, y: top });
 
     setTimeout(() => {
       document.addEventListener('mousedown', this._handlePopupOutsideClick);
@@ -982,13 +977,13 @@ export class PageChromeController {
       this._pageMenuDropdown.appendChild(btn);
     }
 
-    this._host.container.appendChild(this._pageMenuDropdown);
+    document.body.appendChild(this._pageMenuDropdown);
 
-    // Position below menu button
+    // Position below menu button (right-aligned)
     if (this._pageMenuBtn) {
       const rect = this._pageMenuBtn.getBoundingClientRect();
-      this._pageMenuDropdown.style.top = `${rect.bottom + 4}px`;
-      this._pageMenuDropdown.style.right = `${window.innerWidth - rect.right}px`;
+      const menuW = this._pageMenuDropdown.offsetWidth;
+      layoutPopup(this._pageMenuDropdown, { x: rect.right - menuW, y: rect.bottom }, { gap: 4 });
     }
 
     setTimeout(() => {

@@ -5,7 +5,7 @@
 // and inline-equation buttons that appear above the current selection.
 
 import type { Editor } from '@tiptap/core';
-import { $ } from '../../../ui/dom.js';
+import { $, layoutPopup } from '../../../ui/dom.js';
 import { svgIcon } from '../canvasIcons.js';
 import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
 
@@ -181,7 +181,7 @@ export class BubbleMenuController {
     this._linkInput.appendChild(linkRemove);
     this._menu.appendChild(this._linkInput);
 
-    this._host.container.appendChild(this._menu);
+    document.body.appendChild(this._menu);
   }
 
   private _toggleLinkInput(): void {
@@ -231,12 +231,15 @@ export class BubbleMenuController {
 
     this._menu.style.display = 'flex';
 
-    // Wait for layout to get accurate width
+    // Wait for layout to get accurate width, then position above selection
     requestAnimationFrame(() => {
       if (!this._menu) return;
       const menuWidth = this._menu.offsetWidth;
-      this._menu.style.left = `${Math.max(8, midX - menuWidth / 2)}px`;
-      this._menu.style.top = `${topY - this._menu.offsetHeight - 8}px`;
+      const menuHeight = this._menu.offsetHeight;
+      // Centre horizontally above the selection
+      const centredX = Math.max(8, midX - menuWidth / 2);
+      const aboveY = topY - menuHeight - 8;
+      layoutPopup(this._menu, { x: centredX, y: aboveY });
     });
 
     this._refreshActiveStates();

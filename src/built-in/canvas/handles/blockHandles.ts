@@ -11,7 +11,7 @@
 import type { Editor } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
 import type { BlockSelectionController } from './blockSelection.js';
-import { $ } from '../../../ui/dom.js';
+import { $, layoutPopup } from '../../../ui/dom.js';
 import { svgIcon } from '../canvasIcons.js';
 import {
   CANVAS_BLOCK_DRAG_MIME,
@@ -675,7 +675,7 @@ export class BlockHandlesController {
   private _createBlockActionMenu(): void {
     this._blockActionMenu = $('div.block-action-menu');
     this._blockActionMenu.style.display = 'none';
-    this._host.container.appendChild(this._blockActionMenu);
+    document.body.appendChild(this._blockActionMenu);
   }
 
   private _showBlockActionMenu(): void {
@@ -734,20 +734,7 @@ export class BlockHandlesController {
     // Position below drag handle
     const rect = this._dragHandleEl.getBoundingClientRect();
     this._blockActionMenu.style.display = 'block';
-    this._blockActionMenu.style.left = `${rect.left}px`;
-    this._blockActionMenu.style.top = `${rect.bottom + 4}px`;
-
-    // Adjust if off-screen
-    requestAnimationFrame(() => {
-      if (!this._blockActionMenu) return;
-      const mRect = this._blockActionMenu.getBoundingClientRect();
-      if (mRect.right > window.innerWidth - 8) {
-        this._blockActionMenu.style.left = `${window.innerWidth - mRect.width - 8}px`;
-      }
-      if (mRect.bottom > window.innerHeight - 8) {
-        this._blockActionMenu.style.top = `${rect.top - mRect.height - 4}px`;
-      }
-    });
+    layoutPopup(this._blockActionMenu, rect, { position: 'below', gap: 4 });
   }
 
   private _hideBlockActionMenu(): void {
@@ -797,7 +784,7 @@ export class BlockHandlesController {
           this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
         }
       });
-      this._host.container.appendChild(this._turnIntoSubmenu);
+      document.body.appendChild(this._turnIntoSubmenu);
     }
     this._turnIntoSubmenu.innerHTML = '';
 
@@ -851,18 +838,7 @@ export class BlockHandlesController {
     // Position to the right of anchor
     const rect = anchor.getBoundingClientRect();
     this._turnIntoSubmenu.style.display = 'block';
-    this._turnIntoSubmenu.style.left = `${rect.right + 2}px`;
-    this._turnIntoSubmenu.style.top = `${rect.top}px`;
-    requestAnimationFrame(() => {
-      if (!this._turnIntoSubmenu) return;
-      const mRect = this._turnIntoSubmenu.getBoundingClientRect();
-      if (mRect.right > window.innerWidth - 8) {
-        this._turnIntoSubmenu.style.left = `${rect.left - mRect.width - 2}px`;
-      }
-      if (mRect.bottom > window.innerHeight - 8) {
-        this._turnIntoSubmenu.style.top = `${Math.max(8, window.innerHeight - mRect.height - 8)}px`;
-      }
-    });
+    layoutPopup(this._turnIntoSubmenu, rect, { position: 'right', gap: 2 });
   }
 
   private _hideTurnIntoSubmenu(): void {
@@ -885,7 +861,7 @@ export class BlockHandlesController {
           this._colorHideTimer = setTimeout(() => this._hideColorSubmenu(), 200);
         }
       });
-      this._host.container.appendChild(this._colorSubmenu);
+      document.body.appendChild(this._colorSubmenu);
     }
     this._colorSubmenu.innerHTML = '';
 
@@ -960,18 +936,7 @@ export class BlockHandlesController {
     // Position to the right of anchor
     const rect = anchor.getBoundingClientRect();
     this._colorSubmenu.style.display = 'block';
-    this._colorSubmenu.style.left = `${rect.right + 2}px`;
-    this._colorSubmenu.style.top = `${rect.top}px`;
-    requestAnimationFrame(() => {
-      if (!this._colorSubmenu) return;
-      const mRect = this._colorSubmenu.getBoundingClientRect();
-      if (mRect.right > window.innerWidth - 8) {
-        this._colorSubmenu.style.left = `${rect.left - mRect.width - 2}px`;
-      }
-      if (mRect.bottom > window.innerHeight - 8) {
-        this._colorSubmenu.style.top = `${Math.max(8, window.innerHeight - mRect.height - 8)}px`;
-      }
-    });
+    layoutPopup(this._colorSubmenu, rect, { position: 'right', gap: 2 });
   }
 
   private _hideColorSubmenu(): void {

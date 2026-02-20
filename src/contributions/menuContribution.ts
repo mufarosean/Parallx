@@ -15,7 +15,7 @@ import { Emitter, Event } from '../platform/events.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { CommandService } from '../commands/commandRegistry.js';
 import type { IContributedMenuItem, MenuLocationId, IContributionProcessor } from './contributionTypes.js';
-import { $ } from '../ui/dom.js';
+import { $, layoutPopup } from '../ui/dom.js';
 
 // ─── Minimal shape to avoid circular imports ─────────────────────────────────
 
@@ -357,8 +357,6 @@ export class MenuContributionProcessor extends Disposable implements IContributi
 
     const menu = $('div');
     menu.className = 'context-menu';
-    menu.style.left = `${x}px`;
-    menu.style.top = `${y}px`;
 
     let lastGroup: string | undefined;
 
@@ -421,6 +419,7 @@ export class MenuContributionProcessor extends Disposable implements IContributi
 
     overlay.appendChild(menu);
     document.body.appendChild(overlay);
+    layoutPopup(menu, { x, y });
     this._activeContextMenu = overlay;
 
     return toDisposable(() => {

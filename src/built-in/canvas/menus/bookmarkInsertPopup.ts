@@ -1,17 +1,13 @@
 import type { Editor } from '@tiptap/core';
-import { $ } from '../../../ui/dom.js';
+import { $, layoutPopup } from '../../../ui/dom.js';
 
 export function showBookmarkInsertPopup(
   editor: Editor,
   range: { from: number; to: number },
 ): void {
   const coords = editor.view.coordsAtPos(editor.state.selection.from);
-  const container = editor.view.dom.closest('.canvas-editor-wrapper')
-    ?? editor.view.dom.parentElement!;
 
   const popup = $('div.canvas-bookmark-insert-popup');
-  popup.style.left = `${coords.left}px`;
-  popup.style.top = `${coords.bottom + 4}px`;
 
   const title = $('div.canvas-bookmark-insert-title');
   title.textContent = 'Create bookmark';
@@ -196,5 +192,6 @@ export function showBookmarkInsertPopup(
     input.focus();
   });
 
-  container.appendChild(popup);
+  document.body.appendChild(popup);
+  layoutPopup(popup, { x: coords.left, y: coords.bottom }, { gap: 4 });
 }

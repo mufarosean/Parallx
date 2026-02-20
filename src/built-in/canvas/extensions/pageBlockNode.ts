@@ -7,6 +7,7 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { PAGE_ICON_IDS, resolvePageIcon, svgIcon } from '../canvasIcons.js';
 import { IconPicker } from '../../../ui/iconPicker.js';
+import { layoutPopup } from '../../../ui/dom.js';
 import type { CanvasDataService } from '../canvasDataService.js';
 import { deleteDraggedSourceFromTransaction } from '../mutations/blockMutations.js';
 import {
@@ -157,8 +158,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
 
       const positionPopup = (popup: HTMLElement) => {
         const rect = dom.getBoundingClientRect();
-        popup.style.left = `${Math.max(8, rect.left)}px`;
-        popup.style.top = `${Math.min(window.innerHeight - 12, rect.bottom + 6)}px`;
+        layoutPopup(popup, rect, { position: 'below', gap: 6 });
       };
 
       const render = () => {
