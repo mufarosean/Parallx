@@ -20,6 +20,7 @@ import { BubbleMenuController, type BubbleMenuHost } from './bubbleMenu.js';
 import { BlockActionMenuController, type BlockActionMenuHost } from './blockActionMenu.js';
 import { IconMenuController, type IconMenuHost, type IconMenuOptions } from './iconMenu.js';
 import { CoverMenuController, type CoverMenuHost, type CoverMenuOptions } from './coverMenu.js';
+import { InlineMathEditorController, type InlineMathEditorHost } from '../math/inlineMathEditor.js';
 import {
   getSlashMenuBlocks as _getSlashMenuBlocks,
   getTurnIntoBlocks as _getTurnIntoBlocks,
@@ -110,7 +111,7 @@ export interface IBlockActionMenu extends ICanvasMenu {
 
 // ── Combined host type (union of all menu hosts) ────────────────────────────
 
-export type CanvasMenuHost = SlashMenuHost & BubbleMenuHost & BlockActionMenuHost & IconMenuHost & CoverMenuHost;
+export type CanvasMenuHost = SlashMenuHost & BubbleMenuHost & BlockActionMenuHost & IconMenuHost & CoverMenuHost & InlineMathEditorHost;
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,7 @@ export class CanvasMenuRegistry {
   private readonly _getEditor: () => Editor | null;
   private _iconMenu: IconMenuController | null = null;
   private _coverMenu: CoverMenuController | null = null;
+  private _inlineMathEditor: InlineMathEditorController | null = null;
 
   // Bound once so we can remove the same reference on dispose.
   private readonly _onDocMousedown = (e: MouseEvent): void => {
@@ -164,6 +166,10 @@ export class CanvasMenuRegistry {
     const cover = new CoverMenuController(host, this);
     cover.create();
     this._coverMenu = cover;
+
+    const inlineMath = new InlineMathEditorController(host, this);
+    inlineMath.create();
+    this._inlineMathEditor = inlineMath;
 
     return blockAction;
   }
@@ -238,6 +244,16 @@ export class CanvasMenuRegistry {
    */
   showCoverMenu(options: CoverMenuOptions): void {
     this._coverMenu?.show(options);
+  }
+
+  /**
+   * Show the inline math editor popup for a specific node.
+   *
+   * This is the single entry point for all inline-math editing usage —
+   * the click handler, slash menu, and bubble menu all call through here.
+   */
+  showInlineMathEditor(pos: number, latex: string, anchorEl: HTMLElement): void {
+    this._inlineMathEditor?.show(pos, latex, anchorEl);
   }
 
   /** `true` if at least one registered menu is visible. */

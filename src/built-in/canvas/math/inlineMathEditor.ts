@@ -1,13 +1,17 @@
 // inlineMathEditor.ts — Click-to-edit popup for inline LaTeX equations
 //
-// Extracted from canvasEditorProvider.ts (Phase 0).
-// Provides the floating popup that appears when a user clicks an
-// inline math node — a text input, live KaTeX preview, and
-// Enter/Escape/blur commit/cancel semantics.
+// A floating popup that appears when a user clicks an inline math node —
+// a text input, live KaTeX preview, and Enter/Escape/blur commit/cancel.
+//
+// Registered as an ICanvasMenu surface in CanvasMenuRegistry so it
+// participates in mutual exclusion, outside-click dismissal, and
+// interaction arbitration alongside the other menu surfaces.
 
 import type { Editor } from '@tiptap/core';
+import type { IDisposable } from '../../../platform/lifecycle.js';
 import katex from 'katex';
 import { $ } from '../../../ui/dom.js';
+import type { ICanvasMenu, CanvasMenuRegistry } from '../menus/canvasMenuRegistry.js';
 
 // ── Dependency interface ────────────────────────────────────────────────────
 
@@ -20,19 +24,35 @@ export interface InlineMathEditorHost {
 
 // ── Controller ──────────────────────────────────────────────────────────────
 
-export class InlineMathEditorController {
+export class InlineMathEditorController implements ICanvasMenu {
+  readonly id = 'inline-math-editor';
+
   private _popup: HTMLElement | null = null;
   private _input: HTMLInputElement | null = null;
   private _preview: HTMLElement | null = null;
   private _pos: number = -1;
+  private _visible = false;
+  private _registration: IDisposable | null = null;
 
-  constructor(private readonly _host: InlineMathEditorHost) {}
+  constructor(
+    private readonly _host: InlineMathEditorHost,
+    private readonly _registry: CanvasMenuRegistry,
+  ) {}
+
+  // ── ICanvasMenu ─────────────────────────────────────────────────────────
+
+  get visible(): boolean { return this._visible; }
+
+  containsTarget(target: Node): boolean {
+    return this._popup?.contains(target) ?? false;
+  }
 
   /** The popup element (for contains-checks in blur handlers). */
   get popup(): HTMLElement | null { return this._popup; }
 
   /** Build the hidden popup DOM and attach it to the container. */
   create(): void {
+    this._registration = this._registry.register(this);
     this._popup = $('div.canvas-inline-math-editor');
     this._popup.style.display = 'none';
 
@@ -99,6 +119,8 @@ export class InlineMathEditorController {
 
     this._pos = pos;
     this._input.value = latex;
+    this._visible = true;
+    this._registry.notifyShow(this.id);
 
     // Render preview
     if (latex) {
@@ -166,15 +188,19 @@ export class InlineMathEditorController {
     if (!this._popup) return;
     this._popup.style.display = 'none';
     this._pos = -1;
+    this._visible = false;
   }
 
   /** Clean up DOM. */
   dispose(): void {
+    this._registration?.dispose();
+    this._registration = null;
     if (this._popup) {
       this._popup.remove();
       this._popup = null;
     }
     this._input = null;
     this._preview = null;
+    this._visible = false;
   }
 }

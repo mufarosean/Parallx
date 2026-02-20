@@ -10,7 +10,6 @@ import { svgIcon } from './canvasMenuRegistry.js';
 import type { SlashMenuItem } from './slashMenuItems.js';
 import type { SlashActionContext, ISlashPageCommands } from './slashMenuItems.js';
 import { buildSlashMenuItems } from './slashMenuItems.js';
-import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
@@ -21,7 +20,6 @@ export interface SlashMenuHost {
   readonly editor: Editor | null;
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
-  readonly inlineMath: InlineMathEditorController;
   readonly dataService?: ISlashPageCommands;
   readonly pageId?: string;
   readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
@@ -262,7 +260,7 @@ export class SlashMenuController implements ICanvasMenu {
           const pos = ed.view.posAtDOM(lastMath, 0);
           const node = ed.state.doc.nodeAt(pos);
           if (node && node.type.name === 'inlineMath') {
-            this._host.inlineMath.show(pos, node.attrs.latex || '', lastMath);
+            this._registry.showInlineMathEditor(pos, node.attrs.latex || '', lastMath);
           }
         }
       }, 80);

@@ -33,7 +33,6 @@ import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
 import { createEditorExtensions } from './config/tiptapExtensions.js';
-import { InlineMathEditorController } from './math/inlineMathEditor.js';
 import { BlockHandlesController } from './handles/blockHandles.js';
 import { BlockSelectionController } from './handles/blockSelection.js';
 import { PageChromeController } from './header/pageChrome.js';
@@ -130,7 +129,6 @@ export class CanvasEditorProvider {
 class CanvasEditorPane implements IDisposable {
   private _editor: Editor | null = null;
   private _editorContainer: HTMLElement | null = null;
-  private _inlineMath!: InlineMathEditorController;
   private _menuRegistry!: CanvasMenuRegistry;
   private _disposed = false;
   private _initComplete = false;
@@ -162,7 +160,6 @@ class CanvasEditorPane implements IDisposable {
   get editor(): Editor | null { return this._editor; }
   get container(): HTMLElement { return this._container; }
   get editorContainer(): HTMLElement | null { return this._editorContainer; }
-  get inlineMath(): InlineMathEditorController { return this._inlineMath; }
   get dataService(): ICanvasDataService { return this._dataService; }
   get pageId(): string { return this._pageId; }
   get suppressUpdate(): boolean { return this._suppressUpdate; }
@@ -259,8 +256,7 @@ class CanvasEditorPane implements IDisposable {
         // Small delay so clicking menu buttons doesn't dismiss them
         setTimeout(() => {
           if (
-            !this._menuRegistry.containsFocusedElement() &&
-            !this._inlineMath.popup?.contains(document.activeElement)
+            !this._menuRegistry.containsFocusedElement()
           ) {
             this._menuRegistry.hideAll();
           }
@@ -286,10 +282,6 @@ class CanvasEditorPane implements IDisposable {
     // ── Create menu registry and all menus ──
     this._menuRegistry = new CanvasMenuRegistry(() => this._editor);
     this._blockActionMenu = this._menuRegistry.createStandardMenus(this);
-
-    // Create inline math editor popup (hidden by default)
-    this._inlineMath = new InlineMathEditorController(this);
-    this._inlineMath.create();
 
     // Setup block handles (+ button, drag-handle click menu)
     this._blockHandles = new BlockHandlesController(this, this._blockActionMenu);
@@ -317,7 +309,7 @@ class CanvasEditorPane implements IDisposable {
       const pos = this._editor.view.posAtDOM(target, 0);
       const node = this._editor.state.doc.nodeAt(pos);
       if (node && node.type.name === 'inlineMath') {
-        this._inlineMath.show(pos, node.attrs.latex || '', target as HTMLElement);
+        this._menuRegistry.showInlineMathEditor(pos, node.attrs.latex || '', target as HTMLElement);
       }
     });
 
@@ -404,8 +396,7 @@ class CanvasEditorPane implements IDisposable {
       this._editorContainer = null;
     }
 
-    this._inlineMath?.dispose();
-    this._menuRegistry?.dispose(); // disposes all menus (slash, bubble, blockAction)
+    this._menuRegistry?.dispose(); // disposes all menus (slash, bubble, blockAction, inlineMath, etc.)
     this._pageChrome?.dispose();
   }
 }

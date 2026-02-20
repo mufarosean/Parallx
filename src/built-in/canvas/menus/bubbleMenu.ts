@@ -7,7 +7,6 @@
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
 import { svgIcon } from './canvasMenuRegistry.js';
-import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
@@ -18,7 +17,6 @@ export interface BubbleMenuHost {
   readonly editor: Editor | null;
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
-  readonly inlineMath: InlineMathEditorController;
 }
 
 // ── Controller ──────────────────────────────────────────────────────────────
@@ -110,7 +108,7 @@ export class BubbleMenuController implements ICanvasMenu {
             if (!editor) return;
             const mathEl = editor.view.nodeDOM(from) as HTMLElement | null;
             if (mathEl) {
-              this._host.inlineMath.show(from, latex, mathEl);
+              this._registry.showInlineMathEditor(from, latex, mathEl);
             } else {
               // Fallback: find via DOM query
               const allMath = this._host.editorContainer?.querySelectorAll('.tiptap-math.latex');
@@ -119,7 +117,7 @@ export class BubbleMenuController implements ICanvasMenu {
                 const pos = editor.view.posAtDOM(lastMath, 0);
                 const node = editor.state.doc.nodeAt(pos);
                 if (node && node.type.name === 'inlineMath') {
-                  this._host.inlineMath.show(pos, node.attrs.latex || '', lastMath);
+                  this._registry.showInlineMathEditor(pos, node.attrs.latex || '', lastMath);
                 }
               }
             }
