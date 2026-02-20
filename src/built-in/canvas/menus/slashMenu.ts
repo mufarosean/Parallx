@@ -12,6 +12,9 @@ import type { SlashActionContext } from './slashMenuItems.js';
 import { SLASH_MENU_ITEMS } from './slashMenuItems.js';
 import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
 import type { CanvasDataService } from '../canvasDataService.js';
+import type { ICanvasMenu } from './canvasMenuRegistry.js';
+import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
+import type { IDisposable } from '../../../platform/lifecycle.js';
 
 // ── Dependency interface ────────────────────────────────────────────────────
 
@@ -30,13 +33,18 @@ export interface SlashMenuHost {
 
 // ── Controller ──────────────────────────────────────────────────────────────
 
-export class SlashMenuController {
+export class SlashMenuController implements ICanvasMenu {
+  readonly id = 'slash-menu';
   private _menu: HTMLElement | null = null;
   private _visible = false;
   private _filterText = '';
   private _selectedIndex = 0;
+  private _registration: IDisposable | null = null;
 
-  constructor(private readonly _host: SlashMenuHost) {}
+  constructor(
+    private readonly _host: SlashMenuHost,
+    private readonly _registry: CanvasMenuRegistry,
+  ) {}
 
   /** The menu element (for DOM identity checks). */
   get menu(): HTMLElement | null { return this._menu; }
@@ -44,16 +52,22 @@ export class SlashMenuController {
   /** Whether the slash menu is currently visible. */
   get visible(): boolean { return this._visible; }
 
+  /** DOM containment check for centralized outside-click handling. */
+  containsTarget(target: Node): boolean {
+    return this._menu?.contains(target) ?? false;
+  }
+
   /** Build the hidden slash menu DOM and attach it to the container. */
   create(): void {
     this._menu = $('div.canvas-slash-menu');
     this._menu.style.display = 'none';
     document.body.appendChild(this._menu);
+    this._registration = this._registry.register(this);
   }
 
   /** Called on every editor update — check if the user typed '/'. */
   checkTrigger(editor: Editor): void {
-    if (this._isInteractionArbitrationLocked(editor)) {
+    if (this._registry.isInteractionLocked()) {
       this.hide();
       return;
     }
@@ -83,17 +97,6 @@ export class SlashMenuController {
     }
   }
 
-  private _isInteractionArbitrationLocked(editor: Editor): boolean {
-    const body = document.body;
-    if (body.classList.contains('column-resizing')) {
-      return true;
-    }
-    if (editor.view.dom.classList.contains('dragging')) {
-      return true;
-    }
-    return false;
-  }
-
   private _show(editor: Editor): void {
     if (!this._menu) return;
 
@@ -105,6 +108,7 @@ export class SlashMenuController {
 
     this._selectedIndex = 0;
     this._visible = true;
+    this._registry.notifyShow(this.id);
     this._renderItems(filtered, editor);
 
     // Position below cursor
@@ -267,6 +271,8 @@ export class SlashMenuController {
 
   /** Clean up DOM. */
   dispose(): void {
+    this._registration?.dispose();
+    this._registration = null;
     if (this._menu) {
       this._menu.remove();
       this._menu = null;

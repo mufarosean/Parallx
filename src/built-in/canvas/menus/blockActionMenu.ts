@@ -4,7 +4,8 @@
 //   • Block action menu DOM (turn-into, color, duplicate, delete)
 //   • Turn-Into submenu with block types from the registry
 //   • Color submenu (10 text colours + 10 background colours)
-//   • Outside-click dismissal
+//
+// Outside-click dismissal is handled centrally by CanvasMenuRegistry.
 //
 // Triggered by BlockHandlesController via show(pos, node, anchorRect).
 // Lives in menus/ alongside BubbleMenuController and SlashMenuController.
@@ -20,6 +21,9 @@ import {
   turnBlockWithSharedStrategy,
 } from '../mutations/blockMutations.js';
 import { getBlockLabel, getTurnIntoBlocks } from '../config/blockRegistry.js';
+import type { ICanvasMenu } from './canvasMenuRegistry.js';
+import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
+import type { IDisposable } from '../../../platform/lifecycle.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 
@@ -29,7 +33,8 @@ export interface BlockActionMenuHost {
 
 // ── Controller ──────────────────────────────────────────────────────────────
 
-export class BlockActionMenuController {
+export class BlockActionMenuController implements ICanvasMenu {
+  readonly id = 'block-action-menu';
   // DOM elements
   private _blockActionMenu: HTMLElement | null = null;
   private _turnIntoSubmenu: HTMLElement | null = null;
@@ -48,8 +53,12 @@ export class BlockActionMenuController {
    * (the drag handle that opened the menu).
    */
   private _anchorEl: HTMLElement | null = null;
+  private _registration: IDisposable | null = null;
 
-  constructor(private readonly _host: BlockActionMenuHost) {}
+  constructor(
+    private readonly _host: BlockActionMenuHost,
+    private readonly _registry: CanvasMenuRegistry,
+  ) {}
 
   // ── Setup / Lifecycle ─────────────────────────────────────────────────
 
@@ -57,8 +66,7 @@ export class BlockActionMenuController {
     this._blockActionMenu = $('div.block-action-menu');
     this._blockActionMenu.style.display = 'none';
     document.body.appendChild(this._blockActionMenu);
-
-    document.addEventListener('mousedown', this._onDocClickOutside);
+    this._registration = this._registry.register(this);
   }
 
   // ── Public API ──────────────────────────────────────────────────────────
@@ -69,6 +77,15 @@ export class BlockActionMenuController {
   /** Whether the menu is currently visible. */
   get visible(): boolean {
     return this._blockActionMenu?.style.display === 'block';
+  }
+
+  /** DOM containment check for centralized outside-click handling. */
+  containsTarget(target: Node): boolean {
+    if (this._blockActionMenu?.contains(target)) return true;
+    if (this._turnIntoSubmenu?.contains(target)) return true;
+    if (this._colorSubmenu?.contains(target)) return true;
+    if (this._anchorEl?.contains(target)) return true;
+    return false;
   }
 
   /**
@@ -84,27 +101,12 @@ export class BlockActionMenuController {
     this._actionBlockNode = node;
     this._anchorEl = anchorEl ?? null;
     this._showBlockActionMenu(anchor);
+    this._registry.notifyShow(this.id);
   }
 
   hide(): void {
     this._hideBlockActionMenu();
   }
-
-  // ── Outside-click Dismissal ─────────────────────────────────────────────
-
-  private readonly _onDocClickOutside = (e: MouseEvent): void => {
-    if (!this._blockActionMenu || this._blockActionMenu.style.display !== 'block') return;
-    if (this._isColumnResizing()) {
-      this._hideBlockActionMenu();
-      return;
-    }
-    const target = e.target as HTMLElement;
-    if (this._blockActionMenu.contains(target)) return;
-    if (this._turnIntoSubmenu?.contains(target)) return;
-    if (this._colorSubmenu?.contains(target)) return;
-    if (this._anchorEl?.contains(target)) return;
-    this._hideBlockActionMenu();
-  };
 
   // ── Block Action Menu ───────────────────────────────────────────────────
 
@@ -421,14 +423,12 @@ export class BlockActionMenuController {
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
-  private _isColumnResizing(): boolean {
-    return document.body.classList.contains('column-resizing');
-  }
 
   // ── Dispose ─────────────────────────────────────────────────────────────
 
   dispose(): void {
-    document.removeEventListener('mousedown', this._onDocClickOutside);
+    this._registration?.dispose();
+    this._registration = null;
     if (this._turnIntoHideTimer) {
       clearTimeout(this._turnIntoHideTimer);
       this._turnIntoHideTimer = null;

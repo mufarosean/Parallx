@@ -40,6 +40,7 @@ import { BlockActionMenuController } from './menus/blockActionMenu.js';
 import { BlockHandlesController } from './handles/blockHandles.js';
 import { BlockSelectionController } from './handles/blockSelection.js';
 import { PageChromeController } from './header/pageChrome.js';
+import { CanvasMenuRegistry } from './menus/canvasMenuRegistry.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -135,6 +136,7 @@ class CanvasEditorPane implements IDisposable {
   private _slashMenu!: SlashMenuController;
   private _bubbleMenu!: BubbleMenuController;
   private _inlineMath!: InlineMathEditorController;
+  private _menuRegistry!: CanvasMenuRegistry;
   private _disposed = false;
   private _initComplete = false;
   private _suppressUpdate = false;
@@ -233,31 +235,20 @@ class CanvasEditorPane implements IDisposable {
         // Check for slash command trigger on every transaction
         // (onTransaction fires for all state changes — more reliable than onUpdate)
         this._slashMenu?.checkTrigger(editor);
-
-        // Keep menu ownership deterministic: slash and bubble should not compete.
-        if (this._slashMenu?.visible) {
-          this._bubbleMenu?.hide();
-        }
+        // Mutual exclusion is handled by the registry's notifyShow()
       },
       onSelectionUpdate: ({ editor }) => {
-        // Non-collapsed selections belong to bubble menu, not slash menu.
-        if (!editor.state.selection.empty) {
-          this._slashMenu?.hide();
-        }
         this._bubbleMenu?.update(editor);
+        // Slash menu self-hides on non-empty selection via checkTrigger
       },
       onBlur: () => {
-        // Small delay so clicking bubble menu buttons doesn't dismiss it
+        // Small delay so clicking menu buttons doesn't dismiss them
         setTimeout(() => {
           if (
-            !this._bubbleMenu.menu?.contains(document.activeElement) &&
+            !this._menuRegistry.containsFocusedElement() &&
             !this._inlineMath.popup?.contains(document.activeElement)
           ) {
-            this._bubbleMenu.hide();
-          }
-
-          if (!this._slashMenu.menu?.contains(document.activeElement)) {
-            this._slashMenu.hide();
+            this._menuRegistry.hideAll();
           }
         }, 150);
       },
@@ -279,11 +270,13 @@ class CanvasEditorPane implements IDisposable {
     }
 
     // Create slash menu (hidden by default)
-    this._slashMenu = new SlashMenuController(this);
+    this._menuRegistry = new CanvasMenuRegistry(() => this._editor);
+
+    this._slashMenu = new SlashMenuController(this, this._menuRegistry);
     this._slashMenu.create();
 
     // Create bubble menu (hidden by default)
-    this._bubbleMenu = new BubbleMenuController(this);
+    this._bubbleMenu = new BubbleMenuController(this, this._menuRegistry);
     this._bubbleMenu.create();
 
     // Create inline math editor popup (hidden by default)
@@ -291,7 +284,7 @@ class CanvasEditorPane implements IDisposable {
     this._inlineMath.create();
 
     // Setup block action menu (hidden by default, owned by pane)
-    this._blockActionMenu = new BlockActionMenuController(this);
+    this._blockActionMenu = new BlockActionMenuController(this, this._menuRegistry);
     this._blockActionMenu.create();
 
     // Setup block handles (+ button, drag-handle click menu)
@@ -386,10 +379,9 @@ class CanvasEditorPane implements IDisposable {
     if (this._disposed) return;
     this._disposed = true;
 
-    this._slashMenu?.hide();
-    this._bubbleMenu?.hide();
+    // Hide all menus in one call, then dispose individual controllers
+    this._menuRegistry?.hideAll();
     this._blockHandles?.hide();
-    this._blockActionMenu?.hide();
     this._blockSelection?.clear();
     this._pageChrome?.dismissPopups();
 
@@ -411,18 +403,10 @@ class CanvasEditorPane implements IDisposable {
       this._editorContainer = null;
     }
 
-    if (this._slashMenu) {
-      this._slashMenu.dispose();
-    }
-
-    if (this._bubbleMenu) {
-      this._bubbleMenu.dispose();
-    }
-
-    if (this._inlineMath) {
-      this._inlineMath.dispose();
-    }
-
+    this._slashMenu?.dispose();
+    this._bubbleMenu?.dispose();
+    this._inlineMath?.dispose();
+    this._menuRegistry?.dispose();
     this._pageChrome?.dispose();
   }
 }
