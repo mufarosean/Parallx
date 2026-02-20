@@ -183,3 +183,101 @@ by any external file.
 | Entry-point routing | blockRegistry and menuRegistry children no longer bypass their entry point |
 | Single source of types | `canvasTypes.ts` is the canonical home for all canvas data model types |
 | Minimal disruption | Pure `import type` swaps — no runtime changes, no behavioral changes |
+
+---
+
+## Phase 2 — Narrow Local Interfaces for Entry-Point Children
+
+> **Date:** 2026-02-20  
+> **Baseline:** commit `11b544a` (Phase 1 complete, 182 tests passing)
+
+### Problem
+
+Phase 1 extracted `ICanvasDataService` into `canvasTypes.ts`, but the structural
+violation remained: children of entry points still import the **service interface**
+from `canvasTypes.ts` instead of receiving it through their entry point.
+
+The dependency graph after Phase 1:
+```
+blockRegistry.ts ──→ canvasTypes.ts [ICanvasDataService]  ← entry point (OK)
+  └─ pageBlockNode.ts ──→ canvasTypes.ts [ICanvasDataService]  ← child bypasses entry point (BAD)
+
+canvasMenuRegistry.ts ──→ slashMenu.ts ──→ canvasTypes.ts [ICanvasDataService]  ← child bypasses (BAD)
+                                        └─ slashMenuItems.ts ──→ canvasTypes.ts [ICanvasDataService]  ← child bypasses (BAD)
+```
+
+### Solution: Narrow Local Interfaces
+
+Each child defines a **local interface** with only the methods it actually calls.
+TypeScript's structural typing ensures that `ICanvasDataService` (and the concrete
+`CanvasDataService`) automatically satisfies these narrow interfaces — no explicit
+casts or adapter code needed.
+
+**Key distinction:**
+- **Data model types** (`IPage`, `PageChangeEvent`, `CrossPageMoveParams`) — shared
+  domain vocabulary, fine to import from `canvasTypes.ts`
+- **Service interfaces** (`ICanvasDataService`) — should only be known by entry points
+  and the composition root, NOT by their children
+
+### Changes
+
+#### `pageBlockNode.ts` — defines `IPageBlockDataAccess`
+
+```typescript
+export interface IPageBlockDataAccess {
+  getPage(pageId: string): Promise<IPage | null>;
+  updatePage(pageId: string, updates: { icon?: string | null }): Promise<IPage>;
+  decodePageContentForEditor(page: IPage): Promise<{ doc: any; recovered: boolean }>;
+  moveBlocksBetweenPagesAtomic(params: {
+    sourcePageId: string; targetPageId: string;
+    sourceDoc: any; appendedNodes: any[];
+  }): Promise<{ sourcePage: IPage; targetPage: IPage }>;
+  appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<IPage>;
+  readonly onDidChangePage: (listener: (e: PageChangeEvent) => void) => { dispose(): void };
+}
+```
+
+- Removes `import type { ICanvasDataService }` from canvasTypes
+- Adds `import type { IPage, PageChangeEvent }` from canvasTypes (data model only)
+- `PageBlockOptions.dataService` typed as `IPageBlockDataAccess`
+
+#### `slashMenuItems.ts` — defines `ISlashPageCommands` (exported)
+
+```typescript
+export interface ISlashPageCommands {
+  createPage(parentId?: string | null, title?: string): Promise<IPage>;
+  updatePage(pageId: string, updates: { content?: string; contentSchemaVersion?: number }): Promise<IPage>;
+  scheduleContentSave(pageId: string, content: string): void;
+  deletePage(pageId: string): Promise<void>;
+}
+```
+
+- Removes `import type { ICanvasDataService }` from canvasTypes
+- Adds `import type { IPage }` from canvasTypes (data model only)
+- `SlashActionContext.dataService` typed as `ISlashPageCommands`
+- `Awaited<ReturnType<ICanvasDataService['createPage']>>` simplified to `IPage`
+
+#### `slashMenu.ts` — uses `ISlashPageCommands` from slashMenuItems
+
+- Removes `import type { ICanvasDataService }` from canvasTypes
+- Imports `ISlashPageCommands` from `./slashMenuItems.js` (existing dependency)
+- `SlashMenuHost.dataService` typed as `ISlashPageCommands`
+
+#### Files unchanged
+
+- `blockRegistry.ts` — keeps `ICanvasDataService` (it IS the entry point)
+- `canvasEditorProvider.ts` — keeps `ICanvasDataService` (composition layer)
+- `canvasSidebar.ts`, `pageChrome.ts` — direct consumers, not entry-point children
+
+### Dependency graph after Phase 2
+
+```
+canvasTypes.ts  [data model: IPage, PageChangeEvent, ICanvasDataService]
+  ↑ data model only          ↑ data model only           ↑ service interface (OK — entry points)
+  pageBlockNode.ts            slashMenuItems.ts           blockRegistry.ts
+                              ↑ ISlashPageCommands        canvasEditorProvider.ts
+                              slashMenu.ts                canvasSidebar.ts, pageChrome.ts
+```
+
+`pageBlockNode.ts` and `slashMenuItems.ts` no longer know about `ICanvasDataService`.
+`slashMenu.ts` no longer imports from `canvasTypes.ts` at all for service types.

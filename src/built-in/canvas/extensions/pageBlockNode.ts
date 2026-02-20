@@ -8,7 +8,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { PAGE_ICON_IDS, resolvePageIcon, svgIcon } from '../canvasIcons.js';
 import { IconPicker } from '../../../ui/iconPicker.js';
 import { layoutPopup } from '../../../ui/dom.js';
-import type { ICanvasDataService } from '../canvasTypes.js';
+import type { IPage, PageChangeEvent } from '../canvasTypes.js';
 import { deleteDraggedSourceFromTransaction } from '../mutations/blockMutations.js';
 import {
   CANVAS_BLOCK_DRAG_MIME,
@@ -16,8 +16,28 @@ import {
   getActiveCanvasDragSession,
 } from '../dnd/dragSession.js';
 
+// ── Narrow dependency interface ─────────────────────────────────────────────
+// Only the methods pageBlockNode actually calls.  The full ICanvasDataService
+// (and the concrete class) structurally satisfies this — no adapter needed.
+// blockRegistry threads the service in via PageBlockOptions; this file never
+// imports the service interface directly.
+
+export interface IPageBlockDataAccess {
+  getPage(pageId: string): Promise<IPage | null>;
+  updatePage(pageId: string, updates: { icon?: string | null }): Promise<IPage>;
+  decodePageContentForEditor(page: IPage): Promise<{ doc: any; recovered: boolean }>;
+  moveBlocksBetweenPagesAtomic(params: {
+    sourcePageId: string;
+    targetPageId: string;
+    sourceDoc: any;
+    appendedNodes: any[];
+  }): Promise<{ sourcePage: IPage; targetPage: IPage }>;
+  appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<IPage>;
+  readonly onDidChangePage: (listener: (e: PageChangeEvent) => void) => { dispose(): void };
+}
+
 export interface PageBlockOptions {
-  readonly dataService?: ICanvasDataService;
+  readonly dataService?: IPageBlockDataAccess;
   readonly currentPageId?: string;
   readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
 }

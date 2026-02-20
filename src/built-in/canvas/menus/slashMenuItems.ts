@@ -15,13 +15,25 @@ import { TextSelection } from '@tiptap/pm/state';
 import { showImageInsertPopup } from './imageInsertPopup.js';
 import { showMediaInsertPopup } from './mediaInsertPopup.js';
 import { showBookmarkInsertPopup } from './bookmarkInsertPopup.js';
-import type { ICanvasDataService } from '../canvasTypes.js';
+import type { IPage } from '../canvasTypes.js';
 import { encodeCanvasContentFromDoc } from '../contentSchema.js';
 import { BLOCK_REGISTRY, getSlashMenuBlocks, type BlockDefinition } from '../config/blockRegistry.js';
 
+// ── Narrow dependency interface ─────────────────────────────────────────────
+// Only the methods slash commands actually call.  The full ICanvasDataService
+// structurally satisfies this — no adapter needed.  Exported so slashMenu.ts
+// can type its host property without importing the service interface.
+
+export interface ISlashPageCommands {
+  createPage(parentId?: string | null, title?: string): Promise<IPage>;
+  updatePage(pageId: string, updates: { content?: string; contentSchemaVersion?: number }): Promise<IPage>;
+  scheduleContentSave(pageId: string, content: string): void;
+  deletePage(pageId: string): Promise<void>;
+}
+
 export interface SlashActionContext {
   readonly pageId?: string;
-  readonly dataService?: ICanvasDataService;
+  readonly dataService?: ISlashPageCommands;
   readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
 }
 
@@ -91,7 +103,7 @@ const CUSTOM_ACTIONS: Record<string, SlashAction> = {
   'pageBlock': async (editor, range, context) => {
     if (!context?.dataService || !context.pageId) return;
 
-    let child: Awaited<ReturnType<ICanvasDataService['createPage']>> | null = null;
+    let child: IPage | null = null;
     try {
       child = await context.dataService.createPage(context.pageId, 'Untitled');
       const childPage = child;
