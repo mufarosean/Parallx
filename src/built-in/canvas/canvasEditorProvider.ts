@@ -171,6 +171,28 @@ class CanvasEditorPane implements IDisposable {
   get openEditor(): OpenEditorFn | undefined { return this._openEditor; }
   get blockSelection(): BlockSelectionController { return this._blockSelection; }
 
+  /** Registry-managed icon picker delegate — lazy because registry is created after pageChrome. */
+  get showIconPicker(): (opts: {
+    anchor: HTMLElement;
+    showSearch?: boolean;
+    showRemove?: boolean;
+    iconSize?: number;
+    onSelect: (iconId: string) => void;
+    onRemove?: () => void;
+  }) => void {
+    return (opts) => this._menuRegistry?.showIconMenu(opts);
+  }
+
+  /** Registry-managed cover picker delegate — lazy because registry is created after pageChrome. */
+  get showCoverPicker(): (opts: {
+    editorContainer: HTMLElement | null;
+    coverEl?: HTMLElement | null;
+    pageHeader?: HTMLElement | null;
+    onSelectCover: (coverUrl: string) => void;
+  }) => void {
+    return (opts) => this._menuRegistry?.showCoverMenu(opts);
+  }
+
   requestSave(_reason: string): void {
     if (!this._editor || !this._pageId || !this._initComplete) return;
     const json = JSON.stringify(this._editor.getJSON());
@@ -206,6 +228,7 @@ class CanvasEditorPane implements IDisposable {
         dataService: this._dataService,
         pageId: this._pageId,
         openEditor: this._openEditor,
+        showIconPicker: (opts) => this._menuRegistry?.showIconMenu(opts),
       }),
       content: '',
       editorProps: {

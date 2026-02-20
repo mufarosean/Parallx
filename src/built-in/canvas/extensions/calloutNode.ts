@@ -4,8 +4,20 @@
 // Rendered as <div data-type="callout"> with a non-editable icon and editable content area.
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import { PAGE_ICON_IDS, resolvePageIcon, svgIcon } from '../canvasIcons.js';
-import { IconPicker } from '../../../ui/iconPicker.js';
+import { resolvePageIcon, svgIcon } from '../canvasIcons.js';
+
+// ─── Options ────────────────────────────────────────────────────────────────
+
+export interface CalloutOptions {
+  readonly showIconPicker?: (options: {
+    anchor: HTMLElement;
+    showSearch?: boolean;
+    showRemove?: boolean;
+    iconSize?: number;
+    onSelect: (iconId: string) => void;
+    onRemove?: () => void;
+  }) => void;
+}
 
 // ─── TipTap Command Augmentation ────────────────────────────────────────────
 declare module '@tiptap/core' {
@@ -18,11 +30,17 @@ declare module '@tiptap/core' {
   }
 }
 
-export const Callout = Node.create({
+export const Callout = Node.create<CalloutOptions>({
   name: 'callout',
   group: 'block',
   content: 'block+',
   defining: true,
+
+  addOptions() {
+    return {
+      showIconPicker: undefined,
+    };
+  },
 
   addAttributes() {
     return {
@@ -86,14 +104,6 @@ export const Callout = Node.create({
         if (svg) { svg.setAttribute('width', '20'); svg.setAttribute('height', '20'); }
       };
 
-      let iconPicker: IconPicker | null = null;
-
-      const closeIconPicker = () => {
-        if (!iconPicker) return;
-        iconPicker.dismiss();
-        iconPicker = null;
-      };
-
       const setEmoji = (emoji: string) => {
         if (typeof getPos !== 'function') return;
         const pos = getPos();
@@ -104,26 +114,12 @@ export const Callout = Node.create({
 
       const openIconPicker = () => {
         if (!editor.isEditable) return;
-        if (iconPicker) {
-          closeIconPicker();
-          return;
-        }
-
-        iconPicker = new IconPicker(document.body, {
+        this.options.showIconPicker?.({
           anchor: iconSpan,
-          icons: PAGE_ICON_IDS,
-          renderIcon: (id, _size) => svgIcon(id),
           showSearch: true,
           showRemove: false,
           iconSize: 22,
-        });
-
-        iconPicker.onDidSelectIcon((id) => {
-          setEmoji(id);
-        });
-
-        iconPicker.onDidDismiss(() => {
-          iconPicker = null;
+          onSelect: (id) => setEmoji(id),
         });
       };
 
@@ -153,7 +149,7 @@ export const Callout = Node.create({
           return true;
         },
         destroy() {
-          closeIconPicker();
+          // Icon picker is now registry-managed; no local cleanup needed.
         },
       };
     };

@@ -38,11 +38,22 @@ import type { OpenEditorFn } from '../canvasEditorProvider.js';
 // ── EditorExtensionContext ──────────────────────────────────────────────────
 // Runtime dependencies passed to extension factories that need configuration.
 
+/** Options shape for the showIconPicker callback threaded to extensions. */
+export interface ShowIconPickerOptions {
+  readonly anchor: HTMLElement;
+  readonly showSearch?: boolean;
+  readonly showRemove?: boolean;
+  readonly iconSize?: number;
+  readonly onSelect: (iconId: string) => void;
+  readonly onRemove?: () => void;
+}
+
 export interface EditorExtensionContext {
   readonly lowlight?: any;
   readonly dataService?: ICanvasDataService;
   readonly pageId?: string;
   readonly openEditor?: OpenEditorFn;
+  readonly showIconPicker?: (options: ShowIconPickerOptions) => void;
 }
 
 // ── BlockDefinition Interface ───────────────────────────────────────────────
@@ -384,7 +395,9 @@ const definitions: BlockDefinition[] = [
       attrs: { emoji: 'lightbulb' },
       content: [{ type: 'paragraph' }],
     },
-    extension: () => Callout,
+    extension: (ctx) => Callout.configure({
+      showIconPicker: ctx.showIconPicker,
+    }),
   },
   {
     id: 'mathBlock',
@@ -528,6 +541,7 @@ const definitions: BlockDefinition[] = [
       dataService: ctx.dataService,
       currentPageId: ctx.pageId,
       openEditor: ctx.openEditor,
+      showIconPicker: ctx.showIconPicker,
     }),
   },
   {

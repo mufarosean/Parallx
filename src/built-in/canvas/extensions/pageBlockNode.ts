@@ -5,8 +5,7 @@
 // move content into the linked page.
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import { PAGE_ICON_IDS, resolvePageIcon, svgIcon } from '../canvasIcons.js';
-import { IconPicker } from '../../../ui/iconPicker.js';
+import { resolvePageIcon, svgIcon } from '../canvasIcons.js';
 import { layoutPopup } from '../../../ui/dom.js';
 import { deleteDraggedSourceFromTransaction } from '../mutations/blockMutations.js';
 import {
@@ -53,6 +52,14 @@ export interface PageBlockOptions {
   readonly dataService?: IPageBlockDataAccess;
   readonly currentPageId?: string;
   readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
+  readonly showIconPicker?: (options: {
+    anchor: HTMLElement;
+    showSearch?: boolean;
+    showRemove?: boolean;
+    iconSize?: number;
+    onSelect: (iconId: string) => void;
+    onRemove?: () => void;
+  }) => void;
 }
 
 function collectPreviewText(node: any, parts: string[], limit = 220): void {
@@ -89,6 +96,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
       dataService: undefined,
       currentPageId: undefined,
       openEditor: undefined,
+      showIconPicker: undefined,
     };
   },
 
@@ -121,7 +129,6 @@ export const PageBlock = Node.create<PageBlockOptions>({
       let resolvedTitle = attrs.title || 'Untitled';
       let resolvedIcon: string | null = attrs.icon ?? null;
       let previewPopup: HTMLElement | null = null;
-      let iconPicker: IconPicker | null = null;
       let previewTimer: ReturnType<typeof setTimeout> | null = null;
       let hidePreviewTimer: ReturnType<typeof setTimeout> | null = null;
       let loadingPreview = 0;
@@ -157,13 +164,6 @@ export const PageBlock = Node.create<PageBlockOptions>({
         if (previewPopup) {
           previewPopup.remove();
           previewPopup = null;
-        }
-      };
-
-      const closeIconPicker = () => {
-        if (iconPicker) {
-          iconPicker.dismiss();
-          iconPicker = null;
         }
       };
 
@@ -217,53 +217,40 @@ export const PageBlock = Node.create<PageBlockOptions>({
       };
 
       const showIconPicker = () => {
-        if (iconPicker) {
-          closeIconPicker();
-          return;
-        }
         closePreview();
-
-        iconPicker = new IconPicker(document.body, {
+        this.options.showIconPicker?.({
           anchor: dom,
-          icons: PAGE_ICON_IDS,
-          renderIcon: (id, _size) => svgIcon(id),
           showSearch: false,
           showRemove: true,
           iconSize: 18,
-        });
-
-        iconPicker.onDidSelectIcon((iconId) => {
-          const pageId = attrs.pageId;
-          if (pageId && dataService) {
-            void (async () => {
-              await dataService.updatePage(pageId, { icon: iconId });
-              resolvedIcon = iconId;
-              render();
-              updateAttributes({ icon: iconId });
-            })();
-          }
-        });
-
-        iconPicker.onDidRemoveIcon(() => {
-          const pageId = attrs.pageId;
-          if (pageId && dataService) {
-            void (async () => {
-              await dataService.updatePage(pageId, { icon: null });
-              resolvedIcon = null;
-              render();
-              updateAttributes({ icon: null });
-            })();
-          }
-        });
-
-        iconPicker.onDidDismiss(() => {
-          iconPicker = null;
+          onSelect: (iconId) => {
+            const pageId = attrs.pageId;
+            if (pageId && dataService) {
+              void (async () => {
+                await dataService.updatePage(pageId, { icon: iconId });
+                resolvedIcon = iconId;
+                render();
+                updateAttributes({ icon: iconId });
+              })();
+            }
+          },
+          onRemove: () => {
+            const pageId = attrs.pageId;
+            if (pageId && dataService) {
+              void (async () => {
+                await dataService.updatePage(pageId, { icon: null });
+                resolvedIcon = null;
+                render();
+                updateAttributes({ icon: null });
+              })();
+            }
+          },
         });
       };
 
       const showPreview = async () => {
         const pageId = attrs.pageId;
-        if (!pageId || !dataService || iconPicker) return;
+        if (!pageId || !dataService) return;
 
         loadingPreview += 1;
         const token = loadingPreview;
@@ -524,7 +511,6 @@ export const PageBlock = Node.create<PageBlockOptions>({
           if (previewTimer) clearTimeout(previewTimer);
           if (hidePreviewTimer) clearTimeout(hidePreviewTimer);
           closePreview();
-          closeIconPicker();
           pageListener?.dispose();
         },
       };

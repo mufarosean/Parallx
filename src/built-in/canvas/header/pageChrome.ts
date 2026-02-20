@@ -9,7 +9,6 @@ import type { IEditorInput } from '../../../editor/editorInput.js';
 import type { IPage, ICanvasDataService } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
 import { $, layoutPopup } from '../../../ui/dom.js';
-import { IconPicker } from '../../../ui/iconPicker.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
 import { createIconElement, resolvePageIcon, svgIcon, PAGE_ICON_IDS } from '../canvasIcons.js';
 
@@ -23,6 +22,20 @@ export interface PageChromeHost {
   readonly pageId: string;
   readonly input: IEditorInput | undefined;
   readonly openEditor: OpenEditorFn | undefined;
+  readonly showIconPicker: (options: {
+    anchor: HTMLElement;
+    showSearch?: boolean;
+    showRemove?: boolean;
+    iconSize?: number;
+    onSelect: (iconId: string) => void;
+    onRemove?: () => void;
+  }) => void;
+  readonly showCoverPicker: (options: {
+    editorContainer: HTMLElement | null;
+    coverEl?: HTMLElement | null;
+    pageHeader?: HTMLElement | null;
+    onSelectCover: (coverUrl: string) => void;
+  }) => void;
 }
 
 // ── Controller ──────────────────────────────────────────────────────────────
@@ -43,8 +56,6 @@ export class PageChromeController {
   private _pageMenuBtn: HTMLElement | null = null;
   private _pageMenuDropdown: HTMLElement | null = null;
   private _emojiPicker: HTMLElement | null = null;
-  private _iconPicker: IconPicker | null = null;
-  private _coverPicker: HTMLElement | null = null;
 
   // ── Page state ──
   private _currentPage: IPage | null = null;
@@ -174,14 +185,6 @@ export class PageChromeController {
     if (this._emojiPicker) {
       this._emojiPicker.remove();
       this._emojiPicker = null;
-    }
-    if (this._iconPicker) {
-      this._iconPicker.dismiss();
-      this._iconPicker = null;
-    }
-    if (this._coverPicker) {
-      this._coverPicker.remove();
-      this._coverPicker = null;
     }
     if (this._pageMenuDropdown) {
       this._pageMenuDropdown.remove();
@@ -651,187 +654,36 @@ export class PageChromeController {
   // ── Cover Picker ────────────────────────────────────────────────────────
 
   private _showCoverPicker(): void {
-    if (this._coverPicker) { this.dismissPopups(); return; }
     this.dismissPopups();
 
-    this._coverPicker = $('div.canvas-cover-picker');
-
-    // ── Tab bar ──
-    const tabs = $('div.canvas-cover-picker-tabs');
-    const tabGallery = $('button.canvas-cover-picker-tab.canvas-cover-picker-tab--active');
-    tabGallery.textContent = 'Gallery';
-    const tabUpload = $('button.canvas-cover-picker-tab');
-    tabUpload.textContent = 'Upload';
-    const tabLink = $('button.canvas-cover-picker-tab');
-    tabLink.textContent = 'Link';
-    tabs.appendChild(tabGallery);
-    tabs.appendChild(tabUpload);
-    tabs.appendChild(tabLink);
-    this._coverPicker.appendChild(tabs);
-
-    // ── Content area ──
-    const content = $('div.canvas-cover-picker-content');
-    this._coverPicker.appendChild(content);
-
-    // Gallery (default view)
-    const GRADIENTS = [
-      'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-      'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-      'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-      'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-      'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)',
-      'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
-      'linear-gradient(135deg, #667eea 0%, #f093fb 100%)',
-      'linear-gradient(180deg, #2c3e50 0%, #3498db 100%)',
-      'linear-gradient(180deg, #141e30 0%, #243b55 100%)',
-      'linear-gradient(135deg, #0c0c0c 0%, #1a1a2e 100%)',
-      'linear-gradient(180deg, #232526 0%, #414345 100%)',
-    ];
-
-    const renderGallery = () => {
-      content.innerHTML = '';
-      const grid = $('div.canvas-cover-gallery');
-      for (const grad of GRADIENTS) {
-        const swatch = $('div.canvas-cover-swatch');
-        swatch.style.background = grad;
-        swatch.addEventListener('click', () => {
-          this._host.dataService.updatePage(this._host.pageId, { coverUrl: grad });
-          this.dismissPopups();
-        });
-        grid.appendChild(swatch);
-      }
-      content.appendChild(grid);
-    };
-
-    const renderUpload = () => {
-      content.innerHTML = '';
-      const uploadBtn = $('button.canvas-cover-upload-btn');
-      uploadBtn.textContent = 'Choose an image';
-      uploadBtn.addEventListener('click', async () => {
-        try {
-          const electron = (window as any).parallxElectron;
-          if (!electron?.dialog?.openFile) return;
-          const filePaths = await electron.dialog.openFile({
-            filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
-            properties: ['openFile'],
-          });
-          if (filePaths?.[0]) {
-            const filePath = filePaths[0];
-            const result = await electron.fs.readFile(filePath);
-            if (result?.content && result?.encoding === 'base64') {
-              const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
-              const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
-              const dataUrl = `data:${mime};base64,${result.content}`;
-              if (result.content.length > 2 * 1024 * 1024 * 1.37) {
-                alert('Image is too large (max 2MB). Please choose a smaller image.');
-                return;
-              }
-              this._host.dataService.updatePage(this._host.pageId, { coverUrl: dataUrl });
-              this.dismissPopups();
-            }
-          }
-        } catch (err) {
-          console.error('[CanvasEditorPane] Cover upload failed:', err);
-        }
-      });
-      content.appendChild(uploadBtn);
-      const hint = $('div.canvas-cover-upload-hint');
-      hint.textContent = 'Recommended: 1500×600px or wider. Max 2MB.';
-      content.appendChild(hint);
-    };
-
-    const renderLink = () => {
-      content.innerHTML = '';
-      const row = $('div.canvas-cover-link-row');
-      const input = $('input.canvas-cover-link-input') as HTMLInputElement;
-      input.type = 'url';
-      input.placeholder = 'Paste image URL…';
-      const applyBtn = $('button.canvas-cover-link-apply');
-      applyBtn.textContent = 'Apply';
-      applyBtn.addEventListener('click', () => {
-        const url = input.value.trim();
-        if (url) {
-          this._host.dataService.updatePage(this._host.pageId, { coverUrl: url });
-          this.dismissPopups();
-        }
-      });
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') applyBtn.click();
-        if (e.key === 'Escape') this.dismissPopups();
-      });
-      row.appendChild(input);
-      row.appendChild(applyBtn);
-      content.appendChild(row);
-    };
-
-    renderGallery();
-
-    // Tab switching
-    const allTabs = [tabGallery, tabUpload, tabLink];
-    const renderers = [renderGallery, renderUpload, renderLink];
-    allTabs.forEach((tab, i) => {
-      tab.addEventListener('click', () => {
-        allTabs.forEach(t => t.classList.remove('canvas-cover-picker-tab--active'));
-        tab.classList.add('canvas-cover-picker-tab--active');
-        renderers[i]();
-      });
+    this._host.showCoverPicker({
+      editorContainer: this._host.editorContainer,
+      coverEl: this._coverEl,
+      pageHeader: this._pageHeader,
+      onSelectCover: (coverUrl) => {
+        this._host.dataService.updatePage(this._host.pageId, { coverUrl });
+      },
     });
-
-    document.body.appendChild(this._coverPicker);
-
-    // Position: fixed, horizontally centered in editor area
-    const wrapperRect = (this._host.editorContainer ?? this._host.container).getBoundingClientRect();
-    const pickerWidth = 420;
-    const left = wrapperRect.left + (wrapperRect.width - pickerWidth) / 2;
-
-    let top: number;
-    const coverVisible = this._coverEl && this._coverEl.style.display !== 'none';
-    if (coverVisible) {
-      top = this._coverEl!.getBoundingClientRect().bottom + 4;
-    } else if (this._pageHeader) {
-      top = this._pageHeader.getBoundingClientRect().top;
-    } else {
-      top = wrapperRect.top + 60;
-    }
-
-    layoutPopup(this._coverPicker, { x: left, y: top });
-
-    setTimeout(() => {
-      document.addEventListener('mousedown', this._handlePopupOutsideClick);
-    }, 0);
-    document.addEventListener('keydown', this._handlePopupEscape);
   }
 
   // ── Icon Picker ─────────────────────────────────────────────────────────
 
   private _showIconPicker(): void {
-    if (this._iconPicker) { this.dismissPopups(); return; }
     this.dismissPopups();
 
     const anchor = (this._iconEl?.style.display !== 'none' ? this._iconEl : this._pageHeader) ?? this._host.container;
 
-    this._iconPicker = new IconPicker(this._host.container, {
+    this._host.showIconPicker({
       anchor,
-      icons: PAGE_ICON_IDS,
-      renderIcon: (id, _size) => svgIcon(id),
       showSearch: true,
       showRemove: !!this._currentPage?.icon,
       iconSize: 22,
-    });
-
-    this._iconPicker.onDidSelectIcon((id) => {
-      this._host.dataService.updatePage(this._host.pageId, { icon: id });
-      this.dismissPopups();
-    });
-
-    this._iconPicker.onDidRemoveIcon(() => {
-      this._host.dataService.updatePage(this._host.pageId, { icon: null as any });
-      this.dismissPopups();
-    });
-
-    this._iconPicker.onDidDismiss(() => {
-      this._iconPicker = null;
+      onSelect: (id) => {
+        this._host.dataService.updatePage(this._host.pageId, { icon: id });
+      },
+      onRemove: () => {
+        this._host.dataService.updatePage(this._host.pageId, { icon: null as any });
+      },
     });
   }
 
@@ -997,8 +849,6 @@ export class PageChromeController {
     const target = e.target as HTMLElement;
     if (
       this._emojiPicker?.contains(target) ||
-      this._iconPicker?.element.contains(target) ||
-      this._coverPicker?.contains(target) ||
       this._pageMenuDropdown?.contains(target) ||
       this._pageMenuBtn?.contains(target) ||
       this._iconEl?.contains(target) ||

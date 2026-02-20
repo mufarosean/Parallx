@@ -18,6 +18,8 @@ import type { IDisposable } from '../../../platform/lifecycle.js';
 import { SlashMenuController, type SlashMenuHost } from './slashMenu.js';
 import { BubbleMenuController, type BubbleMenuHost } from './bubbleMenu.js';
 import { BlockActionMenuController, type BlockActionMenuHost } from './blockActionMenu.js';
+import { IconMenuController, type IconMenuHost, type IconMenuOptions } from './iconMenu.js';
+import { CoverMenuController, type CoverMenuHost, type CoverMenuOptions } from './coverMenu.js';
 
 // ── Menu contract ───────────────────────────────────────────────────────────
 
@@ -67,13 +69,15 @@ export interface IBlockActionMenu extends ICanvasMenu {
 
 // ── Combined host type (union of all menu hosts) ────────────────────────────
 
-export type CanvasMenuHost = SlashMenuHost & BubbleMenuHost & BlockActionMenuHost;
+export type CanvasMenuHost = SlashMenuHost & BubbleMenuHost & BlockActionMenuHost & IconMenuHost & CoverMenuHost;
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
 export class CanvasMenuRegistry {
   private readonly _menus = new Map<string, ICanvasMenu>();
   private readonly _getEditor: () => Editor | null;
+  private _iconMenu: IconMenuController | null = null;
+  private _coverMenu: CoverMenuController | null = null;
 
   // Bound once so we can remove the same reference on dispose.
   private readonly _onDocMousedown = (e: MouseEvent): void => {
@@ -111,6 +115,14 @@ export class CanvasMenuRegistry {
 
     const blockAction = new BlockActionMenuController(host, this);
     blockAction.create();
+
+    const icon = new IconMenuController(host, this);
+    icon.create();
+    this._iconMenu = icon;
+
+    const cover = new CoverMenuController(host, this);
+    cover.create();
+    this._coverMenu = cover;
 
     return blockAction;
   }
@@ -164,6 +176,27 @@ export class CanvasMenuRegistry {
     for (const menu of this._menus.values()) {
       if (menu.visible) menu.hide();
     }
+  }
+
+  /**
+   * Show the icon picker popup via the registry-managed icon menu.
+   *
+   * This is the single entry point for all icon picker usage — pageChrome,
+   * pageBlockNode, calloutNode all call through here (directly or via a
+   * callback threaded through their entry point).
+   */
+  showIconMenu(options: IconMenuOptions): void {
+    this._iconMenu?.show(options);
+  }
+
+  /**
+   * Show the cover picker popup via the registry-managed cover menu.
+   *
+   * This is the single entry point for all cover picker usage — pageChrome
+   * calls through here instead of building raw DOM inline.
+   */
+  showCoverMenu(options: CoverMenuOptions): void {
+    this._coverMenu?.show(options);
   }
 
   /** `true` if at least one registered menu is visible. */
