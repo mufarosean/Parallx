@@ -9,7 +9,7 @@ import { $, layoutPopup } from '../../../ui/dom.js';
 import { svgIcon } from '../config/iconRegistry.js';
 import type { SlashMenuItem } from './slashMenuItems.js';
 import type { SlashActionContext, ISlashPageCommands } from './slashMenuItems.js';
-import { SLASH_MENU_ITEMS } from './slashMenuItems.js';
+import { buildSlashMenuItems } from './slashMenuItems.js';
 import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
@@ -39,6 +39,7 @@ export class SlashMenuController implements ICanvasMenu {
   private _filterText = '';
   private _selectedIndex = 0;
   private _registration: IDisposable | null = null;
+  private _slashItems: SlashMenuItem[] | null = null;
 
   constructor(
     private readonly _host: SlashMenuHost,
@@ -136,7 +137,7 @@ export class SlashMenuController implements ICanvasMenu {
   }
 
   private _getFilteredItems(): SlashMenuItem[] {
-    const items: SlashMenuItem[] = SLASH_MENU_ITEMS;
+    const items = this._slashItems ??= buildSlashMenuItems(this._registry.getSlashMenuBlocks());
 
     if (!this._filterText) return items;
     const q = this._filterText.replace(/[^a-z0-9]/g, '');

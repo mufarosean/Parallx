@@ -20,8 +20,33 @@ import { BubbleMenuController, type BubbleMenuHost } from './bubbleMenu.js';
 import { BlockActionMenuController, type BlockActionMenuHost } from './blockActionMenu.js';
 import { IconMenuController, type IconMenuHost, type IconMenuOptions } from './iconMenu.js';
 import { CoverMenuController, type CoverMenuHost, type CoverMenuOptions } from './coverMenu.js';
+import {
+  getSlashMenuBlocks as _getSlashMenuBlocks,
+  getTurnIntoBlocks as _getTurnIntoBlocks,
+  getBlockLabel as _getBlockLabel,
+  getBlockByName as _getBlockByName,
+  BLOCK_REGISTRY as _BLOCK_REGISTRY,
+} from '../config/blockRegistry.js';
 
 // ── Menu contract ───────────────────────────────────────────────────────────
+
+/**
+ * Narrow block-info shape exposed to menu consumers.
+ *
+ * Menus never import blockRegistry directly — they receive block data
+ * through CanvasMenuRegistry methods typed with this interface.
+ */
+export interface MenuBlockInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly label: string;
+  readonly icon: string;
+  readonly iconIsText?: boolean;
+  readonly defaultAttrs?: Record<string, any>;
+  readonly defaultContent?: Record<string, any>;
+  readonly slashMenu?: { readonly label?: string; readonly description: string };
+  readonly turnInto?: { readonly order: number; readonly shortcut?: string };
+}
 
 /**
  * Implemented by every canvas menu surface that participates in
@@ -242,6 +267,48 @@ export class CanvasMenuRegistry {
     const editor = this._getEditor();
     if (editor && editor.view.dom.classList.contains('dragging')) return true;
     return false;
+  }
+
+  // ── Block-data gate (menus read block info through here) ──────────────
+
+  /**
+   * Block definitions that appear in the slash menu, sorted by order.
+   * Menus call this instead of importing blockRegistry directly.
+   */
+  getSlashMenuBlocks(): MenuBlockInfo[] {
+    return _getSlashMenuBlocks();
+  }
+
+  /**
+   * Block definitions that appear in the turn-into submenu, sorted by order.
+   */
+  getTurnIntoBlocks(): MenuBlockInfo[] {
+    return _getTurnIntoBlocks();
+  }
+
+  /**
+   * Look up a block definition by its registry ID (e.g. 'callout', 'details').
+   * Returns undefined when the ID is not registered.
+   */
+  getBlockDefinition(id: string): MenuBlockInfo | undefined {
+    return _BLOCK_REGISTRY.get(id);
+  }
+
+  /**
+   * Human-readable label for a ProseMirror node type name.
+   * Handles generic labels for multi-variant types (heading → 'Heading').
+   */
+  labelForBlockType(typeName: string): string {
+    return _getBlockLabel(typeName);
+  }
+
+  /**
+   * Whether the bubble menu should be suppressed for a given node type.
+   * Checks the block registry's `suppressBubbleMenu` capability flag.
+   */
+  shouldSuppressBubbleMenu(typeName: string): boolean {
+    const def = _getBlockByName(typeName);
+    return def?.capabilities.suppressBubbleMenu ?? false;
   }
 
   // ── Dispose ─────────────────────────────────────────────────────────────

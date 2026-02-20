@@ -8,7 +8,6 @@ import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
 import { svgIcon } from '../config/iconRegistry.js';
 import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
-import { getBlockByName } from '../config/blockRegistry.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
@@ -233,8 +232,7 @@ export class BubbleMenuController implements ICanvasMenu {
 
     // Don't show for blocks that suppress the bubble menu (e.g. code blocks)
     const { $from } = editor.state.selection;
-    const parentDef = getBlockByName($from.parent.type.name);
-    if (parentDef?.capabilities.suppressBubbleMenu) {
+    if (this._registry.shouldSuppressBubbleMenu($from.parent.type.name)) {
       this.hide();
       return;
     }

@@ -13,7 +13,10 @@ import {
   getTurnIntoBlocks,
   isContainerBlockType,
 } from '../../src/built-in/canvas/config/blockRegistry';
-import { SLASH_MENU_ITEMS } from '../../src/built-in/canvas/menus/slashMenuItems';
+import { buildSlashMenuItems } from '../../src/built-in/canvas/menus/slashMenuItems';
+
+// Build SLASH_MENU_ITEMS from the registry the same way the runtime does.
+const SLASH_MENU_ITEMS = buildSlashMenuItems(getSlashMenuBlocks());
 
 // ── Baseline values (copied verbatim from the original hardcoded sources) ──
 

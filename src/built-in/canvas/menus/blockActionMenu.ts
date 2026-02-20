@@ -20,7 +20,6 @@ import {
   duplicateBlockAt,
   turnBlockWithSharedStrategy,
 } from '../mutations/blockMutations.js';
-import { getBlockLabel, getTurnIntoBlocks } from '../config/blockRegistry.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
@@ -116,7 +115,7 @@ export class BlockActionMenuController implements ICanvasMenu {
 
     // Header — block type label
     const header = $('div.block-action-header');
-    header.textContent = getBlockLabel(this._actionBlockNode.type.name);
+    header.textContent = this._registry.labelForBlockType(this._actionBlockNode.type.name);
     this._blockActionMenu.appendChild(header);
 
     // Turn into
@@ -219,7 +218,7 @@ export class BlockActionMenuController implements ICanvasMenu {
     }
     this._turnIntoSubmenu.innerHTML = '';
 
-    const turnIntoBlocks = getTurnIntoBlocks();
+    const turnIntoBlocks = this._registry.getTurnIntoBlocks();
 
     for (const def of turnIntoBlocks) {
       const row = $('div.block-action-item');

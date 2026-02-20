@@ -6,9 +6,10 @@
 // with the desired block structure — this is the same pattern TipTap's
 // own `setDetails()` command uses internally.  NO deleteRange needed.
 //
-// Block metadata (label, icon, description, order) is read from the
-// centralized block registry.  Only custom actions (async popups,
-// cursor placement, column creation) are defined here.
+// Block metadata (label, icon, description, order) is provided by the
+// canvasMenuRegistry — this file never imports blockRegistry directly.
+// Only custom actions (async popups, cursor placement, column creation)
+// are defined here.
 
 import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
@@ -16,12 +17,21 @@ import { showImageInsertPopup } from './imageInsertPopup.js';
 import { showMediaInsertPopup } from './mediaInsertPopup.js';
 import { showBookmarkInsertPopup } from './bookmarkInsertPopup.js';
 import { encodeCanvasContentFromDoc } from '../contentSchema.js';
-import { BLOCK_REGISTRY, getSlashMenuBlocks, type BlockDefinition } from '../config/blockRegistry.js';
 
 // ── Local narrow types ──────────────────────────────────────────────────────
 // slashMenuItems is a leaf of the menu system and receives dependencies
 // through slashMenu → canvasMenuRegistry.  It defines its own narrow shapes
-// rather than importing shared types from canvasTypes.ts.
+// rather than importing shared types from canvasTypes.ts or blockRegistry.ts.
+
+/** Narrow block definition shape — only the fields slash-menu building needs. */
+export interface SlashBlockDef {
+  readonly id: string;
+  readonly label: string;
+  readonly icon: string;
+  readonly iconIsText?: boolean;
+  readonly defaultContent?: Record<string, any>;
+  readonly slashMenu?: { readonly label?: string; readonly description: string };
+}
 
 /** Narrow page shape — only the fields slash commands read. */
 export interface ISlashPageResult {
@@ -100,13 +110,16 @@ function replaceBlockWithColumns(editor: Editor, range: { from: number; to: numb
 // ── Custom actions — blocks that need special insertion logic ────────────────
 // Keyed by BlockDefinition.id.  Blocks not listed here use the simple
 // `insertContentAt(range, def.defaultContent).focus().run()` path.
+//
+// Each factory receives the block definition so it can capture
+// `defaultContent` without importing blockRegistry directly.
 
 type SlashAction = SlashMenuItem['action'];
 
-const CUSTOM_ACTIONS: Record<string, SlashAction> = {
+const CUSTOM_ACTIONS: Record<string, (def: SlashBlockDef) => SlashAction> = {
 
   // Page — async page creation + parent doc save + navigation
-  'pageBlock': async (editor, range, context) => {
+  'pageBlock': (_def) => async (editor, range, context) => {
     if (!context?.dataService || !context.pageId) return;
 
     let child: ISlashPageResult | null = null;
@@ -183,19 +196,17 @@ const CUSTOM_ACTIONS: Record<string, SlashAction> = {
   },
 
   // Callout — insert + cursor inside the callout paragraph
-  'callout': (e, range) => {
-    const def = BLOCK_REGISTRY.get('callout')!;
+  'callout': (def) => (e, range) => {
     insertAndFocusChild(e, range, def.defaultContent!, 'callout', 2);
   },
 
   // Toggle list — insert + cursor inside the detailsSummary
-  'details': (e, range) => {
-    const def = BLOCK_REGISTRY.get('details')!;
+  'details': (def) => (e, range) => {
     insertAndFocusChild(e, range, def.defaultContent!, 'detailsSummary', 1);
   },
 
   // Table — complex 3×3 with header row
-  'table': (e, range) => {
+  'table': (_def) => (e, range) => {
     const headerCells = Array.from({ length: 3 }, () => ({
       type: 'tableHeader', content: [{ type: 'paragraph' }],
     }));
@@ -212,39 +223,45 @@ const CUSTOM_ACTIONS: Record<string, SlashAction> = {
   },
 
   // Toggle headings — insert + cursor inside toggleHeadingText
-  'toggleHeading-1': (e, range) => {
-    const def = BLOCK_REGISTRY.get('toggleHeading-1')!;
+  'toggleHeading-1': (def) => (e, range) => {
     insertAndFocusChild(e, range, def.defaultContent!, 'toggleHeadingText', 1);
   },
-  'toggleHeading-2': (e, range) => {
-    const def = BLOCK_REGISTRY.get('toggleHeading-2')!;
+  'toggleHeading-2': (def) => (e, range) => {
     insertAndFocusChild(e, range, def.defaultContent!, 'toggleHeadingText', 1);
   },
-  'toggleHeading-3': (e, range) => {
-    const def = BLOCK_REGISTRY.get('toggleHeading-3')!;
+  'toggleHeading-3': (def) => (e, range) => {
     insertAndFocusChild(e, range, def.defaultContent!, 'toggleHeadingText', 1);
   },
 
   // Columns — ProseMirror-level schema construction
-  'columnList-2': (e, range) => replaceBlockWithColumns(e, range, 2),
-  'columnList-3': (e, range) => replaceBlockWithColumns(e, range, 3),
-  'columnList-4': (e, range) => replaceBlockWithColumns(e, range, 4),
+  'columnList-2': (_def) => (e, range) => replaceBlockWithColumns(e, range, 2),
+  'columnList-3': (_def) => (e, range) => replaceBlockWithColumns(e, range, 3),
+  'columnList-4': (_def) => (e, range) => replaceBlockWithColumns(e, range, 4),
 
   // Media — popup-based insertion
-  'image': (e, range) => showImageInsertPopup(e, range),
-  'bookmark': (e, range) => showBookmarkInsertPopup(e, range),
-  'video': (e, range) => showMediaInsertPopup(e, range, 'video'),
-  'audio': (e, range) => showMediaInsertPopup(e, range, 'audio'),
-  'fileAttachment': (e, range) => showMediaInsertPopup(e, range, 'fileAttachment'),
+  'image': (_def) => (e, range) => showImageInsertPopup(e, range),
+  'bookmark': (_def) => (e, range) => showBookmarkInsertPopup(e, range),
+  'video': (_def) => (e, range) => showMediaInsertPopup(e, range, 'video'),
+  'audio': (_def) => (e, range) => showMediaInsertPopup(e, range, 'audio'),
+  'fileAttachment': (_def) => (e, range) => showMediaInsertPopup(e, range, 'fileAttachment'),
 };
 
-// ── Build SLASH_MENU_ITEMS from registry ────────────────────────────────────
+// ── Build slash menu items from block definitions ───────────────────────────
 
-export const SLASH_MENU_ITEMS: SlashMenuItem[] = getSlashMenuBlocks().map((def) => ({
-  label: def.slashMenu!.label ?? def.label,
-  icon: def.icon,
-  description: def.slashMenu!.description,
-  action: CUSTOM_ACTIONS[def.id] ??
-    ((e: Editor, range: { from: number; to: number }) =>
-      e.chain().insertContentAt(range, def.defaultContent!).focus().run()),
-}));
+/**
+ * Build the final SlashMenuItem array from block definitions.
+ *
+ * Called by slashMenu.ts with data sourced from canvasMenuRegistry
+ * (which reads from blockRegistry).  This file never imports
+ * blockRegistry directly.
+ */
+export function buildSlashMenuItems(defs: readonly SlashBlockDef[]): SlashMenuItem[] {
+  return defs.map((def) => ({
+    label: def.slashMenu!.label ?? def.label,
+    icon: def.icon,
+    description: def.slashMenu!.description,
+    action: CUSTOM_ACTIONS[def.id]?.(def) ??
+      ((e: Editor, range: { from: number; to: number }) =>
+        e.chain().insertContentAt(range, def.defaultContent!).focus().run()),
+  }));
+}
