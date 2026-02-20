@@ -8,6 +8,7 @@ import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
 import { svgIcon } from '../canvasIcons.js';
 import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
+import { getBlockByName } from '../config/blockRegistry.js';
 
 // ── Dependency interface ────────────────────────────────────────────────────
 
@@ -216,9 +217,10 @@ export class BubbleMenuController {
       return;
     }
 
-    // Don't show for code blocks or node selections
+    // Don't show for blocks that suppress the bubble menu (e.g. code blocks)
     const { $from } = editor.state.selection;
-    if ($from.parent.type.name === 'codeBlock') {
+    const parentDef = getBlockByName($from.parent.type.name);
+    if (parentDef?.capabilities.suppressBubbleMenu) {
       this.hide();
       return;
     }
