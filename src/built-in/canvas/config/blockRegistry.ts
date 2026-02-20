@@ -97,6 +97,12 @@ export interface BlockDefinition {
   readonly icon: string;
   /** True when icon is a text glyph rather than an SVG key. */
   readonly iconIsText?: boolean;
+  /**
+   * True when the user can change this block's icon via the icon picker.
+   * Only blocks whose identity is partly expressed by a choosable icon
+   * (callout, pageBlock) set this.  All other blocks have fixed icons.
+   */
+  readonly iconSelectable?: boolean;
   /** Origin of the node type definition. */
   readonly source: 'starterkit' | 'tiptap-package' | 'custom';
   /** Structural classification. */
@@ -385,6 +391,7 @@ const definitions: BlockDefinition[] = [
     name: 'callout',
     label: 'Callout',
     icon: 'lightbulb',
+    iconSelectable: true,
     source: 'custom',
     kind: 'container',
     capabilities: { allowInColumn: true, customDragHandle: true, isPageContainer: true, suppressBubbleMenu: false },
@@ -531,6 +538,7 @@ const definitions: BlockDefinition[] = [
     name: 'pageBlock',
     label: 'Page',
     icon: 'page',
+    iconSelectable: true,
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,

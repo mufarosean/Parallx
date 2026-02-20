@@ -13,7 +13,7 @@ import type { Editor } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
 import type { BlockSelectionController } from './blockSelection.js';
 import type { IBlockActionMenu } from '../menus/canvasMenuRegistry.js';
-import { svgIcon } from '../canvasIcons.js';
+import { svgIcon } from '../config/iconRegistry.js';
 import {
   CANVAS_BLOCK_DRAG_MIME,
   clearActiveCanvasDragSession,

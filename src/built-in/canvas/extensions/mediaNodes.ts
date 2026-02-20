@@ -4,7 +4,7 @@
 // element or a file card with download affordance.
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import { svgIcon } from '../canvasIcons.js';
+import { svgIcon } from '../config/iconRegistry.js';
 
 function toUrl(input: string): URL | null {
   try {
