@@ -6,6 +6,7 @@ import {
   COLUMN_CONTENT_NODE_TYPES,
   DRAG_HANDLE_CUSTOM_NODE_TYPES,
   PAGE_CONTAINERS,
+  getBlockExtensions,
   getBlockLabel,
   getNodePlaceholder,
   getSlashMenuBlocks,
@@ -237,6 +238,69 @@ describe('blockRegistry', () => {
       expect(map.has('To-Do List')).toBe(true);       // not 'To-do list'
       expect(map.has('Code Block')).toBe(true);       // not 'Code'
       expect(map.has('Toggle List')).toBe(true);      // not 'Toggle list'
+    });
+  });
+
+  describe('extension factories', () => {
+    it('every non-starterkit node type has exactly one definition with an extension factory', () => {
+      // Group all non-starterkit definitions by ProseMirror node type name.
+      const byName = new Map<string, number>();
+      for (const [, def] of BLOCK_REGISTRY) {
+        if (def.source === 'starterkit') continue;
+        if (def.extension) {
+          byName.set(def.name, (byName.get(def.name) ?? 0) + 1);
+        }
+      }
+      // Each non-starterkit node type name should appear exactly once.
+      for (const [name, count] of byName) {
+        expect(count, `node type '${name}' has ${count} extension factories, expected 1`).toBe(1);
+      }
+    });
+
+    it('no starterkit definition has an extension factory', () => {
+      for (const [, def] of BLOCK_REGISTRY) {
+        if (def.source === 'starterkit') {
+          expect(def.extension, `starterkit block '${def.id}' should not have an extension factory`).toBeUndefined();
+        }
+      }
+    });
+
+    it('every non-starterkit unique node type has a factory somewhere (or is bundled with parent)', () => {
+      // Structural sub-nodes whose extensions are loaded by their parent's factory.
+      const BUNDLED_WITH_PARENT = new Set(['column', 'toggleHeadingText']);
+
+      // Collect unique non-starterkit node type names
+      const nonStarterKitNames = new Set<string>();
+      for (const [, def] of BLOCK_REGISTRY) {
+        if (def.source !== 'starterkit') {
+          nonStarterKitNames.add(def.name);
+        }
+      }
+      // For each, at least one definition should have an extension factory
+      // (unless the extension is bundled with a parent block's factory)
+      for (const name of nonStarterKitNames) {
+        if (BUNDLED_WITH_PARENT.has(name)) continue;
+        const hasFactory = Array.from(BLOCK_REGISTRY.values()).some(
+          (d) => d.name === name && d.extension !== undefined,
+        );
+        expect(hasFactory, `node type '${name}' has no extension factory in any definition`).toBe(true);
+      }
+    });
+
+    it('getBlockExtensions returns a non-empty array', () => {
+      // Use a minimal context — factories that need lowlight/dataService will
+      // still return configured extensions (just with undefined options).
+      const extensions = getBlockExtensions({});
+      expect(extensions.length).toBeGreaterThan(0);
+    });
+
+    it('getBlockExtensions returns unique extensions (no duplicates by name)', () => {
+      const extensions = getBlockExtensions({});
+      const names = extensions
+        .filter((ext: any) => ext.name)
+        .map((ext: any) => ext.name);
+      const dupes = names.filter((n: string, i: number) => names.indexOf(n) !== i);
+      expect(dupes, `duplicate extensions: ${dupes.join(', ')}`).toEqual([]);
     });
   });
 });

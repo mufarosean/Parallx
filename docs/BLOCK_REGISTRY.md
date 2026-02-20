@@ -202,12 +202,14 @@ Create a **single file** — `config/blockRegistry.ts` — that serves as the ca
 | Container classification | `_isContainerBlockType()`, `containerTypes Set` | **Yes** — `kind: 'container' | 'leaf' | 'atom'` |
 | Placeholder text | `tiptapExtensions.ts` Placeholder config | **Yes** — `placeholder` field |
 | Bubble menu suppression | `bubbleMenu.ts` | **Yes** — `capabilities.suppressBubbleMenu` flag |
+| Tiptap extension wiring | `tiptapExtensions.ts` manual imports | **Yes** — `extension` factory per block definition |
 
 ### 4.3 What the Registry Does NOT Own
 
-- **ProseMirror schema** — Tiptap extensions still define `Node.create({ name, schema, ... })`. The registry is metadata *about* those nodes, not a replacement for them.
-- **Tiptap extension configuration** — `tiptapExtensions.ts` still assembles the Extensions array. The registry doesn't instantiate extensions.
+- **ProseMirror schema** — Tiptap extensions still define `Node.create({ name, schema, ... })` in their own files. The registry references those extensions via lazy factory functions but doesn't replace them.
 - **DOM rendering** — NodeViews, CSS, and rendering logic stay in their extension files.
+- **Infrastructure extensions** — Non-block concerns (Placeholder, GlobalDragHandle, TextStyle, Color, Highlight, CharacterCount, AutoJoiner, DetailsEnterHandler, BlockKeyboardShortcuts, StructuralInvariantGuard, BlockBackgroundColor) are loaded directly by `tiptapExtensions.ts`. These are plugins/marks, not blocks.
+- **StarterKit assembly** — `StarterKit.configure(...)` remains in `tiptapExtensions.ts`. StarterKit blocks (paragraph, heading, lists, blockquote, horizontalRule) don't need individual extension factories because they're bundled by StarterKit.
 - **Complex insertion logic** — Slash menu actions that involve async operations (e.g. `Page` creating a child page) keep their custom action functions. The registry provides a hook point, not a replacement.
 
 ---
@@ -282,6 +284,19 @@ export interface BlockDefinition {
 
   /** Placeholder text when the block is empty. */
   readonly placeholder?: string | ((context: { node: any; pos: number; editor: any; hasAnchor: boolean }) => string);
+
+  /**
+   * Lazy factory returning the Tiptap extension(s) for this block.
+   * - Omit for StarterKit blocks (they're bundled by StarterKit.configure).
+   * - For multi-variant entries sharing a node type (e.g. heading-1/2/3,
+   *   toggleHeading-1/2/3, columnList-2/3/4), only the FIRST variant
+   *   carries the factory — the others leave it undefined.
+   * - May return a single extension OR an array (e.g. taskList returns
+   *   [TaskList, TaskItem.configure(...)]).
+   * - Receives an EditorExtensionContext for extensions that need runtime
+   *   config (lowlight, dataService, openEditor, etc.).
+   */
+  readonly extension?: (context: EditorExtensionContext) => AnyExtension | AnyExtension[];
 }
 ```
 
@@ -327,9 +342,34 @@ Tiptap doesn't know or care that a registry exists. The registry is consumed by 
 
 Files in `extensions/` (e.g. `calloutNode.ts`, `columnNodes.ts`) continue to define ProseMirror node types and NodeViews. They don't import from the registry. The registry imports nothing from them — it's a flat data file.
 
-### 6.3 `tiptapExtensions.ts` Still Assembles the Extensions Array
+### 6.3 Extension Factories — Registry as the Single Entry Point
 
-The `createEditorExtensions()` factory continues to import and configure all Tiptap extensions. The only change is that it reads `DRAG_HANDLE_CUSTOM_NODE_TYPES` from the registry export (same name, same shape) instead of from `blockCapabilities.ts`.
+Each `BlockDefinition` can carry an optional `extension` factory that returns the configured Tiptap extension(s) for that block. `tiptapExtensions.ts` collects extensions from three sources:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  createEditorExtensions(context)                    │
+│                                                     │
+│  1. StarterKit.configure(...)   ← bundled blocks    │
+│  2. BLOCK_REGISTRY entries      ← extension factory │
+│     .filter(def => def.extension)                   │
+│     .flatMap(def => def.extension(context))          │
+│  3. Infrastructure extensions   ← plugins/marks     │
+│     (Placeholder, DragHandle, TextStyle, etc.)      │
+└─────────────────────────────────────────────────────┘
+```
+
+**Adding a new block becomes a 2-step process:**
+1. Write `extensions/myNode.ts` with `Node.create({ name, schema, ... })`
+2. Add a `BlockDefinition` to `blockRegistry.ts` with `extension: (ctx) => MyNode`
+
+That's it. Slash menu, turn-into, placeholder, bubble menu, drag handle config, and extension loading all flow from that one entry.
+
+**Design decisions:**
+- **StarterKit stays bundled.** Those blocks are stable, rarely change, and don't benefit from individual factories.
+- **Factories own their config.** Each factory calls `.configure(...)` internally — no external config objects.
+- **No priority field.** Extension order doesn't matter for current blocks (no conflicting input rules or key handlers). If needed later, a `priority?: number` field is a 3-line addition.
+- **Context passthrough.** `EditorExtensionContext` carries runtime dependencies (lowlight, dataService, openEditor). Factories that don't need context simply ignore the parameter.
 
 ---
 
@@ -557,18 +597,77 @@ This phase makes `turnBlockWithSharedStrategy()` partially data-driven. It's the
 
 ---
 
-### Phase 10 — Cleanup
+### Phase 10 — Extension Factories (Registry as Single Entry Point)
 
-#### Step 10.1: Remove Dead Code
+> **Goal:** Make the block registry the single entry point for adding a block.
+> Adding a `BlockDefinition` with an `extension` factory is all that's needed
+> for a block to exist in the editor AND appear in all menus/capabilities.
+
+#### Step 10.1: Move `EditorExtensionContext` to `blockRegistry.ts`
+- [ ] Move the `EditorExtensionContext` interface from `tiptapExtensions.ts` to `blockRegistry.ts`
+- [ ] Add `lowlight` to the interface (needed by `CodeBlockLowlight`)
+- [ ] Re-export from `tiptapExtensions.ts` for backward compatibility
+
+#### Step 10.2: Add `extension` Field to `BlockDefinition`
+- [ ] Add optional `extension?: (context: EditorExtensionContext) => AnyExtension | AnyExtension[]` to the interface
+- [ ] This is additive — existing definitions without the field continue to work
+
+#### Step 10.3: Add Extension Factories to Block Definitions
+For each non-StarterKit block in the registry, add an `extension` factory:
+
+| Block(s) | Factory returns | Notes |
+|-----------|----------------|-------|
+| `taskList` | `[TaskList, TaskItem.configure({ nested: true })]` | Multi-extension |
+| `codeBlock` | `CodeBlockLowlight.configure({ lowlight, ... })` | Needs `ctx.lowlight` |
+| `image` | `Image.configure({ inline: false, allowBase64: true })` | |
+| `details` | `Details.configure({ persist: true, ... })` | |
+| `detailsSummary` | `DetailsSummary` | |
+| `detailsContent` | `DetailsContent` | |
+| `table` | `TableKit.configure({ table: { resizable: true, ... } })` | Multi-node extension |
+| `inlineMath` | `InlineMathNode.configure({ ... })` | |
+| `callout` | `Callout` | |
+| `mathBlock` | `MathBlock` | |
+| `toggleHeading-1` | `[ToggleHeading, ToggleHeadingText]` | Only first variant |
+| `columnList-2` | `[Column, ColumnList]` | Only first variant |
+| `bookmark` | `Bookmark` | |
+| `pageBlock` | `PageBlock.configure({ dataService, ... })` | Needs `ctx` |
+| `tableOfContents` | `TableOfContents` | |
+| `video` | `Video` | |
+| `audio` | `Audio` | |
+| `fileAttachment` | `FileAttachment` | |
+
+Variants that share a node type (`toggleHeading-2/3`, `columnList-3/4`, `heading-1/2/3`) leave `extension` undefined — the first variant's factory already loads the Tiptap extension.
+
+#### Step 10.4: Refactor `tiptapExtensions.ts`
+- [ ] Remove individual block extension imports (Callout, Column, MathBlock, etc.)
+- [ ] Import `getBlockExtensions()` from `blockRegistry.ts`
+- [ ] Assemble: `[StarterKit, ...getBlockExtensions(context), ...infrastructure]`
+- [ ] Keep infrastructure imports (Placeholder, GlobalDragHandle, TextStyle, etc.)
+
+#### Step 10.5: Add Registry Test for Extension Factories
+- [ ] Test that every non-StarterKit block with `source !== 'starterkit'` has exactly one definition (per unique node type) with an `extension` factory
+- [ ] Test that `getBlockExtensions()` returns a non-empty array
+
+#### Step 10.6: Run Tests
+- [ ] `npx vitest run` — confirm 177+ tests pass
+- [ ] Launch app — verify all block types still insert, render, and interact correctly
+
+**✅ Commit: "feat(canvas): extension factories in block registry — single entry point for blocks"**
+
+---
+
+### Phase 11 — Cleanup
+
+#### Step 11.1: Remove Dead Code
 - [ ] Remove `blockCapabilities.ts` if fully superseded (or keep as thin re-export if import paths are widespread)
 - [ ] Remove any unused local constants, `Set` definitions, or helper functions that have been replaced by registry queries
 - [ ] Search for any remaining hardcoded block type string literals that should reference the registry
 
-#### Step 10.2: Update Codebase Documentation
+#### Step 11.2: Update Codebase Documentation
 - [ ] Add JSDoc to `blockRegistry.ts` explaining how to add a new block type
 - [ ] Update this document with final status
 
-#### Step 10.3: Final Test Run
+#### Step 11.3: Final Test Run
 - [ ] `npx vitest run` — full pass
 - [ ] E2E tests — full pass
 - [ ] Manual smoke test of all block operations

@@ -4,7 +4,46 @@
 // mutations, plugins, capabilities) reads from this registry instead of
 // maintaining its own hardcoded lists.
 //
+// Adding a new block:
+//   1. Write `extensions/myNode.ts` with Node.create({ name, schema, … })
+//   2. Add a BlockDefinition here with an `extension` factory.
+//   That's it — slash menu, turn-into, placeholder, bubble menu, drag handle,
+//   and extension loading all flow from the single registry entry.
+//
 // See docs/BLOCK_REGISTRY.md for architecture rationale.
+
+// ── Extension imports ───────────────────────────────────────────────────────
+// Tiptap packages (non-StarterKit blocks)
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
+import Image from '@tiptap/extension-image';
+import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details';
+import { TableKit } from '@tiptap/extension-table';
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import { InlineMathNode } from '@aarkue/tiptap-math-extension';
+// Custom extensions
+import { Callout } from '../extensions/calloutNode.js';
+import { Column, ColumnList } from '../extensions/columnNodes.js';
+import { MathBlock } from '../extensions/mathBlockNode.js';
+import { ToggleHeading, ToggleHeadingText } from '../extensions/toggleHeadingNode.js';
+import { Bookmark } from '../extensions/bookmarkNode.js';
+import { PageBlock } from '../extensions/pageBlockNode.js';
+import { TableOfContents } from '../extensions/tableOfContentsNode.js';
+import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
+// Types
+import type { AnyExtension } from '@tiptap/core';
+import type { CanvasDataService } from '../canvasDataService.js';
+import type { OpenEditorFn } from '../canvasEditorProvider.js';
+
+// ── EditorExtensionContext ──────────────────────────────────────────────────
+// Runtime dependencies passed to extension factories that need configuration.
+
+export interface EditorExtensionContext {
+  readonly lowlight?: any;
+  readonly dataService?: CanvasDataService;
+  readonly pageId?: string;
+  readonly openEditor?: OpenEditorFn;
+}
 
 // ── BlockDefinition Interface ───────────────────────────────────────────────
 
@@ -63,6 +102,13 @@ export interface BlockDefinition {
   readonly defaultContent?: Record<string, any>;
   /** Placeholder text when block is empty (string or 'special' for complex logic). */
   readonly placeholder?: string;
+  /**
+   * Lazy factory returning the configured Tiptap extension(s) for this block.
+   * Omit for StarterKit blocks (bundled by StarterKit.configure).
+   * For multi-variant entries sharing a node type, only the first variant
+   * carries the factory — the rest leave it undefined.
+   */
+  readonly extension?: (context: EditorExtensionContext) => AnyExtension | AnyExtension[];
 }
 
 // ── Default capabilities (DRY helpers) ──────────────────────────────────────
@@ -237,6 +283,7 @@ const definitions: BlockDefinition[] = [
         content: [{ type: 'paragraph' }],
       }],
     },
+    extension: () => [TaskList, TaskItem.configure({ nested: true })],
   },
   {
     id: 'codeBlock',
@@ -249,6 +296,11 @@ const definitions: BlockDefinition[] = [
     slashMenu: { label: 'Code Block', description: 'Code with syntax highlighting', order: 21, category: 'rich' },
     turnInto: { order: 11 },
     defaultContent: { type: 'codeBlock' },
+    extension: (ctx) => CodeBlockLowlight.configure({
+      lowlight: ctx.lowlight,
+      defaultLanguage: 'plaintext',
+      HTMLAttributes: { class: 'canvas-code-block' },
+    }),
   },
   {
     id: 'image',
@@ -261,6 +313,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Upload or embed an image', order: 30, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined, // Uses custom popup action
+    extension: () => Image.configure({ inline: false, allowBase64: true }),
   },
   {
     id: 'details',
@@ -279,6 +332,7 @@ const definitions: BlockDefinition[] = [
         { type: 'detailsContent', content: [{ type: 'paragraph' }] },
       ],
     },
+    extension: () => Details.configure({ persist: true, HTMLAttributes: { class: 'canvas-details' } }),
   },
   {
     id: 'table',
@@ -291,6 +345,9 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Insert a table', order: 24, category: 'rich' },
     turnInto: undefined,
     defaultContent: undefined, // Complex insert action
+    extension: () => TableKit.configure({
+      table: { resizable: true, HTMLAttributes: { class: 'canvas-table' } },
+    }),
   },
   {
     id: 'inlineMath',
@@ -303,6 +360,11 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Inline math within text', order: 41, category: 'math' },
     turnInto: undefined,
     defaultContent: { type: 'inlineMath', attrs: { latex: 'f(x)', display: 'no' } },
+    extension: () => InlineMathNode.configure({
+      evaluation: false,
+      katexOptions: { throwOnError: false },
+      delimiters: 'dollar',
+    }),
   },
 
   // ── Custom Extensions ──
@@ -322,6 +384,7 @@ const definitions: BlockDefinition[] = [
       attrs: { emoji: 'lightbulb' },
       content: [{ type: 'paragraph' }],
     },
+    extension: () => Callout,
   },
   {
     id: 'mathBlock',
@@ -334,6 +397,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Full-width math equation', order: 40, category: 'math' },
     turnInto: { order: 14 },
     defaultContent: { type: 'mathBlock', attrs: { latex: '' } },
+    extension: () => MathBlock,
   },
   {
     id: 'toggleHeading-1',
@@ -354,6 +418,7 @@ const definitions: BlockDefinition[] = [
         { type: 'detailsContent', content: [{ type: 'paragraph' }] },
       ],
     },
+    extension: () => [ToggleHeading, ToggleHeadingText],
   },
   {
     id: 'toggleHeading-2',
@@ -407,6 +472,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Split into 2 columns', order: 60, category: 'layout' },
     turnInto: { order: 8, },
     defaultContent: undefined, // Uses custom column insertion logic
+    extension: () => [Column, ColumnList],
   },
   {
     id: 'columnList-3',
@@ -445,6 +511,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Link preview card', order: 70, category: 'advanced' },
     turnInto: undefined,
     defaultContent: undefined, // Uses custom popup action
+    extension: () => Bookmark,
   },
   {
     id: 'pageBlock',
@@ -457,6 +524,11 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Create and open a nested sub-page', order: 0, category: 'basic' },
     turnInto: undefined,
     defaultContent: undefined, // Uses custom async page creation action
+    extension: (ctx) => PageBlock.configure({
+      dataService: ctx.dataService,
+      currentPageId: ctx.pageId,
+      openEditor: ctx.openEditor,
+    }),
   },
   {
     id: 'tableOfContents',
@@ -469,6 +541,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Auto-generated from headings', order: 71, category: 'advanced' },
     turnInto: undefined,
     defaultContent: { type: 'tableOfContents' },
+    extension: () => TableOfContents,
   },
   {
     id: 'video',
@@ -481,6 +554,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Embed a video', order: 31, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined, // Uses custom popup action
+    extension: () => Video,
   },
   {
     id: 'audio',
@@ -493,6 +567,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Embed audio', order: 32, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined,
+    extension: () => Audio,
   },
   {
     id: 'fileAttachment',
@@ -505,6 +580,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Attach a file', order: 33, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined,
+    extension: () => FileAttachment,
   },
 
   // ── Structural node types (not user-facing, but needed for capabilities) ──
@@ -526,6 +602,7 @@ const definitions: BlockDefinition[] = [
     source: 'tiptap-package',
     kind: 'structural',
     capabilities: { ...PAGE_CONTAINER_CAP },
+    extension: () => DetailsContent,
   },
   // Note: 'blockquote' is already registered above as a user-facing block
   // with isPageContainer: true. 'callout' also has isPageContainer: true above.
@@ -539,6 +616,7 @@ const definitions: BlockDefinition[] = [
     kind: 'structural',
     capabilities: { ...STD_LEAF, allowInColumn: false },
     placeholder: 'Toggle title…',
+    extension: () => DetailsSummary,
   },
   {
     id: 'toggleHeadingText',
@@ -610,6 +688,25 @@ export const DRAG_HANDLE_CUSTOM_NODE_TYPES: readonly string[] = (() => {
 })();
 
 // ── Helper Functions ────────────────────────────────────────────────────────
+
+/**
+ * Collect all Tiptap extensions registered in the block registry.
+ * Called by `createEditorExtensions()` to assemble the editor extension array.
+ */
+export function getBlockExtensions(context: EditorExtensionContext): AnyExtension[] {
+  const result: AnyExtension[] = [];
+  for (const def of definitions) {
+    if (def.extension) {
+      const ext = def.extension(context);
+      if (Array.isArray(ext)) {
+        result.push(...ext);
+      } else {
+        result.push(ext);
+      }
+    }
+  }
+  return result;
+}
 
 /** Blocks that appear in the slash menu, sorted by order. */
 export function getSlashMenuBlocks(): BlockDefinition[] {
