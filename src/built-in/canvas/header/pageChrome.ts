@@ -10,7 +10,7 @@ import type { IPage, ICanvasDataService } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
 import { $, layoutPopup } from '../../../ui/dom.js';
 import { tiptapJsonToMarkdown } from '../markdownExport.js';
-import { createIconElement, resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
+import { createIconElement, resolvePageIcon, svgIcon } from '../config/blockRegistry.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 

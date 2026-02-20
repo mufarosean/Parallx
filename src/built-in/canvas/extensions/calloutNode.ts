@@ -4,7 +4,7 @@
 // Rendered as <div data-type="callout"> with a non-editable icon and editable content area.
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import { resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
+import { resolvePageIcon, svgIcon } from '../config/blockRegistry.js';
 
 // ─── Options ────────────────────────────────────────────────────────────────
 

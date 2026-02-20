@@ -28,6 +28,22 @@ import {
   BLOCK_REGISTRY as _BLOCK_REGISTRY,
 } from '../config/blockRegistry.js';
 
+// ── Icon Access (registry-to-registry gate) ─────────────────────────────────
+// MenuRegistry talks to IconRegistry so that individual menu files never
+// import iconRegistry directly.  They import these re-exports from
+// canvasMenuRegistry — their single entry point.
+
+import {
+  svgIcon as _ir_svgIcon,
+  PAGE_SELECTABLE_ICONS as _ir_PAGE_SELECTABLE_ICONS,
+} from '../config/iconRegistry.js';
+
+/** Render an SVG icon string by ID (delegates to IconRegistry). */
+export const svgIcon: (id: string) => string = _ir_svgIcon;
+
+/** Icon IDs selectable by users for pages/callouts (delegates to IconRegistry). */
+export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICONS;
+
 // ── Menu contract ───────────────────────────────────────────────────────────
 
 /**

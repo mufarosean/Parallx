@@ -6,7 +6,7 @@
 
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
-import { svgIcon } from '../config/iconRegistry.js';
+import { svgIcon } from './canvasMenuRegistry.js';
 import type { SlashMenuItem } from './slashMenuItems.js';
 import type { SlashActionContext, ISlashPageCommands } from './slashMenuItems.js';
 import { buildSlashMenuItems } from './slashMenuItems.js';

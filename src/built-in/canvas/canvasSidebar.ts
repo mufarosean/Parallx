@@ -17,7 +17,7 @@ import type { IPage, IPageTreeNode, ICanvasDataService } from './canvasTypes.js'
 import { $ } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
-import { createIconElement, resolvePageIcon, svgIcon } from './config/iconRegistry.js';
+import { createIconElement, resolvePageIcon, svgIcon } from './config/blockRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

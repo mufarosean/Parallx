@@ -6,7 +6,7 @@
 
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
-import { svgIcon } from '../config/iconRegistry.js';
+import { svgIcon } from './canvasMenuRegistry.js';
 import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';

@@ -801,3 +801,25 @@ export function getNodePlaceholder(typeName: string, attrs?: Record<string, any>
   const def = getBlockByName(typeName);
   return def?.placeholder;
 }
+
+// ── Icon Access (registry-to-registry gate) ─────────────────────────────────
+// BlockRegistry talks to IconRegistry so that block extensions, chrome, and
+// sidebar never import iconRegistry directly.  They import these re-exports
+// from blockRegistry — their single entry point.
+//
+// See docs/ICON_REGISTRY.md for the three-registry architecture.
+
+import {
+  svgIcon as _ir_svgIcon,
+  resolvePageIcon as _ir_resolvePageIcon,
+  createIconElement as _ir_createIconElement,
+} from './iconRegistry.js';
+
+/** Render an SVG icon string by ID (delegates to IconRegistry). */
+export const svgIcon: (id: string) => string = _ir_svgIcon;
+
+/** Resolve a page's stored icon field to a valid icon ID (delegates to IconRegistry). */
+export const resolvePageIcon: (icon: string | null | undefined) => string = _ir_resolvePageIcon;
+
+/** Create a sized <span> element containing an SVG icon (delegates to IconRegistry). */
+export const createIconElement: (id: string, size?: number) => HTMLElement = _ir_createIconElement;

@@ -12,7 +12,7 @@
 
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
-import { svgIcon } from '../config/iconRegistry.js';
+import { svgIcon } from './canvasMenuRegistry.js';
 import {
   applyBackgroundColorToBlock,
   applyTextColorToBlock,

@@ -10,7 +10,7 @@
 
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import { IconPicker } from '../../../ui/iconPicker.js';
-import { PAGE_SELECTABLE_ICONS, svgIcon } from '../config/iconRegistry.js';
+import { PAGE_SELECTABLE_ICONS, svgIcon } from './canvasMenuRegistry.js';
 import type { ICanvasMenu, CanvasMenuRegistry } from './canvasMenuRegistry.js';
 
 // ── Options ─────────────────────────────────────────────────────────────────

@@ -1,18 +1,21 @@
 // iconRegistry.ts — Single gate for all icon access in the canvas system
 //
 // This is the ONLY file that imports from canvasIcons.ts.
-// All icon consumers (blocks, menus, chrome, sidebar) import from here.
+//
+// ⚠️  DO NOT import this file from block extensions, menus, chrome, or sidebar.
+// Only the other registries (blockRegistry, canvasMenuRegistry) import here.
+// All other consumers get icon functions through their parent registry:
+//
+//   canvasIcons.ts  →  iconRegistry  →  blockRegistry  →  block extensions,
+//                                    →                     chrome, sidebar
+//                                    →  menuRegistry   →  individual menus
 //
 // The icon registry centralises three concerns:
 //   1. Rendering — svgIcon(), createIconElement()
 //   2. Resolution — resolvePageIcon() validates stored icon IDs
 //   3. Catalogs — which icons are user-selectable for pages/callouts
 //
-// Block definitions declare their icon ID in the block registry.
-// Menus, extensions, and chrome consume icons exclusively through this
-// module — they never import canvasIcons.ts directly.
-//
-// See docs/ICON_REGISTRY.md for architecture rationale.
+// See docs/ICON_REGISTRY.md for the three-registry architecture.
 
 import {
   svgIcon as _svgIcon,

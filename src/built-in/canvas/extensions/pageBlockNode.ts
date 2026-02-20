@@ -5,7 +5,7 @@
 // move content into the linked page.
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import { resolvePageIcon, svgIcon } from '../config/iconRegistry.js';
+import { resolvePageIcon, svgIcon } from '../config/blockRegistry.js';
 import { layoutPopup } from '../../../ui/dom.js';
 import { deleteDraggedSourceFromTransaction } from '../mutations/blockMutations.js';
 import {

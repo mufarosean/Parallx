@@ -4,10 +4,10 @@
 // all emoji usage. Icons render correctly in both light and dark themes.
 //
 // ⚠️  DO NOT import this file directly.
-// All consumers must import from config/iconRegistry.ts, which is the
-// single gate for all icon access.  Only iconRegistry.ts imports here.
+// Only config/iconRegistry.ts imports here (single gate).
+// All other code gets icons through blockRegistry or canvasMenuRegistry.
 //
-// See docs/ICON_REGISTRY.md for architecture rationale.
+// See docs/ICON_REGISTRY.md for the three-registry architecture.
 
 // ─── Icon SVG Strings ────────────────────────────────────────────────────────
 // All icons use viewBox="0 0 16 16" to match VS Code codicon convention.

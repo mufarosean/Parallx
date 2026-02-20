@@ -5,9 +5,41 @@
 
 ---
 
-## Problem
+## Three-Registry Architecture
 
-Before the IconRegistry, **11 files** imported directly from `canvasIcons.ts`:
+The canvas system has three registries that act as **single entry points**.
+Only registries import from other registries — no child file ever reaches
+across to a sibling registry.
+
+```
+canvasIcons.ts  (raw SVG data)
+       │
+  IconRegistry   ← single gate to canvasIcons.ts
+     ╱     ╲
+BlockRegistry   MenuRegistry   ← only these two import from IconRegistry
+   │               │
+   ├── calloutNode  ├── slashMenu
+   ├── pageBlockNode├── blockActionMenu
+   ├── bookmarkNode ├── bubbleMenu
+   ├── mediaNodes   └── iconMenu
+   ├── blockHandles
+   ├── pageChrome
+   └── canvasSidebar
+```
+
+### The Rule
+
+1. **Only `iconRegistry.ts`** imports from `canvasIcons.ts`.
+2. **Only `blockRegistry.ts` and `canvasMenuRegistry.ts`** import from `iconRegistry.ts`.
+3. Block extensions, chrome, and sidebar import icon functions from **blockRegistry**.
+4. Menu surface files import icon functions from **canvasMenuRegistry**.
+5. **No child file ever imports from iconRegistry directly.**
+
+---
+
+## Problem (before)
+
+11 files imported directly from `canvasIcons.ts` (then from `iconRegistry.ts`):
 
 | Category | Files |
 |----------|-------|
@@ -15,27 +47,34 @@ Before the IconRegistry, **11 files** imported directly from `canvasIcons.ts`:
 | **Block extensions** (4) | calloutNode, pageBlockNode, bookmarkNode, mediaNodes |
 | **Chrome / UI** (3) | pageChrome, canvasSidebar, blockHandles |
 
-This scattered dependency made it impossible to:
-- Ensure icon consistency across menus (e.g. heading icon identical in slash menu and turn-into menu)
-- Know which block types have user-selectable icons vs fixed icons
-- Change the icon system without touching 11+ files
-- Enforce the "children of entry points never import shared modules directly" principle
+This scattered dependency made it impossible to enforce the principle that
+children of entry points never reach across to other registries.
 
 ---
 
-## Solution: Single-Gate IconRegistry
+## Solution: Registry-to-Registry Gates
 
-```
-canvasIcons.ts  ──►  config/iconRegistry.ts  ──►  all consumers
-   (raw data)           (single gate)           (11 files)
-```
+### What BlockRegistry re-exports (from IconRegistry)
 
-### The Rule
+| Export | Purpose |
+|--------|---------|
+| `svgIcon(id)` | Get raw SVG string for an icon ID |
+| `resolvePageIcon(icon)` | Validate stored icon string → canonical ID |
+| `createIconElement(id, size)` | Create a sized `<span>` with SVG icon |
 
-**Only `config/iconRegistry.ts` imports from `canvasIcons.ts`.**  
-All other files in the canvas system import from `iconRegistry.ts`.
+Consumed by: calloutNode, pageBlockNode, bookmarkNode, mediaNodes,
+blockHandles, pageChrome, canvasSidebar.
 
-### What IconRegistry provides
+### What MenuRegistry re-exports (from IconRegistry)
+
+| Export | Purpose |
+|--------|---------|
+| `svgIcon(id)` | Get raw SVG string for an icon ID |
+| `PAGE_SELECTABLE_ICONS` | Icon IDs for the user-facing icon picker |
+
+Consumed by: slashMenu, blockActionMenu, bubbleMenu, iconMenu.
+
+### What IconRegistry owns directly
 
 | Export | Purpose |
 |--------|---------|
@@ -77,30 +116,31 @@ The `isBlockIconSelectable()` function in IconRegistry mirrors this — it's the
 ### Menu icons (slash menu, turn-into, action menu)
 
 ```
-BlockRegistry.getSlashMenuBlocks()  →  BlockDefinition.icon  →  iconRegistry.svgIcon(icon)
-BlockRegistry.getTurnIntoBlocks()   →  BlockDefinition.icon  →  iconRegistry.svgIcon(icon)
+MenuRegistry.getSlashMenuBlocks()  →  MenuBlockInfo.icon  →  menuRegistry.svgIcon(icon)
+MenuRegistry.getTurnIntoBlocks()   →  MenuBlockInfo.icon  →  menuRegistry.svgIcon(icon)
 ```
 
-Both menus use the **same** BlockDefinition entries, so icons are guaranteed identical.
+Both menus use the **same** BlockDefinition entries (via MenuRegistry), so
+icons are guaranteed identical.
 
 ### Block extension icons (callout, pageBlock inline icons)
 
 ```
-Node attrs (stored icon field)  →  iconRegistry.resolvePageIcon()  →  iconRegistry.svgIcon()
+Node attrs (stored icon field)  →  blockRegistry.resolvePageIcon()  →  blockRegistry.svgIcon()
 ```
 
 ### Chrome icons (sidebar, page header, block handles)
 
 ```
-Hardcoded icon IDs  →  iconRegistry.svgIcon() / iconRegistry.createIconElement()
-Page data           →  iconRegistry.resolvePageIcon()  →  iconRegistry.createIconElement()
+Hardcoded icon IDs  →  blockRegistry.svgIcon() / blockRegistry.createIconElement()
+Page data           →  blockRegistry.resolvePageIcon()  →  blockRegistry.createIconElement()
 ```
 
 ### Icon picker
 
 ```
-iconRegistry.PAGE_SELECTABLE_ICONS  →  IconPicker grid
-iconRegistry.svgIcon()              →  render each grid cell
+menuRegistry.PAGE_SELECTABLE_ICONS  →  IconPicker grid
+menuRegistry.svgIcon()              →  render each grid cell
 User selects                        →  callback updates node attrs
 ```
 
@@ -108,7 +148,8 @@ User selects                        →  callback updates node attrs
 
 ## Consistency Guarantees
 
-1. **Same icon everywhere**: Heading in slash menu = heading in turn-into menu (both read `BlockDefinition.icon`)
+1. **Same icon everywhere**: Heading in slash menu = heading in turn-into menu (both read `BlockDefinition.icon` via their registry)
 2. **Single resolution**: Page icons always go through `resolvePageIcon()` for fallback handling
 3. **Single catalog**: Icon picker always uses `PAGE_SELECTABLE_ICONS` from one source
-4. **No drift**: If an icon name changes, one update in `canvasIcons.ts` propagates through `iconRegistry` to all 11 consumers
+4. **No drift**: If an icon name changes, one update in `canvasIcons.ts` propagates through `iconRegistry` → registries → all consumers
+5. **No cross-reach**: No child file imports from a registry that isn't its parent — the three-registry principle is enforced at the import level
