@@ -5,6 +5,10 @@
 // `insertContentAt(range, nodeJSON)` to atomically REPLACE the paragraph
 // with the desired block structure — this is the same pattern TipTap's
 // own `setDetails()` command uses internally.  NO deleteRange needed.
+//
+// Block metadata (label, icon, description, order) is read from the
+// centralized block registry.  Only custom actions (async popups,
+// cursor placement, column creation) are defined here.
 
 import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
@@ -13,6 +17,7 @@ import { showMediaInsertPopup } from './mediaInsertPopup.js';
 import { showBookmarkInsertPopup } from './bookmarkInsertPopup.js';
 import type { CanvasDataService } from '../canvasDataService.js';
 import { encodeCanvasContentFromDoc } from '../contentSchema.js';
+import { BLOCK_REGISTRY, getSlashMenuBlocks, type BlockDefinition } from '../config/blockRegistry.js';
 
 export interface SlashActionContext {
   readonly pageId?: string;
@@ -27,6 +32,28 @@ export interface SlashMenuItem {
   action: (editor: Editor, range: { from: number; to: number }, context?: SlashActionContext) => void | Promise<void>;
 }
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Insert content and place cursor inside a target child node. */
+function insertAndFocusChild(
+  editor: Editor,
+  range: { from: number; to: number },
+  content: Record<string, any>,
+  targetNodeName: string,
+  cursorOffset: number = 1,
+): void {
+  editor.chain().insertContentAt(range, content).run();
+  const { doc } = editor.state;
+  doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
+    if (node.type.name === targetNodeName) {
+      editor.chain().setTextSelection(pos + cursorOffset).focus().run();
+      return false;
+    }
+    return true;
+  });
+}
+
+/** Replace a block with a columnList containing N columns. */
 function replaceBlockWithColumns(editor: Editor, range: { from: number; to: number }, columnCount: number): void {
   const { schema } = editor.state;
   const columnType = schema.nodes.column;
@@ -52,325 +79,154 @@ function replaceBlockWithColumns(editor: Editor, range: { from: number; to: numb
   editor.commands.focus();
 }
 
-export const SLASH_MENU_ITEMS: SlashMenuItem[] = [
-  {
-    label: 'Page', icon: 'page', description: 'Create and open a nested sub-page',
-    action: async (editor, range, context) => {
-      if (!context?.dataService || !context.pageId) return;
+// ── Custom actions — blocks that need special insertion logic ────────────────
+// Keyed by BlockDefinition.id.  Blocks not listed here use the simple
+// `insertContentAt(range, def.defaultContent).focus().run()` path.
 
-      let child: Awaited<ReturnType<CanvasDataService['createPage']>> | null = null;
-      try {
-        child = await context.dataService.createPage(context.pageId, 'Untitled');
-        const childPage = child;
-        const pageBlockAttrs = {
-          pageId: childPage.id,
-          title: childPage.title,
-          icon: childPage.icon,
-          parentPageId: context.pageId,
-        };
+type SlashAction = SlashMenuItem['action'];
 
-        let inserted = editor
-          .chain()
-          .insertContentAt(range, {
-            type: 'pageBlock',
-            attrs: pageBlockAttrs,
-          })
-          .focus()
-          .run();
+const CUSTOM_ACTIONS: Record<string, SlashAction> = {
 
-        if (!inserted) {
-          const pageBlockType = editor.state.schema.nodes.pageBlock;
-          if (!pageBlockType) {
-            throw new Error('pageBlock schema node is unavailable');
-          }
-          const node = pageBlockType.create(pageBlockAttrs);
-          const tr = editor.state.tr.replaceWith(range.from, range.to, node);
-          editor.view.dispatch(tr);
-          editor.commands.focus();
-          inserted = true;
+  // Page — async page creation + parent doc save + navigation
+  'pageBlock': async (editor, range, context) => {
+    if (!context?.dataService || !context.pageId) return;
+
+    let child: Awaited<ReturnType<CanvasDataService['createPage']>> | null = null;
+    try {
+      child = await context.dataService.createPage(context.pageId, 'Untitled');
+      const childPage = child;
+      const pageBlockAttrs = {
+        pageId: childPage.id,
+        title: childPage.title,
+        icon: childPage.icon,
+        parentPageId: context.pageId,
+      };
+
+      let inserted = editor
+        .chain()
+        .insertContentAt(range, {
+          type: 'pageBlock',
+          attrs: pageBlockAttrs,
+        })
+        .focus()
+        .run();
+
+      if (!inserted) {
+        const pageBlockType = editor.state.schema.nodes.pageBlock;
+        if (!pageBlockType) {
+          throw new Error('pageBlock schema node is unavailable');
         }
-
-        if (!inserted) {
-          throw new Error('Failed to insert pageBlock');
-        }
-
-        const docJson = editor.getJSON();
-        const hasInsertedPageBlock = Array.isArray(docJson?.content)
-          && docJson.content.some((node: any) => node?.type === 'pageBlock' && node?.attrs?.pageId === childPage.id);
-        if (!hasInsertedPageBlock) {
-          throw new Error('Inserted pageBlock not found in parent doc');
-        }
-
-        const encoded = encodeCanvasContentFromDoc(docJson);
-        await context.dataService.updatePage(context.pageId, {
-          content: encoded.storedContent,
-          contentSchemaVersion: encoded.schemaVersion,
-        });
-
-        // Replace any stale pending save (e.g. literal '/page' text) with final parent snapshot
-        // before navigation potentially disposes this editor pane.
-        context.dataService.scheduleContentSave(context.pageId, JSON.stringify(docJson));
-
-        if (context.openEditor) {
-          await context.openEditor({
-            typeId: 'canvas',
-            title: childPage.title,
-            icon: childPage.icon ?? undefined,
-            instanceId: childPage.id,
-          });
-        }
-      } catch (error) {
-        if (child) {
-          try {
-            await context.dataService.deletePage(child.id);
-          } catch {
-            // Best-effort rollback only.
-          }
-        }
-        throw error;
+        const node = pageBlockType.create(pageBlockAttrs);
+        const tr = editor.state.tr.replaceWith(range.from, range.to, node);
+        editor.view.dispatch(tr);
+        editor.commands.focus();
+        inserted = true;
       }
-    },
-  },
-  // ── Basic blocks ──
-  {
-    label: 'Heading 1', icon: 'H1', description: 'Large heading',
-    action: (e, range) => e.chain().insertContentAt(range, { type: 'heading', attrs: { level: 1 } }).focus().run(),
-  },
-  {
-    label: 'Heading 2', icon: 'H2', description: 'Medium heading',
-    action: (e, range) => e.chain().insertContentAt(range, { type: 'heading', attrs: { level: 2 } }).focus().run(),
-  },
-  {
-    label: 'Heading 3', icon: 'H3', description: 'Small heading',
-    action: (e, range) => e.chain().insertContentAt(range, { type: 'heading', attrs: { level: 3 } }).focus().run(),
-  },
-  // ── Lists ──
-  {
-    label: 'Bullet List', icon: 'bullet-list', description: 'Unordered list',
-    action: (e, range) => e.chain().insertContentAt(range, {
-      type: 'bulletList',
-      content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }],
-    }).focus().run(),
-  },
-  {
-    label: 'Numbered List', icon: 'numbered-list', description: 'Ordered list',
-    action: (e, range) => e.chain().insertContentAt(range, {
-      type: 'orderedList',
-      content: [{ type: 'listItem', content: [{ type: 'paragraph' }] }],
-    }).focus().run(),
-  },
-  {
-    label: 'To-Do List', icon: 'checklist', description: 'Task list with checkboxes',
-    action: (e, range) => e.chain().insertContentAt(range, {
-      type: 'taskList',
-      content: [{
-        type: 'taskItem',
-        attrs: { checked: false },
-        content: [{ type: 'paragraph' }],
-      }],
-    }).focus().run(),
-  },
-  // ── Rich blocks ──
-  {
-    label: 'Quote', icon: 'quote', description: 'Block quote',
-    action: (e, range) => e.chain().insertContentAt(range, {
-      type: 'blockquote',
-      content: [{ type: 'paragraph' }],
-    }).focus().run(),
-  },
-  {
-    label: 'Code Block', icon: 'code', description: 'Code with syntax highlighting',
-    action: (e, range) => e.chain().insertContentAt(range, { type: 'codeBlock' }).focus().run(),
-  },
-  {
-    label: 'Divider', icon: 'divider', description: 'Horizontal rule',
-    action: (e, range) => e.chain().insertContentAt(range, { type: 'horizontalRule' }).focus().run(),
-  },
-  {
-    label: 'Callout', icon: 'lightbulb', description: 'Highlighted info box',
-    action: (e, range) => {
-      e.chain().insertContentAt(range, {
-        type: 'callout',
-        attrs: { emoji: 'lightbulb' },
-        content: [{ type: 'paragraph' }],
-      }).run();
-      // Place cursor inside the callout's paragraph
-      const { doc } = e.state;
-      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
-        if (node.type.name === 'callout') {
-          // First paragraph inside callout content
-          e.chain().setTextSelection(pos + 2).focus().run();
-          return false;
-        }
-        return true;
+
+      if (!inserted) {
+        throw new Error('Failed to insert pageBlock');
+      }
+
+      const docJson = editor.getJSON();
+      const hasInsertedPageBlock = Array.isArray(docJson?.content)
+        && docJson.content.some((node: any) => node?.type === 'pageBlock' && node?.attrs?.pageId === childPage.id);
+      if (!hasInsertedPageBlock) {
+        throw new Error('Inserted pageBlock not found in parent doc');
+      }
+
+      const encoded = encodeCanvasContentFromDoc(docJson);
+      await context.dataService.updatePage(context.pageId, {
+        content: encoded.storedContent,
+        contentSchemaVersion: encoded.schemaVersion,
       });
-    },
-  },
-  {
-    label: 'Toggle List', icon: 'chevron-right', description: 'Collapsible content',
-    action: (e, range) => {
-      e.chain().insertContentAt(range, {
-        type: 'details',
-        content: [
-          { type: 'detailsSummary' },
-          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
-        ],
-      }).run();
-      // Place cursor inside the detailsSummary so the user types the title
-      const { doc } = e.state;
-      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
-        if (node.type.name === 'detailsSummary') {
-          e.chain().setTextSelection(pos + 1).focus().run();
-          return false;
+
+      // Replace any stale pending save (e.g. literal '/page' text) with final parent snapshot
+      // before navigation potentially disposes this editor pane.
+      context.dataService.scheduleContentSave(context.pageId, JSON.stringify(docJson));
+
+      if (context.openEditor) {
+        await context.openEditor({
+          typeId: 'canvas',
+          title: childPage.title,
+          icon: childPage.icon ?? undefined,
+          instanceId: childPage.id,
+        });
+      }
+    } catch (error) {
+      if (child) {
+        try {
+          await context.dataService.deletePage(child.id);
+        } catch {
+          // Best-effort rollback only.
         }
-        return true;
-      });
-    },
+      }
+      throw error;
+    }
   },
-  {
-    label: 'Table', icon: 'grid', description: 'Insert a table',
-    action: (e, range) => {
-      const headerCells = Array.from({ length: 3 }, () => ({ type: 'tableHeader', content: [{ type: 'paragraph' }] }));
-      const bodyRow = () => ({ type: 'tableRow', content: Array.from({ length: 3 }, () => ({ type: 'tableCell', content: [{ type: 'paragraph' }] })) });
-      e.chain().insertContentAt(range, {
-        type: 'table',
-        content: [{ type: 'tableRow', content: headerCells }, bodyRow(), bodyRow()],
-      }).focus().run();
-    },
+
+  // Callout — insert + cursor inside the callout paragraph
+  'callout': (e, range) => {
+    const def = BLOCK_REGISTRY.get('callout')!;
+    insertAndFocusChild(e, range, def.defaultContent!, 'callout', 2);
   },
-  // ── Media ──
-  {
-    label: 'Image', icon: 'image', description: 'Upload or embed an image',
-    action: (e, range) => {
-      showImageInsertPopup(e, range);
-    },
+
+  // Toggle list — insert + cursor inside the detailsSummary
+  'details': (e, range) => {
+    const def = BLOCK_REGISTRY.get('details')!;
+    insertAndFocusChild(e, range, def.defaultContent!, 'detailsSummary', 1);
   },
-  // ── Math / Equations ──
-  {
-    label: 'Block Equation', icon: 'math-block', description: 'Full-width math equation',
-    action: (e, range) => {
-      e.chain().insertContentAt(range, { type: 'mathBlock', attrs: { latex: '' } }).focus().run();
-    },
+
+  // Table — complex 3×3 with header row
+  'table': (e, range) => {
+    const headerCells = Array.from({ length: 3 }, () => ({
+      type: 'tableHeader', content: [{ type: 'paragraph' }],
+    }));
+    const bodyRow = () => ({
+      type: 'tableRow',
+      content: Array.from({ length: 3 }, () => ({
+        type: 'tableCell', content: [{ type: 'paragraph' }],
+      })),
+    });
+    e.chain().insertContentAt(range, {
+      type: 'table',
+      content: [{ type: 'tableRow', content: headerCells }, bodyRow(), bodyRow()],
+    }).focus().run();
   },
-  {
-    label: 'Inline Equation', icon: 'math', description: 'Inline math within text',
-    action: (e, range) => {
-      e.chain().insertContentAt(range, { type: 'inlineMath', attrs: { latex: 'f(x)', display: 'no' } }).focus().run();
-    },
+
+  // Toggle headings — insert + cursor inside toggleHeadingText
+  'toggleHeading-1': (e, range) => {
+    const def = BLOCK_REGISTRY.get('toggleHeading-1')!;
+    insertAndFocusChild(e, range, def.defaultContent!, 'toggleHeadingText', 1);
   },
-  // ── Layout ──
-  {
-    label: '2 Columns', icon: 'columns', description: 'Split into 2 columns',
-    action: (e, range) => {
-      replaceBlockWithColumns(e, range, 2);
-    },
+  'toggleHeading-2': (e, range) => {
+    const def = BLOCK_REGISTRY.get('toggleHeading-2')!;
+    insertAndFocusChild(e, range, def.defaultContent!, 'toggleHeadingText', 1);
   },
-  {
-    label: '3 Columns', icon: 'columns', description: 'Split into 3 columns',
-    action: (e, range) => {
-      replaceBlockWithColumns(e, range, 3);
-    },
+  'toggleHeading-3': (e, range) => {
+    const def = BLOCK_REGISTRY.get('toggleHeading-3')!;
+    insertAndFocusChild(e, range, def.defaultContent!, 'toggleHeadingText', 1);
   },
-  {
-    label: '4 Columns', icon: 'columns', description: 'Split into 4 columns',
-    action: (e, range) => {
-      replaceBlockWithColumns(e, range, 4);
-    },
-  },
-  // ── Toggle Headings ──
-  {
-    label: 'Toggle Heading 1', icon: 'chevron-right', description: 'Collapsible large heading',
-    action: (e, range) => {
-      e.chain().insertContentAt(range, {
-        type: 'toggleHeading',
-        attrs: { level: 1 },
-        content: [
-          { type: 'toggleHeadingText' },
-          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
-        ],
-      }).run();
-      const { doc } = e.state;
-      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
-        if (node.type.name === 'toggleHeadingText') {
-          e.chain().setTextSelection(pos + 1).focus().run();
-          return false;
-        }
-        return true;
-      });
-    },
-  },
-  {
-    label: 'Toggle Heading 2', icon: 'chevron-right', description: 'Collapsible medium heading',
-    action: (e, range) => {
-      e.chain().insertContentAt(range, {
-        type: 'toggleHeading',
-        attrs: { level: 2 },
-        content: [
-          { type: 'toggleHeadingText' },
-          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
-        ],
-      }).run();
-      const { doc } = e.state;
-      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
-        if (node.type.name === 'toggleHeadingText') {
-          e.chain().setTextSelection(pos + 1).focus().run();
-          return false;
-        }
-        return true;
-      });
-    },
-  },
-  {
-    label: 'Toggle Heading 3', icon: 'chevron-right', description: 'Collapsible small heading',
-    action: (e, range) => {
-      e.chain().insertContentAt(range, {
-        type: 'toggleHeading',
-        attrs: { level: 3 },
-        content: [
-          { type: 'toggleHeadingText' },
-          { type: 'detailsContent', content: [{ type: 'paragraph' }] },
-        ],
-      }).run();
-      const { doc } = e.state;
-      doc.nodesBetween(range.from, doc.content.size, (node, pos) => {
-        if (node.type.name === 'toggleHeadingText') {
-          e.chain().setTextSelection(pos + 1).focus().run();
-          return false;
-        }
-        return true;
-      });
-    },
-  },
-  // ── Advanced blocks ──
-  {
-    label: 'Bookmark', icon: 'globe', description: 'Link preview card',
-    action: (e, range) => {
-      showBookmarkInsertPopup(e, range);
-    },
-  },
-  {
-    label: 'Table of Contents', icon: 'toc', description: 'Auto-generated from headings',
-    action: (e, range) => {
-      e.chain().insertContentAt(range, { type: 'tableOfContents' }).focus().run();
-    },
-  },
-  // ── Media ──
-  {
-    label: 'Video', icon: 'video', description: 'Embed a video',
-    action: (e, range) => {
-      showMediaInsertPopup(e, range, 'video');
-    },
-  },
-  {
-    label: 'Audio', icon: 'audio', description: 'Embed audio',
-    action: (e, range) => {
-      showMediaInsertPopup(e, range, 'audio');
-    },
-  },
-  {
-    label: 'File', icon: 'file-attachment', description: 'Attach a file',
-    action: (e, range) => {
-      showMediaInsertPopup(e, range, 'fileAttachment');
-    },
-  },
-];
+
+  // Columns — ProseMirror-level schema construction
+  'columnList-2': (e, range) => replaceBlockWithColumns(e, range, 2),
+  'columnList-3': (e, range) => replaceBlockWithColumns(e, range, 3),
+  'columnList-4': (e, range) => replaceBlockWithColumns(e, range, 4),
+
+  // Media — popup-based insertion
+  'image': (e, range) => showImageInsertPopup(e, range),
+  'bookmark': (e, range) => showBookmarkInsertPopup(e, range),
+  'video': (e, range) => showMediaInsertPopup(e, range, 'video'),
+  'audio': (e, range) => showMediaInsertPopup(e, range, 'audio'),
+  'fileAttachment': (e, range) => showMediaInsertPopup(e, range, 'fileAttachment'),
+};
+
+// ── Build SLASH_MENU_ITEMS from registry ────────────────────────────────────
+
+export const SLASH_MENU_ITEMS: SlashMenuItem[] = getSlashMenuBlocks().map((def) => ({
+  label: def.slashMenu!.label ?? def.label,
+  icon: def.icon,
+  description: def.slashMenu!.description,
+  action: CUSTOM_ACTIONS[def.id] ??
+    ((e: Editor, range: { from: number; to: number }) =>
+      e.chain().insertContentAt(range, def.defaultContent!).focus().run()),
+}));

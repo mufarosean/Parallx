@@ -11,6 +11,7 @@ import {
   getTurnIntoBlocks,
   isContainerBlockType,
 } from '../../src/built-in/canvas/config/blockRegistry';
+import { SLASH_MENU_ITEMS } from '../../src/built-in/canvas/menus/slashMenuItems';
 
 // ── Baseline values (copied verbatim from the original hardcoded sources) ──
 
@@ -173,6 +174,49 @@ describe('blockRegistry', () => {
 
     it('returns false for unknown types', () => {
       expect(isContainerBlockType('nonExistent')).toBe(false);
+    });
+  });
+
+  describe('SLASH_MENU_ITEMS parity', () => {
+    /** Original labels from the hardcoded SLASH_MENU_ITEMS, in order. */
+    const ORIGINAL_SLASH_LABELS = [
+      'Page', 'Heading 1', 'Heading 2', 'Heading 3',
+      'Bullet List', 'Numbered List', 'To-Do List',
+      'Quote', 'Code Block', 'Divider',
+      'Toggle List', 'Callout', 'Table',
+      'Image', 'Video', 'Audio', 'File',
+      'Block Equation', 'Inline Equation',
+      'Toggle Heading 1', 'Toggle Heading 2', 'Toggle Heading 3',
+      '2 Columns', '3 Columns', '4 Columns',
+      'Bookmark', 'Table of Contents',
+    ];
+
+    it('produces 27 items', () => {
+      expect(SLASH_MENU_ITEMS).toHaveLength(27);
+    });
+
+    it('preserves all original labels', () => {
+      const labels = SLASH_MENU_ITEMS.map((item) => item.label);
+      expect(new Set(labels)).toEqual(new Set(ORIGINAL_SLASH_LABELS));
+    });
+
+    it('every item has label, icon, description, and action', () => {
+      for (const item of SLASH_MENU_ITEMS) {
+        expect(item.label).toBeTruthy();
+        expect(item.icon).toBeTruthy();
+        expect(item.description).toBeTruthy();
+        expect(typeof item.action).toBe('function');
+      }
+    });
+
+    it('uses SlashMenuConfig.label overrides when present', () => {
+      // These items have different labels in slash menu vs turn-into menu
+      const map = new Map(SLASH_MENU_ITEMS.map((i) => [i.label, i]));
+      expect(map.has('Bullet List')).toBe(true);     // not 'Bulleted list'
+      expect(map.has('Numbered List')).toBe(true);    // not 'Numbered list'
+      expect(map.has('To-Do List')).toBe(true);       // not 'To-do list'
+      expect(map.has('Code Block')).toBe(true);       // not 'Code'
+      expect(map.has('Toggle List')).toBe(true);      // not 'Toggle list'
     });
   });
 });

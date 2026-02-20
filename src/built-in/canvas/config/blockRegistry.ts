@@ -20,6 +20,8 @@ export interface BlockCapabilities {
 }
 
 export interface SlashMenuConfig {
+  /** Optional display label override (uses BlockDefinition.label when omitted). */
+  readonly label?: string;
   readonly description: string;
   /** Sort order within the slash menu (lower = higher in list). */
   readonly order: number;
@@ -162,7 +164,7 @@ const definitions: BlockDefinition[] = [
     source: 'starterkit',
     kind: 'leaf',
     capabilities: STD_LEAF,
-    slashMenu: { description: 'Unordered list', order: 10, category: 'list' },
+    slashMenu: { label: 'Bullet List', description: 'Unordered list', order: 10, category: 'list' },
     turnInto: { order: 4 },
     defaultContent: {
       type: 'bulletList',
@@ -177,7 +179,7 @@ const definitions: BlockDefinition[] = [
     source: 'starterkit',
     kind: 'leaf',
     capabilities: STD_LEAF,
-    slashMenu: { description: 'Ordered list', order: 11, category: 'list' },
+    slashMenu: { label: 'Numbered List', description: 'Ordered list', order: 11, category: 'list' },
     turnInto: { order: 5 },
     defaultContent: {
       type: 'orderedList',
@@ -222,7 +224,7 @@ const definitions: BlockDefinition[] = [
     source: 'tiptap-package',
     kind: 'leaf',
     capabilities: STD_LEAF,
-    slashMenu: { description: 'Task list with checkboxes', order: 12, category: 'list' },
+    slashMenu: { label: 'To-Do List', description: 'Task list with checkboxes', order: 12, category: 'list' },
     turnInto: { order: 6 },
     defaultContent: {
       type: 'taskList',
@@ -241,7 +243,7 @@ const definitions: BlockDefinition[] = [
     source: 'tiptap-package',
     kind: 'leaf',
     capabilities: { ...STD_LEAF, suppressBubbleMenu: true },
-    slashMenu: { description: 'Code with syntax highlighting', order: 21, category: 'rich' },
+    slashMenu: { label: 'Code Block', description: 'Code with syntax highlighting', order: 21, category: 'rich' },
     turnInto: { order: 11 },
     defaultContent: { type: 'codeBlock' },
   },
@@ -265,7 +267,7 @@ const definitions: BlockDefinition[] = [
     source: 'tiptap-package',
     kind: 'container',
     capabilities: CONTAINER_CAP,
-    slashMenu: { description: 'Collapsible content', order: 23, category: 'rich' },
+    slashMenu: { label: 'Toggle List', description: 'Collapsible content', order: 23, category: 'rich' },
     turnInto: { order: 7 },
     defaultContent: {
       type: 'details',
