@@ -8,7 +8,6 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { PAGE_ICON_IDS, resolvePageIcon, svgIcon } from '../canvasIcons.js';
 import { IconPicker } from '../../../ui/iconPicker.js';
 import { layoutPopup } from '../../../ui/dom.js';
-import type { IPage, PageChangeEvent } from '../canvasTypes.js';
 import { deleteDraggedSourceFromTransaction } from '../mutations/blockMutations.js';
 import {
   CANVAS_BLOCK_DRAG_MIME,
@@ -16,24 +15,38 @@ import {
   getActiveCanvasDragSession,
 } from '../dnd/dragSession.js';
 
-// ── Narrow dependency interface ─────────────────────────────────────────────
-// Only the methods pageBlockNode actually calls.  The full ICanvasDataService
-// (and the concrete class) structurally satisfies this — no adapter needed.
-// blockRegistry threads the service in via PageBlockOptions; this file never
-// imports the service interface directly.
+// ── Local narrow types ──────────────────────────────────────────────────────
+// pageBlockNode is a child of blockRegistry and receives all dependencies
+// through it.  It defines its own narrow shapes for the page data it needs
+// rather than importing shared types from canvasTypes.ts.
+// The full IPage / PageChangeEvent / ICanvasDataService structurally satisfy
+// these — TypeScript structural typing handles compatibility automatically.
+
+/** Narrow page shape — only the fields pageBlockNode reads. */
+export interface IPageBlockPage {
+  readonly id: string;
+  readonly title: string;
+  readonly icon: string | null;
+}
+
+/** Narrow change-event shape — only the fields pageBlockNode reads. */
+export interface IPageBlockChangeEvent {
+  readonly pageId: string;
+  readonly page?: IPageBlockPage;
+}
 
 export interface IPageBlockDataAccess {
-  getPage(pageId: string): Promise<IPage | null>;
-  updatePage(pageId: string, updates: { icon?: string | null }): Promise<IPage>;
-  decodePageContentForEditor(page: IPage): Promise<{ doc: any; recovered: boolean }>;
+  getPage(pageId: string): Promise<IPageBlockPage | null>;
+  updatePage(pageId: string, updates: { icon?: string | null }): Promise<IPageBlockPage>;
+  decodePageContentForEditor(page: IPageBlockPage): Promise<{ doc: any; recovered: boolean }>;
   moveBlocksBetweenPagesAtomic(params: {
     sourcePageId: string;
     targetPageId: string;
     sourceDoc: any;
     appendedNodes: any[];
-  }): Promise<{ sourcePage: IPage; targetPage: IPage }>;
-  appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<IPage>;
-  readonly onDidChangePage: (listener: (e: PageChangeEvent) => void) => { dispose(): void };
+  }): Promise<{ sourcePage: IPageBlockPage; targetPage: IPageBlockPage }>;
+  appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<IPageBlockPage>;
+  readonly onDidChangePage: (listener: (e: IPageBlockChangeEvent) => void) => { dispose(): void };
 }
 
 export interface PageBlockOptions {

@@ -15,18 +15,24 @@ import { TextSelection } from '@tiptap/pm/state';
 import { showImageInsertPopup } from './imageInsertPopup.js';
 import { showMediaInsertPopup } from './mediaInsertPopup.js';
 import { showBookmarkInsertPopup } from './bookmarkInsertPopup.js';
-import type { IPage } from '../canvasTypes.js';
 import { encodeCanvasContentFromDoc } from '../contentSchema.js';
 import { BLOCK_REGISTRY, getSlashMenuBlocks, type BlockDefinition } from '../config/blockRegistry.js';
 
-// ── Narrow dependency interface ─────────────────────────────────────────────
-// Only the methods slash commands actually call.  The full ICanvasDataService
-// structurally satisfies this — no adapter needed.  Exported so slashMenu.ts
-// can type its host property without importing the service interface.
+// ── Local narrow types ──────────────────────────────────────────────────────
+// slashMenuItems is a leaf of the menu system and receives dependencies
+// through slashMenu → canvasMenuRegistry.  It defines its own narrow shapes
+// rather than importing shared types from canvasTypes.ts.
+
+/** Narrow page shape — only the fields slash commands read. */
+export interface ISlashPageResult {
+  readonly id: string;
+  readonly title: string;
+  readonly icon: string | null;
+}
 
 export interface ISlashPageCommands {
-  createPage(parentId?: string | null, title?: string): Promise<IPage>;
-  updatePage(pageId: string, updates: { content?: string; contentSchemaVersion?: number }): Promise<IPage>;
+  createPage(parentId?: string | null, title?: string): Promise<ISlashPageResult>;
+  updatePage(pageId: string, updates: { content?: string; contentSchemaVersion?: number }): Promise<ISlashPageResult>;
   scheduleContentSave(pageId: string, content: string): void;
   deletePage(pageId: string): Promise<void>;
 }
@@ -103,7 +109,7 @@ const CUSTOM_ACTIONS: Record<string, SlashAction> = {
   'pageBlock': async (editor, range, context) => {
     if (!context?.dataService || !context.pageId) return;
 
-    let child: IPage | null = null;
+    let child: ISlashPageResult | null = null;
     try {
       child = await context.dataService.createPage(context.pageId, 'Untitled');
       const childPage = child;
