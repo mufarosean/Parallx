@@ -1,16 +1,23 @@
 // canvasMenuRegistry.ts — Centralized menu registry for canvas editor
 //
-// Owns mutual exclusion, outside-click dismissal, and interaction
-// arbitration for all canvas menu surfaces (slash, bubble, block-action,
-// and — in Phase 2 — ephemeral insert-popups).
+// The single facade through which canvasEditorProvider interacts with all
+// canvas menu surfaces.  Owns:
+//   • ICanvasMenu contract with lifecycle hooks (onTransaction, onSelectionUpdate)
+//   • Mutual exclusion — showing one menu hides all others
+//   • Outside-click dismissal via a single document mousedown listener
+//   • Interaction arbitration (column-resizing, dragging, etc.)
+//   • Factory that creates and registers the standard menu set
+//   • Lifecycle dispatch (notifyTransaction, notifySelectionUpdate)
+//   • Disposal of all registered menus
 //
-// Each menu implements `ICanvasMenu` and registers with the registry.
-// When a menu shows, it calls `registry.notifyShow(id)` which hides all
-// other visible menus.  A single `mousedown` listener on `document`
-// handles outside-click dismissal for every registered surface.
+// canvasEditorProvider imports ONLY this file for menu functionality.
+// blockHandles imports IBlockActionMenu (interface) from this file.
 
 import type { Editor } from '@tiptap/core';
 import type { IDisposable } from '../../../platform/lifecycle.js';
+import { SlashMenuController, type SlashMenuHost } from './slashMenu.js';
+import { BubbleMenuController, type BubbleMenuHost } from './bubbleMenu.js';
+import { BlockActionMenuController, type BlockActionMenuHost } from './blockActionMenu.js';
 
 // ── Menu contract ───────────────────────────────────────────────────────────
 
@@ -36,7 +43,31 @@ export interface ICanvasMenu {
 
   /** Hide the menu (and any child submenus). */
   hide(): void;
+
+  /** Called on every editor transaction (state change). Optional. */
+  onTransaction?(editor: Editor): void;
+
+  /** Called on every editor selection update. Optional. */
+  onSelectionUpdate?(editor: Editor): void;
+
+  /** Dispose DOM and resources. Optional. */
+  dispose?(): void;
 }
+
+// ── Block Action Menu interface (consumed by blockHandles.ts) ───────────────
+
+/**
+ * Narrow interface for the block-action menu, consumed by
+ * BlockHandlesController so it doesn't need to import the concrete class.
+ */
+export interface IBlockActionMenu extends ICanvasMenu {
+  show(pos: number, node: any, anchor: DOMRect, anchorEl?: HTMLElement): void;
+  readonly menu: HTMLElement | null;
+}
+
+// ── Combined host type (union of all menu hosts) ────────────────────────────
+
+export type CanvasMenuHost = SlashMenuHost & BubbleMenuHost & BlockActionMenuHost;
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
@@ -63,12 +94,55 @@ export class CanvasMenuRegistry {
     document.addEventListener('mousedown', this._onDocMousedown, true);
   }
 
+  // ── Factory ─────────────────────────────────────────────────────────────
+
+  /**
+   * Create, initialise, and register the standard canvas menu set.
+   *
+   * Returns the block-action menu handle so the caller can pass it to
+   * BlockHandlesController (the only external consumer).
+   */
+  createStandardMenus(host: CanvasMenuHost): IBlockActionMenu {
+    const slash = new SlashMenuController(host, this);
+    slash.create();
+
+    const bubble = new BubbleMenuController(host, this);
+    bubble.create();
+
+    const blockAction = new BlockActionMenuController(host, this);
+    blockAction.create();
+
+    return blockAction;
+  }
+
   // ── Registration ────────────────────────────────────────────────────────
 
   /** Register a menu surface.  Returns a disposable that removes it. */
   register(menu: ICanvasMenu): IDisposable {
     this._menus.set(menu.id, menu);
     return { dispose: () => { this._menus.delete(menu.id); } };
+  }
+
+  // ── Lifecycle dispatch ──────────────────────────────────────────────────
+
+  /**
+   * Forward an editor transaction to every registered menu that
+   * implements `onTransaction`.
+   */
+  notifyTransaction(editor: Editor): void {
+    for (const menu of this._menus.values()) {
+      menu.onTransaction?.(editor);
+    }
+  }
+
+  /**
+   * Forward an editor selection-update to every registered menu that
+   * implements `onSelectionUpdate`.
+   */
+  notifySelectionUpdate(editor: Editor): void {
+    for (const menu of this._menus.values()) {
+      menu.onSelectionUpdate?.(editor);
+    }
   }
 
   // ── Visibility management ───────────────────────────────────────────────
@@ -141,6 +215,11 @@ export class CanvasMenuRegistry {
 
   dispose(): void {
     document.removeEventListener('mousedown', this._onDocMousedown, true);
+    // Snapshot then clear to avoid re-entrant removal during dispose
+    const menus = [...this._menus.values()];
     this._menus.clear();
+    for (const menu of menus) {
+      menu.dispose?.();
+    }
   }
 }

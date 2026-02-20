@@ -34,13 +34,10 @@ import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
 import { createEditorExtensions } from './config/tiptapExtensions.js';
 import { InlineMathEditorController } from './math/inlineMathEditor.js';
-import { BubbleMenuController } from './menus/bubbleMenu.js';
-import { SlashMenuController } from './menus/slashMenu.js';
-import { BlockActionMenuController } from './menus/blockActionMenu.js';
 import { BlockHandlesController } from './handles/blockHandles.js';
 import { BlockSelectionController } from './handles/blockSelection.js';
 import { PageChromeController } from './header/pageChrome.js';
-import { CanvasMenuRegistry } from './menus/canvasMenuRegistry.js';
+import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -133,8 +130,6 @@ export class CanvasEditorProvider {
 class CanvasEditorPane implements IDisposable {
   private _editor: Editor | null = null;
   private _editorContainer: HTMLElement | null = null;
-  private _slashMenu!: SlashMenuController;
-  private _bubbleMenu!: BubbleMenuController;
   private _inlineMath!: InlineMathEditorController;
   private _menuRegistry!: CanvasMenuRegistry;
   private _disposed = false;
@@ -148,8 +143,8 @@ class CanvasEditorPane implements IDisposable {
   // ── Block handles controller ──
   private _blockHandles!: BlockHandlesController;
 
-  // ── Block action menu controller ──
-  private _blockActionMenu!: BlockActionMenuController;
+  // ── Block action menu (handle returned by registry factory) ──
+  private _blockActionMenu!: IBlockActionMenu;
 
   // ── Block selection controller ──
   private _blockSelection!: BlockSelectionController;
@@ -232,14 +227,10 @@ class CanvasEditorPane implements IDisposable {
       },
       onTransaction: ({ editor }) => {
         if (this._suppressUpdate) return;
-        // Check for slash command trigger on every transaction
-        // (onTransaction fires for all state changes — more reliable than onUpdate)
-        this._slashMenu?.checkTrigger(editor);
-        // Mutual exclusion is handled by the registry's notifyShow()
+        this._menuRegistry?.notifyTransaction(editor);
       },
       onSelectionUpdate: ({ editor }) => {
-        this._bubbleMenu?.update(editor);
-        // Slash menu self-hides on non-empty selection via checkTrigger
+        this._menuRegistry?.notifySelectionUpdate(editor);
       },
       onBlur: () => {
         // Small delay so clicking menu buttons doesn't dismiss them
@@ -269,23 +260,13 @@ class CanvasEditorPane implements IDisposable {
       (window as any).__tiptapEditor = this._editor;
     }
 
-    // Create slash menu (hidden by default)
+    // ── Create menu registry and all menus ──
     this._menuRegistry = new CanvasMenuRegistry(() => this._editor);
-
-    this._slashMenu = new SlashMenuController(this, this._menuRegistry);
-    this._slashMenu.create();
-
-    // Create bubble menu (hidden by default)
-    this._bubbleMenu = new BubbleMenuController(this, this._menuRegistry);
-    this._bubbleMenu.create();
+    this._blockActionMenu = this._menuRegistry.createStandardMenus(this);
 
     // Create inline math editor popup (hidden by default)
     this._inlineMath = new InlineMathEditorController(this);
     this._inlineMath.create();
-
-    // Setup block action menu (hidden by default, owned by pane)
-    this._blockActionMenu = new BlockActionMenuController(this, this._menuRegistry);
-    this._blockActionMenu.create();
 
     // Setup block handles (+ button, drag-handle click menu)
     this._blockHandles = new BlockHandlesController(this, this._blockActionMenu);
@@ -379,15 +360,12 @@ class CanvasEditorPane implements IDisposable {
     if (this._disposed) return;
     this._disposed = true;
 
-    // Hide all menus in one call, then dispose individual controllers
     this._menuRegistry?.hideAll();
     this._blockHandles?.hide();
     this._blockSelection?.clear();
     this._pageChrome?.dismissPopups();
 
-    // Block handles cleanup
     this._blockHandles?.dispose();
-    this._blockActionMenu?.dispose();
     this._blockSelection?.dispose();
 
     // Dispose save-state subscriptions
@@ -403,10 +381,8 @@ class CanvasEditorPane implements IDisposable {
       this._editorContainer = null;
     }
 
-    this._slashMenu?.dispose();
-    this._bubbleMenu?.dispose();
     this._inlineMath?.dispose();
-    this._menuRegistry?.dispose();
+    this._menuRegistry?.dispose(); // disposes all menus (slash, bubble, blockAction)
     this._pageChrome?.dispose();
   }
 }

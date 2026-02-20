@@ -12,7 +12,7 @@
 import type { Editor } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
 import type { BlockSelectionController } from './blockSelection.js';
-import type { BlockActionMenuController } from '../menus/blockActionMenu.js';
+import type { IBlockActionMenu } from '../menus/canvasMenuRegistry.js';
 import { svgIcon } from '../canvasIcons.js';
 import {
   CANVAS_BLOCK_DRAG_MIME,
@@ -52,7 +52,7 @@ export class BlockHandlesController {
 
   constructor(
     private readonly _host: BlockHandlesHost,
-    private readonly _actionMenu: BlockActionMenuController,
+    private readonly _actionMenu: IBlockActionMenu,
   ) {}
 
   // ── Setup ───────────────────────────────────────────────────────────────

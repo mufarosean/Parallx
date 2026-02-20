@@ -65,8 +65,8 @@ export class SlashMenuController implements ICanvasMenu {
     this._registration = this._registry.register(this);
   }
 
-  /** Called on every editor update — check if the user typed '/'. */
-  checkTrigger(editor: Editor): void {
+  /** ICanvasMenu lifecycle — called on every editor transaction. */
+  onTransaction(editor: Editor): void {
     if (this._registry.isInteractionLocked()) {
       this.hide();
       return;
@@ -223,7 +223,7 @@ export class SlashMenuController implements ICanvasMenu {
   };
 
   private async _execute(item: SlashMenuItem, editor: Editor): Promise<void> {
-    // Suppress onUpdate to prevent checkTrigger from firing mid-execution
+    // Suppress onUpdate to prevent onTransaction from firing mid-execution
     this._host.suppressUpdate = true;
 
     try {

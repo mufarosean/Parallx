@@ -216,8 +216,8 @@ export class BubbleMenuController implements ICanvasMenu {
     }
   }
 
-  /** Called on editor selection update — positions and shows/hides the menu. */
-  update(editor: Editor): void {
+  /** ICanvasMenu lifecycle — called on every editor selection change. */
+  onSelectionUpdate(editor: Editor): void {
     if (!this._menu) return;
 
     if (this._registry.isInteractionLocked()) {
