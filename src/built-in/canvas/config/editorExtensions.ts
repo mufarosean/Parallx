@@ -33,6 +33,7 @@ import { PageBlock } from '../extensions/pageBlockNode.js';
 import type { CanvasDataService } from '../canvasDataService.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
 import { DRAG_HANDLE_CUSTOM_NODE_TYPES } from './blockCapabilities.js';
+import { getNodePlaceholder } from './blockRegistry.js';
 
 import type { Extensions } from '@tiptap/core';
 
@@ -63,18 +64,14 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     }),
     Placeholder.configure({
       placeholder: ({ node, pos, editor, hasAnchor }: { node: any; pos: number; editor: any; hasAnchor: boolean }) => {
-        if (node.type.name === 'heading') {
-          return `Heading ${node.attrs.level}`;
-        }
-        if (node.type.name === 'detailsSummary') {
-          return 'Toggle title…';
-        }
-        if (node.type.name === 'toggleHeadingText') {
-          return 'Toggle heading';
-        }
-        if (node.type.name !== 'paragraph') {
-          return '';
-        }
+        // Check registry for a direct node placeholder (heading, detailsSummary, toggleHeadingText, etc.).
+        const registryPlaceholder = getNodePlaceholder(node.type.name, node.attrs);
+        if (registryPlaceholder !== undefined) return registryPlaceholder;
+
+        // Non-paragraph nodes without a registry entry get no placeholder.
+        if (node.type.name !== 'paragraph') return '';
+
+        // Paragraph — walk ancestors for context-dependent placeholder.
         const $pos = editor.state.doc.resolve(pos);
         for (let d = $pos.depth; d > 0; d--) {
           const ancestor = $pos.node(d);

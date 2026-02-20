@@ -127,6 +127,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Large heading', order: 1, category: 'basic' },
     turnInto: { order: 1, shortcut: '#' },
     defaultContent: { type: 'heading', attrs: { level: 1 } },
+    placeholder: 'Heading 1',
   },
   {
     id: 'heading-2',
@@ -141,6 +142,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Medium heading', order: 2, category: 'basic' },
     turnInto: { order: 2, shortcut: '##' },
     defaultContent: { type: 'heading', attrs: { level: 2 } },
+    placeholder: 'Heading 2',
   },
   {
     id: 'heading-3',
@@ -155,6 +157,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Small heading', order: 3, category: 'basic' },
     turnInto: { order: 3, shortcut: '###' },
     defaultContent: { type: 'heading', attrs: { level: 3 } },
+    placeholder: 'Heading 3',
   },
   {
     id: 'bulletList',
@@ -526,6 +529,27 @@ const definitions: BlockDefinition[] = [
   },
   // Note: 'blockquote' is already registered above as a user-facing block
   // with isPageContainer: true. 'callout' also has isPageContainer: true above.
+
+  {
+    id: 'detailsSummary',
+    name: 'detailsSummary',
+    label: 'Toggle Title',
+    icon: '',
+    source: 'tiptap-package',
+    kind: 'structural',
+    capabilities: { ...STD_LEAF, allowInColumn: false },
+    placeholder: 'Toggle title…',
+  },
+  {
+    id: 'toggleHeadingText',
+    name: 'toggleHeadingText',
+    label: 'Toggle Heading Text',
+    icon: '',
+    source: 'custom',
+    kind: 'structural',
+    capabilities: { ...STD_LEAF, allowInColumn: false },
+    placeholder: 'Toggle heading',
+  },
 ];
 
 // ── Build the Registry Map ──────────────────────────────────────────────────
@@ -641,4 +665,20 @@ export function getBlockByName(typeName: string): BlockDefinition | undefined {
 export function isContainerBlockType(typeName: string): boolean {
   const def = getBlockByName(typeName);
   return def?.kind === 'container';
+}
+
+/**
+ * Look up placeholder text for a specific node from the registry.
+ * Returns `undefined` when the registry has no configured placeholder,
+ * signalling the caller should fall back to context-dependent logic
+ * (e.g. ancestor walk for paragraphs).
+ */
+export function getNodePlaceholder(typeName: string, attrs?: Record<string, any>): string | undefined {
+  // Multi-variant nodes: try variant-specific lookup first (e.g. heading-1).
+  if (attrs?.level !== undefined) {
+    const variantDef = _registry.get(`${typeName}-${attrs.level}`);
+    if (variantDef?.placeholder !== undefined) return variantDef.placeholder;
+  }
+  const def = getBlockByName(typeName);
+  return def?.placeholder;
 }

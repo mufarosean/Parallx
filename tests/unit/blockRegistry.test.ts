@@ -7,6 +7,7 @@ import {
   DRAG_HANDLE_CUSTOM_NODE_TYPES,
   PAGE_CONTAINERS,
   getBlockLabel,
+  getNodePlaceholder,
   getSlashMenuBlocks,
   getTurnIntoBlocks,
   isContainerBlockType,
@@ -174,6 +175,25 @@ describe('blockRegistry', () => {
 
     it('returns false for unknown types', () => {
       expect(isContainerBlockType('nonExistent')).toBe(false);
+    });
+  });
+
+  describe('getNodePlaceholder()', () => {
+    it('returns level-specific placeholder for headings', () => {
+      expect(getNodePlaceholder('heading', { level: 1 })).toBe('Heading 1');
+      expect(getNodePlaceholder('heading', { level: 2 })).toBe('Heading 2');
+      expect(getNodePlaceholder('heading', { level: 3 })).toBe('Heading 3');
+    });
+
+    it('returns placeholder for structural nodes', () => {
+      expect(getNodePlaceholder('detailsSummary')).toBe('Toggle title…');
+      expect(getNodePlaceholder('toggleHeadingText')).toBe('Toggle heading');
+    });
+
+    it('returns undefined for nodes without placeholder config', () => {
+      expect(getNodePlaceholder('paragraph')).toBeUndefined();
+      expect(getNodePlaceholder('codeBlock')).toBeUndefined();
+      expect(getNodePlaceholder('nonExistent')).toBeUndefined();
     });
   });
 
