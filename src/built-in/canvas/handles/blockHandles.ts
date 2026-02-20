@@ -25,6 +25,7 @@ import {
   duplicateBlockAt,
   turnBlockWithSharedStrategy,
 } from '../mutations/blockMutations.js';
+import { PAGE_CONTAINERS } from '../config/blockRegistry.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 
@@ -381,10 +382,7 @@ export class BlockHandlesController {
 
   // ── Block Resolution ────────────────────────────────────────────────────
 
-  /** Node types whose children are "blocks" in the Page model. */
-  private static readonly _PAGE_CONTAINERS = new Set([
-    'column', 'callout', 'detailsContent', 'blockquote',
-  ]);
+  // PAGE_CONTAINERS imported from blockRegistry (no local definition).
 
   /**
    * Find the block the drag handle is currently next to.
@@ -481,7 +479,7 @@ export class BlockHandlesController {
 
     let containerDepth = 0;
     for (let d = 1; d <= $pos.depth; d++) {
-      if (BlockHandlesController._PAGE_CONTAINERS.has($pos.node(d).type.name)) {
+      if (PAGE_CONTAINERS.has($pos.node(d).type.name)) {
         containerDepth = d;
       }
     }

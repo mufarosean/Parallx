@@ -24,6 +24,7 @@ import {
   deleteDraggedSourceFromTransaction,
   resetColumnListWidthsInTransaction,
 } from '../mutations/blockMutations.js';
+import { PAGE_CONTAINERS } from '../config/blockRegistry.js';
 
 export function columnDropPlugin(): Plugin {
   const pluginKey = new PluginKey('columnDrop');
@@ -121,10 +122,7 @@ export function columnDropPlugin(): Plugin {
   // element that is a direct child of a Page-container (doc, column,
   // callout, detailsContent, blockquote).  Works at any nesting depth.
 
-  /** Node types that act as vertical block containers (Pages in the model). */
-  const PAGE_CONTAINERS = new Set([
-    'column', 'callout', 'detailsContent', 'blockquote',
-  ]);
+  // PAGE_CONTAINERS imported from blockRegistry — single source of truth.
 
   /** DOM selectors for page-container elements. */
   function isPageContainerDom(el: HTMLElement | null, proseMirrorRoot: HTMLElement): boolean {

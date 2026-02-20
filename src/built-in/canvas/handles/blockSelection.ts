@@ -10,11 +10,7 @@
 // Positions are refreshed on document changes to stay valid.
 
 import type { Editor } from '@tiptap/core';
-
-/** Node types that act as vertical block containers (Pages in the model). */
-const PAGE_CONTAINERS = new Set([
-  'column', 'callout', 'detailsContent', 'blockquote',
-]);
+import { PAGE_CONTAINERS } from '../config/blockRegistry.js';
 
 export interface BlockSelectionHost {
   readonly editor: Editor | null;

@@ -5,15 +5,12 @@
 
 import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
+import { PAGE_CONTAINERS } from '../config/blockRegistry.js';
 
 export interface BlockMoveResult {
   handled: boolean;
   moved: boolean;
 }
-
-const PAGE_SURFACE_NODES = new Set([
-  'column', 'callout', 'detailsContent', 'blockquote',
-]);
 
 export function isColumnEffectivelyEmpty(columnNode: any): boolean {
   if (!columnNode || columnNode.type?.name !== 'column') {
@@ -714,7 +711,7 @@ function extractBlockContent(node: any): any[] {
 function findBlockContext($pos: any): { containerDepth: number; blockDepth: number } {
   let containerDepth = 0;
   for (let d = 1; d <= $pos.depth; d++) {
-    if (PAGE_SURFACE_NODES.has($pos.node(d).type.name)) {
+    if (PAGE_CONTAINERS.has($pos.node(d).type.name)) {
       containerDepth = d;
     }
   }
