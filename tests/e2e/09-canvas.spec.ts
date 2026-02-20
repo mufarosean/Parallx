@@ -7,7 +7,7 @@
  *
  * Tests that require CRUD open a workspace first (database must be open).
  */
-import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
+import { sharedTest as test, expect, openFolderViaMenu } from './fixtures';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -62,19 +62,9 @@ test.describe('Canvas Tool', () => {
   // ── CRUD & Editor (workspace needed) ──────────────────────────────────
 
   test.describe('CRUD & Editor', () => {
-    let wsPath: string;
-
-    test.beforeAll(async () => {
-      wsPath = await createTestWorkspace();
-    });
-
-    test.afterAll(async () => {
-      await cleanupTestWorkspace(wsPath);
-    });
-
-    test('creates a page and opens the editor', async ({ window, electronApp }) => {
+    test('creates a page and opens the editor', async ({ window, electronApp, workspacePath }) => {
       // ── Step 1: Open a workspace folder ──
-      await openFolderViaMenu(electronApp, window, wsPath);
+      await openFolderViaMenu(electronApp, window, workspacePath);
       // Wait for database to initialize after opening folder
       await window.waitForTimeout(2000);
 
@@ -121,8 +111,8 @@ test.describe('Canvas Tool', () => {
       await expect(menuBtn).toBeVisible();
     });
 
-    test('page menu opens when clicking ⋯', async ({ window, electronApp }) => {
-      await openFolderViaMenu(electronApp, window, wsPath);
+    test('page menu opens when clicking ⋯', async ({ window, electronApp, workspacePath }) => {
+      await openFolderViaMenu(electronApp, window, workspacePath);
       await window.waitForTimeout(2000);
       await openCanvasSidebar(window);
 
@@ -139,8 +129,8 @@ test.describe('Canvas Tool', () => {
       await expect(pageMenu).toBeVisible({ timeout: 3_000 });
     });
 
-    test('right-click context menu', async ({ window, electronApp }) => {
-      await openFolderViaMenu(electronApp, window, wsPath);
+    test('right-click context menu', async ({ window, electronApp, workspacePath }) => {
+      await openFolderViaMenu(electronApp, window, workspacePath);
       await window.waitForTimeout(2000);
       await openCanvasSidebar(window);
 
@@ -160,8 +150,8 @@ test.describe('Canvas Tool', () => {
       expect(count).toBeGreaterThanOrEqual(4);
     });
 
-    test('favorite and trash via context menu', async ({ window, electronApp }) => {
-      await openFolderViaMenu(electronApp, window, wsPath);
+    test('favorite and trash via context menu', async ({ window, electronApp, workspacePath }) => {
+      await openFolderViaMenu(electronApp, window, workspacePath);
       await window.waitForTimeout(2000);
       await openCanvasSidebar(window);
 
@@ -203,8 +193,8 @@ test.describe('Canvas Tool', () => {
       }
     });
 
-    test('slash /page creates sub-page block and opens linked page', async ({ window, electronApp }) => {
-      await openFolderViaMenu(electronApp, window, wsPath);
+    test('slash /page creates sub-page block and opens linked page', async ({ window, electronApp, workspacePath }) => {
+      await openFolderViaMenu(electronApp, window, workspacePath);
       await window.waitForTimeout(2000);
       await openCanvasSidebar(window);
 

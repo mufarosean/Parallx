@@ -1,34 +1,8 @@
-import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
-import type { Page, ElectronApplication, Locator } from '@playwright/test';
-
-async function setupCanvasPage(
-  page: Page,
-  electronApp: ElectronApplication,
-  wsPath: string,
-): Promise<void> {
-  await openFolderViaMenu(electronApp, page, wsPath);
-  await page.waitForTimeout(1500);
-  const canvasBtn = page.locator('button.activity-bar-item[data-icon-id="canvas-container"]');
-  const cls = await canvasBtn.getAttribute('class');
-  if (!cls?.includes('active')) await canvasBtn.click();
-  await page.waitForSelector('.canvas-tree', { timeout: 10_000 });
-  await page.locator('.canvas-sidebar-add-btn').click();
-  await page.waitForSelector('.canvas-node', { timeout: 10_000 });
-  await page.locator('.canvas-node').first().click();
-  await page.waitForSelector('.tiptap', { timeout: 10_000 });
-  await page.waitForFunction(() => (window as any).__tiptapEditor != null, { timeout: 10_000 });
-  await page.waitForTimeout(300);
-}
+import { sharedTest as test, expect, setupCanvasPage, setContent } from './fixtures';
+import type { Page, Locator } from '@playwright/test';
 
 function p(text: string) {
   return { type: 'paragraph', content: [{ type: 'text', text }] };
-}
-
-async function setContent(page: Page, content: any[]): Promise<void> {
-  await page.evaluate((c) => {
-    (window as any).__tiptapEditor.commands.setContent({ type: 'doc', content: c });
-  }, content);
-  await page.waitForTimeout(250);
 }
 
 async function getTopLevelLabels(page: Page): Promise<string[]> {
@@ -137,18 +111,9 @@ async function redo(page: Page): Promise<void> {
 }
 
 test.describe('Column Drag Undo/Redo Matrix', () => {
-  let wsPath: string;
 
-  test.beforeAll(async () => {
-    wsPath = await createTestWorkspace();
-  });
-
-  test.afterAll(async () => {
-    await cleanupTestWorkspace(wsPath);
-  });
-
-  test('Rule 4A: top-level -> top-level reorders and undo/redo', async ({ window: page, electronApp }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+  test('Rule 4A: top-level -> top-level reorders and undo/redo', async ({ window: page, electronApp, workspacePath }) => {
+    await setupCanvasPage(page, electronApp, workspacePath);
     await setContent(page, [
       p('Top-A'),
       p('Top-B'),
@@ -171,8 +136,8 @@ test.describe('Column Drag Undo/Redo Matrix', () => {
     expect(await getTopLevelLabels(page)).toEqual(afterTop);
   });
 
-  test('Rule 4B: top-level -> column move and undo/redo', async ({ window: page, electronApp }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+  test('Rule 4B: top-level -> column move and undo/redo', async ({ window: page, electronApp, workspacePath }) => {
+    await setupCanvasPage(page, electronApp, workspacePath);
     await setContent(page, [
       p('Top-A'),
       {
@@ -208,8 +173,8 @@ test.describe('Column Drag Undo/Redo Matrix', () => {
     expect(await getColumnLists(page)).toEqual(afterLists);
   });
 
-  test('Rule 4C: column -> top-level move and undo/redo', async ({ window: page, electronApp }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+  test('Rule 4C: column -> top-level move and undo/redo', async ({ window: page, electronApp, workspacePath }) => {
+    await setupCanvasPage(page, electronApp, workspacePath);
     await setContent(page, [
       p('Top-A'),
       {
@@ -245,8 +210,8 @@ test.describe('Column Drag Undo/Redo Matrix', () => {
     expect(await getColumnLists(page)).toEqual(afterLists);
   });
 
-  test('Rule 4D: same-column reorder and undo/redo', async ({ window: page, electronApp }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+  test('Rule 4D: same-column reorder and undo/redo', async ({ window: page, electronApp, workspacePath }) => {
+    await setupCanvasPage(page, electronApp, workspacePath);
     await setContent(page, [
       p('Top-A'),
       {
@@ -277,8 +242,8 @@ test.describe('Column Drag Undo/Redo Matrix', () => {
     expect(await getColumnLists(page)).toEqual(afterLists);
   });
 
-  test('Rule 4E: cross-column move (same list) and undo/redo', async ({ window: page, electronApp }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+  test('Rule 4E: cross-column move (same list) and undo/redo', async ({ window: page, electronApp, workspacePath }) => {
+    await setupCanvasPage(page, electronApp, workspacePath);
     await setContent(page, [
       p('Top-A'),
       {
@@ -311,8 +276,8 @@ test.describe('Column Drag Undo/Redo Matrix', () => {
     expect(await getColumnLists(page)).toEqual(afterLists);
   });
 
-  test('Rule 4F: move across different columnLists and undo/redo', async ({ window: page, electronApp }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+  test('Rule 4F: move across different columnLists and undo/redo', async ({ window: page, electronApp, workspacePath }) => {
+    await setupCanvasPage(page, electronApp, workspacePath);
     await setContent(page, [
       p('Top-A'),
       {
@@ -355,8 +320,8 @@ test.describe('Column Drag Undo/Redo Matrix', () => {
     expect(await getColumnLists(page)).toEqual(afterLists);
   });
 
-  test('moving out last meaningful block removes placeholder-only source column and rebalances widths', async ({ window: page, electronApp }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+  test('moving out last meaningful block removes placeholder-only source column and rebalances widths', async ({ window: page, electronApp, workspacePath }) => {
+    await setupCanvasPage(page, electronApp, workspacePath);
     await setContent(page, [
       p('Top-A'),
       {

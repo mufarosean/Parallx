@@ -1,7 +1,7 @@
 /**
  * E2E tests: Column Drag-Drop
  *
- * Isolated test that launches the app ONCE and systematically verifies:
+ * Shared-instance test that systematically verifies:
  *
  * 1. Zone detection — getZone returns left/right/above/below correctly
  * 2. Indicator rendering — vertical vs horizontal indicator appears
@@ -10,75 +10,8 @@
  * Uses synthetic DragEvent dispatch + manual view.dragging setup so we
  * can precisely control coordinates without fighting HTML5 drag quirks.
  */
-import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
-import type { Page, ElectronApplication } from '@playwright/test';
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-async function setupCanvasPage(
-  page: Page,
-  electronApp: ElectronApplication,
-  wsPath: string,
-): Promise<void> {
-  await openFolderViaMenu(electronApp, page, wsPath);
-  await page.waitForTimeout(2000);
-
-  const canvasBtn = page.locator('button.activity-bar-item[data-icon-id="canvas-container"]');
-  const cls = await canvasBtn.getAttribute('class');
-  if (!cls?.includes('active')) await canvasBtn.click();
-  await page.waitForSelector('.canvas-tree', { timeout: 10_000 });
-
-  await page.locator('.canvas-sidebar-add-btn').click();
-  await page.waitForSelector('.canvas-node', { timeout: 10_000 });
-  await page.locator('.canvas-node').first().click();
-  await page.waitForSelector('.tiptap', { timeout: 10_000 });
-  await page.waitForTimeout(500);
-}
-
-async function waitForEditor(page: Page): Promise<void> {
-  await page.waitForFunction(
-    () => (window as any).__tiptapEditor != null,
-    { timeout: 10_000 },
-  );
-}
-
-async function setContent(page: Page, content: any[]): Promise<void> {
-  await page.evaluate((c) => {
-    const editor = (window as any).__tiptapEditor;
-    if (!editor) throw new Error('No TipTap editor');
-    editor.commands.setContent({ type: 'doc', content: c });
-  }, content);
-  await page.waitForTimeout(300);
-}
-
-async function getDocJSON(page: Page): Promise<any> {
-  return page.evaluate(() => {
-    const editor = (window as any).__tiptapEditor;
-    if (!editor) return null;
-    return editor.getJSON();
-  });
-}
-
-async function getDocStructure(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const editor = (window as any).__tiptapEditor;
-    if (!editor) return [];
-    const json = editor.getJSON();
-    return (json.content || []).map((node: any) => {
-      const type = node.type;
-      if (type === 'paragraph') return `p:${node.content?.[0]?.text || ''}`;
-      if (type === 'heading') return `h${node.attrs?.level}:${node.content?.[0]?.text || ''}`;
-      if (type === 'columnList') {
-        const cols = (node.content || []).length;
-        const texts = (node.content || []).map((col: any) =>
-          (col.content || []).map((b: any) => b.content?.[0]?.text || '').join(','),
-        );
-        return `columnList:${cols}[${texts.join('|')}]`;
-      }
-      return type;
-    });
-  });
-}
+import { sharedTest as test, expect, setupCanvasPage, waitForEditor, setContent, getDocJSON, getDocStructure } from './fixtures';
+import type { Page } from '@playwright/test';
 
 // ── Drag simulation helpers ─────────────────────────────────────────────────
 
@@ -262,21 +195,13 @@ async function getTopLevelBlockIndexBySelector(page: Page, selector: string): Pr
 // ═════════════════════════════════════════════════════════════════════════════
 
 test.describe('Column Drag-Drop', () => {
-  let wsPath: string;
-
-  test.beforeAll(async () => {
-    wsPath = await createTestWorkspace();
-  });
-
-  test.afterAll(async () => {
-    await cleanupTestWorkspace(wsPath);
-  });
 
   test('zone detection, indicators, and drop outcomes', async ({
     window: page,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+    await setupCanvasPage(page, electronApp, workspacePath);
     await waitForEditor(page);
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -875,8 +800,9 @@ test.describe('Column Drag-Drop', () => {
   test('moves top-level block into a column that contains an image', async ({
     window: page,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+    await setupCanvasPage(page, electronApp, workspacePath);
     await waitForEditor(page);
 
     await setContent(page, [
@@ -941,8 +867,9 @@ test.describe('Column Drag-Drop', () => {
   test('moves paragraph out of a column that also contains an image', async ({
     window: page,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+    await setupCanvasPage(page, electronApp, workspacePath);
     await waitForEditor(page);
 
     await setContent(page, [
@@ -1017,8 +944,9 @@ test.describe('Column Drag-Drop', () => {
   test('shows below drop zone and inserts under non-text blocks inside columns', async ({
     window: page,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+    await setupCanvasPage(page, electronApp, workspacePath);
     await waitForEditor(page);
 
     const cases: Array<{ label: string; targetType: string; targetNode: any }> = [
@@ -1138,8 +1066,9 @@ test.describe('Column Drag-Drop', () => {
   test('can split into columns next to a video embed block (universal drag/drop logic)', async ({
     window: page,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+    await setupCanvasPage(page, electronApp, workspacePath);
     await waitForEditor(page);
 
     await setContent(page, [

@@ -1,24 +1,5 @@
-import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
-import type { Page, ElectronApplication } from '@playwright/test';
-
-async function setupCanvasPage(page: Page, electronApp: ElectronApplication, wsPath: string): Promise<void> {
-  await openFolderViaMenu(electronApp, page, wsPath);
-  await page.waitForTimeout(1500);
-
-  const canvasBtn = page.locator('button.activity-bar-item[data-icon-id="canvas-container"]');
-  const cls = await canvasBtn.getAttribute('class');
-  if (!cls?.includes('active')) {
-    await canvasBtn.click();
-  }
-
-  await page.waitForSelector('.canvas-tree', { timeout: 10_000 });
-  await page.locator('.canvas-sidebar-add-btn').click();
-  await page.waitForSelector('.canvas-node[role="treeitem"]', { timeout: 10_000 });
-  await page.locator('.canvas-node[role="treeitem"]').first().click();
-  await page.waitForSelector('.tiptap', { timeout: 10_000 });
-  await page.waitForFunction(() => (window as any).__tiptapEditor != null, { timeout: 10_000 });
-  await page.waitForTimeout(300);
-}
+import { sharedTest as test, expect, setupCanvasPage } from './fixtures';
+import type { Page } from '@playwright/test';
 
 async function dragParagraphToPageBlock(page: Page, paragraphText: string): Promise<void> {
   const paragraph = page.locator('.tiptap p', { hasText: paragraphText }).first();
@@ -46,18 +27,9 @@ async function dragParagraphToPageBlock(page: Page, paragraphText: string): Prom
 }
 
 test.describe('Page Block Drag-Drop', () => {
-  let wsPath: string;
 
-  test.beforeAll(async () => {
-    wsPath = await createTestWorkspace();
-  });
-
-  test.afterAll(async () => {
-    await cleanupTestWorkspace(wsPath);
-  });
-
-  test('dropping a paragraph onto page block performs true move (no duplicate left in parent)', async ({ window: page, electronApp }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+  test('dropping a paragraph onto page block performs true move (no duplicate left in parent)', async ({ window: page, electronApp, workspacePath }) => {
+    await setupCanvasPage(page, electronApp, workspacePath);
 
     const rootIdsBefore = await page.locator('.canvas-node[role="treeitem"]').evaluateAll((nodes) =>
       nodes

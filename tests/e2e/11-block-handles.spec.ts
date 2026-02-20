@@ -1,135 +1,31 @@
 /**
- * E2E tests: Block Handles — Plus (+) button and Block Action Menu.
+ * E2E tests: Block Handles â€” Plus (+) button and Block Action Menu.
  *
  * Tests the two Notion-style block handle features:
  *
- * 1. Plus (+) button — appears left of the drag handle on hover.
+ * 1. Plus (+) button â€” appears left of the drag handle on hover.
  *    Click adds a block below and opens the slash menu.
  *
- * 2. Block Action Menu — clicking the 6-dot drag handle opens a context menu:
+ * 2. Block Action Menu â€” clicking the 6-dot drag handle opens a context menu:
  *    - Turn Into submenu (convert between block types)
  *    - Color submenu (text and background colors)
  *    - Duplicate (clone block)
  *    - Delete (remove block)
  */
-import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
-import type { Page, ElectronApplication } from '@playwright/test';
+import { sharedTest as test, expect, setupCanvasPage, waitForEditor, setContent, getDocStructure, getDocJSON, hoverBlockByIndex, openBlockActionMenu } from './fixtures';
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-async function setupCanvasPage(
-  page: Page,
-  electronApp: ElectronApplication,
-  wsPath: string,
-): Promise<void> {
-  await openFolderViaMenu(electronApp, page, wsPath);
-  await page.waitForTimeout(2000);
+test.describe('Block Handles â€” Plus Button and Action Menu', () => {
 
-  // Open Canvas sidebar
-  const canvasBtn = page.locator('button.activity-bar-item[data-icon-id="canvas-container"]');
-  const cls = await canvasBtn.getAttribute('class');
-  if (!cls?.includes('active')) await canvasBtn.click();
-  await page.waitForSelector('.canvas-tree', { timeout: 10_000 });
-
-  // Create a new page
-  await page.locator('.canvas-sidebar-add-btn').click();
-  await page.waitForSelector('.canvas-node', { timeout: 10_000 });
-
-  // Open the page
-  await page.locator('.canvas-node').first().click();
-  await page.waitForSelector('.tiptap', { timeout: 10_000 });
-
-  // Wait for tiptap to be fully ready
-  await page.waitForTimeout(500);
-}
-
-/** Wait for the TipTap editor to be exposed on window (test mode). */
-async function waitForEditor(page: Page): Promise<void> {
-  await page.waitForFunction(
-    () => (window as any).__tiptapEditor != null,
-    { timeout: 10_000 },
-  );
-}
-
-/** Set editor content and wait for it to render. */
-async function setContent(page: Page, content: any[]): Promise<void> {
-  await page.evaluate((c) => {
-    const editor = (window as any).__tiptapEditor;
-    if (!editor) throw new Error('No TipTap editor');
-    editor.commands.setContent({ type: 'doc', content: c });
-  }, content);
-  await page.waitForTimeout(300);
-}
-
-/** Get the block structure of the document as a string array. */
-async function getDocStructure(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const editor = (window as any).__tiptapEditor;
-    if (!editor) return [];
-    const json = editor.getJSON();
-    return (json.content || []).map((node: any) => {
-      const type = node.type;
-      if (type === 'paragraph') return `p:${node.content?.[0]?.text || ''}`;
-      if (type === 'heading') return `h${node.attrs?.level}:${node.content?.[0]?.text || ''}`;
-      if (type === 'bulletList') return 'bulletList';
-      if (type === 'orderedList') return 'orderedList';
-      if (type === 'taskList') return 'taskList';
-      if (type === 'blockquote') return 'blockquote';
-      if (type === 'codeBlock') return 'codeBlock';
-      if (type === 'callout') return 'callout';
-      if (type === 'details') return 'details';
-      if (type === 'mathBlock') return 'mathBlock';
-      return type;
-    });
-  });
-}
-
-async function getDocJSON(page: Page): Promise<any> {
-  return page.evaluate(() => {
-    const editor = (window as any).__tiptapEditor;
-    if (!editor) return null;
-    return editor.getJSON();
-  });
-}
-
-/** Hover over a specific block by index to trigger the drag handle to appear. */
-async function hoverBlockByIndex(page: Page, index: number): Promise<void> {
-  const tiptap = page.locator('.tiptap');
-  const blocks = tiptap.locator(':scope > *');
-  const block = blocks.nth(index);
-  await block.hover();
-  await page.waitForTimeout(500);
-}
-
-/** Click the drag handle to open the block action menu. */
-async function openBlockActionMenu(page: Page, blockIndex: number): Promise<void> {
-  await hoverBlockByIndex(page, blockIndex);
-  const dragHandle = page.locator('.drag-handle');
-  await expect(dragHandle).toBeVisible({ timeout: 3_000 });
-  await dragHandle.click({ force: true });
-  await page.waitForTimeout(200);
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-
-test.describe('Block Handles — Plus Button and Action Menu', () => {
-  let wsPath: string;
-
-  test.beforeAll(async () => {
-    wsPath = await createTestWorkspace();
-  });
-
-  test.afterAll(async () => {
-    await cleanupTestWorkspace(wsPath);
-  });
-
-  // ── Plus Button Tests ─────────────────────────────────────────────────────
+  // â”€â”€ Plus Button Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test('plus button appears alongside drag handle on hover', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -161,8 +57,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('divider block shows drag handle and plus affordance', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -195,8 +92,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('divider uses row-height layout for centered handle alignment', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -227,8 +125,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('plus button click inserts paragraph below and triggers slash menu', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -241,7 +140,7 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     // Hover first block
     await hoverBlockByIndex(window, 0);
 
-    // Click the plus button via dispatchEvent — the editor overlay covers the
+    // Click the plus button via dispatchEvent â€” the editor overlay covers the
     // button position, so Playwright's native click is intercepted.
     const addBtn = window.locator('.block-add-btn');
     await expect(addBtn).toBeVisible({ timeout: 3_000 });
@@ -268,13 +167,14 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     await expect(slashMenu).not.toBeVisible();
   });
 
-  // ── Block Action Menu Tests ───────────────────────────────────────────────
+  // â”€â”€ Block Action Menu Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test('clicking drag handle opens block action menu', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -309,8 +209,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('drag handle remains clickable for paragraph below an image block', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -330,8 +231,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('image blocks use normalized top spacing for alignment', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -353,8 +255,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('drag handles remain clickable across mixed block types', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -397,8 +300,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('clicking drag handle again closes the menu', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -422,8 +326,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('clicking outside closes the block action menu', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -445,8 +350,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('drag-handle gesture does not open bubble formatting menu', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -476,13 +382,14 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     await expect(bubble).not.toBeVisible();
   });
 
-  // ── Turn Into Submenu Tests ───────────────────────────────────────────────
+  // â”€â”€ Turn Into Submenu Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test('Turn Into submenu appears on hover', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -513,11 +420,12 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     await expect(check).toBeVisible();
   });
 
-  test('Turn Into: paragraph → heading 1', async ({
+  test('Turn Into: paragraph â†’ heading 1', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -548,11 +456,12 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('h1:Become a heading');
   });
 
-  test('Turn Into: paragraph → bullet list', async ({
+  test('Turn Into: paragraph â†’ bullet list', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -576,11 +485,12 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('bulletList');
   });
 
-  test('Turn Into: paragraph → 3 columns', async ({
+  test('Turn Into: paragraph â†’ 3 columns', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -612,11 +522,12 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     expect(doc.content[0].content[0].content[0].content?.[0]?.text).toBe('Split this block');
   });
 
-  test('Turn Into: heading → paragraph', async ({
+  test('Turn Into: heading â†’ paragraph', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -643,11 +554,12 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('p:Was a heading');
   });
 
-  test('Turn Into: paragraph → callout', async ({
+  test('Turn Into: paragraph â†’ callout', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -674,8 +586,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('callout icon is clickable and updates icon selection', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -707,11 +620,12 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     expect(callout?.attrs?.emoji).toBe('rocket');
   });
 
-  test('Turn Into: paragraph → code block', async ({
+  test('Turn Into: paragraph â†’ code block', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -735,13 +649,14 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('codeBlock');
   });
 
-  // ── Color Submenu Tests ───────────────────────────────────────────────────
+  // â”€â”€ Color Submenu Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test('Color submenu appears on hover with text and background colors', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -776,8 +691,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('Color: apply text color to a block', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -816,8 +732,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('Color: apply background color to a block', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -832,7 +749,7 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     await colorItem.hover();
     await window.waitForTimeout(300);
 
-    // Click "Blue background" via dispatchEvent — the panel tab bar sits atop
+    // Click "Blue background" via dispatchEvent â€” the panel tab bar sits atop
     // this item so Playwright's native click is intercepted.
     const colorSubmenu = window.locator('.block-color-submenu');
     await expect(colorSubmenu).toBeVisible({ timeout: 3_000 });
@@ -854,13 +771,14 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     expect(hasBg).toBe(true);
   });
 
-  // ── Duplicate Tests ───────────────────────────────────────────────────────
+  // â”€â”€ Duplicate Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test('Duplicate creates a copy of the block', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -892,8 +810,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('Duplicate works on a heading block', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -913,13 +832,14 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     expect(structure).toEqual(['h1:My Title', 'h1:My Title', 'p:Body text']);
   });
 
-  // ── Delete Tests ──────────────────────────────────────────────────────────
+  // â”€â”€ Delete Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test('Delete removes the block', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -952,8 +872,9 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
   test('Delete works on a heading block', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -973,13 +894,14 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     expect(structure).toEqual(['p:Remains']);
   });
 
-  // ── Block Action Menu Header Label Tests ──────────────────────────────────
+  // â”€â”€ Block Action Menu Header Label Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test('block action menu shows correct label for different block types', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -1006,13 +928,14 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     await expect(header).toHaveText('Code');
   });
 
-  // ── Turn Into with Multiple Block Types ───────────────────────────────────
+  // â”€â”€ Turn Into with Multiple Block Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  test('Turn Into: paragraph → quote', async ({
+  test('Turn Into: paragraph â†’ quote', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -1036,11 +959,12 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('blockquote');
   });
 
-  test('Turn Into: paragraph → to-do list', async ({
+  test('Turn Into: paragraph â†’ to-do list', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);
@@ -1064,11 +988,12 @@ test.describe('Block Handles — Plus Button and Action Menu', () => {
     expect(structure[0]).toBe('taskList');
   });
 
-  test('Turn Into: paragraph → numbered list', async ({
+  test('Turn Into: paragraph â†’ numbered list', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
     const tiptap = window.locator('.tiptap');
     await tiptap.click();
     await waitForEditor(window);

@@ -9,45 +9,17 @@
  *
  * If any step corrupts state, ALL subsequent steps fail.
  */
-import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
-import type { Page, ElectronApplication } from '@playwright/test';
+import { sharedTest as test, expect, setupCanvasPage, waitForEditor, setContent } from './fixtures';
+import type { Page } from '@playwright/test';
 
-// ── Setup ───────────────────────────────────────────────────────────────────
-
-async function setupCanvasPage(
-  page: Page,
-  electronApp: ElectronApplication,
-  wsPath: string,
-): Promise<void> {
-  await openFolderViaMenu(electronApp, page, wsPath);
-  await page.waitForTimeout(2000);
-  const canvasBtn = page.locator('button.activity-bar-item[data-icon-id="canvas-container"]');
-  const cls = await canvasBtn.getAttribute('class');
-  if (!cls?.includes('active')) await canvasBtn.click();
-  await page.waitForSelector('.canvas-tree', { timeout: 10_000 });
-  await page.locator('.canvas-sidebar-add-btn').click();
-  await page.waitForSelector('.canvas-node', { timeout: 10_000 });
-  await page.locator('.canvas-node').first().click();
-  await page.waitForSelector('.tiptap', { timeout: 10_000 });
-  await page.waitForTimeout(500);
-}
-
-async function waitForEditor(page: Page): Promise<void> {
-  await page.waitForFunction(() => (window as any).__tiptapEditor != null, { timeout: 10_000 });
-}
+// ── Spec-specific helpers ───────────────────────────────────────────────────
 
 async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: `test-results/14-integration/${name}.png` });
   console.log(`📸 ${name}`);
 }
 
-async function setContent(page: Page, content: any[]): Promise<void> {
-  await page.evaluate((c) => {
-    (window as any).__tiptapEditor.commands.setContent({ type: 'doc', content: c });
-  }, content);
-  await page.waitForTimeout(300);
-}
-
+/** Spec-specific getDocStructure that shows background colors and column widths. */
 async function getDocStructure(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const editor = (window as any).__tiptapEditor;
@@ -206,16 +178,13 @@ async function tryResize(page: Page, colListIndex: number, leftIndex: number, de
 // ═════════════════════════════════════════════════════════════════════════════
 
 test.describe('Column Integration — Real User Workflow', () => {
-  let wsPath: string;
-
-  test.beforeAll(async () => { wsPath = await createTestWorkspace(); });
-  test.afterAll(async () => { await cleanupTestWorkspace(wsPath); });
 
   test('full session: drag → resize → extend → resize → extract → resize → dissolve → recreate → resize', async ({
     window: page,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+    await setupCanvasPage(page, electronApp, workspacePath);
     await waitForEditor(page);
 
     // ═══ STEP 1: Create blocks (mix of plain and background-colored) ═══

@@ -26,32 +26,8 @@
  *   - drop on ProseMirror DOM → columnDropPlugin's handler executes transaction
  * All production code paths are exercised. The only synthetic part is event dispatch.
  */
-import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
-import type { Page, ElectronApplication, Locator } from '@playwright/test';
-
-// ── Setup ───────────────────────────────────────────────────────────────────
-
-async function setupCanvasPage(
-  page: Page,
-  electronApp: ElectronApplication,
-  wsPath: string,
-): Promise<void> {
-  await openFolderViaMenu(electronApp, page, wsPath);
-  await page.waitForTimeout(2000);
-  const canvasBtn = page.locator('button.activity-bar-item[data-icon-id="canvas-container"]');
-  const cls = await canvasBtn.getAttribute('class');
-  if (!cls?.includes('active')) await canvasBtn.click();
-  await page.waitForSelector('.canvas-tree', { timeout: 10_000 });
-  await page.locator('.canvas-sidebar-add-btn').click();
-  await page.waitForSelector('.canvas-node', { timeout: 10_000 });
-  await page.locator('.canvas-node').first().click();
-  await page.waitForSelector('.tiptap', { timeout: 10_000 });
-  await page.waitForTimeout(500);
-}
-
-async function waitForEditor(page: Page): Promise<void> {
-  await page.waitForFunction(() => (window as any).__tiptapEditor != null, { timeout: 10_000 });
-}
+import { sharedTest as test, expect, setupCanvasPage, waitForEditor, setContent } from './fixtures';
+import type { Page, Locator } from '@playwright/test';
 
 // ── Screenshot & logging ────────────────────────────────────────────────────
 
@@ -66,13 +42,6 @@ function makeParagraph(text: string, bg?: string) {
   const node: any = { type: 'paragraph', content: [{ type: 'text', text }] };
   if (bg) node.attrs = { backgroundColor: bg };
   return node;
-}
-
-async function setContent(page: Page, content: any[]): Promise<void> {
-  await page.evaluate((c) => {
-    (window as any).__tiptapEditor.commands.setContent({ type: 'doc', content: c });
-  }, content);
-  await page.waitForTimeout(300);
 }
 
 // ── Structure helpers ───────────────────────────────────────────────────────
@@ -259,20 +228,13 @@ async function getBlockBox(page: Page, text: string, scope?: Locator) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 test.describe('Column Real Interactions', () => {
-  let wsPath: string;
-
-  test.beforeAll(async () => {
-    wsPath = await createTestWorkspace();
-  });
-  test.afterAll(async () => {
-    await cleanupTestWorkspace(wsPath);
-  });
 
   test('3-col × 5-block: reorder within, cross-column move, extract, resize', async ({
     window: page,
     electronApp,
+    workspacePath,
   }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+    await setupCanvasPage(page, electronApp, workspacePath);
     await waitForEditor(page);
 
     // ── Colors for visual traceability in screenshots ──

@@ -1,47 +1,14 @@
-import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
-import type { ElectronApplication, Page } from '@playwright/test';
-
-async function setupCanvasPage(page: Page, electronApp: ElectronApplication, wsPath: string): Promise<void> {
-  await openFolderViaMenu(electronApp, page, wsPath);
-  await page.waitForTimeout(1500);
-
-  const canvasBtn = page.locator('button.activity-bar-item[data-icon-id="canvas-container"]');
-  const cls = await canvasBtn.getAttribute('class');
-  if (!cls?.includes('active')) await canvasBtn.click();
-
-  await page.waitForSelector('.canvas-tree', { timeout: 10_000 });
-  await page.locator('.canvas-sidebar-add-btn').click();
-  await page.waitForSelector('.canvas-node', { timeout: 10_000 });
-  await page.locator('.canvas-node').first().click();
-  await page.waitForSelector('.tiptap', { timeout: 10_000 });
-  await page.waitForFunction(() => (window as any).__tiptapEditor != null, { timeout: 10_000 });
-  await page.waitForTimeout(300);
-}
+import { sharedTest as test, expect, setupCanvasPage, setContent } from './fixtures';
+import type { Page } from '@playwright/test';
 
 function p(text: string) {
   return { type: 'paragraph', content: [{ type: 'text', text }] };
 }
 
-async function setContent(page: Page, content: any[]): Promise<void> {
-  await page.evaluate((c) => {
-    (window as any).__tiptapEditor.commands.setContent({ type: 'doc', content: c });
-  }, content);
-  await page.waitForTimeout(250);
-}
-
 test.describe('Canvas Interaction Arbitration', () => {
-  let wsPath: string;
 
-  test.beforeAll(async () => {
-    wsPath = await createTestWorkspace();
-  });
-
-  test.afterAll(async () => {
-    await cleanupTestWorkspace(wsPath);
-  });
-
-  test('range selection deterministically dismisses slash menu', async ({ window: page, electronApp }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+  test('range selection deterministically dismisses slash menu', async ({ window: page, electronApp, workspacePath }) => {
+    await setupCanvasPage(page, electronApp, workspacePath);
     await setContent(page, [p('')]);
 
     const editor = page.locator('.tiptap');
@@ -59,8 +26,8 @@ test.describe('Canvas Interaction Arbitration', () => {
     await expect(slashMenu).toBeHidden();
   });
 
-  test('drag-handle action targets nested inner block (not wrapper)', async ({ window: page, electronApp }) => {
-    await setupCanvasPage(page, electronApp, wsPath);
+  test('drag-handle action targets nested inner block (not wrapper)', async ({ window: page, electronApp, workspacePath }) => {
+    await setupCanvasPage(page, electronApp, workspacePath);
 
     await setContent(page, [
       {

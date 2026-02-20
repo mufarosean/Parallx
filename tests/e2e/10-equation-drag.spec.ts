@@ -14,53 +14,16 @@
  * via synthetic events in Playwright/Electron. We test the drag INITIATION
  * (which was the broken part) and the node MOVEMENT separately.
  */
-import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
-import type { Page, ElectronApplication } from '@playwright/test';
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-async function setupCanvasPage(
-  page: Page,
-  electronApp: ElectronApplication,
-  wsPath: string,
-): Promise<void> {
-  await openFolderViaMenu(electronApp, page, wsPath);
-  await page.waitForTimeout(2000);
-
-  // Open Canvas sidebar
-  const canvasBtn = page.locator('button.activity-bar-item[data-icon-id="canvas-container"]');
-  const cls = await canvasBtn.getAttribute('class');
-  if (!cls?.includes('active')) await canvasBtn.click();
-  await page.waitForSelector('.canvas-tree', { timeout: 10_000 });
-
-  // Create a new page
-  await page.locator('.canvas-sidebar-add-btn').click();
-  await page.waitForSelector('.canvas-node', { timeout: 10_000 });
-
-  // Open the page
-  await page.locator('.canvas-node').first().click();
-  await page.waitForSelector('.tiptap', { timeout: 10_000 });
-
-  // Wait for tiptap to be fully ready
-  await page.waitForTimeout(500);
-}
+import { sharedTest as test, expect, setupCanvasPage } from './fixtures';
 
 // ═════════════════════════════════════════════════════════════════════════════
 
 test.describe('Equation Block Drag-and-Drop', () => {
-  let wsPath: string;
-
-  test.beforeAll(async () => {
-    wsPath = await createTestWorkspace();
-  });
-
-  test.afterAll(async () => {
-    await cleanupTestWorkspace(wsPath);
-  });
 
   test('drag handle correctly initiates drag for MathBlock atom node', async ({
     window,
     electronApp,
+    workspacePath,
   }) => {
     // Capture console output
     const consoleLogs: string[] = [];
@@ -69,7 +32,7 @@ test.describe('Equation Block Drag-and-Drop', () => {
       if (text.includes('[AtomDrag]')) consoleLogs.push(text);
     });
 
-    await setupCanvasPage(window, electronApp, wsPath);
+    await setupCanvasPage(window, electronApp, workspacePath);
 
     const tiptap = window.locator('.tiptap');
     await tiptap.click();

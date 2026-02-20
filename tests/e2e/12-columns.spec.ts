@@ -3,124 +3,24 @@
  *
  * Tests all column layout features from Milestone 6:
  *
- * 1. Slash menu creation — 2, 3, and 4 columns via slash menu
- * 2. Column structure — correct DOM and ProseMirror node structure
- * 3. Typing in columns — content can be entered and persists in each column
- * 4. Nesting prevention — column items hidden from slash menu inside a column
- * 5. Column resize — drag boundary to change widths, double-click to equalize
- * 6. Ctrl/Cmd+A inside column — selects column content, not entire doc
- * 7. Block action menu — blocks inside columns have the same action menu as any other block
- * 8. Blocks inside columns — handles, action menu, plus button, delete
- * 9. Backspace/Delete protection — prevents column structure destruction
- * 10. Auto-dissolve — removes columnList when only one column remains
- * 11. Alignment — column content aligns with top-level content (no offset)
- * 12. Keyboard block movement — Ctrl+Shift+↑/↓ reorder, cross-container, Ctrl+D duplicate
- * 13. Drop indicators — horizontal and vertical guide CSS classes
+ * 1. Slash menu creation â€” 2, 3, and 4 columns via slash menu
+ * 2. Column structure â€” correct DOM and ProseMirror node structure
+ * 3. Typing in columns â€” content can be entered and persists in each column
+ * 4. Nesting prevention â€” column items hidden from slash menu inside a column
+ * 5. Column resize â€” drag boundary to change widths, double-click to equalize
+ * 6. Ctrl/Cmd+A inside column â€” selects column content, not entire doc
+ * 7. Block action menu â€” blocks inside columns have the same action menu as any other block
+ * 8. Blocks inside columns â€” handles, action menu, plus button, delete
+ * 9. Backspace/Delete protection â€” prevents column structure destruction
+ * 10. Auto-dissolve â€” removes columnList when only one column remains
+ * 11. Alignment â€” column content aligns with top-level content (no offset)
+ * 12. Keyboard block movement â€” Ctrl+Shift+â†‘/â†“ reorder, cross-container, Ctrl+D duplicate
+ * 13. Drop indicators â€” horizontal and vertical guide CSS classes
  */
-import { test, expect, openFolderViaMenu, createTestWorkspace, cleanupTestWorkspace } from './fixtures';
-import type { Page, ElectronApplication } from '@playwright/test';
+import { sharedTest as test, expect, setupCanvasPage, waitForEditor, setContent, getDocJSON, getDocStructure, insertViaSlashMenu, hoverBlockByIndex, openBlockActionMenu } from './fixtures';
+import type { Page } from '@playwright/test';
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-async function setupCanvasPage(
-  page: Page,
-  electronApp: ElectronApplication,
-  wsPath: string,
-): Promise<void> {
-  await openFolderViaMenu(electronApp, page, wsPath);
-  await page.waitForTimeout(2000);
-
-  // Open Canvas sidebar
-  const canvasBtn = page.locator('button.activity-bar-item[data-icon-id="canvas-container"]');
-  const cls = await canvasBtn.getAttribute('class');
-  if (!cls?.includes('active')) await canvasBtn.click();
-  await page.waitForSelector('.canvas-tree', { timeout: 10_000 });
-
-  // Create a new page
-  await page.locator('.canvas-sidebar-add-btn').click();
-  await page.waitForSelector('.canvas-node', { timeout: 10_000 });
-
-  // Open the page
-  await page.locator('.canvas-node').first().click();
-  await page.waitForSelector('.tiptap', { timeout: 10_000 });
-
-  // Wait for tiptap to be fully ready
-  await page.waitForTimeout(500);
-}
-
-/** Wait for the TipTap editor to be exposed on window (test mode). */
-async function waitForEditor(page: Page): Promise<void> {
-  await page.waitForFunction(
-    () => (window as any).__tiptapEditor != null,
-    { timeout: 10_000 },
-  );
-}
-
-/** Set editor content and wait for it to render. */
-async function setContent(page: Page, content: any[]): Promise<void> {
-  await page.evaluate((c) => {
-    const editor = (window as any).__tiptapEditor;
-    if (!editor) throw new Error('No TipTap editor');
-    editor.commands.setContent({ type: 'doc', content: c });
-  }, content);
-  await page.waitForTimeout(300);
-}
-
-/** Get the full TipTap document JSON structure. */
-async function getDocJSON(page: Page): Promise<any> {
-  return page.evaluate(() => {
-    const editor = (window as any).__tiptapEditor;
-    if (!editor) return null;
-    return editor.getJSON();
-  });
-}
-
-/** Get simplified document structure as string array. */
-async function getDocStructure(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const editor = (window as any).__tiptapEditor;
-    if (!editor) return [];
-    const json = editor.getJSON();
-    return (json.content || []).map((node: any) => {
-      const type = node.type;
-      if (type === 'paragraph') return `p:${node.content?.[0]?.text || ''}`;
-      if (type === 'heading') return `h${node.attrs?.level}:${node.content?.[0]?.text || ''}`;
-      if (type === 'columnList') {
-        const cols = (node.content || []).length;
-        return `columnList:${cols}`;
-      }
-      return type;
-    });
-  });
-}
-
-/** Type a slash command and select from the slash menu. */
-async function insertViaSlashMenu(page: Page, label: string): Promise<void> {
-  await page.keyboard.type('/');
-  await page.waitForSelector('.canvas-slash-menu', { timeout: 3_000 });
-
-  // Type enough to filter
-  const filterText = label.replace(/\s+/g, '').toLowerCase();
-  for (const ch of filterText) {
-    await page.keyboard.type(ch);
-    await page.waitForTimeout(50);
-  }
-
-  // Click the matching item
-  const item = page.locator('.canvas-slash-item', { hasText: label });
-  await expect(item).toBeVisible({ timeout: 3_000 });
-  await item.click();
-  await page.waitForTimeout(300);
-}
-
-/** Hover over a specific top-level block by index to trigger the drag handle. */
-async function hoverBlockByIndex(page: Page, index: number): Promise<void> {
-  const tiptap = page.locator('.tiptap');
-  const blocks = tiptap.locator(':scope > *');
-  const block = blocks.nth(index);
-  await block.hover();
-  await page.waitForTimeout(500);
-}
+// â”€â”€ Helpers (column-specific) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Hover the gap between columns to trigger the columnList handle. */
 async function hoverColumnGap(page: Page): Promise<void> {
@@ -145,36 +45,18 @@ async function openColumnListActionMenu(page: Page): Promise<void> {
   await page.waitForTimeout(200);
 }
 
-/** Click the drag handle to open the block action menu. */
-async function openBlockActionMenu(page: Page, blockIndex: number): Promise<void> {
-  await hoverBlockByIndex(page, blockIndex);
-  const dragHandle = page.locator('.drag-handle');
-  await expect(dragHandle).toBeVisible({ timeout: 3_000 });
-  await dragHandle.click({ force: true });
-  await page.waitForTimeout(200);
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 test.describe('Column Layout', () => {
-  let wsPath: string;
 
-  test.beforeAll(async () => {
-    wsPath = await createTestWorkspace();
-  });
-
-  test.afterAll(async () => {
-    await cleanupTestWorkspace(wsPath);
-  });
-
-  // ── Slash Menu Column Creation ────────────────────────────────────────────
+  // â”€â”€ Slash Menu Column Creation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test.describe('Slash menu creation', () => {
     test('slash menu shows 2, 3, and 4 column options', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -211,7 +93,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -243,7 +125,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -266,7 +148,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -289,7 +171,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -437,14 +319,14 @@ test.describe('Column Layout', () => {
     });
   });
 
-  // ── Typing in Columns ─────────────────────────────────────────────────────
+  // â”€â”€ Typing in Columns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test.describe('Content in columns', () => {
     test('can type text into each column', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -486,7 +368,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -526,7 +408,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -555,14 +437,14 @@ test.describe('Column Layout', () => {
     });
   });
 
-  // ── Nested Column Creation ───────────────────────────────────────────────
+  // â”€â”€ Nested Column Creation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test.describe('Nested column creation', () => {
     test('slash menu shows and executes column options when cursor is inside a column', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -627,12 +509,12 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
 
-      // Regular paragraph — cursor is at top level
+      // Regular paragraph â€” cursor is at top level
       await setContent(window, [
         { type: 'paragraph', content: [{ type: 'text', text: '' }] },
       ]);
@@ -652,14 +534,14 @@ test.describe('Column Layout', () => {
     });
   });
 
-  // ── Column Resize ─────────────────────────────────────────────────────────
+  // â”€â”€ Column Resize â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test.describe('Column resize', () => {
     test('dragging column boundary changes column widths', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -717,7 +599,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -753,7 +635,7 @@ test.describe('Column Layout', () => {
         await window.mouse.dblclick(boundaryX, boundaryY);
         await window.waitForTimeout(300);
 
-        // After double-click, widths should be equal (null attrs → flex: 1)
+        // After double-click, widths should be equal (null attrs â†’ flex: 1)
         const newCol1Box = await columns.nth(0).boundingBox();
         const newCol2Box = await columns.nth(1).boundingBox();
         expect(newCol1Box).toBeTruthy();
@@ -770,7 +652,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -817,14 +699,14 @@ test.describe('Column Layout', () => {
     });
   });
 
-  // ── Keyboard Shortcuts ────────────────────────────────────────────────────
+  // â”€â”€ Keyboard Shortcuts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test.describe('Keyboard shortcuts', () => {
     test('Ctrl+A inside a column selects only column content', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -881,14 +763,14 @@ test.describe('Column Layout', () => {
     });
   });
 
-  // ── Block Action Menu ─────────────────────────────────────────────────────
+  // â”€â”€ Block Action Menu â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test.describe('Block action menu', () => {
     test('block inside column action menu has same items as top-level block (no Column layout section)', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -915,7 +797,7 @@ test.describe('Column Layout', () => {
       const actionMenu = window.locator('.block-action-menu');
       await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
-      // Only ONE header — the block type "Text". No "Column layout" header.
+      // Only ONE header â€” the block type "Text". No "Column layout" header.
       const headers = actionMenu.locator('.block-action-header');
       await expect(headers).toHaveCount(1);
       await expect(headers.first()).toHaveText('Text');
@@ -936,7 +818,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -951,7 +833,7 @@ test.describe('Column Layout', () => {
         },
       ]);
 
-      // Hover the first block in the first column — this triggers the drag handle
+      // Hover the first block in the first column â€” this triggers the drag handle
       const firstColPara = tiptap.locator('.canvas-column p', { hasText: 'First Col' });
       await firstColPara.hover();
       await window.waitForTimeout(500);
@@ -970,7 +852,7 @@ test.describe('Column Layout', () => {
       expect(headerText).not.toContain('Column List');
       expect(headerText).toBe('Text');
 
-      // Should show standard block actions — Turn into, Color, etc.
+      // Should show standard block actions â€” Turn into, Color, etc.
       await expect(actionMenu.locator('.block-action-item', { hasText: 'Turn into' })).toBeVisible();
     });
 
@@ -978,7 +860,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1028,7 +910,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1086,14 +968,14 @@ test.describe('Column Layout', () => {
     });
   });
 
-  // ── Column DOM Structure ──────────────────────────────────────────────────
+  // â”€â”€ Column DOM Structure â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test.describe('DOM structure', () => {
     test('columnList has correct data-type and class attributes', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1120,11 +1002,11 @@ test.describe('Column Layout', () => {
       await expect(cols.nth(1)).toHaveClass(/canvas-column/);
     });
 
-    test('columns are isolating — Enter inside column stays in column', async ({
+    test('columns are isolating â€” Enter inside column stays in column', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1161,14 +1043,14 @@ test.describe('Column Layout', () => {
     });
   });
 
-  // ── Resize Cursor Feedback ────────────────────────────────────────────────
+  // â”€â”€ Resize Cursor Feedback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test.describe('Resize cursor feedback', () => {
     test('hovering near column boundary shows col-resize cursor class', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1212,14 +1094,14 @@ test.describe('Column Layout', () => {
     });
   });
 
-  // ── Unwrap Columns ────────────────────────────────────────────────────────
+  // â”€â”€ Unwrap Columns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  test.describe('Unwrap columns (removed — columns dissolve organically)', () => {
+  test.describe('Unwrap columns (removed â€” columns dissolve organically)', () => {
     test('action menu for block inside column shows Turn into but NOT Unwrap columns', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1253,20 +1135,20 @@ test.describe('Column Layout', () => {
       const turnIntoItem = actionMenu.locator('.block-action-item', { hasText: 'Turn into' });
       await expect(turnIntoItem).toBeVisible();
 
-      // Should NOT show Unwrap columns — columns are spatial partitions, not blocks
+      // Should NOT show Unwrap columns â€” columns are spatial partitions, not blocks
       const unwrapItem = actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' });
       await expect(unwrapItem).toHaveCount(0);
     });
   });
 
-  // ── Backspace / Delete Protection ─────────────────────────────────────────
+  // â”€â”€ Backspace / Delete Protection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test.describe('Backspace and Delete protection', () => {
     test('backspace at start of column does not destroy column structure', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1305,7 +1187,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1342,7 +1224,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1362,11 +1244,11 @@ test.describe('Column Layout', () => {
       await firstCol.locator('p').click();
       await window.waitForTimeout(100);
 
-      // Press Backspace — should dissolve the empty column
+      // Press Backspace â€” should dissolve the empty column
       await window.keyboard.press('Backspace');
       await window.waitForTimeout(300);
 
-      // columnList should be dissolved — "Kept content" should be top-level
+      // columnList should be dissolved â€” "Kept content" should be top-level
       const doc = await getDocJSON(window);
       const colList = doc.content.find((n: any) => n.type === 'columnList');
       expect(colList).toBeFalsy(); // No more columnList
@@ -1380,7 +1262,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1451,7 +1333,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1500,7 +1382,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1547,14 +1429,14 @@ test.describe('Column Layout', () => {
 
   });
 
-  // ── Content Alignment ─────────────────────────────────────────────────────
+  // â”€â”€ Content Alignment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test.describe('Content alignment', () => {
     test('column content aligns with top-level content (no indentation offset)', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1592,7 +1474,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1622,14 +1504,14 @@ test.describe('Column Layout', () => {
     });
   });
 
-  // ── Keyboard Block Movement (Rule 6) ──────────────────────────────────────
+  // â”€â”€ Keyboard Block Movement (Rule 6) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test.describe('Keyboard block movement', () => {
-    test('Ctrl+Shift+↑ moves block up within top-level', async ({
+    test('Ctrl+Shift+â†‘ moves block up within top-level', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1649,11 +1531,11 @@ test.describe('Column Layout', () => {
       expect(structure).toEqual(['p:First', 'p:Third', 'p:Second']);
     });
 
-    test('Ctrl+Shift+↓ moves block down within top-level', async ({
+    test('Ctrl+Shift+â†“ moves block down within top-level', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1684,11 +1566,11 @@ test.describe('Column Layout', () => {
       expect(structure).toEqual(['p:Second', 'p:First', 'p:Third']);
     });
 
-    test('Ctrl+Shift+↑ moves block up within a column', async ({
+    test('Ctrl+Shift+â†‘ moves block up within a column', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1731,11 +1613,11 @@ test.describe('Column Layout', () => {
       expect(col1.content[1].content[0].text).toBe('Col A1');
     });
 
-    test('Ctrl+Shift+↓ moves block down within a column', async ({
+    test('Ctrl+Shift+â†“ moves block down within a column', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1777,11 +1659,11 @@ test.describe('Column Layout', () => {
       expect(col1.content[1].content[0].text).toBe('Col A1');
     });
 
-    test('Ctrl+Shift+↑ at top of column moves block above columnList', async ({
+    test('Ctrl+Shift+â†‘ at top of column moves block above columnList', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1828,11 +1710,11 @@ test.describe('Column Layout', () => {
       expect(cl.content[0].content[0].content[0].text).toBe('Bottom');
     });
 
-    test('Ctrl+Shift+↓ at bottom of column moves block below columnList', async ({
+    test('Ctrl+Shift+â†“ at bottom of column moves block below columnList', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1877,11 +1759,11 @@ test.describe('Column Layout', () => {
       expect(texts).toContain('After');
     });
 
-    test('Ctrl+Shift+↑ on only block in column dissolves column', async ({
+    test('Ctrl+Shift+â†‘ on only block in column dissolves column', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1898,7 +1780,7 @@ test.describe('Column Layout', () => {
         },
       ]);
 
-      // Click in "Only block" then move up — this empties the column
+      // Click in "Only block" then move up â€” this empties the column
       await tiptap.locator('.canvas-column').first().locator('p', { hasText: 'Only block' }).click();
       await window.keyboard.press('Control+Shift+ArrowUp');
       await window.waitForTimeout(500);
@@ -1917,7 +1799,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1942,7 +1824,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -1984,11 +1866,11 @@ test.describe('Column Layout', () => {
       expect(col1.content[1].content[0].text).toBe('InCol');
     });
 
-    test('Ctrl+Shift+↑ does nothing if already at top of doc', async ({
+    test('Ctrl+Shift+â†‘ does nothing if already at top of doc', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -2006,14 +1888,14 @@ test.describe('Column Layout', () => {
     });
   });
 
-  // ── Drop Indicators ──────────────────────────────────────────────────────
+  // â”€â”€ Drop Indicators â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test.describe('Drop indicators', () => {
     test('horizontal drop guide CSS class exists', async ({
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       await waitForEditor(window);
 
       // Verify the CSS rule for .canvas-drop-guide is defined
@@ -2036,7 +1918,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       await waitForEditor(window);
 
       const hasRule = await window.evaluate(() => {
@@ -2055,7 +1937,7 @@ test.describe('Column Layout', () => {
     });
   });
 
-  // ── Column as Spatial Container ───────────────────────────────────────────
+  // â”€â”€ Column as Spatial Container â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Blocks inside columns should behave identically to top-level blocks:
   // same drag handle, same +, same action menu, same interactions.
 
@@ -2064,7 +1946,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -2095,7 +1977,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -2128,7 +2010,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -2183,7 +2065,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -2252,7 +2134,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -2288,10 +2170,10 @@ test.describe('Column Layout', () => {
       expect(headerText).not.toContain('Column List');
       expect(headerText).toBe('Heading');
 
-      // Should show "Turn into" (block-level action) — same as any top-level block
+      // Should show "Turn into" (block-level action) â€” same as any top-level block
       const turnInto = actionMenu.locator('.block-action-item', { hasText: 'Turn into' });
       await expect(turnInto).toBeVisible();
-      // Should NOT have "Unwrap columns" — columns are spatial partitions with no special menu items
+      // Should NOT have "Unwrap columns" â€” columns are spatial partitions with no special menu items
       const unwrap = actionMenu.locator('.block-action-item', { hasText: 'Unwrap columns' });
       await expect(unwrap).toHaveCount(0);
     });
@@ -2300,7 +2182,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -2336,7 +2218,7 @@ test.describe('Column Layout', () => {
       await window.keyboard.press('Escape');
       await window.waitForTimeout(200);
 
-      // Check the document — the first column should now have 3 blocks
+      // Check the document â€” the first column should now have 3 blocks
       const docJSON = await getDocJSON(window);
       const columnList = docJSON.content.find((n: any) => n.type === 'columnList');
       expect(columnList).toBeTruthy();
@@ -2348,7 +2230,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -2380,7 +2262,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -2411,7 +2293,7 @@ test.describe('Column Layout', () => {
       const actionMenu = window.locator('.block-action-menu');
       await expect(actionMenu).toBeVisible({ timeout: 3_000 });
 
-      // Click Delete (first one — block-level Delete, not "Delete column layout")
+      // Click Delete (first one â€” block-level Delete, not "Delete column layout")
       const delBtn = actionMenu.locator('.block-action-item--danger').first();
       await delBtn.click();
       await window.waitForTimeout(300);
@@ -2430,7 +2312,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);
@@ -2479,7 +2361,7 @@ test.describe('Column Layout', () => {
       window,
       electronApp,
     }) => {
-      await setupCanvasPage(window, electronApp, wsPath);
+      await setupCanvasPage(window, electronApp, workspacePath);
       const tiptap = window.locator('.tiptap');
       await tiptap.click();
       await waitForEditor(window);

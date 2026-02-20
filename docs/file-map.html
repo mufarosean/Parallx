@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parallx — Interactive File Map</title>
+<style>
+  :root {
+    --bg: #1e1e2e;
+    --surface: #252536;
+    --border: #363650;
+    --text: #cdd6f4;
+    --text-dim: #6c7086;
+    --accent: #89b4fa;
+    --runtime: #a6e3a1;
+    --build: #f9e2af;
+    --test: #cba6f7;
+    --docs: #89dceb;
+    --tooling: #fab387;
+    --generated: #585b70;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', 'Cascadia Code', Consolas, monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--accent);
+  }
+  .subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+  }
+  .controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .search-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    width: 280px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .search-box:focus { border-color: var(--accent); }
+  .search-box::placeholder { color: var(--text-dim); }
+  .btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn:hover { background: var(--border); border-color: var(--accent); }
+  .legend {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+  .legend-item:hover { border-color: var(--border); }
+  .legend-item.active { border-color: var(--accent); color: var(--text); }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .stats {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 18px;
+    min-width: 120px;
+  }
+  .stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .tree {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+  }
+  .tree ul {
+    list-style: none;
+    padding-left: 20px;
+  }
+  .tree > ul { padding-left: 0; }
+  .tree li {
+    position: relative;
+    line-height: 1.8;
+  }
+  .tree li.hidden { display: none; }
+  .node-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    cursor: default;
+    transition: background 0.1s;
+    white-space: nowrap;
+  }
+  .node-row:hover { background: rgba(137,180,250,0.08); }
+  .node-row.highlight { background: rgba(137,180,250,0.18); }
+  .toggle {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 11px;
+    transition: transform 0.15s;
+    flex-shrink: 0;
+    user-select: none;
+    border-radius: 3px;
+  }
+  .toggle:hover { background: var(--border); color: var(--text); }
+  .toggle.collapsed { transform: rotate(-90deg); }
+  .icon {
+    font-size: 14px;
+    flex-shrink: 0;
+    width: 18px;
+    text-align: center;
+  }
+  .name {
+    font-size: 13px;
+  }
+  .name.is-dir { font-weight: 600; }
+  .badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: var(--border);
+    color: var(--text-dim);
+    margin-left: 4px;
+  }
+  .desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-left: 8px;
+  }
+  .role-runtime .name { color: var(--runtime); }
+  .role-build .name { color: var(--build); }
+  .role-test .name { color: var(--test); }
+  .role-docs .name { color: var(--docs); }
+  .role-tooling .name { color: var(--tooling); }
+  .role-generated .name { color: var(--generated); }
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .search-box { width: 100%; }
+    .desc { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Parallx File Map</h1>
+<p class="subtitle">Interactive project structure — click folders to expand/collapse, use search to filter, click legend to highlight by role</p>
+
+<div class="stats" id="stats"></div>
+
+<div class="controls">
+  <input class="search-box" id="search" placeholder="Search files… (e.g. canvas, service, test)" autocomplete="off">
+  <button class="btn" onclick="expandAll()">Expand All</button>
+  <button class="btn" onclick="collapseAll()">Collapse All</button>
+  <button class="btn" onclick="clearSearch()">Clear</button>
+</div>
+
+<div class="legend" id="legend"></div>
+
+<div class="tree" id="tree"></div>
+
+<script>
+// ── Data ──────────────────────────────────────────────────────
+const ROLES = {
+  runtime:   { label: 'Runtime',   color: '#a6e3a1', desc: 'Required to run Parallx' },
+  build:     { label: 'Build',     color: '#f9e2af', desc: 'Required to build' },
+  test:      { label: 'Test',      color: '#cba6f7', desc: 'Test files' },
+  docs:      { label: 'Docs',      color: '#89dceb', desc: 'Documentation' },
+  tooling:   { label: 'Tooling',   color: '#fab387', desc: 'Dev convenience' },
+  generated: { label: 'Generated', color: '#585b70', desc: 'Gitignored output' },
+};
+
+// [path, role, description]
+const FILES = [
+  // Root
+  ['index.html', 'runtime', 'Electron renderer entry'],
+  ['package.json', 'runtime', 'App manifest & scripts'],
+  ['package-lock.json', 'runtime', 'Locked dependency tree'],
+  ['.gitignore', 'tooling', 'Git ignore rules'],
+  ['Parallx.bat', 'tooling', 'Quick-launch shortcut'],
+  ['Parallx.vbs', 'tooling', 'Silent launcher wrapper'],
+  ['ARCHITECTURE.md', 'docs', 'Architecture overview'],
+  ['tsconfig.json', 'build', 'TypeScript config'],
+  ['vitest.config.ts', 'test', 'Unit test config'],
+  ['playwright.config.ts', 'test', 'E2E test config'],
+
+  // Electron
+  ['electron/main.cjs', 'runtime', 'Electron main process'],
+  ['electron/preload.cjs', 'runtime', 'IPC bridge (preload)'],
+  ['electron/database.cjs', 'runtime', 'SQLite database layer'],
+  ['electron/parallx.ico', 'runtime', 'App icon'],
+
+  // Scripts
+  ['scripts/build.mjs', 'build', 'esbuild bundler'],
+  ['scripts/patch-deps.mjs', 'build', 'Post-install dependency patches'],
+
+  // src/main
+  ['src/main.ts', 'runtime', 'Renderer entry point'],
+  ['src/workbench.css', 'runtime', 'Top-level styles'],
+
+  // src/workbench
+  ['src/workbench/workbench.ts', 'runtime', 'Workbench shell — boots everything'],
+  ['src/workbench/workbenchServices.ts', 'runtime', 'Service wiring / DI container'],
+  ['src/workbench/workbenchFacadeFactory.ts', 'runtime', 'Public API facade for tools'],
+  ['src/workbench/workbenchContributionHandler.ts', 'runtime', 'Registers contributions at startup'],
+  ['src/workbench/workbenchFileEditorSetup.ts', 'runtime', 'File-type → editor bindings'],
+  ['src/workbench/workbenchThemePicker.ts', 'runtime', 'Theme quick-pick UI'],
+  ['src/workbench/workbenchWatermark.ts', 'runtime', 'Empty-state watermark'],
+  ['src/workbench/layout.ts', 'runtime', 'Main layout orchestration'],
+  ['src/workbench/lifecycle.ts', 'runtime', 'Startup/shutdown lifecycle'],
+  ['src/workbench/menuBuilder.ts', 'runtime', 'Top menu bar builder'],
+  ['src/workbench/statusBarController.ts', 'runtime', 'Status bar items'],
+
+  // src/services
+  ['src/services/commandService.ts', 'runtime', 'Command execution'],
+  ['src/services/contextKeyService.ts', 'runtime', 'Context key evaluation'],
+  ['src/services/databaseService.ts', 'runtime', 'Database access wrapper'],
+  ['src/services/editorGroupService.ts', 'runtime', 'Editor group management'],
+  ['src/services/editorResolverService.ts', 'runtime', 'Resolves file → editor type'],
+  ['src/services/editorService.ts', 'runtime', 'Editor open/close orchestration'],
+  ['src/services/fileService.ts', 'runtime', 'File system operations'],
+  ['src/services/keybindingService.ts', 'runtime', 'Keyboard shortcut handling'],
+  ['src/services/languageDetection.ts', 'runtime', 'Language detection for files'],
+  ['src/services/layoutService.ts', 'runtime', 'Layout state management'],
+  ['src/services/serviceCollection.ts', 'runtime', 'Service collection / DI'],
+  ['src/services/serviceTypes.ts', 'runtime', 'Service interface definitions'],
+  ['src/services/textFileModelManager.ts', 'runtime', 'Text file model cache'],
+  ['src/services/themeService.ts', 'runtime', 'Theme loading & switching'],
+  ['src/services/viewService.ts', 'runtime', 'View lifecycle management'],
+  ['src/services/windowService.ts', 'runtime', 'Window/title management'],
+  ['src/services/workspaceBoundaryService.ts', 'runtime', 'Workspace boundary enforcement'],
+  ['src/services/workspaceService.ts', 'runtime', 'Workspace state management'],
+
+  // src/platform
+  ['src/platform/events.ts', 'runtime', 'Event emitter primitives'],
+  ['src/platform/fileTypes.ts', 'runtime', 'File type definitions'],
+  ['src/platform/instantiation.ts', 'runtime', 'Dependency injection decorators'],
+  ['src/platform/lifecycle.ts', 'runtime', 'Lifecycle phases'],
+  ['src/platform/storage.ts', 'runtime', 'Storage abstraction'],
+  ['src/platform/types.ts', 'runtime', 'Shared type helpers'],
+  ['src/platform/uri.ts', 'runtime', 'URI utility'],
+
+  // src/layout
+  ['src/layout/grid.ts', 'runtime', 'Grid split/merge engine'],
+  ['src/layout/gridNode.ts', 'runtime', 'Grid node data model'],
+  ['src/layout/gridView.ts', 'runtime', 'Grid view rendering'],
+  ['src/layout/layoutModel.ts', 'runtime', 'Layout state model'],
+  ['src/layout/layoutRenderer.ts', 'runtime', 'Layout DOM renderer'],
+  ['src/layout/layoutTypes.ts', 'runtime', 'Layout type definitions'],
+
+  // src/parts
+  ['src/parts/activityBarPart.ts', 'runtime', 'Activity bar (left icon strip)'],
+  ['src/parts/auxiliaryBarPart.ts', 'runtime', 'Auxiliary sidebar (right)'],
+  ['src/parts/editorPart.ts', 'runtime', 'Editor area container'],
+  ['src/parts/panelPart.ts', 'runtime', 'Bottom panel container'],
+  ['src/parts/part.ts', 'runtime', 'Base Part class'],
+  ['src/parts/partRegistry.ts', 'runtime', 'Part registration'],
+  ['src/parts/partTypes.ts', 'runtime', 'Part interface definitions'],
+  ['src/parts/sidebarPart.ts', 'runtime', 'Primary sidebar'],
+  ['src/parts/statusBarPart.ts', 'runtime', 'Status bar'],
+  ['src/parts/titlebarPart.ts', 'runtime', 'Title bar'],
+
+  // src/editor
+  ['src/editor/breadcrumbsBar.ts', 'runtime', 'Breadcrumb navigation bar'],
+  ['src/editor/editorDropTarget.ts', 'runtime', 'Editor drag-drop target'],
+  ['src/editor/editorGroup.ts', 'runtime', 'Editor group controller'],
+  ['src/editor/editorGroupModel.ts', 'runtime', 'Editor group data model'],
+  ['src/editor/editorGroupView.ts', 'runtime', 'Editor group DOM view'],
+  ['src/editor/editorInput.ts', 'runtime', 'Base EditorInput class'],
+  ['src/editor/editorPane.ts', 'runtime', 'Base EditorPane class'],
+  ['src/editor/editorTypes.ts', 'runtime', 'Editor type definitions'],
+
+  // src/views
+  ['src/views/placeholderViews.ts', 'runtime', 'Placeholder views for tools'],
+  ['src/views/view.ts', 'runtime', 'Base View class'],
+  ['src/views/viewContainer.ts', 'runtime', 'View container (sidebar sections)'],
+  ['src/views/viewDescriptor.ts', 'runtime', 'View descriptor data'],
+  ['src/views/viewManager.ts', 'runtime', 'View lifecycle manager'],
+  ['src/views/viewTypes.ts', 'runtime', 'View interface definitions'],
+
+  // src/commands
+  ['src/commands/commandRegistry.ts', 'runtime', 'Command registration'],
+  ['src/commands/commandTypes.ts', 'runtime', 'Command type definitions'],
+  ['src/commands/editorCommands.ts', 'runtime', 'Editor-related commands'],
+  ['src/commands/fileCommands.ts', 'runtime', 'File-related commands'],
+  ['src/commands/focusCommands.ts', 'runtime', 'Focus navigation commands'],
+  ['src/commands/quickAccess.ts', 'runtime', 'Command palette / quick access'],
+  ['src/commands/structuralCommands.ts', 'runtime', 'Split/merge layout commands'],
+  ['src/commands/structuralCommandTypes.ts', 'runtime', 'Structural command types'],
+  ['src/commands/viewCommands.ts', 'runtime', 'View toggle commands'],
+  ['src/commands/workspaceCommands.ts', 'runtime', 'Workspace open/close commands'],
+
+  // src/context
+  ['src/context/contextKey.ts', 'runtime', 'Context key implementation'],
+  ['src/context/contextTypes.ts', 'runtime', 'Context type definitions'],
+  ['src/context/focusTracker.ts', 'runtime', 'Focus tracking across parts'],
+  ['src/context/whenClause.ts', 'runtime', 'When-clause expression parser'],
+  ['src/context/workbenchContext.ts', 'runtime', 'Workbench context key setup'],
+
+  // src/contributions
+  ['src/contributions/commandContribution.ts', 'runtime', 'Declarative command contributions'],
+  ['src/contributions/contributionTypes.ts', 'runtime', 'Contribution type definitions'],
+  ['src/contributions/keybindingContribution.ts', 'runtime', 'Keybinding contributions'],
+  ['src/contributions/menuContribution.ts', 'runtime', 'Menu contributions'],
+  ['src/contributions/menuContribution.css', 'runtime', 'Menu styles'],
+  ['src/contributions/viewContribution.ts', 'runtime', 'View contributions'],
+  ['src/contributions/viewContribution.css', 'runtime', 'View contribution styles'],
+
+  // src/configuration
+  ['src/configuration/configurationRegistry.ts', 'runtime', 'Settings registration'],
+  ['src/configuration/configurationService.ts', 'runtime', 'Settings read/write'],
+  ['src/configuration/configurationTypes.ts', 'runtime', 'Settings type definitions'],
+  ['src/configuration/toolMemento.ts', 'runtime', 'Per-tool state storage'],
+
+  // src/dnd
+  ['src/dnd/dndTypes.ts', 'runtime', 'Drag-and-drop type definitions'],
+  ['src/dnd/dragAndDrop.ts', 'runtime', 'DnD engine'],
+  ['src/dnd/dropOverlay.ts', 'runtime', 'Drop zone overlay renderer'],
+  ['src/dnd/dropOverlay.css', 'runtime', 'Drop overlay styles'],
+  ['src/dnd/dropZone.ts', 'runtime', 'Drop zone hit detection'],
+
+  // src/theme
+  ['src/theme/colorRegistry.ts', 'runtime', 'Color token registry'],
+  ['src/theme/themeCatalog.ts', 'runtime', 'Available themes catalog'],
+  ['src/theme/themeData.ts', 'runtime', 'Theme data parser'],
+  ['src/theme/themeTypes.ts', 'runtime', 'Theme type definitions'],
+  ['src/theme/workbenchColors.ts', 'runtime', 'Workbench color definitions'],
+  ['src/theme/themes/dark-modern.json', 'runtime', 'Dark Modern theme'],
+  ['src/theme/themes/hc-dark.json', 'runtime', 'High Contrast Dark theme'],
+  ['src/theme/themes/hc-light.json', 'runtime', 'High Contrast Light theme'],
+  ['src/theme/themes/light-modern.json', 'runtime', 'Light Modern theme'],
+
+  // src/api
+  ['src/api/apiFactory.ts', 'runtime', 'Creates tool API instances'],
+  ['src/api/apiVersionValidation.ts', 'runtime', 'API version compatibility check'],
+  ['src/api/notificationService.ts', 'runtime', 'Toast notification system'],
+  ['src/api/notificationService.css', 'runtime', 'Notification styles'],
+  ['src/api/parallx.d.ts', 'runtime', 'Public API type declarations'],
+  ['src/api/bridges/commandsBridge.ts', 'runtime', 'API bridge: commands'],
+  ['src/api/bridges/contextBridge.ts', 'runtime', 'API bridge: context keys'],
+  ['src/api/bridges/editorsBridge.ts', 'runtime', 'API bridge: editors'],
+  ['src/api/bridges/fileSystemBridge.ts', 'runtime', 'API bridge: file system'],
+  ['src/api/bridges/viewsBridge.ts', 'runtime', 'API bridge: views'],
+  ['src/api/bridges/windowBridge.ts', 'runtime', 'API bridge: window'],
+  ['src/api/bridges/workspaceBridge.ts', 'runtime', 'API bridge: workspace'],
+
+  // src/tools
+  ['src/tools/activationEventService.ts', 'runtime', 'Tool activation event dispatch'],
+  ['src/tools/builtinManifests.ts', 'runtime', 'Built-in tool manifest list'],
+  ['src/tools/parallx-manifest.schema.json', 'runtime', 'Tool manifest JSON schema'],
+  ['src/tools/toolActivator.ts', 'runtime', 'Tool activation lifecycle'],
+  ['src/tools/toolEnablement.ts', 'runtime', 'Tool enable/disable logic'],
+  ['src/tools/toolEnablementService.ts', 'runtime', 'Tool enablement service'],
+  ['src/tools/toolErrorIsolation.ts', 'runtime', 'Error isolation for tools'],
+  ['src/tools/toolManifest.ts', 'runtime', 'Manifest parser'],
+  ['src/tools/toolModuleLoader.ts', 'runtime', 'Dynamic tool module loader'],
+  ['src/tools/toolRegistry.ts', 'runtime', 'Tool registry'],
+  ['src/tools/toolScanner.ts', 'runtime', 'Scans for tool manifests'],
+  ['src/tools/toolTypes.ts', 'runtime', 'Tool type definitions'],
+  ['src/tools/toolValidator.ts', 'runtime', 'Manifest validation'],
+
+  // src/workspace
+  ['src/workspace/parallx-workspace.schema.json', 'runtime', 'Workspace JSON schema'],
+  ['src/workspace/recentWorkspaces.ts', 'runtime', 'Recent workspaces list'],
+  ['src/workspace/workspace.ts', 'runtime', 'Workspace model'],
+  ['src/workspace/workspaceLoader.ts', 'runtime', 'Workspace file loader'],
+  ['src/workspace/workspaceManifest.ts', 'runtime', 'Workspace manifest parser'],
+  ['src/workspace/workspaceSaver.ts', 'runtime', 'Workspace state persistence'],
+  ['src/workspace/workspaceTypes.ts', 'runtime', 'Workspace type definitions'],
+
+  // src/ui
+  ['src/ui/actionBar.ts', 'runtime', 'Action bar widget'],
+  ['src/ui/breadcrumbs.ts', 'runtime', 'Breadcrumbs widget'],
+  ['src/ui/button.ts', 'runtime', 'Button widget'],
+  ['src/ui/contextMenu.ts', 'runtime', 'Context menu widget'],
+  ['src/ui/countBadge.ts', 'runtime', 'Count badge widget'],
+  ['src/ui/dom.ts', 'runtime', 'DOM utility helpers'],
+  ['src/ui/findReplaceWidget.ts', 'runtime', 'Find & replace widget'],
+  ['src/ui/iconPicker.ts', 'runtime', 'Icon picker widget'],
+  ['src/ui/iconPicker.css', 'runtime', 'Icon picker styles'],
+  ['src/ui/inputBox.ts', 'runtime', 'Input box widget'],
+  ['src/ui/list.ts', 'runtime', 'Virtual list widget'],
+  ['src/ui/overlay.ts', 'runtime', 'Overlay widget'],
+  ['src/ui/tabBar.ts', 'runtime', 'Tab bar widget'],
+  ['src/ui/ui.css', 'runtime', 'Shared UI styles'],
+
+  // src/assets
+  ['src/assets/parallx-logo.svg', 'runtime', 'Logo SVG'],
+
+  // Built-in tools: Canvas
+  ['src/built-in/canvas/main.ts', 'runtime', 'Canvas tool entry point'],
+  ['src/built-in/canvas/canvas.css', 'runtime', 'Canvas styles'],
+  ['src/built-in/canvas/canvasDataService.ts', 'runtime', 'Canvas page CRUD'],
+  ['src/built-in/canvas/canvasEditorProvider.ts', 'runtime', 'Canvas editor provider'],
+  ['src/built-in/canvas/canvasIcons.ts', 'runtime', 'Canvas icon set'],
+  ['src/built-in/canvas/canvasSidebar.ts', 'runtime', 'Canvas sidebar tree'],
+  ['src/built-in/canvas/canvasTypes.ts', 'runtime', 'Canvas type definitions'],
+  ['src/built-in/canvas/contentSchema.ts', 'runtime', 'TipTap schema definition'],
+  ['src/built-in/canvas/markdownExport.ts', 'runtime', 'Export page as markdown'],
+  ['src/built-in/canvas/config/blockCapabilities.ts', 'runtime', 'Block capability config'],
+  ['src/built-in/canvas/config/editorExtensions.ts', 'runtime', 'TipTap extension config'],
+  ['src/built-in/canvas/dnd/dragSession.ts', 'runtime', 'Canvas block drag session'],
+  ['src/built-in/canvas/extensions/blockBackground.ts', 'runtime', 'Block background colors'],
+  ['src/built-in/canvas/extensions/blockKeyboardShortcuts.ts', 'runtime', 'Block keyboard shortcuts'],
+  ['src/built-in/canvas/extensions/bookmarkNode.ts', 'runtime', 'Bookmark embed node'],
+  ['src/built-in/canvas/extensions/calloutNode.ts', 'runtime', 'Callout block node'],
+  ['src/built-in/canvas/extensions/columnNodes.ts', 'runtime', 'Column layout nodes'],
+  ['src/built-in/canvas/extensions/detailsEnterHandler.ts', 'runtime', 'Details block Enter key'],
+  ['src/built-in/canvas/extensions/mathBlockNode.ts', 'runtime', 'Math (KaTeX) block node'],
+  ['src/built-in/canvas/extensions/mediaNodes.ts', 'runtime', 'Image/video/audio nodes'],
+  ['src/built-in/canvas/extensions/pageBlockNode.ts', 'runtime', 'Sub-page link block'],
+  ['src/built-in/canvas/extensions/structuralInvariantGuard.ts', 'runtime', 'Structural rule guard'],
+  ['src/built-in/canvas/extensions/tableOfContentsNode.ts', 'runtime', 'ToC node'],
+  ['src/built-in/canvas/extensions/toggleHeadingNode.ts', 'runtime', 'Toggle heading node'],
+  ['src/built-in/canvas/handles/blockHandles.ts', 'runtime', 'Block drag/action handles'],
+  ['src/built-in/canvas/handles/blockSelection.ts', 'runtime', 'Block multi-select'],
+  ['src/built-in/canvas/header/pageChrome.ts', 'runtime', 'Page header chrome'],
+  ['src/built-in/canvas/invariants/canvasStructuralInvariants.ts', 'runtime', 'Structural invariant rules'],
+  ['src/built-in/canvas/math/inlineMathEditor.ts', 'runtime', 'Inline math editor'],
+  ['src/built-in/canvas/menus/bookmarkInsertPopup.ts', 'runtime', 'Bookmark URL popup'],
+  ['src/built-in/canvas/menus/bubbleMenu.ts', 'runtime', 'Floating text format menu'],
+  ['src/built-in/canvas/menus/imageInsertPopup.ts', 'runtime', 'Image insert popup'],
+  ['src/built-in/canvas/menus/mediaInsertPopup.ts', 'runtime', 'Media insert popup'],
+  ['src/built-in/canvas/menus/slashMenu.ts', 'runtime', 'Slash command menu'],
+  ['src/built-in/canvas/menus/slashMenuItems.ts', 'runtime', 'Slash menu item definitions'],
+  ['src/built-in/canvas/migrations/001_canvas_schema.sql', 'runtime', 'DB migration: canvas tables'],
+  ['src/built-in/canvas/migrations/002_page_properties.sql', 'runtime', 'DB migration: page props'],
+  ['src/built-in/canvas/migrations/003_page_settings.sql', 'runtime', 'DB migration: page settings'],
+  ['src/built-in/canvas/migrations/004_content_schema_version.sql', 'runtime', 'DB migration: schema ver'],
+  ['src/built-in/canvas/migrations/005_block_graph_and_page_revision.sql', 'runtime', 'DB migration: block graph'],
+  ['src/built-in/canvas/mutations/blockMutations.ts', 'runtime', 'Block mutation commands'],
+  ['src/built-in/canvas/plugins/columnAutoDissolve.ts', 'runtime', 'Auto-dissolve empty columns'],
+  ['src/built-in/canvas/plugins/columnDropPlugin.ts', 'runtime', 'Column drag-drop plugin'],
+  ['src/built-in/canvas/plugins/columnResizePlugin.ts', 'runtime', 'Column resize plugin'],
+  ['src/built-in/canvas/plugins/structuralInvariantPlugin.ts', 'runtime', 'Structural invariant plugin'],
+
+  // Built-in tools: Editor
+  ['src/built-in/editor/main.ts', 'runtime', 'Editor tool entry point'],
+  ['src/built-in/editor/fileEditorInput.ts', 'runtime', 'File editor input'],
+  ['src/built-in/editor/imageEditorInput.ts', 'runtime', 'Image editor input'],
+  ['src/built-in/editor/imageEditorPane.ts', 'runtime', 'Image viewer pane'],
+  ['src/built-in/editor/imageEditorPane.css', 'runtime', 'Image viewer styles'],
+  ['src/built-in/editor/keybindingsEditorInput.ts', 'runtime', 'Keybinding editor input'],
+  ['src/built-in/editor/keybindingsEditorPane.ts', 'runtime', 'Keybinding editor pane'],
+  ['src/built-in/editor/keybindingsEditorPane.css', 'runtime', 'Keybinding editor styles'],
+  ['src/built-in/editor/markdownEditorPane.ts', 'runtime', 'Markdown editor pane'],
+  ['src/built-in/editor/markdownEditorPane.css', 'runtime', 'Markdown editor styles'],
+  ['src/built-in/editor/markdownPreviewInput.ts', 'runtime', 'Markdown preview input'],
+  ['src/built-in/editor/pdfEditorInput.ts', 'runtime', 'PDF editor input'],
+  ['src/built-in/editor/pdfEditorPane.ts', 'runtime', 'PDF viewer pane'],
+  ['src/built-in/editor/pdfEditorPane.css', 'runtime', 'PDF viewer styles'],
+  ['src/built-in/editor/settingsEditorInput.ts', 'runtime', 'Settings editor input'],
+  ['src/built-in/editor/settingsEditorPane.ts', 'runtime', 'Settings editor pane'],
+  ['src/built-in/editor/settingsEditorPane.css', 'runtime', 'Settings editor styles'],
+  ['src/built-in/editor/textEditorPane.ts', 'runtime', 'Text editor pane'],
+  ['src/built-in/editor/textEditorPane.css', 'runtime', 'Text editor styles'],
+  ['src/built-in/editor/untitledEditorInput.ts', 'runtime', 'Untitled file input'],
+
+  // Built-in tools: Explorer, Output, Search, Gallery, Welcome
+  ['src/built-in/explorer/main.ts', 'runtime', 'Explorer tool entry'],
+  ['src/built-in/explorer/explorer.css', 'runtime', 'Explorer styles'],
+  ['src/built-in/explorer/parallx-manifest.json', 'runtime', 'Explorer manifest'],
+  ['src/built-in/output/main.ts', 'runtime', 'Output tool entry'],
+  ['src/built-in/output/output.css', 'runtime', 'Output styles'],
+  ['src/built-in/output/parallx-manifest.json', 'runtime', 'Output manifest'],
+  ['src/built-in/search/main.ts', 'runtime', 'Search tool entry'],
+  ['src/built-in/tool-gallery/main.ts', 'runtime', 'Tool gallery entry'],
+  ['src/built-in/tool-gallery/toolGallery.css', 'runtime', 'Tool gallery styles'],
+  ['src/built-in/tool-gallery/parallx-manifest.json', 'runtime', 'Tool gallery manifest'],
+  ['src/built-in/welcome/main.ts', 'runtime', 'Welcome tab entry'],
+  ['src/built-in/welcome/welcome.css', 'runtime', 'Welcome tab styles'],
+  ['src/built-in/welcome/parallx-manifest.json', 'runtime', 'Welcome manifest'],
+
+  // Tests
+  ['tests/e2e/fixtures.ts', 'test', 'E2E test fixtures'],
+  ['tests/e2e/01-app-launch.spec.ts', 'test', 'E2E: app launch'],
+  ['tests/e2e/02-explorer.spec.ts', 'test', 'E2E: file explorer'],
+  ['tests/e2e/03-file-editor.spec.ts', 'test', 'E2E: file editor'],
+  ['tests/e2e/04-file-menu.spec.ts', 'test', 'E2E: file menu'],
+  ['tests/e2e/05-command-palette.spec.ts', 'test', 'E2E: command palette'],
+  ['tests/e2e/06-views-shortcuts.spec.ts', 'test', 'E2E: view shortcuts'],
+  ['tests/e2e/07-tab-management.spec.ts', 'test', 'E2E: tab management'],
+  ['tests/e2e/08-workspaces.spec.ts', 'test', 'E2E: workspaces'],
+  ['tests/e2e/09-canvas.spec.ts', 'test', 'E2E: canvas basics'],
+  ['tests/e2e/10-equation-drag.spec.ts', 'test', 'E2E: equation drag'],
+  ['tests/e2e/11-block-handles.spec.ts', 'test', 'E2E: block handles'],
+  ['tests/e2e/12-columns.spec.ts', 'test', 'E2E: columns'],
+  ['tests/e2e/13-column-drag-drop.spec.ts', 'test', 'E2E: column drag-drop'],
+  ['tests/e2e/14-column-integration.spec.ts', 'test', 'E2E: column integration'],
+  ['tests/e2e/15-column-real-interactions.spec.ts', 'test', 'E2E: column real interactions'],
+  ['tests/e2e/16-column-undo-redo.spec.ts', 'test', 'E2E: column undo/redo'],
+  ['tests/e2e/17-canvas-interaction-arbitration.spec.ts', 'test', 'E2E: interaction arbitration'],
+  ['tests/e2e/18-page-block-dnd.spec.ts', 'test', 'E2E: page block DnD'],
+  ['tests/unit/canvasDataService.test.ts', 'test', 'Unit: canvas data service'],
+  ['tests/unit/canvasSaveState.test.ts', 'test', 'Unit: canvas save state'],
+  ['tests/unit/canvasStructuralInvariants.test.ts', 'test', 'Unit: structural invariants'],
+  ['tests/unit/commandContribution.test.ts', 'test', 'Unit: command contributions'],
+  ['tests/unit/contentSchema.test.ts', 'test', 'Unit: content schema'],
+  ['tests/unit/fileService.test.ts', 'test', 'Unit: file service'],
+  ['tests/unit/grid.test.ts', 'test', 'Unit: grid layout'],
+  ['tests/unit/keybindingService.test.ts', 'test', 'Unit: keybinding service'],
+  ['tests/unit/markdownExport.test.ts', 'test', 'Unit: markdown export'],
+  ['tests/unit/toolMementoWorkspaceScope.test.ts', 'test', 'Unit: tool memento scope'],
+  ['tests/unit/workspaceManifest.test.ts', 'test', 'Unit: workspace manifest'],
+
+  // Docs
+  ['docs/README.md', 'docs', 'Docs index'],
+  ['docs/PARALLX_WORKSPACE_SCHEMA.md', 'docs', 'Workspace schema spec'],
+  ['docs/research/README.md', 'docs', 'Research index'],
+  ['docs/research/BLOCK_INTERACTION_RULES.md', 'docs', 'Block interaction rules'],
+  ['docs/research/CANVAS_STRUCTURAL_MODEL.md', 'docs', 'Canvas structural model'],
+  ['docs/archive/README.md', 'docs', 'Archive index'],
+  ['docs/archive/FEB18_2026_CANVAS_INTERACTION_HARDENING.md', 'docs', 'Canvas hardening notes'],
+  ['docs/archive/FULL_AUDIT_REPORT.md', 'docs', 'Full audit report'],
+  ['docs/archive/PHASE1_CLEANUP.md', 'docs', 'Phase 1 cleanup notes'],
+  ['docs/archive/milestones/Parallx_Milestone_01.md', 'docs', 'Milestone 1'],
+  ['docs/archive/milestones/Parallx_Milestone_02.md', 'docs', 'Milestone 2'],
+  ['docs/archive/milestones/Parallx_Milestone_03.md', 'docs', 'Milestone 3'],
+  ['docs/archive/milestones/Parallx_Milestone_04.md', 'docs', 'Milestone 4'],
+  ['docs/archive/milestones/Parallx_Milestone_05.md', 'docs', 'Milestone 5'],
+  ['docs/archive/milestones/Parallx_Milestone_06.md', 'docs', 'Milestone 6'],
+  ['docs/archive/milestones/Parallx_Milestone_07.md', 'docs', 'Milestone 7'],
+  ['docs/archive/milestones/Parallx_Milestone_07_1.md', 'docs', 'Milestone 7.1'],
+  ['docs/archive/milestones/Parallx_Milestone_07_2.md', 'docs', 'Milestone 7.2'],
+
+  // Tooling
+  ['.github/instructions/parallx-instructions.instructions.md', 'tooling', 'AI coding instructions'],
+  ['.github/prompts/Software Developer.prompt.md', 'tooling', 'AI developer prompt'],
+  ['tools/samples/README.md', 'tooling', 'Sample tool readme'],
+  ['tools/samples/hello-world/main.js', 'tooling', 'Hello-world sample tool'],
+  ['tools/samples/hello-world/parallx-manifest.json', 'tooling', 'Sample tool manifest'],
+
+  // Generated
+  ['test-output.json', 'generated', 'Test results (gitignored)'],
+];
+
+// ── Build tree ────────────────────────────────────────────────
+function buildTree(files) {
+  const root = { name: 'Parallx', children: {}, files: [] };
+  for (const [path, role, desc] of files) {
+    const parts = path.split('/');
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!node.children[parts[i]]) {
+        node.children[parts[i]] = { name: parts[i], children: {}, files: [] };
+      }
+      node = node.children[parts[i]];
+    }
+    node.files.push({ name: parts[parts.length - 1], path, role, desc });
+  }
+  return root;
+}
+
+// ── Render ────────────────────────────────────────────────────
+let activeRole = null;
+const tree = buildTree(FILES);
+
+function countItems(node) {
+  let c = node.files.length;
+  for (const child of Object.values(node.children)) c += countItems(child);
+  return c;
+}
+
+function renderNode(node, depth = 0) {
+  const ul = document.createElement('ul');
+
+  // Sort: dirs first, then files
+  const dirs = Object.values(node.children).sort((a, b) => a.name.localeCompare(b.name));
+  const files = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const dir of dirs) {
+    const li = document.createElement('li');
+    li.className = 'dir-node';
+    const count = countItems(dir);
+    const row = document.createElement('span');
+    row.className = 'node-row';
+    row.innerHTML = `
+      <span class="toggle" onclick="toggleDir(this)">▼</span>
+      <span class="icon">📁</span>
+      <span class="name is-dir">${dir.name}</span>
+      <span class="badge">${count}</span>
+    `;
+    li.appendChild(row);
+    li.appendChild(renderNode(dir, depth + 1));
+    ul.appendChild(li);
+  }
+
+  for (const file of files) {
+    const li = document.createElement('li');
+    li.className = `file-node role-${file.role}`;
+    li.dataset.path = file.path.toLowerCase();
+    li.dataset.role = file.role;
+    const ext = file.name.split('.').pop();
+    const icon = getIcon(ext, file.name);
+    const row = document.createElement('span');
+    row.className = 'node-row';
+    row.innerHTML = `
+      <span class="toggle" style="visibility:hidden">▼</span>
+      <span class="icon">${icon}</span>
+      <span class="name">${file.name}</span>
+      <span class="desc">${file.desc}</span>
+    `;
+    li.appendChild(row);
+    ul.appendChild(li);
+  }
+
+  return ul;
+}
+
+function getIcon(ext, name) {
+  if (name.endsWith('.css')) return '🎨';
+  if (name.endsWith('.json')) return '📋';
+  if (name.endsWith('.sql')) return '🗃️';
+  if (name.endsWith('.md')) return '📝';
+  if (name.endsWith('.svg')) return '🖼️';
+  if (name.endsWith('.ico')) return '🖼️';
+  if (name.endsWith('.html')) return '🌐';
+  if (name.endsWith('.ts')) return '⚡';
+  if (name.endsWith('.js') || name.endsWith('.mjs') || name.endsWith('.cjs')) return '📦';
+  if (name.endsWith('.bat') || name.endsWith('.vbs')) return '⚙️';
+  return '📄';
+}
+
+function toggleDir(el) {
+  const li = el.closest('li');
+  const sub = li.querySelector('ul');
+  if (sub) {
+    const collapsed = sub.style.display === 'none';
+    sub.style.display = collapsed ? '' : 'none';
+    el.classList.toggle('collapsed', !collapsed);
+  }
+}
+
+function expandAll() {
+  document.querySelectorAll('.dir-node > ul').forEach(ul => ul.style.display = '');
+  document.querySelectorAll('.toggle').forEach(t => t.classList.remove('collapsed'));
+}
+
+function collapseAll() {
+  document.querySelectorAll('.dir-node > ul').forEach(ul => ul.style.display = 'none');
+  document.querySelectorAll('.dir-node > .node-row .toggle').forEach(t => t.classList.add('collapsed'));
+}
+
+function clearSearch() {
+  document.getElementById('search').value = '';
+  filterTree('');
+  activeRole = null;
+  document.querySelectorAll('.legend-item').forEach(l => l.classList.remove('active'));
+}
+
+// ── Search & Filter ───────────────────────────────────────────
+function filterTree(query) {
+  const q = query.toLowerCase().trim();
+  const allFiles = document.querySelectorAll('.file-node');
+  const allDirs = document.querySelectorAll('.dir-node');
+
+  allFiles.forEach(li => {
+    const matchPath = !q || li.dataset.path.includes(q);
+    const matchRole = !activeRole || li.dataset.role === activeRole;
+    li.classList.toggle('hidden', !(matchPath && matchRole));
+    li.querySelector('.node-row').classList.toggle('highlight', !!q && matchPath && matchRole);
+  });
+
+  // Show dirs that have visible children
+  [...allDirs].reverse().forEach(li => {
+    const hasVisible = li.querySelector('.file-node:not(.hidden)') ||
+                       li.querySelector('.dir-node:not(.hidden)');
+    li.classList.toggle('hidden', !hasVisible);
+    if (hasVisible && (q || activeRole)) {
+      const sub = li.querySelector(':scope > ul');
+      if (sub) { sub.style.display = ''; }
+      const toggle = li.querySelector(':scope > .node-row .toggle');
+      if (toggle) toggle.classList.remove('collapsed');
+    }
+  });
+}
+
+document.getElementById('search').addEventListener('input', e => filterTree(e.target.value));
+
+// ── Legend ─────────────────────────────────────────────────────
+function renderLegend() {
+  const el = document.getElementById('legend');
+  for (const [key, info] of Object.entries(ROLES)) {
+    const count = FILES.filter(f => f[1] === key).length;
+    const item = document.createElement('span');
+    item.className = 'legend-item';
+    item.innerHTML = `<span class="legend-dot" style="background:${info.color}"></span>${info.label} (${count})`;
+    item.onclick = () => {
+      if (activeRole === key) {
+        activeRole = null;
+        item.classList.remove('active');
+      } else {
+        activeRole = key;
+        document.querySelectorAll('.legend-item').forEach(l => l.classList.remove('active'));
+        item.classList.add('active');
+      }
+      filterTree(document.getElementById('search').value);
+    };
+    el.appendChild(item);
+  }
+}
+
+// ── Stats ─────────────────────────────────────────────────────
+function renderStats() {
+  const el = document.getElementById('stats');
+  const total = FILES.length;
+  const runtime = FILES.filter(f => f[1] === 'runtime').length;
+  const tests = FILES.filter(f => f[1] === 'test').length;
+  const docs = FILES.filter(f => f[1] === 'docs').length;
+  const stats = [
+    ['Total Files', total],
+    ['Runtime', runtime],
+    ['Tests', tests],
+    ['Docs', docs],
+  ];
+  for (const [label, value] of stats) {
+    const div = document.createElement('div');
+    div.className = 'stat';
+    div.innerHTML = `<div class="stat-value">${value}</div><div class="stat-label">${label}</div>`;
+    el.appendChild(div);
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────
+renderStats();
+renderLegend();
+document.getElementById('tree').appendChild(renderNode(tree));
+
+// Collapse deep dirs by default for cleaner initial view
+document.querySelectorAll('.dir-node').forEach(li => {
+  const depth = li.closest('ul')?.closest('li')?.closest('ul')?.closest('li') ? 2 : 
+                li.closest('ul')?.closest('li') ? 1 : 0;
+  if (depth >= 2) {
+    const sub = li.querySelector(':scope > ul');
+    if (sub) sub.style.display = 'none';
+    const toggle = li.querySelector(':scope > .node-row .toggle');
+    if (toggle) toggle.classList.add('collapsed');
+  }
+});
+</script>
+</body>
+</html>
