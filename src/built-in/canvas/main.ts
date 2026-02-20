@@ -13,6 +13,7 @@ import 'katex/dist/katex.min.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { CanvasDataService } from './canvasDataService.js';
+import type { ICanvasDataService } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 
@@ -184,7 +185,7 @@ async function _runMigrations(): Promise<void> {
 
 // â”€â”€â”€ Restore Last-Opened Page (Task 6.3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-async function _restoreLastOpenedPage(api: ParallxApi, context: ToolContext, dataService: CanvasDataService): Promise<void> {
+async function _restoreLastOpenedPage(api: ParallxApi, context: ToolContext, dataService: ICanvasDataService): Promise<void> {
   const lastPageId = context.workspaceState.get<string>('canvas.lastOpenedPage');
   if (!lastPageId) return;
 
@@ -318,7 +319,7 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
 // â”€â”€â”€ Exported for internal use by sidebar / editor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Access the Canvas data service from other Canvas modules. */
-export function getDataService(): CanvasDataService | null {
+export function getDataService(): ICanvasDataService | null {
   return _dataService;
 }
 

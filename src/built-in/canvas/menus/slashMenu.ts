@@ -11,7 +11,7 @@ import type { SlashMenuItem } from './slashMenuItems.js';
 import type { SlashActionContext } from './slashMenuItems.js';
 import { SLASH_MENU_ITEMS } from './slashMenuItems.js';
 import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
-import type { CanvasDataService } from '../canvasDataService.js';
+import type { ICanvasDataService } from '../canvasTypes.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
@@ -23,7 +23,7 @@ export interface SlashMenuHost {
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
   readonly inlineMath: InlineMathEditorController;
-  readonly dataService?: CanvasDataService;
+  readonly dataService?: ICanvasDataService;
   readonly pageId?: string;
   readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
   requestSave(reason: string): void;

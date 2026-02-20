@@ -12,7 +12,10 @@ import { Emitter, Event } from '../../platform/events.js';
 import {
   type IPage,
   type IPageTreeNode,
+  type ICanvasDataService,
   type PageChangeEvent,
+  type PageUpdateData,
+  type CrossPageMoveParams,
   PageChangeKind,
 } from './canvasTypes.js';
 import {
@@ -35,15 +38,6 @@ export interface SaveStateEvent {
   readonly kind: SaveStateKind;
   readonly source: 'debounce' | 'flush' | 'repair';
   readonly error?: string;
-}
-
-interface CrossPageMoveParams {
-  readonly sourcePageId: string;
-  readonly targetPageId: string;
-  readonly sourceDoc: any;
-  readonly appendedNodes: any[];
-  readonly expectedSourceRevision?: number;
-  readonly expectedTargetRevision?: number;
 }
 
 // ─── Database Bridge Type ────────────────────────────────────────────────────
@@ -89,7 +83,7 @@ export function rowToPage(row: Record<string, unknown>): IPage {
  * All database access goes through IPC to the main process. This service
  * provides typed methods, change events, and debounced auto-save.
  */
-export class CanvasDataService extends Disposable {
+export class CanvasDataService extends Disposable implements ICanvasDataService {
 
   // ── Events ──
 
@@ -236,7 +230,7 @@ export class CanvasDataService extends Disposable {
    */
   async updatePage(
     pageId: string,
-    updates: Partial<Pick<IPage, 'title' | 'icon' | 'content' | 'coverUrl' | 'coverYOffset' | 'fontFamily' | 'fullWidth' | 'smallText' | 'isLocked' | 'isFavorited' | 'contentSchemaVersion'>> & { expectedRevision?: number },
+    updates: PageUpdateData,
   ): Promise<IPage> {
     const expectedRevision = updates.expectedRevision;
     const sets: string[] = [];

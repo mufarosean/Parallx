@@ -28,7 +28,7 @@
 
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
-import type { CanvasDataService } from './canvasDataService.js';
+import type { ICanvasDataService } from './canvasTypes.js';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
@@ -60,7 +60,7 @@ export class CanvasEditorProvider {
    */
   private readonly _pageMenuHandlers = new Map<string, () => void>();
 
-  constructor(private readonly _dataService: CanvasDataService) {}
+  constructor(private readonly _dataService: ICanvasDataService) {}
 
   /**
    * Set the openEditor callback so panes can navigate to other pages.
@@ -152,7 +152,7 @@ class CanvasEditorPane implements IDisposable {
   constructor(
     private readonly _container: HTMLElement,
     private readonly _pageId: string,
-    private readonly _dataService: CanvasDataService,
+    private readonly _dataService: ICanvasDataService,
     private readonly _input: IEditorInput | undefined,
     private readonly _openEditor: OpenEditorFn | undefined,
     private readonly _provider: CanvasEditorProvider,
@@ -163,7 +163,7 @@ class CanvasEditorPane implements IDisposable {
   get container(): HTMLElement { return this._container; }
   get editorContainer(): HTMLElement | null { return this._editorContainer; }
   get inlineMath(): InlineMathEditorController { return this._inlineMath; }
-  get dataService(): CanvasDataService { return this._dataService; }
+  get dataService(): ICanvasDataService { return this._dataService; }
   get pageId(): string { return this._pageId; }
   get suppressUpdate(): boolean { return this._suppressUpdate; }
   set suppressUpdate(v: boolean) { this._suppressUpdate = v; }

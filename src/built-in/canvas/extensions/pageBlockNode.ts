@@ -8,7 +8,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { PAGE_ICON_IDS, resolvePageIcon, svgIcon } from '../canvasIcons.js';
 import { IconPicker } from '../../../ui/iconPicker.js';
 import { layoutPopup } from '../../../ui/dom.js';
-import type { CanvasDataService } from '../canvasDataService.js';
+import type { ICanvasDataService } from '../canvasTypes.js';
 import { deleteDraggedSourceFromTransaction } from '../mutations/blockMutations.js';
 import {
   CANVAS_BLOCK_DRAG_MIME,
@@ -17,7 +17,7 @@ import {
 } from '../dnd/dragSession.js';
 
 export interface PageBlockOptions {
-  readonly dataService?: CanvasDataService;
+  readonly dataService?: ICanvasDataService;
   readonly currentPageId?: string;
   readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
 }

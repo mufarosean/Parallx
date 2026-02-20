@@ -15,13 +15,13 @@ import { TextSelection } from '@tiptap/pm/state';
 import { showImageInsertPopup } from './imageInsertPopup.js';
 import { showMediaInsertPopup } from './mediaInsertPopup.js';
 import { showBookmarkInsertPopup } from './bookmarkInsertPopup.js';
-import type { CanvasDataService } from '../canvasDataService.js';
+import type { ICanvasDataService } from '../canvasTypes.js';
 import { encodeCanvasContentFromDoc } from '../contentSchema.js';
 import { BLOCK_REGISTRY, getSlashMenuBlocks, type BlockDefinition } from '../config/blockRegistry.js';
 
 export interface SlashActionContext {
   readonly pageId?: string;
-  readonly dataService?: CanvasDataService;
+  readonly dataService?: ICanvasDataService;
   readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
 }
 
@@ -91,7 +91,7 @@ const CUSTOM_ACTIONS: Record<string, SlashAction> = {
   'pageBlock': async (editor, range, context) => {
     if (!context?.dataService || !context.pageId) return;
 
-    let child: Awaited<ReturnType<CanvasDataService['createPage']>> | null = null;
+    let child: Awaited<ReturnType<ICanvasDataService['createPage']>> | null = null;
     try {
       child = await context.dataService.createPage(context.pageId, 'Untitled');
       const childPage = child;

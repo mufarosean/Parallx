@@ -6,8 +6,7 @@
 
 import type { Editor } from '@tiptap/core';
 import type { IEditorInput } from '../../../editor/editorInput.js';
-import type { CanvasDataService } from '../canvasDataService.js';
-import type { IPage } from '../canvasTypes.js';
+import type { IPage, ICanvasDataService } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
 import { $, layoutPopup } from '../../../ui/dom.js';
 import { IconPicker } from '../../../ui/iconPicker.js';
@@ -20,7 +19,7 @@ export interface PageChromeHost {
   readonly editor: Editor | null;
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
-  readonly dataService: CanvasDataService;
+  readonly dataService: ICanvasDataService;
   readonly pageId: string;
   readonly input: IEditorInput | undefined;
   readonly openEditor: OpenEditorFn | undefined;

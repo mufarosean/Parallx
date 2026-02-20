@@ -32,7 +32,7 @@ import { TableOfContents } from '../extensions/tableOfContentsNode.js';
 import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
 // Types
 import type { AnyExtension } from '@tiptap/core';
-import type { CanvasDataService } from '../canvasDataService.js';
+import type { ICanvasDataService } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
 
 // ── EditorExtensionContext ──────────────────────────────────────────────────
@@ -40,7 +40,7 @@ import type { OpenEditorFn } from '../canvasEditorProvider.js';
 
 export interface EditorExtensionContext {
   readonly lowlight?: any;
-  readonly dataService?: CanvasDataService;
+  readonly dataService?: ICanvasDataService;
   readonly pageId?: string;
   readonly openEditor?: OpenEditorFn;
 }

@@ -1,7 +1,10 @@
 // canvasTypes.ts — data model types for the Canvas note-taking tool
 //
-// Defines the page model, tree node shape, and change event types.
+// Defines the page model, tree node shape, change event types, and the
+// ICanvasDataService interface consumed by all canvas components.
 // All database rows map to IPage. Tree assembly produces IPageTreeNode.
+
+import type { Event } from '../../platform/events.js';
 
 // ─── Page Model ──────────────────────────────────────────────────────────────
 
@@ -80,4 +83,93 @@ export interface PageChangeEvent {
   readonly pageId: string;
   /** The page data after the change (undefined for Deleted). */
   readonly page?: IPage;
+}
+
+// ─── Page Update Data ────────────────────────────────────────────────────────
+
+/**
+ * Mutable fields accepted by `ICanvasDataService.updatePage()`.
+ * Extracted so consumers can reference the type without importing the
+ * concrete `CanvasDataService` class.
+ */
+export type PageUpdateData = Partial<Pick<IPage,
+  'title' | 'icon' | 'content' | 'coverUrl' | 'coverYOffset' |
+  'fontFamily' | 'fullWidth' | 'smallText' | 'isLocked' | 'isFavorited' |
+  'contentSchemaVersion'
+>> & { expectedRevision?: number };
+
+// ─── Cross-Page Move Params ─────────────────────────────────────────────────
+
+/**
+ * Parameters for an atomic cross-page block move.
+ */
+export interface CrossPageMoveParams {
+  readonly sourcePageId: string;
+  readonly targetPageId: string;
+  readonly sourceDoc: any;
+  readonly appendedNodes: any[];
+  readonly expectedSourceRevision?: number;
+  readonly expectedTargetRevision?: number;
+}
+
+// ─── ICanvasDataService ─────────────────────────────────────────────────────
+
+/**
+ * Public interface for the Canvas page data service.
+ *
+ * All canvas components depend on this interface — only the composition
+ * root (`main.ts`) imports the concrete `CanvasDataService` class.
+ * This mirrors VS Code's service interface pattern (e.g. `IEditorService`).
+ */
+export interface ICanvasDataService {
+
+  // ── Events ──
+
+  /** Fires when a page is created, updated, deleted, moved, or reordered. */
+  readonly onDidChangePage: Event<PageChangeEvent>;
+
+  /** Fires after an auto-save flush completes for a specific page. */
+  readonly onDidSavePage: Event<string>;
+
+  // ── Page CRUD ──
+
+  createPage(parentId?: string | null, title?: string): Promise<IPage>;
+  getPage(pageId: string): Promise<IPage | null>;
+  getRootPages(): Promise<IPage[]>;
+  getChildren(parentId: string): Promise<IPage[]>;
+  getPageTree(): Promise<IPageTreeNode[]>;
+  updatePage(pageId: string, updates: PageUpdateData): Promise<IPage>;
+  deletePage(pageId: string): Promise<void>;
+
+  // ── Content operations ──
+
+  appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<IPage>;
+  moveBlocksBetweenPagesAtomic(params: CrossPageMoveParams): Promise<{ sourcePage: IPage; targetPage: IPage }>;
+  decodePageContentForEditor(page: IPage): Promise<{ doc: any; recovered: boolean }>;
+
+  // ── Tree / hierarchy ──
+
+  movePage(pageId: string, newParentId: string | null, afterSiblingId?: string): Promise<void>;
+  reorderPages(parentId: string | null, orderedIds: string[]): Promise<void>;
+  getAncestors(pageId: string): Promise<IPage[]>;
+
+  // ── Auto-save ──
+
+  scheduleContentSave(pageId: string, content: string): void;
+  flushPendingSaves(): Promise<void>;
+  hasPendingSave(pageId: string): boolean;
+  readonly pendingSaveCount: number;
+
+  // ── Favorites / Archive ──
+
+  toggleFavorite(pageId: string): Promise<IPage>;
+  getFavoritedPages(): Promise<IPage[]>;
+  archivePage(pageId: string): Promise<void>;
+  restorePage(pageId: string): Promise<IPage>;
+  permanentlyDeletePage(pageId: string): Promise<void>;
+  getArchivedPages(): Promise<IPage[]>;
+
+  // ── Duplication ──
+
+  duplicatePage(pageId: string): Promise<IPage>;
 }
