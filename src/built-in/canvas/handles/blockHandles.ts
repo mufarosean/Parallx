@@ -51,6 +51,7 @@ export class BlockHandlesController {
   private _turnIntoHideTimer: ReturnType<typeof setTimeout> | null = null;
   private _colorHideTimer: ReturnType<typeof setTimeout> | null = null;
   private _interactionReleaseTimer: ReturnType<typeof setTimeout> | null = null;
+  private _handleAreaLeaveTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Observer
   private _handleObserver: MutationObserver | null = null;
@@ -111,6 +112,12 @@ export class BlockHandlesController {
       attributeFilter: ['style', 'class'],
     });
 
+    // ── Handle-area hover (keep both + and ⠿ visible together) ──
+    this._blockAddBtn.addEventListener('mouseenter', this._onHandleAreaEnter);
+    this._blockAddBtn.addEventListener('mouseleave', this._onHandleAreaLeave);
+    this._dragHandleEl.addEventListener('mouseenter', this._onHandleAreaEnter);
+    this._dragHandleEl.addEventListener('mouseleave', this._onHandleAreaLeave);
+
     // ── Event handlers ──
     this._blockAddBtn.addEventListener('click', this._onBlockAddClick);
     this._blockAddBtn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
@@ -146,6 +153,33 @@ export class BlockHandlesController {
   hide(): void {
     this._hideBlockActionMenu();
   }
+
+  // ── Handle-area hover (keep + and ⠿ visible together) ──────────────────
+
+  private readonly _onHandleAreaEnter = (): void => {
+    if (this._handleAreaLeaveTimer) {
+      clearTimeout(this._handleAreaLeaveTimer);
+      this._handleAreaLeaveTimer = null;
+    }
+    this._host.editorContainer?.classList.add('handle-area-hovered');
+  };
+
+  private readonly _onHandleAreaLeave = (e: MouseEvent): void => {
+    const related = e.relatedTarget as HTMLElement | null;
+    // Moving between + and ⠿ — stay hovered
+    if (
+      related === this._blockAddBtn ||
+      related === this._dragHandleEl ||
+      this._blockAddBtn?.contains(related) ||
+      this._dragHandleEl?.contains(related)
+    ) {
+      return;
+    }
+    this._handleAreaLeaveTimer = setTimeout(() => {
+      this._handleAreaLeaveTimer = null;
+      this._host.editorContainer?.classList.remove('handle-area-hovered');
+    }, 100);
+  };
 
   // ── Event Handlers (arrow functions to preserve `this`) ─────────────────
 
@@ -1000,6 +1034,15 @@ export class BlockHandlesController {
     this._dragHandleEl?.removeEventListener('dragend', this._onDragHandleDragEnd);
     this._dragHandleEl?.removeEventListener('mousedown', this._onDragHandleMouseDown, true);
     document.removeEventListener('mouseup', this._onGlobalMouseUp, true);
+    this._blockAddBtn?.removeEventListener('mouseenter', this._onHandleAreaEnter);
+    this._blockAddBtn?.removeEventListener('mouseleave', this._onHandleAreaLeave);
+    this._dragHandleEl?.removeEventListener('mouseenter', this._onHandleAreaEnter);
+    this._dragHandleEl?.removeEventListener('mouseleave', this._onHandleAreaLeave);
+    if (this._handleAreaLeaveTimer) {
+      clearTimeout(this._handleAreaLeaveTimer);
+      this._handleAreaLeaveTimer = null;
+    }
+    this._host.editorContainer?.classList.remove('handle-area-hovered');
     if (this._turnIntoHideTimer) {
       clearTimeout(this._turnIntoHideTimer);
       this._turnIntoHideTimer = null;

@@ -50,8 +50,12 @@ export class BlockSelectionController {
   // ── Setup / Teardown ──────────────────────────────────────────────────
 
   setup(): void {
-    // Clear selection on any document edit (positions become stale)
-    this._editorChangeHandler = () => this.clear();
+    // Clear selection on content edits (positions become stale).
+    // Selection-only transactions (focus, cursor, NodeSelection from handle)
+    // must NOT clear — otherwise the highlight disappears immediately.
+    this._editorChangeHandler = ({ transaction }: any) => {
+      if (transaction?.docChanged) this.clear();
+    };
     this._host.editor?.on('update', this._editorChangeHandler);
 
     // Clear selection when clicking on empty editor area (deselect)
