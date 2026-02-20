@@ -335,6 +335,30 @@ The `createEditorExtensions()` factory continues to import and configure all Tip
 
 ## 7. Refactoring Steps
 
+> **Status: ✅ Phases 0–9 COMPLETE** (9 commits on `canvas-v2`).
+>
+> | Phase | Commit | Summary |
+> |-------|--------|---------|
+> | 0 | `1bc3113` | Baseline — 143 tests, clean `canvas-v2` branch |
+> | 1 | `7472a44` | Created `blockRegistry.ts` + 18 parity tests |
+> | 2 | `a03fd7b` | `blockCapabilities.ts` → thin re-export shim |
+> | 3 | `6a5d5fb` | Single `PAGE_CONTAINERS` (eliminated 4× duplication) |
+> | 4 | `2255399` | Block labels from registry (`getBlockLabel`) |
+> | 5 | `d8ee883` | Turn-into submenu from registry (`getTurnIntoBlocks`) |
+> | 6 | `16df452` | Slash menu items from registry (`getSlashMenuBlocks`) |
+> | 7 | `1da60cd` | Placeholder text from registry (`getNodePlaceholder`) |
+> | 8 | `714fad4` | Bubble menu suppression from registry |
+> | 9 | _pending_ | Cleanup — removed duplicate `isContainerBlockType` in blockHandles/blockMutations |
+>
+> **Final test count:** 168 tests across 12 files, all passing.
+>
+> **Remaining hardcoded strings:** ~120 block-type name references remain in
+> `blockMutations.ts` (turn-into switch), `markdownExport.ts` (render switch),
+> `canvasStructuralInvariants.ts` (validators), and column plugins. These are
+> execution-specific per-type dispatch logic that can't be reduced to simple
+> registry lookups. Future work may introduce per-block `turnIntoAction`,
+> `markdownRenderer`, and `childPlaceholder` callbacks.
+
 ### Phase 0 — Preparation
 
 #### Step 0.1: Snapshot Test Baseline

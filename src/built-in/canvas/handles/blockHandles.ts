@@ -25,7 +25,7 @@ import {
   duplicateBlockAt,
   turnBlockWithSharedStrategy,
 } from '../mutations/blockMutations.js';
-import { PAGE_CONTAINERS, getBlockLabel, getTurnIntoBlocks } from '../config/blockRegistry.js';
+import { PAGE_CONTAINERS, getBlockLabel, getTurnIntoBlocks, isContainerBlockType } from '../config/blockRegistry.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 
@@ -554,19 +554,14 @@ export class BlockHandlesController {
         return true;
       }
 
-      const nextContainer = this._isContainerBlockType(next.node?.type?.name);
-      const currentContainer = this._isContainerBlockType(current.node?.type?.name);
+      const nextContainer = isContainerBlockType(next.node?.type?.name ?? '');
+      const currentContainer = isContainerBlockType(current.node?.type?.name ?? '');
       if (currentContainer && !nextContainer) {
         return true;
       }
     }
 
     return false;
-  }
-
-  private _isContainerBlockType(typeName: string | undefined): boolean {
-    if (!typeName) return false;
-    return typeName === 'callout' || typeName === 'details' || typeName === 'toggleHeading' || typeName === 'blockquote';
   }
 
   private _distanceFromHandleToBlockCenter(handleY: number, blockPos: number, view: any): number {

@@ -5,7 +5,7 @@
 
 import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
-import { PAGE_CONTAINERS } from '../config/blockRegistry.js';
+import { PAGE_CONTAINERS, isContainerBlockType } from '../config/blockRegistry.js';
 
 export interface BlockMoveResult {
   handled: boolean;
@@ -495,9 +495,8 @@ export function turnBlockViaReplace(
   const content = extractBlockContent(node);
   const textContent = node.textContent || '';
 
-  const containerTypes = new Set(['callout', 'details', 'blockquote', 'toggleHeading']);
-  const isSourceContainer = containerTypes.has(node.type.name);
-  const isTargetContainer = containerTypes.has(targetType);
+  const isSourceContainer = isContainerBlockType(node.type.name);
+  const isTargetContainer = isContainerBlockType(targetType);
 
   if (isSourceContainer) {
     const innerBlocks = extractContainerBlocks(node);
