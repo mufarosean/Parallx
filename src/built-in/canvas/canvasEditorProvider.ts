@@ -32,7 +32,7 @@ import type { CanvasDataService } from './canvasDataService.js';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
-import { createEditorExtensions } from './config/editorExtensions.js';
+import { createEditorExtensions } from './config/tiptapExtensions.js';
 import { InlineMathEditorController } from './math/inlineMathEditor.js';
 import { BubbleMenuController } from './menus/bubbleMenu.js';
 import { SlashMenuController } from './menus/slashMenu.js';

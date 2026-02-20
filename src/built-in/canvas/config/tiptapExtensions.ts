@@ -1,7 +1,8 @@
-// editorExtensions.ts — TipTap editor extension configuration
+// tiptapExtensions.ts — Tiptap extension assembly
 //
-// Factory function that returns the fully configured array of TipTap extensions
-// for the canvas editor. Mirrors Notion's feature set.
+// Factory function that returns the fully configured array of Tiptap extensions
+// for the canvas editor. Each entry is a Tiptap Extension, Node, or Mark.
+// Renamed from editorExtensions.ts for clarity — this file is Tiptap-specific.
 
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
