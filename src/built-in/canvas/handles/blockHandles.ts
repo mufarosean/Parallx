@@ -25,7 +25,7 @@ import {
   duplicateBlockAt,
   turnBlockWithSharedStrategy,
 } from '../mutations/blockMutations.js';
-import { PAGE_CONTAINERS } from '../config/blockRegistry.js';
+import { PAGE_CONTAINERS, getBlockLabel } from '../config/blockRegistry.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 
@@ -682,7 +682,7 @@ export class BlockHandlesController {
 
     // Header — block type label
     const header = $('div.block-action-header');
-    header.textContent = this._getBlockLabel(this._actionBlockNode.type.name);
+    header.textContent = getBlockLabel(this._actionBlockNode.type.name);
     this._blockActionMenu.appendChild(header);
 
     // Turn into
@@ -963,17 +963,7 @@ export class BlockHandlesController {
     return true;
   }
 
-  private _getBlockLabel(typeName: string): string {
-    const labels: Record<string, string> = {
-      paragraph: 'Text', heading: 'Heading', bulletList: 'Bulleted list',
-      orderedList: 'Numbered list', taskList: 'To-do list', taskItem: 'To-do',
-      listItem: 'List item', blockquote: 'Quote', codeBlock: 'Code',
-      callout: 'Callout', details: 'Toggle list', mathBlock: 'Equation',
-      columnList: 'Columns', table: 'Table', image: 'Image',
-      horizontalRule: 'Divider',
-    };
-    return labels[typeName] || typeName;
-  }
+  // Block label delegated to getBlockLabel() from blockRegistry.
 
   // ── Color Application ──────────────────────────────────────────────────
 
