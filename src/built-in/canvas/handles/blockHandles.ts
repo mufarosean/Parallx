@@ -25,7 +25,7 @@ import {
   duplicateBlockAt,
   turnBlockWithSharedStrategy,
 } from '../mutations/blockMutations.js';
-import { PAGE_CONTAINERS, getBlockLabel } from '../config/blockRegistry.js';
+import { PAGE_CONTAINERS, getBlockLabel, getTurnIntoBlocks } from '../config/blockRegistry.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 
@@ -786,50 +786,34 @@ export class BlockHandlesController {
     }
     this._turnIntoSubmenu.innerHTML = '';
 
-    const items: { label: string; icon: string; isText?: boolean; type: string; attrs?: any; shortcut?: string }[] = [
-      { label: 'Text', icon: 'T', isText: true, type: 'paragraph' },
-      { label: 'Heading 1', icon: 'H\u2081', isText: true, type: 'heading', attrs: { level: 1 }, shortcut: '#' },
-      { label: 'Heading 2', icon: 'H\u2082', isText: true, type: 'heading', attrs: { level: 2 }, shortcut: '##' },
-      { label: 'Heading 3', icon: 'H\u2083', isText: true, type: 'heading', attrs: { level: 3 }, shortcut: '###' },
-      { label: 'Bulleted list', icon: 'bullet-list', type: 'bulletList' },
-      { label: 'Numbered list', icon: 'numbered-list', type: 'orderedList' },
-      { label: 'To-do list', icon: 'checklist', type: 'taskList' },
-      { label: 'Toggle list', icon: 'chevron-right', type: 'details' },
-      { label: '2 columns', icon: 'columns', type: 'columnList', attrs: { columns: 2 } },
-      { label: '3 columns', icon: 'columns', type: 'columnList', attrs: { columns: 3 } },
-      { label: '4 columns', icon: 'columns', type: 'columnList', attrs: { columns: 4 } },
-      { label: 'Code', icon: 'code', type: 'codeBlock' },
-      { label: 'Quote', icon: 'quote', type: 'blockquote' },
-      { label: 'Callout', icon: 'lightbulb', type: 'callout' },
-      { label: 'Block equation', icon: 'math-block', type: 'mathBlock' },
-    ];
+    const turnIntoBlocks = getTurnIntoBlocks();
 
-    for (const item of items) {
+    for (const def of turnIntoBlocks) {
       const row = $('div.block-action-item');
       const iconEl = $('span.block-action-icon');
-      if (item.isText) {
-        iconEl.textContent = item.icon;
+      if (def.iconIsText) {
+        iconEl.textContent = def.icon;
         iconEl.classList.add('block-action-icon--text');
       } else {
-        iconEl.innerHTML = svgIcon(item.icon as any);
+        iconEl.innerHTML = svgIcon(def.icon as any);
         const isvg = iconEl.querySelector('svg');
         if (isvg) { isvg.setAttribute('width', '16'); isvg.setAttribute('height', '16'); }
       }
       row.appendChild(iconEl);
       const labelEl = $('span.block-action-label');
-      labelEl.textContent = item.label;
+      labelEl.textContent = def.label;
       row.appendChild(labelEl);
-      if (item.shortcut) {
+      if (def.turnInto?.shortcut) {
         const sc = $('span.block-action-shortcut');
-        sc.textContent = item.shortcut;
+        sc.textContent = def.turnInto.shortcut;
         row.appendChild(sc);
       }
-      if (this._isCurrentBlockType(item.type, item.attrs)) {
+      if (this._isCurrentBlockType(def.name, def.defaultAttrs)) {
         const check = $('span.block-action-check');
         check.textContent = '\u2713';
         row.appendChild(check);
       }
-      row.addEventListener('mousedown', (e) => { e.preventDefault(); this._turnBlockInto(item.type, item.attrs); });
+      row.addEventListener('mousedown', (e) => { e.preventDefault(); this._turnBlockInto(def.name, def.defaultAttrs); });
       this._turnIntoSubmenu!.appendChild(row);
     }
 
