@@ -27,7 +27,7 @@ The canvas tool's block system works — every block type renders, inserts, tran
 
 | What needs updating | File |
 |---|---|
-| Tiptap extension registration | `config/editorExtensions.ts` |
+| Tiptap extension registration | `config/tiptapExtensions.ts` |
 | Slash menu entry | `menus/slashMenuItems.ts` |
 | Turn-into submenu entry | `handles/blockHandles.ts` (~L800) |
 | Block label for action menu header | `handles/blockHandles.ts` `_getBlockLabel()` |
@@ -35,7 +35,7 @@ The canvas tool's block system works — every block type renders, inserts, tran
 | Drag-handle custom nodes | `config/blockCapabilities.ts` `DRAG_HANDLE_CUSTOM_NODE_TYPES` |
 | Turn-into execution logic | `mutations/blockMutations.ts` `turnBlockWithSharedStrategy()` |
 | PAGE_CONTAINERS set (if container) | 4 separate locations |
-| Placeholder text (if applicable) | `config/editorExtensions.ts` Placeholder config |
+| Placeholder text (if applicable) | `config/tiptapExtensions.ts` Placeholder config |
 | Bubble menu exclusion (if applicable) | `menus/bubbleMenu.ts` |
 
 This leads to:
@@ -58,7 +58,7 @@ Blocks inherited from `@tiptap/starter-kit`. These exist as ProseMirror node typ
 | Node Type | Notes |
 |---|---|
 | `paragraph` | Default text block |
-| `heading` | Levels 1-3 (configured in editorExtensions.ts) |
+| `heading` | Levels 1-3 (configured in tiptapExtensions.ts) |
 | `bulletList` / `listItem` | Unordered lists |
 | `orderedList` / `listItem` | Ordered lists |
 | `blockquote` | Quote blocks |
@@ -111,7 +111,7 @@ Parallx-authored Tiptap extensions defining custom ProseMirror node types.
 src/built-in/canvas/
 ├── config/
 │   ├── blockCapabilities.ts      ← COLUMN_BLOCK_NODE_TYPES, DRAG_HANDLE_CUSTOM_NODE_TYPES
-│   └── editorExtensions.ts       ← Tiptap extension assembly + Placeholder config
+│   └── tiptapExtensions.ts       ← Tiptap extension assembly + Placeholder config
 ├── extensions/                   ← Custom Tiptap node definitions
 │   ├── calloutNode.ts
 │   ├── columnNodes.ts
@@ -163,7 +163,7 @@ Block type names (strings like `'paragraph'`, `'heading'`, `'callout'`, etc.) ap
 - **`slashMenuItems.ts`** — 26 slash items referencing ~20 node types
 - **`blockHandles.ts`** — Turn-into submenu (15 items), `_getBlockLabel()` (16 entries), `_isContainerBlockType()` (4 types)
 - **`blockMutations.ts`** — `turnBlockWithSharedStrategy()` switch (7 simple targets), `turnBlockViaReplace()`, `buildLeafBlock()` (7 types), `buildContainerBlock()` (4 types)
-- **`editorExtensions.ts`** — Placeholder config (9 node type name checks)
+- **`tiptapExtensions.ts`** — Placeholder config (9 node type name checks)
 - **`bubbleMenu.ts`** — Suppresses toolbar inside `codeBlock`
 
 ### 3.3 Turn-Into Logic — Three Separate Data Structures
@@ -200,13 +200,13 @@ Create a **single file** — `config/blockRegistry.ts` — that serves as the ca
 | Drag-handle custom nodes | `blockCapabilities.ts` `DRAG_HANDLE_CUSTOM_NODE_TYPES` | **Yes** — `capabilities.customDragHandle` flag |
 | PAGE_CONTAINERS | 4 separate locations | **Yes** — `capabilities.isPageContainer` flag |
 | Container classification | `_isContainerBlockType()`, `containerTypes Set` | **Yes** — `kind: 'container' | 'leaf' | 'atom'` |
-| Placeholder text | `editorExtensions.ts` Placeholder config | **Yes** — `placeholder` field |
+| Placeholder text | `tiptapExtensions.ts` Placeholder config | **Yes** — `placeholder` field |
 | Bubble menu suppression | `bubbleMenu.ts` | **Yes** — `capabilities.suppressBubbleMenu` flag |
 
 ### 4.3 What the Registry Does NOT Own
 
 - **ProseMirror schema** — Tiptap extensions still define `Node.create({ name, schema, ... })`. The registry is metadata *about* those nodes, not a replacement for them.
-- **Tiptap extension configuration** — `editorExtensions.ts` still assembles the Extensions array. The registry doesn't instantiate extensions.
+- **Tiptap extension configuration** — `tiptapExtensions.ts` still assembles the Extensions array. The registry doesn't instantiate extensions.
 - **DOM rendering** — NodeViews, CSS, and rendering logic stay in their extension files.
 - **Complex insertion logic** — Slash menu actions that involve async operations (e.g. `Page` creating a child page) keep their custom action functions. The registry provides a hook point, not a replacement.
 
@@ -327,7 +327,7 @@ Tiptap doesn't know or care that a registry exists. The registry is consumed by 
 
 Files in `extensions/` (e.g. `calloutNode.ts`, `columnNodes.ts`) continue to define ProseMirror node types and NodeViews. They don't import from the registry. The registry imports nothing from them — it's a flat data file.
 
-### 6.3 `editorExtensions.ts` Still Assembles the Extensions Array
+### 6.3 `tiptapExtensions.ts` Still Assembles the Extensions Array
 
 The `createEditorExtensions()` factory continues to import and configure all Tiptap extensions. The only change is that it reads `DRAG_HANDLE_CUSTOM_NODE_TYPES` from the registry export (same name, same shape) instead of from `blockCapabilities.ts`.
 
@@ -410,7 +410,7 @@ The `createEditorExtensions()` factory continues to import and configure all Tip
 - [ ] Keep `blockCapabilities.ts` as a thin re-export module (no breaking import changes)
 
 **Dependency check:** Files importing from `blockCapabilities.ts`:
-- `config/editorExtensions.ts` → imports `DRAG_HANDLE_CUSTOM_NODE_TYPES` (no change needed)
+- `config/tiptapExtensions.ts` → imports `DRAG_HANDLE_CUSTOM_NODE_TYPES` (no change needed)
 - `extensions/columnNodes.ts` → imports `COLUMN_CONTENT_EXPRESSION` (no change needed)
 - Any other files importing these constants continue to work via re-export
 
@@ -511,7 +511,7 @@ The `createEditorExtensions()` factory continues to import and configure all Tip
 ### Phase 7 — Migrate Placeholder Configuration
 
 #### Step 7.1: Generate Placeholder Config from Registry
-- [ ] In `editorExtensions.ts`, replace the Placeholder `placeholder` callback with a function that reads `BlockDefinition.placeholder` from the registry
+- [ ] In `tiptapExtensions.ts`, replace the Placeholder `placeholder` callback with a function that reads `BlockDefinition.placeholder` from the registry
 - [ ] For blocks without a `placeholder` field, fall back to the existing depth-walk logic
 
 #### Step 7.2: Run Tests
@@ -586,7 +586,7 @@ This map shows what each file currently imports and from where, so we know what 
 COLUMN_BLOCK_NODE_TYPES ──────►  extensions/columnNodes.ts (COLUMN_CONTENT_EXPRESSION)
 COLUMN_CONTENT_EXPRESSION ────►  extensions/columnNodes.ts (column schema content field)
 COLUMN_CONTENT_NODE_TYPES ────►  (not imported externally)
-DRAG_HANDLE_CUSTOM_NODE_TYPES ►  config/editorExtensions.ts (GlobalDragHandle config)
+DRAG_HANDLE_CUSTOM_NODE_TYPES ►  config/tiptapExtensions.ts (GlobalDragHandle config)
 ```
 
 ### `mutations/blockMutations.ts` (current exports)
@@ -646,7 +646,7 @@ For each phase, verify:
 ## 10. Open Questions
 
 1. **Should `blockCapabilities.ts` be deprecated or kept as a re-export shim?**  
-   Keeping it as a re-export avoids touching import paths in `columnNodes.ts` and `editorExtensions.ts`. Deleting it is cleaner but requires updating those imports.
+   Keeping it as a re-export avoids touching import paths in `columnNodes.ts` and `tiptapExtensions.ts`. Deleting it is cleaner but requires updating those imports.
 
 2. **Should heading levels 1/2/3 be separate registry entries or one entry with `attrs.level`?**  
    Separate entries are simpler for slash menu and turn-into (each level has its own display label and icon). One entry is more DRY. Recommendation: **separate entries** — the registry is metadata, not schema.
