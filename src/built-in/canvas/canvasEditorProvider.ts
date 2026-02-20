@@ -36,6 +36,7 @@ import { createEditorExtensions } from './config/tiptapExtensions.js';
 import { InlineMathEditorController } from './math/inlineMathEditor.js';
 import { BubbleMenuController } from './menus/bubbleMenu.js';
 import { SlashMenuController } from './menus/slashMenu.js';
+import { BlockActionMenuController } from './menus/blockActionMenu.js';
 import { BlockHandlesController } from './handles/blockHandles.js';
 import { BlockSelectionController } from './handles/blockSelection.js';
 import { PageChromeController } from './header/pageChrome.js';
@@ -144,6 +145,9 @@ class CanvasEditorPane implements IDisposable {
 
   // ── Block handles controller ──
   private _blockHandles!: BlockHandlesController;
+
+  // ── Block action menu controller ──
+  private _blockActionMenu!: BlockActionMenuController;
 
   // ── Block selection controller ──
   private _blockSelection!: BlockSelectionController;
@@ -286,8 +290,12 @@ class CanvasEditorPane implements IDisposable {
     this._inlineMath = new InlineMathEditorController(this);
     this._inlineMath.create();
 
+    // Setup block action menu (hidden by default, owned by pane)
+    this._blockActionMenu = new BlockActionMenuController(this);
+    this._blockActionMenu.create();
+
     // Setup block handles (+ button, drag-handle click menu)
-    this._blockHandles = new BlockHandlesController(this);
+    this._blockHandles = new BlockHandlesController(this, this._blockActionMenu);
     this._blockHandles.setup();
 
     // Setup block selection model
@@ -381,11 +389,13 @@ class CanvasEditorPane implements IDisposable {
     this._slashMenu?.hide();
     this._bubbleMenu?.hide();
     this._blockHandles?.hide();
+    this._blockActionMenu?.hide();
     this._blockSelection?.clear();
     this._pageChrome?.dismissPopups();
 
     // Block handles cleanup
     this._blockHandles?.dispose();
+    this._blockActionMenu?.dispose();
     this._blockSelection?.dispose();
 
     // Dispose save-state subscriptions
