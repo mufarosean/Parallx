@@ -49,6 +49,18 @@ function makeValidDoc(): MockNode {
       node('toggleHeadingText', [node('text')]),
       node('detailsContent', [node('blockquote', [node('paragraph', [node('text')])])]),
     ], { level: 2 }),
+    node('callout', [node('paragraph', [node('text')])], { emoji: 'lightbulb' }),
+    node('table', [
+      node('tableRow', [
+        node('tableHeader', [node('paragraph')]),
+        node('tableHeader', [node('paragraph')]),
+      ]),
+      node('tableRow', [
+        node('tableCell', [node('paragraph')]),
+        node('tableCell', [node('paragraph')]),
+      ]),
+    ]),
+    node('pageBlock', [], { pageId: 'abc-123', title: 'Test Page' }),
   ]);
 }
 
@@ -67,7 +79,7 @@ function randomInt(maxExclusive: number): number {
 
 function mutateIntoInvalid(doc: MockNode): MockNode {
   const plain = cloneDeep(doc);
-  const mode = randomInt(5);
+  const mode = randomInt(8);
 
   if (mode === 0) {
     // columnList with 1 child
@@ -81,9 +93,18 @@ function mutateIntoInvalid(doc: MockNode): MockNode {
   } else if (mode === 3) {
     // toggle invalid level
     plain.content[3].attrs.level = 7;
-  } else {
+  } else if (mode === 4) {
     // detailsContent under invalid parent
     plain.content.push({ type: { name: 'detailsContent' }, attrs: {}, content: [{ type: { name: 'paragraph' }, attrs: {}, content: [] }] });
+  } else if (mode === 5) {
+    // empty callout (no children)
+    plain.content[4].content = [];
+  } else if (mode === 6) {
+    // empty table (no rows)
+    plain.content[5].content = [];
+  } else {
+    // pageBlock with empty pageId
+    plain.content[6].attrs.pageId = '';
   }
 
   return fromPlain(plain);
@@ -134,5 +155,95 @@ describe('canvas structural invariants', () => {
       const issues = validateCanvasStructuralInvariants(mutated as any);
       expect(issues.length).toBeGreaterThan(0);
     }
+  });
+
+  // ── Callout invariants ──
+
+  it('PX-CAL-001: detects empty callout', () => {
+    const doc = node('doc', [
+      node('callout', [], { emoji: 'lightbulb' }),
+    ]);
+    const issues = validateCanvasStructuralInvariants(doc as any);
+    expect(hasCode(issues, 'PX-CAL-001')).toBe(true);
+  });
+
+  it('accepts callout with content', () => {
+    const doc = node('doc', [
+      node('callout', [node('paragraph', [node('text')])], { emoji: 'lightbulb' }),
+    ]);
+    const issues = validateCanvasStructuralInvariants(doc as any);
+    expect(hasCode(issues, 'PX-CAL')).toBe(false);
+  });
+
+  // ── Table invariants ──
+
+  it('PX-TBL-001: detects empty table', () => {
+    const doc = node('doc', [node('table', [])]);
+    const issues = validateCanvasStructuralInvariants(doc as any);
+    expect(hasCode(issues, 'PX-TBL-001')).toBe(true);
+  });
+
+  it('PX-TBL-002: detects first row without tableHeader cells', () => {
+    const doc = node('doc', [
+      node('table', [
+        node('tableRow', [
+          node('tableCell', [node('paragraph')]),
+          node('tableCell', [node('paragraph')]),
+        ]),
+      ]),
+    ]);
+    const issues = validateCanvasStructuralInvariants(doc as any);
+    expect(hasCode(issues, 'PX-TBL-002')).toBe(true);
+  });
+
+  it('PX-TBL-003: detects non-tableRow children in table', () => {
+    const doc = node('doc', [
+      node('table', [
+        node('paragraph', [node('text')]),
+      ]),
+    ]);
+    const issues = validateCanvasStructuralInvariants(doc as any);
+    expect(hasCode(issues, 'PX-TBL-003')).toBe(true);
+  });
+
+  it('accepts well-formed table with header row', () => {
+    const doc = node('doc', [
+      node('table', [
+        node('tableRow', [
+          node('tableHeader', [node('paragraph')]),
+        ]),
+        node('tableRow', [
+          node('tableCell', [node('paragraph')]),
+        ]),
+      ]),
+    ]);
+    const issues = validateCanvasStructuralInvariants(doc as any);
+    expect(hasCode(issues, 'PX-TBL')).toBe(false);
+  });
+
+  // ── PageBlock invariants ──
+
+  it('PX-PGB-001: detects pageBlock with empty pageId', () => {
+    const doc = node('doc', [
+      node('pageBlock', [], { pageId: '' }),
+    ]);
+    const issues = validateCanvasStructuralInvariants(doc as any);
+    expect(hasCode(issues, 'PX-PGB-001')).toBe(true);
+  });
+
+  it('PX-PGB-001: detects pageBlock with missing pageId', () => {
+    const doc = node('doc', [
+      node('pageBlock', [], {}),
+    ]);
+    const issues = validateCanvasStructuralInvariants(doc as any);
+    expect(hasCode(issues, 'PX-PGB-001')).toBe(true);
+  });
+
+  it('accepts pageBlock with valid pageId', () => {
+    const doc = node('doc', [
+      node('pageBlock', [], { pageId: 'page-abc-123' }),
+    ]);
+    const issues = validateCanvasStructuralInvariants(doc as any);
+    expect(hasCode(issues, 'PX-PGB')).toBe(false);
   });
 });

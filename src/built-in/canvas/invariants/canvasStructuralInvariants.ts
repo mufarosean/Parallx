@@ -214,6 +214,78 @@ function validateDetailSubnodes(ctx: TraversalContext, issues: CanvasInvariantIs
   }
 }
 
+function validateCallout(ctx: TraversalContext, issues: CanvasInvariantIssue[]): void {
+  const { node } = ctx;
+
+  if (node.childCount === 0) {
+    pushIssue(
+      issues,
+      ctx,
+      'PX-CAL-001',
+      'callout must contain at least one block child.',
+      'Insert a paragraph into empty callout nodes during normalization.',
+    );
+  }
+}
+
+function validateTable(ctx: TraversalContext, issues: CanvasInvariantIssue[]): void {
+  const { node } = ctx;
+
+  if (node.childCount === 0) {
+    pushIssue(
+      issues,
+      ctx,
+      'PX-TBL-001',
+      'table must contain at least one row.',
+      'Insert a default row into empty table nodes.',
+    );
+    return;
+  }
+
+  // First row cells should be tableHeader, not tableCell
+  const firstRow = node.child(0);
+  if (firstRow.type.name === 'tableRow' && firstRow.childCount > 0) {
+    const firstCell = firstRow.child(0);
+    if (firstCell.type.name !== 'tableHeader') {
+      pushIssue(
+        issues,
+        ctx,
+        'PX-TBL-002',
+        'table first row should contain tableHeader cells, not tableCell.',
+        'Convert first-row tableCells to tableHeader during table creation/migration.',
+      );
+    }
+  }
+
+  // All children must be tableRow
+  node.forEach((child, _offset, index) => {
+    if (child.type.name !== 'tableRow') {
+      issues.push({
+        code: 'PX-TBL-003',
+        message: `table child at index ${index} must be a tableRow node.`,
+        path: pathToString([...ctx.path, index]),
+        nodeType: child.type.name,
+        suggestion: 'Only insert tableRow nodes into table containers.',
+      });
+    }
+  });
+}
+
+function validatePageBlock(ctx: TraversalContext, issues: CanvasInvariantIssue[]): void {
+  const { node } = ctx;
+  const pageId = node.attrs?.pageId;
+
+  if (!pageId || (typeof pageId === 'string' && pageId.trim() === '')) {
+    pushIssue(
+      issues,
+      ctx,
+      'PX-PGB-001',
+      'pageBlock must have a non-empty pageId attribute.',
+      'Ensure pageBlock is created with a valid pageId from CanvasDataService.',
+    );
+  }
+}
+
 export function validateCanvasStructuralInvariants(doc: ProseMirrorNode): CanvasInvariantIssue[] {
   const issues: CanvasInvariantIssue[] = [];
 
@@ -228,6 +300,12 @@ export function validateCanvasStructuralInvariants(doc: ProseMirrorNode): Canvas
       validateDetails(ctx, issues);
     } else if (nodeType === 'toggleHeading') {
       validateToggleHeading(ctx, issues);
+    } else if (nodeType === 'callout') {
+      validateCallout(ctx, issues);
+    } else if (nodeType === 'table') {
+      validateTable(ctx, issues);
+    } else if (nodeType === 'pageBlock') {
+      validatePageBlock(ctx, issues);
     }
 
     if (nodeType === 'detailsSummary' || nodeType === 'detailsContent') {
