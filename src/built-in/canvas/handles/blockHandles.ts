@@ -51,6 +51,14 @@ export class BlockHandlesController {
   private _lastPointerClient: { x: number; y: number } | null = null;
   private _scrollSyncRaf: number | null = null;
 
+  // Drag-vs-click discrimination
+  // Tracks the mousedown origin so dragstart can distinguish an intentional
+  // drag (movement > threshold) from a micro-drag caused by hand tremor on a
+  // `draggable="true"` element.  When the distance is below the threshold we
+  // cancel the native drag so the browser delivers a normal click event.
+  private _dragMouseDownPos: { x: number; y: number } | null = null;
+  private static readonly _DRAG_DISTANCE_THRESHOLD = 5; // px
+
   constructor(
     private readonly _host: BlockHandlesHost,
     private readonly _actionMenu: IBlockActionMenu,
@@ -294,6 +302,26 @@ export class BlockHandlesController {
       return;
     }
 
+    // ── Micro-drag suppression ──
+    // The drag handle has `draggable="true"` (set by GlobalDragHandle), so
+    // the browser fires dragstart after only 1–2 px of mouse movement —
+    // well within natural hand tremor.  When the movement is below our
+    // threshold we cancel the native drag; the browser will then deliver a
+    // normal click event instead, letting `_onDragHandleClick` open the
+    // block-action menu.
+    if (this._dragMouseDownPos) {
+      const dx = event.clientX - this._dragMouseDownPos.x;
+      const dy = event.clientY - this._dragMouseDownPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < BlockHandlesController._DRAG_DISTANCE_THRESHOLD) {
+        event.preventDefault();
+        // stopImmediatePropagation so the external extension's handler
+        // doesn't run either.
+        event.stopImmediatePropagation();
+        return;
+      }
+    }
+
     const { view } = editor;
 
     this._setHandleInteractionLock(true);
@@ -355,12 +383,14 @@ export class BlockHandlesController {
     this._scheduleHandleInteractionUnlock();
   };
 
-  private readonly _onDragHandleMouseDown = (): void => {
+  private readonly _onDragHandleMouseDown = (e: MouseEvent): void => {
     if (this._isResizeInteractionActive()) return;
+    this._dragMouseDownPos = { x: e.clientX, y: e.clientY };
     this._setHandleInteractionLock(true);
   };
 
   private readonly _onGlobalMouseUp = (): void => {
+    this._dragMouseDownPos = null;
     this._scheduleHandleInteractionUnlock();
   };
 
