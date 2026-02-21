@@ -12,14 +12,14 @@
 
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
-import { svgIcon } from './canvasMenuRegistry.js';
 import {
+  svgIcon,
   applyBackgroundColorToBlock,
   applyTextColorToBlock,
   deleteBlockAt,
   duplicateBlockAt,
   turnBlockWithSharedStrategy,
-} from '../mutations/blockMutations.js';
+} from './canvasMenuRegistry.js';
 import type { ICanvasMenu } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';

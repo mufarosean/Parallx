@@ -17,14 +17,14 @@ import { BlockBackgroundColor } from '../extensions/blockBackground.js';
 import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
 import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
 import { StructuralInvariantGuard } from '../extensions/structuralInvariantGuard.js';
-import { DRAG_HANDLE_CUSTOM_NODE_TYPES } from './blockCapabilities.js';
-import { getNodePlaceholder, getBlockExtensions } from './blockRegistry.js';
+import {
+  DRAG_HANDLE_CUSTOM_NODE_TYPES,
+  getNodePlaceholder,
+  getBlockExtensions,
+} from './blockRegistry.js';
 import type { EditorExtensionContext } from './blockRegistry.js';
 
 import type { Extensions } from '@tiptap/core';
-
-// Re-export for backward compatibility — callers that imported from here.
-export type { EditorExtensionContext } from './blockRegistry.js';
 
 /**
  * Build the full set of TipTap extensions for a canvas editor instance.

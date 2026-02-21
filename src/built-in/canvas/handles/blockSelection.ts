@@ -31,7 +31,7 @@ export class BlockSelectionController {
   /** CSS class added to selected DOM nodes. */
   private static readonly _SEL_CLASS = 'block-selected';
 
-  private _editorChangeHandler: (() => void) | null = null;
+  private _editorChangeHandler: ((props: { transaction: any }) => void) | null = null;
   private _docClickHandler: ((e: MouseEvent) => void) | null = null;
 
   private static readonly _DEV_MODE = (() => {
@@ -56,7 +56,7 @@ export class BlockSelectionController {
     this._editorChangeHandler = ({ transaction }: any) => {
       if (transaction?.docChanged) this.clear();
     };
-    this._host.editor?.on('update', this._editorChangeHandler);
+    this._host.editor?.on('update', this._editorChangeHandler!);
 
     // Clear selection when clicking on empty editor area (deselect)
     this._docClickHandler = (e: MouseEvent) => {

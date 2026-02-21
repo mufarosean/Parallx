@@ -13,13 +13,14 @@ import type { Editor } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
 import type { BlockSelectionController } from './blockSelection.js';
 import type { IBlockActionMenu } from '../menus/canvasMenuRegistry.js';
-import { svgIcon } from '../config/blockRegistry.js';
 import {
+  svgIcon,
   CANVAS_BLOCK_DRAG_MIME,
   clearActiveCanvasDragSession,
   setActiveCanvasDragSession,
-} from '../dnd/dragSession.js';
-import { PAGE_CONTAINERS, isContainerBlockType } from '../config/blockRegistry.js';
+  PAGE_CONTAINERS,
+  isContainerBlockType,
+} from '../config/blockRegistry.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 

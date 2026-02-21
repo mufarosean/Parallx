@@ -14,24 +14,33 @@
 // plugins/ directory.
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import { columnResizePlugin } from '../plugins/columnResizePlugin.js';
-import { columnDropPlugin } from '../plugins/columnDropPlugin.js';
-import { columnAutoDissolvePlugin } from '../plugins/columnAutoDissolve.js';
-import { COLUMN_CONTENT_EXPRESSION } from '../config/blockCapabilities.js';
 import {
+  COLUMN_CONTENT_EXPRESSION,
+  columnResizePlugin,
+  columnDropPlugin,
+  columnAutoDissolvePlugin,
   duplicateBlockAt,
   isColumnEffectivelyEmpty,
   moveBlockAcrossColumnBoundary,
   moveBlockDownWithinPageFlow,
   moveBlockUpWithinPageFlow,
   normalizeColumnListAfterMutation,
-} from '../mutations/blockMutations.js';
+} from '../config/blockRegistry.js';
 
 export const Column = Node.create({
   name: 'column',
   // Includes nested columnList to allow split-within-split layouts.
-  // The allowed node set is centralized in config/blockCapabilities.ts.
-  content: COLUMN_CONTENT_EXPRESSION,
+  // The allowed node set is centralized in config/blockRegistry.ts.
+  //
+  // Function form (not a bare value) is required here. blockRegistry.ts imports
+  // Column/ColumnList AND computes COLUMN_CONTENT_EXPRESSION from its definitions
+  // array. That creates a module cycle. In esbuild's IIFE bundle, columnNodes.ts
+  // evaluates first, so a bare `content: COLUMN_CONTENT_EXPRESSION` would capture
+  // `undefined`. Tiptap calls `callOrReturn()` on `content` at schema-build time
+  // (inside `new Editor()`), when all modules are fully initialized.
+  content() {
+    return COLUMN_CONTENT_EXPRESSION;
+  },
   isolating: true,
   defining: true,
 

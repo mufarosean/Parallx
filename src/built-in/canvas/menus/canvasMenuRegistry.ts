@@ -47,6 +47,21 @@ import {
 /** Render an SVG icon string by ID (delegates to IconRegistry). */
 export const svgIcon: (id: string) => string = _ir_svgIcon;
 
+// ── Block Mutation Access (registry-to-registry gate) ────────────────────────
+// Menu children (blockActionMenu) get mutation helpers through
+// canvasMenuRegistry — their single entry point — instead of importing
+// blockMutations or blockRegistry directly.
+//
+// canvasMenuRegistry → blockRegistry → blockMutations  (the correct chain).
+
+export {
+  applyBackgroundColorToBlock,
+  applyTextColorToBlock,
+  deleteBlockAt,
+  duplicateBlockAt,
+  turnBlockWithSharedStrategy,
+} from '../config/blockRegistry.js';
+
 /** Icon IDs selectable by users for pages/callouts (delegates to IconRegistry). */
 export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICONS;
 

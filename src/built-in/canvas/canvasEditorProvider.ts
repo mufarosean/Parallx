@@ -32,7 +32,7 @@ import type { ICanvasDataService } from './canvasTypes.js';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
-import { createEditorExtensions } from './config/tiptapExtensions.js';
+import { createEditorExtensions } from './config/blockRegistry.js';
 import { BlockHandlesController } from './handles/blockHandles.js';
 import { BlockSelectionController } from './handles/blockSelection.js';
 import { PageChromeController } from './header/pageChrome.js';

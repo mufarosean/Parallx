@@ -5,14 +5,14 @@
 // move content into the linked page.
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import { resolvePageIcon, svgIcon } from '../config/blockRegistry.js';
-import { layoutPopup } from '../../../ui/dom.js';
-import { deleteDraggedSourceFromTransaction } from '../mutations/blockMutations.js';
 import {
+  resolvePageIcon,
+  svgIcon,
   CANVAS_BLOCK_DRAG_MIME,
-  clearActiveCanvasDragSession,
   getActiveCanvasDragSession,
-} from '../dnd/dragSession.js';
+  moveBlockToLinkedPage,
+} from '../config/blockRegistry.js';
+import { layoutPopup } from '../../../ui/dom.js';
 
 // ── Local narrow types ──────────────────────────────────────────────────────
 // pageBlockNode is a child of blockRegistry and receives all dependencies
@@ -386,94 +386,20 @@ export const PageBlock = Node.create<PageBlockOptions>({
       });
 
       dom.addEventListener('drop', (event) => {
-        const dragging = editor.view.dragging;
-        const dragSession = getActiveCanvasDragSession();
-        const rawPayload = event.dataTransfer?.getData(CANVAS_BLOCK_DRAG_MIME) ?? '';
-
-        let payload: { sourcePageId?: string; from?: number; to?: number; nodes?: any[] } | null = null;
-        if (rawPayload) {
-          try {
-            payload = JSON.parse(rawPayload);
-          } catch {
-            payload = null;
-          }
-        }
-
+        dom.classList.remove('canvas-page-block--drop-target');
         const pageId = attrs.pageId;
-        if ((!dragging?.slice && !dragSession && !payload) || !pageId || !dataService) return;
-        if (this.options.currentPageId && pageId === this.options.currentPageId) return;
-
+        if (!pageId || !dataService || !this.options.currentPageId) return;
+        if (pageId === this.options.currentPageId) return;
         event.preventDefault();
         event.stopPropagation();
-        dom.classList.remove('canvas-page-block--drop-target');
         suppressOpenUntil = Date.now() + 350;
-
-        let draggedJson: any[] = [];
-        if (dragging?.slice) {
-          const slice = dragging.slice;
-          if (slice.openStart > 0 || slice.openEnd > 0 || slice.content.childCount === 0) return;
-          const fromSlice = slice.content.toJSON();
-          if (!Array.isArray(fromSlice) || fromSlice.length === 0) return;
-          draggedJson = fromSlice;
-        } else if (payload
-          && payload.sourcePageId === (this.options.currentPageId ?? '')
-          && Array.isArray(payload.nodes)
-          && payload.nodes.length > 0) {
-          draggedJson = payload.nodes;
-        } else if (dragSession && dragSession.sourcePageId === (this.options.currentPageId ?? '')) {
-          draggedJson = dragSession.nodes;
-          if (!Array.isArray(draggedJson) || draggedJson.length === 0) return;
-        } else {
-          return;
-        }
-
-        const shouldDeleteSource = !event.altKey;
-        const dragFrom = typeof (dragging as any)?.from === 'number'
-          ? (dragging as any).from
-          : typeof payload?.from === 'number'
-            ? payload.from
-          : typeof dragSession?.from === 'number'
-            ? dragSession.from
-          : editor.state.selection.from;
-        const dragTo = typeof (dragging as any)?.to === 'number'
-          ? (dragging as any).to
-          : typeof payload?.to === 'number'
-            ? payload.to
-          : typeof dragSession?.to === 'number'
-            ? dragSession.to
-          : editor.state.selection.to;
-
-        void (async () => {
-          try {
-            if (shouldDeleteSource) {
-              const sourcePageId = this.options.currentPageId;
-              if (!sourcePageId) return;
-
-              const deleteTr = editor.state.tr;
-              deleteTr.setMeta('addToHistory', true);
-              deleteDraggedSourceFromTransaction(deleteTr, dragFrom, dragTo);
-              if (!deleteTr.docChanged) {
-                return;
-              }
-
-              await dataService.moveBlocksBetweenPagesAtomic({
-                sourcePageId,
-                targetPageId: pageId,
-                sourceDoc: deleteTr.doc.toJSON(),
-                appendedNodes: draggedJson,
-              });
-
-              editor.view.dispatch(deleteTr);
-              clearActiveCanvasDragSession();
-              return;
-            }
-
-            await dataService.appendBlocksToPage(pageId, draggedJson);
-            clearActiveCanvasDragSession();
-          } catch (err) {
-            console.warn('[Canvas] Failed to move dropped block into linked page:', err);
-          }
-        })();
+        void moveBlockToLinkedPage({
+          editor,
+          event,
+          targetPageId: pageId,
+          currentPageId: this.options.currentPageId,
+          dataService,
+        });
       });
 
       const pageListener = dataService?.onDidChangePage((event) => {

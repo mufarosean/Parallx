@@ -1041,3 +1041,79 @@ export const resolvePageIcon: (icon: string | null | undefined) => string = _ir_
 
 /** Create a sized <span> element containing an SVG icon (delegates to IconRegistry). */
 export const createIconElement: (id: string, size?: number) => HTMLElement = _ir_createIconElement;
+
+// ── Block State Access (registry gate) ───────────────────────────────────────
+// Block extensions (columnNodes, pageBlockNode) get state helpers through
+// blockRegistry — their single entry point — instead of reaching into
+// blockStateRegistry directly.  Only blockRegistry imports blockStateRegistry;
+// extensions never reach across.
+//
+// blockStateRegistry is split by concern:
+//   blockLifecycle.ts   — deletion, duplication, styling
+//   blockTransforms.ts  — "turn into" type conversions
+//   blockMovement.ts    — all positional changes + column utilities
+//
+// Uses `export { } from` (live re-exports) to avoid circular-dep
+// initialisation issues.
+
+export {
+  duplicateBlockAt,
+  deleteBlockAt,
+  applyTextColorToBlock,
+  applyBackgroundColorToBlock,
+} from './blockStateRegistry/blockStateRegistry.js';
+
+export {
+  turnBlockWithSharedStrategy,
+  turnBlockIntoColumns,
+  createColumnLayoutFromDrop,
+  addColumnToLayoutFromDrop,
+} from './blockStateRegistry/blockStateRegistry.js';
+
+export {
+  isColumnEffectivelyEmpty,
+  normalizeColumnList,
+  normalizeAllColumnLists,
+  dissolveOrphanedColumnLists,
+  resetColumnListWidths,
+  deleteDraggedSource,
+  // Backward-compat aliases (remove once all callers use short names):
+  normalizeColumnListAfterMutation,
+  deleteDraggedSourceFromTransaction,
+  resetColumnListWidthsInTransaction,
+  dissolveOrphanedColumnListsAfterMutation,
+  moveBlockAcrossColumnBoundary,
+  moveBlockDownWithinPageFlow,
+  moveBlockUpWithinPageFlow,
+} from './blockStateRegistry/blockStateRegistry.js';
+
+// ── Column Plugin Access (via blockStateRegistry gate) ───────────────────
+// Column plugins are block-state concerns (resize, drop, auto-dissolve).
+// They live under blockStateRegistry; blockRegistry re-exports for consumers.
+
+export {
+  columnResizePlugin,
+  columnDropPlugin,
+  columnAutoDissolvePlugin,
+} from './blockStateRegistry/blockStateRegistry.js';
+
+// ── Editor Assembly Access (registry gate) ────────────────────────────────
+// canvasEditorProvider gets the fully assembled extension array through
+// blockRegistry — its single entry point — instead of importing
+// tiptapExtensions.ts directly.
+
+export { createEditorExtensions } from './tiptapExtensions.js';
+
+// ── Drag Session + Cross-Page Movement (registry gate) ──────────────────
+// Drag session state lives in dragSession.ts.  Cross-page movement
+// (async persistence orchestration) lives in crossPageMovement.ts.
+// Both are gated through blockStateRegistry.
+
+export {
+  CANVAS_BLOCK_DRAG_MIME,
+  setActiveCanvasDragSession,
+  getActiveCanvasDragSession,
+  clearActiveCanvasDragSession,
+  moveBlockToLinkedPage,
+} from './blockStateRegistry/blockStateRegistry.js';
+export type { CanvasDragSession, CrossPageMoveParams } from './blockStateRegistry/blockStateRegistry.js';
