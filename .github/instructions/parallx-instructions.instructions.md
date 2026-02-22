@@ -9,16 +9,18 @@ The canvas built-in (`src/built-in/canvas/`) enforces a **five-registry gate arc
 
 ### Core Principle
 
-> **Children talk only to their parent gate. Gates talk to each other. No shortcuts.**
+> **Children talk only to their parent gate. Gates go to the source. No shortcuts.**
 
 A "child" is any file that belongs to a registry's domain. A "gate" is a registry that mediates all imports for its children. Children never reach across to a sibling registry — they get everything they need through their own gate's re-exports.
+
+**Gate-to-gate rule:** When a gate needs something from another gate, it imports from the gate that **owns** the symbol — never through an intermediate gate that merely passes it through. If IconRegistry owns `svgIcon`, HandleRegistry imports from IconRegistry directly, not from BlockRegistry. This eliminates phantom dependencies and keeps the import graph honest.
 
 ### The Five Gates
 
 | Gate | File | Domain |
 |------|------|--------|
 | **IconRegistry** | `config/iconRegistry.ts` | All SVG/icon access |
-| **BlockRegistry** | `config/blockRegistry.ts` | Block metadata, capabilities, extensions, hub for all other registries |
+| **BlockRegistry** | `config/blockRegistry.ts` | Block metadata, capabilities, extensions |
 | **CanvasMenuRegistry** | `menus/canvasMenuRegistry.ts` | Menu lifecycle, mutual exclusion, block-data access for menus |
 | **BlockStateRegistry** | `config/blockStateRegistry/blockStateRegistry.ts` | Block mutations, movements, column operations, drag state |
 | **HandleRegistry** | `handles/handleRegistry.ts` | Block handle interaction, selection, drag lifecycle |
@@ -29,9 +31,14 @@ A "child" is any file that belongs to a registry's domain. A "gate" is a registr
 2. **Menu children** (`slashMenu`, `bubbleMenu`, `blockActionMenu`, `iconMenu`, `coverMenu`, `inlineMathEditor`, `imageInsertPopup`, `mediaInsertPopup`, `bookmarkInsertPopup`) import **only from CanvasMenuRegistry**. Never from BlockRegistry or IconRegistry directly.
 3. **BlockStateRegistry children** (`blockLifecycle`, `blockTransforms`, `blockMovement`, `columnCreation`, `columnInvariants`, `crossPageMovement`, `dragSession`) import **only from blockStateRegistry.ts** (their facade). Never from BlockRegistry directly.
 4. **Handle children** (`blockHandles`, `blockSelection`) import **only from HandleRegistry**. Never from BlockRegistry or CanvasMenuRegistry directly.
-5. **No file outside the registry layer** imports from `iconRegistry.ts`. Icons are re-exported through BlockRegistry and CanvasMenuRegistry.
+5. **No child file** imports from `iconRegistry.ts`. Icons are re-exported through each child's parent gate. Peer gates that need icons import from IconRegistry directly.
 6. **No child file imports across registries.** A menu file cannot import from a block extension, and vice versa.
-7. **Registries may import from other registries** (gate-to-gate). BlockRegistry re-exports from IconRegistry and BlockStateRegistry. CanvasMenuRegistry re-exports from BlockRegistry and IconRegistry. HandleRegistry re-exports from BlockRegistry and CanvasMenuRegistry.
+7. **Gates go to the source** (gate-to-gate). A gate imports from whichever gate actually **owns** the symbol. No pass-through intermediaries. Allowed gate-to-gate edges:
+   - **IconRegistry** → (leaf — no gate deps)
+   - **BlockRegistry** → IconRegistry, BlockStateRegistry
+   - **CanvasMenuRegistry** → BlockRegistry, IconRegistry, BlockStateRegistry
+   - **BlockStateRegistry** → BlockRegistry (inward: `PAGE_CONTAINERS`, `isContainerBlockType`)
+   - **HandleRegistry** → BlockRegistry, IconRegistry, BlockStateRegistry, CanvasMenuRegistry
 
 ### When adding new code
 
@@ -39,7 +46,7 @@ A "child" is any file that belongs to a registry's domain. A "gate" is a registr
 - **New menu?** It imports from `canvasMenuRegistry.ts` only. If it needs block data or icons, add a re-export to `canvasMenuRegistry.ts`.
 - **New mutation/movement logic?** It goes in a `blockStateRegistry/` child file, imports from `blockStateRegistry.ts`, and is re-exported through `blockStateRegistry.ts` → `blockRegistry.ts`.
 - **New handle/interaction feature?** It goes in `handles/`, imports from `handleRegistry.ts` only. If it needs something not yet re-exported, add the re-export to `handleRegistry.ts`.
-- **New icon?** Add to `canvasIcons.ts`, register in `iconRegistry.ts`. Consumers access via BlockRegistry or CanvasMenuRegistry re-exports.
+- **New icon?** Add to `canvasIcons.ts`, register in `iconRegistry.ts`. Child files access via their parent gate's re-exports. Peer gates import from IconRegistry directly.
 
 ### When NOT to create a new gate
 

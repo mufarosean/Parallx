@@ -52,12 +52,11 @@ import {
 /** @see {@link import('../config/iconRegistry.js').svgIcon} — original source (IconRegistry → here) */
 export const svgIcon: (id: string) => string = _ir_svgIcon;
 
-// ── Block Mutation Access (registry-to-registry gate) ────────────────────────
+// ── Block Mutation Access (from BlockStateRegistry — source owner) ─────────
 // Menu children (blockActionMenu) get mutation helpers through
-// canvasMenuRegistry — their single entry point — instead of importing
-// blockMutations or blockRegistry directly.
-//
-// canvasMenuRegistry → blockRegistry → blockMutations  (the correct chain).
+// canvasMenuRegistry — their single entry point.  These originate in
+// blockStateRegistry's child files — we go to the source, not through
+// BlockRegistry.
 
 export {
   applyBackgroundColorToBlock,
@@ -65,7 +64,7 @@ export {
   deleteBlockAt,
   duplicateBlockAt,
   turnBlockWithSharedStrategy,
-} from '../config/blockRegistry.js';
+} from '../config/blockStateRegistry/blockStateRegistry.js';
 
 /** @see {@link import('../config/iconRegistry.js').PAGE_SELECTABLE_ICONS} — original source (IconRegistry → here) */
 export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICONS;

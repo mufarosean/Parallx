@@ -27,6 +27,21 @@ const GATE_FILES = new Set([
   'handles/handleRegistry.ts',
 ]);
 
+// ── Gate-to-gate allowed edges ──────────────────────────────────────────────
+// Encodes the "go to source" principle: each gate may only import from the
+// gates that OWN the symbols it needs.  No pass-through intermediaries.
+//
+// Adding an edge here requires justification — the target gate must actually
+// own the symbol being imported (not just re-export it from somewhere else).
+
+const GATE_IMPORT_RULES: Record<string, string[]> = {
+  'config/iconRegistry.ts':                         [],  // leaf — no gate deps
+  'config/blockRegistry.ts':                         ['config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry'],
+  'menus/canvasMenuRegistry.ts':                     ['config/blockRegistry', 'config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry'],
+  'config/blockStateRegistry/blockStateRegistry.ts': ['config/blockRegistry'],
+  'handles/handleRegistry.ts':                       ['config/blockRegistry', 'config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry', 'menus/canvasMenuRegistry'],
+};
+
 // ── Orchestrators (exempt — they wire gates together) ───────────────────────
 
 const EXEMPT_FILES = new Set([
@@ -259,4 +274,59 @@ describe('Canvas Gate Architecture Compliance', () => {
       expect(GATE_RULES[gate]).toBeUndefined();
     }
   });
+
+  // ── Gate-to-gate import validation ──────────────────────────────────────
+  // Enforces the "go to source" principle: each gate can only import from
+  // gates listed in GATE_IMPORT_RULES.  This prevents phantom dependencies
+  // through intermediate pass-throughs.
+
+  for (const [gatePath, allowedSources] of Object.entries(GATE_IMPORT_RULES)) {
+    it(`${gatePath} only imports from allowed source gates`, () => {
+      const fullPath = resolve(CANVAS_DIR, gatePath);
+      if (!existsSync(fullPath)) return;
+
+      const source = readFileSync(fullPath, 'utf-8');
+      const imports = extractRelativeImports(source);
+
+      for (const imp of imports) {
+        const canvasRel = resolveToCanvasRelative(gatePath, imp);
+
+        // Import resolves outside canvas — always allowed
+        if (canvasRel === null) continue;
+
+        // Shared utilities — allowed
+        if (
+          canvasRel === 'canvasTypes' ||
+          canvasRel === 'canvasEditorProvider' ||
+          canvasRel === 'markdownExport' ||
+          canvasRel === 'contentSchema'
+        ) {
+          continue;
+        }
+
+        // Import to own child files — always allowed (parent-gate pattern)
+        // A gate importing from its own children is how the gate aggregates.
+        // We check this by verifying the import is NOT to another gate's domain.
+        const isToAnotherGate = [...GATE_FILES].some(g => {
+          if (g === gatePath) return false;  // skip self
+          const gatePrefix = g.replace(/\.ts$/, '');
+          // Check if the import resolves to a gate file itself or its children area
+          return canvasRel.startsWith(gatePrefix);
+        });
+
+        if (!isToAnotherGate) continue;  // import to own child — allowed
+
+        // It resolves to another gate's domain — check allowedSources
+        const isAllowed = allowedSources.some(src => canvasRel.startsWith(src));
+
+        expect(isAllowed).toBe(true);
+        if (!isAllowed) {
+          console.error(
+            `[GATE-TO-GATE VIOLATION] ${gatePath} imports '${imp}' → resolves to '${canvasRel}'\n` +
+            `  Allowed sources: ${allowedSources.length ? allowedSources.join(', ') : '(none — should be a leaf gate)'}`,
+          );
+        }
+      }
+    });
+  }
 });

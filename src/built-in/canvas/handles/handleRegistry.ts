@@ -6,14 +6,23 @@
 //
 // canvasEditorProvider imports handle controllers through this gate.
 
-// ── Re-exports from BlockRegistry (registry-to-registry gate) ───────────────
-// Handle children need block metadata constants and drag session helpers.
-// They get them through this gate instead of importing blockRegistry directly.
+// ── Re-exports from IconRegistry (source owner) ─────────────────────────────
+// Handle children need svgIcon for rendering drag grips and action buttons.
 
-/** @see {@link import('../config/iconRegistry.js').svgIcon} — original source (IconRegistry → BlockRegistry → here) */
-export { svgIcon } from '../config/blockRegistry.js';
-/** @see {@link import('../config/blockStateRegistry/dragSession.js')} — original source (dragSession → BlockStateRegistry → BlockRegistry → here) */
-export { CANVAS_BLOCK_DRAG_MIME, clearActiveCanvasDragSession, setActiveCanvasDragSession } from '../config/blockRegistry.js';
+/** @see {@link import('../config/iconRegistry.js').svgIcon} — origin */
+export { svgIcon } from '../config/iconRegistry.js';
+
+// ── Re-exports from BlockStateRegistry (source owner) ───────────────────────
+// Handle children need drag session state helpers.  BlockStateRegistry owns
+// these (via dragSession.ts) — we go to the source, not through BlockRegistry.
+
+/** @see {@link import('../config/blockStateRegistry/dragSession.js')} — origin */
+export { CANVAS_BLOCK_DRAG_MIME, clearActiveCanvasDragSession, setActiveCanvasDragSession } from '../config/blockStateRegistry/blockStateRegistry.js';
+
+// ── Re-exports from BlockRegistry (source owner) ────────────────────────────
+// BlockRegistry owns PAGE_CONTAINERS and isContainerBlockType — computed from
+// the block definitions it defines.
+
 /** @see {@link import('../config/blockRegistry.js').PAGE_CONTAINERS} */
 export { PAGE_CONTAINERS, isContainerBlockType } from '../config/blockRegistry.js';
 
