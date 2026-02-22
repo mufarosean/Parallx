@@ -102,3 +102,44 @@ Every `src/ui/` component must:
 - Feature modules (`parts/`, `views/`, `editor/`, `commands/`) may depend on `ui/`.
 
 This mirrors VS Code where `src/vs/base/browser/ui/` depends only on `src/vs/base/`.
+
+---
+
+## 5. Canvas Registry Gate Architecture
+
+The canvas built-in (`src/built-in/canvas/`) enforces a **four-registry gate architecture**. This is the most critical structural rule in the canvas codebase. Full details are in `ARCHITECTURE.md` — this section defines the rules you must follow.
+
+### Core Principle
+
+> **Children talk only to their parent gate. Gates talk to each other. No shortcuts.**
+
+A "child" is any file that belongs to a registry's domain. A "gate" is a registry that mediates all imports for its children. Children never reach across to a sibling registry — they get everything they need through their own gate's re-exports.
+
+### The Four Gates
+
+| Gate | File | Domain |
+|------|------|--------|
+| **IconRegistry** | `config/iconRegistry.ts` | All SVG/icon access |
+| **BlockRegistry** | `config/blockRegistry.ts` | Block metadata, capabilities, extensions, hub for all other registries |
+| **CanvasMenuRegistry** | `menus/canvasMenuRegistry.ts` | Menu lifecycle, mutual exclusion, block-data access for menus |
+| **BlockStateRegistry** | `config/blockStateRegistry/blockStateRegistry.ts` | Block mutations, movements, column operations, drag state |
+
+### Import Rules (mandatory — violations break the architecture)
+
+1. **Block extensions** (`calloutNode`, `columnNodes`, `mediaNodes`, `bookmarkNode`, `pageBlockNode`) import **only from BlockRegistry**. Never from CanvasMenuRegistry, IconRegistry, or BlockStateRegistry.
+2. **Menu children** (`slashMenu`, `bubbleMenu`, `blockActionMenu`, `iconMenu`, `coverMenu`, `inlineMathEditor`) import **only from CanvasMenuRegistry**. Never from BlockRegistry or IconRegistry directly.
+3. **BlockStateRegistry children** (`blockLifecycle`, `blockTransforms`, `blockMovement`, `columnCreation`, `columnInvariants`, `crossPageMovement`, `dragSession`) import **only from blockStateRegistry.ts** (their facade). Never from BlockRegistry directly.
+4. **No file outside the registry layer** imports from `iconRegistry.ts`. Icons are re-exported through BlockRegistry and CanvasMenuRegistry.
+5. **No child file imports across registries.** A menu file cannot import from a block extension, and vice versa.
+6. **Registries may import from other registries** (gate-to-gate). BlockRegistry re-exports from IconRegistry and BlockStateRegistry. CanvasMenuRegistry re-exports from BlockRegistry and IconRegistry.
+
+### When adding new code
+
+- **New block extension?** It imports from `blockRegistry.ts` only. If it needs something not yet exported, add the export to `blockRegistry.ts`.
+- **New menu?** It imports from `canvasMenuRegistry.ts` only. If it needs block data or icons, add a re-export to `canvasMenuRegistry.ts`.
+- **New mutation/movement logic?** It goes in a `blockStateRegistry/` child file, imports from `blockStateRegistry.ts`, and is re-exported through `blockStateRegistry.ts` → `blockRegistry.ts`.
+- **New icon?** Add to `canvasIcons.ts`, register in `iconRegistry.ts`. Consumers access via BlockRegistry or CanvasMenuRegistry re-exports.
+
+### Why this matters
+
+The circular dependency that broke column editing was caused by cross-reach: `blockRegistry → columnNodes → blockCapabilities → blockRegistry`. The gate architecture prevents this class of bug — every dependency is mediated by a gate, every gate has a clear direction, and esbuild's IIFE bundling order becomes irrelevant because no child reads from a registry it isn't gated through.
