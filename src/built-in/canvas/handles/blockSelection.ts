@@ -10,7 +10,7 @@
 // Positions are refreshed on document changes to stay valid.
 
 import type { Editor } from '@tiptap/core';
-import { PAGE_CONTAINERS } from './handleRegistry.js';
+import { PAGE_CONTAINERS, resolveBlockAncestry, normalizeAllColumnLists } from './handleRegistry.js';
 
 export interface BlockSelectionHost {
   readonly editor: Editor | null;
@@ -131,8 +131,8 @@ export class BlockSelectionController {
     const $target = editor.state.doc.resolve(pos);
 
     // Find parent container for both positions
-    const anchorCtx = findBlockContext($anchor);
-    const targetCtx = findBlockContext($target);
+    const anchorCtx = resolveBlockAncestry($anchor);
+    const targetCtx = resolveBlockAncestry($target);
 
     // Only extend within the same parent container
     if (anchorCtx.containerDepth !== targetCtx.containerDepth) {
@@ -170,7 +170,7 @@ export class BlockSelectionController {
     if (!editor) return false;
 
     const { $head } = editor.state.selection;
-    const { blockDepth } = findBlockContext($head);
+    const { blockDepth } = resolveBlockAncestry($head);
 
     if ($head.depth < blockDepth) return false;
 
@@ -208,6 +208,10 @@ export class BlockSelectionController {
         tr.delete(pos, pos + node.nodeSize);
       }
     }
+
+    // Synchronous column cleanup — dissolve any columns that became empty
+    // after the multi-block delete, and normalize parent columnLists.
+    normalizeAllColumnLists(tr);
 
     editor.view.dispatch(tr);
     this.clear();
@@ -342,13 +346,6 @@ export class BlockSelectionController {
 }
 
 // ── Shared utility ──────────────────────────────────────────────────────────
-
-function findBlockContext($pos: any): { containerDepth: number; blockDepth: number } {
-  let containerDepth = 0;
-  for (let d = 1; d <= $pos.depth; d++) {
-    if (PAGE_CONTAINERS.has($pos.node(d).type.name)) {
-      containerDepth = d;
-    }
-  }
-  return { containerDepth, blockDepth: containerDepth + 1 };
-}
+// resolveBlockAncestry is imported from handleRegistry (source: columnInvariants.ts).
+// It replaces the former local findBlockContext() — same depth-walk, but shared
+// across the entire BSR and handle layer.

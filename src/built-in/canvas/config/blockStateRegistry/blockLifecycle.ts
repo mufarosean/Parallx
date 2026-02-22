@@ -11,6 +11,7 @@
 
 import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
+import { resolveBlockAncestry, cleanupEmptyColumn } from './blockStateRegistry.js';
 
 export function duplicateBlockAt(
   editor: Editor,
@@ -33,8 +34,24 @@ export function duplicateBlockAt(
 }
 
 export function deleteBlockAt(editor: Editor, pos: number, node: any): void {
+  // Resolve column context BEFORE the delete so we know where to clean up.
+  const $pos = editor.state.doc.resolve(pos);
+  const ancestry = resolveBlockAncestry($pos);
+  const columnPos = ancestry.columnDepth !== null ? $pos.before(ancestry.columnDepth) : null;
+  const columnListPos = ancestry.columnListDepth !== null ? $pos.before(ancestry.columnListDepth) : null;
+
   const { tr } = editor.state;
   tr.delete(pos, pos + node.nodeSize);
+
+  // Synchronous column cleanup — if the block was in a column and leaving
+  // it empty, dissolve the column and normalize the parent columnList in
+  // the same transaction.  Without this the auto-dissolve plugin would
+  // catch it on the next tick, but the 1-tick empty-column flash is visible.
+  if (columnPos !== null && columnListPos !== null) {
+    const mappedColPos = tr.mapping.map(columnPos, 1);
+    cleanupEmptyColumn(tr, mappedColPos, columnListPos);
+  }
+
   editor.view.dispatch(tr);
   editor.commands.focus();
 }

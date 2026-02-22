@@ -19,6 +19,10 @@ export { svgIcon } from '../config/iconRegistry.js';
 /** @see {@link import('../config/blockStateRegistry/dragSession.js')} — origin */
 export { CANVAS_BLOCK_DRAG_MIME, clearActiveCanvasDragSession, setActiveCanvasDragSession } from '../config/blockStateRegistry/blockStateRegistry.js';
 
+/** @see {@link import('../config/blockStateRegistry/columnInvariants.js')} — origin */
+export { resolveBlockAncestry, normalizeAllColumnLists } from '../config/blockStateRegistry/blockStateRegistry.js';
+export type { BlockAncestry } from '../config/blockStateRegistry/blockStateRegistry.js';
+
 // ── Re-exports from BlockRegistry (source owner) ────────────────────────────
 // BlockRegistry owns PAGE_CONTAINERS and isContainerBlockType — computed from
 // the block definitions it defines.
