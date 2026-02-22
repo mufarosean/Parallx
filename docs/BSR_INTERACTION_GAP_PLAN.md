@@ -253,9 +253,49 @@ PAGE_CONTAINERS model for correct depth resolution. With Fix A eliminating stale
 elements, the functional risk from dual resolution is fully mitigated. Fix C becomes a
 cosmetic improvement for a future iteration.
 
+### Fix D — Handle Mousedown Focus Leak (PM blur → menu flicker + cursor jump)
+
+**Symptom:** Clicking the drag handle while typing in a block causes:
+1. Menu flicker: menu appears then instantly disappears (~150ms later)
+2. Cursor jump: the text cursor moves to an unexpected position
+
+**Root Cause — competing selection systems:**
+
+The drag handle is a `<div>` that lives outside ProseMirror's contenteditable surface.
+When the user mousedowns on the handle, the browser transfers focus away from the
+contenteditable div. This triggers ProseMirror's `onBlur` callback, which fires a
+150ms delayed `menuRegistry.hideAll()`. When the native `click` event fires (~2ms
+later), `_handleClickAction()` shows the block-action menu — but at t=150ms the blur
+timer fires and `hideAll()` kills it.
+
+The existing `containsFocusedElement()` check in the blur callback cannot save the
+menu because the drag handle is a plain `<div>` that never receives `document.activeElement`
+focus — the check was designed for menus with `<input>` elements (math editor, etc.).
+
+Separately, PM adjusts its internal selection state on blur, so when focus returns
+(e.g., during an action that calls `editor.commands.focus()`), the cursor position
+is unpredictable.
+
+**Implementation:**
+
+In `_onDragHandleMouseDown`, add `e.preventDefault()`:
+- `preventDefault()` on `mousedown` prevents the browser from transferring focus
+  away from the contenteditable → PM never fires blur → no hideAll timer → no flicker
+- PM's selection stays in place → no cursor jump
+- Drag still works: in Chromium/Electron, `preventDefault()` on mousedown does NOT
+  cancel `dragstart` on draggable elements
+- Click still fires: the `click` event doesn't depend on focus transfer
+- Follows existing pattern: the + button already does `e.preventDefault(); e.stopPropagation();`
+  on mousedown (blockHandles.ts setup, line 128)
+
+**Gate compliance:** No new imports. Single-line change in blockHandles.ts.
+
 ### Verification
 - Build clean, all tests pass
 - Manual: in a 2-column layout, click + button to add block, then immediately click
   drag handle → menu targets the correct block (not a neighbor)
 - Manual: open turn-into menu on column block, wait, then try another action on a
   different block → stale pos is caught, menu hides gracefully
+- Manual: type in a block, then click drag handle → menu appears without flicker,
+  cursor does not jump
+- Manual: drag a block via handle → block moves correctly (dragstart not suppressed)
