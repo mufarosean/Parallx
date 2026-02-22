@@ -1062,16 +1062,17 @@ export const createIconElement: (id: string, size?: number) => HTMLElement = _ir
 // ── Block State Access (registry gate) ───────────────────────────────────────
 // Block extensions (columnNodes, pageBlockNode) get state helpers through
 // blockRegistry — their single entry point — instead of reaching into
-// blockStateRegistry directly.  Only blockRegistry imports blockStateRegistry;
-// extensions never reach across.
+// blockStateRegistry directly.
 //
 // blockStateRegistry is split by concern:
 //   blockLifecycle.ts   — deletion, duplication, styling
 //   blockTransforms.ts  — "turn into" type conversions
 //   blockMovement.ts    — all positional changes + column utilities
 //
-// Uses `export { } from` (live re-exports) to avoid circular-dep
-// initialisation issues.
+// ⚠️  CYCLE: This file and blockStateRegistry.ts form a permitted circular
+// dependency.  Both directions use `export { } from` (live re-exports) —
+// safe because no evaluation-time reads cross the boundary.  NEVER convert
+// these to `import X; export const Y = X`.  Enforced by gateCompliance.test.ts.
 
 export {
   duplicateBlockAt,

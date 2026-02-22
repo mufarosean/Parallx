@@ -39,6 +39,7 @@ A "child" is any file that belongs to a registry's domain. A "gate" is a registr
    - **CanvasMenuRegistry** → BlockRegistry, IconRegistry, BlockStateRegistry
    - **BlockStateRegistry** → BlockRegistry (inward: `PAGE_CONTAINERS`, `isContainerBlockType`)
    - **HandleRegistry** → BlockRegistry, IconRegistry, BlockStateRegistry, CanvasMenuRegistry
+8. **No cycles between gates** — except the one permitted cycle: BlockRegistry ↔ BlockStateRegistry. This cycle is safe because both directions use `export { X } from '...'` live re-export syntax with zero evaluation-time reads. **Never** convert these to `import X; export const Y = X` — that breaks the safety guarantee. The cycle is enforced by a dedicated test in `gateCompliance.test.ts`. No other gate-to-gate cycle is permitted.
 
 ### When adding new code
 

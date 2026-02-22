@@ -341,4 +341,55 @@ describe('Canvas Gate Architecture Compliance', () => {
       }
     });
   }
+
+  // ── Cycle safety: BlockRegistry ↔ BlockStateRegistry ────────────────────
+  // The only permitted cycle.  It's safe because both directions use
+  // `export { X } from '...'` syntax — live ES module bindings with no
+  // top-level evaluation.  This test ensures no one adds a non-re-export
+  // import that would make the cycle dangerous at evaluation time.
+  //
+  // If this test fails, someone added a regular `import` or top-level
+  // value read across the cycle.  Fix it by keeping all cross-gate
+  // references as `export { } from` re-exports.
+
+  it('BlockStateRegistry ↔ BlockRegistry cycle uses only safe re-export syntax', () => {
+    // Check BSR → BR direction: only `export { } from '../blockRegistry.js'`
+    const bsrPath = resolve(CANVAS_DIR, 'config/blockStateRegistry/blockStateRegistry.ts');
+    const bsrSource = readFileSync(bsrPath, 'utf-8');
+
+    // Find all lines that reference blockRegistry
+    const bsrLines = bsrSource.split('\n');
+    for (let i = 0; i < bsrLines.length; i++) {
+      const line = bsrLines[i];
+      if (!line.includes('blockRegistry')) continue;
+      // Allow: export { X } from '../blockRegistry.js'
+      // Allow: comments (lines starting with // or * or containing @see/@link)
+      const trimmed = line.trim();
+      if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/**')) continue;
+      if (trimmed.startsWith('export')) {
+        // Must be a re-export: `export { ... } from '...'` or `export type { ... } from '...'`
+        expect(trimmed).toMatch(/^export\s+(type\s+)?\{.*\}\s+from\s+['"]/);
+      } else {
+        // Any other reference to blockRegistry (e.g. `import { X } from '../blockRegistry.js'`)
+        // is NOT safe — it would force evaluation-time reading across the cycle.
+        expect(trimmed).not.toMatch(/import.*from.*blockRegistry/);
+      }
+    }
+
+    // Check BR → BSR direction: only `export { } from './blockStateRegistry/...'`
+    const brPath = resolve(CANVAS_DIR, 'config/blockRegistry.ts');
+    const brSource = readFileSync(brPath, 'utf-8');
+    const brLines = brSource.split('\n');
+    for (let i = 0; i < brLines.length; i++) {
+      const line = brLines[i];
+      if (!line.includes('blockStateRegistry')) continue;
+      const trimmed = line.trim();
+      if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/**')) continue;
+      if (trimmed.startsWith('export')) {
+        expect(trimmed).toMatch(/^export\s+(type\s+)?\{.*\}\s+from\s+['"]/);
+      } else {
+        expect(trimmed).not.toMatch(/import.*from.*blockStateRegistry/);
+      }
+    }
+  });
 });

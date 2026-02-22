@@ -143,6 +143,7 @@ These invariants are **absolute** — violations break the architecture:
 | **Menu gate** | No menu child imports from `blockRegistry.ts`. All block data (labels, definitions, mutations) flows through CanvasMenuRegistry. |
 | **Extension gate** | No block extension imports from `canvasMenuRegistry.ts`. Extensions get everything from BlockRegistry. |
 | **Go to source** | Gate-to-gate imports target the gate that **owns** the symbol. No intermediate pass-throughs. Enforced by `gateCompliance.test.ts`. |
+| **No cycles** | Gate-to-gate graph must be acyclic, with one permitted exception: BlockRegistry ↔ BlockStateRegistry (safe `export { } from` live re-exports only, no evaluation-time reads). Enforced by a dedicated cycle safety test. |
 | **State gate** | No BlockStateRegistry child imports from `blockRegistry.ts` directly. Dependencies flow inward through `blockStateRegistry.ts`. |
 | **Handle gate** | No handle child imports from `blockRegistry.ts` or `canvasMenuRegistry.ts`. Dependencies flow through HandleRegistry. |
 | **No cross-reach** | Children never import across registries. A menu file cannot import from a block extension file, and vice versa. |
