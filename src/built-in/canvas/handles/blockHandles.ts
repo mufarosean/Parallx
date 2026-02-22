@@ -435,9 +435,12 @@ export class BlockHandlesController {
     this._scheduleHandleInteractionUnlock();
   };
 
-  private readonly _onDragHandleMouseDown = (e: MouseEvent): void => {
+  private readonly _onDragHandleMouseDown = (_e: MouseEvent): void => {
     if (this._isResizeInteractionActive()) return;
-    this._setHandleInteractionLock(true);
+    // Interaction lock is NOT set here — it is set in _onDragHandleDragStart
+    // when a real drag begins.  Setting it on mousedown would cause the
+    // document-level outside-click handler (canvasMenuRegistry) to hideAll()
+    // menus before the click event fires, producing a visible flicker.
   };
 
   private readonly _onGlobalMouseUp = (): void => {
