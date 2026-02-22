@@ -651,8 +651,14 @@ export class BlockHandlesController {
     const node = view.state.doc.nodeAt(blockPos);
     if (!node) return null;
 
+    // Column layout nodes are structural wrappers — never valid handle targets.
+    // If resolution lands on a columnList, drill into the first block inside it;
+    // if that fails, return null rather than exposing the layout node.
     if (node.type.name === 'columnList') {
-      return this._resolveFirstBlockInsideColumnList(view, blockPos, node, targetDepth + 1) ?? { pos: blockPos, node, depth: targetDepth };
+      return this._resolveFirstBlockInsideColumnList(view, blockPos, node, targetDepth + 1);
+    }
+    if (node.type.name === 'column') {
+      return null;
     }
 
     return { pos: blockPos, node, depth: targetDepth };
@@ -709,8 +715,10 @@ export class BlockHandlesController {
         return true;
       }
 
-      const nextContainer = isContainerBlockType(next.node?.type?.name ?? '');
-      const currentContainer = isContainerBlockType(current.node?.type?.name ?? '');
+      const nextName = next.node?.type?.name ?? '';
+      const currentName = current.node?.type?.name ?? '';
+      const nextContainer = isContainerBlockType(nextName) || nextName === 'columnList' || nextName === 'column';
+      const currentContainer = isContainerBlockType(currentName) || currentName === 'columnList' || currentName === 'column';
       if (currentContainer && !nextContainer) {
         return true;
       }
@@ -738,6 +746,8 @@ export class BlockHandlesController {
       element.classList.contains('block-action-submenu') ||
       element.classList.contains('column-drop-indicator') ||
       element.classList.contains('canvas-drop-guide') ||
+      element.classList.contains('column-resize-handle') ||
+      element.classList.contains('column-resize-indicator') ||
       !!element.closest('.block-action-menu') ||
       !!element.closest('.block-action-submenu')
     );
