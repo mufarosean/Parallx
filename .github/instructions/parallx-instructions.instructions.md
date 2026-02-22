@@ -5,7 +5,7 @@ description: These instructions provide guidelines for AI to follow when thinkin
 
 ## 0. Canvas Registry Gate Architecture (READ FIRST)
 
-The canvas built-in (`src/built-in/canvas/`) enforces a **four-registry gate architecture**. This is the most critical structural rule in the canvas codebase. Full details are in `ARCHITECTURE.md` — this section defines the rules you must follow **before writing any canvas code**.
+The canvas built-in (`src/built-in/canvas/`) enforces a **five-registry gate architecture**. This is the most critical structural rule in the canvas codebase. Full details are in `ARCHITECTURE.md` — this section defines the rules you must follow **before writing any canvas code**.
 
 ### Core Principle
 
@@ -13,7 +13,7 @@ The canvas built-in (`src/built-in/canvas/`) enforces a **four-registry gate arc
 
 A "child" is any file that belongs to a registry's domain. A "gate" is a registry that mediates all imports for its children. Children never reach across to a sibling registry — they get everything they need through their own gate's re-exports.
 
-### The Four Gates
+### The Five Gates
 
 | Gate | File | Domain |
 |------|------|--------|
@@ -21,21 +21,24 @@ A "child" is any file that belongs to a registry's domain. A "gate" is a registr
 | **BlockRegistry** | `config/blockRegistry.ts` | Block metadata, capabilities, extensions, hub for all other registries |
 | **CanvasMenuRegistry** | `menus/canvasMenuRegistry.ts` | Menu lifecycle, mutual exclusion, block-data access for menus |
 | **BlockStateRegistry** | `config/blockStateRegistry/blockStateRegistry.ts` | Block mutations, movements, column operations, drag state |
+| **HandleRegistry** | `handles/handleRegistry.ts` | Block handle interaction, selection, drag lifecycle |
 
 ### Import Rules (mandatory — violations break the architecture)
 
 1. **Block extensions** (`calloutNode`, `columnNodes`, `mediaNodes`, `bookmarkNode`, `pageBlockNode`) import **only from BlockRegistry**. Never from CanvasMenuRegistry, IconRegistry, or BlockStateRegistry.
-2. **Menu children** (`slashMenu`, `bubbleMenu`, `blockActionMenu`, `iconMenu`, `coverMenu`, `inlineMathEditor`) import **only from CanvasMenuRegistry**. Never from BlockRegistry or IconRegistry directly.
+2. **Menu children** (`slashMenu`, `bubbleMenu`, `blockActionMenu`, `iconMenu`, `coverMenu`, `inlineMathEditor`, `imageInsertPopup`, `mediaInsertPopup`, `bookmarkInsertPopup`) import **only from CanvasMenuRegistry**. Never from BlockRegistry or IconRegistry directly.
 3. **BlockStateRegistry children** (`blockLifecycle`, `blockTransforms`, `blockMovement`, `columnCreation`, `columnInvariants`, `crossPageMovement`, `dragSession`) import **only from blockStateRegistry.ts** (their facade). Never from BlockRegistry directly.
-4. **No file outside the registry layer** imports from `iconRegistry.ts`. Icons are re-exported through BlockRegistry and CanvasMenuRegistry.
-5. **No child file imports across registries.** A menu file cannot import from a block extension, and vice versa.
-6. **Registries may import from other registries** (gate-to-gate). BlockRegistry re-exports from IconRegistry and BlockStateRegistry. CanvasMenuRegistry re-exports from BlockRegistry and IconRegistry.
+4. **Handle children** (`blockHandles`, `blockSelection`) import **only from HandleRegistry**. Never from BlockRegistry or CanvasMenuRegistry directly.
+5. **No file outside the registry layer** imports from `iconRegistry.ts`. Icons are re-exported through BlockRegistry and CanvasMenuRegistry.
+6. **No child file imports across registries.** A menu file cannot import from a block extension, and vice versa.
+7. **Registries may import from other registries** (gate-to-gate). BlockRegistry re-exports from IconRegistry and BlockStateRegistry. CanvasMenuRegistry re-exports from BlockRegistry and IconRegistry. HandleRegistry re-exports from BlockRegistry and CanvasMenuRegistry.
 
 ### When adding new code
 
 - **New block extension?** It imports from `blockRegistry.ts` only. If it needs something not yet exported, add the export to `blockRegistry.ts`.
 - **New menu?** It imports from `canvasMenuRegistry.ts` only. If it needs block data or icons, add a re-export to `canvasMenuRegistry.ts`.
 - **New mutation/movement logic?** It goes in a `blockStateRegistry/` child file, imports from `blockStateRegistry.ts`, and is re-exported through `blockStateRegistry.ts` → `blockRegistry.ts`.
+- **New handle/interaction feature?** It goes in `handles/`, imports from `handleRegistry.ts` only. If it needs something not yet re-exported, add the re-export to `handleRegistry.ts`.
 - **New icon?** Add to `canvasIcons.ts`, register in `iconRegistry.ts`. Consumers access via BlockRegistry or CanvasMenuRegistry re-exports.
 
 ### Why this matters

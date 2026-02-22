@@ -7,7 +7,7 @@
 
 ## Canvas Registry Gate Architecture
 
-The canvas built-in (`src/built-in/canvas/`) has its own internal dependency structure enforced through **four registries** that act as gates. This architecture was established across 20+ commits to eliminate a tangled dependency graph where files imported freely from each other.
+The canvas built-in (`src/built-in/canvas/`) has its own internal dependency structure enforced through **five registries** that act as gates. This architecture was established across 20+ commits to eliminate a tangled dependency graph where files imported freely from each other.
 
 ### Core Principle
 
@@ -15,7 +15,7 @@ The canvas built-in (`src/built-in/canvas/`) has its own internal dependency str
 
 A "child" is any file that belongs to a registry's domain (e.g. `slashMenu.ts` is a child of CanvasMenuRegistry). A "gate" is a registry that mediates all imports for its children. Children never reach across to a sibling registry — they get everything they need through their own gate's re-exports.
 
-### The Four Gates
+### The Five Gates
 
 ```
                     ┌──────────────┐
@@ -29,19 +29,19 @@ A "child" is any file that belongs to a registry's domain (e.g. `slashMenu.ts` i
           ┌────────────▼─┐   ┌─▼──────────────────┐
           │ BlockRegistry│◄──│ BlockStateRegistry  │
           │   (the hub)  │──►│  (two-way facade)   │
-          └──────┬───────┘   └────────┬────────────┘
-                 │                    │
-     ┌───────────┼───────────┐       │
-     │           │           │       │
-     ▼           ▼           ▼       ▼
-  block       chrome/     CanvasMenu  plugins
-  extensions  sidebar/    Registry    (columnDrop,
-  (5 files)   handles     │          columnAutoDissolve)
-              (4 files)    │
-                    ┌──────▼───────┐
-                    │ menu children │
-                    │ (6 files)    │
-                    └──────────────┘
+          └──┬───┬───────┘   └────────┬────────────┘
+             │   │                    │
+     ┌───────┤   │──────────┐        │
+     │       │   │          │        │
+     ▼       ▼   ▼          ▼        ▼
+  block    Handle  CanvasMenu  plugins
+  exts     Registry  Registry  (columnDrop,
+  (5)      │         │         columnAutoDissolve)
+           │         │
+    ┌──────▼──────┐  ┌──────▼───────┐
+    │ handle kids │  │ menu children │
+    │ (2 files)   │  │ (6+ files)   │
+    └─────────────┘  └──────────────┘
 ```
 
 ### 1. IconRegistry (`config/iconRegistry.ts`)
@@ -62,11 +62,11 @@ A "child" is any file that belongs to a registry's domain (e.g. `slashMenu.ts` i
 
 **Own API:** `BLOCK_REGISTRY`, `BlockDefinition`, `PAGE_CONTAINERS`, `COLUMN_CONTENT_EXPRESSION`, `getBlockExtensions()`, `getSlashMenuBlocks()`, `getTurnIntoBlocks()`, `getBlockLabel()`, `getBlockByName()`, `isContainerBlockType()`, `getNodePlaceholder()`, `createEditorExtensions()`
 
-**Children (14 files):**
+**Children (10 files):**
 - Block extensions: `calloutNode`, `columnNodes`, `mediaNodes`, `bookmarkNode`, `pageBlockNode`
-- Chrome/sidebar/handles: `pageChrome`, `canvasSidebar`, `blockHandles`, `blockSelection`
+- Chrome/sidebar: `pageChrome`, `canvasSidebar`
 - Config/assembly: `canvasEditorProvider`, `tiptapExtensions`
-- Registry-to-registry: `canvasMenuRegistry`, `blockStateRegistry`
+- Registry-to-registry: `canvasMenuRegistry`, `blockStateRegistry`, `handleRegistry`
 
 ### 3. CanvasMenuRegistry (`menus/canvasMenuRegistry.ts`)
 
@@ -78,7 +78,7 @@ A "child" is any file that belongs to a registry's domain (e.g. `slashMenu.ts` i
 
 **Own API:** `ICanvasMenu`, `IBlockActionMenu`, `MenuBlockInfo`, `CanvasMenuRegistry` class
 
-**Children (6 files):** `slashMenu`, `bubbleMenu`, `blockActionMenu`, `iconMenu`, `coverMenu`, `inlineMathEditor`
+**Children (6+ files):** `slashMenu`, `bubbleMenu`, `blockActionMenu`, `iconMenu`, `coverMenu`, `inlineMathEditor`, `imageInsertPopup`, `mediaInsertPopup`, `bookmarkInsertPopup`
 
 No menu child imports from BlockRegistry directly — they get everything through CanvasMenuRegistry.
 
@@ -102,6 +102,18 @@ No menu child imports from BlockRegistry directly — they get everything throug
 
 Children import from `blockStateRegistry.ts` (their gate), never from `blockRegistry.ts` or each other directly.
 
+### 5. HandleRegistry (`handles/handleRegistry.ts`)
+
+**Role:** Gate for block-handle interaction controllers. Mediates imports so handle children never reach into blockRegistry or canvasMenuRegistry directly.
+
+**Re-exports from BlockRegistry:** `svgIcon`, `CANVAS_BLOCK_DRAG_MIME`, `clearActiveCanvasDragSession`, `setActiveCanvasDragSession`, `PAGE_CONTAINERS`, `isContainerBlockType`
+
+**Re-exports from CanvasMenuRegistry:** `IBlockActionMenu`
+
+**Children (2 files):** `blockHandles`, `blockSelection`
+
+Handle children import from `handleRegistry.ts` only — never from blockRegistry, canvasMenuRegistry, or each other's paths directly.
+
 ### Gate Isolation Invariants
 
 These invariants are **absolute** — violations break the architecture:
@@ -112,6 +124,7 @@ These invariants are **absolute** — violations break the architecture:
 | **Menu gate** | No menu child imports from `blockRegistry.ts`. All block data (labels, definitions, mutations) flows through CanvasMenuRegistry. |
 | **Extension gate** | No block extension imports from `canvasMenuRegistry.ts`. Extensions get everything from BlockRegistry. |
 | **State gate** | No BlockStateRegistry child imports from `blockRegistry.ts` directly. Dependencies flow inward through `blockStateRegistry.ts`. |
+| **Handle gate** | No handle child imports from `blockRegistry.ts` or `canvasMenuRegistry.ts`. Dependencies flow through HandleRegistry. |
 | **No cross-reach** | Children never import across registries. A menu file cannot import from a block extension file, and vice versa. |
 
 ### Why This Matters

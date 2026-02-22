@@ -10,7 +10,7 @@
 // Positions are refreshed on document changes to stay valid.
 
 import type { Editor } from '@tiptap/core';
-import { PAGE_CONTAINERS } from '../config/blockRegistry.js';
+import { PAGE_CONTAINERS } from './handleRegistry.js';
 
 export interface BlockSelectionHost {
   readonly editor: Editor | null;

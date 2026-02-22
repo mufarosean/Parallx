@@ -11,8 +11,8 @@
 
 import type { Editor } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
-import type { BlockSelectionController } from './blockSelection.js';
-import type { IBlockActionMenu } from '../menus/canvasMenuRegistry.js';
+import type { BlockSelectionController } from './handleRegistry.js';
+import type { IBlockActionMenu } from './handleRegistry.js';
 import {
   svgIcon,
   CANVAS_BLOCK_DRAG_MIME,
@@ -20,7 +20,7 @@ import {
   setActiveCanvasDragSession,
   PAGE_CONTAINERS,
   isContainerBlockType,
-} from '../config/blockRegistry.js';
+} from './handleRegistry.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 

@@ -33,8 +33,7 @@ import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
 import { createEditorExtensions } from './config/blockRegistry.js';
-import { BlockHandlesController } from './handles/blockHandles.js';
-import { BlockSelectionController } from './handles/blockSelection.js';
+import { BlockHandlesController, BlockSelectionController } from './handles/handleRegistry.js';
 import { PageChromeController } from './header/pageChrome.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 
