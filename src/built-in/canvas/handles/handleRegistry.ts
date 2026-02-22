@@ -43,3 +43,4 @@ export type { IBlockActionMenu } from '../menus/canvasMenuRegistry.js';
 
 export { BlockHandlesController, type BlockHandlesHost } from './blockHandles.js';
 export { BlockSelectionController, type BlockSelectionHost } from './blockSelection.js';
+export { BlockMarqueeController, type BlockMarqueeHost } from './blockMarquee.js';

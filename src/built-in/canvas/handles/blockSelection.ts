@@ -182,6 +182,54 @@ export class BlockSelectionController {
     return true;
   }
 
+  /**
+   * Extend block selection upward by one block.
+   * If no selection exists, selects the block at cursor first.
+   * Returns true if the event was handled.
+   */
+  extendSelectionUp(): boolean {
+    const editor = this._host.editor;
+    if (!editor) return false;
+
+    // Bootstrap: if nothing selected, first select the current block
+    if (!this.hasSelection) {
+      if (!this.selectAtCursor()) return false;
+    }
+
+    // Find the topmost selected position and the block above it
+    const sorted = this.positions; // already sorted asc
+    const topPos = sorted[0];
+    const adjacentPos = this._findAdjacentBlockPos(topPos, 'up');
+    if (adjacentPos == null) return true; // at boundary — consume event but no-op
+
+    this.extendTo(adjacentPos);
+    return true;
+  }
+
+  /**
+   * Extend block selection downward by one block.
+   * If no selection exists, selects the block at cursor first.
+   * Returns true if the event was handled.
+   */
+  extendSelectionDown(): boolean {
+    const editor = this._host.editor;
+    if (!editor) return false;
+
+    // Bootstrap: if nothing selected, first select the current block
+    if (!this.hasSelection) {
+      if (!this.selectAtCursor()) return false;
+    }
+
+    // Find the bottommost selected position and the block below it
+    const sorted = this.positions; // sorted asc
+    const bottomPos = sorted[sorted.length - 1];
+    const adjacentPos = this._findAdjacentBlockPos(bottomPos, 'down');
+    if (adjacentPos == null) return true; // at boundary — consume event but no-op
+
+    this.extendTo(adjacentPos);
+    return true;
+  }
+
   /** Clear all selection. */
   clear(): void {
     if (this._selected.size === 0) return;
@@ -242,6 +290,39 @@ export class BlockSelectionController {
   }
 
   // ── Visual Rendering ──────────────────────────────────────────────────
+
+  /**
+   * Find the position of the adjacent block above or below the given pos.
+   * Stays within the same parent container. Returns null if at boundary.
+   */
+  private _findAdjacentBlockPos(pos: number, direction: 'up' | 'down'): number | null {
+    const editor = this._host.editor;
+    if (!editor) return null;
+
+    const $pos = editor.state.doc.resolve(pos);
+    const { containerDepth } = resolveBlockAncestry($pos);
+    const container = containerDepth === 0 ? editor.state.doc : $pos.node(containerDepth);
+    const parentPos = containerDepth === 0 ? 0 : $pos.before(containerDepth);
+    const index = $pos.index(containerDepth);
+
+    if (direction === 'up') {
+      if (index <= 0) return null; // already first child
+      // Walk to the previous sibling's start position
+      let offset = parentPos + (containerDepth === 0 ? 0 : 1);
+      for (let i = 0; i < index - 1; i++) {
+        offset += container.child(i).nodeSize;
+      }
+      return offset;
+    } else {
+      if (index >= container.childCount - 1) return null; // already last child
+      // Walk to the next sibling's start position
+      let offset = parentPos + (containerDepth === 0 ? 0 : 1);
+      for (let i = 0; i <= index; i++) {
+        offset += container.child(i).nodeSize;
+      }
+      return offset;
+    }
+  }
 
   private _renderSelection(): void {
     this._sanitizeSelectionReferences();

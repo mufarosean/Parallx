@@ -10,7 +10,8 @@
 // menus/blockActionMenu.ts — this controller delegates to it via show/hide.
 
 import type { Editor } from '@tiptap/core';
-import { NodeSelection } from '@tiptap/pm/state';
+import { Fragment, Slice } from '@tiptap/pm/model';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import type { BlockSelectionController } from './handleRegistry.js';
 import type { IBlockActionMenu } from './handleRegistry.js';
 import {
@@ -335,6 +336,79 @@ export class BlockHandlesController {
       return;
     }
 
+    // ── Multi-block drag: if the hovered block is part of a multi-selection,
+    // drag all selected blocks together. ──
+    const sel = this._host.blockSelection;
+    const isMultiDrag = sel.hasSelection && sel.count > 1 && sel.positions.includes(block.pos);
+
+    if (isMultiDrag) {
+      // Build a fragment from all selected blocks (sorted by position)
+      const positions = sel.positions; // already sorted asc
+      const nodes: any[] = [];
+      const jsonNodes: any[] = [];
+      for (const p of positions) {
+        const n = view.state.doc.nodeAt(p);
+        if (n) {
+          nodes.push(n);
+          jsonNodes.push(n.toJSON());
+        }
+      }
+
+      if (nodes.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const fragment = Fragment.from(nodes);
+      const slice = new Slice(fragment, 0, 0);
+
+      // Use the contiguous range from first to last selected block
+      const firstPos = positions[0];
+      const lastPos = positions[positions.length - 1];
+      const lastNode = view.state.doc.nodeAt(lastPos);
+      const rangeTo = lastNode ? lastPos + lastNode.nodeSize : lastPos;
+
+      if (event.dataTransfer) {
+        try {
+          event.dataTransfer.effectAllowed = 'copyMove';
+          event.dataTransfer.setData('text/plain', 'parallx-canvas-block-drag');
+          event.dataTransfer.setData(CANVAS_BLOCK_DRAG_MIME, JSON.stringify({
+            sourcePageId: this._host.pageId,
+            from: firstPos,
+            to: rangeTo,
+            nodes: jsonNodes,
+            startedAt: Date.now(),
+          }));
+        } catch { /* Best-effort */ }
+      }
+
+      // Set ProseMirror selection to span the contiguous range
+      const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, firstPos, rangeTo));
+      view.dispatch(tr);
+
+      view.dragging = { slice, move: true, from: firstPos, to: rangeTo } as any;
+
+      setActiveCanvasDragSession({
+        sourcePageId: this._host.pageId,
+        from: firstPos,
+        to: rangeTo,
+        nodes: jsonNodes,
+        startedAt: Date.now(),
+      });
+
+      // Visual: mark all selected blocks as drag sources
+      for (const p of positions) {
+        try {
+          const domNode = view.nodeDOM(p) as HTMLElement | null;
+          if (domNode) domNode.classList.add('block-drag-source');
+        } catch { /* ignore */ }
+      }
+
+      view.dom.classList.add('dragging');
+      return;
+    }
+
+    // ── Single-block drag (existing behavior) ──
     const tr = view.state.tr.setSelection(NodeSelection.create(view.state.doc, block.pos));
     view.dispatch(tr);
 
@@ -377,6 +451,11 @@ export class BlockHandlesController {
     if (!editor) return;
     editor.view.dragging = null as any;
     editor.view.dom.classList.remove('dragging');
+
+    // Remove drag-source visual from all blocks
+    const sources = editor.view.dom.querySelectorAll('.block-drag-source');
+    sources.forEach((el) => el.classList.remove('block-drag-source'));
+
     setTimeout(() => {
       clearActiveCanvasDragSession();
     }, 0);

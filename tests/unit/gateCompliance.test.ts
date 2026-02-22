@@ -112,6 +112,7 @@ const GATE_RULES: Record<string, string[]> = {
   // ── HandleRegistry children ─────────────────────────────────────────────
   'handles/blockHandles.ts':               ['handles/handleRegistry'],
   'handles/blockSelection.ts':             ['handles/handleRegistry'],
+  'handles/blockMarquee.ts':               ['handles/handleRegistry'],
 
   // ── Infrastructure extensions (gate-exempt leaves) ──────────────────────
   // These have zero canvas-internal relative imports (only @tiptap).
