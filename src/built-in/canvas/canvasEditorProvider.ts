@@ -246,9 +246,15 @@ class CanvasEditorPane implements IDisposable {
         const json = JSON.stringify(editor.getJSON());
         this._dataService.scheduleContentSave(this._pageId, json);
       },
-      onTransaction: ({ editor }) => {
+      onTransaction: ({ editor, transaction }) => {
         if (this._suppressUpdate) return;
         this._menuRegistry?.notifyTransaction(editor);
+        // Invalidate cached DOM refs in the handle layer when the document
+        // structure changes — prevents stale _lastHoverElement from causing
+        // _resolveBlockFromHandle() to target the wrong block.
+        if (transaction.docChanged) {
+          this._blockHandles?.notifyDocChanged();
+        }
       },
       onSelectionUpdate: ({ editor }) => {
         this._menuRegistry?.notifySelectionUpdate(editor);

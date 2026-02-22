@@ -154,6 +154,16 @@ export class BlockHandlesController {
     this._actionMenu.hide();
   }
 
+  /**
+   * Called by canvasEditorProvider when a doc-changing transaction fires.
+   * Clears cached DOM references that may have been destroyed or
+   * repositioned by the mutation — prevents _resolveBlockFromHandle()
+   * from using a stale fast-path element.
+   */
+  notifyDocChanged(): void {
+    this._lastHoverElement = null;
+  }
+
   // ── Handle-area hover (keep + and ⠿ visible together) ──────────────────
 
   private readonly _onHandleAreaEnter = (): void => {

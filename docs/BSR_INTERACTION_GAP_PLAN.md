@@ -3,7 +3,7 @@
 > **Branch:** `bsr-interaction-gaps`  
 > **Parent:** `canvas-v2` @ `2175405`  
 > **Date:** 2026-02-22  
-> **Status:** ✅ All 3 phases complete  
+> **Status:** Phases 1–3 complete; Phase 4 (column logic hardening) in progress  
 
 ## Commits
 
@@ -12,6 +12,9 @@
 | 1 | `f798471` | Column-aware delete (`deleteBlockAt` + `deleteSelected()`) |
 | 2 | `d894675` | Tab indent/outdent into containers (`blockNesting.ts`) |
 | 3 | `ac90ce1` | Multi-block selection + DnD (Shift+Arrow, marquee, multi-drag) |
+| — | `e22bd97` | Remove micro-drag suppression (drag handle fix) |
+| — | `0e6974f` | Menu flicker fix (interaction lock only in dragstart) |
+| — | `925ba6e` | Click recovery for tremor-drags |
 
 ## Gap Audit Summary
 
@@ -186,3 +189,73 @@ Phase 1  →  Phase 2  →  Phase 3
 ```
 
 Each phase gets its own commit. All commits on `bsr-interaction-gaps` branch.
+
+---
+
+## Phase 4: Column Logic Hardening (Block Handle ↔ Menu Staleness)
+
+**Symptom:** Cursor snaps to wrong block when using turn-into/color on blocks in
+columns, especially after adding blocks via the + button.
+
+**Root Cause Audit (4 Findings):**
+
+| # | Finding | Severity | Fix |
+|---|---------|----------|-----|
+| 1 | Dual block resolution: GlobalDragHandle library and `_resolveBlockFromHandle()` resolve independently | Low | Deferred — our code overrides library in both click and drag paths |
+| 2 | Stale `_actionBlockPos`: menu stores frozen pos/node snapshot at show() time, never revalidated at action time | **High** | Fix B |
+| 3 | Stale `_lastHoverElement`: cached DOM ref never cleared after doc mutations, fast-path resolves to destroyed/repositioned element | **High** | Fix A |
+| 4 | Library `calcNodePos` is shallow (`$pos.before($pos.depth)`) — breaks inside nested containers (callouts in columns) | Low | Deferred — our deep resolution compensates |
+
+### Fix A — Stale Hover Invalidation (Finding 3)
+
+**Problem:** `_lastHoverElement` in `blockHandles.ts` is set on `mousemove`, cleared on
+`mouseleave`, but never cleared when the document changes. After inserting a block
+via the + button (or any other mutation), the cached DOM element may be destroyed or
+repositioned — causing `_resolveBlockFromHandle()` to resolve to the wrong block via
+the 180px-distance fast path.
+
+**Implementation:**
+1. `blockHandles.ts`: Add `notifyDocChanged()` → clears `_lastHoverElement = null`
+2. `canvasEditorProvider.ts`: Destructure `transaction` in `onTransaction` callback,
+   call `this._blockHandles?.notifyDocChanged()` when `transaction.docChanged`
+
+**Gate compliance:** blockHandles.ts needs no new imports. canvasEditorProvider already
+has the `onTransaction` hookpoint and holds a reference to `_blockHandles`.
+
+### Fix B — Action-Time Pos/Node Revalidation (Finding 2)
+
+**Problem:** `_actionBlockPos` and `_actionBlockNode` are frozen at `show()` time. Any
+doc mutation between show() and the user clicking an action item makes the stored pos
+stale — operations apply to the wrong block or crash.
+
+**Implementation (two layers):**
+
+1. **`onTransaction(editor)` on `BlockActionMenuController`** (implements existing
+   `ICanvasMenu.onTransaction` optional method): If the menu is visible and the node
+   at `_actionBlockPos` no longer matches `_actionBlockNode.type.name`, hide the menu.
+   This auto-closes the menu when external mutations invalidate the target.
+
+2. **`_revalidateActionBlock()` safety net** called at the start of every action method
+   (`_turnBlockInto`, `_applyBlockTextColor`, `_applyBlockBgColor`, `_duplicateBlock`,
+   `_deleteBlock`): Verifies `editor.state.doc.nodeAt(pos)?.type.name ===
+   _actionBlockNode.type.name`. If mismatch → hide + return false. If match → refresh
+   `_actionBlockNode` with the current node and return true.
+
+**Gate compliance:** blockActionMenu.ts imports only from canvasMenuRegistry.ts — no
+new imports needed.
+
+### Deferred: Fix C — Unify Block Resolution (Findings 1 + 4)
+
+The library's shallow `calcNodePos` only affects the drag handle's visual position.
+Our code overrides the library's resolution in both click (`_handleClickAction`) and
+drag (`_onDragHandleDragStart`) paths via `_resolveBlockFromHandle()`, which uses the
+PAGE_CONTAINERS model for correct depth resolution. With Fix A eliminating stale hover
+elements, the functional risk from dual resolution is fully mitigated. Fix C becomes a
+cosmetic improvement for a future iteration.
+
+### Verification
+- Build clean, all tests pass
+- Manual: in a 2-column layout, click + button to add block, then immediately click
+  drag handle → menu targets the correct block (not a neighbor)
+- Manual: open turn-into menu on column block, wait, then try another action on a
+  different block → stale pos is caught, menu hides gracefully
