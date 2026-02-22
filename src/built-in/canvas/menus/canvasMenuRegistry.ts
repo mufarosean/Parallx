@@ -21,6 +21,9 @@ import { BlockActionMenuController, type BlockActionMenuHost } from './blockActi
 import { IconMenuController, type IconMenuHost, type IconMenuOptions } from './iconMenu.js';
 import { CoverMenuController, type CoverMenuHost, type CoverMenuOptions } from './coverMenu.js';
 import { InlineMathEditorController, type InlineMathEditorHost } from '../math/inlineMathEditor.js';
+import { showImageInsertPopup as _showImageInsertPopup } from './imageInsertPopup.js';
+import { showMediaInsertPopup as _showMediaInsertPopup } from './mediaInsertPopup.js';
+import { showBookmarkInsertPopup as _showBookmarkInsertPopup } from './bookmarkInsertPopup.js';
 import {
   getSlashMenuBlocks as _getSlashMenuBlocks,
   getTurnIntoBlocks as _getTurnIntoBlocks,
@@ -71,6 +74,15 @@ export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICON
 
 export { buildSlashMenuItems } from './slashMenuItems.js';
 export type { SlashMenuItem, SlashBlockDef } from './slashMenuItems.js';
+
+// ── Popup Insert Helpers (menu-child gate) ───────────────────────────────────
+// Popup files are menu-layer children.  Re-export them so no file outside the
+// menu layer needs to import them directly.  canvasMenuRegistry also injects
+// them into InsertActionContext at runtime (see executeBlockInsert).
+
+export { showImageInsertPopup as showImageInsertPopup } from './imageInsertPopup.js';
+export { showMediaInsertPopup as showMediaInsertPopup } from './mediaInsertPopup.js';
+export { showBookmarkInsertPopup as showBookmarkInsertPopup } from './bookmarkInsertPopup.js';
 
 // ── Menu contract ───────────────────────────────────────────────────────────
 
@@ -392,7 +404,15 @@ export class CanvasMenuRegistry {
     if (!def) return;
 
     if (def.insertAction) {
-      await def.insertAction(editor, range, context);
+      // Augment context with popup helpers so insertAction callbacks
+      // access them without blockRegistry importing popup files directly.
+      const fullContext: _InsertActionContext = {
+        ...context,
+        showImageInsertPopup: _showImageInsertPopup,
+        showMediaInsertPopup: _showMediaInsertPopup,
+        showBookmarkInsertPopup: _showBookmarkInsertPopup,
+      };
+      await def.insertAction(editor, range, fullContext);
     } else if (def.defaultContent) {
       editor.chain().insertContentAt(range, def.defaultContent).focus().run();
     }

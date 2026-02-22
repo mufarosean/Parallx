@@ -37,9 +37,8 @@ import type { ICanvasDataService } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
 
 // Popup insertion helpers (block-owned insertion UI)
-import { showImageInsertPopup } from '../menus/imageInsertPopup.js';
-import { showMediaInsertPopup } from '../menus/mediaInsertPopup.js';
-import { showBookmarkInsertPopup } from '../menus/bookmarkInsertPopup.js';
+// These are provided at runtime through InsertActionContext by canvasMenuRegistry.
+// blockRegistry does NOT import popup files directly — they are menu-layer children.
 
 // ── EditorExtensionContext ──────────────────────────────────────────────────
 // Runtime dependencies passed to extension factories that need configuration.
@@ -70,6 +69,12 @@ export interface InsertActionContext {
   readonly pageId?: string;
   readonly dataService?: ICanvasDataService;
   readonly openEditor?: OpenEditorFn;
+  /** Show the image upload/embed popup (provided by CanvasMenuRegistry). */
+  readonly showImageInsertPopup?: (editor: Editor, range: { from: number; to: number }) => void;
+  /** Show the media upload/embed popup (provided by CanvasMenuRegistry). */
+  readonly showMediaInsertPopup?: (editor: Editor, range: { from: number; to: number }, kind: 'video' | 'audio' | 'fileAttachment') => void;
+  /** Show the bookmark URL input popup (provided by CanvasMenuRegistry). */
+  readonly showBookmarkInsertPopup?: (editor: Editor, range: { from: number; to: number }) => void;
 }
 
 // ── BlockDefinition Interface ───────────────────────────────────────────────
@@ -411,7 +416,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Upload or embed an image', order: 30, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined,
-    insertAction: (editor, range) => showImageInsertPopup(editor, range),
+    insertAction: (_editor, range, context) => context.showImageInsertPopup?.(_editor, range),
     extension: () => Image.configure({ inline: false, allowBase64: true }),
   },
   {
@@ -677,7 +682,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Link preview card', order: 70, category: 'advanced' },
     turnInto: undefined,
     defaultContent: undefined,
-    insertAction: (editor, range) => showBookmarkInsertPopup(editor, range),
+    insertAction: (_editor, range, context) => context.showBookmarkInsertPopup?.(_editor, range),
     extension: () => Bookmark,
   },
   {
@@ -791,7 +796,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Embed a video', order: 31, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined,
-    insertAction: (editor, range) => showMediaInsertPopup(editor, range, 'video'),
+    insertAction: (_editor, range, context) => context.showMediaInsertPopup?.(_editor, range, 'video'),
     extension: () => Video,
   },
   {
@@ -805,7 +810,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Embed audio', order: 32, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined,
-    insertAction: (editor, range) => showMediaInsertPopup(editor, range, 'audio'),
+    insertAction: (_editor, range, context) => context.showMediaInsertPopup?.(_editor, range, 'audio'),
     extension: () => Audio,
   },
   {
@@ -819,7 +824,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Attach a file', order: 33, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined,
-    insertAction: (editor, range) => showMediaInsertPopup(editor, range, 'fileAttachment'),
+    insertAction: (_editor, range, context) => context.showMediaInsertPopup?.(_editor, range, 'fileAttachment'),
     extension: () => FileAttachment,
   },
 
