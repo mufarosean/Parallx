@@ -3,7 +3,7 @@
 > **Branch:** `bsr-interaction-gaps`  
 > **Parent:** `canvas-v2` @ `2175405`  
 > **Date:** 2026-02-22  
-> **Status:** Phases 1–3 complete; Phase 4 (column logic hardening) in progress  
+> **Status:** All phases complete — 13 commits, 20 files changed, 231 tests passing  
 
 ## Commits
 
@@ -15,6 +15,12 @@
 | — | `e22bd97` | Remove micro-drag suppression (drag handle fix) |
 | — | `0e6974f` | Menu flicker fix (interaction lock only in dragstart) |
 | — | `925ba6e` | Click recovery for tremor-drags |
+| 4 | `b7ede89` | Stale hover + action-pos revalidation (column logic hardening) |
+| — | `b9522dd` | Handle mousedown blur prevention (preventDefault) |
+| — | `82faf94` | Wire UniqueID extension (28 block types) |
+| — | `2e95b1c` | Prevent column nodes from resolving as handle targets |
+| — | `31daccd` | Replace column dissolution cascade with empty-paragraph backfill |
+| — | `f06f23a` | Restore drag: replace mousedown preventDefault with interaction lock |
 
 ## Gap Audit Summary
 
@@ -299,3 +305,77 @@ In `_onDragHandleMouseDown`, add `e.preventDefault()`:
 - Manual: type in a block, then click drag handle → menu appears without flicker,
   cursor does not jump
 - Manual: drag a block via handle → block moves correctly (dragstart not suppressed)
+
+---
+
+## Post-Phase-4 Fixes
+
+### UniqueID Extension (`82faf94`)
+
+Wired Tiptap's `UniqueID` extension into the canvas editor. Generates stable `data-id`
+attributes on all 28 block types at creation time. This is the foundation for future
+features that need persistent block identity (cross-page references, collaboration
+cursors, undo/redo targeting).
+
+**Files:** `tiptapExtensions.ts` (+54 lines), `package.json` (+1 dep: `@tiptap/extension-unique-id`)
+
+### Column Handle Resolution Fix (`2e95b1c`)
+
+**Problem:** `_resolveBlockFromHandle()` could resolve `columnList` or `column` nodes
+as drag handle targets. These structural nodes should never be directly targeted —
+operations on them break the column layout invariant.
+
+**Fix:** Added early return `null` for `columnList` and `column` node types in
+`_resolveBlockFromHandle()` in `blockHandles.ts`.
+
+### Delete Cascade Fix (`31daccd`)
+
+**Problem:** `cleanupEmptyColumn` (called by `deleteBlockAt` after Phase 1) dissolved
+entire column layouts when a column became empty. The function was designed for
+post-drag cleanup where dissolution is correct, but after a simple block delete the
+user expects the column structure to remain with an empty paragraph.
+
+**Fix:** Replaced `cleanupEmptyColumn` calls in `deleteBlockAt` with empty-paragraph
+backfill: when a column becomes empty after delete, insert a default paragraph node
+instead of dissolving the layout. In `blockLifecycle.ts`, the column-cleanup path now
+calls `tr.replaceWith(colStart, colEnd, schema.nodes.paragraph.create())`.
+
+### Drag Regression Fix (`f06f23a`)
+
+**Problem:** Commit `b9522dd` added `e.preventDefault()` on handle mousedown to stop
+ProseMirror blur (which caused menu flicker). However, in Electron/Chromium,
+`preventDefault()` on mousedown **does** suppress the subsequent `dragstart` event —
+contrary to web-only Chromium behavior. Blocks could no longer be dragged.
+
+**Root cause chain:**
+1. `b9522dd` mousedown `preventDefault()` → suppresses `dragstart` in Electron
+2. `dragstart` never fires → `_onDragHandleDragStart` never executes
+3. No drag data set → no visual drag → drop never fires
+
+**Fix (three-part):**
+1. **`blockHandles.ts`**: Replaced `e.preventDefault()` with an interaction lock flag
+   (`_interactionLocked = true`, cleared after 200ms). This allows `dragstart` to fire
+   normally while still signaling that focus-loss is intentional.
+2. **`canvasMenuRegistry.ts`**: Outside-click handler (`_onOutsidePointerDown`) returns
+   early during interaction lock — prevents immediate menu teardown.
+3. **`canvasEditorProvider.ts`**: `onBlur` timer checks `isInteractionLocked()` before
+   calling `hideAll()` — prevents delayed blur from killing menus.
+
+**Result:** Drag works, menus don't flicker on handle click, blur doesn't cause false
+menu teardown.
+
+---
+
+## Branch Summary
+
+| Metric | Value |
+|--------|-------|
+| Branch | `bsr-interaction-gaps` |
+| Parent | `canvas-v2` @ `2175405` |
+| Commits | 13 |
+| Files changed | 20 |
+| Insertions | 1,316 |
+| Deletions | 64 |
+| New files | `blockNesting.ts`, `blockMarquee.ts`, `BSR_INTERACTION_GAP_PLAN.md` |
+| Tests | 231 passing |
+| Build | Clean (118ms) |
