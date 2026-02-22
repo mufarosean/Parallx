@@ -101,6 +101,7 @@ const GATE_RULES: Record<string, string[]> = {
   'config/blockStateRegistry/columnCreation.ts':      ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/columnInvariants.ts':    ['config/blockStateRegistry/blockStateRegistry'],  // PAGE_CONTAINERS via resolveBlockAncestry
   'config/blockStateRegistry/crossPageMovement.ts':   ['config/blockStateRegistry/blockStateRegistry'],
+  'config/blockStateRegistry/blockNesting.ts':         ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/dragSession.ts':         [],  // zero canvas imports
 
   // Plugins are BlockStateRegistry children (imported through its barrel)

@@ -24,6 +24,7 @@ export * from './dragSession.js';
 export * from './blockLifecycle.js';
 export * from './blockTransforms.js';
 export * from './blockMovement.js';
+export * from './blockNesting.js';
 export * from './crossPageMovement.js';
 
 // ── Column plugins (block-state concerns: resize, drop, auto-dissolve) ──
