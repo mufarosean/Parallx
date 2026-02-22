@@ -5,21 +5,61 @@
 // move content into the linked page.
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import { PAGE_ICON_IDS, resolvePageIcon, svgIcon } from '../canvasIcons.js';
-import { IconPicker } from '../../../ui/iconPicker.js';
-import { layoutPopup } from '../../../ui/dom.js';
-import type { CanvasDataService } from '../canvasDataService.js';
-import { deleteDraggedSourceFromTransaction } from '../mutations/blockMutations.js';
 import {
+  resolvePageIcon,
+  svgIcon,
   CANVAS_BLOCK_DRAG_MIME,
-  clearActiveCanvasDragSession,
   getActiveCanvasDragSession,
-} from '../dnd/dragSession.js';
+  moveBlockToLinkedPage,
+} from '../config/blockRegistry.js';
+import { layoutPopup } from '../../../ui/dom.js';
+
+// ── Local narrow types ──────────────────────────────────────────────────────
+// pageBlockNode is a child of blockRegistry and receives all dependencies
+// through it.  It defines its own narrow shapes for the page data it needs
+// rather than importing shared types from canvasTypes.ts.
+// The full IPage / PageChangeEvent / ICanvasDataService structurally satisfy
+// these — TypeScript structural typing handles compatibility automatically.
+
+/** Narrow page shape — only the fields pageBlockNode reads. */
+export interface IPageBlockPage {
+  readonly id: string;
+  readonly title: string;
+  readonly icon: string | null;
+}
+
+/** Narrow change-event shape — only the fields pageBlockNode reads. */
+export interface IPageBlockChangeEvent {
+  readonly pageId: string;
+  readonly page?: IPageBlockPage;
+}
+
+export interface IPageBlockDataAccess {
+  getPage(pageId: string): Promise<IPageBlockPage | null>;
+  updatePage(pageId: string, updates: { icon?: string | null }): Promise<IPageBlockPage>;
+  decodePageContentForEditor(page: IPageBlockPage): Promise<{ doc: any; recovered: boolean }>;
+  moveBlocksBetweenPagesAtomic(params: {
+    sourcePageId: string;
+    targetPageId: string;
+    sourceDoc: any;
+    appendedNodes: any[];
+  }): Promise<{ sourcePage: IPageBlockPage; targetPage: IPageBlockPage }>;
+  appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<IPageBlockPage>;
+  readonly onDidChangePage: (listener: (e: IPageBlockChangeEvent) => void) => { dispose(): void };
+}
 
 export interface PageBlockOptions {
-  readonly dataService?: CanvasDataService;
+  readonly dataService?: IPageBlockDataAccess;
   readonly currentPageId?: string;
   readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
+  readonly showIconPicker?: (options: {
+    anchor: HTMLElement;
+    showSearch?: boolean;
+    showRemove?: boolean;
+    iconSize?: number;
+    onSelect: (iconId: string) => void;
+    onRemove?: () => void;
+  }) => void;
 }
 
 function collectPreviewText(node: any, parts: string[], limit = 220): void {
@@ -56,6 +96,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
       dataService: undefined,
       currentPageId: undefined,
       openEditor: undefined,
+      showIconPicker: undefined,
     };
   },
 
@@ -88,7 +129,6 @@ export const PageBlock = Node.create<PageBlockOptions>({
       let resolvedTitle = attrs.title || 'Untitled';
       let resolvedIcon: string | null = attrs.icon ?? null;
       let previewPopup: HTMLElement | null = null;
-      let iconPicker: IconPicker | null = null;
       let previewTimer: ReturnType<typeof setTimeout> | null = null;
       let hidePreviewTimer: ReturnType<typeof setTimeout> | null = null;
       let loadingPreview = 0;
@@ -124,13 +164,6 @@ export const PageBlock = Node.create<PageBlockOptions>({
         if (previewPopup) {
           previewPopup.remove();
           previewPopup = null;
-        }
-      };
-
-      const closeIconPicker = () => {
-        if (iconPicker) {
-          iconPicker.dismiss();
-          iconPicker = null;
         }
       };
 
@@ -184,53 +217,40 @@ export const PageBlock = Node.create<PageBlockOptions>({
       };
 
       const showIconPicker = () => {
-        if (iconPicker) {
-          closeIconPicker();
-          return;
-        }
         closePreview();
-
-        iconPicker = new IconPicker(document.body, {
+        this.options.showIconPicker?.({
           anchor: dom,
-          icons: PAGE_ICON_IDS,
-          renderIcon: (id, _size) => svgIcon(id),
           showSearch: false,
           showRemove: true,
           iconSize: 18,
-        });
-
-        iconPicker.onDidSelectIcon((iconId) => {
-          const pageId = attrs.pageId;
-          if (pageId && dataService) {
-            void (async () => {
-              await dataService.updatePage(pageId, { icon: iconId });
-              resolvedIcon = iconId;
-              render();
-              updateAttributes({ icon: iconId });
-            })();
-          }
-        });
-
-        iconPicker.onDidRemoveIcon(() => {
-          const pageId = attrs.pageId;
-          if (pageId && dataService) {
-            void (async () => {
-              await dataService.updatePage(pageId, { icon: null });
-              resolvedIcon = null;
-              render();
-              updateAttributes({ icon: null });
-            })();
-          }
-        });
-
-        iconPicker.onDidDismiss(() => {
-          iconPicker = null;
+          onSelect: (iconId) => {
+            const pageId = attrs.pageId;
+            if (pageId && dataService) {
+              void (async () => {
+                await dataService.updatePage(pageId, { icon: iconId });
+                resolvedIcon = iconId;
+                render();
+                updateAttributes({ icon: iconId });
+              })();
+            }
+          },
+          onRemove: () => {
+            const pageId = attrs.pageId;
+            if (pageId && dataService) {
+              void (async () => {
+                await dataService.updatePage(pageId, { icon: null });
+                resolvedIcon = null;
+                render();
+                updateAttributes({ icon: null });
+              })();
+            }
+          },
         });
       };
 
       const showPreview = async () => {
         const pageId = attrs.pageId;
-        if (!pageId || !dataService || iconPicker) return;
+        if (!pageId || !dataService) return;
 
         loadingPreview += 1;
         const token = loadingPreview;
@@ -366,94 +386,20 @@ export const PageBlock = Node.create<PageBlockOptions>({
       });
 
       dom.addEventListener('drop', (event) => {
-        const dragging = editor.view.dragging;
-        const dragSession = getActiveCanvasDragSession();
-        const rawPayload = event.dataTransfer?.getData(CANVAS_BLOCK_DRAG_MIME) ?? '';
-
-        let payload: { sourcePageId?: string; from?: number; to?: number; nodes?: any[] } | null = null;
-        if (rawPayload) {
-          try {
-            payload = JSON.parse(rawPayload);
-          } catch {
-            payload = null;
-          }
-        }
-
+        dom.classList.remove('canvas-page-block--drop-target');
         const pageId = attrs.pageId;
-        if ((!dragging?.slice && !dragSession && !payload) || !pageId || !dataService) return;
-        if (this.options.currentPageId && pageId === this.options.currentPageId) return;
-
+        if (!pageId || !dataService || !this.options.currentPageId) return;
+        if (pageId === this.options.currentPageId) return;
         event.preventDefault();
         event.stopPropagation();
-        dom.classList.remove('canvas-page-block--drop-target');
         suppressOpenUntil = Date.now() + 350;
-
-        let draggedJson: any[] = [];
-        if (dragging?.slice) {
-          const slice = dragging.slice;
-          if (slice.openStart > 0 || slice.openEnd > 0 || slice.content.childCount === 0) return;
-          const fromSlice = slice.content.toJSON();
-          if (!Array.isArray(fromSlice) || fromSlice.length === 0) return;
-          draggedJson = fromSlice;
-        } else if (payload
-          && payload.sourcePageId === (this.options.currentPageId ?? '')
-          && Array.isArray(payload.nodes)
-          && payload.nodes.length > 0) {
-          draggedJson = payload.nodes;
-        } else if (dragSession && dragSession.sourcePageId === (this.options.currentPageId ?? '')) {
-          draggedJson = dragSession.nodes;
-          if (!Array.isArray(draggedJson) || draggedJson.length === 0) return;
-        } else {
-          return;
-        }
-
-        const shouldDeleteSource = !event.altKey;
-        const dragFrom = typeof (dragging as any)?.from === 'number'
-          ? (dragging as any).from
-          : typeof payload?.from === 'number'
-            ? payload.from
-          : typeof dragSession?.from === 'number'
-            ? dragSession.from
-          : editor.state.selection.from;
-        const dragTo = typeof (dragging as any)?.to === 'number'
-          ? (dragging as any).to
-          : typeof payload?.to === 'number'
-            ? payload.to
-          : typeof dragSession?.to === 'number'
-            ? dragSession.to
-          : editor.state.selection.to;
-
-        void (async () => {
-          try {
-            if (shouldDeleteSource) {
-              const sourcePageId = this.options.currentPageId;
-              if (!sourcePageId) return;
-
-              const deleteTr = editor.state.tr;
-              deleteTr.setMeta('addToHistory', true);
-              deleteDraggedSourceFromTransaction(deleteTr, dragFrom, dragTo);
-              if (!deleteTr.docChanged) {
-                return;
-              }
-
-              await dataService.moveBlocksBetweenPagesAtomic({
-                sourcePageId,
-                targetPageId: pageId,
-                sourceDoc: deleteTr.doc.toJSON(),
-                appendedNodes: draggedJson,
-              });
-
-              editor.view.dispatch(deleteTr);
-              clearActiveCanvasDragSession();
-              return;
-            }
-
-            await dataService.appendBlocksToPage(pageId, draggedJson);
-            clearActiveCanvasDragSession();
-          } catch (err) {
-            console.warn('[Canvas] Failed to move dropped block into linked page:', err);
-          }
-        })();
+        void moveBlockToLinkedPage({
+          editor,
+          event,
+          targetPageId: pageId,
+          currentPageId: this.options.currentPageId,
+          dataService,
+        });
       });
 
       const pageListener = dataService?.onDidChangePage((event) => {
@@ -491,7 +437,6 @@ export const PageBlock = Node.create<PageBlockOptions>({
           if (previewTimer) clearTimeout(previewTimer);
           if (hidePreviewTimer) clearTimeout(hidePreviewTimer);
           closePreview();
-          closeIconPicker();
           pageListener?.dispose();
         },
       };

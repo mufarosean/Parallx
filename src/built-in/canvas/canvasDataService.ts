@@ -12,7 +12,10 @@ import { Emitter, Event } from '../../platform/events.js';
 import {
   type IPage,
   type IPageTreeNode,
+  type ICanvasDataService,
   type PageChangeEvent,
+  type PageUpdateData,
+  type CrossPageMoveParams,
   PageChangeKind,
 } from './canvasTypes.js';
 import {
@@ -35,15 +38,6 @@ export interface SaveStateEvent {
   readonly kind: SaveStateKind;
   readonly source: 'debounce' | 'flush' | 'repair';
   readonly error?: string;
-}
-
-interface CrossPageMoveParams {
-  readonly sourcePageId: string;
-  readonly targetPageId: string;
-  readonly sourceDoc: any;
-  readonly appendedNodes: any[];
-  readonly expectedSourceRevision?: number;
-  readonly expectedTargetRevision?: number;
 }
 
 // ─── Database Bridge Type ────────────────────────────────────────────────────
@@ -89,7 +83,7 @@ export function rowToPage(row: Record<string, unknown>): IPage {
  * All database access goes through IPC to the main process. This service
  * provides typed methods, change events, and debounced auto-save.
  */
-export class CanvasDataService extends Disposable {
+export class CanvasDataService extends Disposable implements ICanvasDataService {
 
   // ── Events ──
 
@@ -236,7 +230,7 @@ export class CanvasDataService extends Disposable {
    */
   async updatePage(
     pageId: string,
-    updates: Partial<Pick<IPage, 'title' | 'icon' | 'content' | 'coverUrl' | 'coverYOffset' | 'fontFamily' | 'fullWidth' | 'smallText' | 'isLocked' | 'isFavorited' | 'contentSchemaVersion'>> & { expectedRevision?: number },
+    updates: PageUpdateData,
   ): Promise<IPage> {
     const expectedRevision = updates.expectedRevision;
     const sets: string[] = [];
@@ -322,6 +316,42 @@ export class CanvasDataService extends Disposable {
     this._knownRevisions.set(pageId, page.revision);
     this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page });
     return page;
+  }
+
+  /**
+   * Encode a raw TipTap doc JSON via the content schema and immediately
+   * persist it for the given page, cancelling any pending debounced save.
+   *
+   * This is the single entry point for "encode-and-save" — consumers
+   * never import contentSchema directly.
+   */
+  async flushContentSave(pageId: string, docJson: any): Promise<void> {
+    // Cancel any stale pending/retry saves — this content supersedes them.
+    this._cancelPendingSave(pageId);
+    this._cancelRetry(pageId);
+
+    const encoded = encodeCanvasContentFromDoc(docJson);
+    const expectedRevision = this._knownRevisions.get(pageId);
+
+    this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Flushing, source: 'flush' });
+    try {
+      const page = await this.updatePage(pageId, {
+        content: encoded.storedContent,
+        contentSchemaVersion: encoded.schemaVersion,
+        expectedRevision,
+      });
+      this._knownRevisions.set(pageId, page.revision);
+      this._onDidSavePage.fire(pageId);
+      this._onDidChangeSaveState.fire({ pageId, kind: SaveStateKind.Saved, source: 'flush' });
+    } catch (err) {
+      this._onDidChangeSaveState.fire({
+        pageId,
+        kind: SaveStateKind.Failed,
+        source: 'flush',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
   }
 
   /**

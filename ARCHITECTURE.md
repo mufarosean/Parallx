@@ -5,6 +5,157 @@
 
 ---
 
+## Canvas Registry Gate Architecture
+
+The canvas built-in (`src/built-in/canvas/`) has its own internal dependency structure enforced through **five registries** that act as gates. This architecture was established across 20+ commits to eliminate a tangled dependency graph where files imported freely from each other.
+
+### Core Principle
+
+> **Children talk only to their parent gate. Gates go to the source. No shortcuts.**
+
+A "child" is any file that belongs to a registry's domain (e.g. `slashMenu.ts` is a child of CanvasMenuRegistry). A "gate" is a registry that mediates all imports for its children. Children never reach across to a sibling registry — they get everything they need through their own gate's re-exports.
+
+**Gate-to-gate rule:** When a gate needs something from another gate, it imports from the gate that **owns** the symbol — never through an intermediate gate that merely passes it through. If IconRegistry owns `svgIcon`, HandleRegistry imports from IconRegistry directly, not from BlockRegistry. This eliminates phantom dependencies and keeps the import graph honest.
+
+### The Five Gates
+
+```
+                    ┌──────────────┐
+                    │ canvasIcons  │  (raw SVG data — never imported directly)
+                    └──────┬───────┘
+                           │
+                    ┌──────▼───────┐
+                    │ IconRegistry │  (leaf gate)
+                    └──┬───┬───┬──┘
+                       │   │   │
+          ┌────────────▼─┐ │ ┌─▼──────────────────┐
+          │ BlockRegistry│ │ │ CanvasMenuRegistry │
+          │              │◄─┘ │                    │
+          └──┬───┬──┬───┘   └────┬───┬─────────┘
+             │   │  │             │   │
+     ┌───────┘   │  └───────┐   │   │
+     ▼       ▼   │          ▼   ▼   ▼
+   block   Handle │  BlockState  menu children
+   exts    Registry  Registry   (6+ files)
+   (5)     │     │    │
+           │     │    └── plugins (3)
+    ┌──────▼──────┐  │
+    │ handle kids │  │    BSR children
+    │ (2 files)   │  │    (7 files)
+    └─────────────┘  │
+                     │
+   HandleRegistry, CanvasMenuRegistry also import from
+   IconRegistry and BlockStateRegistry directly (go to source).
+```
+
+### 1. IconRegistry (`config/iconRegistry.ts`)
+
+**Role:** Single gate for all icon/SVG access. Only file that imports `canvasIcons.ts`.
+
+**Exports:** `svgIcon()`, `createIconElement()`, `resolvePageIcon()`, `PAGE_SELECTABLE_ICONS`, `ALL_ICON_IDS`, `isBlockIconSelectable()`
+
+**Consumers:** Only four — BlockRegistry, CanvasMenuRegistry, HandleRegistry, and any future gate that needs icon functions. Each imports directly from IconRegistry (the source owner).
+
+### 2. BlockRegistry (`config/blockRegistry.ts`)
+
+**Role:** Single source of truth for block metadata, capabilities, and extension factories.
+
+**Re-exports from IconRegistry:** `svgIcon`, `resolvePageIcon`, `createIconElement` (for its children)
+
+**Re-exports from BlockStateRegistry:** All mutation/movement/column/drag-session exports, 30+ symbols (for its children)
+
+**Re-exports from header/pageChrome:** `PageChromeController` (for canvasEditorProvider — the orchestrator)
+
+**Own API:** `BLOCK_REGISTRY`, `BlockDefinition`, `PAGE_CONTAINERS`, `COLUMN_CONTENT_EXPRESSION`, `getBlockExtensions()`, `getSlashMenuBlocks()`, `getTurnIntoBlocks()`, `getBlockLabel()`, `getBlockByName()`, `isContainerBlockType()`, `getNodePlaceholder()`, `createEditorExtensions()`
+
+**Children (8 files):**
+- Block extensions: `calloutNode`, `columnNodes`, `mediaNodes`, `bookmarkNode`, `pageBlockNode`
+- Chrome/sidebar: `pageChrome`, `canvasSidebar`
+- Assembly: `tiptapExtensions`
+
+### 3. CanvasMenuRegistry (`menus/canvasMenuRegistry.ts`)
+
+**Role:** Centralized menu lifecycle — mutual exclusion, outside-click dismissal, interaction arbitration, block-data access for menus.
+
+**Re-exports from BlockStateRegistry (source owner):** `applyBackgroundColorToBlock`, `applyTextColorToBlock`, `deleteBlockAt`, `duplicateBlockAt`, `turnBlockWithSharedStrategy` (for its children)
+
+**Re-exports from BlockRegistry (source owner):** `InsertActionContext`, `InsertActionBaseContext`, `getSlashMenuBlocks`, `getTurnIntoBlocks`, `getBlockLabel`, `getBlockByName`, `BLOCK_REGISTRY`
+
+**Re-exports from IconRegistry (source owner):** `svgIcon`, `PAGE_SELECTABLE_ICONS`
+
+**Own API:** `ICanvasMenu`, `IBlockActionMenu`, `MenuBlockInfo`, `CanvasMenuRegistry` class
+
+**Children (6+ files):** `slashMenu`, `bubbleMenu`, `blockActionMenu`, `iconMenu`, `coverMenu`, `inlineMathEditor`, `imageInsertPopup`, `mediaInsertPopup`, `bookmarkInsertPopup`
+
+No menu child imports from BlockRegistry directly — they get everything through CanvasMenuRegistry.
+
+### 4. BlockStateRegistry (`config/blockStateRegistry/blockStateRegistry.ts`)
+
+**Role:** Two-way gate facade for block mutations, movements, column operations, and drag state. Decomposed from a single 718-line `blockMutations.ts` into 8 focused child modules.
+
+**Inward gate (from BlockRegistry → children):** `PAGE_CONTAINERS`, `isContainerBlockType`
+
+**Outward gate (from children → BlockRegistry):** All exports from `blockLifecycle`, `blockTransforms`, `blockMovement`, `columnCreation`, `columnInvariants`, `crossPageMovement`, `dragSession`, plus column/resize plugins.
+
+**Internal children (8 files):**
+- `blockLifecycle.ts` — create, destroy, restyle
+- `blockTransforms.ts` — turn-into type conversions
+- `blockMovement.ts` — keyboard + DnD positional changes
+- `columnCreation.ts` — column layout assembly
+- `columnInvariants.ts` — structural rules (empty-check, normalize, dissolve)
+- `crossPageMovement.ts` — async cross-page block transfer
+- `dragSession.ts` — shared drag state channel
+- `blockStateRegistry.ts` — two-way gate facade
+
+Children import from `blockStateRegistry.ts` (their gate), never from `blockRegistry.ts` or each other directly.
+
+### 5. HandleRegistry (`handles/handleRegistry.ts`)
+
+**Role:** Gate for block-handle interaction controllers. Mediates imports so handle children never reach into other registries directly.
+
+**Re-exports from BlockRegistry (source owner):** `PAGE_CONTAINERS`, `isContainerBlockType`
+
+**Re-exports from IconRegistry (source owner):** `svgIcon`
+
+**Re-exports from BlockStateRegistry (source owner):** `CANVAS_BLOCK_DRAG_MIME`, `clearActiveCanvasDragSession`, `setActiveCanvasDragSession`
+
+**Re-exports from CanvasMenuRegistry (source owner):** `IBlockActionMenu`
+
+**Children (2 files):** `blockHandles`, `blockSelection`
+
+Handle children import from `handleRegistry.ts` only — never from blockRegistry, canvasMenuRegistry, or each other's paths directly.
+
+### Gate-to-Gate Import Edges (enforced by compliance test)
+
+| Gate | Imports from | Why |
+|------|-------------|-----|
+| **IconRegistry** | (none) | Leaf gate — all icons originate here |
+| **BlockRegistry** | IconRegistry, BlockStateRegistry | Re-exports icons and mutations for its children |
+| **CanvasMenuRegistry** | BlockRegistry, IconRegistry, BlockStateRegistry | Block data from owner, icons from owner, mutations from owner |
+| **BlockStateRegistry** | BlockRegistry | Inward gate: `PAGE_CONTAINERS`, `isContainerBlockType` |
+| **HandleRegistry** | BlockRegistry, IconRegistry, BlockStateRegistry, CanvasMenuRegistry | Each symbol from its source owner |
+
+### Gate Isolation Invariants
+
+These invariants are **absolute** — violations break the architecture:
+
+| Invariant | Description |
+|-----------|-------------|
+| **Icon gate** | No non-registry file imports from `iconRegistry.ts`. Icons flow through parent gates. Peer gates import from IconRegistry directly (source owner). |
+| **Menu gate** | No menu child imports from `blockRegistry.ts`. All block data (labels, definitions, mutations) flows through CanvasMenuRegistry. |
+| **Extension gate** | No block extension imports from `canvasMenuRegistry.ts`. Extensions get everything from BlockRegistry. |
+| **Go to source** | Gate-to-gate imports target the gate that **owns** the symbol. No intermediate pass-throughs. Enforced by `gateCompliance.test.ts`. |
+| **No cycles** | Gate-to-gate graph must be acyclic, with one permitted exception: BlockRegistry ↔ BlockStateRegistry (safe `export { } from` live re-exports only, no evaluation-time reads). Enforced by a dedicated cycle safety test. |
+| **State gate** | No BlockStateRegistry child imports from `blockRegistry.ts` directly. Dependencies flow inward through `blockStateRegistry.ts`. |
+| **Handle gate** | No handle child imports from `blockRegistry.ts` or `canvasMenuRegistry.ts`. Dependencies flow through HandleRegistry. |
+| **No cross-reach** | Children never import across registries. A menu file cannot import from a block extension file, and vice versa. |
+
+### Why This Matters
+
+The circular dependency that broke column editing (`978539d`) was caused by exactly this kind of cross-reach: `blockRegistry → columnNodes → blockCapabilities → blockRegistry`. The gate architecture prevents this class of bug entirely — every dependency is mediated by a gate, every gate has a clear direction, and esbuild's IIFE bundling order becomes irrelevant because gates defer reads to runtime.
+
+---
+
 ## Module Responsibilities
 
 ### `platform/`

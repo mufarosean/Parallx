@@ -6,12 +6,17 @@
 
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
-import { svgIcon } from '../canvasIcons.js';
-import type { SlashMenuItem } from './slashMenuItems.js';
-import type { SlashActionContext } from './slashMenuItems.js';
-import { SLASH_MENU_ITEMS } from './slashMenuItems.js';
-import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
-import type { CanvasDataService } from '../canvasDataService.js';
+import {
+  svgIcon,
+  buildSlashMenuItems,
+} from './canvasMenuRegistry.js';
+import type {
+  SlashMenuItem,
+  ICanvasMenu,
+  InsertActionBaseContext,
+} from './canvasMenuRegistry.js';
+import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
+import type { IDisposable } from '../../../platform/lifecycle.js';
 
 // ── Dependency interface ────────────────────────────────────────────────────
 
@@ -19,10 +24,9 @@ export interface SlashMenuHost {
   readonly editor: Editor | null;
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
-  readonly inlineMath: InlineMathEditorController;
-  readonly dataService?: CanvasDataService;
+  readonly dataService?: InsertActionBaseContext['dataService'];
   readonly pageId?: string;
-  readonly openEditor?: (options: { typeId: string; title: string; icon?: string; instanceId?: string }) => Promise<void>;
+  readonly openEditor?: InsertActionBaseContext['openEditor'];
   requestSave(reason: string): void;
   /** Toggle the suppress-update flag to prevent re-entrant slash checks. */
   suppressUpdate: boolean;
@@ -30,13 +34,19 @@ export interface SlashMenuHost {
 
 // ── Controller ──────────────────────────────────────────────────────────────
 
-export class SlashMenuController {
+export class SlashMenuController implements ICanvasMenu {
+  readonly id = 'slash-menu';
   private _menu: HTMLElement | null = null;
   private _visible = false;
   private _filterText = '';
   private _selectedIndex = 0;
+  private _registration: IDisposable | null = null;
+  private _slashItems: SlashMenuItem[] | null = null;
 
-  constructor(private readonly _host: SlashMenuHost) {}
+  constructor(
+    private readonly _host: SlashMenuHost,
+    private readonly _registry: CanvasMenuRegistry,
+  ) {}
 
   /** The menu element (for DOM identity checks). */
   get menu(): HTMLElement | null { return this._menu; }
@@ -44,16 +54,22 @@ export class SlashMenuController {
   /** Whether the slash menu is currently visible. */
   get visible(): boolean { return this._visible; }
 
+  /** DOM containment check for centralized outside-click handling. */
+  containsTarget(target: Node): boolean {
+    return this._menu?.contains(target) ?? false;
+  }
+
   /** Build the hidden slash menu DOM and attach it to the container. */
   create(): void {
     this._menu = $('div.canvas-slash-menu');
     this._menu.style.display = 'none';
     document.body.appendChild(this._menu);
+    this._registration = this._registry.register(this);
   }
 
-  /** Called on every editor update — check if the user typed '/'. */
-  checkTrigger(editor: Editor): void {
-    if (this._isInteractionArbitrationLocked(editor)) {
+  /** ICanvasMenu lifecycle — called on every editor transaction. */
+  onTransaction(editor: Editor): void {
+    if (this._registry.isInteractionLocked()) {
       this.hide();
       return;
     }
@@ -83,17 +99,6 @@ export class SlashMenuController {
     }
   }
 
-  private _isInteractionArbitrationLocked(editor: Editor): boolean {
-    const body = document.body;
-    if (body.classList.contains('column-resizing')) {
-      return true;
-    }
-    if (editor.view.dom.classList.contains('dragging')) {
-      return true;
-    }
-    return false;
-  }
-
   private _show(editor: Editor): void {
     if (!this._menu) return;
 
@@ -105,6 +110,7 @@ export class SlashMenuController {
 
     this._selectedIndex = 0;
     this._visible = true;
+    this._registry.notifyShow(this.id);
     this._renderItems(filtered, editor);
 
     // Position below cursor
@@ -133,7 +139,7 @@ export class SlashMenuController {
   }
 
   private _getFilteredItems(): SlashMenuItem[] {
-    const items: SlashMenuItem[] = SLASH_MENU_ITEMS;
+    const items = this._slashItems ??= buildSlashMenuItems(this._registry.getSlashMenuBlocks());
 
     if (!this._filterText) return items;
     const q = this._filterText.replace(/[^a-z0-9]/g, '');
@@ -219,7 +225,7 @@ export class SlashMenuController {
   };
 
   private async _execute(item: SlashMenuItem, editor: Editor): Promise<void> {
-    // Suppress onUpdate to prevent checkTrigger from firing mid-execution
+    // Suppress onUpdate to prevent onTransaction from firing mid-execution
     this._host.suppressUpdate = true;
 
     try {
@@ -231,13 +237,14 @@ export class SlashMenuController {
       const blockNode = editor.state.doc.nodeAt(blockPos);
       if (!blockNode) return;
 
-      const context: SlashActionContext = {
+      await this._registry.executeBlockInsert(item.blockId, editor, {
+        from: blockPos,
+        to: blockPos + blockNode.nodeSize,
+      }, {
         pageId: this._host.pageId,
         dataService: this._host.dataService,
         openEditor: this._host.openEditor,
-      };
-
-      await item.action(editor, { from: blockPos, to: blockPos + blockNode.nodeSize }, context);
+      });
     } finally {
       this._host.suppressUpdate = false;
     }
@@ -258,7 +265,7 @@ export class SlashMenuController {
           const pos = ed.view.posAtDOM(lastMath, 0);
           const node = ed.state.doc.nodeAt(pos);
           if (node && node.type.name === 'inlineMath') {
-            this._host.inlineMath.show(pos, node.attrs.latex || '', lastMath);
+            this._registry.showInlineMathEditor(pos, node.attrs.latex || '', lastMath);
           }
         }
       }, 80);
@@ -267,6 +274,8 @@ export class SlashMenuController {
 
   /** Clean up DOM. */
   dispose(): void {
+    this._registration?.dispose();
+    this._registration = null;
     if (this._menu) {
       this._menu.remove();
       this._menu = null;

@@ -3,6 +3,83 @@ description: These instructions provide guidelines for AI to follow when thinkin
 # applyTo: 'Describe when these instructions should be loaded' # when provided, instructions will automatically be added to the request context when the pattern matches an attached file
 ---
 
+## 0. Canvas Registry Gate Architecture (READ FIRST)
+
+The canvas built-in (`src/built-in/canvas/`) enforces a **five-registry gate architecture**. This is the most critical structural rule in the canvas codebase. Full details are in `ARCHITECTURE.md` — this section defines the rules you must follow **before writing any canvas code**.
+
+### Core Principle
+
+> **Children talk only to their parent gate. Gates go to the source. No shortcuts.**
+
+A "child" is any file that belongs to a registry's domain. A "gate" is a registry that mediates all imports for its children. Children never reach across to a sibling registry — they get everything they need through their own gate's re-exports.
+
+**Gate-to-gate rule:** When a gate needs something from another gate, it imports from the gate that **owns** the symbol — never through an intermediate gate that merely passes it through. If IconRegistry owns `svgIcon`, HandleRegistry imports from IconRegistry directly, not from BlockRegistry. This eliminates phantom dependencies and keeps the import graph honest.
+
+### The Five Gates
+
+| Gate | File | Domain |
+|------|------|--------|
+| **IconRegistry** | `config/iconRegistry.ts` | All SVG/icon access |
+| **BlockRegistry** | `config/blockRegistry.ts` | Block metadata, capabilities, extensions |
+| **CanvasMenuRegistry** | `menus/canvasMenuRegistry.ts` | Menu lifecycle, mutual exclusion, block-data access for menus |
+| **BlockStateRegistry** | `config/blockStateRegistry/blockStateRegistry.ts` | Block mutations, movements, column operations, drag state |
+| **HandleRegistry** | `handles/handleRegistry.ts` | Block handle interaction, selection, drag lifecycle |
+
+### Import Rules (mandatory — violations break the architecture)
+
+1. **Block extensions** (`calloutNode`, `columnNodes`, `mediaNodes`, `bookmarkNode`, `pageBlockNode`) import **only from BlockRegistry**. Never from CanvasMenuRegistry, IconRegistry, or BlockStateRegistry.
+2. **Menu children** (`slashMenu`, `bubbleMenu`, `blockActionMenu`, `iconMenu`, `coverMenu`, `inlineMathEditor`, `imageInsertPopup`, `mediaInsertPopup`, `bookmarkInsertPopup`) import **only from CanvasMenuRegistry**. Never from BlockRegistry or IconRegistry directly.
+3. **BlockStateRegistry children** (`blockLifecycle`, `blockTransforms`, `blockMovement`, `columnCreation`, `columnInvariants`, `crossPageMovement`, `dragSession`) import **only from blockStateRegistry.ts** (their facade). Never from BlockRegistry directly.
+4. **Handle children** (`blockHandles`, `blockSelection`) import **only from HandleRegistry**. Never from BlockRegistry or CanvasMenuRegistry directly.
+5. **No child file** imports from `iconRegistry.ts`. Icons are re-exported through each child's parent gate. Peer gates that need icons import from IconRegistry directly.
+6. **No child file imports across registries.** A menu file cannot import from a block extension, and vice versa.
+7. **Gates go to the source** (gate-to-gate). A gate imports from whichever gate actually **owns** the symbol. No pass-through intermediaries. Allowed gate-to-gate edges:
+   - **IconRegistry** → (leaf — no gate deps)
+   - **BlockRegistry** → IconRegistry, BlockStateRegistry
+   - **CanvasMenuRegistry** → BlockRegistry, IconRegistry, BlockStateRegistry
+   - **BlockStateRegistry** → BlockRegistry (inward: `PAGE_CONTAINERS`, `isContainerBlockType`)
+   - **HandleRegistry** → BlockRegistry, IconRegistry, BlockStateRegistry, CanvasMenuRegistry
+8. **No cycles between gates** — except the one permitted cycle: BlockRegistry ↔ BlockStateRegistry. This cycle is safe because both directions use `export { X } from '...'` live re-export syntax with zero evaluation-time reads. **Never** convert these to `import X; export const Y = X` — that breaks the safety guarantee. The cycle is enforced by a dedicated test in `gateCompliance.test.ts`. No other gate-to-gate cycle is permitted.
+
+### When adding new code
+
+- **New block extension?** It imports from `blockRegistry.ts` only. If it needs something not yet exported, add the export to `blockRegistry.ts`.
+- **New menu?** It imports from `canvasMenuRegistry.ts` only. If it needs block data or icons, add a re-export to `canvasMenuRegistry.ts`.
+- **New mutation/movement logic?** It goes in a `blockStateRegistry/` child file, imports from `blockStateRegistry.ts`, and is re-exported through `blockStateRegistry.ts` → `blockRegistry.ts`.
+- **New handle/interaction feature?** It goes in `handles/`, imports from `handleRegistry.ts` only. If it needs something not yet re-exported, add the re-export to `handleRegistry.ts`.
+- **New icon?** Add to `canvasIcons.ts`, register in `iconRegistry.ts`. Child files access via their parent gate's re-exports. Peer gates import from IconRegistry directly.
+
+### When NOT to create a new gate
+
+Gates have maintenance cost (re-export sync, doc updates, test rules). Only create a new gate when:
+
+1. **A directory has 2+ files** that each import from **2+ different registries**. This is the cross-reach that gates prevent.
+2. **The domain is genuinely distinct** from existing gates. A new menu type goes under CanvasMenuRegistry — it doesn't need its own gate.
+
+Do NOT create a gate for:
+- A single file that imports from exactly one registry (it's already gated by that registry).
+- A pure-leaf file with zero canvas-internal imports (`blockBackground.ts`, `dragSession.ts`).
+- A folder with 1-2 files that all import from the same parent gate.
+
+**Examples of directories that correctly have no gate:**
+- `extensions/` — pure Tiptap extensions, each imports from BlockRegistry only (or nothing).
+- `plugins/` — column plugins gated through BlockStateRegistry.
+- `invariants/` — single file, zero relative imports.
+- `math/` — one file, gated through CanvasMenuRegistry.
+- `header/` — one file, gated through BlockRegistry.
+
+Current ratio: 5 gates / ~50 files = 1:10. If the ratio drops below 1:5, reconsider whether some gates should merge.
+
+### Automated enforcement
+
+The gate architecture is enforced by `tests/unit/gateCompliance.test.ts`. Every canvas `.ts` file must appear in one of three sets: `GATE_FILES`, `EXEMPT_FILES`, or `GATE_RULES`. When adding a new file, add it to the appropriate set — the test will fail if you forget.
+
+### Why this matters
+
+The circular dependency that broke column editing was caused by cross-reach: `blockRegistry → columnNodes → blockCapabilities → blockRegistry`. The gate architecture prevents this class of bug — every dependency is mediated by a gate, every gate has a clear direction, and esbuild's IIFE bundling order becomes irrelevant because no child reads from a registry it isn't gated through.
+
+---
+
 ## Role
 
 You are not a tool, but you are a multifaceted and very experienced software developer, with amazing programming skills, unparalleled reasoning skills, and an amazing ability to think-longterm and plan accordingly. You always think in steps, you always document after each step, and you always go back to check the quality of your work after each step considering the full scope of the project, the vision of the project, and the goal of the task at hand.  You think in steps, document after each step, and verify quality against the full project scope before moving on. You ask clarification questions when needed. You proactively identify issues before they become problems. You always think about how the user will interact with each piece of UI and how it fits into the overall user experience. You are a master of the VS Code codebase and architecture, and you always follow the principle of "never reinvent the wheel" — if VS Code has a proven solution, you adapt it for Parallx rather than inventing a new approach. You are an expert at understanding how to use existing codebases and APIs, and you can quickly adapt them for Parallx's needs. You have a deep understanding of the VS Code architecture and its components, including the extension API, package.json files, and other relevant files. You are an expert at using the VS Code architecture and its components, including the extension API, package.json files, and other relevant files.
@@ -102,3 +179,18 @@ Every `src/ui/` component must:
 - Feature modules (`parts/`, `views/`, `editor/`, `commands/`) may depend on `ui/`.
 
 This mirrors VS Code where `src/vs/base/browser/ui/` depends only on `src/vs/base/`.
+
+---
+
+## 5. Bug Diagnosis Rules
+
+When diagnosing a reported bug:
+
+1. **No code is trusted.** Do not assume any code is correct — including code written earlier in the same session, code that "looks right," or code that passed the build. Every line on the failure path is a suspect until proven innocent by reasoning about real runtime values.
+
+2. **Start at the symptom, work backward through the call chain.** If "drag doesn't work," the first suspect is the dragstart handler — not downstream consumers. Spend 80% of diagnosis time on the nearest code to the failure point. Do not explore tangential systems until the primary path is eliminated.
+
+3. **Simulate runtime values, don't just read logic.** For any conditional/threshold, ask: "What actual numbers will these variables hold when this line executes?" Code that is logically consistent can still fail if its inputs don't match assumptions about browser behavior, timing, or event ordering.
+
+4. **State your ranked suspect list before investigating.** Before reading any code, write a numbered list of most-likely-to-least-likely causes based on the symptom description. Investigate in that order. Do not go wide — go deep on #1 first.
+

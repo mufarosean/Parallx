@@ -6,8 +6,10 @@
 
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
-import { svgIcon } from '../canvasIcons.js';
-import type { InlineMathEditorController } from '../math/inlineMathEditor.js';
+import { svgIcon } from './canvasMenuRegistry.js';
+import type { ICanvasMenu } from './canvasMenuRegistry.js';
+import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
+import type { IDisposable } from '../../../platform/lifecycle.js';
 
 // ── Dependency interface ────────────────────────────────────────────────────
 
@@ -15,16 +17,20 @@ export interface BubbleMenuHost {
   readonly editor: Editor | null;
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
-  readonly inlineMath: InlineMathEditorController;
 }
 
 // ── Controller ──────────────────────────────────────────────────────────────
 
-export class BubbleMenuController {
+export class BubbleMenuController implements ICanvasMenu {
+  readonly id = 'bubble-menu';
   private _menu: HTMLElement | null = null;
   private _linkInput: HTMLElement | null = null;
+  private _registration: IDisposable | null = null;
 
-  constructor(private readonly _host: BubbleMenuHost) {}
+  constructor(
+    private readonly _host: BubbleMenuHost,
+    private readonly _registry: CanvasMenuRegistry,
+  ) {}
 
   /** The menu element (for contains-checks in blur handlers). */
   get menu(): HTMLElement | null { return this._menu; }
@@ -32,6 +38,11 @@ export class BubbleMenuController {
   /** Whether the bubble menu is currently visible. */
   get visible(): boolean {
     return !!this._menu && this._menu.style.display !== 'none';
+  }
+
+  /** DOM containment check for centralized outside-click handling. */
+  containsTarget(target: Node): boolean {
+    return this._menu?.contains(target) ?? false;
   }
 
   /** Build the hidden bubble menu DOM and attach it to the container. */
@@ -97,7 +108,7 @@ export class BubbleMenuController {
             if (!editor) return;
             const mathEl = editor.view.nodeDOM(from) as HTMLElement | null;
             if (mathEl) {
-              this._host.inlineMath.show(from, latex, mathEl);
+              this._registry.showInlineMathEditor(from, latex, mathEl);
             } else {
               // Fallback: find via DOM query
               const allMath = this._host.editorContainer?.querySelectorAll('.tiptap-math.latex');
@@ -106,7 +117,7 @@ export class BubbleMenuController {
                 const pos = editor.view.posAtDOM(lastMath, 0);
                 const node = editor.state.doc.nodeAt(pos);
                 if (node && node.type.name === 'inlineMath') {
-                  this._host.inlineMath.show(pos, node.attrs.latex || '', lastMath);
+                  this._registry.showInlineMathEditor(pos, node.attrs.latex || '', lastMath);
                 }
               }
             }
@@ -182,6 +193,7 @@ export class BubbleMenuController {
     this._menu.appendChild(this._linkInput);
 
     document.body.appendChild(this._menu);
+    this._registration = this._registry.register(this);
   }
 
   private _toggleLinkInput(): void {
@@ -201,11 +213,11 @@ export class BubbleMenuController {
     }
   }
 
-  /** Called on editor selection update — positions and shows/hides the menu. */
-  update(editor: Editor): void {
+  /** ICanvasMenu lifecycle — called on every editor selection change. */
+  onSelectionUpdate(editor: Editor): void {
     if (!this._menu) return;
 
-    if (this._isInteractionArbitrationLocked(editor)) {
+    if (this._registry.isInteractionLocked()) {
       this.hide();
       return;
     }
@@ -216,9 +228,9 @@ export class BubbleMenuController {
       return;
     }
 
-    // Don't show for code blocks or node selections
+    // Don't show for blocks that suppress the bubble menu (e.g. code blocks)
     const { $from } = editor.state.selection;
-    if ($from.parent.type.name === 'codeBlock') {
+    if (this._registry.shouldSuppressBubbleMenu($from.parent.type.name)) {
       this.hide();
       return;
     }
@@ -230,6 +242,7 @@ export class BubbleMenuController {
     const topY = Math.min(start.top, end.top);
 
     this._menu.style.display = 'flex';
+    this._registry.notifyShow(this.id);
 
     // Wait for layout to get accurate width, then position above selection
     requestAnimationFrame(() => {
@@ -245,20 +258,6 @@ export class BubbleMenuController {
     this._refreshActiveStates();
     // Hide link input when selection changes
     if (this._linkInput) this._linkInput.style.display = 'none';
-  }
-
-  private _isInteractionArbitrationLocked(editor: Editor): boolean {
-    const body = document.body;
-    if (body.classList.contains('column-resizing') || body.classList.contains('column-resize-hover')) {
-      return true;
-    }
-    if (body.classList.contains('block-handle-interacting')) {
-      return true;
-    }
-    if (editor.view.dom.classList.contains('dragging')) {
-      return true;
-    }
-    return false;
   }
 
   private _refreshActiveStates(): void {
@@ -291,6 +290,8 @@ export class BubbleMenuController {
 
   /** Clean up DOM. */
   dispose(): void {
+    this._registration?.dispose();
+    this._registration = null;
     if (this._menu) {
       this._menu.remove();
       this._menu = null;

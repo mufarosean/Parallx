@@ -1,30 +1,27 @@
-// blockHandles.ts — Block Handles controller (+ button, drag-handle click, block action menu)
+﻿// blockHandles.ts — Block Handles controller (+ button, drag handle, block resolution)
 //
 // Extracted from canvasEditorProvider.ts monolith.  Encapsulates:
 //   • + button creation & positioning alongside the GlobalDragHandle
 //   • MutationObserver that tracks drag-handle style/class changes
 //   • Block resolution from handle position (DOM → ProseMirror mapping)
-//   • Block Action Menu (turn-into, color, duplicate, delete)
-//   • Turn-Into submenu with 12 block types
-//   • Color submenu (10 text colours + 10 background colours)
+//   • Drag lifecycle (dragstart, dragend, interaction lock)
+//
+// The Block Action Menu (turn-into, color, duplicate, delete) lives in
+// menus/blockActionMenu.ts — this controller delegates to it via show/hide.
 
 import type { Editor } from '@tiptap/core';
-import { NodeSelection } from '@tiptap/pm/state';
-import type { BlockSelectionController } from './blockSelection.js';
-import { $, layoutPopup } from '../../../ui/dom.js';
-import { svgIcon } from '../canvasIcons.js';
+import { Fragment, Slice } from '@tiptap/pm/model';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import type { BlockSelectionController } from './handleRegistry.js';
+import type { IBlockActionMenu } from './handleRegistry.js';
 import {
+  svgIcon,
   CANVAS_BLOCK_DRAG_MIME,
   clearActiveCanvasDragSession,
   setActiveCanvasDragSession,
-} from '../dnd/dragSession.js';
-import {
-  applyBackgroundColorToBlock,
-  applyTextColorToBlock,
-  deleteBlockAt,
-  duplicateBlockAt,
-  turnBlockWithSharedStrategy,
-} from '../mutations/blockMutations.js';
+  PAGE_CONTAINERS,
+  isContainerBlockType,
+} from './handleRegistry.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
 
@@ -41,27 +38,36 @@ export interface BlockHandlesHost {
 export class BlockHandlesController {
   // DOM elements
   private _blockAddBtn: HTMLElement | null = null;
-  private _blockActionMenu: HTMLElement | null = null;
-  private _turnIntoSubmenu: HTMLElement | null = null;
-  private _colorSubmenu: HTMLElement | null = null;
   private _dragHandleEl: HTMLElement | null = null;
 
   // Timers
-  private _turnIntoHideTimer: ReturnType<typeof setTimeout> | null = null;
-  private _colorHideTimer: ReturnType<typeof setTimeout> | null = null;
   private _interactionReleaseTimer: ReturnType<typeof setTimeout> | null = null;
+  private _handleAreaLeaveTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Observer
   private _handleObserver: MutationObserver | null = null;
 
-  // Action target
-  private _actionBlockPos: number = -1;
-  private _actionBlockNode: any = null;
+  // Pointer tracking
   private _lastHoverElement: HTMLElement | null = null;
   private _lastPointerClient: { x: number; y: number } | null = null;
   private _scrollSyncRaf: number | null = null;
 
-  constructor(private readonly _host: BlockHandlesHost) {}
+  // Drag-vs-click recovery
+  // On `draggable="true"` elements the browser fires dragstart after ~2-4 px
+  // of mouse movement (hand tremor).  Once dragstart fires, the browser
+  // suppresses the click event entirely — so our _onDragHandleClick never
+  // runs.  We record the mousedown origin so that dragend can detect these
+  // tremor-drags (short time + short distance) and synthetically invoke the
+  // click logic that the browser ate.
+  private _dragMouseDownPos: { x: number; y: number } | null = null;
+  private _dragMouseDownTime = 0;
+  private static readonly _CLICK_TIME_MS = 200;   // ms — clicks are faster
+  private static readonly _CLICK_DIST_PX = 8;     // px — tremor is small
+
+  constructor(
+    private readonly _host: BlockHandlesHost,
+    private readonly _actionMenu: IBlockActionMenu,
+  ) {}
 
   // ── Setup ───────────────────────────────────────────────────────────────
 
@@ -89,7 +95,7 @@ export class BlockHandlesController {
       if (this._isResizeInteractionActive()) {
         this._blockAddBtn.classList.add('hide');
         if (this._isColumnResizing()) {
-          this._hideBlockActionMenu();
+          this._actionMenu.hide();
         }
         return;
       }
@@ -109,6 +115,12 @@ export class BlockHandlesController {
       attributes: true,
       attributeFilter: ['style', 'class'],
     });
+
+    // ── Handle-area hover (keep both + and ⠿ visible together) ──
+    this._blockAddBtn.addEventListener('mouseenter', this._onHandleAreaEnter);
+    this._blockAddBtn.addEventListener('mouseleave', this._onHandleAreaLeave);
+    this._dragHandleEl.addEventListener('mouseenter', this._onHandleAreaEnter);
+    this._dragHandleEl.addEventListener('mouseleave', this._onHandleAreaLeave);
 
     // ── Event handlers ──
     this._blockAddBtn.addEventListener('click', this._onBlockAddClick);
@@ -130,21 +142,54 @@ export class BlockHandlesController {
     ec.addEventListener('mouseleave', this._onEditorMouseLeave, true);
     window.addEventListener('scroll', this._onScrollSync, true);
 
-    // ── Create block action menu (hidden by default) ──
-    this._createBlockActionMenu();
 
-    // ── Close menu on outside clicks ──
-    document.addEventListener('mousedown', this._onDocClickOutside);
   }
 
   // ── Public API ──────────────────────────────────────────────────────────
 
   /** The block-action-menu element (for outside-click checks). */
-  get menu(): HTMLElement | null { return this._blockActionMenu; }
+  get menu(): HTMLElement | null { return this._actionMenu.menu; }
 
   hide(): void {
-    this._hideBlockActionMenu();
+    this._actionMenu.hide();
   }
+
+  /**
+   * Called by canvasEditorProvider when a doc-changing transaction fires.
+   * Clears cached DOM references that may have been destroyed or
+   * repositioned by the mutation — prevents _resolveBlockFromHandle()
+   * from using a stale fast-path element.
+   */
+  notifyDocChanged(): void {
+    this._lastHoverElement = null;
+  }
+
+  // ── Handle-area hover (keep + and ⠿ visible together) ──────────────────
+
+  private readonly _onHandleAreaEnter = (): void => {
+    if (this._handleAreaLeaveTimer) {
+      clearTimeout(this._handleAreaLeaveTimer);
+      this._handleAreaLeaveTimer = null;
+    }
+    this._host.editorContainer?.classList.add('handle-area-hovered');
+  };
+
+  private readonly _onHandleAreaLeave = (e: MouseEvent): void => {
+    const related = e.relatedTarget as HTMLElement | null;
+    // Moving between + and ⠿ — stay hovered
+    if (
+      related === this._blockAddBtn ||
+      related === this._dragHandleEl ||
+      this._blockAddBtn?.contains(related) ||
+      this._dragHandleEl?.contains(related)
+    ) {
+      return;
+    }
+    this._handleAreaLeaveTimer = setTimeout(() => {
+      this._handleAreaLeaveTimer = null;
+      this._host.editorContainer?.classList.remove('handle-area-hovered');
+    }, 100);
+  };
 
   // ── Event Handlers (arrow functions to preserve `this`) ─────────────────
 
@@ -241,17 +286,23 @@ export class BlockHandlesController {
   // ── Drag Handle Click → Block Action Menu ──
 
   private readonly _onDragHandleClick = (e: MouseEvent): void => {
+    this._handleClickAction(e);
+  };
+
+  /**
+   * Core click logic shared by _onDragHandleClick (native click event) and
+   * _onDragHandleDragEnd (click recovery after tremor-drag).
+   */
+  private _handleClickAction(e: { shiftKey: boolean }): void {
     const editor = this._host.editor;
     if (!editor) return;
     if (this._isResizeInteractionActive()) return;
-    if (this._blockActionMenu?.style.display === 'block') {
-      this._hideBlockActionMenu();
+    if (this._actionMenu.visible) {
+      this._actionMenu.hide();
       return;
     }
     const block = this._resolveBlockFromHandle();
     if (!block) return;
-    this._actionBlockPos = block.pos;
-    this._actionBlockNode = block.node;
 
     // Select the block (Shift+Click → extend selection)
     if (e.shiftKey) {
@@ -260,8 +311,9 @@ export class BlockHandlesController {
       this._host.blockSelection.select(block.pos);
     }
 
-    this._showBlockActionMenu();
-  };
+    const handleRect = this._dragHandleEl!.getBoundingClientRect();
+    this._actionMenu.show(block.pos, block.node, handleRect, this._dragHandleEl!);
+  }
 
   // ── Drag Handle Drag Lifecycle (single owner) ──
 
@@ -272,6 +324,7 @@ export class BlockHandlesController {
       event.preventDefault();
       return;
     }
+
 
     const { view } = editor;
 
@@ -286,6 +339,79 @@ export class BlockHandlesController {
       return;
     }
 
+    // ── Multi-block drag: if the hovered block is part of a multi-selection,
+    // drag all selected blocks together. ──
+    const sel = this._host.blockSelection;
+    const isMultiDrag = sel.hasSelection && sel.count > 1 && sel.positions.includes(block.pos);
+
+    if (isMultiDrag) {
+      // Build a fragment from all selected blocks (sorted by position)
+      const positions = sel.positions; // already sorted asc
+      const nodes: any[] = [];
+      const jsonNodes: any[] = [];
+      for (const p of positions) {
+        const n = view.state.doc.nodeAt(p);
+        if (n) {
+          nodes.push(n);
+          jsonNodes.push(n.toJSON());
+        }
+      }
+
+      if (nodes.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const fragment = Fragment.from(nodes);
+      const slice = new Slice(fragment, 0, 0);
+
+      // Use the contiguous range from first to last selected block
+      const firstPos = positions[0];
+      const lastPos = positions[positions.length - 1];
+      const lastNode = view.state.doc.nodeAt(lastPos);
+      const rangeTo = lastNode ? lastPos + lastNode.nodeSize : lastPos;
+
+      if (event.dataTransfer) {
+        try {
+          event.dataTransfer.effectAllowed = 'copyMove';
+          event.dataTransfer.setData('text/plain', 'parallx-canvas-block-drag');
+          event.dataTransfer.setData(CANVAS_BLOCK_DRAG_MIME, JSON.stringify({
+            sourcePageId: this._host.pageId,
+            from: firstPos,
+            to: rangeTo,
+            nodes: jsonNodes,
+            startedAt: Date.now(),
+          }));
+        } catch { /* Best-effort */ }
+      }
+
+      // Set ProseMirror selection to span the contiguous range
+      const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, firstPos, rangeTo));
+      view.dispatch(tr);
+
+      view.dragging = { slice, move: true, from: firstPos, to: rangeTo } as any;
+
+      setActiveCanvasDragSession({
+        sourcePageId: this._host.pageId,
+        from: firstPos,
+        to: rangeTo,
+        nodes: jsonNodes,
+        startedAt: Date.now(),
+      });
+
+      // Visual: mark all selected blocks as drag sources
+      for (const p of positions) {
+        try {
+          const domNode = view.nodeDOM(p) as HTMLElement | null;
+          if (domNode) domNode.classList.add('block-drag-source');
+        } catch { /* ignore */ }
+      }
+
+      view.dom.classList.add('dragging');
+      return;
+    }
+
+    // ── Single-block drag (existing behavior) ──
     const tr = view.state.tr.setSelection(NodeSelection.create(view.state.doc, block.pos));
     view.dispatch(tr);
 
@@ -323,23 +449,65 @@ export class BlockHandlesController {
     view.dom.classList.add('dragging');
   };
 
-  private readonly _onDragHandleDragEnd = (): void => {
+  private readonly _onDragHandleDragEnd = (event: DragEvent): void => {
     const editor = this._host.editor;
     if (!editor) return;
+
+    // ── Click recovery for tremor-drags ──
+    // If the entire drag cycle (mousedown → dragstart → dragend) was short
+    // in both time and distance, the user intended a click.  The browser
+    // suppressed the click event because dragstart fired, so we invoke the
+    // click logic ourselves.
+    if (this._dragMouseDownPos) {
+      const elapsed = Date.now() - this._dragMouseDownTime;
+      const dx = event.clientX - this._dragMouseDownPos.x;
+      const dy = event.clientY - this._dragMouseDownPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (elapsed < BlockHandlesController._CLICK_TIME_MS &&
+          dist < BlockHandlesController._CLICK_DIST_PX) {
+        // Clean up drag state first
+        editor.view.dragging = null as any;
+        editor.view.dom.classList.remove('dragging');
+        const sources = editor.view.dom.querySelectorAll('.block-drag-source');
+        sources.forEach((el) => el.classList.remove('block-drag-source'));
+        clearActiveCanvasDragSession();
+        this._scheduleHandleInteractionUnlock();
+        this._dragMouseDownPos = null;
+        this._dragMouseDownTime = 0;
+        // Now do what the click handler would have done
+        this._handleClickAction(event);
+        return;
+      }
+    }
+
     editor.view.dragging = null as any;
     editor.view.dom.classList.remove('dragging');
+
+    // Remove drag-source visual from all blocks
+    const sources = editor.view.dom.querySelectorAll('.block-drag-source');
+    sources.forEach((el) => el.classList.remove('block-drag-source'));
+
     setTimeout(() => {
       clearActiveCanvasDragSession();
     }, 0);
     this._scheduleHandleInteractionUnlock();
   };
 
-  private readonly _onDragHandleMouseDown = (): void => {
+  private readonly _onDragHandleMouseDown = (e: MouseEvent): void => {
     if (this._isResizeInteractionActive()) return;
+    // Set interaction lock so the blur-hide timer and outside-click handler
+    // skip hideAll() while we're interacting with the drag handle.
+    // We intentionally do NOT call e.preventDefault() here — in some
+    // Electron/Chromium builds, preventDefault on mousedown suppresses
+    // the subsequent dragstart on draggable="true" elements.
     this._setHandleInteractionLock(true);
+    this._dragMouseDownPos = { x: e.clientX, y: e.clientY };
+    this._dragMouseDownTime = Date.now();
   };
 
   private readonly _onGlobalMouseUp = (): void => {
+    this._dragMouseDownPos = null;
+    this._dragMouseDownTime = 0;
     this._scheduleHandleInteractionUnlock();
   };
 
@@ -365,26 +533,10 @@ export class BlockHandlesController {
     }, 120);
   }
 
-  private readonly _onDocClickOutside = (e: MouseEvent): void => {
-    if (!this._blockActionMenu || this._blockActionMenu.style.display !== 'block') return;
-    if (this._isColumnResizing()) {
-      this._hideBlockActionMenu();
-      return;
-    }
-    const target = e.target as HTMLElement;
-    if (this._blockActionMenu.contains(target)) return;
-    if (this._turnIntoSubmenu?.contains(target)) return;
-    if (this._colorSubmenu?.contains(target)) return;
-    if (this._dragHandleEl?.contains(target)) return;
-    this._hideBlockActionMenu();
-  };
 
   // ── Block Resolution ────────────────────────────────────────────────────
 
-  /** Node types whose children are "blocks" in the Page model. */
-  private static readonly _PAGE_CONTAINERS = new Set([
-    'column', 'callout', 'detailsContent', 'blockquote',
-  ]);
+  // PAGE_CONTAINERS imported from blockRegistry (no local definition).
 
   /**
    * Find the block the drag handle is currently next to.
@@ -481,7 +633,7 @@ export class BlockHandlesController {
 
     let containerDepth = 0;
     for (let d = 1; d <= $pos.depth; d++) {
-      if (BlockHandlesController._PAGE_CONTAINERS.has($pos.node(d).type.name)) {
+      if (PAGE_CONTAINERS.has($pos.node(d).type.name)) {
         containerDepth = d;
       }
     }
@@ -498,8 +650,14 @@ export class BlockHandlesController {
     const node = view.state.doc.nodeAt(blockPos);
     if (!node) return null;
 
+    // Column layout nodes are structural wrappers — never valid handle targets.
+    // If resolution lands on a columnList, drill into the first block inside it;
+    // if that fails, return null rather than exposing the layout node.
     if (node.type.name === 'columnList') {
-      return this._resolveFirstBlockInsideColumnList(view, blockPos, node, targetDepth + 1) ?? { pos: blockPos, node, depth: targetDepth };
+      return this._resolveFirstBlockInsideColumnList(view, blockPos, node, targetDepth + 1);
+    }
+    if (node.type.name === 'column') {
+      return null;
     }
 
     return { pos: blockPos, node, depth: targetDepth };
@@ -556,19 +714,16 @@ export class BlockHandlesController {
         return true;
       }
 
-      const nextContainer = this._isContainerBlockType(next.node?.type?.name);
-      const currentContainer = this._isContainerBlockType(current.node?.type?.name);
+      const nextName = next.node?.type?.name ?? '';
+      const currentName = current.node?.type?.name ?? '';
+      const nextContainer = isContainerBlockType(nextName) || nextName === 'columnList' || nextName === 'column';
+      const currentContainer = isContainerBlockType(currentName) || currentName === 'columnList' || currentName === 'column';
       if (currentContainer && !nextContainer) {
         return true;
       }
     }
 
     return false;
-  }
-
-  private _isContainerBlockType(typeName: string | undefined): boolean {
-    if (!typeName) return false;
-    return typeName === 'callout' || typeName === 'details' || typeName === 'toggleHeading' || typeName === 'blockquote';
   }
 
   private _distanceFromHandleToBlockCenter(handleY: number, blockPos: number, view: any): number {
@@ -590,6 +745,8 @@ export class BlockHandlesController {
       element.classList.contains('block-action-submenu') ||
       element.classList.contains('column-drop-indicator') ||
       element.classList.contains('canvas-drop-guide') ||
+      element.classList.contains('column-resize-handle') ||
+      element.classList.contains('column-resize-indicator') ||
       !!element.closest('.block-action-menu') ||
       !!element.closest('.block-action-submenu')
     );
@@ -670,361 +827,11 @@ export class BlockHandlesController {
     return document.body.classList.contains('column-resizing');
   }
 
-  // ── Block Action Menu ───────────────────────────────────────────────────
-
-  private _createBlockActionMenu(): void {
-    this._blockActionMenu = $('div.block-action-menu');
-    this._blockActionMenu.style.display = 'none';
-    document.body.appendChild(this._blockActionMenu);
-  }
-
-  private _showBlockActionMenu(): void {
-    if (!this._blockActionMenu || !this._dragHandleEl || !this._actionBlockNode) return;
-    this._blockActionMenu.innerHTML = '';
-
-    // Header — block type label
-    const header = $('div.block-action-header');
-    header.textContent = this._getBlockLabel(this._actionBlockNode.type.name);
-    this._blockActionMenu.appendChild(header);
-
-    // Turn into
-    const turnIntoSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 7C13 4.24 10.76 2 8 2C5.24 2 3 4.24 3 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M3 9C3 11.76 5.24 14 8 14C10.76 14 13 11.76 13 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M1 7L3 5L5 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 9L13 11L11 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    const turnIntoItem = this._createActionItem('Turn into', turnIntoSvg, true);
-    turnIntoItem.addEventListener('mouseenter', () => {
-      if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
-      this._showTurnIntoSubmenu(turnIntoItem);
-    });
-    turnIntoItem.addEventListener('mouseleave', (e) => {
-      const related = e.relatedTarget as HTMLElement;
-      if (!this._turnIntoSubmenu?.contains(related)) {
-        this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
-      }
-    });
-    this._blockActionMenu.appendChild(turnIntoItem);
-
-    // Color
-    const colorSvg = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><text x="3" y="11" font-size="11" font-weight="700" fill="currentColor" font-family="sans-serif">A</text><rect x="2" y="13" width="12" height="2" rx="0.5" fill="currentColor" opacity="0.5"/></svg>';
-    const colorItem = this._createActionItem('Color', colorSvg, true);
-    colorItem.addEventListener('mouseenter', () => {
-      if (this._colorHideTimer) { clearTimeout(this._colorHideTimer); this._colorHideTimer = null; }
-      this._showColorSubmenu(colorItem);
-    });
-    colorItem.addEventListener('mouseleave', (e) => {
-      const related = e.relatedTarget as HTMLElement;
-      if (!this._colorSubmenu?.contains(related)) {
-        this._colorHideTimer = setTimeout(() => this._hideColorSubmenu(), 200);
-      }
-    });
-    this._blockActionMenu.appendChild(colorItem);
-
-    // Separator
-    this._blockActionMenu.appendChild($('div.block-action-separator'));
-
-    // Duplicate
-    const dupItem = this._createActionItem('Duplicate', svgIcon('duplicate'), false, 'Ctrl+D');
-    dupItem.addEventListener('mousedown', (e) => { e.preventDefault(); this._duplicateBlock(); });
-    this._blockActionMenu.appendChild(dupItem);
-
-    // Delete
-    const delItem = this._createActionItem('Delete', svgIcon('trash'), false, 'Del');
-    delItem.classList.add('block-action-item--danger');
-    delItem.addEventListener('mousedown', (e) => { e.preventDefault(); this._deleteBlock(); });
-    this._blockActionMenu.appendChild(delItem);
-
-    // Position below drag handle
-    const rect = this._dragHandleEl.getBoundingClientRect();
-    this._blockActionMenu.style.display = 'block';
-    layoutPopup(this._blockActionMenu, rect, { position: 'below', gap: 4 });
-  }
-
-  private _hideBlockActionMenu(): void {
-    if (!this._blockActionMenu) return;
-    this._blockActionMenu.style.display = 'none';
-    this._hideTurnIntoSubmenu();
-    this._hideColorSubmenu();
-  }
-
-  private _createActionItem(label: string, iconHtml: string, hasSubmenu: boolean, shortcut?: string): HTMLElement {
-    const item = $('div.block-action-item');
-    const iconEl = $('span.block-action-icon');
-    iconEl.innerHTML = iconHtml;
-    const svg = iconEl.querySelector('svg');
-    if (svg && !svg.getAttribute('width')) { svg.setAttribute('width', '16'); svg.setAttribute('height', '16'); }
-    item.appendChild(iconEl);
-    const labelEl = $('span.block-action-label');
-    labelEl.textContent = label;
-    item.appendChild(labelEl);
-    if (shortcut) {
-      const sc = $('span.block-action-shortcut');
-      sc.textContent = shortcut;
-      item.appendChild(sc);
-    }
-    if (hasSubmenu) {
-      const arrow = $('span.block-action-arrow');
-      arrow.innerHTML = svgIcon('chevron-right');
-      const chevSvg = arrow.querySelector('svg');
-      if (chevSvg) { chevSvg.setAttribute('width', '12'); chevSvg.setAttribute('height', '12'); }
-      item.appendChild(arrow);
-    }
-    return item;
-  }
-
-  // ── Turn Into Submenu ───────────────────────────────────────────────────
-
-  private _showTurnIntoSubmenu(anchor: HTMLElement): void {
-    this._hideColorSubmenu();
-    if (!this._turnIntoSubmenu) {
-      this._turnIntoSubmenu = $('div.block-action-submenu');
-      this._turnIntoSubmenu.addEventListener('mouseenter', () => {
-        if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
-      });
-      this._turnIntoSubmenu.addEventListener('mouseleave', (e) => {
-        const related = (e as MouseEvent).relatedTarget as HTMLElement;
-        if (!this._blockActionMenu?.contains(related)) {
-          this._turnIntoHideTimer = setTimeout(() => this._hideTurnIntoSubmenu(), 200);
-        }
-      });
-      document.body.appendChild(this._turnIntoSubmenu);
-    }
-    this._turnIntoSubmenu.innerHTML = '';
-
-    const items: { label: string; icon: string; isText?: boolean; type: string; attrs?: any; shortcut?: string }[] = [
-      { label: 'Text', icon: 'T', isText: true, type: 'paragraph' },
-      { label: 'Heading 1', icon: 'H\u2081', isText: true, type: 'heading', attrs: { level: 1 }, shortcut: '#' },
-      { label: 'Heading 2', icon: 'H\u2082', isText: true, type: 'heading', attrs: { level: 2 }, shortcut: '##' },
-      { label: 'Heading 3', icon: 'H\u2083', isText: true, type: 'heading', attrs: { level: 3 }, shortcut: '###' },
-      { label: 'Bulleted list', icon: 'bullet-list', type: 'bulletList' },
-      { label: 'Numbered list', icon: 'numbered-list', type: 'orderedList' },
-      { label: 'To-do list', icon: 'checklist', type: 'taskList' },
-      { label: 'Toggle list', icon: 'chevron-right', type: 'details' },
-      { label: '2 columns', icon: 'columns', type: 'columnList', attrs: { columns: 2 } },
-      { label: '3 columns', icon: 'columns', type: 'columnList', attrs: { columns: 3 } },
-      { label: '4 columns', icon: 'columns', type: 'columnList', attrs: { columns: 4 } },
-      { label: 'Code', icon: 'code', type: 'codeBlock' },
-      { label: 'Quote', icon: 'quote', type: 'blockquote' },
-      { label: 'Callout', icon: 'lightbulb', type: 'callout' },
-      { label: 'Block equation', icon: 'math-block', type: 'mathBlock' },
-    ];
-
-    for (const item of items) {
-      const row = $('div.block-action-item');
-      const iconEl = $('span.block-action-icon');
-      if (item.isText) {
-        iconEl.textContent = item.icon;
-        iconEl.classList.add('block-action-icon--text');
-      } else {
-        iconEl.innerHTML = svgIcon(item.icon as any);
-        const isvg = iconEl.querySelector('svg');
-        if (isvg) { isvg.setAttribute('width', '16'); isvg.setAttribute('height', '16'); }
-      }
-      row.appendChild(iconEl);
-      const labelEl = $('span.block-action-label');
-      labelEl.textContent = item.label;
-      row.appendChild(labelEl);
-      if (item.shortcut) {
-        const sc = $('span.block-action-shortcut');
-        sc.textContent = item.shortcut;
-        row.appendChild(sc);
-      }
-      if (this._isCurrentBlockType(item.type, item.attrs)) {
-        const check = $('span.block-action-check');
-        check.textContent = '\u2713';
-        row.appendChild(check);
-      }
-      row.addEventListener('mousedown', (e) => { e.preventDefault(); this._turnBlockInto(item.type, item.attrs); });
-      this._turnIntoSubmenu!.appendChild(row);
-    }
-
-    // Position to the right of anchor
-    const rect = anchor.getBoundingClientRect();
-    this._turnIntoSubmenu.style.display = 'block';
-    layoutPopup(this._turnIntoSubmenu, rect, { position: 'right', gap: 2 });
-  }
-
-  private _hideTurnIntoSubmenu(): void {
-    if (this._turnIntoHideTimer) { clearTimeout(this._turnIntoHideTimer); this._turnIntoHideTimer = null; }
-    if (this._turnIntoSubmenu) this._turnIntoSubmenu.style.display = 'none';
-  }
-
-  // ── Color Submenu ───────────────────────────────────────────────────────
-
-  private _showColorSubmenu(anchor: HTMLElement): void {
-    this._hideTurnIntoSubmenu();
-    if (!this._colorSubmenu) {
-      this._colorSubmenu = $('div.block-action-submenu.block-color-submenu');
-      this._colorSubmenu.addEventListener('mouseenter', () => {
-        if (this._colorHideTimer) { clearTimeout(this._colorHideTimer); this._colorHideTimer = null; }
-      });
-      this._colorSubmenu.addEventListener('mouseleave', (e) => {
-        const related = (e as MouseEvent).relatedTarget as HTMLElement;
-        if (!this._blockActionMenu?.contains(related)) {
-          this._colorHideTimer = setTimeout(() => this._hideColorSubmenu(), 200);
-        }
-      });
-      document.body.appendChild(this._colorSubmenu);
-    }
-    this._colorSubmenu.innerHTML = '';
-
-    // Text color section
-    const textHeader = $('div.block-color-section-header');
-    textHeader.textContent = 'Text color';
-    this._colorSubmenu.appendChild(textHeader);
-
-    const textColors = [
-      { label: 'Default text', value: null, display: 'rgba(255,255,255,0.81)' },
-      { label: 'Gray text', value: 'rgb(155,155,155)', display: 'rgb(155,155,155)' },
-      { label: 'Brown text', value: 'rgb(186,133,83)', display: 'rgb(186,133,83)' },
-      { label: 'Orange text', value: 'rgb(230,150,60)', display: 'rgb(230,150,60)' },
-      { label: 'Yellow text', value: 'rgb(223,196,75)', display: 'rgb(223,196,75)' },
-      { label: 'Green text', value: 'rgb(80,185,120)', display: 'rgb(80,185,120)' },
-      { label: 'Blue text', value: 'rgb(70,160,230)', display: 'rgb(70,160,230)' },
-      { label: 'Purple text', value: 'rgb(170,120,210)', display: 'rgb(170,120,210)' },
-      { label: 'Pink text', value: 'rgb(220,120,170)', display: 'rgb(220,120,170)' },
-      { label: 'Red text', value: 'rgb(220,80,80)', display: 'rgb(220,80,80)' },
-    ];
-
-    for (const color of textColors) {
-      const row = $('div.block-color-item');
-      const swatch = $('span.block-color-swatch');
-      swatch.textContent = 'A';
-      swatch.style.color = color.display;
-      row.appendChild(swatch);
-      const label = $('span.block-action-label');
-      label.textContent = color.label;
-      row.appendChild(label);
-      row.addEventListener('mousedown', (e) => { e.preventDefault(); this._applyBlockTextColor(color.value); });
-      this._colorSubmenu!.appendChild(row);
-    }
-
-    // Separator
-    this._colorSubmenu.appendChild($('div.block-action-separator'));
-
-    // Background color section
-    const bgHeader = $('div.block-color-section-header');
-    bgHeader.textContent = 'Background color';
-    this._colorSubmenu.appendChild(bgHeader);
-
-    const bgColors = [
-      { label: 'Default background', value: null, display: 'transparent' },
-      { label: 'Gray background', value: 'rgba(155,155,155,0.2)', display: 'rgba(155,155,155,0.35)' },
-      { label: 'Brown background', value: 'rgba(186,133,83,0.2)', display: 'rgba(186,133,83,0.35)' },
-      { label: 'Orange background', value: 'rgba(230,150,60,0.2)', display: 'rgba(230,150,60,0.35)' },
-      { label: 'Yellow background', value: 'rgba(223,196,75,0.2)', display: 'rgba(223,196,75,0.35)' },
-      { label: 'Green background', value: 'rgba(80,185,120,0.2)', display: 'rgba(80,185,120,0.35)' },
-      { label: 'Blue background', value: 'rgba(70,160,230,0.2)', display: 'rgba(70,160,230,0.35)' },
-      { label: 'Purple background', value: 'rgba(170,120,210,0.2)', display: 'rgba(170,120,210,0.35)' },
-      { label: 'Pink background', value: 'rgba(220,120,170,0.2)', display: 'rgba(220,120,170,0.35)' },
-      { label: 'Red background', value: 'rgba(220,80,80,0.2)', display: 'rgba(220,80,80,0.35)' },
-    ];
-
-    for (const color of bgColors) {
-      const row = $('div.block-color-item');
-      const swatch = $('span.block-color-swatch');
-      if (color.value) {
-        swatch.style.backgroundColor = color.display;
-      } else {
-        swatch.style.border = '1px solid rgba(255,255,255,0.2)';
-      }
-      row.appendChild(swatch);
-      const label = $('span.block-action-label');
-      label.textContent = color.label;
-      row.appendChild(label);
-      row.addEventListener('mousedown', (e) => { e.preventDefault(); this._applyBlockBgColor(color.value); });
-      this._colorSubmenu!.appendChild(row);
-    }
-
-    // Position to the right of anchor
-    const rect = anchor.getBoundingClientRect();
-    this._colorSubmenu.style.display = 'block';
-    layoutPopup(this._colorSubmenu, rect, { position: 'right', gap: 2 });
-  }
-
-  private _hideColorSubmenu(): void {
-    if (this._colorHideTimer) { clearTimeout(this._colorHideTimer); this._colorHideTimer = null; }
-    if (this._colorSubmenu) this._colorSubmenu.style.display = 'none';
-  }
-
-  // ── Block Transform Execution ──────────────────────────────────────────
-
-  private _turnBlockInto(targetType: string, attrs?: any): void {
-    const editor = this._host.editor;
-    if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
-    const pos = this._actionBlockPos;
-    const node = this._actionBlockNode;
-    this._hideBlockActionMenu();
-    if (this._isCurrentBlockType(targetType, attrs)) return;
-
-    turnBlockWithSharedStrategy(editor, pos, node, targetType, attrs);
-  }
-
-  private _isCurrentBlockType(targetType: string, attrs?: any): boolean {
-    if (!this._actionBlockNode) return false;
-    const node = this._actionBlockNode;
-    if (node.type.name !== targetType) return false;
-    if (targetType === 'heading' && attrs?.level && node.attrs?.level !== attrs.level) return false;
-    return true;
-  }
-
-  private _getBlockLabel(typeName: string): string {
-    const labels: Record<string, string> = {
-      paragraph: 'Text', heading: 'Heading', bulletList: 'Bulleted list',
-      orderedList: 'Numbered list', taskList: 'To-do list', taskItem: 'To-do',
-      listItem: 'List item', blockquote: 'Quote', codeBlock: 'Code',
-      callout: 'Callout', details: 'Toggle list', mathBlock: 'Equation',
-      columnList: 'Columns', table: 'Table', image: 'Image',
-      horizontalRule: 'Divider',
-    };
-    return labels[typeName] || typeName;
-  }
-
-  // ── Color Application ──────────────────────────────────────────────────
-
-  private _applyBlockTextColor(value: string | null): void {
-    const editor = this._host.editor;
-    if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
-    const pos = this._actionBlockPos;
-    const node = this._actionBlockNode;
-    this._hideBlockActionMenu();
-    const changed = applyTextColorToBlock(editor, pos, node, value);
-    if (!changed) return;
-  }
-
-  private _applyBlockBgColor(value: string | null): void {
-    const editor = this._host.editor;
-    if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
-    const pos = this._actionBlockPos;
-    const node = this._actionBlockNode;
-    this._hideBlockActionMenu();
-    applyBackgroundColorToBlock(editor, pos, node, value);
-  }
-
-  // ── Duplicate / Delete ─────────────────────────────────────────────────
-
-  private _duplicateBlock(): void {
-    const editor = this._host.editor;
-    if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
-    const pos = this._actionBlockPos;
-    const node = this._actionBlockNode;
-    this._hideBlockActionMenu();
-    duplicateBlockAt(editor, pos, node);
-    editor.commands.focus();
-  }
-
-  private _deleteBlock(): void {
-    const editor = this._host.editor;
-    if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
-    const pos = this._actionBlockPos;
-    const node = this._actionBlockNode;
-    this._hideBlockActionMenu();
-    deleteBlockAt(editor, pos, node);
-  }
-
   // ── Dispose ─────────────────────────────────────────────────────────────
 
   dispose(): void {
     this._handleObserver?.disconnect();
     this._handleObserver = null;
-    document.removeEventListener('mousedown', this._onDocClickOutside);
     this._host.editorContainer?.removeEventListener('mouseout', this._onEditorMouseOut, true);
     this._host.editorContainer?.removeEventListener('mousemove', this._onEditorMouseMove, true);
     this._host.editorContainer?.removeEventListener('mouseleave', this._onEditorMouseLeave, true);
@@ -1033,14 +840,15 @@ export class BlockHandlesController {
     this._dragHandleEl?.removeEventListener('dragend', this._onDragHandleDragEnd);
     this._dragHandleEl?.removeEventListener('mousedown', this._onDragHandleMouseDown, true);
     document.removeEventListener('mouseup', this._onGlobalMouseUp, true);
-    if (this._turnIntoHideTimer) {
-      clearTimeout(this._turnIntoHideTimer);
-      this._turnIntoHideTimer = null;
+    this._blockAddBtn?.removeEventListener('mouseenter', this._onHandleAreaEnter);
+    this._blockAddBtn?.removeEventListener('mouseleave', this._onHandleAreaLeave);
+    this._dragHandleEl?.removeEventListener('mouseenter', this._onHandleAreaEnter);
+    this._dragHandleEl?.removeEventListener('mouseleave', this._onHandleAreaLeave);
+    if (this._handleAreaLeaveTimer) {
+      clearTimeout(this._handleAreaLeaveTimer);
+      this._handleAreaLeaveTimer = null;
     }
-    if (this._colorHideTimer) {
-      clearTimeout(this._colorHideTimer);
-      this._colorHideTimer = null;
-    }
+    this._host.editorContainer?.classList.remove('handle-area-hovered');
     if (this._interactionReleaseTimer) {
       clearTimeout(this._interactionReleaseTimer);
       this._interactionReleaseTimer = null;
@@ -1051,11 +859,7 @@ export class BlockHandlesController {
     }
     this._setHandleInteractionLock(false);
     if (this._blockAddBtn) { this._blockAddBtn.remove(); this._blockAddBtn = null; }
-    if (this._blockActionMenu) { this._blockActionMenu.remove(); this._blockActionMenu = null; }
-    if (this._turnIntoSubmenu) { this._turnIntoSubmenu.remove(); this._turnIntoSubmenu = null; }
-    if (this._colorSubmenu) { this._colorSubmenu.remove(); this._colorSubmenu = null; }
     this._dragHandleEl = null;
-    this._actionBlockNode = null;
     this._lastHoverElement = null;
     this._lastPointerClient = null;
   }

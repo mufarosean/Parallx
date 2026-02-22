@@ -9,6 +9,7 @@
 import { Disposable, toDisposable } from '../platform/lifecycle.js';
 import { Emitter, Event } from '../platform/events.js';
 import { layoutPopup } from './dom.js';
+import './iconPicker.css';
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 

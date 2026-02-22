@@ -13,12 +13,11 @@
 //   • Right-click context menu (Task 10.7)
 
 import type { IDisposable } from '../../platform/lifecycle.js';
-import type { IPage, IPageTreeNode } from './canvasTypes.js';
-import { type CanvasDataService } from './canvasDataService.js';
+import type { IPage, IPageTreeNode, ICanvasDataService } from './canvasTypes.js';
 import { $ } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
-import { createIconElement, resolvePageIcon, svgIcon } from './canvasIcons.js';
+import { createIconElement, resolvePageIcon, svgIcon } from './config/blockRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -74,7 +73,7 @@ export class CanvasSidebar {
   private _renamingPageId: string | null = null;
 
   constructor(
-    private readonly _dataService: CanvasDataService,
+    private readonly _dataService: ICanvasDataService,
     private readonly _api: CanvasSidebarApi,
   ) {}
 

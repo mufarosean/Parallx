@@ -4,7 +4,7 @@
 // favicon, and optional image — like Notion's bookmark block.
 
 import { Node, mergeAttributes } from '@tiptap/core';
-import { svgIcon } from '../canvasIcons.js';
+import { svgIcon } from '../config/blockRegistry.js';
 
 export const Bookmark = Node.create({
   name: 'bookmark',

@@ -3,10 +3,11 @@
 // Provides monochrome, theme-aware icons (uses currentColor) to replace
 // all emoji usage. Icons render correctly in both light and dark themes.
 //
-// Usage:
-//   import { svgIcon, ICON_IDS, renderIconInto } from './canvasIcons.js';
-//   element.innerHTML = svgIcon('page');
-//   renderIconInto(container, 'star-filled', 14);
+// ⚠️  DO NOT import this file directly.
+// Only config/iconRegistry.ts imports here (single gate).
+// All other code gets icons through blockRegistry or canvasMenuRegistry.
+//
+// See docs/ICON_REGISTRY.md for the three-registry architecture.
 
 // ─── Icon SVG Strings ────────────────────────────────────────────────────────
 // All icons use viewBox="0 0 16 16" to match VS Code codicon convention.

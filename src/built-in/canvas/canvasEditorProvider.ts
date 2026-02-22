@@ -28,17 +28,13 @@
 
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
-import type { CanvasDataService } from './canvasDataService.js';
+import type { ICanvasDataService } from './canvasTypes.js';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
-import { createEditorExtensions } from './config/editorExtensions.js';
-import { InlineMathEditorController } from './math/inlineMathEditor.js';
-import { BubbleMenuController } from './menus/bubbleMenu.js';
-import { SlashMenuController } from './menus/slashMenu.js';
-import { BlockHandlesController } from './handles/blockHandles.js';
-import { BlockSelectionController } from './handles/blockSelection.js';
-import { PageChromeController } from './header/pageChrome.js';
+import { createEditorExtensions, PageChromeController } from './config/blockRegistry.js';
+import { BlockHandlesController, BlockSelectionController, BlockMarqueeController } from './handles/handleRegistry.js';
+import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -61,7 +57,7 @@ export class CanvasEditorProvider {
    */
   private readonly _pageMenuHandlers = new Map<string, () => void>();
 
-  constructor(private readonly _dataService: CanvasDataService) {}
+  constructor(private readonly _dataService: ICanvasDataService) {}
 
   /**
    * Set the openEditor callback so panes can navigate to other pages.
@@ -131,9 +127,7 @@ export class CanvasEditorProvider {
 class CanvasEditorPane implements IDisposable {
   private _editor: Editor | null = null;
   private _editorContainer: HTMLElement | null = null;
-  private _slashMenu!: SlashMenuController;
-  private _bubbleMenu!: BubbleMenuController;
-  private _inlineMath!: InlineMathEditorController;
+  private _menuRegistry!: CanvasMenuRegistry;
   private _disposed = false;
   private _initComplete = false;
   private _suppressUpdate = false;
@@ -145,13 +139,19 @@ class CanvasEditorPane implements IDisposable {
   // ── Block handles controller ──
   private _blockHandles!: BlockHandlesController;
 
+  // ── Block action menu (handle returned by registry factory) ──
+  private _blockActionMenu!: IBlockActionMenu;
+
   // ── Block selection controller ──
   private _blockSelection!: BlockSelectionController;
+
+  // ── Block marquee (box-drag lasso selection) ──
+  private _blockMarquee!: BlockMarqueeController;
 
   constructor(
     private readonly _container: HTMLElement,
     private readonly _pageId: string,
-    private readonly _dataService: CanvasDataService,
+    private readonly _dataService: ICanvasDataService,
     private readonly _input: IEditorInput | undefined,
     private readonly _openEditor: OpenEditorFn | undefined,
     private readonly _provider: CanvasEditorProvider,
@@ -161,14 +161,35 @@ class CanvasEditorPane implements IDisposable {
   get editor(): Editor | null { return this._editor; }
   get container(): HTMLElement { return this._container; }
   get editorContainer(): HTMLElement | null { return this._editorContainer; }
-  get inlineMath(): InlineMathEditorController { return this._inlineMath; }
-  get dataService(): CanvasDataService { return this._dataService; }
+  get dataService(): ICanvasDataService { return this._dataService; }
   get pageId(): string { return this._pageId; }
   get suppressUpdate(): boolean { return this._suppressUpdate; }
   set suppressUpdate(v: boolean) { this._suppressUpdate = v; }
   get input(): IEditorInput | undefined { return this._input; }
   get openEditor(): OpenEditorFn | undefined { return this._openEditor; }
   get blockSelection(): BlockSelectionController { return this._blockSelection; }
+
+  /** Registry-managed icon picker delegate — lazy because registry is created after pageChrome. */
+  get showIconPicker(): (opts: {
+    anchor: HTMLElement;
+    showSearch?: boolean;
+    showRemove?: boolean;
+    iconSize?: number;
+    onSelect: (iconId: string) => void;
+    onRemove?: () => void;
+  }) => void {
+    return (opts) => this._menuRegistry?.showIconMenu(opts);
+  }
+
+  /** Registry-managed cover picker delegate — lazy because registry is created after pageChrome. */
+  get showCoverPicker(): (opts: {
+    editorContainer: HTMLElement | null;
+    coverEl?: HTMLElement | null;
+    pageHeader?: HTMLElement | null;
+    onSelectCover: (coverUrl: string) => void;
+  }) => void {
+    return (opts) => this._menuRegistry?.showCoverMenu(opts);
+  }
 
   requestSave(_reason: string): void {
     if (!this._editor || !this._pageId || !this._initComplete) return;
@@ -205,6 +226,7 @@ class CanvasEditorPane implements IDisposable {
         dataService: this._dataService,
         pageId: this._pageId,
         openEditor: this._openEditor,
+        showIconPicker: (opts) => this._menuRegistry?.showIconMenu(opts),
       }),
       content: '',
       editorProps: {
@@ -224,36 +246,29 @@ class CanvasEditorPane implements IDisposable {
         const json = JSON.stringify(editor.getJSON());
         this._dataService.scheduleContentSave(this._pageId, json);
       },
-      onTransaction: ({ editor }) => {
+      onTransaction: ({ editor, transaction }) => {
         if (this._suppressUpdate) return;
-        // Check for slash command trigger on every transaction
-        // (onTransaction fires for all state changes — more reliable than onUpdate)
-        this._slashMenu?.checkTrigger(editor);
-
-        // Keep menu ownership deterministic: slash and bubble should not compete.
-        if (this._slashMenu?.visible) {
-          this._bubbleMenu?.hide();
+        this._menuRegistry?.notifyTransaction(editor);
+        // Invalidate cached DOM refs in the handle layer when the document
+        // structure changes — prevents stale _lastHoverElement from causing
+        // _resolveBlockFromHandle() to target the wrong block.
+        if (transaction.docChanged) {
+          this._blockHandles?.notifyDocChanged();
         }
       },
       onSelectionUpdate: ({ editor }) => {
-        // Non-collapsed selections belong to bubble menu, not slash menu.
-        if (!editor.state.selection.empty) {
-          this._slashMenu?.hide();
-        }
-        this._bubbleMenu?.update(editor);
+        this._menuRegistry?.notifySelectionUpdate(editor);
       },
       onBlur: () => {
-        // Small delay so clicking bubble menu buttons doesn't dismiss it
+        // Small delay so clicking menu buttons doesn't dismiss them.
+        // Also skip if the blur was caused by a handle interaction
+        // (mousedown on drag handle transfers focus away from PM).
         setTimeout(() => {
+          if (this._menuRegistry.isInteractionLocked()) return;
           if (
-            !this._bubbleMenu.menu?.contains(document.activeElement) &&
-            !this._inlineMath.popup?.contains(document.activeElement)
+            !this._menuRegistry.containsFocusedElement()
           ) {
-            this._bubbleMenu.hide();
-          }
-
-          if (!this._slashMenu.menu?.contains(document.activeElement)) {
-            this._slashMenu.hide();
+            this._menuRegistry.hideAll();
           }
         }, 150);
       },
@@ -274,25 +289,21 @@ class CanvasEditorPane implements IDisposable {
       (window as any).__tiptapEditor = this._editor;
     }
 
-    // Create slash menu (hidden by default)
-    this._slashMenu = new SlashMenuController(this);
-    this._slashMenu.create();
-
-    // Create bubble menu (hidden by default)
-    this._bubbleMenu = new BubbleMenuController(this);
-    this._bubbleMenu.create();
-
-    // Create inline math editor popup (hidden by default)
-    this._inlineMath = new InlineMathEditorController(this);
-    this._inlineMath.create();
+    // ── Create menu registry and all menus ──
+    this._menuRegistry = new CanvasMenuRegistry(() => this._editor);
+    this._blockActionMenu = this._menuRegistry.createStandardMenus(this);
 
     // Setup block handles (+ button, drag-handle click menu)
-    this._blockHandles = new BlockHandlesController(this);
+    this._blockHandles = new BlockHandlesController(this, this._blockActionMenu);
     this._blockHandles.setup();
 
     // Setup block selection model
     this._blockSelection = new BlockSelectionController(this);
     this._blockSelection.setup();
+
+    // Setup block marquee (box-drag selection)
+    this._blockMarquee = new BlockMarqueeController(this);
+    this._blockMarquee.setup();
 
     // Wire Esc shortcut → block selection (via extension storage)
     const kbExt = this._editor.extensionManager.extensions.find(
@@ -300,6 +311,8 @@ class CanvasEditorPane implements IDisposable {
     );
     if (kbExt) {
       (kbExt.storage as any).selectAtCursor = () => this._blockSelection.selectAtCursor();
+      (kbExt.storage as any).extendSelectionUp = () => this._blockSelection.extendSelectionUp();
+      (kbExt.storage as any).extendSelectionDown = () => this._blockSelection.extendSelectionDown();
     }
 
     // ── Click handler for inline math nodes (click-to-edit) ──
@@ -312,7 +325,7 @@ class CanvasEditorPane implements IDisposable {
       const pos = this._editor.view.posAtDOM(target, 0);
       const node = this._editor.state.doc.nodeAt(pos);
       if (node && node.type.name === 'inlineMath') {
-        this._inlineMath.show(pos, node.attrs.latex || '', target as HTMLElement);
+        this._menuRegistry.showInlineMathEditor(pos, node.attrs.latex || '', target as HTMLElement);
       }
     });
 
@@ -378,15 +391,14 @@ class CanvasEditorPane implements IDisposable {
     if (this._disposed) return;
     this._disposed = true;
 
-    this._slashMenu?.hide();
-    this._bubbleMenu?.hide();
+    this._menuRegistry?.hideAll();
     this._blockHandles?.hide();
     this._blockSelection?.clear();
     this._pageChrome?.dismissPopups();
 
-    // Block handles cleanup
     this._blockHandles?.dispose();
     this._blockSelection?.dispose();
+    this._blockMarquee?.dispose();
 
     // Dispose save-state subscriptions
     this._saveDisposables.dispose();
@@ -401,18 +413,7 @@ class CanvasEditorPane implements IDisposable {
       this._editorContainer = null;
     }
 
-    if (this._slashMenu) {
-      this._slashMenu.dispose();
-    }
-
-    if (this._bubbleMenu) {
-      this._bubbleMenu.dispose();
-    }
-
-    if (this._inlineMath) {
-      this._inlineMath.dispose();
-    }
-
+    this._menuRegistry?.dispose(); // disposes all menus (slash, bubble, blockAction, inlineMath, etc.)
     this._pageChrome?.dispose();
   }
 }

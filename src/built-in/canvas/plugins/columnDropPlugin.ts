@@ -1,4 +1,4 @@
-// columnDropPlugin.ts — Full drag-and-drop engine for column layouts
+// columnDropPlugin.ts — Drag-and-drop event shell for block movement
 //
 // Per docs/BLOCK_INTERACTION_RULES.md Rules 3-4.
 //
@@ -14,16 +14,24 @@
 //   4E  column → different column      (transfer or add column)
 //   4F  column → different columnList  (same as 4B from source)
 //
+// This plugin is a thin event-handling shell.  All actual block relocation
+// logic lives in blockMovement.ts (part of blockStateRegistry).  The plugin
+// resolves drop targets from DOM events, then delegates to movement
+// primitives: moveBlockAboveBelow, createColumnLayoutFromDrop,
+// addColumnToLayoutFromDrop.
+//
 // Empty-column cleanup is delegated to columnAutoDissolvePlugin.
-// Width redistribution is handled inline when columns are added/removed.
+// Width redistribution is handled by addColumnToLayoutFromDrop.
 
 import { Plugin, PluginKey } from '@tiptap/pm/state';
-import { Fragment } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 import {
-  deleteDraggedSourceFromTransaction,
-  resetColumnListWidthsInTransaction,
-} from '../mutations/blockMutations.js';
+  PAGE_CONTAINERS,
+  resolveBlockAncestry,
+  moveBlockAboveBelow,
+  createColumnLayoutFromDrop,
+  addColumnToLayoutFromDrop,
+} from '../config/blockStateRegistry/blockStateRegistry.js';
 
 export function columnDropPlugin(): Plugin {
   const pluginKey = new PluginKey('columnDrop');
@@ -121,10 +129,7 @@ export function columnDropPlugin(): Plugin {
   // element that is a direct child of a Page-container (doc, column,
   // callout, detailsContent, blockquote).  Works at any nesting depth.
 
-  /** Node types that act as vertical block containers (Pages in the model). */
-  const PAGE_CONTAINERS = new Set([
-    'column', 'callout', 'detailsContent', 'blockquote',
-  ]);
+  // PAGE_CONTAINERS imported from blockRegistry — single source of truth.
 
   /** DOM selectors for page-container elements. */
   function isPageContainerDom(el: HTMLElement | null, proseMirrorRoot: HTMLElement): boolean {
@@ -142,18 +147,11 @@ export function columnDropPlugin(): Plugin {
     try {
       const inner = view.posAtDOM(blockEl, 0);
       const $p = view.state.doc.resolve(inner);
+      const ancestry = resolveBlockAncestry($p);
 
-      let containerDepth = 0;
-      for (let d = 1; d <= $p.depth; d++) {
-        if (PAGE_CONTAINERS.has($p.node(d).type.name)) {
-          containerDepth = d;
-        }
-      }
+      if (ancestry.blockDepth > $p.depth) return null;
 
-      const blockDepth = containerDepth + 1;
-      if (blockDepth > $p.depth) return null;
-
-      const blockPos = $p.before(blockDepth);
+      const blockPos = $p.before(ancestry.blockDepth);
       const blockNode = view.state.doc.nodeAt(blockPos);
       if (!blockNode) return null;
 
@@ -161,9 +159,9 @@ export function columnDropPlugin(): Plugin {
       let columnListPos: number | null = null;
       let colIdx = 0;
 
-      if (containerDepth > 0 && $p.node(containerDepth).type.name === 'column') {
-        columnPos = $p.before(containerDepth);
-        columnListPos = $p.before(containerDepth - 1);
+      if (ancestry.columnDepth !== null && ancestry.columnListDepth !== null) {
+        columnPos = $p.before(ancestry.columnDepth);
+        columnListPos = $p.before(ancestry.columnListDepth);
         const clNode = view.state.doc.nodeAt(columnListPos);
         if (clNode) {
           let off = columnListPos + 1;
@@ -462,9 +460,7 @@ export function columnDropPlugin(): Plugin {
           if (slice.content.firstChild?.type.name === 'columnList') return false;
 
           const { schema } = view.state;
-          const columnType = schema.nodes.column;
-          const columnListType = schema.nodes.columnList;
-          if (!columnType || !columnListType) return false;
+          if (!schema.nodes.column || !schema.nodes.columnList) return false;
 
           event.preventDefault();
           event.stopPropagation();
@@ -482,8 +478,7 @@ export function columnDropPlugin(): Plugin {
             const insertPos = target.zone === 'above'
               ? target.blockPos
               : target.blockPos + target.blockNode.nodeSize;
-            tr.insert(insertPos, content);
-            if (!isDuplicate) deleteDraggedSourceFromTransaction(tr, dragFrom, dragTo);
+            moveBlockAboveBelow(tr, content, insertPos, dragFrom, dragTo, isDuplicate);
             view.dispatch(tr);
             return true;
           }
@@ -492,92 +487,25 @@ export function columnDropPlugin(): Plugin {
 
           if (target.columnPos === null) {
             // Target is a top-level block (4A, 4C) → create new columnList
-            const tNode = target.blockNode;
-            let tCol: any, dCol: any;
-            try {
-              tCol = columnType.create(null, Fragment.from(tNode));
-              dCol = columnType.create(null, content);
-            } catch { return false; }
-
-            const cols = target.zone === 'left'
-              ? Fragment.from([dCol, tCol])
-              : Fragment.from([tCol, dCol]);
-            let cl: any;
-            try { cl = columnListType.create(null, cols); } catch { return false; }
-
-            tr.replaceWith(target.blockPos, target.blockPos + tNode.nodeSize, cl);
-            if (!isDuplicate) deleteDraggedSourceFromTransaction(tr, dragFrom, dragTo);
+            const ok = createColumnLayoutFromDrop(
+              tr, schema, content,
+              target.blockPos, target.blockNode,
+              target.zone as 'left' | 'right',
+              dragFrom, dragTo, isDuplicate,
+            );
+            if (!ok) return false;
             view.dispatch(tr);
             return true;
           }
 
-          // Target is inside a column (4B, 4D, 4E, 4F) → add column to
-          // the existing columnList
-          const targetColNode = view.state.doc.nodeAt(target.columnPos);
-          if (!targetColNode) return false;
-
-          // ── Compute target column's effective width before mutations ──
-          // Notion-style: only the target column's width is split in half;
-          // other sibling columns keep their current widths.
-          const oldCl = view.state.doc.nodeAt(target.columnListPos!);
-          const oldColCount = oldCl ? oldCl.childCount : 0;
-          let expSum = 0, nCount = 0;
-          if (oldCl) {
-            for (let i = 0; i < oldCl.childCount; i++) {
-              const w = oldCl.child(i).attrs.width;
-              if (w != null) expSum += w; else nCount++;
-            }
-          }
-          const nullEff = nCount > 0 ? (100 - expSum) / nCount : 0;
-          const targetEff = targetColNode.attrs.width ?? nullEff;
-          const half = parseFloat((targetEff / 2).toFixed(2));
-
-          let newCol: any;
-          try { newCol = columnType.create(null, content); } catch { return false; }
-
-          const insertColPos = target.zone === 'left'
-            ? target.columnPos
-            : target.columnPos + targetColNode.nodeSize;
-
-          tr.insert(insertColPos, newCol);
-          if (!isDuplicate) deleteDraggedSourceFromTransaction(tr, dragFrom, dragTo);
-
-          // ── Width redistribution: Notion-style split ──
-          // Split the target column's width between itself and the new column.
-          // Other columns keep their current widths unchanged.
-          const mClPos = tr.mapping.map(target.columnListPos!);
-          const finalCl = tr.doc.nodeAt(mClPos);
-
-          if (finalCl && finalCl.type.name === 'columnList' &&
-              finalCl.childCount === oldColCount + 1) {
-            // Clean addition — no column removed from this list.
-            const mTargetPos = tr.mapping.map(target.columnPos);
-            let targetIdx = -1;
-            let off = mClPos + 1;
-            for (let i = 0; i < finalCl.childCount; i++) {
-              if (off === mTargetPos) { targetIdx = i; break; }
-              off += finalCl.child(i).nodeSize;
-            }
-            if (targetIdx >= 0) {
-              const newIdx = target.zone === 'left'
-                ? targetIdx - 1
-                : targetIdx + 1;
-              off = mClPos + 1;
-              for (let i = 0; i < finalCl.childCount; i++) {
-                const ch = finalCl.child(i);
-                if (i === targetIdx || i === newIdx) {
-                  tr.setNodeMarkup(off, undefined, { ...ch.attrs, width: half });
-                }
-                off += ch.nodeSize;
-              }
-            } else {
-              // Fallback — couldn't locate target; equalize
-              resetColumnListWidthsInTransaction(tr, target.columnListPos!);
-            }
-          } else {
-            // Source column was removed from same columnList — equalize
-            resetColumnListWidthsInTransaction(tr, target.columnListPos!);
-          }
+          // Target is inside a column (4B, 4D, 4E, 4F) → add column
+          const ok = addColumnToLayoutFromDrop(
+            tr, view.state.doc, schema, content,
+            target.columnPos, target.columnListPos!,
+            target.zone as 'left' | 'right',
+            dragFrom, dragTo, isDuplicate,
+          );
+          if (!ok) return false;
 
           view.dispatch(tr);
           return true;
