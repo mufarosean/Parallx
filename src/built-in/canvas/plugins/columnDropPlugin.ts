@@ -469,6 +469,15 @@ export function columnDropPlugin(): Plugin {
         },
 
         drop: (view: EditorView, event: DragEvent) => {
+          // If the drop landed on a pageBlock (cross-page move), the
+          // pageBlock's own DOM drop handler handles it.  Return true to
+          // prevent ProseMirror's default drop from re-inserting the slice.
+          const dropTarget = event.target as HTMLElement | null;
+          if (dropTarget?.closest?.('.canvas-page-block')) {
+            hideAll();
+            return true;
+          }
+
           if (!activeTarget) return false;
           const target = activeTarget;
           hideAll();
