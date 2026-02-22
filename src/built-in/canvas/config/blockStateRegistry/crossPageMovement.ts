@@ -11,8 +11,8 @@ import {
   getActiveCanvasDragSession,
   clearActiveCanvasDragSession,
   CANVAS_BLOCK_DRAG_MIME,
+  deleteDraggedSource,
 } from './blockStateRegistry.js';
-import { deleteDraggedSource } from './columnInvariants.js';
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 

@@ -6,10 +6,15 @@
 
 import type { Editor } from '@tiptap/core';
 import { $, layoutPopup } from '../../../ui/dom.js';
-import { svgIcon } from './canvasMenuRegistry.js';
-import type { SlashMenuItem } from './slashMenuItems.js';
-import { buildSlashMenuItems } from './slashMenuItems.js';
-import type { ICanvasMenu, InsertActionContext } from './canvasMenuRegistry.js';
+import {
+  svgIcon,
+  buildSlashMenuItems,
+} from './canvasMenuRegistry.js';
+import type {
+  SlashMenuItem,
+  ICanvasMenu,
+  InsertActionContext,
+} from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
 

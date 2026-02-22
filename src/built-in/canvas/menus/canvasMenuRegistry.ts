@@ -65,6 +65,13 @@ export {
 /** Icon IDs selectable by users for pages/callouts (delegates to IconRegistry). */
 export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICONS;
 
+// ── Slash Menu Data (registry-to-child gate) ─────────────────────────────────
+// slashMenuItems.ts is a pure data file.  Re-export its types and builder so
+// slashMenu.ts imports everything through canvasMenuRegistry — its single gate.
+
+export { buildSlashMenuItems } from './slashMenuItems.js';
+export type { SlashMenuItem, SlashBlockDef } from './slashMenuItems.js';
+
 // ── Menu contract ───────────────────────────────────────────────────────────
 
 /**
