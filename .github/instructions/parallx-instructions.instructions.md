@@ -180,3 +180,17 @@ Every `src/ui/` component must:
 
 This mirrors VS Code where `src/vs/base/browser/ui/` depends only on `src/vs/base/`.
 
+---
+
+## 5. Bug Diagnosis Rules
+
+When diagnosing a reported bug:
+
+1. **No code is trusted.** Do not assume any code is correct — including code written earlier in the same session, code that "looks right," or code that passed the build. Every line on the failure path is a suspect until proven innocent by reasoning about real runtime values.
+
+2. **Start at the symptom, work backward through the call chain.** If "drag doesn't work," the first suspect is the dragstart handler — not downstream consumers. Spend 80% of diagnosis time on the nearest code to the failure point. Do not explore tangential systems until the primary path is eliminated.
+
+3. **Simulate runtime values, don't just read logic.** For any conditional/threshold, ask: "What actual numbers will these variables hold when this line executes?" Code that is logically consistent can still fail if its inputs don't match assumptions about browser behavior, timing, or event ordering.
+
+4. **State your ranked suspect list before investigating.** Before reading any code, write a numbered list of most-likely-to-least-likely causes based on the symptom description. Investigate in that order. Do not go wide — go deep on #1 first.
+
