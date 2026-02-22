@@ -138,17 +138,29 @@ const GATE_RULES: Record<string, string[]> = {
 
 /**
  * Extract all relative import paths from a TypeScript source string.
- * Matches: `from './foo.js'`, `from '../bar/baz.js'`, etc.
+ * Matches both static and dynamic imports:
+ *   - Static:  `from './foo.js'`, `from '../bar/baz.js'`
+ *   - Dynamic: `import('./foo.js')`, `import('../bar/baz.js')`
+ * Excludes JSDoc `@see {@link import(...)}` references (not executable).
  * Returns the raw path strings (e.g. `'./canvasMenuRegistry.js'`).
  */
 function extractRelativeImports(source: string): string[] {
   const matches: string[] = [];
-  // Match from '...' and from "..." where path starts with .
-  const regex = /from\s+['"](\.\.?\/.+?)['"]/g;
+
+  // Static: from '...' and from "..." where path starts with .
+  const staticRegex = /from\s+['"](\.\.?\/.+?)['"]/g;
   let m: RegExpExecArray | null;
-  while ((m = regex.exec(source)) !== null) {
+  while ((m = staticRegex.exec(source)) !== null) {
     matches.push(m[1]);
   }
+
+  // Dynamic: import('...') and import("...") where path starts with .
+  // Negative lookbehind excludes @link references inside JSDoc comments.
+  const dynamicRegex = /(?<!@link\s)(?<!\{@link\s)import\(\s*['"](\.\.?\/.+?)['"]\s*\)/g;
+  while ((m = dynamicRegex.exec(source)) !== null) {
+    matches.push(m[1]);
+  }
+
   return matches;
 }
 
