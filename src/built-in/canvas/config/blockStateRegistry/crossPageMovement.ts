@@ -24,12 +24,6 @@ import {
  * The full ICanvasDataService structurally satisfies this.
  */
 export interface ICrossPageMoveDataAccess {
-  moveBlocksBetweenPagesAtomic(params: {
-    sourcePageId: string;
-    targetPageId: string;
-    sourceDoc: any;
-    appendedNodes: any[];
-  }): Promise<any>;
   appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<any>;
 }
 
@@ -112,6 +106,10 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
   const shouldDeleteSource = !event.altKey;
 
   try {
+    // ── Paste: append blocks to target page (immediate DB write) ──
+    await dataService.appendBlocksToPage(targetPageId, draggedJson);
+
+    // ── Cut: delete blocks from source editor ──
     if (shouldDeleteSource) {
       const blockIds = draggedJson
         .map((n: any) => n.attrs?.id)
@@ -121,17 +119,15 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
       deleteTr.setMeta('addToHistory', true);
 
       if (blockIds.length > 0) {
-        // ── Primary path: delete blocks by unique ID ──
+        // Delete blocks by unique ID (immune to position drift)
         const idSet = new Set(blockIds);
         const toDelete: { pos: number; size: number }[] = [];
         editor.state.doc.descendants((node: any, pos: number) => {
           if (node.attrs?.id && idSet.has(node.attrs.id)) {
             toDelete.push({ pos, size: node.nodeSize });
-            return false; // don't descend into matched node
+            return false;
           }
         });
-
-        // Delete in reverse position order so earlier positions stay valid
         toDelete.sort((a, b) => b.pos - a.pos);
         for (const { pos } of toDelete) {
           const mapped = deleteTr.mapping.map(pos);
@@ -140,54 +136,27 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
             deleteTr.delete(mapped, mapped + node.nodeSize);
           }
         }
-        // Column cleanup is handled by columnAutoDissolvePlugin
-        // (appendTransaction dissolves orphaned / single-column layouts).
       } else {
-        // ── Fallback: position-based deletion for blocks without IDs ──
+        // Fallback for blocks without UniqueID attrs
         const dragFrom = typeof (dragging as any)?.from === 'number'
           ? (dragging as any).from
-          : typeof payload?.from === 'number'
-            ? payload.from
           : typeof dragSession?.from === 'number'
             ? dragSession.from
           : editor.state.selection.from;
         const dragTo = typeof (dragging as any)?.to === 'number'
           ? (dragging as any).to
-          : typeof payload?.to === 'number'
-            ? payload.to
           : typeof dragSession?.to === 'number'
             ? dragSession.to
           : editor.state.selection.to;
         deleteDraggedSource(deleteTr, dragFrom, dragTo);
       }
 
-      if (!deleteTr.docChanged) return false;
-
-      // Dispatch immediately — block disappears from the editor
-      editor.view.dispatch(deleteTr);
-      clearActiveCanvasDragSession();
-
-      // Capture the post-delete doc for persistence
-      const sourceDocAfterDelete = editor.state.doc.toJSON();
-
-      try {
-        await dataService.moveBlocksBetweenPagesAtomic({
-          sourcePageId: currentPageId,
-          targetPageId,
-          sourceDoc: sourceDocAfterDelete,
-          appendedNodes: draggedJson,
-        });
-      } catch (persistErr) {
-        // Persistence failed — undo the optimistic delete to restore state
-        console.warn('[Canvas] Cross-page move persistence failed, undoing:', persistErr);
-        editor.commands.undo();
-        return false;
+      if (deleteTr.docChanged) {
+        editor.view.dispatch(deleteTr);
+        // Source auto-saves via onUpdate → scheduleContentSave
       }
-
-      return true;
     }
 
-    await dataService.appendBlocksToPage(targetPageId, draggedJson);
     clearActiveCanvasDragSession();
     return true;
   } catch (err) {
