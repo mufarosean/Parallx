@@ -3,6 +3,15 @@
 > **Branch:** `bsr-interaction-gaps`  
 > **Parent:** `canvas-v2` @ `2175405`  
 > **Date:** 2026-02-22  
+> **Status:** ✅ All 3 phases complete  
+
+## Commits
+
+| Phase | Commit | Summary |
+|-------|--------|---------|
+| 1 | `f798471` | Column-aware delete (`deleteBlockAt` + `deleteSelected()`) |
+| 2 | `d894675` | Tab indent/outdent into containers (`blockNesting.ts`) |
+| 3 | `ac90ce1` | Multi-block selection + DnD (Shift+Arrow, marquee, multi-drag) |
 
 ## Gap Audit Summary
 
