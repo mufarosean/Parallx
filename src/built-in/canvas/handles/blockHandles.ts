@@ -52,6 +52,18 @@ export class BlockHandlesController {
   private _lastPointerClient: { x: number; y: number } | null = null;
   private _scrollSyncRaf: number | null = null;
 
+  // Drag-vs-click recovery
+  // On `draggable="true"` elements the browser fires dragstart after ~2-4 px
+  // of mouse movement (hand tremor).  Once dragstart fires, the browser
+  // suppresses the click event entirely — so our _onDragHandleClick never
+  // runs.  We record the mousedown origin so that dragend can detect these
+  // tremor-drags (short time + short distance) and synthetically invoke the
+  // click logic that the browser ate.
+  private _dragMouseDownPos: { x: number; y: number } | null = null;
+  private _dragMouseDownTime = 0;
+  private static readonly _CLICK_TIME_MS = 200;   // ms — clicks are faster
+  private static readonly _CLICK_DIST_PX = 8;     // px — tremor is small
+
   constructor(
     private readonly _host: BlockHandlesHost,
     private readonly _actionMenu: IBlockActionMenu,
@@ -264,6 +276,14 @@ export class BlockHandlesController {
   // ── Drag Handle Click → Block Action Menu ──
 
   private readonly _onDragHandleClick = (e: MouseEvent): void => {
+    this._handleClickAction(e);
+  };
+
+  /**
+   * Core click logic shared by _onDragHandleClick (native click event) and
+   * _onDragHandleDragEnd (click recovery after tremor-drag).
+   */
+  private _handleClickAction(e: { shiftKey: boolean }): void {
     const editor = this._host.editor;
     if (!editor) return;
     if (this._isResizeInteractionActive()) return;
@@ -283,7 +303,7 @@ export class BlockHandlesController {
 
     const handleRect = this._dragHandleEl!.getBoundingClientRect();
     this._actionMenu.show(block.pos, block.node, handleRect, this._dragHandleEl!);
-  };
+  }
 
   // ── Drag Handle Drag Lifecycle (single owner) ──
 
@@ -419,9 +439,37 @@ export class BlockHandlesController {
     view.dom.classList.add('dragging');
   };
 
-  private readonly _onDragHandleDragEnd = (): void => {
+  private readonly _onDragHandleDragEnd = (event: DragEvent): void => {
     const editor = this._host.editor;
     if (!editor) return;
+
+    // ── Click recovery for tremor-drags ──
+    // If the entire drag cycle (mousedown → dragstart → dragend) was short
+    // in both time and distance, the user intended a click.  The browser
+    // suppressed the click event because dragstart fired, so we invoke the
+    // click logic ourselves.
+    if (this._dragMouseDownPos) {
+      const elapsed = Date.now() - this._dragMouseDownTime;
+      const dx = event.clientX - this._dragMouseDownPos.x;
+      const dy = event.clientY - this._dragMouseDownPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (elapsed < BlockHandlesController._CLICK_TIME_MS &&
+          dist < BlockHandlesController._CLICK_DIST_PX) {
+        // Clean up drag state first
+        editor.view.dragging = null as any;
+        editor.view.dom.classList.remove('dragging');
+        const sources = editor.view.dom.querySelectorAll('.block-drag-source');
+        sources.forEach((el) => el.classList.remove('block-drag-source'));
+        clearActiveCanvasDragSession();
+        this._scheduleHandleInteractionUnlock();
+        this._dragMouseDownPos = null;
+        this._dragMouseDownTime = 0;
+        // Now do what the click handler would have done
+        this._handleClickAction(event);
+        return;
+      }
+    }
+
     editor.view.dragging = null as any;
     editor.view.dom.classList.remove('dragging');
 
@@ -435,15 +483,15 @@ export class BlockHandlesController {
     this._scheduleHandleInteractionUnlock();
   };
 
-  private readonly _onDragHandleMouseDown = (_e: MouseEvent): void => {
+  private readonly _onDragHandleMouseDown = (e: MouseEvent): void => {
     if (this._isResizeInteractionActive()) return;
-    // Interaction lock is NOT set here — it is set in _onDragHandleDragStart
-    // when a real drag begins.  Setting it on mousedown would cause the
-    // document-level outside-click handler (canvasMenuRegistry) to hideAll()
-    // menus before the click event fires, producing a visible flicker.
+    this._dragMouseDownPos = { x: e.clientX, y: e.clientY };
+    this._dragMouseDownTime = Date.now();
   };
 
   private readonly _onGlobalMouseUp = (): void => {
+    this._dragMouseDownPos = null;
+    this._dragMouseDownTime = 0;
     this._scheduleHandleInteractionUnlock();
   };
 
