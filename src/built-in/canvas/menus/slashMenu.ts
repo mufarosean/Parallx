@@ -13,7 +13,7 @@ import {
 import type {
   SlashMenuItem,
   ICanvasMenu,
-  InsertActionContext,
+  InsertActionBaseContext,
 } from './canvasMenuRegistry.js';
 import type { CanvasMenuRegistry } from './canvasMenuRegistry.js';
 import type { IDisposable } from '../../../platform/lifecycle.js';
@@ -24,9 +24,9 @@ export interface SlashMenuHost {
   readonly editor: Editor | null;
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
-  readonly dataService?: InsertActionContext['dataService'];
+  readonly dataService?: InsertActionBaseContext['dataService'];
   readonly pageId?: string;
-  readonly openEditor?: InsertActionContext['openEditor'];
+  readonly openEditor?: InsertActionBaseContext['openEditor'];
   requestSave(reason: string): void;
   /** Toggle the suppress-update flag to prevent re-entrant slash checks. */
   suppressUpdate: boolean;

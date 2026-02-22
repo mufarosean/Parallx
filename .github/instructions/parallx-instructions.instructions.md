@@ -41,6 +41,31 @@ A "child" is any file that belongs to a registry's domain. A "gate" is a registr
 - **New handle/interaction feature?** It goes in `handles/`, imports from `handleRegistry.ts` only. If it needs something not yet re-exported, add the re-export to `handleRegistry.ts`.
 - **New icon?** Add to `canvasIcons.ts`, register in `iconRegistry.ts`. Consumers access via BlockRegistry or CanvasMenuRegistry re-exports.
 
+### When NOT to create a new gate
+
+Gates have maintenance cost (re-export sync, doc updates, test rules). Only create a new gate when:
+
+1. **A directory has 2+ files** that each import from **2+ different registries**. This is the cross-reach that gates prevent.
+2. **The domain is genuinely distinct** from existing gates. A new menu type goes under CanvasMenuRegistry — it doesn't need its own gate.
+
+Do NOT create a gate for:
+- A single file that imports from exactly one registry (it's already gated by that registry).
+- A pure-leaf file with zero canvas-internal imports (`blockBackground.ts`, `dragSession.ts`).
+- A folder with 1-2 files that all import from the same parent gate.
+
+**Examples of directories that correctly have no gate:**
+- `extensions/` — pure Tiptap extensions, each imports from BlockRegistry only (or nothing).
+- `plugins/` — column plugins gated through BlockStateRegistry.
+- `invariants/` — single file, zero relative imports.
+- `math/` — one file, gated through CanvasMenuRegistry.
+- `header/` — one file, gated through BlockRegistry.
+
+Current ratio: 5 gates / ~50 files = 1:10. If the ratio drops below 1:5, reconsider whether some gates should merge.
+
+### Automated enforcement
+
+The gate architecture is enforced by `tests/unit/gateCompliance.test.ts`. Every canvas `.ts` file must appear in one of three sets: `GATE_FILES`, `EXEMPT_FILES`, or `GATE_RULES`. When adding a new file, add it to the appropriate set — the test will fail if you forget.
+
 ### Why this matters
 
 The circular dependency that broke column editing was caused by cross-reach: `blockRegistry → columnNodes → blockCapabilities → blockRegistry`. The gate architecture prevents this class of bug — every dependency is mediated by a gate, every gate has a clear direction, and esbuild's IIFE bundling order becomes irrelevant because no child reads from a registry it isn't gated through.

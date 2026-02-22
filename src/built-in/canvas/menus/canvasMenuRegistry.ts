@@ -31,11 +31,13 @@ import {
   getBlockByName as _getBlockByName,
   BLOCK_REGISTRY as _BLOCK_REGISTRY,
   type InsertActionContext as _InsertActionContext,
+  type InsertActionBaseContext as _InsertActionBaseContext,
 } from '../config/blockRegistry.js';
 
-// Re-export InsertActionContext so menu children (slashMenu.ts) get it
+// Re-export both context types so menu children (slashMenu.ts) get them
 // through their parent registry rather than importing blockRegistry directly.
 export type InsertActionContext = _InsertActionContext;
+export type InsertActionBaseContext = _InsertActionBaseContext;
 
 // ── Icon Access (registry-to-registry gate) ─────────────────────────────────
 // MenuRegistry talks to IconRegistry so that individual menu files never
@@ -47,7 +49,7 @@ import {
   PAGE_SELECTABLE_ICONS as _ir_PAGE_SELECTABLE_ICONS,
 } from '../config/iconRegistry.js';
 
-/** Render an SVG icon string by ID (delegates to IconRegistry). */
+/** @see {@link import('../config/iconRegistry.js').svgIcon} — original source (IconRegistry → here) */
 export const svgIcon: (id: string) => string = _ir_svgIcon;
 
 // ── Block Mutation Access (registry-to-registry gate) ────────────────────────
@@ -65,7 +67,7 @@ export {
   turnBlockWithSharedStrategy,
 } from '../config/blockRegistry.js';
 
-/** Icon IDs selectable by users for pages/callouts (delegates to IconRegistry). */
+/** @see {@link import('../config/iconRegistry.js').PAGE_SELECTABLE_ICONS} — original source (IconRegistry → here) */
 export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICONS;
 
 // ── Slash Menu Data (registry-to-child gate) ─────────────────────────────────
@@ -398,14 +400,16 @@ export class CanvasMenuRegistry {
     blockId: string,
     editor: Editor,
     range: { from: number; to: number },
-    context: _InsertActionContext,
+    context: _InsertActionBaseContext,
   ): Promise<void> {
     const def = _BLOCK_REGISTRY.get(blockId);
     if (!def) return;
 
     if (def.insertAction) {
-      // Augment context with popup helpers so insertAction callbacks
-      // access them without blockRegistry importing popup files directly.
+      // Augment base context with popup helpers to build the full
+      // InsertActionContext.  This is the compile-time guarantee:
+      // InsertActionContext requires all three popup fields, and
+      // this is the single place that provides them.
       const fullContext: _InsertActionContext = {
         ...context,
         showImageInsertPopup: _showImageInsertPopup,

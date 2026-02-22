@@ -64,17 +64,29 @@ export interface EditorExtensionContext {
 // ── InsertActionContext ─────────────────────────────────────────────────────
 // Runtime dependencies passed to insertAction callbacks at slash-menu
 // execution time.  The menu registry constructs this from the editor pane.
+//
+// Split into two layers:
+//   • InsertActionBaseContext — caller-provided fields (page ID, services)
+//   • InsertActionContext — full context with popup functions (required)
+//
+// Callers of executeBlockInsert() provide the *base* context.
+// canvasMenuRegistry augments it with popup functions to produce the
+// *full* context.  This makes missing popups a compile-time error
+// rather than a silent runtime no-op.
 
-export interface InsertActionContext {
+export interface InsertActionBaseContext {
   readonly pageId?: string;
   readonly dataService?: ICanvasDataService;
   readonly openEditor?: OpenEditorFn;
+}
+
+export interface InsertActionContext extends InsertActionBaseContext {
   /** Show the image upload/embed popup (provided by CanvasMenuRegistry). */
-  readonly showImageInsertPopup?: (editor: Editor, range: { from: number; to: number }) => void;
+  readonly showImageInsertPopup: (editor: Editor, range: { from: number; to: number }) => void;
   /** Show the media upload/embed popup (provided by CanvasMenuRegistry). */
-  readonly showMediaInsertPopup?: (editor: Editor, range: { from: number; to: number }, kind: 'video' | 'audio' | 'fileAttachment') => void;
+  readonly showMediaInsertPopup: (editor: Editor, range: { from: number; to: number }, kind: 'video' | 'audio' | 'fileAttachment') => void;
   /** Show the bookmark URL input popup (provided by CanvasMenuRegistry). */
-  readonly showBookmarkInsertPopup?: (editor: Editor, range: { from: number; to: number }) => void;
+  readonly showBookmarkInsertPopup: (editor: Editor, range: { from: number; to: number }) => void;
 }
 
 // ── BlockDefinition Interface ───────────────────────────────────────────────
@@ -416,7 +428,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Upload or embed an image', order: 30, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined,
-    insertAction: (_editor, range, context) => context.showImageInsertPopup?.(_editor, range),
+    insertAction: (_editor, range, context) => context.showImageInsertPopup(_editor, range),
     extension: () => Image.configure({ inline: false, allowBase64: true }),
   },
   {
@@ -682,7 +694,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Link preview card', order: 70, category: 'advanced' },
     turnInto: undefined,
     defaultContent: undefined,
-    insertAction: (_editor, range, context) => context.showBookmarkInsertPopup?.(_editor, range),
+    insertAction: (_editor, range, context) => context.showBookmarkInsertPopup(_editor, range),
     extension: () => Bookmark,
   },
   {
@@ -796,7 +808,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Embed a video', order: 31, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined,
-    insertAction: (_editor, range, context) => context.showMediaInsertPopup?.(_editor, range, 'video'),
+    insertAction: (_editor, range, context) => context.showMediaInsertPopup(_editor, range, 'video'),
     extension: () => Video,
   },
   {
@@ -810,7 +822,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Embed audio', order: 32, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined,
-    insertAction: (_editor, range, context) => context.showMediaInsertPopup?.(_editor, range, 'audio'),
+    insertAction: (_editor, range, context) => context.showMediaInsertPopup(_editor, range, 'audio'),
     extension: () => Audio,
   },
   {
@@ -824,7 +836,7 @@ const definitions: BlockDefinition[] = [
     slashMenu: { description: 'Attach a file', order: 33, category: 'media' },
     turnInto: undefined,
     defaultContent: undefined,
-    insertAction: (_editor, range, context) => context.showMediaInsertPopup?.(_editor, range, 'fileAttachment'),
+    insertAction: (_editor, range, context) => context.showMediaInsertPopup(_editor, range, 'fileAttachment'),
     extension: () => FileAttachment,
   },
 
@@ -1038,13 +1050,13 @@ import {
   createIconElement as _ir_createIconElement,
 } from './iconRegistry.js';
 
-/** Render an SVG icon string by ID (delegates to IconRegistry). */
+/** @see {@link import('./iconRegistry.js').svgIcon} — original source */
 export const svgIcon: (id: string) => string = _ir_svgIcon;
 
-/** Resolve a page's stored icon field to a valid icon ID (delegates to IconRegistry). */
+/** @see {@link import('./iconRegistry.js').resolvePageIcon} — original source */
 export const resolvePageIcon: (icon: string | null | undefined) => string = _ir_resolvePageIcon;
 
-/** Create a sized <span> element containing an SVG icon (delegates to IconRegistry). */
+/** @see {@link import('./iconRegistry.js').createIconElement} — original source */
 export const createIconElement: (id: string, size?: number) => HTMLElement = _ir_createIconElement;
 
 // ── Block State Access (registry gate) ───────────────────────────────────────

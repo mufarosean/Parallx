@@ -8,6 +8,7 @@
 // This mirrors blockRegistry's own pattern — registries are two-way gates.
 
 // ── Inward gate: dependencies children need from blockRegistry ──────────
+/** @see {@link import('../blockRegistry.js').PAGE_CONTAINERS} — original source */
 export { PAGE_CONTAINERS, isContainerBlockType } from '../blockRegistry.js';
 
 // ── Outward gate: public APIs from children ─────────────────────────────
