@@ -27,6 +27,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import {
   PAGE_CONTAINERS,
+  resolveBlockAncestry,
   moveBlockAboveBelow,
   createColumnLayoutFromDrop,
   addColumnToLayoutFromDrop,
@@ -146,18 +147,11 @@ export function columnDropPlugin(): Plugin {
     try {
       const inner = view.posAtDOM(blockEl, 0);
       const $p = view.state.doc.resolve(inner);
+      const ancestry = resolveBlockAncestry($p);
 
-      let containerDepth = 0;
-      for (let d = 1; d <= $p.depth; d++) {
-        if (PAGE_CONTAINERS.has($p.node(d).type.name)) {
-          containerDepth = d;
-        }
-      }
+      if (ancestry.blockDepth > $p.depth) return null;
 
-      const blockDepth = containerDepth + 1;
-      if (blockDepth > $p.depth) return null;
-
-      const blockPos = $p.before(blockDepth);
+      const blockPos = $p.before(ancestry.blockDepth);
       const blockNode = view.state.doc.nodeAt(blockPos);
       if (!blockNode) return null;
 
@@ -165,9 +159,9 @@ export function columnDropPlugin(): Plugin {
       let columnListPos: number | null = null;
       let colIdx = 0;
 
-      if (containerDepth > 0 && $p.node(containerDepth).type.name === 'column') {
-        columnPos = $p.before(containerDepth);
-        columnListPos = $p.before(containerDepth - 1);
+      if (ancestry.columnDepth !== null && ancestry.columnListDepth !== null) {
+        columnPos = $p.before(ancestry.columnDepth);
+        columnListPos = $p.before(ancestry.columnListDepth);
         const clNode = view.state.doc.nodeAt(columnListPos);
         if (clNode) {
           let off = columnListPos + 1;

@@ -70,59 +70,15 @@ export function turnBlockIntoColumns(
 
   const columnList = columnListNodeType.create(null, columns);
 
-  // ── DIAGNOSTIC: trace the full pipeline ──
-  console.group('[turnBlockIntoColumns] DIAGNOSTIC');
-  console.log('pos:', pos, 'node.type:', node.type.name, 'nodeSize:', node.nodeSize);
-  console.log('columnList structure:', JSON.stringify(columnList.toJSON(), null, 2));
-
   const { tr } = editor.state;
   tr.replaceWith(pos, pos + node.nodeSize, columnList);
-  console.log('After replaceWith — doc size:', tr.doc.content.size);
-  console.log('Doc structure:', JSON.stringify(tr.doc.toJSON(), null, 2).slice(0, 1000));
 
   const selectionAnchor = Math.min(pos + 3, tr.doc.content.size);
-  console.log('selectionAnchor:', selectionAnchor);
   const $resolved = tr.doc.resolve(selectionAnchor);
-  console.log('$resolved depth:', $resolved.depth, 'parent:', $resolved.parent.type.name);
   const sel = TextSelection.near($resolved, 1);
-  console.log('TextSelection.near result:', sel.from, '-', sel.to, 'anchor:', sel.anchor);
   tr.setSelection(sel);
 
   editor.view.dispatch(tr);
-  console.log('After dispatch — editor.state.selection:', editor.state.selection.from, '-', editor.state.selection.to);
-  console.log('view.hasFocus():', editor.view.hasFocus());
-
-  // Check DOM structure
-  requestAnimationFrame(() => {
-    const pm = editor.view.dom as HTMLElement;
-    const columnLists = pm.querySelectorAll('.canvas-column-list');
-    console.log('DOM column-lists found:', columnLists.length);
-    columnLists.forEach((cl, i) => {
-      const cols = cl.querySelectorAll(':scope > .canvas-column');
-      console.log(`  columnList[${i}] columns:`, cols.length);
-      cols.forEach((col, j) => {
-        const editable = (col as HTMLElement).contentEditable;
-        const pe = window.getComputedStyle(col).pointerEvents;
-        const us = window.getComputedStyle(col).userSelect;
-        console.log(`    col[${j}] contentEditable:${editable} pointer-events:${pe} user-select:${us}`);
-        // Check children
-        const children = col.children;
-        for (let k = 0; k < children.length; k++) {
-          const child = children[k] as HTMLElement;
-          const childPe = window.getComputedStyle(child).pointerEvents;
-          const childUs = window.getComputedStyle(child).userSelect;
-          console.log(`      child[${k}] tag:${child.tagName} contentEditable:${child.contentEditable} pe:${childPe} us:${childUs}`);
-        }
-      });
-    });
-    // Check body classes
-    console.log('body classes:', document.body.className);
-    console.log('view.dom classes:', pm.className);
-    console.log('editor.view.hasFocus():', editor.view.hasFocus());
-    console.log('document.activeElement:', document.activeElement?.tagName, document.activeElement?.className);
-    console.groupEnd();
-  });
-
   editor.commands.focus();
   return true;
 }

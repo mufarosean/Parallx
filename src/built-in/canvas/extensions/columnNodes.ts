@@ -24,7 +24,7 @@ import {
   moveBlockAcrossColumnBoundary,
   moveBlockDownWithinPageFlow,
   moveBlockUpWithinPageFlow,
-  normalizeColumnListAfterMutation,
+  normalizeColumnList,
 } from '../config/blockRegistry.js';
 
 export const Column = Node.create({
@@ -154,7 +154,7 @@ export const ColumnList = Node.create({
             const colListPos = $from.before(columnListDepth);
             const { tr } = editor.state;
             tr.delete(colPos, colPos + columnNode.nodeSize);
-            normalizeColumnListAfterMutation(tr, colListPos);
+            normalizeColumnList(tr, colListPos);
             editor.view.dispatch(tr);
             return true;
           }

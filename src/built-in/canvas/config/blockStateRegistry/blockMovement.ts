@@ -13,8 +13,9 @@ import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import {
   PAGE_CONTAINERS,
+  resolveBlockAncestry,
+  cleanupEmptyColumn,
   isColumnEffectivelyEmpty,
-  normalizeColumnList,
   normalizeAllColumnLists,
   deleteDraggedSource,
 } from './blockStateRegistry.js';
@@ -28,20 +29,10 @@ export interface BlockMoveResult {
 
 // ── Keyboard Movement ───────────────────────────────────────────────────────
 
-function findBlockContext($pos: any): { containerDepth: number; blockDepth: number } {
-  let containerDepth = 0;
-  for (let d = 1; d <= $pos.depth; d++) {
-    if (PAGE_CONTAINERS.has($pos.node(d).type.name)) {
-      containerDepth = d;
-    }
-  }
-  return { containerDepth, blockDepth: containerDepth + 1 };
-}
-
 export function moveBlockUpWithinPageFlow(editor: Editor): BlockMoveResult {
   const { state } = editor;
   const { $head } = state.selection;
-  const { containerDepth, blockDepth } = findBlockContext($head);
+  const { containerDepth, blockDepth } = resolveBlockAncestry($head);
 
   if ($head.depth < blockDepth) return { handled: false, moved: false };
 
@@ -75,7 +66,7 @@ export function moveBlockUpWithinPageFlow(editor: Editor): BlockMoveResult {
 export function moveBlockDownWithinPageFlow(editor: Editor): BlockMoveResult {
   const { state } = editor;
   const { $head } = state.selection;
-  const { containerDepth, blockDepth } = findBlockContext($head);
+  const { containerDepth, blockDepth } = resolveBlockAncestry($head);
 
   if ($head.depth < blockDepth) return { handled: false, moved: false };
 
@@ -108,16 +99,11 @@ export function moveBlockAcrossColumnBoundary(
   direction: 'up' | 'down',
 ): boolean {
   const { $from } = editor.state.selection;
+  const ancestry = resolveBlockAncestry($from);
 
-  let colDepth = -1;
-  for (let d = $from.depth; d >= 1; d--) {
-    if ($from.node(d).type.name === 'column') {
-      colDepth = d;
-      break;
-    }
-  }
-  if (colDepth < 0) return false;
+  if (ancestry.columnDepth === null) return false;
 
+  const colDepth = ancestry.columnDepth;
   const blockDepth = colDepth + 1;
   if (blockDepth > $from.depth) return false;
 
@@ -126,7 +112,7 @@ export function moveBlockAcrossColumnBoundary(
   if (!blockNode) return false;
 
   const colPos = $from.before(colDepth);
-  const clDepth = colDepth - 1;
+  const clDepth = ancestry.columnListDepth!;
   const clPos = $from.before(clDepth);
   const clNode = $from.node(clDepth);
   const clEnd = clPos + clNode.nodeSize;
@@ -170,13 +156,9 @@ export function moveBlockAcrossColumnBoundary(
 
   tr.delete(blockPos, blockPos + blockNode.nodeSize);
 
+  // Clean up any empty column left behind after the block removal.
   const mappedColPos = tr.mapping.map(colPos, 1);
-  const mappedColNode = tr.doc.nodeAt(mappedColPos);
-  if (mappedColNode && mappedColNode.type.name === 'column' && isColumnEffectivelyEmpty(mappedColNode)) {
-    tr.delete(mappedColPos, mappedColPos + mappedColNode.nodeSize);
-  }
-
-  normalizeColumnList(tr, clPos);
+  cleanupEmptyColumn(tr, mappedColPos, clPos);
 
   const mapped = tr.mapping.map(direction === 'up' ? clPos : clEnd);
   tr.insert(mapped, blockNode);

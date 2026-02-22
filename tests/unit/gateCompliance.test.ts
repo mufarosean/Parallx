@@ -99,7 +99,7 @@ const GATE_RULES: Record<string, string[]> = {
   'config/blockStateRegistry/blockTransforms.ts':     ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/blockMovement.ts':       ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/columnCreation.ts':      ['config/blockStateRegistry/blockStateRegistry'],
-  'config/blockStateRegistry/columnInvariants.ts':    [],  // zero canvas imports
+  'config/blockStateRegistry/columnInvariants.ts':    ['config/blockStateRegistry/blockStateRegistry'],  // PAGE_CONTAINERS via resolveBlockAncestry
   'config/blockStateRegistry/crossPageMovement.ts':   ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/dragSession.ts':         [],  // zero canvas imports
 

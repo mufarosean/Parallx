@@ -1,6 +1,7 @@
 // columnInvariants.ts — Structural rules for column layouts
 //
 // Single source of truth for column structural invariants:
+//   • resolveBlockAncestry — shared depth-walk utility for finding block context
 //   • Is a column effectively empty?
 //   • Normalize a columnList after any mutation (dissolve 0-1 columns, reset widths)
 //   • Reset all column widths to equal
@@ -10,6 +11,63 @@
 //              columnNodes (Backspace handler), columnDropPlugin (via facade).
 //
 // Part of blockStateRegistry — the single authority for block state operations.
+
+import { PAGE_CONTAINERS } from './blockStateRegistry.js';
+
+// ── Block Ancestry Resolution ───────────────────────────────────────────────
+
+/**
+ * Result of walking a resolved position's depth to find its container context.
+ *
+ * Every block lives inside a "page container" (the document root, a column,
+ * or a details/toggleHeading/callout/blockquote). This type captures the
+ * depths and nodes at each level.
+ */
+export interface BlockAncestry {
+  /** Depth of the innermost PAGE_CONTAINERS ancestor (0 = document root). */
+  containerDepth: number;
+  /** Depth of the block itself (always `containerDepth + 1`). */
+  blockDepth: number;
+  /** Depth of the column ancestor, if the block is inside a column layout. */
+  columnDepth: number | null;
+  /** Depth of the columnList ancestor (always `columnDepth - 1` when present). */
+  columnListDepth: number | null;
+}
+
+/**
+ * Walk a resolved position's ancestry to find its block container context.
+ *
+ * This is the **single** implementation of the "find block in container"
+ * depth-walk pattern used across blockMovement, columnDropPlugin,
+ * columnInvariants, and columnNodes. Every caller that needs to know
+ * "where is this block and is it inside a column?" should use this function
+ * instead of reimplementing the walk.
+ *
+ * @param $pos — A ProseMirror `ResolvedPos` (from `doc.resolve()` or `$from`/`$head`).
+ * @returns The ancestry context. `columnDepth`/`columnListDepth` are null when
+ *          the position is not inside a column layout.
+ */
+export function resolveBlockAncestry($pos: any): BlockAncestry {
+  let containerDepth = 0;
+  let columnDepth: number | null = null;
+
+  for (let d = 1; d <= $pos.depth; d++) {
+    const name = $pos.node(d).type.name;
+    if (PAGE_CONTAINERS.has(name)) {
+      containerDepth = d;
+    }
+    if (name === 'column') {
+      columnDepth = d;
+    }
+  }
+
+  return {
+    containerDepth,
+    blockDepth: containerDepth + 1,
+    columnDepth,
+    columnListDepth: columnDepth !== null ? columnDepth - 1 : null,
+  };
+}
 
 // ── Column Empty Check ──────────────────────────────────────────────────────
 
@@ -53,6 +111,17 @@ function nodeHasMeaningfulContent(node: any): boolean {
  *   • 0 columns → delete the columnList entirely
  *   • 1 column  → dissolve: replace columnList with the column's content
  *   • 2+ columns → reset all column widths to equal (null)
+ *
+ * **Width redistribution contract (Notion-aligned):**
+ * When a column is removed from a columnList, all remaining columns get
+ * `width: null` (equal distribution via CSS flex). This is intentional —
+ * it matches Notion's behavior where remaining siblings always fill the
+ * space equally regardless of their prior proportions or user-set widths.
+ *
+ * This means keyboard-moving or DnD-moving a block out of a column (so
+ * the column is deleted) will reset sibling widths. The safety-net plugin
+ * (`columnAutoDissolvePlugin`) deliberately uses `dissolveOrphanedColumnLists`
+ * instead, which does NOT reset widths for 2+ column lists.
  */
 export function normalizeColumnList(tr: any, columnListPos: number): void {
   let targetPos = columnListPos;
@@ -183,6 +252,37 @@ export function resetColumnListWidths(tr: any, columnListPos: number): void {
   }
 }
 
+// ── Column Cleanup After Block Removal ──────────────────────────────────────
+
+/**
+ * After removing a block from a column, check if the column is now empty
+ * and clean it up. This is the **single** implementation of the pattern
+ * "block left a column → check if empty → delete column → normalize parent".
+ *
+ * Used by both keyboard movement (`moveBlockAcrossColumnBoundary`) and
+ * DnD (`deleteDraggedSource`). Having one path eliminates the risk of
+ * fixing a bug in one and forgetting the other.
+ *
+ * @param tr           — Active transaction (already has the deletion applied).
+ * @param mappedColPos — Mapped position of the source column in the current tr.
+ * @param columnListPos — Original (unmapped) position of the parent columnList.
+ * @returns true if a column was removed and the columnList was normalized.
+ */
+export function cleanupEmptyColumn(
+  tr: any,
+  mappedColPos: number,
+  columnListPos: number,
+): boolean {
+  const maybeColumn = tr.doc.nodeAt(mappedColPos);
+  if (!maybeColumn || maybeColumn.type.name !== 'column') return false;
+
+  if (!isColumnEffectivelyEmpty(maybeColumn)) return false;
+
+  tr.delete(mappedColPos, mappedColPos + maybeColumn.nodeSize);
+  normalizeColumnList(tr, columnListPos);
+  return true;
+}
+
 // ── Dragged Source Deletion ─────────────────────────────────────────────────
 
 /**
@@ -201,18 +301,10 @@ export function deleteDraggedSource(
   const initialDoc = Array.isArray(tr.docs) && tr.docs.length > 0 ? tr.docs[0] : tr.doc;
   const safeFrom = Math.max(0, Math.min(dragFrom, initialDoc.content.size));
   const $src = initialDoc.resolve(safeFrom);
-  let sourceColumnStartPos: number | null = null;
-  let sourceColumnListPos: number | null = null;
 
-  let colD = -1;
-  for (let d = $src.depth; d >= 1; d--) {
-    if ($src.node(d).type.name === 'column') { colD = d; break; }
-  }
-
-  if (colD >= 0) {
-    sourceColumnStartPos = $src.before(colD);
-    sourceColumnListPos = $src.before(colD - 1);
-  }
+  const ancestry = resolveBlockAncestry($src);
+  const sourceColumnStartPos = ancestry.columnDepth !== null ? $src.before(ancestry.columnDepth) : null;
+  const sourceColumnListPos = ancestry.columnListDepth !== null ? $src.before(ancestry.columnListDepth) : null;
 
   const mFrom = tr.mapping.map(dragFrom);
   const mTo = tr.mapping.map(dragTo);
@@ -223,15 +315,17 @@ export function deleteDraggedSource(
     return;
   }
 
+  // Primary path: map column position and check if empty
   const mappedColumnStart = tr.mapping.map(sourceColumnStartPos, 1);
-  const maybeColumn = tr.doc.nodeAt(mappedColumnStart);
-  if (!maybeColumn || maybeColumn.type.name !== 'column') {
+  if (cleanupEmptyColumn(tr, mappedColumnStart, sourceColumnListPos)) {
     return;
   }
 
-  if (isColumnEffectivelyEmpty(maybeColumn)) {
-    tr.delete(mappedColumnStart, mappedColumnStart + maybeColumn.nodeSize);
-    normalizeColumnList(tr, sourceColumnListPos);
+  // The column wasn't found at the mapped position (mapping drift after
+  // complex multi-step transactions). Check if the column node at the mapped
+  // position is still a column — if not, we can't clean up via the primary path.
+  const maybeColumn = tr.doc.nodeAt(mappedColumnStart);
+  if (!maybeColumn || maybeColumn.type.name !== 'column') {
     return;
   }
 
@@ -265,14 +359,4 @@ export function deleteDraggedSource(
   normalizeColumnList(tr, mappedColumnListPos);
 }
 
-// ── Backward-Compat Aliases ─────────────────────────────────────────────────
-// These aliases preserve existing consumer imports during the transition.
-// Remove once all callers are updated to the shorter names.
 
-export {
-  normalizeColumnList as normalizeColumnListAfterMutation,
-  resetColumnListWidths as resetColumnListWidthsInTransaction,
-  deleteDraggedSource as deleteDraggedSourceFromTransaction,
-  normalizeAllColumnLists as normalizeAllColumnListsAfterMutation,
-  dissolveOrphanedColumnLists as dissolveOrphanedColumnListsAfterMutation,
-};

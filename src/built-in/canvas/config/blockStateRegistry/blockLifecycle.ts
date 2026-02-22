@@ -3,6 +3,11 @@
 // Functions that create, destroy, or restyle a block without changing its
 // position or type.  Part of the blockStateRegistry — the single authority
 // for block state operations.
+//
+// Dispatch pattern: raw `tr` → `view.dispatch(tr)` → `editor.commands.focus()`
+// for one undo step per operation and consistent focus.  Exception:
+// applyTextColorToBlock uses `editor.chain()` because setColor/unsetColor
+// are Tiptap extension commands — raw tr would couple to mark schema internals.
 
 import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
@@ -23,11 +28,15 @@ export function duplicateBlockAt(
   }
 
   editor.view.dispatch(tr);
+  editor.commands.focus();
   return insertPos;
 }
 
 export function deleteBlockAt(editor: Editor, pos: number, node: any): void {
-  editor.chain().deleteRange({ from: pos, to: pos + node.nodeSize }).focus().run();
+  const { tr } = editor.state;
+  tr.delete(pos, pos + node.nodeSize);
+  editor.view.dispatch(tr);
+  editor.commands.focus();
 }
 
 export function applyTextColorToBlock(
@@ -43,6 +52,9 @@ export function applyTextColorToBlock(
     return false;
   }
 
+  // Uses editor.chain() because setColor/unsetColor are Tiptap extension
+  // commands — converting to raw tr.addMark/removeMark would couple to
+  // the Color extension's mark schema internals.
   if (color) {
     editor.chain().setTextSelection({ from, to }).setColor(color).focus().run();
   } else {
@@ -58,7 +70,7 @@ export function applyBackgroundColorToBlock(
   node: any,
   color: string | null,
 ): void {
-  const tr = editor.view.state.tr;
+  const { tr } = editor.state;
   tr.setNodeMarkup(pos, undefined, { ...node.attrs, backgroundColor: color });
   editor.view.dispatch(tr);
   editor.commands.focus();

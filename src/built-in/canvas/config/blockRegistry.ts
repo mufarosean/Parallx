@@ -1095,11 +1095,6 @@ export {
   dissolveOrphanedColumnLists,
   resetColumnListWidths,
   deleteDraggedSource,
-  // Backward-compat aliases (remove once all callers use short names):
-  normalizeColumnListAfterMutation,
-  deleteDraggedSourceFromTransaction,
-  resetColumnListWidthsInTransaction,
-  dissolveOrphanedColumnListsAfterMutation,
   moveBlockAcrossColumnBoundary,
   moveBlockDownWithinPageFlow,
   moveBlockUpWithinPageFlow,
