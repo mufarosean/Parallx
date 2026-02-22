@@ -32,9 +32,8 @@ import type { ICanvasDataService } from './canvasTypes.js';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
-import { createEditorExtensions } from './config/blockRegistry.js';
+import { createEditorExtensions, PageChromeController } from './config/blockRegistry.js';
 import { BlockHandlesController, BlockSelectionController } from './handles/handleRegistry.js';
-import { PageChromeController } from './header/pageChrome.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)

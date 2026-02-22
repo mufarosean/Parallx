@@ -1122,6 +1122,12 @@ export {
 
 export { createEditorExtensions } from './tiptapExtensions.js';
 
+// ── Page Chrome Access (registry gate) ───────────────────────────────────
+// PageChromeController lives in header/pageChrome.ts.  External consumers
+// (canvasEditorProvider) reach it through blockRegistry — its owning gate.
+
+export { PageChromeController } from '../header/pageChrome.js';
+
 // ── Drag Session + Cross-Page Movement (registry gate) ──────────────────
 // Drag session state lives in dragSession.ts.  Cross-page movement
 // (async persistence orchestration) lives in crossPageMovement.ts.

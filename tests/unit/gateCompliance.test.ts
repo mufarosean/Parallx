@@ -198,7 +198,7 @@ function collectTsFiles(dir: string, base: string = ''): string[] {
     const rel = base ? `${base}/${entry}` : entry;
     if (statSync(full).isDirectory()) {
       // Skip migrations (SQL files only)
-      if (entry === 'migrations' || entry === 'pickers') continue;
+      if (entry === 'migrations') continue;
       files.push(...collectTsFiles(full, rel));
     } else if (entry.endsWith('.ts') && !entry.endsWith('.d.ts')) {
       files.push(rel);

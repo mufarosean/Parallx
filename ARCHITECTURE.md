@@ -64,6 +64,8 @@ A "child" is any file that belongs to a registry's domain (e.g. `slashMenu.ts` i
 
 **Re-exports from BlockStateRegistry:** All mutation/movement/column/drag-session exports, 30+ symbols (for its children)
 
+**Re-exports from header/pageChrome:** `PageChromeController` (for canvasEditorProvider — the orchestrator)
+
 **Own API:** `BLOCK_REGISTRY`, `BlockDefinition`, `PAGE_CONTAINERS`, `COLUMN_CONTENT_EXPRESSION`, `getBlockExtensions()`, `getSlashMenuBlocks()`, `getTurnIntoBlocks()`, `getBlockLabel()`, `getBlockByName()`, `isContainerBlockType()`, `getNodePlaceholder()`, `createEditorExtensions()`
 
 **Children (8 files):**
