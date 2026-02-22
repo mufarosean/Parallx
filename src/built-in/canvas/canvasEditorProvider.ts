@@ -260,8 +260,11 @@ class CanvasEditorPane implements IDisposable {
         this._menuRegistry?.notifySelectionUpdate(editor);
       },
       onBlur: () => {
-        // Small delay so clicking menu buttons doesn't dismiss them
+        // Small delay so clicking menu buttons doesn't dismiss them.
+        // Also skip if the blur was caused by a handle interaction
+        // (mousedown on drag handle transfers focus away from PM).
         setTimeout(() => {
+          if (this._menuRegistry.isInteractionLocked()) return;
           if (
             !this._menuRegistry.containsFocusedElement()
           ) {

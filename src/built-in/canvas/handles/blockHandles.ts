@@ -495,13 +495,12 @@ export class BlockHandlesController {
 
   private readonly _onDragHandleMouseDown = (e: MouseEvent): void => {
     if (this._isResizeInteractionActive()) return;
-    // Prevent focus from leaving the contenteditable surface.
-    // Without this, the browser transfers focus to the (non-focusable) drag
-    // handle div, PM fires blur → 150ms hideAll() timer → menu flicker.
-    // Also prevents PM from adjusting its selection state (cursor jump).
-    // Chromium/Electron: preventDefault on mousedown does NOT cancel
-    // dragstart on draggable="true" elements, so drag still works.
-    e.preventDefault();
+    // Set interaction lock so the blur-hide timer and outside-click handler
+    // skip hideAll() while we're interacting with the drag handle.
+    // We intentionally do NOT call e.preventDefault() here — in some
+    // Electron/Chromium builds, preventDefault on mousedown suppresses
+    // the subsequent dragstart on draggable="true" elements.
+    this._setHandleInteractionLock(true);
     this._dragMouseDownPos = { x: e.clientX, y: e.clientY };
     this._dragMouseDownTime = Date.now();
   };
