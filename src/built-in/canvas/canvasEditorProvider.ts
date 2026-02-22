@@ -33,7 +33,7 @@ import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
 import { createEditorExtensions, PageChromeController } from './config/blockRegistry.js';
-import { BlockHandlesController, BlockSelectionController } from './handles/handleRegistry.js';
+import { BlockHandlesController, BlockSelectionController, BlockMarqueeController } from './handles/handleRegistry.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
@@ -145,6 +145,9 @@ class CanvasEditorPane implements IDisposable {
   // ── Block selection controller ──
   private _blockSelection!: BlockSelectionController;
 
+  // ── Block marquee (box-drag lasso selection) ──
+  private _blockMarquee!: BlockMarqueeController;
+
   constructor(
     private readonly _container: HTMLElement,
     private readonly _pageId: string,
@@ -243,16 +246,25 @@ class CanvasEditorPane implements IDisposable {
         const json = JSON.stringify(editor.getJSON());
         this._dataService.scheduleContentSave(this._pageId, json);
       },
-      onTransaction: ({ editor }) => {
+      onTransaction: ({ editor, transaction }) => {
         if (this._suppressUpdate) return;
         this._menuRegistry?.notifyTransaction(editor);
+        // Invalidate cached DOM refs in the handle layer when the document
+        // structure changes — prevents stale _lastHoverElement from causing
+        // _resolveBlockFromHandle() to target the wrong block.
+        if (transaction.docChanged) {
+          this._blockHandles?.notifyDocChanged();
+        }
       },
       onSelectionUpdate: ({ editor }) => {
         this._menuRegistry?.notifySelectionUpdate(editor);
       },
       onBlur: () => {
-        // Small delay so clicking menu buttons doesn't dismiss them
+        // Small delay so clicking menu buttons doesn't dismiss them.
+        // Also skip if the blur was caused by a handle interaction
+        // (mousedown on drag handle transfers focus away from PM).
         setTimeout(() => {
+          if (this._menuRegistry.isInteractionLocked()) return;
           if (
             !this._menuRegistry.containsFocusedElement()
           ) {
@@ -289,12 +301,18 @@ class CanvasEditorPane implements IDisposable {
     this._blockSelection = new BlockSelectionController(this);
     this._blockSelection.setup();
 
+    // Setup block marquee (box-drag selection)
+    this._blockMarquee = new BlockMarqueeController(this);
+    this._blockMarquee.setup();
+
     // Wire Esc shortcut → block selection (via extension storage)
     const kbExt = this._editor.extensionManager.extensions.find(
       (ext) => ext.name === 'blockKeyboardShortcuts',
     );
     if (kbExt) {
       (kbExt.storage as any).selectAtCursor = () => this._blockSelection.selectAtCursor();
+      (kbExt.storage as any).extendSelectionUp = () => this._blockSelection.extendSelectionUp();
+      (kbExt.storage as any).extendSelectionDown = () => this._blockSelection.extendSelectionDown();
     }
 
     // ── Click handler for inline math nodes (click-to-edit) ──
@@ -380,6 +398,7 @@ class CanvasEditorPane implements IDisposable {
 
     this._blockHandles?.dispose();
     this._blockSelection?.dispose();
+    this._blockMarquee?.dispose();
 
     // Dispose save-state subscriptions
     this._saveDisposables.dispose();

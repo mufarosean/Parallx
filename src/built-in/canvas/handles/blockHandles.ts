@@ -10,7 +10,8 @@
 // menus/blockActionMenu.ts — this controller delegates to it via show/hide.
 
 import type { Editor } from '@tiptap/core';
-import { NodeSelection } from '@tiptap/pm/state';
+import { Fragment, Slice } from '@tiptap/pm/model';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import type { BlockSelectionController } from './handleRegistry.js';
 import type { IBlockActionMenu } from './handleRegistry.js';
 import {
@@ -51,13 +52,17 @@ export class BlockHandlesController {
   private _lastPointerClient: { x: number; y: number } | null = null;
   private _scrollSyncRaf: number | null = null;
 
-  // Drag-vs-click discrimination
-  // Tracks the mousedown origin so dragstart can distinguish an intentional
-  // drag (movement > threshold) from a micro-drag caused by hand tremor on a
-  // `draggable="true"` element.  When the distance is below the threshold we
-  // cancel the native drag so the browser delivers a normal click event.
+  // Drag-vs-click recovery
+  // On `draggable="true"` elements the browser fires dragstart after ~2-4 px
+  // of mouse movement (hand tremor).  Once dragstart fires, the browser
+  // suppresses the click event entirely — so our _onDragHandleClick never
+  // runs.  We record the mousedown origin so that dragend can detect these
+  // tremor-drags (short time + short distance) and synthetically invoke the
+  // click logic that the browser ate.
   private _dragMouseDownPos: { x: number; y: number } | null = null;
-  private static readonly _DRAG_DISTANCE_THRESHOLD = 5; // px
+  private _dragMouseDownTime = 0;
+  private static readonly _CLICK_TIME_MS = 200;   // ms — clicks are faster
+  private static readonly _CLICK_DIST_PX = 8;     // px — tremor is small
 
   constructor(
     private readonly _host: BlockHandlesHost,
@@ -147,6 +152,16 @@ export class BlockHandlesController {
 
   hide(): void {
     this._actionMenu.hide();
+  }
+
+  /**
+   * Called by canvasEditorProvider when a doc-changing transaction fires.
+   * Clears cached DOM references that may have been destroyed or
+   * repositioned by the mutation — prevents _resolveBlockFromHandle()
+   * from using a stale fast-path element.
+   */
+  notifyDocChanged(): void {
+    this._lastHoverElement = null;
   }
 
   // ── Handle-area hover (keep + and ⠿ visible together) ──────────────────
@@ -271,6 +286,14 @@ export class BlockHandlesController {
   // ── Drag Handle Click → Block Action Menu ──
 
   private readonly _onDragHandleClick = (e: MouseEvent): void => {
+    this._handleClickAction(e);
+  };
+
+  /**
+   * Core click logic shared by _onDragHandleClick (native click event) and
+   * _onDragHandleDragEnd (click recovery after tremor-drag).
+   */
+  private _handleClickAction(e: { shiftKey: boolean }): void {
     const editor = this._host.editor;
     if (!editor) return;
     if (this._isResizeInteractionActive()) return;
@@ -290,7 +313,7 @@ export class BlockHandlesController {
 
     const handleRect = this._dragHandleEl!.getBoundingClientRect();
     this._actionMenu.show(block.pos, block.node, handleRect, this._dragHandleEl!);
-  };
+  }
 
   // ── Drag Handle Drag Lifecycle (single owner) ──
 
@@ -302,25 +325,6 @@ export class BlockHandlesController {
       return;
     }
 
-    // ── Micro-drag suppression ──
-    // The drag handle has `draggable="true"` (set by GlobalDragHandle), so
-    // the browser fires dragstart after only 1–2 px of mouse movement —
-    // well within natural hand tremor.  When the movement is below our
-    // threshold we cancel the native drag; the browser will then deliver a
-    // normal click event instead, letting `_onDragHandleClick` open the
-    // block-action menu.
-    if (this._dragMouseDownPos) {
-      const dx = event.clientX - this._dragMouseDownPos.x;
-      const dy = event.clientY - this._dragMouseDownPos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < BlockHandlesController._DRAG_DISTANCE_THRESHOLD) {
-        event.preventDefault();
-        // stopImmediatePropagation so the external extension's handler
-        // doesn't run either.
-        event.stopImmediatePropagation();
-        return;
-      }
-    }
 
     const { view } = editor;
 
@@ -335,6 +339,79 @@ export class BlockHandlesController {
       return;
     }
 
+    // ── Multi-block drag: if the hovered block is part of a multi-selection,
+    // drag all selected blocks together. ──
+    const sel = this._host.blockSelection;
+    const isMultiDrag = sel.hasSelection && sel.count > 1 && sel.positions.includes(block.pos);
+
+    if (isMultiDrag) {
+      // Build a fragment from all selected blocks (sorted by position)
+      const positions = sel.positions; // already sorted asc
+      const nodes: any[] = [];
+      const jsonNodes: any[] = [];
+      for (const p of positions) {
+        const n = view.state.doc.nodeAt(p);
+        if (n) {
+          nodes.push(n);
+          jsonNodes.push(n.toJSON());
+        }
+      }
+
+      if (nodes.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const fragment = Fragment.from(nodes);
+      const slice = new Slice(fragment, 0, 0);
+
+      // Use the contiguous range from first to last selected block
+      const firstPos = positions[0];
+      const lastPos = positions[positions.length - 1];
+      const lastNode = view.state.doc.nodeAt(lastPos);
+      const rangeTo = lastNode ? lastPos + lastNode.nodeSize : lastPos;
+
+      if (event.dataTransfer) {
+        try {
+          event.dataTransfer.effectAllowed = 'copyMove';
+          event.dataTransfer.setData('text/plain', 'parallx-canvas-block-drag');
+          event.dataTransfer.setData(CANVAS_BLOCK_DRAG_MIME, JSON.stringify({
+            sourcePageId: this._host.pageId,
+            from: firstPos,
+            to: rangeTo,
+            nodes: jsonNodes,
+            startedAt: Date.now(),
+          }));
+        } catch { /* Best-effort */ }
+      }
+
+      // Set ProseMirror selection to span the contiguous range
+      const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, firstPos, rangeTo));
+      view.dispatch(tr);
+
+      view.dragging = { slice, move: true, from: firstPos, to: rangeTo } as any;
+
+      setActiveCanvasDragSession({
+        sourcePageId: this._host.pageId,
+        from: firstPos,
+        to: rangeTo,
+        nodes: jsonNodes,
+        startedAt: Date.now(),
+      });
+
+      // Visual: mark all selected blocks as drag sources
+      for (const p of positions) {
+        try {
+          const domNode = view.nodeDOM(p) as HTMLElement | null;
+          if (domNode) domNode.classList.add('block-drag-source');
+        } catch { /* ignore */ }
+      }
+
+      view.dom.classList.add('dragging');
+      return;
+    }
+
+    // ── Single-block drag (existing behavior) ──
     const tr = view.state.tr.setSelection(NodeSelection.create(view.state.doc, block.pos));
     view.dispatch(tr);
 
@@ -372,11 +449,44 @@ export class BlockHandlesController {
     view.dom.classList.add('dragging');
   };
 
-  private readonly _onDragHandleDragEnd = (): void => {
+  private readonly _onDragHandleDragEnd = (event: DragEvent): void => {
     const editor = this._host.editor;
     if (!editor) return;
+
+    // ── Click recovery for tremor-drags ──
+    // If the entire drag cycle (mousedown → dragstart → dragend) was short
+    // in both time and distance, the user intended a click.  The browser
+    // suppressed the click event because dragstart fired, so we invoke the
+    // click logic ourselves.
+    if (this._dragMouseDownPos) {
+      const elapsed = Date.now() - this._dragMouseDownTime;
+      const dx = event.clientX - this._dragMouseDownPos.x;
+      const dy = event.clientY - this._dragMouseDownPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (elapsed < BlockHandlesController._CLICK_TIME_MS &&
+          dist < BlockHandlesController._CLICK_DIST_PX) {
+        // Clean up drag state first
+        editor.view.dragging = null as any;
+        editor.view.dom.classList.remove('dragging');
+        const sources = editor.view.dom.querySelectorAll('.block-drag-source');
+        sources.forEach((el) => el.classList.remove('block-drag-source'));
+        clearActiveCanvasDragSession();
+        this._scheduleHandleInteractionUnlock();
+        this._dragMouseDownPos = null;
+        this._dragMouseDownTime = 0;
+        // Now do what the click handler would have done
+        this._handleClickAction(event);
+        return;
+      }
+    }
+
     editor.view.dragging = null as any;
     editor.view.dom.classList.remove('dragging');
+
+    // Remove drag-source visual from all blocks
+    const sources = editor.view.dom.querySelectorAll('.block-drag-source');
+    sources.forEach((el) => el.classList.remove('block-drag-source'));
+
     setTimeout(() => {
       clearActiveCanvasDragSession();
     }, 0);
@@ -385,12 +495,19 @@ export class BlockHandlesController {
 
   private readonly _onDragHandleMouseDown = (e: MouseEvent): void => {
     if (this._isResizeInteractionActive()) return;
-    this._dragMouseDownPos = { x: e.clientX, y: e.clientY };
+    // Set interaction lock so the blur-hide timer and outside-click handler
+    // skip hideAll() while we're interacting with the drag handle.
+    // We intentionally do NOT call e.preventDefault() here — in some
+    // Electron/Chromium builds, preventDefault on mousedown suppresses
+    // the subsequent dragstart on draggable="true" elements.
     this._setHandleInteractionLock(true);
+    this._dragMouseDownPos = { x: e.clientX, y: e.clientY };
+    this._dragMouseDownTime = Date.now();
   };
 
   private readonly _onGlobalMouseUp = (): void => {
     this._dragMouseDownPos = null;
+    this._dragMouseDownTime = 0;
     this._scheduleHandleInteractionUnlock();
   };
 
@@ -533,8 +650,14 @@ export class BlockHandlesController {
     const node = view.state.doc.nodeAt(blockPos);
     if (!node) return null;
 
+    // Column layout nodes are structural wrappers — never valid handle targets.
+    // If resolution lands on a columnList, drill into the first block inside it;
+    // if that fails, return null rather than exposing the layout node.
     if (node.type.name === 'columnList') {
-      return this._resolveFirstBlockInsideColumnList(view, blockPos, node, targetDepth + 1) ?? { pos: blockPos, node, depth: targetDepth };
+      return this._resolveFirstBlockInsideColumnList(view, blockPos, node, targetDepth + 1);
+    }
+    if (node.type.name === 'column') {
+      return null;
     }
 
     return { pos: blockPos, node, depth: targetDepth };
@@ -591,8 +714,10 @@ export class BlockHandlesController {
         return true;
       }
 
-      const nextContainer = isContainerBlockType(next.node?.type?.name ?? '');
-      const currentContainer = isContainerBlockType(current.node?.type?.name ?? '');
+      const nextName = next.node?.type?.name ?? '';
+      const currentName = current.node?.type?.name ?? '';
+      const nextContainer = isContainerBlockType(nextName) || nextName === 'columnList' || nextName === 'column';
+      const currentContainer = isContainerBlockType(currentName) || currentName === 'columnList' || currentName === 'column';
       if (currentContainer && !nextContainer) {
         return true;
       }
@@ -620,6 +745,8 @@ export class BlockHandlesController {
       element.classList.contains('block-action-submenu') ||
       element.classList.contains('column-drop-indicator') ||
       element.classList.contains('canvas-drop-guide') ||
+      element.classList.contains('column-resize-handle') ||
+      element.classList.contains('column-resize-indicator') ||
       !!element.closest('.block-action-menu') ||
       !!element.closest('.block-action-submenu')
     );

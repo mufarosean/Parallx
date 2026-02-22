@@ -164,10 +164,11 @@ export class CanvasMenuRegistry {
 
   // Bound once so we can remove the same reference on dispose.
   private readonly _onDocMousedown = (e: MouseEvent): void => {
-    if (this.isInteractionLocked()) {
-      this.hideAll();
-      return;
-    }
+    // When an incompatible interaction is active (drag handle, column resize,
+    // or block dragging), skip outside-click processing entirely.  Each
+    // interaction handler manages menu visibility itself.
+    if (this.isInteractionLocked()) return;
+
     const target = e.target as Node;
     for (const menu of this._menus.values()) {
       if (menu.visible && !menu.containsTarget(target)) {

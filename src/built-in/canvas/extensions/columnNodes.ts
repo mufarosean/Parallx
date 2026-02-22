@@ -20,6 +20,8 @@ import {
   columnDropPlugin,
   columnAutoDissolvePlugin,
   duplicateBlockAt,
+  indentBlock,
+  outdentBlock,
   isColumnEffectivelyEmpty,
   moveBlockAcrossColumnBoundary,
   moveBlockDownWithinPageFlow,
@@ -280,6 +282,60 @@ export const ColumnList = Node.create({
 
         duplicateBlockAt(editor, blockPos, blockNode);
         return true;
+      },
+
+      // ── Tab Indent/Outdent (block nesting) ──────────────────────────────
+
+      // Tab — indent block into the nearest preceding container sibling.
+      // Passes through when inside a list (Tiptap handles list indent).
+      'Tab': ({ editor }) => {
+        const { $from } = editor.state.selection;
+
+        // Let Tiptap handle list item indentation
+        for (let d = $from.depth; d >= 1; d--) {
+          const name = $from.node(d).type.name;
+          if (name === 'listItem' || name === 'taskItem') return false;
+        }
+
+        // Resolve the closest block
+        let blockDepth = -1;
+        for (let d = $from.depth; d >= 1; d--) {
+          if ($from.node(d).type.name === 'column') { blockDepth = d + 1; break; }
+        }
+        if (blockDepth < 0) blockDepth = 1;
+        if (blockDepth > $from.depth) return false;
+
+        const blockPos = $from.before(blockDepth);
+        const blockNode = editor.state.doc.nodeAt(blockPos);
+        if (!blockNode) return false;
+
+        return indentBlock(editor, blockPos, blockNode);
+      },
+
+      // Shift+Tab — outdent block from its current container.
+      // Passes through when inside a list (Tiptap handles list outdent).
+      'Shift-Tab': ({ editor }) => {
+        const { $from } = editor.state.selection;
+
+        // Let Tiptap handle list item outdentation
+        for (let d = $from.depth; d >= 1; d--) {
+          const name = $from.node(d).type.name;
+          if (name === 'listItem' || name === 'taskItem') return false;
+        }
+
+        // Resolve the closest block
+        let blockDepth = -1;
+        for (let d = $from.depth; d >= 1; d--) {
+          if ($from.node(d).type.name === 'column') { blockDepth = d + 1; break; }
+        }
+        if (blockDepth < 0) blockDepth = 1;
+        if (blockDepth > $from.depth) return false;
+
+        const blockPos = $from.before(blockDepth);
+        const blockNode = editor.state.doc.nodeAt(blockPos);
+        if (!blockNode) return false;
+
+        return outdentBlock(editor, blockPos, blockNode);
       },
     };
   },

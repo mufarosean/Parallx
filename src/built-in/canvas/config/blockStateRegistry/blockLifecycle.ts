@@ -11,6 +11,7 @@
 
 import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
+import { resolveBlockAncestry } from './blockStateRegistry.js';
 
 export function duplicateBlockAt(
   editor: Editor,
@@ -33,8 +34,32 @@ export function duplicateBlockAt(
 }
 
 export function deleteBlockAt(editor: Editor, pos: number, node: any): void {
+  // Resolve column context BEFORE the delete so we know where to backfill.
+  const $pos = editor.state.doc.resolve(pos);
+  const ancestry = resolveBlockAncestry($pos);
+  const columnDepth = ancestry.columnDepth;
+  const columnStartPos = columnDepth !== null ? $pos.before(columnDepth) : null;
+
   const { tr } = editor.state;
   tr.delete(pos, pos + node.nodeSize);
+
+  // Column schema safety: column content is `(block)+` — one or more children.
+  // If the delete emptied the column, insert an empty paragraph to keep the
+  // column structurally valid.  This matches Notion: deleting the last block
+  // in a column never dissolves the column layout — the user keeps their
+  // column structure and can continue typing.
+  if (columnStartPos !== null) {
+    const mappedColPos = tr.mapping.map(columnStartPos, 1);
+    const colNode = tr.doc.nodeAt(mappedColPos);
+    if (colNode && colNode.type.name === 'column' && colNode.childCount === 0) {
+      const pType = editor.state.schema.nodes.paragraph;
+      const emptyParagraph = pType.createAndFill();
+      if (emptyParagraph) {
+        tr.insert(mappedColPos + 1, emptyParagraph);
+      }
+    }
+  }
+
   editor.view.dispatch(tr);
   editor.commands.focus();
 }

@@ -10,7 +10,7 @@
 // Positions are refreshed on document changes to stay valid.
 
 import type { Editor } from '@tiptap/core';
-import { PAGE_CONTAINERS } from './handleRegistry.js';
+import { PAGE_CONTAINERS, resolveBlockAncestry, normalizeAllColumnLists } from './handleRegistry.js';
 
 export interface BlockSelectionHost {
   readonly editor: Editor | null;
@@ -131,8 +131,8 @@ export class BlockSelectionController {
     const $target = editor.state.doc.resolve(pos);
 
     // Find parent container for both positions
-    const anchorCtx = findBlockContext($anchor);
-    const targetCtx = findBlockContext($target);
+    const anchorCtx = resolveBlockAncestry($anchor);
+    const targetCtx = resolveBlockAncestry($target);
 
     // Only extend within the same parent container
     if (anchorCtx.containerDepth !== targetCtx.containerDepth) {
@@ -170,7 +170,7 @@ export class BlockSelectionController {
     if (!editor) return false;
 
     const { $head } = editor.state.selection;
-    const { blockDepth } = findBlockContext($head);
+    const { blockDepth } = resolveBlockAncestry($head);
 
     if ($head.depth < blockDepth) return false;
 
@@ -179,6 +179,54 @@ export class BlockSelectionController {
     if (!node) return false;
 
     this.select(blockPos);
+    return true;
+  }
+
+  /**
+   * Extend block selection upward by one block.
+   * If no selection exists, selects the block at cursor first.
+   * Returns true if the event was handled.
+   */
+  extendSelectionUp(): boolean {
+    const editor = this._host.editor;
+    if (!editor) return false;
+
+    // Bootstrap: if nothing selected, first select the current block
+    if (!this.hasSelection) {
+      if (!this.selectAtCursor()) return false;
+    }
+
+    // Find the topmost selected position and the block above it
+    const sorted = this.positions; // already sorted asc
+    const topPos = sorted[0];
+    const adjacentPos = this._findAdjacentBlockPos(topPos, 'up');
+    if (adjacentPos == null) return true; // at boundary — consume event but no-op
+
+    this.extendTo(adjacentPos);
+    return true;
+  }
+
+  /**
+   * Extend block selection downward by one block.
+   * If no selection exists, selects the block at cursor first.
+   * Returns true if the event was handled.
+   */
+  extendSelectionDown(): boolean {
+    const editor = this._host.editor;
+    if (!editor) return false;
+
+    // Bootstrap: if nothing selected, first select the current block
+    if (!this.hasSelection) {
+      if (!this.selectAtCursor()) return false;
+    }
+
+    // Find the bottommost selected position and the block below it
+    const sorted = this.positions; // sorted asc
+    const bottomPos = sorted[sorted.length - 1];
+    const adjacentPos = this._findAdjacentBlockPos(bottomPos, 'down');
+    if (adjacentPos == null) return true; // at boundary — consume event but no-op
+
+    this.extendTo(adjacentPos);
     return true;
   }
 
@@ -209,6 +257,10 @@ export class BlockSelectionController {
       }
     }
 
+    // Synchronous column cleanup — dissolve any columns that became empty
+    // after the multi-block delete, and normalize parent columnLists.
+    normalizeAllColumnLists(tr);
+
     editor.view.dispatch(tr);
     this.clear();
   }
@@ -238,6 +290,39 @@ export class BlockSelectionController {
   }
 
   // ── Visual Rendering ──────────────────────────────────────────────────
+
+  /**
+   * Find the position of the adjacent block above or below the given pos.
+   * Stays within the same parent container. Returns null if at boundary.
+   */
+  private _findAdjacentBlockPos(pos: number, direction: 'up' | 'down'): number | null {
+    const editor = this._host.editor;
+    if (!editor) return null;
+
+    const $pos = editor.state.doc.resolve(pos);
+    const { containerDepth } = resolveBlockAncestry($pos);
+    const container = containerDepth === 0 ? editor.state.doc : $pos.node(containerDepth);
+    const parentPos = containerDepth === 0 ? 0 : $pos.before(containerDepth);
+    const index = $pos.index(containerDepth);
+
+    if (direction === 'up') {
+      if (index <= 0) return null; // already first child
+      // Walk to the previous sibling's start position
+      let offset = parentPos + (containerDepth === 0 ? 0 : 1);
+      for (let i = 0; i < index - 1; i++) {
+        offset += container.child(i).nodeSize;
+      }
+      return offset;
+    } else {
+      if (index >= container.childCount - 1) return null; // already last child
+      // Walk to the next sibling's start position
+      let offset = parentPos + (containerDepth === 0 ? 0 : 1);
+      for (let i = 0; i <= index; i++) {
+        offset += container.child(i).nodeSize;
+      }
+      return offset;
+    }
+  }
 
   private _renderSelection(): void {
     this._sanitizeSelectionReferences();
@@ -342,13 +427,6 @@ export class BlockSelectionController {
 }
 
 // ── Shared utility ──────────────────────────────────────────────────────────
-
-function findBlockContext($pos: any): { containerDepth: number; blockDepth: number } {
-  let containerDepth = 0;
-  for (let d = 1; d <= $pos.depth; d++) {
-    if (PAGE_CONTAINERS.has($pos.node(d).type.name)) {
-      containerDepth = d;
-    }
-  }
-  return { containerDepth, blockDepth: containerDepth + 1 };
-}
+// resolveBlockAncestry is imported from handleRegistry (source: columnInvariants.ts).
+// It replaces the former local findBlockContext() — same depth-walk, but shared
+// across the entire BSR and handle layer.

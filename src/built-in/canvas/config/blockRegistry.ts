@@ -1079,6 +1079,8 @@ export {
   deleteBlockAt,
   applyTextColorToBlock,
   applyBackgroundColorToBlock,
+  indentBlock,
+  outdentBlock,
 } from './blockStateRegistry/blockStateRegistry.js';
 
 export {

@@ -107,6 +107,46 @@ export class BlockActionMenuController implements ICanvasMenu {
     this._hideBlockActionMenu();
   }
 
+  // ── Transaction-based staleness detection ─────────────────────────────
+
+  /**
+   * Called on every editor transaction via CanvasMenuRegistry dispatch.
+   * If the menu is visible and the document changed, verify that the node
+   * at the stored position still matches expectations.  If not, close the
+   * menu — the user must re-click the handle to get a fresh snapshot.
+   */
+  onTransaction(editor: Editor): void {
+    if (!this.visible) return;
+    if (this._actionBlockPos < 0 || !this._actionBlockNode) return;
+    const node = editor.state.doc.nodeAt(this._actionBlockPos);
+    if (!node || node.type.name !== this._actionBlockNode.type.name) {
+      this.hide();
+    }
+  }
+
+  /**
+   * Safety-net revalidation called at the start of every action method.
+   * Returns `true` if the stored pos/node are still valid.  On mismatch
+   * (doc was mutated between show() and action click), hides the menu and
+   * returns `false` so the caller can bail out.
+   *
+   * When valid, refreshes `_actionBlockNode` with the current node so
+   * downstream code sees up-to-date attrs (e.g. after a color was applied
+   * and the user re-opens the menu quickly).
+   */
+  private _revalidateActionBlock(): boolean {
+    const editor = this._host.editor;
+    if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return false;
+    const node = editor.state.doc.nodeAt(this._actionBlockPos);
+    if (!node || node.type.name !== this._actionBlockNode.type.name) {
+      this._hideBlockActionMenu();
+      return false;
+    }
+    // Refresh snapshot so downstream reads current attrs/content
+    this._actionBlockNode = node;
+    return true;
+  }
+
   // ── Block Action Menu ───────────────────────────────────────────────────
 
   private _showBlockActionMenu(anchor: DOMRect): void {
@@ -361,8 +401,8 @@ export class BlockActionMenuController implements ICanvasMenu {
   // ── Block Transform Execution ──────────────────────────────────────────
 
   private _turnBlockInto(targetType: string, attrs?: any): void {
-    const editor = this._host.editor;
-    if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
+    if (!this._revalidateActionBlock()) return;
+    const editor = this._host.editor!;
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
     this._hideBlockActionMenu();
@@ -382,8 +422,8 @@ export class BlockActionMenuController implements ICanvasMenu {
   // ── Color Application ──────────────────────────────────────────────────
 
   private _applyBlockTextColor(value: string | null): void {
-    const editor = this._host.editor;
-    if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
+    if (!this._revalidateActionBlock()) return;
+    const editor = this._host.editor!;
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
     this._hideBlockActionMenu();
@@ -391,8 +431,8 @@ export class BlockActionMenuController implements ICanvasMenu {
   }
 
   private _applyBlockBgColor(value: string | null): void {
-    const editor = this._host.editor;
-    if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
+    if (!this._revalidateActionBlock()) return;
+    const editor = this._host.editor!;
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
     this._hideBlockActionMenu();
@@ -402,8 +442,8 @@ export class BlockActionMenuController implements ICanvasMenu {
   // ── Duplicate / Delete ─────────────────────────────────────────────────
 
   private _duplicateBlock(): void {
-    const editor = this._host.editor;
-    if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
+    if (!this._revalidateActionBlock()) return;
+    const editor = this._host.editor!;
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
     this._hideBlockActionMenu();
@@ -412,8 +452,8 @@ export class BlockActionMenuController implements ICanvasMenu {
   }
 
   private _deleteBlock(): void {
-    const editor = this._host.editor;
-    if (!editor || this._actionBlockPos < 0 || !this._actionBlockNode) return;
+    if (!this._revalidateActionBlock()) return;
+    const editor = this._host.editor!;
     const pos = this._actionBlockPos;
     const node = this._actionBlockNode;
     this._hideBlockActionMenu();
