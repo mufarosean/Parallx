@@ -13,6 +13,7 @@ import Highlight from '@tiptap/extension-highlight';
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import CharacterCount from '@tiptap/extension-character-count';
 import AutoJoiner from 'tiptap-extension-auto-joiner';
+import UniqueID from '@tiptap/extension-unique-id';
 import { BlockBackgroundColor } from '../extensions/blockBackground.js';
 import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
 import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
@@ -25,6 +26,54 @@ import {
 import type { EditorExtensionContext } from './blockRegistry.js';
 
 import type { Extensions } from '@tiptap/core';
+
+/**
+ * Every block-level node type that receives a persistent unique ID via
+ * `@tiptap/extension-unique-id`.
+ *
+ * Criteria: all ProseMirror node types that represent user-visible blocks or
+ * their structural children (containers, list items, table cells, etc.).
+ * Inline-only types (text, inlineMath, hardBreak) are excluded.
+ */
+const UNIQUE_ID_BLOCK_TYPES: string[] = [
+  // ── StarterKit blocks ──
+  'paragraph',
+  'heading',
+  'bulletList',
+  'orderedList',
+  'listItem',
+  'blockquote',
+  'horizontalRule',
+
+  // ── Content blocks (registry) ──
+  'codeBlock',
+  'image',
+  'taskList',
+  'taskItem',
+  'callout',
+  'mathBlock',
+  'toggleHeading',
+  'toggleHeadingText',
+  'details',
+  'detailsSummary',
+  'detailsContent',
+  'bookmark',
+  'pageBlock',
+  'tableOfContents',
+  'video',
+  'audio',
+  'fileAttachment',
+
+  // ── Table nodes ──
+  'table',
+  'tableRow',
+  'tableCell',
+  'tableHeader',
+
+  // ── Column nodes ──
+  'columnList',
+  'column',
+];
 
 /**
  * Build the full set of TipTap extensions for a canvas editor instance.
@@ -99,6 +148,11 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     }),
     CharacterCount,
     AutoJoiner,
+    UniqueID.configure({
+      types: UNIQUE_ID_BLOCK_TYPES,
+      // attributeName defaults to 'id', rendered as data-id in HTML.
+      // generateID defaults to uuid v4 — globally unique, collision-safe.
+    }),
     DetailsEnterHandler,
     BlockKeyboardShortcuts,
     StructuralInvariantGuard,
