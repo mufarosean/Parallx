@@ -406,7 +406,9 @@ export const PageBlock = Node.create<PageBlockOptions>({
         render();
 
         if (nextTitle !== attrs.title || nextIcon !== (attrs.icon ?? null)) {
-          updateAttributes({ title: nextTitle, icon: nextIcon });
+          if (typeof updateAttributes === 'function') {
+            updateAttributes({ title: nextTitle, icon: nextIcon });
+          }
         }
       });
 

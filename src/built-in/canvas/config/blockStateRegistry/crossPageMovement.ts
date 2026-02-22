@@ -105,11 +105,18 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
 
   const shouldDeleteSource = !event.altKey;
 
+  // ── Paste: append blocks to target page (immediate DB write) ──
   try {
-    // ── Paste: append blocks to target page (immediate DB write) ──
     await dataService.appendBlocksToPage(targetPageId, draggedJson);
+  } catch (appendErr) {
+    // appendBlocksToPage can throw if a side-effect listener fails
+    // (e.g. pageBlock title sync) even though the DB write succeeded.
+    // Log but continue — the delete must still run.
+    console.warn('[Canvas] appendBlocksToPage error (continuing with delete):', appendErr);
+  }
 
-    // ── Cut: delete blocks from source editor ──
+  // ── Cut: delete blocks from source editor ──
+  try {
     if (shouldDeleteSource) {
       const blockIds = draggedJson
         .map((n: any) => n.attrs?.id)
@@ -153,14 +160,14 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
 
       if (deleteTr.docChanged) {
         editor.view.dispatch(deleteTr);
-        // Source auto-saves via onUpdate → scheduleContentSave
       }
     }
 
     clearActiveCanvasDragSession();
     return true;
   } catch (err) {
-    console.warn('[Canvas] Failed to move dropped block into linked page:', err);
-    return false;
+    console.warn('[Canvas] Failed to delete source block after cross-page move:', err);
+    clearActiveCanvasDragSession();
+    return true;
   }
 }
