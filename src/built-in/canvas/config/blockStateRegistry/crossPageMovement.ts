@@ -115,20 +115,42 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
 
   try {
     if (shouldDeleteSource) {
+      // ── Optimistic dispatch: delete source block(s) immediately so the
+      // user sees instant feedback.  Persist the post-delete doc to the
+      // database.  On failure, undo to restore the source block(s).
+      //
+      // This avoids the stale-transaction bug where the old approach created
+      // a transaction, awaited an IPC round-trip, then dispatched — by which
+      // time the editor state may have changed from concurrent transactions.
       const deleteTr = editor.state.tr;
       deleteTr.setMeta('addToHistory', true);
       deleteDraggedSource(deleteTr, dragFrom, dragTo);
       if (!deleteTr.docChanged) return false;
 
-      await dataService.moveBlocksBetweenPagesAtomic({
-        sourcePageId: currentPageId,
-        targetPageId,
-        sourceDoc: deleteTr.doc.toJSON(),
-        appendedNodes: draggedJson,
-      });
-
+      // Dispatch immediately — block disappears from the editor
       editor.view.dispatch(deleteTr);
       clearActiveCanvasDragSession();
+
+      // Capture the post-delete doc for persistence
+      const sourceDocAfterDelete = editor.state.doc.toJSON();
+
+      try {
+        await dataService.moveBlocksBetweenPagesAtomic({
+          sourcePageId: currentPageId,
+          targetPageId,
+          sourceDoc: sourceDocAfterDelete,
+          appendedNodes: draggedJson,
+        });
+      } catch (persistErr) {
+        // Persistence failed — undo the optimistic delete to restore state
+        console.warn('[Canvas] Cross-page move persistence failed, undoing:', persistErr);
+        const undoTr = editor.state.tr;
+        undoTr.setMeta('addToHistory', false);
+        // Use editor's undo to revert the deletion
+        editor.commands.undo();
+        return false;
+      }
+
       return true;
     }
 

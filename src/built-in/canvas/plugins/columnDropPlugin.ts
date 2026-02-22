@@ -52,6 +52,7 @@ export function columnDropPlugin(): Plugin {
   }
 
   let activeTarget: DropTarget | null = null;
+  let _hideStaleTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ── Indicator helpers ──
 
@@ -83,6 +84,16 @@ export function columnDropPlugin(): Plugin {
     if (vertIndicator) vertIndicator.style.display = 'none';
     if (horzIndicator) horzIndicator.style.display = 'none';
     activeTarget = null;
+    if (_hideStaleTimer) { clearTimeout(_hideStaleTimer); _hideStaleTimer = null; }
+  }
+
+  /** Reset the stale-guide auto-hide timer.  When the cursor enters a zone
+   *  that prevents this plugin from receiving dragover events (e.g. a
+   *  pageBlock whose handler calls stopPropagation), the timer fires and
+   *  clears indicators that would otherwise linger indefinitely. */
+  function resetStaleTimer() {
+    if (_hideStaleTimer) clearTimeout(_hideStaleTimer);
+    _hideStaleTimer = setTimeout(() => { hideAll(); _hideStaleTimer = null; }, 150);
   }
 
   function showVert(container: HTMLElement, blockEl: HTMLElement, side: 'left' | 'right') {
@@ -386,6 +397,7 @@ export function columnDropPlugin(): Plugin {
         horzIndicator?.remove();
         vertIndicator = null;
         horzIndicator = null;
+        if (_hideStaleTimer) { clearTimeout(_hideStaleTimer); _hideStaleTimer = null; }
       },
     }),
 
@@ -394,10 +406,19 @@ export function columnDropPlugin(): Plugin {
         dragover: (view: EditorView, event: DragEvent) => {
           if (!view.dragging) { hideAll(); return false; }
 
+          resetStaleTimer();
+
           const x = event.clientX;
           const y = event.clientY;
           let raw = findTarget(view, x, y);
           if (!raw) { hideAll(); return false; }
+
+          // ── pageBlock targets are cross-page drop zones handled by
+          // pageBlockNode's own dragover/drop listeners.  Clear our
+          // indicators so the user sees only the page-block highlight. ──
+          if (raw.blockNode.type.name === 'pageBlock') {
+            hideAll(); return false;
+          }
 
           if (raw.blockNode.type.name === 'columnList') {
             const over = document.elementsFromPoint(x, y) as HTMLElement[];

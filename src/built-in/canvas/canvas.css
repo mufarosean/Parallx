@@ -1439,8 +1439,10 @@
 }
 
 .canvas-page-block--drop-target .canvas-page-block-card {
-  border-color: transparent;
-  background: transparent;
+  background: rgba(55, 120, 255, 0.08);
+  outline: 2px solid rgba(55, 120, 255, 0.5);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .canvas-page-block-icon {

@@ -8,7 +8,6 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import {
   resolvePageIcon,
   svgIcon,
-  CANVAS_BLOCK_DRAG_MIME,
   getActiveCanvasDragSession,
   moveBlockToLinkedPage,
 } from '../config/blockRegistry.js';
@@ -352,27 +351,19 @@ export const PageBlock = Node.create<PageBlockOptions>({
       });
 
       dom.addEventListener('dragover', (event) => {
-        const rawPayload = event.dataTransfer?.getData(CANVAS_BLOCK_DRAG_MIME);
-        let payloadMatchesCurrentPage = false;
-        if (rawPayload) {
-          try {
-            const parsed = JSON.parse(rawPayload);
-            payloadMatchesCurrentPage = parsed?.sourcePageId === (this.options.currentPageId ?? '')
-              && Array.isArray(parsed?.nodes)
-              && parsed.nodes.length > 0;
-          } catch {
-            payloadMatchesCurrentPage = false;
-          }
-        }
-
+        // Detect active canvas block drag via in-memory state.
+        // Note: event.dataTransfer.getData() returns empty during dragover
+        // in Chromium/Electron (security restriction) — only available in drop.
         const hasEditorDragging = !!editor.view.dragging?.slice;
         const dragSession = getActiveCanvasDragSession();
+        const currentPage = this.options.currentPageId ?? '';
         const hasSessionDragging = !!dragSession
-          && dragSession.sourcePageId === (this.options.currentPageId ?? '')
+          && dragSession.sourcePageId === currentPage
           && Array.isArray(dragSession.nodes)
           && dragSession.nodes.length > 0;
-        const hasAnyCanvasDrag = hasEditorDragging || hasSessionDragging || payloadMatchesCurrentPage;
-        if (!hasAnyCanvasDrag || !attrs.pageId) return;
+        if ((!hasEditorDragging && !hasSessionDragging) || !attrs.pageId) return;
+        // Don't allow dropping onto the source page's own pageBlock
+        if (attrs.pageId === currentPage) return;
         event.preventDefault();
         event.stopPropagation();
         dom.classList.add('canvas-page-block--drop-target');
