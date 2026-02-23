@@ -119,16 +119,20 @@ export class BlockSelectionController {
     // Note: _transactionHandler is no longer needed.  The decoration plugin
     // takes care of rendering — classes survive PM's DOM reconciliation.
 
-    // Clear selection when clicking on empty editor area (deselect)
+    // Clear selection when clicking anywhere except drag-handle / action-menu UI.
+    // This ensures clicking into any block content (including the selected block
+    // itself) deselects — only handle interactions maintain selection.
     this._docClickHandler = (e: MouseEvent) => {
+      if (this._selected.size === 0) return;       // nothing to clear
       const target = e.target as HTMLElement;
-      // Only clear if clicking on editor background, not on blocks or handles
       if (
-        target.classList.contains('canvas-tiptap-editor') ||
-        target.classList.contains('ProseMirror')
+        target.closest('.drag-handle') ||
+        target.closest('.block-action-menu') ||
+        target.closest('.block-action-submenu')
       ) {
-        this.clear();
+        return;                                     // handle / menu click → keep selection
       }
+      this.clear();
     };
     this._host.editorContainer?.addEventListener('mousedown', this._docClickHandler);
   }
