@@ -15,6 +15,7 @@ import type { Editor } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { PAGE_CONTAINERS, resolveBlockAncestry, normalizeAllColumnLists } from './handleRegistry.js';
+import { isDevMode } from '../../../platform/devMode.js';
 
 // ── Decoration Plugin ───────────────────────────────────────────────────────
 
@@ -100,17 +101,6 @@ export class BlockSelectionController {
   private _editorChangeHandler: ((props: { transaction: any }) => void) | null = null;
   private _docClickHandler: ((e: MouseEvent) => void) | null = null;
 
-  private static readonly _DEV_MODE = (() => {
-    if (typeof window !== 'undefined' && (window as any).parallxElectron?.testMode) {
-      return true;
-    }
-    const proc = (globalThis as any).process;
-    if (proc?.env?.NODE_ENV) {
-      return proc.env.NODE_ENV !== 'production';
-    }
-    return true;
-  })();
-
   constructor(private readonly _host: BlockSelectionHost) {}
 
   // ── Setup / Teardown ──────────────────────────────────────────────────
@@ -129,16 +119,20 @@ export class BlockSelectionController {
     // Note: _transactionHandler is no longer needed.  The decoration plugin
     // takes care of rendering — classes survive PM's DOM reconciliation.
 
-    // Clear selection when clicking on empty editor area (deselect)
+    // Clear selection when clicking anywhere except drag-handle / action-menu UI.
+    // This ensures clicking into any block content (including the selected block
+    // itself) deselects — only handle interactions maintain selection.
     this._docClickHandler = (e: MouseEvent) => {
+      if (this._selected.size === 0) return;       // nothing to clear
       const target = e.target as HTMLElement;
-      // Only clear if clicking on editor background, not on blocks or handles
       if (
-        target.classList.contains('canvas-tiptap-editor') ||
-        target.classList.contains('ProseMirror')
+        target.closest('.drag-handle') ||
+        target.closest('.block-action-menu') ||
+        target.closest('.block-action-submenu')
       ) {
-        this.clear();
+        return;                                     // handle / menu click → keep selection
       }
+      this.clear();
     };
     this._host.editorContainer?.addEventListener('mousedown', this._docClickHandler);
   }
@@ -595,7 +589,7 @@ export class BlockSelectionController {
       this._selected.delete(pos);
     }
 
-    if (BlockSelectionController._DEV_MODE) {
+    if (isDevMode) {
       console.warn('[Canvas Invariants] Dropped stale block selection references', { stale });
     }
   }

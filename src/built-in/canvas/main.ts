@@ -8,6 +8,8 @@
 //
 // Follows the same pattern as src/built-in/explorer/main.ts.
 
+import { isDevMode } from '../../platform/devMode.js';
+
 import './canvas.css';
 import 'katex/dist/katex.min.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
@@ -138,7 +140,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
-  console.log('[Canvas] Tool activated');
+  if (isDevMode) console.log('[Canvas] Tool activated');
 }
 
 export async function deactivate(): Promise<void> {
@@ -152,7 +154,7 @@ export async function deactivate(): Promise<void> {
   _sidebar = null;
   _api = undefined!;
 
-  console.log('[Canvas] Tool deactivated');
+  if (isDevMode) console.log('[Canvas] Tool deactivated');
 }
 
 // â”€â”€â”€ Migrations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -179,7 +181,7 @@ async function _runMigrations(): Promise<void> {
   if (result.error) {
     console.error('[Canvas] Migration failed:', result.error.message);
   } else {
-    console.log('[Canvas] Migrations applied from:', migrationsDir);
+    if (isDevMode) console.log('[Canvas] Migrations applied from:', migrationsDir);
   }
 }
 

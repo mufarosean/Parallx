@@ -5,6 +5,7 @@
 // guarantees rather than transient UI behavior.
 
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { isDevMode } from '../../../platform/devMode.js';
 
 export interface CanvasInvariantIssue {
   code: string;
@@ -19,17 +20,6 @@ interface TraversalContext {
   parent: ProseMirrorNode | null;
   path: number[];
 }
-
-const CANVAS_DEV_MODE = (() => {
-  if (typeof window !== 'undefined' && (window as any).parallxElectron?.testMode) {
-    return true;
-  }
-  const proc = (globalThis as any).process;
-  if (proc?.env?.NODE_ENV) {
-    return proc.env.NODE_ENV !== 'production';
-  }
-  return true;
-})();
 
 function pathToString(path: number[]): string {
   return path.length ? path.join('.') : 'root';
@@ -327,7 +317,7 @@ export function reportCanvasInvariantIssues(
   issues: CanvasInvariantIssue[],
   context: { source: string; docVersion: number },
 ): void {
-  if (!CANVAS_DEV_MODE || issues.length === 0) return;
+  if (!isDevMode || issues.length === 0) return;
 
   const header = `[Canvas Invariants] ${issues.length} issue(s) after ${context.source} (doc version ${context.docVersion})`;
 

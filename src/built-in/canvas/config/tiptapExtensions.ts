@@ -17,15 +17,16 @@ import UniqueID from '@tiptap/extension-unique-id';
 import { BlockBackgroundColor } from '../extensions/blockBackground.js';
 import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
 import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
-import { StructuralInvariantGuard } from '../extensions/structuralInvariantGuard.js';
 import {
   DRAG_HANDLE_CUSTOM_NODE_TYPES,
   getNodePlaceholder,
   getBlockExtensions,
+  structuralInvariantPlugin,
 } from './blockRegistry.js';
 import type { EditorExtensionContext } from './blockRegistry.js';
 
 import type { Extensions } from '@tiptap/core';
+import { Extension } from '@tiptap/core';
 
 /**
  * Every block-level node type that receives a persistent unique ID via
@@ -155,7 +156,13 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     }),
     DetailsEnterHandler,
     BlockKeyboardShortcuts,
-    StructuralInvariantGuard,
+    Extension.create({
+      name: 'structuralInvariantGuard',
+      priority: 1000,
+      addProseMirrorPlugins() {
+        return [structuralInvariantPlugin()];
+      },
+    }),
     BlockBackgroundColor,
   ];
 }

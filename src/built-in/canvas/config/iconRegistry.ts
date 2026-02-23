@@ -22,7 +22,6 @@ import {
   createIconElement as _createIconElement,
   resolvePageIcon as _resolvePageIcon,
   PAGE_ICON_IDS as _PAGE_ICON_IDS,
-  ICON_IDS as _ICON_IDS,
 } from '../canvasIcons.js';
 
 // ── Icon Rendering ──────────────────────────────────────────────────────────
@@ -65,27 +64,3 @@ export function resolvePageIcon(icon: string | null | undefined): string {
  * This is the single source of truth for the picker grid contents.
  */
 export const PAGE_SELECTABLE_ICONS: readonly string[] = _PAGE_ICON_IDS;
-
-/** All available icon IDs in the system. */
-export const ALL_ICON_IDS: readonly string[] = _ICON_IDS;
-
-// ── Block Icon Metadata ─────────────────────────────────────────────────────
-
-/**
- * Block types whose icon can be changed by the user via the icon picker.
- *
- * This set is authoritative — if a block name is NOT here, its icon is
- * fixed and the icon picker should never be offered for it.
- *
- * Matches the `iconSelectable` flag on BlockDefinition entries.
- */
-const _userSelectableBlocks = new Set<string>(['callout', 'pageBlock']);
-
-/**
- * Whether a block type's icon is user-selectable (via the icon picker).
- *
- * @param blockName — ProseMirror node type name
- */
-export function isBlockIconSelectable(blockName: string): boolean {
-  return _userSelectableBlocks.has(blockName);
-}

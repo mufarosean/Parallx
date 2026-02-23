@@ -31,3 +31,4 @@ export * from './crossPageMovement.js';
 export { columnResizePlugin } from '../../plugins/columnResizePlugin.js';
 export { columnDropPlugin } from '../../plugins/columnDropPlugin.js';
 export { columnAutoDissolvePlugin } from '../../plugins/columnAutoDissolve.js';
+export { structuralInvariantPlugin } from '../../plugins/structuralInvariantPlugin.js';

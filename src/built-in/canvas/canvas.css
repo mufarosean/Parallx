@@ -486,25 +486,6 @@
   color: #eb5757;
 }
 
-/* ── Code Blocks — base styles (overridden more specifically in Tier 2 section) ── */
-
-.canvas-tiptap-editor pre {
-  background: rgba(0, 0, 0, 0.35);
-  padding: 20px 24px;
-  border-radius: 8px;
-  overflow-x: auto;
-  margin: 8px 0;
-}
-
-.canvas-tiptap-editor pre code {
-  background: none;
-  padding: 0;
-  border-radius: 0;
-  font-size: 14px;
-  line-height: 1.6;
-  color: inherit;
-}
-
 /* ── Horizontal Rule — subtle divider ── */
 
 .canvas-tiptap-editor hr {
@@ -1516,61 +1497,6 @@
   overflow: hidden;
 }
 
-.canvas-page-block-icon-picker {
-  position: fixed;
-  z-index: 65;
-  width: 300px;
-  max-width: calc(100vw - 16px);
-  max-height: min(360px, calc(100vh - 16px));
-  padding: 10px;
-  overflow: auto;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: #1b1b1b;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
-}
-
-.canvas-page-block-icon-remove {
-  width: 100%;
-  padding: 7px 8px;
-  margin-bottom: 8px;
-  appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.03);
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.canvas-page-block-icon-remove:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.canvas-page-block-icon-grid {
-  display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
-  gap: 4px;
-}
-
-.canvas-page-block-icon-option {
-  appearance: none;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.85);
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.canvas-page-block-icon-option:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
 /* ─────────────────────────────────────────────────────────────────────────────
  * Tier 2 — Table of Contents (auto-generated heading list)
  * ───────────────────────────────────────────────────────────────────────────── */
@@ -1671,12 +1597,6 @@
 .canvas-media-placeholder:hover {
   background: rgba(255, 255, 255, 0.03);
   border-color: rgba(255, 255, 255, 0.25);
-}
-
-.canvas-media-caption {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-  padding: 4px 2px;
 }
 
 /* File attachment card */
@@ -1800,10 +1720,7 @@
 .canvas-tiptap-editor pre {
   background: rgba(0, 0, 0, 0.3);
   border-radius: 8px;
-  padding: 20px 24px;
-  margin-inline: 0;
   padding: 0;
-  padding-inline: 0;
   margin: 8px 0;
   overflow-x: auto;
   font-family: 'SFMono-Regular', 'Cascadia Code', 'Fira Code', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
@@ -2304,6 +2221,9 @@
 }
 
 .canvas-page-menu-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 14px;
   color: rgba(255, 255, 255, 0.8);
 }
@@ -2346,7 +2266,9 @@
 }
 
 .canvas-page-menu-action {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   width: 100%;
   text-align: left;
   padding: 6px 8px;
@@ -2370,120 +2292,6 @@
 
 .canvas-page-menu-action--danger:hover {
   background: rgba(241, 76, 76, 0.1);
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
- * Emoji Picker (Cap 7 — Task 7.4)
- * ───────────────────────────────────────────────────────────────────────────── */
-
-/* ─────────────────────────────────────────────────────────────────────────────
- * Icon Picker Popup (replaces emoji picker)
- * ───────────────────────────────────────────────────────────────────────────── */
-
-.canvas-icon-picker {
-  position: fixed;
-  z-index: 1003;
-  width: 300px;
-  max-height: 420px;
-  background: #252525;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  animation: slashMenuFadeIn 0.12s ease-out;
-}
-
-.canvas-icon-search {
-  width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 13px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  outline: none;
-  margin-bottom: 6px;
-  box-sizing: border-box;
-  font-family: inherit;
-}
-
-.canvas-icon-search:focus {
-  border-color: #2383e2;
-}
-
-.canvas-icon-remove {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: 100%;
-  text-align: left;
-  padding: 6px 8px;
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 13px;
-  cursor: pointer;
-  border-radius: 4px;
-  margin-bottom: 4px;
-  font-family: inherit;
-}
-
-.canvas-icon-remove:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.canvas-icon-content {
-  flex: 1;
-  overflow-y: auto;
-  max-height: 320px;
-}
-
-.canvas-icon-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-}
-
-.canvas-icon-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 6px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.7);
-  transition: background-color 0.08s ease, color 0.1s ease;
-}
-
-.canvas-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 1);
-}
-
-.canvas-icon-empty {
-  grid-column: 1 / -1;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.3);
-  font-size: 13px;
-  padding: 24px;
-}
-
-.canvas-icon-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.canvas-icon-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.canvas-icon-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 3px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -3282,56 +3090,7 @@
   animation: slashMenuFadeIn 0.1s ease-out;
 }
 
-.canvas-context-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 13px;
-  padding: 6px 12px;
-  text-align: left;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: background-color 0.08s ease;
-  font-family: inherit;
-}
 
-.canvas-context-menu-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.canvas-context-menu-item--danger {
-  color: #e06c75;
-}
-
-.canvas-context-menu-item--danger:hover {
-  background: rgba(224, 108, 117, 0.12);
-}
-
-.canvas-context-menu-divider {
-  height: 1px;
-  background: rgba(255, 255, 255, 0.06);
-  margin: 4px 8px;
-}
-
-/* ── Page menu action with icon + label ── */
-
-.canvas-page-menu-action {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.canvas-page-menu-toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* (callout-emoji styles consolidated at line ~833) */
 
 /* ══════════════════════════════════════════════════════════════════════════════
    Math / KaTeX — Inline & Block Equations
