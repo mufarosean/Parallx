@@ -15,6 +15,7 @@ import type { Editor } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { PAGE_CONTAINERS, resolveBlockAncestry, normalizeAllColumnLists } from './handleRegistry.js';
+import { isDevMode } from '../../../platform/devMode.js';
 
 // ── Decoration Plugin ───────────────────────────────────────────────────────
 
@@ -99,17 +100,6 @@ export class BlockSelectionController {
 
   private _editorChangeHandler: ((props: { transaction: any }) => void) | null = null;
   private _docClickHandler: ((e: MouseEvent) => void) | null = null;
-
-  private static readonly _DEV_MODE = (() => {
-    if (typeof window !== 'undefined' && (window as any).parallxElectron?.testMode) {
-      return true;
-    }
-    const proc = (globalThis as any).process;
-    if (proc?.env?.NODE_ENV) {
-      return proc.env.NODE_ENV !== 'production';
-    }
-    return true;
-  })();
 
   constructor(private readonly _host: BlockSelectionHost) {}
 
@@ -595,7 +585,7 @@ export class BlockSelectionController {
       this._selected.delete(pos);
     }
 
-    if (BlockSelectionController._DEV_MODE) {
+    if (isDevMode) {
       console.warn('[Canvas Invariants] Dropped stale block selection references', { stale });
     }
   }

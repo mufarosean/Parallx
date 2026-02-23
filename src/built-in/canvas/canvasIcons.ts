@@ -177,22 +177,6 @@ export function createIconElement(id: string, size = 16): HTMLElement {
 }
 
 /**
- * Render an SVG icon into an existing container element (replaces content).
- *
- * @param container — target element
- * @param id — icon identifier
- * @param size — pixel size, default 16
- */
-export function renderIconInto(container: HTMLElement, id: string, size = 16): void {
-  container.innerHTML = svgIcon(id);
-  const svg = container.querySelector('svg');
-  if (svg) {
-    svg.setAttribute('width', String(size));
-    svg.setAttribute('height', String(size));
-  }
-}
-
-/**
  * Resolve a page's icon field to the appropriate icon ID.
  * If the icon is null/empty, returns 'page' (default).
  * If the icon is an emoji (legacy data), returns 'page' (fallback).

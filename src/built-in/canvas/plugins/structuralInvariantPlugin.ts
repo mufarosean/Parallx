@@ -9,17 +9,7 @@ import {
   reportCanvasInvariantIssues,
   validateCanvasStructuralInvariants,
 } from '../invariants/canvasStructuralInvariants.js';
-
-const IS_DEV_MODE = (() => {
-  if (typeof window !== 'undefined' && (window as any).parallxElectron?.testMode) {
-    return true;
-  }
-  const proc = (globalThis as any).process;
-  if (proc?.env?.NODE_ENV) {
-    return proc.env.NODE_ENV !== 'production';
-  }
-  return true;
-})();
+import { isDevMode } from '../../../platform/devMode.js';
 
 export function structuralInvariantPlugin(): Plugin {
   const pluginKey = new PluginKey('canvasStructuralInvariantPlugin');
@@ -28,7 +18,7 @@ export function structuralInvariantPlugin(): Plugin {
   return new Plugin({
     key: pluginKey,
     appendTransaction(transactions, _oldState, newState) {
-      if (!IS_DEV_MODE) return null;
+      if (!isDevMode) return null;
       if (!transactions.some((tr) => tr.docChanged)) return null;
 
       const issues = validateCanvasStructuralInvariants(newState.doc);

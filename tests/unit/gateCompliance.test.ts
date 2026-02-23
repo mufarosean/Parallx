@@ -124,11 +124,6 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/tableOfContentsNode.ts':     [],
   'extensions/toggleHeadingNode.ts':       [],
 
-  // structuralInvariantGuard imports from plugins/ — an infrastructure
-  // dependency that predates the gate architecture.  Allowed as-is since
-  // both files are gate-exempt leaves with no registry imports.
-  'extensions/structuralInvariantGuard.ts': ['plugins/'],
-
   // structuralInvariantPlugin imports from invariants/ — same pattern.
   'plugins/structuralInvariantPlugin.ts':  ['invariants/'],
 

@@ -2,7 +2,7 @@
 
 export const CURRENT_CANVAS_CONTENT_SCHEMA_VERSION = 2;
 
-export interface CanvasContentEnvelope {
+interface CanvasContentEnvelope {
   schemaVersion: number;
   doc: any;
 }
