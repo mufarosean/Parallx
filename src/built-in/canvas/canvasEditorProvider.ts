@@ -33,7 +33,7 @@ import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
 import { createEditorExtensions, PageChromeController } from './config/blockRegistry.js';
-import { BlockHandlesController, BlockSelectionController, BlockMarqueeController } from './handles/handleRegistry.js';
+import { BlockHandlesController, BlockSelectionController, BlockMarqueeController, createBlockSelectionPlugin } from './handles/handleRegistry.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
@@ -274,6 +274,10 @@ class CanvasEditorPane implements IDisposable {
       },
     });
 
+    // Register the block-selection decoration plugin so that .block-selected
+    // classes are applied via PM decorations (survives DOM reconciliation).
+    this._editor.registerPlugin(createBlockSelectionPlugin());
+
     // Load content (skip corrupted content gracefully)
     try {
       await this._loadContent();
@@ -310,9 +314,16 @@ class CanvasEditorPane implements IDisposable {
       (ext) => ext.name === 'blockKeyboardShortcuts',
     );
     if (kbExt) {
-      (kbExt.storage as any).selectAtCursor = () => this._blockSelection.selectAtCursor();
-      (kbExt.storage as any).extendSelectionUp = () => this._blockSelection.extendSelectionUp();
-      (kbExt.storage as any).extendSelectionDown = () => this._blockSelection.extendSelectionDown();
+      const storage = kbExt.storage as any;
+      storage.selectAtCursor = () => this._blockSelection.selectAtCursor();
+      storage.extendSelectionUp = () => this._blockSelection.extendSelectionUp();
+      storage.extendSelectionDown = () => this._blockSelection.extendSelectionDown();
+      storage.deleteSelected = () => this._blockSelection.deleteSelected();
+      storage.duplicateSelected = () => this._blockSelection.duplicateSelected();
+      storage.moveSelectedUp = () => this._blockSelection.moveSelectedUp();
+      storage.moveSelectedDown = () => this._blockSelection.moveSelectedDown();
+      storage.enterEditFirstSelected = () => this._blockSelection.enterEditFirstSelected();
+      storage.hasSelection = () => this._blockSelection.hasSelection;
     }
 
     // ── Click handler for inline math nodes (click-to-edit) ──

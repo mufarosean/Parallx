@@ -275,6 +275,7 @@
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-editor-wrapper {
+  position: relative; /* containing block for .block-marquee overlay */
   width: 100%;
   height: 100%;
   overflow-x: hidden;
@@ -609,12 +610,19 @@
 }
 
 /* ── Block selection (handle-click / Esc / multi-select) ── */
+/* Notion-style flat background wash — rendered as a ::after overlay so it
+   is visible even on blocks that have an inline background-color.  */
 .canvas-tiptap-editor .block-selected {
-  outline: 2px solid rgba(45, 170, 219, 0.55);
-  outline-offset: -1px;
-  background-color: rgba(45, 170, 219, 0.08);
-  border-radius: 4px;
-  transition: outline-color 0.12s ease, background-color 0.12s ease;
+  position: relative;
+}
+.canvas-tiptap-editor .block-selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: rgba(35, 131, 226, 0.17);
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* ── Block marquee (box-drag lasso selection) ── */
@@ -1439,8 +1447,10 @@
 }
 
 .canvas-page-block--drop-target .canvas-page-block-card {
-  border-color: transparent;
-  background: transparent;
+  background: rgba(55, 120, 255, 0.08);
+  outline: 2px solid rgba(55, 120, 255, 0.5);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .canvas-page-block-icon {

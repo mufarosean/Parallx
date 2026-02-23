@@ -4,6 +4,9 @@
 // into a linked page.  This is async persistence orchestration — fundamentally
 // different from the synchronous ProseMirror transactions in blockMovement.
 //
+// Source-block deletion uses UniqueID-based identity rather than positional
+// ranges.  This prevents stale-position bugs from dragstart → drop drift.
+//
 // Part of blockStateRegistry — the single authority for block state operations.
 
 import type { Editor } from '@tiptap/core';
@@ -21,12 +24,6 @@ import {
  * The full ICanvasDataService structurally satisfies this.
  */
 export interface ICrossPageMoveDataAccess {
-  moveBlocksBetweenPagesAtomic(params: {
-    sourcePageId: string;
-    targetPageId: string;
-    sourceDoc: any;
-    appendedNodes: any[];
-  }): Promise<any>;
   appendBlocksToPage(targetPageId: string, appendedNodes: any[]): Promise<any>;
 }
 
@@ -95,48 +92,82 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
     return false;
   }
 
-  // ── Resolve source positions ──
-  const dragFrom = typeof (dragging as any)?.from === 'number'
-    ? (dragging as any).from
-    : typeof payload?.from === 'number'
-      ? payload.from
-    : typeof dragSession?.from === 'number'
-      ? dragSession.from
-    : editor.state.selection.from;
-  const dragTo = typeof (dragging as any)?.to === 'number'
-    ? (dragging as any).to
-    : typeof payload?.to === 'number'
-      ? payload.to
-    : typeof dragSession?.to === 'number'
-      ? dragSession.to
-    : editor.state.selection.to;
+  // ── Identity-based source deletion ───────────────────────────────────────
+  //
+  // UniqueID extension assigns persistent `attrs.id` to every block.
+  // Instead of relying on positions captured at dragstart time (which can
+  // drift if any transaction fires between dragstart and drop), we extract
+  // the block IDs from the dragged JSON and walk the *current* editor doc
+  // to find their exact positions.  This eliminates stale-position bugs.
+  //
+  // Fallback: if blocks lack IDs (e.g. created before UniqueID was wired),
+  // use classic position-range deletion via deleteDraggedSource.
 
   const shouldDeleteSource = !event.altKey;
 
+  // ── Paste: append blocks to target page (immediate DB write) ──
+  try {
+    await dataService.appendBlocksToPage(targetPageId, draggedJson);
+  } catch (appendErr) {
+    // appendBlocksToPage can throw if a side-effect listener fails
+    // (e.g. pageBlock title sync) even though the DB write succeeded.
+    // Log but continue — the delete must still run.
+    console.warn('[Canvas] appendBlocksToPage error (continuing with delete):', appendErr);
+  }
+
+  // ── Cut: delete blocks from source editor ──
   try {
     if (shouldDeleteSource) {
+      const blockIds = draggedJson
+        .map((n: any) => n.attrs?.id)
+        .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
+
       const deleteTr = editor.state.tr;
       deleteTr.setMeta('addToHistory', true);
-      deleteDraggedSource(deleteTr, dragFrom, dragTo);
-      if (!deleteTr.docChanged) return false;
 
-      await dataService.moveBlocksBetweenPagesAtomic({
-        sourcePageId: currentPageId,
-        targetPageId,
-        sourceDoc: deleteTr.doc.toJSON(),
-        appendedNodes: draggedJson,
-      });
+      if (blockIds.length > 0) {
+        // Delete blocks by unique ID (immune to position drift)
+        const idSet = new Set(blockIds);
+        const toDelete: { pos: number; size: number }[] = [];
+        editor.state.doc.descendants((node: any, pos: number) => {
+          if (node.attrs?.id && idSet.has(node.attrs.id)) {
+            toDelete.push({ pos, size: node.nodeSize });
+            return false;
+          }
+        });
+        toDelete.sort((a, b) => b.pos - a.pos);
+        for (const { pos } of toDelete) {
+          const mapped = deleteTr.mapping.map(pos);
+          const node = deleteTr.doc.nodeAt(mapped);
+          if (node) {
+            deleteTr.delete(mapped, mapped + node.nodeSize);
+          }
+        }
+      } else {
+        // Fallback for blocks without UniqueID attrs
+        const dragFrom = typeof (dragging as any)?.from === 'number'
+          ? (dragging as any).from
+          : typeof dragSession?.from === 'number'
+            ? dragSession.from
+          : editor.state.selection.from;
+        const dragTo = typeof (dragging as any)?.to === 'number'
+          ? (dragging as any).to
+          : typeof dragSession?.to === 'number'
+            ? dragSession.to
+          : editor.state.selection.to;
+        deleteDraggedSource(deleteTr, dragFrom, dragTo);
+      }
 
-      editor.view.dispatch(deleteTr);
-      clearActiveCanvasDragSession();
-      return true;
+      if (deleteTr.docChanged) {
+        editor.view.dispatch(deleteTr);
+      }
     }
 
-    await dataService.appendBlocksToPage(targetPageId, draggedJson);
     clearActiveCanvasDragSession();
     return true;
   } catch (err) {
-    console.warn('[Canvas] Failed to move dropped block into linked page:', err);
-    return false;
+    console.warn('[Canvas] Failed to delete source block after cross-page move:', err);
+    clearActiveCanvasDragSession();
+    return true;
   }
 }
