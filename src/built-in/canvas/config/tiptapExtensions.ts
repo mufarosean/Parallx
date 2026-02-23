@@ -17,11 +17,11 @@ import UniqueID from '@tiptap/extension-unique-id';
 import { BlockBackgroundColor } from '../extensions/blockBackground.js';
 import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
 import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
+import { structuralInvariantPlugin } from '../plugins/structuralInvariantPlugin.js';
 import {
   DRAG_HANDLE_CUSTOM_NODE_TYPES,
   getNodePlaceholder,
   getBlockExtensions,
-  structuralInvariantPlugin,
 } from './blockRegistry.js';
 import type { EditorExtensionContext } from './blockRegistry.js';
 

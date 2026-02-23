@@ -1138,4 +1138,3 @@ export {
   moveBlockToLinkedPage,
 } from './blockStateRegistry/blockStateRegistry.js';
 export type { CanvasDragSession, CrossPageMoveParams } from './blockStateRegistry/blockStateRegistry.js';
-export { structuralInvariantPlugin } from './blockStateRegistry/blockStateRegistry.js';

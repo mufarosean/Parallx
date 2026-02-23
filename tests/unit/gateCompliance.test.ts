@@ -80,7 +80,7 @@ const GATE_RULES: Record<string, string[]> = {
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.
-  'config/tiptapExtensions.ts':            ['config/blockRegistry', 'extensions/'],
+  'config/tiptapExtensions.ts':            ['config/blockRegistry', 'extensions/', 'plugins/'],
 
   // ── CanvasMenuRegistry children ─────────────────────────────────────────
   'menus/slashMenu.ts':                    ['menus/canvasMenuRegistry'],
