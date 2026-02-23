@@ -6,11 +6,78 @@
 //   • Esc → select block at cursor
 //   • Selected blocks support group delete / duplicate / move
 //
-// Selection is position-based and maps to DOM nodes for visual feedback.
-// Positions are refreshed on document changes to stay valid.
+// Selection is position-based. Visual feedback uses a ProseMirror Decoration
+// plugin so that .block-selected classes survive PM's DOM reconciliation
+// (MutationObserver re-renders).  The controller dispatches metadata-only
+// transactions to update the decoration set — no manual classList calls.
 
 import type { Editor } from '@tiptap/core';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { PAGE_CONTAINERS, resolveBlockAncestry, normalizeAllColumnLists } from './handleRegistry.js';
+
+// ── Decoration Plugin ───────────────────────────────────────────────────────
+
+/**
+ * PluginKey for the block selection decoration plugin.
+ * Shared between the Plugin (owns the DecorationSet) and the
+ * BlockSelectionController (dispatches meta-transactions to update it).
+ */
+export const blockSelectionPluginKey = new PluginKey<DecorationSet>('blockSelection');
+
+/**
+ * Create the ProseMirror plugin that renders `.block-selected` decorations.
+ *
+ * How it works:
+ *   1. BlockSelectionController dispatches `tr.setMeta(key, positions[])` or
+ *      `tr.setMeta(key, null)` to update/clear the selection.
+ *   2. The plugin's `apply` rebuilds the DecorationSet from the positions.
+ *   3. PM's own rendering pipeline stamps/removes the class — no manual
+ *      classList manipulation, so the MutationObserver has nothing to undo.
+ */
+export function createBlockSelectionPlugin(): Plugin {
+  return new Plugin({
+    key: blockSelectionPluginKey,
+    state: {
+      init() {
+        return DecorationSet.empty;
+      },
+      apply(tr, prev, _oldState, newState) {
+        const meta = tr.getMeta(blockSelectionPluginKey);
+        if (meta !== undefined) {
+          // Explicit update from BlockSelectionController
+          if (!meta || (Array.isArray(meta) && meta.length === 0)) {
+            return DecorationSet.empty;
+          }
+          const positions = meta as number[];
+          const decorations: Decoration[] = [];
+          for (const pos of positions) {
+            const node = newState.doc.nodeAt(pos);
+            if (node) {
+              decorations.push(
+                Decoration.node(pos, pos + node.nodeSize, {
+                  class: 'block-selected',
+                }),
+              );
+            }
+          }
+          return DecorationSet.create(newState.doc, decorations);
+        }
+        // Auto-clear on document changes (positions become stale)
+        if (tr.docChanged) {
+          return DecorationSet.empty;
+        }
+        // Remap existing decorations for selection-only changes
+        return prev.map(tr.mapping, tr.doc);
+      },
+    },
+    props: {
+      decorations(state) {
+        return blockSelectionPluginKey.getState(state);
+      },
+    },
+  });
+}
 
 export interface BlockSelectionHost {
   readonly editor: Editor | null;
@@ -19,17 +86,16 @@ export interface BlockSelectionHost {
 }
 
 /**
- * Tracks a set of selected block positions and renders visual indicators.
+ * Tracks a set of selected block positions and renders visual indicators
+ * via ProseMirror node decorations.
  *
  * Positions are absolute document positions (the "before" position of a
- * block node). They become invalid on any edit — the controller clears
- * selection on document changes to avoid stale references.
+ * block node). They become invalid on any edit — the plugin auto-clears
+ * decorations on document changes to avoid stale references.
  */
 export class BlockSelectionController {
   /** Set of selected block positions (absolute doc positions). */
   private _selected = new Set<number>();
-  /** CSS class added to selected DOM nodes. */
-  private static readonly _SEL_CLASS = 'block-selected';
 
   private _editorChangeHandler: ((props: { transaction: any }) => void) | null = null;
   private _docClickHandler: ((e: MouseEvent) => void) | null = null;
@@ -50,13 +116,18 @@ export class BlockSelectionController {
   // ── Setup / Teardown ──────────────────────────────────────────────────
 
   setup(): void {
-    // Clear selection on content edits (positions become stale).
-    // Selection-only transactions (focus, cursor, NodeSelection from handle)
-    // must NOT clear — otherwise the highlight disappears immediately.
+    // Clear model on content edits (positions become stale).
+    // The decoration plugin auto-clears its DecorationSet on docChanged,
+    // so we only need to keep _selected in sync.
     this._editorChangeHandler = ({ transaction }: any) => {
-      if (transaction?.docChanged) this.clear();
+      if (transaction?.docChanged && this._selected.size > 0) {
+        this._selected.clear();
+      }
     };
     this._host.editor?.on('update', this._editorChangeHandler!);
+
+    // Note: _transactionHandler is no longer needed.  The decoration plugin
+    // takes care of rendering — classes survive PM's DOM reconciliation.
 
     // Clear selection when clicking on empty editor area (deselect)
     this._docClickHandler = (e: MouseEvent) => {
@@ -95,9 +166,21 @@ export class BlockSelectionController {
    * @param pos Absolute document position of the block node.
    */
   select(pos: number): void {
-    this.clear();
+    this._selected.clear();
     this._selected.add(pos);
-    this._renderSelection();
+    this._syncDecorations();
+  }
+
+  /**
+   * Select multiple blocks at once (for marquee / lasso selection).
+   * Replaces any existing selection.  Single render pass — no flicker.
+   */
+  selectMultiple(positions: number[]): void {
+    this._selected.clear();
+    for (const pos of positions) {
+      this._selected.add(pos);
+    }
+    this._syncDecorations();
   }
 
   /**
@@ -110,7 +193,7 @@ export class BlockSelectionController {
     } else {
       this._selected.add(pos);
     }
-    this._renderSelection();
+    this._syncDecorations();
   }
 
   /**
@@ -159,7 +242,7 @@ export class BlockSelectionController {
       offset += container.child(i).nodeSize;
     }
 
-    this._renderSelection();
+    this._syncDecorations();
   }
 
   /**
@@ -234,7 +317,7 @@ export class BlockSelectionController {
   clear(): void {
     if (this._selected.size === 0) return;
     this._selected.clear();
-    this._clearVisual();
+    this._syncDecorations();
   }
 
   // ── Group Operations ──────────────────────────────────────────────────
@@ -289,7 +372,174 @@ export class BlockSelectionController {
     this.clear();
   }
 
-  // ── Visual Rendering ──────────────────────────────────────────────────
+  /**
+   * Move all selected blocks up by one position within their parent.
+   * Returns true if handled.
+   */
+  moveSelectedUp(): boolean {
+    return this._moveSelected('up');
+  }
+
+  /**
+   * Move all selected blocks down by one position within their parent.
+   * Returns true if handled.
+   */
+  moveSelectedDown(): boolean {
+    return this._moveSelected('down');
+  }
+
+  /**
+   * Deselect and place the cursor inside the first selected block
+   * (Notion's Enter behavior on block selection).
+   * Returns true if handled.
+   */
+  enterEditFirstSelected(): boolean {
+    const editor = this._host.editor;
+    if (!editor || this._selected.size === 0) return false;
+
+    const sorted = this.positions;
+    const firstPos = sorted[0];
+    const node = editor.state.doc.nodeAt(firstPos);
+    if (!node) return false;
+
+    this.clear();
+    // Place cursor at the start of the first block's content
+    try {
+      editor.commands.focus();
+      const resolvedPos = editor.state.doc.resolve(firstPos + 1);
+      editor.view.dispatch(
+        editor.state.tr.setSelection(
+          editor.state.selection.constructor.near(resolvedPos),
+        ),
+      );
+    } catch { /* fallback: just focus */ }
+
+    return true;
+  }
+
+  // ── Move helper ───────────────────────────────────────────────────────
+
+  /**
+   * Move all selected blocks by one sibling position in the given direction.
+   * All selected blocks must share the same parent container.  If any block
+   * is at the boundary, the move is a no-op (returns true to consume the event).
+   */
+  private _moveSelected(direction: 'up' | 'down'): boolean {
+    const editor = this._host.editor;
+    if (!editor || this._selected.size === 0) return false;
+
+    const sorted = this.positions; // sorted asc
+
+    // Resolve the parent container of the first selected block
+    const $first = editor.state.doc.resolve(sorted[0]);
+    const { containerDepth } = resolveBlockAncestry($first);
+    const container = containerDepth === 0 ? editor.state.doc : $first.node(containerDepth);
+    const parentPos = containerDepth === 0 ? 0 : $first.before(containerDepth);
+
+    // Build a list of child positions in the container
+    const childPositions: number[] = [];
+    let off = parentPos + (containerDepth === 0 ? 0 : 1);
+    for (let i = 0; i < container.childCount; i++) {
+      childPositions.push(off);
+      off += container.child(i).nodeSize;
+    }
+
+    // Find indices of selected blocks within the container
+    const selectedSet = new Set(sorted);
+    const selectedIndices = childPositions
+      .map((pos, idx) => selectedSet.has(pos) ? idx : -1)
+      .filter(idx => idx >= 0);
+
+    if (selectedIndices.length === 0) return false;
+
+    // Boundary check
+    if (direction === 'up' && selectedIndices[0] <= 0) return true;
+    if (direction === 'down' && selectedIndices[selectedIndices.length - 1] >= container.childCount - 1) return true;
+
+    // Compute the new indices the selected blocks will occupy after the swap
+    const newIndices = selectedIndices.map(i => direction === 'up' ? i - 1 : i + 1);
+
+    // Build and dispatch the move transaction
+    const { tr } = editor.state;
+
+    if (direction === 'up') {
+      // Remove the block above the selection and insert it after the selection
+      const swapIndex = selectedIndices[0] - 1;
+      const swapPos = childPositions[swapIndex];
+      const swapNode = tr.doc.nodeAt(swapPos);
+      if (!swapNode) return false;
+
+      const lastSelIdx = selectedIndices[selectedIndices.length - 1];
+      const lastSelNode = tr.doc.nodeAt(childPositions[lastSelIdx]);
+      if (!lastSelNode) return false;
+      const insertAfter = childPositions[lastSelIdx] + lastSelNode.nodeSize;
+
+      const swapCopy = swapNode.type.create(swapNode.attrs, swapNode.content, swapNode.marks);
+      tr.delete(swapPos, swapPos + swapNode.nodeSize);
+      const mappedInsert = tr.mapping.map(insertAfter);
+      tr.insert(mappedInsert, swapCopy);
+    } else {
+      // Remove the block below the selection and insert it before the selection
+      const lastSelIdx = selectedIndices[selectedIndices.length - 1];
+      const swapIndex = lastSelIdx + 1;
+      const swapPos = childPositions[swapIndex];
+      const swapNode = tr.doc.nodeAt(swapPos);
+      if (!swapNode) return false;
+
+      const firstSelPos = childPositions[selectedIndices[0]];
+
+      const swapCopy = swapNode.type.create(swapNode.attrs, swapNode.content, swapNode.marks);
+      tr.delete(swapPos, swapPos + swapNode.nodeSize);
+      const mappedInsert = tr.mapping.map(firstSelPos);
+      tr.insert(mappedInsert, swapCopy);
+    }
+
+    // Dispatch — docChanged handler will clear _selected, decoration plugin
+    // will auto-clear.  We immediately re-select at the new positions.
+    editor.view.dispatch(tr);
+
+    // Re-walk the (now updated) container to find positions at newIndices
+    const newContainer = containerDepth === 0
+      ? editor.state.doc
+      : editor.state.doc.nodeAt(parentPos);
+    if (!newContainer) { this.clear(); return true; }
+
+    const resolvedContainer = containerDepth === 0 ? editor.state.doc : newContainer;
+    const newChildPositions: number[] = [];
+    let newOff = parentPos + (containerDepth === 0 ? 0 : 1);
+    for (let i = 0; i < resolvedContainer.childCount; i++) {
+      newChildPositions.push(newOff);
+      newOff += resolvedContainer.child(i).nodeSize;
+    }
+
+    const reselect = newIndices
+      .filter(idx => idx >= 0 && idx < newChildPositions.length)
+      .map(idx => newChildPositions[idx]);
+
+    if (reselect.length > 0) {
+      this.selectMultiple(reselect);
+    } else {
+      this.clear();
+    }
+
+    return true;
+  }
+
+  /**
+   * Dispatch a metadata-only transaction that tells the decoration plugin
+   * which block positions should have `.block-selected`.  If `_selected`
+   * is empty the plugin receives `null` and clears all decorations.
+   */
+  private _syncDecorations(): void {
+    const editor = this._host.editor;
+    if (!editor) return;
+    this._sanitizeSelectionReferences();
+    const positions = this._selected.size > 0 ? [...this._selected] : null;
+    const tr = editor.state.tr.setMeta(blockSelectionPluginKey, positions);
+    // Prevent this housekeeping transaction from being recorded in undo history
+    tr.setMeta('addToHistory', false);
+    editor.view.dispatch(tr);
+  }
 
   /**
    * Find the position of the adjacent block above or below the given pos.
@@ -324,70 +574,9 @@ export class BlockSelectionController {
     }
   }
 
-  private _renderSelection(): void {
-    this._sanitizeSelectionReferences();
-    this._clearVisual();
-    const editor = this._host.editor;
-    if (!editor) return;
-
-    for (const pos of this._selected) {
-      try {
-        const domInfo = editor.view.domAtPos(pos);
-        // Walk up to find the block-level DOM element
-        let el = domInfo.node as HTMLElement;
-        if (el.nodeType === Node.TEXT_NODE) {
-          el = el.parentElement!;
-        }
-        // Find the nearest block-level element
-        const blockEl = this._findBlockDomElement(el, pos);
-        if (blockEl) {
-          blockEl.classList.add(BlockSelectionController._SEL_CLASS);
-        }
-      } catch { /* position may be invalid */ }
-    }
-  }
-
   /**
-   * Find the DOM element representing the block at the given position.
-   * Uses ProseMirror's nodeDOM when available, falls back to closest block.
+   * Sanitize stale references — remove positions where doc.nodeAt returns null.
    */
-  private _findBlockDomElement(el: HTMLElement, pos: number): HTMLElement | null {
-    const editor = this._host.editor;
-    if (!editor) return null;
-
-    try {
-      // ProseMirror's nodeDOM returns the outermost DOM element for a node
-      const domNode = editor.view.nodeDOM(pos) as HTMLElement | null;
-      if (domNode && domNode.nodeType === Node.ELEMENT_NODE) {
-        return domNode;
-      }
-    } catch { /* fall through */ }
-
-    // Fallback: walk up from the domAtPos element
-    const proseMirror = this._host.editorContainer?.querySelector('.ProseMirror');
-    if (!proseMirror) return null;
-
-    let current: HTMLElement | null = el;
-    while (current && current !== proseMirror) {
-      if (current.parentElement === proseMirror ||
-          current.parentElement?.classList.contains('canvas-column') ||
-          current.parentElement?.classList.contains('canvas-callout-content') ||
-          current.parentElement?.matches('[data-type=detailsContent]') ||
-          current.parentElement?.tagName === 'BLOCKQUOTE') {
-        return current;
-      }
-      current = current.parentElement;
-    }
-    return null;
-  }
-
-  private _clearVisual(): void {
-    const ec = this._host.editorContainer;
-    if (!ec) return;
-    const selected = ec.querySelectorAll(`.${BlockSelectionController._SEL_CLASS}`);
-    selected.forEach((el) => el.classList.remove(BlockSelectionController._SEL_CLASS));
-  }
-
   private _sanitizeSelectionReferences(): void {
     const editor = this._host.editor;
     if (!editor || this._selected.size === 0) return;
@@ -414,7 +603,18 @@ export class BlockSelectionController {
   // ── Dispose ─────────────────────────────────────────────────────────────
 
   dispose(): void {
-    this.clear();
+    // Clear decorations before teardown
+    if (this._selected.size > 0) {
+      this._selected.clear();
+      const editor = this._host.editor;
+      if (editor) {
+        try {
+          const tr = editor.state.tr.setMeta(blockSelectionPluginKey, null);
+          tr.setMeta('addToHistory', false);
+          editor.view.dispatch(tr);
+        } catch { /* editor may already be destroyed */ }
+      }
+    }
     if (this._editorChangeHandler) {
       this._host.editor?.off('update', this._editorChangeHandler);
       this._editorChangeHandler = null;

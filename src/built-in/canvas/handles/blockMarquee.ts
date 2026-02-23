@@ -7,7 +7,6 @@
 // Gate: handles/ — imports only from handleRegistry.ts.
 
 import type { Editor } from '@tiptap/core';
-import { resolveBlockAncestry, PAGE_CONTAINERS } from './handleRegistry.js';
 import type { BlockSelectionController } from './handleRegistry.js';
 
 // ── Host Interface ──────────────────────────────────────────────────────────
@@ -98,16 +97,28 @@ export class BlockMarqueeController {
       // Clear existing selection when marquee starts
       this._host.blockSelection.clear();
       this._host.editorContainer?.classList.add(MARQUEE_ACTIVE_CLASS);
+      // Clear native text selection that ProseMirror may have started
+      // from the (un-prevented) mousedown on the editor background.
+      window.getSelection()?.removeAllRanges();
     }
 
     if (!this._active || !this._marqueeEl) return;
 
-    // Calculate marquee rectangle relative to the editor container
-    const ecRect = this._host.editorContainer!.getBoundingClientRect();
-    const x1 = Math.min(this._origin.x, e.clientX) - ecRect.left;
-    const y1 = Math.min(this._origin.y, e.clientY) - ecRect.top;
-    const x2 = Math.max(this._origin.x, e.clientX) - ecRect.left;
-    const y2 = Math.max(this._origin.y, e.clientY) - ecRect.top;
+    // Suppress native text-selection growth while the marquee is active.
+    e.preventDefault();
+
+    // Calculate marquee rectangle relative to the editor container's
+    // *scroll-content* coordinate space.  The wrapper has overflow-y: auto,
+    // so we must add scrollTop / scrollLeft to the viewport-relative offset
+    // so the marquee overlay tracks the cursor correctly even when scrolled.
+    const ec = this._host.editorContainer!;
+    const ecRect = ec.getBoundingClientRect();
+    const scrollX = ec.scrollLeft;
+    const scrollY = ec.scrollTop;
+    const x1 = Math.min(this._origin.x, e.clientX) - ecRect.left + scrollX;
+    const y1 = Math.min(this._origin.y, e.clientY) - ecRect.top + scrollY;
+    const x2 = Math.max(this._origin.x, e.clientX) - ecRect.left + scrollX;
+    const y2 = Math.max(this._origin.y, e.clientY) - ecRect.top + scrollY;
 
     this._marqueeEl.style.left = `${x1}px`;
     this._marqueeEl.style.top = `${y1}px`;
@@ -118,6 +129,10 @@ export class BlockMarqueeController {
 
   private readonly _onMouseUp = (e: MouseEvent): void => {
     if (this._active) {
+      // Prevent ProseMirror from finalizing a text selection that
+      // would trigger a transaction and re-render DOM nodes.
+      e.preventDefault();
+      window.getSelection()?.removeAllRanges();
       this._resolveSelection(e);
     }
     this._cleanup();
@@ -126,87 +141,63 @@ export class BlockMarqueeController {
   // ── Selection Resolution ──────────────────────────────────────────────
 
   /**
-   * Hit-test all top-level blocks against the marquee rectangle and
-   * select any that overlap.
+   * Hit-test blocks against the marquee rectangle.
+   *
+   * Uses a single recursive walk over the PM document tree:
+   *  - `columnList` / `column` are structural wrappers — recurse into them,
+   *    never select them.
+   *  - Everything else is a selectable leaf block — hit-test its DOM rect.
    */
   private _resolveSelection(_e: MouseEvent): void {
     const editor = this._host.editor;
-    const ec = this._host.editorContainer;
     const marquee = this._marqueeEl;
-    if (!editor || !ec || !marquee) return;
+    if (!editor || !marquee) return;
 
-    // Get marquee bounds in viewport coordinates
     const marqueeRect = marquee.getBoundingClientRect();
     if (marqueeRect.width < 2 || marqueeRect.height < 2) return;
 
-    // Walk through top-level blocks in the document and check overlap
-    const { doc } = editor.state;
-    const { view } = editor;
     const positions: number[] = [];
+    this._collectBlocks(editor.state.doc, 0, editor.view, marqueeRect, positions);
 
-    doc.forEach((node, offset) => {
-      // For each top-level child, get its DOM element and check overlap
-      try {
-        const domNode = view.nodeDOM(offset) as HTMLElement | null;
-        if (!domNode || domNode.nodeType !== Node.ELEMENT_NODE) return;
-
-        const blockRect = domNode.getBoundingClientRect();
-        if (this._rectsOverlap(marqueeRect, blockRect)) {
-          positions.push(offset);
-        }
-      } catch { /* ignore unmapped nodes */ }
-    });
-
-    // Also walk column children if the marquee overlaps columns
-    this._resolveColumnChildren(doc, view, marqueeRect, positions);
-
-    // Apply selection
     if (positions.length > 0) {
-      // Select the first, then extend to include all others
-      this._host.blockSelection.select(positions[0]);
-      for (let i = 1; i < positions.length; i++) {
-        this._host.blockSelection.toggle(positions[i]);
-      }
+      this._host.blockSelection.selectMultiple(positions);
+      editor.commands.blur();
     }
   }
 
   /**
-   * Walk through column containers and check if their children overlap
-   * the marquee. This handles the case where the marquee covers blocks
-   * inside columns rather than the columnList itself.
+   * Recursively walk `parent`'s children.  `parentContentStart` is the
+   * absolute document position where `parent`'s content begins (0 for
+   * the doc node, `nodePos + 1` for every other node).
+   *
+   * Structural nodes (columnList, column) are recursed into; all other
+   * nodes are treated as selectable blocks and hit-tested via the DOM.
    */
-  private _resolveColumnChildren(
-    doc: any,
+  private _collectBlocks(
+    parent: any,
+    parentContentStart: number,
     view: any,
     marqueeRect: DOMRect,
-    positions: number[],
+    out: number[],
   ): void {
-    const posSet = new Set(positions);
-    doc.forEach((node: any, offset: number) => {
-      if (node.type.name !== 'columnList') return;
+    parent.forEach((node: any, offset: number) => {
+      const absPos = parentContentStart + offset;
+      const name: string = node.type.name;
 
-      // Walk columns inside the columnList
-      node.forEach((col: any, colOffset: number) => {
-        if (col.type.name !== 'column') return;
-        const colAbsPos = offset + 1 + colOffset;
+      // Structural wrappers — recurse, never select
+      if (name === 'columnList' || name === 'column') {
+        this._collectBlocks(node, absPos + 1, view, marqueeRect, out);
+        return;
+      }
 
-        // Walk blocks inside the column
-        col.forEach((block: any, blockOffset: number) => {
-          const blockAbsPos = colAbsPos + 1 + blockOffset;
-          if (posSet.has(blockAbsPos)) return; // already captured
-
-          try {
-            const domNode = view.nodeDOM(blockAbsPos) as HTMLElement | null;
-            if (!domNode || domNode.nodeType !== Node.ELEMENT_NODE) return;
-
-            const blockRect = domNode.getBoundingClientRect();
-            if (this._rectsOverlap(marqueeRect, blockRect)) {
-              positions.push(blockAbsPos);
-              posSet.add(blockAbsPos);
-            }
-          } catch { /* ignore unmapped nodes */ }
-        });
-      });
+      // Selectable block — hit-test against marquee
+      try {
+        const dom = view.nodeDOM(absPos) as HTMLElement | null;
+        if (!dom || dom.nodeType !== Node.ELEMENT_NODE) return;
+        if (this._rectsOverlap(marqueeRect, dom.getBoundingClientRect())) {
+          out.push(absPos);
+        }
+      } catch { /* unmapped node — skip */ }
     });
   }
 
@@ -214,7 +205,14 @@ export class BlockMarqueeController {
 
   /** Check whether the mousedown target is a valid marquee start surface. */
   private _isBackgroundTarget(el: HTMLElement): boolean {
-    // Direct hits on ProseMirror container or editor container
+    const ec = this._host.editorContainer;
+
+    // Direct hit on the editor-container wrapper (gutter area outside the
+    // centred 860 px content column — the most common drag-select origin).
+    if (ec && el === ec) return true;
+
+    // Direct hits on ProseMirror container (padding area, gap between
+    // blocks, or space below the last block).
     if (
       el.classList.contains('ProseMirror') ||
       el.classList.contains('canvas-tiptap-editor')
@@ -222,10 +220,6 @@ export class BlockMarqueeController {
       return true;
     }
 
-    // The ProseMirror element's direct padding area sometimes resolves to
-    // the element itself, other times to the first/last child.  Check if
-    // the element is the .ProseMirror or is an immediate child that is a
-    // structural wrapper (not actual content).
     return false;
   }
 
