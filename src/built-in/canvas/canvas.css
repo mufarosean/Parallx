@@ -3348,7 +3348,7 @@
 /* Resize handle zone — invisible but cursor changes on hover.
    Uses ::after on each column except the last to create a hit zone
    spanning the gap between adjacent columns (16px gap, centred).
-   z-index 55 ensures this sits ABOVE the GlobalDragHandle (z-index 50)
+   z-index 55 ensures this sits ABOVE the drag handle (z-index 50)
    so resize interactions aren't blocked by the drag handle overlay. */
 .canvas-column:not(:last-child)::after {
   content: '';

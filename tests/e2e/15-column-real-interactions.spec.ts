@@ -2,7 +2,7 @@
  * E2E Test: Column Real Interactions
  *
  * ONE canvas. Cumulative state. Labeled blocks for full traceability.
- * All drag operations go through the REAL GlobalDragHandle dragstart handler
+ * All drag operations go through the REAL BlockHandlesController dragstart handler
  * and the REAL columnDropPlugin dragover/drop handlers — no bypassing.
  * Resize uses real mouse events. No keyboard shortcuts anywhere.
  *
@@ -21,7 +21,7 @@
  *
  * NOTE ON DRAG MECHANISM: Playwright cannot perform native HTML5 drag-and-drop
  * in Electron. We dispatch DragEvent on the REAL DOM elements:
- *   - dragstart on .drag-handle → GlobalDragHandle's handler runs, sets view.dragging
+ *   - dragstart on .drag-handle → BlockHandlesController's handler runs, sets view.dragging
  *   - dragover on ProseMirror DOM → columnDropPlugin's handler shows indicator
  *   - drop on ProseMirror DOM → columnDropPlugin's handler executes transaction
  * All production code paths are exercised. The only synthetic part is event dispatch.
@@ -89,7 +89,7 @@ async function logState(page: Page, label: string): Promise<void> {
 // ── Drag helper ─────────────────────────────────────────────────────────────
 //
 // Dispatches DragEvent on real DOM elements, going through:
-//   1. GlobalDragHandle's dragstart handler (sets view.dragging from selection)
+//   1. BlockHandlesController's dragstart handler (sets view.dragging from selection)
 //   2. columnDropPlugin's dragover handler (finds target, determines zone)
 //   3. columnDropPlugin's drop handler (inserts content, deletes source)
 //
@@ -134,7 +134,7 @@ async function dragBlockByText(
   //    All in ONE evaluate call to prevent any async state loss.
   //
   //    dragstart fires on the REAL drag handle element, which triggers
-  //    GlobalDragHandle's handleDragStart → sets view.dragging.
+  //    BlockHandlesController's _onDragHandleDragStart → sets view.dragging.
   //
   //    dragover and drop fire on view.dom, going through ProseMirror's
   //    plugin handler pipeline → columnDropPlugin processes them.
@@ -160,7 +160,7 @@ async function dragBlockByText(
     const selNode = view.state.doc.nodeAt(sel.from);
     info.push(`selected: ${selNode?.type?.name} "${selNode?.textContent?.substring(0, 20)}"`);
 
-    // Trace GlobalDragHandle's node resolution
+    // Trace BlockHandlesController's node resolution
     const lookX = hx + 50 + 24;  // what handleDragStart computes
     const foundEl = document.elementsFromPoint(lookX, hy).find((el: Element) =>
       el.parentElement?.matches?.('.ProseMirror') ||
@@ -330,12 +330,12 @@ test.describe('Column Real Interactions', () => {
     console.log('  Target coords:', Math.round(targetX), Math.round(targetY));
     console.log('  Elements at target:', JSON.stringify(elemDebug, null, 2));
 
-    // Debug: check what GlobalDragHandle's logic would resolve to
+    // Debug: check what BlockHandlesController's logic would resolve to
     const handleBox2 = await page.locator('.drag-handle').boundingBox();
     if (handleBox2) {
       const posDebug = await page.evaluate(({ hx, hy }) => {
         const view = (window as any).__tiptapEditor.view;
-        // GlobalDragHandle does: elementsFromPoint(clientX + 74, clientY)
+        // BlockHandlesController uses posAtCoords, but legacy debug uses elementsFromPoint(clientX + 74, clientY)
         const lookX = hx + 50 + 24;
         const lookY = hy;
         const node = document.elementsFromPoint(lookX, lookY).find((el: Element) =>
@@ -368,7 +368,7 @@ test.describe('Column Real Interactions', () => {
 
         return { lookX: Math.round(lookX), lookY: Math.round(lookY), nodeTag, nodeText, posResult, calcResult };
       }, { hx: handleBox2.x + handleBox2.width / 2, hy: handleBox2.y + handleBox2.height / 2 });
-      console.log('  GlobalDragHandle resolution debug:', JSON.stringify(posDebug, null, 2));
+      console.log('  BlockHandlesController resolution debug:', JSON.stringify(posDebug, null, 2));
     }
 
     // Drop in the lower half of C1-B4 → "below" zone

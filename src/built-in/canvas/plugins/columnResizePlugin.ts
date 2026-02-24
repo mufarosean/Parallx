@@ -6,11 +6,11 @@
 // managed via CSS class on document.body for reliable override.
 //
 // Boundary detection is done via a container-level mousemove listener (not
-// ProseMirror's handleDOMEvents) because the GlobalDragHandle's drag-handle
-// div (position: fixed, z-index: 50) can sit directly on top of column
-// boundaries. When that happens, ProseMirror never receives the mousemove
-// and the `column-resize-hover` CSS class never gets set. The container
-// listener catches events that bubble up from the drag handle.
+// ProseMirror's handleDOMEvents) because the drag-handle div (position: fixed,
+// z-index: 50) can sit directly on top of column boundaries. When that
+// happens, ProseMirror never receives the mousemove and the
+// `column-resize-hover` CSS class never gets set. The container listener
+// catches events that bubble up from the drag handle.
 
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';

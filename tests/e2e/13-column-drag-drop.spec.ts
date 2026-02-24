@@ -35,7 +35,7 @@ async function startDragFromBlock(page: Page, blockIndex: number): Promise<{ fro
     // Create NodeSelection on this block
     editor.commands.setNodeSelection(pos);
 
-    // Set view.dragging (mimics GlobalDragHandle's handleDragStart)
+    // Set view.dragging (mimics BlockHandlesController's _onDragHandleDragStart)
     const slice = view.state.selection.content();
     view.dragging = { slice, move: true };
     view.dom.classList.add('dragging');
