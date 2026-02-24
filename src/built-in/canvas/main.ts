@@ -18,6 +18,7 @@ import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
+import { DatabaseDataService } from './database/databaseDataService.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -58,6 +59,7 @@ interface ParallxApi {
 
 let _api: ParallxApi;
 let _dataService: CanvasDataService | null = null;
+let _databaseDataService: DatabaseDataService | null = null;
 let _sidebar: CanvasSidebar | null = null;
 
 // â”€â”€â”€ Activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -71,6 +73,10 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 2. Create CanvasDataService
   _dataService = new CanvasDataService();
   context.subscriptions.push(_dataService);
+
+  // 2a. Create DatabaseDataService (M8 Phase 1)
+  _databaseDataService = new DatabaseDataService();
+  context.subscriptions.push(_databaseDataService);
 
   // 3. Register sidebar view provider for page tree (Cap 4)
   _sidebar = new CanvasSidebar(_dataService, api);
@@ -151,6 +157,7 @@ export async function deactivate(): Promise<void> {
 
   // Clear module-level state
   _dataService = null;
+  _databaseDataService = null;
   _sidebar = null;
   _api = undefined!;
 

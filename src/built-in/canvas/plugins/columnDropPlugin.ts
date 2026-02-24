@@ -26,7 +26,6 @@
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import {
-  PAGE_CONTAINERS,
   resolveBlockAncestry,
   moveBlockAboveBelow,
   createColumnLayoutFromDrop,

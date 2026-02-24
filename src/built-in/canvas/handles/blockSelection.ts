@@ -12,9 +12,9 @@
 // transactions to update the decoration set — no manual classList calls.
 
 import type { Editor } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { PAGE_CONTAINERS, resolveBlockAncestry, normalizeAllColumnLists } from './handleRegistry.js';
+import { resolveBlockAncestry, normalizeAllColumnLists } from './handleRegistry.js';
 import { isDevMode } from '../../../platform/devMode.js';
 
 // ── Decoration Plugin ───────────────────────────────────────────────────────
@@ -403,7 +403,7 @@ export class BlockSelectionController {
       const resolvedPos = editor.state.doc.resolve(firstPos + 1);
       editor.view.dispatch(
         editor.state.tr.setSelection(
-          editor.state.selection.constructor.near(resolvedPos),
+          TextSelection.near(resolvedPos),
         ),
       );
     } catch { /* fallback: just focus */ }

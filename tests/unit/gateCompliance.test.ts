@@ -53,6 +53,8 @@ const EXEMPT_FILES = new Set([
   'markdownExport.ts',             // Export utility
   'main.ts',                       // Activation entry point
   'canvas.css',                    // Stylesheet
+  'database/databaseTypes.ts',     // Database type definitions (M8)
+  'database/databaseDataService.ts', // Database data layer (M8)
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────

@@ -569,7 +569,7 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
 #### 1.1 Database Types (`database/databaseTypes.ts`)
 
 **Tasks:**
-- [ ] Create `databaseTypes.ts` with all interfaces:
+- [x] Create `databaseTypes.ts` with all interfaces:
   - `IDatabase` — database identity and metadata (id, pageId, description, isLocked)
   - `IDatabaseProperty` — property schema (id, name, type, config, sort_order)
   - `IPropertyValue` — typed property value (discriminated union by property type)
@@ -581,84 +581,84 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
   - `ISortRule` — sort property + direction
   - `IColorRule` — conditional color rule
   - `IDatabaseRow` — a page + its property values in a database context
-- [ ] Define property type discriminator union: `'title' | 'rich_text' | 'number' | 'select' | 'multi_select' | 'status' | 'date' | 'checkbox' | 'url' | 'email' | 'phone_number' | 'files' | 'relation' | 'rollup' | 'formula' | 'created_time' | 'last_edited_time' | 'unique_id'`
-- [ ] Define filter operator maps per property type (which operators for which types)
-- [ ] Define `IDatabaseDataService` interface (all CRUD methods)
-- [ ] Define change event types: `DatabaseChangeKind`, `DatabaseChangeEvent`, `PropertyChangeEvent`, `RowChangeEvent`
+- [x] Define property type discriminator union: `'title' | 'rich_text' | 'number' | 'select' | 'multi_select' | 'status' | 'date' | 'checkbox' | 'url' | 'email' | 'phone_number' | 'files' | 'relation' | 'rollup' | 'formula' | 'created_time' | 'last_edited_time' | 'unique_id'`
+- [x] Define filter operator maps per property type (which operators for which types)
+- [x] Define `IDatabaseDataService` interface (all CRUD methods)
+- [x] Define change event types: `DatabaseChangeKind`, `DatabaseChangeEvent`, `PropertyChangeEvent`, `RowChangeEvent`
 
 **How it integrates:** Types are co-located in `database/databaseTypes.ts`. They import `IPage` from `canvasTypes.ts` for the row model. No runtime coupling — type-only imports.
 
 #### 1.2 Migration SQL
 
 **Tasks:**
-- [ ] Create `migrations/006_databases.sql` — `databases`, `database_properties`, `database_views`, `database_pages` tables with all indices
-- [ ] Create `migrations/007_page_property_values.sql` — `page_property_values` table with indices and composite foreign key
-- [ ] Verify both migrations apply cleanly on an existing workspace with pages data
-- [ ] Verify `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` for idempotency
+- [x] Create `migrations/006_databases.sql` — `databases`, `database_properties`, `database_views`, `database_pages` tables with all indices
+- [x] Create `migrations/007_page_property_values.sql` — `page_property_values` table with indices and composite foreign key
+- [x] Verify both migrations apply cleanly on an existing workspace with pages data
+- [x] Verify `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` for idempotency
 
 **How it integrates:** Files go in `src/built-in/canvas/migrations/`. The existing `_runMigrations()` in `canvas/main.ts` calls `electron.database.migrate(migrationsDir)` which picks up `006_*.sql` and `007_*.sql` automatically via lexicographic ordering. The `_migrations` table tracks them. No code changes to the migration runner.
 
 #### 1.3 Database Data Service (`database/databaseDataService.ts`)
 
 **Tasks:**
-- [ ] Create `DatabaseDataService` class extending `Disposable`
-- [ ] Private `_db` accessor to `window.parallxElectron.database` (same pattern as `CanvasDataService._db`)
-- [ ] Row mapper: `rowToDatabase()`, `rowToProperty()`, `rowToView()`, `rowToPropertyValue()`
-- [ ] **Database CRUD:**
+- [x] Create `DatabaseDataService` class extending `Disposable`
+- [x] Private `_db` accessor to `window.parallxElectron.database` (same pattern as `CanvasDataService._db`)
+- [x] Row mapper: `rowToDatabase()`, `rowToProperty()`, `rowToView()`, `rowToPropertyValue()`
+- [x] **Database CRUD:**
   - `createDatabase(pageId)` → creates a `databases` row (id = pageId) + default "Title" property + default "Table" view
   - `getDatabase(databaseId)` → single database with properties and views
   - `getDatabaseByPageId(pageId)` → lookup database from page ID (for sidebar detection)
   - `updateDatabase(databaseId, updates)` → update description, is_locked
   - `deleteDatabase(databaseId)` → cascading delete of properties, views, values, membership (the page itself is deleted separately via `CanvasDataService.deletePage()` — `ON DELETE CASCADE` on `databases.page_id` handles the FK)
-- [ ] **Property CRUD:**
+- [x] **Property CRUD:**
   - `addProperty(databaseId, name, type, config?)` → insert with next sort_order
   - `updateProperty(databaseId, propertyId, updates)` → rename, change config
   - `removeProperty(databaseId, propertyId)` → delete property + all its values
   - `reorderProperties(databaseId, orderedIds)` → bulk sort_order update
-- [ ] **Row membership:**
+- [x] **Row membership:**
   - `addRow(databaseId, pageId?)` → create a new page + add to `database_pages` + create default property values (uses `runTransaction` for atomicity)
   - `removeRow(databaseId, pageId)` → remove from `database_pages` + delete property values (page itself is NOT deleted — it's still a page)
   - `getRows(databaseId)` → all pages in database with their property values, ordered by sort_order
   - `reorderRows(databaseId, orderedPageIds)` → bulk sort_order update in `database_pages`
-- [ ] **Property value CRUD:**
+- [x] **Property value CRUD:**
   - `setPropertyValue(databaseId, pageId, propertyId, value)` → upsert
   - `getPropertyValues(databaseId, pageId)` → all values for a page in a database
   - `batchSetPropertyValues(databaseId, pageId, values[])` → transactional multi-set
-- [ ] **View CRUD:**
+- [x] **View CRUD:**
   - `createView(databaseId, name, type, config?)` → insert with next sort_order (filters/sorts go in denormalized columns; rest in `config` JSON)
   - `getViews(databaseId)` → all views for database, ordered (maps denormalized columns + JSON to `IDatabaseView`)
   - `updateView(viewId, updates)` → name, type, denormalized columns, config JSON, is_locked
   - `deleteView(viewId)` → delete (prevent deleting last view)
   - `duplicateView(viewId)` → deep-copy all columns + config into new view
   - `reorderViews(databaseId, orderedIds)` → bulk sort_order update
-- [ ] **Events:** `onDidChangeDatabase`, `onDidChangeProperty`, `onDidChangeRow`, `onDidChangeView` — each fires with the appropriate change event type
+- [x] **Events:** `onDidChangeDatabase`, `onDidChangeProperty`, `onDidChangeRow`, `onDidChangeView` — each fires with the appropriate change event type
 
 **How it integrates:** Created **eagerly** in `canvas/main.ts` alongside `CanvasDataService` during activation — not lazily on first database access. This matches the `CanvasDataService` lifecycle pattern: the service exists for the entire session, avoids null-check branching throughout the codebase, and keeps the activation sequence predictable. Both services share the same `window.parallxElectron.database` IPC bridge. The `DatabaseDataService` constructor takes no arguments. It's passed to the `DatabaseEditorProvider` and to the sidebar for database detection.
 
 #### 1.4 Unit Tests
 
 **Tasks:**
-- [ ] Unit tests for `DatabaseDataService` — all CRUD paths
+- [x] Unit tests for `DatabaseDataService` — all CRUD paths
   - Create database → verify default property + default view created
   - Add/update/remove properties → verify schema changes
   - Add/remove rows → verify page creation + membership + value cleanup
   - Set/get property values → verify JSON encoding round-trip
   - Create/update/delete/duplicate views → verify config persistence
   - Delete database → verify cascading cleanup
-- [ ] Unit tests for row mapper functions
-- [ ] Unit tests for migration idempotency (run migrations twice — no errors)
+- [x] Unit tests for row mapper functions
+- [x] Unit tests for migration idempotency (run migrations twice — no errors)
 
 **How it integrates:** Tests live in `tests/unit/database/`. They use the same test harness and vitest config as existing canvas unit tests.
 
 #### Completion Criteria (Phase 1)
 
-- [ ] All database types defined and exported in `databaseTypes.ts`
-- [ ] Both migration files apply cleanly on existing workspaces
-- [ ] `DatabaseDataService` CRUD works via IPC round-trip
-- [ ] Unit tests cover all CRUD paths + edge cases
-- [ ] `npm run build` — zero errors
-- [ ] Existing unit tests unaffected
-- [ ] Existing E2E tests unaffected
+- [x] All database types defined and exported in `databaseTypes.ts`
+- [x] Both migration files apply cleanly on existing workspaces
+- [x] `DatabaseDataService` CRUD works via IPC round-trip
+- [x] Unit tests cover all CRUD paths + edge cases
+- [x] `npm run build` — zero errors
+- [x] Existing unit tests unaffected
+- [x] Existing E2E tests unaffected
 
 ---
 
