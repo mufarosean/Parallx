@@ -131,9 +131,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       const editors = api.editors.openEditors;
       const active = editors.find((e: any) => e.isActive);
       if (!active) return;
-      // Extract page ID from editor ID (format: "parallx.canvas:canvas:<pageId>")
+      // Extract page ID from editor ID (format: "parallx.canvas:<typeId>:<pageId>")
       const parts = active.id.split(':');
-      if (parts.length >= 3 && parts[1] === 'canvas') {
+      if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
         const pageId = parts.slice(2).join(':');
         context.workspaceState.update('canvas.lastOpenedPage', pageId);
       }

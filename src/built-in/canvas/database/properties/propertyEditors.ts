@@ -50,6 +50,7 @@ function richTextToPlainText(segments: readonly IRichTextSegment[]): string {
 
 class TextInputEditor extends Disposable implements IPropertyEditor {
   private readonly _input: HTMLInputElement;
+  private _committed = false;
 
   private readonly _onDidChange = this._register(new Emitter<IPropertyValue>());
   readonly onDidChange: Event<IPropertyValue> = this._onDidChange.event;
@@ -88,6 +89,9 @@ class TextInputEditor extends Disposable implements IPropertyEditor {
   }
 
   private _commit(): void {
+    if (this._committed) return;
+    this._committed = true;
+
     const val = this._input.value;
     let propValue: IPropertyValue;
 
@@ -123,6 +127,7 @@ class TextInputEditor extends Disposable implements IPropertyEditor {
 
 class NumberEditor extends Disposable implements IPropertyEditor {
   private readonly _input: HTMLInputElement;
+  private _committed = false;
 
   private readonly _onDidChange = this._register(new Emitter<IPropertyValue>());
   readonly onDidChange: Event<IPropertyValue> = this._onDidChange.event;
@@ -157,6 +162,9 @@ class NumberEditor extends Disposable implements IPropertyEditor {
   }
 
   private _commit(): void {
+    if (this._committed) return;
+    this._committed = true;
+
     const raw = this._input.value.trim();
     const num = raw === '' ? null : Number(raw);
     if (raw !== '' && isNaN(num!)) return;
@@ -200,6 +208,8 @@ class SelectEditor extends Disposable implements IPropertyEditor {
   private readonly _onDidDismiss = this._register(new Emitter<void>());
   readonly onDidDismiss: Event<void> = this._onDidDismiss.event;
 
+  private _dismissed = false;
+
   constructor(
     anchor: HTMLElement,
     config: ISelectPropertyConfig | undefined,
@@ -235,6 +245,8 @@ class SelectEditor extends Disposable implements IPropertyEditor {
 
     this._register(menu);
 
+    // onDidSelect fires first, then dismiss() auto-fires onDidDismiss.
+    // Use _dismissed guard to prevent double-fire of onDidDismiss.
     menu.onDidSelect(e => {
       if (e.item.id === '__clear__') {
         this._onDidChange.fire({ type: 'select', select: null });
@@ -242,10 +254,12 @@ class SelectEditor extends Disposable implements IPropertyEditor {
         const selected = options.find(o => o.id === e.item.id) ?? null;
         this._onDidChange.fire({ type: 'select', select: selected });
       }
-      this._onDidDismiss.fire();
+      // dismiss() triggers onDidDismiss, which will fire _onDidDismiss once
     });
 
     menu.onDidDismiss(() => {
+      if (this._dismissed) return;
+      this._dismissed = true;
       this._onDidDismiss.fire();
     });
   }
@@ -323,6 +337,8 @@ class StatusEditor extends Disposable implements IPropertyEditor {
   private readonly _onDidDismiss = this._register(new Emitter<void>());
   readonly onDidDismiss: Event<void> = this._onDidDismiss.event;
 
+  private _dismissed = false;
+
   constructor(
     anchor: HTMLElement,
     config: IStatusPropertyConfig | undefined,
@@ -336,9 +352,9 @@ class StatusEditor extends Disposable implements IPropertyEditor {
 
     if (config?.groups) {
       for (const group of config.groups) {
-        // Group separator
+        // Group separator — must be disabled to prevent click from clearing status
         if (items.length > 0) {
-          items.push({ id: `__sep_${group.id}`, label: '', group: group.name });
+          items.push({ id: `__sep_${group.id}`, label: '', group: group.name, disabled: true });
         }
         for (const optionId of group.optionIds) {
           const opt = allOptions.find(o => o.id === optionId);
@@ -379,10 +395,12 @@ class StatusEditor extends Disposable implements IPropertyEditor {
     menu.onDidSelect(e => {
       const selected = allOptions.find(o => o.id === e.item.id) ?? null;
       this._onDidChange.fire({ type: 'status', status: selected });
-      this._onDidDismiss.fire();
+      // dismiss() auto-fires onDidDismiss, guard below prevents double-fire
     });
 
     menu.onDidDismiss(() => {
+      if (this._dismissed) return;
+      this._dismissed = true;
       this._onDidDismiss.fire();
     });
   }

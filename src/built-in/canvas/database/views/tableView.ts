@@ -47,6 +47,9 @@ export class TableView extends Disposable {
   // ── Active cell editor ──
   private readonly _editorDisposables = this._register(new DisposableStore());
 
+  // ── Per-render disposables (cleared on each re-render to prevent leak) ──
+  private readonly _renderDisposables = this._register(new DisposableStore());
+
   constructor(
     container: HTMLElement,
     private readonly _dataService: IDatabaseDataService,
@@ -83,6 +86,8 @@ export class TableView extends Disposable {
   /** Update rows without full re-render. */
   setRows(rows: IDatabaseRow[]): void {
     this._rows = rows;
+    this._renderDisposables.clear();
+    this._renderHeader();
     this._renderBody();
     this._renderFooter();
   }
@@ -96,6 +101,7 @@ export class TableView extends Disposable {
   // ─── Rendering ───────────────────────────────────────────────────────
 
   private _render(): void {
+    this._renderDisposables.clear();
     this._renderHeader();
     this._renderBody();
     this._renderFooter();
@@ -122,12 +128,12 @@ export class TableView extends Disposable {
       cell.appendChild(label);
 
       // Double-click → inline rename
-      this._register(addDisposableListener(cell, 'dblclick', () => {
+      this._renderDisposables.add(addDisposableListener(cell, 'dblclick', () => {
         startPropertyRename(cell, prop, this._dataService, this._databaseId);
       }));
 
       // Right-click → property context menu
-      this._register(addDisposableListener(cell, 'contextmenu', (e: MouseEvent) => {
+      this._renderDisposables.add(addDisposableListener(cell, 'contextmenu', (e: MouseEvent) => {
         showPropertyHeaderMenu(e, prop, this._dataService, this._databaseId, () => {
           startPropertyRename(cell, prop, this._dataService, this._databaseId);
         });
@@ -145,7 +151,7 @@ export class TableView extends Disposable {
     const addCol = $('div.db-table-header-add');
     addCol.textContent = '+';
     addCol.title = 'Add a property';
-    this._register(addDisposableListener(addCol, 'click', () => {
+    this._renderDisposables.add(addDisposableListener(addCol, 'click', () => {
       showPropertyAddMenu(addCol, this._dataService, this._databaseId);
     }));
     this._headerRow.appendChild(addCol);
@@ -180,7 +186,7 @@ export class TableView extends Disposable {
       renderPropertyValue(prop.type, displayValue, prop.config, cell);
 
       // Click handler
-      this._register(addDisposableListener(cell, 'click', () => {
+      this._renderDisposables.add(addDisposableListener(cell, 'click', () => {
         if (prop.type === 'title') {
           // Click title → open page in canvas editor
           this._openEditor?.({
@@ -213,7 +219,7 @@ export class TableView extends Disposable {
 
     const addRowBtn = $('button.db-table-add-row');
     addRowBtn.textContent = '+ New';
-    this._register(addDisposableListener(addRowBtn, 'click', async () => {
+    this._renderDisposables.add(addDisposableListener(addRowBtn, 'click', async () => {
       try {
         await this._dataService.addRow(this._databaseId);
         // Row change event will trigger setRows() via pane
@@ -235,7 +241,9 @@ export class TableView extends Disposable {
     // Dismiss any active editor
     this._dismissEditor();
 
-    // Clear cell content and replace with editor
+    // Clear cell content before creating the editor (prevents input alongside text)
+    clearNode(cell);
+
     const editor = createPropertyEditor(
       property.type,
       cell,
@@ -244,11 +252,19 @@ export class TableView extends Disposable {
       property.config,
     );
 
-    if (!editor) return; // read-only type
+    if (!editor) {
+      // Read-only type — restore display content
+      renderPropertyValue(property.type, currentValue, property.config, cell);
+      return;
+    }
 
     this._editorDisposables.add(editor);
 
+    // Track most recent committed value for immediate re-render (avoids stale data flash)
+    let lastCommittedValue: IPropertyValue | undefined;
+
     editor.onDidChange(newValue => {
+      lastCommittedValue = newValue;
       this._dataService.setPropertyValue(
         this._databaseId,
         row.page.id,
@@ -261,11 +277,11 @@ export class TableView extends Disposable {
 
     editor.onDidDismiss(() => {
       this._dismissEditor();
-      // Re-render this cell
-      const updatedValue = row.values[property.id];
-      const display = property.type === 'title'
-        ? { type: 'title' as const, title: [{ type: 'text' as const, content: row.page.title }] }
-        : updatedValue;
+      // Re-render this cell using the committed value (not the stale row closure)
+      const display = lastCommittedValue
+        ?? (property.type === 'title'
+          ? { type: 'title' as const, title: [{ type: 'text' as const, content: row.page.title }] }
+          : row.values[property.id]);
       renderPropertyValue(property.type, display, property.config, cell);
     });
 
