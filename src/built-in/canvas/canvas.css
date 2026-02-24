@@ -288,7 +288,7 @@
 .canvas-tiptap-editor {
   flex: 1;
   padding: 8px 64px 96px;
-  max-width: 860px;
+  max-width: 900px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
@@ -1999,7 +1999,7 @@
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-page-header {
-  max-width: 860px;
+  max-width: 900px;
   width: 100%;
   margin: 0 auto;
   padding: 40px 64px 0;
@@ -2789,11 +2789,15 @@
 
 .canvas-full-width .canvas-tiptap-editor {
   max-width: none;
+  padding-left: 96px;
+  padding-right: 96px;
   transition: max-width 0.2s ease;
 }
 
 .canvas-full-width .canvas-page-header {
   max-width: none;
+  padding-left: 96px;
+  padding-right: 96px;
 }
 
 /* ── Small Text Mode ── */
