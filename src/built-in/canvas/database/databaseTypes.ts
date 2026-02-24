@@ -454,6 +454,12 @@ export interface IDatabaseDataService {
   /** Get a database by its page ID (same UUID, but semantically clearer). */
   getDatabaseByPageId(pageId: string): Promise<IDatabase | null>;
 
+  /**
+   * Get the set of page IDs that have an associated database.
+   * Used by the sidebar to efficiently detect database pages during tree rendering.
+   */
+  getDatabasePageIds(): Promise<Set<string>>;
+
   /** Update database metadata (description, isLocked). */
   updateDatabase(databaseId: string, updates: DatabaseUpdateData): Promise<IDatabase>;
 

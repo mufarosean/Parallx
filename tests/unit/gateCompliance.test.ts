@@ -55,6 +55,13 @@ const EXEMPT_FILES = new Set([
   'canvas.css',                    // Stylesheet
   'database/databaseTypes.ts',     // Database type definitions (M8)
   'database/databaseDataService.ts', // Database data layer (M8)
+  'database/databaseEditorProvider.ts', // Database editor provider (M8 Phase 2)
+  'database/database.css',         // Database stylesheet (M8 Phase 2)
+  'database/views/tableView.ts',   // Table view renderer (M8 Phase 2)
+  'database/views/viewTabBar.ts',  // View tab bar (M8 Phase 2)
+  'database/properties/propertyRenderers.ts', // Cell renderers (M8 Phase 2)
+  'database/properties/propertyEditors.ts',   // Cell editors (M8 Phase 2)
+  'database/properties/propertyConfig.ts',    // Property configuration (M8 Phase 2)
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────
@@ -78,7 +85,7 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/bookmarkNode.ts':            ['config/blockRegistry'],
   'extensions/pageBlockNode.ts':           ['config/blockRegistry'],
   'header/pageChrome.ts':                  ['config/blockRegistry'],
-  'canvasSidebar.ts':                      ['config/blockRegistry'],
+  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/'],
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.

@@ -19,6 +19,7 @@ import type { ICanvasDataService } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
+import { DatabaseEditorProvider } from './database/databaseEditorProvider.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -79,7 +80,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   context.subscriptions.push(_databaseDataService);
 
   // 3. Register sidebar view provider for page tree (Cap 4)
-  _sidebar = new CanvasSidebar(_dataService, api);
+  _sidebar = new CanvasSidebar(_dataService, api, _databaseDataService);
   context.subscriptions.push(
     api.views.registerViewProvider('view.canvas', {
       createView(container: HTMLElement): IDisposable {
@@ -106,6 +107,17 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     api.editors.registerEditorProvider('canvas', {
       createEditorPane(container: HTMLElement, input?: any): IDisposable {
         return editorProvider.createEditorPane(container, input);
+      },
+    }),
+  );
+
+  // 4a. Register editor provider for Database panes (M8 Phase 2)
+  const dbEditorProvider = new DatabaseEditorProvider(_databaseDataService!);
+  dbEditorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
+  context.subscriptions.push(
+    api.editors.registerEditorProvider('database', {
+      createEditorPane(container: HTMLElement, input?: any): IDisposable {
+        return dbEditorProvider.createEditorPane(container, input);
       },
     }),
   );

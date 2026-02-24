@@ -1,0 +1,470 @@
+/* database.css — Database view UI styles
+ *
+ * Covers the DatabaseEditorPane layout, ViewTabBar, TableView, cell
+ * renderers, cell editors, property configuration UI, empty states,
+ * and column resize feedback.
+ *
+ * Uses existing Parallx CSS custom properties (--editor-bg, --separator-border,
+ * --text-primary, --text-secondary, etc.) from theme variables.
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Editor Pane Layout
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.database-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--editor-bg);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.database-editor-toolbar {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--separator-border);
+}
+
+.database-editor-content {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   View Tab Bar
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.database-view-tabs {
+  padding: 0 8px;
+}
+
+.database-view-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.database-view-add-btn:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Table View
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-table {
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.db-table-header {
+  display: grid;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--editor-bg);
+  border-bottom: 2px solid var(--separator-border);
+  user-select: none;
+}
+
+.db-table-header-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border-right: 1px solid var(--separator-border);
+}
+
+.db-table-header-cell:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.04));
+}
+
+.db-table-header-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+.db-table-header-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.db-table-header-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  border-right: none;
+}
+
+.db-table-header-add:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.04));
+  color: var(--text-primary);
+}
+
+/* ── Resize Handle ───────────────────────────────────────────────────────── */
+
+.db-table-resize-handle {
+  position: absolute;
+  right: -1px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 3;
+}
+
+.db-table-resize-handle:hover,
+.db-resizing .db-table-resize-handle {
+  background: var(--focus-border, #007acc);
+}
+
+/* Prevent text selection while resizing */
+.db-resizing {
+  user-select: none !important;
+  cursor: col-resize !important;
+}
+
+/* ── Body ────────────────────────────────────────────────────────────────── */
+
+.db-table-body {
+  flex: 1;
+}
+
+.db-table-row {
+  display: grid;
+  border-bottom: 1px solid var(--separator-border);
+  min-height: 34px;
+}
+
+.db-table-row:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.03));
+}
+
+.db-table-cell {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-right: 1px solid var(--separator-border);
+  cursor: default;
+  min-height: 32px;
+}
+
+.db-table-cell--spacer {
+  border-right: none;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
+.db-table-footer {
+  padding: 4px 8px;
+  border-top: 1px solid var(--separator-border);
+}
+
+.db-table-add-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.db-table-add-row:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.04));
+  color: var(--text-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Cell Renderers
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Title ───────────────────────────────────────────────────────────────── */
+
+.db-cell-title {
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.db-cell-title:hover {
+  text-decoration: underline;
+}
+
+/* ── Text ────────────────────────────────────────────────────────────────── */
+
+.db-cell-text {
+  color: var(--text-primary);
+}
+
+/* ── Number ──────────────────────────────────────────────────────────────── */
+
+.db-cell-number {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+/* ── Checkbox ────────────────────────────────────────────────────────────── */
+
+.db-cell-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--text-secondary);
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.db-cell-checkbox.checked {
+  background: var(--focus-border, #007acc);
+  border-color: var(--focus-border, #007acc);
+  color: #fff;
+}
+
+/* ── Select / Multi-Select / Status — Pill badges ────────────────────────── */
+
+.db-cell-pill-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.db-cell-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Pill color variants — Notion-inspired palette */
+.db-cell-pill--default     { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); }
+.db-cell-pill--gray        { background: rgba(155, 154, 151, 0.25); color: rgba(155, 154, 151, 1); }
+.db-cell-pill--brown       { background: rgba(140, 120, 100, 0.25); color: rgba(186, 133, 111, 1); }
+.db-cell-pill--orange      { background: rgba(245, 174, 60, 0.20);  color: rgba(245, 174, 60, 1); }
+.db-cell-pill--yellow      { background: rgba(230, 204, 70, 0.20);  color: rgba(230, 204, 70, 1); }
+.db-cell-pill--green       { background: rgba(77, 171, 104, 0.20);  color: rgba(77, 171, 104, 1); }
+.db-cell-pill--blue        { background: rgba(71, 144, 204, 0.20);  color: rgba(71, 144, 204, 1); }
+.db-cell-pill--purple      { background: rgba(164, 120, 212, 0.20); color: rgba(164, 120, 212, 1); }
+.db-cell-pill--pink        { background: rgba(224, 105, 169, 0.20); color: rgba(224, 105, 169, 1); }
+.db-cell-pill--red         { background: rgba(224, 93, 93, 0.20);   color: rgba(224, 93, 93, 1); }
+
+/* ── Date ────────────────────────────────────────────────────────────────── */
+
+.db-cell-date {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+/* ── URL / Email links ───────────────────────────────────────────────────── */
+
+.db-cell-url,
+.db-cell-email {
+  color: var(--link-color, #4ea1d3);
+  text-decoration: none;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-cell-url:hover,
+.db-cell-email:hover {
+  text-decoration: underline;
+}
+
+/* ── Phone ───────────────────────────────────────────────────────────────── */
+
+.db-cell-phone {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Files ───────────────────────────────────────────────────────────────── */
+
+.db-cell-files {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  overflow: hidden;
+}
+
+.db-cell-file-link {
+  color: var(--link-color, #4ea1d3);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.db-cell-file-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Timestamp ───────────────────────────────────────────────────────────── */
+
+.db-cell-timestamp {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* ── Unique ID ───────────────────────────────────────────────────────────── */
+
+.db-cell-unique-id {
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+}
+
+/* ── Empty placeholder ───────────────────────────────────────────────────── */
+
+.db-cell-empty {
+  color: var(--text-secondary);
+  opacity: 0.4;
+  font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Cell Editors
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-cell-editor-input {
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid var(--focus-border, #007acc);
+  border-radius: 3px;
+  background: var(--input-bg, rgba(0, 0, 0, 0.3));
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  min-height: 24px;
+  box-sizing: border-box;
+}
+
+.db-cell-editor-input:focus {
+  border-color: var(--focus-border, #007acc);
+  box-shadow: 0 0 0 1px var(--focus-border, #007acc);
+}
+
+/* Date editor variant */
+.db-cell-editor-date {
+  color-scheme: dark;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Property Header Config
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Inline rename input in header cell */
+.db-header-rename-input {
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid var(--focus-border, #007acc);
+  border-radius: 2px;
+  background: var(--input-bg, rgba(0, 0, 0, 0.3));
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  outline: none;
+  box-sizing: border-box;
+}
+
+/* Option dot in select/multi-select menus */
+.db-option-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Empty State & Placeholder
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.database-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 14px;
+  opacity: 0.6;
+  padding: 32px;
+  text-align: center;
+}
+
+.database-view-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 14px;
+  opacity: 0.5;
+  padding: 32px;
+  text-align: center;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sidebar — Database Page Icon Override
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.canvas-node-icon--database {
+  opacity: 0.7;
+  font-size: 14px;
+}

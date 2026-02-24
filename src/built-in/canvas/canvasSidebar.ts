@@ -14,6 +14,7 @@
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IPage, IPageTreeNode, ICanvasDataService } from './canvasTypes.js';
+import type { IDatabaseDataService } from './database/databaseTypes.js';
 import { $ } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
@@ -72,9 +73,13 @@ export class CanvasSidebar {
   // ── Inline rename state ──
   private _renamingPageId: string | null = null;
 
+  // ── Database detection (M8 Phase 2) ──
+  private _databasePageIds = new Set<string>();
+
   constructor(
     private readonly _dataService: ICanvasDataService,
     private readonly _api: CanvasSidebarApi,
+    private readonly _databaseDataService?: IDatabaseDataService,
   ) {}
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -144,19 +149,22 @@ export class CanvasSidebar {
     // Don't wipe the DOM while an inline rename is in progress
     if (this._renamingPageId) return;
     try {
-      const [tree, favorites, archived] = await Promise.all([
+      const [tree, favorites, archived, dbPageIds] = await Promise.all([
         this._dataService.getPageTree(),
         this._dataService.getFavoritedPages(),
         this._dataService.getArchivedPages(),
+        this._databaseDataService?.getDatabasePageIds() ?? Promise.resolve(new Set<string>()),
       ]);
       this._tree = tree;
       this._favoritedPages = favorites;
       this._archivedPages = archived;
+      this._databasePageIds = dbPageIds;
     } catch (err) {
       console.error('[CanvasSidebar] Failed to load page tree:', err);
       this._tree = [];
       this._favoritedPages = [];
       this._archivedPages = [];
+      this._databasePageIds = new Set();
     }
     this._renderTree();
   }
@@ -207,7 +215,28 @@ export class CanvasSidebar {
     addBtn.appendChild(createIconElement('plus', 14));
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this._createPage();
+      if (this._databaseDataService) {
+        // Show menu with "New Page" + "New Database" options
+        const rect = addBtn.getBoundingClientRect();
+        const items: IContextMenuItem[] = [
+          { id: 'new-page', label: '📄  New Page' },
+          { id: 'new-database', label: '📊  New Database' },
+        ];
+        const menu = ContextMenu.show({
+          items,
+          anchor: new DOMRect(rect.left, rect.bottom, rect.width, 0),
+          anchorPosition: 'below',
+        });
+        menu.onDidSelect(async (ev) => {
+          if (ev.item.id === 'new-page') {
+            this._createPage();
+          } else if (ev.item.id === 'new-database') {
+            this._createDatabase();
+          }
+        });
+      } else {
+        this._createPage();
+      }
     });
     pagesHeader.appendChild(addBtn);
     this._treeList.appendChild(pagesHeader);
@@ -396,9 +425,15 @@ export class CanvasSidebar {
     // Icon area — shared container so chevron can overlay the icon
     const iconArea = $('span.canvas-node-icon-area');
 
-    // Icon (SVG) — always present
-    const iconEl = createIconElement(resolvePageIcon(node.icon), 14);
-    iconEl.classList.add('canvas-node-icon');
+    // Icon — database pages get a table icon; regular pages get their resolved icon
+    let iconEl: HTMLElement;
+    if (this._databasePageIds.has(node.id)) {
+      iconEl = $('span.canvas-node-icon.canvas-node-icon--database');
+      iconEl.textContent = '📊';
+    } else {
+      iconEl = createIconElement(resolvePageIcon(node.icon), 14);
+      iconEl.classList.add('canvas-node-icon');
+    }
     iconArea.appendChild(iconEl);
 
     // Chevron (SVG) — overlays icon; CSS toggles visibility
@@ -511,6 +546,9 @@ export class CanvasSidebar {
         id: 'new-subpage', label: 'New subpage', group: '1_nav',
         renderIcon: icon('new-page'),
       },
+      ...(this._databaseDataService ? [{
+        id: 'new-database', label: 'New database', group: '1_nav',
+      } as IContextMenuItem] : []),
       {
         id: 'rename', label: 'Rename', group: '1_nav',
         renderIcon: icon('edit'),
@@ -537,6 +575,7 @@ export class CanvasSidebar {
 
     actions.set('open', () => this._selectAndOpenPage(page));
     actions.set('new-subpage', () => this._createPage(page.id));
+    actions.set('new-database', () => this._createDatabase(page.id));
     actions.set('rename', () => {
       requestAnimationFrame(() => {
         const el = this._treeList?.querySelector(`[data-page-id="${page.id}"]`);
@@ -746,8 +785,10 @@ export class CanvasSidebar {
     this._renderTree();
 
     try {
+      // Detect database pages — open with database editor instead of canvas
+      const isDatabase = this._databasePageIds.has(page.id);
       await this._api.editors.openEditor({
-        typeId: 'canvas',
+        typeId: isDatabase ? 'database' : 'canvas',
         title: page.title,
         icon: page.icon || undefined,
         instanceId: page.id,
@@ -774,9 +815,9 @@ export class CanvasSidebar {
   private _extractPageIdFromEditorId(editorId: string): string | null {
     // The instanceId passed to openEditor is the pageId directly
     // The editor system wraps it: "toolId:typeId:instanceId"
-    // Format: "parallx.canvas:canvas:<pageId>"
+    // Format: "parallx.canvas:canvas:<pageId>" or "parallx.canvas:database:<pageId>"
     const parts = editorId.split(':');
-    if (parts.length >= 3 && parts[1] === 'canvas') {
+    if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
       return parts.slice(2).join(':'); // rejoin in case UUID contains colons
     }
     return null;
@@ -811,6 +852,40 @@ export class CanvasSidebar {
       });
     } catch (err) {
       console.error('[CanvasSidebar] Failed to create page:', err);
+    }
+  }
+
+  /**
+   * Create a new database: creates a page + database record + opens it.
+   */
+  private async _createDatabase(parentId?: string | null): Promise<void> {
+    if (!this._databaseDataService) return;
+    try {
+      const page = await this._dataService.createPage(parentId, 'Untitled Database');
+      await this._databaseDataService.createDatabase(page.id);
+      // Update local cache immediately
+      this._databasePageIds.add(page.id);
+      this._selectedPageId = page.id;
+      // Open in database editor
+      await this._api.editors.openEditor({
+        typeId: 'database',
+        title: page.title,
+        icon: '📊',
+        instanceId: page.id,
+      });
+      // After tree refreshes, start inline rename
+      requestAnimationFrame(() => {
+        const el = this._treeList?.querySelector(`[data-page-id="${page.id}"]`);
+        if (el) {
+          const label = el.querySelector('.canvas-node-label');
+          if (label) {
+            const node = this._findNode(this._tree, page.id);
+            if (node) this._startInlineRename(el as HTMLElement, label as HTMLElement, node);
+          }
+        }
+      });
+    } catch (err) {
+      console.error('[CanvasSidebar] Failed to create database:', err);
     }
   }
 

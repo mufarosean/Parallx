@@ -257,6 +257,16 @@ export class DatabaseDataService extends Disposable implements IDatabaseDataServ
     return result.row ? rowToDatabase(result.row) : null;
   }
 
+  async getDatabasePageIds(): Promise<Set<string>> {
+    const result = await this._db.all('SELECT page_id FROM databases');
+    if (result.error) throw new Error(result.error.message);
+    const ids = new Set<string>();
+    for (const row of result.rows ?? []) {
+      if (typeof row.page_id === 'string') ids.add(row.page_id);
+    }
+    return ids;
+  }
+
   async updateDatabase(databaseId: string, updates: DatabaseUpdateData): Promise<IDatabase> {
     const setClauses: string[] = [];
     const params: unknown[] = [];
