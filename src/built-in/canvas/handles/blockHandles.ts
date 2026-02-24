@@ -48,7 +48,6 @@ export class BlockHandlesController {
   private _handleObserver: MutationObserver | null = null;
 
   // Pointer tracking
-  private _lastHoverElement: HTMLElement | null = null;
   private _lastPointerClient: { x: number; y: number } | null = null;
   private _scrollSyncRaf: number | null = null;
 
@@ -157,11 +156,11 @@ export class BlockHandlesController {
   /**
    * Called by canvasEditorProvider when a doc-changing transaction fires.
    * Clears cached DOM references that may have been destroyed or
-   * repositioned by the mutation — prevents _resolveBlockFromHandle()
-   * from using a stale fast-path element.
+   * repositioned by the mutation — the stored `_resolvedBlockNode` on the
+   * handle element is cleared automatically by the library on hide/show.
    */
   notifyDocChanged(): void {
-    this._lastHoverElement = null;
+    // No-op: resolution now uses the library's stored node, not a local cache.
   }
 
   // ── Handle-area hover (keep + and ⠿ visible together) ──────────────────
@@ -230,11 +229,10 @@ export class BlockHandlesController {
     if (!target) return;
     if (!editor.view.dom.contains(target)) return;
     if (this._isIgnoredOverlayElement(target)) return;
-    this._lastHoverElement = target;
   };
 
   private readonly _onEditorMouseLeave = (): void => {
-    this._lastHoverElement = null;
+    // Intentionally empty — handle hide is managed by GlobalDragHandle.
   };
 
   private readonly _onScrollSync = (): void => {
@@ -252,8 +250,6 @@ export class BlockHandlesController {
 
       const hovered = document.elementFromPoint(x, y) as HTMLElement | null;
       if (!hovered || !editor.view.dom.contains(hovered)) return;
-
-      this._lastHoverElement = hovered;
 
       const syncMove = new MouseEvent('mousemove', {
         bubbles: true,
@@ -546,8 +542,13 @@ export class BlockHandlesController {
    * is a Page-container.  The handle always resolves to the **direct child**
    * of the deepest Page-container at the resolved position.
    *
-   * This works at arbitrary nesting depth — callout-inside-column,
-   * toggle-inside-callout, etc. — without hardcoded special cases.
+   * Primary source: the DOM node stored by GlobalDragHandle's mousemove
+   * handler (`_resolvedBlockNode` on the drag handle element).  This is the
+   * same node the library used to position the handle — reading it back
+   * guarantees handle-click and handle-position always agree.
+   *
+   * Fallback: elementsFromPoint scan when the stored node is unavailable
+   * (e.g. handle was shown via scroll-sync, or library version mismatch).
    */
   private _resolveBlockFromHandle(): { pos: number; node: any } | null {
     const editor = this._host.editor;
@@ -556,6 +557,17 @@ export class BlockHandlesController {
 
     const handleRect = this._dragHandleEl.getBoundingClientRect();
     const handleY = handleRect.top + handleRect.height / 2;
+
+    // ── Primary: read the DOM node stored by GlobalDragHandle's mousemove ──
+    const storedNode = (this._dragHandleEl as any)._resolvedBlockNode as HTMLElement | null;
+    if (storedNode && view.dom.contains(storedNode)) {
+      const resolved = this._resolveBlockFromDomElement(view, storedNode);
+      if (resolved) {
+        return { pos: resolved.pos, node: resolved.node };
+      }
+    }
+
+    // ── Fallback: scan from handle position via elementsFromPoint ──
     const scanX = handleRect.right + 50;
     const sampleYs = [
       handleRect.top - 8,
@@ -565,15 +577,6 @@ export class BlockHandlesController {
       handleRect.bottom - 2,
     ].map((y) => Math.max(1, Math.min(window.innerHeight - 1, y)));
 
-    const hoverResolved = this._lastHoverElement
-      ? this._resolveBlockFromDomElement(view, this._lastHoverElement)
-      : null;
-    if (hoverResolved) {
-      const distance = this._distanceFromHandleToBlockCenter(handleY, hoverResolved.pos, view);
-      if (distance <= 180) {
-        return { pos: hoverResolved.pos, node: hoverResolved.node };
-      }
-    }
     let best: { pos: number; node: any; depth: number; distance: number } | null = null;
 
     for (const sampleY of sampleYs) {
@@ -860,7 +863,6 @@ export class BlockHandlesController {
     this._setHandleInteractionLock(false);
     if (this._blockAddBtn) { this._blockAddBtn.remove(); this._blockAddBtn = null; }
     this._dragHandleEl = null;
-    this._lastHoverElement = null;
     this._lastPointerClient = null;
   }
 }
