@@ -14,7 +14,7 @@
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IPage, IPageTreeNode, ICanvasDataService } from './canvasTypes.js';
-import type { IDatabaseDataService } from './database/databaseTypes.js';
+import type { IDatabaseDataService } from './database/databaseRegistry.js';
 import { $ } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';

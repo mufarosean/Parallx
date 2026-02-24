@@ -5,7 +5,7 @@
 // select option list editor, status group management).
 //
 // Dependencies: platform/ (lifecycle, events), ui/ (dom, contextMenu),
-// databaseTypes (type-only)
+// databaseRegistry (type-only)
 
 import { $ } from '../../../../ui/dom.js';
 import { ContextMenu, type IContextMenuItem } from '../../../../ui/contextMenu.js';
@@ -17,7 +17,7 @@ import type {
   IMultiSelectPropertyConfig,
   INumberPropertyConfig,
   ISelectOption,
-} from '../databaseTypes.js';
+} from '../databaseRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

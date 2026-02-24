@@ -10,7 +10,7 @@
 
 import { Disposable } from '../../../../platform/lifecycle.js';
 import { Emitter, type Event } from '../../../../platform/events.js';
-import type { IDatabaseDataService, IDatabaseView, ViewType } from '../databaseTypes.js';
+import type { IDatabaseDataService, IDatabaseView, ViewType } from '../databaseRegistry.js';
 import { TabBar, type ITabBarItem } from '../../../../ui/tabBar.js';
 import { ContextMenu, type IContextMenuItem } from '../../../../ui/contextMenu.js';
 import { $ } from '../../../../ui/dom.js';

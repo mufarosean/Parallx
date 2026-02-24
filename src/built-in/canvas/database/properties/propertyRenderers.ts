@@ -8,7 +8,7 @@
 // IPropertyValue is a discriminated union where each variant uses a type-specific
 // payload property (e.g. `{ type: 'title', title: [...] }`, not a generic `value`).
 //
-// Dependencies: platform/ (none), ui/dom ($), databaseTypes (type-only)
+// Dependencies: platform/ (none), ui/dom ($), databaseRegistry (type-only)
 
 import { $ } from '../../../../ui/dom.js';
 import type {
@@ -18,7 +18,7 @@ import type {
   INumberPropertyConfig,
   IStatusPropertyConfig,
   IRichTextSegment,
-} from '../databaseTypes.js';
+} from '../databaseRegistry.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

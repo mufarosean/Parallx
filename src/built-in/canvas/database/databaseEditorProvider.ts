@@ -15,16 +15,16 @@
 
 import { Disposable, DisposableStore, type IDisposable } from '../../../platform/lifecycle.js';
 import type { IEditorInput } from '../../../editor/editorInput.js';
-import type {
-  IDatabaseDataService,
-  IDatabase,
-  IDatabaseView,
-  IDatabaseProperty,
-  IDatabaseRow,
-} from './databaseTypes.js';
 import { $ } from '../../../ui/dom.js';
-import { ViewTabBar } from './views/viewTabBar.js';
-import { TableView } from './views/tableView.js';
+import {
+  ViewTabBar,
+  TableView,
+  type IDatabaseDataService,
+  type IDatabase,
+  type IDatabaseView,
+  type IDatabaseProperty,
+  type IDatabaseRow,
+} from './databaseRegistry.js';
 
 import './database.css';
 

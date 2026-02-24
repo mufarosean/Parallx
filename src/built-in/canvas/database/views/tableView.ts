@@ -5,25 +5,23 @@
 // column resize handles, and a "+ New" button at the bottom.
 //
 // Dependencies: platform/ (lifecycle, events), ui/ (dom),
-// databaseTypes (type-only), propertyRenderers, propertyEditors, propertyConfig
+// databaseRegistry (single gate for all database imports)
 
 import { Disposable, DisposableStore } from '../../../../platform/lifecycle.js';
 import { $, addDisposableListener, clearNode } from '../../../../ui/dom.js';
-import type {
-  IDatabaseDataService,
-  IDatabaseView,
-  IDatabaseProperty,
-  IDatabaseRow,
-  IPropertyValue,
-} from '../databaseTypes.js';
-import { renderPropertyValue } from '../properties/propertyRenderers.js';
-import { createPropertyEditor } from '../properties/propertyEditors.js';
 import {
+  renderPropertyValue,
+  createPropertyEditor,
   showPropertyAddMenu,
   showPropertyHeaderMenu,
   startPropertyRename,
   PROPERTY_TYPE_ICONS,
-} from '../properties/propertyConfig.js';
+  type IDatabaseDataService,
+  type IDatabaseView,
+  type IDatabaseProperty,
+  type IDatabaseRow,
+  type IPropertyValue,
+} from '../databaseRegistry.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

@@ -25,6 +25,7 @@ const GATE_FILES = new Set([
   'menus/canvasMenuRegistry.ts',
   'config/blockStateRegistry/blockStateRegistry.ts',
   'handles/handleRegistry.ts',
+  'database/databaseRegistry.ts',
 ]);
 
 // ── Gate-to-gate allowed edges ──────────────────────────────────────────────
@@ -40,6 +41,7 @@ const GATE_IMPORT_RULES: Record<string, string[]> = {
   'menus/canvasMenuRegistry.ts':                     ['config/blockRegistry', 'config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/blockStateRegistry.ts': ['config/blockRegistry'],
   'handles/handleRegistry.ts':                       ['config/blockRegistry', 'config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry', 'menus/canvasMenuRegistry'],
+  'database/databaseRegistry.ts':                    [],  // leaf gate — re-exports from own children only
 };
 
 // ── Orchestrators (exempt — they wire gates together) ───────────────────────
@@ -55,13 +57,7 @@ const EXEMPT_FILES = new Set([
   'canvas.css',                    // Stylesheet
   'database/databaseTypes.ts',     // Database type definitions (M8)
   'database/databaseDataService.ts', // Database data layer (M8)
-  'database/databaseEditorProvider.ts', // Database editor provider (M8 Phase 2)
   'database/database.css',         // Database stylesheet (M8 Phase 2)
-  'database/views/tableView.ts',   // Table view renderer (M8 Phase 2)
-  'database/views/viewTabBar.ts',  // View tab bar (M8 Phase 2)
-  'database/properties/propertyRenderers.ts', // Cell renderers (M8 Phase 2)
-  'database/properties/propertyEditors.ts',   // Cell editors (M8 Phase 2)
-  'database/properties/propertyConfig.ts',    // Property configuration (M8 Phase 2)
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────
@@ -85,7 +81,7 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/bookmarkNode.ts':            ['config/blockRegistry'],
   'extensions/pageBlockNode.ts':           ['config/blockRegistry'],
   'header/pageChrome.ts':                  ['config/blockRegistry'],
-  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/'],
+  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry'],
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.
@@ -138,6 +134,14 @@ const GATE_RULES: Record<string, string[]> = {
 
   // ── Standalone utilities ────────────────────────────────────────────────
   'invariants/canvasStructuralInvariants.ts': [],  // zero relative imports
+
+  // ── DatabaseRegistry children ────────────────────────────────────────────
+  'database/databaseEditorProvider.ts':          ['database/databaseRegistry'],
+  'database/views/tableView.ts':                 ['database/databaseRegistry'],
+  'database/views/viewTabBar.ts':                ['database/databaseRegistry'],
+  'database/properties/propertyRenderers.ts':    ['database/databaseRegistry'],
+  'database/properties/propertyEditors.ts':      ['database/databaseRegistry'],
+  'database/properties/propertyConfig.ts':       ['database/databaseRegistry'],
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

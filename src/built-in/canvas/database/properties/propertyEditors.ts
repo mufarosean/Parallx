@@ -8,7 +8,7 @@
 // payload in a type-specific property (e.g. `title: [...]`, not `value: ...`).
 //
 // Dependencies: platform/ (lifecycle, events), ui/ (dom, contextMenu),
-// databaseTypes (type-only)
+// databaseRegistry (type-only)
 
 import { Disposable } from '../../../../platform/lifecycle.js';
 import { Emitter, type Event } from '../../../../platform/events.js';
@@ -24,7 +24,7 @@ import type {
   IStatusPropertyConfig,
   IRichTextSegment,
   IFileReference,
-} from '../databaseTypes.js';
+} from '../databaseRegistry.js';
 
 // ─── Base Editor ─────────────────────────────────────────────────────────────
 
