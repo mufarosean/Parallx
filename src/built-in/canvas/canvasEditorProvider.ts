@@ -11,7 +11,7 @@
 //     hr, link, underline — all bundled in StarterKit v3)
 //   • Placeholder, TaskList, TaskItem
 //   • TextStyle, Color, Highlight, Image
-//   • GlobalDragHandle (block drag-reorder)
+//   • BlockHandlesController (native drag handle — block drag-reorder)
 //   • Custom BubbleMenu (floating toolbar on text selection)
 //
 // Tier 2 (power-user Notion features):

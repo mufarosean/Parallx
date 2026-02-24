@@ -1,10 +1,13 @@
 ﻿// blockHandles.ts — Block Handles controller (+ button, drag handle, block resolution)
 //
-// Extracted from canvasEditorProvider.ts monolith.  Encapsulates:
-//   • + button creation & positioning alongside the GlobalDragHandle
-//   • MutationObserver that tracks drag-handle style/class changes
-//   • Block resolution from handle position (DOM → ProseMirror mapping)
+// Owns the full drag-handle lifecycle:
+//   • Handle element creation & positioning (replaces GlobalDragHandle library)
+//   • + button creation & positioning alongside the drag handle
+//   • Block resolution from mouse position (ProseMirror posAtCoords → doc tree)
 //   • Drag lifecycle (dragstart, dragend, interaction lock)
+//
+// Single resolution path: block is resolved once at mousemove time (stored as
+// _resolvedBlockPos), and reused on click/drag — no dual-system disagreement.
 //
 // The Block Action Menu (turn-into, color, duplicate, delete) lives in
 // menus/blockActionMenu.ts — this controller delegates to it via show/hide.
@@ -44,12 +47,17 @@ export class BlockHandlesController {
   private _interactionReleaseTimer: ReturnType<typeof setTimeout> | null = null;
   private _handleAreaLeaveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Observer
-  private _handleObserver: MutationObserver | null = null;
-
   // Pointer tracking
   private _lastPointerClient: { x: number; y: number } | null = null;
   private _scrollSyncRaf: number | null = null;
+
+  // Block resolution — set during mousemove, read on click/drag.
+  // Single source of truth: resolved once at handle-positioning time,
+  // reused without re-resolution on interaction.
+  private _resolvedBlockPos: number | null = null;
+
+  // Handle positioning constant — must match GlobalDragHandle's original value
+  private static readonly _HANDLE_WIDTH = 24;
 
   // Drag-vs-click recovery
   // On `draggable="true"` elements the browser fires dragstart after ~2-4 px
@@ -75,9 +83,12 @@ export class BlockHandlesController {
     const editor = this._host.editor;
     if (!ec || !editor) return;
 
-    // Find the drag handle element created by GlobalDragHandle
-    this._dragHandleEl = ec.querySelector('.drag-handle') as HTMLElement;
-    if (!this._dragHandleEl) return;
+    // ── Create drag handle element (replaces GlobalDragHandle library) ──
+    this._dragHandleEl = document.createElement('div');
+    this._dragHandleEl.draggable = true;
+    this._dragHandleEl.dataset.dragHandle = '';
+    this._dragHandleEl.classList.add('drag-handle', 'hide');
+    ec.appendChild(this._dragHandleEl);
 
     // ── Create + button ──
     this._blockAddBtn = document.createElement('div');
@@ -87,33 +98,6 @@ export class BlockHandlesController {
     if (svg) { svg.setAttribute('width', '14'); svg.setAttribute('height', '14'); }
     this._blockAddBtn.title = 'Click to add below\nAlt-click to add a block above';
     ec.appendChild(this._blockAddBtn);
-
-    // ── Position + button alongside drag handle via MutationObserver ──
-    this._handleObserver = new MutationObserver(() => {
-      if (!this._dragHandleEl || !this._blockAddBtn) return;
-      if (this._isResizeInteractionActive()) {
-        this._blockAddBtn.classList.add('hide');
-        if (this._isColumnResizing()) {
-          this._actionMenu.hide();
-        }
-        return;
-      }
-      const isHidden = this._dragHandleEl.classList.contains('hide');
-      if (isHidden) {
-        this._blockAddBtn.classList.add('hide');
-        return;
-      }
-      this._blockAddBtn.classList.remove('hide');
-      this._blockAddBtn.style.top = this._dragHandleEl.style.top;
-      const handleLeft = parseFloat(this._dragHandleEl.style.left);
-      if (!isNaN(handleLeft)) {
-        this._blockAddBtn.style.left = `${handleLeft - 22}px`;
-      }
-    });
-    this._handleObserver.observe(this._dragHandleEl, {
-      attributes: true,
-      attributeFilter: ['style', 'class'],
-    });
 
     // ── Handle-area hover (keep both + and ⠿ visible together) ──
     this._blockAddBtn.addEventListener('mouseenter', this._onHandleAreaEnter);
@@ -129,19 +113,18 @@ export class BlockHandlesController {
     document.addEventListener('mouseup', this._onGlobalMouseUp, true);
 
     // ── Canvas-owned drag lifecycle ──
-    // Single source of truth for dragstart/dragend on the block handle.
-    // We capture dragstart so the external extension does not mutate selection
-    // or drag payload in parallel.
-    this._dragHandleEl.addEventListener('dragstart', this._onDragHandleDragStart, true);
+    this._dragHandleEl.addEventListener('dragstart', this._onDragHandleDragStart);
     this._dragHandleEl.addEventListener('dragend', this._onDragHandleDragEnd);
 
-    // ── Prevent drag handle from hiding when mouse moves to the + button ──
+    // ── Editor-level event interception ──
     ec.addEventListener('mouseout', this._onEditorMouseOut, true);
     ec.addEventListener('mousemove', this._onEditorMouseMove, true);
     ec.addEventListener('mouseleave', this._onEditorMouseLeave, true);
     window.addEventListener('scroll', this._onScrollSync, true);
 
-
+    // ── Hide handle on keydown/wheel (replaces library's ProseMirror plugin) ──
+    editor.view.dom.addEventListener('keydown', this._onEditorKeyDown, true);
+    editor.view.dom.addEventListener('wheel', this._onEditorWheel, true);
   }
 
   // ── Public API ──────────────────────────────────────────────────────────
@@ -155,12 +138,11 @@ export class BlockHandlesController {
 
   /**
    * Called by canvasEditorProvider when a doc-changing transaction fires.
-   * Clears cached DOM references that may have been destroyed or
-   * repositioned by the mutation — the stored `_resolvedBlockNode` on the
-   * handle element is cleared automatically by the library on hide/show.
+   * Clears the cached block position — the node may have been deleted,
+   * moved, or resized, so the stored position is no longer trustworthy.
    */
   notifyDocChanged(): void {
-    // No-op: resolution now uses the library's stored node, not a local cache.
+    this._resolvedBlockPos = null;
   }
 
   // ── Handle-area hover (keep + and ⠿ visible together) ──────────────────
@@ -229,10 +211,45 @@ export class BlockHandlesController {
     if (!target) return;
     if (!editor.view.dom.contains(target)) return;
     if (this._isIgnoredOverlayElement(target)) return;
+    if (!editor.isEditable) return;
+    if (this._isResizeInteractionActive()) {
+      this._hideHandle();
+      if (this._isColumnResizing()) this._actionMenu.hide();
+      return;
+    }
+
+    // ── Resolve block at mouse position ──
+    const view = editor.view;
+    const resolved = this._resolveBlockAtCoords(view, event.clientX, event.clientY);
+    if (!resolved) {
+      this._hideHandle();
+      return;
+    }
+
+    // ── Position handle & + button ──
+    this._positionHandleForBlock(resolved.pos, resolved.node, view);
   };
 
-  private readonly _onEditorMouseLeave = (): void => {
-    // Intentionally empty — handle hide is managed by GlobalDragHandle.
+  private readonly _onEditorMouseLeave = (e: MouseEvent): void => {
+    const related = e.relatedTarget as HTMLElement | null;
+    // Don't hide when moving to the block action menu (may be outside container)
+    if (
+      related?.classList.contains('block-action-menu') ||
+      related?.closest('.block-action-menu') ||
+      related?.classList.contains('block-action-submenu') ||
+      related?.closest('.block-action-submenu')
+    ) {
+      return;
+    }
+    this._hideHandle();
+  };
+
+  private readonly _onEditorKeyDown = (): void => {
+    this._hideHandle();
+  };
+
+  private readonly _onEditorWheel = (): void => {
+    this._hideHandle();
   };
 
   private readonly _onScrollSync = (): void => {
@@ -535,39 +552,120 @@ export class BlockHandlesController {
   // PAGE_CONTAINERS imported from blockRegistry (no local definition).
 
   /**
+   * Resolve the block at screen coordinates using ProseMirror's native
+   * coordinate mapping.  Used by the mousemove handler to determine which
+   * block the handle should be positioned next to.
+   */
+  private _resolveBlockAtCoords(
+    view: any,
+    clientX: number,
+    clientY: number,
+  ): { pos: number; node: any } | null {
+    const hitResult = view.posAtCoords({ left: clientX, top: clientY });
+    if (hitResult) {
+      // Prefer 'inside' — gives the position of the innermost block node.
+      // For atom nodes (mathBlock, bookmark, etc.) 'inside' is -1.
+      if (hitResult.inside >= 0) {
+        const resolved = this._resolveBlockFromDocPos(view, hitResult.inside);
+        if (resolved) return { pos: resolved.pos, node: resolved.node };
+      }
+      // For atom nodes or boundary positions, use 'pos'.
+      const resolved = this._resolveBlockFromDocPos(view, hitResult.pos);
+      if (resolved) return { pos: resolved.pos, node: resolved.node };
+    }
+
+    // Fallback: elementFromPoint → DOM walk → posAtDOM
+    const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    if (element && view.dom.contains(element) && !this._isIgnoredOverlayElement(element)) {
+      const resolved = this._resolveBlockFromDomElement(view, element);
+      if (resolved) return { pos: resolved.pos, node: resolved.node };
+    }
+
+    return null;
+  }
+
+  /**
+   * Position the drag handle and + button next to the given block.
+   * Stores `_resolvedBlockPos` for subsequent click/drag interactions.
+   *
+   * Replicates the exact positioning formula used by GlobalDragHandle
+   * to ensure identical visual placement.
+   */
+  private _positionHandleForBlock(pos: number, _node: any, view: any): void {
+    const dom = view.nodeDOM(pos) as HTMLElement | null;
+    if (!dom || dom.nodeType !== Node.ELEMENT_NODE || !this._dragHandleEl || !this._blockAddBtn) {
+      this._hideHandle();
+      return;
+    }
+
+    // Exclude certain block types from showing a handle
+    const notDraggable = dom.closest('.not-draggable');
+    const excludedTag = dom.matches('ol, ul');
+    if (notDraggable || excludedTag) {
+      this._hideHandle();
+      return;
+    }
+
+    const compStyle = window.getComputedStyle(dom);
+    const parsedLineHeight = parseInt(compStyle.lineHeight, 10);
+    const lineHeight = isNaN(parsedLineHeight)
+      ? parseInt(compStyle.fontSize, 10) * 1.2
+      : parsedLineHeight;
+    const paddingTop = parseInt(compStyle.paddingTop, 10) || 0;
+
+    const rect = dom.getBoundingClientRect();
+    const hw = BlockHandlesController._HANDLE_WIDTH;
+
+    let top = rect.top + (lineHeight - 24) / 2 + paddingTop;
+    let left = rect.left - hw;
+
+    // Li markers — shift left to clear the bullet/number
+    if (dom.matches('ul:not([data-type=taskList]) li, ol li')) {
+      left -= hw;
+    }
+
+    this._dragHandleEl.style.left = `${left}px`;
+    this._dragHandleEl.style.top = `${top}px`;
+    this._dragHandleEl.classList.remove('hide');
+
+    this._blockAddBtn.style.left = `${left - 22}px`;
+    this._blockAddBtn.style.top = `${top}px`;
+    this._blockAddBtn.classList.remove('hide');
+
+    this._resolvedBlockPos = pos;
+  }
+
+  /** Hide both handle and + button, clear stored block position. */
+  private _hideHandle(): void {
+    if (this._dragHandleEl) this._dragHandleEl.classList.add('hide');
+    if (this._blockAddBtn) this._blockAddBtn.classList.add('hide');
+    this._resolvedBlockPos = null;
+  }
+
+  /**
    * Find the block the drag handle is currently next to.
    *
-   * Uses the "Everything is a Page" structural model: every vertical
-   * container of blocks (doc, column, callout, detailsContent, blockquote)
-   * is a Page-container.  The handle always resolves to the **direct child**
-   * of the deepest Page-container at the resolved position.
+   * Primary: reads `_resolvedBlockPos` set during the last mousemove.
+   * This is the same position used to position the handle visually,
+   * guaranteeing click/drag always targets the visible block.
    *
-   * Primary source: the DOM node stored by GlobalDragHandle's mousemove
-   * handler (`_resolvedBlockNode` on the drag handle element).  This is the
-   * same node the library used to position the handle — reading it back
-   * guarantees handle-click and handle-position always agree.
-   *
-   * Fallback: elementsFromPoint scan when the stored node is unavailable
-   * (e.g. handle was shown via scroll-sync, or library version mismatch).
+   * Fallback: elementsFromPoint scan for edge cases (scroll sync,
+   * programmatic handle show, etc.).
    */
   private _resolveBlockFromHandle(): { pos: number; node: any } | null {
     const editor = this._host.editor;
     if (!editor || !this._dragHandleEl) return null;
     const view = editor.view;
 
-    const handleRect = this._dragHandleEl.getBoundingClientRect();
-    const handleY = handleRect.top + handleRect.height / 2;
-
-    // ── Primary: read the DOM node stored by GlobalDragHandle's mousemove ──
-    const storedNode = (this._dragHandleEl as any)._resolvedBlockNode as HTMLElement | null;
-    if (storedNode && view.dom.contains(storedNode)) {
-      const resolved = this._resolveBlockFromDomElement(view, storedNode);
-      if (resolved) {
-        return { pos: resolved.pos, node: resolved.node };
-      }
+    // ── Primary: use stored position from mousemove ──
+    if (this._resolvedBlockPos != null) {
+      const node = view.state.doc.nodeAt(this._resolvedBlockPos);
+      if (node) return { pos: this._resolvedBlockPos, node };
     }
 
     // ── Fallback: scan from handle position via elementsFromPoint ──
+    const handleRect = this._dragHandleEl.getBoundingClientRect();
+    const handleY = handleRect.top + handleRect.height / 2;
     const scanX = handleRect.right + 50;
     const sampleYs = [
       handleRect.top - 8,
@@ -646,6 +744,23 @@ export class BlockHandlesController {
 
     if ($pos.depth >= targetDepth) {
       blockPos = $pos.before(targetDepth);
+    } else if ($pos.depth === containerDepth) {
+      // Position sits at a block boundary inside a page-container (column,
+      // callout, etc.).  Common for atom/node-view blocks (mathBlock,
+      // bookmark, ToC, media) which have no "inside" — ProseMirror resolves
+      // to the parent container depth rather than the child block depth.
+      // Use nodeAfter/nodeBefore to find the actual block at this boundary.
+      const after = $pos.nodeAfter;
+      if (after && after.type.name !== 'column' && after.type.name !== 'columnList') {
+        blockPos = $pos.pos;
+      } else {
+        const before = $pos.nodeBefore;
+        if (before && before.type.name !== 'column' && before.type.name !== 'columnList') {
+          blockPos = $pos.pos - before.nodeSize;
+        } else {
+          blockPos = $pos.depth >= 1 ? $pos.before($pos.depth) : docPos;
+        }
+      }
     } else {
       blockPos = $pos.depth >= 1 ? $pos.before($pos.depth) : docPos;
     }
@@ -833,13 +948,16 @@ export class BlockHandlesController {
   // ── Dispose ─────────────────────────────────────────────────────────────
 
   dispose(): void {
-    this._handleObserver?.disconnect();
-    this._handleObserver = null;
+    const editor = this._host.editor;
+    if (editor) {
+      editor.view.dom.removeEventListener('keydown', this._onEditorKeyDown, true);
+      editor.view.dom.removeEventListener('wheel', this._onEditorWheel, true);
+    }
     this._host.editorContainer?.removeEventListener('mouseout', this._onEditorMouseOut, true);
     this._host.editorContainer?.removeEventListener('mousemove', this._onEditorMouseMove, true);
     this._host.editorContainer?.removeEventListener('mouseleave', this._onEditorMouseLeave, true);
     window.removeEventListener('scroll', this._onScrollSync, true);
-    this._dragHandleEl?.removeEventListener('dragstart', this._onDragHandleDragStart, true);
+    this._dragHandleEl?.removeEventListener('dragstart', this._onDragHandleDragStart);
     this._dragHandleEl?.removeEventListener('dragend', this._onDragHandleDragEnd);
     this._dragHandleEl?.removeEventListener('mousedown', this._onDragHandleMouseDown, true);
     document.removeEventListener('mouseup', this._onGlobalMouseUp, true);
@@ -862,7 +980,8 @@ export class BlockHandlesController {
     }
     this._setHandleInteractionLock(false);
     if (this._blockAddBtn) { this._blockAddBtn.remove(); this._blockAddBtn = null; }
-    this._dragHandleEl = null;
+    if (this._dragHandleEl) { this._dragHandleEl.remove(); this._dragHandleEl = null; }
     this._lastPointerClient = null;
+    this._resolvedBlockPos = null;
   }
 }

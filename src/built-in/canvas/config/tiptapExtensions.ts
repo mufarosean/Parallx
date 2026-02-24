@@ -10,7 +10,6 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
-import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import CharacterCount from '@tiptap/extension-character-count';
 import AutoJoiner from 'tiptap-extension-auto-joiner';
 import UniqueID from '@tiptap/extension-unique-id';
@@ -19,7 +18,6 @@ import { DetailsEnterHandler } from '../extensions/detailsEnterHandler.js';
 import { BlockKeyboardShortcuts } from '../extensions/blockKeyboardShortcuts.js';
 import { structuralInvariantPlugin } from '../plugins/structuralInvariantPlugin.js';
 import {
-  DRAG_HANDLE_CUSTOM_NODE_TYPES,
   getNodePlaceholder,
   getBlockExtensions,
 } from './blockRegistry.js';
@@ -139,14 +137,9 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     Highlight.configure({
       multicolor: true,
     }),
-    GlobalDragHandle.configure({
-      dragHandleWidth: 24,
-      scrollTreshold: 100,
-      // columnList intentionally excluded — per Rule 10, columnList has no
-      // drag handle. Blocks inside columns are still draggable via their own
-      // selectors (p, h1-h6, etc. + .canvas-column > p).
-      customNodes: [...DRAG_HANDLE_CUSTOM_NODE_TYPES],
-    }),
+    // GlobalDragHandle removed — block handle positioning is now owned by
+    // BlockHandlesController (handles/blockHandles.ts), which resolves blocks
+    // via posAtCoords and positions the handle directly in its mousemove handler.
     CharacterCount,
     AutoJoiner,
     UniqueID.configure({
