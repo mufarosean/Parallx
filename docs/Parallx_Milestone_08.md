@@ -669,44 +669,44 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
 #### 2.1 Database Editor Provider (`database/databaseEditorProvider.ts`)
 
 **Tasks:**
-- [ ] Create `DatabaseEditorProvider` class following the `CanvasEditorProvider` pattern
-- [ ] Constructor takes `DatabaseDataService` + `openEditor` callback (for navigating to row pages)
-- [ ] `createEditorPane(container, input)` — extracts `databaseId` from `input.instanceId`, creates a `DatabaseEditorPane`
-- [ ] `DatabaseEditorPane` lifecycle: load database → render view tab bar → render active view
-- [ ] Register in `canvas/main.ts`: `api.editors.registerEditorProvider('database', ...)`
+- [x] Create `DatabaseEditorProvider` class following the `CanvasEditorProvider` pattern
+- [x] Constructor takes `DatabaseDataService` + `openEditor` callback (for navigating to row pages)
+- [x] `createEditorPane(container, input)` — extracts `databaseId` from `input.instanceId`, creates a `DatabaseEditorPane`
+- [x] `DatabaseEditorPane` lifecycle: load database → render view tab bar → render active view
+- [x] Register in `canvas/main.ts`: `api.editors.registerEditorProvider('database', ...)`
 
 **How it integrates:** Follows the exact pattern of `CanvasEditorProvider`. The workbench's editor system routes `typeId: 'database'` inputs to this provider. The `CanvasSidebar` opens databases with `api.editors.openEditor({ typeId: 'database', instanceId: databaseId })`.
 
 #### 2.2 Sidebar Changes (`canvasSidebar.ts` modifications)
 
 **Tasks:**
-- [ ] Add `DatabaseDataService` as a second constructor parameter
-- [ ] On tree render, check each page: call `databaseDataService.getDatabaseByPageId(pageId)` to detect databases
-- [ ] For database pages: show table icon (📊 or SVG equivalent) instead of default page icon
-- [ ] For database pages: click opens with `typeId: 'database'` instead of `typeId: 'canvas'`
-- [ ] Add "New Database" to the `+` button dropdown and context menu
-- [ ] "New Database" creates a page (via `CanvasDataService.createPage()`) + a database record (via `DatabaseDataService.createDatabase(pageId)`) + opens it
+- [x] Add `DatabaseDataService` as a second constructor parameter
+- [x] On tree render, check each page: call `databaseDataService.getDatabaseByPageId(pageId)` to detect databases
+- [x] For database pages: show table icon (📊 or SVG equivalent) instead of default page icon
+- [x] For database pages: click opens with `typeId: 'database'` instead of `typeId: 'canvas'`
+- [x] Add "New Database" to the `+` button dropdown and context menu
+- [x] "New Database" creates a page (via `CanvasDataService.createPage()`) + a database record (via `DatabaseDataService.createDatabase(pageId)`) + opens it
 
 **How it integrates:** `CanvasSidebar` constructor signature changes. `canvas/main.ts` passes both services. The sidebar's `_renderTreeItem()` method gains a database detection branch.
 
 #### 2.3 Table View Renderer (`database/views/tableView.ts`)
 
 **Tasks:**
-- [ ] Create `TableView` class extending `Disposable`
-- [ ] Constructor: `(container: HTMLElement, databaseDataService: DatabaseDataService, database: IDatabase, view: IDatabaseView, openEditor: (opts) => Promise<void>)`
-- [ ] Header row: property name cells + type indicators + column resize handles + "+" add-column button
-- [ ] Data rows: one row per database page, cells render property values
-- [ ] Row hover: subtle highlight
-- [ ] Click cell → activate cell editor (inline)
-- [ ] Click title cell → open page in canvas editor via `openEditor({ typeId: 'canvas', instanceId: pageId })`
-- [ ] "+ New" button at bottom → creates new row via `databaseDataService.addRow()`
-- [ ] Column resize: drag column borders to adjust width (stored in view config)
-- [ ] Reactive updates: listen to `databaseDataService.onDidChangeRow` and re-render affected rows
+- [x] Create `TableView` class extending `Disposable`
+- [x] Constructor: `(container: HTMLElement, databaseDataService: DatabaseDataService, database: IDatabase, view: IDatabaseView, openEditor: (opts) => Promise<void>)`
+- [x] Header row: property name cells + type indicators + column resize handles + "+" add-column button
+- [x] Data rows: one row per database page, cells render property values
+- [x] Row hover: subtle highlight
+- [x] Click cell → activate cell editor (inline)
+- [x] Click title cell → open page in canvas editor via `openEditor({ typeId: 'canvas', instanceId: pageId })`
+- [x] "+ New" button at bottom → creates new row via `databaseDataService.addRow()`
+- [x] Column resize: drag column borders to adjust width (stored in view config)
+- [x] Reactive updates: listen to `databaseDataService.onDidChangeRow` and re-render affected rows
 
 #### 2.4 Cell Renderers (`database/properties/propertyRenderers.ts`)
 
 **Tasks:**
-- [ ] Create renderer functions (pure DOM creation, no side effects):
+- [x] Create renderer functions (pure DOM creation, no side effects):
   - `renderTitle(value, container)` — bold text, clickable
   - `renderRichText(value, container)` — plain text display
   - `renderNumber(value, config, container)` — formatted with number format
@@ -720,13 +720,13 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
   - `renderPhone(value, container)` — plain text
   - `renderFiles(value, container)` — list of linked file names (external URLs, clickable)
   - `renderTimestamp(value, container)` — relative or absolute formatted time
-- [ ] Null/empty value rendering (gray placeholder text)
-- [ ] Renderer dispatch: `renderPropertyValue(type, value, config, container)` — routes to correct renderer
+- [x] Null/empty value rendering (gray placeholder text)
+- [x] Renderer dispatch: `renderPropertyValue(type, value, config, container)` — routes to correct renderer
 
 #### 2.5 Cell Editors (`database/properties/propertyEditors.ts`)
 
 **Tasks:**
-- [ ] Create editor classes (each extends `Disposable`, accepts container + current value, fires `onDidChange`):
+- [x] Create editor classes (each extends `Disposable`, accepts container + current value, fires `onDidChange`):
   - `TitleEditor` — inline text input, Enter to confirm, Escape to cancel
   - `TextEditor` — inline text input
   - `NumberEditor` — number input with validation
@@ -737,33 +737,33 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
   - `CheckboxEditor` — no popup — click toggles value immediately
   - `UrlEditor`, `EmailEditor`, `PhoneEditor` — text input with type-specific validation
   - `FilesEditor` — add/remove external file URLs; each entry has a name + URL (file upload deferred — external links only for M8)
-- [ ] Editor dispatch: `createPropertyEditor(type, container, value, config)` → returns editor instance
+- [x] Editor dispatch: `createPropertyEditor(type, container, value, config)` → returns editor instance
 
 #### 2.6 Property Configuration (`database/properties/propertyConfig.ts`)
 
 **Tasks:**
-- [ ] Property add menu: click "+" on header → popup with property type list → creates property
-- [ ] Property rename: double-click header cell → inline text edit
-- [ ] Property type change: header context menu → "Change type" → migrate values where possible (e.g., Number→Text preserves string representation)
-- [ ] Property delete: header context menu → "Delete property" with confirmation
-- [ ] Property reorder: drag column headers to reorder
-- [ ] Property-specific config popup:
+- [x] Property add menu: click "+" on header → popup with property type list → creates property
+- [x] Property rename: double-click header cell → inline text edit
+- [x] Property type change: header context menu → "Change type" → migrate values where possible (e.g., Number→Text preserves string representation)
+- [x] Property delete: header context menu → "Delete property" with confirmation
+- [x] Property reorder: drag column headers to reorder
+- [x] Property-specific config popup:
   - Number: format selector (plain, comma, percent, currency)
   - Select/Multi-Select: option list editor (add, rename, recolor, delete options)
   - Status: option + group management (assign options to groups)
 
 #### Completion Criteria (Phase 2)
 
-- [ ] Full-page database opens in Table view with typed columns
-- [ ] All core property types render correctly (Title, Text, Number, Select, Multi-Select, Status, Date, Checkbox, URL, Email, Phone, Files, timestamps)
-- [ ] All writable property types are editable inline
-- [ ] New rows created with "+ New"
-- [ ] Properties can be added, renamed, reordered, deleted
-- [ ] Clicking a row title opens the page in the canvas editor
-- [ ] Sidebar shows database pages with table icon
-- [ ] `npm run build` — zero errors
+- [x] Full-page database opens in Table view with typed columns
+- [x] All core property types render correctly (Title, Text, Number, Select, Multi-Select, Status, Date, Checkbox, URL, Email, Phone, Files, timestamps)
+- [x] All writable property types are editable inline
+- [x] New rows created with "+ New"
+- [x] Properties can be added, renamed, reordered, deleted
+- [x] Clicking a row title opens the page in the canvas editor
+- [x] Sidebar shows database pages with table icon
+- [x] `npm run build` — zero errors
 - [ ] Unit tests for table view rendering logic, cell renderers, cell editors
-- [ ] Existing tests unaffected
+- [x] Existing tests unaffected
 
 ---
 
@@ -799,6 +799,8 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
   - Simple mode: one-line filter bar (Property → Operator → Value)
   - Advanced mode: nested group builder with add/remove/regroup
   - Toggle between simple and advanced
+  
+  **Deviation:** Advanced nested group builder UI deferred — engine supports recursive filter groups, but UI currently only exposes flat rule lists. Engine is ready for the UI to be upgraded later.
 - [x] Filter state stored in `database_views.filter_config` denormalized column (not inside the JSON `config` blob)
 - [x] Active filter count indicator on view tab / filter button
 
@@ -864,7 +866,7 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
 
 **Tasks:**
 - [x] Drag card between columns → updates the grouping property value via `databaseDataService.setPropertyValue()`
-- [ ] Drag to reorder within a column → updates sort order in `database_pages`
+- [x] Drag to reorder within a column → updates sort order in `database_pages`
 - [x] Click card → open page in canvas editor
 - [x] Column header click → collapse/expand column
 - [x] Board view respects active filters, sorts (within columns), and property visibility (for card preview)

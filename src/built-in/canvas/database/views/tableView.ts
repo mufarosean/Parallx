@@ -22,6 +22,7 @@ import {
   type IDatabaseRow,
   type IPropertyValue,
   type IRowGroup,
+  type ISortRule,
 } from '../databaseRegistry.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -132,6 +133,14 @@ export class TableView extends Disposable {
       const label = $('span.db-table-header-label');
       label.textContent = prop.name;
       cell.appendChild(label);
+
+      // Sort indicator arrow (if this property has an active sort rule)
+      const sortRule = this._getSortForProperty(prop.id);
+      if (sortRule) {
+        const arrow = $('span.db-table-sort-arrow');
+        arrow.textContent = sortRule.direction === 'ascending' ? ' ↑' : ' ↓';
+        cell.appendChild(arrow);
+      }
 
       // Double-click → inline rename
       this._renderDisposables.add(addDisposableListener(cell, 'dblclick', () => {
@@ -427,6 +436,12 @@ export class TableView extends Disposable {
     for (const row of this._bodyEl.children) {
       (row as HTMLElement).style.gridTemplateColumns = template;
     }
+  }
+
+  // ─── Sort Helper ──────────────────────────────────────────────────────
+
+  private _getSortForProperty(propertyId: string): ISortRule | undefined {
+    return this._view.sortConfig?.find(s => s.propertyId === propertyId);
   }
 
   // ─── Dispose ─────────────────────────────────────────────────────────

@@ -335,49 +335,107 @@ export class BoardView extends Disposable {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         container.classList.add('db-board-cards--dragover');
+
+        // Find the nearest card to show insertion indicator
+        this._updateDropIndicator(container, e.clientY);
       }
     }));
 
     this._renderDisposables.add(addDisposableListener(container, 'dragleave', (e: DragEvent) => {
       if (e.currentTarget === container) {
         container.classList.remove('db-board-cards--dragover');
+        this._clearDropIndicators(container);
       }
     }));
 
     this._renderDisposables.add(addDisposableListener(container, 'drop', async (e: DragEvent) => {
       e.preventDefault();
       container.classList.remove('db-board-cards--dragover');
+      this._clearDropIndicators(container);
 
       const pageId = e.dataTransfer?.getData('application/x-parallx-board-card');
       if (!pageId || !this._groupProperty) return;
 
-      try {
-        // Update the grouping property value to match the target column
-        let propValue: IPropertyValue;
+      // Determine the drop target index within this column
+      const dropIndex = this._getDropIndex(container, e.clientY);
 
-        if (group.key === '__no_value__') {
-          // Clear the value
-          propValue = this._groupProperty.type === 'status'
-            ? { type: 'status', status: null }
-            : { type: 'select', select: null };
-        } else {
-          const option = this._findOptionByName(group.key);
-          if (!option) return;
-          propValue = this._groupProperty.type === 'status'
-            ? { type: 'status', status: option }
-            : { type: 'select', select: option };
+      // Check if the card is from the same column (reorder) or a different column (change value)
+      const isFromSameColumn = group.rows.some(r => r.page.id === pageId);
+
+      try {
+        if (!isFromSameColumn) {
+          // Cross-column: update the grouping property value
+          let propValue: IPropertyValue;
+
+          if (group.key === '__no_value__') {
+            propValue = this._groupProperty.type === 'status'
+              ? { type: 'status', status: null }
+              : { type: 'select', select: null };
+          } else {
+            const option = this._findOptionByName(group.key);
+            if (!option) return;
+            propValue = this._groupProperty.type === 'status'
+              ? { type: 'status', status: option }
+              : { type: 'select', select: option };
+          }
+
+          await this._dataService.setPropertyValue(
+            this._databaseId,
+            pageId,
+            this._groupProperty.id,
+            propValue,
+          );
         }
 
-        await this._dataService.setPropertyValue(
-          this._databaseId,
-          pageId,
-          this._groupProperty.id,
-          propValue,
-        );
+        // Reorder within column — build new order for ALL rows in this column
+        const columnPageIds = group.rows.map(r => r.page.id).filter(id => id !== pageId);
+        const insertAt = Math.min(dropIndex, columnPageIds.length);
+        columnPageIds.splice(insertAt, 0, pageId);
+
+        // Build full row order: keep non-column rows in their original order,
+        // then place column rows at the positions of the column-relative reorder
+        const allPageIds = this._rows.map(r => r.page.id);
+        const nonColumnIds = allPageIds.filter(id => !group.rows.some(r => r.page.id === id) && id !== pageId);
+        const reordered = [...nonColumnIds, ...columnPageIds];
+        await this._dataService.reorderRows(this._databaseId, reordered);
       } catch (err) {
         console.error('[BoardView] Drag-to-change failed:', err);
       }
     }));
+  }
+
+  private _updateDropIndicator(container: HTMLElement, mouseY: number): void {
+    this._clearDropIndicators(container);
+    const cards = Array.from(container.querySelectorAll('.db-board-card'));
+    for (const card of cards) {
+      const rect = card.getBoundingClientRect();
+      if (mouseY < rect.top + rect.height / 2) {
+        (card as HTMLElement).classList.add('db-board-card--drop-before');
+        return;
+      }
+    }
+    // After last card
+    if (cards.length > 0) {
+      (cards[cards.length - 1] as HTMLElement).classList.add('db-board-card--drop-after');
+    }
+  }
+
+  private _clearDropIndicators(container: HTMLElement): void {
+    container.querySelectorAll('.db-board-card--drop-before, .db-board-card--drop-after')
+      .forEach(el => {
+        el.classList.remove('db-board-card--drop-before', 'db-board-card--drop-after');
+      });
+  }
+
+  private _getDropIndex(container: HTMLElement, mouseY: number): number {
+    const cards = Array.from(container.querySelectorAll('.db-board-card'));
+    for (let i = 0; i < cards.length; i++) {
+      const rect = cards[i].getBoundingClientRect();
+      if (mouseY < rect.top + rect.height / 2) {
+        return i;
+      }
+    }
+    return cards.length;
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────

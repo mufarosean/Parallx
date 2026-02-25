@@ -198,6 +198,39 @@ export class DatabaseToolbar extends Disposable {
     for (let i = 0; i < sorts.length; i++) {
       const rule = sorts[i];
       const ruleEl = $('div.db-sort-rule');
+      ruleEl.draggable = true;
+      ruleEl.dataset.sortIndex = String(i);
+
+      // Drag handle
+      const handle = $('span.db-sort-drag-handle');
+      handle.textContent = '⠿';
+      ruleEl.appendChild(handle);
+
+      // Drag-to-reorder listeners
+      renderStore.add(addDisposableListener(ruleEl, 'dragstart', (e: DragEvent) => {
+        e.dataTransfer?.setData('text/plain', String(i));
+        ruleEl.classList.add('db-sort-rule--dragging');
+      }));
+      renderStore.add(addDisposableListener(ruleEl, 'dragend', () => {
+        ruleEl.classList.remove('db-sort-rule--dragging');
+      }));
+      renderStore.add(addDisposableListener(ruleEl, 'dragover', (e: DragEvent) => {
+        e.preventDefault();
+        ruleEl.classList.add('db-sort-rule--dragover');
+      }));
+      renderStore.add(addDisposableListener(ruleEl, 'dragleave', () => {
+        ruleEl.classList.remove('db-sort-rule--dragover');
+      }));
+      renderStore.add(addDisposableListener(ruleEl, 'drop', (e: DragEvent) => {
+        e.preventDefault();
+        ruleEl.classList.remove('db-sort-rule--dragover');
+        const fromIdx = parseInt(e.dataTransfer?.getData('text/plain') ?? '', 10);
+        if (isNaN(fromIdx) || fromIdx === i) return;
+        const [moved] = sorts.splice(fromIdx, 1);
+        sorts.splice(i, 0, moved);
+        this._emitSortChange(sorts);
+        this._renderSortRules(panel, sorts);
+      }));
 
       // Property selector
       const propBtn = $('button.db-sort-rule-prop');
