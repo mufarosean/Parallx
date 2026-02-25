@@ -24,15 +24,7 @@ import {
   type IRowGroup,
   type ISortRule,
 } from '../databaseRegistry.js';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-export type OpenEditorFn = (options: {
-  typeId: string;
-  title: string;
-  icon?: string;
-  instanceId?: string;
-}) => Promise<void>;
+import type { OpenEditorFn } from '../databaseRegistry.js';
 
 // ─── TableView ───────────────────────────────────────────────────────────────
 
@@ -388,6 +380,9 @@ export class TableView extends Disposable {
     let startX = 0;
     let startWidth = 0;
 
+    // Track document-level listeners in a store so they're cleaned up on dispose
+    const resizeStore = new DisposableStore();
+
     const onMouseMove = (e: MouseEvent) => {
       const delta = e.clientX - startX;
       const newWidth = Math.max(80, startWidth + delta);
@@ -396,8 +391,7 @@ export class TableView extends Disposable {
     };
 
     const onMouseUp = () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
+      resizeStore.clear();
       document.body.classList.remove('db-resizing');
 
       // Persist column widths to view config
@@ -417,9 +411,13 @@ export class TableView extends Disposable {
       startX = e.clientX;
       startWidth = this._columnWidths[propertyId] ?? 200;
       document.body.classList.add('db-resizing');
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
+      resizeStore.clear();
+      resizeStore.add(addDisposableListener(document, 'mousemove', onMouseMove));
+      resizeStore.add(addDisposableListener(document, 'mouseup', onMouseUp));
     }));
+
+    // Ensure document listeners are cleaned up if we're disposed mid-resize
+    this._register(resizeStore);
   }
 
   private _updateGridTemplate(): void {

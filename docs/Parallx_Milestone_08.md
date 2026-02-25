@@ -762,7 +762,7 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
 - [x] Clicking a row title opens the page in the canvas editor
 - [x] Sidebar shows database pages with table icon
 - [x] `npm run build` — zero errors
-- [ ] Unit tests for table view rendering logic, cell renderers, cell editors
+- [x] Unit tests for table view rendering logic, cell renderers, cell editors
 - [x] Existing tests unaffected
 
 ---
@@ -841,7 +841,7 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
 - [x] Grouping and sub-grouping render correctly in table view
 - [x] Property visibility is per-view and persists
 - [x] View config round-trips correctly — denormalized columns match `IDatabaseViewColumns`, JSON `config` matches `IDatabaseViewConfig`
-- [ ] Unit tests for filter engine, sort logic, grouping, view config serialization (both column and JSON paths)
+- [x] Unit tests for filter engine, sort logic, grouping, view config serialization (both column and JSON paths)
 
 ---
 
@@ -887,7 +887,7 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
 - [x] Cards display configured preview properties
 - [x] New rows created in a column inherit that column's value (forcing function)
 - [x] Board view respects filters, sorts, and grouping from the view system
-- [ ] Unit tests for board layout logic, drag-to-change-status
+- [x] Unit tests for board layout logic, drag-to-change-status
 
 ---
 

@@ -7,7 +7,8 @@
 // Dependencies: platform/ (lifecycle, events), ui/ (dom, contextMenu),
 // databaseRegistry (type-only)
 
-import { $ } from '../../../../ui/dom.js';
+import { $, addDisposableListener } from '../../../../ui/dom.js';
+import { DisposableStore } from '../../../../platform/lifecycle.js';
 import { ContextMenu, type IContextMenuItem } from '../../../../ui/contextMenu.js';
 import type {
   PropertyType,
@@ -184,13 +185,15 @@ export function startPropertyRename(
   const originalContent = headerCell.innerHTML;
   headerCell.innerHTML = '';
 
-  const input = document.createElement('input');
+  const input = $('input.db-header-rename-input') as HTMLInputElement;
   input.type = 'text';
-  input.classList.add('db-header-rename-input');
   input.value = property.name;
   headerCell.appendChild(input);
 
+  const listeners = new DisposableStore();
+
   const finish = (commit: boolean) => {
+    listeners.dispose();
     const newName = input.value.trim();
     headerCell.innerHTML = originalContent;
     if (commit && newName && newName !== property.name) {
@@ -200,7 +203,7 @@ export function startPropertyRename(
     }
   };
 
-  input.addEventListener('keydown', (e: KeyboardEvent) => {
+  listeners.add(addDisposableListener(input, 'keydown', (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       finish(true);
@@ -209,9 +212,9 @@ export function startPropertyRename(
       finish(false);
     }
     e.stopPropagation();
-  });
+  }));
 
-  input.addEventListener('blur', () => finish(true));
+  listeners.add(addDisposableListener(input, 'blur', () => finish(true)));
 
   input.focus();
   input.select();

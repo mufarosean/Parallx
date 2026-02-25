@@ -31,14 +31,7 @@ import {
 
 import './database.css';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-export type OpenEditorFn = (options: {
-  typeId: string;
-  title: string;
-  icon?: string;
-  instanceId?: string;
-}) => Promise<void>;
+import type { OpenEditorFn } from './databaseRegistry.js';
 
 // ─── Database Editor Provider ────────────────────────────────────────────────
 

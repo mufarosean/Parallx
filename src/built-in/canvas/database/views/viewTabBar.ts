@@ -13,7 +13,7 @@ import { Emitter, type Event } from '../../../../platform/events.js';
 import type { IDatabaseDataService, IDatabaseView, ViewType } from '../databaseRegistry.js';
 import { TabBar, type ITabBarItem } from '../../../../ui/tabBar.js';
 import { ContextMenu, type IContextMenuItem } from '../../../../ui/contextMenu.js';
-import { $ } from '../../../../ui/dom.js';
+import { $, addDisposableListener } from '../../../../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ export class ViewTabBar extends Disposable {
       const addBtn = $('button.database-view-add-btn');
       addBtn.textContent = '+';
       addBtn.title = 'Add a view';
-      addBtn.addEventListener('click', (e) => this._showNewViewMenu(e));
+      this._register(addDisposableListener(addBtn, 'click', (e) => this._showNewViewMenu(e)));
       actionsSlot.appendChild(addBtn);
     }
 

@@ -86,7 +86,8 @@ export {
 // ─── Views ───────────────────────────────────────────────────────────────────
 
 export { TableView } from './views/tableView.js';
-export type { OpenEditorFn } from './views/tableView.js';
+
+export type { OpenEditorFn } from './databaseTypes.js';
 
 export { ViewTabBar } from './views/viewTabBar.js';
 

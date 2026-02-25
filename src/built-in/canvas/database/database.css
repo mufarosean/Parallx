@@ -434,6 +434,7 @@
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  background-color: var(--db-dot-color, var(--text-secondary));
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1047,6 +1048,7 @@
   height: 80px;
   margin: -8px -10px 8px;
   border-radius: 4px 4px 0 0;
+  background-image: var(--db-cover-url);
   background-size: cover;
   background-position: center;
 }

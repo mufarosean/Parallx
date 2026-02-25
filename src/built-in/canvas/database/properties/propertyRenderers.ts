@@ -10,7 +10,7 @@
 //
 // Dependencies: platform/ (none), ui/dom ($), databaseRegistry (type-only)
 
-import { $ } from '../../../../ui/dom.js';
+import { $, clearNode } from '../../../../ui/dom.js';
 import type {
   PropertyType,
   PropertyConfig,
@@ -183,8 +183,7 @@ export function renderUrl(value: IPropertyValue | undefined, container: HTMLElem
   if (!value || value.type !== 'url' || !value.url) {
     renderEmpty(container); return;
   }
-  const link = document.createElement('a');
-  link.classList.add('db-cell-url');
+  const link = $('a.db-cell-url') as HTMLAnchorElement;
   link.href = value.url;
   link.textContent = truncateText(value.url, 50);
   link.target = '_blank';
@@ -196,8 +195,7 @@ export function renderEmail(value: IPropertyValue | undefined, container: HTMLEl
   if (!value || value.type !== 'email' || !value.email) {
     renderEmpty(container); return;
   }
-  const link = document.createElement('a');
-  link.classList.add('db-cell-email');
+  const link = $('a.db-cell-email') as HTMLAnchorElement;
   link.href = `mailto:${value.email}`;
   link.textContent = value.email;
   container.appendChild(link);
@@ -218,8 +216,7 @@ export function renderFiles(value: IPropertyValue | undefined, container: HTMLEl
   }
   const wrap = $('div.db-cell-files');
   for (const file of value.files) {
-    const link = document.createElement('a');
-    link.classList.add('db-cell-file-link');
+    const link = $('a.db-cell-file-link') as HTMLAnchorElement;
     link.href = file.external.url;
     link.textContent = file.name || 'File';
     link.target = '_blank';
@@ -282,7 +279,7 @@ export function renderPropertyValue(
   config: PropertyConfig,
   container: HTMLElement,
 ): void {
-  container.innerHTML = '';
+  clearNode(container);
 
   switch (type) {
     case 'title':            renderTitle(value, container); break;

@@ -21,15 +21,7 @@ import {
   type ISelectPropertyConfig,
   type IStatusPropertyConfig,
 } from '../databaseRegistry.js';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-export type OpenEditorFn = (options: {
-  typeId: string;
-  title: string;
-  icon?: string;
-  instanceId?: string;
-}) => Promise<void>;
+import type { OpenEditorFn } from '../databaseRegistry.js';
 
 // ─── BoardView ───────────────────────────────────────────────────────────────
 
@@ -272,7 +264,7 @@ export class BoardView extends Disposable {
     // ── Page cover (if available) ──
     if (row.page.coverUrl) {
       const cover = $('div.db-board-card-cover');
-      cover.style.backgroundImage = `url(${row.page.coverUrl})`;
+      cover.style.setProperty('--db-cover-url', `url(${row.page.coverUrl})`);
       card.appendChild(cover);
     }
 

@@ -364,7 +364,7 @@ export class DatabaseToolbar extends Disposable {
       // Hide empty groups toggle
       const hideSection = $('div.db-group-section');
       const hideLabel = $('label.db-group-toggle');
-      const hideCheckbox = document.createElement('input');
+      const hideCheckbox = $('input') as HTMLInputElement;
       hideCheckbox.type = 'checkbox';
       hideCheckbox.checked = this._view.hideEmptyGroups;
       renderStore.add(addDisposableListener(hideCheckbox, 'change', () => {
@@ -461,11 +461,10 @@ export class DatabaseToolbar extends Disposable {
       row.appendChild(label);
 
       // Toggle checkbox
-      const toggle = document.createElement('input');
+      const toggle = $('input.db-props-toggle') as HTMLInputElement;
       toggle.type = 'checkbox';
       toggle.checked = isVisible;
       toggle.disabled = isTitle; // Title cannot be hidden
-      toggle.classList.add('db-props-toggle');
       renderStore.add(addDisposableListener(toggle, 'change', () => {
         if (toggle.checked) {
           visibleIds.add(prop.id);

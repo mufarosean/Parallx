@@ -543,3 +543,13 @@ export interface IDatabaseDataService {
   /** Reorder views by providing the full ordered list of view IDs. */
   reorderViews(databaseId: string, orderedIds: string[]): Promise<void>;
 }
+
+// ─── Shared Callback Types ───────────────────────────────────────────────────
+
+/** Callback shape for opening an editor tab. Used by views and the editor provider. */
+export type OpenEditorFn = (options: {
+  typeId: string;
+  title: string;
+  icon?: string;
+  instanceId?: string;
+}) => Promise<void>;

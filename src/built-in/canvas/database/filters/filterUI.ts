@@ -221,9 +221,8 @@ export class FilterPanel extends Disposable {
         }));
         return btn;
       }
-      const input = document.createElement('input');
+      const input = $('input.db-filter-rule-input.db-cell-editor-date') as HTMLInputElement;
       input.type = 'date';
-      input.classList.add('db-filter-rule-input', 'db-cell-editor-date');
       input.value = rule.value ? String(rule.value).slice(0, 10) : '';
       this._renderDisposables.add(addDisposableListener(input, 'change', () => {
         this._updateRuleValue(index, input.value);
@@ -233,10 +232,9 @@ export class FilterPanel extends Disposable {
 
     // Number: number input
     if (prop.type === 'number') {
-      const input = document.createElement('input');
+      const input = $('input.db-filter-rule-input') as HTMLInputElement;
       input.type = 'number';
       input.step = 'any';
-      input.classList.add('db-filter-rule-input');
       input.value = rule.value != null ? String(rule.value) : '';
       this._renderDisposables.add(addDisposableListener(input, 'change', () => {
         const num = input.value === '' ? null : Number(input.value);
@@ -246,9 +244,8 @@ export class FilterPanel extends Disposable {
     }
 
     // Default: text input
-    const input = document.createElement('input');
+    const input = $('input.db-filter-rule-input') as HTMLInputElement;
     input.type = 'text';
-    input.classList.add('db-filter-rule-input');
     input.value = rule.value != null ? String(rule.value) : '';
     input.placeholder = 'Value…';
     this._renderDisposables.add(addDisposableListener(input, 'change', () => {
@@ -333,7 +330,7 @@ export class FilterPanel extends Disposable {
       label: opt.name,
       renderIcon: (iconContainer: HTMLElement) => {
         const dot = $('span.db-option-dot');
-        dot.style.backgroundColor = opt.color;
+        dot.style.setProperty('--db-dot-color', opt.color);
         iconContainer.appendChild(dot);
       },
     }));

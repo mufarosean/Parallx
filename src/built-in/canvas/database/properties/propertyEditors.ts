@@ -66,9 +66,8 @@ class TextInputEditor extends Disposable implements IPropertyEditor {
   ) {
     super();
 
-    this._input = document.createElement('input');
+    this._input = $('input.db-cell-editor-input') as HTMLInputElement;
     this._input.type = inputType;
-    this._input.classList.add('db-cell-editor-input');
     this._input.value = currentValue;
     container.appendChild(this._input);
 
@@ -138,9 +137,8 @@ class NumberEditor extends Disposable implements IPropertyEditor {
   constructor(container: HTMLElement, currentValue: number | null) {
     super();
 
-    this._input = document.createElement('input');
+    this._input = $('input.db-cell-editor-input') as HTMLInputElement;
     this._input.type = 'number';
-    this._input.classList.add('db-cell-editor-input');
     this._input.value = currentValue != null ? String(currentValue) : '';
     this._input.step = 'any';
     container.appendChild(this._input);
@@ -230,7 +228,7 @@ class SelectEditor extends Disposable implements IPropertyEditor {
         className: opt.id === currentOption?.id ? 'context-menu-item--selected' : '',
         renderIcon: (iconContainer: HTMLElement) => {
           const dot = $('span.db-option-dot');
-          dot.style.backgroundColor = opt.color;
+          dot.style.setProperty('--db-dot-color', opt.color);
           iconContainer.appendChild(dot);
         },
       })),
@@ -294,7 +292,7 @@ class MultiSelectEditor extends Disposable implements IPropertyEditor {
       label: `${this._selectedIds.has(opt.id) ? '✓ ' : '   '}${opt.name}`,
       renderIcon: (iconContainer: HTMLElement) => {
         const dot = $('span.db-option-dot');
-        dot.style.backgroundColor = opt.color;
+        dot.style.setProperty('--db-dot-color', opt.color);
         iconContainer.appendChild(dot);
       },
     }));
@@ -366,7 +364,7 @@ class StatusEditor extends Disposable implements IPropertyEditor {
             className: opt.id === currentOption?.id ? 'context-menu-item--selected' : '',
             renderIcon: (iconContainer: HTMLElement) => {
               const dot = $('span.db-option-dot');
-              dot.style.backgroundColor = opt.color;
+              dot.style.setProperty('--db-dot-color', opt.color);
               iconContainer.appendChild(dot);
             },
           });
@@ -427,9 +425,8 @@ class DateEditor extends Disposable implements IPropertyEditor {
   ) {
     super();
 
-    this._input = document.createElement('input');
+    this._input = $('input.db-cell-editor-input.db-cell-editor-date') as HTMLInputElement;
     this._input.type = 'date';
-    this._input.classList.add('db-cell-editor-input', 'db-cell-editor-date');
     if (currentDate?.start) {
       this._input.value = currentDate.start.slice(0, 10);
     }
@@ -483,9 +480,8 @@ class FilesEditor extends Disposable implements IPropertyEditor {
     super();
     this._currentFiles = [...currentFiles];
 
-    this._input = document.createElement('input');
+    this._input = $('input.db-cell-editor-input') as HTMLInputElement;
     this._input.type = 'url';
-    this._input.classList.add('db-cell-editor-input');
     this._input.placeholder = 'Paste file URL…';
     container.appendChild(this._input);
 
