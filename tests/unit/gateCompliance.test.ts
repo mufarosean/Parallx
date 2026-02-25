@@ -142,6 +142,10 @@ const GATE_RULES: Record<string, string[]> = {
   'database/properties/propertyRenderers.ts':    ['database/databaseRegistry'],
   'database/properties/propertyEditors.ts':      ['database/databaseRegistry'],
   'database/properties/propertyConfig.ts':       ['database/databaseRegistry'],
+  'database/filters/filterEngine.ts':              ['database/databaseRegistry'],
+  'database/filters/filterUI.ts':                  ['database/databaseRegistry'],
+  'database/views/boardView.ts':                   ['database/databaseRegistry'],
+  'database/views/databaseToolbar.ts':             ['database/databaseRegistry'],
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

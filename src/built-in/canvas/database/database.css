@@ -26,6 +26,10 @@
   border-bottom: 1px solid var(--separator-border);
 }
 
+.database-editor-toolbar-buttons {
+  flex-shrink: 0;
+}
+
 .database-editor-content {
   flex: 1;
   overflow: auto;
@@ -467,4 +471,643 @@
 .canvas-node-icon--database {
   opacity: 0.7;
   font-size: 14px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Toolbar (Filter / Sort / Group / Properties buttons)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--separator-border);
+  background: var(--editor-bg);
+}
+
+.db-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.db-toolbar-btn:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.06));
+  color: var(--text-primary);
+}
+
+.db-toolbar-btn--active {
+  color: var(--focus-border, #007acc);
+}
+
+.db-toolbar-btn--open {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.08));
+  color: var(--text-primary);
+}
+
+.db-toolbar-panel-container {
+  border-bottom: 1px solid var(--separator-border);
+  background: var(--editor-bg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Filter Panel
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-filter-panel {
+  padding: 8px 12px;
+}
+
+.db-filter-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.db-filter-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.db-filter-conjunction-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--separator-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.db-filter-conjunction-btn:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.06));
+}
+
+.db-filter-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.db-filter-rule {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.db-filter-rule-prop,
+.db-filter-rule-op,
+.db-filter-rule-value {
+  padding: 3px 8px;
+  border: 1px solid var(--separator-border);
+  border-radius: 4px;
+  background: var(--input-bg, rgba(0, 0, 0, 0.2));
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.db-filter-rule-prop:hover,
+.db-filter-rule-op:hover,
+.db-filter-rule-value:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.06));
+}
+
+.db-filter-rule-input {
+  padding: 3px 6px;
+  border: 1px solid var(--separator-border);
+  border-radius: 4px;
+  background: var(--input-bg, rgba(0, 0, 0, 0.2));
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  min-width: 100px;
+}
+
+.db-filter-rule-input:focus {
+  border-color: var(--focus-border, #007acc);
+}
+
+.db-filter-rule-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.5;
+}
+
+.db-filter-rule-remove:hover {
+  opacity: 1;
+  background: rgba(224, 93, 93, 0.2);
+  color: rgba(224, 93, 93, 1);
+}
+
+.db-filter-add-rule {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  margin-top: 4px;
+}
+
+.db-filter-add-rule:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.04));
+  color: var(--text-primary);
+}
+
+.db-filter-empty {
+  color: var(--text-secondary);
+  opacity: 0.5;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sort Panel
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-sort-panel {
+  padding: 8px 12px;
+}
+
+.db-sort-panel-header {
+  margin-bottom: 8px;
+}
+
+.db-sort-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.db-sort-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.db-sort-rule {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.db-sort-rule-prop,
+.db-sort-rule-dir {
+  padding: 3px 8px;
+  border: 1px solid var(--separator-border);
+  border-radius: 4px;
+  background: var(--input-bg, rgba(0, 0, 0, 0.2));
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.db-sort-rule-prop:hover,
+.db-sort-rule-dir:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.06));
+}
+
+.db-sort-rule-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.5;
+}
+
+.db-sort-rule-remove:hover {
+  opacity: 1;
+  background: rgba(224, 93, 93, 0.2);
+  color: rgba(224, 93, 93, 1);
+}
+
+.db-sort-add-rule {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  margin-top: 4px;
+}
+
+.db-sort-add-rule:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.04));
+  color: var(--text-primary);
+}
+
+.db-sort-empty {
+  color: var(--text-secondary);
+  opacity: 0.5;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Group Panel
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-group-panel {
+  padding: 8px 12px;
+}
+
+.db-group-panel-header {
+  margin-bottom: 8px;
+}
+
+.db-group-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.db-group-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.db-group-section-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 80px;
+}
+
+.db-group-selector {
+  padding: 3px 10px;
+  border: 1px solid var(--separator-border);
+  border-radius: 4px;
+  background: var(--input-bg, rgba(0, 0, 0, 0.2));
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.db-group-selector:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.06));
+}
+
+.db-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.db-group-toggle input[type="checkbox"] {
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Properties Visibility Panel
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-props-panel {
+  padding: 8px 12px;
+}
+
+.db-props-panel-header {
+  margin-bottom: 8px;
+}
+
+.db-props-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.db-props-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.db-props-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 4px;
+  cursor: default;
+}
+
+.db-props-row:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.04));
+}
+
+.db-props-row--dragging {
+  opacity: 0.4;
+}
+
+.db-props-row--dragover {
+  border-top: 2px solid var(--focus-border, #007acc);
+}
+
+.db-props-drag-handle {
+  color: var(--text-secondary);
+  opacity: 0.4;
+  font-size: 10px;
+  cursor: grab;
+  user-select: none;
+}
+
+.db-props-label {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-props-label--title {
+  font-weight: 600;
+}
+
+.db-props-toggle {
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Table View — Group Headers
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-table-group-header {
+  display: grid;
+  border-bottom: 1px solid var(--separator-border);
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.03));
+}
+
+.db-table-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.db-table-group-toggle:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.04));
+}
+
+.db-table-group-arrow {
+  font-size: 12px;
+  color: var(--text-secondary);
+  width: 12px;
+  text-align: center;
+}
+
+.db-table-group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.db-table-group-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Board View
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-board {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  height: 100%;
+  align-items: flex-start;
+}
+
+/* ── Column ──────────────────────────────────────────────────────────────── */
+
+.db-board-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+  max-width: 320px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.03));
+}
+
+.db-board-column--collapsed {
+  min-width: auto;
+  max-width: 40px;
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
+}
+
+.db-board-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  user-select: none;
+  cursor: pointer;
+}
+
+.db-board-column-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.db-board-column-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.db-board-column-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-board-column-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.db-board-column-collapse {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0;
+}
+
+.db-board-column-header:hover .db-board-column-collapse {
+  opacity: 1;
+}
+
+.db-board-column-collapse:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.08));
+}
+
+/* ── Cards Container ─────────────────────────────────────────────────────── */
+
+.db-board-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px 8px;
+  min-height: 40px;
+}
+
+.db-board-cards--dragover {
+  background: rgba(71, 144, 204, 0.08);
+  border-radius: 4px;
+}
+
+/* ── Card ────────────────────────────────────────────────────────────────── */
+
+.db-board-card {
+  background: var(--editor-bg);
+  border: 1px solid var(--separator-border);
+  border-radius: 4px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: box-shadow 0.1s;
+}
+
+.db-board-card:hover {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  border-color: var(--focus-border, #007acc33);
+}
+
+.db-board-card--dragging {
+  opacity: 0.4;
+}
+
+.db-board-card-cover {
+  height: 80px;
+  margin: -8px -10px 8px;
+  border-radius: 4px 4px 0 0;
+  background-size: cover;
+  background-position: center;
+}
+
+.db-board-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-board-card-props {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.db-board-card-prop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.db-board-card-prop-label {
+  color: var(--text-secondary);
+  opacity: 0.6;
+  min-width: 50px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-board-card-prop-value {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Board Add Row ───────────────────────────────────────────────────────── */
+
+.db-board-add-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.db-board-add-row:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.04));
+  color: var(--text-primary);
 }

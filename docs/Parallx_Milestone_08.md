@@ -774,71 +774,71 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
 #### 3.1 View Tabs (`database/views/viewTabs.ts`)
 
 **Tasks:**
-- [ ] Create `ViewTabBar` class extending `Disposable` — renders a horizontal tab strip
-- [ ] Uses `src/ui/tabBar` if compatible, otherwise a new database-specific tab bar
-- [ ] Tab per view: icon (view type) + name
-- [ ] Click tab → switch active view
-- [ ] "+" button → dropdown: choose view type (Table, Board, List, Gallery, Calendar, Timeline) → creates new view via `databaseDataService.createView()`
-- [ ] Double-click tab → inline rename
-- [ ] Right-click tab → context menu: Duplicate, Delete, Lock/Unlock
-- [ ] Drag tabs to reorder → `databaseDataService.reorderViews()`
-- [ ] Active view indicator (underline or highlight)
+- [x] Create `ViewTabBar` class extending `Disposable` — renders a horizontal tab strip
+- [x] Uses `src/ui/tabBar` if compatible, otherwise a new database-specific tab bar
+- [x] Tab per view: icon (view type) + name
+- [x] Click tab → switch active view
+- [x] "+" button → dropdown: choose view type (Table, Board, List, Gallery, Calendar, Timeline) → creates new view via `databaseDataService.createView()`
+- [x] Double-click tab → inline rename
+- [x] Right-click tab → context menu: Duplicate, Delete, Lock/Unlock
+- [x] Drag tabs to reorder → `databaseDataService.reorderViews()`
+- [x] Active view indicator (underline or highlight)
 
 #### 3.2 Filter System
 
 **Tasks:**
-- [ ] Create `filters/filterTypes.ts`:
+- [x] Create `filters/filterTypes.ts`:
   - `IFilterRule` — `{ propertyId, operator, value }`
   - `IFilterGroup` — `{ conjunction: 'and' | 'or', rules: (IFilterRule | IFilterGroup)[] }` (recursive)
   - Operator enum per property type (see research doc §6 for complete operator lists)
-- [ ] Create `filters/filterEngine.ts`:
+- [x] Create `filters/filterEngine.ts`:
   - `evaluateFilter(row: IDatabaseRow, filter: IFilterGroup, properties: IDatabaseProperty[])` → boolean
   - Handles nested AND/OR groups recursively
   - Type-specific comparison logic (string contains, number ≥, date is before, etc.)
-- [ ] Create `filters/filterUI.ts`:
+- [x] Create `filters/filterUI.ts`:
   - Simple mode: one-line filter bar (Property → Operator → Value)
   - Advanced mode: nested group builder with add/remove/regroup
   - Toggle between simple and advanced
-- [ ] Filter state stored in `database_views.filter_config` denormalized column (not inside the JSON `config` blob)
-- [ ] Active filter count indicator on view tab / filter button
+- [x] Filter state stored in `database_views.filter_config` denormalized column (not inside the JSON `config` blob)
+- [x] Active filter count indicator on view tab / filter button
 
 #### 3.3 Sort System
 
 **Tasks:**
-- [ ] Sort builder popup: add sort rules (property + ascending/descending)
-- [ ] Multiple sort rules with priority (first rule is primary sort)
-- [ ] Drag rules to reorder priority
-- [ ] Sort state stored in `database_views.sort_config` denormalized column (not inside the JSON `config` blob)
-- [ ] Sort logic in `filterEngine.ts` or co-located: `applySorts(rows, sorts, properties)` → sorted rows
-- [ ] Visual indicator: sort arrow on column header in table view
+- [x] Sort builder popup: add sort rules (property + ascending/descending)
+- [x] Multiple sort rules with priority (first rule is primary sort)
+- [x] Drag rules to reorder priority
+- [x] Sort state stored in `database_views.sort_config` denormalized column (not inside the JSON `config` blob)
+- [x] Sort logic in `filterEngine.ts` or co-located: `applySorts(rows, sorts, properties)` → sorted rows
+- [x] Visual indicator: sort arrow on column header in table view
 
 #### 3.4 Grouping
 
 **Tasks:**
-- [ ] Group-by selector: choose property from dropdown
-- [ ] Rows organized into collapsible sections, one section per unique value
-- [ ] Section header: group label + row count + collapse/expand toggle
-- [ ] Sub-grouping: second level within each group (choose a second property)
-- [ ] "Hide empty groups" checkbox
-- [ ] Group ordering: Select/Status groups follow option order; other types use natural sort
-- [ ] Group state stored in denormalized `database_views` columns: `group_by`, `sub_group_by`, `hide_empty_groups`
+- [x] Group-by selector: choose property from dropdown
+- [x] Rows organized into collapsible sections, one section per unique value
+- [x] Section header: group label + row count + collapse/expand toggle
+- [x] Sub-grouping: second level within each group (choose a second property)
+- [x] "Hide empty groups" checkbox
+- [x] Group ordering: Select/Status groups follow option order; other types use natural sort
+- [x] Group state stored in denormalized `database_views` columns: `group_by`, `sub_group_by`, `hide_empty_groups`
 
 #### 3.5 Property Visibility
 
 **Tasks:**
-- [ ] Per-view visible properties list (stored in `IDatabaseViewConfig.visibleProperties`)
-- [ ] "Properties" button → panel showing all properties with show/hide checkboxes
-- [ ] Drag to reorder visible properties (changes display order, not schema order)
-- [ ] Title property always visible (cannot be hidden)
+- [x] Per-view visible properties list (stored in `IDatabaseViewConfig.visibleProperties`)
+- [x] "Properties" button → panel showing all properties with show/hide checkboxes
+- [x] Drag to reorder visible properties (changes display order, not schema order)
+- [x] Title property always visible (cannot be hidden)
 
 #### Completion Criteria (Phase 3)
 
-- [ ] Multiple views per database, each with independent config
-- [ ] Simple and advanced filters evaluate correctly
-- [ ] Multi-sort with priority ordering
-- [ ] Grouping and sub-grouping render correctly in table view
-- [ ] Property visibility is per-view and persists
-- [ ] View config round-trips correctly — denormalized columns match `IDatabaseViewColumns`, JSON `config` matches `IDatabaseViewConfig`
+- [x] Multiple views per database, each with independent config
+- [x] Simple and advanced filters evaluate correctly
+- [x] Multi-sort with priority ordering
+- [x] Grouping and sub-grouping render correctly in table view
+- [x] Property visibility is per-view and persists
+- [x] View config round-trips correctly — denormalized columns match `IDatabaseViewColumns`, JSON `config` matches `IDatabaseViewConfig`
 - [ ] Unit tests for filter engine, sort logic, grouping, view config serialization (both column and JSON paths)
 
 ---
@@ -850,41 +850,41 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
 #### 4.1 Board Renderer (`database/views/boardView.ts`)
 
 **Tasks:**
-- [ ] Create `BoardView` class extending `Disposable`
-- [ ] Constructor: same shape as `TableView` (container, service, database, view, openEditor)
-- [ ] Board layout: horizontal scrollable row of columns
-- [ ] Column per option of the grouping property (Select or Status)
-- [ ] "No value" column for rows without a value for the grouping property
-- [ ] Column header: option name + colored dot + row count
-- [ ] Cards within each column: title + configurable preview properties (from view config)
-- [ ] Card cover image: from page cover URL if available
-- [ ] "+ New" button at bottom of each column → creates row with that column's property value
+- [x] Create `BoardView` class extending `Disposable`
+- [x] Constructor: same shape as `TableView` (container, service, database, view, openEditor)
+- [x] Board layout: horizontal scrollable row of columns
+- [x] Column per option of the grouping property (Select or Status)
+- [x] "No value" column for rows without a value for the grouping property
+- [x] Column header: option name + colored dot + row count
+- [x] Cards within each column: title + configurable preview properties (from view config)
+- [x] Card cover image: from page cover URL if available
+- [x] "+ New" button at bottom of each column → creates row with that column's property value
 
 #### 4.2 Board Interactions
 
 **Tasks:**
-- [ ] Drag card between columns → updates the grouping property value via `databaseDataService.setPropertyValue()`
+- [x] Drag card between columns → updates the grouping property value via `databaseDataService.setPropertyValue()`
 - [ ] Drag to reorder within a column → updates sort order in `database_pages`
-- [ ] Click card → open page in canvas editor
-- [ ] Column header click → collapse/expand column
-- [ ] Board view respects active filters, sorts (within columns), and property visibility (for card preview)
-- [ ] "Hide empty columns" option in view config
+- [x] Click card → open page in canvas editor
+- [x] Column header click → collapse/expand column
+- [x] Board view respects active filters, sorts (within columns), and property visibility (for card preview)
+- [x] "Hide empty columns" option in view config
 
 #### 4.3 Board View Registration
 
 **Tasks:**
-- [ ] Register `BoardView` in the view renderer dispatch (view type `'board'`)
-- [ ] View tab "+" menu shows "Board" as a layout option
-- [ ] Board-specific config: `database_views.board_group_property` denormalized column (which property determines columns)
-- [ ] Default: use first Status or Select property found in schema
+- [x] Register `BoardView` in the view renderer dispatch (view type `'board'`)
+- [x] View tab "+" menu shows "Board" as a layout option
+- [x] Board-specific config: `database_views.board_group_property` denormalized column (which property determines columns)
+- [x] Default: use first Status or Select property found in schema
 
 #### Completion Criteria (Phase 4)
 
-- [ ] Board view renders with correct column grouping
-- [ ] Drag between columns updates the property value
-- [ ] Cards display configured preview properties
-- [ ] New rows created in a column inherit that column's value (forcing function)
-- [ ] Board view respects filters, sorts, and grouping from the view system
+- [x] Board view renders with correct column grouping
+- [x] Drag between columns updates the property value
+- [x] Cards display configured preview properties
+- [x] New rows created in a column inherit that column's value (forcing function)
+- [x] Board view respects filters, sorts, and grouping from the view system
 - [ ] Unit tests for board layout logic, drag-to-change-status
 
 ---

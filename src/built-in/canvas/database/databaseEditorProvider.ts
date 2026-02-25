@@ -19,6 +19,9 @@ import { $ } from '../../../ui/dom.js';
 import {
   ViewTabBar,
   TableView,
+  BoardView,
+  DatabaseToolbar,
+  applyViewDataPipeline,
   type IDatabaseDataService,
   type IDatabase,
   type IDatabaseView,
@@ -80,13 +83,16 @@ class DatabaseEditorPane extends Disposable {
   // ── Layout elements ──
   private _wrapper: HTMLElement | null = null;
   private _toolbarContainer: HTMLElement | null = null;
+  private _toolbarButtonsContainer: HTMLElement | null = null;
   private _contentContainer: HTMLElement | null = null;
   private _emptyState: HTMLElement | null = null;
 
   // ── Sub-components ──
   private _viewTabBar: ViewTabBar | null = null;
-  private _activeView: TableView | null = null;
+  private _toolbar: DatabaseToolbar | null = null;
+  private _activeView: TableView | BoardView | null = null;
   private readonly _viewDisposables = this._register(new DisposableStore());
+  private readonly _toolbarDisposables = this._register(new DisposableStore());
 
   // ── Data ──
   private _database: IDatabase | null = null;
@@ -113,6 +119,10 @@ class DatabaseEditorPane extends Disposable {
 
     this._toolbarContainer = $('div.database-editor-toolbar');
     this._wrapper.appendChild(this._toolbarContainer);
+
+    // Toolbar buttons (filter/sort/group/properties) go between tabs and content
+    this._toolbarButtonsContainer = $('div.database-editor-toolbar-buttons');
+    this._wrapper.appendChild(this._toolbarButtonsContainer);
 
     this._contentContainer = $('div.database-editor-content');
     this._wrapper.appendChild(this._contentContainer);
@@ -151,6 +161,9 @@ class DatabaseEditorPane extends Disposable {
       this._switchView(viewId);
     }));
 
+    // Create toolbar (filter/sort/group/properties buttons)
+    this._createToolbar();
+
     // Listen for view creation (from tab bar "+" menu)
     this._register(this._viewTabBar.onDidCreateView(view => {
       this._views.push(view);
@@ -187,6 +200,7 @@ class DatabaseEditorPane extends Disposable {
   private _switchView(viewId: string): void {
     this._activeViewId = viewId;
     this._viewTabBar?.setActive(viewId);
+    this._updateToolbar();
     this._renderActiveView();
   }
 
@@ -207,6 +221,16 @@ class DatabaseEditorPane extends Disposable {
     const view = this._views.find(v => v.id === this._activeViewId);
     if (!view || !this._contentContainer) return;
 
+    // Apply the data pipeline: filter → sort → group
+    const { sortedRows, groups } = applyViewDataPipeline(
+      this._rows,
+      view,
+      this._properties,
+    );
+
+    // Determine visible properties for this view
+    const visibleProps = this._getVisibleProperties(view);
+
     switch (view.type) {
       case 'table': {
         const tableView = new TableView(
@@ -214,15 +238,31 @@ class DatabaseEditorPane extends Disposable {
           this._dataService,
           this._databaseId,
           view,
-          this._properties,
-          this._rows,
+          visibleProps,
+          sortedRows,
           this._openEditor,
+          groups,
         );
         this._viewDisposables.add(tableView);
         this._activeView = tableView;
         break;
       }
-      // Board, List, Gallery, Calendar, Timeline — future phases
+      case 'board': {
+        const boardView = new BoardView(
+          this._contentContainer,
+          this._dataService,
+          this._databaseId,
+          view,
+          visibleProps,
+          sortedRows,
+          this._openEditor,
+          groups,
+        );
+        this._viewDisposables.add(boardView);
+        this._activeView = boardView;
+        break;
+      }
+      // List, Gallery, Calendar, Timeline — future phases
       default: {
         const placeholder = $('div.database-view-placeholder');
         placeholder.textContent = `${view.type} view — coming soon`;
@@ -230,6 +270,68 @@ class DatabaseEditorPane extends Disposable {
         break;
       }
     }
+  }
+
+  // ─── Toolbar ──────────────────────────────────────────────────────────
+
+  private _createToolbar(): void {
+    const view = this._views.find(v => v.id === this._activeViewId);
+    if (!view || !this._toolbarButtonsContainer) return;
+
+    this._toolbarDisposables.clear();
+
+    this._toolbar = new DatabaseToolbar(
+      this._toolbarButtonsContainer,
+      view,
+      this._properties,
+    );
+    this._toolbarDisposables.add(this._toolbar);
+
+    this._toolbar.onDidUpdateView(async updates => {
+      if (!this._activeViewId) return;
+      try {
+        await this._dataService.updateView(this._activeViewId, updates);
+        // Reload the view to pick up stored changes
+        const updatedView = await this._dataService.getView(this._activeViewId);
+        if (updatedView) {
+          const idx = this._views.findIndex(v => v.id === updatedView.id);
+          if (idx >= 0) this._views[idx] = updatedView;
+          this._toolbar?.setView(updatedView);
+        }
+        this._renderActiveView();
+      } catch (err) {
+        console.error('[DatabaseEditorPane] Update view failed:', err);
+      }
+    });
+  }
+
+  private _updateToolbar(): void {
+    const view = this._views.find(v => v.id === this._activeViewId);
+    if (view && this._toolbar) {
+      this._toolbar.setView(view);
+      this._toolbar.setProperties(this._properties);
+    } else if (view && this._toolbarButtonsContainer) {
+      this._createToolbar();
+    }
+  }
+
+  // ─── Visible Properties ──────────────────────────────────────────────
+
+  private _getVisibleProperties(view: IDatabaseView): IDatabaseProperty[] {
+    const visibleIds = view.config.visibleProperties;
+    if (!visibleIds || visibleIds.length === 0) return this._properties;
+
+    const ordered: IDatabaseProperty[] = [];
+    for (const id of visibleIds) {
+      const prop = this._properties.find(p => p.id === id);
+      if (prop) ordered.push(prop);
+    }
+    // Always include title even if not in list
+    if (!ordered.some(p => p.type === 'title')) {
+      const titleProp = this._properties.find(p => p.type === 'title');
+      if (titleProp) ordered.unshift(titleProp);
+    }
+    return ordered;
   }
 
   // ─── Data Reload ─────────────────────────────────────────────────────
@@ -286,8 +388,10 @@ class DatabaseEditorPane extends Disposable {
     this._disposed = true;
 
     this._viewDisposables.clear();
+    this._toolbarDisposables.clear();
     this._activeView = null;
     this._viewTabBar = null;
+    this._toolbar = null;
 
     if (this._wrapper) {
       this._wrapper.remove();

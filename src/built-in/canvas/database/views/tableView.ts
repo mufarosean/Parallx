@@ -21,6 +21,7 @@ import {
   type IDatabaseProperty,
   type IDatabaseRow,
   type IPropertyValue,
+  type IRowGroup,
 } from '../databaseRegistry.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -42,7 +43,9 @@ export class TableView extends Disposable {
 
   private _properties: IDatabaseProperty[];
   private _rows: IDatabaseRow[];
+  private _groups: IRowGroup[];
   private _columnWidths: Record<string, number>;
+  private readonly _collapsedGroups = new Set<string>();
 
   // ── Active cell editor ──
   private readonly _editorDisposables = this._register(new DisposableStore());
@@ -58,11 +61,13 @@ export class TableView extends Disposable {
     properties: IDatabaseProperty[],
     rows: IDatabaseRow[],
     private readonly _openEditor: OpenEditorFn | undefined,
+    groups?: IRowGroup[],
   ) {
     super();
 
     this._properties = properties;
     this._rows = rows;
+    this._groups = groups ?? [{ key: '__all__', label: 'All', rows }];
     this._columnWidths = { ...(this._view.config.columnWidths ?? {}) };
 
     // Build table structure
@@ -84,8 +89,9 @@ export class TableView extends Disposable {
   // ─── Public API ──────────────────────────────────────────────────────
 
   /** Update rows without full re-render. */
-  setRows(rows: IDatabaseRow[]): void {
+  setRows(rows: IDatabaseRow[], groups?: IRowGroup[]): void {
     this._rows = rows;
+    this._groups = groups ?? [{ key: '__all__', label: 'All', rows }];
     this._renderDisposables.clear();
     this._renderHeader();
     this._renderBody();
@@ -160,8 +166,71 @@ export class TableView extends Disposable {
   private _renderBody(): void {
     clearNode(this._bodyEl);
 
-    for (const row of this._rows) {
-      this._renderRow(row);
+    const hasGrouping = this._groups.length > 0
+      && !(this._groups.length === 1 && this._groups[0].key === '__all__');
+
+    if (hasGrouping) {
+      for (const group of this._groups) {
+        this._renderGroup(group);
+      }
+    } else {
+      // No grouping — render all rows flat
+      const allRows = this._groups.length > 0 ? this._groups[0].rows : this._rows;
+      for (const row of allRows) {
+        this._renderRow(row);
+      }
+    }
+  }
+
+  private _renderGroup(group: IRowGroup): void {
+    const collapsed = this._collapsedGroups.has(group.key);
+
+    // Group header
+    const headerEl = $('div.db-table-group-header');
+    const template = this._headerRow.style.gridTemplateColumns;
+    headerEl.style.gridTemplateColumns = template;
+
+    const toggleCell = $('div.db-table-group-toggle');
+    toggleCell.style.gridColumn = `1 / -1`;
+
+    const arrow = $('span.db-table-group-arrow');
+    arrow.textContent = collapsed ? '▸' : '▾';
+    toggleCell.appendChild(arrow);
+
+    const label = $('span.db-table-group-label');
+    if (group.color) {
+      const dot = $('span.db-table-group-dot');
+      dot.classList.add(`db-cell-pill--${group.color}`);
+      label.appendChild(dot);
+    }
+    const labelText = document.createTextNode(`${group.label} (${group.rows.length})`);
+    label.appendChild(labelText);
+    toggleCell.appendChild(label);
+
+    this._renderDisposables.add(addDisposableListener(toggleCell, 'click', () => {
+      if (this._collapsedGroups.has(group.key)) {
+        this._collapsedGroups.delete(group.key);
+      } else {
+        this._collapsedGroups.add(group.key);
+      }
+      this._renderBody();
+    }));
+
+    headerEl.appendChild(toggleCell);
+    this._bodyEl.appendChild(headerEl);
+
+    // Render rows if not collapsed
+    if (!collapsed) {
+      // Sub-groups
+      if (group.subGroups && group.subGroups.length > 0) {
+        for (const sub of group.subGroups) {
+          this._renderGroup(sub);
+        }
+      } else {
+        for (const row of group.rows) {
+          this._renderRow(row);
+        }
+      }
     }
   }
 

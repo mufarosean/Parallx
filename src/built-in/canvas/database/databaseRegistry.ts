@@ -89,3 +89,19 @@ export { TableView } from './views/tableView.js';
 export type { OpenEditorFn } from './views/tableView.js';
 
 export { ViewTabBar } from './views/viewTabBar.js';
+
+export { BoardView } from './views/boardView.js';
+
+export { DatabaseToolbar } from './views/databaseToolbar.js';
+
+// ─── Filters ─────────────────────────────────────────────────────────────────
+
+export {
+  evaluateFilter,
+  applySorts,
+  groupRows,
+  applyViewDataPipeline,
+} from './filters/filterEngine.js';
+export type { IRowGroup } from './filters/filterEngine.js';
+
+export { FilterPanel } from './filters/filterUI.js';
