@@ -56,6 +56,10 @@ export class BlockHandlesController {
   // reused without re-resolution on interaction.
   private _resolvedBlockPos: number | null = null;
 
+  // The DOM element for the currently-resolved block, cached so the
+  // sticky-handle check can read its bounding rect without re-resolving.
+  private _resolvedBlockDom: HTMLElement | null = null;
+
   // Handle positioning constant — must match GlobalDragHandle's original value
   private static readonly _HANDLE_WIDTH = 24;
 
@@ -143,6 +147,7 @@ export class BlockHandlesController {
    */
   notifyDocChanged(): void {
     this._resolvedBlockPos = null;
+    this._resolvedBlockDom = null;
   }
 
   // ── Handle-area hover (keep + and ⠿ visible together) ──────────────────
@@ -216,6 +221,28 @@ export class BlockHandlesController {
       this._hideHandle();
       if (this._isColumnResizing()) this._actionMenu.hide();
       return;
+    }
+
+    // ── Sticky handle: if the handle is already visible for a block, keep
+    // it stable while the mouse is within the block's ownership zone
+    // (handle-left → block-right, block-top → block-bottom).  This prevents
+    // the handle from jumping or vanishing when the user moves toward it,
+    // especially in columns where the adjacent column's content is nearby. ──
+    if (
+      this._resolvedBlockPos != null &&
+      this._resolvedBlockDom &&
+      this._dragHandleEl && !this._dragHandleEl.classList.contains('hide')
+    ) {
+      const blockRect = this._resolvedBlockDom.getBoundingClientRect();
+      const handleLeft = blockRect.left - BlockHandlesController._HANDLE_WIDTH - 22;
+      if (
+        event.clientX >= handleLeft &&
+        event.clientX <= blockRect.right &&
+        event.clientY >= blockRect.top &&
+        event.clientY <= blockRect.bottom
+      ) {
+        return; // mouse still in current block's zone — keep handle stable
+      }
     }
 
     // ── Resolve block at mouse position ──
@@ -633,6 +660,7 @@ export class BlockHandlesController {
     this._blockAddBtn.classList.remove('hide');
 
     this._resolvedBlockPos = pos;
+    this._resolvedBlockDom = dom;
   }
 
   /** Hide both handle and + button, clear stored block position. */
@@ -640,6 +668,7 @@ export class BlockHandlesController {
     if (this._dragHandleEl) this._dragHandleEl.classList.add('hide');
     if (this._blockAddBtn) this._blockAddBtn.classList.add('hide');
     this._resolvedBlockPos = null;
+    this._resolvedBlockDom = null;
   }
 
   /**
