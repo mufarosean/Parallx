@@ -218,30 +218,8 @@ export class BlockHandlesController {
       return;
     }
 
-    // ── Approach-zone guard: when the handle is already visible and the
-    // mouse is to the left of the block but still in its vertical range,
-    // the user is moving toward the handle.  Skip re-resolution so the
-    // handle doesn't vanish in column-cell padding where posAtCoords
-    // resolves to the column wrapper (null).  ──
-    const view = editor.view;
-    if (
-      this._resolvedBlockPos != null &&
-      this._dragHandleEl && !this._dragHandleEl.classList.contains('hide')
-    ) {
-      const currentDom = view.nodeDOM(this._resolvedBlockPos) as HTMLElement | null;
-      if (currentDom && currentDom.nodeType === Node.ELEMENT_NODE) {
-        const blockRect = currentDom.getBoundingClientRect();
-        if (
-          event.clientX < blockRect.left &&
-          event.clientY >= blockRect.top &&
-          event.clientY <= blockRect.bottom
-        ) {
-          return; // keep current handle — user is approaching it
-        }
-      }
-    }
-
     // ── Resolve block at mouse position ──
+    const view = editor.view;
     const resolved = this._resolveBlockAtCoords(view, event.clientX, event.clientY);
     if (!resolved) {
       this._hideHandle();
