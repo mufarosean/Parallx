@@ -119,7 +119,7 @@ export class BlockHandlesController {
     // ── Editor-level event interception ──
     ec.addEventListener('mouseout', this._onEditorMouseOut, true);
     ec.addEventListener('mousemove', this._onEditorMouseMove, true);
-    ec.addEventListener('mouseleave', this._onEditorMouseLeave);
+    ec.addEventListener('mouseleave', this._onEditorMouseLeave, true);
     window.addEventListener('scroll', this._onScrollSync, true);
 
     // ── Hide handle on keydown/wheel (replaces library's ProseMirror plugin) ──
@@ -955,7 +955,7 @@ export class BlockHandlesController {
     }
     this._host.editorContainer?.removeEventListener('mouseout', this._onEditorMouseOut, true);
     this._host.editorContainer?.removeEventListener('mousemove', this._onEditorMouseMove, true);
-    this._host.editorContainer?.removeEventListener('mouseleave', this._onEditorMouseLeave);
+    this._host.editorContainer?.removeEventListener('mouseleave', this._onEditorMouseLeave, true);
     window.removeEventListener('scroll', this._onScrollSync, true);
     this._dragHandleEl?.removeEventListener('dragstart', this._onDragHandleDragStart);
     this._dragHandleEl?.removeEventListener('dragend', this._onDragHandleDragEnd);
