@@ -661,7 +661,7 @@
 
 .drag-handle {
   position: fixed;
-  opacity: 0;
+  opacity: 0.5;
   cursor: grab;
   width: 20px;
   height: 24px;
@@ -705,19 +705,13 @@
   opacity: 0 !important;
 }
 
-/* Show handle on hover over editor content */
-.canvas-tiptap-editor:hover ~ .drag-handle,
-.drag-handle:hover {
-  opacity: 0.5;
-}
-
 /* ─────────────────────────────────────────────────────────────────────────────
  * Block Add Button (+) — Notion-style add block button
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .block-add-btn {
   position: fixed;
-  opacity: 0;
+  opacity: 0.5;
   cursor: pointer;
   width: 20px;
   height: 24px;
@@ -740,11 +734,6 @@
 .block-add-btn.hide {
   opacity: 0 !important;
   pointer-events: none;
-}
-
-.canvas-tiptap-editor:hover ~ .block-add-btn,
-.block-add-btn:hover {
-  opacity: 0.5;
 }
 
 /* ── Handle area hover — keep both affordances visible together ── */

@@ -217,17 +217,13 @@ export class BlockHandlesController {
     if (!editor.view.dom.contains(target)) return;
     if (this._isIgnoredOverlayElement(target)) return;
     if (!editor.isEditable) return;
-    if (this._isResizeInteractionActive()) {
-      this._hideHandle();
-      if (this._isColumnResizing()) this._actionMenu.hide();
-      return;
-    }
 
     // ── Sticky handle: if the handle is already visible for a block, keep
     // it stable while the mouse is within the block's ownership zone
     // (handle-left → block-right, block-top → block-bottom).  This prevents
     // the handle from jumping or vanishing when the user moves toward it,
-    // especially in columns where the adjacent column's content is nearby. ──
+    // especially in columns where the path to the handle crosses the column
+    // resize boundary zone (which would otherwise trigger _hideHandle). ──
     if (
       this._resolvedBlockPos != null &&
       this._resolvedBlockDom &&
@@ -243,6 +239,12 @@ export class BlockHandlesController {
       ) {
         return; // mouse still in current block's zone — keep handle stable
       }
+    }
+
+    if (this._isResizeInteractionActive()) {
+      this._hideHandle();
+      if (this._isColumnResizing()) this._actionMenu.hide();
+      return;
     }
 
     // ── Resolve block at mouse position ──

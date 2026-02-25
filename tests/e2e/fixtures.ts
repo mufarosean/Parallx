@@ -135,6 +135,32 @@ export const sharedTest = base.extend<{}, SharedWorkerFixtures>({
 // ── Shared canvas helpers ───────────────────────────────────────────────────
 
 /**
+ * Click the sidebar + button and select "New Page" from the context menu
+ * (if a menu appears) or directly create the page (if no database service).
+ * Waits until a new `.canvas-node` appears in the tree.
+ */
+export async function clickNewPage(page: Page): Promise<void> {
+  const beforeCount = await page.locator('.canvas-node').count();
+  await page.locator('.canvas-sidebar-add-btn').click();
+
+  // If a context menu appeared (database service active), pick "New Page"
+  const ctxMenu = page.locator('.context-menu');
+  try {
+    await ctxMenu.waitFor({ state: 'visible', timeout: 1_000 });
+    const newPageItem = ctxMenu.locator('.context-menu-item', { hasText: 'New Page' });
+    await newPageItem.click({ timeout: 3_000 });
+  } catch {
+    // No menu — the page was created directly
+  }
+
+  await page.waitForFunction(
+    (prev) => document.querySelectorAll('.canvas-node').length > prev,
+    beforeCount,
+    { timeout: 10_000 },
+  );
+}
+
+/**
  * Set up a canvas page for testing.
  *
  * Idempotently opens the workspace folder and canvas sidebar, creates a
@@ -156,14 +182,8 @@ export async function setupCanvasPage(
   if (!cls?.includes('active')) await canvasBtn.click();
   await page.waitForSelector('.canvas-tree', { timeout: 10_000 });
 
-  // Create a new page (appended at end of tree with highest sort_order)
-  const beforeCount = await page.locator('.canvas-node').count();
-  await page.locator('.canvas-sidebar-add-btn').click();
-  await page.waitForFunction(
-    (prev) => document.querySelectorAll('.canvas-node').length > prev,
-    beforeCount,
-    { timeout: 10_000 },
-  );
+  // Create a new page — handles the database-service context menu
+  await clickNewPage(page);
 
   // Open the newly created page (last in sort order)
   await page.locator('.canvas-node').last().click();
