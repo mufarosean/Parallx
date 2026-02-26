@@ -31,6 +31,9 @@ const ICONS: Record<string, string> = {
   // ── Add / Plus ──
   'plus': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
 
+  // ── Info ──
+  'info': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.2"/><path d="M8 7V11.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="4.8" r="0.8" fill="currentColor"/></svg>',
+
   // ── Trash ──
   'trash': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 4H14M5.5 4V2.5H10.5V4M6 6.5V12M8 6.5V12M10 6.5V12M3.5 4L4.5 14H11.5L12.5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 

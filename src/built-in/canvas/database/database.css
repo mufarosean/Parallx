@@ -143,9 +143,9 @@
 .db-description-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 1px 6px;
-  margin: 4px 0 0 96px;
+  gap: 6px;
+  padding: 2px 8px;
+  margin: 6px 0 2px 96px;
   border: none;
   background: transparent;
   color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 0.45));
@@ -155,17 +155,21 @@
   border-radius: 3px;
   opacity: 0;
   transition: opacity 120ms ease;
+  width: fit-content;
 }
 
-/* Reveal on hover over the gap between cover and title */
+.db-description-toggle .canvas-svg-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Reveal only when cursor enters the gap between cover and title */
 .db-description-toggle:hover,
 .db-description-toggle:focus-visible {
   opacity: 1;
-}
-
-.db-description-toggle:hover {
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
-  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 0.7));
 }
 
 /* Description row sits between page header and shell */
