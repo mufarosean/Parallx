@@ -59,9 +59,11 @@ export class DatabaseEditorProvider {
    */
   createEditorPane(container: HTMLElement, input?: IEditorInput): IDisposable {
     const databaseId = input?.id ?? '';
+    const databaseName = input?.name ?? 'Database';
     const pane = new DatabaseEditorPane(
       container,
       databaseId,
+      databaseName,
       this._dataService,
       this._openEditor,
     );
@@ -101,6 +103,7 @@ class DatabaseEditorPane extends Disposable {
   constructor(
     private readonly _container: HTMLElement,
     private readonly _databaseId: string,
+    private readonly _databaseName: string,
     private readonly _dataService: IDatabaseDataService,
     private readonly _openEditor: OpenEditorFn | undefined,
   ) {
@@ -113,6 +116,17 @@ class DatabaseEditorPane extends Disposable {
     // Build layout skeleton
     this._wrapper = $('div.database-editor');
     this._container.appendChild(this._wrapper);
+
+    const pageHeader = $('div.database-editor-page-header');
+    const pageTitleRow = $('div.database-editor-page-title-row');
+    const pageIcon = $('span.database-editor-page-icon');
+    pageIcon.textContent = '🗂️';
+    const pageTitle = $('h1.database-editor-page-title');
+    pageTitle.textContent = this._databaseName;
+    pageTitleRow.appendChild(pageIcon);
+    pageTitleRow.appendChild(pageTitle);
+    pageHeader.appendChild(pageTitleRow);
+    this._wrapper.appendChild(pageHeader);
 
     this._toolbarContainer = $('div.database-editor-toolbar');
     this._wrapper.appendChild(this._toolbarContainer);
@@ -340,6 +354,9 @@ class DatabaseEditorPane extends Disposable {
       this._toolbarButtonsContainer,
       view,
       this._properties,
+      undefined,
+      undefined,
+      'label',
     );
     this._toolbarDisposables.add(this._toolbar);
 

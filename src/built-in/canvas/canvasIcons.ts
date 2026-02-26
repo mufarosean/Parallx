@@ -76,6 +76,14 @@ const ICONS: Record<string, string> = {
   // ── Search ──
   'search': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.2"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
 
+  // ── Database toolbar icons ──
+  'db-filter': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 3.5H14M4.5 8H11.5M6.5 12.5H9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  'db-sort': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 3V13M5 13L2.8 10.8M5 13L7.2 10.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 13V3M11 3L8.8 5.2M11 3L13.2 5.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  'db-group': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="3" width="5" height="4" rx="0.8" stroke="currentColor" stroke-width="1.2"/><rect x="9" y="3" width="5" height="4" rx="0.8" stroke="currentColor" stroke-width="1.2"/><rect x="2" y="9" width="12" height="4" rx="0.8" stroke="currentColor" stroke-width="1.2"/></svg>',
+  'db-settings': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 4.5H13M3 8H13M3 11.5H13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="5" cy="4.5" r="1.3" fill="currentColor"/><circle cx="10.5" cy="8" r="1.3" fill="currentColor"/><circle cx="7" cy="11.5" r="1.3" fill="currentColor"/></svg>',
+  'db-collapse': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.8 4L6.8 8L9.8 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.2 4L3.2 8L6.2 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  'db-expand': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.2 4L9.2 8L6.2 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.8 4L12.8 8L9.8 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
   // ── Open / Arrow ──
   'open': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 3H3V13H13V10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 1H15V8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 1L7 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
 

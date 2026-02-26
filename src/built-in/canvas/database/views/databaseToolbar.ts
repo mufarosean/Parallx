@@ -23,6 +23,16 @@ import { FilterPanel } from '../databaseRegistry.js';
 
 const SORT_DIR_LABELS = { ascending: '↑ Ascending', descending: '↓ Descending' };
 
+export interface IDatabaseToolbarIcons {
+  readonly filter?: string;
+  readonly sort?: string;
+  readonly group?: string;
+  readonly search?: string;
+  readonly settings?: string;
+}
+
+export type DatabaseToolbarPresentation = 'icon' | 'label';
+
 // ─── DatabaseToolbar ─────────────────────────────────────────────────────────
 
 export class DatabaseToolbar extends Disposable {
@@ -37,6 +47,8 @@ export class DatabaseToolbar extends Disposable {
   // ── Data ──
   private _view: IDatabaseView;
   private _properties: IDatabaseProperty[];
+  private readonly _icons: IDatabaseToolbarIcons;
+  private readonly _presentation: DatabaseToolbarPresentation;
 
   // ── Events ──
   private readonly _onDidUpdateView = this._register(new Emitter<ViewUpdateData>());
@@ -49,16 +61,21 @@ export class DatabaseToolbar extends Disposable {
     container: HTMLElement,
     view: IDatabaseView,
     properties: IDatabaseProperty[],
+    panelContainerTarget?: HTMLElement,
+    icons?: IDatabaseToolbarIcons,
+    presentation: DatabaseToolbarPresentation = 'label',
   ) {
     super();
     this._view = view;
     this._properties = properties;
+    this._icons = icons ?? {};
+    this._presentation = presentation;
 
     this._wrapper = $('div.db-toolbar');
     container.appendChild(this._wrapper);
 
     this._panelContainer = $('div.db-toolbar-panel-container');
-    container.appendChild(this._panelContainer);
+    (panelContainerTarget ?? container).appendChild(this._panelContainer);
 
     this._renderButtons();
   }
@@ -75,53 +92,85 @@ export class DatabaseToolbar extends Disposable {
     this._renderButtons();
   }
 
+  setCollapsed(collapsed: boolean): void {
+    this._wrapper.classList.toggle('db-toolbar--collapsed', collapsed);
+  }
+
   // ─── Button Strip ────────────────────────────────────────────────────
 
   private _renderButtons(): void {
     this._renderDisposables.clear();
     clearNode(this._wrapper);
 
+    const useLabels = this._presentation === 'label';
+
+    const createButton = (
+      iconMarkup: string,
+      label: string,
+      isActive: boolean,
+      isOpen: boolean,
+      onClick: () => void,
+      count?: number,
+    ): HTMLButtonElement => {
+      const kindClass = useLabels ? 'db-toolbar-text-btn' : 'db-toolbar-icon-btn';
+      const button = $(`button.db-toolbar-btn.${kindClass}`) as HTMLButtonElement;
+      button.title = count && count > 0 ? `${label} (${count})` : label;
+      button.setAttribute('aria-label', button.title);
+
+      const iconEl = $('span.db-toolbar-btn-icon');
+      iconEl.innerHTML = iconMarkup;
+      button.appendChild(iconEl);
+
+      if (useLabels) {
+        const labelEl = $('span.db-toolbar-btn-label');
+        labelEl.textContent = label;
+        button.appendChild(labelEl);
+      }
+
+      if (typeof count === 'number' && count > 0) {
+        const badge = $('span.db-toolbar-btn-badge');
+        badge.textContent = String(count);
+        button.appendChild(badge);
+      }
+
+      if (isActive) button.classList.add('db-toolbar-btn--active');
+      if (isOpen) button.classList.add('db-toolbar-btn--open');
+
+      this._renderDisposables.add(addDisposableListener(button, 'click', onClick));
+      return button;
+    };
+
     // Filter button
     const filterCount = this._view.filterConfig?.rules?.length ?? 0;
-    const filterBtn = $('button.db-toolbar-btn');
-    filterBtn.textContent = filterCount > 0 ? `Filter (${filterCount})` : 'Filter';
-    if (filterCount > 0) filterBtn.classList.add('db-toolbar-btn--active');
-    if (this._activePanel === 'filter') filterBtn.classList.add('db-toolbar-btn--open');
-    this._renderDisposables.add(addDisposableListener(filterBtn, 'click', () => {
+    const filterBtn = createButton(this._icons.filter ?? '≡', 'Filter', filterCount > 0, this._activePanel === 'filter', () => {
       this._togglePanel('filter');
-    }));
+    }, filterCount);
     this._wrapper.appendChild(filterBtn);
 
     // Sort button
     const sortCount = this._view.sortConfig?.length ?? 0;
-    const sortBtn = $('button.db-toolbar-btn');
-    sortBtn.textContent = sortCount > 0 ? `Sort (${sortCount})` : 'Sort';
-    if (sortCount > 0) sortBtn.classList.add('db-toolbar-btn--active');
-    if (this._activePanel === 'sort') sortBtn.classList.add('db-toolbar-btn--open');
-    this._renderDisposables.add(addDisposableListener(sortBtn, 'click', () => {
+    const sortBtn = createButton(this._icons.sort ?? '↕', 'Sort', sortCount > 0, this._activePanel === 'sort', () => {
       this._togglePanel('sort');
-    }));
+    }, sortCount);
     this._wrapper.appendChild(sortBtn);
 
     // Group button
     const groupBy = this._view.groupBy;
     const groupProp = groupBy ? this._properties.find(p => p.id === groupBy) : null;
-    const groupBtn = $('button.db-toolbar-btn');
-    groupBtn.textContent = groupProp ? `Group: ${groupProp.name}` : 'Group';
-    if (groupProp) groupBtn.classList.add('db-toolbar-btn--active');
-    if (this._activePanel === 'group') groupBtn.classList.add('db-toolbar-btn--open');
-    this._renderDisposables.add(addDisposableListener(groupBtn, 'click', () => {
+    const groupBtn = createButton(this._icons.group ?? '⚡', 'Group', !!groupProp, this._activePanel === 'group', () => {
       this._togglePanel('group');
-    }));
+    });
     this._wrapper.appendChild(groupBtn);
 
+    const searchBtn = createButton(this._icons.search ?? '⌕', 'Search', false, false, () => {
+      // Search UI to be wired in a future slice.
+    });
+    this._wrapper.appendChild(searchBtn);
+
     // Properties button
-    const propsBtn = $('button.db-toolbar-btn');
-    propsBtn.textContent = 'Properties';
-    if (this._activePanel === 'properties') propsBtn.classList.add('db-toolbar-btn--open');
-    this._renderDisposables.add(addDisposableListener(propsBtn, 'click', () => {
+    const propsBtn = createButton(this._icons.settings ?? '⚙', 'Properties', false, this._activePanel === 'properties', () => {
       this._togglePanel('properties');
-    }));
+    });
     this._wrapper.appendChild(propsBtn);
 
     // Spacer to push New button to the right
@@ -130,7 +179,7 @@ export class DatabaseToolbar extends Disposable {
 
     // New button — primary action
     const newBtn = $('button.db-toolbar-new-btn');
-    newBtn.textContent = 'New';
+    newBtn.textContent = 'New ▾';
     this._renderDisposables.add(addDisposableListener(newBtn, 'click', () => {
       this._onDidRequestNewRow.fire();
     }));

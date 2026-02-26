@@ -19,6 +19,33 @@
   background: var(--vscode-editor-background);
   color: var(--vscode-foreground);
   overflow: hidden;
+  padding: 18px 28px 0;
+  box-sizing: border-box;
+}
+
+.database-editor-page-header {
+  flex-shrink: 0;
+  margin-bottom: 10px;
+}
+
+.database-editor-page-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.database-editor-page-icon {
+  font-size: 24px;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+.database-editor-page-title {
+  margin: 0;
+  font-size: 44px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .database-editor-toolbar {
@@ -40,7 +67,44 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .database-view-tabs {
+  padding: 0;
+}
+
+.database-editor .database-view-tabs .ui-tab-bar {
+  height: 30px;
+  min-height: 30px;
+  background: transparent;
+}
+
+.database-editor .database-view-tabs .ui-tab-bar-tabs::after,
+.database-editor .database-view-tabs .ui-tab,
+.database-editor .database-view-tabs .ui-tab-bar-actions {
+  border: none;
+}
+
+.database-editor .database-view-tabs .ui-tab {
+  background: transparent;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
   padding: 0 8px;
+  gap: 2px;
+  max-width: none;
+}
+
+.database-editor .database-view-tabs .ui-tab:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+}
+
+.database-editor .database-view-tabs .ui-tab--active {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  color: var(--vscode-foreground);
+}
+
+.database-editor .database-view-tabs .ui-tab-icon {
+  font-size: 11px;
+  opacity: 0.8;
 }
 
 .database-view-add-btn {
@@ -71,8 +135,11 @@
   display: flex;
   flex-direction: column;
   min-width: 100%;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.35;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.06));
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
@@ -83,7 +150,7 @@
   top: 0;
   z-index: 2;
   background: var(--vscode-editor-background);
-  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.08));
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.07));
   user-select: none;
 }
 
@@ -91,16 +158,17 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   padding: 0 8px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  height: 34px;
+  height: 30px;
+  border-right: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.05));
 }
 
 .db-table-header-cell:hover {
@@ -109,8 +177,8 @@
 
 .db-table-header-icon {
   flex-shrink: 0;
-  font-size: 14px;
-  opacity: 0.55;
+  font-size: 12px;
+  opacity: 0.5;
 }
 
 .db-table-header-label {
@@ -121,13 +189,14 @@
 .db-table-header-add {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 4px;
   color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
-  font-size: 14px;
+  font-size: 12px;
   cursor: pointer;
-  padding: 0 8px;
-  height: 34px;
+  padding: 0 10px;
+  height: 30px;
+  white-space: nowrap;
 }
 
 .db-table-header-add:hover {
@@ -168,8 +237,8 @@
 
 .db-table-row {
   display: grid;
-  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.06));
-  min-height: 36px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.05));
+  min-height: 32px;
   transition: background 0.06s ease;
 }
 
@@ -180,16 +249,18 @@
 .db-table-cell {
   display: flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: 3px 8px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   cursor: default;
-  min-height: 36px;
+  min-height: 32px;
+  border-right: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.04));
 }
 
 .db-table-cell--spacer {
   min-width: 0;
+  border-right: none;
 }
 
 /* ── Footer ──────────────────────────────────────────────────────────────── */
@@ -230,10 +301,18 @@
   font-weight: 500;
   cursor: pointer;
   color: var(--vscode-foreground);
+  font-size: 13px;
+}
+
+.db-cell-page-icon {
+  margin-right: 6px;
+  font-size: 13px;
+  opacity: 0.72;
+  line-height: 1;
 }
 
 .db-cell-title:hover {
-  text-decoration: underline;
+  text-decoration: none;
 }
 
 /* ── Text ────────────────────────────────────────────────────────────────── */
@@ -285,10 +364,10 @@
 .db-cell-pill {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  line-height: 1.5;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 1.4;
   white-space: nowrap;
   max-width: 150px;
   overflow: hidden;
@@ -535,26 +614,75 @@
 .db-toolbar {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 2px;
-  padding: 2px 8px;
+  padding: 0 0 6px;
   background: var(--vscode-editor-background);
-  min-height: 32px;
+  min-height: 28px;
 }
 
 .db-toolbar-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+  gap: 0;
+  padding: 4px;
   border: none;
   border-radius: 4px;
   background: transparent;
   color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
-  height: 28px;
+  min-width: 24px;
+  height: 24px;
   transition: background 0.1s;
+}
+
+.db-toolbar-icon-btn {
+  position: relative;
+}
+
+.db-toolbar-text-btn {
+  gap: 6px;
+  min-width: auto;
+  padding: 3px 8px;
+}
+
+.db-toolbar-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  line-height: 1;
+}
+
+.db-toolbar-text-btn .db-toolbar-btn-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.db-toolbar-btn-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.db-toolbar-btn-label {
+  line-height: 1;
+}
+
+.db-toolbar-btn-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--vscode-badge-background, var(--vscode-focusBorder, #2383e2));
+  color: var(--vscode-badge-foreground, #fff);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
 }
 
 .db-toolbar-btn:hover {
@@ -581,16 +709,16 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 12px;
+  padding: 0 10px;
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--vscode-button-background, #2383e2);
   color: var(--vscode-button-foreground, #fff);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  height: 28px;
+  height: 24px;
   transition: background 0.12s;
 }
 
@@ -1838,32 +1966,36 @@
 .db-inline-header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 4px 0;
-  min-height: 32px;
+  gap: 10px;
+  padding: 4px 0 2px;
+  min-height: 52px;
 }
 
 .db-inline-title {
-  font-size: 16px;
+  font-size: 40px;
   font-weight: 600;
   color: var(--vscode-foreground);
-  padding: 0 4px;
+  padding: 0;
   flex-shrink: 0;
   cursor: text;
   border: none;
   background: transparent;
   outline: none;
-  line-height: 1.4;
+  line-height: 1.15;
+  min-width: 260px;
 }
 
 .db-inline-title:hover {
   color: var(--vscode-foreground);
 }
 
+.db-inline-title:focus {
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #2383e2);
+}
+
 .db-inline-tab-bar {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
+  display: none;
 }
 
 .db-inline-header-actions {
@@ -1871,7 +2003,7 @@
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
-  margin-left: auto;
+  margin-left: 4px;
 }
 
 .db-inline-action-btn {
@@ -1926,8 +2058,50 @@
 /* ── Inline Toolbar ──────────────────────────────────────────────────────── */
 
 .db-inline-toolbar {
-  padding: 0 4px;
-  min-height: 0;
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  min-width: 0;
+}
+
+.db-inline-toolbar .db-toolbar {
+  justify-content: flex-start;
+  gap: 3px;
+  padding: 0;
+  min-height: 30px;
+}
+
+.db-inline-toolbar .db-toolbar-text-btn {
+  padding: 4px;
+  min-width: 24px;
+}
+
+.db-inline-toolbar .db-toolbar-btn-label {
+  display: none;
+}
+
+.db-inline-toolbar .db-toolbar-spacer {
+  display: none;
+}
+
+.db-inline-toolbar .db-toolbar-new-btn {
+  margin-left: 4px;
+}
+
+.db-inline-toolbar-panels {
+  width: 100%;
+}
+
+.db-inline-toolbar-toggle {
+  transition: transform 0.12s ease;
+}
+
+.db-inline-toolbar-toggle--collapsed {
+  transform: none;
+}
+
+.db-toolbar--collapsed {
+  display: none;
 }
 
 .db-inline-toolbar:empty {

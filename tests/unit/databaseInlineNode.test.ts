@@ -277,7 +277,7 @@ describe('InsertAction — databaseInline', () => {
       range,
       expect.objectContaining({
         type: 'databaseInline',
-        attrs: { databaseId: 'new-page' },
+        attrs: expect.objectContaining({ databaseId: 'new-page' }),
       }),
     );
     expect(mockDataService.flushContentSave).toHaveBeenCalled();

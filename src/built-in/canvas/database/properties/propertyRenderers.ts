@@ -58,6 +58,9 @@ export function renderTitle(value: IPropertyValue | undefined, container: HTMLEl
   if (!value || value.type !== 'title') { renderEmpty(container); return; }
   const text = richTextToPlainText(value.title);
   if (!text) { renderEmpty(container); return; }
+  const icon = $('span.db-cell-page-icon');
+  icon.textContent = '📄';
+  container.appendChild(icon);
   const span = $('span.db-cell-title');
   span.textContent = text;
   container.appendChild(span);

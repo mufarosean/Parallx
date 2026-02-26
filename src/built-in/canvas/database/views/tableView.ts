@@ -123,7 +123,7 @@ export class TableView extends Disposable {
 
       // Name label
       const label = $('span.db-table-header-label');
-      label.textContent = prop.name;
+      label.textContent = prop.type === 'title' && prop.name === 'Title' ? 'Name' : prop.name;
       cell.appendChild(label);
 
       // Sort indicator arrow (if this property has an active sort rule)
@@ -154,9 +154,9 @@ export class TableView extends Disposable {
       this._headerRow.appendChild(cell);
     }
 
-    // "+" add-column button
+    // "+ Add property" add-column button
     const addCol = $('div.db-table-header-add');
-    addCol.textContent = '+';
+    addCol.textContent = '+ Add property';
     addCol.title = 'Add a property';
     this._renderDisposables.add(addDisposableListener(addCol, 'click', () => {
       showPropertyAddMenu(addCol, this._dataService, this._databaseId);
@@ -424,8 +424,8 @@ export class TableView extends Disposable {
     const columns = this._properties.map(
       prop => `${this._columnWidths[prop.id] ?? 200}px`,
     );
-    // Add space for the "+" add-column button
-    columns.push('40px');
+    // Add space for the "+ Add property" button
+    columns.push('190px');
 
     const template = columns.join(' ');
     this._headerRow.style.gridTemplateColumns = template;

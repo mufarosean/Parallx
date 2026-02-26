@@ -872,7 +872,7 @@ const definitions: BlockDefinition[] = [
           .chain()
           .insertContentAt(range, {
             type: 'databaseInline',
-            attrs: { databaseId: childPage.id },
+            attrs: { databaseId: childPage.id, databaseTitle: childPage.title },
           })
           .focus()
           .run();
@@ -927,7 +927,7 @@ const definitions: BlockDefinition[] = [
           .chain()
           .insertContentAt(range, {
             type: 'databaseInline',
-            attrs: { databaseId: childPage.id },
+            attrs: { databaseId: childPage.id, databaseTitle: childPage.title },
           })
           .focus()
           .run();

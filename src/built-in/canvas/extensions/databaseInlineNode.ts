@@ -56,6 +56,7 @@ class DatabaseInlineNodeView {
   readonly dom: HTMLElement;
   private _contentDom: HTMLElement | null = null;
   private _databaseId: string;
+  private _databaseTitle: string;
   private _activeViewId: string | null = null;
   private _views: IDatabaseView[] = [];
   private _properties: IDatabaseProperty[] = [];
@@ -63,15 +64,18 @@ class DatabaseInlineNodeView {
   private _activeView: IManagedView | null = null;
   private _viewTabBar: ViewTabBar | null = null;
   private _toolbar: DatabaseToolbar | null = null;
+  private _toolbarCollapsed = false;
   private _disposed = false;
   private readonly _disposables: Array<{ dispose(): void }> = [];
 
   constructor(
-    _node: ProseMirrorNode,
+    node: ProseMirrorNode,
     private readonly _dataService: IDatabaseDataService,
+    private readonly _updateNodeAttrs?: (attrs: Record<string, unknown>) => void,
     private readonly _openEditor?: OpenEditorFn,
   ) {
-    this._databaseId = _node.attrs.databaseId as string;
+    this._databaseId = node.attrs.databaseId as string;
+    this._databaseTitle = (node.attrs.databaseTitle as string | undefined) ?? 'New database';
 
     // Build DOM structure
     this.dom = document.createElement('div');
@@ -86,8 +90,30 @@ class DatabaseInlineNodeView {
     // Database title
     const titleEl = document.createElement('span');
     titleEl.classList.add('db-inline-title');
-    titleEl.textContent = 'Database';
+    titleEl.textContent = this._databaseTitle;
+    titleEl.contentEditable = 'true';
+    titleEl.spellcheck = false;
+    titleEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        titleEl.blur();
+      }
+    });
+    titleEl.addEventListener('blur', () => {
+      const nextTitle = (titleEl.textContent ?? '').trim() || 'New database';
+      titleEl.textContent = nextTitle;
+      if (nextTitle === this._databaseTitle) {
+        return;
+      }
+      this._databaseTitle = nextTitle;
+      this._updateNodeAttrs?.({ databaseTitle: nextTitle });
+    });
     header.appendChild(titleEl);
+
+    // Toolbar container (icons next to title)
+    const toolbarContainer = document.createElement('div');
+    toolbarContainer.classList.add('db-inline-toolbar');
+    header.appendChild(toolbarContainer);
 
     // Tab bar container
     const tabBarContainer = document.createElement('div');
@@ -99,21 +125,36 @@ class DatabaseInlineNodeView {
     headerActions.classList.add('db-inline-header-actions');
     header.appendChild(headerActions);
 
+    // Collapse/expand toolbar icons
+    const toolbarToggleBtn = document.createElement('button');
+    toolbarToggleBtn.classList.add('db-inline-action-btn', 'db-inline-toolbar-toggle');
+    toolbarToggleBtn.title = 'Hide toolbar actions';
+    toolbarToggleBtn.innerHTML = svgIcon('db-collapse');
+    toolbarToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._toolbarCollapsed = !this._toolbarCollapsed;
+      toolbarToggleBtn.classList.toggle('db-inline-toolbar-toggle--collapsed', this._toolbarCollapsed);
+      toolbarToggleBtn.title = this._toolbarCollapsed ? 'Show toolbar actions' : 'Hide toolbar actions';
+      toolbarToggleBtn.innerHTML = this._toolbarCollapsed ? svgIcon('db-expand') : svgIcon('db-collapse');
+      this._toolbar?.setCollapsed(this._toolbarCollapsed);
+    });
+    headerActions.appendChild(toolbarToggleBtn);
+
     // Open full-page button
     const expandBtn = document.createElement('button');
     expandBtn.classList.add('db-inline-expand-btn');
     expandBtn.title = 'Open as full page';
-    expandBtn.innerHTML = svgIcon('expand');
+    expandBtn.innerHTML = svgIcon('open');
     expandBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._openFullPage();
     });
     headerActions.appendChild(expandBtn);
 
-    // Toolbar container
-    const toolbarContainer = document.createElement('div');
-    toolbarContainer.classList.add('db-inline-toolbar');
-    this.dom.appendChild(toolbarContainer);
+    // Toolbar panel container
+    const toolbarPanelContainer = document.createElement('div');
+    toolbarPanelContainer.classList.add('db-inline-toolbar-panels');
+    this.dom.appendChild(toolbarPanelContainer);
 
     // Content area
     this._contentDom = document.createElement('div');
@@ -127,7 +168,7 @@ class DatabaseInlineNodeView {
     this._setupResize(resizeHandle);
 
     // Load data
-    this._loadDatabase(tabBarContainer, toolbarContainer);
+    this._loadDatabase(tabBarContainer, toolbarContainer, toolbarPanelContainer);
   }
 
   /** Prevent ProseMirror from handling events inside the NodeView. */
@@ -147,9 +188,17 @@ class DatabaseInlineNodeView {
   update(node: ProseMirrorNode): boolean {
     if (node.type.name !== 'databaseInline') return false;
     const newDbId = node.attrs.databaseId as string;
+    const newTitle = (node.attrs.databaseTitle as string | undefined) ?? 'New database';
     if (newDbId !== this._databaseId) {
       this._databaseId = newDbId;
       this._reloadAll();
+    }
+    if (newTitle !== this._databaseTitle) {
+      this._databaseTitle = newTitle;
+      const titleEl = this.dom.querySelector('.db-inline-title');
+      if (titleEl) {
+        titleEl.textContent = this._databaseTitle;
+      }
     }
     return true;
   }
@@ -171,6 +220,7 @@ class DatabaseInlineNodeView {
   private async _loadDatabase(
     tabBarContainer: HTMLElement,
     toolbarContainer: HTMLElement,
+    toolbarPanelContainer: HTMLElement,
   ): Promise<void> {
     try {
       const db = await this._dataService.getDatabase(this._databaseId);
@@ -194,7 +244,7 @@ class DatabaseInlineNodeView {
 
       this._disposables.push(
         this._viewTabBar.onDidSelectView((viewId) => {
-          this._switchView(viewId, toolbarContainer);
+          this._switchView(viewId, toolbarContainer, toolbarPanelContainer);
         }),
       );
 
@@ -202,7 +252,7 @@ class DatabaseInlineNodeView {
         this._viewTabBar.onDidCreateView((newView) => {
           this._views.push(newView);
           this._viewTabBar?.setViews(this._views);
-          this._switchView(newView.id, toolbarContainer);
+          this._switchView(newView.id, toolbarContainer, toolbarPanelContainer);
         }),
       );
 
@@ -224,13 +274,13 @@ class DatabaseInlineNodeView {
       this._disposables.push(
         this._dataService.onDidChangeView((event) => {
           if (event.databaseId !== this._databaseId) return;
-          this._reloadViews(toolbarContainer);
+          this._reloadViews(toolbarContainer, toolbarPanelContainer);
         }),
       );
 
       // Activate first view
       if (this._views.length > 0) {
-        this._switchView(this._views[0].id, toolbarContainer);
+        this._switchView(this._views[0].id, toolbarContainer, toolbarPanelContainer);
       }
     } catch (err) {
       console.error('[DatabaseInlineNode] Failed to load database:', err);
@@ -243,10 +293,14 @@ class DatabaseInlineNodeView {
 
   // ── View Switching ──────────────────────────────────────────────────
 
-  private _switchView(viewId: string, toolbarContainer: HTMLElement): void {
+  private _switchView(
+    viewId: string,
+    toolbarContainer: HTMLElement,
+    toolbarPanelContainer: HTMLElement,
+  ): void {
     this._activeViewId = viewId;
     this._viewTabBar?.setActive(viewId);
-    this._updateToolbar(toolbarContainer);
+    this._updateToolbar(toolbarContainer, toolbarPanelContainer);
     this._renderActiveView();
   }
 
@@ -321,7 +375,7 @@ class DatabaseInlineNodeView {
 
   // ── Toolbar ─────────────────────────────────────────────────────────
 
-  private _updateToolbar(toolbarContainer: HTMLElement): void {
+  private _updateToolbar(toolbarContainer: HTMLElement, toolbarPanelContainer: HTMLElement): void {
     this._toolbar?.dispose();
     this._toolbar = null;
 
@@ -329,7 +383,22 @@ class DatabaseInlineNodeView {
     if (!view) return;
 
     toolbarContainer.innerHTML = '';
-    this._toolbar = new DatabaseToolbar(toolbarContainer, view, this._properties);
+    toolbarPanelContainer.innerHTML = '';
+    this._toolbar = new DatabaseToolbar(
+      toolbarContainer,
+      view,
+      this._properties,
+      toolbarPanelContainer,
+      {
+        filter: svgIcon('db-filter'),
+        sort: svgIcon('db-sort'),
+        group: svgIcon('db-group'),
+        search: svgIcon('search'),
+        settings: svgIcon('db-settings'),
+      },
+      'icon',
+    );
+    this._toolbar.setCollapsed(this._toolbarCollapsed);
 
     this._disposables.push(
       this._toolbar.onDidUpdateView(async (updates) => {
@@ -407,12 +476,12 @@ class DatabaseInlineNodeView {
     }
   }
 
-  private async _reloadViews(toolbarContainer?: HTMLElement): Promise<void> {
+  private async _reloadViews(toolbarContainer?: HTMLElement, toolbarPanelContainer?: HTMLElement): Promise<void> {
     try {
       this._views = await this._dataService.getViews(this._databaseId);
       this._viewTabBar?.setViews(this._views);
-      if (this._activeViewId && toolbarContainer) {
-        this._switchView(this._activeViewId, toolbarContainer);
+      if (this._activeViewId && toolbarContainer && toolbarPanelContainer) {
+        this._switchView(this._activeViewId, toolbarContainer, toolbarPanelContainer);
       }
     } catch (err) {
       console.error('[DatabaseInlineNode] Failed to reload views:', err);
@@ -422,16 +491,18 @@ class DatabaseInlineNodeView {
   private async _reloadAll(): Promise<void> {
     const tabBarContainer = this.dom.querySelector('.db-inline-tab-bar') as HTMLElement;
     const toolbarContainer = this.dom.querySelector('.db-inline-toolbar') as HTMLElement;
-    if (tabBarContainer && toolbarContainer) {
+    const toolbarPanelContainer = this.dom.querySelector('.db-inline-toolbar-panels') as HTMLElement;
+    if (tabBarContainer && toolbarContainer && toolbarPanelContainer) {
       tabBarContainer.innerHTML = '';
       toolbarContainer.innerHTML = '';
+      toolbarPanelContainer.innerHTML = '';
       this._viewTabBar?.dispose();
       this._viewTabBar = null;
       this._toolbar?.dispose();
       this._toolbar = null;
       this._activeView?.dispose();
       this._activeView = null;
-      await this._loadDatabase(tabBarContainer, toolbarContainer);
+      await this._loadDatabase(tabBarContainer, toolbarContainer, toolbarPanelContainer);
     }
   }
 
@@ -500,6 +571,11 @@ export const DatabaseInline = Node.create<DatabaseInlineOptions>({
         parseHTML: (el) => el.getAttribute('data-database-id'),
         renderHTML: (attrs) => ({ 'data-database-id': attrs.databaseId }),
       },
+      databaseTitle: {
+        default: 'New database',
+        parseHTML: (el) => el.getAttribute('data-database-title') ?? 'New database',
+        renderHTML: (attrs) => ({ 'data-database-title': attrs.databaseTitle ?? 'New database' }),
+      },
       viewId: {
         default: null,
         parseHTML: (el) => el.getAttribute('data-view-id'),
@@ -517,7 +593,7 @@ export const DatabaseInline = Node.create<DatabaseInlineOptions>({
   },
 
   addNodeView() {
-    return ({ node }) => {
+    return ({ node, getPos, editor }) => {
       const dataService = this.options.databaseDataService;
       if (!dataService) {
         const dom = document.createElement('div');
@@ -525,7 +601,19 @@ export const DatabaseInline = Node.create<DatabaseInlineOptions>({
         dom.textContent = 'Inline database: no data service available.';
         return { dom };
       }
-      return new DatabaseInlineNodeView(node, dataService, this.options.openEditor);
+      const updateNodeAttrs = (attrs: Record<string, unknown>) => {
+        const pos = typeof getPos === 'function' ? getPos() : null;
+        if (typeof pos !== 'number') return;
+
+        const currentNode = editor.state.doc.nodeAt(pos);
+        if (!currentNode) return;
+
+        const nextAttrs = { ...currentNode.attrs, ...attrs };
+        const tr = editor.state.tr.setNodeMarkup(pos, undefined, nextAttrs);
+        editor.view.dispatch(tr);
+      };
+
+      return new DatabaseInlineNodeView(node, dataService, updateNodeAttrs, this.options.openEditor);
     };
   },
 });

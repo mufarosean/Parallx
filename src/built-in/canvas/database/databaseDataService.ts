@@ -209,7 +209,7 @@ export class DatabaseDataService extends Disposable implements IDatabaseDataServ
     const titlePropertyId = crypto.randomUUID();
     const defaultViewId = crypto.randomUUID();
 
-    // Transaction: create database + default "Title" property + default "Table" view
+    // Transaction: create database + default "Name" property + default "Table" view
     const result = await this._db.runTransaction([
       {
         type: 'run',
@@ -219,7 +219,7 @@ export class DatabaseDataService extends Disposable implements IDatabaseDataServ
       {
         type: 'run',
         sql: `INSERT INTO database_properties (id, database_id, name, type, sort_order)
-              VALUES (?, ?, 'Title', 'title', 0)`,
+              VALUES (?, ?, 'Name', 'title', 0)`,
         params: [titlePropertyId, pageId],
       },
       {
