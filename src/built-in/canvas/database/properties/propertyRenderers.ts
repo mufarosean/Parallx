@@ -18,6 +18,7 @@ import type {
   INumberPropertyConfig,
   IStatusPropertyConfig,
   IRichTextSegment,
+  IRollupResult,
 } from '../databaseRegistry.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -267,6 +268,111 @@ export function renderUniqueId(value: IPropertyValue | undefined, container: HTM
   container.appendChild(span);
 }
 
+// ─── Relation Renderer ───────────────────────────────────────────────────────
+
+/**
+ * Render a relation property value as a list of clickable page title pills.
+ *
+ * The relation value stores `{ id }[]` — in a real view with data service
+ * context, these are resolved to page titles by the view. Here we render using
+ * pre-resolved titles passed via the `resolvedTitles` map on the container's
+ * dataset, or fall back to page IDs.
+ */
+export function renderRelation(
+  value: IPropertyValue | undefined,
+  container: HTMLElement,
+  resolvedTitles?: ReadonlyMap<string, string>,
+): void {
+  if (!value || value.type !== 'relation' || value.relation.length === 0) {
+    renderEmpty(container);
+    return;
+  }
+
+  const wrapper = $('span.db-cell-relation');
+  for (const ref of value.relation) {
+    const pill = $('span.db-cell-relation-pill');
+    pill.textContent = resolvedTitles?.get(ref.id) ?? ref.id.slice(0, 8);
+    pill.dataset.pageId = ref.id;
+    pill.title = resolvedTitles?.get(ref.id) ?? ref.id;
+    wrapper.appendChild(pill);
+  }
+  container.appendChild(wrapper);
+}
+
+// ─── Rollup Renderer ─────────────────────────────────────────────────────────
+
+/**
+ * Render a rollup property value based on its computed result type.
+ *
+ * The rollup value in storage is `{ type: 'rollup', rollup: { type, ... } }`.
+ * This renderer dispatches based on the rollup's output type.
+ */
+export function renderRollup(
+  value: IPropertyValue | undefined,
+  container: HTMLElement,
+  rollupResult?: IRollupResult,
+): void {
+  // Prefer the live-computed result if available
+  const result = rollupResult ?? _rollupValueToResult(value);
+  if (!result) { renderEmpty(container); return; }
+
+  const span = $('span.db-cell-rollup');
+
+  switch (result.type) {
+    case 'number':
+      span.textContent = result.value != null ? _formatNumber(result.value as number) : 'Empty';
+      break;
+    case 'percent':
+      span.textContent = `${_formatNumber(result.value as number)}%`;
+      break;
+    case 'date':
+      span.textContent = result.value ? String(result.value) : 'Empty';
+      break;
+    case 'array': {
+      const arr = result.value as string[];
+      span.textContent = arr.length > 0 ? arr.join(', ') : 'Empty';
+      break;
+    }
+    case 'boolean':
+      span.textContent = result.value ? 'Yes' : 'No';
+      break;
+    default:
+      span.textContent = result.value != null ? String(result.value) : 'Empty';
+  }
+
+  container.appendChild(span);
+}
+
+/** Convert stored rollup IPropertyValue to IRollupResult. */
+function _rollupValueToResult(value: IPropertyValue | undefined): IRollupResult | null {
+  if (!value || value.type !== 'rollup') return null;
+
+  const rollup = value.rollup as unknown as Record<string, unknown>;
+  const type = rollup.type as IRollupResult['type'];
+
+  switch (type) {
+    case 'number':
+      return { type: 'number', value: (rollup.number as number | null) };
+    case 'date':
+      return { type: 'date', value: (rollup.date as string | null) };
+    case 'string':
+      return { type: 'string', value: (rollup.string as string) };
+    case 'boolean':
+      return { type: 'boolean', value: (rollup.boolean as boolean) };
+    case 'array':
+      return { type: 'array', value: (rollup.array as string[]) ?? [] };
+    case 'percent':
+      return { type: 'percent', value: (rollup.number as number) };
+    default:
+      return null;
+  }
+}
+
+/** Format a number with up to 2 decimal places. */
+function _formatNumber(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
 // ─── Dispatch ────────────────────────────────────────────────────────────────
 
 /**
@@ -296,9 +402,9 @@ export function renderPropertyValue(
     case 'files':            renderFiles(value, container); break;
     case 'created_time':     renderTimestamp(value, container); break;
     case 'last_edited_time': renderTimestamp(value, container); break;
-    case 'relation':         renderEmpty(container); break; // Phase 3+
-    case 'rollup':           renderEmpty(container); break; // Phase 3+
-    case 'formula':          renderEmpty(container); break; // Phase 3+
+    case 'relation':         renderRelation(value, container); break;
+    case 'rollup':           renderRollup(value, container); break;
+    case 'formula':          renderEmpty(container); break; // Phase 8
     case 'unique_id':        renderUniqueId(value, container); break;
     default:                 renderEmpty(container);
   }

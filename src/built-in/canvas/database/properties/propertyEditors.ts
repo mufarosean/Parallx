@@ -519,11 +519,94 @@ class FilesEditor extends Disposable implements IPropertyEditor {
   }
 }
 
+// ─── Relation Editor ─────────────────────────────────────────────────────────
+
+/**
+ * Relation editor — shows a context menu of candidate pages from the target
+ * database. Toggling a page adds/removes the link.
+ *
+ * The editor receives a `candidates` array of `{ id, title, isLinked }` which
+ * must be pre-fetched by the caller (since the editor has no data service access).
+ */
+export interface IRelationCandidate {
+  readonly id: string;
+  readonly title: string;
+  readonly isLinked: boolean;
+}
+
+class RelationEditor extends Disposable implements IPropertyEditor {
+  private readonly _onDidChange = this._register(new Emitter<IPropertyValue>());
+  readonly onDidChange: Event<IPropertyValue> = this._onDidChange.event;
+
+  private readonly _onDidDismiss = this._register(new Emitter<void>());
+  readonly onDidDismiss: Event<void> = this._onDidDismiss.event;
+
+  private _dismissed = false;
+  private readonly _currentIds: Set<string>;
+
+  constructor(
+    private readonly _anchor: HTMLElement,
+    candidates: readonly IRelationCandidate[],
+    currentRelation: readonly { readonly id: string }[],
+  ) {
+    super();
+
+    this._currentIds = new Set(currentRelation.map(r => r.id));
+
+    const items: IContextMenuItem[] = candidates.length > 0
+      ? candidates.map(c => ({
+          id: c.id,
+          label: `${this._currentIds.has(c.id) ? '✓ ' : ''}${c.title || 'Untitled'}`,
+        }))
+      : [{ id: '__empty__', label: 'No pages available', disabled: true }];
+
+    const rect = this._anchor.getBoundingClientRect();
+    const menu = ContextMenu.show({
+      items,
+      anchor: new DOMRect(rect.left, rect.bottom, rect.width, 0),
+      anchorPosition: 'below',
+    });
+
+    this._register(menu);
+
+    menu.onDidSelect(e => {
+      if (e.item.id === '__empty__') return;
+      this._toggle(e.item.id);
+    });
+
+    menu.onDidDismiss(() => {
+      if (this._dismissed) return;
+      this._dismissed = true;
+      this._onDidDismiss.fire();
+    });
+  }
+
+  private _toggle(pageId: string): void {
+    if (this._currentIds.has(pageId)) {
+      this._currentIds.delete(pageId);
+    } else {
+      this._currentIds.add(pageId);
+    }
+
+    this._onDidChange.fire({
+      type: 'relation',
+      relation: [...this._currentIds].map(id => ({ id })),
+    });
+  }
+
+  focus(): void {
+    // Context menu manages its own focus
+  }
+}
+
 // ─── Dispatch ────────────────────────────────────────────────────────────────
 
 /**
  * Create an inline editor for a property value.
  * Returns null for read-only types (timestamps, formula, rollup, unique_id).
+ *
+ * @param relationCandidates - For relation properties, the pre-fetched list of
+ *   candidate pages from the target database. Required for relation editing.
  */
 export function createPropertyEditor(
   type: PropertyType,
@@ -531,6 +614,7 @@ export function createPropertyEditor(
   anchor: HTMLElement,
   value: IPropertyValue | undefined,
   config: PropertyConfig,
+  relationCandidates?: readonly IRelationCandidate[],
 ): IPropertyEditor | null {
   switch (type) {
     case 'title': {
@@ -577,11 +661,18 @@ export function createPropertyEditor(
     // Read-only types — no editor
     case 'created_time':
     case 'last_edited_time':
-    case 'relation':
     case 'rollup':
     case 'formula':
     case 'unique_id':
       return null;
+
+    case 'relation':
+      if (!relationCandidates) return null;
+      return new RelationEditor(
+        anchor,
+        relationCandidates,
+        value?.type === 'relation' ? value.relation : [],
+      );
 
     default:
       return null;

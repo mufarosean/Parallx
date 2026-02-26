@@ -151,6 +151,8 @@ const GATE_RULES: Record<string, string[]> = {
   'database/views/calendarView.ts':                ['database/databaseRegistry'],
   'database/views/timelineView.ts':                ['database/databaseRegistry'],
   'database/views/databaseToolbar.ts':             ['database/databaseRegistry'],
+  'database/relations/relationResolver.ts':          ['database/databaseRegistry'],
+  'database/relations/rollupEngine.ts':              ['database/databaseRegistry'],
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

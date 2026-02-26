@@ -15,6 +15,8 @@
 //   - properties/propertyConfig.ts
 //   - views/tableView.ts
 //   - views/viewTabBar.ts
+//   - relations/relationResolver.ts
+//   - relations/rollupEngine.ts
 //   - databaseEditorProvider.ts
 
 // ─── Types from databaseTypes ────────────────────────────────────────────────
@@ -114,3 +116,38 @@ export {
 export type { IRowGroup } from './filters/filterEngine.js';
 
 export { FilterPanel } from './filters/filterUI.js';
+
+// ─── Relations & Rollups ─────────────────────────────────────────────────────
+
+export {
+  resolveRelation,
+  getRelationCandidates,
+  addRelationLink,
+  removeRelationLink,
+  toggleRelationLink,
+  createReciprocalRelation,
+  syncReciprocal,
+  setRelationWithSync,
+  isSelfRelation,
+  getSelfRelationCandidates,
+} from './relations/relationResolver.js';
+export type { IResolvedRelation, IRelationCandidate } from './relations/relationResolver.js';
+
+export {
+  evaluateRollupFunction,
+  computeRollup,
+  computeRollups,
+  rollupResultToPropertyValue,
+} from './relations/rollupEngine.js';
+export type { RollupFunction, IRollupResult } from './relations/rollupEngine.js';
+
+// ─── Relation editor candidate type re-export ────────────────────────────────
+
+export type { IRelationCandidate as IRelationEditorCandidate } from './properties/propertyEditors.js';
+
+// ─── Rendering individual renderers ──────────────────────────────────────────
+
+export {
+  renderRelation,
+  renderRollup,
+} from './properties/propertyRenderers.js';

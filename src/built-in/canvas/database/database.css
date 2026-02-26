@@ -371,6 +371,44 @@
   font-size: 12px;
 }
 
+/* ── Relation ────────────────────────────────────────────────────────────── */
+
+.db-cell-relation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.db-cell-relation-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--badge-bg, rgba(255, 255, 255, 0.08));
+  color: var(--text-link, #4fc1ff);
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.db-cell-relation-pill:hover {
+  background: var(--list-hover-bg, rgba(255, 255, 255, 0.12));
+  text-decoration: underline;
+}
+
+/* ── Rollup ──────────────────────────────────────────────────────────────── */
+
+.db-cell-rollup {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Empty placeholder ───────────────────────────────────────────────────── */
 
 .db-cell-empty {
