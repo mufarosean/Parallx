@@ -153,6 +153,7 @@ const GATE_RULES: Record<string, string[]> = {
   'database/views/databaseToolbar.ts':             ['database/databaseRegistry'],
   'database/relations/relationResolver.ts':          ['database/databaseRegistry'],
   'database/relations/rollupEngine.ts':              ['database/databaseRegistry'],
+  'database/properties/formulaEngine.ts':             ['database/databaseRegistry'],
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

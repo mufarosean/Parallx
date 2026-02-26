@@ -17,6 +17,7 @@
 //   - views/viewTabBar.ts
 //   - relations/relationResolver.ts
 //   - relations/rollupEngine.ts
+//   - properties/formulaEngine.ts
 //   - databaseEditorProvider.ts
 
 // ─── Types from databaseTypes ────────────────────────────────────────────────
@@ -150,4 +151,28 @@ export type { IRelationCandidate as IRelationEditorCandidate } from './propertie
 export {
   renderRelation,
   renderRollup,
+  renderFormula,
 } from './properties/propertyRenderers.js';
+
+// ─── Formula Engine ──────────────────────────────────────────────────────────
+
+export {
+  tokenize,
+  parse as parseFormulaAST,
+  evaluate as evaluateFormulaAST,
+  buildPropertyResolver,
+  evaluateFormula,
+  parseFormula,
+  inferOutputType,
+  extractPropReferences,
+  FormulaError,
+} from './properties/formulaEngine.js';
+export type {
+  IToken,
+  TokenType,
+  ASTExpression,
+  ASTNodeType,
+  FormulaOutputType,
+  IFormulaResult,
+  PropertyResolver,
+} from './properties/formulaEngine.js';

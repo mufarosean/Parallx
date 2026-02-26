@@ -409,6 +409,20 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Formula ─────────────────────────────────────────────────────────────── */
+
+.db-cell-formula {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.db-cell-formula-error {
+  color: var(--error-fg, #e74856);
+  font-size: 12px;
+  font-style: italic;
+}
+
 /* ── Empty placeholder ───────────────────────────────────────────────────── */
 
 .db-cell-empty {

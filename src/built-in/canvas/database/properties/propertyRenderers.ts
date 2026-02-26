@@ -19,6 +19,7 @@ import type {
   IStatusPropertyConfig,
   IRichTextSegment,
   IRollupResult,
+  IFormulaResult,
 } from '../databaseRegistry.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -299,6 +300,59 @@ export function renderRelation(
   container.appendChild(wrapper);
 }
 
+// ─── Formula Renderer ────────────────────────────────────────────────────────
+
+/**
+ * Render a formula property value based on its computed result.
+ *
+ * Dispatches based on the formula result's output type (number, string, date,
+ * boolean). Displays errors inline with a distinctive style.
+ */
+export function renderFormula(
+  value: IPropertyValue | undefined,
+  container: HTMLElement,
+  formulaResult?: IFormulaResult,
+): void {
+  const result = formulaResult ?? _formulaValueToResult(value);
+  if (!result) { renderEmpty(container); return; }
+
+  if (result.error) {
+    const errSpan = $('span.db-cell-formula-error');
+    errSpan.textContent = `⚠ ${result.error}`;
+    errSpan.title = result.error;
+    container.appendChild(errSpan);
+    return;
+  }
+
+  const span = $('span.db-cell-formula');
+
+  switch (result.type) {
+    case 'number':
+      span.textContent = result.value != null ? _formatNumber(result.value as number) : 'Empty';
+      break;
+    case 'date':
+      span.textContent = result.value ? String(result.value) : 'Empty';
+      break;
+    case 'boolean':
+      span.textContent = result.value ? 'Yes' : 'No';
+      break;
+    case 'string':
+    default:
+      span.textContent = result.value != null ? truncateText(String(result.value)) : 'Empty';
+  }
+
+  container.appendChild(span);
+}
+
+/** Convert stored formula IPropertyValue to IFormulaResult. */
+function _formulaValueToResult(value: IPropertyValue | undefined): IFormulaResult | null {
+  if (!value || value.type !== 'formula') return null;
+  const formula = value.formula as unknown as Record<string, unknown>;
+  const type = (formula.type as IFormulaResult['type']) ?? 'string';
+  const v = formula.string ?? formula.number ?? formula.boolean ?? formula.date ?? null;
+  return { type, value: v };
+}
+
 // ─── Rollup Renderer ─────────────────────────────────────────────────────────
 
 /**
@@ -404,7 +458,7 @@ export function renderPropertyValue(
     case 'last_edited_time': renderTimestamp(value, container); break;
     case 'relation':         renderRelation(value, container); break;
     case 'rollup':           renderRollup(value, container); break;
-    case 'formula':          renderEmpty(container); break; // Phase 8
+    case 'formula':          renderFormula(value, container); break;
     case 'unique_id':        renderUniqueId(value, container); break;
     default:                 renderEmpty(container);
   }
