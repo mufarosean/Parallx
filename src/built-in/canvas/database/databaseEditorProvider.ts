@@ -325,10 +325,16 @@ class DatabaseEditorPane extends Disposable {
       this._descriptionVisible = true;
     }
 
-    // Toggle label — always hover-only via CSS, just update text
-    this._descriptionToggleBtn.textContent = this._descriptionVisible
-      ? 'Hide description'
-      : 'Add a description';
+    // Toggle label — always hover-only via CSS, just update text + icon
+    this._descriptionToggleBtn.textContent = '';
+    const icon = document.createElement('span');
+    icon.textContent = 'ⓘ';
+    icon.style.fontSize = '13px';
+    icon.style.lineHeight = '1';
+    this._descriptionToggleBtn.appendChild(icon);
+    const label = document.createElement('span');
+    label.textContent = this._descriptionVisible ? 'Hide description' : 'Add a description';
+    this._descriptionToggleBtn.appendChild(label);
 
     // Description row visibility
     this._descriptionRow.style.display = this._descriptionVisible ? '' : 'none';

@@ -139,14 +139,16 @@
    Description Affordance (Notion-style hover-revealed "Add a description")
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Toggle sits between cover and page header — hover-only */
+/* Toggle sits between cover and page header — small subtle hint, hover-only */
 .db-description-toggle {
-  display: block;
-  padding: 2px 4px;
-  margin: 0 0 0 96px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  margin: 4px 0 0 96px;
   border: none;
   background: transparent;
-  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 0.6));
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 0.45));
   font-size: 12px;
   font-family: inherit;
   cursor: pointer;
@@ -155,17 +157,15 @@
   transition: opacity 120ms ease;
 }
 
-/* Reveal on hover over the toggle itself or the gap area above title */
+/* Reveal on hover over the gap between cover and title */
 .db-description-toggle:hover,
-.db-description-toggle:focus-visible,
-.canvas-page-cover:hover ~ .db-description-toggle,
-.db-host--fullpage .db-description-toggle:hover {
+.db-description-toggle:focus-visible {
   opacity: 1;
 }
 
 .db-description-toggle:hover {
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
-  color: var(--vscode-foreground);
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 0.7));
 }
 
 /* Description row sits between page header and shell */
