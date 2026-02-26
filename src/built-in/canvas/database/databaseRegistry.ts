@@ -93,6 +93,14 @@ export { ViewTabBar } from './views/viewTabBar.js';
 
 export { BoardView } from './views/boardView.js';
 
+export { ListView } from './views/listView.js';
+
+export { GalleryView } from './views/galleryView.js';
+
+export { CalendarView } from './views/calendarView.js';
+
+export { TimelineView } from './views/timelineView.js';
+
 export { DatabaseToolbar } from './views/databaseToolbar.js';
 
 // ─── Filters ─────────────────────────────────────────────────────────────────

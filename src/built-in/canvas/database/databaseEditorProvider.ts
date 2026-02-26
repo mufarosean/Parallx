@@ -20,6 +20,10 @@ import {
   ViewTabBar,
   TableView,
   BoardView,
+  ListView,
+  GalleryView,
+  CalendarView,
+  TimelineView,
   DatabaseToolbar,
   applyViewDataPipeline,
   type IDatabaseDataService,
@@ -83,7 +87,7 @@ class DatabaseEditorPane extends Disposable {
   // ── Sub-components ──
   private _viewTabBar: ViewTabBar | null = null;
   private _toolbar: DatabaseToolbar | null = null;
-  private _activeView: TableView | BoardView | null = null;
+  private _activeView: TableView | BoardView | ListView | GalleryView | CalendarView | TimelineView | null = null;
   private readonly _viewDisposables = this._register(new DisposableStore());
   private readonly _toolbarDisposables = this._register(new DisposableStore());
 
@@ -255,7 +259,66 @@ class DatabaseEditorPane extends Disposable {
         this._activeView = boardView;
         break;
       }
-      // List, Gallery, Calendar, Timeline — future phases
+      case 'list': {
+        const listView = new ListView(
+          this._contentContainer,
+          this._dataService,
+          this._databaseId,
+          view,
+          visibleProps,
+          sortedRows,
+          this._openEditor,
+          groups,
+        );
+        this._viewDisposables.add(listView);
+        this._activeView = listView;
+        break;
+      }
+      case 'gallery': {
+        const galleryView = new GalleryView(
+          this._contentContainer,
+          this._dataService,
+          this._databaseId,
+          view,
+          visibleProps,
+          sortedRows,
+          this._openEditor,
+          groups,
+        );
+        this._viewDisposables.add(galleryView);
+        this._activeView = galleryView;
+        break;
+      }
+      case 'calendar': {
+        const calendarView = new CalendarView(
+          this._contentContainer,
+          this._dataService,
+          this._databaseId,
+          view,
+          visibleProps,
+          sortedRows,
+          this._openEditor,
+          groups,
+        );
+        this._viewDisposables.add(calendarView);
+        this._activeView = calendarView;
+        break;
+      }
+      case 'timeline': {
+        const timelineView = new TimelineView(
+          this._contentContainer,
+          this._dataService,
+          this._databaseId,
+          view,
+          visibleProps,
+          sortedRows,
+          this._openEditor,
+          groups,
+        );
+        this._viewDisposables.add(timelineView);
+        this._activeView = timelineView;
+        break;
+      }
       default: {
         const placeholder = $('div.database-view-placeholder');
         placeholder.textContent = `${view.type} view — coming soon`;

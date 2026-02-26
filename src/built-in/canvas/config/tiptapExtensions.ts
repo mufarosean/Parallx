@@ -72,6 +72,9 @@ const UNIQUE_ID_BLOCK_TYPES: string[] = [
   // ── Column nodes ──
   'columnList',
   'column',
+
+  // ── Inline database ──
+  'databaseInline',
 ];
 
 /**

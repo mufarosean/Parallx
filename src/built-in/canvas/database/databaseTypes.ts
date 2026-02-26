@@ -242,6 +242,13 @@ export interface IDatabaseViewConfig {
   readonly dateProperty?: string;
   readonly dateEndProperty?: string;
   readonly columnWidths?: Record<string, number>;
+  /**
+   * When set, this view is a "linked view" that reads rows/properties from
+   * the source database instead of its parent database.  Independent
+   * filters, sorts, grouping, and property visibility still live on this
+   * view's own config.
+   */
+  readonly sourceDatabaseId?: string;
 }
 
 /**

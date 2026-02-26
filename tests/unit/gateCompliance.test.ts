@@ -37,7 +37,7 @@ const GATE_FILES = new Set([
 
 const GATE_IMPORT_RULES: Record<string, string[]> = {
   'config/iconRegistry.ts':                         [],  // leaf — no gate deps
-  'config/blockRegistry.ts':                         ['config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry'],
+  'config/blockRegistry.ts':                         ['config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry', 'database/databaseTypes', 'database/databaseRegistry'],
   'menus/canvasMenuRegistry.ts':                     ['config/blockRegistry', 'config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/blockStateRegistry.ts': ['config/blockRegistry'],
   'handles/handleRegistry.ts':                       ['config/blockRegistry', 'config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry', 'menus/canvasMenuRegistry'],
@@ -128,6 +128,7 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/mathBlockNode.ts':           [],
   'extensions/tableOfContentsNode.ts':     [],
   'extensions/toggleHeadingNode.ts':       [],
+  'extensions/databaseInlineNode.ts':      ['config/blockRegistry'],
 
   // structuralInvariantPlugin imports from invariants/ — same pattern.
   'plugins/structuralInvariantPlugin.ts':  ['invariants/'],
@@ -145,6 +146,10 @@ const GATE_RULES: Record<string, string[]> = {
   'database/filters/filterEngine.ts':              ['database/databaseRegistry'],
   'database/filters/filterUI.ts':                  ['database/databaseRegistry'],
   'database/views/boardView.ts':                   ['database/databaseRegistry'],
+  'database/views/listView.ts':                    ['database/databaseRegistry'],
+  'database/views/galleryView.ts':                 ['database/databaseRegistry'],
+  'database/views/calendarView.ts':                ['database/databaseRegistry'],
+  'database/views/timelineView.ts':                ['database/databaseRegistry'],
   'database/views/databaseToolbar.ts':             ['database/databaseRegistry'],
 };
 

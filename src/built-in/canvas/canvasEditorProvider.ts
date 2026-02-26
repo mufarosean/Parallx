@@ -29,6 +29,7 @@
 import { DisposableStore, type IDisposable } from '../../platform/lifecycle.js';
 import type { IEditorInput } from '../../editor/editorInput.js';
 import type { ICanvasDataService } from './canvasTypes.js';
+import type { IDatabaseDataService } from './database/databaseTypes.js';
 import { Editor } from '@tiptap/core';
 import { common, createLowlight } from 'lowlight';
 import { $ } from '../../ui/dom.js';
@@ -57,7 +58,10 @@ export class CanvasEditorProvider {
    */
   private readonly _pageMenuHandlers = new Map<string, () => void>();
 
-  constructor(private readonly _dataService: ICanvasDataService) {}
+  constructor(
+    private readonly _dataService: ICanvasDataService,
+    private readonly _databaseDataService?: IDatabaseDataService,
+  ) {}
 
   /**
    * Set the openEditor callback so panes can navigate to other pages.
@@ -120,6 +124,11 @@ export class CanvasEditorProvider {
   getPageMenuHandler(pageId: string): (() => void) | undefined {
     return this._pageMenuHandlers.get(pageId);
   }
+
+  /** Database data service (threaded to inline database nodes). */
+  get databaseDataService(): IDatabaseDataService | undefined {
+    return this._databaseDataService;
+  }
 }
 
 // ─── Canvas Editor Pane ─────────────────────────────────────────────────────
@@ -162,6 +171,7 @@ class CanvasEditorPane implements IDisposable {
   get container(): HTMLElement { return this._container; }
   get editorContainer(): HTMLElement | null { return this._editorContainer; }
   get dataService(): ICanvasDataService { return this._dataService; }
+  get databaseDataService(): IDatabaseDataService | undefined { return this._provider.databaseDataService; }
   get pageId(): string { return this._pageId; }
   get suppressUpdate(): boolean { return this._suppressUpdate; }
   set suppressUpdate(v: boolean) { this._suppressUpdate = v; }
@@ -224,6 +234,7 @@ class CanvasEditorPane implements IDisposable {
       element: this._editorContainer,
       extensions: createEditorExtensions(lowlight, {
         dataService: this._dataService,
+        databaseDataService: this._provider.databaseDataService,
         pageId: this._pageId,
         openEditor: this._openEditor,
         showIconPicker: (opts) => this._menuRegistry?.showIconMenu(opts),
