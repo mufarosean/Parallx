@@ -24,7 +24,7 @@ import type {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const EMPTY_PLACEHOLDER = 'Empty';
+const EMPTY_PLACEHOLDER = '';
 
 function renderEmpty(container: HTMLElement): void {
   const span = $('span.db-cell-empty');
@@ -331,17 +331,17 @@ export function renderFormula(
 
   switch (result.type) {
     case 'number':
-      span.textContent = result.value != null ? _formatNumber(result.value as number) : 'Empty';
+      span.textContent = result.value != null ? _formatNumber(result.value as number) : EMPTY_PLACEHOLDER;
       break;
     case 'date':
-      span.textContent = result.value ? String(result.value) : 'Empty';
+      span.textContent = result.value ? String(result.value) : EMPTY_PLACEHOLDER;
       break;
     case 'boolean':
       span.textContent = result.value ? 'Yes' : 'No';
       break;
     case 'string':
     default:
-      span.textContent = result.value != null ? truncateText(String(result.value)) : 'Empty';
+      span.textContent = result.value != null ? truncateText(String(result.value)) : EMPTY_PLACEHOLDER;
   }
 
   container.appendChild(span);
@@ -377,24 +377,24 @@ export function renderRollup(
 
   switch (result.type) {
     case 'number':
-      span.textContent = result.value != null ? _formatNumber(result.value as number) : 'Empty';
+      span.textContent = result.value != null ? _formatNumber(result.value as number) : EMPTY_PLACEHOLDER;
       break;
     case 'percent':
       span.textContent = `${_formatNumber(result.value as number)}%`;
       break;
     case 'date':
-      span.textContent = result.value ? String(result.value) : 'Empty';
+      span.textContent = result.value ? String(result.value) : EMPTY_PLACEHOLDER;
       break;
     case 'array': {
       const arr = result.value as string[];
-      span.textContent = arr.length > 0 ? arr.join(', ') : 'Empty';
+      span.textContent = arr.length > 0 ? arr.join(', ') : EMPTY_PLACEHOLDER;
       break;
     }
     case 'boolean':
       span.textContent = result.value ? 'Yes' : 'No';
       break;
     default:
-      span.textContent = result.value != null ? String(result.value) : 'Empty';
+      span.textContent = result.value != null ? String(result.value) : EMPTY_PLACEHOLDER;
   }
 
   container.appendChild(span);

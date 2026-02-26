@@ -290,7 +290,7 @@ export class TableView extends Disposable {
     clearNode(this._footerEl);
 
     const addRowBtn = $('button.db-table-add-row');
-    addRowBtn.textContent = '+ New';
+    addRowBtn.textContent = '+ New page';
     this._renderDisposables.add(addDisposableListener(addRowBtn, 'click', async () => {
       try {
         await this._dataService.addRow(this._databaseId);
@@ -399,7 +399,7 @@ export class TableView extends Disposable {
 
     const openBtn = $('button.db-cell-open-btn') as HTMLButtonElement;
     openBtn.type = 'button';
-    openBtn.textContent = 'OPEN';
+    openBtn.innerHTML = `<span class="db-cell-open-btn-icon" aria-hidden="true">${svgIcon('open')}</span><span class="db-cell-open-btn-label">OPEN</span>`;
     openBtn.title = 'Open page';
     openBtn.setAttribute('aria-label', 'Open page');
     this._renderDisposables.add(addDisposableListener(openBtn, 'click', (event: MouseEvent) => {
@@ -506,6 +506,10 @@ export class TableView extends Disposable {
       startWidth = this._columnWidths[propertyId] ?? 200;
       document.body.classList.add('db-resizing');
       resizeStore.clear();
+      handle.classList.add('db-table-resize-handle--active');
+      resizeStore.add({
+        dispose: () => handle.classList.remove('db-table-resize-handle--active'),
+      });
       resizeStore.add(addDisposableListener(document, 'mousemove', onMouseMove));
       resizeStore.add(addDisposableListener(document, 'mouseup', onMouseUp));
     }));
