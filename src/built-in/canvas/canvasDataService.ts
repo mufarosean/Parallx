@@ -9,6 +9,7 @@
 
 import { Disposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
+import { isDevMode } from '../../platform/devMode.js';
 import {
   type IPage,
   type IPageTreeNode,
@@ -1281,6 +1282,17 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       if (!row) continue;
       if ((row.is_archived as number) === 1) continue;
       if ((row.parent_id as string | null) !== parentPageId) continue;
+
+      // Archive (soft-delete) the orphaned child page and its subtree.
+      // This handles both pageBlock and databaseInline children —
+      // databases are cleaned up via SQL ON DELETE CASCADE when
+      // the page is later permanently deleted from trash.
+      try {
+        await this.archivePage(removedId);
+        if (isDevMode) console.log(`[CanvasDataService] Archived orphaned child page ${removedId} (removed from ${parentPageId})`);
+      } catch (err) {
+        console.error(`[CanvasDataService] Failed to archive orphaned child ${removedId}:`, err);
+      }
     }
   }
 
