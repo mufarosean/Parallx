@@ -525,8 +525,8 @@ export class TableView extends Disposable {
     const columns = this._properties.map(
       prop => `${this._columnWidths[prop.id] ?? 200}px`,
     );
-    // Add space for the "+ Add property" button
-    columns.push('190px');
+    // Narrow column for the "+" add-property button
+    columns.push('44px');
 
     const template = columns.join(' ');
     this._headerRow.style.gridTemplateColumns = template;
