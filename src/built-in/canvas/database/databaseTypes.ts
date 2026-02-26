@@ -197,6 +197,8 @@ export interface IDatabaseProperty {
   readonly name: string;
   readonly type: PropertyType;
   readonly config: PropertyConfig;
+  /** Page-top visibility when a row is opened as a page. */
+  readonly visibility: PropertyVisibility;
   readonly sortOrder: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -210,6 +212,53 @@ export interface IDatabaseRow {
   readonly values: Record<string, IPropertyValue>;
   readonly sortOrder: number;
 }
+
+// ─── Templates ───────────────────────────────────────────────────────────────
+
+/** Dynamic template value tokens resolved at row-creation time. */
+export type TemplateDynamicValue = 'now' | 'today';
+
+/**
+ * A single property value in a template — either a static IPropertyValue
+ * or a dynamic token that is resolved when the template is applied.
+ */
+export type TemplatePropertyValue =
+  | { readonly mode: 'static'; readonly value: IPropertyValue }
+  | { readonly mode: 'dynamic'; readonly token: TemplateDynamicValue };
+
+/**
+ * A database template — pre-configured property values + optional page content.
+ * Applied when a new row is created to populate default values.
+ */
+export interface IDatabaseTemplate {
+  readonly id: string;
+  readonly databaseId: string;
+  readonly name: string;
+  readonly description: string | null;
+  /** Property ID → template value */
+  readonly values: Record<string, TemplatePropertyValue>;
+  /** Optional JSON Tiptap content to pre-fill the page body */
+  readonly contentJson: string | null;
+  readonly sortOrder: number;
+  readonly createdAt: string;
+}
+
+/**
+ * Per-view default template (which template to use when creating a row via this view).
+ * Stored in IDatabaseViewConfig.
+ */
+export interface IViewDefaultTemplate {
+  readonly templateId: string;
+}
+
+// ─── Property Visibility ─────────────────────────────────────────────────────
+
+/**
+ * Per-property page-top visibility setting.
+ * Controls whether a property is shown above the content body when a row
+ * is opened as a page.
+ */
+export type PropertyVisibility = 'always_show' | 'hide_when_empty' | 'always_hide';
 
 // ─── View Types ──────────────────────────────────────────────────────────────
 
@@ -249,6 +298,11 @@ export interface IDatabaseViewConfig {
    * view's own config.
    */
   readonly sourceDatabaseId?: string;
+  /**
+   * Default template ID for new rows created via this view.
+   * If null/undefined, new rows get empty default values.
+   */
+  readonly defaultTemplateId?: string;
 }
 
 /**
@@ -410,7 +464,7 @@ export type DatabaseUpdateData = Partial<Pick<IDatabase, 'description' | 'isLock
 /**
  * Mutable fields accepted by `IDatabaseDataService.updateProperty()`.
  */
-export type PropertyUpdateData = Partial<Pick<IDatabaseProperty, 'name' | 'type' | 'config'>>;
+export type PropertyUpdateData = Partial<Pick<IDatabaseProperty, 'name' | 'type' | 'config' | 'visibility'>>;
 
 /**
  * Mutable fields accepted by `IDatabaseDataService.updateView()`.

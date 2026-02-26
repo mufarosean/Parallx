@@ -83,6 +83,7 @@ export function rowToProperty(row: Record<string, unknown>): IDatabaseProperty {
     name: row.name as string,
     type: row.type as PropertyType,
     config,
+    visibility: (row.visibility as string as import('./databaseTypes.js').PropertyVisibility) ?? 'always_show',
     sortOrder: row.sort_order as number,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,

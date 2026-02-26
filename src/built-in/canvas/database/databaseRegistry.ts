@@ -18,6 +18,7 @@
 //   - relations/relationResolver.ts
 //   - relations/rollupEngine.ts
 //   - properties/formulaEngine.ts
+//   - polish/databaseTemplateService.ts
 //   - databaseEditorProvider.ts
 
 // ─── Types from databaseTypes ────────────────────────────────────────────────
@@ -58,6 +59,11 @@ export type {
   PropertyChangeEvent,
   RowChangeEvent,
   ViewChangeEvent,
+  IDatabaseTemplate,
+  TemplatePropertyValue,
+  TemplateDynamicValue,
+  IViewDefaultTemplate,
+  PropertyVisibility,
 } from './databaseTypes.js';
 
 export {
@@ -176,3 +182,23 @@ export type {
   IFormulaResult,
   PropertyResolver,
 } from './properties/formulaEngine.js';
+
+// ─── Templates, Color Rules, Locking, Unique ID, Visibility ─────────────────
+
+export {
+  resolveTemplateValue,
+  applyTemplate,
+  selectTemplate,
+  createTemplate,
+  evaluateColorRules,
+  colorRuleToStyle,
+  isDatabaseLocked,
+  isViewLocked,
+  assertDatabaseNotLocked,
+  assertViewNotLocked,
+  computeNextUniqueId,
+  makeUniqueIdValue,
+  formatUniqueId,
+  isPropertyVisibleOnPage,
+  getPropertyBarData,
+} from './polish/databaseTemplateService.js';
