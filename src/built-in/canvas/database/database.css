@@ -439,7 +439,7 @@
 }
 
 .db-table-add-row {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 0 8px;
@@ -451,7 +451,7 @@
   line-height: 1;
   font-weight: 400;
   cursor: pointer;
-  width: 100%;
+  width: fit-content;
   text-align: left;
   height: 30px;
   margin: 0;
