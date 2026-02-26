@@ -16,6 +16,7 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
+import { PageChangeKind } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
@@ -51,6 +52,7 @@ interface ParallxApi {
   editors: {
     registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable }): IDisposable;
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
+    closeEditor(editorId: string): Promise<boolean>;
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
@@ -131,6 +133,25 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
 
   // 5. Register command handlers
   _registerCommands(api, context);
+
+  // 5a. Auto-close editor tabs when their page is deleted or archived
+  context.subscriptions.push(
+    _dataService.onDidChangePage(async (e) => {
+      if (e.kind !== PageChangeKind.Deleted) return;
+      // Editor IDs follow the pattern "parallx.canvas:<typeId>:<pageId>"
+      // Check both canvas and database editors
+      const editors = api.editors.openEditors;
+      for (const ed of editors) {
+        const parts = ed.id.split(':');
+        if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
+          const edPageId = parts.slice(2).join(':');
+          if (edPageId === e.pageId) {
+            await api.editors.closeEditor(ed.id);
+          }
+        }
+      }
+    }),
+  );
 
   // 6. Track last-opened page for persistence (Task 6.3)
   context.subscriptions.push(

@@ -161,6 +161,28 @@ export class EditorsBridge {
   }
 
   /**
+   * Close an editor by its ID across all groups.
+   * Returns true if an editor was found and closed.
+   */
+  async closeEditor(editorId: string): Promise<boolean> {
+    this._throwIfDisposed();
+    if (!this._editorService) return false;
+
+    const openEditors = this._editorService.getOpenEditors();
+    for (const descriptor of openEditors) {
+      if (descriptor.id === editorId) {
+        // Create a minimal input-like object so EditorService can match by id
+        return this._editorService.closeEditor(
+          { id: editorId } as any,
+          descriptor.groupId,
+          true,
+        );
+      }
+    }
+    return false;
+  }
+
+  /**
    * Open a file in the text editor using the workbench-level file-editor resolver.
    *
    * The resolver creates the appropriate `EditorInput` (FileEditorInput for
