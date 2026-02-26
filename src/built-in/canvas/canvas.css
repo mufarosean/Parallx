@@ -2075,6 +2075,25 @@
   color: rgba(255, 255, 255, 0.5);
 }
 
+.canvas-breadcrumb-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  line-height: 0;
+}
+
+.canvas-breadcrumb-icon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.canvas-breadcrumb-label {
+  line-height: 1;
+}
+
 /* ── Page Icon ── */
 
 .canvas-page-icon {

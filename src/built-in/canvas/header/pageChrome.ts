@@ -462,8 +462,9 @@ export class PageChromeController {
       for (let i = 0; i < ancestors.length; i++) {
         const crumb = $('span.canvas-breadcrumb');
         const crumbIcon = createIconElement(resolvePageIcon(ancestors[i].icon), 14);
+        crumbIcon.classList.add('canvas-breadcrumb-icon');
         crumb.appendChild(crumbIcon);
-        const crumbText = $('span');
+        const crumbText = $('span.canvas-breadcrumb-label');
         crumbText.textContent = ancestors[i].title;
         crumb.appendChild(crumbText);
         crumb.addEventListener('click', () => {
@@ -482,10 +483,10 @@ export class PageChromeController {
       }
 
       const currentCrumb = $('span.canvas-breadcrumb.canvas-breadcrumb--current');
-      this._breadcrumbCurrentIcon = $('span');
+      this._breadcrumbCurrentIcon = $('span.canvas-breadcrumb-icon');
       this._breadcrumbCurrentIcon.appendChild(createIconElement(resolvePageIcon(this._currentPage?.icon), 14));
       currentCrumb.appendChild(this._breadcrumbCurrentIcon);
-      this._breadcrumbCurrentText = $('span');
+      this._breadcrumbCurrentText = $('span.canvas-breadcrumb-label');
       this._breadcrumbCurrentText.textContent = this._currentPage?.title || 'Untitled';
       currentCrumb.appendChild(this._breadcrumbCurrentText);
       this._breadcrumbsEl.appendChild(currentCrumb);
