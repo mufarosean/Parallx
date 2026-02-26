@@ -1501,11 +1501,11 @@ interface DatabaseViewHostOptions {
 
 ### Execution Order (M8.4)
 
-| Phase | Focus | Prerequisite | Estimated Scope |
-|-------|-------|-------------|----------------|
-| **Phase 10** | Shared DatabaseViewHost component | Current state (all prior phases built) | ~800 lines new, ~1200 lines refactored |
-| **Phase 11** | Integration bug fixes | Phase 10 | ~200 lines across 5 files |
-| **Phase 12** | Notion visual fidelity pass | Phase 11 | ~500 lines CSS |
+| Phase | Focus | Prerequisite | Estimated Scope | Status |
+|-------|-------|-------------|----------------|--------|
+| **Phase 10** | Shared DatabaseViewHost component | Current state (all prior phases built) | ~800 lines new, ~1200 lines refactored | ✅ Done |
+| **Phase 11** | Integration bug fixes | Phase 10 | ~200 lines across 5 files | ✅ Done |
+| **Phase 12** | Notion visual fidelity pass | Phase 11 | ~500 lines CSS | ✅ Done |
 
 **Execution is strictly sequential.** Phase 10 must be complete (code compiles, tests pass) before Phase 11 begins. Phase 11 must be complete before Phase 12 begins.
 
@@ -1584,27 +1584,22 @@ This is the exact sequence of operations. No step may be skipped or reordered.
 
 #### Phase 11 Execution
 
-**Step 11.1: Fix last-opened restore** → edit `main.ts`
-**Step 11.2: Fix favorite database rendering** → edit `canvasSidebar.ts`
-**Step 11.3: Fix sidebar emoji → SVG** → edit `canvasSidebar.ts`
-**Step 11.4: Fix page duplicate for databases** → edit `main.ts`
-**Step 11.5: Replace `prompt()` calls** → edit `viewTabBar.ts`, `propertyConfig.ts`
-**Step 11.6: Validation**
-1. Run `npx tsc --noEmit` — clean
-2. Run `npx vitest run` — all pass
-3. Commit: `"Phase 11: Integration bug fixes — restore, favorites, icons, duplicate"`
+**Step 11.1: Fix last-opened restore** → edit `main.ts` ✅
+**Step 11.2: Fix favorite database rendering** → edit `canvasSidebar.ts` ✅
+**Step 11.3: Fix sidebar emoji → SVG** → edit `canvasSidebar.ts` ✅
+**Step 11.4: Fix page duplicate for databases** → edit `main.ts` ✅ (includes new `duplicateDatabase()` on DatabaseDataService)
+**Step 11.5: Replace `prompt()` calls** → edit `viewTabBar.ts`, `propertyConfig.ts` ✅ (viewTabBar uses inline `<input>`, propertyConfig already clean)
+**Step 11.6: Validation** ✅ tsc clean, 822/822 tests pass
 
 #### Phase 12 Execution
 
-**Step 12.1: Fetch Notion reference styles** → extract CSS metrics from public page
-**Step 12.2: Apply table view CSS** → systematic property-by-property matching
-**Step 12.3: Apply toolbar CSS** → button sizing, spacing, colors
-**Step 12.4: Apply cell renderer CSS** → pills, checkboxes, dates, links
-**Step 12.5: Dark theme validation** → verify all colors use CSS custom properties
-**Step 12.6: Validation**
-1. Run `npx tsc --noEmit` — clean
-2. Run `npx vitest run` — all pass
-3. Commit: `"Phase 12: Notion visual fidelity pass — table view CSS parity"`
+**Step 12.1: Fetch Notion reference styles** ✅ documented metrics in CSS header comment
+**Step 12.2: Apply table view CSS** ✅ font 14px, row 33px, header 33px, cell padding 0 8px, line-height 1.5
+**Step 12.3: Apply toolbar CSS** ✅ button 26px, font 14px, New button 26px
+**Step 12.4: Apply cell renderer CSS** ✅ pills border-radius 3px, font 12px, padding 0 6px; title weight 400
+**Step 12.5: Dark theme validation** ✅ all structural colors use var(--vscode-*); only palette/accent colors hardcoded
+**Step 12.6: Validation** ✅ tsc clean, 822/822 tests pass
+**Step 12.7: CSS namespace unification** ✅ (deferred from 10.7) — `database-editor-*` → `db-host-*`, `db-inline-*` → `db-host-inline-*`, `database-view-*` → `db-view-*`; shared `.db-host` base + `.db-host--fullpage`/`.db-host--inline` modifiers
 
 ### Post-M8.4 State
 

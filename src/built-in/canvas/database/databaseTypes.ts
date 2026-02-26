@@ -601,6 +601,13 @@ export interface IDatabaseDataService {
   /** Deep-copy a view with all its config. */
   duplicateView(viewId: string): Promise<IDatabaseView>;
 
+  /**
+   * Duplicate a database's schema (properties, views, property values, row membership)
+   * from an existing database page onto a new target page.
+   * The target page must already exist.
+   */
+  duplicateDatabase(sourceDatabaseId: string, targetPageId: string): Promise<IDatabase>;
+
   /** Reorder views by providing the full ordered list of view IDs. */
   reorderViews(databaseId: string, orderedIds: string[]): Promise<void>;
 }

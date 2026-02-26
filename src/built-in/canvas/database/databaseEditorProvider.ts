@@ -1,4 +1,4 @@
-// databaseEditorProvider.ts — Database editor pane (full-page context)
+﻿// databaseEditorProvider.ts — Database editor pane (full-page context)
 //
 // Provides the editor provider registered via
 // `api.editors.registerEditorProvider('database', ...)`.
@@ -79,15 +79,15 @@ class DatabaseEditorPane extends Disposable {
 
   async init(): Promise<void> {
     // Build layout skeleton
-    this._wrapper = $('div.database-editor');
+    this._wrapper = $('div.db-host.db-host--fullpage');
     this._container.appendChild(this._wrapper);
 
     // Page header (icon + title)
-    const pageHeader = $('div.database-editor-page-header');
-    const pageTitleRow = $('div.database-editor-page-title-row');
-    const pageIcon = $('span.database-editor-page-icon');
+    const pageHeader = $('div.db-host db-host--fullpage-page-header');
+    const pageTitleRow = $('div.db-host-page-title-row');
+    const pageIcon = $('span.db-host-page-icon');
     pageIcon.innerHTML = svgIcon('database');
-    const pageTitle = $('h1.database-editor-page-title');
+    const pageTitle = $('h1.db-host-page-title');
     pageTitle.textContent = this._databaseName;
     pageTitleRow.appendChild(pageIcon);
     pageTitleRow.appendChild(pageTitle);
@@ -95,16 +95,16 @@ class DatabaseEditorPane extends Disposable {
     this._wrapper.appendChild(pageHeader);
 
     // Slots for DatabaseViewHost
-    const tabBarSlot = $('div.database-editor-toolbar');
+    const tabBarSlot = $('div.db-host-tabbar');
     this._wrapper.appendChild(tabBarSlot);
 
-    const toolbarSlot = $('div.database-editor-toolbar-buttons');
+    const toolbarSlot = $('div.db-host-toolbar');
     this._wrapper.appendChild(toolbarSlot);
 
-    const toolbarPanelsSlot = $('div.database-editor-toolbar-panels');
+    const toolbarPanelsSlot = $('div.db-host-toolbar-panels');
     this._wrapper.appendChild(toolbarPanelsSlot);
 
-    const contentSlot = $('div.database-editor-content');
+    const contentSlot = $('div.db-host-content');
     this._wrapper.appendChild(contentSlot);
 
     // Create the shared view host
@@ -134,7 +134,7 @@ class DatabaseEditorPane extends Disposable {
       this._emptyState.textContent = message;
       return;
     }
-    this._emptyState = $('div.database-empty-state');
+    this._emptyState = $('div.db-host-empty-state');
     this._emptyState.textContent = message;
     (this._wrapper ?? this._container).appendChild(this._emptyState);
   }

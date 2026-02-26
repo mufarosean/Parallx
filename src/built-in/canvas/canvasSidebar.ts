@@ -287,8 +287,12 @@ export class CanvasSidebar {
 
     // Icon area (consistent alignment with tree nodes)
     const iconArea = $('span.canvas-node-icon-area');
-    const iconEl = createIconElement(resolvePageIcon(page.icon), 14);
+    const isDbFav = this._databasePageIds.has(page.id);
+    const iconEl = isDbFav
+      ? createIconElement('database', 14)
+      : createIconElement(resolvePageIcon(page.icon), 14);
     iconEl.classList.add('canvas-node-icon');
+    if (isDbFav) iconEl.classList.add('canvas-node-icon--database');
     iconArea.appendChild(iconEl);
 
     // Chevron overlay (same as tree nodes)
@@ -425,11 +429,11 @@ export class CanvasSidebar {
     // Icon area — shared container so chevron can overlay the icon
     const iconArea = $('span.canvas-node-icon-area');
 
-    // Icon — database pages get a table icon; regular pages get their resolved icon
+    // Icon — database pages get an SVG database icon; regular pages get their resolved icon
     let iconEl: HTMLElement;
     if (this._databasePageIds.has(node.id)) {
-      iconEl = $('span.canvas-node-icon.canvas-node-icon--database');
-      iconEl.textContent = '📊';
+      iconEl = createIconElement('database', 14);
+      iconEl.classList.add('canvas-node-icon', 'canvas-node-icon--database');
     } else {
       iconEl = createIconElement(resolvePageIcon(node.icon), 14);
       iconEl.classList.add('canvas-node-icon');
@@ -870,7 +874,7 @@ export class CanvasSidebar {
       await this._api.editors.openEditor({
         typeId: 'database',
         title: page.title,
-        icon: '📊',
+        icon: 'database',
         instanceId: page.id,
       });
       // After tree refreshes, start inline rename

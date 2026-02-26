@@ -1,4 +1,4 @@
-// databaseViewHost.ts — Shared database view engine
+﻿// databaseViewHost.ts — Shared database view engine
 //
 // Owns the full lifecycle of rendering a database: loading data, creating
 // ViewTabBar + DatabaseToolbar, switching views, and reacting to data
@@ -252,7 +252,7 @@ export class DatabaseViewHost extends Disposable {
       case 'timeline':
         return new TimelineView(container, this._dataService, databaseId, view, properties, rows, openEditor, groups);
       default: {
-        const placeholder = $('div.database-view-placeholder');
+        const placeholder = $('div.db-view-placeholder');
         placeholder.textContent = `${type} view — coming soon`;
         container.appendChild(placeholder);
         return null;

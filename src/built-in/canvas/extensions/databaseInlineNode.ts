@@ -1,4 +1,4 @@
-// databaseInlineNode.ts — Inline database block extension
+﻿// databaseInlineNode.ts — Inline database block extension
 //
 // Tiptap atom node that embeds a database view inline within a canvas page.
 // Renders an inline chrome (title, collapse/expand, resize, open-as-page)
@@ -51,17 +51,17 @@ class DatabaseInlineNodeView {
 
     // Build DOM structure
     this.dom = document.createElement('div');
-    this.dom.classList.add('db-inline-wrapper');
+    this.dom.classList.add('db-host', 'db-host--inline');
     this.dom.setAttribute('data-database-id', this._databaseId);
 
     // Header bar (title + toolbar + view tabs + actions)
     const header = document.createElement('div');
-    header.classList.add('db-inline-header');
+    header.classList.add('db-host-inline-header');
     this.dom.appendChild(header);
 
     // Database title
     const titleEl = document.createElement('span');
-    titleEl.classList.add('db-inline-title');
+    titleEl.classList.add('db-host-inline-title');
     titleEl.textContent = this._databaseTitle;
     titleEl.contentEditable = 'true';
     titleEl.spellcheck = false;
@@ -84,28 +84,28 @@ class DatabaseInlineNodeView {
 
     // Toolbar slot (icons next to title)
     const toolbarSlot = document.createElement('div');
-    toolbarSlot.classList.add('db-inline-toolbar');
+    toolbarSlot.classList.add('db-host-inline-toolbar');
     header.appendChild(toolbarSlot);
 
     // Tab bar slot
     const tabBarSlot = document.createElement('div');
-    tabBarSlot.classList.add('db-inline-tab-bar');
+    tabBarSlot.classList.add('db-host-inline-tabbar');
     header.appendChild(tabBarSlot);
 
     // Header actions area
     const headerActions = document.createElement('div');
-    headerActions.classList.add('db-inline-header-actions');
+    headerActions.classList.add('db-host-inline-actions');
     header.appendChild(headerActions);
 
     // Collapse/expand toolbar toggle
     const toolbarToggleBtn = document.createElement('button');
-    toolbarToggleBtn.classList.add('db-inline-action-btn', 'db-inline-toolbar-toggle');
+    toolbarToggleBtn.classList.add('db-host-inline-action-btn', 'db-host-inline-toolbar-toggle');
     toolbarToggleBtn.title = 'Hide toolbar actions';
     toolbarToggleBtn.innerHTML = svgIcon('db-collapse');
     toolbarToggleBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._toolbarCollapsed = !this._toolbarCollapsed;
-      toolbarToggleBtn.classList.toggle('db-inline-toolbar-toggle--collapsed', this._toolbarCollapsed);
+      toolbarToggleBtn.classList.toggle('db-host-inline-toolbar-toggle--collapsed', this._toolbarCollapsed);
       toolbarToggleBtn.title = this._toolbarCollapsed ? 'Show toolbar actions' : 'Hide toolbar actions';
       toolbarToggleBtn.innerHTML = this._toolbarCollapsed ? svgIcon('db-expand') : svgIcon('db-collapse');
       this._host?.setToolbarCollapsed(this._toolbarCollapsed);
@@ -114,7 +114,7 @@ class DatabaseInlineNodeView {
 
     // Open full-page button
     const expandBtn = document.createElement('button');
-    expandBtn.classList.add('db-inline-expand-btn');
+    expandBtn.classList.add('db-host-inline-expand-btn');
     expandBtn.title = 'Open as full page';
     expandBtn.innerHTML = svgIcon('open');
     expandBtn.addEventListener('click', (e) => {
@@ -125,17 +125,17 @@ class DatabaseInlineNodeView {
 
     // Toolbar panel container
     const toolbarPanelsSlot = document.createElement('div');
-    toolbarPanelsSlot.classList.add('db-inline-toolbar-panels');
+    toolbarPanelsSlot.classList.add('db-host-inline-toolbar-panels');
     this.dom.appendChild(toolbarPanelsSlot);
 
     // Content area
     const contentSlot = document.createElement('div');
-    contentSlot.classList.add('db-inline-content');
+    contentSlot.classList.add('db-host-inline-content');
     this.dom.appendChild(contentSlot);
 
     // Resize handle
     const resizeHandle = document.createElement('div');
-    resizeHandle.classList.add('db-inline-resize-handle');
+    resizeHandle.classList.add('db-host-inline-resize-handle');
     this.dom.appendChild(resizeHandle);
     this._setupResize(resizeHandle);
 
@@ -154,7 +154,7 @@ class DatabaseInlineNodeView {
 
     this._host.onDidFailLoad((message) => {
       contentSlot.textContent = message;
-      contentSlot.classList.add('db-inline-error');
+      contentSlot.classList.add('db-host-inline-error');
     });
 
     this._host.load().catch(err => {
@@ -186,7 +186,7 @@ class DatabaseInlineNodeView {
     }
     if (newTitle !== this._databaseTitle) {
       this._databaseTitle = newTitle;
-      const titleEl = this.dom.querySelector('.db-inline-title');
+      const titleEl = this.dom.querySelector('.db-host-inline-title');
       if (titleEl) {
         titleEl.textContent = this._databaseTitle;
       }
@@ -205,10 +205,10 @@ class DatabaseInlineNodeView {
     this._host?.dispose();
     this._host = null;
 
-    const tabBarSlot = this.dom.querySelector('.db-inline-tab-bar') as HTMLElement;
-    const toolbarSlot = this.dom.querySelector('.db-inline-toolbar') as HTMLElement;
-    const toolbarPanelsSlot = this.dom.querySelector('.db-inline-toolbar-panels') as HTMLElement;
-    const contentSlot = this.dom.querySelector('.db-inline-content') as HTMLElement;
+    const tabBarSlot = this.dom.querySelector('.db-host-inline-tabbar') as HTMLElement;
+    const toolbarSlot = this.dom.querySelector('.db-host-inline-toolbar') as HTMLElement;
+    const toolbarPanelsSlot = this.dom.querySelector('.db-host-inline-toolbar-panels') as HTMLElement;
+    const contentSlot = this.dom.querySelector('.db-host-inline-content') as HTMLElement;
 
     if (!tabBarSlot || !toolbarSlot || !toolbarPanelsSlot || !contentSlot) return;
 
@@ -217,7 +217,7 @@ class DatabaseInlineNodeView {
     toolbarSlot.innerHTML = '';
     toolbarPanelsSlot.innerHTML = '';
     contentSlot.innerHTML = '';
-    contentSlot.classList.remove('db-inline-error');
+    contentSlot.classList.remove('db-host-inline-error');
 
     this._host = new DatabaseViewHost({
       databaseId: this._databaseId,
@@ -251,7 +251,7 @@ class DatabaseInlineNodeView {
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      this.dom.classList.remove('db-inline-resizing');
+      this.dom.classList.remove('db-host-resizing');
     };
 
     handle.addEventListener('mousedown', (e) => {
@@ -259,7 +259,7 @@ class DatabaseInlineNodeView {
       e.stopPropagation();
       startY = e.clientY;
       startHeight = this.dom.offsetHeight;
-      this.dom.classList.add('db-inline-resizing');
+      this.dom.classList.add('db-host-resizing');
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
     });
@@ -319,7 +319,7 @@ export const DatabaseInline = Node.create<DatabaseInlineOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes(HTMLAttributes, { class: 'db-inline-wrapper' })];
+    return ['div', mergeAttributes(HTMLAttributes, { class: 'db-host db-host--inline' })];
   },
 
   addNodeView() {
@@ -327,7 +327,7 @@ export const DatabaseInline = Node.create<DatabaseInlineOptions>({
       const dataService = this.options.databaseDataService;
       if (!dataService) {
         const dom = document.createElement('div');
-        dom.classList.add('db-inline-wrapper', 'db-inline-error');
+        dom.classList.add('db-host', 'db-host--inline', 'db-host-inline-error');
         dom.textContent = 'Inline database: no data service available.';
         return { dom };
       }

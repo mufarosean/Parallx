@@ -1,46 +1,68 @@
-/* database.css — Database view UI styles
+﻿/* database.css — Database view UI styles
  *
- * Covers the DatabaseEditorPane layout, ViewTabBar, TableView, cell
- * renderers, cell editors, property configuration UI, empty states,
- * and column resize feedback.
+ * Unified CSS namespace: db-host-* (host shell), db-view-* (view tab bar),
+ * db-table-* / db-board-* / db-list-* / db-gallery-* / db-calendar-* /
+ * db-timeline-* (view types), db-toolbar-* (toolbar), db-cell-* (cell
+ * renderers), db-filter-* / db-sort-* / db-group-* / db-props-* (panels).
  *
  * Uses standard Parallx CSS custom properties (--vscode-*) injected by
  * the workbench theme service.
+ *
+ * ── Notion Reference Metrics (dark mode) ──────────────────────────────────
+ *   Row height:        33px
+ *   Header height:     33px
+ *   Body font-size:    14px
+ *   Header font-size:  12px, weight 500
+ *   Cell padding:      0 8px
+ *   Column separator:  1px solid rgba(255,255,255,0.04)
+ *   Row separator:     1px solid rgba(255,255,255,0.04)
+ *   Hover background:  rgba(255,255,255,0.03)
+ *   Toolbar btn:       26px height, 14px font
+ *   Tab bar:           34px height, 14px font, weight 500
+ *   Pill (select):     border-radius 3px, font 12px, padding 0 6px
+ *   Checkbox:          16x16, checked=#2383e2
+ *   Title cell:        14px, weight 400 (normal)
+ *   "New" button:      accent blue, 26px height
+ *   Add-row footer:    33px height
+ * ──────────────────────────────────────────────────────────────────────────
  */
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Editor Pane Layout
+   Host Shell — shared base + fullpage / inline modifiers
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.database-editor {
+.db-host {
   display: flex;
   flex-direction: column;
-  height: 100%;
   background: var(--vscode-editor-background);
   color: var(--vscode-foreground);
   overflow: hidden;
-  padding: 18px 28px 0;
   box-sizing: border-box;
 }
 
-.database-editor-page-header {
+.db-host--fullpage {
+  height: 100%;
+  padding: 18px 28px 0;
+}
+
+.db-host-page-header {
   flex-shrink: 0;
   margin-bottom: 10px;
 }
 
-.database-editor-page-title-row {
+.db-host-page-title-row {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.database-editor-page-icon {
+.db-host-page-icon {
   font-size: 24px;
   line-height: 1;
   opacity: 0.9;
 }
 
-.database-editor-page-title {
+.db-host-page-title {
   margin: 0;
   font-size: 44px;
   line-height: 1.1;
@@ -48,15 +70,15 @@
   letter-spacing: -0.02em;
 }
 
-.database-editor-toolbar {
+.db-host-tabbar {
   flex-shrink: 0;
 }
 
-.database-editor-toolbar-buttons {
+.db-host-toolbar {
   flex-shrink: 0;
 }
 
-.database-editor-content {
+.db-host-content {
   flex: 1;
   overflow: auto;
   padding: 0;
@@ -66,26 +88,26 @@
    View Tab Bar
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.database-view-tabs {
+.db-view-tabs {
   padding: 0;
 }
 
-.database-editor .database-view-tabs .ui-tab-bar {
-  height: 30px;
-  min-height: 30px;
+.db-host .db-view-tabs .ui-tab-bar {
+  height: 34px;
+  min-height: 34px;
   background: transparent;
 }
 
-.database-editor .database-view-tabs .ui-tab-bar-tabs::after,
-.database-editor .database-view-tabs .ui-tab,
-.database-editor .database-view-tabs .ui-tab-bar-actions {
+.db-host .db-view-tabs .ui-tab-bar-tabs::after,
+.db-host .db-view-tabs .ui-tab,
+.db-host .db-view-tabs .ui-tab-bar-actions {
   border: none;
 }
 
-.database-editor .database-view-tabs .ui-tab {
+.db-host .db-view-tabs .ui-tab {
   background: transparent;
   color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   border-radius: 6px;
   padding: 0 8px;
@@ -93,21 +115,21 @@
   max-width: none;
 }
 
-.database-editor .database-view-tabs .ui-tab:hover {
+.db-host .db-view-tabs .ui-tab:hover {
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
 }
 
-.database-editor .database-view-tabs .ui-tab--active {
+.db-host .db-view-tabs .ui-tab--active {
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
   color: var(--vscode-foreground);
 }
 
-.database-editor .database-view-tabs .ui-tab-icon {
+.db-host .db-view-tabs .ui-tab-icon {
   font-size: 11px;
   opacity: 0.8;
 }
 
-.database-view-add-btn {
+.db-view-add-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -122,7 +144,7 @@
   line-height: 1;
 }
 
-.database-view-add-btn:hover {
+.db-view-add-btn:hover {
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
   color: var(--vscode-foreground);
 }
@@ -135,8 +157,8 @@
   display: flex;
   flex-direction: column;
   min-width: 100%;
-  font-size: 13px;
-  line-height: 1.35;
+  font-size: 14px;
+  line-height: 1.5;
   border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.06));
   border-radius: 6px;
   overflow: hidden;
@@ -167,7 +189,7 @@
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  height: 30px;
+  height: 33px;
   border-right: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.05));
 }
 
@@ -195,7 +217,7 @@
   font-size: 12px;
   cursor: pointer;
   padding: 0 10px;
-  height: 30px;
+  height: 33px;
   white-space: nowrap;
 }
 
@@ -238,7 +260,7 @@
 .db-table-row {
   display: grid;
   border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.05));
-  min-height: 32px;
+  min-height: 33px;
   transition: background 0.06s ease;
 }
 
@@ -249,12 +271,12 @@
 .db-table-cell {
   display: flex;
   align-items: center;
-  padding: 3px 8px;
+  padding: 0 8px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   cursor: default;
-  min-height: 32px;
+  min-height: 33px;
   border-right: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.04));
 }
 
@@ -282,7 +304,7 @@
   cursor: pointer;
   width: 100%;
   text-align: left;
-  height: 36px;
+  height: 33px;
   transition: background 0.06s ease;
 }
 
@@ -298,15 +320,15 @@
 /* ── Title ───────────────────────────────────────────────────────────────── */
 
 .db-cell-title {
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
   color: var(--vscode-foreground);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .db-cell-page-icon {
   margin-right: 6px;
-  font-size: 13px;
+  font-size: 14px;
   opacity: 0.72;
   line-height: 1;
 }
@@ -364,10 +386,10 @@
 .db-cell-pill {
   display: inline-flex;
   align-items: center;
-  padding: 1px 7px;
-  border-radius: 10px;
-  font-size: 11px;
-  line-height: 1.4;
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 20px;
   white-space: nowrap;
   max-width: 150px;
   overflow: hidden;
@@ -574,7 +596,7 @@
    Empty State & Placeholder
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.database-empty-state {
+.db-host-empty-state {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -586,7 +608,7 @@
   text-align: center;
 }
 
-.database-view-placeholder {
+.db-view-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -618,7 +640,7 @@
   gap: 2px;
   padding: 0 0 6px;
   background: var(--vscode-editor-background);
-  min-height: 28px;
+  min-height: 26px;
 }
 
 .db-toolbar-btn {
@@ -630,11 +652,11 @@
   border-radius: 4px;
   background: transparent;
   color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
   white-space: nowrap;
-  min-width: 24px;
-  height: 24px;
+  min-width: 26px;
+  height: 26px;
   transition: background 0.1s;
 }
 
@@ -718,7 +740,7 @@
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
-  height: 24px;
+  height: 26px;
   transition: background 0.12s;
 }
 
@@ -1949,21 +1971,19 @@
    Inline Database
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.db-inline-wrapper {
+.db-host--inline {
   position: relative;
   margin: 8px 0;
   min-height: 120px;
-  overflow: hidden;
-  background: var(--vscode-editor-background);
 }
 
-.db-inline-wrapper.db-inline-resizing {
+.db-host--inline.db-host-resizing {
   user-select: none;
 }
 
 /* ── Inline Header ───────────────────────────────────────────────────────── */
 
-.db-inline-header {
+.db-host-inline-header {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1971,7 +1991,7 @@
   min-height: 52px;
 }
 
-.db-inline-title {
+.db-host-inline-title {
   font-size: 40px;
   font-weight: 600;
   color: var(--vscode-foreground);
@@ -1985,20 +2005,20 @@
   min-width: 260px;
 }
 
-.db-inline-title:hover {
+.db-host-inline-title:hover {
   color: var(--vscode-foreground);
 }
 
-.db-inline-title:focus {
+.db-host-inline-title:focus {
   border-radius: 4px;
   box-shadow: 0 0 0 1px var(--vscode-focusBorder, #2383e2);
 }
 
-.db-inline-tab-bar {
+.db-host-inline-tabbar {
   display: none;
 }
 
-.db-inline-header-actions {
+.db-host-inline-actions {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -2006,7 +2026,7 @@
   margin-left: 4px;
 }
 
-.db-inline-action-btn {
+.db-host-inline-action-btn {
   flex-shrink: 0;
   background: none;
   border: none;
@@ -2021,17 +2041,17 @@
   transition: background 0.1s;
 }
 
-.db-inline-action-btn:hover {
+.db-host-inline-action-btn:hover {
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
   color: var(--vscode-foreground);
 }
 
-.db-inline-action-btn svg {
+.db-host-inline-action-btn svg {
   width: 14px;
   height: 14px;
 }
 
-.db-inline-expand-btn {
+.db-host-inline-expand-btn {
   flex-shrink: 0;
   background: none;
   border: none;
@@ -2045,58 +2065,58 @@
   transition: background 0.1s;
 }
 
-.db-inline-expand-btn:hover {
+.db-host-inline-expand-btn:hover {
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
   color: var(--vscode-foreground);
 }
 
-.db-inline-expand-btn svg {
+.db-host-inline-expand-btn svg {
   width: 14px;
   height: 14px;
 }
 
 /* ── Inline Toolbar ──────────────────────────────────────────────────────── */
 
-.db-inline-toolbar {
+.db-host-inline-toolbar {
   display: flex;
   align-items: center;
   min-height: 30px;
   min-width: 0;
 }
 
-.db-inline-toolbar .db-toolbar {
+.db-host-inline-toolbar .db-toolbar {
   justify-content: flex-start;
   gap: 3px;
   padding: 0;
   min-height: 30px;
 }
 
-.db-inline-toolbar .db-toolbar-text-btn {
+.db-host-inline-toolbar .db-toolbar-text-btn {
   padding: 4px;
   min-width: 24px;
 }
 
-.db-inline-toolbar .db-toolbar-btn-label {
+.db-host-inline-toolbar .db-toolbar-btn-label {
   display: none;
 }
 
-.db-inline-toolbar .db-toolbar-spacer {
+.db-host-inline-toolbar .db-toolbar-spacer {
   display: none;
 }
 
-.db-inline-toolbar .db-toolbar-new-btn {
+.db-host-inline-toolbar .db-toolbar-new-btn {
   margin-left: 4px;
 }
 
-.db-inline-toolbar-panels {
+.db-host-inline-toolbar-panels {
   width: 100%;
 }
 
-.db-inline-toolbar-toggle {
+.db-host-inline-toolbar-toggle {
   transition: transform 0.12s ease;
 }
 
-.db-inline-toolbar-toggle--collapsed {
+.db-host-inline-toolbar-toggle--collapsed {
   transform: none;
 }
 
@@ -2104,29 +2124,29 @@
   display: none;
 }
 
-.db-inline-toolbar:empty {
+.db-host-inline-toolbar:empty {
   display: none;
 }
 
 /* ── Inline Content ──────────────────────────────────────────────────────── */
 
-.db-inline-content {
+.db-host-inline-content {
   overflow: auto;
   max-height: 500px;
 }
 
-.db-inline-content .database-table-wrapper,
-.db-inline-content .db-board-wrapper,
-.db-inline-content .db-list-wrapper,
-.db-inline-content .db-gallery-wrapper,
-.db-inline-content .db-calendar-wrapper,
-.db-inline-content .db-timeline-wrapper {
+.db-host-inline-content .database-table-wrapper,
+.db-host-inline-content .db-board-wrapper,
+.db-host-inline-content .db-list-wrapper,
+.db-host-inline-content .db-gallery-wrapper,
+.db-host-inline-content .db-calendar-wrapper,
+.db-host-inline-content .db-timeline-wrapper {
   border: none;
   border-radius: 0;
   margin: 0;
 }
 
-.db-inline-error {
+.db-host-inline-error {
   padding: 16px;
   color: var(--vscode-descriptionForeground);
   font-style: italic;
@@ -2135,7 +2155,7 @@
 
 /* ── Inline Resize Handle ────────────────────────────────────────────────── */
 
-.db-inline-resize-handle {
+.db-host-inline-resize-handle {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -2147,8 +2167,8 @@
   z-index: 1;
 }
 
-.db-inline-resize-handle:hover,
-.db-inline-resizing .db-inline-resize-handle {
+.db-host-inline-resize-handle:hover,
+.db-host-resizing .db-host-inline-resize-handle {
   background: var(--vscode-focusBorder, #2383e2);
   opacity: 0.3;
 }

@@ -1,4 +1,4 @@
-// viewTabBar.ts — Database view tab bar
+﻿// viewTabBar.ts — Database view tab bar
 //
 // Wraps the generic src/ui/TabBar component to provide database view
 // switching. Maps IDatabaseView[] to ITabBarItem[] and adds a "+" button
@@ -49,7 +49,7 @@ export class ViewTabBar extends Disposable {
     super();
 
     // Wrap in a container div for database-specific styling
-    const wrapper = $('div.database-view-tabs');
+    const wrapper = $('div.db-view-tabs');
     container.appendChild(wrapper);
 
     this._tabBar = this._register(new TabBar(wrapper, {
@@ -62,7 +62,7 @@ export class ViewTabBar extends Disposable {
     // "+" button in the actions slot
     const actionsSlot = this._tabBar.getActionsContainer();
     if (actionsSlot) {
-      const addBtn = $('button.database-view-add-btn');
+      const addBtn = $('button.db-view-add-btn');
       addBtn.textContent = '+';
       addBtn.title = 'Add a view';
       this._register(addDisposableListener(addBtn, 'click', (e) => this._showNewViewMenu(e)));

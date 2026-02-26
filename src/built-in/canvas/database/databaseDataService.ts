@@ -314,6 +314,82 @@ export class DatabaseDataService extends Disposable implements IDatabaseDataServ
     this._onDidChangeDatabase.fire({ kind: DatabaseChangeKind.Deleted, databaseId });
   }
 
+  /**
+   * Duplicate a database's schema (properties, views, property values, row membership)
+   * from an existing source database onto a new target page.
+   * The target page must already exist. A new database record is created for `targetPageId`.
+   */
+  async duplicateDatabase(sourceDatabaseId: string, targetPageId: string): Promise<IDatabase> {
+    // 1. Create the database record for the target page
+    const sourceDb = await this.getDatabase(sourceDatabaseId);
+    if (!sourceDb) throw new Error(`[DatabaseDataService] Source database "${sourceDatabaseId}" not found`);
+
+    const newDb = await this.createDatabase(targetPageId);
+
+    // 2. Copy properties (createDatabase already made a "Title" prop — remove it first, then copy all)
+    const sourceProps = await this.getProperties(sourceDatabaseId);
+    const newDefaultProps = await this.getProperties(targetPageId);
+    // Remove auto-created default properties
+    for (const defProp of newDefaultProps) {
+      await this.removeProperty(targetPageId, defProp.id);
+    }
+
+    // Map old property IDs → new property IDs
+    const propIdMap = new Map<string, string>();
+    for (const prop of sourceProps) {
+      const newProp = await this.addProperty(targetPageId, prop.name, prop.type, prop.config ?? undefined);
+      propIdMap.set(prop.id, newProp.id);
+    }
+
+    // 3. Copy views (createDatabase already made a default view — remove it first)
+    const sourceViews = await this.getViews(sourceDatabaseId);
+    const newDefaultViews = await this.getViews(targetPageId);
+    for (const defView of newDefaultViews) {
+      // Force-delete by running SQL directly (deleteView prevents deleting last view)
+      await this._db.run('DELETE FROM database_views WHERE id = ?', [defView.id]);
+    }
+
+    for (const view of sourceViews) {
+      // Remap visibleProperties to new IDs
+      let config = view.config ? { ...view.config } : undefined;
+      if (config?.visibleProperties) {
+        config.visibleProperties = config.visibleProperties
+          .map(id => propIdMap.get(id))
+          .filter((id): id is string => id !== undefined);
+      }
+      await this.createView(targetPageId, view.name, view.type, {
+        groupBy: view.groupBy ? propIdMap.get(view.groupBy) ?? view.groupBy : undefined,
+        subGroupBy: view.subGroupBy ? propIdMap.get(view.subGroupBy) ?? view.subGroupBy : undefined,
+        boardGroupProperty: view.boardGroupProperty ? propIdMap.get(view.boardGroupProperty) ?? view.boardGroupProperty : undefined,
+        hideEmptyGroups: view.hideEmptyGroups,
+        filterConfig: view.filterConfig,
+        sortConfig: view.sortConfig,
+        config,
+        isLocked: false,
+      });
+    }
+
+    // 4. Copy row membership and property values
+    const sourceRows = await this.getRows(sourceDatabaseId);
+    for (const row of sourceRows) {
+      await this.addRow(targetPageId, row.page.id);
+      const values = await this.getPropertyValues(sourceDatabaseId, row.page.id);
+      const batch: { propertyId: string; value: IPropertyValue }[] = [];
+      for (const [oldPropId, val] of Object.entries(values)) {
+        const newPropId = propIdMap.get(oldPropId);
+        if (newPropId) {
+          batch.push({ propertyId: newPropId, value: val });
+        }
+      }
+      if (batch.length > 0) {
+        await this.batchSetPropertyValues(targetPageId, row.page.id, batch);
+      }
+    }
+
+    this._onDidChangeDatabase.fire({ kind: DatabaseChangeKind.Created, databaseId: targetPageId, database: newDb });
+    return newDb;
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // Property CRUD
   // ══════════════════════════════════════════════════════════════════════════

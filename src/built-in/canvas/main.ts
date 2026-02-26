@@ -322,9 +322,18 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
         if (original.content) {
           await _dataService.updatePage(copy.id, { content: original.content, icon: original.icon });
         }
+        // Detect database pages — duplicate the database data too
+        let isDatabase = false;
+        if (_databaseDataService) {
+          const db = await _databaseDataService.getDatabaseByPageId(pageId);
+          if (db) {
+            isDatabase = true;
+            await _databaseDataService.duplicateDatabase(pageId, copy.id);
+          }
+        }
         // Open the duplicate in the editor
         await api.editors.openEditor({
-          typeId: 'canvas',
+          typeId: isDatabase ? 'database' : 'canvas',
           title: copy.title,
           icon: copy.icon ?? undefined,
           instanceId: copy.id,
