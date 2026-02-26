@@ -242,17 +242,22 @@ class DatabaseEditorPane extends Disposable {
   private _createDescriptionUI(): void {
     if (!this._wrapper) return;
 
-    // Toggle button (ⓘ Hide description / Add description) — lives in the shell area
+    // Hover zone — sits between page header and shell.
+    // Contains the toggle hint and (when active) the description row.
+    const zone = $('div.db-description-zone');
+
+    // Toggle hint — always hover-only, never permanently visible.
+    // Text changes: "Add a description" / "Hide description".
     this._descriptionToggleBtn = $('button.db-description-toggle');
     this._descriptionToggleBtn.addEventListener('click', () => {
       if (this._descriptionVisible) {
-        // Hide: clear description text and collapse
+        // Hide: clear description and collapse
         this._descriptionVisible = false;
         this._dataService.updateDatabase(this._databaseId, { description: null }).catch(err => {
           console.error('[DatabaseEditor] Clear description failed:', err);
         });
       } else {
-        // Show: reveal the description input
+        // Show: reveal the editable description input
         this._descriptionVisible = true;
       }
       this._syncDescriptionUI();
@@ -260,8 +265,9 @@ class DatabaseEditorPane extends Disposable {
         this._descriptionInput.focus();
       }
     });
+    zone.appendChild(this._descriptionToggleBtn);
 
-    // Description editable row
+    // Editable description row
     this._descriptionRow = $('div.db-description-row');
 
     this._descriptionInput = $('div.db-description-input');
@@ -285,7 +291,6 @@ class DatabaseEditorPane extends Disposable {
     this._descriptionInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        // Move focus away from description
         this._descriptionInput?.blur();
       }
     });
@@ -297,10 +302,10 @@ class DatabaseEditorPane extends Disposable {
     });
 
     this._descriptionRow.appendChild(this._descriptionInput);
+    zone.appendChild(this._descriptionRow);
 
-    // Insert toggle + description row into wrapper (after page header, before shell)
-    this._wrapper.appendChild(this._descriptionToggleBtn);
-    this._wrapper.appendChild(this._descriptionRow);
+    // Insert zone into wrapper (after page header, before shell)
+    this._wrapper.appendChild(zone);
 
     this._syncDescriptionUI();
   }
@@ -311,36 +316,22 @@ class DatabaseEditorPane extends Disposable {
 
     const hasDescription = !!(this._database?.description);
 
+    // If description exists in DB but not visible locally, reveal it
     if (hasDescription && !this._descriptionVisible) {
       this._descriptionVisible = true;
     }
 
-    if (this._descriptionVisible) {
-      this._descriptionToggleBtn.textContent = '';
-      const icon = $('span.db-description-toggle-icon');
-      icon.textContent = 'ⓘ';
-      this._descriptionToggleBtn.appendChild(icon);
-      const label = $('span');
-      label.textContent = 'Hide description';
-      this._descriptionToggleBtn.appendChild(label);
-      this._descriptionToggleBtn.classList.add('db-description-toggle--visible');
+    // Toggle label — always hover-only via CSS, just update text
+    this._descriptionToggleBtn.textContent = this._descriptionVisible
+      ? 'Hide description'
+      : 'Add a description';
 
-      this._descriptionRow.style.display = '';
-      // Only update text if the input doesn't have focus (avoid clobbering while typing)
-      if (document.activeElement !== this._descriptionInput) {
-        this._descriptionInput.textContent = this._database?.description || '';
-      }
-    } else {
-      this._descriptionToggleBtn.textContent = '';
-      const icon = $('span.db-description-toggle-icon');
-      icon.textContent = 'ⓘ';
-      this._descriptionToggleBtn.appendChild(icon);
-      const label = $('span');
-      label.textContent = 'Add description';
-      this._descriptionToggleBtn.appendChild(label);
-      this._descriptionToggleBtn.classList.remove('db-description-toggle--visible');
+    // Description row visibility
+    this._descriptionRow.style.display = this._descriptionVisible ? '' : 'none';
 
-      this._descriptionRow.style.display = 'none';
+    // Sync input text (only if not actively editing)
+    if (this._descriptionVisible && document.activeElement !== this._descriptionInput) {
+      this._descriptionInput.textContent = this._database?.description || '';
     }
   }
 
