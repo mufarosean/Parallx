@@ -242,12 +242,9 @@ class DatabaseEditorPane extends Disposable {
   private _createDescriptionUI(): void {
     if (!this._wrapper) return;
 
-    // Hover zone — sits between page header and shell.
-    // Contains the toggle hint and (when active) the description row.
-    const zone = $('div.db-description-zone');
-
-    // Toggle hint — always hover-only, never permanently visible.
-    // Text changes: "Add a description" / "Hide description".
+    // ── Toggle button ──
+    // Lives ABOVE the title (between cover and page header).
+    // Hover-only: "Add a description" / "Hide description".
     this._descriptionToggleBtn = $('button.db-description-toggle');
     this._descriptionToggleBtn.addEventListener('click', () => {
       if (this._descriptionVisible) {
@@ -265,9 +262,17 @@ class DatabaseEditorPane extends Disposable {
         this._descriptionInput.focus();
       }
     });
-    zone.appendChild(this._descriptionToggleBtn);
 
-    // Editable description row
+    // Insert toggle BEFORE the page header (between cover and title)
+    const pageHeader = this._wrapper.querySelector('.canvas-page-header');
+    if (pageHeader) {
+      pageHeader.before(this._descriptionToggleBtn);
+    } else {
+      this._wrapper.appendChild(this._descriptionToggleBtn);
+    }
+
+    // ── Description row ──
+    // Lives BELOW the title (between page header and shell).
     this._descriptionRow = $('div.db-description-row');
 
     this._descriptionInput = $('div.db-description-input');
@@ -302,10 +307,9 @@ class DatabaseEditorPane extends Disposable {
     });
 
     this._descriptionRow.appendChild(this._descriptionInput);
-    zone.appendChild(this._descriptionRow);
 
-    // Insert zone into wrapper (after page header, before shell)
-    this._wrapper.appendChild(zone);
+    // Insert description row after page header (before shell)
+    this._wrapper.appendChild(this._descriptionRow);
 
     this._syncDescriptionUI();
   }

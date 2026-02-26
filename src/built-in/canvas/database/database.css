@@ -139,14 +139,11 @@
    Description Affordance (Notion-style hover-revealed "Add a description")
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.db-description-zone {
-  padding: 0 96px;
-  box-sizing: border-box;
-}
-
+/* Toggle sits between cover and page header — hover-only */
 .db-description-toggle {
-  display: inline-block;
+  display: block;
   padding: 2px 4px;
+  margin: 0 0 0 96px;
   border: none;
   background: transparent;
   color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 0.6));
@@ -158,9 +155,11 @@
   transition: opacity 120ms ease;
 }
 
-/* Show toggle ONLY on hover over the zone area — never permanently */
-.db-description-zone:hover .db-description-toggle,
-.db-description-toggle:focus-visible {
+/* Reveal on hover over the toggle itself or the gap area above title */
+.db-description-toggle:hover,
+.db-description-toggle:focus-visible,
+.canvas-page-cover:hover ~ .db-description-toggle,
+.db-host--fullpage .db-description-toggle:hover {
   opacity: 1;
 }
 
@@ -169,8 +168,10 @@
   color: var(--vscode-foreground);
 }
 
+/* Description row sits between page header and shell */
 .db-description-row {
-  padding: 2px 0 4px;
+  padding: 0 96px 4px;
+  box-sizing: border-box;
 }
 
 .db-description-input {
