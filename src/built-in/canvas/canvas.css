@@ -2021,6 +2021,7 @@
 
 .canvas-page-header--inline-title .canvas-page-affordances {
   margin-bottom: 8px;
+  min-height: 0;
 }
 
 /* Less top padding when cover is present */

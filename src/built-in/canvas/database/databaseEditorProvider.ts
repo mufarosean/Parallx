@@ -148,6 +148,11 @@ class DatabaseEditorPane extends Disposable {
       this._pageChrome.currentPage = null;
     }
 
+    if (this._input && typeof (this._input as any).setName === 'function') {
+      const initialTitle = this._pageChrome.currentPage?.title?.trim() || 'Untitled';
+      (this._input as any).setName(initialTitle);
+    }
+
     this._pageChrome.applyPageSettings();
     this._pageChrome.createChrome();
 

@@ -55,6 +55,7 @@ export class PageChromeController {
   private _coverEl: HTMLElement | null = null;
   private _coverControls: HTMLElement | null = null;
   private _breadcrumbsEl: HTMLElement | null = null;
+  private _breadcrumbCurrentIcon: HTMLElement | null = null;
   private _breadcrumbCurrentText: HTMLElement | null = null;
   private _iconEl: HTMLElement | null = null;
   private _titleEl: HTMLElement | null = null;
@@ -116,13 +117,21 @@ export class PageChromeController {
     if (this._breadcrumbCurrentText) {
       this._breadcrumbCurrentText.textContent = page.title || 'Untitled';
     }
+    if (this._breadcrumbCurrentIcon) {
+      this._breadcrumbCurrentIcon.innerHTML = '';
+      this._breadcrumbCurrentIcon.appendChild(createIconElement(resolvePageIcon(page.icon), 14));
+    }
     // Update icon
     if (this._iconEl) {
       if (page.icon) {
         const iconId = resolvePageIcon(page.icon);
         this._iconEl.innerHTML = svgIcon(iconId);
         const svg = this._iconEl.querySelector('svg');
-        if (svg) { svg.setAttribute('width', '40'); svg.setAttribute('height', '40'); }
+        if (svg) {
+          const iconSize = this._options.titleLayout === 'inline' ? '32' : '40';
+          svg.setAttribute('width', iconSize);
+          svg.setAttribute('height', iconSize);
+        }
         this._iconEl.style.display = '';
       } else {
         this._iconEl.innerHTML = '';
@@ -213,6 +222,7 @@ export class PageChromeController {
     this._coverEl = null;
     this._coverControls = null;
     this._breadcrumbsEl = null;
+    this._breadcrumbCurrentIcon = null;
     this._iconEl = null;
     this._titleEl = null;
     this._hoverAffordances = null;
@@ -335,7 +345,11 @@ export class PageChromeController {
     if (this._currentPage?.icon) {
       this._iconEl.innerHTML = svgIcon(pageIconId);
       const svg = this._iconEl.querySelector('svg');
-      if (svg) { svg.setAttribute('width', '40'); svg.setAttribute('height', '40'); }
+      if (svg) {
+        const iconSize = this._options.titleLayout === 'inline' ? '32' : '40';
+        svg.setAttribute('width', iconSize);
+        svg.setAttribute('height', iconSize);
+      }
       this._iconEl.style.display = '';
     } else {
       this._iconEl.style.display = 'none';
@@ -349,8 +363,6 @@ export class PageChromeController {
       this._showIconPicker();
     });
     const titleRow = $('div.canvas-page-title-row');
-    this._pageHeader.appendChild(titleRow);
-
     titleRow.appendChild(this._iconEl);
 
     // ── Hover affordances (Add icon / Add cover) ──
@@ -384,7 +396,13 @@ export class PageChromeController {
       this._hoverAffordances.appendChild(addCoverBtn);
     }
 
-    this._pageHeader.appendChild(this._hoverAffordances);
+    if (this._options.titleLayout === 'inline') {
+      this._pageHeader.appendChild(this._hoverAffordances);
+      this._pageHeader.appendChild(titleRow);
+    } else {
+      this._pageHeader.appendChild(titleRow);
+      this._pageHeader.appendChild(this._hoverAffordances);
+    }
 
     // ── Title (contenteditable) ──
     this._titleEl = $('div.canvas-page-title');
@@ -464,8 +482,9 @@ export class PageChromeController {
       }
 
       const currentCrumb = $('span.canvas-breadcrumb.canvas-breadcrumb--current');
-      const currentIcon = createIconElement(resolvePageIcon(this._currentPage?.icon), 14);
-      currentCrumb.appendChild(currentIcon);
+      this._breadcrumbCurrentIcon = $('span');
+      this._breadcrumbCurrentIcon.appendChild(createIconElement(resolvePageIcon(this._currentPage?.icon), 14));
+      currentCrumb.appendChild(this._breadcrumbCurrentIcon);
       this._breadcrumbCurrentText = $('span');
       this._breadcrumbCurrentText.textContent = this._currentPage?.title || 'Untitled';
       currentCrumb.appendChild(this._breadcrumbCurrentText);

@@ -64,13 +64,17 @@
 }
 
 .db-host--fullpage .canvas-page-header--inline-title .canvas-page-title {
-  font-size: 52px;
+  font-size: 44px;
   line-height: 1.1;
   margin: 0;
 }
 
 .db-host--fullpage .canvas-page-header--inline-title .canvas-page-icon {
-  margin-bottom: 6px;
+  margin-bottom: 3px;
+}
+
+.db-host--fullpage .canvas-page-header--inline-title {
+  padding-bottom: 4px;
 }
 
 .db-host-page-header {
