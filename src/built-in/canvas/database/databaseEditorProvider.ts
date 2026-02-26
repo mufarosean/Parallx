@@ -18,6 +18,7 @@ import {
   PageChromeController,
   svgIcon,
   type ICanvasDataService,
+  type IDatabase,
   type IDatabaseDataService,
   type OpenEditorFn,
 } from './databaseRegistry.js';
@@ -93,6 +94,14 @@ class DatabaseEditorPane extends Disposable {
   private _coverPickerOutsideClick: ((e: MouseEvent) => void) | null = null;
   private _coverPickerEscape: ((e: KeyboardEvent) => void) | null = null;
 
+  // ── Description state ──
+  private _database: IDatabase | null = null;
+  private _descriptionRow: HTMLElement | null = null;
+  private _descriptionInput: HTMLElement | null = null;
+  private _descriptionToggleBtn: HTMLElement | null = null;
+  private _descriptionVisible = false;
+  private _descriptionSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(
     private readonly _container: HTMLElement,
     private readonly _databaseId: string,
@@ -156,6 +165,17 @@ class DatabaseEditorPane extends Disposable {
     this._pageChrome.applyPageSettings();
     this._pageChrome.createChrome();
 
+    // Load database record for description
+    try {
+      this._database = await this._dataService.getDatabase(this._databaseId);
+    } catch {
+      this._database = null;
+    }
+    this._descriptionVisible = !!(this._database?.description);
+
+    // Description affordance (between page header and database shell)
+    this._createDescriptionUI();
+
     this._shell = $('div.db-host-shell');
     this._wrapper.appendChild(this._shell);
 
@@ -198,7 +218,130 @@ class DatabaseEditorPane extends Disposable {
       this._pageChrome?.applyPageSettings();
     }));
 
+    this._register(this._dataService.onDidChangeDatabase((event) => {
+      if (event.database?.id !== this._databaseId) return;
+      if (event.database) {
+        this._database = event.database;
+        this._syncDescriptionUI();
+      }
+    }));
+
     await this._host.load();
+  }
+
+  // ─── Description UI ──────────────────────────────────────────────────
+
+  /**
+   * Build the description affordance row.
+   *
+   * When no description exists, shows a hover-visible "Add description"
+   * button between the page header and the database shell.
+   * When a description exists, shows an editable text line and a
+   * "Hide description" toggle above the title area.
+   */
+  private _createDescriptionUI(): void {
+    if (!this._wrapper) return;
+
+    // Toggle button (ⓘ Hide description / Add description) — lives in the shell area
+    this._descriptionToggleBtn = $('button.db-description-toggle');
+    this._descriptionToggleBtn.addEventListener('click', () => {
+      if (this._descriptionVisible) {
+        // Hide: clear description text and collapse
+        this._descriptionVisible = false;
+        this._dataService.updateDatabase(this._databaseId, { description: null }).catch(err => {
+          console.error('[DatabaseEditor] Clear description failed:', err);
+        });
+      } else {
+        // Show: reveal the description input
+        this._descriptionVisible = true;
+      }
+      this._syncDescriptionUI();
+      if (this._descriptionVisible && this._descriptionInput) {
+        this._descriptionInput.focus();
+      }
+    });
+
+    // Description editable row
+    this._descriptionRow = $('div.db-description-row');
+
+    this._descriptionInput = $('div.db-description-input');
+    this._descriptionInput.contentEditable = 'true';
+    this._descriptionInput.spellcheck = false;
+    this._descriptionInput.setAttribute('data-placeholder', 'Add a description…');
+    this._descriptionInput.textContent = this._database?.description || '';
+
+    this._descriptionInput.addEventListener('input', () => {
+      const text = this._descriptionInput?.textContent?.trim() || '';
+      if (this._descriptionSaveTimer) clearTimeout(this._descriptionSaveTimer);
+      this._descriptionSaveTimer = setTimeout(() => {
+        this._dataService.updateDatabase(this._databaseId, {
+          description: text || null,
+        }).catch(err => {
+          console.error('[DatabaseEditor] Save description failed:', err);
+        });
+      }, 400);
+    });
+
+    this._descriptionInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        // Move focus away from description
+        this._descriptionInput?.blur();
+      }
+    });
+
+    this._descriptionInput.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = e.clipboardData?.getData('text/plain')?.replace(/[\r\n]+/g, ' ') || '';
+      document.execCommand('insertText', false, text);
+    });
+
+    this._descriptionRow.appendChild(this._descriptionInput);
+
+    // Insert toggle + description row into wrapper (after page header, before shell)
+    this._wrapper.appendChild(this._descriptionToggleBtn);
+    this._wrapper.appendChild(this._descriptionRow);
+
+    this._syncDescriptionUI();
+  }
+
+  /** Sync toggle label, row visibility, and input text to current state. */
+  private _syncDescriptionUI(): void {
+    if (!this._descriptionToggleBtn || !this._descriptionRow || !this._descriptionInput) return;
+
+    const hasDescription = !!(this._database?.description);
+
+    if (hasDescription && !this._descriptionVisible) {
+      this._descriptionVisible = true;
+    }
+
+    if (this._descriptionVisible) {
+      this._descriptionToggleBtn.textContent = '';
+      const icon = $('span.db-description-toggle-icon');
+      icon.textContent = 'ⓘ';
+      this._descriptionToggleBtn.appendChild(icon);
+      const label = $('span');
+      label.textContent = 'Hide description';
+      this._descriptionToggleBtn.appendChild(label);
+      this._descriptionToggleBtn.classList.add('db-description-toggle--visible');
+
+      this._descriptionRow.style.display = '';
+      // Only update text if the input doesn't have focus (avoid clobbering while typing)
+      if (document.activeElement !== this._descriptionInput) {
+        this._descriptionInput.textContent = this._database?.description || '';
+      }
+    } else {
+      this._descriptionToggleBtn.textContent = '';
+      const icon = $('span.db-description-toggle-icon');
+      icon.textContent = 'ⓘ';
+      this._descriptionToggleBtn.appendChild(icon);
+      const label = $('span');
+      label.textContent = 'Add description';
+      this._descriptionToggleBtn.appendChild(label);
+      this._descriptionToggleBtn.classList.remove('db-description-toggle--visible');
+
+      this._descriptionRow.style.display = 'none';
+    }
   }
 
   // ─── Empty State ─────────────────────────────────────────────────────
@@ -433,6 +576,14 @@ class DatabaseEditorPane extends Disposable {
   override dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
+
+    if (this._descriptionSaveTimer) {
+      clearTimeout(this._descriptionSaveTimer);
+      this._descriptionSaveTimer = null;
+    }
+    this._descriptionRow = null;
+    this._descriptionInput = null;
+    this._descriptionToggleBtn = null;
 
     this._dismissOverlays();
     this._pageChrome?.dismissPopups();

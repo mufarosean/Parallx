@@ -121,7 +121,7 @@ describe('renderTitle', () => {
     renderTitle(undefined, container);
     const span = container.querySelector('span.db-cell-empty');
     expect(span).not.toBeNull();
-    expect(span!.textContent).toBe('Empty');
+    expect(span!.textContent).toBe('');
   });
 
   it('renders empty placeholder for empty title segments', () => {

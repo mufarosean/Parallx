@@ -136,6 +136,72 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Description Affordance (Notion-style "Add description" toggle + row)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-description-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  margin: 0 0 2px 96px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 0.6));
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+/* Show on wrapper hover or when description is visible */
+.db-host--fullpage:hover .db-description-toggle,
+.db-description-toggle:focus-visible,
+.db-description-toggle--visible {
+  opacity: 1;
+}
+
+.db-description-toggle:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+  color: var(--vscode-foreground);
+}
+
+.db-description-toggle-icon {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.db-description-row {
+  padding: 0 96px 4px;
+  box-sizing: border-box;
+}
+
+.db-description-input {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  padding: 2px 0;
+  outline: none;
+  min-height: 21px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.db-description-input:empty::before {
+  content: attr(data-placeholder);
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 0.5));
+  font-style: italic;
+  pointer-events: none;
+}
+
+.db-description-input:focus {
+  color: var(--vscode-foreground);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    View Tab Bar
    ═══════════════════════════════════════════════════════════════════════════ */
 
