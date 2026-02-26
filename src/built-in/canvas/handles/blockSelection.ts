@@ -14,7 +14,7 @@
 import type { Editor } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { resolveBlockAncestry, normalizeAllColumnLists } from './handleRegistry.js';
+import { resolveBlockAncestry, normalizeAllColumnLists, notifyLinkedPageBlocksDeleted } from './handleRegistry.js';
 import { isDevMode } from '../../../platform/devMode.js';
 
 // ── Decoration Plugin ───────────────────────────────────────────────────────
@@ -326,6 +326,14 @@ export class BlockSelectionController {
 
     const positions = this.positions.reverse(); // process from end to start
     const { tr } = editor.state;
+
+    // Collect page-linked nodes before deleting so we can trigger page deletion.
+    const linkedNodes: any[] = [];
+    for (const pos of positions) {
+      const node = tr.doc.nodeAt(pos);
+      if (node) linkedNodes.push(node);
+    }
+    notifyLinkedPageBlocksDeleted(linkedNodes);
 
     for (const pos of positions) {
       const node = tr.doc.nodeAt(pos);

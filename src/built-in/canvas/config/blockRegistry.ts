@@ -1189,6 +1189,7 @@ export {
   applyBackgroundColorToBlock,
   indentBlock,
   outdentBlock,
+  setOnLinkedPageBlockDeleted,
 } from './blockStateRegistry/blockStateRegistry.js';
 
 export {

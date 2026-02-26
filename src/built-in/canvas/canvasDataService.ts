@@ -9,7 +9,6 @@
 
 import { Disposable } from '../../platform/lifecycle.js';
 import { Emitter, Event } from '../../platform/events.js';
-import { isDevMode } from '../../platform/devMode.js';
 import {
   type IPage,
   type IPageTreeNode,
@@ -275,8 +274,6 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     pageId: string,
     updates: PageUpdateData,
   ): Promise<IPage> {
-    let previousStoredContent: string | null = null;
-
     const expectedRevision = updates.expectedRevision;
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -290,12 +287,6 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       params.push(updates.icon);
     }
     if (updates.content !== undefined) {
-      const existingResult = await this._db.get('SELECT content FROM pages WHERE id = ?', [pageId]);
-      if (existingResult.error) throw new Error(existingResult.error.message);
-      previousStoredContent = typeof existingResult.row?.content === 'string'
-        ? existingResult.row.content as string
-        : null;
-
       const normalized = normalizeCanvasContentForStorage(updates.content);
       sets.push('content = ?');
       params.push(normalized.storedContent);
@@ -366,9 +357,6 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
     if (updates.content !== undefined) {
       try {
-        if (previousStoredContent) {
-          await this._reconcileRemovedEmbeddedChildren(pageId, previousStoredContent, page.content);
-        }
         await this._reconcileEmbeddedChildren(pageId, page.content);
       } catch (err) {
         console.error(`[CanvasDataService] Embedded hierarchy reconcile failed for page "${pageId}":`, err);
@@ -1257,41 +1245,6 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
       if ((row.parent_id as string | null) !== parentPageId) {
         await this.movePage(childId, parentPageId);
-      }
-    }
-  }
-
-  private async _reconcileRemovedEmbeddedChildren(
-    parentPageId: string,
-    previousStoredContent: string,
-    nextStoredContent: string,
-  ): Promise<void> {
-    const previousLinks = this._extractLinkedChildPageIds(previousStoredContent);
-    const nextLinks = this._extractLinkedChildPageIds(nextStoredContent);
-
-    for (const removedId of previousLinks) {
-      if (removedId === parentPageId || nextLinks.has(removedId)) continue;
-
-      const rowResult = await this._db.get(
-        'SELECT id, parent_id, is_archived FROM pages WHERE id = ?',
-        [removedId],
-      );
-      if (rowResult.error) throw new Error(rowResult.error.message);
-
-      const row = rowResult.row;
-      if (!row) continue;
-      if ((row.is_archived as number) === 1) continue;
-      if ((row.parent_id as string | null) !== parentPageId) continue;
-
-      // Archive (soft-delete) the orphaned child page and its subtree.
-      // This handles both pageBlock and databaseInline children —
-      // databases are cleaned up via SQL ON DELETE CASCADE when
-      // the page is later permanently deleted from trash.
-      try {
-        await this.archivePage(removedId);
-        if (isDevMode) console.log(`[CanvasDataService] Archived orphaned child page ${removedId} (removed from ${parentPageId})`);
-      } catch (err) {
-        console.error(`[CanvasDataService] Failed to archive orphaned child ${removedId}:`, err);
       }
     }
   }

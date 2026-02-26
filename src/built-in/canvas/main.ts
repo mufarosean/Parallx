@@ -21,6 +21,7 @@ import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
 import { DatabaseEditorProvider } from './database/databaseEditorProvider.js';
+import { setOnLinkedPageBlockDeleted } from './config/blockRegistry.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -134,7 +135,16 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   // 5. Register command handlers
   _registerCommands(api, context);
 
-  // 5a. Auto-close editor tabs when their page is deleted or archived
+  // 5a. When a page-linked block (pageBlock, databaseInline) is deleted from
+  //     editor content, run the normal page deletion process (same as sidebar).
+  setOnLinkedPageBlockDeleted((pageId) => {
+    if (!_dataService) return;
+    _dataService.archivePage(pageId).catch(err => {
+      console.error(`[Canvas] Failed to archive child page ${pageId} after block deletion:`, err);
+    });
+  });
+
+  // 5b. Auto-close editor tabs when their page is deleted or archived
   context.subscriptions.push(
     _dataService.onDidChangePage(async (e) => {
       if (e.kind !== PageChangeKind.Deleted) return;
