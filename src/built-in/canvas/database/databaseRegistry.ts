@@ -66,6 +66,16 @@ export type {
   PropertyVisibility,
 } from './databaseTypes.js';
 
+export type { ICanvasDataService } from '../canvasTypes.js';
+
+export {
+  PageChromeController,
+} from '../header/pageChrome.js';
+export type {
+  PageChromeHost,
+  PageChromeOptions,
+} from '../header/pageChrome.js';
+
 export {
   DatabaseChangeKind,
   FILTER_OPERATORS_BY_TYPE,
@@ -192,10 +202,14 @@ export type {
 // Database children get icon functions through this gate instead of reaching
 // into iconRegistry or blockRegistry directly.
 
-import { svgIcon as _ir_svgIcon } from '../config/iconRegistry.js';
+import {
+  svgIcon as _ir_svgIcon,
+  PAGE_SELECTABLE_ICONS as _ir_PAGE_SELECTABLE_ICONS,
+} from '../config/iconRegistry.js';
 
 /** Get the raw SVG string for an icon ID (delegates to IconRegistry). */
 export const svgIcon: (id: string) => string = _ir_svgIcon;
+export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICONS;
 
 // ─── Templates, Color Rules, Locking, Unique ID, Visibility ─────────────────
 

@@ -112,7 +112,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   );
 
   // 4a. Register editor provider for Database panes (M8 Phase 2)
-  const dbEditorProvider = new DatabaseEditorProvider(_databaseDataService!);
+  const dbEditorProvider = new DatabaseEditorProvider(_databaseDataService!, _dataService);
   dbEditorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
   context.subscriptions.push(
     api.editors.registerEditorProvider('database', {

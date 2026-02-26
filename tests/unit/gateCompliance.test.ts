@@ -41,7 +41,7 @@ const GATE_IMPORT_RULES: Record<string, string[]> = {
   'menus/canvasMenuRegistry.ts':                     ['config/blockRegistry', 'config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/blockStateRegistry.ts': ['config/blockRegistry'],
   'handles/handleRegistry.ts':                       ['config/blockRegistry', 'config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry', 'menus/canvasMenuRegistry'],
-  'database/databaseRegistry.ts':                    ['config/iconRegistry'],  // gate-to-gate for svgIcon
+  'database/databaseRegistry.ts':                    ['config/iconRegistry', 'canvasTypes', 'header/pageChrome'],
 };
 
 // ── Orchestrators (exempt — they wire gates together) ───────────────────────

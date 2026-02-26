@@ -38,6 +38,12 @@ export interface PageChromeHost {
   }) => void;
 }
 
+export interface PageChromeOptions {
+  readonly titleLayout?: 'stacked' | 'inline';
+  readonly hideFavoriteButton?: boolean;
+  readonly menuKind?: 'page' | 'database';
+}
+
 // ── Controller ──────────────────────────────────────────────────────────────
 
 export class PageChromeController {
@@ -62,7 +68,10 @@ export class PageChromeController {
   private _titleSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private _isRepositioning = false;
 
-  constructor(private readonly _host: PageChromeHost) {}
+  constructor(
+    private readonly _host: PageChromeHost,
+    private readonly _options: PageChromeOptions = {},
+  ) {}
 
   // ── Public API ──────────────────────────────────────────────────────────
 
@@ -241,14 +250,18 @@ export class PageChromeController {
     ribbonRight.appendChild(this._ribbonEditedLabel);
 
     // Favorite star toggle
-    this._ribbonFavoriteBtn = $('button.canvas-top-ribbon-btn.canvas-top-ribbon-favorite');
-    this._ribbonFavoriteBtn.title = 'Add to Favorites';
-    this._updateFavoriteIcon();
-    this._ribbonFavoriteBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._host.dataService.toggleFavorite(this._host.pageId);
-    });
-    ribbonRight.appendChild(this._ribbonFavoriteBtn);
+    if (!this._options.hideFavoriteButton) {
+      this._ribbonFavoriteBtn = $('button.canvas-top-ribbon-btn.canvas-top-ribbon-favorite');
+      this._ribbonFavoriteBtn.title = 'Add to Favorites';
+      this._updateFavoriteIcon();
+      this._ribbonFavoriteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._host.dataService.toggleFavorite(this._host.pageId);
+      });
+      ribbonRight.appendChild(this._ribbonFavoriteBtn);
+    } else {
+      this._ribbonFavoriteBtn = null;
+    }
 
     // ⋯ Page menu button
     this._pageMenuBtn = $('button.canvas-top-ribbon-btn.canvas-top-ribbon-menu');
@@ -312,6 +325,9 @@ export class PageChromeController {
     if (!ec) return;
 
     this._pageHeader = $('div.canvas-page-header');
+    if (this._options.titleLayout === 'inline') {
+      this._pageHeader.classList.add('canvas-page-header--inline-title');
+    }
 
     // ── Icon (large, clickable — SVG) ──
     this._iconEl = $('span.canvas-page-icon');
@@ -332,7 +348,10 @@ export class PageChromeController {
       e.stopPropagation();
       this._showIconPicker();
     });
-    this._pageHeader.appendChild(this._iconEl);
+    const titleRow = $('div.canvas-page-title-row');
+    this._pageHeader.appendChild(titleRow);
+
+    titleRow.appendChild(this._iconEl);
 
     // ── Hover affordances (Add icon / Add cover) ──
     this._hoverAffordances = $('div.canvas-page-affordances');
@@ -405,7 +424,7 @@ export class PageChromeController {
       document.execCommand('insertText', false, text);
     });
 
-    this._pageHeader.appendChild(this._titleEl);
+    titleRow.appendChild(this._titleEl);
 
     // Insert header AFTER the cover element so DOM order is: cover → header → editor
     if (this._coverEl) {
@@ -701,6 +720,30 @@ export class PageChromeController {
     this._pageMenuDropdown = $('div.canvas-page-menu');
     const page = this._currentPage;
 
+    if (this._options.menuKind === 'database') {
+      this._buildDatabaseMenu(page);
+    } else {
+      this._buildStandardPageMenu(page);
+    }
+
+    document.body.appendChild(this._pageMenuDropdown);
+
+    // Position below menu button (right-aligned)
+    if (this._pageMenuBtn) {
+      const rect = this._pageMenuBtn.getBoundingClientRect();
+      const menuW = this._pageMenuDropdown.offsetWidth;
+      layoutPopup(this._pageMenuDropdown, { x: rect.right - menuW, y: rect.bottom }, { gap: 4 });
+    }
+
+    setTimeout(() => {
+      document.addEventListener('mousedown', this._handlePopupOutsideClick);
+    }, 0);
+    document.addEventListener('keydown', this._handlePopupEscape);
+  }
+
+  private _buildStandardPageMenu(page: IPage | null): void {
+    if (!this._pageMenuDropdown) return;
+
     // ── Font selection ──
     const fontLabel = $('div.canvas-page-menu-label');
     fontLabel.textContent = 'Font';
@@ -828,19 +871,96 @@ export class PageChromeController {
       this._pageMenuDropdown.appendChild(btn);
     }
 
-    document.body.appendChild(this._pageMenuDropdown);
+  }
 
-    // Position below menu button (right-aligned)
-    if (this._pageMenuBtn) {
-      const rect = this._pageMenuBtn.getBoundingClientRect();
-      const menuW = this._pageMenuDropdown.offsetWidth;
-      layoutPopup(this._pageMenuDropdown, { x: rect.right - menuW, y: rect.bottom }, { gap: 4 });
+  private _buildDatabaseMenu(page: IPage | null): void {
+    if (!this._pageMenuDropdown) return;
+
+    const label = $('div.canvas-page-menu-label');
+    label.textContent = 'Database page';
+    this._pageMenuDropdown.appendChild(label);
+
+    const toggles: { label: string; key: 'fullWidth' | 'smallText'; iconId: string }[] = [
+      { label: 'Full width', key: 'fullWidth', iconId: 'expand-width' },
+      { label: 'Small text', key: 'smallText', iconId: 'text-size' },
+    ];
+
+    for (const toggle of toggles) {
+      const row = $('div.canvas-page-menu-toggle');
+      const toggleLabel = $('span.canvas-page-menu-toggle-label');
+      toggleLabel.appendChild(createIconElement(toggle.iconId as any, 14));
+      const labelText = $('span');
+      labelText.textContent = ` ${toggle.label}`;
+      toggleLabel.appendChild(labelText);
+      const switchEl = $('div.canvas-page-menu-switch');
+      const isOn = !!(page as any)?.[toggle.key];
+      if (isOn) switchEl.classList.add('canvas-page-menu-switch--on');
+
+      row.appendChild(toggleLabel);
+      row.appendChild(switchEl);
+      row.addEventListener('click', () => {
+        const current = !!(this._currentPage as any)?.[toggle.key];
+        this._host.dataService.updatePage(this._host.pageId, { [toggle.key]: !current } as any);
+        switchEl.classList.toggle('canvas-page-menu-switch--on');
+      });
+      this._pageMenuDropdown!.appendChild(row);
     }
 
-    setTimeout(() => {
-      document.addEventListener('mousedown', this._handlePopupOutsideClick);
-    }, 0);
-    document.addEventListener('keydown', this._handlePopupEscape);
+    this._pageMenuDropdown.appendChild($('div.canvas-page-menu-divider'));
+
+    const actions: { label: string; iconId: string; action: () => void; danger?: boolean }[] = [
+      {
+        label: 'Open as page',
+        iconId: 'page',
+        action: () => {
+          this._host.openEditor?.({
+            typeId: 'canvas',
+            title: this._currentPage?.title || 'Untitled',
+            icon: this._currentPage?.icon ?? undefined,
+            instanceId: this._host.pageId,
+          });
+          this.dismissPopups();
+        },
+      },
+      {
+        label: 'Duplicate',
+        iconId: 'duplicate',
+        action: async () => {
+          try {
+            const input = this._host.input as any;
+            const api = input?._api;
+            if (api?.commands?.executeCommand) {
+              await api.commands.executeCommand('canvas.duplicatePage', this._host.pageId);
+            } else {
+              await this._host.dataService.duplicatePage(this._host.pageId);
+            }
+          } catch (err) {
+            console.error('[Canvas] Duplicate database page failed:', err);
+          }
+          this.dismissPopups();
+        },
+      },
+      {
+        label: 'Delete',
+        iconId: 'trash',
+        action: () => {
+          this._host.dataService.archivePage(this._host.pageId);
+          this.dismissPopups();
+        },
+        danger: true,
+      },
+    ];
+
+    for (const act of actions) {
+      const btn = $('button.canvas-page-menu-action');
+      btn.appendChild(createIconElement(act.iconId as any, 14));
+      const actLabel = $('span');
+      actLabel.textContent = ` ${act.label}`;
+      btn.appendChild(actLabel);
+      if (act.danger) btn.classList.add('canvas-page-menu-action--danger');
+      btn.addEventListener('click', act.action);
+      this._pageMenuDropdown.appendChild(btn);
+    }
   }
 
   // ── Popup Dismiss Helpers ───────────────────────────────────────────────

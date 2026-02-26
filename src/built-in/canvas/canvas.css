@@ -1999,6 +1999,30 @@
   position: relative;
 }
 
+.canvas-page-title-row {
+  display: block;
+}
+
+.canvas-page-header--inline-title .canvas-page-title-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.canvas-page-header--inline-title .canvas-page-icon {
+  margin-bottom: 0;
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+.canvas-page-header--inline-title .canvas-page-title {
+  margin: 0;
+}
+
+.canvas-page-header--inline-title .canvas-page-affordances {
+  margin-bottom: 8px;
+}
+
 /* Less top padding when cover is present */
 .canvas-has-cover .canvas-page-header {
   padding-top: 0;
