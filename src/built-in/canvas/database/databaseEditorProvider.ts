@@ -359,6 +359,15 @@ class DatabaseEditorPane extends Disposable {
         console.error('[DatabaseEditorPane] Update view failed:', err);
       }
     });
+
+    this._toolbar.onDidRequestNewRow(async () => {
+      if (!this._database) return;
+      try {
+        await this._dataService.addRow(this._database.id);
+      } catch (err) {
+        console.error('[DatabaseEditorPane] Add row failed:', err);
+      }
+    });
   }
 
   private _updateToolbar(): void {

@@ -42,6 +42,9 @@ export class DatabaseToolbar extends Disposable {
   private readonly _onDidUpdateView = this._register(new Emitter<ViewUpdateData>());
   readonly onDidUpdateView: Event<ViewUpdateData> = this._onDidUpdateView.event;
 
+  private readonly _onDidRequestNewRow = this._register(new Emitter<void>());
+  readonly onDidRequestNewRow: Event<void> = this._onDidRequestNewRow.event;
+
   constructor(
     container: HTMLElement,
     view: IDatabaseView,
@@ -120,6 +123,18 @@ export class DatabaseToolbar extends Disposable {
       this._togglePanel('properties');
     }));
     this._wrapper.appendChild(propsBtn);
+
+    // Spacer to push New button to the right
+    const spacer = $('div.db-toolbar-spacer');
+    this._wrapper.appendChild(spacer);
+
+    // New button — primary action
+    const newBtn = $('button.db-toolbar-new-btn');
+    newBtn.textContent = 'New';
+    this._renderDisposables.add(addDisposableListener(newBtn, 'click', () => {
+      this._onDidRequestNewRow.fire();
+    }));
+    this._wrapper.appendChild(newBtn);
   }
 
   // ─── Panel Toggle ────────────────────────────────────────────────────

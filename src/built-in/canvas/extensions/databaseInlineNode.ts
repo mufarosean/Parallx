@@ -78,15 +78,26 @@ class DatabaseInlineNodeView {
     this.dom.classList.add('db-inline-wrapper');
     this.dom.setAttribute('data-database-id', this._databaseId);
 
-    // Header bar (view tabs + expand button)
+    // Header bar (title + view tabs + expand button)
     const header = document.createElement('div');
     header.classList.add('db-inline-header');
     this.dom.appendChild(header);
+
+    // Database title
+    const titleEl = document.createElement('span');
+    titleEl.classList.add('db-inline-title');
+    titleEl.textContent = 'Database';
+    header.appendChild(titleEl);
 
     // Tab bar container
     const tabBarContainer = document.createElement('div');
     tabBarContainer.classList.add('db-inline-tab-bar');
     header.appendChild(tabBarContainer);
+
+    // Header actions area
+    const headerActions = document.createElement('div');
+    headerActions.classList.add('db-inline-header-actions');
+    header.appendChild(headerActions);
 
     // Open full-page button
     const expandBtn = document.createElement('button');
@@ -97,7 +108,7 @@ class DatabaseInlineNodeView {
       e.stopPropagation();
       this._openFullPage();
     });
-    header.appendChild(expandBtn);
+    headerActions.appendChild(expandBtn);
 
     // Toolbar container
     const toolbarContainer = document.createElement('div');
@@ -334,6 +345,17 @@ class DatabaseInlineNodeView {
           this._renderActiveView();
         } catch (err) {
           console.error('[DatabaseInlineNode] Update view failed:', err);
+        }
+      }),
+    );
+
+    // Wire up "New" button to add a row
+    this._disposables.push(
+      this._toolbar.onDidRequestNewRow(async () => {
+        try {
+          await this._dataService.addRow(this._databaseId);
+        } catch (err) {
+          console.error('[DatabaseInlineNode] Add row failed:', err);
         }
       }),
     );
