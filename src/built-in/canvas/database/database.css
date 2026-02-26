@@ -407,7 +407,7 @@
   display: grid;
   grid-template-columns: var(--db-table-grid-template);
   border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.015));
-  min-height: 26px;
+  min-height: 34px;
   transition: background 0.06s ease;
 }
 
@@ -423,7 +423,7 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   cursor: default;
-  min-height: 26px;
+  min-height: 34px;
   border-right: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.012));
 }
 
