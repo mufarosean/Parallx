@@ -865,7 +865,7 @@ export class CanvasSidebar {
   private async _createDatabase(parentId?: string | null): Promise<void> {
     if (!this._databaseDataService) return;
     try {
-      const page = await this._dataService.createPage(parentId, 'Untitled Database');
+      const page = await this._dataService.createPage(parentId, 'Untitled');
       await this._databaseDataService.createDatabase(page.id);
       // Update local cache immediately
       this._databasePageIds.add(page.id);

@@ -251,7 +251,7 @@ describe('InsertAction — databaseInline', () => {
     const range = { from: 0, to: 1 };
 
     const mockDataService = {
-      createPage: vi.fn().mockResolvedValue({ id: 'new-page', title: 'Untitled Database', icon: null }),
+      createPage: vi.fn().mockResolvedValue({ id: 'new-page', title: 'Untitled', icon: null }),
       flushContentSave: vi.fn().mockResolvedValue(undefined),
       deletePage: vi.fn(),
     };
@@ -271,7 +271,7 @@ describe('InsertAction — databaseInline', () => {
 
     await def!.insertAction!(mockEditor, range, context);
 
-    expect(mockDataService.createPage).toHaveBeenCalledWith('parent-page', 'Untitled Database');
+    expect(mockDataService.createPage).toHaveBeenCalledWith('parent-page', 'Untitled');
     expect(mockDbService.createDatabase).toHaveBeenCalledWith('new-page');
     expect(mockChainResult.insertContentAt).toHaveBeenCalledWith(
       range,
@@ -296,7 +296,7 @@ describe('InsertAction — databaseInline', () => {
     const range = { from: 0, to: 1 };
 
     const mockDataService = {
-      createPage: vi.fn().mockResolvedValue({ id: 'new-page', title: 'Untitled Database', icon: null }),
+      createPage: vi.fn().mockResolvedValue({ id: 'new-page', title: 'Untitled', icon: null }),
       deletePage: vi.fn(),
     };
     const mockDbService = {

@@ -863,7 +863,7 @@ const definitions: BlockDefinition[] = [
       let childPage: { id: string; title: string; icon: string | null } | null = null;
       try {
         // Create a page to host the database
-        childPage = await context.dataService.createPage(context.pageId, 'Untitled Database');
+        childPage = await context.dataService.createPage(context.pageId, 'Untitled');
         // Create the database record on that page
         await context.databaseDataService.createDatabase(childPage.id);
 
