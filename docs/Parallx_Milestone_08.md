@@ -1621,6 +1621,18 @@ This retroactively unifies the codebase so that all existing views (Table, Board
 - Database full-page inline page icon SVG override set to 28x28.
 - Scope is intentionally database full-page only (`.db-host--fullpage .canvas-page-header--inline-title ...`) to avoid regressions in standard canvas page chrome sizing.
 
+### Post-M8.4 Table UX Refinement (Feb 26, 2026) ✅
+
+- Unified full-page controls row so view tabs, icon-only toolbar controls, and split `New` action align on one line.
+- Moved add-view `+` to sit directly after the last view tab (tab strip-owned action, not toolbar-owned action).
+- Updated view tab presentation to a more cylindrical pill style with explicit icons and removed redundant `"view"` naming (`Table` default naming).
+- Refined table rendering for deterministic column alignment/resizing by sharing one grid template across header/body/group rows.
+- Tightened density and contrast for full-page table rendering: reduced row/header rhythm, softened separators, removed vertical borders between column names.
+- Reworked title cell behavior to match target interaction model: icon picker on icon click, `OPEN` affordance on hover, inline title editing on title click.
+- Data-layer parity updates for title/icon edits: title property writes sync `pages.title`, and row icon/title updates emit row change events.
+- Validation ✅ `npx tsc --noEmit` clean, `npx vitest run tests/unit` passed (`822/822`), `npx vitest run tests/unit/gateCompliance.test.ts` passed (`69/69`).
+- Synced in commit `7ecd590` (`Refine database table density and title-cell interactions`).
+
 ---
 
 ## Excluded (Out of Scope for Milestone 8)
