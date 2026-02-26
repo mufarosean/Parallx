@@ -1614,6 +1614,13 @@ After M8.4 is complete:
 
 This retroactively unifies the codebase so that all existing views (Table, Board, List, Gallery, Calendar, Timeline) and all existing features (inline databases, linked views, relations, rollups, formulas) work through a single rendering path instead of two divergent ones.
 
+### Post-M8.4 Visual Refinement (Feb 2026)
+
+- Full-page database header typography/icon scale was tightened for closer Notion parity in the integrated page chrome layout.
+- Database full-page inline-title override changed from 44px to 38px.
+- Database full-page inline page icon SVG override set to 28x28.
+- Scope is intentionally database full-page only (`.db-host--fullpage .canvas-page-header--inline-title ...`) to avoid regressions in standard canvas page chrome sizing.
+
 ---
 
 ## Excluded (Out of Scope for Milestone 8)
