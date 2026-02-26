@@ -166,6 +166,11 @@ export function parsePropertyValue(json: string): IPropertyValue {
   }
 }
 
+function titleValueToPlainText(value: IPropertyValue): string {
+  if (value.type !== 'title') return '';
+  return value.title.map(segment => segment.content).join('').trim();
+}
+
 // ─── DatabaseDataService ─────────────────────────────────────────────────────
 
 /**
@@ -675,15 +680,62 @@ export class DatabaseDataService extends Disposable implements IDatabaseDataServ
   // ══════════════════════════════════════════════════════════════════════════
 
   async setPropertyValue(databaseId: string, pageId: string, propertyId: string, value: IPropertyValue): Promise<void> {
-    const result = await this._db.run(
-      `INSERT INTO page_property_values (page_id, property_id, database_id, value, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'))
-       ON CONFLICT(page_id, property_id, database_id)
-       DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-      [pageId, propertyId, databaseId, JSON.stringify(value)],
-    );
+    const valueJson = JSON.stringify(value);
+
+    const operations: { type: 'run'; sql: string; params: unknown[] }[] = [
+      {
+        type: 'run',
+        sql: `INSERT INTO page_property_values (page_id, property_id, database_id, value, updated_at)
+              VALUES (?, ?, ?, ?, datetime('now'))
+              ON CONFLICT(page_id, property_id, database_id)
+              DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        params: [pageId, propertyId, databaseId, valueJson],
+      },
+    ];
+
+    if (value.type === 'title') {
+      const nextTitle = titleValueToPlainText(value) || 'Untitled';
+      operations.push({
+        type: 'run',
+        sql: `UPDATE pages
+              SET title = ?,
+                  revision = revision + 1,
+                  updated_at = datetime('now')
+              WHERE id = ?`,
+        params: [nextTitle, pageId],
+      });
+    }
+
+    const result = await this._db.runTransaction(operations);
     if (result.error) throw new Error(result.error.message);
 
+    this._onDidChangeRow.fire({ kind: 'Updated', databaseId, pageId });
+  }
+
+  async updatePageTitle(databaseId: string, pageId: string, title: string): Promise<void> {
+    const nextTitle = title.trim() || 'Untitled';
+    const result = await this._db.run(
+      `UPDATE pages
+       SET title = ?,
+           revision = revision + 1,
+           updated_at = datetime('now')
+       WHERE id = ?`,
+      [nextTitle, pageId],
+    );
+    if (result.error) throw new Error(result.error.message);
+    this._onDidChangeRow.fire({ kind: 'Updated', databaseId, pageId });
+  }
+
+  async updatePageIcon(databaseId: string, pageId: string, icon: string | null): Promise<void> {
+    const result = await this._db.run(
+      `UPDATE pages
+       SET icon = ?,
+           revision = revision + 1,
+           updated_at = datetime('now')
+       WHERE id = ?`,
+      [icon, pageId],
+    );
+    if (result.error) throw new Error(result.error.message);
     this._onDidChangeRow.fire({ kind: 'Updated', databaseId, pageId });
   }
 

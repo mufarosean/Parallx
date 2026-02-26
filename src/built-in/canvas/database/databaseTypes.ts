@@ -567,6 +567,12 @@ export interface IDatabaseDataService {
   /** Reorder rows by providing the full ordered list of page IDs. */
   reorderRows(databaseId: string, orderedPageIds: string[]): Promise<void>;
 
+  /** Update a row page's title and emit a row-change event for the active database view. */
+  updatePageTitle(databaseId: string, pageId: string, title: string): Promise<void>;
+
+  /** Update a row page's icon (or clear it) and emit a row-change event for the active database view. */
+  updatePageIcon(databaseId: string, pageId: string, icon: string | null): Promise<void>;
+
   // ── Property Value CRUD ──
 
   /** Set a single property value for a page in a database (upsert). */

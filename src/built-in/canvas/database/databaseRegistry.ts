@@ -205,11 +205,13 @@ export type {
 import {
   svgIcon as _ir_svgIcon,
   PAGE_SELECTABLE_ICONS as _ir_PAGE_SELECTABLE_ICONS,
+  resolvePageIcon as _ir_resolvePageIcon,
 } from '../config/iconRegistry.js';
 
 /** Get the raw SVG string for an icon ID (delegates to IconRegistry). */
 export const svgIcon: (id: string) => string = _ir_svgIcon;
 export const PAGE_SELECTABLE_ICONS: readonly string[] = _ir_PAGE_SELECTABLE_ICONS;
+export const resolvePageIcon: (icon: string | null | undefined) => string = _ir_resolvePageIcon;
 
 // ─── Templates, Color Rules, Locking, Unique ID, Visibility ─────────────────
 

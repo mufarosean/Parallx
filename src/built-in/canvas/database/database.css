@@ -229,6 +229,7 @@
   display: flex;
   flex-direction: column;
   min-width: 100%;
+  --db-table-grid-template: 200px 190px;
   font-size: 14px;
   line-height: 1.5;
   border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.06));
@@ -236,15 +237,21 @@
   overflow: hidden;
 }
 
+.db-host--fullpage .db-table {
+  border: none;
+  border-radius: 0;
+}
+
 /* ── Header ──────────────────────────────────────────────────────────────── */
 
 .db-table-header {
   display: grid;
+  grid-template-columns: var(--db-table-grid-template);
   position: sticky;
   top: 0;
   z-index: 2;
   background: var(--vscode-editor-background);
-  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.07));
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.03));
   user-select: none;
 }
 
@@ -261,8 +268,8 @@
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  height: 33px;
-  border-right: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.05));
+  height: 26px;
+  border-right: none;
 }
 
 .db-table-header-cell:hover {
@@ -289,7 +296,7 @@
   font-size: 12px;
   cursor: pointer;
   padding: 0 10px;
-  height: 33px;
+  height: 26px;
   white-space: nowrap;
 }
 
@@ -331,8 +338,9 @@
 
 .db-table-row {
   display: grid;
-  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.05));
-  min-height: 33px;
+  grid-template-columns: var(--db-table-grid-template);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.025));
+  min-height: 26px;
   transition: background 0.06s ease;
 }
 
@@ -348,8 +356,8 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   cursor: default;
-  min-height: 33px;
-  border-right: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.04));
+  min-height: 26px;
+  border-right: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.02));
 }
 
 .db-table-cell--spacer {
@@ -376,7 +384,7 @@
   cursor: pointer;
   width: 100%;
   text-align: left;
-  height: 33px;
+  height: 26px;
   transition: background 0.06s ease;
 }
 
@@ -393,16 +401,102 @@
 
 .db-cell-title {
   font-weight: 400;
-  cursor: pointer;
+  cursor: text;
   color: var(--vscode-foreground);
   font-size: 14px;
 }
 
 .db-cell-page-icon {
-  margin-right: 6px;
-  font-size: 14px;
-  opacity: 0.72;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
   line-height: 1;
+}
+
+.db-cell-page-icon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.db-table-cell--title {
+  position: relative;
+}
+
+.db-cell-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.db-cell-page-icon-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.db-cell-page-icon-btn:hover {
+  color: var(--vscode-foreground);
+}
+
+.db-cell-title-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: text;
+  text-align: left;
+  min-width: 0;
+  flex: 1;
+}
+
+.db-cell-title-btn .db-cell-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-cell-open-btn {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 1px 8px;
+  height: 22px;
+  margin-left: 6px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+  flex-shrink: 0;
+}
+
+.db-table-row:hover .db-cell-open-btn,
+.db-table-cell--title:hover .db-cell-open-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.db-cell-open-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--vscode-foreground);
 }
 
 .db-cell-title:hover {

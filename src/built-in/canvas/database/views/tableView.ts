@@ -9,6 +9,7 @@
 
 import { Disposable, DisposableStore } from '../../../../platform/lifecycle.js';
 import { $, addDisposableListener, clearNode } from '../../../../ui/dom.js';
+import { IconPicker } from '../../../../ui/iconPicker.js';
 import {
   renderPropertyValue,
   createPropertyEditor,
@@ -16,6 +17,9 @@ import {
   showPropertyHeaderMenu,
   startPropertyRename,
   PROPERTY_TYPE_ICONS,
+  PAGE_SELECTABLE_ICONS,
+  resolvePageIcon,
+  svgIcon,
   type IDatabaseDataService,
   type IDatabaseView,
   type IDatabaseProperty,
@@ -42,6 +46,7 @@ export class TableView extends Disposable {
 
   // ── Active cell editor ──
   private readonly _editorDisposables = this._register(new DisposableStore());
+  private _iconPicker: IconPicker | null = null;
 
   // ── Per-render disposables (cleared on each re-render to prevent leak) ──
   private readonly _renderDisposables = this._register(new DisposableStore());
@@ -238,6 +243,7 @@ export class TableView extends Disposable {
   private _renderRow(row: IDatabaseRow): void {
     const rowEl = $('div.db-table-row');
     rowEl.dataset.pageId = row.page.id;
+    rowEl.style.gridTemplateColumns = this._headerRow.style.gridTemplateColumns;
 
     for (const prop of this._properties) {
       const cell = $('div.db-table-cell');
@@ -252,27 +258,23 @@ export class TableView extends Disposable {
           ? { type: 'title', title: [{ type: 'text', content: row.page.title }] }
           : value;
 
-      // Render display value
-      renderPropertyValue(prop.type, displayValue, prop.config, cell);
+      if (prop.type === 'title') {
+        this._renderTitleCell(cell, row, prop, displayValue);
+      } else {
+        // Render display value
+        renderPropertyValue(prop.type, displayValue, prop.config, cell);
 
-      // Click handler
-      this._renderDisposables.add(addDisposableListener(cell, 'click', () => {
-        if (prop.type === 'title') {
-          // Click title → open page in canvas editor
-          this._openEditor?.({
-            typeId: 'canvas',
-            title: row.page.title,
-            icon: row.page.icon || undefined,
-            instanceId: row.page.id,
-          });
-        } else if (prop.type === 'checkbox') {
+        // Click handler
+        this._renderDisposables.add(addDisposableListener(cell, 'click', () => {
+          if (prop.type === 'checkbox') {
           // Checkbox toggles immediately (no editor popup)
-          this._toggleCheckbox(row, prop, value);
-        } else {
+            this._toggleCheckbox(row, prop, value);
+          } else {
           // All other types → open inline editor
-          this._openCellEditor(cell, row, prop, displayValue);
-        }
-      }));
+            this._openCellEditor(cell, row, prop, displayValue);
+          }
+        }));
+      }
 
       rowEl.appendChild(cell);
     }
@@ -358,6 +360,98 @@ export class TableView extends Disposable {
     editor.focus();
   }
 
+  private _renderTitleCell(
+    cell: HTMLElement,
+    row: IDatabaseRow,
+    property: IDatabaseProperty,
+    displayValue: IPropertyValue | undefined,
+  ): void {
+    cell.classList.add('db-table-cell--title');
+    clearNode(cell);
+
+    const wrap = $('div.db-cell-title-wrap');
+
+    const iconBtn = $('button.db-cell-page-icon-btn') as HTMLButtonElement;
+    iconBtn.type = 'button';
+    iconBtn.title = 'Change page icon';
+    iconBtn.setAttribute('aria-label', 'Change page icon');
+    const resolvedIcon = resolvePageIcon(row.page.icon);
+    iconBtn.innerHTML = `<span class="db-cell-page-icon">${svgIcon(resolvedIcon)}</span>`;
+    this._renderDisposables.add(addDisposableListener(iconBtn, 'click', (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this._showRowIconPicker(iconBtn, row);
+    }));
+    wrap.appendChild(iconBtn);
+
+    const titleBtn = $('button.db-cell-title-btn') as HTMLButtonElement;
+    titleBtn.type = 'button';
+    titleBtn.title = row.page.title || 'Untitled';
+    const titleText = $('span.db-cell-title');
+    titleText.textContent = row.page.title || 'Untitled';
+    titleBtn.appendChild(titleText);
+    this._renderDisposables.add(addDisposableListener(titleBtn, 'click', (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this._openCellEditor(cell, row, property, displayValue);
+    }));
+    wrap.appendChild(titleBtn);
+
+    const openBtn = $('button.db-cell-open-btn') as HTMLButtonElement;
+    openBtn.type = 'button';
+    openBtn.textContent = 'OPEN';
+    openBtn.title = 'Open page';
+    openBtn.setAttribute('aria-label', 'Open page');
+    this._renderDisposables.add(addDisposableListener(openBtn, 'click', (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this._openEditor?.({
+        typeId: 'canvas',
+        title: row.page.title,
+        icon: row.page.icon || undefined,
+        instanceId: row.page.id,
+      });
+    }));
+    wrap.appendChild(openBtn);
+
+    cell.appendChild(wrap);
+  }
+
+  private _showRowIconPicker(anchor: HTMLElement, row: IDatabaseRow): void {
+    this._dismissIconPicker();
+
+    this._iconPicker = new IconPicker(this._tableEl, {
+      anchor,
+      icons: [...PAGE_SELECTABLE_ICONS],
+      renderIcon: (id) => svgIcon(id),
+      showSearch: true,
+      showRemove: true,
+      iconSize: 18,
+    });
+
+    this._iconPicker.onDidSelectIcon((iconId) => {
+      this._dataService.updatePageIcon(this._databaseId, row.page.id, iconId).catch((err) => {
+        console.error('[TableView] Update page icon failed:', err);
+      });
+    });
+
+    this._iconPicker.onDidRemoveIcon(() => {
+      this._dataService.updatePageIcon(this._databaseId, row.page.id, null).catch((err) => {
+        console.error('[TableView] Remove page icon failed:', err);
+      });
+    });
+
+    this._iconPicker.onDidDismiss(() => {
+      this._iconPicker = null;
+    });
+  }
+
+  private _dismissIconPicker(): void {
+    if (!this._iconPicker) return;
+    this._iconPicker.dismiss();
+    this._iconPicker = null;
+  }
+
   private _toggleCheckbox(row: IDatabaseRow, property: IDatabaseProperty, currentValue: IPropertyValue | undefined): void {
     const checked = currentValue?.type === 'checkbox' ? currentValue.checkbox : false;
     this._dataService.setPropertyValue(
@@ -429,6 +523,7 @@ export class TableView extends Disposable {
 
     const template = columns.join(' ');
     this._headerRow.style.gridTemplateColumns = template;
+    this._tableEl.style.setProperty('--db-table-grid-template', template);
 
     // Apply same grid to all row elements
     for (const row of this._bodyEl.children) {
@@ -445,6 +540,7 @@ export class TableView extends Disposable {
   // ─── Dispose ─────────────────────────────────────────────────────────
 
   override dispose(): void {
+    this._dismissIconPicker();
     this._dismissEditor();
     if (this._tableEl.parentElement) {
       this._tableEl.remove();
