@@ -161,11 +161,14 @@ export class TableView extends Disposable {
 
     // "+" add-column button
     const addCol = $('div.db-table-header-add');
-    addCol.textContent = '+';
-    addCol.title = 'Add a property';
-    this._renderDisposables.add(addDisposableListener(addCol, 'click', () => {
-      showPropertyAddMenu(addCol, this._dataService, this._databaseId);
+    const addBtn = $('button.db-table-header-add-btn') as HTMLButtonElement;
+    addBtn.type = 'button';
+    addBtn.textContent = '+';
+    addBtn.title = 'Add a property';
+    this._renderDisposables.add(addDisposableListener(addBtn, 'click', () => {
+      showPropertyAddMenu(addBtn, this._dataService, this._databaseId);
     }));
+    addCol.appendChild(addBtn);
     this._headerRow.appendChild(addCol);
   }
 
