@@ -45,7 +45,7 @@ function fullViewRow(overrides: Partial<Record<string, unknown>> = {}): Record<s
   return {
     id: 'view-001',
     database_id: 'db-001',
-    name: 'Default view',
+    name: 'Table',
     type: 'table',
     group_by: null,
     sub_group_by: null,
@@ -171,7 +171,7 @@ describe('rowToView', () => {
     const view = rowToView(fullViewRow());
     expect(view.id).toBe('view-001');
     expect(view.databaseId).toBe('db-001');
-    expect(view.name).toBe('Default view');
+    expect(view.name).toBe('Table');
     expect(view.type).toBe('table');
     expect(view.groupBy).toBeNull();
     expect(view.subGroupBy).toBeNull();

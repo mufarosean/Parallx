@@ -111,16 +111,6 @@ export class DatabaseToolbar extends Disposable {
       iconEl.innerHTML = svgIcon(iconId);
       button.appendChild(iconEl);
 
-      const labelEl = $('span.db-toolbar-btn-label');
-      labelEl.textContent = label;
-      button.appendChild(labelEl);
-
-      if (typeof count === 'number' && count > 0) {
-        const badge = $('span.db-toolbar-btn-badge');
-        badge.textContent = String(count);
-        button.appendChild(badge);
-      }
-
       if (isActive) button.classList.add('db-toolbar-btn--active');
       if (isOpen) button.classList.add('db-toolbar-btn--open');
 
@@ -161,17 +151,29 @@ export class DatabaseToolbar extends Disposable {
     });
     this._wrapper.appendChild(propsBtn);
 
-    // Spacer to push New button to the right
-    const spacer = $('div.db-toolbar-spacer');
-    this._wrapper.appendChild(spacer);
+    // New split button — primary action + dropdown placeholder
+    const newGroup = $('div.db-toolbar-new-group');
 
-    // New button — primary action
-    const newBtn = $('button.db-toolbar-new-btn');
-    newBtn.textContent = 'New ▾';
+    const newBtn = $('button.db-toolbar-new-main-btn');
+    newBtn.textContent = 'New';
+    newBtn.title = 'Add a new row';
+    newBtn.setAttribute('aria-label', 'Add a new row');
     this._renderDisposables.add(addDisposableListener(newBtn, 'click', () => {
       this._onDidRequestNewRow.fire();
     }));
-    this._wrapper.appendChild(newBtn);
+
+    const newMenuBtn = $('button.db-toolbar-new-menu-btn');
+    newMenuBtn.title = 'Templates';
+    newMenuBtn.setAttribute('aria-label', 'Templates');
+    newMenuBtn.textContent = '▾';
+    this._renderDisposables.add(addDisposableListener(newMenuBtn, 'click', (e: MouseEvent) => {
+      e.stopPropagation();
+      // Template menu wiring will be added in a follow-up slice.
+    }));
+
+    newGroup.appendChild(newBtn);
+    newGroup.appendChild(newMenuBtn);
+    this._wrapper.appendChild(newGroup);
   }
 
   // ─── Panel Toggle ────────────────────────────────────────────────────

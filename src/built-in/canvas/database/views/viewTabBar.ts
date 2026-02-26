@@ -31,6 +31,7 @@ const VIEW_TYPE_ICON_IDS: Record<ViewType, string> = {
 
 export class ViewTabBar extends Disposable {
   private readonly _tabBar: TabBar;
+  private readonly _addBtn: HTMLButtonElement;
   private _views: IDatabaseView[] = [];
 
   // ── Events ──
@@ -55,19 +56,15 @@ export class ViewTabBar extends Disposable {
     this._tabBar = this._register(new TabBar(wrapper, {
       reorderable: true,
       scrollable: true,
-      showActions: true,
+      showActions: false,
       dragType: 'application/x-parallx-database-view',
     }));
 
-    // "+" button in the actions slot
-    const actionsSlot = this._tabBar.getActionsContainer();
-    if (actionsSlot) {
-      const addBtn = $('button.db-view-add-btn');
-      addBtn.textContent = '+';
-      addBtn.title = 'Add a view';
-      this._register(addDisposableListener(addBtn, 'click', (e) => this._showNewViewMenu(e)));
-      actionsSlot.appendChild(addBtn);
-    }
+    this._addBtn = $('button.db-view-add-btn') as HTMLButtonElement;
+    this._addBtn.textContent = '+';
+    this._addBtn.title = 'Add a new view';
+    this._addBtn.setAttribute('aria-label', 'Add a new view');
+    this._register(addDisposableListener(this._addBtn, 'click', (e) => this._showNewViewMenu(e)));
 
     // Wire tab selection
     this._register(this._tabBar.onDidSelect(id => {
@@ -105,6 +102,7 @@ export class ViewTabBar extends Disposable {
       tooltip: `${v.name} (${v.type})`,
     }));
     this._tabBar.setItems(items);
+    this._mountAddViewButton();
   }
 
   setActive(viewId: string): void {
@@ -144,7 +142,7 @@ export class ViewTabBar extends Disposable {
         const type = ev.item.id as ViewType;
         const view = await this._dataService.createView(
           this._databaseId,
-          `${viewTypes.find(vt => vt.type === type)?.label ?? type} view`,
+          `${viewTypes.find(vt => vt.type === type)?.label ?? type}`,
           type,
         );
         this._onDidCreateView.fire(view);
@@ -231,5 +229,11 @@ export class ViewTabBar extends Disposable {
     const insertIdx = position === 'before' ? targetIdx : targetIdx + 1;
     ids.splice(insertIdx, 0, fromId);
     return ids;
+  }
+
+  private _mountAddViewButton(): void {
+    const tabsWrap = this._tabBar.element.querySelector('.ui-tab-bar-tabs');
+    if (!tabsWrap) return;
+    tabsWrap.appendChild(this._addBtn);
   }
 }

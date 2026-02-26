@@ -159,12 +159,15 @@ class DatabaseEditorPane extends Disposable {
     this._shell = $('div.db-host-shell');
     this._wrapper.appendChild(this._shell);
 
+    const controlsRow = $('div.db-host-controls-row');
+    this._shell.appendChild(controlsRow);
+
     // Slots for DatabaseViewHost
     const tabBarSlot = $('div.db-host-tabbar');
-    this._shell.appendChild(tabBarSlot);
+    controlsRow.appendChild(tabBarSlot);
 
     const toolbarSlot = $('div.db-host-toolbar');
-    this._shell.appendChild(toolbarSlot);
+    controlsRow.appendChild(toolbarSlot);
 
     const toolbarPanelsSlot = $('div.db-host-toolbar-panels');
     this._shell.appendChild(toolbarPanelsSlot);

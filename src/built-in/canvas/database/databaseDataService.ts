@@ -225,7 +225,7 @@ export class DatabaseDataService extends Disposable implements IDatabaseDataServ
       {
         type: 'run',
         sql: `INSERT INTO database_views (id, database_id, name, type, sort_order, config)
-              VALUES (?, ?, 'Default view', 'table', 0, ?)`,
+              VALUES (?, ?, 'Table', 'table', 0, ?)`,
         params: [defaultViewId, pageId, JSON.stringify({ visibleProperties: [titlePropertyId] })],
       },
     ]);
