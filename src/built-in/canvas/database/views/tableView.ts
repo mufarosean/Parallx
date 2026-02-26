@@ -159,9 +159,9 @@ export class TableView extends Disposable {
       this._headerRow.appendChild(cell);
     }
 
-    // "+ Add property" add-column button
+    // "+" add-column button
     const addCol = $('div.db-table-header-add');
-    addCol.textContent = '+ Add property';
+    addCol.textContent = '+';
     addCol.title = 'Add a property';
     this._renderDisposables.add(addDisposableListener(addCol, 'click', () => {
       showPropertyAddMenu(addCol, this._dataService, this._databaseId);
