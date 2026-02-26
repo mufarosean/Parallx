@@ -360,7 +360,8 @@ export class TabBar extends Disposable {
 
     // Icon
     if (item.icon) {
-      const iconEl = $('span.ui-tab-icon', item.icon);
+      const iconEl = $('span.ui-tab-icon');
+      iconEl.innerHTML = item.icon;
       tab.appendChild(iconEl);
     }
 

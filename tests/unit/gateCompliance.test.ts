@@ -41,7 +41,7 @@ const GATE_IMPORT_RULES: Record<string, string[]> = {
   'menus/canvasMenuRegistry.ts':                     ['config/blockRegistry', 'config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/blockStateRegistry.ts': ['config/blockRegistry'],
   'handles/handleRegistry.ts':                       ['config/blockRegistry', 'config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry', 'menus/canvasMenuRegistry'],
-  'database/databaseRegistry.ts':                    [],  // leaf gate — re-exports from own children only
+  'database/databaseRegistry.ts':                    ['config/iconRegistry'],  // gate-to-gate for svgIcon
 };
 
 // ── Orchestrators (exempt — they wire gates together) ───────────────────────
@@ -138,6 +138,7 @@ const GATE_RULES: Record<string, string[]> = {
 
   // ── DatabaseRegistry children ────────────────────────────────────────────
   'database/databaseEditorProvider.ts':          ['database/databaseRegistry'],
+  'database/databaseViewHost.ts':                  ['database/databaseRegistry'],
   'database/views/tableView.ts':                 ['database/databaseRegistry'],
   'database/views/viewTabBar.ts':                ['database/databaseRegistry'],
   'database/properties/propertyRenderers.ts':    ['database/databaseRegistry'],

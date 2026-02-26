@@ -1,8 +1,9 @@
 // databaseInlineNode.ts — Inline database block extension
 //
 // Tiptap atom node that embeds a database view inline within a canvas page.
-// Renders a compact database view with a view tab bar for switching.
-// Supports both owned databases and linked views (sourceDatabaseId).
+// Renders an inline chrome (title, collapse/expand, resize, open-as-page)
+// and delegates all view engine work to DatabaseViewHost — the shared
+// component used by both inline and full-page contexts.
 //
 // Gate: imports ONLY from blockRegistry (canvas gate architecture).
 
@@ -10,22 +11,10 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type {
   IDatabaseDataService,
-  IDatabaseView,
-  IDatabaseProperty,
-  IDatabaseRow,
-  IRowGroup,
 } from '../config/blockRegistry.js';
 import {
   svgIcon,
-  TableView,
-  BoardView,
-  ListView,
-  GalleryView,
-  CalendarView,
-  TimelineView,
-  ViewTabBar,
-  DatabaseToolbar,
-  applyViewDataPipeline,
+  DatabaseViewHost,
 } from '../config/blockRegistry.js';
 
 // ── Local types ─────────────────────────────────────────────────────────────
@@ -42,31 +31,14 @@ export interface DatabaseInlineOptions {
   readonly openEditor?: OpenEditorFn;
 }
 
-// ── View interface (shared shape for setRows / setProperties) ───────────────
-
-interface IManagedView {
-  setRows(rows: IDatabaseRow[], groups?: IRowGroup[]): void;
-  setProperties(properties: IDatabaseProperty[]): void;
-  dispose(): void;
-}
-
 // ── NodeView renderer ───────────────────────────────────────────────────────
 
 class DatabaseInlineNodeView {
   readonly dom: HTMLElement;
-  private _contentDom: HTMLElement | null = null;
   private _databaseId: string;
   private _databaseTitle: string;
-  private _activeViewId: string | null = null;
-  private _views: IDatabaseView[] = [];
-  private _properties: IDatabaseProperty[] = [];
-  private _rows: IDatabaseRow[] = [];
-  private _activeView: IManagedView | null = null;
-  private _viewTabBar: ViewTabBar | null = null;
-  private _toolbar: DatabaseToolbar | null = null;
+  private _host: DatabaseViewHost | null = null;
   private _toolbarCollapsed = false;
-  private _disposed = false;
-  private readonly _disposables: Array<{ dispose(): void }> = [];
 
   constructor(
     node: ProseMirrorNode,
@@ -82,7 +54,7 @@ class DatabaseInlineNodeView {
     this.dom.classList.add('db-inline-wrapper');
     this.dom.setAttribute('data-database-id', this._databaseId);
 
-    // Header bar (title + view tabs + expand button)
+    // Header bar (title + toolbar + view tabs + actions)
     const header = document.createElement('div');
     header.classList.add('db-inline-header');
     this.dom.appendChild(header);
@@ -110,22 +82,22 @@ class DatabaseInlineNodeView {
     });
     header.appendChild(titleEl);
 
-    // Toolbar container (icons next to title)
-    const toolbarContainer = document.createElement('div');
-    toolbarContainer.classList.add('db-inline-toolbar');
-    header.appendChild(toolbarContainer);
+    // Toolbar slot (icons next to title)
+    const toolbarSlot = document.createElement('div');
+    toolbarSlot.classList.add('db-inline-toolbar');
+    header.appendChild(toolbarSlot);
 
-    // Tab bar container
-    const tabBarContainer = document.createElement('div');
-    tabBarContainer.classList.add('db-inline-tab-bar');
-    header.appendChild(tabBarContainer);
+    // Tab bar slot
+    const tabBarSlot = document.createElement('div');
+    tabBarSlot.classList.add('db-inline-tab-bar');
+    header.appendChild(tabBarSlot);
 
     // Header actions area
     const headerActions = document.createElement('div');
     headerActions.classList.add('db-inline-header-actions');
     header.appendChild(headerActions);
 
-    // Collapse/expand toolbar icons
+    // Collapse/expand toolbar toggle
     const toolbarToggleBtn = document.createElement('button');
     toolbarToggleBtn.classList.add('db-inline-action-btn', 'db-inline-toolbar-toggle');
     toolbarToggleBtn.title = 'Hide toolbar actions';
@@ -136,7 +108,7 @@ class DatabaseInlineNodeView {
       toolbarToggleBtn.classList.toggle('db-inline-toolbar-toggle--collapsed', this._toolbarCollapsed);
       toolbarToggleBtn.title = this._toolbarCollapsed ? 'Show toolbar actions' : 'Hide toolbar actions';
       toolbarToggleBtn.innerHTML = this._toolbarCollapsed ? svgIcon('db-expand') : svgIcon('db-collapse');
-      this._toolbar?.setCollapsed(this._toolbarCollapsed);
+      this._host?.setToolbarCollapsed(this._toolbarCollapsed);
     });
     headerActions.appendChild(toolbarToggleBtn);
 
@@ -152,14 +124,14 @@ class DatabaseInlineNodeView {
     headerActions.appendChild(expandBtn);
 
     // Toolbar panel container
-    const toolbarPanelContainer = document.createElement('div');
-    toolbarPanelContainer.classList.add('db-inline-toolbar-panels');
-    this.dom.appendChild(toolbarPanelContainer);
+    const toolbarPanelsSlot = document.createElement('div');
+    toolbarPanelsSlot.classList.add('db-inline-toolbar-panels');
+    this.dom.appendChild(toolbarPanelsSlot);
 
     // Content area
-    this._contentDom = document.createElement('div');
-    this._contentDom.classList.add('db-inline-content');
-    this.dom.appendChild(this._contentDom);
+    const contentSlot = document.createElement('div');
+    contentSlot.classList.add('db-inline-content');
+    this.dom.appendChild(contentSlot);
 
     // Resize handle
     const resizeHandle = document.createElement('div');
@@ -167,8 +139,27 @@ class DatabaseInlineNodeView {
     this.dom.appendChild(resizeHandle);
     this._setupResize(resizeHandle);
 
-    // Load data
-    this._loadDatabase(tabBarContainer, toolbarContainer, toolbarPanelContainer);
+    // Create the shared view host and load data
+    this._host = new DatabaseViewHost({
+      databaseId: this._databaseId,
+      dataService: this._dataService,
+      openEditor: this._openEditor,
+      slots: {
+        tabBar: tabBarSlot,
+        toolbar: toolbarSlot,
+        toolbarPanels: toolbarPanelsSlot,
+        content: contentSlot,
+      },
+    });
+
+    this._host.onDidFailLoad((message) => {
+      contentSlot.textContent = message;
+      contentSlot.classList.add('db-inline-error');
+    });
+
+    this._host.load().catch(err => {
+      console.error('[DatabaseInlineNode] Host load failed:', err);
+    });
   }
 
   /** Prevent ProseMirror from handling events inside the NodeView. */
@@ -191,7 +182,7 @@ class DatabaseInlineNodeView {
     const newTitle = (node.attrs.databaseTitle as string | undefined) ?? 'New database';
     if (newDbId !== this._databaseId) {
       this._databaseId = newDbId;
-      this._reloadAll();
+      this._reloadHost();
     }
     if (newTitle !== this._databaseTitle) {
       this._databaseTitle = newTitle;
@@ -204,306 +195,45 @@ class DatabaseInlineNodeView {
   }
 
   destroy(): void {
-    this._disposed = true;
-    this._activeView?.dispose();
-    this._activeView = null;
-    this._viewTabBar?.dispose();
-    this._viewTabBar = null;
-    this._toolbar?.dispose();
-    this._toolbar = null;
-    for (const d of this._disposables) d.dispose();
-    this._disposables.length = 0;
+    this._host?.dispose();
+    this._host = null;
   }
 
-  // ── Data Loading ────────────────────────────────────────────────────
+  // ── Host Reload (on databaseId change) ───────────────────────────────
 
-  private async _loadDatabase(
-    tabBarContainer: HTMLElement,
-    toolbarContainer: HTMLElement,
-    toolbarPanelContainer: HTMLElement,
-  ): Promise<void> {
-    try {
-      const db = await this._dataService.getDatabase(this._databaseId);
-      if (!db || this._disposed) return;
+  private _reloadHost(): void {
+    this._host?.dispose();
+    this._host = null;
 
-      this._views = await this._dataService.getViews(this._databaseId);
-      this._properties = await this._dataService.getProperties(this._databaseId);
+    const tabBarSlot = this.dom.querySelector('.db-inline-tab-bar') as HTMLElement;
+    const toolbarSlot = this.dom.querySelector('.db-inline-toolbar') as HTMLElement;
+    const toolbarPanelsSlot = this.dom.querySelector('.db-inline-toolbar-panels') as HTMLElement;
+    const contentSlot = this.dom.querySelector('.db-inline-content') as HTMLElement;
 
-      // For linked views, load rows from the source database
-      const firstView = this._views[0];
-      const sourceDbId = firstView?.config?.sourceDatabaseId ?? this._databaseId;
-      this._rows = await this._dataService.getRows(sourceDbId);
+    if (!tabBarSlot || !toolbarSlot || !toolbarPanelsSlot || !contentSlot) return;
 
-      // Create view tab bar
-      this._viewTabBar = new ViewTabBar(
-        tabBarContainer,
-        this._dataService,
-        this._databaseId,
-      );
-      this._viewTabBar.setViews(this._views);
+    // Clear previous content in all slots
+    tabBarSlot.innerHTML = '';
+    toolbarSlot.innerHTML = '';
+    toolbarPanelsSlot.innerHTML = '';
+    contentSlot.innerHTML = '';
+    contentSlot.classList.remove('db-inline-error');
 
-      this._disposables.push(
-        this._viewTabBar.onDidSelectView((viewId) => {
-          this._switchView(viewId, toolbarContainer, toolbarPanelContainer);
-        }),
-      );
-
-      this._disposables.push(
-        this._viewTabBar.onDidCreateView((newView) => {
-          this._views.push(newView);
-          this._viewTabBar?.setViews(this._views);
-          this._switchView(newView.id, toolbarContainer, toolbarPanelContainer);
-        }),
-      );
-
-      // Listen for data changes
-      this._disposables.push(
-        this._dataService.onDidChangeRow((event) => {
-          if (event.databaseId !== this._databaseId && event.databaseId !== sourceDbId) return;
-          this._reloadRows(sourceDbId);
-        }),
-      );
-
-      this._disposables.push(
-        this._dataService.onDidChangeProperty((event) => {
-          if (event.databaseId !== this._databaseId) return;
-          this._reloadProperties();
-        }),
-      );
-
-      this._disposables.push(
-        this._dataService.onDidChangeView((event) => {
-          if (event.databaseId !== this._databaseId) return;
-          this._reloadViews(toolbarContainer, toolbarPanelContainer);
-        }),
-      );
-
-      // Activate first view
-      if (this._views.length > 0) {
-        this._switchView(this._views[0].id, toolbarContainer, toolbarPanelContainer);
-      }
-    } catch (err) {
-      console.error('[DatabaseInlineNode] Failed to load database:', err);
-      if (this._contentDom) {
-        this._contentDom.textContent = 'Failed to load database.';
-        this._contentDom.classList.add('db-inline-error');
-      }
-    }
-  }
-
-  // ── View Switching ──────────────────────────────────────────────────
-
-  private _switchView(
-    viewId: string,
-    toolbarContainer: HTMLElement,
-    toolbarPanelContainer: HTMLElement,
-  ): void {
-    this._activeViewId = viewId;
-    this._viewTabBar?.setActive(viewId);
-    this._updateToolbar(toolbarContainer, toolbarPanelContainer);
-    this._renderActiveView();
-  }
-
-  private _renderActiveView(): void {
-    // Dispose previous
-    this._activeView?.dispose();
-    this._activeView = null;
-
-    if (this._contentDom) {
-      this._contentDom.innerHTML = '';
-    }
-
-    const view = this._views.find(v => v.id === this._activeViewId);
-    if (!view || !this._contentDom) return;
-
-    // Determine source database for linked views
-    const sourceDbId = view.config?.sourceDatabaseId ?? this._databaseId;
-
-    // Apply data pipeline
-    const { sortedRows, groups } = applyViewDataPipeline(
-      this._rows,
-      view,
-      this._properties,
-    );
-
-    const visibleProps = this._getVisibleProperties(view);
-
-    const viewInstance = this._createView(
-      view.type,
-      this._contentDom,
-      sourceDbId,
-      view,
-      visibleProps,
-      sortedRows,
-      groups,
-    );
-
-    if (viewInstance) {
-      this._activeView = viewInstance;
-    }
-  }
-
-  private _createView(
-    type: string,
-    container: HTMLElement,
-    databaseId: string,
-    view: IDatabaseView,
-    properties: IDatabaseProperty[],
-    rows: IDatabaseRow[],
-    groups?: IRowGroup[],
-  ): IManagedView | null {
-    const openEditor = this._openEditor;
-
-    switch (type) {
-      case 'table':
-        return new TableView(container, this._dataService, databaseId, view, properties, rows, openEditor, groups);
-      case 'board':
-        return new BoardView(container, this._dataService, databaseId, view, properties, rows, openEditor, groups);
-      case 'list':
-        return new ListView(container, this._dataService, databaseId, view, properties, rows, openEditor, groups);
-      case 'gallery':
-        return new GalleryView(container, this._dataService, databaseId, view, properties, rows, openEditor, groups);
-      case 'calendar':
-        return new CalendarView(container, this._dataService, databaseId, view, properties, rows, openEditor, groups);
-      case 'timeline':
-        return new TimelineView(container, this._dataService, databaseId, view, properties, rows, openEditor, groups);
-      default:
-        container.textContent = `${type} view — coming soon`;
-        return null;
-    }
-  }
-
-  // ── Toolbar ─────────────────────────────────────────────────────────
-
-  private _updateToolbar(toolbarContainer: HTMLElement, toolbarPanelContainer: HTMLElement): void {
-    this._toolbar?.dispose();
-    this._toolbar = null;
-
-    const view = this._views.find(v => v.id === this._activeViewId);
-    if (!view) return;
-
-    toolbarContainer.innerHTML = '';
-    toolbarPanelContainer.innerHTML = '';
-    this._toolbar = new DatabaseToolbar(
-      toolbarContainer,
-      view,
-      this._properties,
-      toolbarPanelContainer,
-      {
-        filter: svgIcon('db-filter'),
-        sort: svgIcon('db-sort'),
-        group: svgIcon('db-group'),
-        search: svgIcon('search'),
-        settings: svgIcon('db-settings'),
+    this._host = new DatabaseViewHost({
+      databaseId: this._databaseId,
+      dataService: this._dataService,
+      openEditor: this._openEditor,
+      slots: {
+        tabBar: tabBarSlot,
+        toolbar: toolbarSlot,
+        toolbarPanels: toolbarPanelsSlot,
+        content: contentSlot,
       },
-      'icon',
-    );
-    this._toolbar.setCollapsed(this._toolbarCollapsed);
+    });
 
-    this._disposables.push(
-      this._toolbar.onDidUpdateView(async (updates) => {
-        if (!this._activeViewId) return;
-        try {
-          await this._dataService.updateView(this._activeViewId, updates);
-          const updatedView = await this._dataService.getView(this._activeViewId);
-          if (updatedView) {
-            const idx = this._views.findIndex(v => v.id === updatedView.id);
-            if (idx >= 0) this._views[idx] = updatedView;
-            this._toolbar?.setView(updatedView);
-          }
-          this._renderActiveView();
-        } catch (err) {
-          console.error('[DatabaseInlineNode] Update view failed:', err);
-        }
-      }),
-    );
-
-    // Wire up "New" button to add a row
-    this._disposables.push(
-      this._toolbar.onDidRequestNewRow(async () => {
-        try {
-          await this._dataService.addRow(this._databaseId);
-        } catch (err) {
-          console.error('[DatabaseInlineNode] Add row failed:', err);
-        }
-      }),
-    );
-  }
-
-  // ── Visible Properties ──────────────────────────────────────────────
-
-  private _getVisibleProperties(view: IDatabaseView): IDatabaseProperty[] {
-    const visibleIds = view.config.visibleProperties;
-    if (!visibleIds || visibleIds.length === 0) return this._properties;
-
-    const ordered: IDatabaseProperty[] = [];
-    for (const id of visibleIds) {
-      const prop = this._properties.find(p => p.id === id);
-      if (prop) ordered.push(prop);
-    }
-    // Always include title
-    if (!ordered.some(p => p.type === 'title')) {
-      const titleProp = this._properties.find(p => p.type === 'title');
-      if (titleProp) ordered.unshift(titleProp);
-    }
-    return ordered;
-  }
-
-  // ── Data Reload ─────────────────────────────────────────────────────
-
-  private async _reloadRows(sourceDbId?: string): Promise<void> {
-    try {
-      const dbId = sourceDbId ?? this._databaseId;
-      this._rows = await this._dataService.getRows(dbId);
-      const view = this._views.find(v => v.id === this._activeViewId);
-      if (view) {
-        const { sortedRows, groups } = applyViewDataPipeline(
-          this._rows, view, this._properties,
-        );
-        this._activeView?.setRows(sortedRows, groups);
-      }
-    } catch (err) {
-      console.error('[DatabaseInlineNode] Failed to reload rows:', err);
-    }
-  }
-
-  private async _reloadProperties(): Promise<void> {
-    try {
-      this._properties = await this._dataService.getProperties(this._databaseId);
-      this._activeView?.setProperties(this._properties);
-    } catch (err) {
-      console.error('[DatabaseInlineNode] Failed to reload properties:', err);
-    }
-  }
-
-  private async _reloadViews(toolbarContainer?: HTMLElement, toolbarPanelContainer?: HTMLElement): Promise<void> {
-    try {
-      this._views = await this._dataService.getViews(this._databaseId);
-      this._viewTabBar?.setViews(this._views);
-      if (this._activeViewId && toolbarContainer && toolbarPanelContainer) {
-        this._switchView(this._activeViewId, toolbarContainer, toolbarPanelContainer);
-      }
-    } catch (err) {
-      console.error('[DatabaseInlineNode] Failed to reload views:', err);
-    }
-  }
-
-  private async _reloadAll(): Promise<void> {
-    const tabBarContainer = this.dom.querySelector('.db-inline-tab-bar') as HTMLElement;
-    const toolbarContainer = this.dom.querySelector('.db-inline-toolbar') as HTMLElement;
-    const toolbarPanelContainer = this.dom.querySelector('.db-inline-toolbar-panels') as HTMLElement;
-    if (tabBarContainer && toolbarContainer && toolbarPanelContainer) {
-      tabBarContainer.innerHTML = '';
-      toolbarContainer.innerHTML = '';
-      toolbarPanelContainer.innerHTML = '';
-      this._viewTabBar?.dispose();
-      this._viewTabBar = null;
-      this._toolbar?.dispose();
-      this._toolbar = null;
-      this._activeView?.dispose();
-      this._activeView = null;
-      await this._loadDatabase(tabBarContainer, toolbarContainer, toolbarPanelContainer);
-    }
+    this._host.load().catch(err => {
+      console.error('[DatabaseInlineNode] Host reload failed:', err);
+    });
   }
 
   // ── Resize ──────────────────────────────────────────────────────────

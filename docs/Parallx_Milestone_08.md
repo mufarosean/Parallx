@@ -1134,8 +1134,490 @@ The `database/` directory is **not a gate** — it does not have gate-level impo
 | **M8.3** | Phase 7 | Relations & rollups | Phase 6 |
 | **M8.3** | Phase 8 | Formulas | Phase 7 |
 | **M8.3** | Phase 9 | Polish (templates, color, locking, property enhancements) | Phase 8 |
+| **M8.4** | Phase 10 | Shared DatabaseViewHost — unified rendering | Current state (all prior phases) |
+| **M8.4** | Phase 11 | Integration bug fixes | Phase 10 |
+| **M8.4** | Phase 12 | Notion visual fidelity pass | Phase 11 |
 
-**Execution is strictly sequential.** Each phase must be fully complete — code merged, tests passing — before the next phase begins. No parallel phase execution.
+**Execution is strictly sequential within each sub-milestone.** M8.4 is a retroactive improvement phase — it unifies and polishes code that already exists from Phases 1–9. It does not block any prior phase. No prior phase depends on M8.4.
+
+> **Note:** M8.4 (Phases 10–12) was added to consolidate the two divergent inline/full-page rendering paths that emerged during Phases 2–6. It improves what already exists — it is not a prerequisite for anything.
+
+---
+
+## M8.4 — Database UI Unification & Notion-First Rendering
+
+> **Vision:** Collapse the two divergent database rendering paths (inline and full-page) into a single, shared component system. After this phase, inline and full-page databases render the **same UI**, use the **same icons**, the **same toolbar**, the **same header structure**, and the **same CSS classes**. The only difference is **context**: inline databases are embedded in a parent page with constrained height; full-page databases occupy the full editor pane. This phase also fixes every known integration bug and brings the visual rendering to Notion-level fidelity.
+>
+> **Prerequisite:** All prior phases are already implemented. This phase is a retroactive unification and polish pass — it improves what was already built, not a blocker for anything else.
+
+### Why This Phase Exists
+
+The current codebase has **13 documented divergences** between inline and full-page database rendering:
+
+| Dimension | Inline (databaseInlineNode.ts) | Full-Page (databaseEditorProvider.ts) | Problem |
+|-----------|-------------------------------|--------------------------------------|---------|
+| **Toolbar presentation** | `'icon'` mode — icon-only buttons | `'label'` mode — icon + text labels | Different button shapes |
+| **Toolbar icon source** | SVG from registry (`svgIcon('db-filter')`, etc.) | Text/emoji fallbacks (`'≡'`, `'↕'`, `'⚡'`, etc.) | Different icon systems |
+| **Title element** | `<span>` contentEditable | `<h1>` static (not editable) | Different element types |
+| **Title icon** | None | Hardcoded `🗂️` emoji | Inconsistent |
+| **Header CSS classes** | `db-inline-header` | `database-editor-page-header` | Divergent DOM |
+| **Toolbar CSS classes** | `db-inline-toolbar`, `db-toolbar-icon-btn` | `database-editor-toolbar-buttons`, `db-toolbar-text-btn` | Divergent DOM |
+| **Content CSS classes** | `db-inline-content` | `database-editor-content` | Divergent DOM |
+| **Panel container** | Separate `db-inline-toolbar-panels` element | Inside toolbar container | Different layout |
+| **Collapse/expand** | Has toggle button | None | Feature gap |
+| **Resize** | Has resize handle (min 120px) | None (full viewport) | Context-appropriate |
+| **Expand to full page** | Has expand button | N/A (already full page) | Context-appropriate |
+| **DOM creation method** | `document.createElement()` | `$()` helper from `ui/dom.js` | Inconsistent |
+| **Linked view handling** | Checks `sourceDatabaseId` on view config | Doesn't handle linked views | Feature gap |
+
+Additionally, the following **integration bugs** exist:
+
+| Bug | Location | Severity |
+|-----|----------|----------|
+| Last-opened page restore always uses `typeId: 'canvas'` | `main.ts` `_restoreLastOpenedPage()` | Medium |
+| Favorited database pages don't render with database icon | `canvasSidebar.ts` `_renderFavoriteRow()` | Low |
+| Missing `database-link` SVG icon | `blockRegistry.ts` / `canvasIcons.ts` | Low |
+| Sidebar uses `📊` emoji instead of SVG icon for databases | `canvasSidebar.ts` `_renderNode()` | Low |
+| `prompt()` used for view rename and option creation | `viewTabBar.ts`, `propertyConfig.ts` | Medium |
+| View type icons in `viewTabBar.ts` use emoji not SVGs | `viewTabBar.ts` | Low |
+| Search toolbar button is placeholder with no implementation | `databaseToolbar.ts` | Low |
+| Duplicate page command doesn't duplicate database records | `main.ts` | Low |
+
+### Design Decisions (M8.4)
+
+#### DD-8: Shared `DatabaseView` Host Component
+
+**Decision:** Create a single `DatabaseViewHost` class that renders the complete database UI (header + toolbar + tab bar + active view + footer). Both `databaseInlineNode.ts` and `databaseEditorProvider.ts` instantiate this same component, passing only a `DatabaseViewHostOptions` bag that controls context-specific features.
+
+**Options interface:**
+```typescript
+interface DatabaseViewHostOptions {
+  container: HTMLElement;
+  databaseId: string;
+  dataService: IDatabaseDataService;
+  openEditor: OpenEditorFn;
+  
+  // Context-specific toggles (not "modes")
+  editable: boolean;        // title is editable (inline: true, full-page: true)
+  resizable: boolean;       // show resize handle (inline: true, full-page: false)
+  expandable: boolean;      // show "open as full page" button (inline: true, full-page: false)
+  collapsible: boolean;     // show toolbar collapse toggle (inline: true, full-page: false)
+  showPageHeader: boolean;  // show large page header with icon (inline: false, full-page: true)
+}
+```
+
+**Rationale:** This eliminates the current "two separate rendering trees" problem. All toolbar, tab bar, view rendering, and data pipeline logic lives in one place. The options bag replaces the `presentation: 'icon' | 'label'` concept — the DatabaseViewHost always renders the same toolbar with the same icons. Context-specific features are additive (resize handle, expand button), not modal (icon-vs-label).
+
+#### DD-9: Toolbar Always Uses SVG Icons
+
+**Decision:** The `DatabaseToolbar` always uses SVG icons from the icon registry. The `icons` parameter and `presentation` mode parameter are removed. All buttons render as **icon-only** by default, with a text label shown as a tooltip.
+
+**Rationale:** In Notion, the toolbar buttons are icon-only in both inline and full-page contexts. The current `'label'` mode with text fallbacks exists only because the full-page editor wasn't wired to the icon registry. Once both paths use the same component, one icon source is the only correct choice. Text labels as tooltips provide accessibility without visual divergence.
+
+#### DD-10: CSS Class Namespace Unification
+
+**Decision:** All database UI uses the `db-` prefix for CSS classes. The current split between `db-inline-*` (inline) and `database-editor-*` (full-page) is collapsed into a single set. Context-specific overrides use modifier classes on the root element: `.db-host--inline` and `.db-host--fullpage`.
+
+**Rationale:** Two class namespaces means two sets of CSS rules to maintain, inevitable drift, and double the work for every visual change. A single namespace with modifier classes is the standard BEM-like approach.
+
+#### DD-11: ViewTabBar Uses SVG Icons
+
+**Decision:** View type icons in `ViewTabBar` tabs and the "Add view" menu use SVG icons from the icon registry instead of emoji/text characters.
+
+**Rationale:** Emoji render differently across platforms (Windows vs macOS vs Linux). `currentColor`-aware SVG icons match the theme system and render predictably.
+
+### Phase 10 — Shared Database View Host
+
+> **Vision:** Extract the shared database UI into a single `DatabaseViewHost` component. Both inline and full-page consumers instantiate it. After this phase, there is exactly one code path for rendering a database UI.
+>
+> **Principle:** "One component, two contexts." We build one database UI that works everywhere. Context-specific behaviors (resize handle, expand button, title editing) are toggling features on that one component — not separate rendering paths.
+
+#### 10.1 Create `DatabaseViewHost` Component (`database/databaseViewHost.ts`)
+
+**Tasks:**
+- [x] Create `DatabaseViewHost` class extending `Disposable`
+- [x] Constructor: `(options: DatabaseViewHostOptions)`
+- [x] DOM structure — **DEVIATION:** uses a **slot-based** approach instead of self-contained DOM. Consumers build their own shell and pass 4 slot elements (`DatabaseViewHostSlots`: `tabBar`, `toolbar`, `toolbarPanels`, `content`). This keeps inline-specific chrome (resize, expand, collapse, title) in the inline node and full-page chrome (page header) in the editor provider — the host only manages the shared engine.
+- [x] Data loading: `getDatabase()` → `getViews()` → `getProperties()` → `getRows()`
+- [x] Data pipeline: `applyViewDataPipeline()` for filter/sort/group
+- [x] View factory: `_createView()` switch delegates to `TableView`, `BoardView`, etc.
+- [x] View switching: `ViewTabBar.onDidSelectView` → dispose old view → create new view
+- [x] Linked view support: check `view.config?.sourceDatabaseId` → load from source DB
+- [x] Event subscriptions: `onDidChangeRow`, `onDidChangeProperty`, `onDidChangeView` → re-render
+- [x] Title editing: N/A — title stays in consumer (inline: contentEditable span, full-page: page header)
+- [x] Resize: N/A — resize stays in inline node consumer (slot-based design)
+- [x] Expand button: N/A — stays in inline node consumer; host receives `openEditor` callback
+- [x] Collapse toggle: `setToolbarCollapsed()` method called by consumer → hides toolbar
+- [x] `dispose()`: dispose ViewTabBar, DatabaseToolbar, active view, all event subscriptions
+- [x] Fires events: `onDidLoad`, `onDidFailLoad`
+
+**How it integrates:** This is a new file in `database/`. It imports from `databaseRegistry.ts` (its gate). Both `databaseInlineNode.ts` and `databaseEditorProvider.ts` were refactored to use this component.
+
+#### 10.2 Refactor `DatabaseToolbar` — Remove Presentation Modes ✅
+
+**Tasks:**
+- [x] Remove `presentation` parameter (no more `'icon'` vs `'label'`)
+- [x] Remove `icons` parameter (no more optional icon override)
+- [x] All buttons always use SVG icons via `TOOLBAR_ICON_IDS` constants with `svgIcon()` from databaseRegistry
+- [x] Removed `IDatabaseToolbarIcons` interface and `DatabaseToolbarPresentation` type entirely
+- [x] Button structure: icon + label span for each toolbar action
+- [x] Tooltip on each button (Filter, Sort, Group, Properties) for accessibility
+- [x] `panelContainerTarget` parameter stays — `DatabaseViewHost` passes its panels slot
+- [x] `setCollapsed()` method stays — consumer calls it when collapse toggle is clicked
+- [x] "New" button remains at the right side with text label `+ New`
+
+**How it integrates:** `DatabaseToolbar` is consumed only by `DatabaseViewHost` now, not directly by inline or full-page code.
+
+#### 10.3 Refactor `ViewTabBar` — Use SVG Icons ✅
+
+**Tasks:**
+- [x] Add SVG icons to `canvasIcons.ts` for all 6 view types: `view-table`, `view-board`, `view-list`, `view-gallery`, `view-calendar`, `view-timeline`
+- [x] Add `database-link` icon to `canvasIcons.ts`
+- [x] Register new icons in `iconRegistry.ts`
+- [x] Replace `VIEW_TYPE_ICONS` emoji map with `VIEW_TYPE_ICON_IDS` SVG icon map using `svgIcon()` from databaseRegistry
+- [x] Tab label: SVG icon via `innerHTML` + text name (instead of emoji + text)
+- [x] "+" context menu items: SVG icon via `renderIcon` callback + view type name
+- [ ] Replace `prompt()` for rename with `InputBox` — deferred to Phase 11 (11.5)
+- [x] `svgIcon` re-exported through `databaseRegistry.ts` (gate-to-gate from iconRegistry)
+- [x] `tabBar.ts` (ui/) updated to use `innerHTML` for icon rendering to support SVG markup
+
+#### 10.4 Wire `databaseInlineNode.ts` to Use `DatabaseViewHost` ✅
+
+**Tasks:**
+- [x] Remove all internal `_createView()`, `_loadDatabase()`, `_switchView()`, `_renderActiveView()`, `_updateToolbar()`, `_reloadRows/Properties/Views/All()`, `_getVisibleProperties()` methods
+- [x] Remove `IManagedView` interface, `_activeView`, `_views`, `_properties`, `_rows`, `_viewTabBar`, `_toolbar`, `_disposables` fields
+- [x] Inline node builds its own DOM shell (header + title + toolbar slot + tab bar slot + actions + panels + content + resize handle)
+- [x] Creates `DatabaseViewHost` with slot elements, delegates all data loading and view engine work
+- [x] Resize handle stays in inline node (consumer-specific chrome)
+- [x] Expand button stays in inline node — calls `_openEditor` callback directly
+- [x] Collapse toggle stays in inline node — calls `host.setToolbarCollapsed()`
+- [x] `DatabaseViewHost` + types re-exported through `BlockRegistry` for gate compliance
+- [x] `destroy()` disposes `DatabaseViewHost`
+- [x] `_reloadHost()` method for databaseId change: disposes old host, clears slots, creates new host
+- [x] Reduced from ~620 lines to ~280 lines
+
+**How it integrates:** `databaseInlineNode.ts` is now a thin Tiptap node wrapper around `DatabaseViewHost`. Its only responsibility is ProseMirror lifecycle (mount, update attrs, destroy), inline-specific chrome (resize, expand, collapse, title), and connecting options.
+
+#### 10.5 Wire `databaseEditorProvider.ts` to Use `DatabaseViewHost` ✅
+
+**Tasks:**
+- [x] Remove all internal `_loadDatabase()`, `_switchView()`, `_renderActiveView()`, `_createView()`, `_updateToolbar()` methods
+- [x] Remove `_views`, `_properties`, `_rows`, `_activeView`, `_viewTabBar`, `_toolbar` fields
+- [x] Editor pane builds page header (icon via `svgIcon('database')` + title) and 4 DOM slots
+- [x] Creates `DatabaseViewHost` with slot elements, delegates all data loading and view engine work
+- [x] Page header stays in editor pane (full-page-specific chrome)
+- [x] `onDidFailLoad` wired to show empty state message
+- [x] `dispose()` disposes `DatabaseViewHost`
+- [x] Reduced from ~486 lines to ~140 lines
+
+**How it integrates:** `databaseEditorProvider.ts` is now a thin editor-pane wrapper around `DatabaseViewHost`. Its only responsibility is pane lifecycle, page header, and reading from `ToolEditorInput`.
+
+#### 10.6 Unify CSS — Single Namespace (deferred to Phase 12)
+
+**Tasks:**
+- [ ] Rename all `database-editor-*` classes to `db-host-*` equivalents
+- [ ] Rename all `db-inline-*` classes to `db-host-*` equivalents
+- [ ] Remove duplicate/divergent rules — one rule per visual element
+- [ ] Context modifiers: `.db-host--inline` for inline-specific overrides (border, border-radius, margin)
+- [ ] Context modifiers: `.db-host--fullpage` for full-page overrides (no border, full width, padding)
+- [ ] Remove `.db-toolbar-text-btn` and `.db-toolbar-icon-btn` split — single `.db-toolbar-btn` class
+- [ ] Remove all toolbar label-hiding overrides (`.db-inline-wrapper .db-toolbar-btn-label { display: none }` etc.)
+- [ ] Organize CSS into clear sections with headers:
+  1. Database Host (shared root)
+  2. Page Header (full-page only)
+  3. Chrome Bar (tabs + toolbar + actions)
+  4. Toolbar
+  5. Toolbar Panels
+  6. Table View
+  7. Board View
+  8. List View
+  9. Gallery View
+  10. Calendar View
+  11. Timeline View
+  12. Cell Renderers
+  13. Cell Editors
+  14. Property Config
+  15. Filter UI
+- [ ] Verify zero visual regressions by running the app and checking both contexts
+
+#### Completion Criteria (Phase 10)
+
+- [x] **One component** (`DatabaseViewHost`) renders database UI in both inline and full-page contexts (slot-based design)
+- [x] All toolbar buttons use SVG icons from the icon registry — no text/emoji fallbacks
+- [x] All view tab icons use SVG icons — no emoji
+- [ ] One CSS namespace (`db-*`) with modifier classes for context — deferred to Phase 12
+- [x] Inline database: toolbar, content, resize, expand, collapse all work via host + inline chrome
+- [x] Full-page database: page header, title editing, toolbar, content all work via host + editor pane chrome
+- [x] Linked view support works in both contexts
+- [x] `npx tsc --noEmit` — zero errors
+- [x] All existing unit tests pass (`npx vitest run` — 822/822)
+- [x] Gate compliance test passes
+
+---
+
+### Phase 11 — Integration Bug Fixes
+
+> **Vision:** Fix every known integration bug between the database system and the canvas system. These are not new features — they are correctness fixes for existing code paths that were missed or implemented incorrectly.
+
+#### 11.1 Fix Last-Opened Page Restore
+
+**Tasks:**
+- [ ] In `main.ts` `_restoreLastOpenedPage()`, detect if the page is a database via `_databaseDataService.getDatabaseByPageId(pageId)`
+- [ ] If it is a database, open with `typeId: 'database'` instead of `'canvas'`
+- [ ] Handle the async nature: `getDatabaseByPageId()` is async, so the restore logic must await it
+
+#### 11.2 Fix Favorited Database Pages Rendering
+
+**Tasks:**
+- [ ] In `canvasSidebar.ts` `_renderFavoriteRow()`, check `_databasePageIds.has(page.id)`
+- [ ] If true, render with SVG database icon instead of `resolvePageIcon()`
+- [ ] Ensure click on favorited database opens with `typeId: 'database'`
+
+#### 11.3 Add Missing `database-link` SVG Icon
+
+**Tasks:**
+- [ ] Design and add `database-link` SVG icon to `canvasIcons.ts` (database icon with link indicator)
+- [ ] Register in `iconRegistry.ts`
+- [ ] Verify `blockRegistry.ts` `linkedView` definition now renders correctly
+
+#### 11.4 Replace Sidebar Emoji with SVG Icons
+
+**Tasks:**
+- [ ] In `canvasSidebar.ts` `_renderNode()`, replace `📊` emoji with `createIconElement('database', 14)` SVG
+- [ ] In `_createDatabase()`, use SVG icon key `'database'` instead of emoji `'📊'`
+- [ ] Verify sidebar renders database pages with theme-aware SVG icons
+
+#### 11.5 Replace `prompt()` Calls with `InputBox`
+
+**Tasks:**
+- [ ] In `viewTabBar.ts` rename flow: replace `prompt('Rename view')` with `InputBox` from `src/ui/`
+- [ ] In `propertyConfig.ts` option creation: replace any `prompt()` calls with `InputBox` overlay
+- [ ] Ensure focus management works correctly (overlay opens, user types, presses Enter/Escape)
+
+#### 11.6 Fix Page Duplicate for Database Pages
+
+**Tasks:**
+- [ ] In `main.ts` `canvas.duplicatePage` command, detect if source page is a database
+- [ ] If yes, after duplicating the page, also duplicate: database record, properties, views, row membership, property values
+- [ ] Use `DatabaseDataService.duplicateDatabase()` if it exists, or implement it
+- [ ] Open the duplicate with `typeId: 'database'`
+
+#### 11.7 Handle Linked Views in Full-Page Editor
+
+**Tasks:**
+- [ ] In `DatabaseViewHost` (already done in Phase 10), verify that `sourceDatabaseId` is checked when loading data
+- [ ] If a view has `sourceDatabaseId`, load schema and rows from the source database
+- [ ] Subscribe to source database's change events for live updates
+
+#### Completion Criteria (Phase 11)
+
+- [ ] Last-opened database page restores correctly with `typeId: 'database'`
+- [ ] Favorited database pages render with database icon and open as databases
+- [ ] `database-link` icon exists and renders for linked view blocks
+- [ ] Sidebar uses SVG icons for all database pages (no emoji)
+- [ ] No `prompt()` calls in any database code — all use `InputBox` or inline editing
+- [ ] Duplicating a database page creates a fully functional database copy
+- [ ] Linked views load from source database in all contexts
+- [ ] All existing unit tests pass
+- [ ] Manual verification: open database from sidebar, create inline database, expand to full page, restore last opened, duplicate, favorite
+
+---
+
+### Phase 12 — Notion Visual Fidelity Pass
+
+> **Vision:** With the unified component in place, do a single focused pass to bring the database table view's visual rendering to Notion-level fidelity. This phase is CSS + DOM structure only — no new features, no new data flows.
+>
+> **Reference:** The Ramadan Tracker screenshot (dark theme, full-page table view) provided by the user, plus the public Notion page at `bead-galaxy-79e.notion.site/3aca5bacc6014a14aeda4545967e6375`.
+
+#### 12.1 Establish Reference Metrics
+
+**Tasks:**
+- [ ] Fetch the public Notion page HTML and extract key computed style values for the table view:
+  - Row height, header height, font size, font family
+  - Column separator style, header background, hover row background
+  - Cell padding, checkbox size, pill badge styling
+  - Toolbar button size, spacing, icon size
+  - Tab bar styling (height, font size, active indicator)
+  - "New" row button styling and position
+  - Page header (font size, icon size, padding for full-page)
+- [ ] Document all extracted values in a CSS reference comment block at the top of `database.css`
+- [ ] Use these values as the ground truth for all CSS in this phase
+
+#### 12.2 Table View CSS Fidelity
+
+**Tasks:**
+- [ ] Row height: match Notion's computed value (typically 32–34px)
+- [ ] Header height: match Notion's header row
+- [ ] Font: 14px system font stack matching Notion
+- [ ] Header text: 12px, uppercase? or sentence case? — match exactly
+- [ ] Cell padding: match Notion's inner padding
+- [ ] Column separators: light border-right, no horizontal grid lines between rows
+- [ ] Header background: subtle distinct from body
+- [ ] Hover state: full-row highlight with correct color
+- [ ] Selected row: correct highlight color
+- [ ] Scroll behavior: header stays fixed, body scrolls
+- [ ] "New" row: correct styling and icon
+- [ ] Add-property column: correct "+" button styling
+- [ ] Table border: rounded corners on container, no outer cell borders
+
+#### 12.3 Toolbar CSS Fidelity
+
+**Tasks:**
+- [ ] Button size: match Notion toolbar buttons (typically 24–28px icon containers)
+- [ ] Button spacing: correct gap between buttons
+- [ ] Active state: correct background/border when a filter/sort/group is active
+- [ ] "New" button: blue/accent colored with correct padding and border-radius
+- [ ] Toolbar height: match Notion's toolbar row height
+- [ ] Toolbar alignment: correctly positioned relative to tab bar and content
+
+#### 12.4 Cell Renderer CSS Fidelity
+
+**Tasks:**
+- [ ] Select/status pills: correct border-radius, padding, font-size, colors
+- [ ] Checkbox: correct size, border-radius, checked state color
+- [ ] Date: correct format display
+- [ ] URL: truncation with ellipsis, underline style
+- [ ] Title cell: page icon + text, correct spacing
+- [ ] Empty cells: correct placeholder style
+
+#### 12.5 Dark Theme Validation
+
+**Tasks:**
+- [ ] All database colors use CSS custom properties for theme awareness
+- [ ] Dark theme rendered values match Notion dark theme
+- [ ] No hardcoded colors that break in dark/light switch
+- [ ] Verify against the Ramadan Tracker screenshot (dark theme)
+
+#### Completion Criteria (Phase 12)
+
+- [ ] Table view rendering is visually indistinguishable from Notion at normal zoom
+- [ ] Toolbar buttons match Notion's icon-only style
+- [ ] Cell renderers (pills, checkboxes, dates, URLs) match Notion's styling
+- [ ] Dark theme and light theme both look correct
+- [ ] Reference metrics documented in CSS
+- [ ] All existing tests pass
+
+---
+
+### Execution Order (M8.4)
+
+| Phase | Focus | Prerequisite | Estimated Scope |
+|-------|-------|-------------|----------------|
+| **Phase 10** | Shared DatabaseViewHost component | Current state (all prior phases built) | ~800 lines new, ~1200 lines refactored |
+| **Phase 11** | Integration bug fixes | Phase 10 | ~200 lines across 5 files |
+| **Phase 12** | Notion visual fidelity pass | Phase 11 | ~500 lines CSS |
+
+**Execution is strictly sequential.** Phase 10 must be complete (code compiles, tests pass) before Phase 11 begins. Phase 11 must be complete before Phase 12 begins.
+
+### Execution Plan (Step-by-Step)
+
+This is the exact sequence of operations. No step may be skipped or reordered.
+
+#### Pre-Flight Checks
+1. Read `ARCHITECTURE.md` fully — confirm gate rules are internalized
+2. Read `.github/instructions/parallx-instructions.instructions.md` fully — confirm all coding rules
+3. Run `npx tsc --noEmit` — confirm clean compile
+4. Run `npx vitest run` — confirm all tests pass
+5. Run `git status` — confirm clean working tree
+
+#### Phase 10 Execution
+
+**Step 10.1: Create SVG icons for view types**
+1. Read `canvasIcons.ts` to understand icon format
+2. Add 6 new icons: `view-table`, `view-board`, `view-list`, `view-gallery`, `view-calendar`, `view-timeline`
+3. Add `database-link` icon
+4. Register all new icons in `iconRegistry.ts`
+5. Run `npx tsc --noEmit` — verify
+
+**Step 10.2: Refactor `DatabaseToolbar`**
+1. Read `databaseToolbar.ts` completely
+2. Remove `icons` parameter, `presentation` parameter
+3. Import `svgIcon` from `databaseRegistry.ts`
+4. All buttons use `svgIcon()` directly
+5. Simplify button structure to icon-only
+6. Keep `panelContainerTarget` and `setCollapsed()`
+7. Update CSS: remove `.db-toolbar-text-btn` and `.db-toolbar-icon-btn` — single `.db-toolbar-btn`
+8. Run `npx tsc --noEmit` — verify (may have errors in consumers — expected, fix in step 10.4/10.5)
+
+**Step 10.3: Refactor `ViewTabBar`**
+1. Read `viewTabBar.ts` completely
+2. Replace emoji `VIEW_TYPE_ICONS` with `svgIcon()` calls
+3. Replace `prompt()` with inline rename or `InputBox`
+4. Run `npx tsc --noEmit` — verify
+
+**Step 10.4: Create `DatabaseViewHost`**
+1. Read `databaseEditorProvider.ts` and `databaseInlineNode.ts` completely
+2. Create `databaseViewHost.ts` with the DOM structure and options interface
+3. Move data loading, view creation, event subscription logic from both files into `DatabaseViewHost`
+4. Wire toolbar, tab bar, view factory, resize, collapse, expand
+5. Add to gate compliance: `'database/databaseViewHost.ts': ['database/databaseRegistry']`
+6. Re-export from `databaseRegistry.ts`
+7. Re-export from `blockRegistry.ts` (for inline node consumption)
+8. Run `npx tsc --noEmit` — verify
+
+**Step 10.5: Rewire `databaseEditorProvider.ts`**
+1. Strip all internal DOM creation, data loading, event handling
+2. Instantiate `DatabaseViewHost` with full-page options
+3. Wire `onDidChangeTitle` to update editor input
+4. Run `npx tsc --noEmit` — verify
+
+**Step 10.6: Rewire `databaseInlineNode.ts`**
+1. Strip all internal DOM creation, data loading, event handling
+2. Instantiate `DatabaseViewHost` with inline options
+3. Wire `onDidChangeTitle` to update ProseMirror attrs
+4. Run `npx tsc --noEmit` — verify
+
+**Step 10.7: Unify CSS**
+1. Read entire `database.css` (2154 lines)
+2. Rename all divergent class names to `db-host-*` prefix
+3. Remove duplicate rules
+4. Add `.db-host--inline` and `.db-host--fullpage` modifiers
+5. Organize into clear sections
+6. Run build — verify no visual regressions
+
+**Step 10.8: Validation**
+1. Run `npx tsc --noEmit` — must be clean
+2. Run `npx vitest run` — all tests must pass
+3. Update `gateCompliance.test.ts` — add new files
+4. Run `npx vitest run tests/unit/gateCompliance.test.ts` — must pass
+5. Commit: `"Phase 10: Shared DatabaseViewHost — unified inline/full-page rendering"`
+
+#### Phase 11 Execution
+
+**Step 11.1: Fix last-opened restore** → edit `main.ts`
+**Step 11.2: Fix favorite database rendering** → edit `canvasSidebar.ts`
+**Step 11.3: Fix sidebar emoji → SVG** → edit `canvasSidebar.ts`
+**Step 11.4: Fix page duplicate for databases** → edit `main.ts`
+**Step 11.5: Replace `prompt()` calls** → edit `viewTabBar.ts`, `propertyConfig.ts`
+**Step 11.6: Validation**
+1. Run `npx tsc --noEmit` — clean
+2. Run `npx vitest run` — all pass
+3. Commit: `"Phase 11: Integration bug fixes — restore, favorites, icons, duplicate"`
+
+#### Phase 12 Execution
+
+**Step 12.1: Fetch Notion reference styles** → extract CSS metrics from public page
+**Step 12.2: Apply table view CSS** → systematic property-by-property matching
+**Step 12.3: Apply toolbar CSS** → button sizing, spacing, colors
+**Step 12.4: Apply cell renderer CSS** → pills, checkboxes, dates, links
+**Step 12.5: Dark theme validation** → verify all colors use CSS custom properties
+**Step 12.6: Validation**
+1. Run `npx tsc --noEmit` — clean
+2. Run `npx vitest run` — all pass
+3. Commit: `"Phase 12: Notion visual fidelity pass — table view CSS parity"`
+
+### Post-M8.4 State
+
+After M8.4 is complete:
+- **One component** (`DatabaseViewHost`) renders all database UIs
+- **Zero divergences** between inline and full-page rendering (except context-appropriate features toggled by options)
+- **All icons** are SVG from the icon registry — no emoji/text fallbacks anywhere in database code
+- **One CSS namespace** (`db-*`) — no more `database-editor-*` vs `db-inline-*` split
+- **All known integration bugs fixed** — restore, favorites, duplicate, linked views
+- **Table view visual fidelity** matches Notion at the pixel level
+- **All tests pass** — existing + any new tests added
+
+This retroactively unifies the codebase so that all existing views (Table, Board, List, Gallery, Calendar, Timeline) and all existing features (inline databases, linked views, relations, rollups, formulas) work through a single rendering path instead of two divergent ones.
 
 ---
 

@@ -1273,5 +1273,7 @@ export {
   TimelineView,
   ViewTabBar,
   DatabaseToolbar,
+  DatabaseViewHost,
   applyViewDataPipeline,
 } from '../database/databaseRegistry.js';
+export type { DatabaseViewHostSlots, DatabaseViewHostOptions } from '../database/databaseRegistry.js';

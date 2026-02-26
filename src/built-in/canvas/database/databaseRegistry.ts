@@ -112,6 +112,11 @@ export { TimelineView } from './views/timelineView.js';
 
 export { DatabaseToolbar } from './views/databaseToolbar.js';
 
+// ─── View Host (shared engine) ───────────────────────────────────────────────
+
+export { DatabaseViewHost } from './databaseViewHost.js';
+export type { DatabaseViewHostSlots, DatabaseViewHostOptions } from './databaseViewHost.js';
+
 // ─── Filters ─────────────────────────────────────────────────────────────────
 
 export {
@@ -182,6 +187,15 @@ export type {
   IFormulaResult,
   PropertyResolver,
 } from './properties/formulaEngine.js';
+
+// ─── Icon Access (gate-to-gate: databaseRegistry → iconRegistry) ─────────────
+// Database children get icon functions through this gate instead of reaching
+// into iconRegistry or blockRegistry directly.
+
+import { svgIcon as _ir_svgIcon } from '../config/iconRegistry.js';
+
+/** Get the raw SVG string for an icon ID (delegates to IconRegistry). */
+export const svgIcon: (id: string) => string = _ir_svgIcon;
 
 // ─── Templates, Color Rules, Locking, Unique ID, Visibility ─────────────────
 

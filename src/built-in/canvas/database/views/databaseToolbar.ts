@@ -17,21 +17,20 @@ import type {
   IDatabaseView,
   ViewUpdateData,
 } from '../databaseRegistry.js';
-import { FilterPanel } from '../databaseRegistry.js';
+import { FilterPanel, svgIcon } from '../databaseRegistry.js';
 
 // ─── Operator Display Labels (for sort display) ──────────────────────────────
 
 const SORT_DIR_LABELS = { ascending: '↑ Ascending', descending: '↓ Descending' };
 
-export interface IDatabaseToolbarIcons {
-  readonly filter?: string;
-  readonly sort?: string;
-  readonly group?: string;
-  readonly search?: string;
-  readonly settings?: string;
-}
-
-export type DatabaseToolbarPresentation = 'icon' | 'label';
+/** Icon IDs for toolbar buttons — resolved via svgIcon(). */
+const TOOLBAR_ICON_IDS = {
+  filter: 'db-filter',
+  sort: 'db-sort',
+  group: 'db-group',
+  search: 'search',
+  settings: 'db-settings',
+} as const;
 
 // ─── DatabaseToolbar ─────────────────────────────────────────────────────────
 
@@ -47,8 +46,6 @@ export class DatabaseToolbar extends Disposable {
   // ── Data ──
   private _view: IDatabaseView;
   private _properties: IDatabaseProperty[];
-  private readonly _icons: IDatabaseToolbarIcons;
-  private readonly _presentation: DatabaseToolbarPresentation;
 
   // ── Events ──
   private readonly _onDidUpdateView = this._register(new Emitter<ViewUpdateData>());
@@ -62,14 +59,10 @@ export class DatabaseToolbar extends Disposable {
     view: IDatabaseView,
     properties: IDatabaseProperty[],
     panelContainerTarget?: HTMLElement,
-    icons?: IDatabaseToolbarIcons,
-    presentation: DatabaseToolbarPresentation = 'label',
   ) {
     super();
     this._view = view;
     this._properties = properties;
-    this._icons = icons ?? {};
-    this._presentation = presentation;
 
     this._wrapper = $('div.db-toolbar');
     container.appendChild(this._wrapper);
@@ -102,30 +95,25 @@ export class DatabaseToolbar extends Disposable {
     this._renderDisposables.clear();
     clearNode(this._wrapper);
 
-    const useLabels = this._presentation === 'label';
-
     const createButton = (
-      iconMarkup: string,
+      iconId: string,
       label: string,
       isActive: boolean,
       isOpen: boolean,
       onClick: () => void,
       count?: number,
     ): HTMLButtonElement => {
-      const kindClass = useLabels ? 'db-toolbar-text-btn' : 'db-toolbar-icon-btn';
-      const button = $(`button.db-toolbar-btn.${kindClass}`) as HTMLButtonElement;
+      const button = $('button.db-toolbar-btn') as HTMLButtonElement;
       button.title = count && count > 0 ? `${label} (${count})` : label;
       button.setAttribute('aria-label', button.title);
 
       const iconEl = $('span.db-toolbar-btn-icon');
-      iconEl.innerHTML = iconMarkup;
+      iconEl.innerHTML = svgIcon(iconId);
       button.appendChild(iconEl);
 
-      if (useLabels) {
-        const labelEl = $('span.db-toolbar-btn-label');
-        labelEl.textContent = label;
-        button.appendChild(labelEl);
-      }
+      const labelEl = $('span.db-toolbar-btn-label');
+      labelEl.textContent = label;
+      button.appendChild(labelEl);
 
       if (typeof count === 'number' && count > 0) {
         const badge = $('span.db-toolbar-btn-badge');
@@ -142,14 +130,14 @@ export class DatabaseToolbar extends Disposable {
 
     // Filter button
     const filterCount = this._view.filterConfig?.rules?.length ?? 0;
-    const filterBtn = createButton(this._icons.filter ?? '≡', 'Filter', filterCount > 0, this._activePanel === 'filter', () => {
+    const filterBtn = createButton(TOOLBAR_ICON_IDS.filter, 'Filter', filterCount > 0, this._activePanel === 'filter', () => {
       this._togglePanel('filter');
     }, filterCount);
     this._wrapper.appendChild(filterBtn);
 
     // Sort button
     const sortCount = this._view.sortConfig?.length ?? 0;
-    const sortBtn = createButton(this._icons.sort ?? '↕', 'Sort', sortCount > 0, this._activePanel === 'sort', () => {
+    const sortBtn = createButton(TOOLBAR_ICON_IDS.sort, 'Sort', sortCount > 0, this._activePanel === 'sort', () => {
       this._togglePanel('sort');
     }, sortCount);
     this._wrapper.appendChild(sortBtn);
@@ -157,18 +145,18 @@ export class DatabaseToolbar extends Disposable {
     // Group button
     const groupBy = this._view.groupBy;
     const groupProp = groupBy ? this._properties.find(p => p.id === groupBy) : null;
-    const groupBtn = createButton(this._icons.group ?? '⚡', 'Group', !!groupProp, this._activePanel === 'group', () => {
+    const groupBtn = createButton(TOOLBAR_ICON_IDS.group, 'Group', !!groupProp, this._activePanel === 'group', () => {
       this._togglePanel('group');
     });
     this._wrapper.appendChild(groupBtn);
 
-    const searchBtn = createButton(this._icons.search ?? '⌕', 'Search', false, false, () => {
+    const searchBtn = createButton(TOOLBAR_ICON_IDS.search, 'Search', false, false, () => {
       // Search UI to be wired in a future slice.
     });
     this._wrapper.appendChild(searchBtn);
 
     // Properties button
-    const propsBtn = createButton(this._icons.settings ?? '⚙', 'Properties', false, this._activePanel === 'properties', () => {
+    const propsBtn = createButton(TOOLBAR_ICON_IDS.settings, 'Properties', false, this._activePanel === 'properties', () => {
       this._togglePanel('properties');
     });
     this._wrapper.appendChild(propsBtn);

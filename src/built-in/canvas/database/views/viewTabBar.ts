@@ -11,19 +11,20 @@
 import { Disposable } from '../../../../platform/lifecycle.js';
 import { Emitter, type Event } from '../../../../platform/events.js';
 import type { IDatabaseDataService, IDatabaseView, ViewType } from '../databaseRegistry.js';
+import { svgIcon } from '../databaseRegistry.js';
 import { TabBar, type ITabBarItem } from '../../../../ui/tabBar.js';
 import { ContextMenu, type IContextMenuItem } from '../../../../ui/contextMenu.js';
 import { $, addDisposableListener } from '../../../../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const VIEW_TYPE_ICONS: Record<ViewType, string> = {
-  table: '⊞',
-  board: '☰',
-  list: '≡',
-  gallery: '⊟',
-  calendar: '📅',
-  timeline: '⟿',
+const VIEW_TYPE_ICON_IDS: Record<ViewType, string> = {
+  table: 'view-table',
+  board: 'view-board',
+  list: 'view-list',
+  gallery: 'view-gallery',
+  calendar: 'view-calendar',
+  timeline: 'view-timeline',
 };
 
 // ─── ViewTabBar ──────────────────────────────────────────────────────────────
@@ -99,7 +100,7 @@ export class ViewTabBar extends Disposable {
     const items: ITabBarItem[] = views.map(v => ({
       id: v.id,
       label: v.name,
-      icon: VIEW_TYPE_ICONS[v.type] || '⊞',
+      icon: svgIcon(VIEW_TYPE_ICON_IDS[v.type] ?? 'view-table'),
       closable: false,
       tooltip: `${v.name} (${v.type})`,
     }));
@@ -124,7 +125,10 @@ export class ViewTabBar extends Disposable {
 
     const items: IContextMenuItem[] = viewTypes.map(vt => ({
       id: vt.type,
-      label: `${VIEW_TYPE_ICONS[vt.type]}  ${vt.label}`,
+      label: vt.label,
+      renderIcon: (container: HTMLElement) => {
+        container.innerHTML = svgIcon(VIEW_TYPE_ICON_IDS[vt.type]);
+      },
     }));
 
     const target = e.currentTarget as HTMLElement;
