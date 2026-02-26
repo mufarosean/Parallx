@@ -458,6 +458,7 @@ describe('Phase 9 — getPropertyBarData', () => {
     return {
       getDatabaseByPageId: vi.fn().mockResolvedValue(opts.dbByPageId ?? null),
       getDatabasePageIds: vi.fn().mockResolvedValue(new Set(opts.dbPageIds ?? [])),
+      getDatabaseRowPageIds: vi.fn().mockResolvedValue(new Set()),
       getRows: vi.fn().mockResolvedValue(opts.rows ?? []),
       getProperties: vi.fn().mockResolvedValue(opts.properties ?? []),
     } as unknown as IDatabaseDataService;

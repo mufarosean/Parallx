@@ -635,6 +635,16 @@ export class DatabaseDataService extends Disposable implements IDatabaseDataServ
     }));
   }
 
+  async getDatabaseRowPageIds(): Promise<Set<string>> {
+    const result = await this._db.all('SELECT DISTINCT page_id FROM database_pages');
+    if (result.error) throw new Error(result.error.message);
+    const ids = new Set<string>();
+    for (const row of result.rows ?? []) {
+      if (typeof row.page_id === 'string') ids.add(row.page_id);
+    }
+    return ids;
+  }
+
   async reorderRows(databaseId: string, orderedPageIds: string[]): Promise<void> {
     const operations = orderedPageIds.map((pageId, index) => ({
       type: 'run' as const,

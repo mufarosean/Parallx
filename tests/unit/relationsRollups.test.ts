@@ -60,6 +60,7 @@ function createMockDataService(overrides: Partial<IDatabaseDataService> = {}): I
     getDatabase: vi.fn().mockResolvedValue(null),
     getDatabaseByPageId: vi.fn().mockResolvedValue(null),
     getDatabasePageIds: vi.fn().mockResolvedValue(new Set()),
+    getDatabaseRowPageIds: vi.fn().mockResolvedValue(new Set()),
     updateDatabase: vi.fn(),
     deleteDatabase: vi.fn(),
     addProperty: vi.fn(),

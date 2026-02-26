@@ -1633,6 +1633,19 @@ This retroactively unifies the codebase so that all existing views (Table, Board
 - Validation ✅ `npx tsc --noEmit` clean, `npx vitest run tests/unit` passed (`822/822`), `npx vitest run tests/unit/gateCompliance.test.ts` passed (`69/69`).
 - Synced in commit `7ecd590` (`Refine database table density and title-cell interactions`).
 
+### Post-M8.4 Sidebar IA Refinement (Feb 26, 2026) ✅
+
+- Database row pages are now excluded from the canvas sidebar tree to prevent row-level clutter.
+- Database pages now show their configured views as nested sidebar children (Table/Board/List/Gallery/Calendar/Timeline).
+- Sidebar refresh now reacts to database row/view change events so tree state stays current as views/rows evolve.
+
+### Post-M8.4 Hierarchy Consistency Refinement (Feb 26, 2026) ✅
+
+- Sidebar hierarchy is now block-driven: nesting is reconciled from actual `pageBlock` and `databaseInline` references in page content.
+- If a previously nested child page/database is no longer referenced by a block in the parent page, it is archived (delete-flow semantics) with subtree handling.
+- Startup now runs a full reconciliation pass so legacy/stale nested entries are cleaned immediately without waiting for manual edits.
+- Creating a nested page/database from sidebar actions now appends the corresponding block to the parent page content; creation rolls back if block insertion fails.
+
 ---
 
 ## Excluded (Out of Scope for Milestone 8)

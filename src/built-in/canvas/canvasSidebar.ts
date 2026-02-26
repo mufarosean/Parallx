@@ -14,7 +14,7 @@
 
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { IPage, IPageTreeNode, ICanvasDataService } from './canvasTypes.js';
-import type { IDatabaseDataService } from './database/databaseRegistry.js';
+import type { IDatabaseDataService, IDatabaseView } from './database/databaseRegistry.js';
 import { $ } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
@@ -23,6 +23,15 @@ import { createIconElement, resolvePageIcon, svgIcon } from './config/blockRegis
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const INDENT_PX = 20;
+
+const VIEW_TYPE_ICON_IDS: Record<string, string> = {
+  table: 'view-table',
+  board: 'view-board',
+  list: 'view-list',
+  gallery: 'view-gallery',
+  calendar: 'view-calendar',
+  timeline: 'view-timeline',
+};
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -75,6 +84,8 @@ export class CanvasSidebar {
 
   // ── Database detection (M8 Phase 2) ──
   private _databasePageIds = new Set<string>();
+  private _databaseViewsByPageId = new Map<string, IDatabaseView[]>();
+  private _selectedDatabaseViewKey: string | null = null;
 
   constructor(
     private readonly _dataService: ICanvasDataService,
@@ -124,6 +135,14 @@ export class CanvasSidebar {
       this._api.editors.onDidChangeOpenEditors(() => this._syncSelectionFromEditor()),
     );
 
+    if (this._databaseDataService) {
+      this._disposables.push(
+        this._databaseDataService.onDidChangeDatabase(() => this._refreshTree()),
+        this._databaseDataService.onDidChangeRow(() => this._refreshTree()),
+        this._databaseDataService.onDidChangeView(() => this._refreshTree()),
+      );
+    }
+
     return {
       dispose: () => {
         this._treeList?.removeEventListener('keydown', this._handleKeydown);
@@ -149,24 +168,51 @@ export class CanvasSidebar {
     // Don't wipe the DOM while an inline rename is in progress
     if (this._renamingPageId) return;
     try {
-      const [tree, favorites, archived, dbPageIds] = await Promise.all([
+      const [tree, favorites, archived, dbPageIds, dbRowPageIds] = await Promise.all([
         this._dataService.getPageTree(),
         this._dataService.getFavoritedPages(),
         this._dataService.getArchivedPages(),
         this._databaseDataService?.getDatabasePageIds() ?? Promise.resolve(new Set<string>()),
+        this._databaseDataService?.getDatabaseRowPageIds() ?? Promise.resolve(new Set<string>()),
       ]);
-      this._tree = tree;
-      this._favoritedPages = favorites;
-      this._archivedPages = archived;
       this._databasePageIds = dbPageIds;
+      this._tree = this._filterOutDatabaseRows(tree, dbRowPageIds);
+      this._favoritedPages = favorites.filter(page => !dbRowPageIds.has(page.id));
+      this._archivedPages = archived.filter(page => !dbRowPageIds.has(page.id));
+
+      this._databaseViewsByPageId.clear();
+      if (this._databaseDataService && dbPageIds.size > 0) {
+        const viewsByDb = await Promise.all(
+          [...dbPageIds].map(async databaseId => {
+            const views = await this._databaseDataService!.getViews(databaseId);
+            return [databaseId, views] as const;
+          }),
+        );
+        for (const [databaseId, views] of viewsByDb) {
+          this._databaseViewsByPageId.set(databaseId, views);
+        }
+      }
     } catch (err) {
       console.error('[CanvasSidebar] Failed to load page tree:', err);
       this._tree = [];
       this._favoritedPages = [];
       this._archivedPages = [];
       this._databasePageIds = new Set();
+      this._databaseViewsByPageId.clear();
     }
     this._renderTree();
+  }
+
+  private _filterOutDatabaseRows(nodes: IPageTreeNode[], rowPageIds: ReadonlySet<string>): IPageTreeNode[] {
+    const filtered: IPageTreeNode[] = [];
+    for (const node of nodes) {
+      if (rowPageIds.has(node.id)) continue;
+      filtered.push({
+        ...node,
+        children: this._filterOutDatabaseRows(node.children, rowPageIds),
+      });
+    }
+    return filtered;
   }
 
   private _renderTree(): void {
@@ -187,10 +233,14 @@ export class CanvasSidebar {
 
         // Render children inline under favorites (Notion-style)
         const treeNode = this._findNode(this._tree, page.id);
-        if (treeNode && treeNode.children.length > 0) {
+        const favoriteViews = this._getDatabaseViews(page.id);
+        if ((treeNode && treeNode.children.length > 0) || favoriteViews.length > 0) {
           const childrenEl = $('div.canvas-children');
           if (!this._favExpandedIds.has(page.id)) childrenEl.classList.add('canvas-children--collapsed');
-          for (const child of treeNode.children) {
+          for (const view of favoriteViews) {
+            this._renderDatabaseViewNode(childrenEl, page, view, 1);
+          }
+          for (const child of treeNode?.children ?? []) {
             this._renderNode(childrenEl, child as IPageTreeNode, 1, this._favExpandedIds);
           }
           favSection.appendChild(childrenEl);
@@ -278,7 +328,7 @@ export class CanvasSidebar {
 
     // Check if this favorite has children in the main tree
     const treeNode = this._findNode(this._tree, page.id);
-    const hasChildren = treeNode ? treeNode.children.length > 0 : false;
+    const hasChildren = (treeNode ? treeNode.children.length : 0) > 0 || this._getDatabaseViews(page.id).length > 0;
     const isExpanded = this._favExpandedIds.has(page.id);
     if (hasChildren) {
       row.classList.add('canvas-node--has-children');
@@ -417,7 +467,8 @@ export class CanvasSidebar {
     row.style.paddingLeft = `${8 + depth * INDENT_PX}px`;
     row.draggable = true;
 
-    const hasChildren = node.children.length > 0;
+    const databaseViews = this._getDatabaseViews(node.id);
+    const hasChildren = node.children.length > 0 || databaseViews.length > 0;
     const isExpanded = exSet.has(node.id);
 
     // Notion-style: chevron overlays icon on hover / when expanded
@@ -476,14 +527,16 @@ export class CanvasSidebar {
     });
     nodeActions.appendChild(moreBtn);
 
-    const addChildBtn = $('button.canvas-node-action-btn');
-    addChildBtn.appendChild(createIconElement('plus', 14));
-    addChildBtn.title = 'Add a page inside';
-    addChildBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._createPage(node.id);
-    });
-    nodeActions.appendChild(addChildBtn);
+    if (!this._databasePageIds.has(node.id)) {
+      const addChildBtn = $('button.canvas-node-action-btn');
+      addChildBtn.appendChild(createIconElement('plus', 14));
+      addChildBtn.title = 'Add a page inside';
+      addChildBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._createPage(node.id);
+      });
+      nodeActions.appendChild(addChildBtn);
+    }
 
     row.appendChild(nodeActions);
 
@@ -523,11 +576,45 @@ export class CanvasSidebar {
     if (hasChildren) {
       const childrenEl = $('div.canvas-children');
       if (!isExpanded) childrenEl.classList.add('canvas-children--collapsed');
+      for (const view of databaseViews) {
+        this._renderDatabaseViewNode(childrenEl, node, view, depth + 1);
+      }
       for (const child of node.children) {
         this._renderNode(childrenEl, child, depth + 1, exSet);
       }
       parent.appendChild(childrenEl);
     }
+  }
+
+  private _getDatabaseViews(databasePageId: string): IDatabaseView[] {
+    return this._databaseViewsByPageId.get(databasePageId) ?? [];
+  }
+
+  private _renderDatabaseViewNode(parent: HTMLElement, databasePage: IPage | IPageTreeNode, view: IDatabaseView, depth: number): void {
+    const row = $('div.canvas-node.canvas-node--database-view');
+    row.setAttribute('role', 'treeitem');
+    row.setAttribute('data-page-id', databasePage.id);
+    row.setAttribute('data-view-id', view.id);
+    row.style.paddingLeft = `${8 + depth * INDENT_PX}px`;
+
+    const iconArea = $('span.canvas-node-icon-area');
+    const iconId = VIEW_TYPE_ICON_IDS[view.type] ?? 'view-table';
+    const iconEl = createIconElement(iconId, 14);
+    iconEl.classList.add('canvas-node-icon', 'canvas-node-icon--view');
+    iconArea.appendChild(iconEl);
+    row.appendChild(iconArea);
+
+    const label = $('span.canvas-node-label');
+    label.textContent = view.name;
+    row.appendChild(label);
+
+    const selectedViewKey = `${databasePage.id}:${view.id}`;
+    if (selectedViewKey === this._selectedDatabaseViewKey) {
+      row.classList.add('canvas-node--selected');
+    }
+
+    row.addEventListener('click', () => this._selectAndOpenDatabaseView(databasePage, view));
+    parent.appendChild(row);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -786,6 +873,7 @@ export class CanvasSidebar {
 
   private async _selectAndOpenPage(page: IPage | IPageTreeNode): Promise<void> {
     this._selectedPageId = page.id;
+    this._selectedDatabaseViewKey = null;
     this._renderTree();
 
     try {
@@ -802,6 +890,23 @@ export class CanvasSidebar {
     }
   }
 
+  private async _selectAndOpenDatabaseView(databasePage: IPage | IPageTreeNode, view: IDatabaseView): Promise<void> {
+    this._selectedPageId = databasePage.id;
+    this._selectedDatabaseViewKey = `${databasePage.id}:${view.id}`;
+    this._renderTree();
+
+    try {
+      await this._api.editors.openEditor({
+        typeId: 'database',
+        title: databasePage.title,
+        icon: 'database',
+        instanceId: databasePage.id,
+      });
+    } catch (err) {
+      console.error('[CanvasSidebar] Failed to open database view:', err);
+    }
+  }
+
   private _syncSelectionFromEditor(): void {
     const editors = this._api.editors.openEditors;
     const active = editors.find(e => e.isActive);
@@ -812,6 +917,7 @@ export class CanvasSidebar {
     const pageId = this._extractPageIdFromEditorId(active.id);
     if (pageId && pageId !== this._selectedPageId) {
       this._selectedPageId = pageId;
+      this._selectedDatabaseViewKey = null;
       this._renderTree();
     }
   }
@@ -832,29 +938,41 @@ export class CanvasSidebar {
   // ══════════════════════════════════════════════════════════════════════════
 
   private async _createPage(parentId?: string | null): Promise<void> {
+    let page: IPage | null = null;
     try {
-      const page = await this._dataService.createPage(parentId);
+      page = await this._dataService.createPage(parentId);
+
+      if (parentId) {
+        await this._appendPageBlockToParent(parentId, page);
+      }
+
+      const createdPage = page;
+
       // Data change event will refresh tree; select the new page
-      this._selectedPageId = page.id;
+      this._selectedPageId = createdPage.id;
+      this._selectedDatabaseViewKey = null;
       // Open in editor
       await this._api.editors.openEditor({
         typeId: 'canvas',
-        title: page.title,
-        icon: page.icon || undefined,
-        instanceId: page.id,
+        title: createdPage.title,
+        icon: createdPage.icon || undefined,
+        instanceId: createdPage.id,
       });
       // After tree refreshes, start inline rename on the new page
       requestAnimationFrame(() => {
-        const el = this._treeList?.querySelector(`[data-page-id="${page.id}"]`);
+        const el = this._treeList?.querySelector(`[data-page-id="${createdPage.id}"]`);
         if (el) {
           const label = el.querySelector('.canvas-node-label');
           if (label) {
-            const node = this._findNode(this._tree, page.id);
+            const node = this._findNode(this._tree, createdPage.id);
             if (node) this._startInlineRename(el as HTMLElement, label as HTMLElement, node);
           }
         }
       });
     } catch (err) {
+      if (page) {
+        try { await this._dataService.deletePage(page.id); } catch { /* best-effort rollback */ }
+      }
       console.error('[CanvasSidebar] Failed to create page:', err);
     }
   }
@@ -864,33 +982,94 @@ export class CanvasSidebar {
    */
   private async _createDatabase(parentId?: string | null): Promise<void> {
     if (!this._databaseDataService) return;
+    let page: IPage | null = null;
     try {
-      const page = await this._dataService.createPage(parentId, 'Untitled');
+      page = await this._dataService.createPage(parentId, 'Untitled');
       await this._databaseDataService.createDatabase(page.id);
+
+      if (parentId) {
+        await this._appendDatabaseInlineToParent(parentId, page);
+      }
+
+      const createdPage = page;
+
       // Update local cache immediately
-      this._databasePageIds.add(page.id);
-      this._selectedPageId = page.id;
+      this._databasePageIds.add(createdPage.id);
+      this._selectedPageId = createdPage.id;
+      this._selectedDatabaseViewKey = null;
       // Open in database editor
       await this._api.editors.openEditor({
         typeId: 'database',
-        title: page.title,
+        title: createdPage.title,
         icon: 'database',
-        instanceId: page.id,
+        instanceId: createdPage.id,
       });
       // After tree refreshes, start inline rename
       requestAnimationFrame(() => {
-        const el = this._treeList?.querySelector(`[data-page-id="${page.id}"]`);
+        const el = this._treeList?.querySelector(`[data-page-id="${createdPage.id}"]`);
         if (el) {
           const label = el.querySelector('.canvas-node-label');
           if (label) {
-            const node = this._findNode(this._tree, page.id);
+            const node = this._findNode(this._tree, createdPage.id);
             if (node) this._startInlineRename(el as HTMLElement, label as HTMLElement, node);
           }
         }
       });
     } catch (err) {
+      if (page) {
+        try { await this._databaseDataService.deleteDatabase(page.id); } catch { /* best-effort rollback */ }
+        try { await this._dataService.deletePage(page.id); } catch { /* best-effort rollback */ }
+      }
       console.error('[CanvasSidebar] Failed to create database:', err);
     }
+  }
+
+  private async _appendPageBlockToParent(parentPageId: string, childPage: IPage): Promise<void> {
+    const parent = await this._dataService.getPage(parentPageId);
+    if (!parent) throw new Error(`Parent page "${parentPageId}" not found`);
+
+    const decoded = await this._dataService.decodePageContentForEditor(parent);
+    const content = Array.isArray(decoded.doc?.content) ? decoded.doc.content : [];
+    const nextDoc = {
+      type: 'doc',
+      content: [
+        ...content,
+        {
+          type: 'pageBlock',
+          attrs: {
+            pageId: childPage.id,
+            title: childPage.title,
+            icon: childPage.icon,
+            parentPageId,
+          },
+        },
+      ],
+    };
+
+    await this._dataService.flushContentSave(parentPageId, nextDoc);
+  }
+
+  private async _appendDatabaseInlineToParent(parentPageId: string, databasePage: IPage): Promise<void> {
+    const parent = await this._dataService.getPage(parentPageId);
+    if (!parent) throw new Error(`Parent page "${parentPageId}" not found`);
+
+    const decoded = await this._dataService.decodePageContentForEditor(parent);
+    const content = Array.isArray(decoded.doc?.content) ? decoded.doc.content : [];
+    const nextDoc = {
+      type: 'doc',
+      content: [
+        ...content,
+        {
+          type: 'databaseInline',
+          attrs: {
+            databaseId: databasePage.id,
+            databaseTitle: databasePage.title,
+          },
+        },
+      ],
+    };
+
+    await this._dataService.flushContentSave(parentPageId, nextDoc);
   }
 
   private _startInlineRename(row: HTMLElement, label: HTMLElement, node: IPageTreeNode): void {

@@ -564,6 +564,9 @@ export interface IDatabaseDataService {
   /** Get all rows in a database with their property values, ordered by sort_order. */
   getRows(databaseId: string): Promise<IDatabaseRow[]>;
 
+  /** Get page IDs that are members of any database row set (for sidebar filtering). */
+  getDatabaseRowPageIds(): Promise<Set<string>>;
+
   /** Reorder rows by providing the full ordered list of page IDs. */
   reorderRows(databaseId: string, orderedPageIds: string[]): Promise<void>;
 
