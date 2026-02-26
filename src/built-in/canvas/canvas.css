@@ -206,6 +206,7 @@
   justify-content: center;
   color: var(--vscode-foreground);
   opacity: 0;
+  pointer-events: none;
   transition: transform 0.15s ease;
   cursor: pointer;
   border-radius: 3px;
@@ -218,6 +219,7 @@
 /* On hover: show chevron and hide icon (only for nodes with children) */
 .canvas-node--has-children:hover .canvas-node-chevron {
   opacity: 1;
+  pointer-events: auto;
 }
 .canvas-node--has-children:hover > .canvas-node-icon-area > .canvas-node-icon {
   opacity: 0;
@@ -226,6 +228,7 @@
 /* When expanded: always show chevron rotated, hide icon */
 .canvas-node--expanded .canvas-node-chevron {
   opacity: 1;
+  pointer-events: auto;
   transform: rotate(90deg);
 }
 .canvas-node--expanded > .canvas-node-icon-area > .canvas-node-icon {

@@ -1233,25 +1233,29 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       );
       if (childResult.error) throw new Error(childResult.error.message);
       const row = childResult.row;
-      if (!row || (row.is_archived as number) === 1) continue;
+      if (!row) continue;
+
+      if ((row.is_archived as number) === 1) {
+        const restoreResult = await this._db.run(
+          `UPDATE pages
+           SET is_archived = 0,
+               parent_id = ?,
+               updated_at = datetime('now')
+           WHERE id = ?`,
+          [parentPageId, childId],
+        );
+        if (restoreResult.error) throw new Error(restoreResult.error.message);
+
+        const restored = await this.getPage(childId);
+        if (restored) {
+          this._knownRevisions.set(childId, restored.revision);
+          this._onDidChangePage.fire({ kind: PageChangeKind.Created, pageId: childId, page: restored });
+        }
+        continue;
+      }
+
       if ((row.parent_id as string | null) !== parentPageId) {
         await this.movePage(childId, parentPageId);
-      }
-    }
-
-    const childrenResult = await this._db.all(
-      'SELECT id FROM pages WHERE parent_id = ? AND is_archived = 0',
-      [parentPageId],
-    );
-    if (childrenResult.error) throw new Error(childrenResult.error.message);
-
-    const currentChildIds = (childrenResult.rows ?? [])
-      .map(row => row.id)
-      .filter((id): id is string => typeof id === 'string');
-
-    for (const childId of currentChildIds) {
-      if (!linkedChildIds.has(childId)) {
-        await this._archivePageSubtree(childId);
       }
     }
   }
@@ -1277,11 +1281,6 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       if (!row) continue;
       if ((row.is_archived as number) === 1) continue;
       if ((row.parent_id as string | null) !== parentPageId) continue;
-
-      const archivedIds = await this._archivePageSubtree(removedId);
-      for (const archivedId of archivedIds) {
-        await this._removeLinkedBlocksForPageId(archivedId);
-      }
     }
   }
 

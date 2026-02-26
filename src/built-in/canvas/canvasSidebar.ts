@@ -86,6 +86,8 @@ export class CanvasSidebar {
   private _databasePageIds = new Set<string>();
   private _databaseViewsByPageId = new Map<string, IDatabaseView[]>();
   private _selectedDatabaseViewKey: string | null = null;
+  private _refreshSeq = 0;
+  private _refreshScheduled = false;
 
   constructor(
     private readonly _dataService: ICanvasDataService,
@@ -123,11 +125,11 @@ export class CanvasSidebar {
     this._treeList.addEventListener('keydown', this._handleKeydown);
 
     // Load initial tree
-    this._refreshTree();
+    this._requestRefreshTree();
 
     // Subscribe to data changes
     this._disposables.push(
-      this._dataService.onDidChangePage(() => this._refreshTree()),
+      this._dataService.onDidChangePage(() => this._requestRefreshTree()),
     );
 
     // Sync selection with active editor
@@ -137,9 +139,9 @@ export class CanvasSidebar {
 
     if (this._databaseDataService) {
       this._disposables.push(
-        this._databaseDataService.onDidChangeDatabase(() => this._refreshTree()),
-        this._databaseDataService.onDidChangeRow(() => this._refreshTree()),
-        this._databaseDataService.onDidChangeView(() => this._refreshTree()),
+        this._databaseDataService.onDidChangeDatabase(() => this._requestRefreshTree()),
+        this._databaseDataService.onDidChangeRow(() => this._requestRefreshTree()),
+        this._databaseDataService.onDidChangeView(() => this._requestRefreshTree()),
       );
     }
 
@@ -161,13 +163,30 @@ export class CanvasSidebar {
 
   /** Public entry point to re-fetch all data and re-render the sidebar tree. */
   refresh(): void {
-    void this._refreshTree();
+    this._requestRefreshTree();
+  }
+
+  private _requestRefreshTree(): void {
+    if (this._refreshScheduled) return;
+    this._refreshScheduled = true;
+    queueMicrotask(() => {
+      this._refreshScheduled = false;
+      void this._refreshTree();
+    });
   }
 
   private async _refreshTree(): Promise<void> {
     // Don't wipe the DOM while an inline rename is in progress
     if (this._renamingPageId) return;
+    const refreshSeq = ++this._refreshSeq;
+
+    const applyIfLatest = (fn: () => void): void => {
+      if (refreshSeq !== this._refreshSeq) return;
+      fn();
+    };
+
     try {
+      const prevDatabaseViewsByPageId = this._databaseViewsByPageId;
       const [tree, favorites, archived, dbPageIds, dbRowPageIds] = await Promise.all([
         this._dataService.getPageTree(),
         this._dataService.getFavoritedPages(),
@@ -175,31 +194,44 @@ export class CanvasSidebar {
         this._databaseDataService?.getDatabasePageIds() ?? Promise.resolve(new Set<string>()),
         this._databaseDataService?.getDatabaseRowPageIds() ?? Promise.resolve(new Set<string>()),
       ]);
-      this._databasePageIds = dbPageIds;
-      this._tree = this._filterOutDatabaseRows(tree, dbRowPageIds);
-      this._favoritedPages = favorites.filter(page => !dbRowPageIds.has(page.id));
-      this._archivedPages = archived.filter(page => !dbRowPageIds.has(page.id));
-
-      this._databaseViewsByPageId.clear();
+      const nextDatabaseViewsByPageId = new Map<string, IDatabaseView[]>();
       if (this._databaseDataService && dbPageIds.size > 0) {
-        const viewsByDb = await Promise.all(
+        const viewResults = await Promise.allSettled(
           [...dbPageIds].map(async databaseId => {
             const views = await this._databaseDataService!.getViews(databaseId);
             return [databaseId, views] as const;
           }),
         );
-        for (const [databaseId, views] of viewsByDb) {
-          this._databaseViewsByPageId.set(databaseId, views);
+        for (const result of viewResults) {
+          if (result.status === 'fulfilled') {
+            const [databaseId, views] = result.value;
+            nextDatabaseViewsByPageId.set(databaseId, views);
+            continue;
+          }
+          console.warn('[CanvasSidebar] getViews refresh failed for one database:', result.reason);
+        }
+
+        for (const databaseId of dbPageIds) {
+          if (!nextDatabaseViewsByPageId.has(databaseId)) {
+            const prevViews = prevDatabaseViewsByPageId.get(databaseId);
+            if (prevViews) nextDatabaseViewsByPageId.set(databaseId, prevViews);
+          }
         }
       }
+
+      applyIfLatest(() => {
+        this._databasePageIds = dbPageIds;
+        this._tree = this._filterOutDatabaseRows(tree, dbRowPageIds);
+        this._favoritedPages = favorites.filter(page => !dbRowPageIds.has(page.id));
+        this._archivedPages = archived.filter(page => !dbRowPageIds.has(page.id));
+        this._databaseViewsByPageId = nextDatabaseViewsByPageId;
+      });
     } catch (err) {
+      if (refreshSeq !== this._refreshSeq) return;
       console.error('[CanvasSidebar] Failed to load page tree:', err);
-      this._tree = [];
-      this._favoritedPages = [];
-      this._archivedPages = [];
-      this._databasePageIds = new Set();
-      this._databaseViewsByPageId.clear();
+      return;
     }
+    if (refreshSeq !== this._refreshSeq) return;
     this._renderTree();
   }
 
