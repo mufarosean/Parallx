@@ -447,7 +447,7 @@
   border-radius: 4px;
   background: none;
   color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1;
   font-weight: 400;
   cursor: pointer;
