@@ -145,13 +145,13 @@ class DatabaseInlineNodeView {
     const toolbarToggleBtn = document.createElement('button');
     toolbarToggleBtn.classList.add('db-host-inline-action-btn', 'db-host-inline-toolbar-toggle');
     toolbarToggleBtn.title = 'Hide toolbar actions';
-    toolbarToggleBtn.innerHTML = svgIcon('db-collapse');
+    toolbarToggleBtn.innerHTML = svgIcon('db-expand');
     toolbarToggleBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._toolbarCollapsed = !this._toolbarCollapsed;
       toolbarToggleBtn.classList.toggle('db-host-inline-toolbar-toggle--collapsed', this._toolbarCollapsed);
       toolbarToggleBtn.title = this._toolbarCollapsed ? 'Show toolbar actions' : 'Hide toolbar actions';
-      toolbarToggleBtn.innerHTML = this._toolbarCollapsed ? svgIcon('db-expand') : svgIcon('db-collapse');
+      toolbarToggleBtn.innerHTML = this._toolbarCollapsed ? svgIcon('db-collapse') : svgIcon('db-expand');
       this._host?.setToolbarCollapsed(this._toolbarCollapsed);
       expandBtn.style.display = this._toolbarCollapsed ? 'none' : '';
     });

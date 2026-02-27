@@ -2317,6 +2317,12 @@
   gap: 2px;
   flex-shrink: 0;
   margin-left: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.db-host--inline:hover .db-host-inline-actions {
+  opacity: 1;
 }
 
 .db-host-inline-action-btn {
