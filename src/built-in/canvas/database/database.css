@@ -304,7 +304,8 @@
   overflow: hidden;
 }
 
-.db-host--fullpage .db-table {
+.db-host--fullpage .db-table,
+.db-host--inline .db-table {
   border: none;
   border-radius: 0;
 }
@@ -2383,7 +2384,7 @@
   max-height: 500px;
 }
 
-.db-host-inline-content .database-table-wrapper,
+.db-host-inline-content .db-table,
 .db-host-inline-content .db-board-wrapper,
 .db-host-inline-content .db-list-wrapper,
 .db-host-inline-content .db-gallery-wrapper,
