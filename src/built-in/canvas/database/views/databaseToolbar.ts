@@ -25,10 +25,10 @@ const SORT_DIR_LABELS = { ascending: '↑ Ascending', descending: '↓ Descendin
 
 /** Icon IDs for toolbar buttons — resolved via svgIcon(). */
 const TOOLBAR_ICON_IDS = {
-  open: 'open',
+  open: 'open-full-page',
   filter: 'db-filter',
   sort: 'db-sort',
-  group: 'db-group',
+  automations: 'automations',
   search: 'search',
   settings: 'db-settings',
 } as const;
@@ -41,7 +41,7 @@ export class DatabaseToolbar extends Disposable {
   private readonly _renderDisposables = this._register(new DisposableStore());
 
   // ── Active panel ──
-  private _activePanel: 'filter' | 'sort' | 'group' | 'properties' | null = null;
+  private _activePanel: 'filter' | 'sort' | 'properties' | null = null;
   private readonly _panelDisposables = this._register(new DisposableStore());
 
   // ── Data ──
@@ -144,21 +144,19 @@ export class DatabaseToolbar extends Disposable {
     }, sortCount);
     this._wrapper.appendChild(sortBtn);
 
-    // Group button
-    const groupBy = this._view.groupBy;
-    const groupProp = groupBy ? this._properties.find(p => p.id === groupBy) : null;
-    const groupBtn = createButton(TOOLBAR_ICON_IDS.group, 'Group', !!groupProp, this._activePanel === 'group', () => {
-      this._togglePanel('group');
+    // Automations button
+    const autoBtn = createButton(TOOLBAR_ICON_IDS.automations, 'Automations', false, false, () => {
+      // Automations menu will be wired in a future slice.
     });
-    this._wrapper.appendChild(groupBtn);
+    this._wrapper.appendChild(autoBtn);
 
     const searchBtn = createButton(TOOLBAR_ICON_IDS.search, 'Search', false, false, () => {
       // Search UI to be wired in a future slice.
     });
     this._wrapper.appendChild(searchBtn);
 
-    // Properties button
-    const propsBtn = createButton(TOOLBAR_ICON_IDS.settings, 'Properties', false, this._activePanel === 'properties', () => {
+    // Settings button (opens properties/configuration — group & properties handled here)
+    const propsBtn = createButton(TOOLBAR_ICON_IDS.settings, 'Settings', false, this._activePanel === 'properties', () => {
       this._togglePanel('properties');
     });
     this._wrapper.appendChild(propsBtn);
@@ -190,7 +188,7 @@ export class DatabaseToolbar extends Disposable {
 
   // ─── Panel Toggle ────────────────────────────────────────────────────
 
-  private _togglePanel(panel: 'filter' | 'sort' | 'group' | 'properties'): void {
+  private _togglePanel(panel: 'filter' | 'sort' | 'properties'): void {
     if (this._activePanel === panel) {
       this._closePanel();
       return;
@@ -203,7 +201,6 @@ export class DatabaseToolbar extends Disposable {
     switch (panel) {
       case 'filter': this._renderFilterPanel(); break;
       case 'sort': this._renderSortPanel(); break;
-      case 'group': this._renderGroupPanel(); break;
       case 'properties': this._renderPropertiesPanel(); break;
     }
   }

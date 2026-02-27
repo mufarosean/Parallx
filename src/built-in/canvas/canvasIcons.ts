@@ -144,6 +144,82 @@ const ICONS: Record<string, string> = {
   'video': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="2.5" width="13" height="11" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M6.5 5.5V10.5L11 8L6.5 5.5Z" fill="currentColor"/></svg>',
   'audio': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 6V10H5L9 13V3L5 6H2Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M11.5 5.5C12.3 6.3 12.8 7.1 12.8 8C12.8 8.9 12.3 9.7 11.5 10.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
   'file-attachment': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 1H3.5C3.22 1 3 1.22 3 1.5V14.5C3 14.78 3.22 15 3.5 15H12.5C12.78 15 13 14.78 13 14.5V5L9 1Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M9 1V5H13" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+
+  // ── Database toolbar (additional) ──
+  'open-full-page': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2.5H13.5V7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.5 2.5L7.5 8.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M11.5 9.5V13H2.5V4H6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  'automations': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 1.5L4 8.5H8L7 14.5L13 7.5H9L9.5 1.5Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+
+  // ── Navigation arrows ──
+  'arrow-up': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 14V2M8 2L3 7M8 2L13 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  'arrow-down': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 2V14M8 14L3 9M8 14L13 9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  'arrow-left': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 8H2M2 8L7 3M2 8L7 13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  'arrow-right': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 8H14M14 8L9 3M14 8L9 13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
+  // ── Chevrons (additional directions) ──
+  'chevron-left': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 3L5 8L10 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  'chevron-down': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 6L8 11L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  'chevron-up': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 10L8 5L13 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
+  // ── Visibility ──
+  'eye': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 8C1.5 8 4 3.5 8 3.5C12 3.5 14.5 8 14.5 8C14.5 8 12 12.5 8 12.5C4 12.5 1.5 8 1.5 8Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.2"/></svg>',
+  'eye-off': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 13L13 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M6.5 11.8C4 11 1.5 8 1.5 8C1.5 8 4 3.5 8 3.5C9.3 3.5 10.5 4 11.5 4.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M13.2 6.2C14 7.2 14.5 8 14.5 8C14.5 8 12 12.5 8 12.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+
+  // ── Time ──
+  'clock': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/><path d="M8 4.5V8L10.5 10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
+  // ── Communication ──
+  'bell': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 6C4.5 3.8 6 2 8 2C10 2 11.5 3.8 11.5 6V9L13.5 11H2.5L4.5 9V6Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M6.5 11.5C6.5 12.3 7.2 13 8 13C8.8 13 9.5 12.3 9.5 11.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  'comment': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 2.5H13.5V10H8L4.5 13V10H2.5V2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+  'share': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="3.5" r="2" stroke="currentColor" stroke-width="1.1"/><circle cx="4" cy="8" r="2" stroke="currentColor" stroke-width="1.1"/><circle cx="12" cy="12.5" r="2" stroke="currentColor" stroke-width="1.1"/><path d="M5.8 7L10.2 4.5M5.8 9L10.2 11.5" stroke="currentColor" stroke-width="1.1"/></svg>',
+  'at-sign': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.1"/><path d="M10.5 6V9C10.5 10 11.2 10.5 12 10.2C13.5 9.5 14.5 7 13.5 4.5C12.3 1.5 8.5 0.5 5.5 2C3 3.3 1.5 6 2 9C2.5 12 5 14 8 14C9.5 14 11 13.5 12 12.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>',
+
+  // ── Common actions ──
+  'check': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 8.5L6 12L13.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  'warning': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5L1 14H15L8 1.5Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8 6V9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.8" r="0.7" fill="currentColor"/></svg>',
+  'refresh': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 2.5V5.5H10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 13.5V10.5H6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.5 5.5C11.5 3.5 9.5 2.5 7.5 2.5C5 2.5 3 4.5 3 7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M3.5 10.5C4.5 12.5 6.5 13.5 8.5 13.5C11 13.5 13 11.5 13 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  'upload': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 10V2M8 2L5 5M8 2L11 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 12V13.5H13.5V12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
+  // ── UI controls ──
+  'menu': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 4H14M2 8H14M2 12H14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  'more-vertical': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="3.5" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="12.5" r="1.2" fill="currentColor"/></svg>',
+  'grip-vertical': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="3.5" r="1" fill="currentColor"/><circle cx="10" cy="3.5" r="1" fill="currentColor"/><circle cx="6" cy="8" r="1" fill="currentColor"/><circle cx="10" cy="8" r="1" fill="currentColor"/><circle cx="6" cy="12.5" r="1" fill="currentColor"/><circle cx="10" cy="12.5" r="1" fill="currentColor"/></svg>',
+  'sidebar-left': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="2" width="13" height="12" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 2V14" stroke="currentColor" stroke-width="1.2"/></svg>',
+  'sidebar-right': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="2" width="13" height="12" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M10.5 2V14" stroke="currentColor" stroke-width="1.2"/></svg>',
+  'panel-bottom': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="1.5" y="2" width="13" height="12" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 10H14.5" stroke="currentColor" stroke-width="1.2"/></svg>',
+  'fullscreen': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 6V2H6M10 2H14V6M14 10V14H10M6 14H2V10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  'exit-fullscreen': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 2V6H2M14 6H10V2M10 14V10H14M2 10H6V14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
+  // ── Text formatting ──
+  'format-bold': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 2.5H9C10.7 2.5 12 3.8 12 5.3C12 6.3 11.4 7.2 10.5 7.7C11.5 8.2 12.3 9.2 12.3 10.5C12.3 12.2 10.8 13.5 9.2 13.5H4.5V2.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M4.5 8H9.5" stroke="currentColor" stroke-width="1"/></svg>',
+  'format-italic': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 13.5L10 2.5M5.5 13.5H8.5M8.5 2.5H11.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  'format-underline': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 2V8.5C4.5 10.4 6 12 8 12C10 12 11.5 10.4 11.5 8.5V2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M3 14.5H13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  'format-strikethrough': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 8H14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M10.5 3.5C10 2.8 9 2.2 7.8 2.2C6.2 2.2 5 3.2 5 4.5C5 5.5 5.5 6 6.5 6.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M5.5 12.5C6 13.2 7 13.8 8.2 13.8C9.8 13.8 11 12.8 11 11.5C11 10.5 10.5 9.8 9.5 9.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+
+  // ── Alignment ──
+  'align-left': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 3H14M2 6.5H10M2 10H12M2 13.5H8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  'align-center': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 3H14M4 6.5H12M3 10H13M5 13.5H11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  'align-right': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 3H14M6 6.5H14M4 10H14M8 13.5H14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+
+  // ── Status indicators ──
+  'circle': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/></svg>',
+  'circle-check': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/><path d="M5 8L7 10.5L11 5.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  'hash': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 2L4.5 14M11.5 2L10.5 14M2 5.5H14M2 10.5H14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+
+  // ── People ──
+  'user': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M2.5 14.5C2.5 11.5 5 9.5 8 9.5C11 9.5 13.5 11.5 13.5 14.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+
+  // ── Theme ──
+  'sun': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M8 1.5V3M8 13V14.5M1.5 8H3M13 8H14.5M3.4 3.4L4.5 4.5M11.5 11.5L12.6 12.6M3.4 12.6L4.5 11.5M11.5 4.5L12.6 3.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+  'moon': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 9.5C12 10.5 10.7 11 9.3 11C6.5 11 4.2 8.7 4.2 5.8C4.2 4.4 4.7 3.1 5.7 2.1C3.3 2.8 1.5 5 1.5 7.7C1.5 11 4.3 13.8 7.7 13.8C10.3 13.8 12.5 12.2 13.4 9.8L13 9.5Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+
+  // ── Undo / Redo ──
+  'undo': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 5.5L5.5 3M3 5.5L5.5 8M3 5.5H10C12.2 5.5 14 7.3 14 9.5C14 11.7 12.2 13.5 10 13.5H7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  'redo': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 5.5L10.5 3M13 5.5L10.5 8M13 5.5H6C3.8 5.5 2 7.3 2 9.5C2 11.7 3.8 13.5 6 13.5H9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+
+  // ── Misc productivity ──
+  'filter-x': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 3.5H10M4.5 8H8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M10.5 10.5L14 14M14 10.5L10.5 14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  'color': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="5" r="1.2" fill="currentColor"/><circle cx="5.5" cy="7.5" r="1.2" fill="currentColor"/><circle cx="10.5" cy="7.5" r="1.2" fill="currentColor"/><circle cx="6.5" cy="10.5" r="1.2" fill="currentColor"/><circle cx="9.5" cy="10.5" r="1.2" fill="currentColor"/></svg>',
+  'highlight': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.5 2L3.5 9V12.5H7L14 5.5L10.5 2Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8.5 4L12 7.5" stroke="currentColor" stroke-width="1"/><path d="M2 14.5H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
 };
 
 // ─── Icon IDs (for type safety) ──────────────────────────────────────────────
