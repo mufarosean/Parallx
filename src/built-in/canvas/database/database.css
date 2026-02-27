@@ -2285,7 +2285,7 @@
 }
 
 .db-host-inline-title {
-  font-size: 40px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--vscode-foreground);
   padding: 0;
@@ -2295,7 +2295,7 @@
   border: none;
   background: transparent;
   outline: none;
-  line-height: 1.15;
+  line-height: 1.4;
 }
 
 .db-host-inline-title:hover {
