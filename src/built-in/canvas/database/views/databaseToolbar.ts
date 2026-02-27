@@ -478,7 +478,7 @@ export class DatabaseToolbar extends Disposable {
       this._onDidUpdateView.fire(updates);
       this._renderButtons();
       this._closePanel();
-      this._activePanel = 'group';
+      this._activePanel = 'properties';
       this._renderGroupPanel();
     });
   }

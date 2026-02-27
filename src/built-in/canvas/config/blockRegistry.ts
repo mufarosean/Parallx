@@ -207,6 +207,18 @@ const CONTAINER_CAP: BlockCapabilities = {
   suppressBubbleMenu: false,
 };
 
+/** Recursively check whether a node of `type` with matching attr exists anywhere in a doc tree. */
+function _docContainsNode(node: any, type: string, attrKey: string, attrValue: string): boolean {
+  if (!node || typeof node !== 'object') return false;
+  if (node.type === type && node.attrs?.[attrKey] === attrValue) return true;
+  if (Array.isArray(node.content)) {
+    for (const child of node.content) {
+      if (_docContainsNode(child, type, attrKey, attrValue)) return true;
+    }
+  }
+  return false;
+}
+
 const PAGE_CONTAINER_CAP: BlockCapabilities = {
   allowInColumn: false,
   customDragHandle: false,
@@ -754,9 +766,7 @@ const definitions: BlockDefinition[] = [
         }
 
         const docJson = editor.getJSON();
-        const hasInsertedPageBlock = Array.isArray(docJson?.content)
-          && docJson.content.some((n: any) => n?.type === 'pageBlock' && n?.attrs?.pageId === childPage.id);
-        if (!hasInsertedPageBlock) {
+        if (!_docContainsNode(docJson, 'pageBlock', 'pageId', childPage.id)) {
           throw new Error('Inserted pageBlock not found in parent doc');
         }
 
