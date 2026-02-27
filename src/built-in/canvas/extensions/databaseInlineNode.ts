@@ -126,12 +126,7 @@ class DatabaseInlineNodeView {
     tabBarSlot.classList.add('db-host-tabbar');
     header.appendChild(tabBarSlot);
 
-    // Toolbar slot — sits on the same line as the title, far right
-    const toolbarSlot = document.createElement('div');
-    toolbarSlot.classList.add('db-host-toolbar');
-    header.appendChild(toolbarSlot);
-
-    // Header actions area (collapse/expand buttons)
+    // Header actions area (collapse/expand) — left of toolbar icons
     const headerActions = document.createElement('div');
     headerActions.classList.add('db-host-inline-actions');
     header.appendChild(headerActions);
@@ -161,6 +156,11 @@ class DatabaseInlineNodeView {
       this._openFullPage();
     });
     headerActions.appendChild(expandBtn);
+
+    // Toolbar slot — sits on the same line as the title, far right
+    const toolbarSlot = document.createElement('div');
+    toolbarSlot.classList.add('db-host-toolbar');
+    header.appendChild(toolbarSlot);
 
     // ── Toolbar panels (below controls row) ──
     const toolbarPanelsSlot = document.createElement('div');
