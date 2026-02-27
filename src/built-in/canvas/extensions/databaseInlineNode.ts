@@ -121,11 +121,6 @@ class DatabaseInlineNodeView {
     });
     header.appendChild(titleEl);
 
-    // Tab bar slot (hidden in inline via CSS, but host still needs it)
-    const tabBarSlot = document.createElement('div');
-    tabBarSlot.classList.add('db-host-tabbar');
-    header.appendChild(tabBarSlot);
-
     // Collapse/expand toolbar toggle — the only icon that stays outside the toolbar
     const toolbarToggleBtn = document.createElement('button');
     toolbarToggleBtn.classList.add('db-toolbar-btn', 'db-host-inline-toolbar-toggle');
@@ -141,10 +136,20 @@ class DatabaseInlineNodeView {
     });
     header.appendChild(toolbarToggleBtn);
 
-    // Toolbar slot — sits on the same line as the title, far right
+    // Toolbar slot — shared between header row (single-view) and controls row (multi-view)
     const toolbarSlot = document.createElement('div');
     toolbarSlot.classList.add('db-host-toolbar');
-    header.appendChild(toolbarSlot);
+    header.appendChild(toolbarSlot); // starts in header (single-view default)
+
+    // ── Controls row: tabBar + toolbar (visible only when ≥2 views) ──
+    const controlsRow = document.createElement('div');
+    controlsRow.classList.add('db-host-controls-row', 'db-host-inline-controls-row');
+    controlsRow.style.display = 'none';
+    this.dom.appendChild(controlsRow);
+
+    const tabBarSlot = document.createElement('div');
+    tabBarSlot.classList.add('db-host-tabbar');
+    controlsRow.appendChild(tabBarSlot);
 
     // ── Toolbar panels (below controls row) ──
     const toolbarPanelsSlot = document.createElement('div');
@@ -167,12 +172,25 @@ class DatabaseInlineNodeView {
       databaseId: this._databaseId,
       dataService: this._dbDataService,
       openEditor: this._openEditor,
+      onOpenFullPage: () => this._openFullPage(),
       slots: {
         tabBar: tabBarSlot,
         toolbar: toolbarSlot,
         toolbarPanels: toolbarPanelsSlot,
         content: contentSlot,
       },
+    });
+
+    // Dynamic layout: single-view → toolbar in header; multi-view → controls row
+    this._host.onDidChangeViews((viewCount) => {
+      const isMultiView = viewCount > 1;
+      this.dom.classList.toggle('db-host--multiview', isMultiView);
+      controlsRow.style.display = isMultiView ? '' : 'none';
+      if (isMultiView) {
+        controlsRow.appendChild(toolbarSlot);
+      } else {
+        header.appendChild(toolbarSlot);
+      }
     });
 
     this._host.onDidFailLoad((message) => {

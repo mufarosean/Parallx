@@ -2306,21 +2306,25 @@
   box-shadow: none;
 }
 
-/* Toolbar sits inline with the title in the header row */
-.db-host--inline .db-host-toolbar {
+/* Toolbar sits inline with the title in the header row (single-view mode) */
+.db-host--inline:not(.db-host--multiview) .db-host-toolbar {
   flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
 
-.db-host--inline:hover .db-host-toolbar {
+.db-host--inline:not(.db-host--multiview):hover .db-host-toolbar {
   opacity: 1;
 }
 
-/* Inline databases hide the view tab bar — view layout is changed through
-   the toolbar settings panel (Notion-style), not through visible tabs. */
-.db-host--inline .db-host-tabbar {
-  display: none;
+/* Multi-view mode: toolbar is in the controls row, always visible */
+.db-host--inline.db-host--multiview .db-host-toolbar {
+  flex-shrink: 0;
+}
+
+/* Controls row for inline multi-view (tab bar + toolbar) */
+.db-host-inline-controls-row {
+  padding: 0 0 4px;
 }
 
 /* ── Inline collapse toggle ──────────────────────────────────────────────── */

@@ -96,6 +96,10 @@ export class DatabaseViewHost extends Disposable {
   private readonly _onDidFailLoad = this._register(new Emitter<string>());
   readonly onDidFailLoad: Event<string> = this._onDidFailLoad.event;
 
+  private readonly _onDidChangeViews = this._register(new Emitter<number>());
+  /** Fires with the current view count whenever views are loaded or reloaded. */
+  readonly onDidChangeViews: Event<number> = this._onDidChangeViews.event;
+
   constructor(options: DatabaseViewHostOptions) {
     super();
     this._databaseId = options.databaseId;
@@ -172,6 +176,9 @@ export class DatabaseViewHost extends Disposable {
       if (event.databaseId !== this._databaseId) return;
       this._reloadViews();
     }));
+
+    // ── Notify view count ──
+    this._onDidChangeViews.fire(this._views.length);
 
     // ── Activate first view ──
     if (this._views.length > 0) {
@@ -375,6 +382,7 @@ export class DatabaseViewHost extends Disposable {
     try {
       this._views = await this._dataService.getViews(this._databaseId);
       this._viewTabBar?.setViews(this._views);
+      this._onDidChangeViews.fire(this._views.length);
 
       // If active view was deleted, switch to first
       if (!this._views.find(v => v.id === this._activeViewId) && this._views.length > 0) {
