@@ -2266,7 +2266,7 @@
 
 .db-host--inline {
   position: relative;
-  margin: 8px 0;
+  margin: 0 0 8px;
   min-height: 120px;
 }
 
@@ -2280,8 +2280,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 0 2px;
-  min-height: 52px;
+  padding: 0;
+  min-height: 28px;
 }
 
 .db-host-inline-title {
