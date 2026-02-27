@@ -121,6 +121,29 @@ class DatabaseInlineNodeView {
     });
     header.appendChild(titleEl);
 
+    // "+" button — add a new view (hover-only, Notion-style)
+    const addViewBtn = document.createElement('button');
+    addViewBtn.classList.add('db-host-inline-title-btn');
+    addViewBtn.title = 'Add a new view';
+    addViewBtn.textContent = '+';
+    addViewBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const rect = addViewBtn.getBoundingClientRect();
+      this._host?.showAddViewMenu(new DOMRect(rect.left, rect.bottom, rect.width, 0));
+    });
+    header.appendChild(addViewBtn);
+
+    // "⋯" button — database options menu (hover-only, Notion-style)
+    const moreBtn = document.createElement('button');
+    moreBtn.classList.add('db-host-inline-title-btn');
+    moreBtn.title = 'More options';
+    moreBtn.innerHTML = svgIcon('ellipsis');
+    moreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // TODO: Wire database options menu in a follow-up slice.
+    });
+    header.appendChild(moreBtn);
+
     // Collapse/expand toolbar toggle — the only icon that stays outside the toolbar
     const toolbarToggleBtn = document.createElement('button');
     toolbarToggleBtn.classList.add('db-toolbar-btn', 'db-host-inline-toolbar-toggle');

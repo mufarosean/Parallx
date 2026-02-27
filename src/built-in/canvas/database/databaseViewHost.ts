@@ -192,6 +192,11 @@ export class DatabaseViewHost extends Disposable {
     this._toolbar?.setCollapsed(collapsed);
   }
 
+  /** Show the "add a new view" context menu anchored to the given rect. */
+  showAddViewMenu(anchor: DOMRect): void {
+    this._viewTabBar?.showNewViewMenu(anchor);
+  }
+
   /** Get the currently active view ID. */
   get activeViewId(): string | null {
     return this._activeViewId;

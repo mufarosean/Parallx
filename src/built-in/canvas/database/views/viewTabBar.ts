@@ -64,7 +64,10 @@ export class ViewTabBar extends Disposable {
     this._addBtn.textContent = '+';
     this._addBtn.title = 'Add a new view';
     this._addBtn.setAttribute('aria-label', 'Add a new view');
-    this._register(addDisposableListener(this._addBtn, 'click', (e) => this._showNewViewMenu(e)));
+    this._register(addDisposableListener(this._addBtn, 'click', (e) => {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      this._showNewViewMenuAt(new DOMRect(rect.left, rect.bottom, rect.width, 0));
+    }));
 
     // Wire tab selection
     this._register(this._tabBar.onDidSelect(id => {
@@ -111,7 +114,14 @@ export class ViewTabBar extends Disposable {
 
   // ─── New View Menu ───────────────────────────────────────────────────
 
-  private _showNewViewMenu(e: MouseEvent): void {
+  // ─── New View Menu ─────────────────────────────────────────────────────
+
+  /** Show the "add view" context menu anchored to the given rect. */
+  showNewViewMenu(anchor: DOMRect): void {
+    this._showNewViewMenuAt(anchor);
+  }
+
+  private _showNewViewMenuAt(anchor: DOMRect): void {
     const viewTypes: { type: ViewType; label: string }[] = [
       { type: 'table', label: 'Table' },
       { type: 'board', label: 'Board' },
@@ -129,11 +139,9 @@ export class ViewTabBar extends Disposable {
       },
     }));
 
-    const target = e.currentTarget as HTMLElement;
-    const rect = target.getBoundingClientRect();
     const menu = ContextMenu.show({
       items,
-      anchor: new DOMRect(rect.left, rect.bottom, rect.width, 0),
+      anchor,
       anchorPosition: 'below',
     });
 
