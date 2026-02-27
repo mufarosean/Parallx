@@ -2339,6 +2339,12 @@
   height: 14px;
 }
 
+/* Inline databases hide the view tab bar — view layout is changed through
+   the toolbar settings panel (Notion-style), not through visible tabs. */
+.db-host--inline .db-host-tabbar {
+  display: none;
+}
+
 .db-host-inline-expand-btn {
   flex-shrink: 0;
   background: none;
