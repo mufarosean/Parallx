@@ -121,7 +121,17 @@ class DatabaseInlineNodeView {
     });
     header.appendChild(titleEl);
 
-    // Header actions area
+    // Tab bar slot (hidden in inline via CSS, but host still needs it)
+    const tabBarSlot = document.createElement('div');
+    tabBarSlot.classList.add('db-host-tabbar');
+    header.appendChild(tabBarSlot);
+
+    // Toolbar slot — sits on the same line as the title, far right
+    const toolbarSlot = document.createElement('div');
+    toolbarSlot.classList.add('db-host-toolbar');
+    header.appendChild(toolbarSlot);
+
+    // Header actions area (collapse/expand buttons)
     const headerActions = document.createElement('div');
     headerActions.classList.add('db-host-inline-actions');
     header.appendChild(headerActions);
@@ -151,19 +161,6 @@ class DatabaseInlineNodeView {
       this._openFullPage();
     });
     headerActions.appendChild(expandBtn);
-
-    // ── Controls row: tab bar + toolbar (matches full-page layout) ──
-    const controlsRow = document.createElement('div');
-    controlsRow.classList.add('db-host-controls-row');
-    this.dom.appendChild(controlsRow);
-
-    const tabBarSlot = document.createElement('div');
-    tabBarSlot.classList.add('db-host-tabbar');
-    controlsRow.appendChild(tabBarSlot);
-
-    const toolbarSlot = document.createElement('div');
-    toolbarSlot.classList.add('db-host-toolbar');
-    controlsRow.appendChild(toolbarSlot);
 
     // ── Toolbar panels (below controls row) ──
     const toolbarPanelsSlot = document.createElement('div');

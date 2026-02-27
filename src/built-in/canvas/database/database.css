@@ -2306,6 +2306,11 @@
   box-shadow: 0 0 0 1px var(--vscode-focusBorder, #2383e2);
 }
 
+/* Toolbar sits inline with the title in the header row */
+.db-host--inline .db-host-toolbar {
+  flex-shrink: 0;
+}
+
 .db-host-inline-actions {
   display: flex;
   align-items: center;
