@@ -205,13 +205,17 @@ class DatabaseInlineNodeView {
     });
 
     // Dynamic layout: single-view → toolbar in header; multi-view → controls row
+    // The collapse toggle always sits immediately before the toolbar slot
+    // (matching Notion where » is grouped with the toolbar icons).
     this._host.onDidChangeViews((viewCount) => {
       const isMultiView = viewCount > 1;
       this.dom.classList.toggle('db-host--multiview', isMultiView);
       controlsRow.style.display = isMultiView ? '' : 'none';
       if (isMultiView) {
+        controlsRow.appendChild(toolbarToggleBtn);
         controlsRow.appendChild(toolbarSlot);
       } else {
+        header.appendChild(toolbarToggleBtn);
         header.appendChild(toolbarSlot);
       }
     });
