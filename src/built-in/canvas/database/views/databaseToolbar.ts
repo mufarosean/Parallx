@@ -25,6 +25,7 @@ const SORT_DIR_LABELS = { ascending: '↑ Ascending', descending: '↓ Descendin
 
 /** Icon IDs for toolbar buttons — resolved via svgIcon(). */
 const TOOLBAR_ICON_IDS = {
+  open: 'open',
   filter: 'db-filter',
   sort: 'db-sort',
   group: 'db-group',
@@ -46,6 +47,7 @@ export class DatabaseToolbar extends Disposable {
   // ── Data ──
   private _view: IDatabaseView;
   private _properties: IDatabaseProperty[];
+  private readonly _openFullPage: (() => void) | undefined;
 
   // ── Events ──
   private readonly _onDidUpdateView = this._register(new Emitter<ViewUpdateData>());
@@ -59,10 +61,12 @@ export class DatabaseToolbar extends Disposable {
     view: IDatabaseView,
     properties: IDatabaseProperty[],
     panelContainerTarget?: HTMLElement,
+    openFullPage?: () => void,
   ) {
     super();
     this._view = view;
     this._properties = properties;
+    this._openFullPage = openFullPage;
 
     this._wrapper = $('div.db-toolbar');
     container.appendChild(this._wrapper);
@@ -117,6 +121,14 @@ export class DatabaseToolbar extends Disposable {
       this._renderDisposables.add(addDisposableListener(button, 'click', onClick));
       return button;
     };
+
+    // Open full-page button (only shown in inline context)
+    if (this._openFullPage) {
+      const openBtn = createButton(TOOLBAR_ICON_IDS.open, 'Open as full page', false, false, () => {
+        this._openFullPage!();
+      });
+      this._wrapper.appendChild(openBtn);
+    }
 
     // Filter button
     const filterCount = this._view.filterConfig?.rules?.length ?? 0;

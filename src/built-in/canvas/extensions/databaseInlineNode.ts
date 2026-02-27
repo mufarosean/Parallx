@@ -126,37 +126,20 @@ class DatabaseInlineNodeView {
     tabBarSlot.classList.add('db-host-tabbar');
     header.appendChild(tabBarSlot);
 
-    // Header actions area (collapse/expand) — left of toolbar icons
-    const headerActions = document.createElement('div');
-    headerActions.classList.add('db-host-inline-actions');
-    header.appendChild(headerActions);
-
-    // Open full-page button (created first so toggle handler can reference it)
-    const expandBtn = document.createElement('button');
-    expandBtn.classList.add('db-host-inline-expand-btn');
-    expandBtn.title = 'Open as full page';
-    expandBtn.innerHTML = svgIcon('open');
-    expandBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._openFullPage();
-    });
-
-    // Collapse/expand toolbar toggle (settings icon — always visible)
+    // Collapse/expand toolbar toggle — the only icon that stays outside the toolbar
     const toolbarToggleBtn = document.createElement('button');
-    toolbarToggleBtn.classList.add('db-host-inline-action-btn', 'db-host-inline-toolbar-toggle');
+    toolbarToggleBtn.classList.add('db-toolbar-btn', 'db-host-inline-toolbar-toggle');
     toolbarToggleBtn.title = 'Hide toolbar actions';
-    toolbarToggleBtn.innerHTML = svgIcon('db-expand');
+    toolbarToggleBtn.innerHTML = `<span class="db-toolbar-btn-icon">${svgIcon('db-expand')}</span>`;
     toolbarToggleBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._toolbarCollapsed = !this._toolbarCollapsed;
       toolbarToggleBtn.classList.toggle('db-host-inline-toolbar-toggle--collapsed', this._toolbarCollapsed);
       toolbarToggleBtn.title = this._toolbarCollapsed ? 'Show toolbar actions' : 'Hide toolbar actions';
-      toolbarToggleBtn.innerHTML = this._toolbarCollapsed ? svgIcon('db-collapse') : svgIcon('db-expand');
+      toolbarToggleBtn.innerHTML = `<span class="db-toolbar-btn-icon">${this._toolbarCollapsed ? svgIcon('db-collapse') : svgIcon('db-expand')}</span>`;
       this._host?.setToolbarCollapsed(this._toolbarCollapsed);
-      expandBtn.style.display = this._toolbarCollapsed ? 'none' : '';
     });
-    headerActions.appendChild(toolbarToggleBtn);
-    headerActions.appendChild(expandBtn);
+    header.appendChild(toolbarToggleBtn);
 
     // Toolbar slot — sits on the same line as the title, far right
     const toolbarSlot = document.createElement('div');

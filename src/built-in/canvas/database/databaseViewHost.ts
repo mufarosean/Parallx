@@ -50,6 +50,8 @@ export interface DatabaseViewHostOptions {
   readonly dataService: IDatabaseDataService;
   readonly slots: DatabaseViewHostSlots;
   readonly openEditor?: OpenEditorFn;
+  /** If provided, toolbar shows an "Open as full page" button (inline context). */
+  readonly onOpenFullPage?: () => void;
 }
 
 /** Managed view shape — setRows/setProperties/dispose. */
@@ -69,6 +71,7 @@ export class DatabaseViewHost extends Disposable {
   private readonly _dataService: IDatabaseDataService;
   private readonly _slots: DatabaseViewHostSlots;
   private readonly _openEditor: OpenEditorFn | undefined;
+  private readonly _onOpenFullPage: (() => void) | undefined;
 
   // ── Sub-components ──
   private _viewTabBar: ViewTabBar | null = null;
@@ -99,6 +102,7 @@ export class DatabaseViewHost extends Disposable {
     this._dataService = options.dataService;
     this._slots = options.slots;
     this._openEditor = options.openEditor;
+    this._onOpenFullPage = options.onOpenFullPage;
   }
 
   // ─── Public API ──────────────────────────────────────────────────────
@@ -275,6 +279,7 @@ export class DatabaseViewHost extends Disposable {
       view,
       this._properties,
       this._slots.toolbarPanels,
+      this._onOpenFullPage,
     );
     this._toolbarDisposables.add(this._toolbar);
     this._toolbar.setCollapsed(this._toolbarCollapsed);

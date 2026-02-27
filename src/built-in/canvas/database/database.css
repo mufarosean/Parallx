@@ -2309,45 +2309,12 @@
 /* Toolbar sits inline with the title in the header row */
 .db-host--inline .db-host-toolbar {
   flex-shrink: 0;
-}
-
-.db-host-inline-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-  margin-left: 4px;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
 
-.db-host--inline:hover .db-host-inline-actions {
+.db-host--inline:hover .db-host-toolbar {
   opacity: 1;
-}
-
-.db-host-inline-action-btn {
-  flex-shrink: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 4px;
-  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  transition: background 0.1s;
-}
-
-.db-host-inline-action-btn:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
-  color: var(--vscode-foreground);
-}
-
-.db-host-inline-action-btn svg {
-  width: 14px;
-  height: 14px;
 }
 
 /* Inline databases hide the view tab bar — view layout is changed through
@@ -2356,34 +2323,15 @@
   display: none;
 }
 
-.db-host-inline-expand-btn {
-  flex-shrink: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 4px;
-  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.1s;
-}
-
-.db-host-inline-expand-btn:hover {
-  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
-  color: var(--vscode-foreground);
-}
-
-.db-host-inline-expand-btn svg {
-  width: 14px;
-  height: 14px;
-}
-
 /* ── Inline collapse toggle ──────────────────────────────────────────────── */
 
 .db-host-inline-toolbar-toggle {
-  transition: transform 0.12s ease;
+  transition: transform 0.12s ease, opacity 0.15s ease;
+  opacity: 0;
+}
+
+.db-host--inline:hover .db-host-inline-toolbar-toggle {
+  opacity: 1;
 }
 
 .db-host-inline-toolbar-toggle--collapsed {
