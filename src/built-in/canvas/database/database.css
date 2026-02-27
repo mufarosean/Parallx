@@ -2272,7 +2272,7 @@
   user-select: none;
 }
 
-/* ── Inline Header ───────────────────────────────────────────────────────── */
+/* ── Inline Header (title + actions — sits above the shared controls row) ── */
 
 .db-host-inline-header {
   display: flex;
@@ -2287,13 +2287,13 @@
   font-weight: 600;
   color: var(--vscode-foreground);
   padding: 0;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
   cursor: text;
   border: none;
   background: transparent;
   outline: none;
   line-height: 1.15;
-  min-width: 260px;
 }
 
 .db-host-inline-title:hover {
@@ -2303,10 +2303,6 @@
 .db-host-inline-title:focus {
   border-radius: 4px;
   box-shadow: 0 0 0 1px var(--vscode-focusBorder, #2383e2);
-}
-
-.db-host-inline-tabbar {
-  display: none;
 }
 
 .db-host-inline-actions {
@@ -2366,42 +2362,7 @@
   height: 14px;
 }
 
-/* ── Inline Toolbar ──────────────────────────────────────────────────────── */
-
-.db-host-inline-toolbar {
-  display: flex;
-  align-items: center;
-  min-height: 30px;
-  min-width: 0;
-}
-
-.db-host-inline-toolbar .db-toolbar {
-  justify-content: flex-start;
-  gap: 3px;
-  padding: 0;
-  min-height: 30px;
-}
-
-.db-host-inline-toolbar .db-toolbar-text-btn {
-  padding: 4px;
-  min-width: 24px;
-}
-
-.db-host-inline-toolbar .db-toolbar-btn-label {
-  display: none;
-}
-
-.db-host-inline-toolbar .db-toolbar-spacer {
-  display: none;
-}
-
-.db-host-inline-toolbar .db-toolbar-new-group {
-  margin-left: 4px;
-}
-
-.db-host-inline-toolbar-panels {
-  width: 100%;
-}
+/* ── Inline collapse toggle ──────────────────────────────────────────────── */
 
 .db-host-inline-toolbar-toggle {
   transition: transform 0.12s ease;
@@ -2412,10 +2373,6 @@
 }
 
 .db-toolbar--collapsed {
-  display: none;
-}
-
-.db-host-inline-toolbar:empty {
   display: none;
 }
 

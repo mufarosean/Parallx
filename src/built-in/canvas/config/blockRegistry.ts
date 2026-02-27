@@ -898,6 +898,7 @@ const definitions: BlockDefinition[] = [
     },
     extension: (ctx) => DatabaseInline.configure({
       databaseDataService: ctx.databaseDataService,
+      pageDataService: ctx.dataService,
       openEditor: ctx.openEditor,
     }),
   },

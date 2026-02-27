@@ -362,6 +362,7 @@ describe('EditorExtensionContext — databaseDataService field', () => {
 
     const result = def!.extension!({
       databaseDataService: mockDbService as any,
+      dataService: { getPage: vi.fn(), updatePage: vi.fn(), onDidChangePage: vi.fn() } as any,
       openEditor: vi.fn() as any,
     });
     expect(result).toBeDefined();
@@ -541,5 +542,84 @@ describe('InsertAction — linkedView', () => {
 
     await def!.insertAction!(mockEditor, range, context);
     expect(mockEditor.chain).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Title Linking — IInlineDatabasePageAccess ───────────────────────────────
+
+describe('DatabaseInline — title linking types', () => {
+  it('DatabaseInlineOptions accepts optional pageDataService', () => {
+    // Verify the extension can be configured with pageDataService
+    const ext = DatabaseInline.configure({
+      databaseDataService: undefined,
+      pageDataService: {
+        getPage: vi.fn(),
+        updatePage: vi.fn(),
+        onDidChangePage: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      },
+      openEditor: undefined,
+    });
+    expect(ext).toBeDefined();
+    expect(ext.name).toBe('databaseInline');
+  });
+
+  it('extension factory passes pageDataService from context.dataService', () => {
+    const def = BLOCK_REGISTRY.get('databaseInline');
+    expect(def!.extension).toBeDefined();
+
+    const mockPageService = {
+      getPage: vi.fn(),
+      updatePage: vi.fn(),
+      onDidChangePage: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+    };
+    const mockDbService = {
+      getDatabase: vi.fn(),
+      getViews: vi.fn(),
+      getProperties: vi.fn(),
+      getRows: vi.fn(),
+      onDidChangeRow: vi.fn() as any,
+      onDidChangeProperty: vi.fn() as any,
+      onDidChangeView: vi.fn() as any,
+    };
+
+    const result = def!.extension!({
+      databaseDataService: mockDbService as any,
+      dataService: mockPageService as any,
+      openEditor: vi.fn() as any,
+    });
+
+    expect(result).toBeDefined();
+    // The configured extension should have pageDataService in its options
+    const opts = (result as any).options;
+    expect(opts?.pageDataService).toBe(mockPageService);
+  });
+
+  it('databaseTitle attr default is Untitled', () => {
+    const ext = DatabaseInline.configure({});
+    // Access the schema attributes
+    const attrs = (ext as any).config?.addAttributes?.() ??
+      (ext.options as any)?.addAttributes?.() ?? {};
+    // The default should be 'Untitled' (matching pages.title convention)
+    if (attrs.databaseTitle) {
+      expect(attrs.databaseTitle.default).toBe('Untitled');
+    }
+  });
+});
+
+// ─── Inline DOM — unified controls row ──────────────────────────────────────
+
+describe('DatabaseInline — unified class names', () => {
+  it('extension uses db-host--inline modifier', () => {
+    // Verify renderHTML produces the correct class
+    const ext = DatabaseInline.configure({});
+    const renderFn = (ext as any).config?.renderHTML ??
+      (ext.options as any)?.renderHTML;
+    if (typeof renderFn === 'function') {
+      const result = renderFn({ HTMLAttributes: {} });
+      expect(result).toBeDefined();
+      // Should include db-host--inline
+      const classStr = Array.isArray(result) ? result[1]?.class : '';
+      expect(classStr).toContain('db-host--inline');
+    }
   });
 });

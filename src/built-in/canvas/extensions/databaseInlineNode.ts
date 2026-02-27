@@ -5,6 +5,14 @@
 // and delegates all view engine work to DatabaseViewHost — the shared
 // component used by both inline and full-page contexts.
 //
+// Title linking: the inline title is bidirectionally synced with
+// `pages.title` via `IInlineDatabasePageAccess`. Full-page & inline
+// always display the same title because they share the same page record.
+//
+// UI unification: the controls row (tab bar + toolbar) and content slots
+// use the same CSS class names as the full-page database editor so both
+// render identically. Only the inline wrapper and header are unique.
+//
 // Gate: imports ONLY from blockRegistry (canvas gate architecture).
 
 import { Node, mergeAttributes } from '@tiptap/core';
@@ -26,8 +34,32 @@ type OpenEditorFn = (options: {
   instanceId?: string;
 }) => Promise<void>;
 
+/** Narrow page shape — only the fields this block reads. */
+export interface IInlineDatabasePage {
+  readonly id: string;
+  readonly title: string;
+}
+
+/** Narrow change-event shape. */
+export interface IInlineDatabasePageChangeEvent {
+  readonly pageId: string;
+  readonly page?: IInlineDatabasePage;
+}
+
+/**
+ * Narrow interface for page data access. Follows the structural-typing
+ * pattern used by databaseFullPageNode.ts — define only what the inline
+ * node needs instead of importing the full ICanvasDataService.
+ */
+export interface IInlineDatabasePageAccess {
+  getPage(pageId: string): Promise<IInlineDatabasePage | null>;
+  updatePage(pageId: string, updates: { title?: string }): Promise<IInlineDatabasePage>;
+  readonly onDidChangePage: (listener: (e: IInlineDatabasePageChangeEvent) => void) => { dispose(): void };
+}
+
 export interface DatabaseInlineOptions {
   readonly databaseDataService?: IDatabaseDataService;
+  readonly pageDataService?: IInlineDatabasePageAccess;
   readonly openEditor?: OpenEditorFn;
 }
 
@@ -39,32 +71,36 @@ class DatabaseInlineNodeView {
   private _databaseTitle: string;
   private _host: DatabaseViewHost | null = null;
   private _toolbarCollapsed = false;
+  private _pageChangeDisposable: { dispose(): void } | null = null;
+  private _titleEl: HTMLElement | null = null;
 
   constructor(
     node: ProseMirrorNode,
-    private readonly _dataService: IDatabaseDataService,
+    private readonly _dbDataService: IDatabaseDataService,
+    private readonly _pageDataService: IInlineDatabasePageAccess | undefined,
     private readonly _updateNodeAttrs?: (attrs: Record<string, unknown>) => void,
     private readonly _openEditor?: OpenEditorFn,
   ) {
     this._databaseId = node.attrs.databaseId as string;
-    this._databaseTitle = (node.attrs.databaseTitle as string | undefined) ?? 'New database';
+    this._databaseTitle = (node.attrs.databaseTitle as string | undefined) ?? 'Untitled';
 
-    // Build DOM structure
+    // Build DOM structure — unified layout matching full-page database
     this.dom = document.createElement('div');
     this.dom.classList.add('db-host', 'db-host--inline');
     this.dom.setAttribute('data-database-id', this._databaseId);
 
-    // Header bar (title + toolbar + view tabs + actions)
+    // ── Header row: title + action buttons ──
     const header = document.createElement('div');
     header.classList.add('db-host-inline-header');
     this.dom.appendChild(header);
 
-    // Database title
+    // Database title — linked to pages.title
     const titleEl = document.createElement('span');
     titleEl.classList.add('db-host-inline-title');
     titleEl.textContent = this._databaseTitle;
     titleEl.contentEditable = 'true';
     titleEl.spellcheck = false;
+    this._titleEl = titleEl;
     titleEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -72,25 +108,18 @@ class DatabaseInlineNodeView {
       }
     });
     titleEl.addEventListener('blur', () => {
-      const nextTitle = (titleEl.textContent ?? '').trim() || 'New database';
+      const nextTitle = (titleEl.textContent ?? '').trim() || 'Untitled';
       titleEl.textContent = nextTitle;
-      if (nextTitle === this._databaseTitle) {
-        return;
-      }
+      if (nextTitle === this._databaseTitle) return;
       this._databaseTitle = nextTitle;
+      // Write to ProseMirror attr (serialization)
       this._updateNodeAttrs?.({ databaseTitle: nextTitle });
+      // Write to pages.title (source of truth)
+      this._pageDataService?.updatePage(this._databaseId, { title: nextTitle }).catch(err => {
+        console.error('[DatabaseInlineNode] Title save failed:', err);
+      });
     });
     header.appendChild(titleEl);
-
-    // Toolbar slot (icons next to title)
-    const toolbarSlot = document.createElement('div');
-    toolbarSlot.classList.add('db-host-inline-toolbar');
-    header.appendChild(toolbarSlot);
-
-    // Tab bar slot
-    const tabBarSlot = document.createElement('div');
-    tabBarSlot.classList.add('db-host-inline-tabbar');
-    header.appendChild(tabBarSlot);
 
     // Header actions area
     const headerActions = document.createElement('div');
@@ -123,26 +152,39 @@ class DatabaseInlineNodeView {
     });
     headerActions.appendChild(expandBtn);
 
-    // Toolbar panel container
+    // ── Controls row: tab bar + toolbar (matches full-page layout) ──
+    const controlsRow = document.createElement('div');
+    controlsRow.classList.add('db-host-controls-row');
+    this.dom.appendChild(controlsRow);
+
+    const tabBarSlot = document.createElement('div');
+    tabBarSlot.classList.add('db-host-tabbar');
+    controlsRow.appendChild(tabBarSlot);
+
+    const toolbarSlot = document.createElement('div');
+    toolbarSlot.classList.add('db-host-toolbar');
+    controlsRow.appendChild(toolbarSlot);
+
+    // ── Toolbar panels (below controls row) ──
     const toolbarPanelsSlot = document.createElement('div');
-    toolbarPanelsSlot.classList.add('db-host-inline-toolbar-panels');
+    toolbarPanelsSlot.classList.add('db-host-toolbar-panels');
     this.dom.appendChild(toolbarPanelsSlot);
 
-    // Content area
+    // ── Content area ──
     const contentSlot = document.createElement('div');
     contentSlot.classList.add('db-host-inline-content');
     this.dom.appendChild(contentSlot);
 
-    // Resize handle
+    // ── Resize handle ──
     const resizeHandle = document.createElement('div');
     resizeHandle.classList.add('db-host-inline-resize-handle');
     this.dom.appendChild(resizeHandle);
     this._setupResize(resizeHandle);
 
-    // Create the shared view host and load data
+    // ── Shared view host (same engine as full-page) ──
     this._host = new DatabaseViewHost({
       databaseId: this._databaseId,
-      dataService: this._dataService,
+      dataService: this._dbDataService,
       openEditor: this._openEditor,
       slots: {
         tabBar: tabBarSlot,
@@ -160,6 +202,9 @@ class DatabaseInlineNodeView {
     this._host.load().catch(err => {
       console.error('[DatabaseInlineNode] Host load failed:', err);
     });
+
+    // ── Title sync: load from pages.title then listen for changes ──
+    this._initTitleSync();
   }
 
   /** Prevent ProseMirror from handling events inside the NodeView. */
@@ -179,24 +224,68 @@ class DatabaseInlineNodeView {
   update(node: ProseMirrorNode): boolean {
     if (node.type.name !== 'databaseInline') return false;
     const newDbId = node.attrs.databaseId as string;
-    const newTitle = (node.attrs.databaseTitle as string | undefined) ?? 'New database';
     if (newDbId !== this._databaseId) {
       this._databaseId = newDbId;
       this._reloadHost();
+      this._initTitleSync();
     }
-    if (newTitle !== this._databaseTitle) {
-      this._databaseTitle = newTitle;
-      const titleEl = this.dom.querySelector('.db-host-inline-title');
-      if (titleEl) {
-        titleEl.textContent = this._databaseTitle;
-      }
-    }
+    // Ignore attr-level title changes — pages.title is the source of truth.
+    // The node attr is kept in sync by this NodeView; external ProseMirror
+    // updates (e.g. undo) will re-read from the page on next load.
     return true;
   }
 
   destroy(): void {
+    this._pageChangeDisposable?.dispose();
+    this._pageChangeDisposable = null;
     this._host?.dispose();
     this._host = null;
+    this._titleEl = null;
+  }
+
+  // ── Title Sync ──────────────────────────────────────────────────────
+
+  /**
+   * Load pages.title to set the initial inline title, then listen for
+   * external page-level title changes (e.g. from the full-page editor)
+   * and keep the inline DOM + ProseMirror attr in sync.
+   */
+  private _initTitleSync(): void {
+    // Clean up any previous listener
+    this._pageChangeDisposable?.dispose();
+    this._pageChangeDisposable = null;
+
+    if (!this._pageDataService) return;
+
+    // Fetch the canonical title from pages.title
+    this._pageDataService.getPage(this._databaseId).then(page => {
+      if (!page) return;
+      const canonical = page.title || 'Untitled';
+      if (canonical !== this._databaseTitle) {
+        this._databaseTitle = canonical;
+        if (this._titleEl && document.activeElement !== this._titleEl) {
+          this._titleEl.textContent = canonical;
+        }
+        // Keep ProseMirror attr in sync with canonical title
+        this._updateNodeAttrs?.({ databaseTitle: canonical });
+      }
+    }).catch(err => {
+      console.error('[DatabaseInlineNode] Title fetch failed:', err);
+    });
+
+    // Listen for external page changes
+    this._pageChangeDisposable = this._pageDataService.onDidChangePage(event => {
+      if (event.pageId !== this._databaseId || !event.page) return;
+      const canonical = event.page.title || 'Untitled';
+      if (canonical === this._databaseTitle) return;
+      this._databaseTitle = canonical;
+      // Update DOM (only if not currently being edited by the user)
+      if (this._titleEl && document.activeElement !== this._titleEl) {
+        this._titleEl.textContent = canonical;
+      }
+      // Keep ProseMirror attr in sync
+      this._updateNodeAttrs?.({ databaseTitle: canonical });
+    });
   }
 
   // ── Host Reload (on databaseId change) ───────────────────────────────
@@ -205,9 +294,9 @@ class DatabaseInlineNodeView {
     this._host?.dispose();
     this._host = null;
 
-    const tabBarSlot = this.dom.querySelector('.db-host-inline-tabbar') as HTMLElement;
-    const toolbarSlot = this.dom.querySelector('.db-host-inline-toolbar') as HTMLElement;
-    const toolbarPanelsSlot = this.dom.querySelector('.db-host-inline-toolbar-panels') as HTMLElement;
+    const tabBarSlot = this.dom.querySelector('.db-host-tabbar') as HTMLElement;
+    const toolbarSlot = this.dom.querySelector('.db-host-toolbar') as HTMLElement;
+    const toolbarPanelsSlot = this.dom.querySelector('.db-host-toolbar-panels') as HTMLElement;
     const contentSlot = this.dom.querySelector('.db-host-inline-content') as HTMLElement;
 
     if (!tabBarSlot || !toolbarSlot || !toolbarPanelsSlot || !contentSlot) return;
@@ -221,7 +310,7 @@ class DatabaseInlineNodeView {
 
     this._host = new DatabaseViewHost({
       databaseId: this._databaseId,
-      dataService: this._dataService,
+      dataService: this._dbDataService,
       openEditor: this._openEditor,
       slots: {
         tabBar: tabBarSlot,
@@ -271,7 +360,7 @@ class DatabaseInlineNodeView {
     if (!this._openEditor) return;
     this._openEditor({
       typeId: 'database',
-      title: 'Database',
+      title: this._databaseTitle,
       instanceId: this._databaseId,
     }).catch(err => {
       console.error('[DatabaseInlineNode] Failed to open full page:', err);
@@ -290,6 +379,7 @@ export const DatabaseInline = Node.create<DatabaseInlineOptions>({
   addOptions() {
     return {
       databaseDataService: undefined,
+      pageDataService: undefined,
       openEditor: undefined,
     };
   },
@@ -302,9 +392,9 @@ export const DatabaseInline = Node.create<DatabaseInlineOptions>({
         renderHTML: (attrs) => ({ 'data-database-id': attrs.databaseId }),
       },
       databaseTitle: {
-        default: 'New database',
-        parseHTML: (el) => el.getAttribute('data-database-title') ?? 'New database',
-        renderHTML: (attrs) => ({ 'data-database-title': attrs.databaseTitle ?? 'New database' }),
+        default: 'Untitled',
+        parseHTML: (el) => el.getAttribute('data-database-title') ?? 'Untitled',
+        renderHTML: (attrs) => ({ 'data-database-title': attrs.databaseTitle ?? 'Untitled' }),
       },
       viewId: {
         default: null,
@@ -343,7 +433,13 @@ export const DatabaseInline = Node.create<DatabaseInlineOptions>({
         editor.view.dispatch(tr);
       };
 
-      return new DatabaseInlineNodeView(node, dataService, updateNodeAttrs, this.options.openEditor);
+      return new DatabaseInlineNodeView(
+        node,
+        dataService,
+        this.options.pageDataService,
+        updateNodeAttrs,
+        this.options.openEditor,
+      );
     };
   },
 });
