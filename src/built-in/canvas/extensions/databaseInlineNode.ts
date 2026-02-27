@@ -131,7 +131,17 @@ class DatabaseInlineNodeView {
     headerActions.classList.add('db-host-inline-actions');
     header.appendChild(headerActions);
 
-    // Collapse/expand toolbar toggle
+    // Open full-page button (created first so toggle handler can reference it)
+    const expandBtn = document.createElement('button');
+    expandBtn.classList.add('db-host-inline-expand-btn');
+    expandBtn.title = 'Open as full page';
+    expandBtn.innerHTML = svgIcon('open');
+    expandBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._openFullPage();
+    });
+
+    // Collapse/expand toolbar toggle (settings icon — always visible)
     const toolbarToggleBtn = document.createElement('button');
     toolbarToggleBtn.classList.add('db-host-inline-action-btn', 'db-host-inline-toolbar-toggle');
     toolbarToggleBtn.title = 'Hide toolbar actions';
@@ -143,18 +153,9 @@ class DatabaseInlineNodeView {
       toolbarToggleBtn.title = this._toolbarCollapsed ? 'Show toolbar actions' : 'Hide toolbar actions';
       toolbarToggleBtn.innerHTML = this._toolbarCollapsed ? svgIcon('db-expand') : svgIcon('db-collapse');
       this._host?.setToolbarCollapsed(this._toolbarCollapsed);
+      expandBtn.style.display = this._toolbarCollapsed ? 'none' : '';
     });
     headerActions.appendChild(toolbarToggleBtn);
-
-    // Open full-page button
-    const expandBtn = document.createElement('button');
-    expandBtn.classList.add('db-host-inline-expand-btn');
-    expandBtn.title = 'Open as full page';
-    expandBtn.innerHTML = svgIcon('open');
-    expandBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._openFullPage();
-    });
     headerActions.appendChild(expandBtn);
 
     // Toolbar slot — sits on the same line as the title, far right
