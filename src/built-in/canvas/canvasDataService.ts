@@ -95,6 +95,13 @@ function collectLinkedChildPageIds(node: any, result: Set<string>): void {
     }
   }
 
+  if (nodeType === 'databaseFullPage') {
+    const databaseId = attrs?.databaseId;
+    if (typeof databaseId === 'string' && databaseId.trim().length > 0) {
+      result.add(databaseId);
+    }
+  }
+
   const children = Array.isArray((node as any).content) ? (node as any).content : [];
   for (const child of children) {
     collectLinkedChildPageIds(child, result);
@@ -1093,8 +1100,9 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     const nodeType = typeof node.type === 'string' ? node.type : '';
     const isTargetPageBlock = nodeType === 'pageBlock' && attrs?.pageId === targetPageId;
     const isTargetDatabaseInline = nodeType === 'databaseInline' && attrs?.databaseId === targetPageId;
+    const isTargetDatabaseFullPage = nodeType === 'databaseFullPage' && attrs?.databaseId === targetPageId;
 
-    if (isTargetPageBlock || isTargetDatabaseInline) {
+    if (isTargetPageBlock || isTargetDatabaseInline || isTargetDatabaseFullPage) {
       return { node: null, changed: true };
     }
 

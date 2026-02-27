@@ -31,6 +31,7 @@ import { PageBlock } from '../extensions/pageBlockNode.js';
 import { TableOfContents } from '../extensions/tableOfContentsNode.js';
 import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
 import { DatabaseInline } from '../extensions/databaseInlineNode.js';
+import { DatabaseFullPage } from '../extensions/databaseFullPageNode.js';
 // Types
 import type { AnyExtension, Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
@@ -844,12 +845,12 @@ const definitions: BlockDefinition[] = [
     extension: () => FileAttachment,
   },
 
-  // ── Inline Database blocks ──
+  // ── Database blocks ──
 
   {
     id: 'databaseInline',
     name: 'databaseInline',
-    label: 'Database — Inline',
+    label: 'Database - Inline',
     icon: 'database',
     source: 'custom',
     kind: 'atom',
@@ -901,14 +902,76 @@ const definitions: BlockDefinition[] = [
     }),
   },
   {
+    id: 'databaseFullPage',
+    name: 'databaseFullPage',
+    label: 'Database - Full page',
+    icon: 'database',
+    iconSelectable: true,
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Create a full-page database', order: 73, category: 'advanced' },
+    turnInto: undefined,
+    defaultContent: undefined,
+    insertAction: async (editor, range, context) => {
+      if (!context?.dataService || !context.pageId || !context.databaseDataService) return;
+
+      let childPage: { id: string; title: string; icon: string | null } | null = null;
+      try {
+        // Create a page to host the database (with database icon)
+        childPage = await context.dataService.createPage(context.pageId, 'Untitled');
+        await context.dataService.updatePage(childPage.id, { icon: 'database' });
+        // Create the database record on that page
+        await context.databaseDataService.createDatabase(childPage.id);
+
+        // Insert a full-page database block on the parent page
+        const inserted = editor
+          .chain()
+          .insertContentAt(range, {
+            type: 'databaseFullPage',
+            attrs: { databaseId: childPage.id, title: childPage.title, icon: 'database' },
+          })
+          .focus()
+          .run();
+
+        if (!inserted) throw new Error('Failed to insert databaseFullPage node');
+
+        // Flush parent doc
+        const docJson = editor.getJSON();
+        await context.dataService.flushContentSave(context.pageId, docJson);
+
+        // Open the new database in the editor
+        if (context.openEditor) {
+          await context.openEditor({
+            typeId: 'database',
+            title: childPage.title,
+            icon: 'database',
+            instanceId: childPage.id,
+          });
+        }
+      } catch (error) {
+        if (childPage) {
+          try { await context.databaseDataService.deleteDatabase(childPage.id); } catch { /* best-effort */ }
+          try { await context.dataService.deletePage(childPage.id); } catch { /* best-effort */ }
+        }
+        throw error;
+      }
+    },
+    extension: (ctx) => DatabaseFullPage.configure({
+      dataService: ctx.dataService,
+      openEditor: ctx.openEditor,
+      showIconPicker: ctx.showIconPicker,
+    }),
+  },
+  {
     id: 'linkedView',
     name: 'databaseInline',
-    label: 'Linked View',
+    label: 'Linked view of data source',
     icon: 'database-link',
     source: 'custom',
     kind: 'atom',
     capabilities: CUSTOM_DRAG,
-    slashMenu: { description: 'Linked view of an existing database', order: 73, category: 'advanced' },
+    slashMenu: { description: 'Linked view of an existing database', order: 74, category: 'advanced' },
     turnInto: undefined,
     defaultContent: undefined,
     insertAction: async (editor, range, context) => {

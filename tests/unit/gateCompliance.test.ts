@@ -129,6 +129,7 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/tableOfContentsNode.ts':     [],
   'extensions/toggleHeadingNode.ts':       [],
   'extensions/databaseInlineNode.ts':      ['config/blockRegistry'],
+  'extensions/databaseFullPageNode.ts':    ['config/blockRegistry'],
 
   // structuralInvariantPlugin imports from invariants/ — same pattern.
   'plugins/structuralInvariantPlugin.ts':  ['invariants/'],

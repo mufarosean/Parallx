@@ -73,8 +73,9 @@ const UNIQUE_ID_BLOCK_TYPES: string[] = [
   'columnList',
   'column',
 
-  // ── Inline database ──
+  // ── Database blocks ──
   'databaseInline',
+  'databaseFullPage',
 ];
 
 /**

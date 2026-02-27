@@ -37,6 +37,7 @@ function _getLinkedPageId(node: any): string | undefined {
   const typeName: string = node?.type?.name;
   if (typeName === 'pageBlock') return node.attrs?.pageId as string | undefined;
   if (typeName === 'databaseInline') return node.attrs?.databaseId as string | undefined;
+  if (typeName === 'databaseFullPage') return node.attrs?.databaseId as string | undefined;
   return undefined;
 }
 

@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { DatabaseInline } from '../../src/built-in/canvas/extensions/databaseInlineNode';
+import { DatabaseFullPage } from '../../src/built-in/canvas/extensions/databaseFullPageNode';
 import {
   BLOCK_REGISTRY,
   getSlashMenuBlocks,
@@ -49,7 +50,7 @@ describe('Block Registry — inline database entries', () => {
     const def = BLOCK_REGISTRY.get('databaseInline');
     expect(def).toBeDefined();
     expect(def!.name).toBe('databaseInline');
-    expect(def!.label).toBe('Database — Inline');
+    expect(def!.label).toBe('Database - Inline');
     expect(def!.kind).toBe('atom');
     expect(def!.source).toBe('custom');
   });
@@ -58,7 +59,7 @@ describe('Block Registry — inline database entries', () => {
     const def = BLOCK_REGISTRY.get('linkedView');
     expect(def).toBeDefined();
     expect(def!.name).toBe('databaseInline');
-    expect(def!.label).toBe('Linked View');
+    expect(def!.label).toBe('Linked view of data source');
     expect(def!.kind).toBe('atom');
   });
 
@@ -84,35 +85,46 @@ describe('Block Registry — inline database entries', () => {
     expect(def!.slashMenu!.description).toContain('Linked view');
   });
 
-  it('both have insertAction callbacks', () => {
+  it('all three have insertAction callbacks', () => {
     const dbInline = BLOCK_REGISTRY.get('databaseInline');
+    const dbFull = BLOCK_REGISTRY.get('databaseFullPage');
     const linked = BLOCK_REGISTRY.get('linkedView');
     expect(typeof dbInline!.insertAction).toBe('function');
+    expect(typeof dbFull!.insertAction).toBe('function');
     expect(typeof linked!.insertAction).toBe('function');
   });
 
-  it('both have customDragHandle capability', () => {
+  it('all three have customDragHandle capability', () => {
     const dbInline = BLOCK_REGISTRY.get('databaseInline');
+    const dbFull = BLOCK_REGISTRY.get('databaseFullPage');
     const linked = BLOCK_REGISTRY.get('linkedView');
     expect(dbInline!.capabilities.customDragHandle).toBe(true);
+    expect(dbFull!.capabilities.customDragHandle).toBe(true);
     expect(linked!.capabilities.customDragHandle).toBe(true);
   });
 
-  it('both are not page containers', () => {
+  it('all three are not page containers', () => {
     const dbInline = BLOCK_REGISTRY.get('databaseInline');
+    const dbFull = BLOCK_REGISTRY.get('databaseFullPage');
     const linked = BLOCK_REGISTRY.get('linkedView');
     expect(dbInline!.capabilities.isPageContainer).toBe(false);
+    expect(dbFull!.capabilities.isPageContainer).toBe(false);
     expect(linked!.capabilities.isPageContainer).toBe(false);
   });
 });
 
 // ─── Slash Menu Registration ─────────────────────────────────────────────────
 
-describe('Slash menu — inline database items', () => {
+describe('Slash menu — database items', () => {
   const slashItems = getSlashMenuBlocks();
 
   it('includes databaseInline in the slash menu', () => {
     const found = slashItems.find(d => d.id === 'databaseInline');
+    expect(found).toBeDefined();
+  });
+
+  it('includes databaseFullPage in the slash menu', () => {
+    const found = slashItems.find(d => d.id === 'databaseFullPage');
     expect(found).toBeDefined();
   });
 
@@ -121,10 +133,12 @@ describe('Slash menu — inline database items', () => {
     expect(found).toBeDefined();
   });
 
-  it('databaseInline appears before linkedView', () => {
+  it('order: databaseInline < databaseFullPage < linkedView', () => {
     const dbIdx = slashItems.findIndex(d => d.id === 'databaseInline');
+    const fullIdx = slashItems.findIndex(d => d.id === 'databaseFullPage');
     const lvIdx = slashItems.findIndex(d => d.id === 'linkedView');
-    expect(dbIdx).toBeLessThan(lvIdx);
+    expect(dbIdx).toBeLessThan(fullIdx);
+    expect(fullIdx).toBeLessThan(lvIdx);
   });
 });
 
@@ -143,6 +157,159 @@ describe('DatabaseInline NodeView — no service', () => {
     // The extension is configured — it will produce error DOM at runtime
     // We verify the extension exists and can be configured without errors
     expect(ext).toBeDefined();
+  });
+});
+
+// ─── DatabaseFullPage Extension ──────────────────────────────────────────────
+
+describe('DatabaseFullPage extension', () => {
+  const ext = DatabaseFullPage.configure({});
+
+  it('has the correct name', () => {
+    expect(ext.name).toBe('databaseFullPage');
+  });
+
+  it('is declared as an atom node', () => {
+    const config = (ext as any).config;
+    expect(config?.atom ?? (ext as any).options?.atom).toBeDefined;
+  });
+
+  it('is draggable', () => {
+    const config = (ext as any).config;
+    expect(config?.draggable).not.toBe(false);
+  });
+});
+
+describe('Block Registry — databaseFullPage entry', () => {
+  it('has a databaseFullPage definition', () => {
+    const def = BLOCK_REGISTRY.get('databaseFullPage');
+    expect(def).toBeDefined();
+    expect(def!.name).toBe('databaseFullPage');
+    expect(def!.label).toBe('Database - Full page');
+    expect(def!.kind).toBe('atom');
+    expect(def!.source).toBe('custom');
+    expect(def!.icon).toBe('database');
+  });
+
+  it('has an extension factory', () => {
+    const def = BLOCK_REGISTRY.get('databaseFullPage');
+    expect(typeof def!.extension).toBe('function');
+  });
+
+  it('has a slash menu config', () => {
+    const def = BLOCK_REGISTRY.get('databaseFullPage');
+    expect(def!.slashMenu).toBeDefined();
+    expect(def!.slashMenu!.description).toContain('full-page database');
+  });
+
+  it('has iconSelectable set', () => {
+    const def = BLOCK_REGISTRY.get('databaseFullPage');
+    expect(def!.iconSelectable).toBe(true);
+  });
+});
+
+// ─── InsertAction — databaseFullPage ─────────────────────────────────────────
+
+describe('InsertAction — databaseFullPage', () => {
+  it('does nothing when dataService is missing', async () => {
+    const def = BLOCK_REGISTRY.get('databaseFullPage');
+    const mockEditor = { chain: vi.fn() } as any;
+    const range = { from: 0, to: 1 };
+    const context = {
+      pageId: undefined,
+      dataService: undefined,
+      databaseDataService: undefined,
+    } as any;
+
+    await def!.insertAction!(mockEditor, range, context);
+    expect(mockEditor.chain).not.toHaveBeenCalled();
+  });
+
+  it('creates page, database, inserts block, and opens editor', async () => {
+    const def = BLOCK_REGISTRY.get('databaseFullPage');
+    const mockChainResult = {
+      insertContentAt: vi.fn().mockReturnThis(),
+      focus: vi.fn().mockReturnThis(),
+      run: vi.fn().mockReturnValue(true),
+    };
+    const mockEditor = {
+      chain: vi.fn().mockReturnValue(mockChainResult),
+      getJSON: vi.fn().mockReturnValue({ type: 'doc', content: [] }),
+    } as any;
+    const range = { from: 0, to: 1 };
+
+    const mockOpenEditor = vi.fn().mockResolvedValue(undefined);
+    const mockDataService = {
+      createPage: vi.fn().mockResolvedValue({ id: 'db-page', title: 'Untitled', icon: null }),
+      updatePage: vi.fn().mockResolvedValue({ id: 'db-page', title: 'Untitled', icon: 'database' }),
+      flushContentSave: vi.fn().mockResolvedValue(undefined),
+      deletePage: vi.fn(),
+    };
+    const mockDbService = {
+      createDatabase: vi.fn().mockResolvedValue({ id: 'db-page' }),
+      deleteDatabase: vi.fn(),
+    };
+    const context = {
+      pageId: 'parent-page',
+      dataService: mockDataService,
+      databaseDataService: mockDbService,
+      openEditor: mockOpenEditor,
+      showImageInsertPopup: vi.fn(),
+      showMediaInsertPopup: vi.fn(),
+      showBookmarkInsertPopup: vi.fn(),
+    } as any;
+
+    await def!.insertAction!(mockEditor, range, context);
+
+    expect(mockDataService.createPage).toHaveBeenCalledWith('parent-page', 'Untitled');
+    expect(mockDataService.updatePage).toHaveBeenCalledWith('db-page', { icon: 'database' });
+    expect(mockDbService.createDatabase).toHaveBeenCalledWith('db-page');
+    expect(mockChainResult.insertContentAt).toHaveBeenCalledWith(
+      range,
+      expect.objectContaining({
+        type: 'databaseFullPage',
+        attrs: expect.objectContaining({ databaseId: 'db-page', icon: 'database' }),
+      }),
+    );
+    expect(mockOpenEditor).toHaveBeenCalledWith(
+      expect.objectContaining({ typeId: 'database', instanceId: 'db-page' }),
+    );
+  });
+
+  it('rolls back on insert failure', async () => {
+    const def = BLOCK_REGISTRY.get('databaseFullPage');
+    const mockChainResult = {
+      insertContentAt: vi.fn().mockReturnThis(),
+      focus: vi.fn().mockReturnThis(),
+      run: vi.fn().mockReturnValue(false),
+    };
+    const mockEditor = {
+      chain: vi.fn().mockReturnValue(mockChainResult),
+    } as any;
+    const range = { from: 0, to: 1 };
+
+    const mockDataService = {
+      createPage: vi.fn().mockResolvedValue({ id: 'db-page', title: 'Untitled', icon: null }),
+      updatePage: vi.fn().mockResolvedValue({ id: 'db-page', title: 'Untitled', icon: 'database' }),
+      deletePage: vi.fn(),
+    };
+    const mockDbService = {
+      createDatabase: vi.fn().mockResolvedValue({ id: 'db-page' }),
+      deleteDatabase: vi.fn(),
+    };
+    const context = {
+      pageId: 'parent-page',
+      dataService: mockDataService,
+      databaseDataService: mockDbService,
+      openEditor: vi.fn(),
+      showImageInsertPopup: vi.fn(),
+      showMediaInsertPopup: vi.fn(),
+      showBookmarkInsertPopup: vi.fn(),
+    } as any;
+
+    await expect(def!.insertAction!(mockEditor, range, context)).rejects.toThrow();
+    expect(mockDbService.deleteDatabase).toHaveBeenCalledWith('db-page');
+    expect(mockDataService.deletePage).toHaveBeenCalledWith('db-page');
   });
 });
 

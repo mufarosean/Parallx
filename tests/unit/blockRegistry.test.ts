@@ -26,14 +26,14 @@ const ORIGINAL_COLUMN_BLOCK_NODE_TYPES = [
   'blockquote', 'codeBlock', 'horizontalRule', 'image', 'table',
   'callout', 'details', 'toggleHeading', 'mathBlock', 'pageBlock',
   'bookmark', 'tableOfContents', 'video', 'audio', 'fileAttachment',
-  'databaseInline',
+  'databaseInline', 'databaseFullPage',
 ];
 
 /** From blockCapabilities.ts */
 const ORIGINAL_DRAG_HANDLE_CUSTOM_NODE_TYPES = [
   'mathBlock', 'callout', 'details', 'toggleHeading', 'pageBlock',
   'bookmark', 'tableOfContents', 'video', 'audio', 'fileAttachment',
-  'horizontalRule', 'image', 'databaseInline',
+  'horizontalRule', 'image', 'databaseInline', 'databaseFullPage',
 ];
 
 /** From blockHandles.ts, blockSelection.ts, blockMutations.ts, columnDropPlugin.ts */
@@ -136,8 +136,8 @@ describe('blockRegistry', () => {
       }
     });
 
-    it('returns 29 slash menu items', () => {
-      expect(getSlashMenuBlocks()).toHaveLength(29);
+    it('returns 30 slash menu items', () => {
+      expect(getSlashMenuBlocks()).toHaveLength(30);
     });
 
     it('includes Page as the first item (order 0)', () => {
@@ -214,11 +214,11 @@ describe('blockRegistry', () => {
       'Toggle Heading 1', 'Toggle Heading 2', 'Toggle Heading 3',
       '2 Columns', '3 Columns', '4 Columns',
       'Bookmark', 'Table of Contents',
-      'Database — Inline', 'Linked View',
+      'Database - Inline', 'Database - Full page', 'Linked view of data source',
     ];
 
-    it('produces 29 items', () => {
-      expect(SLASH_MENU_ITEMS).toHaveLength(29);
+    it('produces 30 items', () => {
+      expect(SLASH_MENU_ITEMS).toHaveLength(30);
     });
 
     it('preserves all original labels', () => {
