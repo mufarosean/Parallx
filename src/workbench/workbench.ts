@@ -17,6 +17,7 @@ import { URI } from '../platform/uri.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices, registerChatServices } from './workbenchServices.js';
+import { IChatService } from '../services/chatTypes.js';
 
 // Layout base class (VS Code: Layout → Workbench extends Layout)
 import {
@@ -1836,6 +1837,16 @@ export class Workbench extends Layout {
     this._services.registerInstance(IDatabaseService, this._databaseService);
     // Open database for current workspace if a folder is open
     await this._openDatabaseForWorkspace();
+
+    // Late-bind the database into ChatService — it was created in Phase 1
+    // before the DatabaseService existed. Now that the DB is open we can
+    // hand it over and restore persisted sessions.
+    if (this._databaseService.isOpen && this._services.has(IChatService)) {
+      const chatService = this._services.get<IChatService>(IChatService);
+      chatService.setDatabase(this._databaseService as any);
+      chatService.restoreSessions().catch(() => { /* best-effort */ });
+    }
+
     // React to workspace folder changes (open/close database)
     this._register(this._workspace.onDidChangeFolders(() => {
       this._openDatabaseForWorkspace();

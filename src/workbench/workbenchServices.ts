@@ -1,7 +1,7 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
@@ -179,7 +179,7 @@ export function registerChatServices(
     chatAgentService,
     chatModeService,
     languageModelsService,
-    services.has(IDatabaseService) ? services.get<import('../services/serviceTypes.js').IDatabaseService>(IDatabaseService) as any : undefined,
+    undefined, // database is late-bound via setDatabase() after Phase 5 opens it
   );
 
   services.registerInstance(ILanguageModelsService, languageModelsService);

@@ -314,7 +314,7 @@ export class ChatService extends Disposable implements IChatService {
   private readonly _agentService: IChatAgentService;
   private readonly _modeService: IChatModeService;
   private readonly _languageModelsService: ILanguageModelsService;
-  private readonly _database: IChatPersistenceDatabase | undefined;
+  private _database: IChatPersistenceDatabase | undefined;
 
   /** Debounce timer for persistence writes. */
   private _persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -348,6 +348,18 @@ export class ChatService extends Disposable implements IChatService {
     if (database) {
       ensureChatTables(database).catch(() => { /* persistence is best-effort */ });
     }
+  }
+
+  /**
+   * Late-bind a database for persistence.
+   *
+   * ChatService is created in Phase 1 (Services) before the DatabaseService
+   * exists. The workbench calls this in Phase 5 (Ready) after the database
+   * is opened, then triggers restoreSessions().
+   */
+  setDatabase(database: IChatPersistenceDatabase): void {
+    this._database = database;
+    ensureChatTables(database).catch(() => { /* persistence is best-effort */ });
   }
 
   // ── Session Persistence ──

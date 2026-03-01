@@ -674,6 +674,8 @@ export interface IChatService extends IDisposable {
   getSessions(): readonly IChatSession[];
   /** Restore persisted sessions from database. Called once on startup. */
   restoreSessions(): Promise<void>;
+  /** Late-bind a database for persistence (called after DB opens in Phase 5). */
+  setDatabase(database: import('./chatSessionPersistence.js').IChatPersistenceDatabase): void;
   /** Send a user message and orchestrate the full request pipeline. */
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
   /** Cancel the in-progress request for a session. */
