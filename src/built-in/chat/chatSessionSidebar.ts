@@ -102,7 +102,7 @@ export class ChatSessionSidebar extends Disposable {
 
   // ── State ──
 
-  private _visible = false;
+  private _visible = true;
   private _activeSessionId: string | undefined;
   private _filterText = '';
   private _collapsedGroups = new Set<DateGroup>();
@@ -184,8 +184,9 @@ export class ChatSessionSidebar extends Disposable {
     this._emptyEl.style.display = 'none';
     this._root.appendChild(this._emptyEl);
 
-    // Initial state: hidden
+    // Initial state: visible by default
     this._applyVisibility();
+    this._renderSessionList();
   }
 
   // ── Public API ──

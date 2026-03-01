@@ -175,7 +175,7 @@ describe('ChatSessionSidebar', () => {
     document.body.appendChild(container);
   });
 
-  it('renders hidden by default', async () => {
+  it('renders visible by default with sessions', async () => {
     const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
@@ -186,15 +186,19 @@ describe('ChatSessionSidebar', () => {
     const root = container.querySelector('.parallx-chat-session-sidebar');
     expect(root).toBeTruthy();
 
-    // Should be hidden by default (no --visible class)
-    expect(sidebar.isVisible).toBe(false);
-    expect(sidebar.isExpanded).toBe(false); // alias
-    expect(root!.classList.contains('parallx-chat-session-sidebar--visible')).toBe(false);
+    // Should be visible by default
+    expect(sidebar.isVisible).toBe(true);
+    expect(sidebar.isExpanded).toBe(true); // alias
+    expect(root!.classList.contains('parallx-chat-session-sidebar--visible')).toBe(true);
+
+    // Sessions should already be rendered
+    const items = container.querySelectorAll('.parallx-chat-session-sidebar-item');
+    expect(items.length).toBe(3);
 
     sidebar.dispose();
   });
 
-  it('toggle() shows panel and renders sessions', async () => {
+  it('toggle() hides panel when visible by default', async () => {
     const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
@@ -202,14 +206,15 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
-    sidebar.toggle();
+    // Starts visible
     expect(sidebar.isVisible).toBe(true);
 
-    const root = container.querySelector('.parallx-chat-session-sidebar');
-    expect(root!.classList.contains('parallx-chat-session-sidebar--visible')).toBe(true);
+    // First toggle hides it
+    sidebar.toggle();
+    expect(sidebar.isVisible).toBe(false);
 
-    const items = container.querySelectorAll('.parallx-chat-session-sidebar-item');
-    expect(items.length).toBe(3);
+    const root = container.querySelector('.parallx-chat-session-sidebar');
+    expect(root!.classList.contains('parallx-chat-session-sidebar--visible')).toBe(false);
 
     sidebar.dispose();
   });
@@ -221,8 +226,6 @@ describe('ChatSessionSidebar', () => {
       getSessions: () => mockSessions as any,
       deleteSession: vi.fn(),
     });
-
-    sidebar.toggle();
 
     const sectionHeaders = container.querySelectorAll('.parallx-chat-session-sidebar-section-header');
     // Should have 3 groups: Today, Last 7 Days, Older
@@ -250,9 +253,7 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
-    sidebar.toggle();
-
-    // Initially 3 items
+    // Initially 3 items (visible by default)
     expect(container.querySelectorAll('.parallx-chat-session-sidebar-item').length).toBe(3);
 
     // Click the "Today" section header to collapse it
@@ -277,8 +278,6 @@ describe('ChatSessionSidebar', () => {
       getSessions: () => mockSessions as any,
       deleteSession: vi.fn(),
     });
-
-    sidebar.toggle();
 
     const titles = container.querySelectorAll('.parallx-chat-session-sidebar-item-title');
     expect(titles[0]!.textContent).toBe('Today Chat');
@@ -305,8 +304,6 @@ describe('ChatSessionSidebar', () => {
     const spy = vi.fn();
     sidebar.onDidSelectSession(spy);
 
-    sidebar.toggle();
-
     const infoEl = container.querySelector('.parallx-chat-session-sidebar-item-info') as HTMLElement;
     infoEl.click();
     expect(spy).toHaveBeenCalledWith('session-today');
@@ -314,7 +311,7 @@ describe('ChatSessionSidebar', () => {
     sidebar.dispose();
   });
 
-  it('second toggle() hides the panel', async () => {
+  it('double toggle() restores panel to visible', async () => {
     const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
@@ -322,11 +319,12 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
-    sidebar.toggle();
-    expect(sidebar.isVisible).toBe(true);
-
+    // Starts visible → toggle hides → toggle shows again
     sidebar.toggle();
     expect(sidebar.isVisible).toBe(false);
+
+    sidebar.toggle();
+    expect(sidebar.isVisible).toBe(true);
 
     sidebar.dispose();
   });
@@ -339,8 +337,7 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
-    sidebar.toggle();
-
+    // Visible by default — empty state should already be rendered
     const empty = container.querySelector('.parallx-chat-session-sidebar-empty');
     expect(empty).toBeTruthy();
     expect(empty!.textContent).toContain('No sessions yet');
@@ -357,7 +354,6 @@ describe('ChatSessionSidebar', () => {
     });
 
     sidebar.setActiveSession('session-today');
-    sidebar.toggle();
 
     const activeItem = container.querySelector('.parallx-chat-session-sidebar-item--active');
     expect(activeItem).toBeTruthy();
@@ -375,8 +371,6 @@ describe('ChatSessionSidebar', () => {
       getSessions: () => mockSessions as any,
       deleteSession: deleteSpy,
     });
-
-    sidebar.toggle();
 
     const deleteBtn = container.querySelector('.parallx-chat-session-sidebar-item-delete') as HTMLButtonElement;
     expect(deleteBtn).toBeTruthy();
@@ -416,11 +410,12 @@ describe('ChatSessionSidebar', () => {
     const spy = vi.fn();
     sidebar.onDidToggle(spy);
 
-    sidebar.toggle();
-    expect(spy).toHaveBeenCalledWith(true);
-
+    // Starts visible, first toggle hides
     sidebar.toggle();
     expect(spy).toHaveBeenCalledWith(false);
+
+    sidebar.toggle();
+    expect(spy).toHaveBeenCalledWith(true);
 
     sidebar.dispose();
   });
@@ -433,9 +428,7 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
-    sidebar.toggle();
-
-    // Initially 3 sessions
+    // Initially 3 sessions (visible by default)
     expect(container.querySelectorAll('.parallx-chat-session-sidebar-item').length).toBe(3);
 
     // Toggle filter visible by clicking search button
@@ -466,9 +459,7 @@ describe('ChatSessionSidebar', () => {
       deleteSession: vi.fn(),
     });
 
-    sidebar.toggle();
-
-    // Toggle filter visible
+    // Toggle filter visible (sidebar already visible by default)
     const searchBtn = container.querySelectorAll('.parallx-chat-sidebar-btn')[1] as HTMLButtonElement;
     searchBtn.click();
 
