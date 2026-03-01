@@ -1,14 +1,11 @@
 // chatWidget.ts — Core chat widget (M9 Task 3.3)
 //
-// Two-region layout: scrollable message list + bottom-pinned input area.
-// Manages session binding, input submission, auto-scroll, empty/offline states.
+// Three-region layout: header + scrollable message list + bottom-pinned input area.
+// Manages session binding, input submission, auto-scroll, empty/offline states,
+// session history, and context/token indicator.
 //
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/browser/widget/chatWidget.ts
-//
-// Note: M9.0 uses DOM-based message rendering. The Tiptap read-only
-// instance integration (per M9 doc) will be wired in Task 3.6 once the
-// custom node types are defined. The structural shell is identical either way.
 
 import './chatWidget.css';
 
@@ -24,6 +21,11 @@ import { ChatModelPicker } from './chatModelPicker.js';
 import type { IModelPickerServices } from './chatModelPicker.js';
 import { ChatModePicker } from './chatModePicker.js';
 import type { IModePickerServices } from './chatModePicker.js';
+import { ChatHeaderPart } from './chatHeaderPart.js';
+import { ChatSessionHistory } from './chatSessionHistory.js';
+import type { ISessionHistoryServices } from './chatSessionHistory.js';
+import { ChatContextIndicator } from './chatContextIndicator.js';
+import type { IContextIndicatorServices } from './chatContextIndicator.js';
 import type {
   IChatSession,
   IChatWidgetDescriptor,
@@ -43,6 +45,16 @@ export interface IChatWidgetServices {
   readonly modelPicker?: IModelPickerServices;
   /** Optional mode picker services — when provided, the mode picker is shown. */
   readonly modePicker?: IModePickerServices;
+  /** Session history services — list, switch, delete sessions. */
+  readonly sessionHistory?: ISessionHistoryServices;
+  /** Context window indicator services. */
+  readonly contextIndicator?: IContextIndicatorServices;
+  /** Get a session by ID (for session switching from history). */
+  readonly getSession?: (sessionId: string) => IChatSession | undefined;
+  /** Get all sessions. */
+  readonly getSessions?: () => readonly IChatSession[];
+  /** Delete a session by ID. */
+  readonly deleteSession?: (sessionId: string) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -72,8 +84,10 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   // ── DOM Elements ──
 
   private readonly _root: HTMLElement;
+  private readonly _headerContainer: HTMLElement;
   private readonly _messageListContainer: HTMLElement;
   private readonly _scrollBtn: HTMLElement;
+  private readonly _contextContainer: HTMLElement;
   private readonly _inputAreaContainer: HTMLElement;
   private readonly _emptyStateEl: HTMLElement;
   private readonly _offlineStateEl: HTMLElement;
@@ -82,6 +96,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
   private readonly _inputPart: ChatInputPart;
   private readonly _listRenderer: ChatListRenderer;
+  private readonly _headerPart: ChatHeaderPart;
+  private readonly _sessionHistory: ChatSessionHistory;
+  private readonly _contextIndicator: ChatContextIndicator;
 
   // ── Services ──
 
@@ -117,6 +134,28 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     container.appendChild(this._root);
     this._register(toDisposable(() => this._root.remove()));
 
+    // Header (top-pinned — new chat, history, clear)
+    this._headerContainer = $('div.parallx-chat-header-container');
+    this._root.appendChild(this._headerContainer);
+
+    this._headerPart = this._register(new ChatHeaderPart(this._headerContainer));
+    this._register(this._headerPart.onNewChat(() => this._handleNewChat()));
+    this._register(this._headerPart.onToggleHistory(() => this._handleToggleHistory()));
+    this._register(this._headerPart.onClearSession(() => this._handleClearSession()));
+
+    // Session History overlay (attached to root for absolute positioning)
+    const historyServices: ISessionHistoryServices = {
+      getSessions: () => this._services.getSessions?.() ?? [],
+      deleteSession: (id) => this._services.deleteSession?.(id),
+    };
+    this._sessionHistory = this._register(new ChatSessionHistory(this._root, historyServices));
+    this._register(this._sessionHistory.onDidSelectSession((sessionId) => {
+      const session = this._services.getSession?.(sessionId);
+      if (session) {
+        this.setSession(session);
+      }
+    }));
+
     // Message list (scrollable)
     this._messageListContainer = $('div.parallx-chat-message-list');
     this._root.appendChild(this._messageListContainer);
@@ -124,6 +163,17 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // Scroll-to-bottom button (overlaid on message list)
     this._scrollBtn = $('div.parallx-chat-scroll-btn', '\u2193');
     this._root.appendChild(this._scrollBtn);
+
+    // Context indicator (between message list and input)
+    this._contextContainer = $('div.parallx-chat-context-container');
+    this._root.appendChild(this._contextContainer);
+
+    const contextServices: IContextIndicatorServices = services.contextIndicator ?? {
+      getContextLength: () => 0,
+    };
+    this._contextIndicator = this._register(new ChatContextIndicator(
+      this._contextContainer, contextServices,
+    ));
 
     // Input area (bottom-pinned)
     this._inputAreaContainer = $('div.parallx-chat-input-area');
@@ -208,6 +258,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._session = session;
     this._renderMessages();
     this._updateVisibility();
+    this._updateHeader();
+    this._updateContextIndicator();
     this._scrollToBottom();
     this._inputPart.setStreaming(session.requestInProgress);
     this._inputPart.focus();
@@ -293,6 +345,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     );
 
     this._updateVisibility();
+    this._updateHeader();
+    this._updateContextIndicator();
 
     // Auto-scroll if user was at bottom
     if (this._isAtBottom) {
@@ -344,17 +398,110 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._scrollBtn.classList.remove('parallx-chat-scroll-btn--visible');
   }
 
+  // ── Header / Context Updates ──
+
+  private _updateHeader(): void {
+    if (!this._session) {
+      this._headerPart.setTitle('Chat');
+      this._headerPart.setSessionInfo('');
+      return;
+    }
+    const msgCount = this._session.messages.length;
+    this._headerPart.setTitle(this._session.title || 'New Chat');
+    const modeLabel = this._session.mode
+      ? this._session.mode.charAt(0).toUpperCase() + this._session.mode.slice(1)
+      : '';
+    this._headerPart.setSessionInfo(
+      msgCount > 0
+        ? `${msgCount} message${msgCount !== 1 ? 's' : ''}${modeLabel ? ` \u00B7 ${modeLabel}` : ''}`
+        : modeLabel || '',
+    );
+  }
+
+  private _updateContextIndicator(): void {
+    if (!this._session || this._session.messages.length === 0) {
+      this._contextIndicator.hide();
+      return;
+    }
+    // Count all characters in the conversation
+    let totalChars = 0;
+    for (const pair of this._session.messages) {
+      totalChars += pair.request.text.length;
+      for (const part of pair.response.parts) {
+        if ('value' in part && typeof part.value === 'string') {
+          totalChars += part.value.length;
+        }
+        if ('code' in part && typeof part.code === 'string') {
+          totalChars += part.code.length;
+        }
+      }
+    }
+    this._contextIndicator.update(totalChars);
+  }
+
+  // ── Header Action Handlers ──
+
+  private _handleNewChat(): void {
+    const session = this._services.createSession();
+    this.setSession(session);
+  }
+
+  private _handleToggleHistory(): void {
+    this._sessionHistory.toggle(this._session?.id);
+  }
+
+  private _handleClearSession(): void {
+    if (this._session) {
+      this._services.deleteSession?.(this._session.id);
+    }
+    const newSession = this._services.createSession();
+    this.setSession(newSession);
+  }
+
   // ── Empty / Offline State Builders ──
 
   private _buildEmptyState(): HTMLElement {
     const root = $('div.parallx-chat-empty-state');
 
-    const icon = $('div.parallx-chat-empty-state-icon', '\u{1F4AC}');
-    const title = $('div.parallx-chat-empty-state-title', 'Start a conversation');
+    const icon = $('div.parallx-chat-empty-state-icon', '\u2728');
+    const title = $('div.parallx-chat-empty-state-title', 'How can I help you?');
     const subtitle = $('div.parallx-chat-empty-state-subtitle',
-      'Ask a question or type a message to get started with your local AI assistant.');
+      'Ask questions, get explanations, or let AI help with your workspace.');
 
     append(root, icon, title, subtitle);
+
+    // Feature hints
+    const hints = $('div.parallx-chat-empty-state-hints');
+
+    const hintItems: { icon: string; label: string; description: string }[] = [
+      { icon: '\uD83D\uDCAC', label: 'Ask mode', description: 'Q&A about anything' },
+      { icon: '\u270F\uFE0F', label: 'Edit mode', description: 'AI-assisted canvas editing' },
+      { icon: '\u{1F916}', label: 'Agent mode', description: 'Autonomous with tools' },
+      { icon: '@', label: '@workspace', description: 'Search pages & files' },
+      { icon: '\u{1F3A8}', label: '@canvas', description: 'Edit current page' },
+      { icon: '\u2328\uFE0F', label: 'Ctrl+L', description: 'New chat session' },
+    ];
+
+    for (const hint of hintItems) {
+      const item = $('div.parallx-chat-hint-item');
+      const hintIcon = $('span.parallx-chat-hint-icon', hint.icon);
+      const hintText = $('span.parallx-chat-hint-text');
+      const hintLabel = $('span.parallx-chat-hint-label', hint.label);
+      const hintDesc = $('span.parallx-chat-hint-desc', hint.description);
+      append(hintText, hintLabel, hintDesc);
+      append(item, hintIcon, hintText);
+
+      // Clicking a hint item inserts the label into the input
+      item.addEventListener('click', () => {
+        if (hint.label.startsWith('@')) {
+          this._inputPart.focus();
+        }
+      });
+
+      hints.appendChild(item);
+    }
+
+    root.appendChild(hints);
     return root;
   }
 
