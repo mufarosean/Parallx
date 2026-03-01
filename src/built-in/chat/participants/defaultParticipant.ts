@@ -64,6 +64,13 @@ export interface IDefaultParticipantServices {
   ): Promise<IToolResult>;
   /** Max agentic loop iterations (default: 10). */
   maxIterations?: number;
+
+  // ── Data context (prevents LLM hallucination) ──
+
+  /** List page titles (up to ~20) for system prompt grounding. */
+  listPageNames?(): Promise<readonly string[]>;
+  /** List file/dir names at workspace root for system prompt grounding. */
+  listFileNames?(): Promise<readonly string[]>;
 }
 
 /** Default participant ID — must match ChatAgentService's DEFAULT_AGENT_ID. */
@@ -93,11 +100,22 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // ── Build system prompt with workspace context ──
 
     const pageCount = await services.getPageCount().catch(() => 0);
+
+    // Gather actual page/file names so the LLM doesn't hallucinate
+    const pageNames = services.listPageNames
+      ? await services.listPageNames().catch(() => [] as readonly string[])
+      : undefined;
+    const fileNames = services.listFileNames
+      ? await services.listFileNames().catch(() => [] as readonly string[])
+      : undefined;
+
     const promptContext: ISystemPromptContext = {
       workspaceName: services.getWorkspaceName(),
       pageCount,
       currentPageTitle: services.getCurrentPageTitle(),
       tools: shouldIncludeTools(request.mode) ? services.getToolDefinitions() : undefined,
+      pageNames: pageNames?.length ? pageNames : undefined,
+      fileNames: fileNames?.length ? fileNames : undefined,
     };
 
     const systemPrompt = buildSystemPrompt(request.mode, promptContext);

@@ -65,7 +65,7 @@ describe('buildSystemPrompt — Ask mode', () => {
 
   it('includes page count', () => {
     const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ pageCount: 12 }));
-    expect(prompt).toContain('12 pages');
+    expect(prompt).toContain('12 canvas pages');
   });
 
   it('includes current page title when provided', () => {
@@ -80,8 +80,8 @@ describe('buildSystemPrompt — Ask mode', () => {
 
   it('handles singular page count correctly', () => {
     const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ pageCount: 1 }));
-    expect(prompt).toContain('1 page');
-    expect(prompt).not.toContain('1 pages');
+    expect(prompt).toContain('1 canvas page');
+    expect(prompt).not.toContain('1 canvas pages');
   });
 
   it('indicates no tool access', () => {
@@ -175,7 +175,7 @@ describe('buildSystemPrompt — Agent mode', () => {
 describe('buildSystemPrompt — edge cases', () => {
   it('handles zero pages', () => {
     const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ pageCount: 0 }));
-    expect(prompt).toContain('0 pages');
+    expect(prompt).toContain('0 canvas pages');
   });
 
   it('handles empty workspace name', () => {

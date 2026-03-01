@@ -25,6 +25,10 @@ export interface ISystemPromptContext {
   readonly currentPageTitle?: string;
   /** Tool definitions to include (Agent mode only). */
   readonly tools?: readonly IToolDefinition[];
+  /** Actual page titles for context (up to ~20). */
+  readonly pageNames?: readonly string[];
+  /** Actual file/dir names at workspace root (up to ~30). */
+  readonly fileNames?: readonly string[];
 }
 
 // ── Prompt builders ──
@@ -55,17 +59,21 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
     'You are Parallx, a helpful local AI assistant for a knowledge workspace.',
     'Be concise, clear, and use markdown formatting when appropriate.',
     '',
-    `Workspace: "${ctx.workspaceName}" (${ctx.pageCount} page${ctx.pageCount !== 1 ? 's' : ''}).`,
+    `Workspace: "${ctx.workspaceName}" (${ctx.pageCount} canvas page${ctx.pageCount !== 1 ? 's' : ''}).`,
   ];
 
   if (ctx.currentPageTitle) {
     lines.push(`The user is currently viewing: "${ctx.currentPageTitle}".`);
   }
 
+  // Inject actual page names so the model doesn't hallucinate
+  appendContentListings(lines, ctx);
+
   lines.push(
     '',
     'Answer questions about workspace content, general knowledge, and anything the user asks.',
     'You do NOT have access to tools or the ability to modify content. Only answer and explain.',
+    'IMPORTANT: Only reference pages and files that are listed above. Do NOT invent or guess page/file names.',
   );
 
   return lines.join('\n');
@@ -122,12 +130,15 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     'You are Parallx, a local AI agent for a knowledge workspace.',
     'You have access to tools and can take autonomous actions.',
     '',
-    `Workspace: "${ctx.workspaceName}" (${ctx.pageCount} page${ctx.pageCount !== 1 ? 's' : ''}).`,
+    `Workspace: "${ctx.workspaceName}" (${ctx.pageCount} canvas page${ctx.pageCount !== 1 ? 's' : ''}).`,
   ];
 
   if (ctx.currentPageTitle) {
     lines.push(`The user is viewing: "${ctx.currentPageTitle}".`);
   }
+
+  // Inject actual page/file names
+  appendContentListings(lines, ctx);
 
   // Include tool descriptions if available
   if (ctx.tools && ctx.tools.length > 0) {
@@ -163,7 +174,33 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     '- If a tool call fails, explain the error and suggest alternatives',
     '- Read-only tools (search, read, list) can be used freely',
     '- Write tools (create, update, delete) require user confirmation',
+    '- IMPORTANT: Only reference pages and files that actually exist (listed above or discovered via tools). Do NOT guess or invent names.',
   );
 
   return lines.join('\n');
+}
+
+// ── Shared helpers ──
+
+/**
+ * Append actual page titles and file names to the system prompt lines.
+ * Prevents the LLM from hallucinating content that doesn't exist.
+ */
+function appendContentListings(lines: string[], ctx: ISystemPromptContext): void {
+  if (ctx.pageNames && ctx.pageNames.length > 0) {
+    lines.push('', 'Canvas pages in this workspace:');
+    for (const name of ctx.pageNames) {
+      lines.push(`- ${name}`);
+    }
+    if (ctx.pageCount > ctx.pageNames.length) {
+      lines.push(`  ...and ${ctx.pageCount - ctx.pageNames.length} more.`);
+    }
+  }
+
+  if (ctx.fileNames && ctx.fileNames.length > 0) {
+    lines.push('', 'Files and folders at the workspace root:');
+    for (const name of ctx.fileNames) {
+      lines.push(`- ${name}`);
+    }
+  }
 }

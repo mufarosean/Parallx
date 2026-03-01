@@ -155,6 +155,28 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       }
       return languageModelToolsService.invokeTool(name, args, token);
     },
+
+    // ── Data context (prevents LLM hallucination) ──
+
+    async listPageNames(): Promise<readonly string[]> {
+      if (!databaseService?.isOpen) { return []; }
+      try {
+        const pages = await databaseService.all<{ title: string; icon: string | null }>(
+          'SELECT title, icon FROM pages WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 20',
+        );
+        return pages.map((p) => `${p.icon ?? '📄'} ${p.title}`);
+      } catch { return []; }
+    },
+    listFileNames: fsAccessor
+      ? async (): Promise<readonly string[]> => {
+        try {
+          const entries = await fsAccessor.readdir('.');
+          return entries.slice(0, 30).map((e) =>
+            e.type === 'directory' ? `📁 ${e.name}` : `📄 ${e.name}`,
+          );
+        } catch { return []; }
+      }
+      : undefined,
   };
 
   const defaultParticipant = createDefaultParticipant(defaultParticipantServices);
