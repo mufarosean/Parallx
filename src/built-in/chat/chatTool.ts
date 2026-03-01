@@ -85,6 +85,7 @@ interface ParallxApi {
 let _ollamaProvider: OllamaProvider | undefined;
 let _activeWidget: ChatWidget | undefined;
 let _chatIsStreamingKey: { set(value: boolean): void } | undefined;
+let _updateTokenStatusBarFn: (() => void) | undefined;
 
 // ── Activation ──
 
@@ -501,38 +502,67 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // ── 6b. Status bar item — model name + connection status ──
+  // ── 6b. Status bar item — token usage for active session ──
 
-  const statusBarItem = api.window.createStatusBarItem(/* Right */ 2, 100);
-  statusBarItem.name = 'AI Model';
-  statusBarItem.command = 'chat.selectModel';
+  const tokenStatusBar = api.window.createStatusBarItem(/* Right */ 2, 100);
+  tokenStatusBar.name = 'Token Usage';
+  tokenStatusBar.command = 'chat.focus';
 
-  const updateStatusBar = (): void => {
-    const activeModel = languageModelsService.getActiveModel();
-    const status = _ollamaProvider?.getLastStatus();
-    const isConnected = status?.available ?? false;
+  const updateTokenStatusBar = (): void => {
+    const session = _activeWidget?.getSession();
+    if (!session || session.messages.length === 0) {
+      tokenStatusBar.text = '$(pulse) 0 tokens';
+      tokenStatusBar.tooltip = 'No active conversation';
+      return;
+    }
 
-    if (!isConnected) {
-      statusBarItem.text = '$(circle-slash) No AI';
-      statusBarItem.tooltip = 'Ollama not connected — click to select model';
-    } else if (activeModel) {
-      statusBarItem.text = `$(circle-filled) ${activeModel}`;
-      statusBarItem.tooltip = `AI Model: ${activeModel} — click to change`;
+    // Count all characters in conversation → estimate tokens (chars / 4)
+    let totalChars = 0;
+    for (const pair of session.messages) {
+      totalChars += pair.request.text.length;
+      for (const part of pair.response.parts) {
+        if ('value' in part && typeof part.value === 'string') {
+          totalChars += (part as any).value.length;
+        }
+        if ('code' in part && typeof part.code === 'string') {
+          totalChars += (part as any).code.length;
+        }
+      }
+    }
+
+    const estimatedTokens = Math.ceil(totalChars / 4);
+    const contextLength = _ollamaProvider?.getActiveModelContextLength?.() ?? 0;
+
+    const tokensK = estimatedTokens >= 1000
+      ? `${(estimatedTokens / 1000).toFixed(1)}k`
+      : `${estimatedTokens}`;
+
+    if (contextLength > 0) {
+      const contextK = contextLength >= 1000
+        ? `${(contextLength / 1000).toFixed(0)}k`
+        : `${contextLength}`;
+      const pct = Math.min((estimatedTokens / contextLength) * 100, 100);
+      tokenStatusBar.text = `$(pulse) ${tokensK} / ${contextK}`;
+      tokenStatusBar.tooltip = `Token usage: ~${estimatedTokens.toLocaleString()} / ${contextLength.toLocaleString()} (${pct.toFixed(1)}%) — click to focus chat`;
     } else {
-      statusBarItem.text = '$(circle-filled) AI Ready';
-      statusBarItem.tooltip = 'No model selected — click to choose';
+      tokenStatusBar.text = `$(pulse) ${tokensK} tokens`;
+      tokenStatusBar.tooltip = `Estimated tokens: ~${estimatedTokens.toLocaleString()} — click to focus chat`;
     }
   };
-  updateStatusBar();
-  statusBarItem.show();
-  context.subscriptions.push(statusBarItem as unknown as IDisposable);
+  updateTokenStatusBar();
+  tokenStatusBar.show();
+  context.subscriptions.push(tokenStatusBar as unknown as IDisposable);
 
-  // React to model/status changes
-  const modelChangeListener = languageModelsService.onDidChangeModels(() => updateStatusBar());
-  context.subscriptions.push(modelChangeListener as unknown as IDisposable);
+  // React to session changes (new message, session switch)
+  const tokenSessionListener = chatService.onDidChangeSession(() => updateTokenStatusBar());
+  context.subscriptions.push(tokenSessionListener as unknown as IDisposable);
 
-  const statusChangeListener = _ollamaProvider.onDidChangeStatus(() => updateStatusBar());
-  context.subscriptions.push(statusChangeListener as unknown as IDisposable);
+  // Also update when models change (context length may differ)
+  const tokenModelListener = languageModelsService.onDidChangeModels(() => updateTokenStatusBar());
+  context.subscriptions.push(tokenModelListener as unknown as IDisposable);
+
+  // Expose updater so chatWidget can call it after session switches
+  _updateTokenStatusBarFn = updateTokenStatusBar;
 
   // ── 7. Set context keys ──
 
@@ -575,6 +605,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 /** Set the active widget reference (called from chatView). */
 export function setActiveWidget(widget: ChatWidget | undefined): void {
   _activeWidget = widget;
+  _updateTokenStatusBarFn?.();
 }
 
 /** Update the chatIsStreaming context key (called from chatWidget). */
@@ -586,6 +617,7 @@ export function deactivate(): void {
   _ollamaProvider = undefined;
   _activeWidget = undefined;
   _chatIsStreamingKey = undefined;
+  _updateTokenStatusBarFn = undefined;
 }
 
 // ── Helpers ──
