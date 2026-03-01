@@ -167,11 +167,20 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   async getActiveModelContextLengthAsync(): Promise<number> {
     const loaded = this._loadedModels[0];
     if (!loaded) { return 0; }
-    const cached = this._contextLengthCache.get(loaded);
+    return this.getModelContextLength(loaded);
+  }
+
+  /**
+   * Get context length for a specific model by ID (fetches from Ollama if not cached).
+   * This is the preferred method — doesn't depend on _loadedModels polling.
+   */
+  async getModelContextLength(modelId: string): Promise<number> {
+    if (!modelId) { return 0; }
+    const cached = this._contextLengthCache.get(modelId);
     if (cached !== undefined) { return cached; }
     try {
-      const info = await this.getModelInfo(loaded);
-      this._contextLengthCache.set(loaded, info.contextLength);
+      const info = await this.getModelInfo(modelId);
+      this._contextLengthCache.set(modelId, info.contextLength);
       return info.contextLength;
     } catch {
       return 0;

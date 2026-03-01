@@ -509,7 +509,14 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   const tokenBarServices: import('./chatTokenStatusBar.js').ITokenStatusBarServices = {
     getActiveSession: () => _activeWidget?.getSession(),
-    getContextLength: async () => _ollamaProvider?.getActiveModelContextLengthAsync?.() ?? 0,
+    getContextLength: async () => {
+      const session = _activeWidget?.getSession();
+      const modelId = session?.modelId;
+      if (modelId && _ollamaProvider) {
+        return _ollamaProvider.getModelContextLength(modelId);
+      }
+      return 0;
+    },
     getMode: () => modeService.getMode() as import('../../services/chatTypes.js').ChatMode,
     getWorkspaceName: () => workspaceService?.activeWorkspace?.name ?? 'Parallx Workspace',
     getPageCount: async () => {
