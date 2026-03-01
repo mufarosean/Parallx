@@ -1,11 +1,13 @@
-// chatSessionSidebar.ts — Collapsible session sidebar (right panel)
+// chatSessionSidebar.ts — VS Code-style chat history panel
 //
-// Shows on the right edge of the chat widget. Collapsed state is a
-// thin icon strip (36px); expanded state shows the full session list
-// with title, message count, date, and preview.
+// Right-side panel showing session history grouped by date.
+// Toggled on/off (no collapsed strip) via header toolbar button.
+//
+// Layout: header (SESSIONS title + toolbar) → optional filter input
+//         → scrollable session list with date-group section headers.
 //
 // VS Code reference:
-//   Activity bar concept adapted for session management.
+//   src/vs/workbench/contrib/chat/browser/chatHistory.ts
 
 import { Disposable, toDisposable } from '../../platform/lifecycle.js';
 import { Emitter } from '../../platform/events.js';
@@ -13,31 +15,97 @@ import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import type { IChatSession } from '../../services/chatTypes.js';
 
+// ── Types ──
+
 export interface ISessionSidebarServices {
   getSessions(): readonly IChatSession[];
   deleteSession(sessionId: string): void;
 }
 
+// ── Date grouping buckets ──
+
+type DateGroup = 'Today' | 'Yesterday' | 'Last 7 Days' | 'Last 30 Days' | 'Older';
+
+function _getDateGroup(timestamp: number): DateGroup {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const dayMs = 86_400_000;
+
+  // "Today" = same calendar day
+  const nowDate = new Date(now);
+  const tsDate = new Date(timestamp);
+  if (
+    nowDate.getFullYear() === tsDate.getFullYear() &&
+    nowDate.getMonth() === tsDate.getMonth() &&
+    nowDate.getDate() === tsDate.getDate()
+  ) {
+    return 'Today';
+  }
+
+  // "Yesterday" = previous calendar day
+  const yesterday = new Date(now - dayMs);
+  if (
+    yesterday.getFullYear() === tsDate.getFullYear() &&
+    yesterday.getMonth() === tsDate.getMonth() &&
+    yesterday.getDate() === tsDate.getDate()
+  ) {
+    return 'Yesterday';
+  }
+
+  if (diff < 7 * dayMs) { return 'Last 7 Days'; }
+  if (diff < 30 * dayMs) { return 'Last 30 Days'; }
+  return 'Older';
+}
+
+const GROUP_ORDER: readonly DateGroup[] = [
+  'Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'Older',
+];
+
+// ── Relative time formatting ──
+
+function _formatRelativeTime(timestamp: number): string {
+  const diff = Date.now() - timestamp;
+  const minutes = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  const days = Math.floor(diff / 86_400_000);
+
+  if (minutes < 1) { return 'just now'; }
+  if (minutes < 60) { return `${minutes}m ago`; }
+  if (hours < 24) { return `${hours}h ago`; }
+  if (days === 1) { return 'yesterday'; }
+  if (days < 7) { return `${days}d ago`; }
+  if (days < 30) { return `${Math.floor(days / 7)}w ago`; }
+
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ChatSessionSidebar
+// ═══════════════════════════════════════════════════════════════════════════════
+
 /**
- * Collapsible session sidebar — right-side panel listing chat sessions.
- *
- * Collapsed: thin icon strip with session count badge.
- * Expanded: ~220px panel with full session list.
+ * VS Code-style chat history sidebar — date-grouped session list with
+ * search/filter capability. Shown/hidden (no collapsed state).
  */
 export class ChatSessionSidebar extends Disposable {
 
   // ── DOM ──
 
   private readonly _root: HTMLElement;
-  private readonly _collapsedStrip: HTMLElement;
-  private readonly _expandedPanel: HTMLElement;
+  private readonly _filterContainer: HTMLElement;
+  private readonly _filterInput: HTMLInputElement;
   private readonly _sessionList: HTMLElement;
-  private readonly _badgeEl: HTMLElement;
+  private readonly _emptyEl: HTMLElement;
 
   // ── State ──
 
-  private _expanded = false;
+  private _visible = false;
   private _activeSessionId: string | undefined;
+  private _filterText = '';
+  private _collapsedGroups = new Set<DateGroup>();
 
   // ── Events ──
 
@@ -48,171 +116,231 @@ export class ChatSessionSidebar extends Disposable {
   readonly onDidRequestNewSession: Event<void> = this._onDidRequestNewSession.event;
 
   private readonly _onDidToggle = this._register(new Emitter<boolean>());
-  /** Fires with `true` when expanded, `false` when collapsed. */
+  /** Fires `true` when shown, `false` when hidden. */
   readonly onDidToggle: Event<boolean> = this._onDidToggle.event;
 
   // ── Services ──
 
   private readonly _services: ISessionSidebarServices;
 
+  // ── Constructor ──
+
   constructor(container: HTMLElement, services: ISessionSidebarServices) {
     super();
     this._services = services;
 
+    // Root container (hidden by default)
     this._root = $('div.parallx-chat-session-sidebar');
     container.appendChild(this._root);
     this._register(toDisposable(() => this._root.remove()));
 
-    // ── Collapsed strip (default visible) ──
+    // ── Header ──
+    const header = $('div.parallx-chat-session-sidebar-header');
+    this._root.appendChild(header);
 
-    this._collapsedStrip = $('div.parallx-chat-session-sidebar-strip');
-    this._root.appendChild(this._collapsedStrip);
+    const headerTitle = $('span.parallx-chat-session-sidebar-title', 'SESSIONS');
+    header.appendChild(headerTitle);
 
-    // Toggle button (top of strip)
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'parallx-chat-session-sidebar-toggle';
-    toggleBtn.type = 'button';
-    toggleBtn.title = 'Toggle Sessions';
-    toggleBtn.textContent = '\u{1F4CB}'; // 📋
-    this._collapsedStrip.appendChild(toggleBtn);
-    this._register(addDisposableListener(toggleBtn, 'click', () => this.toggle()));
+    const headerActions = $('div.parallx-chat-session-sidebar-actions');
+    header.appendChild(headerActions);
 
-    // Session count badge
-    this._badgeEl = $('span.parallx-chat-session-sidebar-badge');
-    this._collapsedStrip.appendChild(this._badgeEl);
+    // Refresh button
+    const refreshBtn = this._createButton('\u21BB', 'Refresh', 'parallx-chat-sidebar-btn');
+    this._register(addDisposableListener(refreshBtn, 'click', () => this.refresh()));
+    headerActions.appendChild(refreshBtn);
 
-    // New session button (bottom of strip)
-    const newBtn = document.createElement('button');
-    newBtn.className = 'parallx-chat-session-sidebar-new';
-    newBtn.type = 'button';
-    newBtn.title = 'New Chat';
-    newBtn.textContent = '\u002B'; // +
-    this._collapsedStrip.appendChild(newBtn);
-    this._register(addDisposableListener(newBtn, 'click', () => {
-      this._onDidRequestNewSession.fire();
+    // Search toggle button
+    const searchBtn = this._createButton('\u{1F50D}', 'Filter Sessions', 'parallx-chat-sidebar-btn');
+    this._register(addDisposableListener(searchBtn, 'click', () => this._toggleFilter()));
+    headerActions.appendChild(searchBtn);
+
+    // New Session button
+    const newBtn = this._createButton('\u002B', 'New Session', 'parallx-chat-sidebar-btn parallx-chat-sidebar-btn--new');
+    this._register(addDisposableListener(newBtn, 'click', () => this._onDidRequestNewSession.fire()));
+    headerActions.appendChild(newBtn);
+
+    // ── Filter input (hidden by default) ──
+    this._filterContainer = $('div.parallx-chat-session-sidebar-filter');
+    this._filterContainer.style.display = 'none';
+    this._root.appendChild(this._filterContainer);
+
+    this._filterInput = document.createElement('input');
+    this._filterInput.type = 'text';
+    this._filterInput.className = 'parallx-chat-session-sidebar-filter-input';
+    this._filterInput.placeholder = 'Filter sessions\u2026';
+    this._filterContainer.appendChild(this._filterInput);
+
+    this._register(addDisposableListener(this._filterInput, 'input', () => {
+      this._filterText = this._filterInput.value.toLowerCase();
+      this._renderSessionList();
     }));
 
-    // ── Expanded panel (hidden by default) ──
-
-    this._expandedPanel = $('div.parallx-chat-session-sidebar-panel');
-    this._root.appendChild(this._expandedPanel);
-
-    // Panel header
-    const panelHeader = $('div.parallx-chat-session-sidebar-panel-header');
-
-    const panelTitle = $('span.parallx-chat-session-sidebar-panel-title', 'Sessions');
-    panelHeader.appendChild(panelTitle);
-
-    const collapseBtn = document.createElement('button');
-    collapseBtn.className = 'parallx-chat-session-sidebar-collapse';
-    collapseBtn.type = 'button';
-    collapseBtn.title = 'Collapse';
-    collapseBtn.textContent = '\u203A'; // ›
-    this._register(addDisposableListener(collapseBtn, 'click', () => this.collapse()));
-    panelHeader.appendChild(collapseBtn);
-
-    this._expandedPanel.appendChild(panelHeader);
-
-    // Session list (scrollable)
+    // ── Session list (scrollable) ──
     this._sessionList = $('div.parallx-chat-session-sidebar-list');
-    this._expandedPanel.appendChild(this._sessionList);
+    this._root.appendChild(this._sessionList);
 
-    // Panel footer with new session button
-    const panelFooter = $('div.parallx-chat-session-sidebar-panel-footer');
-    const newSessionBtn = document.createElement('button');
-    newSessionBtn.className = 'parallx-chat-session-sidebar-new-btn';
-    newSessionBtn.type = 'button';
-    newSessionBtn.textContent = '+ New Chat';
-    this._register(addDisposableListener(newSessionBtn, 'click', () => {
-      this._onDidRequestNewSession.fire();
-    }));
-    panelFooter.appendChild(newSessionBtn);
-    this._expandedPanel.appendChild(panelFooter);
+    // ── Empty state ──
+    this._emptyEl = $('div.parallx-chat-session-sidebar-empty', 'No sessions yet');
+    this._emptyEl.style.display = 'none';
+    this._root.appendChild(this._emptyEl);
 
-    // Initial state: collapsed
-    this._applyState();
+    // Initial state: hidden
+    this._applyVisibility();
   }
 
   // ── Public API ──
 
+  /** Toggle between visible and hidden. */
   toggle(): void {
-    this._expanded = !this._expanded;
-    this._applyState();
-    this._onDidToggle.fire(this._expanded);
-    if (this._expanded) {
+    this._visible = !this._visible;
+    this._applyVisibility();
+    this._onDidToggle.fire(this._visible);
+    if (this._visible) {
       this.refresh();
     }
   }
 
-  expand(): void {
-    if (!this._expanded) {
-      this._expanded = true;
-      this._applyState();
+  /** Show the panel. */
+  show(): void {
+    if (!this._visible) {
+      this._visible = true;
+      this._applyVisibility();
       this._onDidToggle.fire(true);
       this.refresh();
     }
   }
 
-  collapse(): void {
-    if (this._expanded) {
-      this._expanded = false;
-      this._applyState();
+  /** Hide the panel. */
+  hide(): void {
+    if (this._visible) {
+      this._visible = false;
+      this._applyVisibility();
       this._onDidToggle.fire(false);
     }
   }
 
-  get isExpanded(): boolean {
-    return this._expanded;
+  get isVisible(): boolean {
+    return this._visible;
   }
 
-  /** Update the active session to highlight. */
+  // Keep isExpanded as an alias for backward compat with tests
+  get isExpanded(): boolean {
+    return this._visible;
+  }
+
+  /** Set which session is the active one (highlighted). */
   setActiveSession(sessionId: string | undefined): void {
     this._activeSessionId = sessionId;
-    this._updateBadge();
-    if (this._expanded) {
-      this.refresh();
+    if (this._visible) {
+      this._renderSessionList();
     }
   }
 
-  /** Re-render the session list. */
+  /** Re-render the session list from services. */
   refresh(): void {
     this._renderSessionList();
-    this._updateBadge();
   }
 
-  // ── Internal ──
+  // ── Internal: Visibility ──
 
-  private _applyState(): void {
-    this._root.classList.toggle('parallx-chat-session-sidebar--expanded', this._expanded);
-    this._collapsedStrip.style.display = this._expanded ? 'none' : '';
-    this._expandedPanel.style.display = this._expanded ? '' : 'none';
+  private _applyVisibility(): void {
+    this._root.classList.toggle('parallx-chat-session-sidebar--visible', this._visible);
   }
 
-  private _updateBadge(): void {
-    const sessions = this._services.getSessions();
-    const count = sessions.length;
-    this._badgeEl.textContent = count > 0 ? String(count) : '';
-    this._badgeEl.style.display = count > 0 ? '' : 'none';
+  // ── Internal: Filter toggle ──
+
+  private _toggleFilter(): void {
+    const isShown = this._filterContainer.style.display !== 'none';
+    this._filterContainer.style.display = isShown ? 'none' : '';
+    if (!isShown) {
+      this._filterInput.focus();
+    } else {
+      // Clear filter when hiding
+      this._filterInput.value = '';
+      this._filterText = '';
+      this._renderSessionList();
+    }
   }
+
+  // ── Internal: Render ──
 
   private _renderSessionList(): void {
-    // Clear existing items
     this._sessionList.innerHTML = '';
 
-    const sessions = this._services.getSessions();
+    const allSessions = this._services.getSessions();
+
+    // Apply filter
+    const sessions = this._filterText
+      ? [...allSessions].filter((s) => {
+        const title = (s.title || 'New Chat').toLowerCase();
+        const preview = s.messages.length > 0
+          ? s.messages[0].request.text.toLowerCase()
+          : '';
+        return title.includes(this._filterText) || preview.includes(this._filterText);
+      })
+      : [...allSessions];
+
+    // Sort by createdAt descending
+    sessions.sort((a, b) => b.createdAt - a.createdAt);
 
     if (sessions.length === 0) {
-      const empty = $('div.parallx-chat-session-sidebar-empty', 'No sessions yet');
-      this._sessionList.appendChild(empty);
+      this._emptyEl.textContent = this._filterText
+        ? 'No matching sessions'
+        : 'No sessions yet';
+      this._emptyEl.style.display = '';
       return;
     }
 
-    // Sort by createdAt descending (newest first)
-    const sorted = [...sessions].sort((a, b) => b.createdAt - a.createdAt);
+    this._emptyEl.style.display = 'none';
 
-    for (const session of sorted) {
-      const item = this._buildSessionItem(session);
-      this._sessionList.appendChild(item);
+    // Group by date
+    const groups = new Map<DateGroup, IChatSession[]>();
+    for (const session of sessions) {
+      const group = _getDateGroup(session.createdAt);
+      if (!groups.has(group)) {
+        groups.set(group, []);
+      }
+      groups.get(group)!.push(session);
+    }
+
+    // Render in group order
+    for (const groupName of GROUP_ORDER) {
+      const groupSessions = groups.get(groupName);
+      if (!groupSessions || groupSessions.length === 0) {
+        continue;
+      }
+
+      const isCollapsed = this._collapsedGroups.has(groupName);
+
+      // Section header
+      const sectionHeader = $('div.parallx-chat-session-sidebar-section-header');
+      const chevron = $('span.parallx-chat-session-sidebar-chevron',
+        isCollapsed ? '\u25B6' : '\u25BC'); // ▶ or ▼
+      const label = $('span.parallx-chat-session-sidebar-section-label', groupName);
+      const count = $('span.parallx-chat-session-sidebar-section-count',
+        `${groupSessions.length}`);
+
+      sectionHeader.appendChild(chevron);
+      sectionHeader.appendChild(label);
+      sectionHeader.appendChild(count);
+
+      sectionHeader.addEventListener('click', () => {
+        if (this._collapsedGroups.has(groupName)) {
+          this._collapsedGroups.delete(groupName);
+        } else {
+          this._collapsedGroups.add(groupName);
+        }
+        this._renderSessionList();
+      });
+
+      this._sessionList.appendChild(sectionHeader);
+
+      // Session items (if not collapsed)
+      if (!isCollapsed) {
+        for (const session of groupSessions) {
+          this._sessionList.appendChild(this._buildSessionItem(session));
+        }
+      }
     }
   }
 
@@ -224,25 +352,34 @@ export class ChatSessionSidebar extends Disposable {
       item.classList.add('parallx-chat-session-sidebar-item--active');
     }
 
-    // Session info
+    // Info area (clickable)
     const info = $('div.parallx-chat-session-sidebar-item-info');
 
-    const title = $('div.parallx-chat-session-sidebar-item-title',
+    // Top row: title + time
+    const topRow = $('div.parallx-chat-session-sidebar-item-top');
+    const title = $('span.parallx-chat-session-sidebar-item-title',
       session.title || 'New Chat');
-    info.appendChild(title);
+    const time = $('span.parallx-chat-session-sidebar-item-time',
+      _formatRelativeTime(session.createdAt));
+    topRow.appendChild(title);
+    topRow.appendChild(time);
+    info.appendChild(topRow);
 
+    // Meta row: message count + mode
     const meta = $('div.parallx-chat-session-sidebar-item-meta');
     const messageCount = session.messages.length;
-    const dateStr = this._formatDate(session.createdAt);
-    meta.textContent = `${messageCount} msg${messageCount !== 1 ? 's' : ''} \u00B7 ${dateStr}`;
+    const modeLabel = session.mode
+      ? session.mode.charAt(0).toUpperCase() + session.mode.slice(1)
+      : '';
+    meta.textContent = `${messageCount} msg${messageCount !== 1 ? 's' : ''}${modeLabel ? ` \u00B7 ${modeLabel}` : ''}`;
     info.appendChild(meta);
 
-    // First message preview
+    // Preview (first message)
     if (messageCount > 0) {
       const preview = $('div.parallx-chat-session-sidebar-item-preview');
       const firstMsg = session.messages[0].request.text;
-      preview.textContent = firstMsg.length > 60
-        ? firstMsg.slice(0, 57) + '\u2026'
+      preview.textContent = firstMsg.length > 80
+        ? firstMsg.slice(0, 77) + '\u2026'
         : firstMsg;
       info.appendChild(preview);
     }
@@ -253,46 +390,31 @@ export class ChatSessionSidebar extends Disposable {
 
     item.appendChild(info);
 
-    // Delete button (not on active session)
-    if (!isActive) {
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'parallx-chat-session-sidebar-item-delete';
-      deleteBtn.type = 'button';
-      deleteBtn.title = 'Delete';
-      deleteBtn.textContent = '\u00D7'; // ×
-      deleteBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._services.deleteSession(session.id);
-        item.remove();
-        this._updateBadge();
-        // Re-check if list is empty
-        if (this._sessionList.children.length === 0) {
-          const empty = $('div.parallx-chat-session-sidebar-empty', 'No sessions yet');
-          this._sessionList.appendChild(empty);
-        }
-      });
-      item.appendChild(deleteBtn);
-    }
+    // Delete button (hover-only, not on active session)
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'parallx-chat-session-sidebar-item-delete';
+    deleteBtn.type = 'button';
+    deleteBtn.title = 'Delete Session';
+    deleteBtn.textContent = '\u{1F5D1}'; // 🗑
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._services.deleteSession(session.id);
+      this._renderSessionList();
+    });
+    item.appendChild(deleteBtn);
 
     return item;
   }
 
-  private _formatDate(timestamp: number): string {
-    const now = Date.now();
-    const diff = now - timestamp;
-    const minutes = Math.floor(diff / 60_000);
-    const hours = Math.floor(diff / 3_600_000);
-    const days = Math.floor(diff / 86_400_000);
+  // ── Helpers ──
 
-    if (minutes < 1) { return 'now'; }
-    if (minutes < 60) { return `${minutes}m`; }
-    if (hours < 24) { return `${hours}h`; }
-    if (days < 7) { return `${days}d`; }
-
-    return new Date(timestamp).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-    });
+  private _createButton(icon: string, tooltip: string, className: string): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.className = className;
+    btn.type = 'button';
+    btn.title = tooltip;
+    btn.textContent = icon;
+    return btn;
   }
 
   override dispose(): void {

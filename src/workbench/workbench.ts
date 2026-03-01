@@ -199,7 +199,7 @@ export class Workbench extends Layout {
   private _sidebarContainer!: ViewContainer;
   private _panelContainer!: ViewContainer;
   private _auxBarContainer!: ViewContainer;
-  private _secondaryActivityBarEl!: HTMLElement;
+
 
   // Storage + Persistence
   private _storage!: IStorage;
@@ -284,15 +284,9 @@ export class Workbench extends Layout {
   override toggleAuxiliaryBar(): void {
     super.toggleAuxiliaryBar();
 
-    // Secondary activity bar element visibility
-    if (this._auxBarVisible) {
-      this._secondaryActivityBarEl.classList.remove('hidden');
-      // Ensure the aux bar content is populated
-      if (!this._auxBarContainer) {
-        this._auxBarContainer = this._setupAuxBarViews();
-      }
-    } else {
-      this._secondaryActivityBarEl.classList.add('hidden');
+    // Ensure the aux bar content is populated on first open
+    if (this._auxBarVisible && !this._auxBarContainer) {
+      this._auxBarContainer = this._setupAuxBarViews();
     }
   }
 
@@ -837,8 +831,7 @@ export class Workbench extends Layout {
     this._contributionHandler.setGenericContainers(this._sidebarContainer, this._panelContainer, this._auxBarContainer);
     this._contributionHandler.panelViewsSlot = this._panel.element.querySelector('.panel-views') as HTMLElement;
 
-    // 2b. Secondary activity bar (right edge, for aux bar views)
-    this._setupSecondaryActivityBar();
+
 
     // 3. Editor watermark
     this._setupEditorWatermark();
@@ -1657,20 +1650,7 @@ export class Workbench extends Layout {
     return container;
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // Secondary activity bar (right edge)
-  // ════════════════════════════════════════════════════════════════════════
 
-  private _setupSecondaryActivityBar(): void {
-    this._secondaryActivityBarEl = $('div');
-    this._secondaryActivityBarEl.classList.add('secondary-activity-bar', 'hidden');
-
-    // No hardcoded view buttons — extensions will register their own
-    // activity bar items when they add views to the auxiliary bar.
-
-    // Append to body row (after hGrid, at the right edge)
-    this._bodyRow.appendChild(this._secondaryActivityBarEl);
-  }
 
   // ════════════════════════════════════════════════════════════════════════
   // Editor watermark
@@ -2420,7 +2400,6 @@ export class Workbench extends Layout {
     if (this._auxBarVisible) {
       try { this._hGrid.removeView(this._auxiliaryBar.id); } catch { /* ok */ }
       this._auxiliaryBar.setVisible(false);
-      this._secondaryActivityBarEl.classList.add('hidden');
       this._auxBarVisible = false;
     }
 

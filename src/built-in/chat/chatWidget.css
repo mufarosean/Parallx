@@ -2,7 +2,7 @@
  *
  * VS Code-style chat: horizontal layout with [main-area | session-sidebar].
  * Main area: header + scrollable message list + context indicator + input.
- * Session sidebar: collapsible right panel with session list.
+ * Session sidebar: VS Code-style history panel with date grouping + filter.
  */
 
 /* ── Root (horizontal flex) ── */
@@ -778,89 +778,38 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
- * Session Sidebar (collapsible right panel)
+ * Session Sidebar — VS Code-style chat history panel
  * ═══════════════════════════════════════════════════════════════════════════════ */
 
+/* Root: hidden by default, shown/hidden via --visible modifier */
 .parallx-chat-session-sidebar {
-  display: flex;
+  display: none;
   flex-direction: column;
   flex-shrink: 0;
-  width: 36px;
+  width: 260px;
   height: 100%;
   border-left: 1px solid var(--vscode-sideBarSectionHeader-border, #2d2d2d);
   background: var(--vscode-sideBar-background, #1e1e1e);
-  transition: width 200ms ease;
   overflow: hidden;
 }
 
-.parallx-chat-session-sidebar--expanded {
-  width: 220px;
-}
-
-/* ── Collapsed strip ── */
-
-.parallx-chat-session-sidebar-strip {
+.parallx-chat-session-sidebar--visible {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 0;
-  width: 36px;
 }
 
-.parallx-chat-session-sidebar-toggle,
-.parallx-chat-session-sidebar-new {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--vscode-icon-foreground, var(--vscode-foreground, #cccccc));
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 100ms ease;
-}
+/* ── Header ── */
 
-.parallx-chat-session-sidebar-toggle:hover,
-.parallx-chat-session-sidebar-new:hover {
-  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
-}
-
-.parallx-chat-session-sidebar-badge {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--vscode-badge-foreground, #ffffff);
-  background: var(--vscode-badge-background, #4d4d4d);
-  border-radius: 8px;
-  padding: 1px 5px;
-  min-width: 16px;
-  text-align: center;
-  line-height: 1.3;
-}
-
-/* ── Expanded panel ── */
-
-.parallx-chat-session-sidebar-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-}
-
-.parallx-chat-session-sidebar-panel-header {
+.parallx-chat-session-sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 10px;
   border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #2d2d2d);
   flex-shrink: 0;
+  min-height: 34px;
 }
 
-.parallx-chat-session-sidebar-panel-title {
+.parallx-chat-session-sidebar-title {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -868,7 +817,13 @@
   color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground, #cccccc));
 }
 
-.parallx-chat-session-sidebar-collapse {
+.parallx-chat-session-sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.parallx-chat-sidebar-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -878,13 +833,48 @@
   border: none;
   border-radius: 3px;
   background: transparent;
-  color: var(--vscode-foreground, #cccccc);
-  font-size: 16px;
+  color: var(--vscode-icon-foreground, var(--vscode-foreground, #cccccc));
+  font-size: 13px;
   cursor: pointer;
+  transition: background 100ms ease;
 }
 
-.parallx-chat-session-sidebar-collapse:hover {
+.parallx-chat-sidebar-btn:hover {
   background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+}
+
+.parallx-chat-sidebar-btn--new {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* ── Filter input ── */
+
+.parallx-chat-session-sidebar-filter {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #2d2d2d);
+  flex-shrink: 0;
+}
+
+.parallx-chat-session-sidebar-filter-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 4px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+
+.parallx-chat-session-sidebar-filter-input:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.parallx-chat-session-sidebar-filter-input::placeholder {
+  color: var(--vscode-input-placeholderForeground, #848484);
 }
 
 /* ── Session list ── */
@@ -893,17 +883,56 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 4px;
+  padding: 2px 0;
 }
+
+/* ── Date group section headers ── */
+
+.parallx-chat-session-sidebar-section-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.parallx-chat-session-sidebar-section-header:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e30);
+}
+
+.parallx-chat-session-sidebar-chevron {
+  font-size: 8px;
+  color: var(--vscode-foreground, #cccccc);
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.parallx-chat-session-sidebar-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground, #cccccc));
+}
+
+.parallx-chat-session-sidebar-section-count {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  margin-left: auto;
+}
+
+/* ── Session items ── */
 
 .parallx-chat-session-sidebar-item {
   display: flex;
   align-items: flex-start;
-  padding: 8px 8px;
-  border-radius: 6px;
+  padding: 6px 10px;
   cursor: pointer;
   transition: background 100ms ease;
   gap: 4px;
+  border-left: 3px solid transparent;
 }
 
 .parallx-chat-session-sidebar-item:hover {
@@ -912,7 +941,7 @@
 
 .parallx-chat-session-sidebar-item--active {
   background: var(--vscode-list-activeSelectionBackground, #04395e);
-  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+  border-left-color: var(--vscode-focusBorder, #007fd4);
 }
 
 .parallx-chat-session-sidebar-item-info {
@@ -920,7 +949,15 @@
   min-width: 0;
 }
 
+/* Top row: title + time side by side */
+.parallx-chat-session-sidebar-item-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
 .parallx-chat-session-sidebar-item-title {
+  flex: 1;
   font-size: 12px;
   font-weight: 500;
   color: var(--vscode-foreground, #cccccc);
@@ -931,6 +968,16 @@
 
 .parallx-chat-session-sidebar-item--active .parallx-chat-session-sidebar-item-title {
   color: var(--vscode-list-activeSelectionForeground, #ffffff);
+}
+
+.parallx-chat-session-sidebar-item-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+}
+
+.parallx-chat-session-sidebar-item--active .parallx-chat-session-sidebar-item-time {
+  color: var(--vscode-list-activeSelectionForeground, rgba(255, 255, 255, 0.7));
 }
 
 .parallx-chat-session-sidebar-item-meta {
@@ -952,6 +999,11 @@
   text-overflow: ellipsis;
 }
 
+.parallx-chat-session-sidebar-item--active .parallx-chat-session-sidebar-item-preview {
+  color: var(--vscode-list-activeSelectionForeground, rgba(255, 255, 255, 0.6));
+}
+
+/* Delete button — visible only on hover */
 .parallx-chat-session-sidebar-item-delete {
   display: none;
   align-items: center;
@@ -963,9 +1015,10 @@
   border-radius: 3px;
   background: transparent;
   color: var(--vscode-descriptionForeground, #8b8b8b);
-  font-size: 14px;
+  font-size: 12px;
   cursor: pointer;
   flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .parallx-chat-session-sidebar-item:hover .parallx-chat-session-sidebar-item-delete {
@@ -977,41 +1030,14 @@
   background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
 }
 
+/* ── Empty state ── */
+
 .parallx-chat-session-sidebar-empty {
-  padding: 16px 8px;
+  padding: 24px 12px;
   text-align: center;
   font-size: 11px;
   color: var(--vscode-descriptionForeground, #8b8b8b);
   font-style: italic;
-}
-
-/* ── Panel footer ── */
-
-.parallx-chat-session-sidebar-panel-footer {
-  flex-shrink: 0;
-  padding: 6px 8px;
-  border-top: 1px solid var(--vscode-sideBarSectionHeader-border, #2d2d2d);
-}
-
-.parallx-chat-session-sidebar-new-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 5px 0;
-  border: 1px dashed var(--vscode-widget-border, #3c3c3c);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--vscode-descriptionForeground, #8b8b8b);
-  font-size: 11px;
-  cursor: pointer;
-  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
-}
-
-.parallx-chat-session-sidebar-new-btn:hover {
-  background: var(--vscode-list-hoverBackground, #2a2d2e);
-  color: var(--vscode-foreground, #cccccc);
-  border-color: var(--vscode-focusBorder, #007fd4);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
