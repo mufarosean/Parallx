@@ -1,7 +1,7 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
@@ -175,7 +175,12 @@ export function registerChatServices(
   const chatModeService = new ChatModeService();
   const chatWidgetService = new ChatWidgetService();
   const languageModelToolsService = new LanguageModelToolsService();
-  const chatService = new ChatService(chatAgentService, chatModeService, languageModelsService);
+  const chatService = new ChatService(
+    chatAgentService,
+    chatModeService,
+    languageModelsService,
+    services.has(IDatabaseService) ? services.get<import('../services/serviceTypes.js').IDatabaseService>(IDatabaseService) as any : undefined,
+  );
 
   services.registerInstance(ILanguageModelsService, languageModelsService);
   services.registerInstance(IChatService, chatService);

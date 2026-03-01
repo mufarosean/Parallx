@@ -136,6 +136,27 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     return this._loadedModels;
   }
 
+  // ── Context length cache for active model (Cap 9.5) ──
+
+  private _contextLengthCache = new Map<string, number>();
+
+  /**
+   * Get the context length for a model (fetched lazily, cached).
+   * Returns 0 if not yet fetched. Triggers background fetch on first call.
+   */
+  getActiveModelContextLength(): number {
+    // Find the first loaded model or return 0
+    const loaded = this._loadedModels[0];
+    if (!loaded) { return 0; }
+    const cached = this._contextLengthCache.get(loaded);
+    if (cached !== undefined) { return cached; }
+    // Fire-and-forget background fetch
+    this.getModelInfo(loaded).then((info) => {
+      this._contextLengthCache.set(loaded, info.contextLength);
+    }).catch(() => { /* best effort */ });
+    return 0; // Not yet available — will be ready for next request
+  }
+
   // ── ILanguageModelProvider ──
 
   async checkAvailability(): Promise<IProviderStatus> {

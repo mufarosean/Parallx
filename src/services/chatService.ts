@@ -1,8 +1,9 @@
-// chatService.ts — IChatService implementation (M9 Task 2.1)
+// chatService.ts — IChatService implementation (M9 Task 2.1 + Cap 9 persistence)
 //
 // Session lifecycle and request orchestration.
 // Creates sessions, orchestrates the sendRequest pipeline:
 //   parse → dispatch to agent → stream response → update session.
+// Sessions are persisted to SQLite via chatSessionPersistence.
 //
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/common/chatService/chatService.ts
@@ -14,6 +15,13 @@ import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
 import { ChatContentPartKind } from './chatTypes.js';
 import { parseChatRequest } from '../built-in/chat/chatRequestParser.js';
+import {
+  ensureChatTables,
+  saveSession,
+  loadSessions,
+  deletePersistedSession,
+} from './chatSessionPersistence.js';
+import type { IChatPersistenceDatabase } from './chatSessionPersistence.js';
 import type {
   IChatService,
   IChatSession,
@@ -28,6 +36,8 @@ import type {
   IChatContentPart,
   IChatMarkdownContent,
   IChatToolInvocationContent,
+  IChatEditProposalContent,
+  EditProposalOperation,
   ICancellationToken,
   ChatMode,
   IChatAgentService,
@@ -248,6 +258,36 @@ class ChatResponseStream implements IChatResponseStream {
     }
   }
 
+  editProposal(
+    pageId: string,
+    operation: EditProposalOperation,
+    after: string,
+    options?: { blockId?: string; before?: string },
+  ): void {
+    this.throwIfDone();
+    const part: IChatEditProposalContent = {
+      kind: ChatContentPartKind.EditProposal,
+      pageId,
+      blockId: options?.blockId,
+      operation,
+      before: options?.before,
+      after,
+      status: 'pending',
+    };
+    (this._response.parts as IChatContentPart[]).push(part);
+    this._scheduleUpdate();
+  }
+
+  editBatch(explanation: string, proposals: IChatEditProposalContent[]): void {
+    this.throwIfDone();
+    (this._response.parts as IChatContentPart[]).push({
+      kind: ChatContentPartKind.EditBatch,
+      explanation,
+      proposals,
+    });
+    this._scheduleUpdate();
+  }
+
   push(part: IChatContentPart): void {
     this.throwIfDone();
     (this._response.parts as IChatContentPart[]).push(part);
@@ -274,6 +314,10 @@ export class ChatService extends Disposable implements IChatService {
   private readonly _agentService: IChatAgentService;
   private readonly _modeService: IChatModeService;
   private readonly _languageModelsService: ILanguageModelsService;
+  private readonly _database: IChatPersistenceDatabase | undefined;
+
+  /** Debounce timer for persistence writes. */
+  private _persistTimer: ReturnType<typeof setTimeout> | undefined;
 
   // ── Events ──
 
@@ -290,11 +334,54 @@ export class ChatService extends Disposable implements IChatService {
     agentService: IChatAgentService,
     modeService: IChatModeService,
     languageModelsService: ILanguageModelsService,
+    database?: IChatPersistenceDatabase,
   ) {
     super();
     this._agentService = agentService;
     this._modeService = modeService;
     this._languageModelsService = languageModelsService;
+    this._database = database;
+
+    // Ensure tables exist (fire and forget — errors are non-fatal)
+    if (database) {
+      ensureChatTables(database).catch(() => { /* persistence is best-effort */ });
+    }
+  }
+
+  // ── Session Persistence ──
+
+  /**
+   * Restore sessions from SQLite.
+   * Called once during workbench startup to hydrate the session store.
+   */
+  async restoreSessions(): Promise<void> {
+    if (!this._database) { return; }
+    try {
+      const sessions = await loadSessions(this._database);
+      for (const session of sessions) {
+        this._sessions.set(session.id, session);
+      }
+    } catch {
+      // Persistence failure is non-fatal — chat still works in-memory
+    }
+  }
+
+  /**
+   * Schedule a debounced persistence write for a session.
+   * Coalesces multiple writes within 500ms.
+   */
+  private _schedulePersist(sessionId: string): void {
+    if (!this._database) { return; }
+    if (this._persistTimer !== undefined) {
+      clearTimeout(this._persistTimer);
+    }
+    this._persistTimer = setTimeout(() => {
+      this._persistTimer = undefined;
+      const session = this._sessions.get(sessionId);
+      if (session && this._database) {
+        saveSession(this._database, session).catch(() => { /* best-effort */ });
+      }
+    }, 500);
   }
 
   // ── Session Lifecycle ──
@@ -329,6 +416,10 @@ export class ChatService extends Disposable implements IChatService {
     }
 
     if (this._sessions.delete(sessionId)) {
+      // Remove from database
+      if (this._database) {
+        deletePersistedSession(this._database, sessionId).catch(() => { /* best-effort */ });
+      }
       this._onDidDeleteSession.fire(sessionId);
     }
   }
@@ -434,17 +525,31 @@ export class ChatService extends Disposable implements IChatService {
           responseIsIncomplete: true,
         },
       };
-    } finally {
-      // 11. Finalize
-      stream.close();
-      assistantResponse.isComplete = true;
-      session.requestInProgress = false;
-
-      cts.dispose();
-      this._activeCancellations.delete(sessionId);
-
-      this._onDidChangeSession.fire(sessionId);
     }
+
+    // 10b. Render errorDetails as a warning part so it's visible in the chat UI
+    if (result.errorDetails) {
+      const errMsg = result.errorDetails.message || 'An unknown error occurred.';
+      stream.warning(errMsg);
+      if (result.errorDetails.responseIsIncomplete) {
+        assistantResponse.isComplete = false;
+      }
+    }
+
+    // 11. Finalize
+    stream.close();
+    if (!result.errorDetails?.responseIsIncomplete) {
+      assistantResponse.isComplete = true;
+    }
+    session.requestInProgress = false;
+
+    cts.dispose();
+    this._activeCancellations.delete(sessionId);
+
+    this._onDidChangeSession.fire(sessionId);
+
+    // 12. Persist session after response completes
+    this._schedulePersist(sessionId);
 
     return result;
   }

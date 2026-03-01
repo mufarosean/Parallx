@@ -1,8 +1,9 @@
-// chatContentParts.ts — Content part rendering (M9 Task 3.6 + 6.4)
+// chatContentParts.ts — Content part rendering (M9 Task 3.6 + 6.4 + 7.3)
 //
 // Dispatches on IChatContentPart.kind to render typed content parts.
 // M9.0: Markdown, CodeBlock, Progress, Thinking, Warning.
 // M9.1: ToolInvocation (status cards with accept/reject), Confirmation.
+// M9.2: EditProposal, EditBatch (diff preview with accept/reject).
 //
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/browser/chatContentParts/
@@ -18,6 +19,8 @@ import type {
   IChatWarningContent,
   IChatToolInvocationContent,
   IChatConfirmationContent,
+  IChatEditProposalContent,
+  IChatEditBatchContent,
 } from '../../services/chatTypes.js';
 
 /**
@@ -42,6 +45,10 @@ export function renderContentPart(part: IChatContentPart): HTMLElement {
       return _renderUnsupported(part.kind);
     case ChatContentPartKind.Confirmation:
       return _renderConfirmation(part);
+    case ChatContentPartKind.EditProposal:
+      return _renderEditProposal(part);
+    case ChatContentPartKind.EditBatch:
+      return _renderEditBatch(part);
   }
 }
 
@@ -353,6 +360,218 @@ function _replaceWithResult(root: HTMLElement, accepted: boolean): void {
       : 'parallx-chat-confirmation-result--rejected',
   );
   root.appendChild(result);
+}
+
+// ── Edit Proposal (Cap 7 Task 7.3) ──
+
+/** Status labels for edit proposals. */
+const EDIT_STATUS_LABELS: Record<string, { label: string; modifier: string }> = {
+  pending:  { label: 'Pending',  modifier: 'pending' },
+  accepted: { label: 'Applied',  modifier: 'accepted' },
+  rejected: { label: 'Rejected', modifier: 'rejected' },
+};
+
+/** Operation labels and icons. */
+const EDIT_OP_LABELS: Record<string, { label: string; icon: string }> = {
+  insert: { label: 'Insert', icon: '\u002B' },  // +
+  update: { label: 'Update', icon: '\u270E' },  // ✎
+  delete: { label: 'Delete', icon: '\u2212' },  // −
+};
+
+/**
+ * Custom DOM event dispatched when the user accepts an edit proposal.
+ *
+ * The widget container or activation layer should listen for this event
+ * and apply the edit to the canvas via IDatabaseService.
+ */
+export interface EditApplyEventDetail {
+  readonly proposal: IChatEditProposalContent;
+}
+
+function _renderEditProposal(part: IChatEditProposalContent): HTMLElement {
+  const root = $('div.parallx-chat-edit-proposal');
+  root.dataset['pageId'] = part.pageId;
+  if (part.blockId) { root.dataset['blockId'] = part.blockId; }
+  root.dataset['operation'] = part.operation;
+
+  // Header: operation icon + label + target info
+  const header = $('div.parallx-chat-edit-proposal-header');
+  const opInfo = EDIT_OP_LABELS[part.operation] ?? EDIT_OP_LABELS['update'];
+  const icon = $('span.parallx-chat-edit-proposal-icon', opInfo.icon);
+  const label = $('span.parallx-chat-edit-proposal-label', `${opInfo.label} block`);
+  header.appendChild(icon);
+  header.appendChild(label);
+
+  // Status badge
+  const statusInfo = EDIT_STATUS_LABELS[part.status] ?? EDIT_STATUS_LABELS['pending'];
+  const badge = $('span.parallx-chat-edit-status-badge');
+  badge.classList.add(`parallx-chat-edit-status-badge--${statusInfo.modifier}`);
+  badge.textContent = statusInfo.label;
+  header.appendChild(badge);
+  root.appendChild(header);
+
+  // Target info
+  const target = $('div.parallx-chat-edit-proposal-target');
+  target.textContent = part.blockId
+    ? `Page: ${_truncate(part.pageId, 12)} \u2192 Block: ${_truncate(part.blockId, 12)}`
+    : `Page: ${_truncate(part.pageId, 12)}`;
+  root.appendChild(target);
+
+  // Diff preview: before (red) / after (green)
+  const diff = $('div.parallx-chat-edit-proposal-diff');
+
+  if (part.before) {
+    const beforeBlock = $('div.parallx-chat-edit-diff-before');
+    const beforeLabel = $('span.parallx-chat-edit-diff-label', '\u2212 Before');
+    const beforeContent = $('pre.parallx-chat-edit-diff-content');
+    beforeContent.textContent = part.before;
+    beforeBlock.appendChild(beforeLabel);
+    beforeBlock.appendChild(beforeContent);
+    diff.appendChild(beforeBlock);
+  }
+
+  if (part.after && part.operation !== 'delete') {
+    const afterBlock = $('div.parallx-chat-edit-diff-after');
+    const afterLabel = $('span.parallx-chat-edit-diff-label', '\u002B After');
+    const afterContent = $('pre.parallx-chat-edit-diff-content');
+    afterContent.textContent = part.after;
+    afterBlock.appendChild(afterLabel);
+    afterBlock.appendChild(afterContent);
+    diff.appendChild(afterBlock);
+  }
+
+  root.appendChild(diff);
+
+  // Accept / Reject buttons (only when pending)
+  if (part.status === 'pending') {
+    const buttonBar = $('div.parallx-chat-edit-proposal-buttons');
+
+    const acceptBtn = document.createElement('button');
+    acceptBtn.className = 'parallx-chat-edit-btn parallx-chat-edit-btn--accept';
+    acceptBtn.textContent = '\u2713 Accept';
+    acceptBtn.type = 'button';
+    acceptBtn.addEventListener('click', () => {
+      part.status = 'accepted';
+      _updateEditProposalStatus(root, part);
+      // Dispatch custom event for apply logic
+      root.dispatchEvent(new CustomEvent('parallx-edit-apply', {
+        bubbles: true,
+        detail: { proposal: part } satisfies EditApplyEventDetail,
+      }));
+    });
+
+    const rejectBtn = document.createElement('button');
+    rejectBtn.className = 'parallx-chat-edit-btn parallx-chat-edit-btn--reject';
+    rejectBtn.textContent = '\u2717 Reject';
+    rejectBtn.type = 'button';
+    rejectBtn.addEventListener('click', () => {
+      part.status = 'rejected';
+      _updateEditProposalStatus(root, part);
+    });
+
+    buttonBar.appendChild(acceptBtn);
+    buttonBar.appendChild(rejectBtn);
+    root.appendChild(buttonBar);
+  }
+
+  return root;
+}
+
+function _updateEditProposalStatus(root: HTMLElement, part: IChatEditProposalContent): void {
+  // Update badge
+  const badge = root.querySelector('.parallx-chat-edit-status-badge');
+  if (badge) {
+    const statusInfo = EDIT_STATUS_LABELS[part.status] ?? EDIT_STATUS_LABELS['pending'];
+    badge.textContent = statusInfo.label;
+    badge.className = 'parallx-chat-edit-status-badge';
+    (badge as HTMLElement).classList.add(`parallx-chat-edit-status-badge--${statusInfo.modifier}`);
+  }
+
+  // Remove buttons once decided
+  const buttonBar = root.querySelector('.parallx-chat-edit-proposal-buttons');
+  if (buttonBar) { buttonBar.remove(); }
+}
+
+// ── Edit Batch (Cap 7 Task 7.3) ──
+
+function _renderEditBatch(part: IChatEditBatchContent): HTMLElement {
+  const root = $('div.parallx-chat-edit-batch');
+
+  // Explanation
+  if (part.explanation) {
+    const explanation = $('div.parallx-chat-edit-batch-explanation');
+    explanation.innerHTML = _markdownToHtml(part.explanation);
+    root.appendChild(explanation);
+  }
+
+  // Batch action buttons
+  const batchBar = $('div.parallx-chat-edit-batch-actions');
+
+  const acceptAllBtn = document.createElement('button');
+  acceptAllBtn.className = 'parallx-chat-edit-btn parallx-chat-edit-btn--accept-all';
+  acceptAllBtn.textContent = '\u2713 Accept All';
+  acceptAllBtn.type = 'button';
+  acceptAllBtn.addEventListener('click', () => {
+    for (const proposal of part.proposals) {
+      if (proposal.status === 'pending') {
+        proposal.status = 'accepted';
+      }
+    }
+    _refreshBatchProposals(root, part);
+    // Dispatch custom event for each accepted proposal
+    for (const proposal of part.proposals) {
+      if (proposal.status === 'accepted') {
+        root.dispatchEvent(new CustomEvent('parallx-edit-apply', {
+          bubbles: true,
+          detail: { proposal } satisfies EditApplyEventDetail,
+        }));
+      }
+    }
+  });
+
+  const rejectAllBtn = document.createElement('button');
+  rejectAllBtn.className = 'parallx-chat-edit-btn parallx-chat-edit-btn--reject-all';
+  rejectAllBtn.textContent = '\u2717 Reject All';
+  rejectAllBtn.type = 'button';
+  rejectAllBtn.addEventListener('click', () => {
+    for (const proposal of part.proposals) {
+      if (proposal.status === 'pending') {
+        proposal.status = 'rejected';
+      }
+    }
+    _refreshBatchProposals(root, part);
+  });
+
+  batchBar.appendChild(acceptAllBtn);
+  batchBar.appendChild(rejectAllBtn);
+  root.appendChild(batchBar);
+
+  // Individual proposals
+  const proposalContainer = $('div.parallx-chat-edit-batch-proposals');
+  for (const proposal of part.proposals) {
+    proposalContainer.appendChild(_renderEditProposal(proposal));
+  }
+  root.appendChild(proposalContainer);
+
+  return root;
+}
+
+function _refreshBatchProposals(root: HTMLElement, part: IChatEditBatchContent): void {
+  const container = root.querySelector('.parallx-chat-edit-batch-proposals');
+  if (!container) { return; }
+
+  // Re-render all proposals
+  container.innerHTML = '';
+  for (const proposal of part.proposals) {
+    container.appendChild(_renderEditProposal(proposal));
+  }
+
+  // Hide batch buttons if all decided
+  const allDecided = part.proposals.every((p) => p.status !== 'pending');
+  if (allDecided) {
+    const actions = root.querySelector('.parallx-chat-edit-batch-actions');
+    if (actions) { actions.remove(); }
+  }
 }
 
 // ── Unsupported (stub for M9.2 parts) ──

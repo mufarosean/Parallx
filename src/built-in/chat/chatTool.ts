@@ -54,6 +54,20 @@ interface ParallxApi {
   };
   window: {
     showInformationMessage(message: string, ...actions: { title: string }[]): Promise<{ title: string } | undefined>;
+    showQuickPick(items: readonly { label: string; description?: string; detail?: string }[], options?: { placeHolder?: string; title?: string }): Promise<{ label: string; description?: string; detail?: string } | undefined>;
+    createStatusBarItem(alignment?: number, priority?: number): {
+      text: string;
+      tooltip: string | undefined;
+      command: string | undefined;
+      name: string | undefined;
+      show(): void;
+      hide(): void;
+      dispose(): void;
+    };
+  };
+  workspace: {
+    getConfiguration(section: string): { get<T>(key: string, defaultValue?: T): T };
+    onDidChangeConfiguration: Event<{ affectsConfiguration(section: string): boolean }>;
   };
   context: {
     createContextKey<T extends string | number | boolean | undefined>(name: string, defaultValue: T): { key: string; get(): T; set(value: T): void; reset(): void };
@@ -70,6 +84,7 @@ interface ParallxApi {
 
 let _ollamaProvider: OllamaProvider | undefined;
 let _activeWidget: ChatWidget | undefined;
+let _chatIsStreamingKey: { set(value: boolean): void } | undefined;
 
 // ── Activation ──
 
@@ -81,6 +96,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const chatService = api.services.get<import('../../services/chatTypes.js').IChatService>(IChatService);
   const agentService = api.services.get<import('../../services/chatTypes.js').IChatAgentService>(IChatAgentService);
   const modeService = api.services.get<import('../../services/chatTypes.js').IChatModeService>(IChatModeService);
+
+  // Restore persisted sessions (fire and forget — non-blocking)
+  if ('restoreSessions' in chatService) {
+    (chatService as any).restoreSessions().catch(() => { /* persistence is best-effort */ });
+  }
 
   // Workspace context services (for mode-aware system prompts + participants)
   const workspaceService = api.services.has(IWorkspaceService)
@@ -103,13 +123,30 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   const fsAccessor = buildFileSystemAccessor(fileService, workspaceService);
 
+  // ── 1c. Read configuration settings ──
+
+  const chatConfig = api.workspace.getConfiguration('chat');
+  const ollamaBaseUrl = chatConfig.get<string>('ollama.baseUrl', 'http://localhost:11434');
+  const defaultModel = chatConfig.get<string>('defaultModel', '');
+  const defaultMode = chatConfig.get<string>('defaultMode', 'ask') as import('../../services/chatTypes.js').ChatMode;
+
+  // Apply configured default mode
+  if (defaultMode && modeService.getAvailableModes().includes(defaultMode)) {
+    modeService.setMode(defaultMode);
+  }
+
   // ── 2. Create OllamaProvider and register with ILanguageModelsService ──
 
-  _ollamaProvider = new OllamaProvider();
+  _ollamaProvider = new OllamaProvider(ollamaBaseUrl);
   context.subscriptions.push(_ollamaProvider);
 
   const providerRegistration = languageModelsService.registerProvider(_ollamaProvider);
   context.subscriptions.push(providerRegistration);
+
+  // Set configured default model (after provider registered, so models are discoverable)
+  if (defaultModel) {
+    languageModelsService.setActiveModel(defaultModel);
+  }
 
   // ── 3. Register the default chat participant with IChatAgentService ──
 
@@ -126,6 +163,19 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getActiveModel(): string | undefined {
       return languageModelsService.getActiveModel();
     },
+    // ── Context overflow support (Cap 9.5) ──
+    getModelContextLength(): number {
+      // Cached from OllamaProvider model info — 0 if unknown
+      return _ollamaProvider?.getActiveModelContextLength?.() ?? 0;
+    },
+    sendSummarizationRequest(
+      messages: readonly IChatMessage[],
+      signal?: AbortSignal,
+    ): AsyncIterable<IChatResponseChunk> {
+      const modelId = languageModelsService.getActiveModel() ?? '';
+      return _ollamaProvider!.sendChatRequest(modelId, messages, undefined, signal);
+    },
+    networkTimeout: 60_000, // 60 seconds default network timeout
     // ── Workspace context (Cap 4 — mode-aware system prompts) ──
     getWorkspaceName(): string {
       return workspaceService?.activeWorkspace?.name ?? 'Parallx Workspace';
@@ -177,6 +227,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         } catch { return []; }
       }
       : undefined,
+    maxIterations: chatConfig.get<number>('agent.maxIterations', 10),
   };
 
   const defaultParticipant = createDefaultParticipant(defaultParticipantServices);
@@ -405,10 +456,114 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.switchMode', () => {
+      // Cycle through Ask → Agent → Edit → Ask (matches getAvailableModes order)
+      const modes = modeService.getAvailableModes();
+      const current = modeService.getMode();
+      const idx = modes.indexOf(current);
+      const next = modes[(idx + 1) % modes.length];
+      modeService.setMode(next);
+    }),
+  );
+
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.selectModel', async () => {
+      const models = await languageModelsService.getModels();
+      if (models.length === 0) {
+        await api.window.showInformationMessage(
+          'No models available. Run `ollama pull llama3.2` to get started.',
+        );
+        return;
+      }
+      const activeId = languageModelsService.getActiveModel();
+      const items = models.map((m) => ({
+        label: m.displayName,
+        description: m.id === activeId ? '$(check) active' : '',
+        detail: `${m.parameterSize} · ${m.quantization}`,
+      }));
+      const picked = await api.window.showQuickPick(items, {
+        placeHolder: 'Select a language model',
+        title: 'AI Model',
+      });
+      if (picked) {
+        const model = models.find((m) => m.displayName === picked.label);
+        if (model) {
+          languageModelsService.setActiveModel(model.id);
+        }
+      }
+    }),
+  );
+
+  // ── 6b. Status bar item — model name + connection status ──
+
+  const statusBarItem = api.window.createStatusBarItem(/* Right */ 2, 100);
+  statusBarItem.name = 'AI Model';
+  statusBarItem.command = 'chat.selectModel';
+
+  const updateStatusBar = (): void => {
+    const activeModel = languageModelsService.getActiveModel();
+    const status = _ollamaProvider?.getLastStatus();
+    const isConnected = status?.available ?? false;
+
+    if (!isConnected) {
+      statusBarItem.text = '$(circle-slash) No AI';
+      statusBarItem.tooltip = 'Ollama not connected — click to select model';
+    } else if (activeModel) {
+      statusBarItem.text = `$(circle-filled) ${activeModel}`;
+      statusBarItem.tooltip = `AI Model: ${activeModel} — click to change`;
+    } else {
+      statusBarItem.text = '$(circle-filled) AI Ready';
+      statusBarItem.tooltip = 'No model selected — click to choose';
+    }
+  };
+  updateStatusBar();
+  statusBarItem.show();
+  context.subscriptions.push(statusBarItem as unknown as IDisposable);
+
+  // React to model/status changes
+  const modelChangeListener = languageModelsService.onDidChangeModels(() => updateStatusBar());
+  context.subscriptions.push(modelChangeListener as unknown as IDisposable);
+
+  const statusChangeListener = _ollamaProvider.onDidChangeStatus(() => updateStatusBar());
+  context.subscriptions.push(statusChangeListener as unknown as IDisposable);
+
   // ── 7. Set context keys ──
 
   const chatVisibleKey = api.context.createContextKey('chatVisible', false);
   context.subscriptions.push(chatVisibleKey as unknown as IDisposable);
+
+  const chatIsStreamingKey = api.context.createContextKey('chatIsStreaming', false);
+  context.subscriptions.push(chatIsStreamingKey as unknown as IDisposable);
+
+  // Expose streaming key setter for the chat widget to update
+  _chatIsStreamingKey = chatIsStreamingKey;
+
+  // ── 8. Apply chat font settings via CSS custom properties ──
+
+  const applyFontSettings = (): void => {
+    const cfg = api.workspace.getConfiguration('chat');
+    const fontSize = cfg.get<number>('fontSize', 13);
+    const fontFamily = cfg.get<string>('fontFamily', '');
+    document.documentElement.style.setProperty('--chat-font-size', `${fontSize}px`);
+    document.documentElement.style.setProperty(
+      '--chat-font-family',
+      fontFamily || 'var(--vscode-font-family)',
+    );
+  };
+  applyFontSettings();
+
+  // Re-apply on configuration change
+  if (api.workspace.onDidChangeConfiguration) {
+    const configSub = api.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('chat')) {
+        applyFontSettings();
+      }
+    });
+    if (configSub && typeof (configSub as any).dispose === 'function') {
+      context.subscriptions.push(configSub as unknown as IDisposable);
+    }
+  }
 }
 
 /** Set the active widget reference (called from chatView). */
@@ -416,9 +571,15 @@ export function setActiveWidget(widget: ChatWidget | undefined): void {
   _activeWidget = widget;
 }
 
+/** Update the chatIsStreaming context key (called from chatWidget). */
+export function setChatIsStreaming(streaming: boolean): void {
+  _chatIsStreamingKey?.set(streaming);
+}
+
 export function deactivate(): void {
   _ollamaProvider = undefined;
   _activeWidget = undefined;
+  _chatIsStreamingKey = undefined;
 }
 
 // ── Helpers ──

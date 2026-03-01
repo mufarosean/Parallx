@@ -237,6 +237,8 @@ export enum ChatContentPartKind {
   Reference = 'reference',
   Warning = 'warning',
   Confirmation = 'confirmation',
+  EditProposal = 'editProposal',
+  EditBatch = 'editBatch',
 }
 
 export interface IChatMarkdownContent {
@@ -295,6 +297,48 @@ export interface IChatConfirmationContent {
   isAccepted?: boolean;
 }
 
+/** Status of an edit proposal lifecycle. */
+export type EditProposalStatus = 'pending' | 'accepted' | 'rejected';
+
+/** Edit operation type. */
+export type EditProposalOperation = 'insert' | 'update' | 'delete';
+
+/**
+ * A single edit proposal — one block-level change proposed by the model.
+ *
+ * VS Code reference: IChatTextEditGroup (model/chatModel.ts) — adapted from
+ * file-level text edits to canvas block-level edits.
+ */
+export interface IChatEditProposalContent {
+  readonly kind: ChatContentPartKind.EditProposal;
+  /** Target page UUID. */
+  readonly pageId: string;
+  /** Target block UUID (omit for page-level operations like insert). */
+  readonly blockId?: string;
+  /** Edit operation. */
+  readonly operation: EditProposalOperation;
+  /** Original content before the edit (for update/delete). */
+  readonly before?: string;
+  /** Proposed new content (for insert/update). */
+  readonly after: string;
+  /** Current status of this proposal. */
+  status: EditProposalStatus;
+}
+
+/**
+ * A batch of edit proposals with a shared explanation.
+ * Enables group accept/reject across multiple edits in one response.
+ *
+ * VS Code reference: chatEditing/ orchestration — multi-file edit groups.
+ */
+export interface IChatEditBatchContent {
+  readonly kind: ChatContentPartKind.EditBatch;
+  /** Model's explanation of the proposed changes. */
+  readonly explanation: string;
+  /** Ordered list of individual edit proposals. */
+  readonly proposals: IChatEditProposalContent[];
+}
+
 /**
  * Discriminated union of all content part types.
  * Use `part.kind` for exhaustive switch checking.
@@ -307,7 +351,9 @@ export type IChatContentPart =
   | IChatThinkingContent
   | IChatReferenceContent
   | IChatWarningContent
-  | IChatConfirmationContent;
+  | IChatConfirmationContent
+  | IChatEditProposalContent
+  | IChatEditBatchContent;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 3. Participant & Tool Types (Task 0.3)
@@ -416,6 +462,10 @@ export interface IChatResponseStream {
   beginToolInvocation(toolCallId: string, toolName: string, data?: unknown): void;
   /** Update an in-progress tool invocation. */
   updateToolInvocation(toolCallId: string, data: Partial<IChatToolInvocationContent>): void;
+  /** Append a single edit proposal. */
+  editProposal(pageId: string, operation: EditProposalOperation, after: string, options?: { blockId?: string; before?: string }): void;
+  /** Append a batch of edit proposals with an explanation. */
+  editBatch(explanation: string, proposals: IChatEditProposalContent[]): void;
   /** Push a raw content part. */
   push(part: IChatContentPart): void;
   /**

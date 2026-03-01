@@ -13,18 +13,69 @@
       { "id": "chat.toggle", "title": "Chat: Toggle Chat Panel" },
       { "id": "chat.newSession", "title": "Chat: New Session" },
       { "id": "chat.clearSession", "title": "Chat: Clear Session" },
+      { "id": "chat.switchMode", "title": "Chat: Switch Mode" },
+      { "id": "chat.selectModel", "title": "Chat: Select Model" },
       { "id": "chat.stop", "title": "Chat: Stop Response" },
       { "id": "chat.focus", "title": "Chat: Focus Input" }
     ],
     "keybindings": [
       { "command": "chat.toggle", "key": "Ctrl+Shift+I" },
-      { "command": "chat.focus", "key": "Ctrl+L" }
+      { "command": "chat.newSession", "key": "Ctrl+L" },
+      { "command": "chat.stop", "key": "Escape", "when": "chatVisible && chatIsStreaming" }
     ],
     "viewContainers": [
       { "id": "chat-container", "title": "Chat", "icon": "💬", "location": "auxiliaryBar" }
     ],
     "views": [
       { "id": "view.chat", "name": "Chat", "defaultContainerId": "chat-container" }
+    ],
+    "configuration": [
+      {
+        "title": "Chat",
+        "properties": {
+          "chat.ollama.baseUrl": {
+            "type": "string",
+            "default": "http://localhost:11434",
+            "description": "Ollama server URL."
+          },
+          "chat.ollama.pollInterval": {
+            "type": "number",
+            "default": 30000,
+            "description": "Health check interval in milliseconds."
+          },
+          "chat.defaultMode": {
+            "type": "string",
+            "default": "ask",
+            "description": "Default chat mode.",
+            "enum": ["ask", "edit", "agent"]
+          },
+          "chat.defaultModel": {
+            "type": "string",
+            "default": "",
+            "description": "Preferred model ID (empty = first available)."
+          },
+          "chat.agent.maxIterations": {
+            "type": "number",
+            "default": 10,
+            "description": "Maximum agentic loop iterations per request."
+          },
+          "chat.agent.autoApproveTools": {
+            "type": "boolean",
+            "default": false,
+            "description": "Skip tool confirmation prompts in Agent mode."
+          },
+          "chat.fontSize": {
+            "type": "number",
+            "default": 13,
+            "description": "Chat message font size in pixels."
+          },
+          "chat.fontFamily": {
+            "type": "string",
+            "default": "",
+            "description": "Chat message font family (empty = system default)."
+          }
+        }
+      }
     ]
   }
 }

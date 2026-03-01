@@ -26,13 +26,66 @@ import type {
   IToolDefinition,
   IToolCall,
   IToolResult,
+  IChatEditProposalContent,
+  EditProposalOperation,
 } from '../../../services/chatTypes.js';
+import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import { buildSystemPrompt } from '../chatSystemPrompts.js';
 import type { ISystemPromptContext } from '../chatSystemPrompts.js';
 import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } from '../chatModeCapabilities.js';
 
 /** Default maximum agentic loop iterations. */
 const DEFAULT_MAX_ITERATIONS = 10;
+/** Default network timeout in milliseconds. */
+const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
+/** Context overflow threshold — warn at this fraction of context length. */
+const CONTEXT_OVERFLOW_WARN_THRESHOLD = 0.8;
+
+/**
+ * Rough token estimation: chars / 4.
+ * This is the same heuristic used by VS Code's chat implementation.
+ */
+function estimateTokens(messages: readonly IChatMessage[]): number {
+  let chars = 0;
+  for (const m of messages) {
+    chars += m.content.length;
+  }
+  return Math.ceil(chars / 4);
+}
+
+/**
+ * Categorize a fetch/network error into a user-friendly message.
+ */
+function categorizeError(err: unknown): { message: string; isNetworkError: boolean } {
+  if (err instanceof DOMException && err.name === 'AbortError') {
+    return { message: '', isNetworkError: false }; // Handled separately
+  }
+  if (err instanceof DOMException && err.name === 'TimeoutError') {
+    return {
+      message: 'Request timed out. The model may be loading or the Ollama server is unresponsive. Try again or check that Ollama is running.',
+      isNetworkError: true,
+    };
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  // Detect "Ollama not running" — fetch to localhost fails
+  if (msg.includes('Failed to fetch') || msg.includes('ECONNREFUSED') || msg.includes('NetworkError') || msg.includes('fetch failed')) {
+    return {
+      message: 'Ollama is not running. Install and start Ollama from https://ollama.com, then try again.',
+      isNetworkError: true,
+    };
+  }
+  // Detect "model not found" — Ollama returns 404 with specific message
+  if (msg.includes('model') && (msg.includes('not found') || msg.includes('404'))) {
+    // Extract model name if possible
+    const modelMatch = msg.match(/model\s+['"]?([^\s'"]+)/i);
+    const modelName = modelMatch?.[1] ?? 'the requested model';
+    return {
+      message: `Model "${modelName}" not found. Run \`ollama pull ${modelName}\` to download it.`,
+      isNetworkError: false,
+    };
+  }
+  return { message: msg, isNetworkError: false };
+}
 
 /**
  * Service accessor for the default participant.
@@ -64,6 +117,15 @@ export interface IDefaultParticipantServices {
   ): Promise<IToolResult>;
   /** Max agentic loop iterations (default: 10). */
   maxIterations?: number;
+  /** Network timeout in milliseconds (default: 60000). */
+  networkTimeout?: number;
+  /** Context length of the active model (tokens). 0 = unknown. */
+  getModelContextLength?(): number;
+  /** Send a summarization request to compress conversation history. */
+  sendSummarizationRequest?(
+    messages: readonly IChatMessage[],
+    signal?: AbortSignal,
+  ): AsyncIterable<IChatResponseChunk>;
 
   // ── Data context (prevents LLM hallucination) ──
 
@@ -164,6 +226,57 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       content: request.text,
     });
 
+    // ── Context overflow detection & LLM-based summarization ──
+
+    const contextLength = services.getModelContextLength?.() ?? 0;
+    if (contextLength > 0) {
+      const tokenEstimate = estimateTokens(messages);
+      const warnThreshold = Math.floor(contextLength * CONTEXT_OVERFLOW_WARN_THRESHOLD);
+
+      if (tokenEstimate > contextLength && services.sendSummarizationRequest) {
+        // Exceeded context — summarize older messages (invisible to user)
+        try {
+          const historyToSummarize = messages.slice(1, -1); // exclude system + current user
+          if (historyToSummarize.length > 2) {
+            const summaryPrompt: IChatMessage[] = [
+              {
+                role: 'system',
+                content:
+                  'You are a conversation summarizer. Condense the following conversation history into a concise context message. ' +
+                  'Preserve all key facts, decisions, and code references. Output ONLY the summary, no preamble.',
+              },
+              {
+                role: 'user',
+                content: historyToSummarize.map((m) => `[${m.role}]: ${m.content}`).join('\n\n'),
+              },
+            ];
+
+            let summaryText = '';
+            for await (const chunk of services.sendSummarizationRequest(summaryPrompt)) {
+              if (chunk.content) { summaryText += chunk.content; }
+            }
+
+            if (summaryText) {
+              // Replace history with summary — keep system prompt + summary + current user msg
+              const systemMsg = messages[0];
+              const currentMsg = messages[messages.length - 1];
+              messages.length = 0;
+              messages.push(systemMsg);
+              messages.push({ role: 'assistant', content: `[Conversation summary]: ${summaryText}` });
+              messages.push(currentMsg);
+            }
+          }
+        } catch {
+          // Summarization failed — proceed with full history (best effort)
+        }
+      } else if (tokenEstimate > warnThreshold) {
+        response.warning(
+          `Approaching context limit (${tokenEstimate} / ${contextLength} estimated tokens). ` +
+          'Older messages may be summarized automatically if the conversation continues.',
+        );
+      }
+    }
+
     // Build request options (mode-aware)
     const options: IChatRequestOptions = {
       // Agent mode: include tool definitions in the request
@@ -181,6 +294,15 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       abortController.abort();
     });
 
+    // Network timeout — abort if no response within configured time
+    const timeoutMs = services.networkTimeout ?? DEFAULT_NETWORK_TIMEOUT_MS;
+    let networkTimeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (timeoutMs > 0) {
+      networkTimeoutId = setTimeout(() => {
+        abortController.abort(new DOMException('Request timed out', 'TimeoutError'));
+      }, timeoutMs);
+    }
+
     try {
       // ── Agentic loop (Cap 6 Task 6.2) ──
       //
@@ -196,6 +318,8 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       // because tools are not sent in the request).
 
       const canInvokeTools = capabilities.canInvokeTools && !!services.invokeTool;
+      const isEditMode = capabilities.canProposeEdits && !capabilities.canAutonomous;
+      let producedContent = false;
 
       for (let iteration = 0; iteration <= maxIterations; iteration++) {
         // Collect content and tool calls from the current LLM turn
@@ -218,10 +342,13 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
             response.thinking(chunk.thinking);
           }
 
-          // Regular content
+          // Regular content — in Edit mode, buffer instead of streaming
           if (chunk.content) {
-            response.markdown(chunk.content);
+            if (!isEditMode) {
+              response.markdown(chunk.content);
+            }
             turnContent += chunk.content;
+            producedContent = true;
           }
 
           // Collect tool calls from the response
@@ -235,6 +362,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         // If cancelled, break out
         if (token.isCancellationRequested) {
           break;
+        }
+
+        // ── Edit mode: parse JSON structured output into edit proposals ──
+        if (isEditMode && turnContent) {
+          _parseEditResponse(turnContent, response);
+          break; // Edit mode is single-turn (no tool calls)
         }
 
         // No tool calls → model gave a final answer, done
@@ -271,6 +404,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
           // 1. Render pending tool card
           response.beginToolInvocation(toolCallId, tcName, tcArgs);
+          producedContent = true;
 
           // 2. Update status to running
           response.updateToolInvocation(toolCallId, { status: 'running' });
@@ -314,14 +448,26 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         // next iteration sends the full history back to the model.
       }
 
+      // Clear network timeout since we got a response
+      if (networkTimeoutId !== undefined) { clearTimeout(networkTimeoutId); }
+
+      // ── Empty response detection ──
+      if (!producedContent && !token.isCancellationRequested) {
+        response.warning('The model returned an empty response. Try rephrasing your question or selecting a different model.');
+      }
+
       return {};
     } catch (err) {
+      // Clear network timeout on error
+      if (networkTimeoutId !== undefined) { clearTimeout(networkTimeoutId); }
+
       if (err instanceof DOMException && err.name === 'AbortError') {
-        // Cancelled — not an error
+        // User-initiated cancellation — not an error
         return {};
       }
 
-      const message = err instanceof Error ? err.message : String(err);
+      // Categorize the error for user-friendly messaging
+      const { message, isNetworkError: _isNetworkError } = categorizeError(err);
       return {
         errorDetails: {
           message,
@@ -346,4 +492,108 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
   };
 
   return participant;
+}
+
+// ── Edit mode JSON parser ──
+
+/** Valid edit operations. */
+const VALID_OPERATIONS = new Set<string>(['insert', 'update', 'delete']);
+
+/**
+ * Parse JSON structured output from Edit mode and emit edit proposals.
+ *
+ * Expected schema:
+ * ```json
+ * {
+ *   "explanation": "Brief description of the changes",
+ *   "edits": [{ "pageId", "blockId?", "operation", "content" }]
+ * }
+ * ```
+ *
+ * Falls back gracefully: shows raw response + warning if parsing fails.
+ */
+function _parseEditResponse(rawContent: string, response: IChatResponseStream): void {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawContent);
+  } catch {
+    // JSON parse failed — show raw content with warning
+    response.warning('Edit mode: failed to parse model response as JSON. Showing raw output.');
+    response.markdown(rawContent);
+    return;
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    response.warning('Edit mode: model response is not a JSON object. Showing raw output.');
+    response.markdown(rawContent);
+    return;
+  }
+
+  const obj = parsed as Record<string, unknown>;
+
+  // Extract explanation
+  const explanation = typeof obj['explanation'] === 'string' ? obj['explanation'] : '';
+
+  // Extract and validate edits array
+  const editsRaw = obj['edits'];
+  if (!Array.isArray(editsRaw) || editsRaw.length === 0) {
+    // No edits — show explanation as markdown + warning
+    if (explanation) {
+      response.markdown(explanation);
+    }
+    response.warning('Edit mode: no edits found in model response.');
+    return;
+  }
+
+  // Validate and build edit proposals
+  const proposals: IChatEditProposalContent[] = [];
+  const warnings: string[] = [];
+
+  for (let i = 0; i < editsRaw.length; i++) {
+    const entry = editsRaw[i];
+    if (!entry || typeof entry !== 'object') {
+      warnings.push(`Edit ${i + 1}: not a valid object, skipped.`);
+      continue;
+    }
+
+    const e = entry as Record<string, unknown>;
+    const pageId = typeof e['pageId'] === 'string' ? e['pageId'] : '';
+    const blockId = typeof e['blockId'] === 'string' ? e['blockId'] : undefined;
+    const operation = typeof e['operation'] === 'string' ? e['operation'] : '';
+    const content = typeof e['content'] === 'string' ? e['content'] : '';
+
+    if (!pageId) {
+      warnings.push(`Edit ${i + 1}: missing pageId, skipped.`);
+      continue;
+    }
+    if (!VALID_OPERATIONS.has(operation)) {
+      warnings.push(`Edit ${i + 1}: invalid operation "${operation}", skipped.`);
+      continue;
+    }
+
+    proposals.push({
+      kind: ChatContentPartKind.EditProposal,
+      pageId,
+      blockId,
+      operation: operation as EditProposalOperation,
+      after: content,
+      status: 'pending',
+    });
+  }
+
+  // Emit warnings for invalid entries
+  for (const w of warnings) {
+    response.warning(w);
+  }
+
+  if (proposals.length === 0) {
+    if (explanation) {
+      response.markdown(explanation);
+    }
+    response.warning('Edit mode: all proposed edits were invalid.');
+    return;
+  }
+
+  // Emit edit batch (explanation + proposals)
+  response.editBatch(explanation, proposals);
 }

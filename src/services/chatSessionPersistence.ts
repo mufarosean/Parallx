@@ -1,0 +1,243 @@
+// chatSessionPersistence.ts — SQLite persistence for chat sessions (M9 Cap 9 Task 9.1)
+//
+// Serializes/deserializes chat sessions and messages to SQLite tables.
+// Uses IDatabaseService for all SQL operations.
+//
+// Tables:
+//   chat_sessions — session metadata (id, title, mode, modelId, timestamps)
+//   chat_messages — ordered messages with serialized content parts
+//
+// VS Code reference:
+//   src/vs/workbench/contrib/chat/common/chatService/chatService.ts — _persistSession()
+
+import { URI } from '../platform/uri.js';
+import type {
+  IChatSession,
+  IChatUserMessage,
+  IChatAssistantResponse,
+  IChatRequestResponsePair,
+  IChatContentPart,
+} from './chatTypes.js';
+import { ChatMode } from './chatTypes.js';
+
+// ── Database interface (subset of IDatabaseService) ──
+
+/**
+ * Minimal database interface required by the persistence layer.
+ * Decoupled from the full IDatabaseService to keep the module testable.
+ */
+export interface IChatPersistenceDatabase {
+  run(sql: string, params?: unknown[]): Promise<{ changes: number }>;
+  get<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | null>;
+  all<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
+  readonly isOpen: boolean;
+}
+
+// ── Schema ──
+
+const CHAT_SESSION_SCHEME = 'parallx-chat-session';
+
+const CREATE_SESSIONS_TABLE = `
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  id          TEXT PRIMARY KEY,
+  title       TEXT NOT NULL DEFAULT 'New Chat',
+  mode        TEXT NOT NULL DEFAULT 'ask',
+  model_id    TEXT NOT NULL DEFAULT '',
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+)`;
+
+const CREATE_MESSAGES_TABLE = `
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id  TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+  role        TEXT NOT NULL,
+  content     TEXT NOT NULL DEFAULT '',
+  parts_json  TEXT NOT NULL DEFAULT '[]',
+  model_id    TEXT NOT NULL DEFAULT '',
+  is_complete INTEGER NOT NULL DEFAULT 0,
+  timestamp   INTEGER NOT NULL,
+  sort_order  INTEGER NOT NULL DEFAULT 0
+)`;
+
+const CREATE_MESSAGES_INDEX = `
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session
+ON chat_messages(session_id, sort_order)`;
+
+// ── Public API ──
+
+/**
+ * Ensure chat persistence tables exist.
+ * Safe to call multiple times (IF NOT EXISTS).
+ */
+export async function ensureChatTables(db: IChatPersistenceDatabase): Promise<void> {
+  if (!db.isOpen) { return; }
+  await db.run(CREATE_SESSIONS_TABLE);
+  await db.run(CREATE_MESSAGES_TABLE);
+  await db.run(CREATE_MESSAGES_INDEX);
+}
+
+/**
+ * Persist a session and all its messages.
+ * Uses REPLACE INTO for idempotent upsert.
+ */
+export async function saveSession(db: IChatPersistenceDatabase, session: IChatSession): Promise<void> {
+  if (!db.isOpen) { return; }
+
+  // Upsert session row
+  await db.run(
+    `INSERT OR REPLACE INTO chat_sessions (id, title, mode, model_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [session.id, session.title, session.mode, session.modelId, session.createdAt, Date.now()],
+  );
+
+  // Delete existing messages for this session (full replace)
+  await db.run(`DELETE FROM chat_messages WHERE session_id = ?`, [session.id]);
+
+  // Insert all message pairs
+  for (let i = 0; i < session.messages.length; i++) {
+    const pair = session.messages[i];
+
+    // User message
+    await db.run(
+      `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        session.id,
+        'user',
+        pair.request.text,
+        JSON.stringify([]), // User messages don't have parts
+        '',
+        1,
+        pair.request.timestamp,
+        i * 2,
+      ],
+    );
+
+    // Assistant response
+    await db.run(
+      `INSERT INTO chat_messages (session_id, role, content, parts_json, model_id, is_complete, timestamp, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        session.id,
+        'assistant',
+        _extractTextContent(pair.response.parts),
+        JSON.stringify(pair.response.parts),
+        pair.response.modelId,
+        pair.response.isComplete ? 1 : 0,
+        pair.response.timestamp,
+        i * 2 + 1,
+      ],
+    );
+  }
+}
+
+/**
+ * Load all persisted sessions from the database.
+ * Returns fully hydrated IChatSession objects.
+ */
+export async function loadSessions(db: IChatPersistenceDatabase): Promise<IChatSession[]> {
+  if (!db.isOpen) { return []; }
+
+  const rows = await db.all<{
+    id: string;
+    title: string;
+    mode: string;
+    model_id: string;
+    created_at: number;
+    updated_at: number;
+  }>(`SELECT id, title, mode, model_id, created_at, updated_at FROM chat_sessions ORDER BY updated_at DESC`);
+
+  const sessions: IChatSession[] = [];
+
+  for (const row of rows) {
+    const messageRows = await db.all<{
+      role: string;
+      content: string;
+      parts_json: string;
+      model_id: string;
+      is_complete: number;
+      timestamp: number;
+      sort_order: number;
+    }>(`SELECT role, content, parts_json, model_id, is_complete, timestamp, sort_order
+        FROM chat_messages WHERE session_id = ? ORDER BY sort_order`, [row.id]);
+
+    // Reconstruct request/response pairs
+    const messages: IChatRequestResponsePair[] = [];
+    let pendingUser: IChatUserMessage | undefined;
+
+    for (const msg of messageRows) {
+      if (msg.role === 'user') {
+        pendingUser = {
+          text: msg.content,
+          timestamp: msg.timestamp,
+        };
+      } else if (msg.role === 'assistant' && pendingUser) {
+        let parts: IChatContentPart[] = [];
+        try {
+          parts = JSON.parse(msg.parts_json);
+        } catch {
+          // Corrupted parts — fallback to empty
+        }
+
+        const response: IChatAssistantResponse = {
+          parts,
+          isComplete: msg.is_complete === 1,
+          modelId: msg.model_id,
+          timestamp: msg.timestamp,
+        };
+
+        messages.push({
+          request: pendingUser,
+          response,
+        });
+        pendingUser = undefined;
+      }
+    }
+
+    const sessionResource = URI.from({ scheme: CHAT_SESSION_SCHEME, path: `/${row.id}` });
+
+    sessions.push({
+      id: row.id,
+      sessionResource,
+      createdAt: row.created_at,
+      title: row.title,
+      mode: _parseMode(row.mode),
+      modelId: row.model_id,
+      messages,
+      requestInProgress: false,
+    });
+  }
+
+  return sessions;
+}
+
+/**
+ * Delete a session and its messages from the database.
+ * Messages are cascade-deleted via the foreign key.
+ */
+export async function deletePersistedSession(db: IChatPersistenceDatabase, sessionId: string): Promise<void> {
+  if (!db.isOpen) { return; }
+  await db.run(`DELETE FROM chat_sessions WHERE id = ?`, [sessionId]);
+}
+
+// ── Helpers ──
+
+function _extractTextContent(parts: readonly IChatContentPart[]): string {
+  return parts
+    .map((p) => {
+      if ('content' in p && typeof p.content === 'string') { return p.content; }
+      if ('code' in p && typeof p.code === 'string') { return p.code; }
+      if ('message' in p && typeof p.message === 'string') { return p.message; }
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 1000); // Truncate for the content column (used for search, not rendering)
+}
+
+function _parseMode(mode: string): ChatMode {
+  if (mode === 'edit') { return ChatMode.Edit; }
+  if (mode === 'agent') { return ChatMode.Agent; }
+  return ChatMode.Ask;
+}
