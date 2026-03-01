@@ -13,6 +13,7 @@ import type { OllamaProvider } from './providers/ollamaProvider.js';
 import { ChatWidget } from './chatWidget.js';
 import type { IChatWidgetServices } from './chatWidget.js';
 import { $ } from '../../ui/dom.js';
+import { setActiveWidget } from './chatTool.js';
 
 /**
  * Creates the chat view inside the given container.
@@ -33,6 +34,9 @@ export function createChatView(
   const widget = new ChatWidget(root, provider, services);
   disposables.add(widget);
 
+  // Register this widget as the active widget for command dispatch
+  setActiveWidget(widget);
+
   // Layout on resize
   const resizeObserver = new ResizeObserver((entries) => {
     for (const entry of entries) {
@@ -44,6 +48,7 @@ export function createChatView(
 
   disposables.add({
     dispose() {
+      setActiveWidget(undefined);
       resizeObserver.disconnect();
       root.remove();
     },

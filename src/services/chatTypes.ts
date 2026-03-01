@@ -595,6 +595,8 @@ export interface IChatService extends IDisposable {
   getSessions(): readonly IChatSession[];
   /** Send a user message and orchestrate the full request pipeline. */
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
+  /** Cancel the in-progress request for a session. */
+  cancelRequest(sessionId: string): void;
 }
 
 /**

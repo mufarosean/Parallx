@@ -158,6 +158,15 @@ export interface ParallxApiObject {
     readonly appVersion: string;
     readonly toolPath: string;
   };
+  readonly services: {
+    /**
+     * Get a DI service instance by its ServiceIdentifier.
+     * Throws if the service is not registered.
+     */
+    get<T>(id: { readonly id: string }): T;
+    /** Check if a DI service is registered. */
+    has(id: { readonly id: string }): boolean;
+  };
 }
 
 // ─── Global Tool Lifecycle Emitters ──────────────────────────────────────────
@@ -498,6 +507,11 @@ export function createToolApi(
       appName: 'Parallx',
       appVersion: PARALLX_VERSION,
       toolPath: toolDescription.toolPath,
+    }),
+
+    services: Object.freeze({
+      get: <T>(id: { readonly id: string }) => deps.services.get(id as any) as T,
+      has: (id: { readonly id: string }) => deps.services.has(id as any),
     }),
   };
 

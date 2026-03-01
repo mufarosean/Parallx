@@ -19,6 +19,10 @@ import { $, append, addDisposableListener } from '../../ui/dom.js';
 import type { OllamaProvider } from './providers/ollamaProvider.js';
 import { ChatInputPart } from './chatInputPart.js';
 import { ChatListRenderer } from './chatListRenderer.js';
+import { ChatModelPicker } from './chatModelPicker.js';
+import type { IModelPickerServices } from './chatModelPicker.js';
+import { ChatModePicker } from './chatModePicker.js';
+import type { IModePickerServices } from './chatModePicker.js';
 import type {
   IChatSession,
   IChatWidgetDescriptor,
@@ -34,6 +38,10 @@ export interface IChatWidgetServices {
   readonly onDidChangeSession: Event<string>;
   readonly getProviderStatus: () => { available: boolean };
   readonly onDidChangeProviderStatus: Event<void>;
+  /** Optional model picker services — when provided, the model picker is shown. */
+  readonly modelPicker?: IModelPickerServices;
+  /** Optional mode picker services — when provided, the mode picker is shown. */
+  readonly modePicker?: IModePickerServices;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -135,6 +143,18 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._inputPart = this._register(new ChatInputPart(this._inputAreaContainer));
     this._register(this._inputPart.onDidAcceptInput((text) => this._handleSubmit(text)));
     this._register(this._inputPart.onDidRequestStop(() => this._handleStop()));
+
+    // ── Pickers (attached to input toolbar's picker slot) ──
+
+    const pickerSlot = this._inputPart.getPickerSlot();
+
+    if (services.modelPicker) {
+      this._register(new ChatModelPicker(pickerSlot, services.modelPicker));
+    }
+
+    if (services.modePicker) {
+      this._register(new ChatModePicker(pickerSlot, services.modePicker));
+    }
 
     // ── Scroll tracking ──
 

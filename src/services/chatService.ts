@@ -13,6 +13,7 @@ import { URI } from '../platform/uri.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
 import { ChatContentPartKind } from './chatTypes.js';
+import { parseChatRequest } from '../built-in/chat/chatRequestParser.js';
 import type {
   IChatService,
   IChatSession,
@@ -336,11 +337,14 @@ export class ChatService extends Disposable implements IChatService {
       throw new Error('A request is already in progress for this session.');
     }
 
+    // 0. Parse user input for @participant, /command, #variables
+    const parsed = parseChatRequest(message);
+
     // 1. Create user message
     const userMessage: IChatUserMessage = {
       text: message,
-      participantId: options?.participantId,
-      command: options?.command,
+      participantId: options?.participantId ?? parsed.participantId,
+      command: options?.command ?? parsed.command,
       timestamp: Date.now(),
     };
 
@@ -367,8 +371,8 @@ export class ChatService extends Disposable implements IChatService {
     session.requestInProgress = true;
     this._onDidChangeSession.fire(sessionId);
 
-    // 5. Resolve participant
-    const participantId = options?.participantId ?? this._agentService.getDefaultAgent()?.id ?? 'parallx.chat.default';
+    // 5. Resolve participant (prefer explicit option, then parsed @mention, then default)
+    const participantId = options?.participantId ?? parsed.participantId ?? this._agentService.getDefaultAgent()?.id ?? 'parallx.chat.default';
 
     // 6. Create cancellation token
     const cts = new CancellationTokenSource();
@@ -379,11 +383,11 @@ export class ChatService extends Disposable implements IChatService {
       this._onDidChangeSession.fire(sessionId);
     });
 
-    // 8. Build participant request
+    // 8. Build participant request (use parsed text with @mention stripped)
     const participantRequest: IChatParticipantRequest = {
-      text: message,
+      text: parsed.text,
       requestId: generateUUID(),
-      command: options?.command,
+      command: options?.command ?? parsed.command,
       mode: session.mode,
       modelId: session.modelId,
       attempt: 0,
