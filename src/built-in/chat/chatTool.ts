@@ -60,6 +60,7 @@ interface ParallxApi {
       tooltip: string | undefined;
       command: string | undefined;
       name: string | undefined;
+      iconSvg: string | undefined;
       show(): void;
       hide(): void;
       dispose(): void;
@@ -502,16 +503,35 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // ── 6b. Status bar item — token usage for active session ──
+  // ── 6b. Status bar item — visual token usage bar ──
 
   const tokenStatusBar = api.window.createStatusBarItem(/* Right */ 2, 100);
   tokenStatusBar.name = 'Token Usage';
-  tokenStatusBar.command = 'chat.focus';
+  // No command — purely informational indicator
+
+  /** Build a tiny SVG progress bar for the status bar icon slot. */
+  const buildTokenBarSvg = (pct: number): string => {
+    // Bar dimensions: 40×10 with 1px border radius
+    const w = 40;
+    const h = 10;
+    const fillW = Math.max(0, Math.min(w - 2, ((w - 2) * pct) / 100));
+    // Color: green → amber → red based on usage
+    let fillColor = '#4ec9b0'; // green/teal
+    if (pct >= 90) fillColor = '#f14c4c'; // red
+    else if (pct >= 70) fillColor = '#cca700'; // amber
+    return [
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`,
+      `<rect x="0" y="0" width="${w}" height="${h}" rx="2" ry="2" fill="#3c3c3c" stroke="#555" stroke-width="0.5"/>`,
+      fillW > 0 ? `<rect x="1" y="1" width="${fillW}" height="${h - 2}" rx="1" ry="1" fill="${fillColor}"/>` : '',
+      `</svg>`,
+    ].join('');
+  };
 
   const updateTokenStatusBar = (): void => {
     const session = _activeWidget?.getSession();
     if (!session || session.messages.length === 0) {
-      tokenStatusBar.text = '$(pulse) 0 tokens';
+      tokenStatusBar.iconSvg = buildTokenBarSvg(0);
+      tokenStatusBar.text = '0 tokens';
       tokenStatusBar.tooltip = 'No active conversation';
       return;
     }
@@ -542,11 +562,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         ? `${(contextLength / 1000).toFixed(0)}k`
         : `${contextLength}`;
       const pct = Math.min((estimatedTokens / contextLength) * 100, 100);
-      tokenStatusBar.text = `$(pulse) ${tokensK} / ${contextK}`;
-      tokenStatusBar.tooltip = `Token usage: ~${estimatedTokens.toLocaleString()} / ${contextLength.toLocaleString()} (${pct.toFixed(1)}%) — click to focus chat`;
+      tokenStatusBar.iconSvg = buildTokenBarSvg(pct);
+      tokenStatusBar.text = `${tokensK} / ${contextK}`;
+      tokenStatusBar.tooltip = `Token usage: ~${estimatedTokens.toLocaleString()} / ${contextLength.toLocaleString()} (${pct.toFixed(1)}%)`;
     } else {
-      tokenStatusBar.text = `$(pulse) ${tokensK} tokens`;
-      tokenStatusBar.tooltip = `Estimated tokens: ~${estimatedTokens.toLocaleString()} — click to focus chat`;
+      tokenStatusBar.iconSvg = buildTokenBarSvg(0);
+      tokenStatusBar.text = `${tokensK} tokens`;
+      tokenStatusBar.tooltip = `Estimated tokens: ~${estimatedTokens.toLocaleString()}`;
     }
   };
   updateTokenStatusBar();

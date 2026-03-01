@@ -336,6 +336,7 @@ export function createToolApi(
         let _tooltip: string | undefined;
         let _command: string | undefined;
         let _name: string | undefined;
+        let _iconSvg: string | undefined;
         let _visible = false;
         let _accessor: StatusBarEntryAccessor | undefined;
 
@@ -359,6 +360,11 @@ export function createToolApi(
           },
           get name() { return _name; },
           set name(v: string | undefined) { _name = v; },
+          get iconSvg() { return _iconSvg; },
+          set iconSvg(v: string | undefined) {
+            _iconSvg = v;
+            if (_visible && _accessor) _accessor.update({ iconSvg: v });
+          },
           show() {
             if (_visible || !sbPart) return;
             _visible = true;
@@ -370,6 +376,7 @@ export function createToolApi(
               tooltip: _tooltip,
               command: _command,
               name: _name,
+              iconSvg: _iconSvg,
             });
             // NOT pushed to subscriptions — lifecycle is managed by show/hide/dispose
           },
