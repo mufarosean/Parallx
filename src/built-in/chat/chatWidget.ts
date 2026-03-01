@@ -257,6 +257,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       if (this._session && sessionId === this._session.id) {
         this._renderMessages();
       }
+      // Always refresh sidebar so new sessions / title changes appear immediately
+      this._sessionSidebar.refresh();
     }));
 
     this._register(this._services.onDidChangeProviderStatus(() => {
@@ -330,6 +332,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // Ensure we have a session
     if (!this._session) {
       this._session = this._services.createSession();
+      this._sessionSidebar.setActiveSession(this._session.id);
+      this._sessionSidebar.refresh();
     }
 
     this._inputPart.clear();
