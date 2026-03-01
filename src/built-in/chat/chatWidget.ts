@@ -178,7 +178,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // ── Sash (resize handle between main area and sidebar) ──
     this._sash = $('div.parallx-chat-sidebar-sash');
     this._root.appendChild(this._sash);
-    this._setupSashDrag();
 
     // ── Session sidebar (right: collapsible panel) ──
 
@@ -187,6 +186,10 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       deleteSession: (id) => this._services.deleteSession?.(id),
     };
     this._sessionSidebar = this._register(new ChatSessionSidebar(this._root, sidebarServices));
+
+    // Wire sash drag AFTER sidebar is created (it references _sessionSidebar)
+    this._setupSashDrag();
+
     this._register(this._sessionSidebar.onDidSelectSession((sessionId) => {
       const session = this._services.getSession?.(sessionId);
       if (session) {
