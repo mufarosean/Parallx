@@ -16,6 +16,7 @@ import { $, append, addDisposableListener } from '../../ui/dom.js';
 import type { FollowupClickEventDetail } from './chatContentParts.js';
 import type { OllamaProvider } from './providers/ollamaProvider.js';
 import { ChatInputPart } from './chatInputPart.js';
+import { chatIcons } from './chatIcons.js';
 import { ChatListRenderer } from './chatListRenderer.js';
 import { ChatModelPicker } from './chatModelPicker.js';
 import type { IModelPickerServices } from './chatModelPicker.js';
@@ -153,7 +154,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._mainArea.appendChild(this._messageListContainer);
 
     // Scroll-to-bottom button (overlaid on message list)
-    this._scrollBtn = $('div.parallx-chat-scroll-btn', '\u2193');
+    this._scrollBtn = $('div.parallx-chat-scroll-btn');
+    this._scrollBtn.innerHTML = chatIcons.chevronDown;
     this._mainArea.appendChild(this._scrollBtn);
 
     // Context indicator (between message list and input)
@@ -471,39 +473,42 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private _buildEmptyState(): HTMLElement {
     const root = $('div.parallx-chat-empty-state');
 
-    const icon = $('div.parallx-chat-empty-state-icon', '\u2728');
+    const icon = $('div.parallx-chat-empty-state-icon');
+    icon.innerHTML = chatIcons.sparkle;
     const title = $('div.parallx-chat-empty-state-title', 'How can I help you?');
     const subtitle = $('div.parallx-chat-empty-state-subtitle',
       'Ask questions, get explanations, or let AI help with your workspace.');
 
     append(root, icon, title, subtitle);
 
-    // Feature hints
+    // Feature hints — each inserts its label into the input on click
     const hints = $('div.parallx-chat-empty-state-hints');
 
-    const hintItems: { icon: string; label: string; description: string }[] = [
-      { icon: '\uD83D\uDCAC', label: 'Ask mode', description: 'Q&A about anything' },
-      { icon: '\u270F\uFE0F', label: 'Edit mode', description: 'AI-assisted canvas editing' },
-      { icon: '\u{1F916}', label: 'Agent mode', description: 'Autonomous with tools' },
-      { icon: '@', label: '@workspace', description: 'Search pages & files' },
-      { icon: '\u{1F3A8}', label: '@canvas', description: 'Edit current page' },
-      { icon: '\u2328\uFE0F', label: 'Ctrl+L', description: 'New chat session' },
+    const hintItems: { svg: string; label: string; description: string; insert: string }[] = [
+      { svg: chatIcons.chatBubble, label: 'Ask mode', description: 'Q&A about anything', insert: '/ask ' },
+      { svg: chatIcons.pencil, label: 'Edit mode', description: 'AI-assisted canvas editing', insert: '/edit ' },
+      { svg: chatIcons.agent, label: 'Agent mode', description: 'Autonomous with tools', insert: '/agent ' },
+      { svg: chatIcons.atSign, label: '@workspace', description: 'Search pages & files', insert: '@workspace ' },
+      { svg: chatIcons.canvas, label: '@canvas', description: 'Edit current page', insert: '@canvas ' },
+      { svg: chatIcons.keyboard, label: 'Ctrl+L', description: 'New chat session', insert: '' },
     ];
 
     for (const hint of hintItems) {
       const item = $('div.parallx-chat-hint-item');
-      const hintIcon = $('span.parallx-chat-hint-icon', hint.icon);
+      const hintIcon = $('span.parallx-chat-hint-icon');
+      hintIcon.innerHTML = hint.svg;
       const hintText = $('span.parallx-chat-hint-text');
       const hintLabel = $('span.parallx-chat-hint-label', hint.label);
       const hintDesc = $('span.parallx-chat-hint-desc', hint.description);
       append(hintText, hintLabel, hintDesc);
       append(item, hintIcon, hintText);
 
-      // Clicking a hint item inserts the label into the input
+      // Clicking a hint inserts its text into the input and focuses
       item.addEventListener('click', () => {
-        if (hint.label.startsWith('@')) {
-          this._inputPart.focus();
+        if (hint.insert) {
+          this._inputPart.setValue(hint.insert);
         }
+        this._inputPart.focus();
       });
 
       hints.appendChild(item);

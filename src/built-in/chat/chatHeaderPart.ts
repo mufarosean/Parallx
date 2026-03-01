@@ -14,6 +14,7 @@ import { Disposable } from '../../platform/lifecycle.js';
 import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
+import { chatIcons } from './chatIcons.js';
 
 export interface IChatHeaderAction {
   readonly onNewChat: Event<void>;
@@ -61,7 +62,7 @@ export class ChatHeaderPart extends Disposable implements IChatHeaderAction {
 
     // New Chat button
     const newChatBtn = this._createActionButton(
-      '\u002B', // +
+      chatIcons.newChat,
       'New Chat (Ctrl+L)',
       'parallx-chat-header-btn--new',
     );
@@ -70,7 +71,7 @@ export class ChatHeaderPart extends Disposable implements IChatHeaderAction {
 
     // History button
     const historyBtn = this._createActionButton(
-      '\u{1F552}', // 🕒
+      chatIcons.history,
       'Chat History',
       'parallx-chat-header-btn--history',
     );
@@ -79,7 +80,7 @@ export class ChatHeaderPart extends Disposable implements IChatHeaderAction {
 
     // Clear button
     const clearBtn = this._createActionButton(
-      '\u{1F5D1}', // 🗑
+      chatIcons.trash,
       'Clear Session',
       'parallx-chat-header-btn--clear',
     );
@@ -101,12 +102,13 @@ export class ChatHeaderPart extends Disposable implements IChatHeaderAction {
 
   // ── Helpers ──
 
-  private _createActionButton(icon: string, tooltip: string, extraClass: string): HTMLButtonElement {
+  private _createActionButton(svgHtml: string, tooltip: string, extraClass: string): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.className = `parallx-chat-header-btn ${extraClass}`;
     btn.type = 'button';
     btn.title = tooltip;
-    btn.textContent = icon;
+    btn.setAttribute('aria-label', tooltip);
+    btn.innerHTML = svgHtml;
     return btn;
   }
 

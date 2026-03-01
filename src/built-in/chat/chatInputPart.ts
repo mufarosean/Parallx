@@ -16,6 +16,7 @@ import { Disposable } from '../../platform/lifecycle.js';
 import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
+import { chatIcons } from './chatIcons.js';
 
 /**
  * Chat input area — textarea + toolbar (submit/stop, model/mode pickers).
@@ -70,6 +71,19 @@ export class ChatInputPart extends Disposable {
     this._pickerSlot = $('div.parallx-chat-input-toolbar-pickers');
     this._toolbar.appendChild(this._pickerSlot);
 
+    // Add Context button (VS Code-style attach)
+    const attachBtn = document.createElement('button');
+    attachBtn.className = 'parallx-chat-input-attach';
+    attachBtn.type = 'button';
+    attachBtn.title = 'Add Context...';
+    attachBtn.setAttribute('aria-label', 'Add Context');
+    attachBtn.innerHTML = chatIcons.attach;
+    const attachLabel = document.createElement('span');
+    attachLabel.className = 'parallx-chat-input-attach-label';
+    attachLabel.textContent = 'Add Context';
+    attachBtn.appendChild(attachLabel);
+    this._toolbar.appendChild(attachBtn);
+
     // Spacer
     const spacer = $('div.parallx-chat-input-toolbar-spacer');
     this._toolbar.appendChild(spacer);
@@ -77,17 +91,19 @@ export class ChatInputPart extends Disposable {
     // Submit button (icon-only: ↑ arrow, VS Code style)
     this._submitBtn = document.createElement('button');
     this._submitBtn.className = 'parallx-chat-input-submit';
-    this._submitBtn.textContent = '\u2191'; // ↑
+    this._submitBtn.innerHTML = chatIcons.send;
     this._submitBtn.type = 'button';
     this._submitBtn.title = 'Send message (Enter)';
+    this._submitBtn.setAttribute('aria-label', 'Send message');
     this._toolbar.appendChild(this._submitBtn);
 
     // Stop button (icon-only: ■ square, hidden by default)
     this._stopBtn = document.createElement('button');
     this._stopBtn.className = 'parallx-chat-input-stop';
-    this._stopBtn.textContent = '\u25A0'; // ■
+    this._stopBtn.innerHTML = chatIcons.stop;
     this._stopBtn.type = 'button';
     this._stopBtn.title = 'Stop generation';
+    this._stopBtn.setAttribute('aria-label', 'Stop generation');
     this._stopBtn.style.display = 'none';
     this._toolbar.appendChild(this._stopBtn);
 
@@ -122,6 +138,12 @@ export class ChatInputPart extends Disposable {
   /** Get the current input text. */
   getValue(): string {
     return this._textarea.value;
+  }
+
+  /** Set the input text and auto-resize. */
+  setValue(text: string): void {
+    this._textarea.value = text;
+    this._autoResize();
   }
 
   /** Clear the input and reset height. */

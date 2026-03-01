@@ -72,6 +72,39 @@
   flex: 1 1 auto;
 }
 
+/* ── Add Context button (VS Code-style attach) ── */
+
+.parallx-chat-input-attach {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  font-size: 11px;
+  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.parallx-chat-input-attach:hover {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-input-attach svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.parallx-chat-input-attach-label {
+  font-size: 11px;
+}
+
 /* ── Submit button (icon-circle, VS Code style) ── */
 
 .parallx-chat-input-submit {
@@ -85,11 +118,14 @@
   border-radius: 6px;
   background: var(--vscode-button-background, #0e639c);
   color: var(--vscode-button-foreground, #ffffff);
-  font-size: 16px;
-  font-weight: bold;
   cursor: pointer;
   flex-shrink: 0;
   transition: background 120ms ease;
+}
+
+.parallx-chat-input-submit svg {
+  width: 16px;
+  height: 16px;
 }
 
 .parallx-chat-input-submit:hover {
@@ -114,10 +150,14 @@
   border-radius: 6px;
   background: var(--vscode-button-secondaryBackground, #3a3d41);
   color: var(--vscode-button-secondaryForeground, #cccccc);
-  font-size: 14px;
   cursor: pointer;
   flex-shrink: 0;
   transition: background 120ms ease;
+}
+
+.parallx-chat-input-stop svg {
+  width: 14px;
+  height: 14px;
 }
 
 .parallx-chat-input-stop:hover {

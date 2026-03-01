@@ -55,12 +55,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 150ms ease;
   z-index: 1;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.parallx-chat-scroll-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .parallx-chat-scroll-btn--visible {
@@ -221,9 +225,9 @@
 }
 
 .parallx-chat-empty-state-icon {
-  font-size: 40px;
   margin-bottom: 16px;
-  opacity: 0.5;
+  opacity: 0.4;
+  color: var(--vscode-foreground, #cccccc);
 }
 
 .parallx-chat-empty-state-title {
@@ -756,16 +760,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   background: transparent;
   color: var(--vscode-icon-foreground, var(--vscode-foreground, #cccccc));
-  font-size: 13px;
   cursor: pointer;
   transition: background 100ms ease;
+}
+
+.parallx-chat-header-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .parallx-chat-header-btn:hover {
@@ -773,8 +781,7 @@
 }
 
 .parallx-chat-header-btn--new {
-  font-size: 16px;
-  font-weight: 600;
+  /* no special overrides needed for SVG */
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -834,9 +841,13 @@
   border-radius: 3px;
   background: transparent;
   color: var(--vscode-icon-foreground, var(--vscode-foreground, #cccccc));
-  font-size: 13px;
   cursor: pointer;
   transition: background 100ms ease;
+}
+
+.parallx-chat-sidebar-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .parallx-chat-sidebar-btn:hover {
@@ -902,11 +913,17 @@
 }
 
 .parallx-chat-session-sidebar-chevron {
-  font-size: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--vscode-foreground, #cccccc);
   width: 12px;
-  text-align: center;
   flex-shrink: 0;
+}
+
+.parallx-chat-session-sidebar-chevron svg {
+  width: 10px;
+  height: 10px;
 }
 
 .parallx-chat-session-sidebar-section-label {
@@ -1015,10 +1032,14 @@
   border-radius: 3px;
   background: transparent;
   color: var(--vscode-descriptionForeground, #8b8b8b);
-  font-size: 12px;
   cursor: pointer;
   flex-shrink: 0;
   margin-top: 1px;
+}
+
+.parallx-chat-session-sidebar-item-delete svg {
+  width: 12px;
+  height: 12px;
 }
 
 .parallx-chat-session-sidebar-item:hover .parallx-chat-session-sidebar-item-delete {
@@ -1052,12 +1073,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 3px 14px;
+  padding: 4px 14px 2px;
 }
 
 .parallx-chat-context-bar {
   flex: 1;
-  height: 3px;
+  height: 4px;
   background: var(--vscode-editorWidget-background, #2d2d2d);
   border-radius: 2px;
   overflow: hidden;
@@ -1117,10 +1138,18 @@
 }
 
 .parallx-chat-hint-icon {
-  font-size: 14px;
   flex-shrink: 0;
   width: 20px;
-  text-align: center;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+}
+
+.parallx-chat-hint-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .parallx-chat-hint-text {

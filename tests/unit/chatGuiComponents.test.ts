@@ -263,10 +263,10 @@ describe('ChatSessionSidebar', () => {
     // Now only 2 items (Today's item is hidden)
     expect(container.querySelectorAll('.parallx-chat-session-sidebar-item').length).toBe(2);
 
-    // Re-query after re-render — the chevron on the first header should be collapsed (▶)
+    // Re-query after re-render — the chevron on the first header should be collapsed (SVG right arrow)
     const newFirstHeader = container.querySelector('.parallx-chat-session-sidebar-section-header') as HTMLElement;
     const chevron = newFirstHeader.querySelector('.parallx-chat-session-sidebar-chevron');
-    expect(chevron!.textContent).toBe('\u25B6');
+    expect(chevron!.querySelector('svg')).toBeTruthy();
 
     sidebar.dispose();
   });

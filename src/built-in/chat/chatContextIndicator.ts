@@ -20,6 +20,7 @@ export class ChatContextIndicator extends Disposable {
 
   private readonly _root: HTMLElement;
   private readonly _bar: HTMLElement;
+  private readonly _fill: HTMLElement;
   private readonly _label: HTMLElement;
   private readonly _services: IContextIndicatorServices;
 
@@ -31,8 +32,8 @@ export class ChatContextIndicator extends Disposable {
     container.appendChild(this._root);
 
     this._bar = $('div.parallx-chat-context-bar');
-    const fill = $('div.parallx-chat-context-bar-fill');
-    this._bar.appendChild(fill);
+    this._fill = $('div.parallx-chat-context-bar-fill');
+    this._bar.appendChild(this._fill);
     this._root.appendChild(this._bar);
 
     this._label = $('span.parallx-chat-context-label');
@@ -60,15 +61,12 @@ export class ChatContextIndicator extends Disposable {
 
     this._root.style.display = '';
 
-    // Update bar fill
-    const fill = this._bar.querySelector('.parallx-chat-context-bar-fill') as HTMLElement;
-    if (fill) {
-      fill.style.width = `${percentage}%`;
+    // Update bar fill (cached reference)
+    this._fill.style.width = `${percentage}%`;
 
-      // Color coding
-      fill.classList.toggle('parallx-chat-context-bar-fill--warning', percentage >= 70 && percentage < 90);
-      fill.classList.toggle('parallx-chat-context-bar-fill--danger', percentage >= 90);
-    }
+    // Color coding
+    this._fill.classList.toggle('parallx-chat-context-bar-fill--warning', percentage >= 70 && percentage < 90);
+    this._fill.classList.toggle('parallx-chat-context-bar-fill--danger', percentage >= 90);
 
     // Update label
     const tokensK = estimatedTokens >= 1000

@@ -14,6 +14,7 @@ import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import type { IChatSession } from '../../services/chatTypes.js';
+import { chatIcons } from './chatIcons.js';
 
 // ── Types ──
 
@@ -145,17 +146,17 @@ export class ChatSessionSidebar extends Disposable {
     header.appendChild(headerActions);
 
     // Refresh button
-    const refreshBtn = this._createButton('\u21BB', 'Refresh', 'parallx-chat-sidebar-btn');
+    const refreshBtn = this._createButton(chatIcons.refresh, 'Refresh', 'parallx-chat-sidebar-btn');
     this._register(addDisposableListener(refreshBtn, 'click', () => this.refresh()));
     headerActions.appendChild(refreshBtn);
 
     // Search toggle button
-    const searchBtn = this._createButton('\u{1F50D}', 'Filter Sessions', 'parallx-chat-sidebar-btn');
+    const searchBtn = this._createButton(chatIcons.search, 'Filter Sessions', 'parallx-chat-sidebar-btn');
     this._register(addDisposableListener(searchBtn, 'click', () => this._toggleFilter()));
     headerActions.appendChild(searchBtn);
 
     // New Session button
-    const newBtn = this._createButton('\u002B', 'New Session', 'parallx-chat-sidebar-btn parallx-chat-sidebar-btn--new');
+    const newBtn = this._createButton(chatIcons.newChat, 'New Session', 'parallx-chat-sidebar-btn parallx-chat-sidebar-btn--new');
     this._register(addDisposableListener(newBtn, 'click', () => this._onDidRequestNewSession.fire()));
     headerActions.appendChild(newBtn);
 
@@ -315,8 +316,8 @@ export class ChatSessionSidebar extends Disposable {
 
       // Section header
       const sectionHeader = $('div.parallx-chat-session-sidebar-section-header');
-      const chevron = $('span.parallx-chat-session-sidebar-chevron',
-        isCollapsed ? '\u25B6' : '\u25BC'); // ▶ or ▼
+      const chevron = $('span.parallx-chat-session-sidebar-chevron');
+      chevron.innerHTML = isCollapsed ? chatIcons.chevronRight : chatIcons.sectionExpanded;
       const label = $('span.parallx-chat-session-sidebar-section-label', groupName);
       const count = $('span.parallx-chat-session-sidebar-section-count',
         `${groupSessions.length}`);
@@ -391,12 +392,13 @@ export class ChatSessionSidebar extends Disposable {
 
     item.appendChild(info);
 
-    // Delete button (hover-only, not on active session)
+    // Delete button (hover-only)
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'parallx-chat-session-sidebar-item-delete';
     deleteBtn.type = 'button';
     deleteBtn.title = 'Delete Session';
-    deleteBtn.textContent = '\u{1F5D1}'; // 🗑
+    deleteBtn.setAttribute('aria-label', 'Delete Session');
+    deleteBtn.innerHTML = chatIcons.trash;
     deleteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._services.deleteSession(session.id);
@@ -409,12 +411,13 @@ export class ChatSessionSidebar extends Disposable {
 
   // ── Helpers ──
 
-  private _createButton(icon: string, tooltip: string, className: string): HTMLButtonElement {
+  private _createButton(svgHtml: string, tooltip: string, className: string): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.className = className;
     btn.type = 'button';
     btn.title = tooltip;
-    btn.textContent = icon;
+    btn.setAttribute('aria-label', tooltip);
+    btn.innerHTML = svgHtml;
     return btn;
   }
 
