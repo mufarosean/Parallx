@@ -16,7 +16,7 @@ import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
-import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
+import { registerWorkbenchServices, registerConfigurationServices, registerChatServices } from './workbenchServices.js';
 
 // Layout base class (VS Code: Layout → Workbench extends Layout)
 import {
@@ -637,6 +637,7 @@ export class Workbench extends Layout {
 
   private _registerServices(): void {
     registerWorkbenchServices(this._services);
+    registerChatServices(this._services);
   }
 
   // ════════════════════════════════════════════════════════════════════════
