@@ -548,7 +548,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(_tokenStatusBar);
 
   // Create a status bar entry using the custom HTML element
-  const tokenStatusBarItem = api.window.createStatusBarItem(/* Right */ 2, 100);
+  const tokenStatusBarItem = api.window.createStatusBarItem(/* Right */ 2, 200);
   tokenStatusBarItem.name = 'Token Usage';
   tokenStatusBarItem.htmlElement = _tokenStatusBar.element;
   tokenStatusBarItem.show();
