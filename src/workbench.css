@@ -571,6 +571,14 @@ html, body {
   color: var(--vscode-auxiliaryBar-headerForeground);
 }
 
+.parallx-chat-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .auxiliary-bar-content {
   flex: 1;
   overflow: hidden;

@@ -30,14 +30,35 @@ export function createChatView(
   const root = $('div.parallx-chat-view');
   container.appendChild(root);
 
-  // Locate the view section header's actions slot so the widget can inject
-  // action buttons directly into the title bar (VS Code parity).
-  const section = container.closest('.view-section');
-  const titleActionsSlot = section?.querySelector('.view-section-actions') as HTMLElement | null;
+  // Locate the title bar's actions slot so the widget can inject action
+  // buttons (new chat, history, clear) directly into the header.
+  //
+  // Strategy:
+  //   1. Stacked-mode view containers wrap each view in a `.view-section`
+  //      with a `.view-section-actions` slot — try that first.
+  //   2. The auxiliary bar uses tabbed mode (no view-sections). Fall back
+  //      to the `.auxiliary-bar-header` and create an actions div there.
+  let titleActionsSlot: HTMLElement | null = null;
 
-  // Make the actions always visible for the chat view (override opacity:0 default)
-  if (titleActionsSlot) {
-    titleActionsSlot.style.opacity = '1';
+  const section = container.closest('.view-section');
+  if (section) {
+    titleActionsSlot = section.querySelector('.view-section-actions') as HTMLElement | null;
+    if (titleActionsSlot) {
+      titleActionsSlot.style.opacity = '1';
+    }
+  }
+
+  if (!titleActionsSlot) {
+    const auxHeader = container.closest('.part')?.querySelector('.auxiliary-bar-header') as HTMLElement | null;
+    if (auxHeader) {
+      let slot = auxHeader.querySelector('.parallx-chat-title-actions') as HTMLElement | null;
+      if (!slot) {
+        slot = document.createElement('div');
+        slot.className = 'parallx-chat-title-actions';
+        auxHeader.appendChild(slot);
+      }
+      titleActionsSlot = slot;
+    }
   }
 
   // Create the chat widget
