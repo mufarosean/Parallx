@@ -63,6 +63,9 @@ export class WorkbenchContributionHandler extends Disposable {
   private _genericPanelContainer: ViewContainer | undefined;
   private _genericAuxBarContainer: ViewContainer | undefined;
 
+  // ── Auxiliary bar header label (set by workbench after setup) ──
+  private _auxBarHeaderLabel: HTMLElement | undefined;
+
   // ── Event listener store (cleared on workspace switch) ──
   private readonly _viewContribListeners = this._register(new DisposableStore());
 
@@ -94,6 +97,7 @@ export class WorkbenchContributionHandler extends Disposable {
   set sidebarHeaderSlot(el: HTMLElement | undefined) { this._sidebarHeaderSlot = el; }
   set panelViewsSlot(el: HTMLElement | undefined) { this._panelViewsSlot = el; }
   set sidebarHeaderLabel(el: HTMLElement | undefined) { this._sidebarHeaderLabel = el; }
+  set auxBarHeaderLabel(el: HTMLElement | undefined) { this._auxBarHeaderLabel = el; }
 
   /** Called each time view components are (re)created (init or workspace switch). */
   setViewManager(vm: ViewManager): void { this._viewManager = vm; }
@@ -197,6 +201,25 @@ export class WorkbenchContributionHandler extends Disposable {
         viewSlot.appendChild(vc.element);
       }
       this._contributedAuxBarContainers.set(info.id, vc);
+
+      // Hide the generic (empty) aux bar container so it doesn't consume
+      // space and push the contributed container below overflow: hidden.
+      this._genericAuxBarContainer?.setVisible(false);
+
+      // Wire header label to the contributed container's active view
+      if (this._auxBarHeaderLabel) {
+        vc.onDidChangeActiveView((viewId) => {
+          if (viewId) {
+            const view = vc.getView(viewId);
+            if (this._auxBarHeaderLabel) {
+              this._auxBarHeaderLabel.textContent = (view?.name ?? info.title).toUpperCase();
+            }
+          }
+        });
+        // Set header immediately to the container title
+        this._auxBarHeaderLabel.textContent = info.title.toUpperCase();
+      }
+
       console.log(`[Workbench] Added auxiliary bar container "${info.id}" (${info.title})`);
     }
   }
@@ -229,6 +252,10 @@ export class WorkbenchContributionHandler extends Disposable {
     if (auxVc) {
       auxVc.dispose();
       this._contributedAuxBarContainers.delete(containerId);
+      // If no more contributed aux bar containers, restore the generic one
+      if (this._contributedAuxBarContainers.size === 0) {
+        this._genericAuxBarContainer?.setVisible(true);
+      }
       return;
     }
   }
@@ -520,6 +547,7 @@ export class WorkbenchContributionHandler extends Disposable {
 
     this._activeSidebarContainerId = undefined;
     this._sidebarHeaderLabel = undefined;
+    this._auxBarHeaderLabel = undefined;
     this._containerRedirects.clear();
   }
 }

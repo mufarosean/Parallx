@@ -1646,6 +1646,10 @@ export class Workbench extends Layout {
           headerLabel.textContent = (view?.name ?? 'SECONDARY SIDE BAR').toUpperCase();
         }
       });
+
+      // Share with contribution handler so contributed aux bar containers
+      // can update the same header label when their views activate.
+      this._contributionHandler.auxBarHeaderLabel = headerLabel;
     }
 
     // No views registered yet — extensions will populate this in later milestones.
@@ -2284,7 +2288,13 @@ export class Workbench extends Layout {
       this._panelContainer.layout(this._panel.width, this._panel.height, Orientation.Horizontal);
     }
     if (this._auxBarVisible && this._auxiliaryBar.width > 0) {
-      this._auxBarContainer?.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - PART_HEADER_HEIGHT_PX, Orientation.Vertical);
+      // Only layout the generic aux bar container when no contributed containers
+      // exist. Contributed containers are laid out by the contribution handler.
+      // Both share the same parent slot — if both get full-size layout, the
+      // generic one (empty) pushes the contributed one below overflow: hidden.
+      if (this._contributionHandler.contributedAuxBarContainers.size === 0) {
+        this._auxBarContainer?.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - PART_HEADER_HEIGHT_PX, Orientation.Vertical);
+      }
     }
 
     // Delegate sidebar switching + contributed container layout to handler
