@@ -1,14 +1,18 @@
 // builtInTools.ts — Built-in chat tools for workspace operations (M9 Task 6.3)
 //
-// Registers 5 tools with ILanguageModelToolsService:
+// Registers 8 tools with ILanguageModelToolsService:
 //   - search_workspace (read-only, auto-approvable)
 //   - read_page (read-only, auto-approvable)
 //   - list_pages (read-only, auto-approvable)
 //   - get_page_properties (read-only, auto-approvable)
 //   - create_page (write, requires confirmation)
+//   - list_files (read-only, auto-approvable)
+//   - read_file (read-only, auto-approvable)
+//   - search_files (read-only, auto-approvable)
 //
-// Tools use IDatabaseService for SQL queries — they do NOT invoke
+// Database tools use IDatabaseService for SQL queries — they do NOT invoke
 // canvas code directly (per Task 6.3 constraint).
+// File system tools use IFileService via the IBuiltInToolFileSystem interface.
 
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import type {
@@ -29,6 +33,23 @@ export interface IBuiltInToolDatabase {
   all<T>(sql: string, params?: unknown[]): Promise<T[]>;
   run(sql: string, params?: unknown[]): Promise<{ changes: number }>;
   readonly isOpen: boolean;
+}
+
+// ── File system accessor interface ──
+
+/**
+ * Minimal file system accessor for built-in tools.
+ * Wired from IFileService + IWorkspaceService in chatTool.ts.
+ */
+export interface IBuiltInToolFileSystem {
+  /** Read directory entries at a relative path. Returns { name, type, size }[]. */
+  readdir(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
+  /** Read file content at a relative path. Returns the text content. */
+  readFile(relativePath: string): Promise<string>;
+  /** Check if a path exists. */
+  exists(relativePath: string): Promise<boolean>;
+  /** The workspace root display name. */
+  readonly workspaceRootName: string;
 }
 
 // ── Tool helpers ──
@@ -246,6 +267,172 @@ function createCreatePageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   };
 }
 
+// ── File System Tool definitions ──
+
+const MAX_SEARCH_RESULTS = 50;
+const MAX_SEARCH_DEPTH = 5;
+
+function requireFs(fs: IBuiltInToolFileSystem | undefined): asserts fs is IBuiltInToolFileSystem {
+  if (!fs) {
+    throw new Error('File system is not available — no workspace folder is open');
+  }
+}
+
+function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
+  return {
+    name: 'list_files',
+    description: 'List files and directories at a workspace path. Returns name, type (file/directory), and size. Path is relative to the workspace root.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Relative directory path (default: workspace root ".")' },
+      },
+    },
+    requiresConfirmation: false,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireFs(fs);
+      const relPath = String(args['path'] || '.').replace(/\\/g, '/');
+
+      try {
+        const entries = await fs!.readdir(relPath);
+
+        if (entries.length === 0) {
+          return { content: `Directory "${relPath}" is empty.` };
+        }
+
+        const lines = entries.map((e) => {
+          const typeLabel = e.type === 'directory' ? '📁' : '📄';
+          const sizeLabel = e.type === 'file' ? ` (${formatSize(e.size)})` : '';
+          return `${typeLabel} ${e.name}${sizeLabel}`;
+        });
+
+        return { content: `Contents of "${relPath}" in workspace "${fs!.workspaceRootName}":\n\n${lines.join('\n')}` };
+      } catch (err) {
+        return { content: `Failed to list "${relPath}": ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      }
+    },
+  };
+}
+
+function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
+  return {
+    name: 'read_file',
+    description: 'Read the text content of a workspace file. Path is relative to the workspace root. Max 50 KB.',
+    parameters: {
+      type: 'object',
+      required: ['path'],
+      properties: {
+        path: { type: 'string', description: 'Relative file path from workspace root' },
+      },
+    },
+    requiresConfirmation: false,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireFs(fs);
+      const relPath = String(args['path'] || '').replace(/\\/g, '/');
+
+      if (!relPath) {
+        return { content: 'path is required', isError: true };
+      }
+
+      try {
+        const content = await fs!.readFile(relPath);
+        return { content: `**${relPath}**\n\n\`\`\`\n${content}\n\`\`\`` };
+      } catch (err) {
+        return { content: `Failed to read "${relPath}": ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      }
+    },
+  };
+}
+
+function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
+  return {
+    name: 'search_files',
+    description: 'Find files in the workspace matching a name pattern (case-insensitive substring match). Returns relative paths. Max depth 5, max 50 results.',
+    parameters: {
+      type: 'object',
+      required: ['pattern'],
+      properties: {
+        pattern: { type: 'string', description: 'Substring to match against file/directory names (case-insensitive)' },
+        path: { type: 'string', description: 'Relative directory to search within (default: workspace root ".")' },
+      },
+    },
+    requiresConfirmation: false,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireFs(fs);
+      const pattern = String(args['pattern'] || '').toLowerCase();
+      const rootPath = String(args['path'] || '.').replace(/\\/g, '/');
+
+      if (!pattern) {
+        return { content: 'pattern is required', isError: true };
+      }
+
+      try {
+        const results: string[] = [];
+        await searchRecursive(fs!, rootPath, pattern, results, 0);
+
+        if (results.length === 0) {
+          return { content: `No files found matching "${pattern}" in "${rootPath}".` };
+        }
+
+        const lines = results.map((r) => `- ${r}`);
+        return {
+          content: `Found ${results.length} file(s) matching "${pattern}":\n\n${lines.join('\n')}`,
+        };
+      } catch (err) {
+        return { content: `Search failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      }
+    },
+  };
+}
+
+/**
+ * Recursively search directories for files matching a pattern.
+ */
+async function searchRecursive(
+  fs: IBuiltInToolFileSystem,
+  dirPath: string,
+  pattern: string,
+  results: string[],
+  depth: number,
+): Promise<void> {
+  if (depth >= MAX_SEARCH_DEPTH || results.length >= MAX_SEARCH_RESULTS) { return; }
+
+  let entries: readonly { name: string; type: 'file' | 'directory'; size: number }[];
+  try {
+    entries = await fs.readdir(dirPath);
+  } catch {
+    return; // Skip directories we can't read
+  }
+
+  for (const entry of entries) {
+    if (results.length >= MAX_SEARCH_RESULTS) { break; }
+
+    const entryPath = dirPath === '.' ? entry.name : `${dirPath}/${entry.name}`;
+
+    if (entry.name.toLowerCase().includes(pattern)) {
+      const suffix = entry.type === 'directory' ? '/' : '';
+      results.push(entryPath + suffix);
+    }
+
+    if (entry.type === 'directory' && !isIgnoredDir(entry.name)) {
+      await searchRecursive(fs, entryPath, pattern, results, depth + 1);
+    }
+  }
+}
+
+/** Skip common large/irrelevant directories during search. */
+function isIgnoredDir(name: string): boolean {
+  const ignored = ['node_modules', '.git', 'dist', 'out', '.next', '__pycache__', '.cache', 'coverage'];
+  return ignored.includes(name);
+}
+
+/** Format byte size to human-readable string. */
+function formatSize(bytes: number): string {
+  if (bytes < 1024) { return `${bytes} B`; }
+  if (bytes < 1024 * 1024) { return `${(bytes / 1024).toFixed(1)} KB`; }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 // ── Registration ──
 
 /**
@@ -257,15 +444,21 @@ function createCreatePageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
 export function registerBuiltInTools(
   toolsService: ILanguageModelToolsService,
   db: IBuiltInToolDatabase | undefined,
+  fs: IBuiltInToolFileSystem | undefined,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
   const tools: IChatTool[] = [
+    // ── Canvas/Database tools ──
     createSearchWorkspaceTool(db),
     createReadPageTool(db),
     createListPagesTool(db),
     createGetPagePropertiesTool(db),
     createCreatePageTool(db),
+    // ── File system tools ──
+    createListFilesTool(fs),
+    createReadFileTool(fs),
+    createSearchFilesTool(fs),
   ];
 
   for (const tool of tools) {

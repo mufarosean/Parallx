@@ -53,6 +53,13 @@ export interface IWorkspaceParticipantServices {
   getPageTitle(pageId: string): Promise<string | null>;
   /** Workspace display name. */
   getWorkspaceName(): string;
+
+  // ── File system context (optional — undefined when no workspace folder is open) ──
+
+  /** List files/dirs at a relative path. Returns entry summaries. */
+  listFiles?(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
+  /** Read file content at a relative path (max 50 KB). */
+  readFileContent?(relativePath: string): Promise<string>;
 }
 
 // ── Constants ──
@@ -276,17 +283,42 @@ async function handleGeneral(
     .map((p) => `- ${p.icon ?? '📄'} "${p.title}"`)
     .join('\n');
 
+  // Gather file system context if available
+  let fileListSection = '';
+  if (services.listFiles) {
+    try {
+      const entries = await services.listFiles('.');
+      if (entries.length > 0) {
+        const fileLines = entries
+          .slice(0, 30)
+          .map((e) => `- ${e.type === 'directory' ? '📁' : '📄'} ${e.name}`)
+          .join('\n');
+        fileListSection = [
+          '',
+          `The workspace file system root contains ${entries.length} entries:`,
+          '',
+          fileLines,
+          entries.length > 30 ? `\n... and ${entries.length - 30} more.` : '',
+        ].join('\n');
+      }
+    } catch {
+      // File system not available — skip silently
+    }
+  }
+
   const messages: IChatMessage[] = [
     {
       role: 'system',
       content: [
         `You are a workspace assistant for "${services.getWorkspaceName()}".`,
-        `The workspace contains ${pages.length} page${pages.length !== 1 ? 's' : ''}:`,
+        `The workspace contains ${pages.length} canvas page${pages.length !== 1 ? 's' : ''}:`,
         '',
         pageList || '(no pages yet)',
+        fileListSection,
         '',
         'Answer the user\'s question using workspace context where relevant.',
         'If the question is about a specific page, reference it by title.',
+        'If the question is about files, reference them by path.',
       ].join('\n'),
     },
   ];

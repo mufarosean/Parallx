@@ -38,8 +38,9 @@ import type {
   ICancellationToken,
   IToolResult,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
+import type { IBuiltInToolFileSystem } from './tools/builtInTools.js';
 
 // ── Local API type — only the subset we use ──
 
@@ -94,6 +95,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const languageModelToolsService = api.services.has(ILanguageModelToolsService)
     ? api.services.get<import('../../services/chatTypes.js').ILanguageModelToolsService>(ILanguageModelToolsService)
     : undefined;
+  const fileService = api.services.has(IFileService)
+    ? api.services.get<import('../../services/serviceTypes.js').IFileService>(IFileService)
+    : undefined;
+
+  // ── 1b. Build file system accessor for built-in tools ──
+
+  const fsAccessor = buildFileSystemAccessor(fileService, workspaceService);
 
   // ── 2. Create OllamaProvider and register with ILanguageModelsService ──
 
@@ -209,6 +217,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         return row?.title ?? null;
       } catch { return null; }
     },
+    // ── File system closures (optional — undefined when no workspace folder) ──
+    listFiles: fsAccessor
+      ? async (relativePath: string) => { return fsAccessor.readdir(relativePath); }
+      : undefined,
+    readFileContent: fsAccessor
+      ? async (relativePath: string) => { return fsAccessor.readFile(relativePath); }
+      : undefined,
   });
   context.subscriptions.push(workspaceParticipant);
   context.subscriptions.push(agentService.registerAgent(workspaceParticipant));
@@ -267,7 +282,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // ── 3d. Register built-in tools (Cap 6 Task 6.3) ──
 
   if (languageModelToolsService) {
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined);
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
@@ -416,4 +431,62 @@ function walkContentNode(node: unknown, texts: string[]): void {
       walkContentNode(child, texts);
     }
   }
+}
+
+// ── File System Accessor Builder ──
+
+const MAX_FILE_READ_BYTES = 50 * 1024; // 50 KB per spec
+
+/**
+ * Build an IBuiltInToolFileSystem from IFileService + IWorkspaceService.
+ * Returns undefined if no workspace folder is open.
+ */
+function buildFileSystemAccessor(
+  fileService: import('../../services/serviceTypes.js').IFileService | undefined,
+  workspaceService: import('../../services/serviceTypes.js').IWorkspaceService | undefined,
+): IBuiltInToolFileSystem | undefined {
+  if (!fileService || !workspaceService) { return undefined; }
+
+  const folders = workspaceService.folders;
+  if (!folders || folders.length === 0) { return undefined; }
+
+  const rootUri = folders[0].uri;
+  const rootName = workspaceService.activeWorkspace?.name ?? folders[0].name;
+
+  /** Resolve a relative path to an absolute URI under the workspace root. */
+  function resolveUri(relativePath: string): import('../../platform/uri.js').URI {
+    const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+    if (!clean || clean === '.') { return rootUri; }
+    return rootUri.joinPath(clean);
+  }
+
+  return {
+    workspaceRootName: rootName,
+
+    async readdir(relativePath: string) {
+      const uri = resolveUri(relativePath);
+      const entries = await fileService.readdir(uri);
+      return entries.map((e) => ({
+        name: e.name,
+        type: (e.type === 2 /* FileType.Directory */) ? 'directory' as const : 'file' as const,
+        size: e.size,
+      }));
+    },
+
+    async readFile(relativePath: string) {
+      const uri = resolveUri(relativePath);
+      // Check size before reading to respect the 50 KB guard
+      const stat = await fileService.stat(uri);
+      if (stat.size > MAX_FILE_READ_BYTES) {
+        throw new Error(`File is too large (${(stat.size / 1024).toFixed(1)} KB). Maximum is ${MAX_FILE_READ_BYTES / 1024} KB.`);
+      }
+      const result = await fileService.readFile(uri);
+      return result.content;
+    },
+
+    async exists(relativePath: string) {
+      const uri = resolveUri(relativePath);
+      return fileService.exists(uri);
+    },
+  };
 }
