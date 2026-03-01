@@ -124,6 +124,18 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     this._schedulePoll();
   }
 
+  // ── Public accessors for cached state ──
+
+  /** Get the last known provider status (for synchronous UI checks). */
+  getLastStatus(): IProviderStatus {
+    return this._lastStatus;
+  }
+
+  /** Get the last known loaded model IDs (from /api/ps). */
+  getLoadedModels(): readonly string[] {
+    return this._loadedModels;
+  }
+
   // ── ILanguageModelProvider ──
 
   async checkAvailability(): Promise<IProviderStatus> {

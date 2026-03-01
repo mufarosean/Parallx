@@ -1,0 +1,100 @@
+/* chatInput.css — Chat input part styles (M9 Task 3.4) */
+
+.parallx-chat-input {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Text Area ── */
+
+.parallx-chat-input-editor {
+  position: relative;
+}
+
+.parallx-chat-input-textarea {
+  width: 100%;
+  min-height: 36px;
+  max-height: 200px;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 4px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.parallx-chat-input-textarea::placeholder {
+  color: var(--vscode-input-placeholderForeground, #6e6e6e);
+}
+
+.parallx-chat-input-textarea:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.parallx-chat-input-textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Toolbar (bottom row: model/mode picker + submit/stop) ── */
+
+.parallx-chat-input-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.parallx-chat-input-toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+/* Submit button */
+.parallx-chat-input-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  border: none;
+  border-radius: 3px;
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.parallx-chat-input-submit:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.parallx-chat-input-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Stop button */
+.parallx-chat-input-stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  border: 1px solid var(--vscode-button-secondaryBorder, #454545);
+  border-radius: 3px;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #cccccc);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.parallx-chat-input-stop:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}

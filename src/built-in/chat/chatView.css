@@ -1,0 +1,11 @@
+/* chatView.css — Chat view layout (M9 Task 3.2) */
+
+.parallx-chat-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--vscode-sideBar-background, #1e1e1e);
+  color: var(--vscode-sideBar-foreground, #cccccc);
+}
