@@ -98,9 +98,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const modeService = api.services.get<import('../../services/chatTypes.js').IChatModeService>(IChatModeService);
 
   // Restore persisted sessions (fire and forget — non-blocking)
-  if ('restoreSessions' in chatService) {
-    (chatService as any).restoreSessions().catch(() => { /* persistence is best-effort */ });
-  }
+  chatService.restoreSessions().catch(() => { /* persistence is best-effort */ });
 
   // Workspace context services (for mode-aware system prompts + participants)
   const workspaceService = api.services.has(IWorkspaceService)

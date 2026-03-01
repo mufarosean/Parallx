@@ -672,6 +672,8 @@ export interface IChatService extends IDisposable {
   getSession(sessionId: string): IChatSession | undefined;
   /** Get all sessions. */
   getSessions(): readonly IChatSession[];
+  /** Restore persisted sessions from database. Called once on startup. */
+  restoreSessions(): Promise<void>;
   /** Send a user message and orchestrate the full request pipeline. */
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
   /** Cancel the in-progress request for a session. */

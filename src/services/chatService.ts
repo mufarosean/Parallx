@@ -318,6 +318,8 @@ export class ChatService extends Disposable implements IChatService {
 
   /** Debounce timer for persistence writes. */
   private _persistTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Session IDs with pending persist (for flush on dispose). */
+  private readonly _pendingPersistIds = new Set<string>();
 
   // ── Events ──
 
@@ -361,6 +363,10 @@ export class ChatService extends Disposable implements IChatService {
       for (const session of sessions) {
         this._sessions.set(session.id, session);
       }
+      // Fire change events so listeners (sidebar, widget) can refresh
+      for (const session of sessions) {
+        this._onDidChangeSession.fire(session.id);
+      }
     } catch {
       // Persistence failure is non-fatal — chat still works in-memory
     }
@@ -372,16 +378,40 @@ export class ChatService extends Disposable implements IChatService {
    */
   private _schedulePersist(sessionId: string): void {
     if (!this._database) { return; }
+    this._pendingPersistIds.add(sessionId);
     if (this._persistTimer !== undefined) {
       clearTimeout(this._persistTimer);
     }
     this._persistTimer = setTimeout(() => {
       this._persistTimer = undefined;
-      const session = this._sessions.get(sessionId);
+      this._flushPendingPersists();
+    }, 500);
+  }
+
+  /**
+   * Flush all pending session persists immediately.
+   * Called by the debounce timer and on dispose (to avoid data loss on shutdown).
+   */
+  private _flushPendingPersists(): void {
+    if (!this._database || this._pendingPersistIds.size === 0) return;
+    const ids = [...this._pendingPersistIds];
+    this._pendingPersistIds.clear();
+    for (const id of ids) {
+      const session = this._sessions.get(id);
       if (session && this._database) {
         saveSession(this._database, session).catch(() => { /* best-effort */ });
       }
-    }, 500);
+    }
+  }
+
+  override dispose(): void {
+    // Flush any pending persistence writes before teardown
+    if (this._persistTimer !== undefined) {
+      clearTimeout(this._persistTimer);
+      this._persistTimer = undefined;
+    }
+    this._flushPendingPersists();
+    super.dispose();
   }
 
   // ── Session Lifecycle ──
