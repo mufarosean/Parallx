@@ -30,8 +30,18 @@ export function createChatView(
   const root = $('div.parallx-chat-view');
   container.appendChild(root);
 
+  // Locate the view section header's actions slot so the widget can inject
+  // action buttons directly into the title bar (VS Code parity).
+  const section = container.closest('.view-section');
+  const titleActionsSlot = section?.querySelector('.view-section-actions') as HTMLElement | null;
+
+  // Make the actions always visible for the chat view (override opacity:0 default)
+  if (titleActionsSlot) {
+    titleActionsSlot.style.opacity = '1';
+  }
+
   // Create the chat widget
-  const widget = new ChatWidget(root, provider, services);
+  const widget = new ChatWidget(root, provider, services, titleActionsSlot ?? undefined);
   disposables.add(widget);
 
   // Register this widget as the active widget for command dispatch

@@ -22,7 +22,6 @@ import { ChatModelPicker } from './chatModelPicker.js';
 import type { IModelPickerServices } from './chatModelPicker.js';
 import { ChatModePicker } from './chatModePicker.js';
 import type { IModePickerServices } from './chatModePicker.js';
-import { ChatHeaderPart } from './chatHeaderPart.js';
 import { ChatSessionSidebar } from './chatSessionSidebar.js';
 import type { ISessionSidebarServices } from './chatSessionSidebar.js';
 import { ChatContextIndicator } from './chatContextIndicator.js';
@@ -84,7 +83,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
   private readonly _root: HTMLElement;
   private readonly _mainArea: HTMLElement;
-  private readonly _headerContainer: HTMLElement;
   private readonly _messageListContainer: HTMLElement;
   private readonly _scrollBtn: HTMLElement;
   private readonly _contextContainer: HTMLElement;
@@ -96,7 +94,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
   private readonly _inputPart: ChatInputPart;
   private readonly _listRenderer: ChatListRenderer;
-  private readonly _headerPart: ChatHeaderPart;
   private readonly _sessionSidebar: ChatSessionSidebar;
   private readonly _contextIndicator: ChatContextIndicator;
 
@@ -121,6 +118,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     container: HTMLElement,
     provider: OllamaProvider,
     services: IChatWidgetServices,
+    titleActionsContainer?: HTMLElement,
   ) {
     super();
 
@@ -135,19 +133,16 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     container.appendChild(this._root);
     this._register(toDisposable(() => this._root.remove()));
 
-    // ── Main area (left: vertical flex with header → messages → context → input) ──
+    // ── Main area (left: vertical flex with messages → context → input) ──
 
     this._mainArea = $('div.parallx-chat-main-area');
     this._root.appendChild(this._mainArea);
 
-    // Header (top-pinned — new chat, clear)
-    this._headerContainer = $('div.parallx-chat-header-container');
-    this._mainArea.appendChild(this._headerContainer);
-
-    this._headerPart = this._register(new ChatHeaderPart(this._headerContainer));
-    this._register(this._headerPart.onNewChat(() => this._handleNewChat()));
-    this._register(this._headerPart.onToggleHistory(() => this._sessionSidebar.toggle()));
-    this._register(this._headerPart.onClearSession(() => this._handleClearSession()));
+    // ── Title bar actions (injected into the view section header) ──
+    // VS Code parity: action buttons live in the view title bar, not a custom header.
+    if (titleActionsContainer) {
+      this._buildTitleActions(titleActionsContainer);
+    }
 
     // Message list (scrollable)
     this._messageListContainer = $('div.parallx-chat-message-list');
@@ -269,7 +264,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._session = session;
     this._renderMessages();
     this._updateVisibility();
-    this._updateHeader();
     this._updateContextIndicator();
     this._sessionSidebar.setActiveSession(session.id);
     this._scrollToBottom();
@@ -357,7 +351,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     );
 
     this._updateVisibility();
-    this._updateHeader();
     this._updateContextIndicator();
 
     // Auto-scroll if user was at bottom
@@ -410,27 +403,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._scrollBtn.classList.remove('parallx-chat-scroll-btn--visible');
   }
 
-  // ── Header / Context Updates ──
-
-  private _updateHeader(): void {
-    if (!this._session) {
-      this._headerPart.setTitle('CHAT');
-      this._headerPart.setSessionInfo('');
-      return;
-    }
-    const msgCount = this._session.messages.length;
-    // VS Code style: uppercase "CHAT" as view title, session details in info
-    this._headerPart.setTitle('CHAT');
-    const sessionTitle = this._session.title || 'New Chat';
-    const modeLabel = this._session.mode
-      ? this._session.mode.charAt(0).toUpperCase() + this._session.mode.slice(1)
-      : '';
-    this._headerPart.setSessionInfo(
-      msgCount > 0
-        ? `${sessionTitle} \u00B7 ${msgCount} message${msgCount !== 1 ? 's' : ''}${modeLabel ? ` \u00B7 ${modeLabel}` : ''}`
-        : sessionTitle + (modeLabel ? ` \u00B7 ${modeLabel}` : ''),
-    );
-  }
+  // ── Context Updates ──
 
   private _updateContextIndicator(): void {
     if (!this._session || this._session.messages.length === 0) {
@@ -468,6 +441,36 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const newSession = this._services.createSession();
     this.setSession(newSession);
     this._sessionSidebar.refresh();
+  }
+
+  // ── Title Bar Actions ──
+
+  /**
+   * Inject action buttons into the view section header's actions slot.
+   * VS Code parity: action buttons render in the view title bar, not a custom header.
+   */
+  private _buildTitleActions(container: HTMLElement): void {
+    const createBtn = (svgHtml: string, tooltip: string, extraClass: string): HTMLButtonElement => {
+      const btn = document.createElement('button');
+      btn.className = `parallx-chat-title-action ${extraClass}`;
+      btn.type = 'button';
+      btn.title = tooltip;
+      btn.setAttribute('aria-label', tooltip);
+      btn.innerHTML = svgHtml;
+      return btn;
+    };
+
+    const newBtn = createBtn(chatIcons.newChat, 'New Chat (Ctrl+L)', 'parallx-chat-title-action--new');
+    newBtn.addEventListener('click', (e) => { e.stopPropagation(); this._handleNewChat(); });
+    container.appendChild(newBtn);
+
+    const historyBtn = createBtn(chatIcons.history, 'Chat History', 'parallx-chat-title-action--history');
+    historyBtn.addEventListener('click', (e) => { e.stopPropagation(); this._sessionSidebar.toggle(); });
+    container.appendChild(historyBtn);
+
+    const clearBtn = createBtn(chatIcons.trash, 'Clear Session', 'parallx-chat-title-action--clear');
+    clearBtn.addEventListener('click', (e) => { e.stopPropagation(); this._handleClearSession(); });
+    container.appendChild(clearBtn);
   }
 
   // ── Empty / Offline State Builders ──

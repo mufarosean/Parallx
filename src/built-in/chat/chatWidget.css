@@ -727,83 +727,34 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
- * Header Toolbar
+ * View Title Bar Actions
+ *
+ * These buttons are injected into the view section header's actions slot.
+ * They replace the separate header row — VS Code parity.
  * ═══════════════════════════════════════════════════════════════════════════════ */
 
-.parallx-chat-header-container {
-  flex-shrink: 0;
-}
-
-.parallx-chat-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 8px 0 12px;
-  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, #2d2d2d);
-  background: var(--vscode-sideBar-background, #1e1e1e);
-  min-height: 35px;
-  height: 35px;
-}
-
-.parallx-chat-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  flex: 1;
-}
-
-.parallx-chat-header-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--vscode-sideBarTitle-foreground, var(--vscode-foreground, #cccccc));
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.parallx-chat-header-session-info {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground, #8b8b8b);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.parallx-chat-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.parallx-chat-header-btn {
+.parallx-chat-title-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   border: none;
-  border-radius: 5px;
+  border-radius: 3px;
   background: transparent;
   color: var(--vscode-icon-foreground, var(--vscode-foreground, #cccccc));
   cursor: pointer;
   transition: background 100ms ease;
 }
 
-.parallx-chat-header-btn svg {
+.parallx-chat-title-action svg {
   width: 16px;
   height: 16px;
 }
 
-.parallx-chat-header-btn:hover {
+.parallx-chat-title-action:hover {
   background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
-}
-
-.parallx-chat-header-btn--new {
-  /* no special overrides needed for SVG */
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
