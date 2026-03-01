@@ -2,12 +2,18 @@
 
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager } from '../services/serviceTypes.js';
+import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService } from '../services/chatTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
 import { ToolRegistry } from '../tools/toolRegistry.js';
 import { NotificationService } from '../api/notificationService.js';
 import { ActivationEventService } from '../tools/activationEventService.js';
+import { LanguageModelsService } from '../services/languageModelsService.js';
+import { ChatService } from '../services/chatService.js';
+import { ChatAgentService } from '../services/chatAgentService.js';
+import { ChatModeService } from '../services/chatModeService.js';
+import { ChatWidgetService } from '../services/chatWidgetService.js';
 import { ToolErrorService } from '../tools/toolErrorIsolation.js';
 import { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
 import { ConfigurationService } from '../configuration/configurationService.js';
@@ -145,4 +151,34 @@ export function registerViewContributionProcessor(
   const viewContribution = new ViewContributionProcessor(viewManager);
   services.registerInstance(IViewContributionService, viewContribution);
   return viewContribution;
+}
+
+/**
+ * Creates and registers the AI chat services (M9 Capability 0–2).
+ * Called during Phase 5 after core services are available.
+ *
+ * @returns The service instances for further wiring.
+ */
+export function registerChatServices(
+  services: ServiceCollection,
+): {
+  languageModelsService: LanguageModelsService;
+  chatService: ChatService;
+  chatAgentService: ChatAgentService;
+  chatModeService: ChatModeService;
+  chatWidgetService: ChatWidgetService;
+} {
+  const languageModelsService = new LanguageModelsService();
+  const chatAgentService = new ChatAgentService();
+  const chatModeService = new ChatModeService();
+  const chatWidgetService = new ChatWidgetService();
+  const chatService = new ChatService(chatAgentService, chatModeService, languageModelsService);
+
+  services.registerInstance(ILanguageModelsService, languageModelsService);
+  services.registerInstance(IChatService, chatService);
+  services.registerInstance(IChatAgentService, chatAgentService);
+  services.registerInstance(IChatModeService, chatModeService);
+  services.registerInstance(IChatWidgetService, chatWidgetService);
+
+  return { languageModelsService, chatService, chatAgentService, chatModeService, chatWidgetService };
 }
