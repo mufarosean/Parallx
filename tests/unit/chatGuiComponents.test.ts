@@ -2,7 +2,7 @@
 
 // tests/unit/chatGuiComponents.test.ts — Chat GUI component tests
 //
-// Tests for ChatHeaderPart, ChatSessionHistory, ChatContextIndicator,
+// Tests for ChatHeaderPart, ChatSessionSidebar, ChatContextIndicator,
 // and the enhanced empty state with feature hints.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -112,9 +112,9 @@ describe('ChatHeaderPart', () => {
   });
 });
 
-// ── ChatSessionHistory ──
+// ── ChatSessionSidebar ──
 
-describe('ChatSessionHistory', () => {
+describe('ChatSessionSidebar', () => {
 
   let container: HTMLElement;
   const mockSessions = [
@@ -147,159 +147,230 @@ describe('ChatSessionHistory', () => {
 
   beforeEach(() => {
     container = document.createElement('div');
-    container.style.position = 'relative';
     document.body.appendChild(container);
   });
 
-  it('creates and shows session history overlay', async () => {
-    const { ChatSessionHistory } = await import('../../src/built-in/chat/chatSessionHistory');
+  it('renders collapsed strip by default', async () => {
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
 
-    const history = new ChatSessionHistory(container, {
+    const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
       deleteSession: vi.fn(),
     });
 
-    history.show();
-    expect(history.isVisible).toBe(true);
+    const root = container.querySelector('.parallx-chat-session-sidebar');
+    expect(root).toBeTruthy();
 
-    const overlay = container.querySelector('.parallx-chat-history-overlay');
-    expect(overlay).toBeTruthy();
+    const strip = container.querySelector('.parallx-chat-session-sidebar-strip');
+    expect(strip).toBeTruthy();
 
-    const items = overlay!.querySelectorAll('.parallx-chat-history-item');
+    // Should be collapsed by default
+    expect(sidebar.isExpanded).toBe(false);
+
+    sidebar.dispose();
+  });
+
+  it('expands on toggle() and shows session list', async () => {
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+
+    const sidebar = new ChatSessionSidebar(container, {
+      getSessions: () => mockSessions as any,
+      deleteSession: vi.fn(),
+    });
+
+    sidebar.toggle();
+    expect(sidebar.isExpanded).toBe(true);
+
+    const panel = container.querySelector('.parallx-chat-session-sidebar-panel') as HTMLElement;
+    expect(panel).toBeTruthy();
+    expect(panel.style.display).not.toBe('none');
+
+    const items = container.querySelectorAll('.parallx-chat-session-sidebar-item');
     expect(items.length).toBe(2);
 
-    history.dispose();
+    sidebar.dispose();
   });
 
   it('displays session titles and metadata', async () => {
-    const { ChatSessionHistory } = await import('../../src/built-in/chat/chatSessionHistory');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
 
-    const history = new ChatSessionHistory(container, {
+    const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
       deleteSession: vi.fn(),
     });
 
-    history.show();
+    sidebar.expand();
 
-    const titles = container.querySelectorAll('.parallx-chat-history-item-title');
+    const titles = container.querySelectorAll('.parallx-chat-session-sidebar-item-title');
     expect(titles[0]!.textContent).toBe('First Chat');
     expect(titles[1]!.textContent).toBe('Second Chat');
 
-    const metas = container.querySelectorAll('.parallx-chat-history-item-meta');
-    expect(metas[0]!.textContent).toContain('1 message');
-    expect(metas[1]!.textContent).toContain('0 messages');
+    const metas = container.querySelectorAll('.parallx-chat-session-sidebar-item-meta');
+    expect(metas[0]!.textContent).toContain('1 msg');
+    expect(metas[1]!.textContent).toContain('0 msgs');
 
-    history.dispose();
+    sidebar.dispose();
   });
 
   it('fires onDidSelectSession when a session is clicked', async () => {
-    const { ChatSessionHistory } = await import('../../src/built-in/chat/chatSessionHistory');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
 
-    const history = new ChatSessionHistory(container, {
+    const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
       deleteSession: vi.fn(),
     });
 
     const spy = vi.fn();
-    history.onDidSelectSession(spy);
+    sidebar.onDidSelectSession(spy);
 
-    history.show();
+    sidebar.expand();
 
-    const infoEl = container.querySelector('.parallx-chat-history-item-info') as HTMLElement;
+    const infoEl = container.querySelector('.parallx-chat-session-sidebar-item-info') as HTMLElement;
     infoEl.click();
     expect(spy).toHaveBeenCalledWith('session-1');
 
-    history.dispose();
+    sidebar.dispose();
   });
 
-  it('hides overlay on hide()', async () => {
-    const { ChatSessionHistory } = await import('../../src/built-in/chat/chatSessionHistory');
+  it('collapses on second toggle()', async () => {
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
 
-    const history = new ChatSessionHistory(container, {
+    const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
       deleteSession: vi.fn(),
     });
 
-    history.show();
-    expect(history.isVisible).toBe(true);
+    sidebar.toggle();
+    expect(sidebar.isExpanded).toBe(true);
 
-    history.hide();
-    expect(history.isVisible).toBe(false);
-    expect(container.querySelector('.parallx-chat-history-overlay')).toBeNull();
+    sidebar.toggle();
+    expect(sidebar.isExpanded).toBe(false);
 
-    history.dispose();
-  });
-
-  it('toggles visibility', async () => {
-    const { ChatSessionHistory } = await import('../../src/built-in/chat/chatSessionHistory');
-
-    const history = new ChatSessionHistory(container, {
-      getSessions: () => mockSessions as any,
-      deleteSession: vi.fn(),
-    });
-
-    history.toggle();
-    expect(history.isVisible).toBe(true);
-
-    history.toggle();
-    expect(history.isVisible).toBe(false);
-
-    history.dispose();
+    sidebar.dispose();
   });
 
   it('shows empty state when no sessions', async () => {
-    const { ChatSessionHistory } = await import('../../src/built-in/chat/chatSessionHistory');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
 
-    const history = new ChatSessionHistory(container, {
+    const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => [],
       deleteSession: vi.fn(),
     });
 
-    history.show();
+    sidebar.expand();
 
-    const empty = container.querySelector('.parallx-chat-history-empty');
+    const empty = container.querySelector('.parallx-chat-session-sidebar-empty');
     expect(empty).toBeTruthy();
-    expect(empty!.textContent).toContain('No chat sessions');
+    expect(empty!.textContent).toContain('No sessions');
 
-    history.dispose();
+    sidebar.dispose();
   });
 
   it('highlights the active session', async () => {
-    const { ChatSessionHistory } = await import('../../src/built-in/chat/chatSessionHistory');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
 
-    const history = new ChatSessionHistory(container, {
+    const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
       deleteSession: vi.fn(),
     });
 
-    history.toggle('session-1');
+    sidebar.setActiveSession('session-1');
+    sidebar.expand();
 
-    const activeItem = container.querySelector('.parallx-chat-history-item--active');
+    const activeItem = container.querySelector('.parallx-chat-session-sidebar-item--active');
     expect(activeItem).toBeTruthy();
-    const title = activeItem!.querySelector('.parallx-chat-history-item-title');
+    const title = activeItem!.querySelector('.parallx-chat-session-sidebar-item-title');
     expect(title!.textContent).toBe('First Chat');
 
-    history.dispose();
+    sidebar.dispose();
   });
 
   it('calls deleteSession when delete button is clicked', async () => {
-    const { ChatSessionHistory } = await import('../../src/built-in/chat/chatSessionHistory');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
 
     const deleteSpy = vi.fn();
-    const history = new ChatSessionHistory(container, {
+    const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
       deleteSession: deleteSpy,
     });
 
-    history.toggle('session-1');
+    sidebar.setActiveSession('session-1');
+    sidebar.expand();
 
     // session-2 is not active, so it should have a delete button
-    const deleteBtn = container.querySelector('.parallx-chat-history-item-delete') as HTMLButtonElement;
+    const deleteBtn = container.querySelector('.parallx-chat-session-sidebar-item-delete') as HTMLButtonElement;
     expect(deleteBtn).toBeTruthy();
     deleteBtn.click();
     expect(deleteSpy).toHaveBeenCalledWith('session-2');
 
-    history.dispose();
+    sidebar.dispose();
+  });
+
+  it('fires onDidRequestNewSession from strip new button', async () => {
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+
+    const sidebar = new ChatSessionSidebar(container, {
+      getSessions: () => mockSessions as any,
+      deleteSession: vi.fn(),
+    });
+
+    const spy = vi.fn();
+    sidebar.onDidRequestNewSession(spy);
+
+    const newBtn = container.querySelector('.parallx-chat-session-sidebar-new') as HTMLButtonElement;
+    newBtn.click();
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    sidebar.dispose();
+  });
+
+  it('fires onDidToggle with expansion state', async () => {
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+
+    const sidebar = new ChatSessionSidebar(container, {
+      getSessions: () => mockSessions as any,
+      deleteSession: vi.fn(),
+    });
+
+    const spy = vi.fn();
+    sidebar.onDidToggle(spy);
+
+    sidebar.toggle();
+    expect(spy).toHaveBeenCalledWith(true);
+
+    sidebar.toggle();
+    expect(spy).toHaveBeenCalledWith(false);
+
+    sidebar.dispose();
+  });
+
+  it('updates badge with session count', async () => {
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+
+    const sidebar = new ChatSessionSidebar(container, {
+      getSessions: () => mockSessions as any,
+      deleteSession: vi.fn(),
+    });
+
+    sidebar.refresh();
+
+    const badge = container.querySelector('.parallx-chat-session-sidebar-badge');
+    expect(badge!.textContent).toBe('2');
+
+    sidebar.dispose();
+  });
+
+  it('cleans up DOM on dispose', async () => {
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+
+    const sidebar = new ChatSessionSidebar(container, {
+      getSessions: () => mockSessions as any,
+      deleteSession: vi.fn(),
+    });
+
+    expect(container.querySelector('.parallx-chat-session-sidebar')).toBeTruthy();
+    sidebar.dispose();
+    expect(container.querySelector('.parallx-chat-session-sidebar')).toBeNull();
   });
 });
 

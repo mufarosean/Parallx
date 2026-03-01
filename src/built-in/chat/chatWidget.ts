@@ -1,8 +1,8 @@
 // chatWidget.ts — Core chat widget (M9 Task 3.3)
 //
-// Three-region layout: header + scrollable message list + bottom-pinned input area.
-// Manages session binding, input submission, auto-scroll, empty/offline states,
-// session history, and context/token indicator.
+// Horizontal layout: [chat-main-area | session-sidebar].
+// Chat main: header + scrollable message list + context indicator + input.
+// Session sidebar: collapsible right panel with session list.
 //
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/browser/widget/chatWidget.ts
@@ -22,8 +22,8 @@ import type { IModelPickerServices } from './chatModelPicker.js';
 import { ChatModePicker } from './chatModePicker.js';
 import type { IModePickerServices } from './chatModePicker.js';
 import { ChatHeaderPart } from './chatHeaderPart.js';
-import { ChatSessionHistory } from './chatSessionHistory.js';
-import type { ISessionHistoryServices } from './chatSessionHistory.js';
+import { ChatSessionSidebar } from './chatSessionSidebar.js';
+import type { ISessionSidebarServices } from './chatSessionSidebar.js';
 import { ChatContextIndicator } from './chatContextIndicator.js';
 import type { IContextIndicatorServices } from './chatContextIndicator.js';
 import type {
@@ -45,8 +45,6 @@ export interface IChatWidgetServices {
   readonly modelPicker?: IModelPickerServices;
   /** Optional mode picker services — when provided, the mode picker is shown. */
   readonly modePicker?: IModePickerServices;
-  /** Session history services — list, switch, delete sessions. */
-  readonly sessionHistory?: ISessionHistoryServices;
   /** Context window indicator services. */
   readonly contextIndicator?: IContextIndicatorServices;
   /** Get a session by ID (for session switching from history). */
@@ -84,6 +82,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   // ── DOM Elements ──
 
   private readonly _root: HTMLElement;
+  private readonly _mainArea: HTMLElement;
   private readonly _headerContainer: HTMLElement;
   private readonly _messageListContainer: HTMLElement;
   private readonly _scrollBtn: HTMLElement;
@@ -97,7 +96,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _inputPart: ChatInputPart;
   private readonly _listRenderer: ChatListRenderer;
   private readonly _headerPart: ChatHeaderPart;
-  private readonly _sessionHistory: ChatSessionHistory;
+  private readonly _sessionSidebar: ChatSessionSidebar;
   private readonly _contextIndicator: ChatContextIndicator;
 
   // ── Services ──
@@ -129,44 +128,37 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._services = services;
 
     // ── Build DOM ──
+    // Layout: root (horizontal flex) → [main-area (flex:1) | session-sidebar]
 
     this._root = $('div.parallx-chat-widget');
     container.appendChild(this._root);
     this._register(toDisposable(() => this._root.remove()));
 
-    // Header (top-pinned — new chat, history, clear)
+    // ── Main area (left: vertical flex with header → messages → context → input) ──
+
+    this._mainArea = $('div.parallx-chat-main-area');
+    this._root.appendChild(this._mainArea);
+
+    // Header (top-pinned — new chat, clear)
     this._headerContainer = $('div.parallx-chat-header-container');
-    this._root.appendChild(this._headerContainer);
+    this._mainArea.appendChild(this._headerContainer);
 
     this._headerPart = this._register(new ChatHeaderPart(this._headerContainer));
     this._register(this._headerPart.onNewChat(() => this._handleNewChat()));
-    this._register(this._headerPart.onToggleHistory(() => this._handleToggleHistory()));
+    this._register(this._headerPart.onToggleHistory(() => this._sessionSidebar.toggle()));
     this._register(this._headerPart.onClearSession(() => this._handleClearSession()));
-
-    // Session History overlay (attached to root for absolute positioning)
-    const historyServices: ISessionHistoryServices = {
-      getSessions: () => this._services.getSessions?.() ?? [],
-      deleteSession: (id) => this._services.deleteSession?.(id),
-    };
-    this._sessionHistory = this._register(new ChatSessionHistory(this._root, historyServices));
-    this._register(this._sessionHistory.onDidSelectSession((sessionId) => {
-      const session = this._services.getSession?.(sessionId);
-      if (session) {
-        this.setSession(session);
-      }
-    }));
 
     // Message list (scrollable)
     this._messageListContainer = $('div.parallx-chat-message-list');
-    this._root.appendChild(this._messageListContainer);
+    this._mainArea.appendChild(this._messageListContainer);
 
     // Scroll-to-bottom button (overlaid on message list)
     this._scrollBtn = $('div.parallx-chat-scroll-btn', '\u2193');
-    this._root.appendChild(this._scrollBtn);
+    this._mainArea.appendChild(this._scrollBtn);
 
     // Context indicator (between message list and input)
     this._contextContainer = $('div.parallx-chat-context-container');
-    this._root.appendChild(this._contextContainer);
+    this._mainArea.appendChild(this._contextContainer);
 
     const contextServices: IContextIndicatorServices = services.contextIndicator ?? {
       getContextLength: () => 0,
@@ -177,7 +169,24 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     // Input area (bottom-pinned)
     this._inputAreaContainer = $('div.parallx-chat-input-area');
-    this._root.appendChild(this._inputAreaContainer);
+    this._mainArea.appendChild(this._inputAreaContainer);
+
+    // ── Session sidebar (right: collapsible panel) ──
+
+    const sidebarServices: ISessionSidebarServices = {
+      getSessions: () => this._services.getSessions?.() ?? [],
+      deleteSession: (id) => this._services.deleteSession?.(id),
+    };
+    this._sessionSidebar = this._register(new ChatSessionSidebar(this._root, sidebarServices));
+    this._register(this._sessionSidebar.onDidSelectSession((sessionId) => {
+      const session = this._services.getSession?.(sessionId);
+      if (session) {
+        this.setSession(session);
+      }
+    }));
+    this._register(this._sessionSidebar.onDidRequestNewSession(() => {
+      this._handleNewChat();
+    }));
 
     // Empty state (hidden by default)
     this._emptyStateEl = this._buildEmptyState();
@@ -260,6 +269,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._updateVisibility();
     this._updateHeader();
     this._updateContextIndicator();
+    this._sessionSidebar.setActiveSession(session.id);
     this._scrollToBottom();
     this._inputPart.setStreaming(session.requestInProgress);
     this._inputPart.focus();
@@ -444,10 +454,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private _handleNewChat(): void {
     const session = this._services.createSession();
     this.setSession(session);
-  }
-
-  private _handleToggleHistory(): void {
-    this._sessionHistory.toggle(this._session?.id);
+    this._sessionSidebar.refresh();
   }
 
   private _handleClearSession(): void {
@@ -456,6 +463,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     }
     const newSession = this._services.createSession();
     this.setSession(newSession);
+    this._sessionSidebar.refresh();
   }
 
   // ── Empty / Offline State Builders ──

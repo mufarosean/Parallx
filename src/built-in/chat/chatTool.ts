@@ -390,14 +390,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       getAvailableModes: () => modeService.getAvailableModes(),
       onDidChangeMode: modeService.onDidChangeMode,
     },
-    // Session management (for header actions + history overlay)
+    // Session management (for header actions + session sidebar)
     getSessions: () => chatService.getSessions(),
     getSession: (id: string) => chatService.getSession(id),
     deleteSession: (id: string) => chatService.deleteSession(id),
-    sessionHistory: {
-      getSessions: () => chatService.getSessions(),
-      deleteSession: (id: string) => chatService.deleteSession(id),
-    },
     // Context indicator (token usage vs. context window)
     contextIndicator: {
       getContextLength: () => _ollamaProvider?.getActiveModelContextLength?.() ?? 0,
