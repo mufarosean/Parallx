@@ -221,6 +221,11 @@ export class WorkbenchContributionHandler extends Disposable {
       }
 
       console.log(`[Workbench] Added auxiliary bar container "${info.id}" (${info.title})`);
+
+      // Trigger a layout pass so the newly-added container gets proper dimensions.
+      // Without this, the container sits in the DOM with 0×0 size until the next
+      // resize or sidebar interaction triggers _layoutViewContainers().
+      this._host.layoutViewContainers();
     }
   }
 

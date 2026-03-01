@@ -1946,6 +1946,13 @@ export class Workbench extends Layout {
     // Fire startup finished — triggers * and onStartupFinished activation events
     activationEvents.fireStartupFinished();
 
+    // ── Post-activation layout pass ──
+    // Built-in tools (Chat, etc.) may have contributed new view containers
+    // during activation that were appended to the DOM but never received a
+    // layout pass. Re-layout all view containers so contributed views like
+    // the chat aux bar panel render at correct dimensions immediately.
+    this._layoutViewContainers();
+
     // ── Wire tool install/uninstall callbacks for the API (M6 Package Install) ──
     // These callbacks are invoked by api.tools.installFromFile() and api.tools.uninstall()
     // to handle registration, contribution processing, and activation without restart.
