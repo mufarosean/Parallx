@@ -109,7 +109,7 @@ Each sub-milestone is independently shippable and testable.
 | **Cap 1** | Language Model Provider Abstraction | 1.1–1.3 | ✅ DONE | `9c45066` |
 | **Cap 2** | Chat Service Core | 2.1–2.4 | ✅ DONE | `9c45066` |
 | **Cap 3** | Chat Built-in Tool & UI | 3.1–3.7 | ✅ DONE | `5c59540` + `23fd223` |
-| **Cap 4** | Chat Mode System | 4.1–4.2 | ⬜ TODO | — |
+| **Cap 4** | Chat Mode System | 4.1–4.2 | ✅ DONE | _pending_ |
 | **Cap 5** | Participant/Agent System | 5.1–5.4 | ⬜ TODO | — |
 | **Cap 6** | Tool Invocation Framework | 6.1–6.4 | ⬜ TODO | — |
 | **Cap 7** | Edit Mode | 7.1–7.3 | ⬜ TODO | — |
@@ -122,7 +122,7 @@ Each sub-milestone is independently shippable and testable.
 | **M9.1** (Cap 4–6) | ⬜ TODO | — |
 | **M9.2** (Cap 7–9) | ⬜ TODO | — |
 
-**Total project tests:** 887 passing (31 files) · `tsc --noEmit` clean
+**Total project tests:** 922 passing (33 files) · `tsc --noEmit` clean
 
 ---
 
@@ -896,7 +896,7 @@ The system provides a chat UI in the Auxiliary Bar that allows users to converse
 
 ---
 
-## Capability 4 — Chat Mode System
+## Capability 4 — Chat Mode System ✅
 
 ### Capability Description
 
@@ -930,9 +930,9 @@ The system enforces per-mode capabilities during chat requests. Each mode (Ask, 
 
 #### Tasks
 
-**Task 4.1 — Implement Mode Capability Matrix**
+**Task 4.1 — Implement Mode Capability Matrix** ✅ DONE
 - **Task Description:** Define and enforce what each mode can do at the service level.
-- **Output:** Mode capability logic within `ChatService.sendRequest()` and participant handlers.
+- **Output:** `chatModeCapabilities.ts` — frozen capability matrix, `getModeCapabilities()`, `shouldIncludeTools()`, `shouldUseStructuredOutput()`.
 - **Completion Criteria:**
   - Mode capabilities enforced:
 
@@ -950,9 +950,9 @@ The system enforces per-mode capabilities during chat requests. Each mode (Ask, 
   - Reference only: `src/vs/workbench/contrib/chat/common/chatAgents.ts` — mode is checked in `invokeAgent()` to determine available capabilities
   - Enforcement happens in the request building phase, not the UI — even programmatic requests respect mode
 
-**Task 4.2 — Implement Mode-Aware System Prompts**
+**Task 4.2 — Implement Mode-Aware System Prompts** ✅ DONE
 - **Task Description:** Build system prompts that vary by mode and include relevant context.
-- **Output:** System prompt builder function, likely in the default participant or a shared utility.
+- **Output:** `chatSystemPrompts.ts` — `buildSystemPrompt(mode, context)`, mode-specific prompts for Ask/Edit/Agent. `defaultParticipant.ts` + `chatTool.ts` updated with workspace context wiring.
 - **Completion Criteria:**
   - **Ask mode prompt**: brief context about Parallx workspace (name, page count), instruction to be helpful, no tool references
   - **Edit mode prompt**: instruction to propose edits in a structured format (block ID + new content), list of available block operations, instruction to explain changes

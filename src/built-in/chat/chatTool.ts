@@ -28,7 +28,10 @@ import type {
   IChatMessage,
   IChatRequestOptions,
   IChatResponseChunk,
+  IToolDefinition,
 } from '../../services/chatTypes.js';
+import { IWorkspaceService } from '../../services/serviceTypes.js';
+import { IEditorService } from '../../services/serviceTypes.js';
 
 // ── Local API type — only the subset we use ──
 
@@ -70,6 +73,14 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const agentService = api.services.get<import('../../services/chatTypes.js').IChatAgentService>(IChatAgentService);
   const modeService = api.services.get<import('../../services/chatTypes.js').IChatModeService>(IChatModeService);
 
+  // Workspace context services (for mode-aware system prompts)
+  const workspaceService = api.services.has(IWorkspaceService)
+    ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceService>(IWorkspaceService)
+    : undefined;
+  const editorService = api.services.has(IEditorService)
+    ? api.services.get<import('../../services/serviceTypes.js').IEditorService>(IEditorService)
+    : undefined;
+
   // ── 2. Create OllamaProvider and register with ILanguageModelsService ──
 
   _ollamaProvider = new OllamaProvider();
@@ -92,6 +103,30 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     },
     getActiveModel(): string | undefined {
       return languageModelsService.getActiveModel();
+    },
+    // ── Workspace context (Cap 4 — mode-aware system prompts) ──
+    getWorkspaceName(): string {
+      return workspaceService?.activeWorkspace?.name ?? 'Parallx Workspace';
+    },
+    async getPageCount(): Promise<number> {
+      // Approximate: count sessions in the workspace.
+      // A more precise count would query IDatabaseService, but workspace
+      // pages aren't tracked by a single count method yet.
+      // For now, return 0 if workspace isn't loaded.
+      try {
+        const ws = workspaceService?.activeWorkspace;
+        return ws ? (ws as unknown as { pageCount?: number }).pageCount ?? 0 : 0;
+      } catch {
+        return 0;
+      }
+    },
+    getCurrentPageTitle(): string | undefined {
+      return editorService?.activeEditor?.name;
+    },
+    getToolDefinitions(): readonly IToolDefinition[] {
+      // Tool definitions will be provided by ILanguageModelToolsService (Cap 6).
+      // For now, return empty — Agent mode prompt will omit tools section.
+      return [];
     },
   };
 

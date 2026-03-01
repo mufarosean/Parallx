@@ -1,8 +1,10 @@
-// defaultParticipant.ts — Default chat participant (M9 Cap 3)
+// defaultParticipant.ts — Default chat participant (M9 Cap 3 + Cap 4 mode system)
 //
 // The default agent that handles messages when no @mention is specified.
 // Sends the conversation to ILanguageModelsService and streams the response
 // back through the IChatResponseStream.
+//
+// Cap 4 additions: mode-aware system prompts, mode capability enforcement.
 //
 // VS Code reference:
 //   Built-in chat participant registered in chat.contribution.ts
@@ -19,7 +21,11 @@ import type {
   IChatMessage,
   IChatRequestOptions,
   IChatResponseChunk,
+  IToolDefinition,
 } from '../../../services/chatTypes.js';
+import { buildSystemPrompt } from '../chatSystemPrompts.js';
+import type { ISystemPromptContext } from '../chatSystemPrompts.js';
+import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } from '../chatModeCapabilities.js';
 
 /**
  * Service accessor for the default participant.
@@ -32,6 +38,14 @@ export interface IDefaultParticipantServices {
     signal?: AbortSignal,
   ): AsyncIterable<IChatResponseChunk>;
   getActiveModel(): string | undefined;
+  /** Workspace name for system prompt context. */
+  getWorkspaceName(): string;
+  /** Page count for system prompt context. */
+  getPageCount(): Promise<number>;
+  /** Current page title, if any. */
+  getCurrentPageTitle(): string | undefined;
+  /** Available tool definitions (for Agent mode system prompt + request). */
+  getToolDefinitions(): readonly IToolDefinition[];
 }
 
 /** Default participant ID — must match ChatAgentService's DEFAULT_AGENT_ID. */
@@ -52,13 +66,29 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     token: ICancellationToken,
   ): Promise<IChatParticipantResult> => {
 
+    // ── Mode capability enforcement ──
+
+    const capabilities = getModeCapabilities(request.mode);
+
+    // ── Build system prompt with workspace context ──
+
+    const pageCount = await services.getPageCount().catch(() => 0);
+    const promptContext: ISystemPromptContext = {
+      workspaceName: services.getWorkspaceName(),
+      pageCount,
+      currentPageTitle: services.getCurrentPageTitle(),
+      tools: shouldIncludeTools(request.mode) ? services.getToolDefinitions() : undefined,
+    };
+
+    const systemPrompt = buildSystemPrompt(request.mode, promptContext);
+
     // Build the message list from conversation history + current request
     const messages: IChatMessage[] = [];
 
-    // System prompt
+    // System prompt (mode-aware)
     messages.push({
       role: 'system',
-      content: 'You are Parallx, a helpful local AI assistant. Be concise and clear. Use markdown formatting when appropriate.',
+      content: systemPrompt,
     });
 
     // History (previous request/response pairs)
@@ -96,8 +126,13 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       content: request.text,
     });
 
-    // Build request options
-    const options: IChatRequestOptions = {};
+    // Build request options (mode-aware)
+    const options: IChatRequestOptions = {
+      // Agent mode: include tool definitions in the request
+      tools: shouldIncludeTools(request.mode) ? services.getToolDefinitions() : undefined,
+      // Edit mode: use JSON structured output
+      format: shouldUseStructuredOutput(request.mode) ? { type: 'object' } : undefined,
+    };
 
     // Create an AbortController linked to the cancellation token
     const abortController = new AbortController();
@@ -127,10 +162,16 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           response.markdown(chunk.content);
         }
 
-        // Tool calls (M9.1 — stubbed)
+        // Tool calls — only in Agent mode (Cap 6 implements the full agentic loop)
         if (chunk.toolCalls && chunk.toolCalls.length > 0) {
-          for (const toolCall of chunk.toolCalls) {
-            response.warning(`Tool call requested: ${toolCall.function.name} (not yet supported)`);
+          if (capabilities.canInvokeTools) {
+            // Agent mode: tool invocation handled by agentic loop (Cap 6)
+            for (const toolCall of chunk.toolCalls) {
+              response.warning(`Tool call requested: ${toolCall.function.name} (agentic loop not yet wired)`);
+            }
+          } else {
+            // Non-agent mode: ignore tool calls (should not happen with correct mode enforcement)
+            response.warning('Tool calls are not available in this mode.');
           }
         }
       }
