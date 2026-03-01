@@ -187,7 +187,10 @@ export class WorkbenchContributionHandler extends Disposable {
 
     } else if (info.location === 'auxiliaryBar') {
       vc.hideTabBar();
-      vc.setVisible(false);
+      // Aux bar containers are visible immediately — the AuxiliaryBarPart
+      // itself controls overall show/hide, so individual containers don't
+      // need to start hidden (unlike sidebar where only one is active).
+      vc.setVisible(true);
       const auxBarPart = this._host.auxiliaryBar as unknown as AuxiliaryBarPart;
       const viewSlot = auxBarPart.viewContainerSlot;
       if (viewSlot) {

@@ -158,6 +158,39 @@ export const TOOL_GALLERY_MANIFEST: IToolManifest = {
   },
 };
 
+// ── Chat ─────────────────────────────────────────────────────────────────
+
+export const CHAT_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.chat',
+  name: 'Chat',
+  version: '1.0.0',
+  publisher: 'parallx',
+  description: 'AI Chat — local language model conversations powered by Ollama.',
+  main: './chatTool.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'chat.toggle', title: 'Chat: Toggle Chat Panel' },
+      { id: 'chat.newSession', title: 'Chat: New Session' },
+      { id: 'chat.clearSession', title: 'Chat: Clear Session' },
+      { id: 'chat.stop', title: 'Chat: Stop Response' },
+      { id: 'chat.focus', title: 'Chat: Focus Input' },
+    ],
+    keybindings: [
+      { command: 'chat.toggle', key: 'Ctrl+Shift+I' },
+      { command: 'chat.focus', key: 'Ctrl+L' },
+    ],
+    viewContainers: [
+      { id: 'chat-container', title: 'Chat', icon: '💬', location: 'auxiliaryBar' as const },
+    ],
+    views: [
+      { id: 'view.chat', name: 'Chat', defaultContainerId: 'chat-container' },
+    ],
+  },
+};
+
 // ── Canvas ───────────────────────────────────────────────────────────────
 
 export const CANVAS_MANIFEST: IToolManifest = {
