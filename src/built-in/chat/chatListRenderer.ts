@@ -14,6 +14,7 @@
 import { Disposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
 import { renderContentPart, renderFollowups } from './chatContentParts.js';
+import { chatIcons } from './chatIcons.js';
 import type { IChatRequestResponsePair, IChatAssistantResponse } from '../../services/chatTypes.js';
 
 /**
@@ -67,13 +68,7 @@ export class ChatListRenderer extends Disposable {
   private _renderUserMessage(text: string): HTMLElement {
     const root = $('div.parallx-chat-message.parallx-chat-message--user');
 
-    // Avatar (person silhouette icon)
-    const avatar = $('div.parallx-chat-message-avatar.parallx-chat-message-avatar--user');
-    const avatarIcon = $('span.parallx-chat-avatar-icon', '\uD83D\uDC64'); // 👤
-    avatar.appendChild(avatarIcon);
-    root.appendChild(avatar);
-
-    // Body
+    // VS Code Copilot style: user messages are blue bubbles, right-aligned, no avatar
     const body = $('div.parallx-chat-message-body');
     const p = $('p');
     p.textContent = text;
@@ -91,10 +86,9 @@ export class ChatListRenderer extends Disposable {
     const root = $('div.parallx-chat-message.parallx-chat-message--assistant');
     const parts = response.parts;
 
-    // Avatar (sparkle icon)
+    // Small sparkle SVG avatar (VS Code-style, no emoji)
     const avatar = $('div.parallx-chat-message-avatar.parallx-chat-message-avatar--assistant');
-    const avatarIcon = $('span.parallx-chat-avatar-icon', '\u2728'); // ✨
-    avatar.appendChild(avatarIcon);
+    avatar.innerHTML = chatIcons.sparkleSmall;
     root.appendChild(avatar);
 
     // Body — render each content part
@@ -118,7 +112,7 @@ export class ChatListRenderer extends Disposable {
       root.appendChild(followupsEl);
     }
 
-    // Message actions bar (copy / insert) — only shown on hover
+    // Message actions bar (copy) — only shown on hover
     if (parts.length > 0) {
       const actions = $('div.parallx-chat-message-actions');
 
@@ -126,12 +120,13 @@ export class ChatListRenderer extends Disposable {
       copyBtn.className = 'parallx-chat-action-btn';
       copyBtn.type = 'button';
       copyBtn.title = 'Copy response';
-      copyBtn.textContent = '\uD83D\uDCCB'; // 📋
+      copyBtn.setAttribute('aria-label', 'Copy response');
+      copyBtn.innerHTML = chatIcons.copy;
       copyBtn.addEventListener('click', () => {
         const text = body.innerText;
         navigator.clipboard.writeText(text).then(() => {
-          copyBtn.textContent = '\u2713'; // ✓
-          setTimeout(() => { copyBtn.textContent = '\uD83D\uDCCB'; }, 1500);
+          copyBtn.innerHTML = chatIcons.check;
+          setTimeout(() => { copyBtn.innerHTML = chatIcons.copy; }, 1500);
         });
       });
       actions.appendChild(copyBtn);

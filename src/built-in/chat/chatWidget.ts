@@ -414,19 +414,21 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
   private _updateHeader(): void {
     if (!this._session) {
-      this._headerPart.setTitle('Chat');
+      this._headerPart.setTitle('CHAT');
       this._headerPart.setSessionInfo('');
       return;
     }
     const msgCount = this._session.messages.length;
-    this._headerPart.setTitle(this._session.title || 'New Chat');
+    // VS Code style: uppercase "CHAT" as view title, session details in info
+    this._headerPart.setTitle('CHAT');
+    const sessionTitle = this._session.title || 'New Chat';
     const modeLabel = this._session.mode
       ? this._session.mode.charAt(0).toUpperCase() + this._session.mode.slice(1)
       : '';
     this._headerPart.setSessionInfo(
       msgCount > 0
-        ? `${msgCount} message${msgCount !== 1 ? 's' : ''}${modeLabel ? ` \u00B7 ${modeLabel}` : ''}`
-        : modeLabel || '',
+        ? `${sessionTitle} \u00B7 ${msgCount} message${msgCount !== 1 ? 's' : ''}${modeLabel ? ` \u00B7 ${modeLabel}` : ''}`
+        : sessionTitle + (modeLabel ? ` \u00B7 ${modeLabel}` : ''),
     );
   }
 

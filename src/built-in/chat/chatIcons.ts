@@ -117,4 +117,33 @@ export const chatIcons = {
     <path d="M2.5 4.5l3.5 3.5 3.5-3.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`,
 
+  // ── Message actions ──
+
+  /** Clipboard / copy icon */
+  copy: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="5.5" y="5.5" width="7" height="8" rx="1" stroke="currentColor" stroke-width="1.2"/>
+    <path d="M10.5 5.5V3.5a1 1 0 00-1-1h-6a1 1 0 00-1 1v8a1 1 0 001 1h2" stroke="currentColor" stroke-width="1.2"/>
+  </svg>`,
+
+  /** Checkmark icon */
+  check: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`,
+
+  /** Wrench / tool icon */
+  wrench: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M10 2.5a3.5 3.5 0 00-3.3 4.7L3 11l1 1 1 1 3.8-3.7A3.5 3.5 0 0010 2.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+  </svg>`,
+
+  /** Person silhouette — user avatar */
+  person: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="8" cy="5" r="2.5" stroke="currentColor" stroke-width="1.2"/>
+    <path d="M3 13.5c0-2.5 2.2-4.5 5-4.5s5 2 5 4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+  </svg>`,
+
+  /** Sparkle small — 16×16 for assistant avatar */
+  sparkleSmall: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M8 1.5l1.5 4.5L14.5 8l-5 2-1.5 4.5L6.5 10 1.5 8l5-2L8 1.5z" stroke="currentColor" stroke-width="1.0" stroke-linejoin="round"/>
+  </svg>`,
+
 } as const;

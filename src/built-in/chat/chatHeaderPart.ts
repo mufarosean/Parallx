@@ -23,7 +23,10 @@ export interface IChatHeaderAction {
 }
 
 /**
- * Chat panel header — title + action buttons.
+ * Chat panel header — VS Code-style view title bar.
+ *
+ * Layout: [CHAT label + session info] ... [action buttons]
+ * Matches VS Code Copilot's top bar: uppercase view name, actions on the right.
  */
 export class ChatHeaderPart extends Disposable implements IChatHeaderAction {
 
@@ -50,7 +53,7 @@ export class ChatHeaderPart extends Disposable implements IChatHeaderAction {
     const left = $('div.parallx-chat-header-left');
     this._root.appendChild(left);
 
-    this._titleEl = $('span.parallx-chat-header-title', 'Chat');
+    this._titleEl = $('span.parallx-chat-header-title', 'CHAT');
     left.appendChild(this._titleEl);
 
     this._sessionInfoEl = $('span.parallx-chat-header-session-info');
@@ -92,7 +95,7 @@ export class ChatHeaderPart extends Disposable implements IChatHeaderAction {
 
   /** Update the session title displayed in the header. */
   setTitle(title: string): void {
-    this._titleEl.textContent = title || 'Chat';
+    this._titleEl.textContent = title || 'CHAT';
   }
 
   /** Update session metadata (message count, mode). */

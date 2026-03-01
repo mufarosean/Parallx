@@ -9,6 +9,7 @@
 //   src/vs/workbench/contrib/chat/browser/chatContentParts/
 
 import { $ } from '../../ui/dom.js';
+import { chatIcons } from './chatIcons.js';
 import { ChatContentPartKind } from '../../services/chatTypes.js';
 import type {
   IChatContentPart,
@@ -134,14 +135,15 @@ function _renderCodeBlock(part: IChatCodeBlockContent): HTMLElement {
   const langLabel = $('span', part.language || 'text');
   const copyBtn = document.createElement('button');
   copyBtn.className = 'parallx-chat-code-block-copy';
-  copyBtn.textContent = '\uD83D\uDCCB'; // 📋
+  copyBtn.innerHTML = chatIcons.copy;
   copyBtn.type = 'button';
   copyBtn.title = 'Copy code';
+  copyBtn.setAttribute('aria-label', 'Copy code');
   copyBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(part.code).then(() => {
-      copyBtn.textContent = '\u2713'; // ✓
+      copyBtn.innerHTML = chatIcons.check;
       setTimeout(() => {
-        copyBtn.textContent = '\uD83D\uDCCB';
+        copyBtn.innerHTML = chatIcons.copy;
       }, 2000);
     });
   });
@@ -222,7 +224,8 @@ function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {
 
   // Header: tool icon + name
   const header = $('div.parallx-chat-tool-invocation-header');
-  const icon = $('span.parallx-chat-tool-invocation-icon', '\uD83D\uDD27'); // 🔧
+  const icon = $('span.parallx-chat-tool-invocation-icon');
+  icon.innerHTML = chatIcons.wrench;
   const name = $('span.parallx-chat-tool-invocation-name', part.toolName);
   header.appendChild(icon);
   header.appendChild(name);

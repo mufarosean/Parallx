@@ -27,7 +27,7 @@ describe('ChatHeaderPart', () => {
 
     const title = root!.querySelector('.parallx-chat-header-title');
     expect(title).toBeTruthy();
-    expect(title!.textContent).toBe('Chat');
+    expect(title!.textContent).toBe('CHAT');
 
     const buttons = root!.querySelectorAll('.parallx-chat-header-btn');
     expect(buttons.length).toBe(3); // new, history, clear
@@ -44,7 +44,7 @@ describe('ChatHeaderPart', () => {
     expect(title!.textContent).toBe('My Chat');
 
     header.setTitle('');
-    expect(title!.textContent).toBe('Chat');
+    expect(title!.textContent).toBe('CHAT');
 
     header.dispose();
   });
