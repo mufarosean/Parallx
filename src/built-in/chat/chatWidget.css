@@ -319,3 +319,165 @@
   flex-shrink: 0;
   color: var(--vscode-editorWarning-foreground, #cca700);
 }
+
+/* ── Tool Invocation Card (Cap 6 Task 6.4) ── */
+
+.parallx-chat-tool-invocation {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+}
+
+.parallx-chat-tool-invocation-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.parallx-chat-tool-invocation-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.parallx-chat-tool-invocation-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+/* ── Status Badge ── */
+
+.parallx-chat-tool-status-badge {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.parallx-chat-tool-status-badge--pending {
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #cccccc);
+}
+
+.parallx-chat-tool-status-badge--running {
+  background: var(--vscode-progressBar-background, #0e70c0);
+  color: #ffffff;
+}
+
+.parallx-chat-tool-status-badge--completed {
+  background: var(--vscode-testing-iconPassed, #388a34);
+  color: #ffffff;
+}
+
+.parallx-chat-tool-status-badge--rejected {
+  background: var(--vscode-testing-iconFailed, #f14c4c);
+  color: #ffffff;
+}
+
+/* ── Tool Arguments ── */
+
+.parallx-chat-tool-invocation-args {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+/* ── Tool Result ── */
+
+.parallx-chat-tool-invocation-result {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--vscode-textBlockQuote-background, #2a2a2a);
+  border-left: 3px solid var(--vscode-testing-iconPassed, #388a34);
+  color: var(--vscode-foreground, #cccccc);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.parallx-chat-tool-invocation-result--error {
+  border-left-color: var(--vscode-testing-iconFailed, #f14c4c);
+}
+
+.parallx-chat-tool-invocation-result-toggle {
+  background: none;
+  border: none;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.parallx-chat-tool-invocation-result-toggle:hover {
+  text-decoration: underline;
+}
+
+/* ── Confirmation Card (Cap 6 Task 6.4) ── */
+
+.parallx-chat-confirmation {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+}
+
+.parallx-chat-confirmation-message {
+  font-size: 13px;
+  color: var(--vscode-foreground, #cccccc);
+  margin-bottom: 8px;
+}
+
+.parallx-chat-confirmation-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.parallx-chat-confirmation-btn {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.parallx-chat-confirmation-btn--accept {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  border-color: var(--vscode-button-background, #0e639c);
+}
+
+.parallx-chat-confirmation-btn--accept:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.parallx-chat-confirmation-btn--reject {
+  background: transparent;
+  color: var(--vscode-foreground, #cccccc);
+  border-color: var(--vscode-input-border, #3c3c3c);
+}
+
+.parallx-chat-confirmation-btn--reject:hover {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+}
+
+.parallx-chat-confirmation-result {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.parallx-chat-confirmation-result--accepted {
+  color: var(--vscode-testing-iconPassed, #388a34);
+}
+
+.parallx-chat-confirmation-result--rejected {
+  color: var(--vscode-testing-iconFailed, #f14c4c);
+}

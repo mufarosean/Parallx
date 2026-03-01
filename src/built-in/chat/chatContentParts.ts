@@ -1,8 +1,8 @@
-// chatContentParts.ts — Content part rendering (M9 Task 3.6)
+// chatContentParts.ts — Content part rendering (M9 Task 3.6 + 6.4)
 //
 // Dispatches on IChatContentPart.kind to render typed content parts.
-// M9.0 supports: Markdown, CodeBlock, Progress, Thinking, Warning.
-// M9.1/M9.2 parts (ToolInvocation, Reference, Confirmation) are stubbed.
+// M9.0: Markdown, CodeBlock, Progress, Thinking, Warning.
+// M9.1: ToolInvocation (status cards with accept/reject), Confirmation.
 //
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/browser/chatContentParts/
@@ -16,6 +16,8 @@ import type {
   IChatProgressContent,
   IChatThinkingContent,
   IChatWarningContent,
+  IChatToolInvocationContent,
+  IChatConfirmationContent,
 } from '../../services/chatTypes.js';
 
 /**
@@ -35,9 +37,11 @@ export function renderContentPart(part: IChatContentPart): HTMLElement {
     case ChatContentPartKind.Warning:
       return _renderWarning(part);
     case ChatContentPartKind.ToolInvocation:
+      return _renderToolInvocation(part);
     case ChatContentPartKind.Reference:
-    case ChatContentPartKind.Confirmation:
       return _renderUnsupported(part.kind);
+    case ChatContentPartKind.Confirmation:
+      return _renderConfirmation(part);
   }
 }
 
@@ -194,7 +198,163 @@ function _renderWarning(part: IChatWarningContent): HTMLElement {
   return root;
 }
 
-// ── Unsupported (stub for M9.1/M9.2 parts) ──
+// ── Tool Invocation (Cap 6 Task 6.4) ──
+
+/** Status badge labels and CSS modifier suffixes. */
+const TOOL_STATUS_LABELS: Record<string, { label: string; modifier: string }> = {
+  pending:   { label: 'Pending',   modifier: 'pending' },
+  running:   { label: 'Running…',  modifier: 'running' },
+  completed: { label: 'Completed', modifier: 'completed' },
+  rejected:  { label: 'Rejected',  modifier: 'rejected' },
+};
+
+function _renderToolInvocation(part: IChatToolInvocationContent): HTMLElement {
+  const root = $('div.parallx-chat-tool-invocation');
+
+  // Header: tool icon + name
+  const header = $('div.parallx-chat-tool-invocation-header');
+  const icon = $('span.parallx-chat-tool-invocation-icon', '\uD83D\uDD27'); // 🔧
+  const name = $('span.parallx-chat-tool-invocation-name', part.toolName);
+  header.appendChild(icon);
+  header.appendChild(name);
+
+  // Status badge
+  const statusInfo = TOOL_STATUS_LABELS[part.status] ?? TOOL_STATUS_LABELS['pending'];
+  const badge = $('span.parallx-chat-tool-status-badge');
+  badge.classList.add(`parallx-chat-tool-status-badge--${statusInfo.modifier}`);
+  badge.textContent = statusInfo.label;
+  header.appendChild(badge);
+  root.appendChild(header);
+
+  // Arguments summary (collapsible)
+  if (part.args && Object.keys(part.args).length > 0) {
+    const argsContainer = $('div.parallx-chat-tool-invocation-args');
+    const argsSummary = Object.entries(part.args)
+      .map(([k, v]) => `${k}: ${_truncate(String(v), 80)}`)
+      .join(', ');
+    argsContainer.textContent = argsSummary;
+    root.appendChild(argsContainer);
+  }
+
+  // Result (shown when complete)
+  if (part.isComplete && part.result) {
+    const resultContainer = $('div.parallx-chat-tool-invocation-result');
+
+    if (part.isError || part.result.isError) {
+      resultContainer.classList.add('parallx-chat-tool-invocation-result--error');
+    }
+
+    // Collapsible result content
+    const resultText = part.result.content;
+    if (resultText.length > 300) {
+      const preview = $('div.parallx-chat-tool-invocation-result-preview');
+      preview.textContent = resultText.slice(0, 300) + '…';
+
+      const toggle = document.createElement('button');
+      toggle.className = 'parallx-chat-tool-invocation-result-toggle';
+      toggle.textContent = 'Show more';
+      toggle.type = 'button';
+
+      const full = $('div.parallx-chat-tool-invocation-result-full');
+      full.textContent = resultText;
+      full.style.display = 'none';
+
+      toggle.addEventListener('click', () => {
+        const isHidden = full.style.display === 'none';
+        full.style.display = isHidden ? 'block' : 'none';
+        preview.style.display = isHidden ? 'none' : 'block';
+        toggle.textContent = isHidden ? 'Show less' : 'Show more';
+      });
+
+      resultContainer.appendChild(preview);
+      resultContainer.appendChild(toggle);
+      resultContainer.appendChild(full);
+    } else {
+      resultContainer.textContent = resultText;
+    }
+
+    root.appendChild(resultContainer);
+  }
+
+  // Running spinner
+  if (part.status === 'running') {
+    const spinner = $('div.parallx-chat-progress-spinner');
+    root.appendChild(spinner);
+  }
+
+  return root;
+}
+
+function _truncate(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max) + '…' : text;
+}
+
+// ── Confirmation (Cap 6 Task 6.4) ──
+
+function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
+  const root = $('div.parallx-chat-confirmation');
+
+  const message = $('div.parallx-chat-confirmation-message');
+  message.textContent = part.message;
+  root.appendChild(message);
+
+  // If already decided, show the result
+  if (part.isAccepted !== undefined) {
+    const result = $('span.parallx-chat-confirmation-result');
+    result.textContent = part.isAccepted ? '✓ Accepted' : '✗ Rejected';
+    result.classList.add(
+      part.isAccepted
+        ? 'parallx-chat-confirmation-result--accepted'
+        : 'parallx-chat-confirmation-result--rejected',
+    );
+    root.appendChild(result);
+    return root;
+  }
+
+  // Accept / Reject buttons
+  const buttonBar = $('div.parallx-chat-confirmation-buttons');
+
+  const acceptBtn = document.createElement('button');
+  acceptBtn.className = 'parallx-chat-confirmation-btn parallx-chat-confirmation-btn--accept';
+  acceptBtn.textContent = 'Accept';
+  acceptBtn.type = 'button';
+  acceptBtn.addEventListener('click', () => {
+    part.isAccepted = true;
+    _replaceWithResult(root, true);
+  });
+
+  const rejectBtn = document.createElement('button');
+  rejectBtn.className = 'parallx-chat-confirmation-btn parallx-chat-confirmation-btn--reject';
+  rejectBtn.textContent = 'Reject';
+  rejectBtn.type = 'button';
+  rejectBtn.addEventListener('click', () => {
+    part.isAccepted = false;
+    _replaceWithResult(root, false);
+  });
+
+  buttonBar.appendChild(acceptBtn);
+  buttonBar.appendChild(rejectBtn);
+  root.appendChild(buttonBar);
+
+  return root;
+}
+
+function _replaceWithResult(root: HTMLElement, accepted: boolean): void {
+  // Remove buttons, show result text
+  const buttonBar = root.querySelector('.parallx-chat-confirmation-buttons');
+  if (buttonBar) { buttonBar.remove(); }
+
+  const result = $('span.parallx-chat-confirmation-result');
+  result.textContent = accepted ? '✓ Accepted' : '✗ Rejected';
+  result.classList.add(
+    accepted
+      ? 'parallx-chat-confirmation-result--accepted'
+      : 'parallx-chat-confirmation-result--rejected',
+  );
+  root.appendChild(result);
+}
+
+// ── Unsupported (stub for M9.2 parts) ──
 
 function _renderUnsupported(kind: string): HTMLElement {
   const el = $('div.parallx-chat-warning');

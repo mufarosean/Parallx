@@ -1,0 +1,222 @@
+// Unit tests for LanguageModelToolsService — M9 Cap 6 Task 6.1
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { LanguageModelToolsService } from '../../src/services/languageModelToolsService';
+import type { ToolConfirmationHandler } from '../../src/services/languageModelToolsService';
+import type { IChatTool, IToolResult, ICancellationToken } from '../../src/services/chatTypes';
+
+// ── Helpers ──
+
+function createToken(cancelled = false): ICancellationToken {
+  return {
+    isCancellationRequested: cancelled,
+    onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })) as any,
+  };
+}
+
+function createTool(overrides: Partial<IChatTool> = {}): IChatTool {
+  return {
+    name: 'test_tool',
+    description: 'A test tool',
+    parameters: { type: 'object', properties: {} },
+    handler: vi.fn(async () => ({ content: 'OK' })),
+    requiresConfirmation: false,
+    ...overrides,
+  };
+}
+
+// ── Tests ──
+
+describe('LanguageModelToolsService', () => {
+  let service: LanguageModelToolsService;
+
+  beforeEach(() => {
+    service = new LanguageModelToolsService();
+  });
+
+  // ── Registration ──
+
+  describe('registerTool', () => {
+    it('registers a tool and makes it queryable', () => {
+      service.registerTool(createTool({ name: 'my_tool' }));
+      expect(service.getTool('my_tool')).toBeDefined();
+      expect(service.getTool('my_tool')!.name).toBe('my_tool');
+    });
+
+    it('fires onDidChangeTools on registration', () => {
+      const listener = vi.fn();
+      service.onDidChangeTools(listener);
+
+      service.registerTool(createTool());
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws when registering duplicate tool name', () => {
+      service.registerTool(createTool({ name: 'dup' }));
+      expect(() => service.registerTool(createTool({ name: 'dup' }))).toThrow('already registered');
+    });
+
+    it('returns disposable that unregisters the tool', () => {
+      const disposable = service.registerTool(createTool({ name: 'removable' }));
+      expect(service.getTool('removable')).toBeDefined();
+
+      disposable.dispose();
+      expect(service.getTool('removable')).toBeUndefined();
+    });
+
+    it('fires onDidChangeTools on unregistration', () => {
+      const listener = vi.fn();
+      const disposable = service.registerTool(createTool());
+      service.onDidChangeTools(listener);
+
+      disposable.dispose();
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── Queries ──
+
+  describe('getTools', () => {
+    it('returns empty array when no tools registered', () => {
+      expect(service.getTools()).toEqual([]);
+    });
+
+    it('returns all registered tools', () => {
+      service.registerTool(createTool({ name: 'a' }));
+      service.registerTool(createTool({ name: 'b' }));
+      const tools = service.getTools();
+      expect(tools).toHaveLength(2);
+      expect(tools.map((t) => t.name).sort()).toEqual(['a', 'b']);
+    });
+  });
+
+  describe('getTool', () => {
+    it('returns undefined for unknown tools', () => {
+      expect(service.getTool('nonexistent')).toBeUndefined();
+    });
+  });
+
+  describe('getToolDefinitions', () => {
+    it('returns Ollama-formatted tool definitions', () => {
+      service.registerTool(createTool({
+        name: 'search',
+        description: 'Search pages',
+        parameters: { type: 'object', required: ['query'], properties: { query: { type: 'string' } } },
+      }));
+
+      const defs = service.getToolDefinitions();
+      expect(defs).toHaveLength(1);
+      expect(defs[0]).toEqual({
+        name: 'search',
+        description: 'Search pages',
+        parameters: { type: 'object', required: ['query'], properties: { query: { type: 'string' } } },
+      });
+    });
+  });
+
+  // ── Invocation ──
+
+  describe('invokeTool', () => {
+    it('returns error for unknown tool', async () => {
+      const result = await service.invokeTool('missing', {}, createToken());
+      expect(result.isError).toBe(true);
+      expect(result.content).toContain('not found');
+    });
+
+    it('invokes tool handler and returns result', async () => {
+      const handler = vi.fn(async () => ({ content: 'search results' }));
+      service.registerTool(createTool({ name: 'my_search', handler }));
+
+      const result = await service.invokeTool('my_search', { query: 'test' }, createToken());
+      expect(handler).toHaveBeenCalledWith({ query: 'test' }, expect.any(Object));
+      expect(result.content).toBe('search results');
+      expect(result.isError).toBeUndefined();
+    });
+
+    it('handles tool handler errors gracefully', async () => {
+      service.registerTool(createTool({
+        name: 'failing',
+        handler: async () => { throw new Error('boom'); },
+      }));
+
+      const result = await service.invokeTool('failing', {}, createToken());
+      expect(result.isError).toBe(true);
+      expect(result.content).toContain('boom');
+    });
+
+    it('returns cancelled error when token is already cancelled', async () => {
+      service.registerTool(createTool({ name: 'skip' }));
+
+      const result = await service.invokeTool('skip', {}, createToken(true));
+      expect(result.isError).toBe(true);
+      expect(result.content).toContain('cancelled');
+    });
+  });
+
+  // ── Confirmation ──
+
+  describe('confirmation gates', () => {
+    it('invokes tool without confirmation when requiresConfirmation is false', async () => {
+      const handler = vi.fn(async () => ({ content: 'ok' }));
+      service.registerTool(createTool({ requiresConfirmation: false, handler }));
+
+      const result = await service.invokeTool('test_tool', {}, createToken());
+      expect(handler).toHaveBeenCalled();
+      expect(result.content).toBe('ok');
+    });
+
+    it('returns error when tool requires confirmation but no handler registered', async () => {
+      service.registerTool(createTool({ requiresConfirmation: true }));
+
+      const result = await service.invokeTool('test_tool', {}, createToken());
+      expect(result.isError).toBe(true);
+      expect(result.content).toContain('requires confirmation');
+    });
+
+    it('invokes tool when confirmation handler approves', async () => {
+      const handler = vi.fn(async () => ({ content: 'created' }));
+      service.registerTool(createTool({ requiresConfirmation: true, handler }));
+
+      const confirm: ToolConfirmationHandler = vi.fn(async () => true);
+      service.setConfirmationHandler(confirm);
+
+      const result = await service.invokeTool('test_tool', { title: 'New Page' }, createToken());
+      expect(confirm).toHaveBeenCalledWith('test_tool', { title: 'New Page' });
+      expect(handler).toHaveBeenCalled();
+      expect(result.content).toBe('created');
+    });
+
+    it('returns rejection when confirmation handler rejects', async () => {
+      const handler = vi.fn(async () => ({ content: 'should not reach' }));
+      service.registerTool(createTool({ requiresConfirmation: true, handler }));
+
+      service.setConfirmationHandler(vi.fn(async () => false));
+
+      const result = await service.invokeTool('test_tool', {}, createToken());
+      expect(handler).not.toHaveBeenCalled();
+      expect(result.content).toBe('Tool execution rejected by user');
+      expect(result.isError).toBe(true);
+    });
+
+    it('bypasses confirmation when autoApprove is enabled', async () => {
+      const handler = vi.fn(async () => ({ content: 'auto-ok' }));
+      service.registerTool(createTool({ requiresConfirmation: true, handler }));
+
+      service.setAutoApprove(true);
+      expect(service.autoApprove).toBe(true);
+
+      const result = await service.invokeTool('test_tool', {}, createToken());
+      expect(handler).toHaveBeenCalled();
+      expect(result.content).toBe('auto-ok');
+    });
+  });
+
+  // ── Dispose ──
+
+  describe('dispose', () => {
+    it('can be disposed without error', () => {
+      service.registerTool(createTool());
+      expect(() => service.dispose()).not.toThrow();
+    });
+  });
+});

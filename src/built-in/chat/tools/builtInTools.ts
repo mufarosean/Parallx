@@ -1,0 +1,343 @@
+// builtInTools.ts — Built-in chat tools for workspace operations (M9 Task 6.3)
+//
+// Registers 5 tools with ILanguageModelToolsService:
+//   - search_workspace (read-only, auto-approvable)
+//   - read_page (read-only, auto-approvable)
+//   - list_pages (read-only, auto-approvable)
+//   - get_page_properties (read-only, auto-approvable)
+//   - create_page (write, requires confirmation)
+//
+// Tools use IDatabaseService for SQL queries — they do NOT invoke
+// canvas code directly (per Task 6.3 constraint).
+
+import type { IDisposable } from '../../../platform/lifecycle.js';
+import type {
+  IChatTool,
+  IToolResult,
+  ICancellationToken,
+  ILanguageModelToolsService,
+} from '../../../services/chatTypes.js';
+
+// ── Database accessor interface ──
+
+/**
+ * Minimal database accessor for built-in tools.
+ * Wired from IDatabaseService in chatTool.ts.
+ */
+export interface IBuiltInToolDatabase {
+  get<T>(sql: string, params?: unknown[]): Promise<T | null | undefined>;
+  all<T>(sql: string, params?: unknown[]): Promise<T[]>;
+  run(sql: string, params?: unknown[]): Promise<{ changes: number }>;
+  readonly isOpen: boolean;
+}
+
+// ── Tool helpers ──
+
+function requireDb(db: IBuiltInToolDatabase | undefined): asserts db is IBuiltInToolDatabase {
+  if (!db || !db.isOpen) {
+    throw new Error('Database is not available');
+  }
+}
+
+function generateId(): string {
+  return crypto.randomUUID();
+}
+
+// ── Tool definitions ──
+
+function createSearchWorkspaceTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+  return {
+    name: 'search_workspace',
+    description: 'Search pages and blocks by text query. Returns matching page titles and content snippets.',
+    parameters: {
+      type: 'object',
+      required: ['query'],
+      properties: {
+        query: { type: 'string', description: 'Search text to match against page titles and content' },
+        limit: { type: 'number', description: 'Maximum number of results (default: 10)' },
+      },
+    },
+    requiresConfirmation: false,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireDb(db);
+      const query = String(args['query'] || '');
+      const limit = Math.min(Number(args['limit']) || 10, 50);
+
+      if (!query.trim()) {
+        return { content: 'Search query is empty', isError: true };
+      }
+
+      const pattern = `%${query}%`;
+      const pages = await db!.all<{ id: string; title: string; content: string }>(
+        'SELECT id, title, content FROM pages WHERE is_archived = 0 AND (title LIKE ? OR content LIKE ?) ORDER BY updated_at DESC LIMIT ?',
+        [pattern, pattern, limit],
+      );
+
+      if (pages.length === 0) {
+        return { content: `No pages found matching "${query}".` };
+      }
+
+      const results = pages.map((p) => {
+        const snippet = extractSnippet(p.content, query, 150);
+        return `- **${p.title}** (id: ${p.id})${snippet ? `\n  ${snippet}` : ''}`;
+      });
+
+      return { content: `Found ${pages.length} page(s) matching "${query}":\n\n${results.join('\n')}` };
+    },
+  };
+}
+
+function createReadPageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+  return {
+    name: 'read_page',
+    description: 'Read the full content of a page by its ID. Returns the page title and text content.',
+    parameters: {
+      type: 'object',
+      required: ['pageId'],
+      properties: {
+        pageId: { type: 'string', description: 'The page UUID' },
+      },
+    },
+    requiresConfirmation: false,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireDb(db);
+      const pageId = String(args['pageId'] || '');
+      if (!pageId) {
+        return { content: 'pageId is required', isError: true };
+      }
+
+      const page = await db!.get<{ id: string; title: string; content: string }>(
+        'SELECT id, title, content FROM pages WHERE id = ?',
+        [pageId],
+      );
+
+      if (!page) {
+        return { content: `Page "${pageId}" not found.`, isError: true };
+      }
+
+      const text = extractTextContent(page.content);
+      return { content: `**${page.title}**\n\n${text || '(empty page)'}` };
+    },
+  };
+}
+
+function createListPagesTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+  return {
+    name: 'list_pages',
+    description: 'List all pages in the workspace with their titles and IDs.',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Maximum number of pages to return (default: 50)' },
+      },
+    },
+    requiresConfirmation: false,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireDb(db);
+      const limit = Math.min(Number(args['limit']) || 50, 200);
+
+      const pages = await db!.all<{ id: string; title: string; icon: string | null; updated_at: string }>(
+        'SELECT id, title, icon, updated_at FROM pages WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT ?',
+        [limit],
+      );
+
+      if (pages.length === 0) {
+        return { content: 'No pages found in the workspace.' };
+      }
+
+      const lines = pages.map((p) => {
+        const icon = p.icon ? `${p.icon} ` : '';
+        return `- ${icon}**${p.title}** (id: ${p.id}, updated: ${p.updated_at})`;
+      });
+
+      return { content: `${pages.length} page(s) in workspace:\n\n${lines.join('\n')}` };
+    },
+  };
+}
+
+function createGetPagePropertiesTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+  return {
+    name: 'get_page_properties',
+    description: 'Get metadata and database properties of a page including title, icon, creation date, and block count.',
+    parameters: {
+      type: 'object',
+      required: ['pageId'],
+      properties: {
+        pageId: { type: 'string', description: 'The page UUID' },
+      },
+    },
+    requiresConfirmation: false,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireDb(db);
+      const pageId = String(args['pageId'] || '');
+      if (!pageId) {
+        return { content: 'pageId is required', isError: true };
+      }
+
+      const page = await db!.get<{
+        id: string;
+        title: string;
+        icon: string | null;
+        is_archived: number;
+        created_at: string;
+        updated_at: string;
+      }>(
+        'SELECT id, title, icon, is_archived, created_at, updated_at FROM pages WHERE id = ?',
+        [pageId],
+      );
+
+      if (!page) {
+        return { content: `Page "${pageId}" not found.`, isError: true };
+      }
+
+      const blockCount = await db!.get<{ cnt: number }>(
+        'SELECT COUNT(*) as cnt FROM canvas_blocks WHERE page_id = ?',
+        [pageId],
+      );
+
+      const lines = [
+        `**Title:** ${page.title}`,
+        `**ID:** ${page.id}`,
+        page.icon ? `**Icon:** ${page.icon}` : null,
+        `**Created:** ${page.created_at}`,
+        `**Updated:** ${page.updated_at}`,
+        `**Archived:** ${page.is_archived ? 'Yes' : 'No'}`,
+        `**Blocks:** ${blockCount?.cnt ?? 0}`,
+      ].filter(Boolean);
+
+      return { content: lines.join('\n') };
+    },
+  };
+}
+
+function createCreatePageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+  return {
+    name: 'create_page',
+    description: 'Create a new page in the workspace with a title and optional content.',
+    parameters: {
+      type: 'object',
+      required: ['title'],
+      properties: {
+        title: { type: 'string', description: 'Page title' },
+        content: { type: 'string', description: 'Initial text content for the page (plain text)' },
+        icon: { type: 'string', description: 'Page icon emoji' },
+      },
+    },
+    requiresConfirmation: true,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireDb(db);
+      const title = String(args['title'] || '').trim();
+      if (!title) {
+        return { content: 'Title is required', isError: true };
+      }
+
+      const id = generateId();
+      const icon = args['icon'] ? String(args['icon']) : null;
+      const content = args['content'] ? String(args['content']) : '';
+      const now = new Date().toISOString();
+
+      await db!.run(
+        'INSERT INTO pages (id, title, icon, content, is_archived, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)',
+        [id, title, icon, content, now, now],
+      );
+
+      return { content: `Created page "${title}" (id: ${id})` };
+    },
+  };
+}
+
+// ── Registration ──
+
+/**
+ * Register all built-in tools with the language model tools service.
+ * Called during chat tool activation.
+ *
+ * @returns Array of disposables to unregister the tools.
+ */
+export function registerBuiltInTools(
+  toolsService: ILanguageModelToolsService,
+  db: IBuiltInToolDatabase | undefined,
+): IDisposable[] {
+  const disposables: IDisposable[] = [];
+
+  const tools: IChatTool[] = [
+    createSearchWorkspaceTool(db),
+    createReadPageTool(db),
+    createListPagesTool(db),
+    createGetPagePropertiesTool(db),
+    createCreatePageTool(db),
+  ];
+
+  for (const tool of tools) {
+    disposables.push(toolsService.registerTool(tool));
+  }
+
+  return disposables;
+}
+
+// ── Text helpers ──
+
+/**
+ * Extract a snippet of text around a search query from content.
+ * Tries to find the query in the content and returns surrounding context.
+ */
+function extractSnippet(content: string, query: string, maxLength: number): string {
+  if (!content) { return ''; }
+
+  // Try Tiptap JSON content first
+  const text = extractTextContent(content);
+  if (!text) { return ''; }
+
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const idx = lowerText.indexOf(lowerQuery);
+
+  if (idx === -1) {
+    // Query not in text — return start of text
+    return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
+  }
+
+  // Return text around the match
+  const start = Math.max(0, idx - 40);
+  const end = Math.min(text.length, idx + query.length + maxLength - 40);
+  let snippet = text.slice(start, end);
+  if (start > 0) { snippet = '...' + snippet; }
+  if (end < text.length) { snippet = snippet + '...'; }
+  return snippet;
+}
+
+/**
+ * Extract plain text from page content.
+ * Handles both Tiptap JSON and plain text content.
+ */
+function extractTextContent(content: string): string {
+  if (!content) { return ''; }
+
+  // Try parsing as Tiptap JSON
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === 'object') {
+      const texts: string[] = [];
+      walkNode(parsed, texts);
+      return texts.join(' ').trim();
+    }
+  } catch {
+    // Not JSON — treat as plain text
+  }
+
+  return content.trim();
+}
+
+function walkNode(node: unknown, texts: string[]): void {
+  if (!node || typeof node !== 'object') { return; }
+  const n = node as Record<string, unknown>;
+  if (n['type'] === 'text' && typeof n['text'] === 'string') {
+    texts.push(n['text'] as string);
+    return;
+  }
+  if (Array.isArray(n['content'])) {
+    for (const child of n['content']) {
+      walkNode(child, texts);
+    }
+  }
+}

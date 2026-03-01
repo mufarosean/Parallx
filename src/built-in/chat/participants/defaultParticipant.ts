@@ -1,13 +1,15 @@
-// defaultParticipant.ts — Default chat participant (M9 Cap 3 + Cap 4 mode system)
+// defaultParticipant.ts — Default chat participant (M9 Cap 3 + Cap 4 + Cap 6 agentic loop)
 //
 // The default agent that handles messages when no @mention is specified.
 // Sends the conversation to ILanguageModelsService and streams the response
 // back through the IChatResponseStream.
 //
 // Cap 4 additions: mode-aware system prompts, mode capability enforcement.
+// Cap 6 additions: agentic loop — tool call → execute → feed back → repeat.
 //
 // VS Code reference:
 //   Built-in chat participant registered in chat.contribution.ts
+//   Agent loop: chatAgents.ts — processes tool_calls, feeds results back
 
 import type { IDisposable } from '../../../platform/lifecycle.js';
 import type {
@@ -22,10 +24,15 @@ import type {
   IChatRequestOptions,
   IChatResponseChunk,
   IToolDefinition,
+  IToolCall,
+  IToolResult,
 } from '../../../services/chatTypes.js';
 import { buildSystemPrompt } from '../chatSystemPrompts.js';
 import type { ISystemPromptContext } from '../chatSystemPrompts.js';
 import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } from '../chatModeCapabilities.js';
+
+/** Default maximum agentic loop iterations. */
+const DEFAULT_MAX_ITERATIONS = 10;
 
 /**
  * Service accessor for the default participant.
@@ -46,6 +53,17 @@ export interface IDefaultParticipantServices {
   getCurrentPageTitle(): string | undefined;
   /** Available tool definitions (for Agent mode system prompt + request). */
   getToolDefinitions(): readonly IToolDefinition[];
+  /**
+   * Invoke a tool by name with confirmation gate (Cap 6).
+   * Returns the tool result (may include user rejection).
+   */
+  invokeTool?(
+    name: string,
+    args: Record<string, unknown>,
+    token: ICancellationToken,
+  ): Promise<IToolResult>;
+  /** Max agentic loop iterations (default: 10). */
+  maxIterations?: number;
 }
 
 /** Default participant ID — must match ChatAgentService's DEFAULT_AGENT_ID. */
@@ -58,6 +76,8 @@ const DEFAULT_PARTICIPANT_ID = 'parallx.chat.default';
  * The caller (chatTool.ts) registers this with IChatAgentService.
  */
 export function createDefaultParticipant(services: IDefaultParticipantServices): IChatParticipant & IDisposable {
+
+  const maxIterations = services.maxIterations ?? DEFAULT_MAX_ITERATIONS;
 
   const handler: IChatParticipantHandler = async (
     request: IChatParticipantRequest,
@@ -144,36 +164,136 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     });
 
     try {
-      // Stream the response
-      const stream = services.sendChatRequest(messages, options, abortController.signal);
+      // ── Agentic loop (Cap 6 Task 6.2) ──
+      //
+      // When the model returns tool_calls, we:
+      // 1. Render tool invocation cards (pending)
+      // 2. Invoke each tool via ILanguageModelToolsService
+      // 3. Update card status (running → completed/rejected)
+      // 4. Append tool result messages
+      // 5. Re-send the updated history back to the model
+      // 6. Repeat until no more tool_calls or max iterations reached
+      //
+      // For non-Agent modes, tool calls are ignored (should not occur
+      // because tools are not sent in the request).
 
-      for await (const chunk of stream) {
+      const canInvokeTools = capabilities.canInvokeTools && !!services.invokeTool;
+
+      for (let iteration = 0; iteration <= maxIterations; iteration++) {
+        // Collect content and tool calls from the current LLM turn
+        let turnContent = '';
+        const turnToolCalls: IToolCall[] = [];
+
+        const stream = services.sendChatRequest(
+          messages,
+          options,
+          abortController.signal,
+        );
+
+        for await (const chunk of stream) {
+          if (token.isCancellationRequested) {
+            break;
+          }
+
+          // Thinking content
+          if (chunk.thinking) {
+            response.thinking(chunk.thinking);
+          }
+
+          // Regular content
+          if (chunk.content) {
+            response.markdown(chunk.content);
+            turnContent += chunk.content;
+          }
+
+          // Collect tool calls from the response
+          if (chunk.toolCalls && chunk.toolCalls.length > 0) {
+            for (const tc of chunk.toolCalls) {
+              turnToolCalls.push(tc);
+            }
+          }
+        }
+
+        // If cancelled, break out
         if (token.isCancellationRequested) {
           break;
         }
 
-        // Thinking content
-        if (chunk.thinking) {
-          response.thinking(chunk.thinking);
+        // No tool calls → model gave a final answer, done
+        if (turnToolCalls.length === 0) {
+          break;
         }
 
-        // Regular content
-        if (chunk.content) {
-          response.markdown(chunk.content);
+        // Tool calls but not in Agent mode or no invokeTool wired
+        if (!canInvokeTools) {
+          response.warning('Tool calls are not available in this mode.');
+          break;
         }
 
-        // Tool calls — only in Agent mode (Cap 6 implements the full agentic loop)
-        if (chunk.toolCalls && chunk.toolCalls.length > 0) {
-          if (capabilities.canInvokeTools) {
-            // Agent mode: tool invocation handled by agentic loop (Cap 6)
-            for (const toolCall of chunk.toolCalls) {
-              response.warning(`Tool call requested: ${toolCall.function.name} (agentic loop not yet wired)`);
-            }
-          } else {
-            // Non-agent mode: ignore tool calls (should not happen with correct mode enforcement)
-            response.warning('Tool calls are not available in this mode.');
+        // Guard against exceeding max iterations (the last iteration
+        // should be the model's final response without tool calls)
+        if (iteration === maxIterations) {
+          response.warning(`Agentic loop reached maximum iterations (${maxIterations}). Stopping.`);
+          break;
+        }
+
+        // Append the assistant message (with content + tool_calls) to history
+        // so the model sees its own tool call + results on the next turn.
+        // Note: Ollama expects the assistant message to be present before tool results.
+        if (turnContent) {
+          messages.push({ role: 'assistant', content: turnContent });
+        }
+
+        // ── Process each tool call ──
+
+        for (const toolCall of turnToolCalls) {
+          const tcName = toolCall.function.name;
+          const tcArgs = toolCall.function.arguments;
+          const toolCallId = `${tcName}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+          // 1. Render pending tool card
+          response.beginToolInvocation(toolCallId, tcName, tcArgs);
+
+          // 2. Update status to running
+          response.updateToolInvocation(toolCallId, { status: 'running' });
+
+          // 3. Invoke the tool
+          let result: IToolResult;
+          try {
+            result = await services.invokeTool!(tcName, tcArgs, token);
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            result = { content: `Tool "${tcName}" failed: ${errMsg}`, isError: true };
           }
+
+          // 4. Update card with result
+          if (result.isError && result.content === 'Tool execution rejected by user') {
+            response.updateToolInvocation(toolCallId, {
+              status: 'rejected',
+              isComplete: true,
+              isConfirmed: false,
+              result,
+            });
+          } else {
+            response.updateToolInvocation(toolCallId, {
+              status: result.isError ? 'rejected' : 'completed',
+              isComplete: true,
+              isConfirmed: !result.isError,
+              isError: result.isError,
+              result,
+            });
+          }
+
+          // 5. Append tool result message for the model
+          messages.push({
+            role: 'tool',
+            content: result.content,
+            toolName: tcName,
+          });
         }
+
+        // Loop continues: messages now include tool results,
+        // next iteration sends the full history back to the model.
       }
 
       return {};

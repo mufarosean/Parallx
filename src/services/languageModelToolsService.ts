@@ -1,0 +1,153 @@
+// languageModelToolsService.ts — Tool registry and invocation (M9 Task 6.1)
+//
+// Implements ILanguageModelToolsService: registers tools, invokes them with
+// confirmation gates, and provides Ollama-formatted tool definitions.
+//
+// VS Code reference:
+//   src/vs/workbench/contrib/chat/common/tools/languageModelToolsService.ts
+//   Parallx folds confirmation logic into this single service.
+
+import { Disposable } from '../platform/lifecycle.js';
+import { Emitter } from '../platform/events.js';
+import type { Event } from '../platform/events.js';
+import type {
+  ILanguageModelToolsService,
+  IChatTool,
+  IToolResult,
+  IToolDefinition,
+  ICancellationToken,
+} from './chatTypes.js';
+
+// ── Confirmation support ──
+
+/**
+ * Callback type for tool confirmation.
+ * The service calls this when a tool requires confirmation.
+ * Returns true if user approved, false if rejected.
+ */
+export type ToolConfirmationHandler = (
+  toolName: string,
+  args: Record<string, unknown>,
+) => Promise<boolean>;
+
+// ── Service implementation ──
+
+export class LanguageModelToolsService extends Disposable implements ILanguageModelToolsService {
+
+  // ── Tool registry ──
+
+  private readonly _tools = new Map<string, IChatTool>();
+
+  // ── Events ──
+
+  private readonly _onDidChangeTools = this._register(new Emitter<void>());
+  readonly onDidChangeTools: Event<void> = this._onDidChangeTools.event;
+
+  // ── Confirmation ──
+
+  private _confirmationHandler: ToolConfirmationHandler | undefined;
+  private _autoApprove = false;
+
+  // ── Registration ──
+
+  registerTool(tool: IChatTool): { dispose(): void } {
+    if (this._tools.has(tool.name)) {
+      throw new Error(`Tool "${tool.name}" is already registered`);
+    }
+
+    this._tools.set(tool.name, tool);
+    this._onDidChangeTools.fire();
+
+    return {
+      dispose: () => {
+        this._tools.delete(tool.name);
+        this._onDidChangeTools.fire();
+      },
+    };
+  }
+
+  // ── Queries ──
+
+  getTools(): readonly IChatTool[] {
+    return Array.from(this._tools.values());
+  }
+
+  getTool(name: string): IChatTool | undefined {
+    return this._tools.get(name);
+  }
+
+  /**
+   * Get all tools formatted as Ollama tool definitions.
+   *
+   * These are included in the `tools` array of the chat request
+   * when in Agent mode.
+   */
+  getToolDefinitions(): readonly IToolDefinition[] {
+    return Array.from(this._tools.values()).map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    }));
+  }
+
+  // ── Invocation ──
+
+  async invokeTool(
+    name: string,
+    args: Record<string, unknown>,
+    token: ICancellationToken,
+  ): Promise<IToolResult> {
+    const tool = this._tools.get(name);
+    if (!tool) {
+      return { content: `Tool "${name}" not found`, isError: true };
+    }
+
+    // Confirmation gate
+    if (tool.requiresConfirmation && !this._autoApprove) {
+      if (!this._confirmationHandler) {
+        return { content: `Tool "${name}" requires confirmation but no handler is registered`, isError: true };
+      }
+
+      const approved = await this._confirmationHandler(name, args);
+      if (!approved) {
+        return { content: 'Tool execution rejected by user', isError: true };
+      }
+    }
+
+    // Check cancellation before executing
+    if (token.isCancellationRequested) {
+      return { content: 'Tool execution cancelled', isError: true };
+    }
+
+    // Execute the tool handler
+    try {
+      return await tool.handler(args, token);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { content: `Tool "${name}" failed: ${message}`, isError: true };
+    }
+  }
+
+  // ── Configuration ──
+
+  /**
+   * Set the confirmation handler (called by UI layer).
+   * When a tool requires confirmation, this handler is invoked.
+   */
+  setConfirmationHandler(handler: ToolConfirmationHandler | undefined): void {
+    this._confirmationHandler = handler;
+  }
+
+  /**
+   * Set auto-approve mode (bypasses confirmation for all tools).
+   * Equivalent to VS Code's `chat.tools.global.autoApprove` YOLO mode.
+   */
+  setAutoApprove(enabled: boolean): void {
+    this._autoApprove = enabled;
+  }
+
+  /** Whether auto-approve is currently enabled. */
+  get autoApprove(): boolean {
+    return this._autoApprove;
+  }
+}

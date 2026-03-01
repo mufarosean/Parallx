@@ -17,11 +17,17 @@ import { createChatView } from './chatView.js';
 import type { IChatWidgetServices } from './chatWidget.js';
 import type { ChatWidget } from './chatWidget.js';
 import { createDefaultParticipant } from './participants/defaultParticipant.js';
+import { createWorkspaceParticipant } from './participants/workspaceParticipant.js';
+import { createCanvasParticipant } from './participants/canvasParticipant.js';
+import { registerBuiltInTools } from './tools/builtInTools.js';
+import type { IPageSummary } from './participants/workspaceParticipant.js';
+import type { IBlockSummary, IPageStructure } from './participants/canvasParticipant.js';
 import {
   ILanguageModelsService,
   IChatService,
   IChatAgentService,
   IChatModeService,
+  ILanguageModelToolsService,
 } from '../../services/chatTypes.js';
 import type {
   IChatSession,
@@ -29,8 +35,10 @@ import type {
   IChatRequestOptions,
   IChatResponseChunk,
   IToolDefinition,
+  ICancellationToken,
+  IToolResult,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 
 // ── Local API type — only the subset we use ──
@@ -73,12 +81,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const agentService = api.services.get<import('../../services/chatTypes.js').IChatAgentService>(IChatAgentService);
   const modeService = api.services.get<import('../../services/chatTypes.js').IChatModeService>(IChatModeService);
 
-  // Workspace context services (for mode-aware system prompts)
+  // Workspace context services (for mode-aware system prompts + participants)
   const workspaceService = api.services.has(IWorkspaceService)
     ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceService>(IWorkspaceService)
     : undefined;
   const editorService = api.services.has(IEditorService)
     ? api.services.get<import('../../services/serviceTypes.js').IEditorService>(IEditorService)
+    : undefined;
+  const databaseService = api.services.has(IDatabaseService)
+    ? api.services.get<import('../../services/serviceTypes.js').IDatabaseService>(IDatabaseService)
+    : undefined;
+  const languageModelToolsService = api.services.has(ILanguageModelToolsService)
+    ? api.services.get<import('../../services/chatTypes.js').ILanguageModelToolsService>(ILanguageModelToolsService)
     : undefined;
 
   // ── 2. Create OllamaProvider and register with ILanguageModelsService ──
@@ -109,24 +123,29 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       return workspaceService?.activeWorkspace?.name ?? 'Parallx Workspace';
     },
     async getPageCount(): Promise<number> {
-      // Approximate: count sessions in the workspace.
-      // A more precise count would query IDatabaseService, but workspace
-      // pages aren't tracked by a single count method yet.
-      // For now, return 0 if workspace isn't loaded.
+      if (!databaseService?.isOpen) { return 0; }
       try {
-        const ws = workspaceService?.activeWorkspace;
-        return ws ? (ws as unknown as { pageCount?: number }).pageCount ?? 0 : 0;
-      } catch {
-        return 0;
-      }
+        const row = await databaseService.get<{ cnt: number }>(
+          'SELECT COUNT(*) as cnt FROM pages WHERE is_archived = 0',
+        );
+        return row?.cnt ?? 0;
+      } catch { return 0; }
     },
     getCurrentPageTitle(): string | undefined {
       return editorService?.activeEditor?.name;
     },
     getToolDefinitions(): readonly IToolDefinition[] {
-      // Tool definitions will be provided by ILanguageModelToolsService (Cap 6).
-      // For now, return empty — Agent mode prompt will omit tools section.
-      return [];
+      return languageModelToolsService?.getToolDefinitions() ?? [];
+    },
+    invokeTool(
+      name: string,
+      args: Record<string, unknown>,
+      token: ICancellationToken,
+    ): Promise<IToolResult> {
+      if (!languageModelToolsService) {
+        return Promise.resolve({ content: 'Tool service not available', isError: true });
+      }
+      return languageModelToolsService.invokeTool(name, args, token);
     },
   };
 
@@ -135,6 +154,124 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   const agentRegistration = agentService.registerAgent(defaultParticipant);
   context.subscriptions.push(agentRegistration);
+
+  // ── 3b. Register @workspace participant ──
+
+  const sendChatRequest = (
+    messages: readonly IChatMessage[],
+    options?: IChatRequestOptions,
+    signal?: AbortSignal,
+  ): AsyncIterable<IChatResponseChunk> => {
+    const modelId = languageModelsService.getActiveModel() ?? '';
+    return _ollamaProvider!.sendChatRequest(modelId, messages, options, signal);
+  };
+
+  const getWorkspaceName = (): string =>
+    workspaceService?.activeWorkspace?.name ?? 'Parallx Workspace';
+
+  const workspaceParticipant = createWorkspaceParticipant({
+    sendChatRequest,
+    getActiveModel: () => languageModelsService.getActiveModel(),
+    getWorkspaceName,
+    async listPages(): Promise<readonly IPageSummary[]> {
+      if (!databaseService?.isOpen) { return []; }
+      try {
+        return await databaseService.all<IPageSummary>(
+          'SELECT id, title, icon FROM pages WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT ?',
+          [100],
+        );
+      } catch { return []; }
+    },
+    async searchPages(query: string): Promise<readonly IPageSummary[]> {
+      if (!databaseService?.isOpen) { return []; }
+      try {
+        return await databaseService.all<IPageSummary>(
+          'SELECT id, title, icon FROM pages WHERE is_archived = 0 AND title LIKE ? ORDER BY updated_at DESC LIMIT ?',
+          [`%${query}%`, 20],
+        );
+      } catch { return []; }
+    },
+    async getPageContent(pageId: string): Promise<string | null> {
+      if (!databaseService?.isOpen) { return null; }
+      try {
+        const row = await databaseService.get<{ content: string }>(
+          'SELECT content FROM pages WHERE id = ?', [pageId],
+        );
+        return row?.content ?? null;
+      } catch { return null; }
+    },
+    async getPageTitle(pageId: string): Promise<string | null> {
+      if (!databaseService?.isOpen) { return null; }
+      try {
+        const row = await databaseService.get<{ title: string }>(
+          'SELECT title FROM pages WHERE id = ?', [pageId],
+        );
+        return row?.title ?? null;
+      } catch { return null; }
+    },
+  });
+  context.subscriptions.push(workspaceParticipant);
+  context.subscriptions.push(agentService.registerAgent(workspaceParticipant));
+
+  // ── 3c. Register @canvas participant ──
+
+  const canvasParticipant = createCanvasParticipant({
+    sendChatRequest,
+    getActiveModel: () => languageModelsService.getActiveModel(),
+    getWorkspaceName,
+    getCurrentPageId(): string | undefined {
+      return editorService?.activeEditor?.id;
+    },
+    getCurrentPageTitle(): string | undefined {
+      return editorService?.activeEditor?.name;
+    },
+    async getPageStructure(pageId: string): Promise<IPageStructure | null> {
+      if (!databaseService?.isOpen) { return null; }
+      try {
+        const page = await databaseService.get<{ id: string; title: string; icon?: string }>(
+          'SELECT id, title, icon FROM pages WHERE id = ?', [pageId],
+        );
+        if (!page) { return null; }
+
+        const blocks = await databaseService.all<{
+          id: string;
+          block_type: string;
+          parent_block_id: string | null;
+          sort_order: number;
+          content_json: string;
+        }>(
+          'SELECT id, block_type, parent_block_id, sort_order, content_json FROM canvas_blocks WHERE page_id = ? ORDER BY sort_order',
+          [pageId],
+        );
+
+        const blockSummaries: IBlockSummary[] = blocks.map((b) => ({
+          id: b.id,
+          blockType: b.block_type,
+          parentBlockId: b.parent_block_id,
+          sortOrder: b.sort_order,
+          textPreview: extractBlockPreview(b.content_json),
+        }));
+
+        return {
+          pageId: page.id,
+          title: page.title,
+          icon: page.icon,
+          blocks: blockSummaries,
+        };
+      } catch { return null; }
+    },
+  });
+  context.subscriptions.push(canvasParticipant);
+  context.subscriptions.push(agentService.registerAgent(canvasParticipant));
+
+  // ── 3d. Register built-in tools (Cap 6 Task 6.3) ──
+
+  if (languageModelToolsService) {
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined);
+    for (const d of toolDisposables) {
+      context.subscriptions.push(d);
+    }
+  }
 
   // ── 4. Build widget services bridge (delegates to IChatService) ──
 
@@ -245,4 +382,38 @@ export function setActiveWidget(widget: ChatWidget | undefined): void {
 export function deactivate(): void {
   _ollamaProvider = undefined;
   _activeWidget = undefined;
+}
+
+// ── Helpers ──
+
+/**
+ * Extract a plain text preview from a block's content_json column.
+ * Walks Tiptap-style JSON nodes and concatenates text.
+ */
+function extractBlockPreview(contentJson: string): string {
+  try {
+    const arr = JSON.parse(contentJson);
+    if (!Array.isArray(arr)) { return ''; }
+    const texts: string[] = [];
+    for (const node of arr) {
+      walkContentNode(node, texts);
+    }
+    return texts.join(' ').trim();
+  } catch {
+    return '';
+  }
+}
+
+function walkContentNode(node: unknown, texts: string[]): void {
+  if (!node || typeof node !== 'object') { return; }
+  const n = node as Record<string, unknown>;
+  if (n['type'] === 'text' && typeof n['text'] === 'string') {
+    texts.push(n['text'] as string);
+    return;
+  }
+  if (Array.isArray(n['content'])) {
+    for (const child of n['content']) {
+      walkContentNode(child, texts);
+    }
+  }
 }

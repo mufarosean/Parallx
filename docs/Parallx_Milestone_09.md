@@ -109,9 +109,9 @@ Each sub-milestone is independently shippable and testable.
 | **Cap 1** | Language Model Provider Abstraction | 1.1–1.3 | ✅ DONE | `9c45066` |
 | **Cap 2** | Chat Service Core | 2.1–2.4 | ✅ DONE | `9c45066` |
 | **Cap 3** | Chat Built-in Tool & UI | 3.1–3.7 | ✅ DONE | `5c59540` + `23fd223` |
-| **Cap 4** | Chat Mode System | 4.1–4.2 | ✅ DONE | _pending_ |
-| **Cap 5** | Participant/Agent System | 5.1–5.4 | ⬜ TODO | — |
-| **Cap 6** | Tool Invocation Framework | 6.1–6.4 | ⬜ TODO | — |
+| **Cap 4** | Chat Mode System | 4.1–4.2 | ✅ DONE | `f866946` |
+| **Cap 5** | Participant/Agent System | 5.1–5.4 | ✅ DONE | _pending_ |
+| **Cap 6** | Tool Invocation Framework | 6.1–6.4 | ✅ DONE | _pending_ |
 | **Cap 7** | Edit Mode | 7.1–7.3 | ⬜ TODO | — |
 | **Cap 8** | Tool API Surface | 8.1–8.3 | ⬜ TODO | — |
 | **Cap 9** | Session Persistence, Commands & Polish | 9.1–9.5 | ⬜ TODO | — |
@@ -119,10 +119,10 @@ Each sub-milestone is independently shippable and testable.
 | Sub-Milestone | Status | Tests |
 |---------------|--------|-------|
 | **M9.0** (Cap 0–3) | ✅ DONE | 49 new tests (parser 12, agent 10, service 18, ollama 9) |
-| **M9.1** (Cap 4–6) | ⬜ TODO | — |
+| **M9.1** (Cap 4–6) | ✅ DONE | 63 new tests (mode caps 12, system prompts 23, workspace participant 10, canvas participant 15+, tools service 19, agentic loop 7, built-in tools 17) |
 | **M9.2** (Cap 7–9) | ⬜ TODO | — |
 
-**Total project tests:** 922 passing (33 files) · `tsc --noEmit` clean
+**Total project tests:** 985 passing (38 files) · `tsc --noEmit` clean
 
 ---
 

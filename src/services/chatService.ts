@@ -91,16 +91,35 @@ export class CancellationTokenSource implements IDisposable {
 /**
  * Concrete IChatResponseStream implementation.
  *
- * Each method appends a typed content part to the response's parts array.
- * The service fires session change events after each mutation.
+ * Each method mutates the response's parts array in-place.
+ * UI update notifications are coalesced via queueMicrotask: multiple writes
+ * within the same microtask (e.g. consecutive streaming chunks) produce a
+ * single change event, minimising DOM thrashing.
+ *
+ * VS Code reference: extHostTypes.ts — ChatResponseStream + sendQueue batching
  */
 class ChatResponseStream implements IChatResponseStream {
   private _done = false;
+  private _updateScheduled = false;
 
   constructor(
     private readonly _response: IChatAssistantResponse,
     private readonly _onUpdate: () => void,
   ) {}
+
+  /**
+   * Schedule a batched update notification via queueMicrotask.
+   * Multiple writes within the same microtask coalesce into one event.
+   */
+  private _scheduleUpdate(): void {
+    if (!this._updateScheduled) {
+      this._updateScheduled = true;
+      queueMicrotask(() => {
+        this._updateScheduled = false;
+        this._onUpdate();
+      });
+    }
+  }
 
   throwIfDone(): void {
     if (this._done) {
@@ -126,7 +145,7 @@ class ChatResponseStream implements IChatResponseStream {
       parts.push({ kind: ChatContentPartKind.Markdown, content });
     }
 
-    this._onUpdate();
+    this._scheduleUpdate();
   }
 
   codeBlock(code: string, language?: string): void {
@@ -136,7 +155,7 @@ class ChatResponseStream implements IChatResponseStream {
       code,
       language,
     });
-    this._onUpdate();
+    this._scheduleUpdate();
   }
 
   progress(message: string): void {
@@ -145,7 +164,7 @@ class ChatResponseStream implements IChatResponseStream {
       kind: ChatContentPartKind.Progress,
       message,
     });
-    this._onUpdate();
+    this._scheduleUpdate();
   }
 
   reference(uri: string, label: string): void {
@@ -155,7 +174,7 @@ class ChatResponseStream implements IChatResponseStream {
       uri,
       label,
     });
-    this._onUpdate();
+    this._scheduleUpdate();
   }
 
   thinking(content: string): void {
@@ -175,7 +194,7 @@ class ChatResponseStream implements IChatResponseStream {
       });
     }
 
-    this._onUpdate();
+    this._scheduleUpdate();
   }
 
   warning(message: string): void {
@@ -184,7 +203,7 @@ class ChatResponseStream implements IChatResponseStream {
       kind: ChatContentPartKind.Warning,
       message,
     });
-    this._onUpdate();
+    this._scheduleUpdate();
   }
 
   button(_label: string, _commandId: string, ..._args: unknown[]): void {
@@ -201,7 +220,7 @@ class ChatResponseStream implements IChatResponseStream {
       message,
       data,
     });
-    this._onUpdate();
+    this._scheduleUpdate();
   }
 
   beginToolInvocation(toolCallId: string, toolName: string, data?: unknown): void {
@@ -213,7 +232,7 @@ class ChatResponseStream implements IChatResponseStream {
       args: (data as Record<string, unknown>) || {},
       status: 'pending',
     });
-    this._onUpdate();
+    this._scheduleUpdate();
   }
 
   updateToolInvocation(toolCallId: string, data: Partial<IChatToolInvocationContent>): void {
@@ -225,14 +244,14 @@ class ChatResponseStream implements IChatResponseStream {
 
     if (toolPart) {
       Object.assign(toolPart, data);
-      this._onUpdate();
+      this._scheduleUpdate();
     }
   }
 
   push(part: IChatContentPart): void {
     this.throwIfDone();
     (this._response.parts as IChatContentPart[]).push(part);
-    this._onUpdate();
+    this._scheduleUpdate();
   }
 }
 

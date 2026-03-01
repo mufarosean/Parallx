@@ -2,7 +2,7 @@
 
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager } from '../services/serviceTypes.js';
-import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService } from '../services/chatTypes.js';
+import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -14,6 +14,7 @@ import { ChatService } from '../services/chatService.js';
 import { ChatAgentService } from '../services/chatAgentService.js';
 import { ChatModeService } from '../services/chatModeService.js';
 import { ChatWidgetService } from '../services/chatWidgetService.js';
+import { LanguageModelToolsService } from '../services/languageModelToolsService.js';
 import { ToolErrorService } from '../tools/toolErrorIsolation.js';
 import { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
 import { ConfigurationService } from '../configuration/configurationService.js';
@@ -167,11 +168,13 @@ export function registerChatServices(
   chatAgentService: ChatAgentService;
   chatModeService: ChatModeService;
   chatWidgetService: ChatWidgetService;
+  languageModelToolsService: LanguageModelToolsService;
 } {
   const languageModelsService = new LanguageModelsService();
   const chatAgentService = new ChatAgentService();
   const chatModeService = new ChatModeService();
   const chatWidgetService = new ChatWidgetService();
+  const languageModelToolsService = new LanguageModelToolsService();
   const chatService = new ChatService(chatAgentService, chatModeService, languageModelsService);
 
   services.registerInstance(ILanguageModelsService, languageModelsService);
@@ -179,6 +182,7 @@ export function registerChatServices(
   services.registerInstance(IChatAgentService, chatAgentService);
   services.registerInstance(IChatModeService, chatModeService);
   services.registerInstance(IChatWidgetService, chatWidgetService);
+  services.registerInstance(ILanguageModelToolsService, languageModelToolsService);
 
-  return { languageModelsService, chatService, chatAgentService, chatModeService, chatWidgetService };
+  return { languageModelsService, chatService, chatAgentService, chatModeService, chatWidgetService, languageModelToolsService };
 }
