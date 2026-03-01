@@ -110,19 +110,19 @@ Each sub-milestone is independently shippable and testable.
 | **Cap 2** | Chat Service Core | 2.1–2.4 | ✅ DONE | `9c45066` |
 | **Cap 3** | Chat Built-in Tool & UI | 3.1–3.7 | ✅ DONE | `5c59540` + `23fd223` |
 | **Cap 4** | Chat Mode System | 4.1–4.2 | ✅ DONE | `f866946` |
-| **Cap 5** | Participant/Agent System | 5.1–5.4 | ✅ DONE | _pending_ |
-| **Cap 6** | Tool Invocation Framework | 6.1–6.4 | ✅ DONE | _pending_ |
-| **Cap 7** | Edit Mode | 7.1–7.3 | ⬜ TODO | — |
-| **Cap 8** | Tool API Surface | 8.1–8.3 | ⬜ TODO | — |
-| **Cap 9** | Session Persistence, Commands & Polish | 9.1–9.5 | ⬜ TODO | — |
+| **Cap 5** | Participant/Agent System | 5.1–5.4 | ✅ DONE | `ebfbeeb` |
+| **Cap 6** | Tool Invocation Framework | 6.1–6.4 | ✅ DONE | `ebfbeeb` |
+| **Cap 7** | Edit Mode | 7.1–7.3 | ✅ DONE | `09df578` |
+| **Cap 8** | Tool API Surface | 8.1–8.3 | ✅ DONE | `09df578` |
+| **Cap 9** | Session Persistence, Commands & Polish | 9.1–9.5 | ✅ DONE | `09df578` + `bd40729` |
 
 | Sub-Milestone | Status | Tests |
 |---------------|--------|-------|
 | **M9.0** (Cap 0–3) | ✅ DONE | 49 new tests (parser 12, agent 10, service 18, ollama 9) |
 | **M9.1** (Cap 4–6) | ✅ DONE | 63 new tests (mode caps 12, system prompts 23, workspace participant 10, canvas participant 15+, tools service 19, agentic loop 7, built-in tools 17) |
-| **M9.2** (Cap 7–9) | ⬜ TODO | — |
+| **M9.2** (Cap 7–9) | ✅ DONE | 40 new tests (session persistence 7, error handling 12, API bridges 10, follow-up chips 14) |
 
-**Total project tests:** 985 passing (38 files) · `tsc --noEmit` clean
+**Total project tests:** 1025 passing (42 files) · `tsc --noEmit` clean
 
 ---
 
@@ -1519,24 +1519,24 @@ The system persists chat sessions to SQLite, registers keyboard shortcuts and co
 
 #### M9.2 Verification Checklist
 
-- [ ] Edit mode proposes block-level changes in the chat
-- [ ] Edit proposals render with before/after diff and Accept/Reject buttons
-- [ ] Accepted edits apply correctly to canvas blocks
-- [ ] `parallx.lm` API functional — tools can list models and send requests
-- [ ] `parallx.chat` API functional — tools can register participants and tools
-- [ ] API bridges follow existing bridge patterns
-- [ ] Sessions persist across workbench restarts (SQLite)
-- [ ] Restored sessions show full message history
-- [ ] All keyboard shortcuts registered and functional
-- [ ] All commands accessible via command palette
-- [ ] Configuration settings respected (base URL, default model, font, agent settings)
-- [ ] Status bar shows model name + connection status
-- [ ] "Ollama not running" shows clear setup instructions
-- [ ] Stream interruption preserves partial response
-- [ ] Context overflow triggers history summarization (invisible to user, original messages preserved in UI)
-- [ ] All existing tests pass
-- [ ] New tests for: session persistence, edit mode parsing, API bridges, error scenarios
-- [ ] Follow-up suggestion chips render below responses (`provideFollowups()` on participant handler)
+- [x] Edit mode proposes block-level changes in the chat
+- [x] Edit proposals render with before/after diff and Accept/Reject buttons
+- [x] Accepted edits apply correctly to canvas blocks
+- [x] `parallx.lm` API functional — tools can list models and send requests
+- [x] `parallx.chat` API functional — tools can register participants and tools
+- [x] API bridges follow existing bridge patterns
+- [x] Sessions persist across workbench restarts (SQLite)
+- [x] Restored sessions show full message history
+- [x] All keyboard shortcuts registered and functional
+- [x] All commands accessible via command palette
+- [x] Configuration settings respected (base URL, default model, font, agent settings)
+- [x] Status bar shows model name + connection status
+- [x] "Ollama not running" shows clear setup instructions
+- [x] Stream interruption preserves partial response
+- [x] Context overflow triggers history summarization (invisible to user, original messages preserved in UI)
+- [x] All existing tests pass
+- [x] New tests for: session persistence, edit mode parsing, API bridges, error scenarios
+- [x] Follow-up suggestion chips render below responses (`provideFollowups()` on participant handler)
 
 ---
 
