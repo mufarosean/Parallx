@@ -192,6 +192,9 @@ export class ChatSessionSidebar extends Disposable {
 
   // ── Public API ──
 
+  /** The root DOM element of the sidebar (for external resize). */
+  get rootElement(): HTMLElement { return this._root; }
+
   /** Toggle between visible and hidden. */
   toggle(): void {
     this._visible = !this._visible;

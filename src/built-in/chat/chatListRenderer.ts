@@ -86,11 +86,6 @@ export class ChatListRenderer extends Disposable {
     const root = $('div.parallx-chat-message.parallx-chat-message--assistant');
     const parts = response.parts;
 
-    // Small sparkle SVG avatar (VS Code-style, no emoji)
-    const avatar = $('div.parallx-chat-message-avatar.parallx-chat-message-avatar--assistant');
-    avatar.innerHTML = chatIcons.sparkleSmall;
-    root.appendChild(avatar);
-
     // Body — render each content part
     const body = $('div.parallx-chat-message-body');
 

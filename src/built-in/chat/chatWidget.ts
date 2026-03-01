@@ -89,6 +89,13 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _inputAreaContainer: HTMLElement;
   private readonly _emptyStateEl: HTMLElement;
   private readonly _offlineStateEl: HTMLElement;
+  private readonly _sash: HTMLElement;
+
+  // ── Sidebar resize state ──
+  private _sidebarWidth = 260;
+  private static readonly SIDEBAR_MIN_WIDTH = 140;
+  private static readonly SIDEBAR_SNAP_THRESHOLD = 70;
+  private static readonly SIDEBAR_MAX_WIDTH = 500;
 
   // ── Sub-components ──
 
@@ -167,6 +174,11 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // Input area (bottom-pinned)
     this._inputAreaContainer = $('div.parallx-chat-input-area');
     this._mainArea.appendChild(this._inputAreaContainer);
+
+    // ── Sash (resize handle between main area and sidebar) ──
+    this._sash = $('div.parallx-chat-sidebar-sash');
+    this._root.appendChild(this._sash);
+    this._setupSashDrag();
 
     // ── Session sidebar (right: collapsible panel) ──
 
@@ -441,6 +453,78 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const newSession = this._services.createSession();
     this.setSession(newSession);
     this._sessionSidebar.refresh();
+  }
+
+  // ── Sash Drag Logic ──
+
+  /**
+   * Wire up mousedown/mousemove/mouseup on the sash for sidebar resizing.
+   * Snap-to-close when dragged below threshold (like the main sidebar).
+   */
+  private _setupSashDrag(): void {
+    let startX = 0;
+    let startWidth = 0;
+    let dragging = false;
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragging) return;
+      const delta = startX - e.clientX; // moving left = positive delta = wider sidebar
+      let newWidth = startWidth + delta;
+
+      // Snap: if below threshold, hide the sidebar entirely
+      if (newWidth < ChatWidget.SIDEBAR_SNAP_THRESHOLD) {
+        if (this._sessionSidebar.isVisible) {
+          this._sessionSidebar.hide();
+          this._sash.classList.remove('parallx-chat-sidebar-sash--active');
+        }
+        dragging = false;
+        return;
+      }
+
+      // Clamp
+      newWidth = Math.max(ChatWidget.SIDEBAR_MIN_WIDTH, Math.min(newWidth, ChatWidget.SIDEBAR_MAX_WIDTH));
+      this._sidebarWidth = newWidth;
+      this._sessionSidebar.rootElement.style.width = `${newWidth}px`;
+    };
+
+    const onMouseUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      this._sash.classList.remove('parallx-chat-sidebar-sash--active');
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    this._register(addDisposableListener(this._sash, 'mousedown', (e: MouseEvent) => {
+      // Only start drag when sidebar is visible
+      if (!this._sessionSidebar.isVisible) return;
+      e.preventDefault();
+      dragging = true;
+      startX = e.clientX;
+      startWidth = this._sessionSidebar.rootElement.getBoundingClientRect().width;
+      this._sash.classList.add('parallx-chat-sidebar-sash--active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    }));
+
+    // When sidebar is toggled on, restore last width
+    this._register(this._sessionSidebar.onDidToggle((visible) => {
+      if (visible) {
+        this._sessionSidebar.rootElement.style.width = `${this._sidebarWidth}px`;
+        this._sash.classList.add('parallx-chat-sidebar-sash--visible');
+      } else {
+        this._sash.classList.remove('parallx-chat-sidebar-sash--visible');
+      }
+    }));
+
+    // Initial sash visibility reflects sidebar default state
+    if (this._sessionSidebar.isVisible) {
+      this._sash.classList.add('parallx-chat-sidebar-sash--visible');
+    }
   }
 
   // ── Title Bar Actions ──
