@@ -219,6 +219,8 @@ export interface IChatAssistantResponse {
   readonly modelId: string;
   /** Timestamp when the response started. */
   readonly timestamp: number;
+  /** Follow-up suggestion chips (populated after response completes). */
+  followups?: readonly IChatFollowup[];
 }
 
 // ── Content Part Discriminated Union ──
@@ -388,6 +390,8 @@ export interface IChatParticipant {
   readonly commands: readonly IChatCommand[];
   /** The handler function that processes requests. */
   readonly handler: IChatParticipantHandler;
+  /** Optional follow-up suggestion provider, called after handler completes. */
+  readonly provideFollowups?: IChatFollowupProvider;
 }
 
 /**
@@ -490,6 +494,31 @@ export interface IChatParticipantResult {
   /** Opaque metadata attached to the result. */
   readonly metadata?: unknown;
 }
+
+/**
+ * A follow-up suggestion shown as a clickable chip below a response.
+ *
+ * VS Code reference: IChatFollowup (chatService.ts)
+ */
+export interface IChatFollowup {
+  /** Prompt text to send when the chip is clicked. */
+  readonly message: string;
+  /** Short display label for the chip (defaults to `message` if omitted). */
+  readonly label?: string;
+  /** Tooltip shown on hover. */
+  readonly tooltip?: string;
+}
+
+/**
+ * Provider function that returns follow-up suggestions after a response completes.
+ *
+ * VS Code reference: IChatAgentImplementation.provideFollowups()
+ */
+export type IChatFollowupProvider = (
+  result: IChatParticipantResult,
+  context: IChatParticipantContext,
+  token: ICancellationToken,
+) => Promise<readonly IChatFollowup[]>;
 
 /**
  * Cancellation token for aborting in-flight requests.

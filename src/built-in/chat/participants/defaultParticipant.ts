@@ -20,6 +20,8 @@ import type {
   IChatResponseStream,
   ICancellationToken,
   IChatParticipantResult,
+  IChatFollowup,
+  IChatFollowupProvider,
   IChatMessage,
   IChatRequestOptions,
   IChatResponseChunk,
@@ -479,6 +481,59 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     }
   };
 
+  // Build follow-up suggestions provider
+  const provideFollowups: IChatFollowupProvider = async (
+    result: IChatParticipantResult,
+    context: IChatParticipantContext,
+    _token: ICancellationToken,
+  ): Promise<readonly IChatFollowup[]> => {
+    // Don't provide follow-ups for error responses
+    if (result.errorDetails) { return []; }
+
+    // Use the most recent exchange to generate contextual follow-ups
+    const history = context.history;
+    if (history.length === 0) { return []; }
+
+    const lastPair = history[history.length - 1];
+    const userText = lastPair.request.text;
+    const assistantParts = lastPair.response.parts;
+
+    // Detect response content characteristics
+    const hasCode = assistantParts.some((p) => p.kind === ChatContentPartKind.CodeBlock);
+    const hasEdits = assistantParts.some(
+      (p) => p.kind === ChatContentPartKind.EditProposal || p.kind === ChatContentPartKind.EditBatch,
+    );
+    const hasMarkdown = assistantParts.some((p) => p.kind === ChatContentPartKind.Markdown);
+
+    const followups: IChatFollowup[] = [];
+
+    // Contextual follow-ups based on response type
+    if (hasCode) {
+      followups.push(
+        { message: 'Explain this code in more detail', label: 'Explain more' },
+        { message: 'Can you simplify this code?', label: 'Simplify' },
+      );
+    } else if (hasEdits) {
+      followups.push(
+        { message: 'Show me what other changes you would suggest', label: 'More suggestions' },
+      );
+    } else if (hasMarkdown && userText.length > 0) {
+      followups.push(
+        { message: 'Can you elaborate on that?', label: 'Elaborate' },
+        { message: 'Give me a practical example', label: 'Show example' },
+      );
+    }
+
+    // Always offer a summary follow-up for longer conversations
+    if (history.length >= 3) {
+      followups.push(
+        { message: 'Summarize our conversation so far', label: 'Summarize' },
+      );
+    }
+
+    return followups.slice(0, 3); // Cap at 3 suggestions
+  };
+
   // Build participant descriptor
   const participant: IChatParticipant & IDisposable = {
     id: DEFAULT_PARTICIPANT_ID,
@@ -486,6 +541,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     description: 'Default chat participant — sends messages to the active language model.',
     commands: [],
     handler,
+    provideFollowups,
     dispose: () => {
       // No-op cleanup — the participant is just a descriptor
     },

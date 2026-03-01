@@ -548,6 +548,22 @@ export class ChatService extends Disposable implements IChatService {
 
     this._onDidChangeSession.fire(sessionId);
 
+    // 11b. Fetch follow-up suggestions (fire and forget — non-blocking)
+    const agent = this._agentService.getAgent(participantId) ?? this._agentService.getDefaultAgent();
+    if (agent?.provideFollowups && !result.errorDetails?.responseIsIncomplete) {
+      // Use a fresh token (no cancellation linked to the request)
+      const followupCts = new CancellationTokenSource();
+      agent.provideFollowups(result, context, followupCts.token)
+        .then((followups) => {
+          if (followups.length > 0) {
+            assistantResponse.followups = followups;
+            this._onDidChangeSession.fire(sessionId);
+          }
+        })
+        .catch(() => { /* Follow-ups are best-effort */ })
+        .finally(() => followupCts.dispose());
+    }
+
     // 12. Persist session after response completes
     this._schedulePersist(sessionId);
 

@@ -13,8 +13,8 @@
 
 import { Disposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
-import { renderContentPart } from './chatContentParts.js';
-import type { IChatRequestResponsePair } from '../../services/chatTypes.js';
+import { renderContentPart, renderFollowups } from './chatContentParts.js';
+import type { IChatRequestResponsePair, IChatAssistantResponse } from '../../services/chatTypes.js';
 
 /**
  * Renders the conversation message list.
@@ -48,7 +48,7 @@ export class ChatListRenderer extends Disposable {
       container.appendChild(userEl);
 
       // Assistant response
-      const assistantEl = this._renderAssistantMessage(pair.response.parts, pair.response.isComplete);
+      const assistantEl = this._renderAssistantMessage(pair.response);
       container.appendChild(assistantEl);
     }
 
@@ -86,10 +86,10 @@ export class ChatListRenderer extends Disposable {
   // ── Assistant Message ──
 
   private _renderAssistantMessage(
-    parts: readonly import('../../services/chatTypes.js').IChatContentPart[],
-    _isComplete: boolean,
+    response: IChatAssistantResponse,
   ): HTMLElement {
     const root = $('div.parallx-chat-message.parallx-chat-message--assistant');
+    const parts = response.parts;
 
     // Avatar (sparkle icon)
     const avatar = $('div.parallx-chat-message-avatar.parallx-chat-message-avatar--assistant');
@@ -111,6 +111,12 @@ export class ChatListRenderer extends Disposable {
     }
 
     root.appendChild(body);
+
+    // Follow-up suggestion chips (shown after complete responses)
+    if (response.isComplete && response.followups && response.followups.length > 0) {
+      const followupsEl = renderFollowups(response.followups);
+      root.appendChild(followupsEl);
+    }
 
     // Message actions bar (copy / insert) — only shown on hover
     if (parts.length > 0) {

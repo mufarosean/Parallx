@@ -650,3 +650,42 @@
 .parallx-chat-confirmation-result--rejected {
   color: var(--vscode-testing-iconFailed, #f14c4c);
 }
+
+/* ── Follow-up Suggestion Chips ── */
+
+.parallx-chat-followups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0 4px;
+  margin-top: 4px;
+}
+
+.parallx-chat-followup-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border: 1px solid var(--vscode-button-secondaryBorder, var(--vscode-input-border, #3c3c3c));
+  border-radius: 12px;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #cccccc);
+  font-size: var(--chat-font-size, 13px);
+  font-family: var(--chat-font-family, inherit);
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease;
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.parallx-chat-followup-chip:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.parallx-chat-followup-chip:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 1px;
+}
