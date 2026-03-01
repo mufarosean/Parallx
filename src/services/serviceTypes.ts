@@ -899,6 +899,12 @@ export interface StatusBarEntry {
   readonly name?: string;
   /** Optional SVG icon string rendered before the text. */
   readonly iconSvg?: string;
+  /**
+   * Optional custom DOM element to render instead of text/iconSvg.
+   * When set, `text` and `iconSvg` are ignored for rendering.
+   * The element is appended directly into the label container.
+   */
+  readonly htmlElement?: HTMLElement;
 }
 
 /**

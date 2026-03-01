@@ -20,6 +20,7 @@ import { createDefaultParticipant } from './participants/defaultParticipant.js';
 import { createWorkspaceParticipant } from './participants/workspaceParticipant.js';
 import { createCanvasParticipant } from './participants/canvasParticipant.js';
 import { registerBuiltInTools } from './tools/builtInTools.js';
+import { ChatTokenStatusBar } from './chatTokenStatusBar.js';
 import type { IPageSummary } from './participants/workspaceParticipant.js';
 import type { IBlockSummary, IPageStructure } from './participants/canvasParticipant.js';
 import {
@@ -61,6 +62,7 @@ interface ParallxApi {
       command: string | undefined;
       name: string | undefined;
       iconSvg: string | undefined;
+      htmlElement: HTMLElement | undefined;
       show(): void;
       hide(): void;
       dispose(): void;
@@ -86,7 +88,7 @@ interface ParallxApi {
 let _ollamaProvider: OllamaProvider | undefined;
 let _activeWidget: ChatWidget | undefined;
 let _chatIsStreamingKey: { set(value: boolean): void } | undefined;
-let _updateTokenStatusBarFn: (() => void) | undefined;
+let _tokenStatusBar: ChatTokenStatusBar | undefined;
 
 // ── Activation ──
 
@@ -503,88 +505,79 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // ── 6b. Status bar item — visual token usage bar ──
+  // ── 6b. Status bar item — visual token usage with detail popup ──
 
-  const tokenStatusBar = api.window.createStatusBarItem(/* Right */ 2, 100);
-  tokenStatusBar.name = 'Token Usage';
-  // No command — purely informational indicator
-
-  /** Build a tiny SVG progress bar for the status bar icon slot. */
-  const buildTokenBarSvg = (pct: number): string => {
-    // Bar dimensions: 40×10 with 1px border radius
-    const w = 40;
-    const h = 10;
-    const fillW = Math.max(0, Math.min(w - 2, ((w - 2) * pct) / 100));
-    // Color: green → amber → red based on usage
-    let fillColor = '#4ec9b0'; // green/teal
-    if (pct >= 90) fillColor = '#f14c4c'; // red
-    else if (pct >= 70) fillColor = '#cca700'; // amber
-    return [
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`,
-      `<rect x="0" y="0" width="${w}" height="${h}" rx="2" ry="2" fill="#3c3c3c" stroke="#555" stroke-width="0.5"/>`,
-      fillW > 0 ? `<rect x="1" y="1" width="${fillW}" height="${h - 2}" rx="1" ry="1" fill="${fillColor}"/>` : '',
-      `</svg>`,
-    ].join('');
+  const tokenBarServices: import('./chatTokenStatusBar.js').ITokenStatusBarServices = {
+    getActiveSession: () => _activeWidget?.getSession(),
+    getContextLength: () => _ollamaProvider?.getActiveModelContextLength?.() ?? 0,
+    getMode: () => modeService.getMode() as import('../../services/chatTypes.js').ChatMode,
+    getWorkspaceName: () => workspaceService?.activeWorkspace?.name ?? 'Parallx Workspace',
+    getPageCount: async () => {
+      if (!databaseService?.isOpen) return 0;
+      try {
+        const row = await databaseService.get<{ cnt: number }>('SELECT COUNT(*) as cnt FROM pages WHERE is_archived = 0');
+        return row?.cnt ?? 0;
+      } catch { return 0; }
+    },
+    getCurrentPageTitle: () => editorService?.activeEditor?.name,
+    getToolDefinitions: () => languageModelToolsService?.getToolDefinitions() ?? [],
+    listPageNames: async () => {
+      if (!databaseService?.isOpen) return [];
+      try {
+        const pages = await databaseService.all<{ title: string; icon: string | null }>(
+          'SELECT title, icon FROM pages WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 20',
+        );
+        return pages.map((p) => `${p.icon ?? '📄'} ${p.title}`);
+      } catch { return []; }
+    },
+    listFileNames: async () => {
+      if (!fsAccessor) return [];
+      try {
+        const entries = await fsAccessor.readdir('.');
+        return entries.slice(0, 30).map((e) =>
+          e.type === 'directory' ? `📁 ${e.name}` : `📄 ${e.name}`,
+        );
+      } catch { return []; }
+    },
   };
 
-  const updateTokenStatusBar = (): void => {
-    const session = _activeWidget?.getSession();
-    if (!session || session.messages.length === 0) {
-      tokenStatusBar.iconSvg = buildTokenBarSvg(0);
-      tokenStatusBar.text = '0 tokens';
-      tokenStatusBar.tooltip = 'No active conversation';
-      return;
-    }
+  _tokenStatusBar = new ChatTokenStatusBar(tokenBarServices);
+  context.subscriptions.push(_tokenStatusBar);
 
-    // Count all characters in conversation → estimate tokens (chars / 4)
-    let totalChars = 0;
-    for (const pair of session.messages) {
-      totalChars += pair.request.text.length;
-      for (const part of pair.response.parts) {
-        if ('value' in part && typeof part.value === 'string') {
-          totalChars += (part as any).value.length;
-        }
-        if ('code' in part && typeof part.code === 'string') {
-          totalChars += (part as any).code.length;
-        }
-      }
-    }
+  // Create a status bar entry using the custom HTML element
+  const tokenStatusBarItem = api.window.createStatusBarItem(/* Right */ 2, 100);
+  tokenStatusBarItem.name = 'Token Usage';
+  tokenStatusBarItem.htmlElement = _tokenStatusBar.element;
+  tokenStatusBarItem.show();
+  context.subscriptions.push(tokenStatusBarItem as unknown as IDisposable);
 
-    const estimatedTokens = Math.ceil(totalChars / 4);
-    const contextLength = _ollamaProvider?.getActiveModelContextLength?.() ?? 0;
+  // Find the rendered DOM container for popup anchoring (after show)
+  requestAnimationFrame(() => {
+    const sbItem = document.querySelector(`[id$="statusbar"][id*="chat"]`) as HTMLElement
+      ?? _tokenStatusBar!.element.closest('.statusbar-item') as HTMLElement;
+    if (sbItem) _tokenStatusBar!.setStatusBarItemContainer(sbItem);
+  });
 
-    const tokensK = estimatedTokens >= 1000
-      ? `${(estimatedTokens / 1000).toFixed(1)}k`
-      : `${estimatedTokens}`;
+  // Initial update
+  _tokenStatusBar.update().catch(() => {});
 
-    if (contextLength > 0) {
-      const contextK = contextLength >= 1000
-        ? `${(contextLength / 1000).toFixed(0)}k`
-        : `${contextLength}`;
-      const pct = Math.min((estimatedTokens / contextLength) * 100, 100);
-      tokenStatusBar.iconSvg = buildTokenBarSvg(pct);
-      tokenStatusBar.text = `${tokensK} / ${contextK}`;
-      tokenStatusBar.tooltip = `Token usage: ~${estimatedTokens.toLocaleString()} / ${contextLength.toLocaleString()} (${pct.toFixed(1)}%)`;
-    } else {
-      tokenStatusBar.iconSvg = buildTokenBarSvg(0);
-      tokenStatusBar.text = `${tokensK} tokens`;
-      tokenStatusBar.tooltip = `Estimated tokens: ~${estimatedTokens.toLocaleString()}`;
-    }
-  };
-  updateTokenStatusBar();
-  tokenStatusBar.show();
-  context.subscriptions.push(tokenStatusBar as unknown as IDisposable);
-
-  // React to session changes (new message, session switch)
-  const tokenSessionListener = chatService.onDidChangeSession(() => updateTokenStatusBar());
+  // React to session changes
+  const tokenSessionListener = chatService.onDidChangeSession(() => {
+    _tokenStatusBar?.update().catch(() => {});
+  });
   context.subscriptions.push(tokenSessionListener as unknown as IDisposable);
 
   // Also update when models change (context length may differ)
-  const tokenModelListener = languageModelsService.onDidChangeModels(() => updateTokenStatusBar());
+  const tokenModelListener = languageModelsService.onDidChangeModels(() => {
+    _tokenStatusBar?.update().catch(() => {});
+  });
   context.subscriptions.push(tokenModelListener as unknown as IDisposable);
 
-  // Expose updater so chatWidget can call it after session switches
-  _updateTokenStatusBarFn = updateTokenStatusBar;
+  // Update when mode changes (system prompt breakdown changes)
+  const tokenModeListener = modeService.onDidChangeMode(() => {
+    _tokenStatusBar?.update().catch(() => {});
+  });
+  context.subscriptions.push(tokenModeListener as unknown as IDisposable);
 
   // ── 7. Set context keys ──
 
@@ -627,7 +620,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 /** Set the active widget reference (called from chatView). */
 export function setActiveWidget(widget: ChatWidget | undefined): void {
   _activeWidget = widget;
-  _updateTokenStatusBarFn?.();
+  _tokenStatusBar?.update().catch(() => {});
 }
 
 /** Update the chatIsStreaming context key (called from chatWidget). */
@@ -639,7 +632,7 @@ export function deactivate(): void {
   _ollamaProvider = undefined;
   _activeWidget = undefined;
   _chatIsStreamingKey = undefined;
-  _updateTokenStatusBarFn = undefined;
+  _tokenStatusBar = undefined;
 }
 
 // ── Helpers ──

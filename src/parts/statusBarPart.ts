@@ -250,8 +250,22 @@ export class StatusBarPart extends Part {
    * we render them as plain text (matching milestone spec).
    */
   private _applyEntryToLabel(label: HTMLElement, entry: StatusBarEntry): void {
-    // Build content: optional SVG icon + text
+    // Build content: optional custom HTML element, or SVG icon + text
     label.textContent = '';
+
+    // Custom HTML element takes precedence over text/iconSvg
+    if (entry.htmlElement) {
+      label.appendChild(entry.htmlElement);
+      if (entry.tooltip) {
+        label.title = entry.tooltip;
+      } else {
+        label.removeAttribute('title');
+      }
+      // Custom elements manage their own cursor
+      label.style.cursor = entry.htmlElement.style.cursor || 'default';
+      return;
+    }
+
     if (entry.iconSvg) {
       const iconSpan = $('span');
       iconSpan.className = 'statusbar-item-icon';

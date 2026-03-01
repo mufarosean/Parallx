@@ -337,6 +337,7 @@ export function createToolApi(
         let _command: string | undefined;
         let _name: string | undefined;
         let _iconSvg: string | undefined;
+        let _htmlElement: HTMLElement | undefined;
         let _visible = false;
         let _accessor: StatusBarEntryAccessor | undefined;
 
@@ -365,6 +366,8 @@ export function createToolApi(
             _iconSvg = v;
             if (_visible && _accessor) _accessor.update({ iconSvg: v });
           },
+          get htmlElement() { return _htmlElement; },
+          set htmlElement(v: HTMLElement | undefined) { _htmlElement = v; },
           show() {
             if (_visible || !sbPart) return;
             _visible = true;
@@ -377,6 +380,7 @@ export function createToolApi(
               command: _command,
               name: _name,
               iconSvg: _iconSvg,
+              htmlElement: _htmlElement,
             });
             // NOT pushed to subscriptions — lifecycle is managed by show/hide/dispose
           },
