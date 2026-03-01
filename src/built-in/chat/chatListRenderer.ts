@@ -65,10 +65,12 @@ export class ChatListRenderer extends Disposable {
   // ── User Message ──
 
   private _renderUserMessage(text: string): HTMLElement {
-    const root = $('div.parallx-chat-message');
+    const root = $('div.parallx-chat-message.parallx-chat-message--user');
 
-    // Avatar
-    const avatar = $('div.parallx-chat-message-avatar.parallx-chat-message-avatar--user', 'U');
+    // Avatar (person silhouette icon)
+    const avatar = $('div.parallx-chat-message-avatar.parallx-chat-message-avatar--user');
+    const avatarIcon = $('span.parallx-chat-avatar-icon', '\uD83D\uDC64'); // 👤
+    avatar.appendChild(avatarIcon);
     root.appendChild(avatar);
 
     // Body
@@ -87,10 +89,12 @@ export class ChatListRenderer extends Disposable {
     parts: readonly import('../../services/chatTypes.js').IChatContentPart[],
     _isComplete: boolean,
   ): HTMLElement {
-    const root = $('div.parallx-chat-message');
+    const root = $('div.parallx-chat-message.parallx-chat-message--assistant');
 
-    // Avatar
-    const avatar = $('div.parallx-chat-message-avatar.parallx-chat-message-avatar--assistant', 'AI');
+    // Avatar (sparkle icon)
+    const avatar = $('div.parallx-chat-message-avatar.parallx-chat-message-avatar--assistant');
+    const avatarIcon = $('span.parallx-chat-avatar-icon', '\u2728'); // ✨
+    avatar.appendChild(avatarIcon);
     root.appendChild(avatar);
 
     // Body — render each content part
@@ -107,6 +111,28 @@ export class ChatListRenderer extends Disposable {
     }
 
     root.appendChild(body);
+
+    // Message actions bar (copy / insert) — only shown on hover
+    if (parts.length > 0) {
+      const actions = $('div.parallx-chat-message-actions');
+
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'parallx-chat-action-btn';
+      copyBtn.type = 'button';
+      copyBtn.title = 'Copy response';
+      copyBtn.textContent = '\uD83D\uDCCB'; // 📋
+      copyBtn.addEventListener('click', () => {
+        const text = body.innerText;
+        navigator.clipboard.writeText(text).then(() => {
+          copyBtn.textContent = '\u2713'; // ✓
+          setTimeout(() => { copyBtn.textContent = '\uD83D\uDCCB'; }, 1500);
+        });
+      });
+      actions.appendChild(copyBtn);
+
+      root.appendChild(actions);
+    }
+
     return root;
   }
 }

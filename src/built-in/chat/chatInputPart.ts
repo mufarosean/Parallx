@@ -74,18 +74,20 @@ export class ChatInputPart extends Disposable {
     const spacer = $('div.parallx-chat-input-toolbar-spacer');
     this._toolbar.appendChild(spacer);
 
-    // Submit button
+    // Submit button (icon-only: ↑ arrow, VS Code style)
     this._submitBtn = document.createElement('button');
     this._submitBtn.className = 'parallx-chat-input-submit';
-    this._submitBtn.textContent = 'Send';
+    this._submitBtn.textContent = '\u2191'; // ↑
     this._submitBtn.type = 'button';
+    this._submitBtn.title = 'Send message (Enter)';
     this._toolbar.appendChild(this._submitBtn);
 
-    // Stop button (hidden by default)
+    // Stop button (icon-only: ■ square, hidden by default)
     this._stopBtn = document.createElement('button');
     this._stopBtn.className = 'parallx-chat-input-stop';
-    this._stopBtn.textContent = 'Stop';
+    this._stopBtn.textContent = '\u25A0'; // ■
     this._stopBtn.type = 'button';
+    this._stopBtn.title = 'Stop generation';
     this._stopBtn.style.display = 'none';
     this._toolbar.appendChild(this._stopBtn);
 

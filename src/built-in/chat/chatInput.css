@@ -1,9 +1,24 @@
-/* chatInput.css — Chat input part styles (M9 Task 3.4) */
+/* chatInput.css — Chat input part styles (M9 Task 3.4)
+ *
+ * VS Code-style: rounded container wrapping textarea + toolbar.
+ * Toolbar sits INSIDE the container below the textarea with
+ * pickers on the left, submit/stop icon-button on the right.
+ */
+
+/* ── Outer container (rounded card around textarea + toolbar) ── */
 
 .parallx-chat-input {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 8px;
+  background: var(--vscode-input-background, #3c3c3c);
+  overflow: hidden;
+  transition: border-color 120ms ease;
+}
+
+.parallx-chat-input:focus-within {
+  border-color: var(--vscode-focusBorder, #007fd4);
 }
 
 /* ── Text Area ── */
@@ -16,10 +31,9 @@
   width: 100%;
   min-height: 36px;
   max-height: 200px;
-  padding: 8px 10px;
-  border: 1px solid var(--vscode-input-border, #3c3c3c);
-  border-radius: 4px;
-  background: var(--vscode-input-background, #3c3c3c);
+  padding: 10px 12px 4px;
+  border: none;
+  background: transparent;
   color: var(--vscode-input-foreground, #cccccc);
   font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
   font-size: var(--vscode-font-size, 13px);
@@ -34,41 +48,48 @@
   color: var(--vscode-input-placeholderForeground, #6e6e6e);
 }
 
-.parallx-chat-input-textarea:focus {
-  border-color: var(--vscode-focusBorder, #007fd4);
-}
-
 .parallx-chat-input-textarea:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-/* ── Toolbar (bottom row: model/mode picker + submit/stop) ── */
+/* ── Toolbar (inside the container, below textarea) ── */
 
 .parallx-chat-input-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 24px;
+  gap: 4px;
+  padding: 4px 8px 6px;
+}
+
+.parallx-chat-input-toolbar-pickers {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .parallx-chat-input-toolbar-spacer {
   flex: 1 1 auto;
 }
 
-/* Submit button */
+/* ── Submit button (icon-circle, VS Code style) ── */
+
 .parallx-chat-input-submit {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px 10px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   border: none;
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--vscode-button-background, #0e639c);
   color: var(--vscode-button-foreground, #ffffff);
-  font-size: 12px;
+  font-size: 16px;
+  font-weight: bold;
   cursor: pointer;
-  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 120ms ease;
 }
 
 .parallx-chat-input-submit:hover {
@@ -76,25 +97,137 @@
 }
 
 .parallx-chat-input-submit:disabled {
-  opacity: 0.5;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
-/* Stop button */
+/* ── Stop button (matches submit dimensions) ── */
+
 .parallx-chat-input-stop {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px 10px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   border: 1px solid var(--vscode-button-secondaryBorder, #454545);
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--vscode-button-secondaryBackground, #3a3d41);
   color: var(--vscode-button-secondaryForeground, #cccccc);
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
-  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 120ms ease;
 }
 
 .parallx-chat-input-stop:hover {
   background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+/* ── Model picker button ── */
+
+.parallx-chat-model-picker {
+  position: relative;
+}
+
+.parallx-chat-picker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  font-size: 11px;
+  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.parallx-chat-picker-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+  color: var(--vscode-foreground, #cccccc);
+}
+
+/* Dropdown panel */
+.parallx-chat-picker-dropdown {
+  min-width: 180px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.parallx-chat-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-picker-item:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.parallx-chat-picker-item--active {
+  background: var(--vscode-list-activeSelectionBackground, #04395e);
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+}
+
+.parallx-chat-picker-item--empty {
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  font-style: italic;
+  cursor: default;
+}
+
+.parallx-chat-picker-item-name {
+  flex: 1;
+}
+
+.parallx-chat-picker-item-size {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+}
+
+/* ── Mode picker (segmented control) ── */
+
+.parallx-chat-mode-picker {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.parallx-chat-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  font-size: 11px;
+  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 100ms ease, color 100ms ease;
+  border-radius: 4px;
+}
+
+.parallx-chat-mode-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-mode-btn--active {
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
 }

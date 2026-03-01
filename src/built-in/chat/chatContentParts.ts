@@ -126,13 +126,14 @@ function _renderCodeBlock(part: IChatCodeBlockContent): HTMLElement {
   const langLabel = $('span', part.language || 'text');
   const copyBtn = document.createElement('button');
   copyBtn.className = 'parallx-chat-code-block-copy';
-  copyBtn.textContent = 'Copy';
+  copyBtn.textContent = '\uD83D\uDCCB'; // 📋
   copyBtn.type = 'button';
+  copyBtn.title = 'Copy code';
   copyBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(part.code).then(() => {
-      copyBtn.textContent = 'Copied!';
+      copyBtn.textContent = '\u2713'; // ✓
       setTimeout(() => {
-        copyBtn.textContent = 'Copy';
+        copyBtn.textContent = '\uD83D\uDCCB';
       }, 2000);
     });
   });
