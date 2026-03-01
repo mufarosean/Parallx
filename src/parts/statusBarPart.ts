@@ -165,6 +165,7 @@ export class StatusBarPart extends Part {
           ...(update.tooltip !== undefined ? { tooltip: update.tooltip } : {}),
           ...(update.command !== undefined ? { command: update.command } : {}),
           ...(update.iconSvg !== undefined ? { iconSvg: update.iconSvg } : {}),
+          ...(update.htmlElement !== undefined ? { htmlElement: update.htmlElement } : {}),
         };
         existing.entry = updated;
         this._applyEntryToLabel(existing.label, updated);
@@ -261,8 +262,8 @@ export class StatusBarPart extends Part {
       } else {
         label.removeAttribute('title');
       }
-      // Custom elements manage their own cursor
-      label.style.cursor = entry.htmlElement.style.cursor || 'default';
+      // Let the custom element control its own cursor
+      label.style.cursor = 'inherit';
       return;
     }
 

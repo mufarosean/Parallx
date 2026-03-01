@@ -327,6 +327,8 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         // Collect content and tool calls from the current LLM turn
         let turnContent = '';
         const turnToolCalls: IToolCall[] = [];
+        let turnPromptTokens = 0;
+        let turnCompletionTokens = 0;
 
         const stream = services.sendChatRequest(
           messages,
@@ -359,6 +361,15 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
               turnToolCalls.push(tc);
             }
           }
+
+          // Capture real token counts from Ollama's final chunk
+          if (chunk.promptEvalCount) { turnPromptTokens = chunk.promptEvalCount; }
+          if (chunk.evalCount) { turnCompletionTokens = chunk.evalCount; }
+        }
+
+        // Report token usage from this turn to the response stream
+        if (turnPromptTokens > 0 || turnCompletionTokens > 0) {
+          response.reportTokenUsage(turnPromptTokens, turnCompletionTokens);
         }
 
         // If cancelled, break out

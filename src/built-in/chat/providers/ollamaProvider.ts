@@ -72,6 +72,9 @@ interface OllamaChatChunk {
     tool_calls?: { function: { name: string; arguments: Record<string, unknown> } }[];
   };
   done: boolean;
+  /** Number of tokens in the prompt (present on final chunk). */
+  prompt_eval_count?: number;
+  /** Number of tokens generated (present on final chunk). */
   eval_count?: number;
   eval_duration?: number;
 }
@@ -155,6 +158,24 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       this._contextLengthCache.set(loaded, info.contextLength);
     }).catch(() => { /* best effort */ });
     return 0; // Not yet available — will be ready for next request
+  }
+
+  /**
+   * Async version that fetches context length if not cached.
+   * Returns the real context length or 0 if no model is loaded.
+   */
+  async getActiveModelContextLengthAsync(): Promise<number> {
+    const loaded = this._loadedModels[0];
+    if (!loaded) { return 0; }
+    const cached = this._contextLengthCache.get(loaded);
+    if (cached !== undefined) { return cached; }
+    try {
+      const info = await this.getModelInfo(loaded);
+      this._contextLengthCache.set(loaded, info.contextLength);
+      return info.contextLength;
+    } catch {
+      return 0;
+    }
   }
 
   // ── ILanguageModelProvider ──
@@ -390,6 +411,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
         function: { name: tc.function.name, arguments: tc.function.arguments },
       })),
       done: chunk.done,
+      promptEvalCount: chunk.prompt_eval_count,
       evalCount: chunk.eval_count,
       evalDuration: chunk.eval_duration,
     };

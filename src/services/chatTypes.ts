@@ -123,7 +123,9 @@ export interface IChatResponseChunk {
   readonly toolCalls?: readonly IToolCall[];
   /** Whether this is the final chunk. */
   readonly done: boolean;
-  /** Token count for the evaluation (present on final chunk). */
+  /** Number of tokens in the prompt (present on final chunk from Ollama). */
+  readonly promptEvalCount?: number;
+  /** Number of tokens generated (present on final chunk from Ollama). */
   readonly evalCount?: number;
   /** Evaluation duration in nanoseconds (present on final chunk). */
   readonly evalDuration?: number;
@@ -221,6 +223,10 @@ export interface IChatAssistantResponse {
   readonly timestamp: number;
   /** Follow-up suggestion chips (populated after response completes). */
   followups?: readonly IChatFollowup[];
+  /** Actual prompt tokens reported by Ollama (set after response completes). */
+  promptTokens?: number;
+  /** Actual completion tokens reported by Ollama (set after response completes). */
+  completionTokens?: number;
 }
 
 // ── Content Part Discriminated Union ──
@@ -477,6 +483,8 @@ export interface IChatResponseStream {
    * finalized or cancelled. Prevents writing after completion.
    */
   throwIfDone(): void;
+  /** Report actual token usage from the LLM response (Ollama eval counts). */
+  reportTokenUsage(promptTokens: number, completionTokens: number): void;
 }
 
 /**

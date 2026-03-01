@@ -913,7 +913,7 @@ export interface StatusBarEntry {
  */
 export interface StatusBarEntryAccessor extends IDisposable {
   /** Update the entry's mutable properties. */
-  update(entry: Partial<Pick<StatusBarEntry, 'text' | 'tooltip' | 'command' | 'iconSvg'>>): void;
+  update(entry: Partial<Pick<StatusBarEntry, 'text' | 'tooltip' | 'command' | 'iconSvg' | 'htmlElement'>>): void;
 }
 
 /**

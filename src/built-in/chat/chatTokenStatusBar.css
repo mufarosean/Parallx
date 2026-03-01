@@ -2,23 +2,30 @@
 
 /* ── Status bar item ── */
 
+/*
+ * The root element is rendered inside .statusbar-item > a.statusbar-item-label,
+ * which already has display:flex, padding:0 5px, gap:3px.
+ * We just add our own gap and cursor; no extra padding to avoid double-spacing.
+ */
 .parallx-token-statusbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   cursor: pointer;
-  padding: 0 4px;
   height: 100%;
-}
-
-.parallx-token-statusbar:hover {
-  background: rgba(255, 255, 255, 0.08);
 }
 
 .parallx-token-statusbar-label {
   font-size: 12px;
   white-space: nowrap;
-  color: var(--parallx-statusbar-foreground, #ccc);
+  color: inherit;
+  line-height: 22px;
+}
+
+.parallx-token-statusbar-bar {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .parallx-token-statusbar-bar svg {

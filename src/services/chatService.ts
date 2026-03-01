@@ -142,6 +142,11 @@ class ChatResponseStream implements IChatResponseStream {
     this._done = true;
   }
 
+  reportTokenUsage(promptTokens: number, completionTokens: number): void {
+    (this._response as any).promptTokens = promptTokens;
+    (this._response as any).completionTokens = completionTokens;
+  }
+
   markdown(content: string): void {
     this.throwIfDone();
 

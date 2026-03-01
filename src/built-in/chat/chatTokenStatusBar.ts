@@ -4,12 +4,17 @@
 //   [▓▓▓▓▓▓░░░░] 59.6K / 128K tokens · 47%
 //
 // Clicking opens a detail panel anchored above the status bar item showing
-// a breakdown of context window consumption by category:
-//   - System Instructions (system prompt base text)
-//   - Tool Definitions (agent-mode tool schemas)
-//   - Messages (user + assistant conversation text)
-//   - Tool Results (tool invocation results in responses)
-//   - Files (page/file listings in system prompt)
+// a breakdown of context window consumption by category.
+//
+// Token data sources (in priority order):
+//   1. Real token counts from Ollama (prompt_eval_count + eval_count on
+//      the final streaming chunk) — stored on IChatAssistantResponse as
+//      promptTokens / completionTokens.
+//   2. Fallback: chars / 4 estimation (M9 spec) when real counts aren't
+//      available yet (e.g. before the first response).
+//
+// Context window size comes from OllamaProvider.getActiveModelContextLengthAsync()
+// which calls Ollama's /api/show endpoint to read the model's native context_length.
 
 import { Disposable, toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import { layoutPopup } from '../../ui/dom.js';
@@ -24,8 +29,8 @@ import './chatTokenStatusBar.css';
 export interface ITokenStatusBarServices {
   /** Get the active session from the widget. */
   getActiveSession(): IChatSession | undefined;
-  /** Get context window size in tokens. */
-  getContextLength(): number;
+  /** Get context window size in tokens (async — fetches from Ollama if not cached). */
+  getContextLength(): Promise<number>;
   /** Get the current chat mode. */
   getMode(): ChatMode;
   /** Get workspace name. */
@@ -44,12 +49,14 @@ export interface ITokenStatusBarServices {
 
 /** Breakdown of token usage by category. */
 interface ITokenBreakdown {
-  /** Total estimated tokens. */
+  /** Total tokens used (real from Ollama when available, else estimated). */
   total: number;
   /** Context window size in tokens. */
   contextLength: number;
   /** Percentage of context used (0–100). */
   percentage: number;
+  /** Whether token counts are real (from Ollama) or estimated (chars/4). */
+  isReal: boolean;
   /** Per-category breakdown. */
   categories: {
     systemInstructions: number;
@@ -92,15 +99,13 @@ export class ChatTokenStatusBar extends Disposable {
 
     // Build a container for the status bar content
     this._root = $('div.parallx-token-statusbar');
-    this._root.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;padding:0 4px;height:100%;';
 
     this._barSvg = $('span.parallx-token-statusbar-bar');
     this._barSvg.innerHTML = this._buildBarSvg(0);
     this._root.appendChild(this._barSvg);
 
     this._label = $('span.parallx-token-statusbar-label');
-    this._label.style.cssText = 'font-size:12px;white-space:nowrap;';
-    this._label.textContent = '0 tokens';
+    this._label.textContent = '— tokens';
     this._root.appendChild(this._label);
 
     // Click handler opens detail popup
@@ -125,17 +130,19 @@ export class ChatTokenStatusBar extends Disposable {
 
     // Update label text: "59.6K / 128K tokens · 47%"
     const usedStr = this._formatTokens(breakdown.total);
+    const approx = breakdown.isReal ? '' : '~';
     if (breakdown.contextLength > 0) {
       const ctxStr = this._formatTokens(breakdown.contextLength);
-      this._label.textContent = `${usedStr} / ${ctxStr} tokens · ${Math.round(breakdown.percentage)}%`;
+      this._label.textContent = `${approx}${usedStr} / ${ctxStr} tokens · ${Math.round(breakdown.percentage)}%`;
     } else {
-      this._label.textContent = `${usedStr} tokens`;
+      this._label.textContent = `${approx}${usedStr} tokens`;
     }
 
     // Tooltip
+    const source = breakdown.isReal ? 'Ollama-reported' : 'Estimated';
     this._root.title = breakdown.contextLength > 0
-      ? `Token usage: ~${breakdown.total.toLocaleString()} / ${breakdown.contextLength.toLocaleString()} (${breakdown.percentage.toFixed(1)}%) — click for details`
-      : `Estimated tokens: ~${breakdown.total.toLocaleString()} — click for details`;
+      ? `${source} token usage: ${approx}${breakdown.total.toLocaleString()} / ${breakdown.contextLength.toLocaleString()} (${breakdown.percentage.toFixed(1)}%) — click for details`
+      : `${source} tokens: ${approx}${breakdown.total.toLocaleString()} — click for details`;
 
     // If popup is open, refresh it
     if (this._popupElement) {
@@ -158,22 +165,50 @@ export class ChatTokenStatusBar extends Disposable {
 
   private async _computeBreakdown(): Promise<ITokenBreakdown> {
     const session = this._services.getActiveSession();
-    const contextLength = this._services.getContextLength();
+    const contextLength = await this._services.getContextLength();
     const mode = this._services.getMode();
 
-    // ── 1. System prompt (base instructions, not including file listings) ──
-    let systemInstructionsChars = 0;
-    let filesChars = 0;
-    let toolDefinitionsChars = 0;
+    // ── Check for real Ollama-reported token counts ──
+    // The last response in the session has promptTokens (= total input tokens
+    // for that request, including system prompt + all messages). This is the
+    // most accurate number because it comes from the model's tokenizer.
+    let realPromptTokens = 0;
+    let realCompletionTokens = 0;
+    let hasRealCounts = false;
+
+    if (session && session.messages.length > 0) {
+      // Walk all responses to accumulate completion tokens
+      for (const pair of session.messages) {
+        if (pair.response.completionTokens) {
+          realCompletionTokens += pair.response.completionTokens;
+        }
+      }
+      // Use the LAST response's promptTokens as the current input size
+      // (it includes the full conversation history as sent via Ollama)
+      const lastPair = session.messages[session.messages.length - 1];
+      if (lastPair.response.promptTokens && lastPair.response.promptTokens > 0) {
+        realPromptTokens = lastPair.response.promptTokens;
+        hasRealCounts = true;
+      }
+    }
+
+    // ── System prompt category breakdown (chars/4 estimation) ──
+    // Even when we have real counts, we still compute the category ratios
+    // from the system prompt structure so the popup can show the breakdown.
+    let systemInstructionsEst = 0;
+    let toolDefinitionsEst = 0;
+    let filesEst = 0;
+    let messagesEst = 0;
+    let toolResultsEst = 0;
 
     try {
       const pageCount = await this._services.getPageCount();
       const pageNames = await this._services.listPageNames();
       const fileNames = await this._services.listFileNames();
-
-      // Build the full system prompt to get exact char count
       const toolDefs = this._services.getToolDefinitions();
-      const promptCtx: ISystemPromptContext = {
+
+      // Full system prompt
+      const fullCtx: ISystemPromptContext = {
         workspaceName: this._services.getWorkspaceName(),
         pageCount,
         currentPageTitle: this._services.getCurrentPageTitle(),
@@ -181,32 +216,30 @@ export class ChatTokenStatusBar extends Disposable {
         pageNames: pageNames.length ? pageNames : undefined,
         fileNames: fileNames.length ? fileNames : undefined,
       };
-      const fullSystemPrompt = buildSystemPrompt(mode, promptCtx);
+      const fullSystemPrompt = buildSystemPrompt(mode, fullCtx);
 
-      // Build a version WITHOUT file listings to separate the categories
+      // Without file listings
       const noFilesCtx: ISystemPromptContext = {
         workspaceName: this._services.getWorkspaceName(),
         pageCount,
         currentPageTitle: this._services.getCurrentPageTitle(),
         tools: mode === ChatMode.Agent ? toolDefs : undefined,
-        // Omit pageNames and fileNames
       };
       const noFilesPrompt = buildSystemPrompt(mode, noFilesCtx);
 
-      // Build a version WITHOUT tools AND without files (just base instructions)
+      // Without tools AND without files (base instructions only)
       const baseCtx: ISystemPromptContext = {
         workspaceName: this._services.getWorkspaceName(),
         pageCount,
         currentPageTitle: this._services.getCurrentPageTitle(),
-        // Omit tools, pageNames, fileNames
       };
       const basePrompt = buildSystemPrompt(mode, baseCtx);
 
-      systemInstructionsChars = basePrompt.length;
-      toolDefinitionsChars = noFilesPrompt.length - basePrompt.length;
-      filesChars = fullSystemPrompt.length - noFilesPrompt.length;
+      systemInstructionsEst = Math.ceil(basePrompt.length / 4);
+      toolDefinitionsEst = Math.ceil((noFilesPrompt.length - basePrompt.length) / 4);
+      filesEst = Math.ceil((fullSystemPrompt.length - noFilesPrompt.length) / 4);
 
-      // Also count tool definitions sent as JSON in the request body (agent mode)
+      // Tool definitions JSON body (agent mode)
       if (mode === ChatMode.Agent && toolDefs.length > 0) {
         const toolJsonChars = JSON.stringify(
           toolDefs.map(t => ({
@@ -214,78 +247,83 @@ export class ChatTokenStatusBar extends Disposable {
             function: { name: t.name, description: t.description, parameters: t.parameters },
           })),
         ).length;
-        toolDefinitionsChars += toolJsonChars;
+        toolDefinitionsEst += Math.ceil(toolJsonChars / 4);
       }
     } catch {
-      // Best-effort — don't block on async failures
+      // Best-effort
     }
 
-    // ── 2. Messages (user + assistant) ──
-    let messagesChars = 0;
-    let toolResultsChars = 0;
-
+    // ── Message / tool result estimation (chars/4 fallback) ──
     if (session) {
       for (const pair of session.messages) {
-        // User message text
-        messagesChars += pair.request.text.length;
-
-        // Response parts
+        messagesEst += Math.ceil(pair.request.text.length / 4);
         for (const part of pair.response.parts) {
-          if ('kind' in part) {
-            const kind = (part as any).kind;
-            if (kind === 'toolInvocation') {
-              // Tool invocation: count the result content
-              const inv = part as any;
-              if (inv.result?.content) {
-                toolResultsChars += String(inv.result.content).length;
-              }
-              // Also count args serialized
-              if (inv.args) {
-                toolResultsChars += JSON.stringify(inv.args).length;
-              }
-            } else if (kind === 'thinking') {
-              // Thinking content is part of the response but sent back
-              messagesChars += ((part as any).content?.length ?? 0);
-            } else {
-              // Markdown, CodeBlock, etc. — assistant message text
-              if ('content' in part && typeof (part as any).content === 'string') {
-                messagesChars += (part as any).content.length;
-              }
-              if ('code' in part && typeof (part as any).code === 'string') {
-                messagesChars += (part as any).code.length;
-              }
+          const p = part as unknown as Record<string, unknown>;
+          if (p['kind'] === 'toolInvocation') {
+            if (typeof p['result'] === 'object' && p['result'] && 'content' in (p['result'] as Record<string, unknown>)) {
+              toolResultsEst += Math.ceil(String((p['result'] as Record<string, unknown>)['content']).length / 4);
             }
           } else {
-            // Legacy parts without kind
-            if ('value' in part && typeof (part as any).value === 'string') {
-              messagesChars += (part as any).value.length;
-            }
-            if ('code' in part && typeof (part as any).code === 'string') {
-              messagesChars += (part as any).code.length;
-            }
+            if (typeof p['content'] === 'string') messagesEst += Math.ceil(p['content'].length / 4);
+            if (typeof p['code'] === 'string') messagesEst += Math.ceil((p['code'] as string).length / 4);
           }
         }
       }
     }
 
-    // Convert chars → estimated tokens (chars / 4)
-    const systemInstructions = Math.ceil(systemInstructionsChars / 4);
-    const toolDefinitions = Math.ceil(toolDefinitionsChars / 4);
-    const messages = Math.ceil(messagesChars / 4);
-    const toolResults = Math.ceil(toolResultsChars / 4);
-    const files = Math.ceil(filesChars / 4);
+    // ── Choose real vs estimated totals ──
+    let total: number;
+    let isReal: boolean;
 
-    const total = systemInstructions + toolDefinitions + messages + toolResults + files;
+    if (hasRealCounts) {
+      // Real total = last prompt tokens (all input for the last turn) + cumulative completions
+      total = realPromptTokens + realCompletionTokens;
+      isReal = true;
+    } else {
+      // Fall back to chars/4 estimation
+      total = systemInstructionsEst + toolDefinitionsEst + filesEst + messagesEst + toolResultsEst;
+      isReal = false;
+    }
+
     const percentage = contextLength > 0
       ? Math.min((total / contextLength) * 100, 100)
       : 0;
 
-    return {
-      total,
-      contextLength,
-      percentage,
-      categories: { systemInstructions, toolDefinitions, messages, toolResults, files },
-    };
+    // When we have real counts, scale the category estimates proportionally
+    // so the popup percentages are meaningful relative to the real total.
+    let cats: ITokenBreakdown['categories'];
+    if (hasRealCounts) {
+      const estTotal = systemInstructionsEst + toolDefinitionsEst + filesEst + messagesEst + toolResultsEst;
+      if (estTotal > 0) {
+        const scale = total / estTotal;
+        cats = {
+          systemInstructions: Math.round(systemInstructionsEst * scale),
+          toolDefinitions: Math.round(toolDefinitionsEst * scale),
+          messages: Math.round(messagesEst * scale),
+          toolResults: Math.round(toolResultsEst * scale),
+          files: Math.round(filesEst * scale),
+        };
+      } else {
+        // No estimation data — put everything under "messages"
+        cats = {
+          systemInstructions: 0,
+          toolDefinitions: 0,
+          messages: total,
+          toolResults: 0,
+          files: 0,
+        };
+      }
+    } else {
+      cats = {
+        systemInstructions: systemInstructionsEst,
+        toolDefinitions: toolDefinitionsEst,
+        messages: messagesEst,
+        toolResults: toolResultsEst,
+        files: filesEst,
+      };
+    }
+
+    return { total, contextLength, percentage, isReal, categories: cats };
   }
 
   // ── SVG Bar Builder ──
@@ -322,7 +360,7 @@ export class ChatTokenStatusBar extends Disposable {
     if (this._popupElement) return;
 
     const breakdown = this._lastBreakdown ?? {
-      total: 0, contextLength: 0, percentage: 0,
+      total: 0, contextLength: 0, percentage: 0, isReal: false,
       categories: { systemInstructions: 0, toolDefinitions: 0, messages: 0, toolResults: 0, files: 0 },
     };
 
@@ -381,13 +419,13 @@ export class ChatTokenStatusBar extends Disposable {
     header.textContent = 'Context Window';
     popup.appendChild(header);
 
-    // ── Summary line with bar ──
+    // ── Summary line ──
     const summaryRow = $('div.parallx-token-popup-summary');
-
     const summaryText = $('span.parallx-token-popup-summary-text');
+    const approx = breakdown.isReal ? '' : '~';
     const usedStr = this._formatTokens(breakdown.total);
-    const ctxStr = ctx > 0 ? this._formatTokens(ctx) : '?';
-    summaryText.textContent = `${usedStr} / ${ctxStr} tokens · ${Math.round(pct)}%`;
+    const ctxStr = ctx > 0 ? this._formatTokens(ctx) : '—';
+    summaryText.textContent = `${approx}${usedStr} / ${ctxStr} tokens · ${Math.round(pct)}%`;
     summaryRow.appendChild(summaryText);
     popup.appendChild(summaryRow);
 
@@ -396,17 +434,23 @@ export class ChatTokenStatusBar extends Disposable {
     barContainer.innerHTML = this._buildPopupBarSvg(pct);
     popup.appendChild(barContainer);
 
+    // Source indicator
+    if (!breakdown.isReal && breakdown.total > 0) {
+      const note = $('div.parallx-token-popup-note');
+      note.textContent = 'Estimated (chars ÷ 4). Real counts appear after first response.';
+      note.style.cssText = 'font-size:10px;color:#888;padding:2px 0 4px;';
+      popup.appendChild(note);
+    }
+
     // ── Category sections ──
     const cats = breakdown.categories;
-    const total = breakdown.total || 1; // avoid /0
+    const total = breakdown.total || 1;
 
-    // System section
     this._renderSection(popup, 'System', [
       { label: 'System Instructions', tokens: cats.systemInstructions, total },
       { label: 'Tool Definitions', tokens: cats.toolDefinitions, total },
     ]);
 
-    // User Context section
     this._renderSection(popup, 'User Context', [
       { label: 'Messages', tokens: cats.messages, total },
       { label: 'Tool Results', tokens: cats.toolResults, total },
@@ -434,7 +478,7 @@ export class ChatTokenStatusBar extends Disposable {
 
       const rowValue = $('span.parallx-token-popup-row-value');
       const itemPct = item.total > 0 ? (item.tokens / item.total) * 100 : 0;
-      rowValue.textContent = `${itemPct.toFixed(1)}%`;
+      rowValue.textContent = `${this._formatTokens(item.tokens)} (${itemPct.toFixed(1)}%)`;
       row.appendChild(rowValue);
 
       section.appendChild(row);
