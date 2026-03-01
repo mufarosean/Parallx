@@ -16,8 +16,12 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
+import { PageChangeKind } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
+import { DatabaseDataService } from './database/databaseDataService.js';
+import { DatabaseEditorProvider } from './database/databaseEditorProvider.js';
+import { setOnLinkedPageBlockDeleted } from './config/blockRegistry.js';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -49,6 +53,7 @@ interface ParallxApi {
   editors: {
     registerEditorProvider(typeId: string, provider: { createEditorPane(container: HTMLElement): IDisposable }): IDisposable;
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
+    closeEditor(editorId: string): Promise<boolean>;
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
@@ -58,6 +63,7 @@ interface ParallxApi {
 
 let _api: ParallxApi;
 let _dataService: CanvasDataService | null = null;
+let _databaseDataService: DatabaseDataService | null = null;
 let _sidebar: CanvasSidebar | null = null;
 
 // â”€â”€â”€ Activation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -72,8 +78,19 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   _dataService = new CanvasDataService();
   context.subscriptions.push(_dataService);
 
+  // 2a. Reconcile page hierarchy from embedded blocks (pageBlock/databaseInline)
+  try {
+    await _dataService.reconcileEmbeddedHierarchyForAllPages();
+  } catch (err) {
+    console.warn('[Canvas] Embedded hierarchy reconciliation failed:', err);
+  }
+
+  // 2b. Create DatabaseDataService (M8 Phase 1)
+  _databaseDataService = new DatabaseDataService();
+  context.subscriptions.push(_databaseDataService);
+
   // 3. Register sidebar view provider for page tree (Cap 4)
-  _sidebar = new CanvasSidebar(_dataService, api);
+  _sidebar = new CanvasSidebar(_dataService, api, _databaseDataService);
   context.subscriptions.push(
     api.views.registerViewProvider('view.canvas', {
       createView(container: HTMLElement): IDisposable {
@@ -94,7 +111,7 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
   };
 
   // 4. Register editor provider for Canvas panes (Cap 5)
-  const editorProvider = new CanvasEditorProvider(_dataService);
+  const editorProvider = new CanvasEditorProvider(_dataService, _databaseDataService);
   editorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
   context.subscriptions.push(
     api.editors.registerEditorProvider('canvas', {
@@ -104,8 +121,47 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
+  // 4a. Register editor provider for Database panes (M8 Phase 2)
+  const dbEditorProvider = new DatabaseEditorProvider(_databaseDataService!, _dataService);
+  dbEditorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));
+  context.subscriptions.push(
+    api.editors.registerEditorProvider('database', {
+      createEditorPane(container: HTMLElement, input?: any): IDisposable {
+        return dbEditorProvider.createEditorPane(container, input);
+      },
+    }),
+  );
+
   // 5. Register command handlers
   _registerCommands(api, context);
+
+  // 5a. When a page-linked block (pageBlock, databaseInline) is deleted from
+  //     editor content, run the normal page deletion process (same as sidebar).
+  setOnLinkedPageBlockDeleted((pageId) => {
+    if (!_dataService) return;
+    _dataService.archivePage(pageId).catch(err => {
+      console.error(`[Canvas] Failed to archive child page ${pageId} after block deletion:`, err);
+    });
+  });
+
+  // 5b. Auto-close editor tabs when their page is deleted or archived
+  context.subscriptions.push(
+    _dataService.onDidChangePage(async (e) => {
+      if (e.kind !== PageChangeKind.Deleted) return;
+      // Editor IDs follow the pattern "parallx.canvas:<typeId>:<pageId>"
+      // Check both canvas and database editors
+      const editors = api.editors.openEditors;
+      for (const ed of editors) {
+        const parts = ed.id.split(':');
+        if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
+          const edPageId = parts.slice(2).join(':');
+          if (edPageId === e.pageId) {
+            await api.editors.closeEditor(ed.id);
+          }
+        }
+      }
+    }),
+  );
 
   // 6. Track last-opened page for persistence (Task 6.3)
   context.subscriptions.push(
@@ -113,9 +169,9 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
       const editors = api.editors.openEditors;
       const active = editors.find((e: any) => e.isActive);
       if (!active) return;
-      // Extract page ID from editor ID (format: "parallx.canvas:canvas:<pageId>")
+      // Extract page ID from editor ID (format: "parallx.canvas:<typeId>:<pageId>")
       const parts = active.id.split(':');
-      if (parts.length >= 3 && parts[1] === 'canvas') {
+      if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
         const pageId = parts.slice(2).join(':');
         context.workspaceState.update('canvas.lastOpenedPage', pageId);
       }
@@ -151,6 +207,7 @@ export async function deactivate(): Promise<void> {
 
   // Clear module-level state
   _dataService = null;
+  _databaseDataService = null;
   _sidebar = null;
   _api = undefined!;
 
@@ -303,9 +360,18 @@ function _registerCommands(api: ParallxApi, context: ToolContext): void {
         if (original.content) {
           await _dataService.updatePage(copy.id, { content: original.content, icon: original.icon });
         }
+        // Detect database pages — duplicate the database data too
+        let isDatabase = false;
+        if (_databaseDataService) {
+          const db = await _databaseDataService.getDatabaseByPageId(pageId);
+          if (db) {
+            isDatabase = true;
+            await _databaseDataService.duplicateDatabase(pageId, copy.id);
+          }
+        }
         // Open the duplicate in the editor
         await api.editors.openEditor({
-          typeId: 'canvas',
+          typeId: isDatabase ? 'database' : 'canvas',
           title: copy.title,
           icon: copy.icon ?? undefined,
           instanceId: copy.id,

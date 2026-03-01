@@ -134,6 +134,7 @@ export async function moveBlockToLinkedPage(params: CrossPageMoveParams): Promis
             toDelete.push({ pos, size: node.nodeSize });
             return false;
           }
+          return true;
         });
         toDelete.sort((a, b) => b.pos - a.pos);
         for (const { pos } of toDelete) {

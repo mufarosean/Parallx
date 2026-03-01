@@ -364,6 +364,23 @@ export const PageBlock = Node.create<PageBlockOptions>({
         if ((!hasEditorDragging && !hasSessionDragging) || !attrs.pageId) return;
         // Don't allow dropping onto the source page's own pageBlock
         if (attrs.pageId === currentPage) return;
+
+        // ── Edge-vs-center: only handle the "drop into" gesture when the
+        // cursor is in the interior of the card.  Edge zones (top/bottom/
+        // left/right strips) belong to the columnDropPlugin for standard
+        // above/below reorder and column-creation zones. ──
+        const rect = dom.getBoundingClientRect();
+        const rx = event.clientX - rect.left;
+        const ry = event.clientY - rect.top;
+        const H_EDGE = rect.width >= 150 ? 50 : Math.max(16, rect.width * 0.2);
+        const V_EDGE = Math.max(8, rect.height * 0.25);
+        const isOnEdge = rx < H_EDGE || rx > rect.width - H_EDGE
+                      || ry < V_EDGE || ry > rect.height - V_EDGE;
+        if (isOnEdge) {
+          dom.classList.remove('canvas-page-block--drop-target');
+          return; // let event bubble to columnDropPlugin
+        }
+
         event.preventDefault();
         event.stopPropagation();
         dom.classList.add('canvas-page-block--drop-target');
@@ -377,7 +394,11 @@ export const PageBlock = Node.create<PageBlockOptions>({
       });
 
       dom.addEventListener('drop', (event) => {
+        const wasDropTarget = dom.classList.contains('canvas-page-block--drop-target');
         dom.classList.remove('canvas-page-block--drop-target');
+        // If the dragover handler chose NOT to claim this area (edge zone),
+        // don't intercept the drop either — let it bubble to columnDropPlugin.
+        if (!wasDropTarget) return;
         const pageId = attrs.pageId;
         if (!pageId || !dataService || !this.options.currentPageId) return;
         if (pageId === this.options.currentPageId) return;

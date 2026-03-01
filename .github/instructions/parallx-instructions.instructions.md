@@ -3,105 +3,48 @@ description: These instructions provide guidelines for AI to follow when thinkin
 # applyTo: 'Describe when these instructions should be loaded' # when provided, instructions will automatically be added to the request context when the pattern matches an attached file
 ---
 
-## 0. Canvas Registry Gate Architecture (READ FIRST)
+## 0. Active Milestone Context
 
-The canvas built-in (`src/built-in/canvas/`) enforces a **five-registry gate architecture**. This is the most critical structural rule in the canvas codebase. Full details are in `ARCHITECTURE.md` — this section defines the rules you must follow **before writing any canvas code**.
+The current work is **Milestone 9 — AI Chat System** (`docs/Parallx_Milestone_09.md`). Read the milestone document before implementing any M9 task. It contains resolved design decisions, type definitions, and verification checklists that govern all AI chat code.
 
-### Core Principle
+### Key M9 Constraints
 
-> **Children talk only to their parent gate. Gates go to the source. No shortcuts.**
+- **Local-only AI via Ollama** (`localhost:11434`). No cloud providers, no API keys.
+- **Tiptap reuse**: Chat rendering uses a single Tiptap read-only instance; chat input uses a writable Tiptap instance with Mention extension. No custom markdown renderer.
+- **JSON structured output** for edit mode via Ollama `format` param.
+- **Session URIs** from day one: `parallx-chat-session:///<uuid>`.
+- **Token estimation**: `chars / 4` + LLM history summarization on context overflow.
+- **Follow-up suggestions** (`provideFollowups()`) are M9.2 required.
 
-A "child" is any file that belongs to a registry's domain. A "gate" is a registry that mediates all imports for its children. Children never reach across to a sibling registry — they get everything they need through their own gate's re-exports.
+### Canvas Gate Architecture
 
-**Gate-to-gate rule:** When a gate needs something from another gate, it imports from the gate that **owns** the symbol — never through an intermediate gate that merely passes it through. If IconRegistry owns `svgIcon`, HandleRegistry imports from IconRegistry directly, not from BlockRegistry. This eliminates phantom dependencies and keeps the import graph honest.
-
-### The Five Gates
-
-| Gate | File | Domain |
-|------|------|--------|
-| **IconRegistry** | `config/iconRegistry.ts` | All SVG/icon access |
-| **BlockRegistry** | `config/blockRegistry.ts` | Block metadata, capabilities, extensions |
-| **CanvasMenuRegistry** | `menus/canvasMenuRegistry.ts` | Menu lifecycle, mutual exclusion, block-data access for menus |
-| **BlockStateRegistry** | `config/blockStateRegistry/blockStateRegistry.ts` | Block mutations, movements, column operations, drag state |
-| **HandleRegistry** | `handles/handleRegistry.ts` | Block handle interaction, selection, drag lifecycle |
-
-### Import Rules (mandatory — violations break the architecture)
-
-1. **Block extensions** (`calloutNode`, `columnNodes`, `mediaNodes`, `bookmarkNode`, `pageBlockNode`) import **only from BlockRegistry**. Never from CanvasMenuRegistry, IconRegistry, or BlockStateRegistry.
-2. **Menu children** (`slashMenu`, `bubbleMenu`, `blockActionMenu`, `iconMenu`, `coverMenu`, `inlineMathEditor`, `imageInsertPopup`, `mediaInsertPopup`, `bookmarkInsertPopup`) import **only from CanvasMenuRegistry**. Never from BlockRegistry or IconRegistry directly.
-3. **BlockStateRegistry children** (`blockLifecycle`, `blockTransforms`, `blockMovement`, `columnCreation`, `columnInvariants`, `crossPageMovement`, `dragSession`) import **only from blockStateRegistry.ts** (their facade). Never from BlockRegistry directly.
-4. **Handle children** (`blockHandles`, `blockSelection`) import **only from HandleRegistry**. Never from BlockRegistry or CanvasMenuRegistry directly.
-5. **No child file** imports from `iconRegistry.ts`. Icons are re-exported through each child's parent gate. Peer gates that need icons import from IconRegistry directly.
-6. **No child file imports across registries.** A menu file cannot import from a block extension, and vice versa.
-7. **Gates go to the source** (gate-to-gate). A gate imports from whichever gate actually **owns** the symbol. No pass-through intermediaries. Allowed gate-to-gate edges:
-   - **IconRegistry** → (leaf — no gate deps)
-   - **BlockRegistry** → IconRegistry, BlockStateRegistry
-   - **CanvasMenuRegistry** → BlockRegistry, IconRegistry, BlockStateRegistry
-   - **BlockStateRegistry** → BlockRegistry (inward: `PAGE_CONTAINERS`, `isContainerBlockType`)
-   - **HandleRegistry** → BlockRegistry, IconRegistry, BlockStateRegistry, CanvasMenuRegistry
-8. **No cycles between gates** — except the one permitted cycle: BlockRegistry ↔ BlockStateRegistry. This cycle is safe because both directions use `export { X } from '...'` live re-export syntax with zero evaluation-time reads. **Never** convert these to `import X; export const Y = X` — that breaks the safety guarantee. The cycle is enforced by a dedicated test in `gateCompliance.test.ts`. No other gate-to-gate cycle is permitted.
-
-### When adding new code
-
-- **New block extension?** It imports from `blockRegistry.ts` only. If it needs something not yet exported, add the export to `blockRegistry.ts`.
-- **New menu?** It imports from `canvasMenuRegistry.ts` only. If it needs block data or icons, add a re-export to `canvasMenuRegistry.ts`.
-- **New mutation/movement logic?** It goes in a `blockStateRegistry/` child file, imports from `blockStateRegistry.ts`, and is re-exported through `blockStateRegistry.ts` → `blockRegistry.ts`.
-- **New handle/interaction feature?** It goes in `handles/`, imports from `handleRegistry.ts` only. If it needs something not yet re-exported, add the re-export to `handleRegistry.ts`.
-- **New icon?** Add to `canvasIcons.ts`, register in `iconRegistry.ts`. Child files access via their parent gate's re-exports. Peer gates import from IconRegistry directly.
-
-### When NOT to create a new gate
-
-Gates have maintenance cost (re-export sync, doc updates, test rules). Only create a new gate when:
-
-1. **A directory has 2+ files** that each import from **2+ different registries**. This is the cross-reach that gates prevent.
-2. **The domain is genuinely distinct** from existing gates. A new menu type goes under CanvasMenuRegistry — it doesn't need its own gate.
-
-Do NOT create a gate for:
-- A single file that imports from exactly one registry (it's already gated by that registry).
-- A pure-leaf file with zero canvas-internal imports (`blockBackground.ts`, `dragSession.ts`).
-- A folder with 1-2 files that all import from the same parent gate.
-
-**Examples of directories that correctly have no gate:**
-- `extensions/` — pure Tiptap extensions, each imports from BlockRegistry only (or nothing).
-- `plugins/` — column plugins gated through BlockStateRegistry.
-- `invariants/` — single file, zero relative imports.
-- `math/` — one file, gated through CanvasMenuRegistry.
-- `header/` — one file, gated through BlockRegistry.
-
-Current ratio: 5 gates / ~50 files = 1:10. If the ratio drops below 1:5, reconsider whether some gates should merge.
-
-### Automated enforcement
-
-The gate architecture is enforced by `tests/unit/gateCompliance.test.ts`. Every canvas `.ts` file must appear in one of three sets: `GATE_FILES`, `EXEMPT_FILES`, or `GATE_RULES`. When adding a new file, add it to the appropriate set — the test will fail if you forget.
-
-### Why this matters
-
-The circular dependency that broke column editing was caused by cross-reach: `blockRegistry → columnNodes → blockCapabilities → blockRegistry`. The gate architecture prevents this class of bug — every dependency is mediated by a gate, every gate has a clear direction, and esbuild's IIFE bundling order becomes irrelevant because no child reads from a registry it isn't gated through.
+The canvas built-in (`src/built-in/canvas/`) has its own five-registry gate architecture. Full rules are in the archived instructions file (`.github/instructions/archive/parallx-instructions-pre-m9.instructions.md`) and in `ARCHITECTURE.md`. When working on canvas code, consult those references.
 
 ---
 
-## Role
+## 1. Role
 
-You are not a tool, but you are a multifaceted and very experienced software developer, with amazing programming skills, unparalleled reasoning skills, and an amazing ability to think-longterm and plan accordingly. You always think in steps, you always document after each step, and you always go back to check the quality of your work after each step considering the full scope of the project, the vision of the project, and the goal of the task at hand.  You think in steps, document after each step, and verify quality against the full project scope before moving on. You ask clarification questions when needed. You proactively identify issues before they become problems. You always think about how the user will interact with each piece of UI and how it fits into the overall user experience. You are a master of the VS Code codebase and architecture, and you always follow the principle of "never reinvent the wheel" — if VS Code has a proven solution, you adapt it for Parallx rather than inventing a new approach. You are an expert at understanding how to use existing codebases and APIs, and you can quickly adapt them for Parallx's needs. You have a deep understanding of the VS Code architecture and its components, including the extension API, package.json files, and other relevant files. You are an expert at using the VS Code architecture and its components, including the extension API, package.json files, and other relevant files.
-
-
-**Task Completion Documentation:** After a task is done, mark it ✅ in the relevant milestone file. If the implementation deviated significantly from the task description, note the deviation alongside the completion marker.
+- Think in steps. Document after each step. Verify quality against the full project scope before moving on.
+- Ask clarification questions when requirements are ambiguous. Proactively identify issues before they become problems.
+- Always consider how the user will interact with each piece of UI and how it fits into the overall experience.
+- Follow the principle of "never reinvent the wheel" — if VS Code has a proven solution, adapt it for Parallx.
+- After completing a task, mark it ✅ in the relevant milestone file. If the implementation deviated significantly, note the deviation alongside the completion marker.
 
 ---
 
-## 1. Project Vision
+## 2. Project Vision
 
 Parallx is a **second-brain workbench** — VS Code's architecture repurposed as a tool platform. The shell hosts domain-specific tools and extensions (note-taking, task management, knowledge graphs, AI workflows, etc.) the same way VS Code hosts language extensions. The tool API (`parallx.*`) mirrors `vscode.*` in shape.
 
 **Core principles:**
 
-1. **Mirror VS Code's structure.** Workbench, grid layout, parts, views, editor groups, command palette, keybindings, service layer, DI, and tool API all follow VS Code's proven architecture. We are adapting the best desktop app framework that exists — not inventing a new one.
-2. **Never reinvent the wheel.** If VS Code solves a problem (tree views, tab management, settings, notifications, quick pick, etc.), follow their approach. Closer alignment = easier onboarding, fewer bugs, faster progress.
+1. **Mirror VS Code's structure.** Workbench, grid layout, parts, views, editor groups, command palette, keybindings, service layer, DI, and tool API all follow VS Code's proven architecture.
+2. **Never reinvent the wheel.** If VS Code solves a problem (tree views, tab management, settings, notifications, quick pick, etc.), follow their approach.
 3. **Tools, not code editing.** Where VS Code has language servers and debuggers, Parallx has tools — self-contained extensions providing views, editors, commands, and panels.
 
 ---
 
-## 2. Authoritative References
+## 3. Authoritative References
 
 Always consult these **before** writing any implementation code:
 
@@ -116,19 +59,15 @@ Always consult these **before** writing any implementation code:
 
 ---
 
-## 3. VS Code Parity Checklist (mandatory per capability)
+## 4. VS Code Parity Checklist (mandatory per capability)
 
 Every capability must complete these steps. Skipping them causes broken patterns that require rework.
 
 ### Before writing code
 
 1. **DeepWiki** — Read the relevant page(s). Understand architecture, classes, and interactions.
-2. **VS Code TypeScript source** — Read the `.ts` files for the feature. Note:
-   - Class hierarchy and method signatures
-   - DOM structure (elements, order, class names)
-   - Event handling (events, elements, capture vs bubble)
-   - Service dependencies (injected services, usage patterns)
-3. **VS Code CSS source** — Read the co-located CSS. Note what IS set, what is NOT set, z-index stacking, position schemes, `-webkit-app-region`.
+2. **VS Code TypeScript source** — Read the `.ts` files for the feature. Note class hierarchy, method signatures, DOM structure, event handling, and service dependencies.
+3. **VS Code CSS source** — Read the co-located CSS. Note what IS set, what is NOT set, z-index stacking, position schemes.
 4. **Document findings** — Briefly record what VS Code does, what Parallx will do, and any deliberate deviations with rationale.
 
 ### During implementation
@@ -145,7 +84,80 @@ Every capability must complete these steps. Skipping them causes broken patterns
 
 ---
 
-## 4. UI Component Rules
+## 5. File & Naming Conventions
+
+| Category | Convention | Example |
+|----------|-----------|---------|
+| TypeScript files | `camelCase.ts` | `editorService.ts`, `commandRegistry.ts` |
+| CSS files | `camelCase.css`, co-located with `.ts` | `notificationService.css` |
+| Unit tests | `tests/unit/<feature>.test.ts` | `fileService.test.ts` |
+| E2E tests | `tests/e2e/<NN>-<kebab-case>.spec.ts` | `09-canvas.spec.ts` |
+| Barrel files | **None.** No `index.ts`. Every import targets a specific file. |
+| Electron entry files | `.cjs` extension (CommonJS) | `main.cjs`, `preload.cjs` |
+
+---
+
+## 6. Import Conventions
+
+- **Source files** use relative imports with `.js` extensions (ESM compat for esbuild):
+  ```ts
+  import { Disposable } from '../platform/lifecycle.js';
+  import { Emitter, Event } from '../platform/events.js';
+  ```
+- **Type-only imports** use `import type`:
+  ```ts
+  import type { IEditorInput } from '../editor/editorInput.js';
+  ```
+- **CSS imports** are side-effect imports in the `.ts` file that owns the styles:
+  ```ts
+  import './myComponent.css';
+  ```
+- **Test files** use relative imports **without** `.js` extensions (Vitest resolves them):
+  ```ts
+  import { FileService } from '../../src/services/fileService';
+  ```
+- Path aliases exist in `tsconfig.json` but are **not used** in production source. All source uses relative paths.
+
+---
+
+## 7. Service & DI Conventions
+
+### Interface + identifier pattern
+
+Each service has a dual-purpose constant in `src/services/serviceTypes.ts`:
+
+```ts
+// Interface (type position)
+export interface ILayoutService extends IDisposable {
+  readonly container: HTMLElement | undefined;
+  layout(): void;
+}
+
+// DI key (value position) — same name
+export const ILayoutService = createServiceIdentifier<ILayoutService>('ILayoutService');
+```
+
+### Service implementation pattern
+
+1. Extend `Disposable` (from `platform/lifecycle.ts`).
+2. Implement the interface from `serviceTypes.ts`.
+3. Register events with `this._register(new Emitter<T>())`.
+4. Expose events as `readonly onDidX: Event<T>`.
+5. Use `_` prefixed private fields.
+
+### DI registration
+
+Services are wired manually in `src/workbench/workbenchServices.ts`:
+
+```ts
+services.registerInstance(ICommandService, new CommandService(services));
+```
+
+No auto-scanning. Dependencies passed via constructor. Both eager (`registerInstance`) and lazy (`register` with `ServiceDescriptor`) modes available.
+
+---
+
+## 8. UI Component Rules
 
 Vanilla TypeScript classes extending `Disposable`, `Emitter<T>` for events, co-located CSS. No frameworks. No web components. No external UI libraries unless explicitly approved.
 
@@ -166,11 +178,10 @@ Every `src/ui/` component must:
 
 ### Feature code rules
 
-1. **No raw `document.createElement` for standard widgets.** Use `src/ui/` components. Build the component there first if it doesn't exist.
+1. **No raw `document.createElement` for standard widgets.** Use `src/ui/` components.
 2. **No inline `element.style.*` for visual properties.** Only computed dimensions (layout-driven `width`/`height`) may be inline. Everything else goes in CSS classes.
 3. **Check `src/ui/` before implementing any visual element.** Extend or compose existing components — do not duplicate.
-4. **Reusable interactions belong in `src/ui/`.** If a UI pattern could appear in more than one place, it's a component.
-5. **Components compose components.** `Dialog` uses `ButtonBar`. `QuickAccess` uses `InputBox` + `FilterableList`. Delegate, don't flatten.
+4. **Components compose components.** `Dialog` uses `ButtonBar`. `QuickAccess` uses `InputBox` + `FilterableList`. Delegate, don't flatten.
 
 ### Dependency rules for `src/ui/`
 
@@ -178,19 +189,67 @@ Every `src/ui/` component must:
 - `ui/` must NOT depend on `services/`, `parts/`, `views/`, `editor/`, `commands/`, `context/`, or any other module.
 - Feature modules (`parts/`, `views/`, `editor/`, `commands/`) may depend on `ui/`.
 
-This mirrors VS Code where `src/vs/base/browser/ui/` depends only on `src/vs/base/`.
+---
+
+## 9. CSS Conventions
+
+| Pattern | Example |
+|---------|---------|
+| UI components: `ui-` prefix | `.ui-button`, `.ui-input-box` |
+| Workbench parts: `part-` prefix | `.part`, `.part-content` |
+| Domain features: `parallx-` prefix | `.parallx-drop-overlay`, `.parallx-notification` |
+| Modifiers: double-dash | `.ui-button--secondary`, `.ui-button--disabled` |
+| Sub-elements: double-underscore (occasional) | `.contributed-view-placeholder__name` |
+
+- All colors use CSS custom properties — primarily `--vscode-*` tokens from `ThemeService`. Always provide fallback values.
+- No CSS framework, no CSS-in-JS, no scoped styles.
+- Section comments use: `/* ── Section Name ── */`
 
 ---
 
-## 5. Bug Diagnosis Rules
+## 10. Test Conventions
 
-When diagnosing a reported bug:
+### Unit tests (Vitest)
 
-1. **No code is trusted.** Do not assume any code is correct — including code written earlier in the same session, code that "looks right," or code that passed the build. Every line on the failure path is a suspect until proven innocent by reasoning about real runtime values.
+- Location: `tests/unit/<feature>.test.ts`
+- Globals enabled: `describe`, `expect`, `it`, `beforeEach`, `vi` available without import (or import from `vitest`).
+- For DOM-dependent tests, add `// @vitest-environment jsdom` at the top of the file.
+- Run: `npx vitest run` (single), `npx vitest` (watch).
 
-2. **Start at the symptom, work backward through the call chain.** If "drag doesn't work," the first suspect is the dragstart handler — not downstream consumers. Spend 80% of diagnosis time on the nearest code to the failure point. Do not explore tangential systems until the primary path is eliminated.
+### E2E tests (Playwright)
 
-3. **Simulate runtime values, don't just read logic.** For any conditional/threshold, ask: "What actual numbers will these variables hold when this line executes?" Code that is logically consistent can still fail if its inputs don't match assumptions about browser behavior, timing, or event ordering.
+- Location: `tests/e2e/<NN>-<kebab-case-name>.spec.ts` (numbered for ordering).
+- Import fixtures: `import { test, expect } from './fixtures';` (custom Electron fixtures in `tests/e2e/fixtures.ts`).
+- Workers: 1 (serial execution). Timeout: 60s.
+- Run: `npx playwright test`.
 
-4. **State your ranked suspect list before investigating.** Before reading any code, write a numbered list of most-likely-to-least-likely causes based on the symptom description. Investigate in that order. Do not go wide — go deep on #1 first.
+### When to write tests
+
+- Every new service must have a unit test covering its public API.
+- Every new command must be exercised in an existing or new E2E test.
+- Bug fixes should include a regression test when the fix is non-trivial.
+
+---
+
+## 11. Build & Run
+
+| Command | What it does |
+|---------|-------------|
+| `npm run build` | `tsc --noEmit` + esbuild bundle |
+| `npm run dev` | Build + launch Electron |
+| `npm run test:unit` | Vitest single run |
+| `npm run test:e2e` | Playwright full suite |
+
+- Module format: ESM (`"type": "module"` in `package.json`). Electron files are `.cjs`.
+- TypeScript is for type checking only (`tsc --noEmit`). esbuild handles bundling (IIFE, ES2022, browser).
+- Entry: `src/main.ts` → `dist/renderer/main.js` + `dist/renderer/main.css`.
+
+---
+
+## 12. Bug Diagnosis Rules
+
+1. **No code is trusted.** Do not assume any code is correct — including code written earlier in the same session. Every line on the failure path is a suspect until proven innocent by reasoning about real runtime values.
+2. **Start at the symptom, work backward.** Spend 80% of diagnosis time on the code nearest to the failure point. Do not explore tangential systems until the primary path is eliminated.
+3. **Simulate runtime values, don't just read logic.** For any conditional, ask: "What actual values will these variables hold when this line executes?"
+4. **State your ranked suspect list before investigating.** Write a numbered list of most-likely-to-least-likely causes. Investigate in that order — go deep on #1 first.
 

@@ -25,6 +25,7 @@ This folder contains both canonical product docs and historical snapshots.
 - [Parallx_Milestone_05.md](./Parallx_Milestone_05.md)
 - [Parallx_Milestone_06.md](./Parallx_Milestone_06.md)
 - [Parallx_Milestone_07.md](./Parallx_Milestone_07.md)
+- [Parallx_Milestone_08.md](./Parallx_Milestone_08.md)
 
 ## Research
 - [research/tiptap-columns-research.md](./research/tiptap-columns-research.md)

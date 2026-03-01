@@ -25,6 +25,7 @@ export interface SlashMenuHost {
   readonly container: HTMLElement;
   readonly editorContainer: HTMLElement | null;
   readonly dataService?: InsertActionBaseContext['dataService'];
+  readonly databaseDataService?: InsertActionBaseContext['databaseDataService'];
   readonly pageId?: string;
   readonly openEditor?: InsertActionBaseContext['openEditor'];
   requestSave(reason: string): void;
@@ -162,7 +163,7 @@ export class SlashMenuController implements ICanvasMenu {
 
       const iconEl = $('span.canvas-slash-icon');
       // Render SVG icon if available, otherwise use text
-      const knownIcons = ['page','checklist','quote','code','divider','lightbulb','chevron-right','grid','image','bullet-list','numbered-list','math','math-block','columns','bookmark','globe','toc','video','audio','file-attachment'];
+      const knownIcons = ['page','checklist','quote','code','divider','lightbulb','chevron-right','grid','image','bullet-list','numbered-list','math','math-block','columns','bookmark','globe','toc','video','audio','file-attachment','database','database-link'];
       if (knownIcons.includes(item.icon)) {
         iconEl.innerHTML = svgIcon(item.icon as any);
         const svg = iconEl.querySelector('svg');
@@ -243,6 +244,7 @@ export class SlashMenuController implements ICanvasMenu {
       }, {
         pageId: this._host.pageId,
         dataService: this._host.dataService,
+        databaseDataService: this._host.databaseDataService,
         openEditor: this._host.openEditor,
       });
     } finally {

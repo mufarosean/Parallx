@@ -26,7 +26,6 @@
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import {
-  PAGE_CONTAINERS,
   resolveBlockAncestry,
   moveBlockAboveBelow,
   createColumnLayoutFromDrop,
@@ -376,9 +375,12 @@ export function columnDropPlugin(): Plugin {
     const preventLeftRight = isColumnList;
 
     if (!preventLeftRight) {
-      // Only allow left/right when cursor is inside the block bounds
-      // (rx < 0 means cursor is on the drag handle, outside the block)
-      if (rx >= 0 && rx < EDGE) return 'left';
+      // Allow a small negative margin on the left so the zone is
+      // reachable even when the cursor drifts slightly past the block's
+      // bounding-box edge (e.g. into padding or the handle gutter).
+      // During a drag the handle is inert, so there's no conflict.
+      const LEFT_MARGIN = 12;
+      if (rx >= -LEFT_MARGIN && rx < EDGE) return 'left';
       if (rx <= r.width && rx > r.width - EDGE) return 'right';
     }
 
@@ -413,12 +415,11 @@ export function columnDropPlugin(): Plugin {
           let raw = findTarget(view, x, y);
           if (!raw) { hideAll(); return false; }
 
-          // ── pageBlock targets are cross-page drop zones handled by
-          // pageBlockNode's own dragover/drop listeners.  Clear our
-          // indicators so the user sees only the page-block highlight. ──
-          if (raw.blockNode.type.name === 'pageBlock') {
-            hideAll(); return false;
-          }
+          // ── pageBlock targets: edge zones are handled here (standard
+          // above/below/left/right); only the interior center area is
+          // handled by pageBlockNode's own dragover/drop for cross-page
+          // drops.  When the cursor is in the center, pageBlockNode calls
+          // stopPropagation so this handler never fires — no bail needed. ──
 
           if (raw.blockNode.type.name === 'columnList') {
             const over = document.elementsFromPoint(x, y) as HTMLElement[];
@@ -469,11 +470,14 @@ export function columnDropPlugin(): Plugin {
         },
 
         drop: (view: EditorView, event: DragEvent) => {
-          // If the drop landed on a pageBlock (cross-page move), the
-          // pageBlock's own DOM drop handler handles it.  Return true to
-          // prevent ProseMirror's default drop from re-inserting the slice.
+          // If the drop landed on a pageBlock's interior (cross-page
+          // move), pageBlockNode's drop handler already called
+          // stopPropagation — we never reach here.  If we DO reach here
+          // AND activeTarget is null, it means no edge zone was active
+          // and something unexpected happened — prevent ProseMirror's
+          // default drop to be safe.
           const dropTarget = event.target as HTMLElement | null;
-          if (dropTarget?.closest?.('.canvas-page-block')) {
+          if (dropTarget?.closest?.('.canvas-page-block') && !activeTarget) {
             hideAll();
             return true;
           }

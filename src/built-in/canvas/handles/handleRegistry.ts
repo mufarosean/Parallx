@@ -20,7 +20,7 @@ export { svgIcon } from '../config/iconRegistry.js';
 export { CANVAS_BLOCK_DRAG_MIME, clearActiveCanvasDragSession, setActiveCanvasDragSession } from '../config/blockStateRegistry/blockStateRegistry.js';
 
 /** @see {@link import('../config/blockStateRegistry/columnInvariants.js')} — origin */
-export { resolveBlockAncestry, normalizeAllColumnLists } from '../config/blockStateRegistry/blockStateRegistry.js';
+export { resolveBlockAncestry, normalizeAllColumnLists, notifyLinkedPageBlocksDeleted } from '../config/blockStateRegistry/blockStateRegistry.js';
 export type { BlockAncestry } from '../config/blockStateRegistry/blockStateRegistry.js';
 
 // ── Re-exports from BlockRegistry (source owner) ────────────────────────────

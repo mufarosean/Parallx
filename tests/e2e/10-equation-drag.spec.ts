@@ -1,11 +1,10 @@
 /**
- * Focused E2E test: Equation (MathBlock) drag-and-drop via GlobalDragHandle.
+ * Focused E2E test: Equation (MathBlock) drag-and-drop via the drag handle.
  *
  * Tests two things:
  * 1. The drag handle correctly initiates drag on atom nodes (MathBlock).
- *    GlobalDragHandle uses posAtCoords().inside which returns -1 for atoms.
- *    The fix ensures the library's own handleDragStart works after
- *    removing the content hole from MathBlock's renderHTML.
+ *    BlockHandlesController resolves atom nodes via posAtCoords + nodeAfter/
+ *    nodeBefore boundary detection (atom nodes return inside=-1).
  *
  * 2. ProseMirror can move a MathBlock node to a different position,
  *    proving the schema allows atom node repositioning.

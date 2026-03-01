@@ -30,11 +30,14 @@ import { Bookmark } from '../extensions/bookmarkNode.js';
 import { PageBlock } from '../extensions/pageBlockNode.js';
 import { TableOfContents } from '../extensions/tableOfContentsNode.js';
 import { Video, Audio, FileAttachment } from '../extensions/mediaNodes.js';
+import { DatabaseInline } from '../extensions/databaseInlineNode.js';
+import { DatabaseFullPage } from '../extensions/databaseFullPageNode.js';
 // Types
 import type { AnyExtension, Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import type { ICanvasDataService } from '../canvasTypes.js';
 import type { OpenEditorFn } from '../canvasEditorProvider.js';
+import type { IDatabaseDataService } from '../database/databaseTypes.js';
 
 // Popup insertion helpers (block-owned insertion UI)
 // These are provided at runtime through InsertActionContext by canvasMenuRegistry.
@@ -56,6 +59,7 @@ export interface ShowIconPickerOptions {
 export interface EditorExtensionContext {
   readonly lowlight?: any;
   readonly dataService?: ICanvasDataService;
+  readonly databaseDataService?: IDatabaseDataService;
   readonly pageId?: string;
   readonly openEditor?: OpenEditorFn;
   readonly showIconPicker?: (options: ShowIconPickerOptions) => void;
@@ -77,6 +81,7 @@ export interface EditorExtensionContext {
 export interface InsertActionBaseContext {
   readonly pageId?: string;
   readonly dataService?: ICanvasDataService;
+  readonly databaseDataService?: IDatabaseDataService;
   readonly openEditor?: OpenEditorFn;
 }
 
@@ -201,6 +206,18 @@ const CONTAINER_CAP: BlockCapabilities = {
   isPageContainer: false,
   suppressBubbleMenu: false,
 };
+
+/** Recursively check whether a node of `type` with matching attr exists anywhere in a doc tree. */
+function _docContainsNode(node: any, type: string, attrKey: string, attrValue: string): boolean {
+  if (!node || typeof node !== 'object') return false;
+  if (node.type === type && node.attrs?.[attrKey] === attrValue) return true;
+  if (Array.isArray(node.content)) {
+    for (const child of node.content) {
+      if (_docContainsNode(child, type, attrKey, attrValue)) return true;
+    }
+  }
+  return false;
+}
 
 const PAGE_CONTAINER_CAP: BlockCapabilities = {
   allowInColumn: false,
@@ -749,9 +766,7 @@ const definitions: BlockDefinition[] = [
         }
 
         const docJson = editor.getJSON();
-        const hasInsertedPageBlock = Array.isArray(docJson?.content)
-          && docJson.content.some((n: any) => n?.type === 'pageBlock' && n?.attrs?.pageId === childPage.id);
-        if (!hasInsertedPageBlock) {
+        if (!_docContainsNode(docJson, 'pageBlock', 'pageId', childPage.id)) {
           throw new Error('Inserted pageBlock not found in parent doc');
         }
 
@@ -838,6 +853,173 @@ const definitions: BlockDefinition[] = [
     defaultContent: undefined,
     insertAction: (_editor, range, context) => context.showMediaInsertPopup(_editor, range, 'fileAttachment'),
     extension: () => FileAttachment,
+  },
+
+  // ── Database blocks ──
+
+  {
+    id: 'databaseInline',
+    name: 'databaseInline',
+    label: 'Database - Inline',
+    icon: 'database',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Create an inline database', order: 72, category: 'advanced' },
+    turnInto: undefined,
+    defaultContent: undefined,
+    insertAction: async (editor, range, context) => {
+      if (!context?.dataService || !context.pageId || !context.databaseDataService) return;
+
+      let childPage: { id: string; title: string; icon: string | null } | null = null;
+      try {
+        // Create a page to host the database
+        childPage = await context.dataService.createPage(context.pageId, 'Untitled');
+        // Create the database record on that page
+        await context.databaseDataService.createDatabase(childPage.id);
+
+        // Insert the inline node
+        const inserted = editor
+          .chain()
+          .insertContentAt(range, {
+            type: 'databaseInline',
+            attrs: { databaseId: childPage.id, databaseTitle: childPage.title },
+          })
+          .focus()
+          .run();
+
+        if (!inserted) throw new Error('Failed to insert databaseInline node');
+
+        // Flush parent doc
+        const docJson = editor.getJSON();
+        await context.dataService.flushContentSave(context.pageId, docJson);
+      } catch (error) {
+        // Rollback: clean up the created database + page
+        if (childPage) {
+          try {
+            await context.databaseDataService.deleteDatabase(childPage.id);
+          } catch { /* best-effort */ }
+          try {
+            await context.dataService.deletePage(childPage.id);
+          } catch { /* best-effort */ }
+        }
+        throw error;
+      }
+    },
+    extension: (ctx) => DatabaseInline.configure({
+      databaseDataService: ctx.databaseDataService,
+      pageDataService: ctx.dataService,
+      openEditor: ctx.openEditor,
+    }),
+  },
+  {
+    id: 'databaseFullPage',
+    name: 'databaseFullPage',
+    label: 'Database - Full page',
+    icon: 'database',
+    iconSelectable: true,
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Create a full-page database', order: 73, category: 'advanced' },
+    turnInto: undefined,
+    defaultContent: undefined,
+    insertAction: async (editor, range, context) => {
+      if (!context?.dataService || !context.pageId || !context.databaseDataService) return;
+
+      let childPage: { id: string; title: string; icon: string | null } | null = null;
+      try {
+        // Create a page to host the database (with database icon)
+        childPage = await context.dataService.createPage(context.pageId, 'Untitled');
+        await context.dataService.updatePage(childPage.id, { icon: 'database' });
+        // Create the database record on that page
+        await context.databaseDataService.createDatabase(childPage.id);
+
+        // Insert a full-page database block on the parent page
+        const inserted = editor
+          .chain()
+          .insertContentAt(range, {
+            type: 'databaseFullPage',
+            attrs: { databaseId: childPage.id, title: childPage.title, icon: 'database' },
+          })
+          .focus()
+          .run();
+
+        if (!inserted) throw new Error('Failed to insert databaseFullPage node');
+
+        // Flush parent doc
+        const docJson = editor.getJSON();
+        await context.dataService.flushContentSave(context.pageId, docJson);
+
+        // Open the new database in the editor
+        if (context.openEditor) {
+          await context.openEditor({
+            typeId: 'database',
+            title: childPage.title,
+            icon: 'database',
+            instanceId: childPage.id,
+          });
+        }
+      } catch (error) {
+        if (childPage) {
+          try { await context.databaseDataService.deleteDatabase(childPage.id); } catch { /* best-effort */ }
+          try { await context.dataService.deletePage(childPage.id); } catch { /* best-effort */ }
+        }
+        throw error;
+      }
+    },
+    extension: (ctx) => DatabaseFullPage.configure({
+      dataService: ctx.dataService,
+      openEditor: ctx.openEditor,
+      showIconPicker: ctx.showIconPicker,
+    }),
+  },
+  {
+    id: 'linkedView',
+    name: 'databaseInline',
+    label: 'Linked view of data source',
+    icon: 'database-link',
+    source: 'custom',
+    kind: 'atom',
+    capabilities: CUSTOM_DRAG,
+    slashMenu: { description: 'Linked view of an existing database', order: 74, category: 'advanced' },
+    turnInto: undefined,
+    defaultContent: undefined,
+    insertAction: async (editor, range, context) => {
+      // Linked view: for now, insert a databaseInline with a placeholder.
+      // The user will configure the source database in the view config.
+      // Full linked-view picker UI is outside MVP scope — the node is
+      // functional once a sourceDatabaseId is set on the view config.
+      if (!context?.databaseDataService || !context.dataService || !context.pageId) return;
+
+      let childPage: { id: string; title: string; icon: string | null } | null = null;
+      try {
+        childPage = await context.dataService.createPage(context.pageId, 'Linked View');
+        await context.databaseDataService.createDatabase(childPage.id);
+
+        const inserted = editor
+          .chain()
+          .insertContentAt(range, {
+            type: 'databaseInline',
+            attrs: { databaseId: childPage.id, databaseTitle: childPage.title },
+          })
+          .focus()
+          .run();
+
+        if (!inserted) throw new Error('Failed to insert linked view node');
+
+        const docJson = editor.getJSON();
+        await context.dataService.flushContentSave(context.pageId, docJson);
+      } catch (error) {
+        if (childPage) {
+          try { await context.databaseDataService.deleteDatabase(childPage.id); } catch { /* best-effort */ }
+          try { await context.dataService.deletePage(childPage.id); } catch { /* best-effort */ }
+        }
+        throw error;
+      }
+    },
+    // Extension factory omitted — shares the same Tiptap node type as 'databaseInline'.
+    // Only the first variant (databaseInline) carries the factory.
   },
 
   // ── Structural node types (not user-facing, but needed for capabilities) ──
@@ -1081,6 +1263,7 @@ export {
   applyBackgroundColorToBlock,
   indentBlock,
   outdentBlock,
+  setOnLinkedPageBlockDeleted,
 } from './blockStateRegistry/blockStateRegistry.js';
 
 export {
@@ -1138,3 +1321,34 @@ export {
   moveBlockToLinkedPage,
 } from './blockStateRegistry/blockStateRegistry.js';
 export type { CanvasDragSession, CrossPageMoveParams } from './blockStateRegistry/blockStateRegistry.js';
+
+// ── Database Access (registry gate) ─────────────────────────────────────────
+// The inline database block extension (databaseInlineNode.ts) needs database
+// types, view classes, and the data pipeline.  Block extensions import only
+// from blockRegistry — so we re-export the needed symbols from the database
+// registry (the gate that owns them).
+
+export type {
+  IDatabaseDataService,
+  IDatabaseView,
+  IDatabaseViewConfig,
+  IDatabaseProperty,
+  IDatabaseRow,
+  ViewType,
+  IRowGroup,
+  OpenEditorFn as DatabaseOpenEditorFn,
+} from '../database/databaseRegistry.js';
+
+export {
+  TableView,
+  BoardView,
+  ListView,
+  GalleryView,
+  CalendarView,
+  TimelineView,
+  ViewTabBar,
+  DatabaseToolbar,
+  DatabaseViewHost,
+  applyViewDataPipeline,
+} from '../database/databaseRegistry.js';
+export type { DatabaseViewHostSlots, DatabaseViewHostOptions } from '../database/databaseRegistry.js';

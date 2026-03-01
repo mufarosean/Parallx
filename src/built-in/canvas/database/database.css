@@ -1,0 +1,2426 @@
+﻿/* database.css — Database view UI styles
+ *
+ * Unified CSS namespace: db-host-* (host shell), db-view-* (view tab bar),
+ * db-table-* / db-board-* / db-list-* / db-gallery-* / db-calendar-* /
+ * db-timeline-* (view types), db-toolbar-* (toolbar), db-cell-* (cell
+ * renderers), db-filter-* / db-sort-* / db-group-* / db-props-* (panels).
+ *
+ * Uses standard Parallx CSS custom properties (--vscode-*) injected by
+ * the workbench theme service.
+ *
+ * ── Notion Reference Metrics (dark mode) ──────────────────────────────────
+ *   Row height:        33px
+ *   Header height:     33px
+ *   Body font-size:    14px
+ *   Header font-size:  12px, weight 500
+ *   Cell padding:      0 8px
+ *   Column separator:  1px solid rgba(255,255,255,0.04)
+ *   Row separator:     1px solid rgba(255,255,255,0.04)
+ *   Hover background:  rgba(255,255,255,0.03)
+ *   Toolbar btn:       26px height, 14px font
+ *   Tab bar:           34px height, 14px font, weight 500
+ *   Pill (select):     border-radius 3px, font 12px, padding 0 6px
+ *   Checkbox:          16x16, checked=#2383e2
+ *   Title cell:        14px, weight 400 (normal)
+ *   "New" button:      accent blue, 26px height
+ *   Add-row footer:    33px height
+ * ──────────────────────────────────────────────────────────────────────────
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Host Shell — shared base + fullpage / inline modifiers
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-host {
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.db-host--fullpage {
+  height: 100%;
+  padding: 0;
+}
+
+.db-host-shell {
+  width: 100%;
+  max-width: none;
+  margin: 0 auto;
+  padding: 0 96px 40px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.db-host--fullpage .canvas-page-header {
+  max-width: none;
+  padding-left: 96px;
+  padding-right: 96px;
+}
+
+.db-host--fullpage .canvas-page-header--inline-title .canvas-page-title {
+  font-size: 38px;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.db-host--fullpage .canvas-page-header--inline-title .canvas-page-icon {
+  margin-bottom: 3px;
+}
+
+.db-host--fullpage .canvas-page-header--inline-title .canvas-page-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.db-host--fullpage .canvas-page-header--inline-title {
+  padding-bottom: 4px;
+}
+
+.db-host-page-header {
+  flex-shrink: 0;
+  margin-bottom: 10px;
+}
+
+.db-host-page-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.db-host-page-icon {
+  font-size: 24px;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+.db-host-page-title {
+  margin: 0;
+  font-size: 44px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.db-host-tabbar {
+  flex: 1;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.db-host-toolbar {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.db-host-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 0 6px;
+}
+
+.db-host-content {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  padding: 0;
+  min-height: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Description Affordance (Notion-style hover-revealed "Add a description")
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Toggle sits between cover and page header — small subtle hint, hover-only */
+.db-description-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  margin: 6px 0 2px 96px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 0.45));
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  width: fit-content;
+}
+
+.db-description-toggle .canvas-svg-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Reveal only when cursor enters the gap between cover and title */
+.db-description-toggle:hover,
+.db-description-toggle:focus-visible {
+  opacity: 1;
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+}
+
+/* Description row sits between page header and shell */
+.db-description-row {
+  padding: 0 96px 4px;
+  box-sizing: border-box;
+}
+
+.db-description-input {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  padding: 0;
+  outline: none;
+  min-height: 21px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.db-description-input:empty::before {
+  content: attr(data-placeholder);
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 0.5));
+  font-style: italic;
+  pointer-events: none;
+}
+
+.db-description-input:focus {
+  color: var(--vscode-foreground);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   View Tab Bar
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-view-tabs {
+  padding: 0;
+  min-width: 0;
+}
+
+.db-host .db-view-tabs .ui-tab-bar {
+  height: 34px;
+  min-height: 34px;
+  background: transparent;
+  flex: 1;
+}
+
+.db-host .db-view-tabs .ui-tab-bar-tabs {
+  align-items: center;
+  gap: 4px;
+}
+
+.db-host .db-view-tabs .ui-tab-bar-tabs::after,
+.db-host .db-view-tabs .ui-tab,
+.db-host .db-view-tabs .ui-tab-bar-actions {
+  border: none;
+}
+
+.db-host .db-view-tabs .ui-tab {
+  background: transparent;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 999px;
+  padding: 0 10px;
+  gap: 6px;
+  height: 28px;
+  margin: 0;
+  max-width: none;
+}
+
+.db-host .db-view-tabs .ui-tab:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+}
+
+.db-host .db-view-tabs .ui-tab--active {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.1));
+  color: var(--vscode-foreground);
+}
+
+.db-host .db-view-tabs .ui-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  opacity: 0.9;
+  margin-right: 0;
+}
+
+.db-host .db-view-tabs .ui-tab-icon svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.db-view-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 18px;
+  font-weight: 400;
+  cursor: pointer;
+  line-height: 1;
+  margin-left: 2px;
+  flex: 0 0 auto;
+}
+
+.db-view-add-btn:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  color: var(--vscode-foreground);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Table View
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-table {
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 100%;
+  --db-table-grid-template: 200px 190px;
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.06));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.db-host--fullpage .db-table,
+.db-host--inline .db-table {
+  border: none;
+  border-radius: 0;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.db-table-header {
+  display: grid;
+  grid-template-columns: var(--db-table-grid-template);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--vscode-editor-background);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.018));
+  user-select: none;
+}
+
+.db-table-header-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  height: 26px;
+  border-right: none;
+}
+
+.db-table-header-cell:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.db-table-header-icon {
+  flex-shrink: 0;
+  font-size: 12px;
+  opacity: 0.5;
+}
+
+.db-table-header-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.db-table-header-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 14px;
+  cursor: default;
+  padding: 0 10px;
+  height: 26px;
+  white-space: nowrap;
+}
+
+.db-table-header-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.06s ease;
+}
+
+.db-table-header-add-btn:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-foreground);
+}
+
+/* ── Resize Handle ───────────────────────────────────────────────────────── */
+
+.db-table-resize-handle {
+  position: absolute;
+  right: -1px;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 3;
+  border-radius: 2px;
+}
+
+.db-table-resize-handle:hover,
+.db-table-resize-handle.db-table-resize-handle--active {
+  background: var(--vscode-focusBorder, #007acc);
+}
+
+/* Prevent text selection while resizing */
+.db-resizing {
+  user-select: none !important;
+  cursor: col-resize !important;
+}
+
+/* ── Body ────────────────────────────────────────────────────────────────── */
+
+.db-table-body {
+  flex: 1;
+}
+
+.db-table-row {
+  display: grid;
+  grid-template-columns: var(--db-table-grid-template);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.015));
+  min-height: 34px;
+  transition: background 0.06s ease;
+}
+
+.db-table-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.03));
+}
+
+.db-table-cell {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: default;
+  min-height: 34px;
+  border-right: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.012));
+}
+
+.db-table-cell--spacer {
+  min-width: 0;
+  border-right: none;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
+.db-table-footer {
+  padding: 8px 0 0;
+}
+
+.db-table-add-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 400;
+  cursor: pointer;
+  width: fit-content;
+  text-align: left;
+  height: 30px;
+  margin: 0;
+  transition: background 0.06s ease;
+}
+
+.db-table-add-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-foreground);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Cell Renderers
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Title ───────────────────────────────────────────────────────────────── */
+
+.db-cell-title {
+  font-weight: 400;
+  cursor: text;
+  color: var(--vscode-foreground);
+  font-size: 14px;
+}
+
+.db-cell-page-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  line-height: 1;
+}
+
+.db-cell-page-icon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.db-table-cell--title {
+  position: relative;
+}
+
+.db-cell-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.db-cell-page-icon-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.db-cell-page-icon-btn:hover {
+  color: var(--vscode-foreground);
+}
+
+.db-cell-title-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: text;
+  text-align: left;
+  min-width: 0;
+  flex: 1;
+}
+
+.db-cell-title-btn .db-cell-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-cell-open-btn {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 1px 7px;
+  height: 22px;
+  margin-left: 6px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+  flex-shrink: 0;
+}
+
+.db-cell-open-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.9;
+}
+
+.db-cell-open-btn-icon svg {
+  width: 11px;
+  height: 11px;
+  display: block;
+}
+
+.db-cell-open-btn-label {
+  line-height: 1;
+}
+
+.db-table-row:hover .db-cell-open-btn,
+.db-table-cell--title:hover .db-cell-open-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.db-cell-open-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--vscode-foreground);
+}
+
+.db-cell-title:hover {
+  text-decoration: none;
+}
+
+/* ── Text ────────────────────────────────────────────────────────────────── */
+
+.db-cell-text {
+  color: var(--vscode-foreground);
+}
+
+/* ── Number ──────────────────────────────────────────────────────────────── */
+
+.db-cell-number {
+  font-variant-numeric: tabular-nums;
+  color: var(--vscode-foreground);
+  text-align: right;
+}
+
+/* ── Checkbox ────────────────────────────────────────────────────────────── */
+
+.db-cell-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--vscode-descriptionForeground, rgba(155, 155, 155, 0.6));
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.db-cell-checkbox.checked {
+  background: var(--vscode-focusBorder, #2383e2);
+  border-color: var(--vscode-focusBorder, #2383e2);
+  color: #fff;
+}
+
+/* ── Select / Multi-Select / Status — Pill badges ────────────────────────── */
+
+.db-cell-pill-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.db-cell-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Pill color variants — Notion-inspired palette */
+.db-cell-pill--default     { background: rgba(255, 255, 255, 0.06); color: var(--vscode-foreground); }
+.db-cell-pill--gray        { background: rgba(155, 154, 151, 0.15); color: rgba(155, 154, 151, 1); }
+.db-cell-pill--brown       { background: rgba(140, 120, 100, 0.15); color: rgba(186, 133, 111, 1); }
+.db-cell-pill--orange      { background: rgba(245, 174, 60, 0.15);  color: rgba(245, 174, 60, 1); }
+.db-cell-pill--yellow      { background: rgba(230, 204, 70, 0.15);  color: rgba(230, 204, 70, 1); }
+.db-cell-pill--green       { background: rgba(77, 171, 104, 0.15);  color: rgba(77, 171, 104, 1); }
+.db-cell-pill--blue        { background: rgba(71, 144, 204, 0.15);  color: rgba(71, 144, 204, 1); }
+.db-cell-pill--purple      { background: rgba(164, 120, 212, 0.15); color: rgba(164, 120, 212, 1); }
+.db-cell-pill--pink        { background: rgba(224, 105, 169, 0.15); color: rgba(224, 105, 169, 1); }
+.db-cell-pill--red         { background: rgba(224, 93, 93, 0.15);   color: rgba(224, 93, 93, 1); }
+
+/* ── Date ────────────────────────────────────────────────────────────────── */
+
+.db-cell-date {
+  color: var(--vscode-foreground);
+  font-size: 14px;
+}
+
+/* ── URL / Email links ───────────────────────────────────────────────────── */
+
+.db-cell-url,
+.db-cell-email {
+  color: var(--vscode-textLink-foreground, #4ea1d3);
+  text-decoration: none;
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: text-decoration-color 0.15s;
+}
+
+.db-cell-url:hover,
+.db-cell-email:hover {
+  text-decoration-color: var(--vscode-textLink-foreground, #4ea1d3);
+}
+
+/* ── Phone ───────────────────────────────────────────────────────────────── */
+
+.db-cell-phone {
+  color: var(--vscode-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Files ───────────────────────────────────────────────────────────────── */
+
+.db-cell-files {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  overflow: hidden;
+}
+
+.db-cell-file-link {
+  color: var(--vscode-textLink-foreground, #4ea1d3);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.db-cell-file-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Timestamp ───────────────────────────────────────────────────────────── */
+
+.db-cell-timestamp {
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 12px;
+}
+
+/* ── Unique ID ───────────────────────────────────────────────────────────── */
+
+.db-cell-unique-id {
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+}
+
+/* ── Relation ────────────────────────────────────────────────────────────── */
+
+.db-cell-relation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.db-cell-relation-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--vscode-textLink-foreground, #4fc1ff);
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+
+.db-cell-relation-pill:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.10));
+  text-decoration: underline;
+}
+
+/* ── Rollup ──────────────────────────────────────────────────────────────── */
+
+.db-cell-rollup {
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Formula ─────────────────────────────────────────────────────────────── */
+
+.db-cell-formula {
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.db-cell-formula-error {
+  color: var(--vscode-errorForeground, #e74856);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* ── Empty placeholder ───────────────────────────────────────────────────── */
+
+.db-cell-empty {
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 0.5));
+  opacity: 0.5;
+  font-style: normal;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Cell Editors
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-cell-editor-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1.5px solid var(--vscode-focusBorder, #007acc);
+  border-radius: 4px;
+  background: var(--vscode-input-background, rgba(0, 0, 0, 0.3));
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  min-height: 28px;
+  box-sizing: border-box;
+}
+
+.db-cell-editor-input:focus {
+  border-color: var(--vscode-focusBorder, #007acc);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007acc);
+}
+
+/* Date editor variant */
+.db-cell-editor-date {
+  color-scheme: dark;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Property Header Config
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Inline rename input in header cell */
+.db-header-rename-input {
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid var(--vscode-focusBorder, #007acc);
+  border-radius: 3px;
+  background: var(--vscode-input-background, rgba(0, 0, 0, 0.3));
+  color: var(--vscode-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  outline: none;
+  box-sizing: border-box;
+}
+
+/* Option dot in select/multi-select menus */
+.db-option-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background-color: var(--db-dot-color, var(--vscode-descriptionForeground));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Empty State & Placeholder
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-host-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--vscode-descriptionForeground);
+  font-size: 14px;
+  opacity: 0.6;
+  padding: 32px;
+  text-align: center;
+}
+
+.db-view-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--vscode-descriptionForeground);
+  font-size: 14px;
+  opacity: 0.5;
+  padding: 32px;
+  text-align: center;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sidebar — Database Page Icon Override
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.canvas-node-icon--database {
+  opacity: 0.7;
+  font-size: 14px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Toolbar (Filter / Sort / Group / Properties / New)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 0;
+  background: var(--vscode-editor-background);
+  min-height: 26px;
+}
+
+.db-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 26px;
+  height: 26px;
+  transition: background 0.1s;
+}
+
+.db-toolbar-icon-btn {
+  position: relative;
+}
+
+.db-toolbar-text-btn {
+  gap: 6px;
+  min-width: auto;
+  padding: 3px 8px;
+}
+
+.db-toolbar-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+}
+
+.db-toolbar-btn-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.db-toolbar-btn-label {
+  display: none;
+}
+
+.db-toolbar-btn-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--vscode-badge-background, var(--vscode-focusBorder, #2383e2));
+  color: var(--vscode-badge-foreground, #fff);
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+}
+
+.db-toolbar-btn:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  color: var(--vscode-foreground);
+}
+
+.db-toolbar-btn--active {
+  color: var(--vscode-textLink-foreground, #2383e2);
+}
+
+.db-toolbar-btn--open {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-foreground);
+}
+
+/* Spacer to push New button to the right */
+.db-toolbar-spacer {
+  flex: 1;
+}
+
+/* New split button — primary action + menu */
+.db-toolbar-new-group {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 5px;
+  background: var(--vscode-button-background, #2383e2);
+  overflow: hidden;
+  white-space: nowrap;
+  height: 26px;
+}
+
+.db-toolbar-new-main-btn,
+.db-toolbar-new-menu-btn {
+  border: none;
+  background: transparent;
+  color: var(--vscode-button-foreground, #fff);
+  cursor: pointer;
+  height: 26px;
+  transition: background 0.12s;
+}
+
+.db-toolbar-new-main-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.db-toolbar-new-menu-btn {
+  width: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.db-toolbar-new-main-btn:hover,
+.db-toolbar-new-menu-btn:hover {
+  background: var(--vscode-button-hoverBackground, #1b6ec2);
+}
+
+.db-toolbar-panel-container {
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-editor-background);
+}
+
+.db-toolbar-panel-container:empty {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Filter Panel
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-filter-panel {
+  padding: 8px 12px;
+}
+
+.db-filter-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.db-filter-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.db-filter-conjunction-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.db-filter-conjunction-btn:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+
+.db-filter-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.db-filter-rule {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.db-filter-rule-prop,
+.db-filter-rule-op,
+.db-filter-rule-value {
+  padding: 3px 8px;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  background: var(--vscode-input-background, rgba(0, 0, 0, 0.2));
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.db-filter-rule-prop:hover,
+.db-filter-rule-op:hover,
+.db-filter-rule-value:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+
+.db-filter-rule-input {
+  padding: 3px 6px;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  background: var(--vscode-input-background, rgba(0, 0, 0, 0.2));
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  outline: none;
+  min-width: 100px;
+}
+
+.db-filter-rule-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.db-filter-rule-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.5;
+}
+
+.db-filter-rule-remove:hover {
+  opacity: 1;
+  background: rgba(224, 93, 93, 0.15);
+  color: rgba(224, 93, 93, 1);
+}
+
+.db-filter-add-rule {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  margin-top: 4px;
+}
+
+.db-filter-add-rule:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+  color: var(--vscode-foreground);
+}
+
+.db-filter-empty {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.5;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sort Panel
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-sort-panel {
+  padding: 8px 12px;
+}
+
+.db-sort-panel-header {
+  margin-bottom: 8px;
+}
+
+.db-sort-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.db-sort-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.db-sort-rule {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.db-sort-rule-prop,
+.db-sort-rule-dir {
+  padding: 3px 8px;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  background: var(--vscode-input-background, rgba(0, 0, 0, 0.2));
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.db-sort-rule-prop:hover,
+.db-sort-rule-dir:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+
+.db-sort-rule-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.5;
+}
+
+.db-sort-rule-remove:hover {
+  opacity: 1;
+  background: rgba(224, 93, 93, 0.15);
+  color: rgba(224, 93, 93, 1);
+}
+
+.db-sort-add-rule {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  margin-top: 4px;
+}
+
+.db-sort-add-rule:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+  color: var(--vscode-foreground);
+}
+
+.db-sort-empty {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.5;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Group Panel
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-group-panel {
+  padding: 8px 12px;
+}
+
+.db-group-panel-header {
+  margin-bottom: 8px;
+}
+
+.db-group-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.db-group-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.db-group-section-label {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  min-width: 80px;
+}
+
+.db-group-selector {
+  padding: 3px 10px;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  background: var(--vscode-input-background, rgba(0, 0, 0, 0.2));
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.db-group-selector:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+
+.db-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+
+.db-group-toggle input[type="checkbox"] {
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Properties Visibility Panel
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-props-panel {
+  padding: 8px 12px;
+}
+
+.db-props-panel-header {
+  margin-bottom: 8px;
+}
+
+.db-props-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.db-props-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.db-props-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: default;
+}
+
+.db-props-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.db-props-row--dragging {
+  opacity: 0.4;
+}
+
+.db-props-row--dragover {
+  border-top: 2px solid var(--vscode-focusBorder, #007acc);
+}
+
+.db-props-drag-handle {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.4;
+  font-size: 10px;
+  cursor: grab;
+  user-select: none;
+}
+
+.db-props-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--vscode-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-props-label--title {
+  font-weight: 600;
+}
+
+.db-props-toggle {
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Table View — Group Headers
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-table-group-header {
+  display: grid;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.03));
+}
+
+.db-table-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.db-table-group-toggle:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.db-table-group-arrow {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  width: 12px;
+  text-align: center;
+}
+
+.db-table-group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.db-table-group-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Board View
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-board {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  height: 100%;
+  align-items: flex-start;
+}
+
+/* ── Column ──────────────────────────────────────────────────────────────── */
+
+.db-board-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+  max-width: 320px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.03));
+}
+
+.db-board-column--collapsed {
+  min-width: auto;
+  max-width: 40px;
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
+}
+
+.db-board-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  user-select: none;
+  cursor: pointer;
+}
+
+.db-board-column-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.db-board-column-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.db-board-column-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-board-column-count {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.6;
+}
+
+.db-board-column-collapse {
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.db-board-column-header:hover .db-board-column-collapse {
+  opacity: 1;
+}
+
+.db-board-column-collapse:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+}
+
+/* ── Cards Container ─────────────────────────────────────────────────────── */
+
+.db-board-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px 8px;
+  min-height: 40px;
+}
+
+.db-board-cards--dragover {
+  background: rgba(71, 144, 204, 0.06);
+  border-radius: 4px;
+}
+
+/* ── Card ────────────────────────────────────────────────────────────────── */
+
+.db-board-card {
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.06));
+  border-radius: 4px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: box-shadow 0.12s, border-color 0.12s;
+}
+
+.db-board-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.db-board-card--dragging {
+  opacity: 0.4;
+}
+
+.db-board-card-cover {
+  height: 80px;
+  margin: -8px -10px 8px;
+  border-radius: 4px 4px 0 0;
+  background-image: var(--db-cover-url);
+  background-size: cover;
+  background-position: center;
+}
+
+.db-board-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-board-card-props {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.db-board-card-prop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.db-board-card-prop-label {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.6;
+  min-width: 50px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-board-card-prop-value {
+  color: var(--vscode-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Board Add Row ───────────────────────────────────────────────────────── */
+
+.db-board-add-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.db-board-add-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+  color: var(--vscode-foreground);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sort Drag-to-Reorder
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-sort-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  cursor: grab;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.4;
+  font-size: 11px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.db-sort-drag-handle:hover {
+  opacity: 0.8;
+}
+
+.db-sort-rule--dragging {
+  opacity: 0.35;
+}
+
+.db-sort-rule--dragover {
+  border-top: 2px solid var(--vscode-focusBorder, rgba(100, 149, 237, 0.8));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Table Sort Arrow Indicator
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-table-sort-arrow {
+  display: inline;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  margin-left: 2px;
+  opacity: 0.7;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Board Card Drop Indicators
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-board-card--drop-before {
+  border-top: 2px solid var(--vscode-focusBorder, rgba(100, 149, 237, 0.8));
+  margin-top: -2px;
+}
+
+.db-board-card--drop-after {
+  border-bottom: 2px solid var(--vscode-focusBorder, rgba(100, 149, 237, 0.8));
+  margin-bottom: -2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   List View
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0 24px;
+}
+
+.db-list-group {
+  margin-bottom: 4px;
+}
+
+.db-list-group-header,
+.db-list-subgroup-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  user-select: none;
+}
+
+.db-list-subgroup-header {
+  padding-left: 16px;
+}
+
+.db-list-group-toggle {
+  font-size: 10px;
+  width: 14px;
+  text-align: center;
+}
+
+.db-list-group-count {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.6;
+  font-weight: 400;
+}
+
+.db-list-group-rows {
+  margin-left: 0;
+}
+
+.db-list-subgroup {
+  margin-left: 16px;
+}
+
+.db-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.08s;
+  min-height: 32px;
+}
+
+.db-list-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.db-list-row-title {
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--vscode-foreground);
+  min-width: 120px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.db-list-row-props {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.db-list-row-prop {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.db-list-row-prop-label {
+  color: var(--vscode-descriptionForeground);
+  flex-shrink: 0;
+}
+
+.db-list-row-prop-value {
+  color: var(--vscode-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-list-footer {
+  padding: 8px 8px;
+}
+
+.db-list-add-row {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 13px;
+  border-radius: 4px;
+}
+
+.db-list-add-row:hover {
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Gallery View
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-gallery {
+  padding: 16px 24px;
+}
+
+.db-gallery-group {
+  margin-bottom: 16px;
+}
+
+.db-gallery-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  user-select: none;
+}
+
+.db-gallery-group-toggle {
+  font-size: 10px;
+  width: 14px;
+  text-align: center;
+}
+
+.db-gallery-group-count {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.6;
+  font-weight: 400;
+}
+
+.db-gallery-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.db-gallery-card {
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.06));
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+  background: var(--vscode-editor-background);
+}
+
+.db-gallery-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  border-color: var(--vscode-focusBorder);
+}
+
+.db-gallery-card-cover {
+  height: 140px;
+  overflow: hidden;
+  background: var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.04));
+}
+
+.db-gallery-card-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.db-gallery-card-body {
+  padding: 10px 12px;
+}
+
+.db-gallery-card-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--vscode-foreground);
+  margin-bottom: 6px;
+}
+
+.db-gallery-card-icon {
+  font-size: 16px;
+}
+
+.db-gallery-card-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-gallery-card-props {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.db-gallery-card-prop {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-gallery-card-prop-value {
+  color: var(--vscode-foreground);
+}
+
+.db-gallery-footer {
+  padding: 12px 0;
+}
+
+.db-gallery-add-row {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 13px;
+  border-radius: 4px;
+}
+
+.db-gallery-add-row:hover {
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Calendar View
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-calendar {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 24px;
+  height: 100%;
+}
+
+.db-calendar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 12px;
+  user-select: none;
+}
+
+.db-calendar-nav-btn {
+  background: none;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.db-calendar-nav-btn:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.db-calendar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  min-width: 180px;
+  text-align: center;
+}
+
+.db-calendar-today-btn {
+  background: none;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  padding: 4px 12px;
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.db-calendar-today-btn:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.db-calendar-day-names {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.06));
+}
+
+.db-calendar-day-name {
+  padding: 4px 0;
+}
+
+.db-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  flex: 1;
+}
+
+.db-calendar-cell {
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.04));
+  border-top: none;
+  border-left: none;
+  min-height: 90px;
+  padding: 4px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.db-calendar-cell:nth-child(7n + 1) {
+  border-left: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.04));
+}
+
+.db-calendar-cell:nth-child(-n + 7) {
+  border-top: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.04));
+}
+
+.db-calendar-cell:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.db-calendar-cell--other-month {
+  opacity: 0.4;
+}
+
+.db-calendar-cell--today .db-calendar-cell-day {
+  background: var(--vscode-focusBorder, #2383e2);
+  color: #fff;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.db-calendar-cell-day {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 4px;
+}
+
+.db-calendar-cell-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.db-calendar-item {
+  font-size: 11px;
+  padding: 2px 4px;
+  background: var(--vscode-focusBorder, #2383e2);
+  color: #fff;
+  border-radius: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.db-calendar-item:hover {
+  opacity: 0.85;
+}
+
+.db-calendar-item-more {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  padding: 1px 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Timeline View
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-timeline {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 8px 0;
+}
+
+.db-timeline-scale-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 4px 24px 8px;
+}
+
+.db-timeline-scale-btn {
+  background: none;
+  border: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.db-timeline-scale-btn:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.db-timeline-scale-btn--active {
+  background: var(--vscode-focusBorder, #2383e2);
+  color: #fff;
+  border-color: var(--vscode-focusBorder, #2383e2);
+}
+
+.db-timeline-scroll {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  position: relative;
+}
+
+.db-timeline-inner {
+  position: relative;
+}
+
+.db-timeline-axis {
+  position: relative;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.06));
+  display: flex;
+  align-items: flex-end;
+}
+
+.db-timeline-tick {
+  position: absolute;
+  bottom: 4px;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+
+.db-timeline-rows {
+  position: relative;
+}
+
+.db-timeline-row-label {
+  position: absolute;
+  left: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 13px;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-right: 1px solid var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.06));
+  background: var(--vscode-editor-background);
+  z-index: 1;
+}
+
+.db-timeline-row-label:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.db-timeline-bar {
+  position: absolute;
+  background: var(--vscode-focusBorder, #2383e2);
+  border-radius: 4px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  cursor: pointer;
+  transition: opacity 0.1s;
+}
+
+.db-timeline-bar:hover {
+  opacity: 0.85;
+}
+
+.db-timeline-bar-title {
+  font-size: 11px;
+  padding: 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.db-timeline-handle {
+  position: absolute;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.db-timeline-handle--left {
+  left: 0;
+  border-radius: 4px 0 0 4px;
+}
+
+.db-timeline-handle--right {
+  right: 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.db-timeline-handle:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.db-timeline-footer {
+  padding: 8px 24px;
+}
+
+.db-timeline-add-row {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 13px;
+  border-radius: 4px;
+}
+
+.db-timeline-add-row:hover {
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Inline Database
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.db-host--inline {
+  position: relative;
+  margin: 0 0 8px;
+  min-height: 120px;
+}
+
+.db-host--inline.db-host-resizing {
+  user-select: none;
+}
+
+/* ── Inline Header (title + actions — sits above the shared controls row) ── */
+
+.db-host-inline-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  min-height: 28px;
+}
+
+.db-host-inline-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  padding: 0;
+  flex-shrink: 1;
+  min-width: 0;
+  cursor: text;
+  border: none;
+  background: transparent;
+  outline: none;
+  line-height: 1.4;
+}
+
+.db-host-inline-title:hover {
+  color: var(--vscode-foreground);
+}
+
+.db-host-inline-title:focus {
+  box-shadow: none;
+}
+
+/* Hover-only buttons next to the inline title (+, ...) */
+.db-host-inline-title-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, rgba(155, 155, 155, 1));
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.1s;
+}
+
+.db-host--inline:hover .db-host-inline-title-btn {
+  opacity: 1;
+}
+
+.db-host-inline-title-btn:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  color: var(--vscode-foreground);
+}
+
+.db-host-inline-title-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Toolbar sits inline with the title in the header row (single-view mode) */
+.db-host--inline:not(.db-host--multiview) .db-host-toolbar {
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.db-host--inline:not(.db-host--multiview):hover .db-host-toolbar {
+  opacity: 1;
+}
+
+/* Multi-view mode: toolbar is in the controls row, always visible */
+.db-host--inline.db-host--multiview .db-host-toolbar {
+  flex-shrink: 0;
+}
+
+/* Controls row for inline multi-view (tab bar + toolbar) */
+.db-host-inline-controls-row {
+  padding: 0 0 4px;
+}
+
+/* ── Inline collapse toggle ──────────────────────────────────────────────── */
+
+.db-host-inline-toolbar-toggle {
+  margin-left: auto;
+  transition: transform 0.12s ease, opacity 0.15s ease;
+  opacity: 0;
+}
+
+.db-host--inline:hover .db-host-inline-toolbar-toggle {
+  opacity: 1;
+}
+
+.db-host-inline-toolbar-toggle--collapsed {
+  transform: none;
+}
+
+.db-toolbar--collapsed {
+  display: none;
+}
+
+/* ── Inline Content ──────────────────────────────────────────────────────── */
+
+.db-host-inline-content {
+  overflow: auto;
+  max-height: 500px;
+}
+
+.db-host-inline-content .db-table,
+.db-host-inline-content .db-board-wrapper,
+.db-host-inline-content .db-list-wrapper,
+.db-host-inline-content .db-gallery-wrapper,
+.db-host-inline-content .db-calendar-wrapper,
+.db-host-inline-content .db-timeline-wrapper {
+  border: none;
+  border-radius: 0;
+  margin: 0;
+}
+
+.db-host-inline-error {
+  padding: 16px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  text-align: center;
+}
+
+/* ── Inline Resize Handle ────────────────────────────────────────────────── */
+
+.db-host-inline-resize-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  background: transparent;
+  transition: background 0.15s ease;
+  z-index: 1;
+}
+
+.db-host-inline-resize-handle:hover,
+.db-host-resizing .db-host-inline-resize-handle {
+  background: var(--vscode-focusBorder, #2383e2);
+  opacity: 0.3;
+}

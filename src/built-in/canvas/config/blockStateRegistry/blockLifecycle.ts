@@ -13,6 +13,49 @@ import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { resolveBlockAncestry } from './blockStateRegistry.js';
 
+// ── Linked-page block deletion hook ──────────────────────────────────────────
+// When a block that owns a child page (pageBlock, databaseInline) is deleted,
+// we fire a callback so the canvas system can run the normal page deletion
+// process.  This keeps blockLifecycle decoupled from the data service.
+
+type LinkedPageDeletedFn = (pageId: string) => void;
+let _onLinkedPageBlockDeleted: LinkedPageDeletedFn | undefined;
+
+/**
+ * Register the handler that runs the page deletion process when a
+ * page-linked block is removed from editor content.  Called once
+ * during canvas activation.
+ */
+export function setOnLinkedPageBlockDeleted(fn: LinkedPageDeletedFn): void {
+  _onLinkedPageBlockDeleted = fn;
+}
+
+/**
+ * Extract the child page ID from a page-linked node, if any.
+ */
+function _getLinkedPageId(node: any): string | undefined {
+  const typeName: string = node?.type?.name;
+  if (typeName === 'pageBlock') return node.attrs?.pageId as string | undefined;
+  if (typeName === 'databaseInline') return node.attrs?.databaseId as string | undefined;
+  if (typeName === 'databaseFullPage') return node.attrs?.databaseId as string | undefined;
+  return undefined;
+}
+
+/**
+ * Notify the registered handler about deleted page-linked blocks.
+ * Safe to call with any node — non-page-linked nodes are ignored.
+ * Used by deleteBlockAt (single) and blockSelection.deleteSelected (batch).
+ */
+export function notifyLinkedPageBlocksDeleted(nodes: any[]): void {
+  if (!_onLinkedPageBlockDeleted) return;
+  for (const node of nodes) {
+    const pageId = _getLinkedPageId(node);
+    if (pageId) {
+      _onLinkedPageBlockDeleted(pageId);
+    }
+  }
+}
+
 export function duplicateBlockAt(
   editor: Editor,
   pos: number,
@@ -34,6 +77,9 @@ export function duplicateBlockAt(
 }
 
 export function deleteBlockAt(editor: Editor, pos: number, node: any): void {
+  // If the block owns a child page, trigger the normal page deletion process.
+  notifyLinkedPageBlocksDeleted([node]);
+
   // Resolve column context BEFORE the delete so we know where to backfill.
   const $pos = editor.state.doc.resolve(pos);
   const ancestry = resolveBlockAncestry($pos);

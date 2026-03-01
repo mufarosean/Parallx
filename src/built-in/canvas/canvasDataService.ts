@@ -75,6 +75,39 @@ export function rowToPage(row: Record<string, unknown>): IPage {
   };
 }
 
+function collectLinkedChildPageIds(node: any, result: Set<string>): void {
+  if (!node || typeof node !== 'object') return;
+
+  const nodeType = typeof node.type === 'string' ? node.type : '';
+  const attrs = (node.attrs && typeof node.attrs === 'object') ? node.attrs as Record<string, unknown> : undefined;
+
+  if (nodeType === 'pageBlock') {
+    const pageId = attrs?.pageId;
+    if (typeof pageId === 'string' && pageId.trim().length > 0) {
+      result.add(pageId);
+    }
+  }
+
+  if (nodeType === 'databaseInline') {
+    const databaseId = attrs?.databaseId;
+    if (typeof databaseId === 'string' && databaseId.trim().length > 0) {
+      result.add(databaseId);
+    }
+  }
+
+  if (nodeType === 'databaseFullPage') {
+    const databaseId = attrs?.databaseId;
+    if (typeof databaseId === 'string' && databaseId.trim().length > 0) {
+      result.add(databaseId);
+    }
+  }
+
+  const children = Array.isArray((node as any).content) ? (node as any).content : [];
+  for (const child of children) {
+    collectLinkedChildPageIds(child, result);
+  }
+}
+
 // ─── CanvasDataService ───────────────────────────────────────────────────────
 
 /**
@@ -225,6 +258,22 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   }
 
   /**
+   * Full-pass reconciliation used at startup to enforce block-driven hierarchy.
+   * A page is nested only when referenced by a pageBlock/databaseInline block.
+   */
+  async reconcileEmbeddedHierarchyForAllPages(): Promise<void> {
+    const result = await this._db.all('SELECT id, content FROM pages WHERE is_archived = 0');
+    if (result.error) throw new Error(result.error.message);
+
+    for (const row of result.rows ?? []) {
+      const pageId = row.id;
+      const content = row.content;
+      if (typeof pageId !== 'string' || typeof content !== 'string') continue;
+      await this._reconcileEmbeddedChildren(pageId, content);
+    }
+  }
+
+  /**
    * Update a page's mutable fields (title, icon, content).
    * Sets updated_at to the current timestamp.
    */
@@ -312,6 +361,14 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
 
     const page = await this.getPage(pageId);
     if (!page) throw new Error(`[CanvasDataService] Page "${pageId}" not found after update`);
+
+    if (updates.content !== undefined) {
+      try {
+        await this._reconcileEmbeddedChildren(pageId, page.content);
+      } catch (err) {
+        console.error(`[CanvasDataService] Embedded hierarchy reconcile failed for page "${pageId}":`, err);
+      }
+    }
 
     this._knownRevisions.set(pageId, page.revision);
     this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page });
@@ -501,8 +558,14 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * Delete a page. Cascading delete removes all descendants (FK ON DELETE CASCADE).
    */
   async deletePage(pageId: string): Promise<void> {
+    const deletedIds = await this._getPageSubtreeIds(pageId);
+
     const result = await this._db.run('DELETE FROM pages WHERE id = ?', [pageId]);
     if (result.error) throw new Error(result.error.message);
+
+    for (const deletedId of deletedIds) {
+      await this._removeLinkedBlocksForPageId(deletedId);
+    }
 
     // Cancel any pending auto-save for this page
     this._cancelPendingSave(pageId);
@@ -760,14 +823,10 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * Soft-delete a page by setting is_archived = 1.
    */
   async archivePage(pageId: string): Promise<void> {
-    const result = await this._db.run(
-      `UPDATE pages SET is_archived = 1, updated_at = datetime('now') WHERE id = ?`,
-      [pageId],
-    );
-    if (result.error) throw new Error(result.error.message);
-    this._cancelPendingSave(pageId);
-    this._cancelRetry(pageId);
-    this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId });
+    const archivedIds = await this._archivePageSubtree(pageId);
+    for (const archivedId of archivedIds) {
+      await this._removeLinkedBlocksForPageId(archivedId);
+    }
   }
 
   /**
@@ -789,8 +848,15 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
    * Permanently delete a page (true delete, not soft).
    */
   async permanentlyDeletePage(pageId: string): Promise<void> {
+    const deletedIds = await this._getPageSubtreeIds(pageId);
+
     const result = await this._db.run('DELETE FROM pages WHERE id = ?', [pageId]);
     if (result.error) throw new Error(result.error.message);
+
+    for (const deletedId of deletedIds) {
+      await this._removeLinkedBlocksForPageId(deletedId);
+    }
+
     this._cancelPendingSave(pageId);
     this._cancelRetry(pageId);
     this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId });
@@ -1016,6 +1082,179 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     }
 
     return roots;
+  }
+
+  private _extractLinkedChildPageIds(storedContent: string): Set<string> {
+    const decoded = decodeCanvasContent(storedContent);
+    const linkedIds = new Set<string>();
+    collectLinkedChildPageIds(decoded.doc, linkedIds);
+    return linkedIds;
+  }
+
+  private _pruneLinkedBlocks(node: any, targetPageId: string): { node: any; changed: boolean } {
+    if (!node || typeof node !== 'object') {
+      return { node, changed: false };
+    }
+
+    const attrs = (node.attrs && typeof node.attrs === 'object') ? node.attrs as Record<string, unknown> : undefined;
+    const nodeType = typeof node.type === 'string' ? node.type : '';
+    const isTargetPageBlock = nodeType === 'pageBlock' && attrs?.pageId === targetPageId;
+    const isTargetDatabaseInline = nodeType === 'databaseInline' && attrs?.databaseId === targetPageId;
+    const isTargetDatabaseFullPage = nodeType === 'databaseFullPage' && attrs?.databaseId === targetPageId;
+
+    if (isTargetPageBlock || isTargetDatabaseInline || isTargetDatabaseFullPage) {
+      return { node: null, changed: true };
+    }
+
+    const content = Array.isArray((node as any).content) ? (node as any).content : null;
+    if (!content) {
+      return { node, changed: false };
+    }
+
+    const nextContent: any[] = [];
+    let changed = false;
+    for (const child of content) {
+      const pruned = this._pruneLinkedBlocks(child, targetPageId);
+      if (pruned.changed) changed = true;
+      if (pruned.node != null) {
+        nextContent.push(pruned.node);
+      }
+    }
+
+    if (!changed) {
+      return { node, changed: false };
+    }
+
+    return {
+      node: {
+        ...node,
+        content: nextContent,
+      },
+      changed: true,
+    };
+  }
+
+  private async _removeLinkedBlocksForPageId(targetPageId: string): Promise<void> {
+    const result = await this._db.all('SELECT id, content FROM pages WHERE is_archived = 0');
+    if (result.error) throw new Error(result.error.message);
+
+    for (const row of result.rows ?? []) {
+      const pageId = row.id;
+      const storedContent = row.content;
+      if (typeof pageId !== 'string' || typeof storedContent !== 'string') continue;
+
+      const decoded = decodeCanvasContent(storedContent);
+      const pruned = this._pruneLinkedBlocks(decoded.doc, targetPageId);
+      if (!pruned.changed) continue;
+
+      const encoded = encodeCanvasContentFromDoc(pruned.node);
+      const updateResult = await this._db.run(
+        `UPDATE pages
+         SET content = ?,
+             content_schema_version = ?,
+             revision = revision + 1,
+             updated_at = datetime('now')
+         WHERE id = ?`,
+        [encoded.storedContent, encoded.schemaVersion, pageId],
+      );
+      if (updateResult.error) throw new Error(updateResult.error.message);
+
+      try {
+        await this._reconcileEmbeddedChildren(pageId, encoded.storedContent);
+      } catch (err) {
+        console.error(`[CanvasDataService] Embedded hierarchy reconcile failed for page "${pageId}" after block prune:`, err);
+      }
+
+      const updated = await this.getPage(pageId);
+      if (updated) {
+        this._knownRevisions.set(pageId, updated.revision);
+        this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page: updated });
+      }
+    }
+  }
+
+  private async _getPageSubtreeIds(rootPageId: string): Promise<string[]> {
+    const idsResult = await this._db.all(
+      `WITH RECURSIVE subtree(id) AS (
+         SELECT id FROM pages WHERE id = ?
+         UNION ALL
+         SELECT p.id FROM pages p JOIN subtree s ON p.parent_id = s.id
+       )
+       SELECT id FROM subtree`,
+      [rootPageId],
+    );
+    if (idsResult.error) throw new Error(idsResult.error.message);
+
+    return (idsResult.rows ?? [])
+      .map(row => row.id)
+      .filter((id): id is string => typeof id === 'string');
+  }
+
+  private async _archivePageSubtree(rootPageId: string): Promise<string[]> {
+    const ids = await this._getPageSubtreeIds(rootPageId);
+
+    if (ids.length === 0) return [];
+
+    const archiveResult = await this._db.run(
+      `WITH RECURSIVE subtree(id) AS (
+         SELECT id FROM pages WHERE id = ?
+         UNION ALL
+         SELECT p.id FROM pages p JOIN subtree s ON p.parent_id = s.id
+       )
+       UPDATE pages
+       SET is_archived = 1,
+           updated_at = datetime('now')
+       WHERE id IN (SELECT id FROM subtree)`,
+      [rootPageId],
+    );
+    if (archiveResult.error) throw new Error(archiveResult.error.message);
+
+    for (const id of ids) {
+      this._cancelPendingSave(id);
+      this._cancelRetry(id);
+      this._knownRevisions.delete(id);
+      this._onDidChangePage.fire({ kind: PageChangeKind.Deleted, pageId: id });
+    }
+
+    return ids;
+  }
+
+  private async _reconcileEmbeddedChildren(parentPageId: string, storedContent: string): Promise<void> {
+    const linkedChildIds = this._extractLinkedChildPageIds(storedContent);
+
+    for (const childId of linkedChildIds) {
+      if (childId === parentPageId) continue;
+      const childResult = await this._db.get(
+        'SELECT id, parent_id, is_archived FROM pages WHERE id = ?',
+        [childId],
+      );
+      if (childResult.error) throw new Error(childResult.error.message);
+      const row = childResult.row;
+      if (!row) continue;
+
+      if ((row.is_archived as number) === 1) {
+        const restoreResult = await this._db.run(
+          `UPDATE pages
+           SET is_archived = 0,
+               parent_id = ?,
+               updated_at = datetime('now')
+           WHERE id = ?`,
+          [parentPageId, childId],
+        );
+        if (restoreResult.error) throw new Error(restoreResult.error.message);
+
+        const restored = await this.getPage(childId);
+        if (restored) {
+          this._knownRevisions.set(childId, restored.revision);
+          this._onDidChangePage.fire({ kind: PageChangeKind.Created, pageId: childId, page: restored });
+        }
+        continue;
+      }
+
+      if ((row.parent_id as string | null) !== parentPageId) {
+        await this.movePage(childId, parentPageId);
+      }
+    }
   }
 
   override dispose(): void {

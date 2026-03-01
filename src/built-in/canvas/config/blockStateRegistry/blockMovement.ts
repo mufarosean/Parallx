@@ -12,7 +12,6 @@
 import type { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import {
-  PAGE_CONTAINERS,
   resolveBlockAncestry,
   cleanupEmptyColumn,
   isColumnEffectivelyEmpty,

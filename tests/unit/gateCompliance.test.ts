@@ -25,6 +25,7 @@ const GATE_FILES = new Set([
   'menus/canvasMenuRegistry.ts',
   'config/blockStateRegistry/blockStateRegistry.ts',
   'handles/handleRegistry.ts',
+  'database/databaseRegistry.ts',
 ]);
 
 // ── Gate-to-gate allowed edges ──────────────────────────────────────────────
@@ -36,10 +37,11 @@ const GATE_FILES = new Set([
 
 const GATE_IMPORT_RULES: Record<string, string[]> = {
   'config/iconRegistry.ts':                         [],  // leaf — no gate deps
-  'config/blockRegistry.ts':                         ['config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry'],
+  'config/blockRegistry.ts':                         ['config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry', 'database/databaseTypes', 'database/databaseRegistry'],
   'menus/canvasMenuRegistry.ts':                     ['config/blockRegistry', 'config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/blockStateRegistry.ts': ['config/blockRegistry'],
   'handles/handleRegistry.ts':                       ['config/blockRegistry', 'config/iconRegistry', 'config/blockStateRegistry/blockStateRegistry', 'menus/canvasMenuRegistry'],
+  'database/databaseRegistry.ts':                    ['config/iconRegistry', 'canvasTypes', 'header/pageChrome'],
 };
 
 // ── Orchestrators (exempt — they wire gates together) ───────────────────────
@@ -53,6 +55,9 @@ const EXEMPT_FILES = new Set([
   'markdownExport.ts',             // Export utility
   'main.ts',                       // Activation entry point
   'canvas.css',                    // Stylesheet
+  'database/databaseTypes.ts',     // Database type definitions (M8)
+  'database/databaseDataService.ts', // Database data layer (M8)
+  'database/database.css',         // Database stylesheet (M8 Phase 2)
 ]);
 
 // ── Child → allowed gate path fragments ─────────────────────────────────────
@@ -76,7 +81,7 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/bookmarkNode.ts':            ['config/blockRegistry'],
   'extensions/pageBlockNode.ts':           ['config/blockRegistry'],
   'header/pageChrome.ts':                  ['config/blockRegistry'],
-  'canvasSidebar.ts':                      ['config/blockRegistry'],
+  'canvasSidebar.ts':                      ['config/blockRegistry', 'database/databaseRegistry'],
 
   // tiptapExtensions.ts — assembler role: imports from blockRegistry +
   // infrastructure extensions that have zero canvas-internal imports.
@@ -123,12 +128,35 @@ const GATE_RULES: Record<string, string[]> = {
   'extensions/mathBlockNode.ts':           [],
   'extensions/tableOfContentsNode.ts':     [],
   'extensions/toggleHeadingNode.ts':       [],
+  'extensions/databaseInlineNode.ts':      ['config/blockRegistry'],
+  'extensions/databaseFullPageNode.ts':    ['config/blockRegistry'],
 
   // structuralInvariantPlugin imports from invariants/ — same pattern.
   'plugins/structuralInvariantPlugin.ts':  ['invariants/'],
 
   // ── Standalone utilities ────────────────────────────────────────────────
   'invariants/canvasStructuralInvariants.ts': [],  // zero relative imports
+
+  // ── DatabaseRegistry children ────────────────────────────────────────────
+  'database/databaseEditorProvider.ts':          ['database/databaseRegistry'],
+  'database/databaseViewHost.ts':                  ['database/databaseRegistry'],
+  'database/views/tableView.ts':                 ['database/databaseRegistry'],
+  'database/views/viewTabBar.ts':                ['database/databaseRegistry'],
+  'database/properties/propertyRenderers.ts':    ['database/databaseRegistry'],
+  'database/properties/propertyEditors.ts':      ['database/databaseRegistry'],
+  'database/properties/propertyConfig.ts':       ['database/databaseRegistry'],
+  'database/filters/filterEngine.ts':              ['database/databaseRegistry'],
+  'database/filters/filterUI.ts':                  ['database/databaseRegistry'],
+  'database/views/boardView.ts':                   ['database/databaseRegistry'],
+  'database/views/listView.ts':                    ['database/databaseRegistry'],
+  'database/views/galleryView.ts':                 ['database/databaseRegistry'],
+  'database/views/calendarView.ts':                ['database/databaseRegistry'],
+  'database/views/timelineView.ts':                ['database/databaseRegistry'],
+  'database/views/databaseToolbar.ts':             ['database/databaseRegistry'],
+  'database/relations/relationResolver.ts':          ['database/databaseRegistry'],
+  'database/relations/rollupEngine.ts':              ['database/databaseRegistry'],
+  'database/properties/formulaEngine.ts':             ['database/databaseRegistry'],
+  'database/polish/databaseTemplateService.ts':       ['database/databaseRegistry'],
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
