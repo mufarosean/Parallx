@@ -164,16 +164,25 @@
   color: var(--vscode-descriptionForeground, #989898);
 }
 
-.parallx-chat-offline-icon {
-  font-size: 40px;
+.parallx-chat-offline-spinner {
+  width: 24px;
+  height: 24px;
   margin-bottom: 16px;
-  opacity: 0.5;
+  border: 2px solid var(--vscode-descriptionForeground, #989898);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: parallx-chat-spin 0.8s linear infinite;
+  opacity: 0.6;
+}
+
+@keyframes parallx-chat-spin {
+  to { transform: rotate(360deg); }
 }
 
 .parallx-chat-offline-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--vscode-errorForeground, #f48771);
+  color: var(--vscode-descriptionForeground, #989898);
   margin-bottom: 8px;
 }
 

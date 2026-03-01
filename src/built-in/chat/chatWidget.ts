@@ -347,17 +347,17 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private _buildOfflineState(): HTMLElement {
     const root = $('div.parallx-chat-offline-state');
 
-    const icon = $('div.parallx-chat-offline-icon', '\u26A0');
-    const title = $('div.parallx-chat-offline-title', 'Ollama not detected');
+    const spinner = $('div.parallx-chat-offline-spinner');
+    const title = $('div.parallx-chat-offline-title', 'Connecting to Ollama\u2026');
 
     const instruction = $('div.parallx-chat-offline-instruction');
     instruction.innerHTML = [
-      'Parallx uses <strong>Ollama</strong> for local AI.',
-      'Install it from <a href="https://ollama.com">ollama.com</a>,',
-      'then run <code>ollama serve</code> to start.',
+      'Looking for a local <strong>Ollama</strong> server.',
+      'If Ollama is not installed, get it from',
+      '<a href="https://ollama.com">ollama.com</a>.',
     ].join(' ');
 
-    append(root, icon, title, instruction);
+    append(root, spinner, title, instruction);
     return root;
   }
 }
