@@ -396,10 +396,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getSessions: () => chatService.getSessions(),
     getSession: (id: string) => chatService.getSession(id),
     deleteSession: (id: string) => chatService.deleteSession(id),
-    // Context indicator (token usage vs. context window)
-    contextIndicator: {
-      getContextLength: () => _ollamaProvider?.getActiveModelContextLength?.() ?? 0,
-    },
   };
 
   // ── 5. Register the chat view in the Auxiliary Bar ──

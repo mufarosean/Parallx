@@ -1034,52 +1034,6 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
- * Context / Token Indicator
- * ═══════════════════════════════════════════════════════════════════════════════ */
-
-.parallx-chat-context-container {
-  flex-shrink: 0;
-}
-
-.parallx-chat-context-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 14px 2px;
-}
-
-.parallx-chat-context-bar {
-  flex: 1;
-  height: 4px;
-  background: var(--vscode-editorWidget-background, #2d2d2d);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.parallx-chat-context-bar-fill {
-  height: 100%;
-  width: 0%;
-  background: var(--vscode-progressBar-background, #0e70c0);
-  border-radius: 2px;
-  transition: width 300ms ease;
-}
-
-.parallx-chat-context-bar-fill--warning {
-  background: var(--vscode-editorWarning-foreground, #cca700);
-}
-
-.parallx-chat-context-bar-fill--danger {
-  background: var(--vscode-editorError-foreground, #f14c4c);
-}
-
-.parallx-chat-context-label {
-  font-size: 10px;
-  color: var(--vscode-descriptionForeground, #8b8b8b);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════════
  * Enhanced Empty State with Feature Hints
  * ═══════════════════════════════════════════════════════════════════════════════ */
 

@@ -2,7 +2,7 @@
 
 // tests/unit/chatGuiComponents.test.ts — Chat GUI component tests
 //
-// Tests for ChatHeaderPart, ChatSessionSidebar, ChatContextIndicator,
+// Tests for ChatHeaderPart, ChatSessionSidebar,
 // and the enhanced empty state with feature hints.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -485,121 +485,5 @@ describe('ChatSessionSidebar', () => {
     expect(container.querySelector('.parallx-chat-session-sidebar')).toBeTruthy();
     sidebar.dispose();
     expect(container.querySelector('.parallx-chat-session-sidebar')).toBeNull();
-  });
-});
-
-// ── ChatContextIndicator ──
-
-describe('ChatContextIndicator', () => {
-
-  let container: HTMLElement;
-
-  beforeEach(() => {
-    container = document.createElement('div');
-    document.body.appendChild(container);
-  });
-
-  it('renders context indicator elements', async () => {
-    const { ChatContextIndicator } = await import('../../src/built-in/chat/chatContextIndicator');
-    const indicator = new ChatContextIndicator(container, { getContextLength: () => 8192 });
-
-    const root = container.querySelector('.parallx-chat-context-indicator');
-    expect(root).toBeTruthy();
-
-    const bar = container.querySelector('.parallx-chat-context-bar');
-    expect(bar).toBeTruthy();
-
-    const label = container.querySelector('.parallx-chat-context-label');
-    expect(label).toBeTruthy();
-
-    indicator.dispose();
-  });
-
-  it('hides initially', async () => {
-    const { ChatContextIndicator } = await import('../../src/built-in/chat/chatContextIndicator');
-    const indicator = new ChatContextIndicator(container, { getContextLength: () => 8192 });
-
-    const root = container.querySelector('.parallx-chat-context-indicator') as HTMLElement;
-    expect(root.style.display).toBe('none');
-
-    indicator.dispose();
-  });
-
-  it('shows and updates when update() is called', async () => {
-    const { ChatContextIndicator } = await import('../../src/built-in/chat/chatContextIndicator');
-    const indicator = new ChatContextIndicator(container, { getContextLength: () => 8192 });
-
-    indicator.update(4000); // ~1000 tokens out of 8192
-
-    const root = container.querySelector('.parallx-chat-context-indicator') as HTMLElement;
-    expect(root.style.display).not.toBe('none');
-
-    const label = container.querySelector('.parallx-chat-context-label');
-    expect(label!.textContent).toContain('1.0k');
-    expect(label!.textContent).toContain('8k');
-
-    indicator.dispose();
-  });
-
-  it('shows warning color at 70%+ usage', async () => {
-    const { ChatContextIndicator } = await import('../../src/built-in/chat/chatContextIndicator');
-    const indicator = new ChatContextIndicator(container, { getContextLength: () => 1000 });
-
-    // 75% usage: 3000 chars = 750 tokens out of 1000
-    indicator.update(3000);
-
-    const fill = container.querySelector('.parallx-chat-context-bar-fill');
-    expect(fill!.classList.contains('parallx-chat-context-bar-fill--warning')).toBe(true);
-    expect(fill!.classList.contains('parallx-chat-context-bar-fill--danger')).toBe(false);
-
-    indicator.dispose();
-  });
-
-  it('shows danger color at 90%+ usage', async () => {
-    const { ChatContextIndicator } = await import('../../src/built-in/chat/chatContextIndicator');
-    const indicator = new ChatContextIndicator(container, { getContextLength: () => 1000 });
-
-    // 95% usage: 3800 chars = 950 tokens out of 1000
-    indicator.update(3800);
-
-    const fill = container.querySelector('.parallx-chat-context-bar-fill');
-    expect(fill!.classList.contains('parallx-chat-context-bar-fill--danger')).toBe(true);
-
-    indicator.dispose();
-  });
-
-  it('hides when context length is 0', async () => {
-    const { ChatContextIndicator } = await import('../../src/built-in/chat/chatContextIndicator');
-    const indicator = new ChatContextIndicator(container, { getContextLength: () => 0 });
-
-    indicator.update(1000);
-
-    const root = container.querySelector('.parallx-chat-context-indicator') as HTMLElement;
-    expect(root.style.display).toBe('none');
-
-    indicator.dispose();
-  });
-
-  it('hide() explicitly hides the indicator', async () => {
-    const { ChatContextIndicator } = await import('../../src/built-in/chat/chatContextIndicator');
-    const indicator = new ChatContextIndicator(container, { getContextLength: () => 8192 });
-
-    indicator.update(4000); // show it
-    const root = container.querySelector('.parallx-chat-context-indicator') as HTMLElement;
-    expect(root.style.display).not.toBe('none');
-
-    indicator.hide();
-    expect(root.style.display).toBe('none');
-
-    indicator.dispose();
-  });
-
-  it('cleans up DOM on dispose', async () => {
-    const { ChatContextIndicator } = await import('../../src/built-in/chat/chatContextIndicator');
-    const indicator = new ChatContextIndicator(container, { getContextLength: () => 8192 });
-
-    expect(container.querySelector('.parallx-chat-context-indicator')).toBeTruthy();
-    indicator.dispose();
-    expect(container.querySelector('.parallx-chat-context-indicator')).toBeNull();
   });
 });

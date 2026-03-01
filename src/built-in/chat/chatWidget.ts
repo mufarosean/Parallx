@@ -24,8 +24,7 @@ import { ChatModePicker } from './chatModePicker.js';
 import type { IModePickerServices } from './chatModePicker.js';
 import { ChatSessionSidebar } from './chatSessionSidebar.js';
 import type { ISessionSidebarServices } from './chatSessionSidebar.js';
-import { ChatContextIndicator } from './chatContextIndicator.js';
-import type { IContextIndicatorServices } from './chatContextIndicator.js';
+
 import type {
   IChatSession,
   IChatWidgetDescriptor,
@@ -45,8 +44,7 @@ export interface IChatWidgetServices {
   readonly modelPicker?: IModelPickerServices;
   /** Optional mode picker services — when provided, the mode picker is shown. */
   readonly modePicker?: IModePickerServices;
-  /** Context window indicator services. */
-  readonly contextIndicator?: IContextIndicatorServices;
+
   /** Get a session by ID (for session switching from history). */
   readonly getSession?: (sessionId: string) => IChatSession | undefined;
   /** Get all sessions. */
@@ -85,7 +83,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _mainArea: HTMLElement;
   private readonly _messageListContainer: HTMLElement;
   private readonly _scrollBtn: HTMLElement;
-  private readonly _contextContainer: HTMLElement;
   private readonly _inputAreaContainer: HTMLElement;
   private readonly _emptyStateEl: HTMLElement;
   private readonly _offlineStateEl: HTMLElement;
@@ -102,7 +99,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _inputPart: ChatInputPart;
   private readonly _listRenderer: ChatListRenderer;
   private readonly _sessionSidebar: ChatSessionSidebar;
-  private readonly _contextIndicator: ChatContextIndicator;
 
   // ── Services ──
 
@@ -159,17 +155,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._scrollBtn = $('div.parallx-chat-scroll-btn');
     this._scrollBtn.innerHTML = chatIcons.chevronDown;
     this._mainArea.appendChild(this._scrollBtn);
-
-    // Context indicator (between message list and input)
-    this._contextContainer = $('div.parallx-chat-context-container');
-    this._mainArea.appendChild(this._contextContainer);
-
-    const contextServices: IContextIndicatorServices = services.contextIndicator ?? {
-      getContextLength: () => 0,
-    };
-    this._contextIndicator = this._register(new ChatContextIndicator(
-      this._contextContainer, contextServices,
-    ));
 
     // Input area (bottom-pinned)
     this._inputAreaContainer = $('div.parallx-chat-input-area');
@@ -281,7 +266,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._session = session;
     this._renderMessages();
     this._updateVisibility();
-    this._updateContextIndicator();
     this._sessionSidebar.setActiveSession(session.id);
     this._scrollToBottom();
     this._inputPart.setStreaming(session.requestInProgress);
@@ -370,7 +354,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     );
 
     this._updateVisibility();
-    this._updateContextIndicator();
 
     // Auto-scroll if user was at bottom
     if (this._isAtBottom) {
@@ -420,29 +403,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     el.scrollTop = el.scrollHeight;
     this._isAtBottom = true;
     this._scrollBtn.classList.remove('parallx-chat-scroll-btn--visible');
-  }
-
-  // ── Context Updates ──
-
-  private _updateContextIndicator(): void {
-    if (!this._session || this._session.messages.length === 0) {
-      this._contextIndicator.hide();
-      return;
-    }
-    // Count all characters in the conversation
-    let totalChars = 0;
-    for (const pair of this._session.messages) {
-      totalChars += pair.request.text.length;
-      for (const part of pair.response.parts) {
-        if ('value' in part && typeof part.value === 'string') {
-          totalChars += part.value.length;
-        }
-        if ('code' in part && typeof part.code === 'string') {
-          totalChars += part.code.length;
-        }
-      }
-    }
-    this._contextIndicator.update(totalChars);
   }
 
   // ── Header Action Handlers ──
