@@ -196,16 +196,13 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       this._updateProgress('pages', 0, 0, 'Checking embedding model...');
       await this._embeddingService.ensureModel();
 
-      // 2. Initialize vector store (loads rowid counter)
-      await this._vectorStore.initialize();
-
-      // 3. Index all pages
+      // 2. Index all pages
       const pageCount = await this._indexAllPages();
 
-      // 4. Index all workspace files
+      // 3. Index all workspace files
       const fileCount = await this._indexAllFiles();
 
-      // 5. Set up listeners
+      // 4. Set up listeners
       this._setupListeners();
 
       this._initialIndexComplete = true;

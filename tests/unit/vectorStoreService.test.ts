@@ -195,37 +195,6 @@ describe('VectorStoreService', () => {
     service.dispose();
   });
 
-  describe('initialize()', () => {
-    it('sets nextRowId from MAX(rowid) + 1', async () => {
-      db.get.mockResolvedValueOnce({ max_id: 42 });
-      await service.initialize();
-
-      // Verify it queried for max rowid
-      expect(db.get).toHaveBeenCalledWith(
-        'SELECT MAX(rowid) as max_id FROM vec_embeddings',
-      );
-    });
-
-    it('starts at 1 when table is empty', async () => {
-      db.get.mockResolvedValueOnce({ max_id: null });
-      await service.initialize();
-      // No error thrown
-    });
-
-    it('starts at 1 on error (table not created yet)', async () => {
-      db.get.mockRejectedValueOnce(new Error('no such table'));
-      await service.initialize();
-      // No error thrown — graceful fallback
-    });
-
-    it('does not re-initialize', async () => {
-      db.get.mockResolvedValue({ max_id: 5 });
-      await service.initialize();
-      await service.initialize();
-      expect(db.get).toHaveBeenCalledTimes(1);
-    });
-  });
-
   describe('upsert()', () => {
     const fakeChunks: EmbeddedChunk[] = [
       {
@@ -240,7 +209,6 @@ describe('VectorStoreService', () => {
     ];
 
     it('calls runTransaction with delete + insert ops', async () => {
-      db.get.mockResolvedValueOnce({ max_id: 0 }); // initialize
       db.all.mockResolvedValueOnce([]); // no existing rows to delete
 
       await service.upsert('page_block', 'page-1', fakeChunks, 'hash-all');
@@ -262,7 +230,6 @@ describe('VectorStoreService', () => {
     });
 
     it('deletes existing rows before inserting', async () => {
-      db.get.mockResolvedValueOnce({ max_id: 10 });
       db.all.mockResolvedValueOnce([{ rowid: 5 }, { rowid: 6 }]); // existing rows
 
       await service.upsert('page_block', 'page-1', fakeChunks, 'hash-new');
@@ -273,7 +240,6 @@ describe('VectorStoreService', () => {
     });
 
     it('fires onDidUpdateIndex event', async () => {
-      db.get.mockResolvedValueOnce({ max_id: 0 });
       db.all.mockResolvedValueOnce([]);
 
       const updates: { sourceId: string; chunkCount: number }[] = [];

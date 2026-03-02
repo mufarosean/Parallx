@@ -101,11 +101,6 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
 
   private readonly _db: IDatabaseService;
 
-  // ── Rowid counter ──
-  // vec0 virtual tables require explicit rowid management.
-  private _nextRowId = 1;
-  private _rowIdInitialized = false;
-
   // ── Events ──
 
   private readonly _onDidUpdateIndex = this._register(new Emitter<{ sourceId: string; chunkCount: number }>());
@@ -114,28 +109,6 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
   constructor(databaseService: IDatabaseService) {
     super();
     this._db = databaseService;
-  }
-
-  // ── Initialization ──
-
-  /**
-   * Initialize the rowid counter from the current max rowid in vec_embeddings.
-   * Must be called after database is open and migrations have run.
-   */
-  async initialize(): Promise<void> {
-    if (this._rowIdInitialized) { return; }
-
-    try {
-      const result = await this._db.get<{ max_id: number | null }>(
-        'SELECT MAX(rowid) as max_id FROM vec_embeddings',
-      );
-      this._nextRowId = (result?.max_id ?? 0) + 1;
-      this._rowIdInitialized = true;
-    } catch {
-      // Table might not exist yet — migration hasn't run
-      this._nextRowId = 1;
-      this._rowIdInitialized = true;
-    }
   }
 
   // ── Upsert ──
@@ -156,8 +129,6 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     chunks: EmbeddedChunk[],
     contentHash: string,
   ): Promise<void> {
-    await this.initialize();
-
     // Build transaction operations: delete old, insert new
     const operations: { type: 'run'; sql: string; params?: unknown[] }[] = [];
 
@@ -185,22 +156,23 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     }
 
     // 2. Insert new chunks
+    //    - vec0 auto-generates rowid (explicit rowid rejected by sqlite-vec 0.1.7-alpha.2)
+    //    - chunk_index stored as TEXT (vec0 rejects INTEGER aux columns in this build)
+    //    - fts_chunks.chunk_id uses '$lastRowId' sentinel, resolved by runTransaction
+    //      to the auto-assigned rowid from the preceding vec_embeddings INSERT
     for (const chunk of chunks) {
-      const rowId = this._nextRowId++;
-
       // Convert embedding to Float32Array binary for sqlite-vec
       const embeddingBlob = float32ArrayToBuffer(chunk.embedding);
 
       operations.push({
         type: 'run',
-        sql: `INSERT INTO vec_embeddings(rowid, embedding, source_type, source_id, chunk_index, chunk_text, context_prefix, content_hash)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        sql: `INSERT INTO vec_embeddings(embedding, source_type, source_id, chunk_index, chunk_text, context_prefix, content_hash)
+              VALUES (?, ?, ?, ?, ?, ?, ?)`,
         params: [
-          rowId,
           embeddingBlob,
           chunk.sourceType,
           chunk.sourceId,
-          chunk.chunkIndex,
+          String(chunk.chunkIndex),
           chunk.text,
           chunk.contextPrefix,
           chunk.contentHash,
@@ -211,7 +183,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
         type: 'run',
         sql: `INSERT INTO fts_chunks(chunk_id, source_type, source_id, content)
               VALUES (?, ?, ?, ?)`,
-        params: [rowId, chunk.sourceType, chunk.sourceId, chunk.text],
+        params: ['$lastRowId', chunk.sourceType, chunk.sourceId, chunk.text],
       });
     }
 
@@ -325,7 +297,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       rowid: r.rowid,
       sourceType: r.source_type,
       sourceId: r.source_id,
-      chunkIndex: r.chunk_index,
+      chunkIndex: Number(r.chunk_index),
       chunkText: r.chunk_text,
       contextPrefix: r.context_prefix,
       score: 1 / (RRF_K + i + 1), // Convert rank to RRF-like score
@@ -478,7 +450,7 @@ interface VectorRow {
   distance?: number;
   source_type: string;
   source_id: string;
-  chunk_index: number;
+  chunk_index: string | number;
   chunk_text: string;
   context_prefix: string;
 }
@@ -550,7 +522,7 @@ function reciprocalRankFusion(
           rowid: row.rowid,
           sourceType: row.source_type,
           sourceId: row.source_id,
-          chunkIndex: row.chunk_index,
+          chunkIndex: Number(row.chunk_index),
           chunkText: row.chunk_text,
           contextPrefix: row.context_prefix,
           score: contribution,

@@ -95,7 +95,6 @@ function createMockChunkingService() {
 
 function createMockVectorStore() {
   return {
-    initialize: vi.fn().mockResolvedValue(undefined),
     upsert: vi.fn().mockResolvedValue(undefined),
     deleteSource: vi.fn().mockResolvedValue(undefined),
     search: vi.fn().mockResolvedValue([]),
@@ -186,7 +185,6 @@ describe('IndexingPipelineService', () => {
       await pipeline.start();
 
       expect(embeddingService.ensureModel).toHaveBeenCalled();
-      expect(vectorStore.initialize).toHaveBeenCalled();
       expect(chunkingService.chunkPage).toHaveBeenCalledTimes(2);
       expect(embeddingService.embedDocumentBatch).toHaveBeenCalled();
       expect(vectorStore.upsert).toHaveBeenCalledTimes(2);

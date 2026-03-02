@@ -936,9 +936,6 @@ export const IChunkingService = createServiceIdentifier<IChunkingService>('IChun
  * Reference: docs/Parallx_Milestone_10.md DR-3, DR-4, DR-5
  */
 export interface IVectorStoreService extends IDisposable {
-  /** Initialize the store (load rowid counter, etc). */
-  initialize(): Promise<void>;
-
   /** Upsert embedded chunks for a source. */
   upsert(
     sourceType: string,

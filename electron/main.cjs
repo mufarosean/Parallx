@@ -817,7 +817,7 @@ ipcMain.handle('database:close', async () => {
  */
 function normalizeDbParams(params) {
   if (!Array.isArray(params)) return params || [];
-  return params.map(p => {
+  return params.map((p, idx) => {
     if (!p || typeof p !== 'object') return p;
     // Electron sometimes serializes Buffer/Uint8Array as { type: 'Buffer', data: [...] }
     if (p.type === 'Buffer' && Array.isArray(p.data)) {

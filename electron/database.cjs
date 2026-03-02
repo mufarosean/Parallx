@@ -216,11 +216,24 @@ class DatabaseManager {
 
     const txn = this._db.transaction(() => {
       const results = [];
+      let lastRowId = null;
       for (const op of operations) {
-        const params = op.params || [];
+        // Replace '$lastRowId' sentinel with the most recent INSERT's rowid.
+        // This lets callers reference an auto-generated rowid from a preceding
+        // INSERT without needing a round-trip to the renderer.
+        const params = (op.params || []).map(p =>
+          p === '$lastRowId' ? lastRowId : p,
+        );
+        let result;
         switch (op.type) {
           case 'run':
-            results.push(this._db.prepare(op.sql).run(...params));
+            result = this._db.prepare(op.sql).run(...params);
+            if (result.lastInsertRowid != null) {
+              lastRowId = typeof result.lastInsertRowid === 'bigint'
+                ? Number(result.lastInsertRowid)
+                : result.lastInsertRowid;
+            }
+            results.push(result);
             break;
           case 'get':
             results.push(this._db.prepare(op.sql).get(...params));
