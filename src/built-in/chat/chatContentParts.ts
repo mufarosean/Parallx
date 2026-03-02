@@ -13,7 +13,6 @@ import { chatIcons } from './chatIcons.js';
 import { ChatContentPartKind } from '../../services/chatTypes.js';
 import type {
   IChatContentPart,
-  IChatFollowup,
   IChatMarkdownContent,
   IChatCodeBlockContent,
   IChatProgressContent,
@@ -584,46 +583,4 @@ function _renderUnsupported(kind: string): HTMLElement {
   const el = $('div.parallx-chat-warning');
   el.textContent = `[Unsupported content: ${kind}]`;
   return el;
-}
-
-// ── Follow-up Suggestion Chips ──
-
-/**
- * Custom DOM event for follow-up chip clicks.
- * The widget listens for this and submits the message.
- */
-export interface FollowupClickEventDetail {
-  readonly message: string;
-}
-
-/**
- * Render follow-up suggestion chips as clickable pill buttons.
- *
- * Each chip dispatches a bubbling 'parallx-followup-click' CustomEvent
- * containing the follow-up message. The ChatWidget listens for this
- * event and submits it as a new user message.
- *
- * VS Code reference: ChatFollowups in chatFollowups.ts
- */
-export function renderFollowups(followups: readonly IChatFollowup[]): HTMLElement {
-  const root = $('div.parallx-chat-followups');
-
-  for (const followup of followups) {
-    const chip = document.createElement('button');
-    chip.className = 'parallx-chat-followup-chip';
-    chip.type = 'button';
-    chip.textContent = followup.label ?? followup.message;
-    if (followup.tooltip) {
-      chip.title = followup.tooltip;
-    }
-    chip.addEventListener('click', () => {
-      root.dispatchEvent(new CustomEvent<FollowupClickEventDetail>('parallx-followup-click', {
-        bubbles: true,
-        detail: { message: followup.message },
-      }));
-    });
-    root.appendChild(chip);
-  }
-
-  return root;
 }

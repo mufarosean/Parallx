@@ -13,7 +13,7 @@
 
 import { Disposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
-import { renderContentPart, renderFollowups } from './chatContentParts.js';
+import { renderContentPart } from './chatContentParts.js';
 import { chatIcons } from './chatIcons.js';
 import type { IChatRequestResponsePair, IChatAssistantResponse, IChatUserMessage } from '../../services/chatTypes.js';
 
@@ -138,12 +138,6 @@ export class ChatListRenderer extends Disposable {
     }
 
     root.appendChild(body);
-
-    // Follow-up suggestion chips (shown after complete responses)
-    if (response.isComplete && response.followups && response.followups.length > 0) {
-      const followupsEl = renderFollowups(response.followups);
-      root.appendChild(followupsEl);
-    }
 
     // Message actions bar (copy) — only shown on hover
     if (parts.length > 0) {

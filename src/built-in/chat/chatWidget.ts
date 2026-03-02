@@ -13,7 +13,6 @@ import { Disposable, DisposableStore, toDisposable } from '../../platform/lifecy
 import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
 import { $, append, addDisposableListener } from '../../ui/dom.js';
-import type { FollowupClickEventDetail } from './chatContentParts.js';
 import type { OllamaProvider } from './providers/ollamaProvider.js';
 import { ChatInputPart } from './chatInputPart.js';
 import { chatIcons } from './chatIcons.js';
@@ -245,19 +244,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     this._register(addDisposableListener(this._scrollBtn, 'click', () => {
       this._scrollToBottom();
-    }));
-
-    // ── Follow-up chip click handler ──
-
-    const followupHandler = (e: globalThis.Event) => {
-      const detail = (e as CustomEvent<FollowupClickEventDetail>).detail;
-      if (detail?.message) {
-        this._handleSubmit(detail.message);
-      }
-    };
-    this._messageListContainer.addEventListener('parallx-followup-click', followupHandler);
-    this._register(toDisposable(() => {
-      this._messageListContainer.removeEventListener('parallx-followup-click', followupHandler);
     }));
 
     // ── Service listeners ──
