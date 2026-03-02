@@ -126,6 +126,7 @@ import * as ExplorerTool from '../built-in/explorer/main.js';
 import * as SearchTool from '../built-in/search/main.js';
 import * as WelcomeTool from '../built-in/welcome/main.js';
 import * as OutputTool from '../built-in/output/main.js';
+import * as IndexingLogTool from '../built-in/indexing-log/main.js';
 import * as ToolGalleryTool from '../built-in/tool-gallery/main.js';
 import * as FileEditorTool from '../built-in/editor/main.js';
 import * as CanvasTool from '../built-in/canvas/main.js';
@@ -137,6 +138,7 @@ import {
   TEXT_EDITOR_MANIFEST,
   WELCOME_MANIFEST,
   OUTPUT_MANIFEST,
+  INDEXING_LOG_MANIFEST,
   TOOL_GALLERY_MANIFEST,
   CANVAS_MANIFEST,
   CHAT_MANIFEST,
@@ -2125,6 +2127,7 @@ export class Workbench extends Layout {
       { manifest: TEXT_EDITOR_MANIFEST, module: FileEditorTool },
       { manifest: WELCOME_MANIFEST, module: WelcomeTool },
       { manifest: OUTPUT_MANIFEST, module: OutputTool },
+      { manifest: INDEXING_LOG_MANIFEST, module: IndexingLogTool },
       { manifest: TOOL_GALLERY_MANIFEST, module: ToolGalleryTool },
       { manifest: CANVAS_MANIFEST, module: CanvasTool },
       { manifest: CHAT_MANIFEST, module: ChatTool },

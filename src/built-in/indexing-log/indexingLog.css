@@ -1,0 +1,200 @@
+/* indexingLog.css — Indexing Log panel styles */
+
+/* ── Container ── */
+.indexing-log-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--vscode-editor-background);
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.indexing-log-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--vscode-editorWidget-background);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #333);
+  flex-shrink: 0;
+}
+
+.indexing-log-title {
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.indexing-log-phase {
+  color: var(--vscode-descriptionForeground, #999);
+  font-size: 11px;
+}
+
+.indexing-log-spacer {
+  flex: 1;
+}
+
+.indexing-log-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  color: var(--vscode-icon-foreground, #c5c5c5);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+}
+
+.indexing-log-toolbar-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.indexing-log-toolbar-btn--active {
+  color: var(--vscode-notificationsWarningIcon-foreground, #cca700);
+  background: var(--vscode-toolbar-activeBackground, rgba(99, 102, 103, 0.31));
+}
+
+.indexing-log-toolbar-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Summary bar ── */
+.indexing-log-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 3px 8px;
+  background: var(--vscode-editorWidget-background);
+  border-bottom: 1px solid var(--vscode-panel-border, #2a2a2a);
+  flex-shrink: 0;
+}
+
+.indexing-log-count {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #999);
+}
+
+.indexing-log-count--indexed {
+  color: var(--vscode-testing-iconPassed, #73c991);
+}
+
+.indexing-log-count--skipped {
+  color: var(--vscode-descriptionForeground, #999);
+}
+
+.indexing-log-count--errors {
+  color: var(--vscode-descriptionForeground, #999);
+}
+
+.indexing-log-count--has-errors {
+  color: var(--vscode-notificationsErrorIcon-foreground, #f44747);
+  font-weight: 600;
+}
+
+/* ── Log list ── */
+.indexing-log-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ── Log row ── */
+.indexing-log-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(42, 42, 42, 0.5));
+  min-height: 22px;
+}
+
+.indexing-log-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(42, 45, 46, 0.31));
+}
+
+/* Status colors */
+.indexing-log-row--indexed .indexing-log-icon {
+  color: var(--vscode-testing-iconPassed, #73c991);
+}
+
+.indexing-log-row--skipped .indexing-log-icon {
+  color: var(--vscode-descriptionForeground, #666);
+}
+
+.indexing-log-row--error .indexing-log-icon {
+  color: var(--vscode-notificationsErrorIcon-foreground, #f44747);
+}
+
+.indexing-log-row--error {
+  background: rgba(244, 71, 71, 0.06);
+}
+
+/* ── Row elements ── */
+.indexing-log-ts {
+  color: var(--vscode-descriptionForeground, #666);
+  font-size: 11px;
+  min-width: 56px;
+  flex-shrink: 0;
+}
+
+.indexing-log-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.indexing-log-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.indexing-log-type-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.indexing-log-type-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.indexing-log-name {
+  color: var(--vscode-foreground);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.indexing-log-duration {
+  color: var(--vscode-descriptionForeground, #666);
+  font-size: 11px;
+  min-width: 44px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.indexing-log-error {
+  color: var(--vscode-notificationsErrorIcon-foreground, #f44747);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+  flex-shrink: 1;
+}

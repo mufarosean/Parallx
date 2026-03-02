@@ -137,6 +137,27 @@ export const OUTPUT_MANIFEST: IToolManifest = {
   },
 };
 
+// ── Indexing Log ─────────────────────────────────────────────────────────
+
+export const INDEXING_LOG_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.indexing-log',
+  name: 'Indexing',
+  version: '1.0.0',
+  publisher: 'parallx',
+  description: 'Indexing Log — real-time view of files and pages being indexed into the knowledge base.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'indexingLog.clear', title: 'Indexing: Clear Log' },
+      { id: 'indexingLog.toggleErrorFilter', title: 'Indexing: Toggle Error Filter' },
+    ],
+    views: [{ id: 'view.indexingLog', name: 'Indexing', defaultContainerId: 'panel' }],
+  },
+};
+
 // ── Tool Gallery ─────────────────────────────────────────────────────────
 
 export const TOOL_GALLERY_MANIFEST: IToolManifest = {

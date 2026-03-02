@@ -1019,6 +1019,9 @@ export interface IIndexingPipelineService extends IDisposable {
   /** Fires when indexing progress changes. */
   readonly onDidChangeProgress: Event<import('./indexingPipeline.js').IndexingProgress>;
 
+  /** Fires when a single source (page or file) finishes indexing. */
+  readonly onDidIndexSource: Event<import('./indexingPipeline.js').IndexingSourceResult>;
+
   /** Fires when initial indexing completes. */
   readonly onDidCompleteInitialIndex: Event<{ pages: number; files: number; durationMs: number }>;
 }

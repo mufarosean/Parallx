@@ -80,6 +80,24 @@ export interface IndexingProgress {
   currentSource?: string;
 }
 
+/** Result of indexing a single source (page or file). */
+export interface IndexingSourceResult {
+  /** Whether this is a canvas page or a workspace file. */
+  type: 'page' | 'file';
+  /** Display name (page title or short file path). */
+  source: string;
+  /** Unique identifier (page ID or full file path). */
+  sourceId: string;
+  /** Outcome of the indexing attempt. */
+  status: 'indexed' | 'skipped' | 'error';
+  /** Error message if status is 'error'. */
+  error?: string;
+  /** Number of chunks produced (when indexed). */
+  chunkCount?: number;
+  /** Time taken in milliseconds. */
+  durationMs: number;
+}
+
 /** Raw page row from the database. */
 interface PageRow {
   id: string;
@@ -122,6 +140,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
   private readonly _onDidCompleteInitialIndex = this._register(new Emitter<{ pages: number; files: number; durationMs: number }>());
   readonly onDidCompleteInitialIndex: Event<{ pages: number; files: number; durationMs: number }> = this._onDidCompleteInitialIndex.event;
+
+  private readonly _onDidIndexSource = this._register(new Emitter<IndexingSourceResult>());
+  readonly onDidIndexSource: Event<IndexingSourceResult> = this._onDidIndexSource.event;
 
   constructor(
     databaseService: IDatabaseService,
@@ -220,6 +241,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
    * Force re-index a single page (bypass debounce).
    */
   async reindexPage(pageId: string): Promise<void> {
+    const t0 = performance.now();
     try {
       const row = await this._db.get<PageRow>(
         'SELECT id, title, content FROM pages WHERE id = ? AND is_archived = 0',
@@ -227,9 +249,19 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       );
       if (!row) { return; }
 
-      await this._indexSinglePage(row.id, row.title, row.content);
+      const changed = await this._indexSinglePage(row.id, row.title, row.content);
+      this._onDidIndexSource.fire({
+        type: 'page', source: row.title, sourceId: pageId,
+        status: changed ? 'indexed' : 'skipped',
+        durationMs: performance.now() - t0,
+      });
     } catch (err) {
       console.error('[IndexingPipeline] Error re-indexing page %s:', pageId, err);
+      this._onDidIndexSource.fire({
+        type: 'page', source: pageId, sourceId: pageId,
+        status: 'error', error: String(err),
+        durationMs: performance.now() - t0,
+      });
     }
   }
 
@@ -237,10 +269,21 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
    * Force re-index a single file (bypass debounce).
    */
   async reindexFile(filePath: string): Promise<void> {
+    const t0 = performance.now();
     try {
-      await this._indexSingleFile(filePath);
+      const changed = await this._indexSingleFile(filePath);
+      this._onDidIndexSource.fire({
+        type: 'file', source: filePath, sourceId: filePath,
+        status: changed ? 'indexed' : 'skipped',
+        durationMs: performance.now() - t0,
+      });
     } catch (err) {
       console.error('[IndexingPipeline] Error re-indexing file %s:', filePath, err);
+      this._onDidIndexSource.fire({
+        type: 'file', source: filePath, sourceId: filePath,
+        status: 'error', error: String(err),
+        durationMs: performance.now() - t0,
+      });
     }
   }
 
@@ -256,11 +299,22 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
     for (const page of pages) {
       this._checkAborted();
+      const t0 = performance.now();
       try {
         const changed = await this._indexSinglePage(page.id, page.title, page.content);
         if (changed) { indexed++; }
+        this._onDidIndexSource.fire({
+          type: 'page', source: page.title, sourceId: page.id,
+          status: changed ? 'indexed' : 'skipped',
+          durationMs: performance.now() - t0,
+        });
       } catch (err) {
         console.warn('[IndexingPipeline] Failed to index page "%s": %s', page.title, err);
+        this._onDidIndexSource.fire({
+          type: 'page', source: page.title, sourceId: page.id,
+          status: 'error', error: String(err),
+          durationMs: performance.now() - t0,
+        });
       }
       this._updateProgress('pages', this._progress.processed + 1, pages.length, page.title);
     }
@@ -310,11 +364,22 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
     for (const filePath of filePaths) {
       this._checkAborted();
+      const t0 = performance.now();
       try {
         const changed = await this._indexSingleFile(filePath);
         if (changed) { indexed++; }
+        this._onDidIndexSource.fire({
+          type: 'file', source: filePath, sourceId: filePath,
+          status: changed ? 'indexed' : 'skipped',
+          durationMs: performance.now() - t0,
+        });
       } catch (err) {
         console.warn('[IndexingPipeline] Failed to index file "%s": %s', filePath, err);
+        this._onDidIndexSource.fire({
+          type: 'file', source: filePath, sourceId: filePath,
+          status: 'error', error: String(err),
+          durationMs: performance.now() - t0,
+        });
       }
       this._updateProgress('files', this._progress.processed + 1, filePaths.length, filePath);
     }
