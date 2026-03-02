@@ -703,7 +703,8 @@ interface IMemoryService {
 
 ### Phase 2: Indexing Pipeline (P0)
 
-#### Task 2.1: Page Indexing
+#### Task 2.1: Page Indexing ✅
+- **Status**: Complete — `bbc04a9`
 - **What**: Index all canvas pages on workspace open, re-index on save
 - **File**: `src/services/indexingPipeline.ts`
 - **Details**:
@@ -715,7 +716,8 @@ interface IMemoryService {
 - **Depends on**: Task 1.1, 1.2, 1.3
 - **Estimate**: 1 session
 
-#### Task 2.2: File Indexing
+#### Task 2.2: File Indexing ✅
+- **Status**: Complete — `bbc04a9`
 - **What**: Index workspace text files
 - **File**: `src/services/indexingPipeline.ts` (extend)
 - **Details**:
