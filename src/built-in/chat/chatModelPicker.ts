@@ -20,6 +20,7 @@ export interface IModelPickerServices {
   getActiveModel(): string | undefined;
   setActiveModel(modelId: string): void;
   readonly onDidChangeModels: Event<void>;
+  getModelContextLength?(modelId: string): Promise<number>;
 }
 
 /**
@@ -99,6 +100,18 @@ export class ChatModelPicker extends Disposable {
       const empty = $('div.parallx-chat-picker-item.parallx-chat-picker-item--empty', 'No models available');
       dropdown.appendChild(empty);
     } else {
+      // Fetch context lengths for all models in parallel
+      const ctxLengths = new Map<string, number>();
+      if (this._services.getModelContextLength) {
+        const entries = await Promise.all(
+          models.map(async (m) => {
+            const len = await this._services.getModelContextLength!(m.id).catch(() => 0);
+            return [m.id, len] as const;
+          }),
+        );
+        for (const [id, len] of entries) { ctxLengths.set(id, len); }
+      }
+
       for (const model of models) {
         const item = $('div.parallx-chat-picker-item');
         const isActive = model.id === activeId;
@@ -107,7 +120,10 @@ export class ChatModelPicker extends Disposable {
         }
 
         const name = $('span.parallx-chat-picker-item-name', model.displayName);
-        const size = $('span.parallx-chat-picker-item-size', model.parameterSize);
+        // Show parameter size + context length (e.g. "32.5B · 128K")
+        const ctxLen = ctxLengths.get(model.id) || model.contextLength;
+        const ctxLabel = ctxLen > 0 ? ` · ${this._formatContextLength(ctxLen)}` : '';
+        const size = $('span.parallx-chat-picker-item-size', `${model.parameterSize}${ctxLabel}`);
         item.appendChild(name);
         item.appendChild(size);
 
@@ -149,5 +165,15 @@ export class ChatModelPicker extends Disposable {
   override dispose(): void {
     this._closeDropdown();
     super.dispose();
+  }
+
+  /** Format context length for display: 4096 → "4K", 131072 → "128K". */
+  private _formatContextLength(tokens: number): string {
+    if (tokens >= 1_000_000) {
+      const m = tokens / 1_000_000;
+      return `${m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)}M`;
+    }
+    const k = tokens / 1024;
+    return `${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}K`;
   }
 }

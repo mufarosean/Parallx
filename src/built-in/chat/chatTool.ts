@@ -179,6 +179,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const ollamaBaseUrl = chatConfig.get<string>('ollama.baseUrl', 'http://localhost:11434');
   const defaultModel = chatConfig.get<string>('defaultModel', '');
   const defaultMode = chatConfig.get<string>('defaultMode', 'ask') as import('../../services/chatTypes.js').ChatMode;
+  const configuredContextLength = chatConfig.get<number>('contextLength', 0);
 
   // Apply configured default mode
   if (defaultMode && modeService.getAvailableModes().includes(defaultMode)) {
@@ -189,6 +190,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   _ollamaProvider = new OllamaProvider(ollamaBaseUrl);
   context.subscriptions.push(_ollamaProvider);
+
+  // Apply user-configured context length override (0 = let Ollama decide)
+  if (configuredContextLength > 0) {
+    _ollamaProvider.setContextLengthOverride(configuredContextLength);
+  }
 
   const providerRegistration = languageModelsService.registerProvider(_ollamaProvider);
   context.subscriptions.push(providerRegistration);
@@ -581,6 +587,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       getActiveModel: () => languageModelsService.getActiveModel(),
       setActiveModel: (modelId: string) => languageModelsService.setActiveModel(modelId),
       onDidChangeModels: languageModelsService.onDidChangeModels,
+      getModelContextLength: (modelId: string) => _ollamaProvider?.getModelContextLength(modelId) ?? Promise.resolve(0),
     },
     modePicker: {
       getMode: () => modeService.getMode(),
@@ -901,6 +908,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     const configSub = api.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('chat')) {
         applyFontSettings();
+        // Re-read context length override
+        const cfg = api.workspace.getConfiguration('chat');
+        const newCtxLen = cfg.get<number>('contextLength', 0);
+        _ollamaProvider?.setContextLengthOverride(newCtxLen);
       }
     });
     if (configSub && typeof (configSub as any).dispose === 'function') {

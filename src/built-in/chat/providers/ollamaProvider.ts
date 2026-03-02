@@ -145,10 +145,24 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   private _contextLengthCache = new Map<string, number>();
 
   /**
+   * User-configured context length override. When > 0, this value is sent
+   * as num_ctx to Ollama and used for token bar display. When 0, no num_ctx
+   * is sent — Ollama uses its own setting (desktop slider / OLLAMA_NUM_CTX).
+   */
+  private _contextLengthOverride = 0;
+
+  /** Set context length override (0 = let Ollama decide). */
+  setContextLengthOverride(value: number): void {
+    this._contextLengthOverride = Math.max(0, Math.floor(value));
+  }
+
+  /**
    * Get the context length for a model (fetched lazily, cached).
+   * If the user set an override, returns that instead.
    * Returns 0 if not yet fetched. Triggers background fetch on first call.
    */
   getActiveModelContextLength(): number {
+    if (this._contextLengthOverride > 0) { return this._contextLengthOverride; }
     // Find the first loaded model or return 0
     const loaded = this._loadedModels[0];
     if (!loaded) { return 0; }
@@ -173,9 +187,11 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
 
   /**
    * Get context length for a specific model by ID (fetches from Ollama if not cached).
+   * If the user set an override, returns that instead.
    * This is the preferred method — doesn't depend on _loadedModels polling.
    */
   async getModelContextLength(modelId: string): Promise<number> {
+    if (this._contextLengthOverride > 0) { return this._contextLengthOverride; }
     if (!modelId) { return 0; }
     const cached = this._contextLengthCache.get(modelId);
     if (cached !== undefined) { return cached; }
@@ -287,12 +303,12 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       stream: true,
     };
 
-    // Map options — always set num_ctx to the model's real context length
-    // so Ollama uses the full window instead of its 2048-token default.
+    // Only send num_ctx when the user has explicitly configured a context
+    // length override in Parallx. Otherwise, let Ollama use its own setting
+    // (desktop slider / OLLAMA_NUM_CTX environment variable).
     const ollamaOptions: Record<string, unknown> = {};
-    const ctxLen = this._contextLengthCache.get(modelId);
-    if (ctxLen && ctxLen > 0) {
-      ollamaOptions['num_ctx'] = ctxLen;
+    if (this._contextLengthOverride > 0) {
+      ollamaOptions['num_ctx'] = this._contextLengthOverride;
     }
     if (options) {
       if (options.temperature !== undefined) ollamaOptions['temperature'] = options.temperature;
