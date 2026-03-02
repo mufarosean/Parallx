@@ -13,6 +13,7 @@
 import './chatInput.css';
 
 import { Disposable } from '../../platform/lifecycle.js';
+import { ChatMode } from '../../services/chatTypes.js';
 import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
@@ -236,7 +237,19 @@ export class ChatInputPart extends Disposable {
   /** Bind tool picker services — shows the wrench icon and enables the dialog. */
   setToolPickerServices(services: IToolPickerServices): void {
     this._toolPicker.setServices(services);
-    this._toolsBtn.style.display = '';
+    // Visibility is controlled by updateToolsButtonForMode(); leave hidden until called.
+  }
+
+  /**
+   * Show or hide the Configure Tools button based on current mode.
+   * Ask mode has only read-only tools (always on) — no configuration needed.
+   */
+  updateToolsButtonForMode(mode: ChatMode): void {
+    const show = mode !== ChatMode.Ask;
+    this._toolsBtn.style.display = show ? '' : 'none';
+    if (!show && this._toolPicker.isOpen) {
+      this._toolPicker.close();
+    }
   }
 
   /** Get current explicit attachments (to include in the request). */

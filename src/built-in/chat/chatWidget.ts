@@ -236,6 +236,18 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       this._inputPart.setToolPickerServices(services.toolPickerServices);
     }
 
+    // ── Mode-aware UI updates ──
+    // Hide tools button in Ask mode (read-only tools are always on).
+
+    if (services.modePicker) {
+      // Set initial visibility
+      this._inputPart.updateToolsButtonForMode(services.modePicker.getMode());
+      // React to mode changes
+      this._register(services.modePicker.onDidChangeMode((mode) => {
+        this._inputPart.updateToolsButtonForMode(mode);
+      }));
+    }
+
     // ── Scroll tracking ──
 
     this._register(addDisposableListener(this._messageListContainer, 'scroll', () => {
