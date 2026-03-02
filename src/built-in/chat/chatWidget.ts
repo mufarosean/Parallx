@@ -457,31 +457,40 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     let startX = 0;
     let startWidth = 0;
     let dragging = false;
+    let sashRafId = 0;
 
     const onMouseMove = (e: MouseEvent) => {
       if (!dragging) return;
-      const delta = startX - e.clientX; // moving left = positive delta = wider sidebar
-      let newWidth = startWidth + delta;
 
-      // Snap: if below threshold, hide the sidebar entirely
-      if (newWidth < ChatWidget.SIDEBAR_SNAP_THRESHOLD) {
-        if (this._sessionSidebar.isVisible) {
-          this._sessionSidebar.hide();
-          this._sash.classList.remove('parallx-chat-sidebar-sash--active');
+      // Throttle DOM writes to one-per-frame to avoid layout thrashing
+      cancelAnimationFrame(sashRafId);
+      const clientX = e.clientX;
+      sashRafId = requestAnimationFrame(() => {
+        if (!dragging) return;
+        const delta = startX - clientX; // moving left = positive delta = wider sidebar
+        let newWidth = startWidth + delta;
+
+        // Snap: if below threshold, hide the sidebar entirely
+        if (newWidth < ChatWidget.SIDEBAR_SNAP_THRESHOLD) {
+          if (this._sessionSidebar.isVisible) {
+            this._sessionSidebar.hide();
+            this._sash.classList.remove('parallx-chat-sidebar-sash--active');
+          }
+          dragging = false;
+          return;
         }
-        dragging = false;
-        return;
-      }
 
-      // Clamp
-      newWidth = Math.max(ChatWidget.SIDEBAR_MIN_WIDTH, Math.min(newWidth, ChatWidget.SIDEBAR_MAX_WIDTH));
-      this._sidebarWidth = newWidth;
-      this._sessionSidebar.rootElement.style.width = `${newWidth}px`;
+        // Clamp
+        newWidth = Math.max(ChatWidget.SIDEBAR_MIN_WIDTH, Math.min(newWidth, ChatWidget.SIDEBAR_MAX_WIDTH));
+        this._sidebarWidth = newWidth;
+        this._sessionSidebar.rootElement.style.width = `${newWidth}px`;
+      });
     };
 
     const onMouseUp = () => {
       if (!dragging) return;
       dragging = false;
+      cancelAnimationFrame(sashRafId);
       this._sash.classList.remove('parallx-chat-sidebar-sash--active');
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);

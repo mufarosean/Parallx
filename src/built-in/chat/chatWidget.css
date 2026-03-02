@@ -14,6 +14,7 @@
   width: 100%;
   overflow: hidden;
   position: relative;
+  contain: layout style;
   font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
   font-size: var(--vscode-font-size, 13px);
   line-height: 1.5;
@@ -28,6 +29,7 @@
   min-width: 0;
   overflow: hidden;
   position: relative;
+  contain: layout style;
 }
 
 /* ── Message List (scrollable region) ── */
