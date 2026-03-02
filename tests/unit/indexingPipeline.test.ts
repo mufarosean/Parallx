@@ -359,7 +359,7 @@ describe('IndexingPipelineService', () => {
 
       await pipeline.start();
 
-      // old.ts should be mtime-skipped — no file read, no chunking
+      // old.ts should be mtime-skipped entirely — no file read, no chunking, no events
       expect(fileService.readFile).toHaveBeenCalledTimes(1);
       expect(chunkingService.chunkFile).toHaveBeenCalledTimes(1);
       expect(chunkingService.chunkFile).toHaveBeenCalledWith(

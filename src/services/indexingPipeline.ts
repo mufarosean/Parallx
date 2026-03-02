@@ -371,27 +371,35 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     // Bulk-fetch indexed_at timestamps for all file_chunk sources
     const indexedAtMap = await this._vectorStore.getIndexedAtMap('file_chunk');
 
-    this._updateProgress('files', 0, files.length);
-    let indexed = 0;
+    // Partition files into mtime-skipped (unchanged) and candidates (need checking).
+    // This avoids firing 30K+ events in a tight synchronous loop which would
+    // starve the renderer event loop and freeze the UI.
+    const candidates: IndexableFile[] = [];
     let mtimeSkipped = 0;
 
     for (const file of files) {
-      this._checkAborted();
-      const t0 = performance.now();
-
-      // Fast-skip: if the file hasn't been modified since we last indexed it,
-      // there's no need to read the file or compute its content hash.
       const indexedAtMs = indexedAtMap.get(file.path);
       if (indexedAtMs !== undefined && file.mtime < indexedAtMs) {
         mtimeSkipped++;
-        this._onDidIndexSource.fire({
-          type: 'file', source: file.path, sourceId: file.path,
-          status: 'skipped',
-          durationMs: performance.now() - t0,
-        });
-        this._updateProgress('files', this._progress.processed + 1, files.length, file.path);
-        continue;
+      } else {
+        candidates.push(file);
       }
+    }
+
+    if (mtimeSkipped > 0) {
+      console.log(
+        '[IndexingPipeline] mtime fast-skip: %d/%d files unchanged since last index',
+        mtimeSkipped, files.length,
+      );
+    }
+
+    // Report progress against candidates only (skipped files are already done)
+    this._updateProgress('files', 0, candidates.length);
+    let indexed = 0;
+
+    for (const file of candidates) {
+      this._checkAborted();
+      const t0 = performance.now();
 
       try {
         const changed = await this._indexSingleFile(file.path);
@@ -409,14 +417,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
           durationMs: performance.now() - t0,
         });
       }
-      this._updateProgress('files', this._progress.processed + 1, files.length, file.path);
-    }
-
-    if (mtimeSkipped > 0) {
-      console.log(
-        '[IndexingPipeline] mtime fast-skip: %d/%d files unchanged since last index',
-        mtimeSkipped, files.length,
-      );
+      this._updateProgress('files', this._progress.processed + 1, candidates.length, file.path);
     }
 
     return indexed;
