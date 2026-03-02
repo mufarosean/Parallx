@@ -791,7 +791,7 @@ interface IMemoryService {
 
 ### Phase 4: System Prompt & Behavior Overhaul (P0)
 
-#### Task 4.1: Dynamic System Prompt
+#### Task 4.1: Dynamic System Prompt ✅ `69efec8`
 - **What**: System prompt adapts based on available context and workspace state
 - **File**: `src/built-in/chat/chatSystemPrompts.ts`
 - **Details**:
@@ -803,7 +803,7 @@ interface IMemoryService {
 - **Depends on**: Task 3.2
 - **Estimate**: 0.5 session
 
-#### Task 4.2: AI Self-Awareness
+#### Task 4.2: AI Self-Awareness ✅ `69efec8`
 - **What**: The AI knows what Parallx is, what it can do, and what tools are available
 - **File**: `src/built-in/chat/chatSystemPrompts.ts`
 - **Details**:
