@@ -17,9 +17,12 @@ import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import { chatIcons } from './chatIcons.js';
+import { ChatContextAttachments } from './chatContextAttachments.js';
+import type { IAttachmentServices } from './chatContextAttachments.js';
+import type { IChatAttachment } from '../../services/chatTypes.js';
 
 /**
- * Chat input area — textarea + toolbar (submit/stop, model/mode pickers).
+ * Chat input area — textarea + context ribbon + toolbar (submit/stop, model/mode pickers).
  */
 export class ChatInputPart extends Disposable {
 
@@ -31,6 +34,10 @@ export class ChatInputPart extends Disposable {
   private readonly _stopBtn: HTMLButtonElement;
   private readonly _toolbar: HTMLElement;
   private readonly _pickerSlot: HTMLElement;
+  private readonly _attachBtn: HTMLButtonElement;
+  private readonly _attachLabel: HTMLSpanElement;
+  private readonly _contextRibbon: ChatContextAttachments;
+  private _filePickerDropdown: HTMLElement | undefined;
 
   // ── State ──
 
@@ -44,6 +51,9 @@ export class ChatInputPart extends Disposable {
 
   private readonly _onDidRequestStop = this._register(new Emitter<void>());
   readonly onDidRequestStop: Event<void> = this._onDidRequestStop.event;
+
+  private readonly _onDidChangeAttachments = this._register(new Emitter<void>());
+  readonly onDidChangeAttachments: Event<void> = this._onDidChangeAttachments.event;
 
   constructor(container: HTMLElement) {
     super();
@@ -63,6 +73,13 @@ export class ChatInputPart extends Disposable {
     this._textarea.rows = 1;
     editorArea.appendChild(this._textarea);
 
+    // Context attachment ribbon (between textarea and toolbar)
+    this._contextRibbon = this._register(new ChatContextAttachments(this._root));
+    this._register(this._contextRibbon.onDidChange(() => {
+      this._updateAttachBtnLabel();
+      this._onDidChangeAttachments.fire();
+    }));
+
     // Toolbar
     this._toolbar = $('div.parallx-chat-input-toolbar');
     this._root.appendChild(this._toolbar);
@@ -72,17 +89,26 @@ export class ChatInputPart extends Disposable {
     this._toolbar.appendChild(this._pickerSlot);
 
     // Add Context button (VS Code-style attach)
-    const attachBtn = document.createElement('button');
-    attachBtn.className = 'parallx-chat-input-attach';
-    attachBtn.type = 'button';
-    attachBtn.title = 'Add Context...';
-    attachBtn.setAttribute('aria-label', 'Add Context');
-    attachBtn.innerHTML = chatIcons.attach;
-    const attachLabel = document.createElement('span');
-    attachLabel.className = 'parallx-chat-input-attach-label';
-    attachLabel.textContent = 'Add Context';
-    attachBtn.appendChild(attachLabel);
-    this._toolbar.appendChild(attachBtn);
+    this._attachBtn = document.createElement('button');
+    this._attachBtn.className = 'parallx-chat-input-attach';
+    this._attachBtn.type = 'button';
+    this._attachBtn.title = 'Add Context...';
+    this._attachBtn.setAttribute('aria-label', 'Add Context');
+    this._attachBtn.innerHTML = chatIcons.attach;
+    this._attachLabel = document.createElement('span');
+    this._attachLabel.className = 'parallx-chat-input-attach-label';
+    this._attachLabel.textContent = 'Add Context';
+    this._attachBtn.appendChild(this._attachLabel);
+    this._toolbar.appendChild(this._attachBtn);
+
+    // Attach button click — open file picker
+    this._register(addDisposableListener(this._attachBtn, 'click', () => {
+      if (this._filePickerDropdown) {
+        this._closeFilePicker();
+      } else {
+        this._openFilePicker();
+      }
+    }));
 
     // Spacer
     const spacer = $('div.parallx-chat-input-toolbar-spacer');
@@ -146,10 +172,11 @@ export class ChatInputPart extends Disposable {
     this._autoResize();
   }
 
-  /** Clear the input and reset height. */
+  /** Clear the input, reset height, and clear attachments. */
   clear(): void {
     this._textarea.value = '';
     this._autoResize();
+    this._contextRibbon.clear();
   }
 
   /** Focus the textarea. */
@@ -177,6 +204,16 @@ export class ChatInputPart extends Disposable {
     return this._pickerSlot;
   }
 
+  /** Bind attachment services for editor file tracking. */
+  setAttachmentServices(services: IAttachmentServices): void {
+    this._contextRibbon.setServices(services);
+  }
+
+  /** Get current explicit attachments (to include in the request). */
+  getAttachments(): readonly IChatAttachment[] {
+    return this._contextRibbon.getAttachments();
+  }
+
   // ── Internal ──
 
   private _submit(): void {
@@ -197,7 +234,76 @@ export class ChatInputPart extends Disposable {
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
   }
 
+  /** Update attach button label visibility based on attachment count. */
+  private _updateAttachBtnLabel(): void {
+    // When files are attached, collapse to just the paperclip icon
+    const hasAttachments = this._contextRibbon.hasAttachments();
+    this._attachLabel.style.display = hasAttachments ? 'none' : '';
+  }
+
+  /** Open the file picker dropdown showing open editor files. */
+  private _openFilePicker(): void {
+    this._closeFilePicker();
+
+    const dropdown = $('div.parallx-chat-picker-dropdown.parallx-chat-file-picker');
+    dropdown.style.position = 'absolute';
+    dropdown.style.zIndex = '100';
+
+    // Get open editor files from the attachment ribbon's services
+    const services = (this._contextRibbon as any)._services as IAttachmentServices | undefined;
+    const openFiles = services?.getOpenEditorFiles() ?? [];
+
+    if (openFiles.length === 0) {
+      const empty = $('div.parallx-chat-picker-item.parallx-chat-picker-item--empty', 'No open files');
+      dropdown.appendChild(empty);
+    } else {
+      for (const file of openFiles) {
+        const item = $('div.parallx-chat-picker-item');
+        const icon = document.createElement('span');
+        icon.innerHTML = chatIcons.file;
+        icon.style.display = 'inline-flex';
+        icon.style.alignItems = 'center';
+        item.appendChild(icon);
+
+        const name = $('span.parallx-chat-picker-item-name', file.name);
+        item.appendChild(name);
+
+        item.addEventListener('click', () => {
+          this._contextRibbon.addAttachment(file);
+          this._closeFilePicker();
+        });
+
+        dropdown.appendChild(item);
+      }
+    }
+
+    // Position below button (opening upward)
+    const rect = this._attachBtn.getBoundingClientRect();
+    dropdown.style.left = `${rect.left}px`;
+    dropdown.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+
+    document.body.appendChild(dropdown);
+    this._filePickerDropdown = dropdown;
+
+    // Close on outside click
+    const closeHandler = (e: MouseEvent) => {
+      if (!dropdown.contains(e.target as Node) && !this._attachBtn.contains(e.target as Node)) {
+        this._closeFilePicker();
+        document.removeEventListener('mousedown', closeHandler);
+      }
+    };
+    document.addEventListener('mousedown', closeHandler);
+  }
+
+  private _closeFilePicker(): void {
+    if (this._filePickerDropdown) {
+      this._filePickerDropdown.remove();
+      this._filePickerDropdown = undefined;
+    }
+  }
+
   override dispose(): void {
+    this._closeFilePicker();
     this._root.remove();
     super.dispose();
   }

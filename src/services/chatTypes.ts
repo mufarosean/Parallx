@@ -195,6 +195,8 @@ export interface IChatUserMessage {
   readonly command?: string;
   /** Variable references (e.g. #currentPage). */
   readonly variables?: readonly IChatVariable[];
+  /** Files attached as explicit context by the user. */
+  readonly attachments?: readonly IChatAttachment[];
   /** Timestamp when the message was sent. */
   readonly timestamp: number;
 }
@@ -207,6 +209,24 @@ export interface IChatVariable {
   readonly name: string;
   /** Resolved value (populated at request time by participant handler). */
   value?: string;
+}
+
+// ── Chat Attachments ──
+
+/**
+ * A file attached as explicit context by the user (via "Add Context" button).
+ *
+ * VS Code reference: IChatRequestVariableEntry (chatModel.ts)
+ */
+export interface IChatAttachment {
+  /** Unique identifier (typically a file path or URI string). */
+  readonly id: string;
+  /** Display name (e.g. 'chatWidget.ts'). */
+  readonly name: string;
+  /** Full path or URI for content retrieval. */
+  readonly fullPath: string;
+  /** Whether this is an implicit suggestion (from open editor) vs explicitly added. */
+  readonly isImplicit: boolean;
 }
 
 /**
@@ -427,6 +447,8 @@ export interface IChatParticipantRequest {
   readonly command?: string;
   /** Variable references from the message. */
   readonly variables?: readonly IChatVariable[];
+  /** Files attached as explicit context by the user. */
+  readonly attachments?: readonly IChatAttachment[];
   /** Current chat mode. */
   readonly mode: ChatMode;
   /** Active model ID. */
@@ -702,6 +724,8 @@ export interface IChatSendRequestOptions {
   readonly command?: string;
   /** Disable automatic @mention detection. */
   readonly noCommandDetection?: boolean;
+  /** Files attached as explicit context. */
+  readonly attachments?: readonly IChatAttachment[];
 }
 
 export const IChatService = createServiceIdentifier<IChatService>('IChatService');

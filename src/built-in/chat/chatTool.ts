@@ -229,6 +229,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         } catch { return []; }
       }
       : undefined,
+    readFileContent: fileService
+      ? async (fullPath: string): Promise<string> => {
+        try {
+          const { URI } = await import('../../platform/uri.js');
+          const uri = URI.file(fullPath);
+          const content = await fileService.readFile(uri);
+          return content.content;
+        } catch {
+          return `[Error: Could not read file "${fullPath}"]`;
+        }
+      }
+      : undefined,
     maxIterations: chatConfig.get<number>('agent.maxIterations', 10),
   };
 
@@ -366,8 +378,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // ── 4. Build widget services bridge (delegates to IChatService) ──
 
   const widgetServices: IChatWidgetServices = {
-    async sendRequest(sessionId: string, message: string): Promise<void> {
-      await chatService.sendRequest(sessionId, message);
+    async sendRequest(sessionId: string, message: string, attachments?: readonly import('../../services/chatTypes.js').IChatAttachment[]): Promise<void> {
+      await chatService.sendRequest(sessionId, message, attachments ? { attachments } : undefined);
     },
     cancelRequest(sessionId: string): void {
       chatService.cancelRequest(sessionId);
@@ -396,6 +408,16 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getSessions: () => chatService.getSessions(),
     getSession: (id: string) => chatService.getSession(id),
     deleteSession: (id: string) => chatService.deleteSession(id),
+    // Attachment services (enable "Add Context" file picker — open editor files)
+    attachmentServices: editorService ? {
+      getOpenEditorFiles: () => {
+        return editorService!.getOpenEditors().map((ed) => ({
+          name: ed.name,
+          fullPath: ed.description || ed.name,
+        }));
+      },
+      onDidChangeOpenEditors: editorService!.onDidChangeOpenEditors,
+    } : undefined,
   };
 
   // ── 5. Register the chat view in the Auxiliary Bar ──

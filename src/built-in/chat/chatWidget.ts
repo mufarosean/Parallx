@@ -28,13 +28,15 @@ import type { ISessionSidebarServices } from './chatSessionSidebar.js';
 import type {
   IChatSession,
   IChatWidgetDescriptor,
+  IChatAttachment,
 } from '../../services/chatTypes.js';
+import type { IAttachmentServices } from './chatContextAttachments.js';
 
 // ── Types ──
 
 /** Service accessor passed from the activation layer. */
 export interface IChatWidgetServices {
-  readonly sendRequest: (sessionId: string, message: string) => Promise<void>;
+  readonly sendRequest: (sessionId: string, message: string, attachments?: readonly IChatAttachment[]) => Promise<void>;
   readonly cancelRequest: (sessionId: string) => void;
   readonly createSession: () => IChatSession;
   readonly onDidChangeSession: Event<string>;
@@ -44,6 +46,8 @@ export interface IChatWidgetServices {
   readonly modelPicker?: IModelPickerServices;
   /** Optional mode picker services — when provided, the mode picker is shown. */
   readonly modePicker?: IModePickerServices;
+  /** Optional attachment services — when provided, enables "Add Context" file picker. */
+  readonly attachmentServices?: IAttachmentServices;
 
   /** Get a session by ID (for session switching from history). */
   readonly getSession?: (sessionId: string) => IChatSession | undefined;
@@ -213,6 +217,12 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       this._register(new ChatModePicker(pickerSlot, services.modePicker));
     }
 
+    // ── Attachment services (enable "Add Context" file picker) ──
+
+    if (services.attachmentServices) {
+      this._inputPart.setAttachmentServices(services.attachmentServices);
+    }
+
     // ── Scroll tracking ──
 
     this._register(addDisposableListener(this._messageListContainer, 'scroll', () => {
@@ -320,12 +330,15 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       this._sessionSidebar.refresh();
     }
 
+    // Collect attachments before clearing
+    const attachments = this._inputPart.getAttachments();
+
     this._inputPart.clear();
     this._inputPart.setStreaming(true);
     this._onDidAcceptInput.fire(text);
 
     try {
-      await this._services.sendRequest(this._session.id, text);
+      await this._services.sendRequest(this._session.id, text, attachments.length > 0 ? attachments : undefined);
     } catch (err) {
       console.error('[ChatWidget] Send request failed:', err);
     } finally {

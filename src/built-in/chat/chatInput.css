@@ -238,36 +238,113 @@
   color: var(--vscode-descriptionForeground, #8b8b8b);
 }
 
-/* ── Mode picker (segmented control) ── */
+/* ── Mode picker (dropdown — reuses picker-btn / picker-dropdown) ── */
 
 .parallx-chat-mode-picker {
+  position: relative;
+}
+
+/* Picker chevron (shared by model + mode pickers) */
+
+.parallx-chat-picker-chevron {
   display: inline-flex;
   align-items: center;
-  border-radius: 4px;
-  overflow: hidden;
+  margin-left: 2px;
 }
 
-.parallx-chat-mode-btn {
+.parallx-chat-picker-chevron svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* ── Context attachment ribbon ── */
+
+.parallx-chat-context-ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px 0;
+}
+
+.parallx-chat-context-ribbon:empty {
+  display: none;
+}
+
+.parallx-chat-context-chip {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border: none;
-  background: transparent;
-  color: var(--vscode-descriptionForeground, #8b8b8b);
-  font-size: 11px;
-  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 100ms ease, color 100ms ease;
+  gap: 4px;
+  padding: 2px 6px;
   border-radius: 4px;
-}
-
-.parallx-chat-mode-btn:hover {
-  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
-  color: var(--vscode-foreground, #cccccc);
-}
-
-.parallx-chat-mode-btn--active {
   background: var(--vscode-badge-background, #4d4d4d);
   color: var(--vscode-badge-foreground, #ffffff);
+  font-size: 11px;
+  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.parallx-chat-context-chip--implicit {
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  border: 1px dashed var(--vscode-input-border, #3c3c3c);
+  font-style: italic;
+}
+
+.parallx-chat-context-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.parallx-chat-context-chip-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.parallx-chat-context-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.parallx-chat-context-chip-close,
+.parallx-chat-context-chip-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 100ms ease, background 100ms ease;
+}
+
+.parallx-chat-context-chip-close:hover,
+.parallx-chat-context-chip-add:hover {
+  opacity: 1;
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+}
+
+.parallx-chat-context-chip-close svg,
+.parallx-chat-context-chip-add svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* ── File picker dropdown (extends picker-dropdown) ── */
+
+.parallx-chat-file-picker {
+  min-width: 200px;
+}
+
+.parallx-chat-file-picker .parallx-chat-picker-item svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }

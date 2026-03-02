@@ -135,6 +135,8 @@ export interface IDefaultParticipantServices {
   listPageNames?(): Promise<readonly string[]>;
   /** List file/dir names at workspace root for system prompt grounding. */
   listFileNames?(): Promise<readonly string[]>;
+  /** Read a file's text content by path (for attachment context injection). */
+  readFileContent?(fullPath: string): Promise<string>;
 }
 
 /** Default participant ID — must match ChatAgentService's DEFAULT_AGENT_ID. */
@@ -222,11 +224,29 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
-    // Current user message
-    messages.push({
-      role: 'user',
-      content: request.text,
-    });
+    // Current user message — with attached file context
+    if (request.attachments?.length && services.readFileContent) {
+      // Read attached file contents and inject as context before the user's question
+      const fileContextParts: string[] = [];
+      for (const attachment of request.attachments) {
+        try {
+          const content = await services.readFileContent(attachment.fullPath);
+          fileContextParts.push(`File: ${attachment.name}\n\`\`\`\n${content}\n\`\`\``);
+        } catch {
+          fileContextParts.push(`File: ${attachment.name}\n[Could not read file]`);
+        }
+      }
+      const contextPrefix = fileContextParts.join('\n\n');
+      messages.push({
+        role: 'user',
+        content: `${contextPrefix}\n\n${request.text}`,
+      });
+    } else {
+      messages.push({
+        role: 'user',
+        content: request.text,
+      });
+    }
 
     // ── Context overflow detection & LLM-based summarization ──
 

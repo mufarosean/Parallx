@@ -502,6 +502,7 @@ export class ChatService extends Disposable implements IChatService {
       text: message,
       participantId: options?.participantId ?? parsed.participantId,
       command: options?.command ?? parsed.command,
+      attachments: options?.attachments,
       timestamp: Date.now(),
     };
 
@@ -547,6 +548,7 @@ export class ChatService extends Disposable implements IChatService {
       command: options?.command ?? parsed.command,
       mode: session.mode,
       modelId: session.modelId,
+      attachments: options?.attachments,
       attempt: 0,
     };
 

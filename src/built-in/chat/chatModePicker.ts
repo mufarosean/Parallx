@@ -1,7 +1,8 @@
-// chatModePicker.ts — Mode picker (Ask/Edit/Agent) (M9 Task 3.7)
+// chatModePicker.ts — Mode picker dropdown (M9 Task 3.7)
 //
-// Three-state toggle showing current chat mode.
-// Selecting fires IChatModeService.setMode().
+// Dropdown showing current chat mode (Ask/Edit/Agent).
+// Button shows current mode label; click opens a dropdown list.
+// Follows the same pattern as ChatModelPicker.
 //
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts
@@ -12,6 +13,7 @@ import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import { ChatMode } from '../../services/chatTypes.js';
+import { chatIcons } from './chatIcons.js';
 
 /** Service accessor for mode picker. */
 export interface IModePickerServices {
@@ -22,19 +24,20 @@ export interface IModePickerServices {
 }
 
 /** Mode display metadata. */
-const MODE_META: Record<ChatMode, { label: string; title: string }> = {
-  [ChatMode.Ask]: { label: 'Ask', title: 'Q&A mode — no side effects' },
-  [ChatMode.Edit]: { label: 'Edit', title: 'Edit mode — canvas editing with accept/reject' },
-  [ChatMode.Agent]: { label: 'Agent', title: 'Agent mode — autonomous with tool invocation' },
+const MODE_META: Record<ChatMode, { label: string; title: string; description: string }> = {
+  [ChatMode.Ask]: { label: 'Ask', title: 'Q&A mode — no side effects', description: 'Ask questions without side effects' },
+  [ChatMode.Edit]: { label: 'Edit', title: 'Edit mode — canvas editing', description: 'Edit canvas with accept/reject' },
+  [ChatMode.Agent]: { label: 'Agent', title: 'Agent mode — autonomous', description: 'Autonomous with tool invocation' },
 };
 
 /**
- * Mode picker — segmented control for Ask / Edit / Agent.
+ * Mode picker — dropdown button for Ask / Edit / Agent.
  */
 export class ChatModePicker extends Disposable {
 
   private readonly _root: HTMLElement;
-  private readonly _buttons = new Map<ChatMode, HTMLButtonElement>();
+  private readonly _button: HTMLButtonElement;
+  private _dropdown: HTMLElement | undefined;
   private _services: IModePickerServices;
 
   private readonly _onDidSelectMode = this._register(new Emitter<ChatMode>());
@@ -48,36 +51,104 @@ export class ChatModePicker extends Disposable {
     container.appendChild(this._root);
     this._register(toDisposable(() => this._root.remove()));
 
-    const modes = this._services.getAvailableModes();
-    for (const mode of modes) {
-      const meta = MODE_META[mode];
-      const btn = document.createElement('button');
-      btn.className = 'parallx-chat-mode-btn';
-      btn.textContent = meta.label;
-      btn.title = meta.title;
-      btn.type = 'button';
-      btn.dataset.mode = mode;
-      this._root.appendChild(btn);
-      this._buttons.set(mode, btn);
+    // Button showing current mode + chevron
+    this._button = document.createElement('button');
+    this._button.className = 'parallx-chat-picker-btn';
+    this._button.type = 'button';
+    this._root.appendChild(this._button);
 
-      this._register(addDisposableListener(btn, 'click', () => {
-        this._services.setMode(mode);
-        this._onDidSelectMode.fire(mode);
-      }));
-    }
-
-    // Update highlight
-    this._register(this._services.onDidChangeMode(() => {
-      this._updateHighlight();
+    // Click to toggle dropdown
+    this._register(addDisposableListener(this._button, 'click', () => {
+      if (this._dropdown) {
+        this._closeDropdown();
+      } else {
+        this._openDropdown();
+      }
     }));
 
-    this._updateHighlight();
+    // Update button label when mode changes externally
+    this._register(this._services.onDidChangeMode(() => {
+      this._updateLabel();
+    }));
+
+    this._updateLabel();
   }
 
-  private _updateHighlight(): void {
+  private _updateLabel(): void {
     const current = this._services.getMode();
-    for (const [mode, btn] of this._buttons) {
-      btn.classList.toggle('parallx-chat-mode-btn--active', mode === current);
+    const meta = MODE_META[current];
+    this._button.innerHTML = '';
+    const label = document.createElement('span');
+    label.textContent = meta.label;
+    this._button.appendChild(label);
+
+    // Chevron
+    const chevron = document.createElement('span');
+    chevron.className = 'parallx-chat-picker-chevron';
+    chevron.innerHTML = chatIcons.chevronDown;
+    this._button.appendChild(chevron);
+
+    this._button.title = meta.title;
+  }
+
+  private _openDropdown(): void {
+    this._closeDropdown();
+
+    const currentMode = this._services.getMode();
+    const modes = this._services.getAvailableModes();
+
+    const dropdown = $('div.parallx-chat-picker-dropdown');
+    dropdown.style.position = 'absolute';
+    dropdown.style.zIndex = '100';
+
+    for (const mode of modes) {
+      const meta = MODE_META[mode];
+      const item = $('div.parallx-chat-picker-item');
+      if (mode === currentMode) {
+        item.classList.add('parallx-chat-picker-item--active');
+      }
+
+      const name = $('span.parallx-chat-picker-item-name', meta.label);
+      const desc = $('span.parallx-chat-picker-item-size', meta.description);
+      item.appendChild(name);
+      item.appendChild(desc);
+
+      item.addEventListener('click', () => {
+        this._services.setMode(mode);
+        this._onDidSelectMode.fire(mode);
+        this._closeDropdown();
+      });
+
+      dropdown.appendChild(item);
     }
+
+    // Position below button (opening upward from the input bar)
+    const rect = this._button.getBoundingClientRect();
+    dropdown.style.left = `${rect.left}px`;
+    dropdown.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+
+    document.body.appendChild(dropdown);
+    this._dropdown = dropdown;
+
+    // Close on outside click
+    const closeHandler = (e: MouseEvent) => {
+      if (!dropdown.contains(e.target as Node) && !this._button.contains(e.target as Node)) {
+        this._closeDropdown();
+        document.removeEventListener('mousedown', closeHandler);
+      }
+    };
+    document.addEventListener('mousedown', closeHandler);
+  }
+
+  private _closeDropdown(): void {
+    if (this._dropdown) {
+      this._dropdown.remove();
+      this._dropdown = undefined;
+    }
+  }
+
+  override dispose(): void {
+    this._closeDropdown();
+    super.dispose();
   }
 }

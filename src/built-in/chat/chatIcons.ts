@@ -146,4 +146,17 @@ export const chatIcons = {
     <path d="M8 1.5l1.5 4.5L14.5 8l-5 2-1.5 4.5L6.5 10 1.5 8l5-2L8 1.5z" stroke="currentColor" stroke-width="1.0" stroke-linejoin="round"/>
   </svg>`,
 
+  // ── Context attachments ──
+
+  /** File icon — document */
+  file: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M4 2h5.5L13 5.5V13a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M9 2v4h4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+  </svg>`,
+
+  /** Close / × icon */
+  close: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  </svg>`,
+
 } as const;
