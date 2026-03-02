@@ -861,22 +861,28 @@ interface IMemoryService {
 
 ### Phase 7: Advanced Features (P2-P3)
 
-#### Task 7.1: Related Content Sidebar
-- When viewing a page, show "Related Pages" based on vector similarity
-- No AI call needed — just real-time vector search on current page's embedding
+#### Task 7.1: Related Content Sidebar ✅
+- `RelatedContentService` — embeds page text, vector-searches for similar pages/files, groups by source type
+- Exposed via `chat.getRelatedContent` command; fires `onDidChangeRelated` when index updates
+- Interface + DI identifier in `serviceTypes.ts`, registered in `workbenchServices.ts`
 
-#### Task 7.2: Auto-Tagging on Save
-- When a page is saved, AI suggests/applies tags based on content
-- Uses embeddings to match against existing tag taxonomy
+#### Task 7.2: Auto-Tagging on Save ✅
+- `AutoTaggingService` — `page_tags` SQLite table, `suggestTags()` via embedding similarity, `autoTagOnSave()`, CRUD (`addTag`/`removeTag`/`getPageTags`/`getAllTags`)
+- Exposed via `chat.suggestTags`, `chat.autoTagPage`, `chat.getPageTags` commands
+- Events: `onDidChangeTags`, `onDidSuggestTags`
 
-#### Task 7.3: Inline AI on Canvas
-- AI commands within the canvas editor itself
-- Select text → "Summarize", "Expand", "Fix grammar", "Translate"
-- Uses same RAG context for grounded responses
+#### Task 7.3: Inline AI on Canvas ✅
+- `InlineAIMenuController` — canvas menu (Summarize ✦, Expand ⇔, Fix Grammar Aa, Translate 🌐)
+- Streams AI response via `SendChatRequestFn`, Accept/Reject overlay, purple accent theme
+- Cross-tool bridge: `chat.getInlineAIProvider` command returns `{ sendChatRequest, retrieveContext }` closures
+- Wired via `CanvasEditorProvider.setInlineAIProvider()`, canvas `main.ts` calls command after activation
+- CSS in `canvas.css` (~150 lines, `.canvas-inline-ai-*` classes)
 
-#### Task 7.4: Proactive Suggestions
-- "You mentioned JWT in 3 pages but haven't created a dedicated auth design doc. Would you like me to consolidate?"
-- Triggered by pattern detection in embeddings
+#### Task 7.4: Proactive Suggestions ✅
+- `ProactiveSuggestionsService` — periodic analysis detecting topic clusters (3+ similar pages), orphan pages (no related content)
+- `_findTopicClusters()` (score ≥ 0.003, 3+ pages), `_findOrphans()`, `_mergeSuggestions()` preserves dismissed state
+- 5-minute cooldown, triggered on initial index + index updates
+- Exposed via `chat.getSuggestions`, `chat.dismissSuggestion`, `chat.analyzeSuggestions` commands
 
 ---
 

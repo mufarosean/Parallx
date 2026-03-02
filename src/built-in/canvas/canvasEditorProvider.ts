@@ -36,6 +36,7 @@ import { $ } from '../../ui/dom.js';
 import { createEditorExtensions, PageChromeController } from './config/blockRegistry.js';
 import { BlockHandlesController, BlockSelectionController, BlockMarqueeController, createBlockSelectionPlugin } from './handles/handleRegistry.js';
 import { CanvasMenuRegistry, type IBlockActionMenu } from './menus/canvasMenuRegistry.js';
+import { InlineAIMenuController, type SendChatRequestFn, type RetrieveContextFn } from './menus/inlineAIMenu.js';
 
 // Create lowlight instance with common language set (JS, TS, CSS, HTML, Python, etc.)
 const lowlight = createLowlight(common);
@@ -58,6 +59,10 @@ export class CanvasEditorProvider {
    */
   private readonly _pageMenuHandlers = new Map<string, () => void>();
 
+  /** Inline AI provider functions (set after chat tool activation). */
+  private _inlineAISendChat: SendChatRequestFn | undefined;
+  private _inlineAIRetrieveContext: RetrieveContextFn | undefined;
+
   constructor(
     private readonly _dataService: ICanvasDataService,
     private readonly _databaseDataService?: IDatabaseDataService,
@@ -69,6 +74,20 @@ export class CanvasEditorProvider {
   setOpenEditor(fn: OpenEditorFn): void {
     this._openEditor = fn;
   }
+
+  /**
+   * Set the inline AI provider so canvas panes can create inline AI menus.
+   * Called from canvas main.ts after the chat tool registers its provider.
+   */
+  setInlineAIProvider(sendChat: SendChatRequestFn, retrieveContext?: RetrieveContextFn): void {
+    this._inlineAISendChat = sendChat;
+    this._inlineAIRetrieveContext = retrieveContext;
+  }
+
+  /** Whether the inline AI provider has been configured. */
+  get hasInlineAI(): boolean { return !!this._inlineAISendChat; }
+  get inlineAISendChat(): SendChatRequestFn | undefined { return this._inlineAISendChat; }
+  get inlineAIRetrieveContext(): RetrieveContextFn | undefined { return this._inlineAIRetrieveContext; }
 
   /**
    * Create an editor pane for a Canvas page.
@@ -307,6 +326,16 @@ class CanvasEditorPane implements IDisposable {
     // ── Create menu registry and all menus ──
     this._menuRegistry = new CanvasMenuRegistry(() => this._editor);
     this._blockActionMenu = this._menuRegistry.createStandardMenus(this);
+
+    // ── Create inline AI menu if chat tool has registered its provider ──
+    if (this._provider.hasInlineAI) {
+      const inlineAI = new InlineAIMenuController(
+        this, this._menuRegistry,
+        this._provider.inlineAISendChat!,
+        this._provider.inlineAIRetrieveContext,
+      );
+      inlineAI.create();
+    }
 
     // Setup block handles (+ button, drag-handle click menu)
     this._blockHandles = new BlockHandlesController(this, this._blockActionMenu);

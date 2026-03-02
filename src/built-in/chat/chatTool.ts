@@ -39,7 +39,7 @@ import type {
   ICancellationToken,
   IToolResult,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './tools/builtInTools.js';
 
@@ -156,6 +156,17 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     : undefined;
   const memoryService = api.services.has(IMemoryService)
     ? api.services.get<import('../../services/serviceTypes.js').IMemoryService>(IMemoryService)
+    : undefined;
+
+  // Phase 7: Advanced Feature services
+  const relatedContentService = api.services.has(IRelatedContentService)
+    ? api.services.get<import('../../services/serviceTypes.js').IRelatedContentService>(IRelatedContentService)
+    : undefined;
+  const autoTaggingService = api.services.has(IAutoTaggingService)
+    ? api.services.get<import('../../services/serviceTypes.js').IAutoTaggingService>(IAutoTaggingService)
+    : undefined;
+  const proactiveSuggestionsService = api.services.has(IProactiveSuggestionsService)
+    ? api.services.get<import('../../services/serviceTypes.js').IProactiveSuggestionsService>(IProactiveSuggestionsService)
     : undefined;
 
   // ── 1b. Build file system accessor for built-in tools ──
@@ -894,6 +905,97 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     if (configSub && typeof (configSub as any).dispose === 'function') {
       context.subscriptions.push(configSub as unknown as IDisposable);
     }
+  }
+
+  // ── 9. Phase 7: Advanced Features (M10 Tasks 7.1–7.4) ──
+
+  // 9a. Inline AI provider — register command so canvas can obtain AI functions
+  context.subscriptions.push(
+    api.commands.registerCommand('chat.getInlineAIProvider', () => {
+      const provider: {
+        sendChatRequest: (
+          messages: readonly IChatMessage[],
+          options?: { temperature?: number; maxTokens?: number },
+          signal?: AbortSignal,
+        ) => AsyncIterable<IChatResponseChunk>;
+        retrieveContext?: (query: string) => Promise<string | undefined>;
+      } = {
+        sendChatRequest: (messages, options, signal) => {
+          const modelId = languageModelsService.getActiveModel() ?? '';
+          return _ollamaProvider!.sendChatRequest(modelId, messages, options, signal);
+        },
+        retrieveContext: retrievalService && indexingPipelineService
+          ? async (query: string): Promise<string | undefined> => {
+            if (!indexingPipelineService!.isInitialIndexComplete) return undefined;
+            try {
+              const chunks = await retrievalService!.retrieve(query, { topK: 5, maxPerSource: 2, tokenBudget: 1500 });
+              return chunks.length > 0 ? retrievalService!.formatContext(chunks) : undefined;
+            } catch { return undefined; }
+          }
+          : undefined,
+      };
+      return provider;
+    }),
+  );
+
+  // 9b. Related Content commands
+  if (relatedContentService) {
+    context.subscriptions.push(
+      api.commands.registerCommand('chat.getRelatedContent', async (...args: unknown[]) => {
+        const pageId = args[0] as string | undefined;
+        if (!pageId) return [];
+        return relatedContentService.findRelated(pageId);
+      }),
+    );
+  }
+
+  // 9c. Auto-tagging commands
+  if (autoTaggingService) {
+    context.subscriptions.push(
+      api.commands.registerCommand('chat.suggestTags', async (...args: unknown[]) => {
+        const pageId = args[0] as string | undefined;
+        if (!pageId) return [];
+        return autoTaggingService.suggestTags(pageId);
+      }),
+    );
+
+    context.subscriptions.push(
+      api.commands.registerCommand('chat.autoTagPage', async (...args: unknown[]) => {
+        const pageId = args[0] as string | undefined;
+        if (!pageId) return;
+        await autoTaggingService.autoTagOnSave(pageId);
+      }),
+    );
+
+    context.subscriptions.push(
+      api.commands.registerCommand('chat.getPageTags', async (...args: unknown[]) => {
+        const pageId = args[0] as string | undefined;
+        if (!pageId) return [];
+        return autoTaggingService.getPageTags(pageId);
+      }),
+    );
+  }
+
+  // 9d. Proactive suggestions commands
+  if (proactiveSuggestionsService) {
+    context.subscriptions.push(
+      api.commands.registerCommand('chat.getSuggestions', () => {
+        return proactiveSuggestionsService.suggestions;
+      }),
+    );
+
+    context.subscriptions.push(
+      api.commands.registerCommand('chat.dismissSuggestion', (...args: unknown[]) => {
+        const suggestionId = args[0] as string | undefined;
+        if (suggestionId) proactiveSuggestionsService.dismiss(suggestionId);
+      }),
+    );
+
+    context.subscriptions.push(
+      api.commands.registerCommand('chat.analyzeSuggestions', async () => {
+        return proactiveSuggestionsService.analyze();
+      }),
+    );
   }
 }
 

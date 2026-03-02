@@ -1107,6 +1107,75 @@ export interface IMemoryService extends IDisposable {
 
 export const IMemoryService = createServiceIdentifier<IMemoryService>('IMemoryService');
 
+// ─── IRelatedContentService (M10 Task 7.1) ─────────────────────────────────
+
+/**
+ * Finds pages and files semantically related to a given page using
+ * vector similarity search.  Powers the "Related Content" sidebar.
+ */
+export interface IRelatedContentService extends IDisposable {
+  /** Fires when the related content results may have changed. */
+  readonly onDidChangeRelated: Event<string>;
+
+  /** Find items related to a given page. */
+  findRelated(
+    pageId: string,
+    options?: import('./relatedContentService.js').FindRelatedOptions,
+  ): Promise<import('./relatedContentService.js').RelatedItem[]>;
+}
+
+export const IRelatedContentService = createServiceIdentifier<IRelatedContentService>('IRelatedContentService');
+
+// ─── IAutoTaggingService (M10 Task 7.2) ────────────────────────────────────
+
+/**
+ * Embedding-based auto-tagging for canvas pages.
+ * Suggests and applies tags by propagating from similar pages.
+ */
+export interface IAutoTaggingService extends IDisposable {
+  /** Fires when a page's tags change. */
+  readonly onDidChangeTags: Event<import('./autoTaggingService.js').TagChangeEvent>;
+  /** Fires when tag suggestions are generated. */
+  readonly onDidSuggestTags: Event<{ pageId: string; suggestions: import('./autoTaggingService.js').TagSuggestion[] }>;
+
+  /** Get all tags for a page. */
+  getPageTags(pageId: string): Promise<import('./autoTaggingService.js').PageTag[]>;
+  /** Suggest tags for a page (does not apply them). */
+  suggestTags(pageId: string): Promise<import('./autoTaggingService.js').TagSuggestion[]>;
+  /** Auto-tag on save — suggest + apply high-confidence tags. Returns applied suggestions. */
+  autoTagOnSave(pageId: string): Promise<import('./autoTaggingService.js').TagSuggestion[]>;
+  /** Add a tag to a page. Returns the created tag. */
+  addTag(pageId: string, tagName: string, tagColor?: string): Promise<import('./autoTaggingService.js').PageTag>;
+  /** Remove a tag from a page. */
+  removeTag(pageId: string, tagName: string): Promise<void>;
+  /** Get all known tags across all pages. */
+  getAllTags(): Promise<import('./autoTaggingService.js').PageTag[]>;
+}
+
+export const IAutoTaggingService = createServiceIdentifier<IAutoTaggingService>('IAutoTaggingService');
+
+// ─── IProactiveSuggestionsService (M10 Task 7.4) ──────────────────────────
+
+/**
+ * Periodically analyses the knowledge base to detect patterns and
+ * surface actionable suggestions (consolidation, orphans, coverage gaps).
+ */
+export interface IProactiveSuggestionsService extends IDisposable {
+  /** Fires when the suggestions list updates. */
+  readonly onDidUpdateSuggestions: Event<import('./proactiveSuggestionsService.js').ProactiveSuggestion[]>;
+
+  /** Current active suggestions (excluding dismissed). */
+  readonly suggestions: import('./proactiveSuggestionsService.js').ProactiveSuggestion[];
+
+  /** Dismiss a suggestion. */
+  dismiss(suggestionId: string): void;
+
+  /** Force an immediate analysis. */
+  analyze(): Promise<import('./proactiveSuggestionsService.js').ProactiveSuggestion[]>;
+}
+
+export const IProactiveSuggestionsService = createServiceIdentifier<IProactiveSuggestionsService>('IProactiveSuggestionsService');
+
 // ─── Status Bar Types ────────────────────────────────────────────────────────
 
 /**

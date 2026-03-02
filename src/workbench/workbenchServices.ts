@@ -3,7 +3,7 @@
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
-import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService } from '../services/serviceTypes.js';
+import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -32,6 +32,9 @@ import { VectorStoreService } from '../services/vectorStoreService.js';
 import { IndexingPipelineService } from '../services/indexingPipeline.js';
 import { RetrievalService } from '../services/retrievalService.js';
 import { MemoryService } from '../services/memoryService.js';
+import { RelatedContentService } from '../services/relatedContentService.js';
+import { AutoTaggingService } from '../services/autoTaggingService.js';
+import { ProactiveSuggestionsService } from '../services/proactiveSuggestionsService.js';
 import type { IStorage } from '../platform/storage.js';
 import type { ViewManager } from '../views/viewManager.js';
 
@@ -215,6 +218,9 @@ export function registerIndexingServices(
   indexingPipeline: IndexingPipelineService;
   retrievalService: RetrievalService;
   memoryService: MemoryService;
+  relatedContentService: RelatedContentService;
+  autoTaggingService: AutoTaggingService;
+  proactiveSuggestionsService: ProactiveSuggestionsService;
 } {
   const databaseService = services.get(IDatabaseService);
   const fileService = services.get(IFileService);
@@ -241,5 +247,15 @@ export function registerIndexingServices(
   services.registerInstance(IRetrievalService, retrievalService);
   services.registerInstance(IMemoryService, memoryService);
 
-  return { embeddingService, chunkingService, vectorStoreService, indexingPipeline, retrievalService, memoryService };
+  // ── Phase 7: Advanced Feature Services (M10) ──
+
+  const relatedContentService = new RelatedContentService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
+  const autoTaggingService = new AutoTaggingService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
+  const proactiveSuggestionsService = new ProactiveSuggestionsService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
+
+  services.registerInstance(IRelatedContentService, relatedContentService);
+  services.registerInstance(IAutoTaggingService, autoTaggingService);
+  services.registerInstance(IProactiveSuggestionsService, proactiveSuggestionsService);
+
+  return { embeddingService, chunkingService, vectorStoreService, indexingPipeline, retrievalService, memoryService, relatedContentService, autoTaggingService, proactiveSuggestionsService };
 }

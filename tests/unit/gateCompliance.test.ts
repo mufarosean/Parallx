@@ -93,6 +93,7 @@ const GATE_RULES: Record<string, string[]> = {
   'menus/blockActionMenu.ts':              ['menus/canvasMenuRegistry'],
   'menus/iconMenu.ts':                     ['menus/canvasMenuRegistry'],
   'menus/coverMenu.ts':                    ['menus/canvasMenuRegistry'],
+  'menus/inlineAIMenu.ts':                 ['menus/canvasMenuRegistry'],   // M10 Phase 7 Task 7.3
   'math/inlineMathEditor.ts':              ['menus/canvasMenuRegistry'],
   'menus/slashMenuItems.ts':               [],  // pure data — zero imports
   'menus/imageInsertPopup.ts':             [],  // pure UI — no canvas imports
