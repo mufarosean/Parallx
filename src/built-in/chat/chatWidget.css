@@ -530,6 +530,40 @@
   color: var(--vscode-editorWarning-foreground, #cca700);
 }
 
+/* ── Reference Citation (M10 Phase 6 — Task 6.2) ── */
+
+.parallx-chat-reference {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 8px 1px 5px;
+  margin: 2px 4px 2px 0;
+  border-radius: 10px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+  transition: background 120ms ease;
+  vertical-align: middle;
+}
+
+.parallx-chat-reference:hover {
+  background: var(--vscode-focusBorder, #007fd4);
+}
+
+.parallx-chat-reference-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.parallx-chat-reference-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
 /* ── Tool Invocation Card (Cap 6 Task 6.4) ── */
 
 .parallx-chat-tool-invocation {

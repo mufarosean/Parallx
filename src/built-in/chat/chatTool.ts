@@ -116,6 +116,7 @@ let _ollamaProvider: OllamaProvider | undefined;
 let _activeWidget: ChatWidget | undefined;
 let _chatIsStreamingKey: { set(value: boolean): void } | undefined;
 let _tokenStatusBar: ChatTokenStatusBar | undefined;
+let _lastIndexStats: { pages: number; files: number } | undefined;
 
 // ── Activation ──
 
@@ -316,7 +317,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     // ── RAG context retrieval (M10 Phase 3) ──
 
     retrieveContext: retrievalService
-      ? async (query: string): Promise<string | undefined> => {
+      ? async (query: string) => {
         // Only retrieve if initial indexing is complete
         if (!indexingPipelineService?.isInitialIndexComplete) { return undefined; }
         try {
@@ -326,7 +327,21 @@ export function activate(api: ParallxApi, context: ToolContext): void {
             tokenBudget: 3000,
           });
           if (chunks.length === 0) { return undefined; }
-          return retrievalService.formatContext(chunks);
+          const text = retrievalService.formatContext(chunks);
+          // Build source citations for Reference rendering (M10 Phase 6 — Task 6.2)
+          const seen = new Set<string>();
+          const sources: Array<{ uri: string; label: string }> = [];
+          for (const chunk of chunks) {
+            const key = `${chunk.sourceType}:${chunk.sourceId}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const uri = chunk.sourceType === 'page'
+              ? `parallx-page://${chunk.sourceId}`
+              : chunk.sourceId;
+            const label = chunk.contextPrefix ?? (chunk.sourceType === 'page' ? 'Page' : 'File');
+            sources.push({ uri, label });
+          }
+          return { text, sources };
         } catch { return undefined; }
       }
       : undefined,
@@ -788,6 +803,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     },
     isRAGAvailable: () => indexingPipelineService?.isInitialIndexComplete ?? false,
     isIndexing: () => indexingPipelineService?.isIndexing ?? false,
+    getIndexingProgress: () => indexingPipelineService?.progress ?? { phase: 'idle' as const, processed: 0, total: 0 },
+    getIndexStats: () => _lastIndexStats,
   };
 
   _tokenStatusBar = new ChatTokenStatusBar(tokenBarServices);
@@ -827,6 +844,20 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     _tokenStatusBar?.update().catch(() => {});
   });
   context.subscriptions.push(tokenModeListener as unknown as IDisposable);
+
+  // Update on indexing progress changes (M10 Phase 6 — Task 6.1)
+  if (indexingPipelineService) {
+    const indexProgressListener = indexingPipelineService.onDidChangeProgress(() => {
+      _tokenStatusBar?.update().catch(() => {});
+    });
+    context.subscriptions.push(indexProgressListener as unknown as IDisposable);
+
+    const indexCompleteListener = indexingPipelineService.onDidCompleteInitialIndex((stats) => {
+      _lastIndexStats = { pages: stats.pages, files: stats.files };
+      _tokenStatusBar?.update().catch(() => {});
+    });
+    context.subscriptions.push(indexCompleteListener as unknown as IDisposable);
+  }
 
   // ── 7. Set context keys ──
 

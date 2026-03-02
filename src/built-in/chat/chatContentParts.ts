@@ -22,6 +22,7 @@ import type {
   IChatConfirmationContent,
   IChatEditProposalContent,
   IChatEditBatchContent,
+  IChatReferenceContent,
 } from '../../services/chatTypes.js';
 
 /**
@@ -43,7 +44,7 @@ export function renderContentPart(part: IChatContentPart): HTMLElement {
     case ChatContentPartKind.ToolInvocation:
       return _renderToolInvocation(part);
     case ChatContentPartKind.Reference:
-      return _renderUnsupported(part.kind);
+      return _renderReference(part);
     case ChatContentPartKind.Confirmation:
       return _renderConfirmation(part);
     case ChatContentPartKind.EditProposal:
@@ -205,6 +206,51 @@ function _renderWarning(part: IChatWarningContent): HTMLElement {
   const text = $('span', part.message);
   root.appendChild(icon);
   root.appendChild(text);
+  return root;
+}
+
+// ── Reference Citation (M10 Phase 6 — Task 6.2) ──
+
+/**
+ * Render a source reference as a clickable pill/chip.
+ * Clicking opens the referenced page or file.
+ * URI scheme: `parallx-page://<pageId>` for canvas pages, file path for workspace files.
+ */
+function _renderReference(part: IChatReferenceContent): HTMLElement {
+  const root = $('span.parallx-chat-reference');
+
+  // Determine source type from URI
+  const isPage = part.uri.startsWith('parallx-page://');
+
+  // Icon
+  const icon = $('span.parallx-chat-reference-icon');
+  icon.textContent = isPage ? '\uD83D\uDCC4' : '\uD83D\uDCC1'; // 📄 for pages, 📁 for files
+  root.appendChild(icon);
+
+  // Label
+  const label = $('span.parallx-chat-reference-label');
+  label.textContent = part.label;
+  root.appendChild(label);
+
+  // Click handler — open referenced source
+  root.addEventListener('click', () => {
+    if (isPage) {
+      const pageId = part.uri.replace('parallx-page://', '');
+      // Navigate to the page via the workspace command
+      // This uses the global command registry — the same pattern as other internal links
+      const event = new CustomEvent('parallx:navigate-page', { detail: { pageId } });
+      document.dispatchEvent(event);
+    } else {
+      // File paths — open in editor
+      const event = new CustomEvent('parallx:open-file', { detail: { path: part.uri } });
+      document.dispatchEvent(event);
+    }
+  });
+
+  root.title = isPage
+    ? `Open page: ${part.label}`
+    : `Open file: ${part.label}`;
+
   return root;
 }
 
@@ -577,10 +623,4 @@ function _refreshBatchProposals(root: HTMLElement, part: IChatEditBatchContent):
   }
 }
 
-// ── Unsupported (stub for M9.2 parts) ──
 
-function _renderUnsupported(kind: string): HTMLElement {
-  const el = $('div.parallx-chat-warning');
-  el.textContent = `[Unsupported content: ${kind}]`;
-  return el;
-}

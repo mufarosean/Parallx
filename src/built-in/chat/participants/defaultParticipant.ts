@@ -152,10 +152,10 @@ export interface IDefaultParticipantServices {
 
   /**
    * Retrieve relevant context chunks for a user query via hybrid search.
-   * Returns formatted context string ready for injection into the user message.
+   * Returns formatted context string + source citations for Reference rendering.
    * Returns undefined if the retrieval service is not available or indexing hasn't completed.
    */
-  retrieveContext?(query: string): Promise<string | undefined>;
+  retrieveContext?(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string }> } | undefined>;
 
   // ── Memory (M10 Phase 5 — Tasks 5.1 + 5.2) ──
 
@@ -301,9 +301,13 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // 1b. RAG context: retrieve semantically relevant chunks (M10 Phase 3)
     if (services.retrieveContext) {
       try {
-        const ragContext = await services.retrieveContext(request.text);
-        if (ragContext) {
-          contextParts.push(ragContext);
+        const ragResult = await services.retrieveContext(request.text);
+        if (ragResult) {
+          contextParts.push(ragResult.text);
+          // Emit source citations as Reference content parts (M10 Phase 6 — Task 6.2)
+          for (const source of ragResult.sources) {
+            response.reference(source.uri, source.label);
+          }
         }
       } catch {
         // RAG retrieval is best-effort — don't block the request

@@ -123,3 +123,33 @@
   min-width: 40px;
   text-align: right;
 }
+
+/* ── Indexing indicator (M10 Phase 6 — Task 6.1) ── */
+
+.parallx-token-statusbar-indexing {
+  font-size: 11px;
+  white-space: nowrap;
+  line-height: 22px;
+  padding-left: 6px;
+  border-left: 1px solid var(--parallx-menu-separatorBackground, #3c3c3c);
+  margin-left: 2px;
+}
+
+.parallx-token-statusbar-indexing-active {
+  color: #cca700; /* amber — indexing in progress */
+}
+
+.parallx-token-statusbar-indexing-complete {
+  color: var(--parallx-descriptionForeground, #999);
+}
+
+/* Popup index progress bar row */
+.parallx-token-popup-index-bar {
+  margin-top: 4px;
+  margin-bottom: 2px;
+}
+
+.parallx-token-popup-index-bar svg {
+  display: block;
+  width: 100%;
+}

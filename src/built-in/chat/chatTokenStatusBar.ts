@@ -47,6 +47,13 @@ export interface ITokenStatusBarServices {
   isRAGAvailable(): boolean;
   /** Whether indexing is in progress. */
   isIndexing(): boolean;
+
+  // ── Indexing progress (M10 Phase 6 — Task 6.1) ──
+
+  /** Current indexing progress snapshot. */
+  getIndexingProgress?(): import('../../services/indexingPipeline.js').IndexingProgress;
+  /** Stats from the last completed initial index. */
+  getIndexStats?(): { pages: number; files: number } | undefined;
 }
 
 /** Breakdown of token usage by category. */
@@ -92,6 +99,7 @@ export class ChatTokenStatusBar extends Disposable {
   private readonly _root: HTMLElement;
   private readonly _barSvg: HTMLElement;
   private readonly _label: HTMLElement;
+  private readonly _indexingIndicator: HTMLElement;
 
   constructor(
     services: ITokenStatusBarServices,
@@ -109,6 +117,11 @@ export class ChatTokenStatusBar extends Disposable {
     this._label = $('span.parallx-token-statusbar-label');
     this._label.textContent = '— tokens';
     this._root.appendChild(this._label);
+
+    // Indexing status indicator (M10 Phase 6 — Task 6.1)
+    this._indexingIndicator = $('span.parallx-token-statusbar-indexing');
+    this._indexingIndicator.style.display = 'none'; // Hidden until indexing starts
+    this._root.appendChild(this._indexingIndicator);
 
     // Click handler opens detail popup
     this._root.addEventListener('click', (e) => {
@@ -140,6 +153,9 @@ export class ChatTokenStatusBar extends Disposable {
       this._label.textContent = `${approx}${usedStr} tokens`;
     }
 
+    // Update indexing indicator (M10 Phase 6 — Task 6.1)
+    this._updateIndexingIndicator();
+
     // Tooltip
     const source = breakdown.isReal ? 'Ollama-reported' : 'Estimated';
     this._root.title = breakdown.contextLength > 0
@@ -149,6 +165,44 @@ export class ChatTokenStatusBar extends Disposable {
     // If popup is open, refresh it
     if (this._popupElement) {
       this._renderPopupContent(this._popupElement, breakdown);
+    }
+  }
+
+  // ── Indexing Indicator (M10 Phase 6 — Task 6.1) ──
+
+  private _updateIndexingIndicator(): void {
+    const progress = this._services.getIndexingProgress?.();
+    const stats = this._services.getIndexStats?.();
+
+    if (!progress || progress.phase === 'idle') {
+      // Idle — show completed stats if available, else hide
+      if (stats) {
+        this._indexingIndicator.textContent = `✅ ${stats.pages} pages, ${stats.files} files indexed`;
+        this._indexingIndicator.style.display = '';
+        this._indexingIndicator.className = 'parallx-token-statusbar-indexing parallx-token-statusbar-indexing-complete';
+      } else {
+        this._indexingIndicator.style.display = 'none';
+        this._indexingIndicator.textContent = '';
+      }
+      return;
+    }
+
+    // Active indexing — show progress
+    this._indexingIndicator.style.display = '';
+    this._indexingIndicator.className = 'parallx-token-statusbar-indexing parallx-token-statusbar-indexing-active';
+
+    switch (progress.phase) {
+      case 'pages':
+        this._indexingIndicator.textContent = `🔍 Indexing: ${progress.processed}/${progress.total} pages`;
+        break;
+      case 'files':
+        this._indexingIndicator.textContent = `🔍 Indexing: ${progress.processed}/${progress.total} files`;
+        break;
+      case 'incremental':
+        this._indexingIndicator.textContent = progress.total > 0
+          ? `🔄 Re-indexing ${progress.total} changed ${progress.total === 1 ? 'item' : 'items'}...`
+          : '🔄 Re-indexing...';
+        break;
     }
   }
 
@@ -454,6 +508,86 @@ export class ChatTokenStatusBar extends Disposable {
       { label: 'Tool Results', tokens: cats.toolResults, total },
       { label: 'Files', tokens: cats.files, total },
     ]);
+
+    // ── Knowledge Index section (M10 Phase 6 — Task 6.1) ──
+    this._renderIndexSection(popup);
+  }
+
+  /** Render the Knowledge Index section in the popup. */
+  private _renderIndexSection(container: HTMLElement): void {
+    const progress = this._services.getIndexingProgress?.();
+    const stats = this._services.getIndexStats?.();
+    const isIndexing = this._services.isIndexing();
+    const ragAvailable = this._services.isRAGAvailable();
+
+    // Only show if RAG is available or has stats
+    if (!ragAvailable && !stats) return;
+
+    const section = $('div.parallx-token-popup-section');
+    const sectionTitle = $('div.parallx-token-popup-section-title');
+    sectionTitle.textContent = 'Knowledge Index';
+    section.appendChild(sectionTitle);
+
+    // Status row
+    const statusRow = $('div.parallx-token-popup-row');
+    const statusLabel = $('span.parallx-token-popup-row-label');
+    statusLabel.textContent = 'Status';
+    statusRow.appendChild(statusLabel);
+
+    const statusValue = $('span.parallx-token-popup-row-value');
+    if (isIndexing && progress && progress.phase !== 'idle') {
+      switch (progress.phase) {
+        case 'pages':
+          statusValue.textContent = `Indexing pages (${progress.processed}/${progress.total})`;
+          break;
+        case 'files':
+          statusValue.textContent = `Indexing files (${progress.processed}/${progress.total})`;
+          break;
+        case 'incremental':
+          statusValue.textContent = 'Re-indexing changed items';
+          break;
+      }
+      statusValue.style.color = '#cca700'; // amber for in-progress
+    } else if (stats) {
+      statusValue.textContent = 'Ready';
+      statusValue.style.color = '#4ec9b0'; // teal for ready
+    } else {
+      statusValue.textContent = 'Not started';
+      statusValue.style.color = '#888';
+    }
+    statusRow.appendChild(statusValue);
+    section.appendChild(statusRow);
+
+    // Stats rows (if we have them)
+    if (stats) {
+      const pagesRow = $('div.parallx-token-popup-row');
+      const pagesLabel = $('span.parallx-token-popup-row-label');
+      pagesLabel.textContent = 'Pages Indexed';
+      pagesRow.appendChild(pagesLabel);
+      const pagesValue = $('span.parallx-token-popup-row-value');
+      pagesValue.textContent = `${stats.pages}`;
+      pagesRow.appendChild(pagesValue);
+      section.appendChild(pagesRow);
+
+      const filesRow = $('div.parallx-token-popup-row');
+      const filesLabel = $('span.parallx-token-popup-row-label');
+      filesLabel.textContent = 'Files Indexed';
+      filesRow.appendChild(filesLabel);
+      const filesValue = $('span.parallx-token-popup-row-value');
+      filesValue.textContent = `${stats.files}`;
+      filesRow.appendChild(filesValue);
+      section.appendChild(filesRow);
+    }
+
+    // Progress bar for active indexing
+    if (isIndexing && progress && progress.phase !== 'idle' && progress.total > 0) {
+      const barRow = $('div.parallx-token-popup-index-bar');
+      const pct = Math.min((progress.processed / progress.total) * 100, 100);
+      barRow.innerHTML = this._buildPopupBarSvg(pct);
+      section.appendChild(barRow);
+    }
+
+    container.appendChild(section);
   }
 
   private _renderSection(
