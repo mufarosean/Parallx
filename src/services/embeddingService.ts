@@ -291,6 +291,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
     const body: Record<string, unknown> = {
       model: this._model,
       input: inputs.length === 1 ? inputs[0] : inputs,
+      truncate: true, // Silently truncate inputs exceeding model's context length
     };
 
     const response = await fetch(`${this._baseUrl}/api/embed`, {
