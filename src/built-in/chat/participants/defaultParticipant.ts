@@ -131,12 +131,14 @@ export interface IDefaultParticipantServices {
     signal?: AbortSignal,
   ): AsyncIterable<IChatResponseChunk>;
 
-  // ── Data context (prevents LLM hallucination) ──
+  // ── Workspace statistics (M10 Phase 4 — dynamic system prompt) ──
 
-  /** List page titles (up to ~20) for system prompt grounding. */
-  listPageNames?(): Promise<readonly string[]>;
-  /** List file/dir names at workspace root for system prompt grounding. */
-  listFileNames?(): Promise<readonly string[]>;
+  /** Count of files in the workspace (undefined if no workspace folder). */
+  getFileCount?(): Promise<number>;
+  /** Whether the RAG knowledge index is ready for retrieval. */
+  isRAGAvailable?(): boolean;
+  /** Whether the indexing pipeline is currently running. */
+  isIndexing?(): boolean;
   /** Read a file's text content by path (for attachment context injection). */
   readFileContent?(fullPath: string): Promise<string>;
 
@@ -189,12 +191,9 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
     const pageCount = await services.getPageCount().catch(() => 0);
 
-    // Gather actual page/file names so the LLM doesn't hallucinate
-    const pageNames = services.listPageNames
-      ? await services.listPageNames().catch(() => [] as readonly string[])
-      : undefined;
-    const fileNames = services.listFileNames
-      ? await services.listFileNames().catch(() => [] as readonly string[])
+    // Gather workspace statistics for dynamic system prompt (M10 Phase 4)
+    const fileCount = services.getFileCount
+      ? await services.getFileCount().catch(() => 0)
       : undefined;
 
     const promptContext: ISystemPromptContext = {
@@ -204,8 +203,9 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       tools: shouldIncludeTools(request.mode)
         ? (capabilities.canAutonomous ? services.getToolDefinitions() : services.getReadOnlyToolDefinitions())
         : undefined,
-      pageNames: pageNames?.length ? pageNames : undefined,
-      fileNames: fileNames?.length ? fileNames : undefined,
+      fileCount,
+      isRAGAvailable: services.isRAGAvailable?.() ?? false,
+      isIndexing: services.isIndexing?.() ?? false,
     };
 
     const systemPrompt = buildSystemPrompt(request.mode, promptContext);

@@ -41,10 +41,12 @@ export interface ITokenStatusBarServices {
   getCurrentPageTitle(): string | undefined;
   /** Get tool definitions (agent mode). */
   getToolDefinitions(): readonly IToolDefinition[];
-  /** Get page names for system prompt. */
-  listPageNames(): Promise<readonly string[]>;
-  /** Get file names for system prompt. */
-  listFileNames(): Promise<readonly string[]>;
+  /** Get file count for system prompt. */
+  getFileCount(): Promise<number>;
+  /** Whether RAG is available. */
+  isRAGAvailable(): boolean;
+  /** Whether indexing is in progress. */
+  isIndexing(): boolean;
 }
 
 /** Breakdown of token usage by category. */
@@ -203,41 +205,37 @@ export class ChatTokenStatusBar extends Disposable {
 
     try {
       const pageCount = await this._services.getPageCount();
-      const pageNames = await this._services.listPageNames();
-      const fileNames = await this._services.listFileNames();
+      const fileCount = await this._services.getFileCount();
       const toolDefs = this._services.getToolDefinitions();
+      const isRAGAvailable = this._services.isRAGAvailable();
+      const isIndexing = this._services.isIndexing();
 
-      // Full system prompt
+      // Full system prompt (with tools for Agent mode)
       const fullCtx: ISystemPromptContext = {
         workspaceName: this._services.getWorkspaceName(),
         pageCount,
         currentPageTitle: this._services.getCurrentPageTitle(),
         tools: mode === ChatMode.Agent ? toolDefs : undefined,
-        pageNames: pageNames.length ? pageNames : undefined,
-        fileNames: fileNames.length ? fileNames : undefined,
+        fileCount,
+        isRAGAvailable,
+        isIndexing,
       };
       const fullSystemPrompt = buildSystemPrompt(mode, fullCtx);
 
-      // Without file listings
-      const noFilesCtx: ISystemPromptContext = {
-        workspaceName: this._services.getWorkspaceName(),
-        pageCount,
-        currentPageTitle: this._services.getCurrentPageTitle(),
-        tools: mode === ChatMode.Agent ? toolDefs : undefined,
-      };
-      const noFilesPrompt = buildSystemPrompt(mode, noFilesCtx);
-
-      // Without tools AND without files (base instructions only)
+      // Without tools (base instructions only)
       const baseCtx: ISystemPromptContext = {
         workspaceName: this._services.getWorkspaceName(),
         pageCount,
         currentPageTitle: this._services.getCurrentPageTitle(),
+        fileCount,
+        isRAGAvailable,
+        isIndexing,
       };
       const basePrompt = buildSystemPrompt(mode, baseCtx);
 
       systemInstructionsEst = Math.ceil(basePrompt.length / 4);
-      toolDefinitionsEst = Math.ceil((noFilesPrompt.length - basePrompt.length) / 4);
-      filesEst = Math.ceil((fullSystemPrompt.length - noFilesPrompt.length) / 4);
+      toolDefinitionsEst = Math.ceil((fullSystemPrompt.length - basePrompt.length) / 4);
+      filesEst = 0; // No longer listing files in system prompt (RAG handles this)
 
       // Tool definitions JSON body (agent mode)
       if (mode === ChatMode.Agent && toolDefs.length > 0) {

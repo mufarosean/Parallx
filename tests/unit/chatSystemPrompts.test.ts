@@ -1,4 +1,4 @@
-// Unit tests for chatSystemPrompts — M9 Cap 4 Task 4.2
+// Unit tests for chatSystemPrompts — M9 Cap 4 Task 4.2, M10 Phase 4
 
 import { describe, it, expect } from 'vitest';
 import { ChatMode } from '../../src/services/chatTypes';
@@ -55,6 +55,28 @@ describe('buildSystemPrompt', () => {
   });
 });
 
+// ── Parallx identity (Task 4.2) ──
+
+describe('buildSystemPrompt — Parallx identity', () => {
+  it('includes Parallx identity in Ask mode', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext());
+    expect(prompt).toContain('Parallx AI');
+    expect(prompt).toContain('local-first knowledge workspace');
+  });
+
+  it('includes Parallx identity in Agent mode', () => {
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext());
+    expect(prompt).toContain('Parallx AI');
+    expect(prompt).toContain('second-brain');
+  });
+
+  it('mentions Ollama and local-only', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext());
+    expect(prompt).toContain('Ollama');
+    expect(prompt).toContain('locally');
+  });
+});
+
 // ── Ask mode ──
 
 describe('buildSystemPrompt — Ask mode', () => {
@@ -68,6 +90,16 @@ describe('buildSystemPrompt — Ask mode', () => {
     expect(prompt).toContain('12 canvas pages');
   });
 
+  it('includes file count when provided', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ fileCount: 42 }));
+    expect(prompt).toContain('42 files');
+  });
+
+  it('omits file count when zero or undefined', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ fileCount: 0 }));
+    expect(prompt).not.toContain('0 file');
+  });
+
   it('includes current page title when provided', () => {
     const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ currentPageTitle: 'My Note' }));
     expect(prompt).toContain('My Note');
@@ -75,7 +107,7 @@ describe('buildSystemPrompt — Ask mode', () => {
 
   it('omits page title line when not provided', () => {
     const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ currentPageTitle: undefined }));
-    expect(prompt).not.toContain('currently viewing');
+    expect(prompt).not.toContain('Currently viewing');
   });
 
   it('handles singular page count correctly', () => {
@@ -84,9 +116,29 @@ describe('buildSystemPrompt — Ask mode', () => {
     expect(prompt).not.toContain('1 canvas pages');
   });
 
-  it('indicates read-only tool access', () => {
+  it('indicates read-only tools only', () => {
     const prompt = buildSystemPrompt(ChatMode.Ask, makeContext());
     expect(prompt).toMatch(/cannot create.*modify.*delete/i);
+  });
+
+  it('includes RAG context note when RAG is available', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ isRAGAvailable: true }));
+    expect(prompt).toContain('semantic search');
+  });
+
+  it('omits RAG note when RAG is not available', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ isRAGAvailable: false }));
+    expect(prompt).not.toContain('semantic search');
+  });
+
+  it('shows indexing status when indexing', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ isIndexing: true }));
+    expect(prompt).toContain('building');
+  });
+
+  it('shows ready status when RAG is ready', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ isRAGAvailable: true, isIndexing: false }));
+    expect(prompt).toContain('ready');
   });
 });
 
@@ -133,12 +185,12 @@ describe('buildSystemPrompt — Agent mode', () => {
 
   it('includes agent identity', () => {
     const prompt = buildSystemPrompt(ChatMode.Agent, makeContext());
-    expect(prompt).toMatch(/agent/i);
+    expect(prompt).toMatch(/agent mode/i);
   });
 
   it('omits tool section when no tools provided', () => {
     const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ tools: [] }));
-    expect(prompt).not.toContain('tools available');
+    expect(prompt).not.toContain('TOOLS:');
   });
 
   it('includes tool descriptions when tools are provided', () => {
@@ -159,14 +211,40 @@ describe('buildSystemPrompt — Agent mode', () => {
     expect(prompt).toContain('query');
   });
 
-  it('includes reasoning guidelines', () => {
+  it('includes rules section', () => {
     const prompt = buildSystemPrompt(ChatMode.Agent, makeContext());
-    expect(prompt).toContain('Guidelines');
+    expect(prompt).toContain('RULES');
   });
 
   it('mentions user confirmation for write tools', () => {
     const prompt = buildSystemPrompt(ChatMode.Agent, makeContext());
     expect(prompt).toMatch(/confirmation/i);
+  });
+});
+
+// ── Token budget ──
+
+describe('buildSystemPrompt — token budget', () => {
+  it('keeps Ask prompt under 2000 tokens (estimated chars/4)', () => {
+    const tools = Array.from({ length: 11 }, (_, i) => makeTool(`tool_${i}`, `Description for tool ${i}`));
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({
+      tools,
+      currentPageTitle: 'My Long Page Title',
+      fileCount: 100,
+      isRAGAvailable: true,
+    }));
+    expect(Math.ceil(prompt.length / 4)).toBeLessThan(2000);
+  });
+
+  it('keeps Agent prompt under 2000 tokens (estimated chars/4)', () => {
+    const tools = Array.from({ length: 11 }, (_, i) => makeTool(`tool_${i}`, `Description for tool ${i}`));
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({
+      tools,
+      currentPageTitle: 'My Long Page Title',
+      fileCount: 100,
+      isRAGAvailable: true,
+    }));
+    expect(Math.ceil(prompt.length / 4)).toBeLessThan(2000);
   });
 });
 
@@ -187,5 +265,12 @@ describe('buildSystemPrompt — edge cases', () => {
     // TypeScript enum should prevent this, but just in case
     const prompt = buildSystemPrompt('unknown' as ChatMode, makeContext());
     expect(prompt).toBeTruthy();
+  });
+
+  it('does not include page name or file name listings', () => {
+    // M10 Phase 4: static listings removed in favour of RAG
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ pageCount: 5 }));
+    expect(prompt).not.toContain('Canvas pages in this workspace:');
+    expect(prompt).not.toContain('Files and folders at the workspace root:');
   });
 });

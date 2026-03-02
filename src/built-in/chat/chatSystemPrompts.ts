@@ -1,7 +1,13 @@
-// chatSystemPrompts.ts — Mode-aware system prompt builder (M9 Task 4.2)
+// chatSystemPrompts.ts — Dynamic system prompt builder (M9 Task 4.2, M10 Task 4.1 + 4.2)
 //
 // Builds the system prompt prepended to every Ollama request.
 // The prompt varies by mode and includes workspace context.
+//
+// M10 Phase 4 overhaul:
+//   - Removed static page/file listings (replaced by RAG retrieval)
+//   - Added Parallx self-awareness (identity, capabilities)
+//   - Added dynamic workspace statistics (pages, files, RAG status)
+//   - Kept total system prompt under ~2000 tokens
 //
 // VS Code reference:
 //   System prompts are assembled in the agent handler. VS Code builds them
@@ -15,6 +21,9 @@ import type { IToolDefinition } from '../../services/chatTypes.js';
 
 /**
  * Dynamic context injected into system prompts.
+ *
+ * M10 Phase 4: Removed `pageNames` and `fileNames` arrays — RAG retrieval
+ * replaces static listings. Added workspace statistics and RAG status.
  */
 export interface ISystemPromptContext {
   /** Workspace display name (e.g. "My Project"). */
@@ -25,19 +34,30 @@ export interface ISystemPromptContext {
   readonly currentPageTitle?: string;
   /** Tool definitions to include (Ask mode: read-only; Agent mode: all). */
   readonly tools?: readonly IToolDefinition[];
-  /** Actual page titles for context (up to ~20). */
-  readonly pageNames?: readonly string[];
-  /** Actual file/dir names at workspace root (up to ~30). */
-  readonly fileNames?: readonly string[];
+  /** Number of files in the workspace (0 if unknown). */
+  readonly fileCount?: number;
+  /** Whether the RAG knowledge index is ready for retrieval. */
+  readonly isRAGAvailable?: boolean;
+  /** Whether the indexing pipeline is currently running. */
+  readonly isIndexing?: boolean;
 }
+
+// ── Parallx identity (Task 4.2) ──
+
+const PARALLX_IDENTITY = [
+  'You are Parallx AI, the built-in assistant for Parallx — a local-first knowledge workspace and second-brain tool.',
+  'Parallx combines canvas pages (rich-text notes), a file explorer, and AI-powered tools into a unified workbench for organising knowledge, ideas, and projects.',
+  'Everything runs locally on the user\'s machine. You are powered by Ollama (local LLM inference) and have no internet access.',
+].join(' ');
 
 // ── Prompt builders ──
 
 /**
  * Build the system prompt for the given mode and context.
  *
- * The prompt is kept concise to preserve context window budget.
- * Large system prompts are the #1 cause of context overflow.
+ * M10 Phase 4: Prompts are kept concise (~1000-1500 tokens) to preserve
+ * context window budget. RAG-retrieved context and page/file listings
+ * are injected into the *user* message, not the system prompt.
  */
 export function buildSystemPrompt(mode: ChatMode, context: ISystemPromptContext): string {
   switch (mode) {
@@ -55,59 +75,45 @@ export function buildSystemPrompt(mode: ChatMode, context: ISystemPromptContext)
 // ── Ask mode ──
 
 function buildAskPrompt(ctx: ISystemPromptContext): string {
-  const lines: string[] = [
-    'You are Parallx, a helpful local AI assistant for a knowledge workspace.',
-    'Be concise, clear, and use markdown formatting when appropriate.',
-    '',
-    `Workspace: "${ctx.workspaceName}" (${ctx.pageCount} canvas page${ctx.pageCount !== 1 ? 's' : ''}).`,
-  ];
+  const lines: string[] = [PARALLX_IDENTITY];
 
-  if (ctx.currentPageTitle) {
-    lines.push(`The user is currently viewing: "${ctx.currentPageTitle}".`);
-  }
+  // Workspace statistics
+  lines.push('');
+  appendWorkspaceStats(lines, ctx);
 
-  // Inject actual page names so the model doesn't hallucinate
-  appendContentListings(lines, ctx);
-
-  // Include read-only tool descriptions if available
-  if (ctx.tools && ctx.tools.length > 0) {
-    lines.push(
-      '',
-      'You have the following **read-only** tools available to look up workspace content:',
-      '',
-    );
-
-    for (const tool of ctx.tools) {
-      lines.push(`- **${tool.name}**: ${tool.description}`);
-
-      const paramKeys = Object.keys(tool.parameters);
-      if (paramKeys.length > 0) {
-        const schema = tool.parameters as Record<string, unknown>;
-        const props = schema['properties'] as Record<string, { type?: string; description?: string }> | undefined;
-        if (props) {
-          const paramList = Object.entries(props)
-            .map(([key, val]) => `\`${key}\` (${val.type ?? 'any'}): ${val.description ?? ''}`)
-            .join('; ');
-          lines.push(`  Parameters: ${paramList}`);
-        }
-      }
-    }
-  }
-
+  // Context explanation (RAG-aware)
   lines.push(
     '',
     'CONTEXT:',
-    '- The content of the currently open page (if any) is automatically included in the user\'s message. You do NOT need to call a tool to read it.',
+    '- The content of the currently open page (if any) is included in the user\'s message automatically.',
+  );
+  if (ctx.isRAGAvailable) {
+    lines.push('- Relevant knowledge from across the workspace is retrieved automatically via semantic search and included in the user\'s message.');
+  }
+  lines.push(
     '- If the user attaches files or pages, their content is also included directly in the message.',
+  );
+
+  // Read-only tool list
+  if (ctx.tools && ctx.tools.length > 0) {
+    lines.push(
+      '',
+      'TOOLS (read-only):',
+    );
+    for (const tool of ctx.tools) {
+      lines.push(`- ${tool.name}: ${tool.description}`);
+    }
+  }
+
+  // Rules
+  lines.push(
     '',
-    'CRITICAL RULES:',
-    '- When the user asks about a DIFFERENT page (not the one currently open), you MUST call tools (read_page, read_page_by_title, search_workspace) to read it FIRST. NEVER guess content.',
-    '- The page and file names listed above are ONLY for knowing what exists. You do NOT know their contents unless they are provided in the message or you read them with a tool.',
-    '- You can READ workspace content with tools but you CANNOT create, modify, or delete anything.',
-    '- You can call read_page with either a page UUID or a page title — it supports both.',
-    '- Only reference pages and files that are listed above or discovered via tools. Do NOT invent names.',
-    '',
-    'Answer questions about workspace content, general knowledge, and anything the user asks.',
+    'RULES:',
+    '- When the user asks about content NOT in the provided context, use tools (read_page, search_workspace, search_knowledge) to find it first.',
+    '- Do NOT guess or invent page names, file names, or content. Only reference what is in the context or discovered via tools.',
+    '- You can READ workspace content with tools but CANNOT create, modify, or delete anything.',
+    '- read_page accepts both a page UUID and a page title.',
+    '- Be concise. Use markdown formatting when appropriate.',
   );
 
   return lines.join('\n');
@@ -117,14 +123,11 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
 
 function buildEditPrompt(ctx: ISystemPromptContext): string {
   const lines: string[] = [
-    'You are Parallx, a local AI assistant in Edit mode for a knowledge workspace.',
+    'You are Parallx AI in Edit mode — a local-first knowledge workspace assistant.',
     '',
-    `Workspace: "${ctx.workspaceName}" (${ctx.pageCount} page${ctx.pageCount !== 1 ? 's' : ''}).`,
   ];
 
-  if (ctx.currentPageTitle) {
-    lines.push(`The user is viewing: "${ctx.currentPageTitle}".`);
-  }
+  appendWorkspaceStats(lines, ctx);
 
   lines.push(
     '',
@@ -161,63 +164,49 @@ function buildEditPrompt(ctx: ISystemPromptContext): string {
 
 function buildAgentPrompt(ctx: ISystemPromptContext): string {
   const lines: string[] = [
-    'You are Parallx, a local AI agent for a knowledge workspace.',
-    'You have access to tools and can take autonomous actions.',
-    '',
-    `Workspace: "${ctx.workspaceName}" (${ctx.pageCount} canvas page${ctx.pageCount !== 1 ? 's' : ''}).`,
+    PARALLX_IDENTITY,
+    'You are in Agent mode — you can take autonomous actions using tools.',
   ];
 
-  if (ctx.currentPageTitle) {
-    lines.push(`The user is viewing: "${ctx.currentPageTitle}".`);
-  }
+  // Workspace statistics
+  lines.push('');
+  appendWorkspaceStats(lines, ctx);
 
-  // Inject actual page/file names
-  appendContentListings(lines, ctx);
-
-  // Include tool descriptions if available
-  if (ctx.tools && ctx.tools.length > 0) {
-    lines.push(
-      '',
-      'You have the following tools available:',
-      '',
-    );
-
-    for (const tool of ctx.tools) {
-      lines.push(`- **${tool.name}**: ${tool.description}`);
-
-      // Include parameter schema summary if compact enough
-      const paramKeys = Object.keys(tool.parameters);
-      if (paramKeys.length > 0) {
-        const schema = tool.parameters as Record<string, unknown>;
-        const props = schema['properties'] as Record<string, { type?: string; description?: string }> | undefined;
-        if (props) {
-          const paramList = Object.entries(props)
-            .map(([key, val]) => `\`${key}\` (${val.type ?? 'any'}): ${val.description ?? ''}`)
-            .join('; ');
-          lines.push(`  Parameters: ${paramList}`);
-        }
-      }
-    }
-  }
-
+  // Context explanation (RAG-aware)
   lines.push(
     '',
     'CONTEXT:',
-    '- The content of the currently open page (if any) is automatically included in the user\'s message. You do NOT need to call a tool to read it.',
+    '- The content of the currently open page (if any) is included in the user\'s message automatically.',
+  );
+  if (ctx.isRAGAvailable) {
+    lines.push('- Relevant knowledge from across the workspace is retrieved automatically via semantic search and included in the user\'s message.');
+  }
+  lines.push(
     '- If the user attaches files or pages, their content is also included directly in the message.',
+  );
+
+  // Full tool list
+  if (ctx.tools && ctx.tools.length > 0) {
+    lines.push(
+      '',
+      'TOOLS:',
+    );
+    for (const tool of ctx.tools) {
+      const paramSummary = formatToolParams(tool);
+      lines.push(`- ${tool.name}: ${tool.description}${paramSummary ? ` (${paramSummary})` : ''}`);
+    }
+  }
+
+  // Rules
+  lines.push(
     '',
-    'CRITICAL RULES:',
-    '- When the user asks about a DIFFERENT page (not the one currently open), you MUST call tools (read_page, read_page_by_title, search_workspace) to read it FIRST. NEVER guess content.',
-    '- The page and file names listed above are ONLY for knowing what exists. You do NOT know their contents unless they are provided in the message or you read them with a tool.',
-    '- You can call read_page with either a page UUID or a page title — it supports both.',
-    '',
-    'Guidelines:',
-    '- Use tools proactively — read before answering, search before claiming something does or does not exist',
-    '- Explain your reasoning before and after tool use',
-    '- If a tool call fails, explain the error and suggest alternatives',
-    '- Read-only tools (search, read, list) can be used freely',
-    '- Write tools (create, update, delete) require user confirmation',
-    '- Only reference pages and files that actually exist (listed above or discovered via tools). Do NOT invent names.',
+    'RULES:',
+    '- Use tools proactively — read before answering, search before claiming something does or does not exist.',
+    '- Read-only tools (search, read, list) can be used freely. Write tools (create, update, delete) require user confirmation.',
+    '- Do NOT invent page names, file names, or content. Only reference what you discover via tools or context.',
+    '- read_page accepts both a page UUID and a page title.',
+    '- Explain your reasoning before and after tool use.',
+    '- If a tool call fails, explain the error and suggest alternatives.',
   );
 
   return lines.join('\n');
@@ -226,24 +215,38 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
 // ── Shared helpers ──
 
 /**
- * Append actual page titles and file names to the system prompt lines.
- * Prevents the LLM from hallucinating content that doesn't exist.
+ * Append compact workspace statistics to the prompt lines.
  */
-function appendContentListings(lines: string[], ctx: ISystemPromptContext): void {
-  if (ctx.pageNames && ctx.pageNames.length > 0) {
-    lines.push('', 'Canvas pages in this workspace:');
-    for (const name of ctx.pageNames) {
-      lines.push(`- ${name}`);
-    }
-    if (ctx.pageCount > ctx.pageNames.length) {
-      lines.push(`  ...and ${ctx.pageCount - ctx.pageNames.length} more.`);
-    }
+function appendWorkspaceStats(lines: string[], ctx: ISystemPromptContext): void {
+  const parts: string[] = [];
+  parts.push(`${ctx.pageCount} canvas page${ctx.pageCount !== 1 ? 's' : ''}`);
+  if (ctx.fileCount !== undefined && ctx.fileCount > 0) {
+    parts.push(`${ctx.fileCount} file${ctx.fileCount !== 1 ? 's' : ''}`);
   }
 
-  if (ctx.fileNames && ctx.fileNames.length > 0) {
-    lines.push('', 'Files and folders at the workspace root:');
-    for (const name of ctx.fileNames) {
-      lines.push(`- ${name}`);
-    }
+  lines.push(`Workspace: "${ctx.workspaceName}" — ${parts.join(', ')}.`);
+
+  if (ctx.currentPageTitle) {
+    lines.push(`Currently viewing: "${ctx.currentPageTitle}".`);
   }
+
+  // Index status
+  if (ctx.isIndexing) {
+    lines.push('Knowledge index: building (some queries may return incomplete results).');
+  } else if (ctx.isRAGAvailable) {
+    lines.push('Knowledge index: ready (semantic search available across all workspace content).');
+  }
+}
+
+/**
+ * Format tool parameter names compactly for the Agent mode tool list.
+ * Returns empty string if no meaningful params.
+ */
+function formatToolParams(tool: IToolDefinition): string {
+  const schema = tool.parameters as Record<string, unknown>;
+  const props = schema['properties'] as Record<string, { type?: string }> | undefined;
+  if (!props) { return ''; }
+  return Object.entries(props)
+    .map(([key, val]) => `${key}: ${val.type ?? 'any'}`)
+    .join(', ');
 }

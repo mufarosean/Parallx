@@ -244,27 +244,22 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       return languageModelToolsService.invokeTool(name, args, token);
     },
 
-    // ── Data context (prevents LLM hallucination) ──
+    // ── Workspace statistics (M10 Phase 4 — dynamic system prompt) ──
 
-    async listPageNames(): Promise<readonly string[]> {
-      if (!databaseService?.isOpen) { return []; }
-      try {
-        const pages = await databaseService.all<{ title: string; icon: string | null }>(
-          'SELECT title, icon FROM pages WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 20',
-        );
-        return pages.map((p) => `${p.icon ?? '📄'} ${p.title}`);
-      } catch { return []; }
-    },
-    listFileNames: fsAccessor
-      ? async (): Promise<readonly string[]> => {
+    getFileCount: fsAccessor
+      ? async (): Promise<number> => {
         try {
           const entries = await fsAccessor.readdir('.');
-          return entries.slice(0, 30).map((e) =>
-            e.type === 'directory' ? `📁 ${e.name}` : `📄 ${e.name}`,
-          );
-        } catch { return []; }
+          return entries.length;
+        } catch { return 0; }
       }
       : undefined,
+    isRAGAvailable(): boolean {
+      return indexingPipelineService?.isInitialIndexComplete ?? false;
+    },
+    isIndexing(): boolean {
+      return indexingPipelineService?.isIndexing ?? false;
+    },
     // readFileContent and getCurrentPageContent check DB/fileService at
     // call time (not activation time) so they remain functional even when
     // the user opens a workspace folder after the chat tool has activated.
@@ -735,24 +730,15 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     },
     getCurrentPageTitle: () => editorService?.activeEditor?.name,
     getToolDefinitions: () => languageModelToolsService?.getToolDefinitions() ?? [],
-    listPageNames: async () => {
-      if (!databaseService?.isOpen) return [];
-      try {
-        const pages = await databaseService.all<{ title: string; icon: string | null }>(
-          'SELECT title, icon FROM pages WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 20',
-        );
-        return pages.map((p) => `${p.icon ?? '📄'} ${p.title}`);
-      } catch { return []; }
-    },
-    listFileNames: async () => {
-      if (!fsAccessor) return [];
+    getFileCount: async () => {
+      if (!fsAccessor) return 0;
       try {
         const entries = await fsAccessor.readdir('.');
-        return entries.slice(0, 30).map((e) =>
-          e.type === 'directory' ? `📁 ${e.name}` : `📄 ${e.name}`,
-        );
-      } catch { return []; }
+        return entries.length;
+      } catch { return 0; }
     },
+    isRAGAvailable: () => indexingPipelineService?.isInitialIndexComplete ?? false,
+    isIndexing: () => indexingPipelineService?.isIndexing ?? false,
   };
 
   _tokenStatusBar = new ChatTokenStatusBar(tokenBarServices);
