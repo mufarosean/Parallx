@@ -337,6 +337,11 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
     // Embed
     const embeddedChunks = await this._embedChunks(chunks);
+    if (embeddedChunks.length === 0) {
+      // All chunks failed embedding — mark as indexed to avoid retrying unchanged content
+      console.warn('[IndexingPipeline] All chunks failed embedding for page %s', pageId);
+      return false;
+    }
 
     // Store
     await this._vectorStore.upsert('page_block', pageId, embeddedChunks, contentHash);
@@ -417,8 +422,13 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
     // Embed
     const embeddedChunks = await this._embedChunks(chunks);
+    if (embeddedChunks.length === 0) {
+      // All chunks failed embedding — don't store, will retry next time content changes
+      console.warn('[IndexingPipeline] All chunks failed embedding for file %s', filePath);
+      return false;
+    }
 
-    // Store
+    // Store (partial results are fine — some chunks beat no chunks)
     await this._vectorStore.upsert('file_chunk', filePath, embeddedChunks, contentHash);
 
     return true;
@@ -473,16 +483,44 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       this._checkAborted();
 
       const batch = chunks.slice(i, i + BATCH_SIZE);
-      const texts = batch.map((c) => c.contextPrefix ? `${c.contextPrefix}\n${c.text}` : c.text);
-      const hashes = batch.map((c) => c.contentHash);
 
-      const embeddings = await this._embeddingService.embedDocumentBatch(texts, hashes);
+      // Filter out empty/whitespace-only text before embedding
+      const validBatch = batch.filter((c) => {
+        const text = c.contextPrefix ? `${c.contextPrefix}\n${c.text}` : c.text;
+        return text.trim().length > 0;
+      });
+      if (validBatch.length === 0) { continue; }
 
-      for (let j = 0; j < batch.length; j++) {
-        results.push({
-          ...batch[j],
-          embedding: embeddings[j],
-        });
+      const texts = validBatch.map((c) => c.contextPrefix ? `${c.contextPrefix}\n${c.text}` : c.text);
+      const hashes = validBatch.map((c) => c.contentHash);
+
+      try {
+        const embeddings = await this._embeddingService.embedDocumentBatch(texts, hashes);
+
+        for (let j = 0; j < validBatch.length; j++) {
+          results.push({
+            ...validBatch[j],
+            embedding: embeddings[j],
+          });
+        }
+      } catch (batchErr) {
+        // Batch failed — retry each chunk individually so one bad chunk
+        // doesn't kill the entire file
+        console.warn('[IndexingPipeline] Batch embed failed, retrying individually:', batchErr);
+        for (let j = 0; j < validBatch.length; j++) {
+          try {
+            const [embedding] = await this._embeddingService.embedDocumentBatch(
+              [texts[j]], hashes[j] ? [hashes[j]] : undefined,
+            );
+            results.push({ ...validBatch[j], embedding });
+          } catch (chunkErr) {
+            // Skip this chunk — log once and move on
+            console.warn(
+              '[IndexingPipeline] Skipping chunk %d of %s: %s',
+              j, validBatch[j].sourceId, chunkErr instanceof Error ? chunkErr.message : String(chunkErr),
+            );
+          }
+        }
       }
     }
 

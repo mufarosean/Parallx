@@ -413,8 +413,9 @@ describe('IndexingPipelineService', () => {
 
       const startPromise = pipeline.start();
 
-      // Flush microtasks so start() reaches the stalled chunkPage call
-      await new Promise((r) => setTimeout(r, 0));
+      // Flush multiple microtasks so start() reaches the stalled chunkPage call
+      // (hashText is async — needs more than one microtick to complete)
+      await new Promise((r) => setTimeout(r, 50));
 
       pipeline.cancel();
       resolveChunk([]);   // unblock so the for-loop can hit _checkAborted()

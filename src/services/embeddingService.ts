@@ -288,9 +288,12 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
    * Single /api/embed API call.
    */
   private async _callEmbedApi(inputs: string[]): Promise<number[][]> {
+    // Filter out empty inputs — Ollama rejects them with 400
+    const cleanInputs = inputs.map((s) => s.trim() || 'empty');
+
     const body: Record<string, unknown> = {
       model: this._model,
-      input: inputs.length === 1 ? inputs[0] : inputs,
+      input: cleanInputs.length === 1 ? cleanInputs[0] : cleanInputs,
       truncate: true, // Silently truncate inputs exceeding model's context length
     };
 
@@ -304,7 +307,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
       throw new Error(
-        `[EmbeddingService] /api/embed returned ${response.status}: ${errorText}`,
+        `[EmbeddingService] /api/embed returned ${response.status}: ${errorText.slice(0, 200)}`,
       );
     }
 
