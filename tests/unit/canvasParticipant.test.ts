@@ -52,7 +52,7 @@ function mockRequest(overrides?: Partial<IChatParticipantRequest>): IChatPartici
 }
 
 function mockContext(): IChatParticipantContext {
-  return { history: [] };
+  return { sessionId: 'test-session', history: [] };
 }
 
 function mockStream(): IChatResponseStream {

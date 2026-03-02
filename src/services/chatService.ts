@@ -554,6 +554,7 @@ export class ChatService extends Disposable implements IChatService {
 
     // 9. Build context
     const context: IChatParticipantContext = {
+      sessionId,
       history: session.messages.slice(0, -1), // Exclude the current pair
     };
 

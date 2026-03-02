@@ -463,6 +463,8 @@ export interface IChatParticipantRequest {
  * VS Code reference: IChatAgentHistoryEntry[]
  */
 export interface IChatParticipantContext {
+  /** The session ID this request belongs to. */
+  readonly sessionId: string;
   /** Previous request/response pairs in this session. */
   readonly history: readonly IChatRequestResponsePair[];
 }

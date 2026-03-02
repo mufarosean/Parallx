@@ -39,7 +39,7 @@ import type {
   ICancellationToken,
   IToolResult,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './tools/builtInTools.js';
 
@@ -152,6 +152,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     : undefined;
   const indexingPipelineService = api.services.has(IIndexingPipelineService)
     ? api.services.get<import('../../services/serviceTypes.js').IIndexingPipelineService>(IIndexingPipelineService)
+    : undefined;
+  const memoryService = api.services.has(IMemoryService)
+    ? api.services.get<import('../../services/serviceTypes.js').IMemoryService>(IMemoryService)
     : undefined;
 
   // ── 1b. Build file system accessor for built-in tools ──
@@ -324,6 +327,52 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           });
           if (chunks.length === 0) { return undefined; }
           return retrievalService.formatContext(chunks);
+        } catch { return undefined; }
+      }
+      : undefined,
+
+    // ── Memory context (M10 Phase 5 — conversation memory) ──
+
+    recallMemories: memoryService
+      ? async (query: string): Promise<string | undefined> => {
+        try {
+          const memories = await memoryService.recallMemories(query);
+          if (memories.length === 0) { return undefined; }
+          return memoryService.formatMemoryContext(memories);
+        } catch { return undefined; }
+      }
+      : undefined,
+
+    storeSessionMemory: memoryService
+      ? async (sessionId: string, summary: string, messageCount: number): Promise<void> => {
+        try { await memoryService.storeMemory(sessionId, summary, messageCount); } catch { /* best-effort */ }
+      }
+      : undefined,
+
+    isSessionEligibleForSummary: memoryService
+      ? (messageCount: number): boolean => memoryService.isSessionEligibleForSummary(messageCount)
+      : undefined,
+
+    hasSessionMemory: memoryService
+      ? async (sessionId: string): Promise<boolean> => {
+        try { return await memoryService.hasMemory(sessionId); } catch { return false; }
+      }
+      : undefined,
+
+    // ── Preference learning (M10 Phase 5 — Task 5.2) ──
+
+    extractPreferences: memoryService
+      ? async (text: string): Promise<void> => {
+        try { await memoryService.extractAndStorePreferences(text); } catch { /* best-effort */ }
+      }
+      : undefined,
+
+    getPreferencesForPrompt: memoryService
+      ? async (): Promise<string | undefined> => {
+        try {
+          const prefs = await memoryService.getPreferences();
+          if (prefs.length === 0) { return undefined; }
+          return memoryService.formatPreferencesForPrompt(prefs);
         } catch { return undefined; }
       }
       : undefined,

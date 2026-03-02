@@ -156,6 +156,21 @@ export interface IDefaultParticipantServices {
    * Returns undefined if the retrieval service is not available or indexing hasn't completed.
    */
   retrieveContext?(query: string): Promise<string | undefined>;
+
+  // ── Memory (M10 Phase 5 — Tasks 5.1 + 5.2) ──
+
+  /** Recall relevant memories from past conversations. */
+  recallMemories?(query: string): Promise<string | undefined>;
+  /** Store a conversation summary in memory. */
+  storeSessionMemory?(sessionId: string, summary: string, messageCount: number): Promise<void>;
+  /** Check if a session has enough messages for summarisation. */
+  isSessionEligibleForSummary?(messageCount: number): boolean;
+  /** Check if a session has already been summarised. */
+  hasSessionMemory?(sessionId: string): Promise<boolean>;
+  /** Extract and store user preferences from text. */
+  extractPreferences?(text: string): Promise<void>;
+  /** Get formatted preferences for system prompt injection. */
+  getPreferencesForPrompt?(): Promise<string | undefined>;
 }
 
 /** Default participant ID — must match ChatAgentService's DEFAULT_AGENT_ID. */
@@ -210,13 +225,26 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
     const systemPrompt = buildSystemPrompt(request.mode, promptContext);
 
+    // Append user preferences to system prompt (M10 Phase 5 — Task 5.2)
+    let finalSystemPrompt = systemPrompt;
+    if (services.getPreferencesForPrompt) {
+      try {
+        const prefsBlock = await services.getPreferencesForPrompt();
+        if (prefsBlock) {
+          finalSystemPrompt = systemPrompt + '\n\n' + prefsBlock;
+        }
+      } catch {
+        // Preferences are best-effort
+      }
+    }
+
     // Build the message list from conversation history + current request
     const messages: IChatMessage[] = [];
 
     // System prompt (mode-aware)
     messages.push({
       role: 'system',
-      content: systemPrompt,
+      content: finalSystemPrompt,
     });
 
     // History (previous request/response pairs)
@@ -279,6 +307,18 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         }
       } catch {
         // RAG retrieval is best-effort — don't block the request
+      }
+    }
+
+    // 1c. Memory context: retrieve relevant past conversation memories (M10 Phase 5)
+    if (services.recallMemories) {
+      try {
+        const memoryContext = await services.recallMemories(request.text);
+        if (memoryContext) {
+          contextParts.push(memoryContext);
+        }
+      } catch {
+        // Memory recall is best-effort — don't block the request
       }
     }
 
@@ -545,6 +585,65 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       // ── Empty response detection ──
       if (!producedContent && !token.isCancellationRequested) {
         response.warning('The model returned an empty response. Try rephrasing your question or selecting a different model.');
+      }
+
+      // ── Post-response: preference extraction (M10 Phase 5 — Task 5.2) ──
+      // Fire-and-forget — don't block the response
+      if (services.extractPreferences && request.text) {
+        services.extractPreferences(request.text).catch(() => {});
+      }
+
+      // ── Post-response: session memory (M10 Phase 5 — Task 5.1) ──
+      // If the session has enough messages and hasn't been summarised yet,
+      // create a summary for cross-session memory. We do this when the session
+      // grows beyond the threshold, using the summarization LLM.
+      if (
+        services.storeSessionMemory &&
+        services.isSessionEligibleForSummary &&
+        services.hasSessionMemory &&
+        services.sendSummarizationRequest &&
+        context.history.length > 0
+      ) {
+        const sessionId = context.sessionId ?? '';
+        const messageCount = context.history.length + 1; // +1 for current exchange
+        if (sessionId && services.isSessionEligibleForSummary(messageCount)) {
+          // Fire and forget — don't block chat response
+          services.hasSessionMemory(sessionId).then(async (hasMemory) => {
+            if (hasMemory) { return; }
+            try {
+              // Build a compact conversation transcript for summarization
+              const transcript = context.history.map((p) => {
+                const respText = p.response.parts
+                  .map((part) => ('content' in part && typeof part.content === 'string') ? part.content : '')
+                  .filter(Boolean).join(' ');
+                return `User: ${p.request.text}\nAssistant: ${respText}`;
+              }).join('\n\n');
+              const current = `User: ${request.text}`;
+              const fullTranscript = transcript + '\n\n' + current;
+
+              const summaryPrompt: IChatMessage[] = [
+                {
+                  role: 'system',
+                  content:
+                    'Summarise this conversation in 2-4 sentences. Focus on the key topics discussed, ' +
+                    'decisions made, and any important context. Output ONLY the summary.',
+                },
+                { role: 'user', content: fullTranscript },
+              ];
+
+              let summaryText = '';
+              for await (const chunk of services.sendSummarizationRequest!(summaryPrompt)) {
+                if (chunk.content) { summaryText += chunk.content; }
+              }
+
+              if (summaryText.trim()) {
+                await services.storeSessionMemory!(sessionId, summaryText.trim(), messageCount);
+              }
+            } catch {
+              // Memory summarisation is best-effort
+            }
+          }).catch(() => {});
+        }
       }
 
       return {};

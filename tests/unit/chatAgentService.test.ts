@@ -36,7 +36,7 @@ function createMockRequest(text = 'hello'): IChatParticipantRequest {
 }
 
 function createMockContext(): IChatParticipantContext {
-  return { history: [] };
+  return { sessionId: 'test-session', history: [] };
 }
 
 function createMockStream(): IChatResponseStream {

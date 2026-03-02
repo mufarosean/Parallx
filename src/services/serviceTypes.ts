@@ -1049,6 +1049,64 @@ export interface IRetrievalService extends IDisposable {
 
 export const IRetrievalService = createServiceIdentifier<IRetrievalService>('IRetrievalService');
 
+// ─── IMemoryService (M10 Tasks 5.1 + 5.2) ──────────────────────────────────
+
+/**
+ * Manages conversation memory and user preference learning.
+ *
+ * Task 5.1 — Conversation Memory:
+ *   Stores LLM-generated summaries of past sessions, embeds them in the
+ *   vector index, and retrieves relevant memories for new sessions.
+ *
+ * Task 5.2 — User Preference Learning:
+ *   Extracts and persists preference statements from conversations,
+ *   formats them for injection into the system prompt.
+ */
+export interface IMemoryService extends IDisposable {
+  /** Fires when a conversation memory is stored or updated. */
+  readonly onDidUpdateMemory: Event<string>;
+  /** Fires when a user preference is created or updated. */
+  readonly onDidUpdatePreferences: Event<import('./memoryService.js').UserPreference>;
+
+  /** Whether a session has enough messages to summarise. */
+  isSessionEligibleForSummary(messageCount: number): boolean;
+
+  /** Whether a memory already exists for the given session. */
+  hasMemory(sessionId: string): Promise<boolean>;
+
+  /** Store a conversation summary (after LLM summarisation). */
+  storeMemory(sessionId: string, summary: string, messageCount: number): Promise<void>;
+
+  /** Retrieve relevant memories for a query via hybrid search. */
+  recallMemories(
+    query: string,
+    options?: import('./memoryService.js').MemoryRetrievalOptions,
+  ): Promise<import('./memoryService.js').ConversationMemory[]>;
+
+  /** Format retrieved memories for injection into a chat message. */
+  formatMemoryContext(memories: import('./memoryService.js').ConversationMemory[]): string;
+
+  /** Get all stored memories. */
+  getAllMemories(): Promise<import('./memoryService.js').ConversationMemory[]>;
+
+  /** Extract and store user preferences from text. */
+  extractAndStorePreferences(text: string): Promise<import('./memoryService.js').UserPreference[]>;
+
+  /** Get all stored user preferences, ordered by frequency. */
+  getPreferences(): Promise<import('./memoryService.js').UserPreference[]>;
+
+  /** Format preferences for system prompt injection. */
+  formatPreferencesForPrompt(preferences: import('./memoryService.js').UserPreference[]): string;
+
+  /** Delete a specific preference by key. */
+  deletePreference(key: string): Promise<void>;
+
+  /** Clear all memories and preferences. */
+  clearAll(): Promise<void>;
+}
+
+export const IMemoryService = createServiceIdentifier<IMemoryService>('IMemoryService');
+
 // ─── Status Bar Types ────────────────────────────────────────────────────────
 
 /**
