@@ -303,12 +303,15 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       stream: true,
     };
 
-    // Only send num_ctx when the user has explicitly configured a context
-    // length override in Parallx. Otherwise, let Ollama use its own setting
-    // (desktop slider / OLLAMA_NUM_CTX environment variable).
+    // Always send num_ctx so Ollama allocates the model's full context
+    // window (without this, Ollama may default to 2048 tokens).
+    // User override takes priority; otherwise use the model's detected max.
     const ollamaOptions: Record<string, unknown> = {};
-    if (this._contextLengthOverride > 0) {
-      ollamaOptions['num_ctx'] = this._contextLengthOverride;
+    const effectiveCtx = this._contextLengthOverride > 0
+      ? this._contextLengthOverride
+      : this._contextLengthCache.get(modelId);
+    if (effectiveCtx && effectiveCtx > 0) {
+      ollamaOptions['num_ctx'] = effectiveCtx;
     }
     if (options) {
       if (options.temperature !== undefined) ollamaOptions['temperature'] = options.temperature;
@@ -461,29 +464,70 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     return spaced.charAt(0).toUpperCase() + spaced.slice(1);
   }
 
+  /** Maximum context length Parallx will request (matches Ollama desktop max). */
+  private static readonly MAX_CONTEXT_LENGTH = 262144; // 256K
+
   private _extractContextLength(
     modelInfo: Record<string, unknown>,
     parameters?: string,
   ): number {
-    // 1. Ollama stores context length under family-prefixed keys:
-    //    'llama.context_length', 'gemma.context_length', 'qwen2.context_length', etc.
+    // 1. Read the GGUF-declared context_length (family-prefixed key).
+    //    Some model publishers set this conservatively (e.g. qwen2.5 says
+    //    32768 even though the architecture supports 128K).
+    let ggufContextLength = 0;
     for (const [key, value] of Object.entries(modelInfo)) {
       if (key.endsWith('.context_length') && typeof value === 'number' && value > 0) {
-        return value;
+        ggufContextLength = value;
+        break;
       }
     }
 
-    // 2. Fallback: parse num_ctx from the Modelfile parameters string
-    //    e.g. "num_ctx 32768\ntemperature 0.7"
+    // 2. Compute the model's REAL max from rope_freq_base.
+    //    RoPE frequency base directly determines maximum supported context:
+    //    - rope_freq_base  10000 →   8K (base LLaMA)
+    //    - rope_freq_base 500000 → 128K (LLaMA 3.1)
+    //    - rope_freq_base 1000000 → 128K (Qwen 2.5)
+    //    - rope_freq_base 10000000 → 256K+ (Qwen 3)
+    let ropeMaxContext = 0;
+    for (const [key, value] of Object.entries(modelInfo)) {
+      if (key.endsWith('.rope.freq_base') && typeof value === 'number' && value > 0) {
+        ropeMaxContext = this._ropeFreqBaseToMaxContext(value);
+        break;
+      }
+    }
+
+    // 3. Use the MAXIMUM of GGUF context_length and rope-derived max.
+    //    This catches models where the publisher set a conservative default
+    //    but the architecture supports more.
+    let contextLength = Math.max(ggufContextLength, ropeMaxContext);
+
+    // 4. Check Modelfile parameters for explicit num_ctx override.
+    //    e.g. "num_ctx 131072\ntemperature 0.7"
     if (parameters) {
       const match = parameters.match(/num_ctx\s+(\d+)/);
       if (match) {
         const parsed = parseInt(match[1], 10);
-        if (parsed > 0) return parsed;
+        if (parsed > 0) contextLength = Math.max(contextLength, parsed);
       }
     }
 
-    // 3. Last resort — reasonable minimum for modern models
+    // 5. Cap at 256K (Ollama's max) and ensure a reasonable minimum.
+    if (contextLength <= 0) { contextLength = 4096; }
+    return Math.min(contextLength, OllamaProvider.MAX_CONTEXT_LENGTH);
+  }
+
+  /**
+   * Estimate maximum context length from RoPE frequency base.
+   * Based on standard RoPE scaling: higher freq_base = longer context.
+   */
+  private _ropeFreqBaseToMaxContext(freqBase: number): number {
+    // These thresholds are based on published model architectures:
+    if (freqBase >= 10_000_000) return 262144;  // 256K (Qwen3, etc.)
+    if (freqBase >= 1_000_000)  return 131072;  // 128K (Qwen2.5, Gemma2)
+    if (freqBase >= 500_000)    return 131072;  // 128K (LLaMA 3.1)
+    if (freqBase >= 100_000)    return 65536;   //  64K
+    if (freqBase >= 50_000)     return 32768;   //  32K
+    if (freqBase >= 10_000)     return 8192;    //   8K (base LLaMA)
     return 4096;
   }
 
