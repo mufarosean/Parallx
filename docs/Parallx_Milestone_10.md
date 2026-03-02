@@ -650,9 +650,10 @@ interface IMemoryService {
 
 ### Phase 1: Embedding & Vector Foundation (P0)
 
-#### Task 1.1: Embedding Service
+#### Task 1.1: Embedding Service ✅
 - **What**: Create `IEmbeddingService` that calls Ollama's `/api/embed` endpoint
 - **File**: `src/services/embeddingService.ts`
+- **Status**: Done — commit `fb020da`
 - **Details**:
   - Batch embedding via `/api/embed` (not individual `/api/embeddings`)
   - Auto-pull `nomic-embed-text` if not installed
@@ -661,9 +662,10 @@ interface IMemoryService {
 - **Reference**: Ollama API docs — https://github.com/ollama/ollama/blob/main/docs/api.md#generate-embeddings
 - **Estimate**: 1 session
 
-#### Task 1.2: Vector Storage (SQLite)
-- **What**: Create `embeddings` table and `IVectorIndex` service
-- **File**: `src/services/vectorIndex.ts`
+#### Task 1.2: Vector Storage (SQLite) ✅
+- **What**: Create vec0 + FTS5 tables and `IVectorStoreService`
+- **File**: `src/services/vectorStoreService.ts`
+- **Status**: Done — commit `fb020da` (used sqlite-vec vec0 with cosine distance, FTS5 for BM25, RRF fusion)
 - **Details**:
   - Start with pure SQLite (JSON arrays for vectors, cosine similarity in JS)
   - Migration path to sqlite-vec annotated in code
@@ -687,9 +689,10 @@ interface IMemoryService {
 - **Reference**: sqlite-vec — https://github.com/asg017/sqlite-vec
 - **Estimate**: 1 session
 
-#### Task 1.3: Chunking Service
+#### Task 1.3: Chunking Service ✅
 - **What**: Create `IChunkingService` for pages and files
 - **File**: `src/services/chunkingService.ts`
+- **Status**: Done — commit `fb020da`
 - **Details**:
   - Canvas pages: chunk by TipTap block, with contextual prefix (page title + nearest heading)
   - Text files: chunk by paragraph/section, 256-512 token target, 50-token overlap
