@@ -96,10 +96,14 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
 
   lines.push(
     '',
+    'CRITICAL RULES:',
+    '- When the user asks about workspace content (pages, files, notes), you MUST call tools to read the actual content BEFORE answering. NEVER guess or assume what a page or file contains based on its name alone.',
+    '- If the user asks you to summarize, describe, or explain workspace content, call read_page / read_file / search_workspace FIRST, then answer based on the actual content returned.',
+    '- The page and file names listed above are ONLY for knowing what exists. You do NOT know their contents until you read them with a tool.',
+    '- You can READ workspace content with tools but you CANNOT create, modify, or delete anything.',
+    '- Only reference pages and files that are listed above or discovered via tools. Do NOT invent names.',
+    '',
     'Answer questions about workspace content, general knowledge, and anything the user asks.',
-    'Use tools to look up file contents, page data, and search results when they would help you give a better answer.',
-    'You can READ workspace content with tools but you CANNOT create, modify, or delete anything.',
-    'IMPORTANT: Only reference pages and files that are listed above or discovered via tools. Do NOT invent or guess page/file names.',
   );
 
   return lines.join('\n');
@@ -194,13 +198,18 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
 
   lines.push(
     '',
+    'CRITICAL RULES:',
+    '- When the user asks about workspace content (pages, files, notes), you MUST call tools to read the actual content BEFORE answering. NEVER guess or assume what a page or file contains based on its name alone.',
+    '- If the user asks you to summarize, describe, or explain workspace content, call read_page / read_file / search_workspace FIRST, then answer based on the actual content returned.',
+    '- The page and file names listed above are ONLY for knowing what exists. You do NOT know their contents until you read them with a tool.',
+    '',
     'Guidelines:',
-    '- Use tools when they help answer the user\'s question',
+    '- Use tools proactively — read before answering, search before claiming something does or does not exist',
     '- Explain your reasoning before and after tool use',
     '- If a tool call fails, explain the error and suggest alternatives',
     '- Read-only tools (search, read, list) can be used freely',
     '- Write tools (create, update, delete) require user confirmation',
-    '- IMPORTANT: Only reference pages and files that actually exist (listed above or discovered via tools). Do NOT guess or invent names.',
+    '- Only reference pages and files that actually exist (listed above or discovered via tools). Do NOT invent names.',
   );
 
   return lines.join('\n');

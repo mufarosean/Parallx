@@ -318,6 +318,11 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       format: shouldUseStructuredOutput(request.mode) ? { type: 'object' } : undefined,
     };
 
+    console.log(`[DefaultParticipant] Mode=${request.mode}, tools=${options.tools?.length ?? 0}, canInvokeTools=${capabilities.canInvokeTools}`);
+    if (options.tools) {
+      console.log('[DefaultParticipant] Tool names:', options.tools.map((t) => t.name).join(', '));
+    }
+
     // Create an AbortController linked to the cancellation token
     const abortController = new AbortController();
     if (token.isCancellationRequested) {
@@ -416,8 +421,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
         // No tool calls → model gave a final answer, done
         if (turnToolCalls.length === 0) {
+          console.log(`[DefaultParticipant] No tool_calls in iteration ${iteration} — model gave final answer.`);
           break;
         }
+
+        console.log(`[DefaultParticipant] Model returned ${turnToolCalls.length} tool call(s) in iteration ${iteration}:`,
+          turnToolCalls.map((tc) => tc.function.name).join(', '));
 
         // Tool calls but not in Agent mode or no invokeTool wired
         if (!canInvokeTools) {
