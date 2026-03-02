@@ -1025,6 +1025,30 @@ export interface IIndexingPipelineService extends IDisposable {
 
 export const IIndexingPipelineService = createServiceIdentifier<IIndexingPipelineService>('IIndexingPipelineService');
 
+// ─── IRetrievalService (M10 Task 3.1) ─────────────────────────────────────
+
+/**
+ * Query-time retrieval: embeds user queries, runs hybrid search, applies
+ * post-retrieval filtering (score threshold, dedup, token budget), and
+ * returns ranked context chunks with source attribution.
+ *
+ * Reference: docs/Parallx_Milestone_10.md Phase 3 Task 3.1
+ */
+export interface IRetrievalService extends IDisposable {
+  /** Retrieve relevant context chunks for a query. */
+  retrieve(
+    query: string,
+    options?: import('./retrievalService.js').RetrievalOptions,
+  ): Promise<import('./retrievalService.js').RetrievedContext[]>;
+
+  /** Format retrieved chunks for injection into a chat message. */
+  formatContext(
+    chunks: import('./retrievalService.js').RetrievedContext[],
+  ): string;
+}
+
+export const IRetrievalService = createServiceIdentifier<IRetrievalService>('IRetrievalService');
+
 // ─── Status Bar Types ────────────────────────────────────────────────────────
 
 /**

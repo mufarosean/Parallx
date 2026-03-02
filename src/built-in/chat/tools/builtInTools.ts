@@ -1,6 +1,6 @@
-// builtInTools.ts — Built-in chat tools for workspace operations (M9 Task 6.3)
+// builtInTools.ts — Built-in chat tools for workspace operations (M9 Task 6.3 + M10 Task 3.3)
 //
-// Registers 10 tools with ILanguageModelToolsService:
+// Registers 11 tools with ILanguageModelToolsService:
 //   - search_workspace (read-only, auto-approvable)
 //   - read_page (read-only, auto-approvable) — accepts UUID or title
 //   - read_page_by_title (read-only, auto-approvable) — explicit title lookup
@@ -11,6 +11,7 @@
 //   - list_files (read-only, auto-approvable)
 //   - read_file (read-only, auto-approvable)
 //   - search_files (read-only, auto-approvable)
+//   - search_knowledge (read-only, auto-approvable) — M10 semantic RAG search
 //
 // Database tools use IDatabaseService for SQL queries — they do NOT invoke
 // canvas code directly (per Task 6.3 constraint).
@@ -52,6 +53,19 @@ export interface IBuiltInToolFileSystem {
   exists(relativePath: string): Promise<boolean>;
   /** The workspace root display name. */
   readonly workspaceRootName: string;
+}
+
+// ── Retrieval accessor interface (M10 Phase 3) ──
+
+/**
+ * Minimal retrieval accessor for the search_knowledge tool.
+ * Wired from IRetrievalService + IIndexingPipelineService in chatTool.ts.
+ */
+export interface IBuiltInToolRetrieval {
+  /** Whether initial indexing has completed (search is available). */
+  isReady(): boolean;
+  /** Retrieve relevant context chunks for a query. */
+  retrieve(query: string, sourceFilter?: string): Promise<{ sourceType: string; sourceId: string; contextPrefix: string; text: string; score: number }[]>;
 }
 
 // ── Tool helpers ──
@@ -532,6 +546,65 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// ── RAG tools (M10 Phase 3 — Task 3.3) ──
+
+function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | undefined): IChatTool {
+  return {
+    name: 'search_knowledge',
+    description:
+      'Semantic search across all indexed knowledge (canvas pages and workspace files). ' +
+      'Use this when you need to find information beyond what is already provided in the context. ' +
+      'Returns the most relevant chunks with source attribution.',
+    parameters: {
+      type: 'object',
+      required: ['query'],
+      properties: {
+        query: { type: 'string', description: 'Natural language search query' },
+        source_filter: {
+          type: 'string',
+          description: 'Optional filter: "page_block" for canvas pages only, "file_chunk" for workspace files only',
+          enum: ['page_block', 'file_chunk'],
+        },
+      },
+    },
+    requiresConfirmation: false,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      if (!retrieval) {
+        return { content: 'Knowledge search is not available — the retrieval service has not been initialized.', isError: true };
+      }
+      if (!retrieval.isReady()) {
+        return { content: 'Knowledge search is not available yet — initial indexing is still in progress. Please try again shortly.' };
+      }
+
+      const query = String(args['query'] || '');
+      if (!query.trim()) {
+        return { content: 'Search query is empty.', isError: true };
+      }
+
+      const sourceFilter = typeof args['source_filter'] === 'string' ? args['source_filter'] : undefined;
+
+      try {
+        const results = await retrieval.retrieve(query, sourceFilter);
+
+        if (results.length === 0) {
+          return { content: `No relevant results found for "${query}".` };
+        }
+
+        const formatted = results.map((r, i) => {
+          const sourceLabel = r.contextPrefix || r.sourceId;
+          const typeLabel = r.sourceType === 'page_block' ? 'Page' : 'File';
+          return `[${i + 1}] (${typeLabel}) ${sourceLabel} [score: ${r.score.toFixed(3)}]\n${r.text}`;
+        }).join('\n\n---\n\n');
+
+        return { content: `Found ${results.length} relevant results:\n\n${formatted}` };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: `Knowledge search failed: ${msg}`, isError: true };
+      }
+    },
+  };
+}
+
 // ── Registration ──
 
 /**
@@ -545,6 +618,7 @@ export function registerBuiltInTools(
   db: IBuiltInToolDatabase | undefined,
   fs: IBuiltInToolFileSystem | undefined,
   getCurrentPageId?: CurrentPageIdGetter,
+  retrieval?: IBuiltInToolRetrieval,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
@@ -561,6 +635,8 @@ export function registerBuiltInTools(
     createListFilesTool(fs),
     createReadFileTool(fs),
     createSearchFilesTool(fs),
+    // ── RAG tools (M10 Phase 3) ──
+    createSearchKnowledgeTool(retrieval),
   ];
 
   for (const tool of tools) {

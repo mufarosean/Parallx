@@ -48,14 +48,14 @@ function createMockToolsService(): ILanguageModelToolsService & { registeredTool
 // ── Tests ──
 
 describe('registerBuiltInTools', () => {
-  it('registers all 10 built-in tools', () => {
+  it('registers all 11 built-in tools', () => {
     const toolsService = createMockToolsService();
     const db = createMockDb();
 
     const disposables = registerBuiltInTools(toolsService, db);
 
-    expect(toolsService.registeredTools).toHaveLength(10);
-    expect(disposables).toHaveLength(10);
+    expect(toolsService.registeredTools).toHaveLength(11);
+    expect(disposables).toHaveLength(11);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
@@ -68,6 +68,7 @@ describe('registerBuiltInTools', () => {
       'read_page',
       'read_page_by_title',
       'search_files',
+      'search_knowledge',
       'search_workspace',
     ]);
   });
@@ -78,7 +79,7 @@ describe('registerBuiltInTools', () => {
 
     registerBuiltInTools(toolsService, db);
 
-    const readOnly = ['search_workspace', 'read_page', 'read_page_by_title', 'read_current_page', 'list_pages', 'get_page_properties', 'list_files', 'read_file', 'search_files'];
+    const readOnly = ['search_workspace', 'read_page', 'read_page_by_title', 'read_current_page', 'list_pages', 'get_page_properties', 'list_files', 'read_file', 'search_files', 'search_knowledge'];
     for (const name of readOnly) {
       const tool = toolsService.registeredTools.find(t => t.name === name);
       expect(tool?.requiresConfirmation, `${name} should not require confirmation`).toBe(false);

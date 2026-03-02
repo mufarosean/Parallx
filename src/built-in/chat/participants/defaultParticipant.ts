@@ -145,6 +145,15 @@ export interface IDefaultParticipantServices {
    * Returns title + text content, or undefined if no page is open.
    */
   getCurrentPageContent?(): Promise<{ title: string; pageId: string; textContent: string } | undefined>;
+
+  // ── RAG context retrieval (M10 Phase 3) ──
+
+  /**
+   * Retrieve relevant context chunks for a user query via hybrid search.
+   * Returns formatted context string ready for injection into the user message.
+   * Returns undefined if the retrieval service is not available or indexing hasn't completed.
+   */
+  retrieveContext?(query: string): Promise<string | undefined>;
 }
 
 /** Default participant ID — must match ChatAgentService's DEFAULT_AGENT_ID. */
@@ -258,6 +267,18 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         }
       } catch {
         // Silently skip — implicit context is best-effort
+      }
+    }
+
+    // 1b. RAG context: retrieve semantically relevant chunks (M10 Phase 3)
+    if (services.retrieveContext) {
+      try {
+        const ragContext = await services.retrieveContext(request.text);
+        if (ragContext) {
+          contextParts.push(ragContext);
+        }
+      } catch {
+        // RAG retrieval is best-effort — don't block the request
       }
     }
 

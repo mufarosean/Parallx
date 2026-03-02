@@ -39,7 +39,7 @@ import type {
   ICancellationToken,
   IToolResult,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './tools/builtInTools.js';
 
@@ -146,6 +146,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     : undefined;
   const fileService = api.services.has(IFileService)
     ? api.services.get<import('../../services/serviceTypes.js').IFileService>(IFileService)
+    : undefined;
+  const retrievalService = api.services.has(IRetrievalService)
+    ? api.services.get<import('../../services/serviceTypes.js').IRetrievalService>(IRetrievalService)
+    : undefined;
+  const indexingPipelineService = api.services.has(IIndexingPipelineService)
+    ? api.services.get<import('../../services/serviceTypes.js').IIndexingPipelineService>(IIndexingPipelineService)
     : undefined;
 
   // ── 1b. Build file system accessor for built-in tools ──
@@ -308,6 +314,24 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     },
 
     maxIterations: chatConfig.get<number>('agent.maxIterations', 10),
+
+    // ── RAG context retrieval (M10 Phase 3) ──
+
+    retrieveContext: retrievalService
+      ? async (query: string): Promise<string | undefined> => {
+        // Only retrieve if initial indexing is complete
+        if (!indexingPipelineService?.isInitialIndexComplete) { return undefined; }
+        try {
+          const chunks = await retrievalService.retrieve(query, {
+            topK: 8,
+            maxPerSource: 3,
+            tokenBudget: 3000,
+          });
+          if (chunks.length === 0) { return undefined; }
+          return retrievalService.formatContext(chunks);
+        } catch { return undefined; }
+      }
+      : undefined,
   };
 
   const defaultParticipant = createDefaultParticipant(defaultParticipantServices);
@@ -436,7 +460,30 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   if (languageModelToolsService) {
     const getCurrentPageId = () => extractCanvasPageId(editorService?.activeEditor?.id);
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId);
+
+    // Build retrieval accessor for the search_knowledge tool (M10 Phase 3)
+    const retrievalAccessor = retrievalService && indexingPipelineService
+      ? {
+        isReady: () => indexingPipelineService!.isInitialIndexComplete,
+        async retrieve(query: string, sourceFilter?: string) {
+          const chunks = await retrievalService!.retrieve(query, {
+            topK: 10,
+            maxPerSource: 3,
+            tokenBudget: 4000,
+            sourceFilter,
+          });
+          return chunks.map((c) => ({
+            sourceType: c.sourceType,
+            sourceId: c.sourceId,
+            contextPrefix: c.contextPrefix,
+            text: c.text,
+            score: c.score,
+          }));
+        },
+      }
+      : undefined;
+
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
