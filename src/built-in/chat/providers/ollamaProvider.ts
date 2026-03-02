@@ -48,7 +48,8 @@ interface OllamaShowResponse {
     parameter_size: string;
     quantization_level: string;
   };
-  model_info: Record<string, unknown>;
+  model_info?: Record<string, unknown>;
+  parameters?: string;
   capabilities?: string[];
 }
 
@@ -246,7 +247,10 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     );
 
     // Extract context length from model_info (key varies by family)
-    const contextLength = this._extractContextLength(response.model_info);
+    const contextLength = this._extractContextLength(
+      response.model_info ?? {},
+      response.parameters,
+    );
 
     // Determine capabilities
     const capabilities: ModelCapability[] = ['completion'];
@@ -283,14 +287,18 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       stream: true,
     };
 
-    // Map options
+    // Map options — always set num_ctx to the model's real context length
+    // so Ollama uses the full window instead of its 2048-token default.
+    const ollamaOptions: Record<string, unknown> = {};
+    const ctxLen = this._contextLengthCache.get(modelId);
+    if (ctxLen && ctxLen > 0) {
+      ollamaOptions['num_ctx'] = ctxLen;
+    }
     if (options) {
-      const ollamaOptions: Record<string, unknown> = {};
       if (options.temperature !== undefined) ollamaOptions['temperature'] = options.temperature;
       if (options.topP !== undefined) ollamaOptions['top_p'] = options.topP;
       if (options.maxTokens !== undefined) ollamaOptions['num_predict'] = options.maxTokens;
       if (options.seed !== undefined) ollamaOptions['seed'] = options.seed;
-      if (Object.keys(ollamaOptions).length > 0) body['options'] = ollamaOptions;
 
       if (options.tools && options.tools.length > 0) {
         body['tools'] = options.tools.map((t) => this._formatToolDefinition(t));
@@ -302,6 +310,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
         body['think'] = true;
       }
     }
+    if (Object.keys(ollamaOptions).length > 0) body['options'] = ollamaOptions;
 
     // Create a combined abort signal (user cancellation + timeout)
     const controller = new AbortController();
@@ -436,15 +445,29 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     return spaced.charAt(0).toUpperCase() + spaced.slice(1);
   }
 
-  private _extractContextLength(modelInfo: Record<string, unknown>): number {
-    // Ollama stores context length under family-prefixed keys:
-    // 'llama.context_length', 'gemma.context_length', etc.
+  private _extractContextLength(
+    modelInfo: Record<string, unknown>,
+    parameters?: string,
+  ): number {
+    // 1. Ollama stores context length under family-prefixed keys:
+    //    'llama.context_length', 'gemma.context_length', 'qwen2.context_length', etc.
     for (const [key, value] of Object.entries(modelInfo)) {
-      if (key.endsWith('.context_length') && typeof value === 'number') {
+      if (key.endsWith('.context_length') && typeof value === 'number' && value > 0) {
         return value;
       }
     }
-    // Fallback: common default
+
+    // 2. Fallback: parse num_ctx from the Modelfile parameters string
+    //    e.g. "num_ctx 32768\ntemperature 0.7"
+    if (parameters) {
+      const match = parameters.match(/num_ctx\s+(\d+)/);
+      if (match) {
+        const parsed = parseInt(match[1], 10);
+        if (parsed > 0) return parsed;
+      }
+    }
+
+    // 3. Last resort — reasonable minimum for modern models
     return 4096;
   }
 
