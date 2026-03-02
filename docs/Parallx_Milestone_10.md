@@ -838,7 +838,7 @@ interface IMemoryService {
 
 ### Phase 6: Indexing Status & UI (P1)
 
-#### Task 6.1: Indexing Status Bar
+#### Task 6.1: Indexing Status Bar ✅ `b4c2789`
 - **What**: Show indexing progress in the status bar
 - **File**: `src/built-in/chat/chatTokenStatusBar.ts` (extend)
 - **Details**:
@@ -849,7 +849,7 @@ interface IMemoryService {
 - **Depends on**: Phase 2
 - **Estimate**: 0.5 session
 
-#### Task 6.2: Source Citations in Responses
+#### Task 6.2: Source Citations in Responses ✅ `b4c2789`
 - **What**: Show where the AI got its information
 - **File**: `src/built-in/chat/chatContentParts.ts`
 - **Details**:
