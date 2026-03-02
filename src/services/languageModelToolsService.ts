@@ -116,6 +116,20 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
       }));
   }
 
+  /**
+   * Get read-only (non-confirmation) tool definitions.
+   * Used in Ask mode so the AI can browse workspace content without write access.
+   */
+  getReadOnlyToolDefinitions(): readonly IToolDefinition[] {
+    return Array.from(this._tools.values())
+      .filter((tool) => !this._disabledTools.has(tool.name) && !tool.requiresConfirmation)
+      .map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      }));
+  }
+
   // ── Invocation ──
 
   async invokeTool(

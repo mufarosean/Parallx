@@ -84,9 +84,9 @@ describe('buildSystemPrompt — Ask mode', () => {
     expect(prompt).not.toContain('1 canvas pages');
   });
 
-  it('indicates no tool access', () => {
+  it('indicates read-only tool access', () => {
     const prompt = buildSystemPrompt(ChatMode.Ask, makeContext());
-    expect(prompt).toMatch(/do not have access to tools/i);
+    expect(prompt).toMatch(/cannot create.*modify.*delete/i);
   });
 });
 

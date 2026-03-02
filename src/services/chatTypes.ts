@@ -836,6 +836,8 @@ export interface ILanguageModelToolsService extends IDisposable {
   getTool(name: string): IChatTool | undefined;
   /** Get tool definitions formatted for the Ollama tools[] array (only enabled tools). */
   getToolDefinitions(): readonly IToolDefinition[];
+  /** Get read-only tool definitions (no requiresConfirmation tools). For Ask mode. */
+  getReadOnlyToolDefinitions(): readonly IToolDefinition[];
   /** Invoke a tool with confirmation gate. */
   invokeTool(
     name: string,

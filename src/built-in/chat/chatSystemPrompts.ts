@@ -23,7 +23,7 @@ export interface ISystemPromptContext {
   readonly pageCount: number;
   /** Title of the currently active page, if any. */
   readonly currentPageTitle?: string;
-  /** Tool definitions to include (Agent mode only). */
+  /** Tool definitions to include (Ask mode: read-only; Agent mode: all). */
   readonly tools?: readonly IToolDefinition[];
   /** Actual page titles for context (up to ~20). */
   readonly pageNames?: readonly string[];
@@ -69,11 +69,37 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
   // Inject actual page names so the model doesn't hallucinate
   appendContentListings(lines, ctx);
 
+  // Include read-only tool descriptions if available
+  if (ctx.tools && ctx.tools.length > 0) {
+    lines.push(
+      '',
+      'You have the following **read-only** tools available to look up workspace content:',
+      '',
+    );
+
+    for (const tool of ctx.tools) {
+      lines.push(`- **${tool.name}**: ${tool.description}`);
+
+      const paramKeys = Object.keys(tool.parameters);
+      if (paramKeys.length > 0) {
+        const schema = tool.parameters as Record<string, unknown>;
+        const props = schema['properties'] as Record<string, { type?: string; description?: string }> | undefined;
+        if (props) {
+          const paramList = Object.entries(props)
+            .map(([key, val]) => `\`${key}\` (${val.type ?? 'any'}): ${val.description ?? ''}`)
+            .join('; ');
+          lines.push(`  Parameters: ${paramList}`);
+        }
+      }
+    }
+  }
+
   lines.push(
     '',
     'Answer questions about workspace content, general knowledge, and anything the user asks.',
-    'You do NOT have access to tools or the ability to modify content. Only answer and explain.',
-    'IMPORTANT: Only reference pages and files that are listed above. Do NOT invent or guess page/file names.',
+    'Use tools to look up file contents, page data, and search results when they would help you give a better answer.',
+    'You can READ workspace content with tools but you CANNOT create, modify, or delete anything.',
+    'IMPORTANT: Only reference pages and files that are listed above or discovered via tools. Do NOT invent or guess page/file names.',
   );
 
   return lines.join('\n');

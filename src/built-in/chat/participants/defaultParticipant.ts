@@ -36,6 +36,8 @@ import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } fr
 
 /** Default maximum agentic loop iterations. */
 const DEFAULT_MAX_ITERATIONS = 10;
+/** Ask mode needs fewer iterations — it only reads, never writes. */
+const ASK_MODE_MAX_ITERATIONS = 5;
 /** Default network timeout in milliseconds. */
 const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
 /** Context overflow threshold — warn at this fraction of context length. */
@@ -104,8 +106,10 @@ export interface IDefaultParticipantServices {
   getPageCount(): Promise<number>;
   /** Current page title, if any. */
   getCurrentPageTitle(): string | undefined;
-  /** Available tool definitions (for Agent mode system prompt + request). */
+  /** Available tool definitions (for Agent mode — all tools). */
   getToolDefinitions(): readonly IToolDefinition[];
+  /** Read-only tool definitions (for Ask mode — no write tools). */
+  getReadOnlyToolDefinitions(): readonly IToolDefinition[];
   /**
    * Invoke a tool by name with confirmation gate (Cap 6).
    * Returns the tool result (may include user rejection).
@@ -148,7 +152,7 @@ const DEFAULT_PARTICIPANT_ID = 'parallx.chat.default';
  */
 export function createDefaultParticipant(services: IDefaultParticipantServices): IChatParticipant & IDisposable {
 
-  const maxIterations = services.maxIterations ?? DEFAULT_MAX_ITERATIONS;
+  const configMaxIterations = services.maxIterations ?? DEFAULT_MAX_ITERATIONS;
 
   const handler: IChatParticipantHandler = async (
     request: IChatParticipantRequest,
@@ -160,6 +164,11 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // ── Mode capability enforcement ──
 
     const capabilities = getModeCapabilities(request.mode);
+
+    // Ask mode: fewer iterations (read-only context gathering), Agent: full budget
+    const maxIterations = capabilities.canAutonomous
+      ? configMaxIterations
+      : Math.min(configMaxIterations, ASK_MODE_MAX_ITERATIONS);
 
     // ── Build system prompt with workspace context ──
 
@@ -177,7 +186,9 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       workspaceName: services.getWorkspaceName(),
       pageCount,
       currentPageTitle: services.getCurrentPageTitle(),
-      tools: shouldIncludeTools(request.mode) ? services.getToolDefinitions() : undefined,
+      tools: shouldIncludeTools(request.mode)
+        ? (capabilities.canAutonomous ? services.getToolDefinitions() : services.getReadOnlyToolDefinitions())
+        : undefined,
       pageNames: pageNames?.length ? pageNames : undefined,
       fileNames: fileNames?.length ? fileNames : undefined,
     };
@@ -299,8 +310,10 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
     // Build request options (mode-aware)
     const options: IChatRequestOptions = {
-      // Agent mode: include tool definitions in the request
-      tools: shouldIncludeTools(request.mode) ? services.getToolDefinitions() : undefined,
+      // Ask mode: read-only tools; Agent mode: all tools
+      tools: shouldIncludeTools(request.mode)
+        ? (capabilities.canAutonomous ? services.getToolDefinitions() : services.getReadOnlyToolDefinitions())
+        : undefined,
       // Edit mode: use JSON structured output
       format: shouldUseStructuredOutput(request.mode) ? { type: 'object' } : undefined,
     };
@@ -334,8 +347,8 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       // 5. Re-send the updated history back to the model
       // 6. Repeat until no more tool_calls or max iterations reached
       //
-      // For non-Agent modes, tool calls are ignored (should not occur
-      // because tools are not sent in the request).
+      // Ask mode: read-only tools only.  Agent mode: all tools.
+      // Edit mode: tools are not sent in the request.
 
       const canInvokeTools = capabilities.canInvokeTools && !!services.invokeTool;
       const isEditMode = capabilities.canProposeEdits && !capabilities.canAutonomous;

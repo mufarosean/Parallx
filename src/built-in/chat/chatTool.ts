@@ -197,6 +197,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getToolDefinitions(): readonly IToolDefinition[] {
       return languageModelToolsService?.getToolDefinitions() ?? [];
     },
+    getReadOnlyToolDefinitions(): readonly IToolDefinition[] {
+      return languageModelToolsService?.getReadOnlyToolDefinitions() ?? [];
+    },
     invokeTool(
       name: string,
       args: Record<string, unknown>,

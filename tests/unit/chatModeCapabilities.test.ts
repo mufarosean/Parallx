@@ -16,7 +16,7 @@ describe('getModeCapabilities', () => {
     const caps = getModeCapabilities(ChatMode.Ask);
     expect(caps).toEqual({
       canReadContext: true,
-      canInvokeTools: false,
+      canInvokeTools: true,
       canProposeEdits: false,
       canAutonomous: false,
     });
@@ -63,8 +63,8 @@ describe('getModeCapabilities', () => {
 // ── shouldIncludeTools ──
 
 describe('shouldIncludeTools', () => {
-  it('returns false for Ask mode', () => {
-    expect(shouldIncludeTools(ChatMode.Ask)).toBe(false);
+  it('returns true for Ask mode (read-only tools)', () => {
+    expect(shouldIncludeTools(ChatMode.Ask)).toBe(true);
   });
 
   it('returns false for Edit mode', () => {

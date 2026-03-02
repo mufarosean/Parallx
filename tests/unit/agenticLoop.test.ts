@@ -92,12 +92,13 @@ describe('defaultParticipant agentic loop', () => {
       getPageCount: async () => 5,
       getCurrentPageTitle: () => undefined,
       getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [],
       invokeTool: vi.fn(async () => ({ content: 'tool result' })),
       maxIterations: 10,
     };
   });
 
-  it('streams markdown content in Ask mode (no tools)', async () => {
+  it('streams markdown content in Ask mode (with read-only tools)', async () => {
     sendChatRequest.mockReturnValue(streamChunks([
       { content: 'Hello ', done: false },
       { content: 'World', done: true },
@@ -233,7 +234,7 @@ describe('defaultParticipant agentic loop', () => {
     expect(finalUpdate.status).toBe('rejected');
   });
 
-  it('warns when tool_calls received in non-Agent mode', async () => {
+  it('warns when tool_calls received in Edit mode (no tools)', async () => {
     sendChatRequest.mockReturnValue(streamChunks([
       { content: '', done: false, toolCalls: [{ function: { name: 'search', arguments: {} } }] },
       { content: 'Answer', done: true },
@@ -243,14 +244,15 @@ describe('defaultParticipant agentic loop', () => {
     const stream = createStream();
 
     await participant.handler(
-      makeRequest({ mode: ChatMode.Ask }),
+      makeRequest({ mode: ChatMode.Edit }),
       makeContext(),
       stream,
       createToken(),
     );
 
-    expect(stream.calls['warning']).toHaveLength(1);
-    expect(stream.calls['warning'][0][0]).toContain('not available');
+    // Edit mode uses structured output parsing, not tool invocation
+    // Tool calls should not be processed
+    expect(stream.calls['beginToolInvocation']).toHaveLength(0);
   });
 
   it('handles cancellation during agentic loop', async () => {

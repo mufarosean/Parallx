@@ -34,14 +34,16 @@ export interface IChatModeCapabilities {
  *   | Capability            | Ask | Edit | Agent |
  *   |-----------------------|-----|------|-------|
  *   | Read context          | ✅  | ✅   | ✅    |
- *   | Invoke tools          | ❌  | ❌   | ✅    |
+ *   | Invoke tools          | 🔒  | ❌   | ✅    |
  *   | Propose edits         | ❌  | ✅   | ✅    |
  *   | Autonomous multi-step | ❌  | ❌   | ✅    |
+ *
+ *   🔒 = read-only tools only (list, read, search — no create/modify)
  */
 const MODE_CAPABILITIES: Readonly<Record<ChatMode, IChatModeCapabilities>> = Object.freeze({
   [ChatMode.Ask]: Object.freeze({
     canReadContext: true,
-    canInvokeTools: false,
+    canInvokeTools: true,   // read-only tools — gated at invocation layer
     canProposeEdits: false,
     canAutonomous: false,
   }),
