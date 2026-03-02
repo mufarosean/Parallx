@@ -964,6 +964,9 @@ export interface IVectorStoreService extends IDisposable {
   /** Get stored content hash for incremental re-indexing. */
   getContentHash(sourceType: string, sourceId: string): Promise<string | null>;
 
+  /** Bulk-fetch indexed_at timestamps: source_id → epoch ms. */
+  getIndexedAtMap(sourceType: string): Promise<Map<string, number>>;
+
   /** Get all indexed sources. */
   getIndexedSources(): Promise<import('./vectorStoreService.js').IndexingMeta[]>;
 

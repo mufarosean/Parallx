@@ -105,6 +105,13 @@ interface PageRow {
   content: string;
 }
 
+/** A file discovered during directory walk, with its mtime for fast-skip. */
+interface IndexableFile {
+  path: string;
+  /** Modification time in ms since epoch (from stat/readdir). */
+  mtime: number;
+}
+
 // ─── IndexingPipelineService ─────────────────────────────────────────────────
 
 export class IndexingPipelineService extends Disposable implements IIndexingPipelineService {
@@ -355,35 +362,61 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     const folders = this._workspaceService.folders;
     if (folders.length === 0) { return 0; }
 
-    // Collect all indexable files
-    const filePaths: string[] = [];
+    // Collect all indexable files (with mtimes for fast-skip)
+    const files: IndexableFile[] = [];
     for (const folder of folders) {
-      await this._walkDirectory(folder.uri, filePaths);
+      await this._walkDirectory(folder.uri, files);
     }
 
-    this._updateProgress('files', 0, filePaths.length);
-    let indexed = 0;
+    // Bulk-fetch indexed_at timestamps for all file_chunk sources
+    const indexedAtMap = await this._vectorStore.getIndexedAtMap('file_chunk');
 
-    for (const filePath of filePaths) {
+    this._updateProgress('files', 0, files.length);
+    let indexed = 0;
+    let mtimeSkipped = 0;
+
+    for (const file of files) {
       this._checkAborted();
       const t0 = performance.now();
+
+      // Fast-skip: if the file hasn't been modified since we last indexed it,
+      // there's no need to read the file or compute its content hash.
+      const indexedAtMs = indexedAtMap.get(file.path);
+      if (indexedAtMs !== undefined && file.mtime < indexedAtMs) {
+        mtimeSkipped++;
+        this._onDidIndexSource.fire({
+          type: 'file', source: file.path, sourceId: file.path,
+          status: 'skipped',
+          durationMs: performance.now() - t0,
+        });
+        this._updateProgress('files', this._progress.processed + 1, files.length, file.path);
+        continue;
+      }
+
       try {
-        const changed = await this._indexSingleFile(filePath);
+        const changed = await this._indexSingleFile(file.path);
         if (changed) { indexed++; }
         this._onDidIndexSource.fire({
-          type: 'file', source: filePath, sourceId: filePath,
+          type: 'file', source: file.path, sourceId: file.path,
           status: changed ? 'indexed' : 'skipped',
           durationMs: performance.now() - t0,
         });
       } catch (err) {
-        console.warn('[IndexingPipeline] Failed to index file "%s": %s', filePath, err);
+        console.warn('[IndexingPipeline] Failed to index file "%s": %s', file.path, err);
         this._onDidIndexSource.fire({
-          type: 'file', source: filePath, sourceId: filePath,
+          type: 'file', source: file.path, sourceId: file.path,
           status: 'error', error: String(err),
           durationMs: performance.now() - t0,
         });
       }
-      this._updateProgress('files', this._progress.processed + 1, filePaths.length, filePath);
+      this._updateProgress('files', this._progress.processed + 1, files.length, file.path);
+    }
+
+    if (mtimeSkipped > 0) {
+      console.log(
+        '[IndexingPipeline] mtime fast-skip: %d/%d files unchanged since last index',
+        mtimeSkipped, files.length,
+      );
     }
 
     return indexed;
@@ -437,10 +470,10 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   // ── Internal: File Tree Walking ──
 
   /**
-   * Recursively walk a directory, collecting indexable file paths.
+   * Recursively walk a directory, collecting indexable file paths with mtimes.
    * Respects SKIP_DIRS and INDEXABLE_EXTENSIONS filters.
    */
-  private async _walkDirectory(dirUri: URI, results: string[]): Promise<void> {
+  private async _walkDirectory(dirUri: URI, results: IndexableFile[]): Promise<void> {
     this._checkAborted();
 
     let entries;
@@ -464,7 +497,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       } else if (entry.type === FileType.File) {
         const ext = getExtension(entry.name);
         if (ext && INDEXABLE_EXTENSIONS.has(ext) && entry.size <= MAX_FILE_SIZE) {
-          results.push(entry.uri.fsPath);
+          results.push({ path: entry.uri.fsPath, mtime: entry.mtime });
         }
       }
     }

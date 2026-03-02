@@ -100,6 +100,7 @@ function createMockVectorStore() {
     search: vi.fn().mockResolvedValue([]),
     vectorSearch: vi.fn().mockResolvedValue([]),
     getContentHash: vi.fn().mockResolvedValue(null), // null = not indexed yet
+    getIndexedAtMap: vi.fn().mockResolvedValue(new Map()), // empty = no prior indexing
     getIndexedSources: vi.fn().mockResolvedValue([]),
     getStats: vi.fn().mockResolvedValue({ totalChunks: 0, totalSources: 0, bySourceType: {} }),
     onDidUpdateIndex: vi.fn().mockReturnValue({ dispose: vi.fn() }),
@@ -329,6 +330,71 @@ describe('IndexingPipelineService', () => {
       await pipeline.start();
 
       expect(chunkingService.chunkFile).not.toHaveBeenCalled();
+    });
+
+    it('mtime fast-skip: skips files unchanged since last indexing', async () => {
+      db.all.mockResolvedValueOnce([]); // no pages
+
+      // File with mtime = 1000 (older than indexed_at)
+      const oldMtime = 1000;
+      const indexedAtMs = 5000; // indexed well after mtime
+
+      fileService.readdir.mockResolvedValueOnce([
+        { name: 'old.ts', uri: URI.file('/workspace/old.ts'), type: FileType.File, size: 100, mtime: oldMtime },
+        { name: 'new.ts', uri: URI.file('/workspace/new.ts'), type: FileType.File, size: 100, mtime: 9000 },
+      ]);
+
+      // Simulate prior indexing: old.ts was indexed at t=5000, new.ts not indexed
+      vectorStore.getIndexedAtMap.mockResolvedValueOnce(
+        new Map<string, number>([[URI.file('/workspace/old.ts').fsPath, indexedAtMs]]),
+      );
+
+      // Only new.ts should be read
+      fileService.readFile.mockResolvedValueOnce({
+        content: 'const y = 2;',
+        encoding: 'utf-8',
+        size: 12,
+        mtime: 9000,
+      });
+
+      await pipeline.start();
+
+      // old.ts should be mtime-skipped — no file read, no chunking
+      expect(fileService.readFile).toHaveBeenCalledTimes(1);
+      expect(chunkingService.chunkFile).toHaveBeenCalledTimes(1);
+      expect(chunkingService.chunkFile).toHaveBeenCalledWith(
+        expect.stringContaining('new.ts'),
+        'const y = 2;',
+        'typescript',
+      );
+    });
+
+    it('does NOT mtime-skip files modified after last indexing', async () => {
+      db.all.mockResolvedValueOnce([]); // no pages
+
+      const indexedAtMs = 5000;
+      const newerMtime = 8000; // modified after indexing
+
+      fileService.readdir.mockResolvedValueOnce([
+        { name: 'changed.ts', uri: URI.file('/workspace/changed.ts'), type: FileType.File, size: 100, mtime: newerMtime },
+      ]);
+
+      vectorStore.getIndexedAtMap.mockResolvedValueOnce(
+        new Map<string, number>([[URI.file('/workspace/changed.ts').fsPath, indexedAtMs]]),
+      );
+
+      fileService.readFile.mockResolvedValueOnce({
+        content: 'const z = 3;',
+        encoding: 'utf-8',
+        size: 12,
+        mtime: newerMtime,
+      });
+
+      await pipeline.start();
+
+      // File should be processed normally (read + chunk)
+      expect(fileService.readFile).toHaveBeenCalledTimes(1);
+      expect(chunkingService.chunkFile).toHaveBeenCalledTimes(1);
     });
   });
 

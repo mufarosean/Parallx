@@ -320,6 +320,25 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
   }
 
   /**
+   * Bulk-fetch indexed_at timestamps for all sources of a given type.
+   * Returns a Map of source_id → epoch ms. Used by the indexing pipeline
+   * for mtime-based fast skipping (avoids reading + hashing unchanged files).
+   */
+  async getIndexedAtMap(sourceType: string): Promise<Map<string, number>> {
+    const rows = await this._db.all<{ source_id: string; indexed_at: string }>(
+      'SELECT source_id, indexed_at FROM indexing_metadata WHERE source_type = ?',
+      [sourceType],
+    );
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      // indexed_at is SQLite datetime (UTC, no TZ suffix) — append 'Z' for correct parse
+      const ms = new Date(row.indexed_at + 'Z').getTime();
+      if (!isNaN(ms)) { map.set(row.source_id, ms); }
+    }
+    return map;
+  }
+
+  /**
    * Get all indexed sources with their metadata.
    */
   async getIndexedSources(): Promise<IndexingMeta[]> {
