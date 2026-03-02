@@ -743,7 +743,7 @@ interface IMemoryService {
 
 ### Phase 3: Retrieval Integration (P0)
 
-#### Task 3.1: Retrieval Service
+#### Task 3.1: Retrieval Service ✅ `4fed27a`
 - **What**: Query-time retrieval that finds relevant chunks
 - **File**: `src/services/retrievalService.ts`
 - **Details**:
@@ -757,7 +757,7 @@ interface IMemoryService {
 - **Depends on**: Task 1.1, 1.2
 - **Estimate**: 1 session
 
-#### Task 3.2: Integrate RAG into Default Participant
+#### Task 3.2: Integrate RAG into Default Participant ✅ `4fed27a`
 - **What**: Replace brute-force context injection with RAG retrieval
 - **File**: `src/built-in/chat/participants/defaultParticipant.ts`
 - **Details**:
@@ -779,7 +779,7 @@ interface IMemoryService {
 - **Depends on**: Task 3.1
 - **Estimate**: 1 session
 
-#### Task 3.3: RAG as a Tool (Agentic RAG)
+#### Task 3.3: RAG as a Tool (Agentic RAG) ✅ `4fed27a`
 - **What**: Add `search_knowledge` tool so the model can explicitly search when needed
 - **File**: `src/built-in/chat/tools/builtInTools.ts`
 - **Details**:
