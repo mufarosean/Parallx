@@ -48,14 +48,24 @@ import type { IBuiltInToolFileSystem } from './tools/builtInTools.js';
 /**
  * Extract the canvas page UUID from an editor input ID.
  *
- * Editor IDs follow the pattern `parallx.canvas:<typeId>:<pageId>`.
+ * Handles two formats:
+ *   - Prefixed: `parallx.canvas:canvas:<pageId>` → `<pageId>`
+ *   - Bare UUID: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` → as-is
+ *
  * Returns the bare page UUID, or undefined if the editor is not a canvas page.
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function extractCanvasPageId(editorId: string | undefined): string | undefined {
   if (!editorId) { return undefined; }
+  // Prefixed format: parallx.canvas:canvas:<uuid>
   const parts = editorId.split(':');
   if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
     return parts.slice(2).join(':');
+  }
+  // Bare UUID (canvas editors opened directly by page ID)
+  if (UUID_RE.test(editorId)) {
+    return editorId;
   }
   return undefined;
 }
@@ -249,52 +259,53 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         } catch { return []; }
       }
       : undefined,
-    readFileContent: fileService
-      ? async (fullPath: string): Promise<string> => {
-        // Canvas page attachments use parallx-page://<pageId> URIs
-        if (fullPath.startsWith('parallx-page://') && databaseService?.isOpen) {
-          const pageId = fullPath.slice('parallx-page://'.length);
-          try {
-            const row = await databaseService.get<{ title: string; content: string }>(
-              'SELECT title, content FROM pages WHERE id = ?',
-              [pageId],
-            );
-            if (!row) { return `[Error: Page not found "${pageId}"]`; }
-            const text = extractTextContent(row.content);
-            return text || '[Empty page]';
-          } catch {
-            return `[Error: Could not read page "${pageId}"]`;
-          }
-        }
-        // Regular filesystem file
+    // readFileContent and getCurrentPageContent check DB/fileService at
+    // call time (not activation time) so they remain functional even when
+    // the user opens a workspace folder after the chat tool has activated.
+
+    readFileContent: async (fullPath: string): Promise<string> => {
+      // Canvas page attachments use parallx-page://<pageId> URIs
+      if (fullPath.startsWith('parallx-page://') && databaseService?.isOpen) {
+        const pageId = fullPath.slice('parallx-page://'.length);
         try {
-          const { URI } = await import('../../platform/uri.js');
-          const uri = URI.file(fullPath);
-          const content = await fileService.readFile(uri);
-          return content.content;
+          const row = await databaseService.get<{ title: string; content: string }>(
+            'SELECT title, content FROM pages WHERE id = ?',
+            [pageId],
+          );
+          if (!row) { return `[Error: Page not found "${pageId}"]`; }
+          const text = extractTextContent(row.content);
+          return text || '[Empty page]';
         } catch {
-          return `[Error: Could not read file "${fullPath}"]`;
+          return `[Error: Could not read page "${pageId}"]`;
         }
       }
-      : undefined,
+      // Regular filesystem file
+      if (!fileService) { return `[Error: File service not available]`; }
+      try {
+        const { URI } = await import('../../platform/uri.js');
+        const uri = URI.file(fullPath);
+        const content = await fileService.readFile(uri);
+        return content.content;
+      } catch {
+        return `[Error: Could not read file "${fullPath}"]`;
+      }
+    },
 
     // ── Implicit context: current page content (VS Code implicit context pattern) ──
 
-    getCurrentPageContent: (databaseService?.isOpen)
-      ? async (): Promise<{ title: string; pageId: string; textContent: string } | undefined> => {
-        const pageId = extractCanvasPageId(editorService?.activeEditor?.id);
-        if (!pageId || !databaseService?.isOpen) { return undefined; }
-        try {
-          const row = await databaseService.get<{ id: string; title: string; content: string }>(
-            'SELECT id, title, content FROM pages WHERE id = ?',
-            [pageId],
-          );
-          if (!row) { return undefined; }
-          const textContent = extractTextContent(row.content);
-          return textContent ? { title: row.title, pageId: row.id, textContent } : undefined;
-        } catch { return undefined; }
-      }
-      : undefined,
+    getCurrentPageContent: async (): Promise<{ title: string; pageId: string; textContent: string } | undefined> => {
+      const pageId = extractCanvasPageId(editorService?.activeEditor?.id);
+      if (!pageId || !databaseService?.isOpen) { return undefined; }
+      try {
+        const row = await databaseService.get<{ id: string; title: string; content: string }>(
+          'SELECT id, title, content FROM pages WHERE id = ?',
+          [pageId],
+        );
+        if (!row) { return undefined; }
+        const textContent = extractTextContent(row.content);
+        return textContent ? { title: row.title, pageId: row.id, textContent } : undefined;
+      } catch { return undefined; }
+    },
 
     maxIterations: chatConfig.get<number>('agent.maxIterations', 10),
   };

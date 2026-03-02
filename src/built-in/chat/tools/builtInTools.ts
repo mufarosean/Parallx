@@ -613,8 +613,11 @@ export function extractTextContent(content: string): string {
   try {
     const parsed = JSON.parse(content);
     if (parsed && typeof parsed === 'object') {
+      // Handle schema-envelope format: { schemaVersion, doc: { type: "doc", content: [...] } }
+      const doc = (parsed as Record<string, unknown>)['doc'];
+      const root = (doc && typeof doc === 'object') ? doc : parsed;
       const texts: string[] = [];
-      walkNode(parsed, texts);
+      walkNode(root, texts);
       return texts.join(' ').trim();
     }
   } catch {
