@@ -181,11 +181,23 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
 
     this._cachedModels = allModels;
 
-    // Auto-select first model if none selected and models are available
+    // Auto-select first chat model if none selected and models are available.
+    // Skip embedding models (e.g. nomic-embed-text) — they can't handle chat.
     if (!this._activeModelId && allModels.length > 0) {
-      this._activeModelId = allModels[0].id;
+      const chatModel = allModels.find(m => !this._isEmbeddingModel(m));
+      this._activeModelId = chatModel?.id ?? allModels[0].id;
     }
 
     this._onDidChangeModels.fire();
+  }
+
+  /**
+   * Heuristic: embedding models have 'embed' in their name or belong to
+   * embedding-only model families (e.g. nomic-bert).
+   */
+  private _isEmbeddingModel(model: ILanguageModelInfo): boolean {
+    const id = model.id.toLowerCase();
+    const family = model.family.toLowerCase();
+    return id.includes('embed') || family.includes('bert');
   }
 }

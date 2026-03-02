@@ -787,8 +787,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const tokenBarServices: import('./chatTokenStatusBar.js').ITokenStatusBarServices = {
     getActiveSession: () => _activeWidget?.getSession(),
     getContextLength: async () => {
-      const session = _activeWidget?.getSession();
-      const modelId = session?.modelId;
+      // Use the currently selected chat model (from the model picker),
+      // NOT session.modelId which may be stale or set to an embedding model.
+      const modelId = languageModelsService.getActiveModel();
       if (modelId && _ollamaProvider) {
         return _ollamaProvider.getModelContextLength(modelId);
       }
