@@ -139,6 +139,12 @@ export interface IDefaultParticipantServices {
   listFileNames?(): Promise<readonly string[]>;
   /** Read a file's text content by path (for attachment context injection). */
   readFileContent?(fullPath: string): Promise<string>;
+
+  /**
+   * Read the content of the currently active canvas page (implicit context).
+   * Returns title + text content, or undefined if no page is open.
+   */
+  getCurrentPageContent?(): Promise<{ title: string; pageId: string; textContent: string } | undefined>;
 }
 
 /** Default participant ID — must match ChatAgentService's DEFAULT_AGENT_ID. */
@@ -233,29 +239,49 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
-    // Current user message — with attached file context
+    // ── Build user message with implicit context + attachments ──
+    //
+    // Following VS Code's implicit context pattern (chatImplicitContext.ts):
+    // The content of the currently open page is injected directly into the user
+    // message so the model can reference it without a tool call (zero round-trips).
+
+    const contextParts: string[] = [];
+
+    // 1. Implicit context: active canvas page content
+    if (services.getCurrentPageContent) {
+      try {
+        const pageContext = await services.getCurrentPageContent();
+        if (pageContext && pageContext.textContent) {
+          contextParts.push(
+            `[Currently open page: "${pageContext.title}" (id: ${pageContext.pageId})]\n${pageContext.textContent}`,
+          );
+        }
+      } catch {
+        // Silently skip — implicit context is best-effort
+      }
+    }
+
+    // 2. Explicit attachments: user-added file context
     if (request.attachments?.length && services.readFileContent) {
-      // Read attached file contents and inject as context before the user's question
-      const fileContextParts: string[] = [];
       for (const attachment of request.attachments) {
         try {
           const content = await services.readFileContent(attachment.fullPath);
-          fileContextParts.push(`File: ${attachment.name}\n\`\`\`\n${content}\n\`\`\``);
+          contextParts.push(`File: ${attachment.name}\n\`\`\`\n${content}\n\`\`\``);
         } catch {
-          fileContextParts.push(`File: ${attachment.name}\n[Could not read file]`);
+          contextParts.push(`File: ${attachment.name}\n[Could not read file]`);
         }
       }
-      const contextPrefix = fileContextParts.join('\n\n');
-      messages.push({
-        role: 'user',
-        content: `${contextPrefix}\n\n${request.text}`,
-      });
-    } else {
-      messages.push({
-        role: 'user',
-        content: request.text,
-      });
     }
+
+    // 3. Compose final user message
+    const userContent = contextParts.length > 0
+      ? `${contextParts.join('\n\n')}\n\n${request.text}`
+      : request.text;
+
+    messages.push({
+      role: 'user',
+      content: userContent,
+    });
 
     // ── Context overflow detection & LLM-based summarization ──
 
@@ -317,11 +343,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       // Edit mode: use JSON structured output
       format: shouldUseStructuredOutput(request.mode) ? { type: 'object' } : undefined,
     };
-
-    console.log(`[DefaultParticipant] Mode=${request.mode}, tools=${options.tools?.length ?? 0}, canInvokeTools=${capabilities.canInvokeTools}`);
-    if (options.tools) {
-      console.log('[DefaultParticipant] Tool names:', options.tools.map((t) => t.name).join(', '));
-    }
 
     // Create an AbortController linked to the cancellation token
     const abortController = new AbortController();
@@ -421,12 +442,8 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
         // No tool calls → model gave a final answer, done
         if (turnToolCalls.length === 0) {
-          console.log(`[DefaultParticipant] No tool_calls in iteration ${iteration} — model gave final answer.`);
           break;
         }
-
-        console.log(`[DefaultParticipant] Model returned ${turnToolCalls.length} tool call(s) in iteration ${iteration}:`,
-          turnToolCalls.map((tc) => tc.function.name).join(', '));
 
         // Tool calls but not in Agent mode or no invokeTool wired
         if (!canInvokeTools) {

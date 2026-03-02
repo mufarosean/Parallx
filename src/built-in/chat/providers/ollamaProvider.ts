@@ -312,14 +312,6 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     }
 
     try {
-      // Debug: log tool definitions sent to Ollama
-      if (body['tools']) {
-        const toolNames = (body['tools'] as { function: { name: string } }[]).map((t) => t.function.name);
-        console.log('[OllamaProvider] Sending tools to model:', toolNames.join(', '));
-      } else {
-        console.log('[OllamaProvider] No tools sent in this request');
-      }
-
       const response = await fetch(`${this._baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -424,10 +416,9 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     const result: IChatResponseChunk = {
       content: chunk.message.content || '',
       thinking: undefined,
-      toolCalls: chunk.message.tool_calls?.map((tc) => {
-        console.log('[OllamaProvider] Model returned tool_call:', tc.function.name, JSON.stringify(tc.function.arguments));
-        return { function: { name: tc.function.name, arguments: tc.function.arguments } };
-      }),
+      toolCalls: chunk.message.tool_calls?.map((tc) => ({
+        function: { name: tc.function.name, arguments: tc.function.arguments },
+      })),
       done: chunk.done,
       promptEvalCount: chunk.prompt_eval_count,
       evalCount: chunk.eval_count,

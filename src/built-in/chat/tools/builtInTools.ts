@@ -1,8 +1,10 @@
 // builtInTools.ts — Built-in chat tools for workspace operations (M9 Task 6.3)
 //
-// Registers 8 tools with ILanguageModelToolsService:
+// Registers 10 tools with ILanguageModelToolsService:
 //   - search_workspace (read-only, auto-approvable)
-//   - read_page (read-only, auto-approvable)
+//   - read_page (read-only, auto-approvable) — accepts UUID or title
+//   - read_page_by_title (read-only, auto-approvable) — explicit title lookup
+//   - read_current_page (read-only, auto-approvable) — reads the active page
 //   - list_pages (read-only, auto-approvable)
 //   - get_page_properties (read-only, auto-approvable)
 //   - create_page (write, requires confirmation)
@@ -111,20 +113,117 @@ function createSearchWorkspaceTool(db: IBuiltInToolDatabase | undefined): IChatT
 function createReadPageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
   return {
     name: 'read_page',
-    description: 'Read the full content of a page by its ID. Returns the page title and text content.',
+    description: 'Read the full content of a page by its ID or title. Accepts a page UUID or a page title (case-insensitive match). Returns the page title and text content.',
     parameters: {
       type: 'object',
       required: ['pageId'],
       properties: {
-        pageId: { type: 'string', description: 'The page UUID' },
+        pageId: { type: 'string', description: 'The page UUID or page title' },
       },
     },
     requiresConfirmation: false,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
-      const pageId = String(args['pageId'] || '');
-      if (!pageId) {
+      const identifier = String(args['pageId'] || '');
+      if (!identifier) {
         return { content: 'pageId is required', isError: true };
+      }
+
+      // Try UUID lookup first (exact match)
+      let page = await db!.get<{ id: string; title: string; content: string }>(
+        'SELECT id, title, content FROM pages WHERE id = ?',
+        [identifier],
+      );
+
+      // Fallback: case-insensitive exact title match
+      if (!page) {
+        page = await db!.get<{ id: string; title: string; content: string }>(
+          'SELECT id, title, content FROM pages WHERE is_archived = 0 AND LOWER(title) = LOWER(?)',
+          [identifier],
+        );
+      }
+
+      // Fallback: partial title match (LIKE)
+      if (!page) {
+        page = await db!.get<{ id: string; title: string; content: string }>(
+          'SELECT id, title, content FROM pages WHERE is_archived = 0 AND title LIKE ? ORDER BY updated_at DESC',
+          [`%${identifier}%`],
+        );
+      }
+
+      if (!page) {
+        return { content: `Page "${identifier}" not found. Use list_pages to see available pages.`, isError: true };
+      }
+
+      const text = extractTextContent(page.content);
+      return { content: `**${page.title}** (id: ${page.id})\n\n${text || '(empty page)'}` };
+    },
+  };
+}
+
+function createReadPageByTitleTool(db: IBuiltInToolDatabase | undefined): IChatTool {
+  return {
+    name: 'read_page_by_title',
+    description: 'Read a page by its title. Performs case-insensitive matching. If multiple pages match, returns the most recently updated one.',
+    parameters: {
+      type: 'object',
+      required: ['title'],
+      properties: {
+        title: { type: 'string', description: 'The page title to search for (case-insensitive)' },
+      },
+    },
+    requiresConfirmation: false,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireDb(db);
+      const title = String(args['title'] || '').trim();
+      if (!title) {
+        return { content: 'title is required', isError: true };
+      }
+
+      // Exact case-insensitive match first
+      let page = await db!.get<{ id: string; title: string; content: string }>(
+        'SELECT id, title, content FROM pages WHERE is_archived = 0 AND LOWER(title) = LOWER(?) ORDER BY updated_at DESC',
+        [title],
+      );
+
+      // Fallback: partial match
+      if (!page) {
+        page = await db!.get<{ id: string; title: string; content: string }>(
+          'SELECT id, title, content FROM pages WHERE is_archived = 0 AND title LIKE ? ORDER BY updated_at DESC',
+          [`%${title}%`],
+        );
+      }
+
+      if (!page) {
+        return { content: `No page found matching title "${title}". Use list_pages to see available pages.`, isError: true };
+      }
+
+      const text = extractTextContent(page.content);
+      return { content: `**${page.title}** (id: ${page.id})\n\n${text || '(empty page)'}` };
+    },
+  };
+}
+
+/**
+ * Getter function type for the current active page ID.
+ * Wired from editorService.activeEditor.id in chatTool.ts.
+ */
+export type CurrentPageIdGetter = () => string | undefined;
+
+function createReadCurrentPageTool(db: IBuiltInToolDatabase | undefined, getCurrentPageId: CurrentPageIdGetter): IChatTool {
+  return {
+    name: 'read_current_page',
+    description: 'Read the content of the page the user currently has open. No parameters needed — reads whatever page is active in the editor.',
+    parameters: {
+      type: 'object',
+      properties: {},
+    },
+    requiresConfirmation: false,
+    async handler(_args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireDb(db);
+      const pageId = getCurrentPageId();
+      if (!pageId) {
+        return { content: 'No page is currently open in the editor.', isError: true };
       }
 
       const page = await db!.get<{ id: string; title: string; content: string }>(
@@ -133,11 +232,11 @@ function createReadPageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
       );
 
       if (!page) {
-        return { content: `Page "${pageId}" not found.`, isError: true };
+        return { content: `The active editor page (${pageId}) was not found in the database.`, isError: true };
       }
 
       const text = extractTextContent(page.content);
-      return { content: `**${page.title}**\n\n${text || '(empty page)'}` };
+      return { content: `**${page.title}** (id: ${page.id}) — currently open\n\n${text || '(empty page)'}` };
     },
   };
 }
@@ -445,6 +544,7 @@ export function registerBuiltInTools(
   toolsService: ILanguageModelToolsService,
   db: IBuiltInToolDatabase | undefined,
   fs: IBuiltInToolFileSystem | undefined,
+  getCurrentPageId?: CurrentPageIdGetter,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
@@ -452,6 +552,8 @@ export function registerBuiltInTools(
     // ── Canvas/Database tools ──
     createSearchWorkspaceTool(db),
     createReadPageTool(db),
+    createReadPageByTitleTool(db),
+    createReadCurrentPageTool(db, getCurrentPageId ?? (() => undefined)),
     createListPagesTool(db),
     createGetPagePropertiesTool(db),
     createCreatePageTool(db),
@@ -502,8 +604,9 @@ function extractSnippet(content: string, query: string, maxLength: number): stri
 /**
  * Extract plain text from page content.
  * Handles both Tiptap JSON and plain text content.
+ * Exported for use by content resolution in chatTool.ts.
  */
-function extractTextContent(content: string): string {
+export function extractTextContent(content: string): string {
   if (!content) { return ''; }
 
   // Try parsing as Tiptap JSON

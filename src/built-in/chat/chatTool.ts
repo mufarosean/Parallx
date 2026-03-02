@@ -19,7 +19,7 @@ import type { ChatWidget } from './chatWidget.js';
 import { createDefaultParticipant } from './participants/defaultParticipant.js';
 import { createWorkspaceParticipant } from './participants/workspaceParticipant.js';
 import { createCanvasParticipant } from './participants/canvasParticipant.js';
-import { registerBuiltInTools } from './tools/builtInTools.js';
+import { registerBuiltInTools, extractTextContent } from './tools/builtInTools.js';
 import { ChatTokenStatusBar } from './chatTokenStatusBar.js';
 import type { IPageSummary } from './participants/workspaceParticipant.js';
 import type { IBlockSummary, IPageStructure } from './participants/canvasParticipant.js';
@@ -234,6 +234,22 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       : undefined,
     readFileContent: fileService
       ? async (fullPath: string): Promise<string> => {
+        // Canvas page attachments use parallx-page://<pageId> URIs
+        if (fullPath.startsWith('parallx-page://') && databaseService?.isOpen) {
+          const pageId = fullPath.slice('parallx-page://'.length);
+          try {
+            const row = await databaseService.get<{ title: string; content: string }>(
+              'SELECT title, content FROM pages WHERE id = ?',
+              [pageId],
+            );
+            if (!row) { return `[Error: Page not found "${pageId}"]`; }
+            const text = extractTextContent(row.content);
+            return text || '[Empty page]';
+          } catch {
+            return `[Error: Could not read page "${pageId}"]`;
+          }
+        }
+        // Regular filesystem file
         try {
           const { URI } = await import('../../platform/uri.js');
           const uri = URI.file(fullPath);
@@ -244,6 +260,25 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         }
       }
       : undefined,
+
+    // ── Implicit context: current page content (VS Code implicit context pattern) ──
+
+    getCurrentPageContent: (databaseService?.isOpen)
+      ? async (): Promise<{ title: string; pageId: string; textContent: string } | undefined> => {
+        const pageId = editorService?.activeEditor?.id;
+        if (!pageId || !databaseService?.isOpen) { return undefined; }
+        try {
+          const row = await databaseService.get<{ id: string; title: string; content: string }>(
+            'SELECT id, title, content FROM pages WHERE id = ?',
+            [pageId],
+          );
+          if (!row) { return undefined; }
+          const textContent = extractTextContent(row.content);
+          return textContent ? { title: row.title, pageId: row.id, textContent } : undefined;
+        } catch { return undefined; }
+      }
+      : undefined,
+
     maxIterations: chatConfig.get<number>('agent.maxIterations', 10),
   };
 
@@ -372,7 +407,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // ── 3d. Register built-in tools (Cap 6 Task 6.3) ──
 
   if (languageModelToolsService) {
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor);
+    const getCurrentPageId = () => editorService?.activeEditor?.id;
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
@@ -414,10 +450,16 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     // Attachment services (enable "Add Context" file picker — open editor files + workspace files)
     attachmentServices: editorService ? {
       getOpenEditorFiles: () => {
-        return editorService!.getOpenEditors().map((ed) => ({
-          name: ed.name,
-          fullPath: ed.description || ed.name,
-        }));
+        return editorService!.getOpenEditors().map((ed) => {
+          // Canvas/database editors: use parallx-page:// URI so readFileContent
+          // can resolve content via SQLite instead of filesystem
+          const parts = ed.id.split(':');
+          if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
+            const pageId = parts.slice(2).join(':');
+            return { name: ed.name, fullPath: `parallx-page://${pageId}` };
+          }
+          return { name: ed.name, fullPath: ed.description || ed.name };
+        });
       },
       onDidChangeOpenEditors: editorService!.onDidChangeOpenEditors,
       listWorkspaceFiles: fsAccessor
