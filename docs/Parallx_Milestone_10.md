@@ -815,7 +815,7 @@ interface IMemoryService {
 
 ### Phase 5: Memory & Cross-Session Context (P1)
 
-#### Task 5.1: Conversation Memory
+#### Task 5.1: Conversation Memory ✅ `293beb4`
 - **What**: Summarize past conversations and make them searchable
 - **File**: `src/services/memoryService.ts`
 - **Details**:
@@ -826,7 +826,7 @@ interface IMemoryService {
 - **Depends on**: Phase 3
 - **Estimate**: 1 session
 
-#### Task 5.2: User Preference Learning
+#### Task 5.2: User Preference Learning ✅ `293beb4`
 - **What**: Extract and store user preferences from conversations
 - **File**: `src/services/memoryService.ts` (extend)
 - **Details**:
