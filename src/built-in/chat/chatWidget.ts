@@ -31,6 +31,7 @@ import type {
   IChatAttachment,
 } from '../../services/chatTypes.js';
 import type { IAttachmentServices } from './chatContextAttachments.js';
+import type { IToolPickerServices } from './chatToolPicker.js';
 
 // ── Types ──
 
@@ -48,6 +49,8 @@ export interface IChatWidgetServices {
   readonly modePicker?: IModePickerServices;
   /** Optional attachment services — when provided, enables "Add Context" file picker. */
   readonly attachmentServices?: IAttachmentServices;
+  /** Optional tool picker services — when provided, shows the Configure Tools button. */
+  readonly toolPickerServices?: IToolPickerServices;
 
   /** Get a session by ID (for session switching from history). */
   readonly getSession?: (sessionId: string) => IChatSession | undefined;
@@ -226,6 +229,12 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     if (services.attachmentServices) {
       this._inputPart.setAttachmentServices(services.attachmentServices);
+    }
+
+    // ── Tool picker services (enable "Configure Tools" wrench button) ──
+
+    if (services.toolPickerServices) {
+      this._inputPart.setToolPickerServices(services.toolPickerServices);
     }
 
     // ── Scroll tracking ──

@@ -476,6 +476,17 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         }
       });
     } : undefined,
+    // Tool picker services (enable "Configure Tools" wrench button)
+    toolPickerServices: languageModelToolsService ? {
+      getTools: () => languageModelToolsService!.getTools().map((t) => ({
+        name: t.name,
+        description: t.description,
+        enabled: languageModelToolsService!.isToolEnabled(t.name),
+      })),
+      setToolEnabled: (name: string, enabled: boolean) => languageModelToolsService!.setToolEnabled(name, enabled),
+      onDidChangeTools: languageModelToolsService!.onDidChangeTools,
+      getEnabledCount: () => languageModelToolsService!.getEnabledCount(),
+    } : undefined,
   };
 
   // ── 5. Register the chat view in the Auxiliary Bar ──

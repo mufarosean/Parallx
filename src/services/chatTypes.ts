@@ -826,15 +826,15 @@ export const IChatWidgetService = createServiceIdentifier<IChatWidgetService>('I
  * Parallx folds confirmation logic into this service.
  */
 export interface ILanguageModelToolsService extends IDisposable {
-  /** Fires when tools are added/removed. */
+  /** Fires when tools are added/removed or enablement changes. */
   readonly onDidChangeTools: Event<void>;
   /** Register a chat tool. */
   registerTool(tool: IChatTool): IDisposable;
-  /** Get all registered tools. */
+  /** Get all registered tools (regardless of enablement). */
   getTools(): readonly IChatTool[];
   /** Get a tool by name. */
   getTool(name: string): IChatTool | undefined;
-  /** Get tool definitions formatted for the Ollama tools[] array. */
+  /** Get tool definitions formatted for the Ollama tools[] array (only enabled tools). */
   getToolDefinitions(): readonly IToolDefinition[];
   /** Invoke a tool with confirmation gate. */
   invokeTool(
@@ -842,6 +842,12 @@ export interface ILanguageModelToolsService extends IDisposable {
     args: Record<string, unknown>,
     token: ICancellationToken,
   ): Promise<IToolResult>;
+  /** Check if a tool is enabled. All tools are enabled by default. */
+  isToolEnabled(name: string): boolean;
+  /** Enable or disable a tool by name. */
+  setToolEnabled(name: string, enabled: boolean): void;
+  /** Get the count of enabled tools. */
+  getEnabledCount(): number;
 }
 
 export const ILanguageModelToolsService = createServiceIdentifier<ILanguageModelToolsService>('ILanguageModelToolsService');

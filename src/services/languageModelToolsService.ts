@@ -38,6 +38,11 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
 
   private readonly _tools = new Map<string, IChatTool>();
 
+  // ── Enablement ──
+
+  private static readonly _STORAGE_KEY = 'parallx.chat.disabledTools';
+  private readonly _disabledTools: Set<string>;
+
   // ── Events ──
 
   private readonly _onDidChangeTools = this._register(new Emitter<void>());
@@ -47,6 +52,25 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
 
   private _confirmationHandler: ToolConfirmationHandler | undefined;
   private _autoApprove = false;
+
+  constructor() {
+    super();
+    // Restore disabled tools from localStorage
+    this._disabledTools = new Set<string>();
+    try {
+      const stored = localStorage.getItem(LanguageModelToolsService._STORAGE_KEY);
+      if (stored) {
+        const arr = JSON.parse(stored);
+        if (Array.isArray(arr)) {
+          for (const name of arr) {
+            if (typeof name === 'string') {
+              this._disabledTools.add(name);
+            }
+          }
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  }
 
   // ── Registration ──
 
@@ -77,17 +101,19 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   }
 
   /**
-   * Get all tools formatted as Ollama tool definitions.
+   * Get enabled tools formatted as Ollama tool definitions.
    *
    * These are included in the `tools` array of the chat request
-   * when in Agent mode.
+   * when in Agent mode.  Only enabled tools are returned.
    */
   getToolDefinitions(): readonly IToolDefinition[] {
-    return Array.from(this._tools.values()).map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters,
-    }));
+    return Array.from(this._tools.values())
+      .filter((tool) => !this._disabledTools.has(tool.name))
+      .map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+      }));
   }
 
   // ── Invocation ──
@@ -129,6 +155,43 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   }
 
   // ── Configuration ──
+
+  // ── Tool enablement ──
+
+  isToolEnabled(name: string): boolean {
+    return !this._disabledTools.has(name);
+  }
+
+  setToolEnabled(name: string, enabled: boolean): void {
+    const changed = enabled
+      ? this._disabledTools.delete(name)
+      : !this._disabledTools.has(name) && (this._disabledTools.add(name), true);
+    if (changed) {
+      this._persistDisabledTools();
+      this._onDidChangeTools.fire();
+    }
+  }
+
+  getEnabledCount(): number {
+    let count = 0;
+    for (const tool of this._tools.values()) {
+      if (!this._disabledTools.has(tool.name)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private _persistDisabledTools(): void {
+    try {
+      localStorage.setItem(
+        LanguageModelToolsService._STORAGE_KEY,
+        JSON.stringify([...this._disabledTools]),
+      );
+    } catch { /* storage full or unavailable */ }
+  }
+
+  // ── Confirmation ──
 
   /**
    * Set the confirmation handler (called by UI layer).

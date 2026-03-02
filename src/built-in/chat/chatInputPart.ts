@@ -20,6 +20,8 @@ import { chatIcons } from './chatIcons.js';
 import { ChatContextAttachments } from './chatContextAttachments.js';
 import type { IAttachmentServices, IWorkspaceFileEntry } from './chatContextAttachments.js';
 import type { IChatAttachment } from '../../services/chatTypes.js';
+import { ChatToolPicker } from './chatToolPicker.js';
+import type { IToolPickerServices } from './chatToolPicker.js';
 
 /**
  * Chat input area — textarea + context ribbon + toolbar (submit/stop, model/mode pickers).
@@ -38,6 +40,8 @@ export class ChatInputPart extends Disposable {
   private readonly _attachLabel: HTMLSpanElement;
   private readonly _contextRibbon: ChatContextAttachments;
   private _filePickerDropdown: HTMLElement | undefined;
+  private readonly _toolsBtn: HTMLButtonElement;
+  private readonly _toolPicker: ChatToolPicker;
 
   // ── State ──
 
@@ -107,6 +111,26 @@ export class ChatInputPart extends Disposable {
         this._closeFilePicker();
       } else {
         this._openFilePicker();
+      }
+    }));
+
+    // Configure Tools button (wrench icon — opens tool picker overlay)
+    this._toolsBtn = document.createElement('button');
+    this._toolsBtn.className = 'parallx-chat-input-tools';
+    this._toolsBtn.type = 'button';
+    this._toolsBtn.title = 'Configure Tools\u2026';
+    this._toolsBtn.setAttribute('aria-label', 'Configure Tools');
+    this._toolsBtn.innerHTML = chatIcons.wrench;
+    this._toolsBtn.style.display = 'none'; // hidden until services wired
+    this._toolbar.appendChild(this._toolsBtn);
+
+    // Tool picker dialog (modal overlay)
+    this._toolPicker = this._register(new ChatToolPicker());
+    this._register(addDisposableListener(this._toolsBtn, 'click', () => {
+      if (this._toolPicker.isOpen) {
+        this._toolPicker.close();
+      } else {
+        this._toolPicker.open();
       }
     }));
 
@@ -207,6 +231,12 @@ export class ChatInputPart extends Disposable {
   /** Bind attachment services for editor file tracking. */
   setAttachmentServices(services: IAttachmentServices): void {
     this._contextRibbon.setServices(services);
+  }
+
+  /** Bind tool picker services — shows the wrench icon and enables the dialog. */
+  setToolPickerServices(services: IToolPickerServices): void {
+    this._toolPicker.setServices(services);
+    this._toolsBtn.style.display = '';
   }
 
   /** Get current explicit attachments (to include in the request). */
