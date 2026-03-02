@@ -135,6 +135,12 @@ export const chatIcons = {
     <path d="M10 2.5a3.5 3.5 0 00-3.3 4.7L3 11l1 1 1 1 3.8-3.7A3.5 3.5 0 0010 2.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
   </svg>`,
 
+  /** Tools icon — wrench + screwdriver crossed */
+  tools: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M5.7 9.3L2.3 12.7a1 1 0 000 1.4l0 0a1 1 0 001.4 0L7 10.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10.8 1.5a3 3 0 00-2.6 4.2L4 10l.7.7.7.7 4.3-4.2A3 3 0 0014 4.5l-1.8 1.8-1.5-.5-.5-1.5 1.8-1.8a3 3 0 00-1.2-.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+  </svg>`,
+
   /** Person silhouette — user avatar */
   person: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
     <circle cx="8" cy="5" r="2.5" stroke="currentColor" stroke-width="1.2"/>

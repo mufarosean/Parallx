@@ -120,7 +120,7 @@ export class ChatInputPart extends Disposable {
     this._toolsBtn.type = 'button';
     this._toolsBtn.title = 'Configure Tools\u2026';
     this._toolsBtn.setAttribute('aria-label', 'Configure Tools');
-    this._toolsBtn.innerHTML = chatIcons.wrench;
+    this._toolsBtn.innerHTML = chatIcons.tools;
     this._toolsBtn.style.display = 'none'; // hidden until services wired
     this._toolbar.appendChild(this._toolsBtn);
 
