@@ -62,6 +62,13 @@ export class ChatInputPart extends Disposable {
     this._root = $('div.parallx-chat-input');
     container.appendChild(this._root);
 
+    // Context attachment ribbon (ABOVE the textarea, VS Code style)
+    this._contextRibbon = this._register(new ChatContextAttachments(this._root));
+    this._register(this._contextRibbon.onDidChange(() => {
+      this._updateAttachBtnLabel();
+      this._onDidChangeAttachments.fire();
+    }));
+
     // Editor area (textarea wrapper)
     const editorArea = $('div.parallx-chat-input-editor');
     this._root.appendChild(editorArea);
@@ -72,13 +79,6 @@ export class ChatInputPart extends Disposable {
     this._textarea.placeholder = 'Ask a question\u2026';
     this._textarea.rows = 1;
     editorArea.appendChild(this._textarea);
-
-    // Context attachment ribbon (between textarea and toolbar)
-    this._contextRibbon = this._register(new ChatContextAttachments(this._root));
-    this._register(this._contextRibbon.onDidChange(() => {
-      this._updateAttachBtnLabel();
-      this._onDidChangeAttachments.fire();
-    }));
 
     // Toolbar
     this._toolbar = $('div.parallx-chat-input-toolbar');

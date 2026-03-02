@@ -110,6 +110,45 @@
   margin: 0;
 }
 
+/* ── User Message Attachment Chips ── */
+
+.parallx-chat-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.parallx-chat-message-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
+  font-size: 11px;
+  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 100ms ease;
+}
+
+.parallx-chat-message-attachment-chip:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.parallx-chat-message-attachment-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.parallx-chat-message-attachment-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
 /* ── Assistant Messages — plain text, left-aligned ── */
 
 .parallx-chat-message--assistant {

@@ -109,9 +109,7 @@ export class ChatModePicker extends Disposable {
       }
 
       const name = $('span.parallx-chat-picker-item-name', meta.label);
-      const desc = $('span.parallx-chat-picker-item-size', meta.description);
       item.appendChild(name);
-      item.appendChild(desc);
 
       item.addEventListener('click', () => {
         this._services.setMode(mode);

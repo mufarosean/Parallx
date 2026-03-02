@@ -39,7 +39,7 @@ import type {
   ICancellationToken,
   IToolResult,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './tools/builtInTools.js';
 
@@ -417,6 +417,22 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         }));
       },
       onDidChangeOpenEditors: editorService!.onDidChangeOpenEditors,
+    } : undefined,
+    // Open file in editor (for clicking attachment chips in chat messages)
+    openFile: editorService && fileService ? (fullPath: string) => {
+      Promise.all([
+        import('../../platform/uri.js'),
+        import('../editor/fileEditorInput.js'),
+      ]).then(([{ URI }, { FileEditorInput }]) => {
+        const uri = URI.file(fullPath);
+        const textFileManager = api.services.has(ITextFileModelManager)
+          ? api.services.get<import('../../services/serviceTypes.js').ITextFileModelManager>(ITextFileModelManager)
+          : undefined;
+        if (textFileManager) {
+          const input = FileEditorInput.create(uri, textFileManager, fileService!);
+          editorService!.openEditor(input);
+        }
+      });
     } : undefined,
   };
 

@@ -15,7 +15,10 @@ import { Disposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
 import { renderContentPart, renderFollowups } from './chatContentParts.js';
 import { chatIcons } from './chatIcons.js';
-import type { IChatRequestResponsePair, IChatAssistantResponse } from '../../services/chatTypes.js';
+import type { IChatRequestResponsePair, IChatAssistantResponse, IChatUserMessage } from '../../services/chatTypes.js';
+
+/** Optional callback for opening an attached file in the editor. */
+export type OpenAttachmentHandler = (fullPath: string) => void;
 
 /**
  * Renders the conversation message list.
@@ -26,6 +29,13 @@ import type { IChatRequestResponsePair, IChatAssistantResponse } from '../../ser
  * production use.
  */
 export class ChatListRenderer extends Disposable {
+
+  private _onOpenAttachment: OpenAttachmentHandler | undefined;
+
+  /** Set callback for when user clicks an attachment chip in a message. */
+  setOpenAttachmentHandler(handler: OpenAttachmentHandler): void {
+    this._onOpenAttachment = handler;
+  }
 
   /**
    * Render all messages into the container.
@@ -45,7 +55,7 @@ export class ChatListRenderer extends Disposable {
       const pair = messages[i];
 
       // User message
-      const userEl = this._renderUserMessage(pair.request.text);
+      const userEl = this._renderUserMessage(pair.request);
       container.appendChild(userEl);
 
       // Assistant response
@@ -65,15 +75,43 @@ export class ChatListRenderer extends Disposable {
 
   // ── User Message ──
 
-  private _renderUserMessage(text: string): HTMLElement {
+  private _renderUserMessage(request: IChatUserMessage): HTMLElement {
     const root = $('div.parallx-chat-message.parallx-chat-message--user');
 
     // VS Code Copilot style: user messages are blue bubbles, right-aligned, no avatar
     const body = $('div.parallx-chat-message-body');
     const p = $('p');
-    p.textContent = text;
+    p.textContent = request.text;
     body.appendChild(p);
     root.appendChild(body);
+
+    // Attachment chips shown below the message bubble (VS Code style)
+    if (request.attachments?.length) {
+      const ribbon = $('div.parallx-chat-message-attachments');
+      for (const attachment of request.attachments) {
+        const chip = $('div.parallx-chat-message-attachment-chip');
+        chip.title = attachment.fullPath;
+
+        // File icon
+        const icon = document.createElement('span');
+        icon.className = 'parallx-chat-message-attachment-icon';
+        icon.innerHTML = chatIcons.file;
+        chip.appendChild(icon);
+
+        // File name
+        const label = document.createElement('span');
+        label.textContent = attachment.name;
+        chip.appendChild(label);
+
+        // Click to open in editor
+        chip.addEventListener('click', () => {
+          this._onOpenAttachment?.(attachment.fullPath);
+        });
+
+        ribbon.appendChild(chip);
+      }
+      root.appendChild(ribbon);
+    }
 
     return root;
   }

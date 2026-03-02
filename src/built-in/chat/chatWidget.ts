@@ -55,6 +55,8 @@ export interface IChatWidgetServices {
   readonly getSessions?: () => readonly IChatSession[];
   /** Delete a session by ID. */
   readonly deleteSession?: (sessionId: string) => void;
+  /** Open a file in the editor (for clicking attachment chips in messages). */
+  readonly openFile?: (fullPath: string) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -200,6 +202,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // ── Sub-components ──
 
     this._listRenderer = this._register(new ChatListRenderer());
+    if (services.openFile) {
+      this._listRenderer.setOpenAttachmentHandler(services.openFile);
+    }
 
     this._inputPart = this._register(new ChatInputPart(this._inputAreaContainer));
     this._register(this._inputPart.onDidAcceptInput((text) => this._handleSubmit(text)));

@@ -12,6 +12,7 @@ import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import type { ILanguageModelInfo } from '../../services/chatTypes.js';
+import { chatIcons } from './chatIcons.js';
 
 /** Service accessor for model picker. */
 export interface IModelPickerServices {
@@ -67,13 +68,21 @@ export class ChatModelPicker extends Disposable {
 
   private _updateLabel(): void {
     const activeId = this._services.getActiveModel();
+    this._button.innerHTML = '';
+
+    const label = document.createElement('span');
     if (activeId) {
-      // Truncate long model names
-      const display = activeId.length > 20 ? activeId.slice(0, 17) + '\u2026' : activeId;
-      this._button.textContent = display;
+      label.textContent = activeId.length > 20 ? activeId.slice(0, 17) + '\u2026' : activeId;
     } else {
-      this._button.textContent = 'No model';
+      label.textContent = 'No model';
     }
+    this._button.appendChild(label);
+
+    // Chevron
+    const chevron = document.createElement('span');
+    chevron.className = 'parallx-chat-picker-chevron';
+    chevron.innerHTML = chatIcons.chevronDown;
+    this._button.appendChild(chevron);
   }
 
   private async _openDropdown(): Promise<void> {
