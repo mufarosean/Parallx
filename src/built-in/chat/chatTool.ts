@@ -43,6 +43,23 @@ import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManage
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './tools/builtInTools.js';
 
+// ── Helpers ──
+
+/**
+ * Extract the canvas page UUID from an editor input ID.
+ *
+ * Editor IDs follow the pattern `parallx.canvas:<typeId>:<pageId>`.
+ * Returns the bare page UUID, or undefined if the editor is not a canvas page.
+ */
+function extractCanvasPageId(editorId: string | undefined): string | undefined {
+  if (!editorId) { return undefined; }
+  const parts = editorId.split(':');
+  if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
+    return parts.slice(2).join(':');
+  }
+  return undefined;
+}
+
 // ── Local API type — only the subset we use ──
 
 interface ParallxApi {
@@ -265,7 +282,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
     getCurrentPageContent: (databaseService?.isOpen)
       ? async (): Promise<{ title: string; pageId: string; textContent: string } | undefined> => {
-        const pageId = editorService?.activeEditor?.id;
+        const pageId = extractCanvasPageId(editorService?.activeEditor?.id);
         if (!pageId || !databaseService?.isOpen) { return undefined; }
         try {
           const row = await databaseService.get<{ id: string; title: string; content: string }>(
@@ -360,7 +377,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getActiveModel: () => languageModelsService.getActiveModel(),
     getWorkspaceName,
     getCurrentPageId(): string | undefined {
-      return editorService?.activeEditor?.id;
+      return extractCanvasPageId(editorService?.activeEditor?.id);
     },
     getCurrentPageTitle(): string | undefined {
       return editorService?.activeEditor?.name;
@@ -407,7 +424,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // ── 3d. Register built-in tools (Cap 6 Task 6.3) ──
 
   if (languageModelToolsService) {
-    const getCurrentPageId = () => editorService?.activeEditor?.id;
+    const getCurrentPageId = () => extractCanvasPageId(editorService?.activeEditor?.id);
     const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
