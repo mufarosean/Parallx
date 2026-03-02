@@ -54,6 +54,7 @@
     "highlight.js": "^11.11.1",
     "katex": "^0.16.28",
     "lowlight": "^3.3.0",
+    "sqlite-vec": "^0.1.7-alpha.2",
     "tiptap-extension-auto-joiner": "^0.1.3"
   }
 }

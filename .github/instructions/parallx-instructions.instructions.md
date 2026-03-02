@@ -5,16 +5,25 @@ description: These instructions provide guidelines for AI to follow when thinkin
 
 ## 0. Active Milestone Context
 
-The current work is **Milestone 9 — AI Chat System** (`docs/Parallx_Milestone_09.md`). Read the milestone document before implementing any M9 task. It contains resolved design decisions, type definitions, and verification checklists that govern all AI chat code.
+The current work is **Milestone 10 — RAG-Powered AI Assistant** (`docs/Parallx_Milestone_10.md`). Read the milestone document before implementing any M10 task. It contains verified API specs, integration blueprints, TypeScript interfaces, and a phased task breakdown.
 
-### Key M9 Constraints
+### Key M10 Constraints
 
 - **Local-only AI via Ollama** (`localhost:11434`). No cloud providers, no API keys.
-- **Tiptap reuse**: Chat rendering uses a single Tiptap read-only instance; chat input uses a writable Tiptap instance with Mention extension. No custom markdown renderer.
-- **JSON structured output** for edit mode via Ollama `format` param.
-- **Session URIs** from day one: `parallx-chat-session:///<uuid>`.
-- **Token estimation**: `chars / 4` + LLM history summarization on context overflow.
-- **Follow-up suggestions** (`provideFollowups()`) are M9.2 required.
+- **Embedding model**: `nomic-embed-text` v1.5 via Ollama `/api/embed` (batch endpoint). **Task prefixes mandatory**: `search_document:` for indexing, `search_query:` for retrieval.
+- **Vector storage**: `sqlite-vec` extension loaded into existing `better-sqlite3` via `sqliteVec.load(db)`. Uses `vec0` virtual table with `float[768]` + auxiliary columns. No `electron-rebuild` needed — it's a prebuilt SQLite extension, not a Node addon.
+- **Keyword search**: SQLite FTS5 with built-in BM25 ranking. No external BM25 library.
+- **Hybrid retrieval**: Vector cosine similarity + FTS5 BM25, merged via Reciprocal Rank Fusion (k=60).
+- **Chunking**: Canvas pages chunk by TipTap block (natural boundaries). Files chunk by heading/paragraph. Structural context prefix prepended before embedding (Anthropic Contextual Retrieval pattern — no LLM cost).
+- **Workspace-wide scope**: The AI is NOT limited to canvas pages. It must index and retrieve from canvas pages, workspace files, and any future tool data sources.
+- **Existing M9 chat system** is the integration target — RAG feeds into `defaultParticipant.ts` context injection.
+
+### Inherited M9 Constraints (Still Apply)
+
+- **Tiptap reuse** for chat rendering and input.
+- **Session URIs**: `parallx-chat-session:///<uuid>`.
+- **Token estimation**: `chars / 4`.
+- **10 built-in tools** (M9) + new `search_knowledge` tool (M10).
 
 ### Canvas Gate Architecture
 

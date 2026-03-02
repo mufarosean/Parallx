@@ -14,6 +14,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const sqliteVec = require('sqlite-vec');
 
 // ─── DatabaseManager ─────────────────────────────────────────────────────────
 
@@ -51,6 +52,9 @@ class DatabaseManager {
 
     // Enforce foreign key constraints
     this._db.pragma('foreign_keys = ON');
+
+    // Load sqlite-vec extension for vector similarity search (M10)
+    sqliteVec.load(this._db);
 
     console.log(`[DatabaseManager] Opened database: ${dbPath}`);
   }

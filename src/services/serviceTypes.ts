@@ -870,6 +870,115 @@ export interface IThemeService extends IDisposable {
 
 export const IThemeService = createServiceIdentifier<IThemeService>('IThemeService');
 
+// ─── IEmbeddingService (M10 Task 1.1) ──────────────────────────────────────
+
+/**
+ * Generates text embeddings via Ollama's /api/embed endpoint.
+ * Uses nomic-embed-text v1.5 with mandatory task prefixes.
+ *
+ * Reference: docs/Parallx_Milestone_10.md DR-1, DR-2
+ */
+export interface IEmbeddingService extends IDisposable {
+  /** Embed a single document text (adds 'search_document:' prefix). */
+  embedDocument(text: string, contentHash?: string): Promise<number[]>;
+
+  /** Embed a user query (adds 'search_query:' prefix). */
+  embedQuery(query: string): Promise<number[]>;
+
+  /** Embed multiple document texts in batch. */
+  embedDocumentBatch(texts: string[], contentHashes?: string[]): Promise<number[][]>;
+
+  /** Get model info (name, dimensions, installed status). */
+  getModelInfo(): { name: string; dimensions: number; installed: boolean };
+
+  /** Ensure the embedding model is installed (pulls if not). */
+  ensureModel(): Promise<void>;
+
+  /** Clear the in-memory embedding cache. */
+  clearCache(): void;
+
+  /** Current number of cached embeddings. */
+  readonly cacheSize: number;
+
+  /** Fires when an embedding batch starts. */
+  readonly onDidStartEmbedding: Event<{ count: number }>;
+
+  /** Fires when an embedding batch completes. */
+  readonly onDidFinishEmbedding: Event<{ count: number; durationMs: number }>;
+}
+
+export const IEmbeddingService = createServiceIdentifier<IEmbeddingService>('IEmbeddingService');
+
+// ─── IChunkingService (M10 Task 1.3) ───────────────────────────────────────
+
+/**
+ * Splits content into chunks suitable for embedding and retrieval.
+ * Supports canvas pages (TipTap JSON) and workspace files.
+ *
+ * Reference: docs/Parallx_Milestone_10.md DR-6, DR-8
+ */
+export interface IChunkingService extends IDisposable {
+  /** Chunk a canvas page by TipTap block boundaries. */
+  chunkPage(pageId: string, pageTitle: string, contentJson: string): Promise<import('./chunkingService.js').Chunk[]>;
+
+  /** Chunk a workspace file by headings/paragraphs. */
+  chunkFile(filePath: string, content: string, language?: string): Promise<import('./chunkingService.js').Chunk[]>;
+}
+
+export const IChunkingService = createServiceIdentifier<IChunkingService>('IChunkingService');
+
+// ─── IVectorStoreService (M10 Task 1.2) ────────────────────────────────────
+
+/**
+ * Manages the dual vector + keyword index (sqlite-vec vec0 + FTS5).
+ * Provides upsert, delete, and hybrid search with RRF fusion.
+ *
+ * Reference: docs/Parallx_Milestone_10.md DR-3, DR-4, DR-5
+ */
+export interface IVectorStoreService extends IDisposable {
+  /** Initialize the store (load rowid counter, etc). */
+  initialize(): Promise<void>;
+
+  /** Upsert embedded chunks for a source. */
+  upsert(
+    sourceType: string,
+    sourceId: string,
+    chunks: import('./vectorStoreService.js').EmbeddedChunk[],
+    contentHash: string,
+  ): Promise<void>;
+
+  /** Delete all chunks for a source. */
+  deleteSource(sourceType: string, sourceId: string): Promise<void>;
+
+  /** Hybrid search: vector + keyword, merged via RRF. */
+  search(
+    queryEmbedding: number[],
+    queryText: string,
+    options?: import('./vectorStoreService.js').SearchOptions,
+  ): Promise<import('./vectorStoreService.js').SearchResult[]>;
+
+  /** Vector-only search (for "find similar"). */
+  vectorSearch(
+    queryEmbedding: number[],
+    topK?: number,
+    sourceFilter?: string,
+  ): Promise<import('./vectorStoreService.js').SearchResult[]>;
+
+  /** Get stored content hash for incremental re-indexing. */
+  getContentHash(sourceType: string, sourceId: string): Promise<string | null>;
+
+  /** Get all indexed sources. */
+  getIndexedSources(): Promise<import('./vectorStoreService.js').IndexingMeta[]>;
+
+  /** Get aggregate statistics. */
+  getStats(): Promise<import('./vectorStoreService.js').VectorStoreStats>;
+
+  /** Fires when a source is indexed/re-indexed. */
+  readonly onDidUpdateIndex: Event<{ sourceId: string; chunkCount: number }>;
+}
+
+export const IVectorStoreService = createServiceIdentifier<IVectorStoreService>('IVectorStoreService');
+
 // ─── Status Bar Types ────────────────────────────────────────────────────────
 
 /**
