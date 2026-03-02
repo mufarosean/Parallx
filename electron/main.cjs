@@ -807,11 +807,39 @@ ipcMain.handle('database:close', async () => {
   }
 });
 
+/**
+ * Normalize IPC-transported params for better-sqlite3.
+ *
+ * Electron's structured clone can deliver Uint8Array/ArrayBuffer as
+ * a `{ type: 'Buffer', data: [...] }` object, or as a Uint8Array that
+ * isn't a Node Buffer. better-sqlite3 (and sqlite-vec) require Node
+ * Buffer for blob binding.
+ */
+function normalizeDbParams(params) {
+  if (!Array.isArray(params)) return params || [];
+  return params.map(p => {
+    if (!p || typeof p !== 'object') return p;
+    // Electron sometimes serializes Buffer/Uint8Array as { type: 'Buffer', data: [...] }
+    if (p.type === 'Buffer' && Array.isArray(p.data)) {
+      return Buffer.from(p.data);
+    }
+    // Convert Uint8Array (or any TypedArray view) to a proper Node Buffer
+    if (ArrayBuffer.isView(p) && !(p instanceof Buffer)) {
+      return Buffer.from(p.buffer, p.byteOffset, p.byteLength);
+    }
+    // Convert raw ArrayBuffer to Buffer
+    if (p instanceof ArrayBuffer) {
+      return Buffer.from(p);
+    }
+    return p;
+  });
+}
+
 // ── database:run ──
 // Execute SQL (INSERT, UPDATE, DELETE, CREATE, etc.)
 ipcMain.handle('database:run', async (_event, sql, params) => {
   try {
-    const result = databaseManager.run(sql, params || []);
+    const result = databaseManager.run(sql, normalizeDbParams(params));
     return {
       error: null,
       changes: result.changes,
@@ -828,7 +856,7 @@ ipcMain.handle('database:run', async (_event, sql, params) => {
 // Fetch a single row. Returns null if no match.
 ipcMain.handle('database:get', async (_event, sql, params) => {
   try {
-    const row = databaseManager.get(sql, params || []);
+    const row = databaseManager.get(sql, normalizeDbParams(params));
     return { error: null, row: row || null };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -839,7 +867,7 @@ ipcMain.handle('database:get', async (_event, sql, params) => {
 // Fetch all matching rows.
 ipcMain.handle('database:all', async (_event, sql, params) => {
   try {
-    const rows = databaseManager.all(sql, params || []);
+    const rows = databaseManager.all(sql, normalizeDbParams(params));
     return { error: null, rows };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -856,7 +884,12 @@ ipcMain.handle('database:isOpen', async () => {
 // Execute multiple operations inside a single IMMEDIATE transaction.
 ipcMain.handle('database:runTransaction', async (_event, operations) => {
   try {
-    const rawResults = databaseManager.runTransaction(operations);
+    // Normalize blob params before passing to better-sqlite3
+    const normalizedOps = operations.map(op => ({
+      ...op,
+      params: normalizeDbParams(op.params),
+    }));
+    const rawResults = databaseManager.runTransaction(normalizedOps);
     // Normalize results for IPC (BigInt → Number for lastInsertRowid)
     const results = rawResults.map((r, i) => {
       const op = operations[i];

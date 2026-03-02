@@ -490,7 +490,13 @@ interface VectorRow {
  * sqlite-vec expects embeddings as raw Float32Array bytes.
  */
 function float32ArrayToBuffer(embedding: number[]): Uint8Array {
-  return new Uint8Array(new Float32Array(embedding).buffer);
+  const f32 = new Float32Array(embedding);
+  // Create a standalone copy — do NOT share the Float32Array's backing
+  // ArrayBuffer, as Electron IPC structured clone may truncate or
+  // misalign views on shared buffers.
+  const bytes = new Uint8Array(f32.byteLength);
+  bytes.set(new Uint8Array(f32.buffer));
+  return bytes;
 }
 
 /**
