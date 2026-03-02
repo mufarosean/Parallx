@@ -143,6 +143,18 @@
   color: var(--parallx-descriptionForeground, #999);
 }
 
+.parallx-token-statusbar-indexing-icon {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-right: 3px;
+}
+
+.parallx-token-statusbar-indexing-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
 /* Popup index progress bar row */
 .parallx-token-popup-index-bar {
   margin-top: 4px;

@@ -19,6 +19,7 @@
 import { Disposable, toDisposable, type IDisposable } from '../../platform/lifecycle.js';
 import { layoutPopup } from '../../ui/dom.js';
 import { $ } from '../../ui/dom.js';
+import { chatIcons } from './chatIcons.js';
 import { buildSystemPrompt, type ISystemPromptContext } from './chatSystemPrompts.js';
 import { ChatMode, type IChatSession, type IToolDefinition } from '../../services/chatTypes.js';
 import './chatTokenStatusBar.css';
@@ -177,12 +178,12 @@ export class ChatTokenStatusBar extends Disposable {
     if (!progress || progress.phase === 'idle') {
       // Idle — show completed stats if available, else hide
       if (stats) {
-        this._indexingIndicator.textContent = `✅ ${stats.pages} pages, ${stats.files} files indexed`;
+        this._indexingIndicator.innerHTML = `<span class="parallx-token-statusbar-indexing-icon">${chatIcons.check}</span> ${stats.pages} pages, ${stats.files} files indexed`;
         this._indexingIndicator.style.display = '';
         this._indexingIndicator.className = 'parallx-token-statusbar-indexing parallx-token-statusbar-indexing-complete';
       } else {
         this._indexingIndicator.style.display = 'none';
-        this._indexingIndicator.textContent = '';
+        this._indexingIndicator.innerHTML = '';
       }
       return;
     }
@@ -193,15 +194,15 @@ export class ChatTokenStatusBar extends Disposable {
 
     switch (progress.phase) {
       case 'pages':
-        this._indexingIndicator.textContent = `🔍 Indexing: ${progress.processed}/${progress.total} pages`;
+        this._indexingIndicator.innerHTML = `<span class="parallx-token-statusbar-indexing-icon">${chatIcons.search}</span> Indexing: ${progress.processed}/${progress.total} pages`;
         break;
       case 'files':
-        this._indexingIndicator.textContent = `🔍 Indexing: ${progress.processed}/${progress.total} files`;
+        this._indexingIndicator.innerHTML = `<span class="parallx-token-statusbar-indexing-icon">${chatIcons.search}</span> Indexing: ${progress.processed}/${progress.total} files`;
         break;
       case 'incremental':
-        this._indexingIndicator.textContent = progress.total > 0
-          ? `🔄 Re-indexing ${progress.total} changed ${progress.total === 1 ? 'item' : 'items'}...`
-          : '🔄 Re-indexing...';
+        this._indexingIndicator.innerHTML = progress.total > 0
+          ? `<span class="parallx-token-statusbar-indexing-icon">${chatIcons.refresh}</span> Re-indexing ${progress.total} changed ${progress.total === 1 ? 'item' : 'items'}...`
+          : `<span class="parallx-token-statusbar-indexing-icon">${chatIcons.refresh}</span> Re-indexing...`;
         break;
     }
   }

@@ -842,9 +842,10 @@ interface IMemoryService {
 - **What**: Show indexing progress in the status bar
 - **File**: `src/built-in/chat/chatTokenStatusBar.ts` (extend)
 - **Details**:
-  - "🔍 Indexing: 45/120 pages" during initial indexing
-  - "✅ Index: 120 pages, 340 files" when complete
-  - "🔄 Re-indexing 3 changed files..." on incremental update
+  - SVG search icon + "Indexing: 45/120 pages" during initial indexing
+  - SVG check icon + "Index: 120 pages, 340 files" when complete
+  - SVG refresh icon + "Re-indexing 3 changed files..." on incremental update
+  - Icons from `chatIcons.ts` (search, check, refresh) — no emoji
   - Click to see detailed index statistics
 - **Depends on**: Phase 2
 - **Estimate**: 0.5 session
