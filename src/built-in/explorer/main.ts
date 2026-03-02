@@ -138,11 +138,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
     api.workspace.onDidFilesChange(() => {
       // Debounce: multiple changes may arrive in quick succession
+      // (especially during indexing which reads thousands of files)
       if (_refreshDebounce) clearTimeout(_refreshDebounce);
       _refreshDebounce = setTimeout(() => {
         _refreshDebounce = null;
         refreshTree();
-      }, 300);
+      }, 1500);
     }),
   );
 }
@@ -236,6 +237,21 @@ function rebuildTree(): void {
       loadChildrenDeep(root, expandedSet);
     }
   }
+}
+
+// ── Render coalescing ────────────────────────────────────────────────────────
+// Multiple operations (loadChildren, loadChildrenDeep, refreshTree) may each
+// call renderTree() in quick succession. Coalesce them into a single paint
+// via requestAnimationFrame to avoid flicker and redundant DOM rebuilds.
+let _renderPending = false;
+
+function scheduleRender(): void {
+  if (_renderPending) return;
+  _renderPending = true;
+  requestAnimationFrame(() => {
+    _renderPending = false;
+    renderTree();
+  });
 }
 
 function renderTree(): void {
@@ -369,7 +385,7 @@ async function toggleExpand(node: TreeNode): Promise<void> {
     await loadChildren(node);
   }
 
-  renderTree();
+  scheduleRender();
   saveExpandState();
 }
 
@@ -402,7 +418,7 @@ async function loadChildren(node: TreeNode): Promise<void> {
   }
 
   node.loading = false;
-  renderTree();
+  scheduleRender();
 }
 
 /**
@@ -445,7 +461,7 @@ async function loadChildrenDeep(
   }
 
   node.loading = false;
-  renderTree();
+  scheduleRender();
 
   // Recursively load children that should be expanded
   const toExpand = node.children.filter(c => c.expanded && !c.loaded);
@@ -845,7 +861,7 @@ function refreshTree(): void {
       loadChildrenDeep(root, previouslyExpanded);
     }
   }
-  renderTree();
+  scheduleRender();
 }
 
 // ─── Inline Rename / Create ──────────────────────────────────────────────────
