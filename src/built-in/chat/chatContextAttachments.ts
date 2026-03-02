@@ -26,12 +26,22 @@ export interface IOpenEditorFile {
   readonly fullPath: string;
 }
 
+/** A workspace file entry (from recursive directory listing). */
+export interface IWorkspaceFileEntry {
+  readonly name: string;
+  readonly fullPath: string;
+  readonly relativePath: string;
+  readonly isDirectory: boolean;
+}
+
 /** Services needed by the attachment ribbon. */
 export interface IAttachmentServices {
   /** Get currently open editor files. */
   getOpenEditorFiles(): IOpenEditorFile[];
   /** Fires when open editors change (open/close/reorder). */
   readonly onDidChangeOpenEditors: Event<void>;
+  /** List workspace files (recursive, up to a limit). Returns empty array if unavailable. */
+  listWorkspaceFiles?(): Promise<IWorkspaceFileEntry[]>;
 }
 
 // ── Component ──

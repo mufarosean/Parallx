@@ -408,7 +408,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getSessions: () => chatService.getSessions(),
     getSession: (id: string) => chatService.getSession(id),
     deleteSession: (id: string) => chatService.deleteSession(id),
-    // Attachment services (enable "Add Context" file picker — open editor files)
+    // Attachment services (enable "Add Context" file picker — open editor files + workspace files)
     attachmentServices: editorService ? {
       getOpenEditorFiles: () => {
         return editorService!.getOpenEditors().map((ed) => ({
@@ -417,6 +417,48 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         }));
       },
       onDidChangeOpenEditors: editorService!.onDidChangeOpenEditors,
+      listWorkspaceFiles: fsAccessor
+        ? async () => {
+          const result: import('./chatContextAttachments.js').IWorkspaceFileEntry[] = [];
+          const rootFolders = workspaceService?.folders ?? [];
+          if (rootFolders.length === 0 || !fileService) { return result; }
+          const rootUri = rootFolders[0].uri;
+
+          // Recursive walk (breadth-first, up to 500 entries, max depth 6)
+          const queue: { uri: import('../../platform/uri.js').URI; rel: string }[] =
+            [{ uri: rootUri, rel: '' }];
+          const MAX_ENTRIES = 500;
+          const MAX_DEPTH = 6;
+
+          while (queue.length > 0 && result.length < MAX_ENTRIES) {
+            const current = queue.shift()!;
+            const depth = current.rel.split('/').filter(Boolean).length;
+            try {
+              const entries = await fileService!.readdir(current.uri);
+              for (const entry of entries) {
+                if (result.length >= MAX_ENTRIES) { break; }
+                // Skip hidden/system dirs
+                if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'build') {
+                  continue;
+                }
+                const relPath = current.rel ? `${current.rel}/${entry.name}` : entry.name;
+                const isDir = entry.type === 2; /* FileType.Directory */
+                result.push({
+                  name: entry.name,
+                  fullPath: entry.uri.fsPath,
+                  relativePath: relPath,
+                  isDirectory: isDir,
+                });
+                if (isDir && depth < MAX_DEPTH) {
+                  queue.push({ uri: entry.uri, rel: relPath });
+                }
+              }
+            } catch { /* skip unreadable dirs */ }
+          }
+
+          return result;
+        }
+        : undefined,
     } : undefined,
     // Open file in editor (for clicking attachment chips in chat messages)
     openFile: editorService && fileService ? (fullPath: string) => {

@@ -159,4 +159,16 @@ export const chatIcons = {
     <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
   </svg>`,
 
+  /** Folder icon */
+  folder: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M2 4.5V12a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1H8L6.5 3.5H3A1 1 0 002 4.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+  </svg>`,
+
+  /** Image / picture icon */
+  image: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2" y="3" width="12" height="10" rx="1" stroke="currentColor" stroke-width="1.2"/>
+    <circle cx="5.5" cy="6.5" r="1.5" stroke="currentColor" stroke-width="1"/>
+    <path d="M2 11l3-3 2.5 2.5L10 8l4 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`,
+
 } as const;

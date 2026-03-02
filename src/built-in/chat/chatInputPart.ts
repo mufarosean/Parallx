@@ -18,7 +18,7 @@ import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import { chatIcons } from './chatIcons.js';
 import { ChatContextAttachments } from './chatContextAttachments.js';
-import type { IAttachmentServices } from './chatContextAttachments.js';
+import type { IAttachmentServices, IWorkspaceFileEntry } from './chatContextAttachments.js';
 import type { IChatAttachment } from '../../services/chatTypes.js';
 
 /**
@@ -245,45 +245,143 @@ export class ChatInputPart extends Disposable {
   private _openFilePicker(): void {
     this._closeFilePicker();
 
-    const dropdown = $('div.parallx-chat-picker-dropdown.parallx-chat-file-picker');
+    const dropdown = $('div.parallx-chat-context-picker');
     dropdown.style.position = 'absolute';
     dropdown.style.zIndex = '100';
+
+    // ── Search input ──
+    const searchWrap = $('div.parallx-chat-context-picker-search');
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'parallx-chat-context-picker-search-input';
+    searchInput.placeholder = 'Search for files to add to your request\u2026';
+    searchWrap.appendChild(searchInput);
+    dropdown.appendChild(searchWrap);
+
+    // ── Scrollable list ──
+    const listContainer = $('div.parallx-chat-context-picker-list');
+    dropdown.appendChild(listContainer);
 
     // Get open editor files from the attachment ribbon's services
     const services = (this._contextRibbon as any)._services as IAttachmentServices | undefined;
     const openFiles = services?.getOpenEditorFiles() ?? [];
 
-    if (openFiles.length === 0) {
-      const empty = $('div.parallx-chat-picker-item.parallx-chat-picker-item--empty', 'No open files');
-      dropdown.appendChild(empty);
-    } else {
-      for (const file of openFiles) {
-        const item = $('div.parallx-chat-picker-item');
-        const icon = document.createElement('span');
-        icon.innerHTML = chatIcons.file;
-        icon.style.display = 'inline-flex';
-        icon.style.alignItems = 'center';
-        item.appendChild(icon);
+    // State: workspace files loaded lazily
+    let workspaceFiles: IWorkspaceFileEntry[] = [];
+    let workspaceLoaded = false;
 
-        const name = $('span.parallx-chat-picker-item-name', file.name);
-        item.appendChild(name);
+    /** Render items filtered by the current search query. */
+    const renderItems = (query: string): void => {
+      listContainer.innerHTML = '';
+      const q = query.toLowerCase().trim();
 
-        item.addEventListener('click', () => {
-          this._contextRibbon.addAttachment(file);
-          this._closeFilePicker();
-        });
+      // ── Category: Open Editors ──
+      const filteredOpen = q
+        ? openFiles.filter((f) => f.name.toLowerCase().includes(q) || f.fullPath.toLowerCase().includes(q))
+        : openFiles;
 
-        dropdown.appendChild(item);
+      if (filteredOpen.length > 0 || !q) {
+        const header = $('div.parallx-chat-context-picker-header');
+        header.textContent = 'Open Editors';
+        listContainer.appendChild(header);
+
+        if (filteredOpen.length === 0) {
+          const empty = $('div.parallx-chat-context-picker-empty', 'No matching open editors');
+          listContainer.appendChild(empty);
+        } else {
+          for (const file of filteredOpen) {
+            const item = this._createPickerItem(file.name, file.fullPath, false, () => {
+              this._contextRibbon.addAttachment(file);
+              this._closeFilePicker();
+            });
+            listContainer.appendChild(item);
+          }
+        }
       }
+
+      // ── Category: Files & Folders ──
+      if (workspaceLoaded || q) {
+        const filteredWs = q
+          ? workspaceFiles.filter((f) => f.name.toLowerCase().includes(q) || f.relativePath.toLowerCase().includes(q))
+          : workspaceFiles;
+
+        // Don't duplicate files already shown in Open Editors
+        const openPaths = new Set(openFiles.map((f) => f.fullPath));
+        const deduped = filteredWs.filter((f) => !openPaths.has(f.fullPath));
+
+        if (deduped.length > 0 || (workspaceLoaded && !q)) {
+          const header = $('div.parallx-chat-context-picker-header');
+          header.textContent = 'Files & Folders';
+          listContainer.appendChild(header);
+
+          if (deduped.length === 0 && workspaceLoaded) {
+            const empty = $('div.parallx-chat-context-picker-empty', q ? 'No matching files' : 'No workspace files');
+            listContainer.appendChild(empty);
+          } else {
+            // Limit to first 50 items to keep the UI responsive
+            const shown = deduped.slice(0, 50);
+            for (const entry of shown) {
+              const item = this._createPickerItem(
+                entry.name,
+                entry.relativePath,
+                entry.isDirectory,
+                () => {
+                  this._contextRibbon.addAttachment({
+                    name: entry.name,
+                    fullPath: entry.fullPath,
+                  });
+                  this._closeFilePicker();
+                },
+              );
+              listContainer.appendChild(item);
+            }
+            if (deduped.length > 50) {
+              const more = $('div.parallx-chat-context-picker-empty', `\u2026and ${deduped.length - 50} more (refine your search)`);
+              listContainer.appendChild(more);
+            }
+          }
+        } else if (!workspaceLoaded) {
+          const header = $('div.parallx-chat-context-picker-header');
+          header.textContent = 'Files & Folders';
+          listContainer.appendChild(header);
+          const loading = $('div.parallx-chat-context-picker-empty', 'Loading workspace files\u2026');
+          listContainer.appendChild(loading);
+        }
+      }
+    };
+
+    // Initial render
+    renderItems('');
+
+    // Load workspace files asynchronously
+    if (services?.listWorkspaceFiles) {
+      services.listWorkspaceFiles().then((files) => {
+        workspaceFiles = files;
+        workspaceLoaded = true;
+        renderItems(searchInput.value);
+      }).catch(() => {
+        workspaceLoaded = true;
+        renderItems(searchInput.value);
+      });
+    } else {
+      workspaceLoaded = true;
     }
 
-    // Position below button (opening upward)
+    // ── Search filtering ──
+    searchInput.addEventListener('input', () => {
+      renderItems(searchInput.value);
+    });
+
+    // Position below button (opening upward from the attach button)
     const rect = this._attachBtn.getBoundingClientRect();
     dropdown.style.left = `${rect.left}px`;
     dropdown.style.bottom = `${window.innerHeight - rect.top + 4}px`;
 
     document.body.appendChild(dropdown);
     this._filePickerDropdown = dropdown;
+
+    // Focus search input
+    requestAnimationFrame(() => searchInput.focus());
 
     // Close on outside click
     const closeHandler = (e: MouseEvent) => {
@@ -293,6 +391,46 @@ export class ChatInputPart extends Disposable {
       }
     };
     document.addEventListener('mousedown', closeHandler);
+
+    // Close on Escape
+    const escHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        this._closeFilePicker();
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+  }
+
+  /** Create a picker item row. */
+  private _createPickerItem(
+    name: string,
+    description: string,
+    isDirectory: boolean,
+    onClick: () => void,
+  ): HTMLElement {
+    const item = $('div.parallx-chat-context-picker-item');
+
+    const icon = document.createElement('span');
+    icon.className = 'parallx-chat-context-picker-item-icon';
+    icon.innerHTML = isDirectory ? chatIcons.folder : chatIcons.file;
+    item.appendChild(icon);
+
+    const textWrap = $('div.parallx-chat-context-picker-item-text');
+
+    const nameEl = $('span.parallx-chat-context-picker-item-name', name);
+    textWrap.appendChild(nameEl);
+
+    // Show path description (relative path or full path) if different from name
+    if (description && description !== name) {
+      const descEl = $('span.parallx-chat-context-picker-item-desc', description);
+      textWrap.appendChild(descEl);
+    }
+
+    item.appendChild(textWrap);
+
+    item.addEventListener('click', onClick);
+    return item;
   }
 
   private _closeFilePicker(): void {
