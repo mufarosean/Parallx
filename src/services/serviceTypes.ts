@@ -979,6 +979,52 @@ export interface IVectorStoreService extends IDisposable {
 
 export const IVectorStoreService = createServiceIdentifier<IVectorStoreService>('IVectorStoreService');
 
+// ─── IIndexingPipelineService (M10 Task 2.1, 2.2) ─────────────────────────
+
+/**
+ * Orchestrates indexing of canvas pages and workspace files into the
+ * vector store. Handles initial full-index on workspace open and
+ * incremental re-indexing on saves/file changes.
+ *
+ * Reference: docs/Parallx_Milestone_10.md Phase 2
+ */
+export interface IIndexingPipelineService extends IDisposable {
+  /** Whether the pipeline is currently running. */
+  readonly isIndexing: boolean;
+
+  /** Current progress snapshot. */
+  readonly progress: import('./indexingPipeline.js').IndexingProgress;
+
+  /** Whether the initial full indexing has completed at least once. */
+  readonly isInitialIndexComplete: boolean;
+
+  /** Start the full indexing pipeline (pages + files). */
+  start(): Promise<void>;
+
+  /** Cancel in-progress indexing. */
+  cancel(): void;
+
+  /** Force re-index a single page (bypass debounce). */
+  reindexPage(pageId: string): Promise<void>;
+
+  /** Force re-index a single file (bypass debounce). */
+  reindexFile(filePath: string): Promise<void>;
+
+  /** Schedule a debounced page re-index. */
+  schedulePageReindex(pageId: string): void;
+
+  /** Schedule a debounced file re-index. */
+  scheduleFileReindex(filePath: string): void;
+
+  /** Fires when indexing progress changes. */
+  readonly onDidChangeProgress: Event<import('./indexingPipeline.js').IndexingProgress>;
+
+  /** Fires when initial indexing completes. */
+  readonly onDidCompleteInitialIndex: Event<{ pages: number; files: number; durationMs: number }>;
+}
+
+export const IIndexingPipelineService = createServiceIdentifier<IIndexingPipelineService>('IIndexingPipelineService');
+
 // ─── Status Bar Types ────────────────────────────────────────────────────────
 
 /**

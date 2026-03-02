@@ -16,7 +16,7 @@ import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
-import { registerWorkbenchServices, registerConfigurationServices, registerChatServices } from './workbenchServices.js';
+import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices } from './workbenchServices.js';
 import { IChatService } from '../services/chatTypes.js';
 
 // Layout base class (VS Code: Layout → Workbench extends Layout)
@@ -1845,6 +1845,17 @@ export class Workbench extends Layout {
       const chatService = this._services.get<IChatService>(IChatService);
       chatService.setDatabase(this._databaseService as any);
       chatService.restoreSessions().catch(() => { /* best-effort */ });
+    }
+
+    // ── RAG Indexing Services (M10 Phase 1–2) ──
+    // Register embedding, chunking, vector store, and indexing pipeline services.
+    // Start() is fire-and-forget: it runs in the background after DB is open.
+    if (this._databaseService.isOpen) {
+      const { indexingPipeline } = registerIndexingServices(this._services);
+      this._register(indexingPipeline);
+      indexingPipeline.start().catch((err) => {
+        console.error('[Workbench] Indexing pipeline failed to start:', err);
+      });
     }
 
     // React to workspace folder changes (open/close database)

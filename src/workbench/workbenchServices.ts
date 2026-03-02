@@ -1,8 +1,9 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
+import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -25,6 +26,10 @@ import { ViewContributionProcessor } from '../contributions/viewContribution.js'
 import { KeybindingService } from '../services/keybindingService.js';
 import { FileService } from '../services/fileService.js';
 import { TextFileModelManager } from '../services/textFileModelManager.js';
+import { EmbeddingService } from '../services/embeddingService.js';
+import { ChunkingService } from '../services/chunkingService.js';
+import { VectorStoreService } from '../services/vectorStoreService.js';
+import { IndexingPipelineService } from '../services/indexingPipeline.js';
 import type { IStorage } from '../platform/storage.js';
 import type { ViewManager } from '../views/viewManager.js';
 
@@ -190,4 +195,43 @@ export function registerChatServices(
   services.registerInstance(ILanguageModelToolsService, languageModelToolsService);
 
   return { languageModelsService, chatService, chatAgentService, chatModeService, chatWidgetService, languageModelToolsService };
+}
+
+/**
+ * Creates and registers the RAG / indexing services (M10 Phase 1–2).
+ * Called during Phase 5 after DatabaseService and FileService are available.
+ *
+ * Returns the IndexingPipelineService — the caller should call `.start()`
+ * after the database is fully open and canvas migrations have run.
+ */
+export function registerIndexingServices(
+  services: ServiceCollection,
+): {
+  embeddingService: EmbeddingService;
+  chunkingService: ChunkingService;
+  vectorStoreService: VectorStoreService;
+  indexingPipeline: IndexingPipelineService;
+} {
+  const databaseService = services.get(IDatabaseService);
+  const fileService = services.get(IFileService);
+  const workspaceService = services.get(IWorkspaceService);
+
+  const embeddingService = new EmbeddingService();
+  const chunkingService = new ChunkingService();
+  const vectorStoreService = new VectorStoreService(databaseService);
+  const indexingPipeline = new IndexingPipelineService(
+    databaseService,
+    fileService,
+    embeddingService,
+    chunkingService,
+    vectorStoreService,
+    workspaceService,
+  );
+
+  services.registerInstance(IEmbeddingService, embeddingService);
+  services.registerInstance(IChunkingService, chunkingService);
+  services.registerInstance(IVectorStoreService, vectorStoreService);
+  services.registerInstance(IIndexingPipelineService, indexingPipeline);
+
+  return { embeddingService, chunkingService, vectorStoreService, indexingPipeline };
 }
