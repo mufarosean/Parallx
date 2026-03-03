@@ -37,6 +37,11 @@ import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } fr
 import { executeInitCommand } from '../commands/initCommand.js';
 import type { IInitCommandServices } from '../commands/initCommand.js';
 import { TokenBudgetService } from '../../../services/tokenBudgetService.js';
+import { extractMentions, resolveMentions } from '../chatMentionResolver.js';
+import type { IMentionResolutionServices } from '../chatMentionResolver.js';
+import { SlashCommandRegistry, parseSlashCommand } from '../chatSlashCommands.js';
+import { loadUserCommands } from '../userCommandLoader.js';
+import type { IUserCommandFileSystem } from '../userCommandLoader.js';
 
 /** Default maximum agentic loop iterations. */
 const DEFAULT_MAX_ITERATIONS = 10;
@@ -214,6 +219,25 @@ export interface IDefaultParticipantServices {
    * can show what the LLM sees (M11 Task 1.10).
    */
   reportContextPills?(pills: IContextPill[]): void;
+
+  // ── @mention resolution (M11 Tasks 3.2–3.4) ──
+
+  /**
+   * List files in a folder by relative path (for @folder: mention).
+   * Returns relative paths and content of each file (respecting .parallxignore).
+   */
+  listFolderFiles?(folderPath: string): Promise<Array<{ relativePath: string; content: string }>>;
+  /**
+   * Get last N lines of terminal output (for @terminal mention).
+   */
+  getTerminalOutput?(): Promise<string | undefined>;
+
+  // ── User-defined commands (M11 Task 3.7) ──
+
+  /**
+   * Filesystem for loading user-defined slash commands from .parallx/commands/.
+   */
+  userCommandFileSystem?: IUserCommandFileSystem;
 }
 
 /** Default participant ID — must match ChatAgentService's DEFAULT_AGENT_ID. */
@@ -228,6 +252,18 @@ const DEFAULT_PARTICIPANT_ID = 'parallx.chat.default';
 export function createDefaultParticipant(services: IDefaultParticipantServices): IChatParticipant & IDisposable {
 
   const configMaxIterations = services.maxIterations ?? DEFAULT_MAX_ITERATIONS;
+
+  // ── Slash command registry (M11 Tasks 3.5–3.7) ──
+  const commandRegistry = new SlashCommandRegistry();
+
+  // Load user-defined commands from .parallx/commands/ (fire-and-forget)
+  if (services.userCommandFileSystem) {
+    loadUserCommands(services.userCommandFileSystem).then((cmds) => {
+      if (cmds.length > 0) {
+        commandRegistry.registerCommands(cmds);
+      }
+    }).catch(() => { /* best-effort */ });
+  }
 
   const handler: IChatParticipantHandler = async (
     request: IChatParticipantRequest,
@@ -266,6 +302,91 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         invalidatePromptFiles: services.invalidatePromptFiles,
       };
       await executeInitCommand(initServices, response);
+      return {};
+    }
+
+    // ── Slash command detection (M11 Tasks 3.5–3.6) ──
+    //
+    // If the user typed /command, parse it and apply the prompt template.
+    // Special handlers (/init, /compact) are dispatched above or below.
+    const slashResult = parseSlashCommand(request.text, commandRegistry);
+    let effectiveText = request.text;
+    let activeCommand = request.command; // from the parser (chatRequestParser.ts)
+    if (slashResult.command) {
+      activeCommand = slashResult.commandName;
+      // /compact is handled later (Task 3.8)
+      if (slashResult.command.specialHandler === 'compact') {
+        // Fall through — handled in the /compact section below
+      } else if (slashResult.command.specialHandler === 'init') {
+        // Already handled above via request.command
+      } else {
+        // Apply prompt template — context will be filled after context injection
+        effectiveText = slashResult.remainingText;
+      }
+    }
+
+    // ── /compact command handler (M11 Task 3.8) ──
+    //
+    // Summarize conversation history and replace old messages with a compact summary.
+    // Shows token savings to the user.
+    if (activeCommand === 'compact' || slashResult.command?.specialHandler === 'compact') {
+      if (!services.sendSummarizationRequest) {
+        response.markdown('`/compact` requires a summarization model. No summarization service available.');
+        return {};
+      }
+      if (context.history.length < 2) {
+        response.markdown('Nothing to compact — conversation history is too short.');
+        return {};
+      }
+
+      response.progress('Compacting conversation history…');
+
+      // Build history text for summarization
+      const historyText = context.history.map((pair) => {
+        const respText = pair.response.parts
+          .map((p) => {
+            const part = p as unknown as Record<string, unknown>;
+            if ('text' in part && typeof part.text === 'string') { return part.text; }
+            if ('code' in part && typeof part.code === 'string') { return '```\n' + part.code + '\n```'; }
+            return '';
+          })
+          .filter(Boolean)
+          .join('\n');
+        return `User: ${pair.request.text}\nAssistant: ${respText}`;
+      }).join('\n\n---\n\n');
+
+      const beforeTokens = Math.ceil(historyText.length / 4);
+
+      // Summarize via LLM
+      const summaryPrompt: IChatMessage[] = [
+        {
+          role: 'system',
+          content:
+            'You are a conversation summarizer. Condense the following conversation history into a concise context summary. ' +
+            'Preserve all key facts, decisions, code references, and action items. Output ONLY the summary.',
+        },
+        { role: 'user', content: historyText },
+      ];
+
+      let summaryText = '';
+      for await (const chunk of services.sendSummarizationRequest(summaryPrompt)) {
+        if (chunk.content) { summaryText += chunk.content; }
+      }
+
+      if (summaryText) {
+        const afterTokens = Math.ceil(summaryText.length / 4);
+        const saved = beforeTokens - afterTokens;
+        response.markdown(
+          `**Conversation compacted.**\n\n` +
+          `- Before: ~${beforeTokens.toLocaleString()} tokens (${context.history.length} turns)\n` +
+          `- After: ~${afterTokens.toLocaleString()} tokens (summary)\n` +
+          `- Saved: ~${saved.toLocaleString()} tokens (${Math.round((saved / beforeTokens) * 100)}%)\n\n` +
+          `The summarized context will be used for future messages in this session.`,
+        );
+      } else {
+        response.markdown('Could not generate a summary. The conversation was not modified.');
+      }
+
       return {};
     }
 
@@ -361,6 +482,39 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // message so the model can reference it without a tool call (zero round-trips).
 
     const contextParts: string[] = [];
+    const mentionPills: IContextPill[] = [];
+
+    // 0. @mention resolution (M11 Tasks 3.2–3.4)
+    //
+    // Extract @file:, @folder:, @workspace, @terminal mentions from
+    // the user's raw text. Resolve each to context blocks + pills.
+    // The clean text (mentions stripped) is used for the LLM message.
+    const mentions = extractMentions(request.text);
+    let userText = request.text;
+    if (mentions.length > 0) {
+      const mentionServices: IMentionResolutionServices = {
+        readFileContent: services.readFileContent
+          ? (path: string) => services.readFileContent!(path)
+          : undefined,
+        listFolderFiles: services.listFolderFiles
+          ? (folderPath: string) => services.listFolderFiles!(folderPath)
+          : undefined,
+        retrieveContext: services.retrieveContext
+          ? (query: string) => services.retrieveContext!(query)
+          : undefined,
+        getTerminalOutput: services.getTerminalOutput
+          ? () => services.getTerminalOutput!()
+          : undefined,
+      };
+      const mentionResult = await resolveMentions(
+        request.text,
+        mentions,
+        mentionServices,
+      );
+      contextParts.push(...mentionResult.contextBlocks);
+      mentionPills.push(...mentionResult.pills);
+      userText = mentionResult.cleanText;
+    }
 
     // 1. Implicit context: active canvas page content
     if (services.getCurrentPageContent) {
@@ -376,28 +530,41 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
-    // 1b. RAG context: retrieve semantically relevant chunks (M10 Phase 3, M11 Task 1.7)
+    // 1b. RAG context: per-turn re-query (M10 Phase 3, M11 Tasks 1.7, 3.9)
     //
-    // Fires on EVERY user message. De-duplicates against explicitly attached files
-    // to avoid redundant context. Source citations are emitted as Reference parts.
+    // Fires on EVERY user message — re-embeds the query and re-searches.
+    // De-duplicates against explicitly attached files AND mention-resolved context
+    // to avoid redundant chunks. Source citations are emitted as Reference parts.
+    // Token budget trimming (Task 1.8) handles dropping stale chunks when tight.
     const ragSources: Array<{ uri: string; label: string }> = [];
     if (services.retrieveContext) {
       try {
-        const ragResult = await services.retrieveContext(request.text);
+        const ragResult = await services.retrieveContext(userText);
         if (ragResult) {
-          // Build a set of explicitly attached file paths for de-duplication
-          const attachedPaths = new Set<string>();
+          // Build a set of paths already in context for de-duplication
+          const alreadyInContext = new Set<string>();
+
+          // Explicit attachments
           if (request.attachments?.length) {
             for (const att of request.attachments) {
-              attachedPaths.add(att.fullPath);
-              // Also match by filename for page URIs
-              attachedPaths.add(att.name);
+              alreadyInContext.add(att.fullPath);
+              alreadyInContext.add(att.name);
             }
           }
 
-          // Filter RAG sources to exclude already-attached files
+          // Mention-resolved sources (e.g. @workspace already injected via mentions)
+          for (const pill of mentionPills) {
+            alreadyInContext.add(pill.label);
+            // Extract path from pill id if present
+            const colonIdx = pill.id.indexOf(':');
+            if (colonIdx > 0) {
+              alreadyInContext.add(pill.id.substring(colonIdx + 1));
+            }
+          }
+
+          // Filter RAG sources to exclude already-in-context files
           const filteredSources = ragResult.sources.filter((s) => {
-            return !attachedPaths.has(s.uri) && !attachedPaths.has(s.label);
+            return !alreadyInContext.has(s.uri) && !alreadyInContext.has(s.label);
           });
 
           // Only inject RAG text if there are non-duplicate sources
@@ -419,7 +586,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // 1c. Memory context: retrieve relevant past conversation memories (M10 Phase 5)
     if (services.recallMemories) {
       try {
-        const memoryContext = await services.recallMemories(request.text);
+        const memoryContext = await services.recallMemories(userText);
         if (memoryContext) {
           contextParts.push(memoryContext);
         }
@@ -480,6 +647,9 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         }
       }
 
+      // @mention-resolved pills (M11 Tasks 3.2–3.4)
+      pills.push(...mentionPills);
+
       // Estimate tokens for each pill from context parts
       // (rough: distribute non-system context proportionally)
       const totalNonSysChars = contextParts.reduce((sum, p) => sum + p.length, 0);
@@ -519,7 +689,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         messages[0]?.content ?? '',
         ragContent,
         historyContent,
-        request.text,
+        userText,
       );
 
       // If RAG was trimmed, replace contextParts with trimmed version
@@ -556,10 +726,24 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
-    // 3. Compose final user message
-    const userContent = contextParts.length > 0
-      ? `${contextParts.join('\n\n')}\n\n${request.text}`
-      : request.text;
+    // 3. Compose final user message (use userText — mentions stripped)
+    //
+    // If a slash command was detected, apply its prompt template now
+    // (substituting {input} and {context}).
+    let userContent: string;
+    if (slashResult.command && !slashResult.command.specialHandler) {
+      const contextStr = contextParts.join('\n\n');
+      const templated = commandRegistry.applyTemplate(
+        slashResult.command,
+        effectiveText,
+        contextStr,
+      );
+      userContent = templated ?? effectiveText;
+    } else {
+      userContent = contextParts.length > 0
+        ? `${contextParts.join('\n\n')}\n\n${userText}`
+        : userText;
+    }
 
     messages.push({
       role: 'user',
@@ -898,6 +1082,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     description: 'Default chat participant — sends messages to the active language model.',
     commands: [
       { name: 'init', description: 'Scan workspace and generate AGENTS.md' },
+      { name: 'explain', description: 'Explain how code or a concept works' },
+      { name: 'fix', description: 'Find and fix problems in the code' },
+      { name: 'test', description: 'Generate tests for the code' },
+      { name: 'doc', description: 'Generate documentation or comments' },
+      { name: 'review', description: 'Code review — suggest improvements' },
+      { name: 'compact', description: 'Summarize conversation to free token budget' },
     ],
     handler,
     dispose: () => {

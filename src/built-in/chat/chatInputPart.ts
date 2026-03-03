@@ -24,6 +24,8 @@ import type { IChatAttachment, IContextPill } from '../../services/chatTypes.js'
 import { ChatContextPills } from './chatContextPills.js';
 import { ChatToolPicker } from './chatToolPicker.js';
 import type { IToolPickerServices } from './chatToolPicker.js';
+import { ChatMentionAutocomplete } from './chatMentionAutocomplete.js';
+import type { IMentionSuggestionProvider, ISlashCommandProvider } from './chatMentionAutocomplete.js';
 
 /**
  * Chat input area — textarea + context ribbon + toolbar (submit/stop, model/mode pickers).
@@ -45,6 +47,7 @@ export class ChatInputPart extends Disposable {
   private _filePickerDropdown: HTMLElement | undefined;
   private readonly _toolsBtn: HTMLButtonElement;
   private readonly _toolPicker: ChatToolPicker;
+  private readonly _mentionAutocomplete: ChatMentionAutocomplete;
 
   // ── State ──
 
@@ -167,6 +170,8 @@ export class ChatInputPart extends Disposable {
 
     // Enter to submit, Shift+Enter for newline
     this._register(addDisposableListener(this._textarea, 'keydown', (e) => {
+      // Don't submit while autocomplete dropdown is open
+      if (this._mentionAutocomplete.isOpen) { return; }
       if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         this._submit();
@@ -186,6 +191,20 @@ export class ChatInputPart extends Disposable {
     // Stop button click
     this._register(addDisposableListener(this._stopBtn, 'click', () => {
       this._onDidRequestStop.fire();
+    }));
+
+    // ── @Mention / /Command autocomplete (M11 Task 3.1, 3.5) ──
+    this._mentionAutocomplete = this._register(new ChatMentionAutocomplete(this._textarea, this._root));
+    this._register(this._mentionAutocomplete.onDidAccept((ev) => {
+      // Replace the trigger text with the accepted suggestion
+      const before = this._textarea.value.substring(0, ev.triggerStart);
+      const after = this._textarea.value.substring(ev.triggerEnd);
+      this._textarea.value = before + ev.insertText + after;
+      // Position cursor after inserted text
+      const newPos = ev.triggerStart + ev.insertText.length;
+      this._textarea.setSelectionRange(newPos, newPos);
+      this._autoResize();
+      this._textarea.focus();
     }));
   }
 
@@ -243,6 +262,21 @@ export class ChatInputPart extends Disposable {
   setToolPickerServices(services: IToolPickerServices): void {
     this._toolPicker.setServices(services);
     // Visibility is controlled by updateToolsButtonForMode(); leave hidden until called.
+  }
+
+  /** Bind @mention autocomplete suggestion provider (workspace files). */
+  setMentionSuggestionProvider(provider: IMentionSuggestionProvider): void {
+    this._mentionAutocomplete.setSuggestionProvider(provider);
+  }
+
+  /** Bind slash command provider for /command autocomplete. */
+  setSlashCommandProvider(provider: ISlashCommandProvider): void {
+    this._mentionAutocomplete.setCommandProvider(provider);
+  }
+
+  /** Invalidate cached workspace files (call on workspace changes). */
+  invalidateMentionCache(): void {
+    this._mentionAutocomplete.invalidateCache();
   }
 
   /**
