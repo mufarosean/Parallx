@@ -5,7 +5,7 @@ import { ChatService } from '../../src/services/chatService';
 import { ChatAgentService } from '../../src/services/chatAgentService';
 import { ChatModeService } from '../../src/services/chatModeService';
 import { LanguageModelsService } from '../../src/services/languageModelsService';
-import { ChatMode } from '../../src/services/chatTypes';
+import { ChatMode, ChatContentPartKind } from '../../src/services/chatTypes';
 import type {
   IChatParticipant,
   IChatParticipantRequest,
@@ -223,7 +223,114 @@ describe('ChatService', () => {
       expect(abortSeen).toHaveBeenCalled();
     });
   });
-});
+
+  // ── Unified Thinking — progress/reference fold into thinking ──
+
+  describe('unified thinking stream', () => {
+    it('progress() folds into existing thinking part', async () => {
+      const agent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Test',
+        description: 'Test',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          response.thinking('Planning...');
+          response.progress('Searching 3 sources…');
+          response.markdown('Result');
+          return {};
+        },
+      };
+      const svc = new ChatAgentService();
+      svc.registerAgent(agent);
+      const cs = new ChatService(svc, modeService, lmService);
+      const session = cs.createSession();
+      await cs.sendRequest(session.id, 'test');
+
+      const parts = session.messages[0].response.parts;
+      // Thinking should be first part
+      expect(parts[0].kind).toBe(ChatContentPartKind.Thinking);
+      // No standalone Progress parts
+      expect(parts.find(p => p.kind === ChatContentPartKind.Progress)).toBeUndefined();
+    });
+
+    it('reference() folds into existing thinking part', async () => {
+      const agent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Test',
+        description: 'Test',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          response.thinking('Finding context...');
+          response.reference('file://test.md', 'test.md');
+          response.reference('file://notes.md', 'notes.md');
+          response.markdown('Answer');
+          return {};
+        },
+      };
+      const svc = new ChatAgentService();
+      svc.registerAgent(agent);
+      const cs = new ChatService(svc, modeService, lmService);
+      const session = cs.createSession();
+      await cs.sendRequest(session.id, 'test');
+
+      const parts = session.messages[0].response.parts;
+      // Only thinking + markdown — no standalone Reference parts
+      expect(parts.find(p => p.kind === ChatContentPartKind.Reference)).toBeUndefined();
+      const thinking = parts.find(p => p.kind === ChatContentPartKind.Thinking) as any;
+      expect(thinking).toBeDefined();
+      expect(thinking.references).toHaveLength(2);
+      expect(thinking.references[0].label).toBe('test.md');
+    });
+
+    it('progress creates thinking when none exists', async () => {
+      const agent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Test',
+        description: 'Test',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          response.progress('Searching…');
+          response.markdown('Done');
+          return {};
+        },
+      };
+      const svc = new ChatAgentService();
+      svc.registerAgent(agent);
+      const cs = new ChatService(svc, modeService, lmService);
+      const session = cs.createSession();
+      await cs.sendRequest(session.id, 'test');
+
+      const parts = session.messages[0].response.parts;
+      // A thinking part should exist (created by progress)
+      const thinking = parts.find(p => p.kind === ChatContentPartKind.Thinking) as any;
+      expect(thinking).toBeDefined();
+      // progressMessage should be cleared after close()
+      expect(thinking.progressMessage).toBeUndefined();
+    });
+
+    it('thinking part appears first after close()', async () => {
+      const agent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Test',
+        description: 'Test',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          response.markdown('Some text first');
+          response.thinking('model thinking');
+          response.markdown(' more text');
+          return {};
+        },
+      };
+      const svc = new ChatAgentService();
+      svc.registerAgent(agent);
+      const cs = new ChatService(svc, modeService, lmService);
+      const session = cs.createSession();
+      await cs.sendRequest(session.id, 'test');
+
+      const parts = session.messages[0].response.parts;
+      expect(parts[0].kind).toBe(ChatContentPartKind.Thinking); // Thinking is first
+    });
+  });});
 
 // ── _extractToolCallsFromText — text-based tool call fallback ──
 

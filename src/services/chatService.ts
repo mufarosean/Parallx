@@ -142,21 +142,20 @@ class ChatResponseStream implements IChatResponseStream {
   /** Mark the stream as closed — no more writes allowed. */
   close(): void {
     this._done = true;
-    // Strip transient parts and consolidate references into thinking.
-    // Progress parts are ephemeral status messages (e.g. "Searching 4 sources…").
-    // ToolInvocation parts are internal mechanics the user doesn't need to see.
-    // Reference parts are moved into the thinking section for collapsed access.
+    // Strip transient parts that may linger.
+    // Progress and references are already folded into the thinking part
+    // during streaming, but strip any stragglers + tool invocations.
     const parts = this._response.parts as IChatContentPart[];
 
-    // Collect references before stripping
-    const references: Array<{ uri: string; label: string }> = [];
+    // Collect any straggler references not yet folded into thinking
+    const stragglerRefs: Array<{ uri: string; label: string }> = [];
     for (const p of parts) {
       if (p.kind === ChatContentPartKind.Reference) {
-        references.push({ uri: (p as IChatReferenceContent).uri, label: (p as IChatReferenceContent).label });
+        stragglerRefs.push({ uri: (p as IChatReferenceContent).uri, label: (p as IChatReferenceContent).label });
       }
     }
 
-    // Strip transient parts (progress, tool invocations, references)
+    // Strip transient standalone parts
     for (let i = parts.length - 1; i >= 0; i--) {
       const kind = parts[i].kind;
       if (
@@ -168,23 +167,38 @@ class ChatResponseStream implements IChatResponseStream {
       }
     }
 
-    // Fold collected references into the thinking part (if any)
-    if (references.length > 0) {
+    // Fold any straggler references into thinking
+    if (stragglerRefs.length > 0) {
       const thinkingPart = parts.find(
         (p) => p.kind === ChatContentPartKind.Thinking,
       ) as IChatThinkingContent | undefined;
 
       if (thinkingPart) {
-        thinkingPart.references = references;
-      } else {
-        // Create a minimal thinking part to hold the references
-        parts.push({
-          kind: ChatContentPartKind.Thinking,
-          content: '',
-          isCollapsed: true,
-          references,
-        });
+        if (!thinkingPart.references) {
+          thinkingPart.references = [];
+        }
+        for (const ref of stragglerRefs) {
+          // Avoid duplicates
+          if (!thinkingPart.references.some(r => r.uri === ref.uri)) {
+            thinkingPart.references.push(ref);
+          }
+        }
       }
+    }
+
+    // Clear the ephemeral progress message now that we're done
+    const thinkingPart = parts.find(
+      (p) => p.kind === ChatContentPartKind.Thinking,
+    ) as IChatThinkingContent | undefined;
+    if (thinkingPart) {
+      thinkingPart.progressMessage = undefined;
+    }
+
+    // Ensure thinking is first in the parts list (before markdown)
+    const thinkingIdx = parts.findIndex(p => p.kind === ChatContentPartKind.Thinking);
+    if (thinkingIdx > 0) {
+      const [t] = parts.splice(thinkingIdx, 1);
+      parts.unshift(t);
     }
 
     this._scheduleUpdate();
@@ -241,34 +255,71 @@ class ChatResponseStream implements IChatResponseStream {
 
   progress(message: string): void {
     this.throwIfDone();
-    (this._response.parts as IChatContentPart[]).push({
-      kind: ChatContentPartKind.Progress,
-      message,
-    });
+    const parts = this._response.parts as IChatContentPart[];
+
+    // Fold progress into the existing thinking part so the UI shows
+    // a single unified "Thinking..." section instead of a disjoint
+    // spinner + source pills.
+    const thinkingPart = parts.find(
+      (p) => p.kind === ChatContentPartKind.Thinking,
+    ) as IChatThinkingContent | undefined;
+
+    if (thinkingPart) {
+      thinkingPart.progressMessage = message;
+    } else {
+      // No thinking part yet — create one to host the progress message
+      parts.unshift({
+        kind: ChatContentPartKind.Thinking,
+        content: '',
+        isCollapsed: true,
+        progressMessage: message,
+      });
+    }
     this._scheduleUpdate();
   }
 
   reference(uri: string, label: string): void {
     this.throwIfDone();
-    (this._response.parts as IChatContentPart[]).push({
-      kind: ChatContentPartKind.Reference,
-      uri,
-      label,
-    });
+    const parts = this._response.parts as IChatContentPart[];
+
+    // Fold references into the existing thinking part so source pills
+    // appear inside the collapsed "Thinking..." section during streaming.
+    const thinkingPart = parts.find(
+      (p) => p.kind === ChatContentPartKind.Thinking,
+    ) as IChatThinkingContent | undefined;
+
+    if (thinkingPart) {
+      if (!thinkingPart.references) {
+        thinkingPart.references = [];
+      }
+      thinkingPart.references.push({ uri, label });
+    } else {
+      // No thinking part yet — create one to host the reference
+      parts.unshift({
+        kind: ChatContentPartKind.Thinking,
+        content: '',
+        isCollapsed: true,
+        references: [{ uri, label }],
+      });
+    }
     this._scheduleUpdate();
   }
 
   thinking(content: string): void {
     this.throwIfDone();
 
-    // Merge adjacent thinking parts
+    // Merge into the existing thinking part (which may have been created
+    // earlier by progress() or reference()) rather than appending a new one.
     const parts = this._response.parts as IChatContentPart[];
-    const last = parts.length > 0 ? parts[parts.length - 1] : undefined;
+    const existing = parts.find(
+      (p) => p.kind === ChatContentPartKind.Thinking,
+    ) as IChatThinkingContent | undefined;
 
-    if (last && last.kind === ChatContentPartKind.Thinking) {
-      last.content += content;
+    if (existing) {
+      existing.content += content;
     } else {
-      parts.push({
+      // No thinking part yet — create at front so it appears first
+      parts.unshift({
         kind: ChatContentPartKind.Thinking,
         content,
         isCollapsed: true,

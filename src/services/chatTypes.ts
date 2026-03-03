@@ -324,7 +324,9 @@ export interface IChatThinkingContent {
   readonly kind: ChatContentPartKind.Thinking;
   content: string;
   isCollapsed: boolean;
-  /** Source references folded in from top-level Reference parts on close. */
+  /** Ephemeral status message shown while context is being gathered. */
+  progressMessage?: string;
+  /** Source references gathered during retrieval. */
   references?: Array<{ uri: string; label: string }>;
 }
 

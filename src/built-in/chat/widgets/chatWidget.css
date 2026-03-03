@@ -669,9 +669,9 @@
   color: var(--vscode-testing-iconFailed, #f14c4c);
 }
 
-/* Thinking block */
+/* Thinking block — unified context/thinking section */
 .parallx-chat-thinking {
-  margin: 6px 0;
+  margin: 4px 0 8px;
   border-left: 2px solid var(--vscode-textPreformat-foreground, #6a9fb5);
   padding-left: 10px;
   opacity: 0.85;
@@ -679,25 +679,58 @@
 
 .parallx-chat-thinking-toggle {
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--vscode-descriptionForeground, #989898);
   user-select: none;
   padding: 2px 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0;
+  flex-wrap: wrap;
 }
 
 .parallx-chat-thinking-toggle:hover {
   color: var(--vscode-foreground, #cccccc);
 }
 
+.parallx-chat-thinking-sep {
+  color: var(--vscode-descriptionForeground, #666);
+  font-size: 11px;
+}
+
+.parallx-chat-thinking-progress-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #989898);
+}
+
+.parallx-chat-thinking-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--vscode-widget-border, #454545);
+  border-top-color: var(--vscode-progressBar-background, #0e70c0);
+  border-radius: 50%;
+  animation: parallx-chat-spin 0.8s linear infinite;
+}
+
+.parallx-chat-thinking-source-count {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #989898);
+}
+
 .parallx-chat-thinking-content {
   font-size: 12px;
   color: var(--vscode-descriptionForeground, #989898);
   line-height: 1.5;
+  margin-top: 6px;
+}
+
+.parallx-chat-thinking-text {
   white-space: pre-wrap;
-  margin-top: 4px;
+  margin-bottom: 6px;
 }
 
 .parallx-chat-thinking--collapsed .parallx-chat-thinking-content {
@@ -706,17 +739,11 @@
 
 /* Sources section inside thinking collapsible */
 .parallx-chat-thinking-sources {
-  margin-top: 8px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-}
-
-.parallx-chat-thinking-sources-label {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground, #989898);
-  margin-right: 4px;
+  margin-top: 4px;
 }
 
 .parallx-chat-thinking-sources .parallx-chat-reference {
@@ -725,7 +752,7 @@
   opacity: 0.9;
 }
 
-/* Progress indicator */
+/* Progress indicator (standalone — used if no thinking part exists) */
 .parallx-chat-progress {
   display: flex;
   align-items: center;

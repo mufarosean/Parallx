@@ -311,27 +311,68 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
     root.classList.add('parallx-chat-thinking--collapsed');
   }
 
-  // Toggle header
+  // ── Toggle header ──
+  // Builds a summary line:  ▶ Thinking · Searching 4 sources · 3 sources
   const toggle = $('div.parallx-chat-thinking-toggle');
-  toggle.textContent = part.isCollapsed ? '\u25B6 Thinking\u2026' : '\u25BC Thinking';
+
+  function _rebuildToggle(): void {
+    toggle.textContent = '';
+
+    // Arrow + "Thinking"/"Context"
+    const hasContent = !!part.content;
+    const hasRefs = part.references && part.references.length > 0;
+    const hasProgress = !!part.progressMessage;
+    const baseLabel = hasContent ? 'Thinking' : (hasRefs || hasProgress ? 'Context' : 'Thinking');
+    const arrow = part.isCollapsed ? '\u25B6' : '\u25BC';
+
+    const label = $('span', `${arrow} ${baseLabel}`);
+    toggle.appendChild(label);
+
+    // Progress message (ephemeral, shown during streaming)
+    if (hasProgress) {
+      const sep = $('span.parallx-chat-thinking-sep', ' \u00B7 ');
+      toggle.appendChild(sep);
+      const progressEl = $('span.parallx-chat-thinking-progress-label');
+      // Spinner + message
+      const spinner = $('span.parallx-chat-thinking-spinner');
+      progressEl.appendChild(spinner);
+      const msgEl = $('span', ` ${part.progressMessage}`);
+      progressEl.appendChild(msgEl);
+      toggle.appendChild(progressEl);
+    }
+
+    // Source count summary
+    if (hasRefs) {
+      const count = part.references!.length;
+      const sep = $('span.parallx-chat-thinking-sep', ' \u00B7 ');
+      toggle.appendChild(sep);
+      const countEl = $('span.parallx-chat-thinking-source-count', `${count} source${count !== 1 ? 's' : ''}`);
+      toggle.appendChild(countEl);
+    }
+  }
+
+  _rebuildToggle();
+
   toggle.addEventListener('click', () => {
     part.isCollapsed = !part.isCollapsed;
     root.classList.toggle('parallx-chat-thinking--collapsed', part.isCollapsed);
-    toggle.textContent = part.isCollapsed ? '\u25B6 Thinking\u2026' : '\u25BC Thinking';
+    _rebuildToggle();
   });
   root.appendChild(toggle);
 
-  // Content
+  // ── Content area (hidden when collapsed) ──
   const content = $('div.parallx-chat-thinking-content');
+
+  // Thinking text
   if (part.content) {
-    content.textContent = part.content;
+    const text = $('div.parallx-chat-thinking-text');
+    text.textContent = part.content;
+    content.appendChild(text);
   }
 
-  // Render folded-in source references as clickable pills
+  // Source reference pills
   if (part.references && part.references.length > 0) {
     const sourcesSection = $('div.parallx-chat-thinking-sources');
-    const sourcesLabel = $('span.parallx-chat-thinking-sources-label', 'Sources:');
-    sourcesSection.appendChild(sourcesLabel);
 
     for (const ref of part.references) {
       const pill = _renderReference({
