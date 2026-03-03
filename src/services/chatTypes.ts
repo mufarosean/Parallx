@@ -324,6 +324,8 @@ export interface IChatThinkingContent {
   readonly kind: ChatContentPartKind.Thinking;
   content: string;
   isCollapsed: boolean;
+  /** Source references folded in from top-level Reference parts on close. */
+  references?: Array<{ uri: string; label: string }>;
 }
 
 export interface IChatReferenceContent {

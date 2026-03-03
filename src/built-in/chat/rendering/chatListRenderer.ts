@@ -129,16 +129,18 @@ export class ChatListRenderer extends Disposable {
         }
       }
     } else if (newPartCount < existingParts.length) {
-      // Parts were removed (e.g. progress parts stripped on completion).
-      // Remove excess DOM elements from the end, then replace the last
-      // remaining part to ensure content is up-to-date.
-      for (let i = existingParts.length - 1; i >= newPartCount; i--) {
-        existingParts[i].remove();
-      }
-      if (newPartCount > 0) {
-        const lastPartEl = existingParts[newPartCount - 1] as HTMLElement;
-        const newPartEl = renderContentPart(response.parts[newPartCount - 1]);
-        lastPartEl.replaceWith(newPartEl);
+      // Parts were removed (e.g. progress/tool parts stripped on completion).
+      // Removed parts can be anywhere in the array, not just the end, so we
+      // must re-render the entire body to stay in sync with the data model.
+      const cursor = body.querySelector('.parallx-chat-streaming-cursor');
+      existingParts.forEach((el) => el.remove());
+      for (let i = 0; i < newPartCount; i++) {
+        const partEl = renderContentPart(response.parts[i]);
+        if (cursor) {
+          body.insertBefore(partEl, cursor);
+        } else {
+          body.appendChild(partEl);
+        }
       }
     }
 

@@ -207,7 +207,28 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
 
   // Content
   const content = $('div.parallx-chat-thinking-content');
-  content.textContent = part.content;
+  if (part.content) {
+    content.textContent = part.content;
+  }
+
+  // Render folded-in source references as clickable pills
+  if (part.references && part.references.length > 0) {
+    const sourcesSection = $('div.parallx-chat-thinking-sources');
+    const sourcesLabel = $('span.parallx-chat-thinking-sources-label', 'Sources:');
+    sourcesSection.appendChild(sourcesLabel);
+
+    for (const ref of part.references) {
+      const pill = _renderReference({
+        kind: ChatContentPartKind.Reference,
+        uri: ref.uri,
+        label: ref.label,
+      });
+      sourcesSection.appendChild(pill);
+    }
+
+    content.appendChild(sourcesSection);
+  }
+
   root.appendChild(content);
 
   return root;

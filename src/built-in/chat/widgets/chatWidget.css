@@ -647,6 +647,27 @@
   display: none;
 }
 
+/* Sources section inside thinking collapsible */
+.parallx-chat-thinking-sources {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.parallx-chat-thinking-sources-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #989898);
+  margin-right: 4px;
+}
+
+.parallx-chat-thinking-sources .parallx-chat-reference {
+  font-size: 11px;
+  padding: 1px 6px;
+  opacity: 0.9;
+}
+
 /* Progress indicator */
 .parallx-chat-progress {
   display: flex;

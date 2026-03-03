@@ -148,22 +148,16 @@ describe('defaultParticipant agentic loop', () => {
 
     expect(result).toEqual({});
 
-    // Tool invocation card was created
-    expect(stream.calls['beginToolInvocation']).toHaveLength(1);
-    expect(stream.calls['beginToolInvocation'][0][1]).toBe('search_workspace');
-
-    // Tool was invoked
+    // Tool was invoked silently (no tool cards rendered to user)
     expect(services.invokeTool).toHaveBeenCalledWith(
       'search_workspace',
       { query: 'test' },
       expect.any(Object),
     );
 
-    // Tool invocation was updated to running then completed
-    const updateCalls = stream.calls['updateToolInvocation'];
-    expect(updateCalls.length).toBeGreaterThanOrEqual(2);
-    expect(updateCalls[0][1]).toEqual({ status: 'running' });
-    expect(updateCalls[1][1]).toMatchObject({ status: 'completed', isComplete: true });
+    // No tool invocation cards shown — tools run silently
+    expect(stream.calls['beginToolInvocation']).toHaveLength(0);
+    expect(stream.calls['updateToolInvocation']).toHaveLength(0);
 
     // LLM was called twice (initial + after tool result)
     expect(sendChatRequest).toHaveBeenCalledTimes(2);
@@ -228,10 +222,11 @@ describe('defaultParticipant agentic loop', () => {
       createToken(),
     );
 
-    // Tool invocation was marked as rejected
-    const updateCalls = stream.calls['updateToolInvocation'];
-    const finalUpdate = updateCalls[updateCalls.length - 1][1];
-    expect(finalUpdate.status).toBe('rejected');
+    // Tool was still invoked (even though rejected)
+    expect(services.invokeTool).toHaveBeenCalled();
+
+    // No tool invocation cards rendered — tools run silently
+    expect(stream.calls['beginToolInvocation']).toHaveLength(0);
   });
 
   it('warns when tool_calls received in Edit mode (no tools)', async () => {
@@ -311,8 +306,8 @@ describe('defaultParticipant agentic loop', () => {
       createToken(),
     );
 
-    // Both tools were invoked
-    expect(stream.calls['beginToolInvocation']).toHaveLength(2);
+    // Both tools were invoked silently
     expect(services.invokeTool).toHaveBeenCalledTimes(2);
+    expect(stream.calls['beginToolInvocation']).toHaveLength(0);
   });
 });

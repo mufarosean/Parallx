@@ -35,6 +35,8 @@ import type {
   IChatResponseStream,
   IChatContentPart,
   IChatMarkdownContent,
+  IChatThinkingContent,
+  IChatReferenceContent,
   IChatToolInvocationContent,
   IChatEditProposalContent,
   EditProposalOperation,
@@ -140,15 +142,51 @@ class ChatResponseStream implements IChatResponseStream {
   /** Mark the stream as closed — no more writes allowed. */
   close(): void {
     this._done = true;
-    // Strip transient progress parts — they are ephemeral status messages
-    // (e.g. "Analyzing your message…", "Searching 4 sources…") that should
-    // not persist once the response is complete.
+    // Strip transient parts and consolidate references into thinking.
+    // Progress parts are ephemeral status messages (e.g. "Searching 4 sources…").
+    // ToolInvocation parts are internal mechanics the user doesn't need to see.
+    // Reference parts are moved into the thinking section for collapsed access.
     const parts = this._response.parts as IChatContentPart[];
+
+    // Collect references before stripping
+    const references: Array<{ uri: string; label: string }> = [];
+    for (const p of parts) {
+      if (p.kind === ChatContentPartKind.Reference) {
+        references.push({ uri: (p as IChatReferenceContent).uri, label: (p as IChatReferenceContent).label });
+      }
+    }
+
+    // Strip transient parts (progress, tool invocations, references)
     for (let i = parts.length - 1; i >= 0; i--) {
-      if (parts[i].kind === ChatContentPartKind.Progress) {
+      const kind = parts[i].kind;
+      if (
+        kind === ChatContentPartKind.Progress ||
+        kind === ChatContentPartKind.ToolInvocation ||
+        kind === ChatContentPartKind.Reference
+      ) {
         parts.splice(i, 1);
       }
     }
+
+    // Fold collected references into the thinking part (if any)
+    if (references.length > 0) {
+      const thinkingPart = parts.find(
+        (p) => p.kind === ChatContentPartKind.Thinking,
+      ) as IChatThinkingContent | undefined;
+
+      if (thinkingPart) {
+        thinkingPart.references = references;
+      } else {
+        // Create a minimal thinking part to hold the references
+        parts.push({
+          kind: ChatContentPartKind.Thinking,
+          content: '',
+          isCollapsed: true,
+          references,
+        });
+      }
+    }
+
     this._scheduleUpdate();
   }
 
@@ -233,7 +271,7 @@ class ChatResponseStream implements IChatResponseStream {
       parts.push({
         kind: ChatContentPartKind.Thinking,
         content,
-        isCollapsed: false,
+        isCollapsed: true,
       });
     }
 

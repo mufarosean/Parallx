@@ -1054,16 +1054,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         for (const toolCall of turnToolCalls) {
           const tcName = toolCall.function.name;
           const tcArgs = toolCall.function.arguments;
-          const toolCallId = `${tcName}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-          // 1. Render pending tool card
-          response.beginToolInvocation(toolCallId, tcName, tcArgs);
+          // Tools run silently — no tool cards shown to the user.
+          // The user sees the final response, not the mechanics.
           producedContent = true;
 
-          // 2. Update status to running
-          response.updateToolInvocation(toolCallId, { status: 'running' });
-
-          // 3. Invoke the tool
+          // Invoke the tool
           let result: IToolResult;
           try {
             result = await services.invokeTool!(tcName, tcArgs, token);
@@ -1072,25 +1068,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
             result = { content: `Tool "${tcName}" failed: ${errMsg}`, isError: true };
           }
 
-          // 4. Update card with result
-          if (result.isError && result.content === 'Tool execution rejected by user') {
-            response.updateToolInvocation(toolCallId, {
-              status: 'rejected',
-              isComplete: true,
-              isConfirmed: false,
-              result,
-            });
-          } else {
-            response.updateToolInvocation(toolCallId, {
-              status: result.isError ? 'rejected' : 'completed',
-              isComplete: true,
-              isConfirmed: !result.isError,
-              isError: result.isError,
-              result,
-            });
-          }
-
-          // 5. Append tool result message for the model
+          // Append tool result message for the model
           messages.push({
             role: 'tool',
             content: result.content,
