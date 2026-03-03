@@ -5,7 +5,18 @@ description: These instructions provide guidelines for AI to follow when thinkin
 
 ## 0. Active Milestone Context
 
-The current work is **Milestone 12 — Proactive Intelligence: From Reactive RAG to Anticipatory AI** (`docs/Parallx_Milestone_12.md`). Read the milestone document before implementing any M12 task. It contains the 2-call pipeline architecture, research on query expansion, and a 16-task phased breakdown (all ✅ complete).
+The current work is **Milestone 13 — Chat Architecture: Gate Registry Restructuring** (`docs/Parallx_Milestone_13.md`). Read the milestone document before implementing any M13 task. It contains a 6-phase plan (37 tasks) to restructure the chat built-in from a flat, god-file-driven layout into a gated, folder-scoped architecture matching canvas's structural discipline.
+
+### Key M13 Constraints
+
+- **Pure refactoring — no behavioral changes.** The app must behave identically before and after M13. Same features, same UI, same behavior. If a test breaks, the migration is wrong.
+- **One phase at a time.** Complete and validate each phase (tsc clean + all tests pass + git commit) before starting the next.
+- **Move, don't rewrite.** Phases 1–5 are moving code between files and adjusting imports. No new features, no bug fixes (note bugs separately).
+- **Commit per sub-task.** Each numbered task gets its own commit for fine-grained rollback.
+- **Test after every file move.** `tsc --noEmit` + `npx vitest run` after each move.
+- **chatTypes.ts is the type hub.** All 44 interfaces consolidated here. No interface may be defined elsewhere.
+- **ChatDataService is the data hub.** All DB queries, workspace digest, FS ops in one testable class.
+- **Gate compliance enforced by test.** `chatGateCompliance.test.ts` (Phase 6) catches cross-folder imports.
 
 ### Key M11 Constraints
 
