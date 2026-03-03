@@ -1027,7 +1027,8 @@
   white-space: pre;
 }
 
-.parallx-chat-diff-line--context {
+.parallx-chat-diff-line--context,
+.parallx-chat-diff-line--equal {
   background: transparent;
 }
 

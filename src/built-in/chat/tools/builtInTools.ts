@@ -819,6 +819,7 @@ function createEditFileTool(
 function createDeleteFileTool(
   fs: IBuiltInToolFileSystem | undefined,
   writer: IBuiltInToolFileWriter | undefined,
+  workspaceRoot?: string,
 ): IChatTool {
   return {
     name: 'delete_file',
@@ -857,16 +858,18 @@ function createDeleteFileTool(
         const fsBridge = electron?.fs as { delete?: (path: string, options?: { useTrash?: boolean }) => Promise<{ error: { code: string; message: string } | null }> } | undefined;
 
         if (fsBridge?.delete) {
-          // Compute absolute path from workspace root + relative path
-          // Use Electron to move to trash
-          const result = await fsBridge.delete(cleanPath, { useTrash: true });
+          // Resolve absolute path: workspace root + relative path
+          const absPath = workspaceRoot
+            ? (workspaceRoot.replace(/[\\/]$/, '') + '/' + cleanPath.replace(/^[\\/]/, '')).replace(/\//g, (globalThis as Record<string, unknown>).process ? '\\' : '/')
+            : cleanPath;
+          const result = await fsBridge.delete(absPath, { useTrash: true });
           if (result.error) {
-            // Fallback: try via writer (if it supports delete)
-            return { content: `Deleted "${cleanPath}" (moved to trash failed: ${result.error.message} — file may need manual cleanup)`, isError: true };
+            return { content: `Failed to delete "${cleanPath}": ${result.error.message}`, isError: true };
           }
+          return { content: `Deleted "${cleanPath}" (moved to trash)` };
         }
 
-        return { content: `Deleted "${cleanPath}" (moved to trash)` };
+        return { content: `Cannot delete "${cleanPath}": no file system bridge available`, isError: true };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return { content: `Failed to delete file: ${msg}`, isError: true };
@@ -896,7 +899,7 @@ function isCommandBlocked(command: string): boolean {
   return COMMAND_BLOCKLIST.some((blocked) => lower.startsWith(blocked) || lower.includes(blocked));
 }
 
-function createRunCommandTool(terminal: IBuiltInToolTerminal | undefined): IChatTool {
+function createRunCommandTool(terminal: IBuiltInToolTerminal | undefined, workspaceRoot?: string): IChatTool {
   return {
     name: 'run_command',
     description:
@@ -932,7 +935,7 @@ function createRunCommandTool(terminal: IBuiltInToolTerminal | undefined): IChat
       const timeout = typeof args['timeout'] === 'number' ? args['timeout'] : 30000;
 
       try {
-        const result = await terminal.exec(command, { timeout });
+        const result = await terminal.exec(command, { cwd: workspaceRoot, timeout });
 
         if (result.error) {
           return { content: `Command error: ${result.error.message}\n\nStdout:\n${result.stdout}\n\nStderr:\n${result.stderr}`, isError: true };
@@ -975,6 +978,7 @@ export function registerBuiltInTools(
   retrieval?: IBuiltInToolRetrieval,
   writer?: IBuiltInToolFileWriter,
   terminal?: IBuiltInToolTerminal,
+  workspaceRoot?: string,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
@@ -995,9 +999,9 @@ export function registerBuiltInTools(
     createWriteFileTool(fs, writer),
     createEditFileTool(fs, writer),
     // ── Delete tool (M11 Task 4.4) ──
-    createDeleteFileTool(fs, writer),
+    createDeleteFileTool(fs, writer, workspaceRoot),
     // ── Terminal tool (M11 Task 4.3) ──
-    createRunCommandTool(terminal),
+    createRunCommandTool(terminal, workspaceRoot),
     // ── RAG tools (M10 Phase 3) ──
     createSearchKnowledgeTool(retrieval),
   ];

@@ -128,8 +128,9 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
 // ── Edit mode ──
 
 function buildEditPrompt(ctx: ISystemPromptContext): string {
+  const identity = ctx.promptOverlay || 'You are Parallx AI in Edit mode — a local-first knowledge workspace assistant.';
   const lines: string[] = [
-    'You are Parallx AI in Edit mode — a local-first knowledge workspace assistant.',
+    identity,
     '',
   ];
 

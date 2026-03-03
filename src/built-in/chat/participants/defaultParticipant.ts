@@ -244,6 +244,22 @@ export interface IDefaultParticipantServices {
    * Filesystem for loading user-defined slash commands from .parallx/commands/.
    */
   userCommandFileSystem?: IUserCommandFileSystem;
+
+  // ── /compact session compaction (M11 Task 3.8) ──
+
+  /**
+   * Replace session history with a compacted summary.
+   * Called by /compact after summarization is complete.
+   */
+  compactSession?(sessionId: string, summaryText: string): void;
+
+  // ── Excluded context (M11 Task 1.10) ──
+
+  /**
+   * Get the set of context pill IDs the user has excluded via the UI.
+   * Context sources whose ID matches an excluded pill should be skipped.
+   */
+  getExcludedContextIds?(): ReadonlySet<string>;
 }
 
 /** Default participant ID — must match ChatAgentService's DEFAULT_AGENT_ID. */
@@ -382,6 +398,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       if (summaryText) {
         const afterTokens = Math.ceil(summaryText.length / 4);
         const saved = beforeTokens - afterTokens;
+
+        // Actually replace session history with the compacted summary
+        if (services.compactSession) {
+          services.compactSession(context.sessionId, summaryText);
+        }
+
         response.markdown(
           `**Conversation compacted.**\n\n` +
           `- Before: ~${beforeTokens.toLocaleString()} tokens (${context.history.length} turns)\n` +
@@ -616,8 +638,8 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // 2b. Report context pills to the UI (M11 Task 1.10)
     //
     // After all context sources are resolved, build pills for display.
+    const pills: IContextPill[] = [];
     if (services.reportContextPills) {
-      const pills: IContextPill[] = [];
 
       // System prompt overlay (SOUL + AGENTS + TOOLS)
       const sysContent = messages[0]?.content ?? '';
@@ -676,6 +698,26 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       services.reportContextPills(pills);
     }
 
+    // 2b½. Filter out excluded context sources (M11 Task 1.10)
+    //
+    // If the user has excluded pills via the UI, remove those context parts
+    // so the LLM doesn't see them.
+    if (services.getExcludedContextIds) {
+      const excluded = services.getExcludedContextIds();
+      if (excluded.size > 0) {
+        // Remove context parts that belong to excluded pills (by label or URI match)
+        for (let i = contextParts.length - 1; i >= 0; i--) {
+          const part = contextParts[i];
+          const shouldExclude = pills.some(
+            (pill: IContextPill) => excluded.has(pill.id) && pill.removable && part.includes(pill.label),
+          );
+          if (shouldExclude) {
+            contextParts.splice(i, 1);
+          }
+        }
+      }
+    }
+
     // 2c. Token budget allocation (M11 Task 1.8)
     //
     // Apply token budget to trim RAG context and history if they exceed
@@ -732,10 +774,11 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
 
       // Report budget breakdown to the UI (Task 4.8)
+      // Use post-trim values from budgetResult.slots so the UI shows actual usage
       if (services.reportBudget) {
         const sysTokens = Math.ceil((messages[0]?.content ?? '').length / 4);
-        const ragTokens = Math.ceil(ragContent.length / 4);
-        const histTokens = Math.ceil(historyContent.length / 4);
+        const ragTokens = Math.ceil((budgetResult.slots['ragContext'] ?? ragContent).length / 4);
+        const histTokens = Math.ceil((budgetResult.slots['history'] ?? historyContent).length / 4);
         const userTokens = Math.ceil(userText.length / 4);
         const totalSlots = contextWindow;
         services.reportBudget([

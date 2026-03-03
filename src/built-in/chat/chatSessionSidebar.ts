@@ -21,6 +21,8 @@ import { chatIcons } from './chatIcons.js';
 export interface ISessionSidebarServices {
   getSessions(): readonly IChatSession[];
   deleteSession(sessionId: string): void;
+  /** Full-text search across session messages (M11 Task 4.5). */
+  searchSessions?(query: string): Promise<Array<{ sessionId: string; sessionTitle: string; matchingContent: string }>>;
 }
 
 // ── Date grouping buckets ──
@@ -107,6 +109,7 @@ export class ChatSessionSidebar extends Disposable {
   private _activeSessionId: string | undefined;
   private _filterText = '';
   private _collapsedGroups = new Set<DateGroup>();
+  private _searchResults: Array<{ sessionId: string; sessionTitle: string; matchingContent: string }> | undefined;
 
   // ── Events ──
 
@@ -173,7 +176,13 @@ export class ChatSessionSidebar extends Disposable {
 
     this._register(addDisposableListener(this._filterInput, 'input', () => {
       this._filterText = this._filterInput.value.toLowerCase();
-      this._renderSessionList();
+      // Use full-text search for queries >= 3 chars, else client-side filter
+      if (this._filterText.length >= 3 && this._services.searchSessions) {
+        this._performSearch(this._filterText);
+      } else {
+        this._searchResults = undefined;
+        this._renderSessionList();
+      }
     }));
 
     // ── Session list (scrollable) ──
@@ -263,14 +272,51 @@ export class ChatSessionSidebar extends Disposable {
       // Clear filter when hiding
       this._filterInput.value = '';
       this._filterText = '';
+      this._searchResults = undefined;
       this._renderSessionList();
     }
+  }
+
+  /** Perform full-text search across session messages (M11 Task 4.5). */
+  private async _performSearch(query: string): Promise<void> {
+    if (!this._services.searchSessions) return;
+    try {
+      this._searchResults = await this._services.searchSessions(query);
+    } catch {
+      this._searchResults = [];
+    }
+    this._renderSessionList();
   }
 
   // ── Internal: Render ──
 
   private _renderSessionList(): void {
     this._sessionList.innerHTML = '';
+
+    // If we have full-text search results (Task 4.5), render them as a flat list
+    if (this._searchResults !== undefined) {
+      if (this._searchResults.length === 0) {
+        this._emptyEl.textContent = 'No matching sessions';
+        this._emptyEl.style.display = '';
+        return;
+      }
+      this._emptyEl.style.display = 'none';
+      for (const result of this._searchResults) {
+        const item = $('div.parallx-chat-session-sidebar-item');
+        if (result.sessionId === this._activeSessionId) {
+          item.classList.add('parallx-chat-session-sidebar-item--active');
+        }
+        const title = $('div.parallx-chat-session-sidebar-item-title',
+          result.sessionTitle || 'Untitled');
+        const preview = $('div.parallx-chat-session-sidebar-item-preview',
+          result.matchingContent || '');
+        item.appendChild(title);
+        item.appendChild(preview);
+        item.addEventListener('click', () => this._onDidSelectSession.fire(result.sessionId));
+        this._sessionList.appendChild(item);
+      }
+      return;
+    }
 
     const allSessions = this._services.getSessions();
 

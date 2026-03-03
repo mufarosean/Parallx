@@ -362,7 +362,7 @@ export class ChatListRenderer extends Disposable {
 
     // Token count
     const tokens = $('span.parallx-chat-progress-tokens');
-    const totalChars = response.parts.reduce((s, p) => s + ((p as any).value?.length ?? 0), 0);
+    const totalChars = response.parts.reduce((s, p) => s + ((p as any).content?.length ?? (p as any).code?.length ?? 0), 0);
     tokens.textContent = `~${Math.ceil(totalChars / 4)} tokens`;
     footer.appendChild(tokens);
 
@@ -391,7 +391,7 @@ export class ChatListRenderer extends Disposable {
     // Update token count
     const tokensEl = footer.querySelector('.parallx-chat-progress-tokens');
     if (tokensEl) {
-      const totalChars = response.parts.reduce((s, p) => s + ((p as any).value?.length ?? 0), 0);
+      const totalChars = response.parts.reduce((s, p) => s + ((p as any).content?.length ?? (p as any).code?.length ?? 0), 0);
       tokensEl.textContent = `~${Math.ceil(totalChars / 4)} tokens`;
     }
   }

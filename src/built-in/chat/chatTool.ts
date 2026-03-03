@@ -30,6 +30,7 @@ import {
   IChatAgentService,
   IChatModeService,
   ILanguageModelToolsService,
+  ChatContentPartKind,
 } from '../../services/chatTypes.js';
 import type {
   IChatSession,
@@ -39,6 +40,7 @@ import type {
   IToolDefinition,
   ICancellationToken,
   IToolResult,
+  IChatRequestResponsePair,
 } from '../../services/chatTypes.js';
 import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
@@ -124,6 +126,7 @@ let _tokenStatusBar: ChatTokenStatusBar | undefined;
 let _lastIndexStats: { pages: number; files: number } | undefined;
 let _promptFileService: PromptFileService | undefined;
 let _permissionService: PermissionService | undefined;
+let _fsAccessor: IBuiltInToolFileSystem | undefined;
 
 // ── Activation ──
 
@@ -179,6 +182,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // ── 1b. Build file system accessor for built-in tools ──
 
   const fsAccessor = buildFileSystemAccessor(fileService, workspaceService);
+  _fsAccessor = fsAccessor ?? undefined;
 
   // ── 1b2. Prompt file service (M11 Task 1.1 + 1.4) ──
   //
@@ -531,6 +535,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       }
     },
 
+    // M11 Task 1.10 — excluded context IDs from pills UI
+    getExcludedContextIds: (): ReadonlySet<string> => {
+      return _activeWidget?.getExcludedContextIds() ?? new Set();
+    },
+
     // M11 Task 4.8 — token budget transparency bridge
     reportBudget: (slots: readonly import('./chatContextPills.js').ITokenBudgetSlot[]) => {
       if (_activeWidget) {
@@ -547,6 +556,64 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         const result = await terminal.getOutput(100);
         return result.output || undefined;
       } catch { return undefined; }
+    },
+
+    // M11 Task 3.3 — @folder: mention: list files in a folder
+    listFolderFiles: fsAccessor
+      ? async (folderPath: string): Promise<Array<{ relativePath: string; content: string }>> => {
+        const results: Array<{ relativePath: string; content: string }> = [];
+        const MAX_FILES = 50;
+        const MAX_FILE_SIZE = 10_000; // chars
+        try {
+          const entries = await fsAccessor!.readdir(folderPath);
+          for (const entry of entries) {
+            if (results.length >= MAX_FILES) break;
+            if (entry.type === 'file') {
+              const relPath = folderPath ? `${folderPath}/${entry.name}` : entry.name;
+              try {
+                const content = await fsAccessor!.readFile(relPath);
+                results.push({
+                  relativePath: relPath,
+                  content: content.length > MAX_FILE_SIZE ? content.slice(0, MAX_FILE_SIZE) + '\n… (truncated)' : content,
+                });
+              } catch { /* skip unreadable files */ }
+            }
+          }
+        } catch { /* folder may not exist or be unreadable */ }
+        return results;
+      }
+      : undefined,
+
+    // M11 Task 3.7 — User-defined slash commands filesystem
+    userCommandFileSystem: fsAccessor
+      ? {
+        listCommandFiles: async () => {
+          try {
+            const entries = await fsAccessor!.readdir('.parallx/commands');
+            return entries
+              .filter(e => e.type === 'file' && e.name.endsWith('.md'))
+              .map(e => `.parallx/commands/${e.name}`);
+          } catch { return []; }
+        },
+        readCommandFile: async (relativePath: string) => {
+          return await fsAccessor!.readFile(relativePath);
+        },
+      }
+      : undefined,
+
+    // M11 Task 3.8 — /compact session compaction
+    compactSession: (sessionId: string, summaryText: string) => {
+      const session = chatService.getSession(sessionId);
+      if (!session) return;
+      // Replace all existing messages with a single summary pair
+      const messages = session.messages as IChatRequestResponsePair[];
+      messages.splice(0, messages.length, {
+        request: { text: '[Compacted conversation history]' },
+        response: {
+          parts: [{ kind: ChatContentPartKind.Markdown, content: summaryText }],
+          isComplete: true,
+        },
+      } as IChatRequestResponsePair);
     },
   };
 
@@ -834,7 +901,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       };
     })();
 
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, writerAccessor, terminalAccessor);
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
@@ -989,6 +1056,31 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         promptOverlay,
       });
     },
+    // File access for code action diff/apply flow (Task 2.6)
+    readFileRelative: fsAccessor
+      ? async (relativePath: string): Promise<string | null> => {
+        try { return await fsAccessor!.readFile(relativePath); } catch { return null; }
+      }
+      : undefined,
+    writeFileRelative: (fileService && workspaceService?.folders?.length)
+      ? async (relativePath: string, content: string): Promise<void> => {
+        const rootUri = workspaceService!.folders[0].uri;
+        const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+        const targetUri = rootUri.joinPath(clean);
+        const parentPath = clean.includes('/') ? clean.slice(0, clean.lastIndexOf('/')) : '';
+        if (parentPath) {
+          try { await fileService!.mkdir(rootUri.joinPath(parentPath)); } catch { /* may exist */ }
+        }
+        await fileService!.writeFile(targetUri, content);
+      }
+      : undefined,
+    // Session search (Task 4.5) — delegates to chatSessionPersistence
+    searchSessions: databaseService
+      ? async (query: string) => {
+        const { searchSessions } = await import('../../services/chatSessionPersistence.js');
+        return searchSessions(databaseService!, query);
+      }
+      : undefined,
   };
 
   // ── 5. Register the chat view in the Auxiliary Bar ──
@@ -1314,12 +1406,98 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       }),
     );
   }
+
+  // ── 10. Instantiate M11 services (skill loader, config, permissions) ──
+
+  // SkillLoaderService (M11 Task 2.7–2.8): load skills from .parallx/skills/
+  if (fsAccessor) {
+    import('../../services/skillLoaderService.js').then(({ SkillLoaderService }) => {
+      const skillLoader = new SkillLoaderService();
+      skillLoader.setFileSystem({
+        readFile: (path: string) => fsAccessor!.readFile(path),
+        listDirs: async (path: string) => {
+          try {
+            const entries = await fsAccessor!.readdir(path);
+            return entries.filter(e => e.type === 'directory').map(e => e.name);
+          } catch { return []; }
+        },
+        exists: (path: string) => fsAccessor!.exists(path),
+      });
+      skillLoader.scanSkills().catch(() => { /* best-effort */ });
+      context.subscriptions.push(skillLoader);
+    }).catch(() => { /* optional service */ });
+  }
+
+  // ParallxConfigService (M11 Task 2.9): read .parallx/config.json
+  if (fsAccessor) {
+    import('../../services/parallxConfigService.js').then(({ ParallxConfigService }) => {
+      const configService = new ParallxConfigService();
+      configService.setFileSystem({
+        readFile: (path: string) => fsAccessor!.readFile(path),
+        exists: (path: string) => fsAccessor!.exists(path),
+      });
+      configService.load().catch(() => { /* best-effort */ });
+      context.subscriptions.push(configService);
+    }).catch(() => { /* optional service */ });
+  }
+
+  // PermissionsFileService (M11 Task 2.10): persist permission overrides
+  if (fsAccessor && fileService && workspaceService?.folders?.length && _permissionService) {
+    import('../../services/permissionsFileService.js').then(({ PermissionsFileService }) => {
+      const permsFileService = new PermissionsFileService();
+      permsFileService.setFileSystem({
+        readFile: (path: string) => fsAccessor!.readFile(path),
+        exists: (path: string) => fsAccessor!.exists(path),
+      });
+      permsFileService.setFileWriter({
+        writeFile: async (relativePath: string, content: string) => {
+          const rootUri = workspaceService!.folders[0].uri;
+          const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+          await fileService!.writeFile(rootUri.joinPath(clean), content);
+        },
+      });
+      permsFileService.setPermissionService(_permissionService!);
+      permsFileService.load().catch(() => { /* best-effort */ });
+      context.subscriptions.push(permsFileService);
+    }).catch(() => { /* optional service */ });
+  }
 }
 
 /** Set the active widget reference (called from chatView). */
 export function setActiveWidget(widget: ChatWidget | undefined): void {
   _activeWidget = widget;
   _tokenStatusBar?.update().catch(() => {});
+
+  // Wire mention/command providers once the widget is available
+  if (widget) {
+    // Mention provider: list workspace files for @file: autocomplete
+    if (_fsAccessor) {
+      widget.setMentionSuggestionProvider({
+        async listFiles() {
+          try {
+            const entries = await _fsAccessor!.readdir('.');
+            return entries.map(e => ({
+              name: e.name,
+              relativePath: e.name,
+              isDirectory: e.type === 'directory',
+            }));
+          } catch {
+            return [];
+          }
+        },
+      });
+    }
+
+    // Slash command provider: built-in + user commands from registry
+    import('./chatSlashCommands.js').then(({ SlashCommandRegistry }) => {
+      const reg = new SlashCommandRegistry();
+      widget.setSlashCommandProvider({
+        getCommands() {
+          return reg.getCommands().map(c => ({ name: c.name, description: c.description }));
+        },
+      });
+    }).catch(() => { /* best-effort */ });
+  }
 }
 
 /** Update the chatIsStreaming context key (called from chatWidget). */
@@ -1333,6 +1511,7 @@ export function deactivate(): void {
   _chatIsStreamingKey = undefined;
   _tokenStatusBar = undefined;
   _promptFileService = undefined;
+  _fsAccessor = undefined;
 }
 
 // ── Helpers ──

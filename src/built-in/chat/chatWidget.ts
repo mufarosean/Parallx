@@ -23,6 +23,7 @@ import { ChatModePicker } from './chatModePicker.js';
 import type { IModePickerServices } from './chatModePicker.js';
 import { ChatSessionSidebar } from './chatSessionSidebar.js';
 import type { ISessionSidebarServices } from './chatSessionSidebar.js';
+import type { ICodeActionRequest } from './chatCodeActions.js';
 
 import type {
   IChatSession,
@@ -63,6 +64,14 @@ export interface IChatWidgetServices {
 
   /** Get the assembled system prompt text for display (Task 4.10). */
   readonly getSystemPrompt?: () => Promise<string>;
+
+  /** Read a workspace-relative file (for code action diff flow — Task 2.6). */
+  readonly readFileRelative?: (relativePath: string) => Promise<string | null>;
+  /** Write a workspace-relative file (for code action apply/create — Task 2.6). */
+  readonly writeFileRelative?: (relativePath: string, content: string) => Promise<void>;
+
+  /** Full-text search across session messages (Task 4.5). */
+  readonly searchSessions?: (query: string) => Promise<Array<{ sessionId: string; sessionTitle: string; matchingContent: string }>>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -181,6 +190,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const sidebarServices: ISessionSidebarServices = {
       getSessions: () => this._services.getSessions?.() ?? [],
       deleteSession: (id) => this._services.deleteSession?.(id),
+      searchSessions: this._services.searchSessions,
     };
     this._sessionSidebar = this._register(new ChatSessionSidebar(this._root, sidebarServices));
 
@@ -213,6 +223,11 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     }
     // Task 4.9: Wire cancel handler from widget into list renderer
     this._listRenderer.setCancelHandler(() => this._handleStop());
+
+    // Task 2.6: Wire code action event listener (Apply to File / Create File)
+    this._register(addDisposableListener(this._messageListContainer, 'parallx-code-action' as keyof HTMLElementEventMap, ((e: CustomEvent<ICodeActionRequest>) => {
+      this._handleCodeAction(e.detail);
+    }) as EventListener));
 
     this._inputPart = this._register(new ChatInputPart(this._inputAreaContainer));
     this._register(this._inputPart.onDidAcceptInput((text) => this._handleSubmit(text)));
@@ -344,6 +359,21 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._inputPart.setBudget(slots);
   }
 
+  /** Get IDs of context sources the user has excluded via pills UI (Task 1.10). */
+  getExcludedContextIds(): ReadonlySet<string> {
+    return this._inputPart.getExcludedContextIds();
+  }
+
+  /** Bind @mention suggestion provider for workspace file autocomplete (Task 3.1). */
+  setMentionSuggestionProvider(provider: import('./chatMentionAutocomplete.js').IMentionSuggestionProvider): void {
+    this._inputPart.setMentionSuggestionProvider(provider);
+  }
+
+  /** Bind slash command provider for /command autocomplete (Task 3.5). */
+  setSlashCommandProvider(provider: import('./chatMentionAutocomplete.js').ISlashCommandProvider): void {
+    this._inputPart.setSlashCommandProvider(provider);
+  }
+
   // ── Input submission ──
 
   private async _handleSubmit(text: string): Promise<void> {
@@ -377,6 +407,92 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private _handleStop(): void {
     if (this._session) {
       this._services.cancelRequest(this._session.id);
+    }
+  }
+
+  // ── Code Action Handler (Task 2.6) ──
+
+  /**
+   * Handle code action requests from code blocks (Apply to File / Create File).
+   * For 'apply': reads existing file, computes diff, shows inline diff viewer.
+   * For 'create': writes the file directly.
+   */
+  private async _handleCodeAction(request: ICodeActionRequest): Promise<void> {
+    const { replaceCodeActionsWithResult } = await import('./chatCodeActions.js');
+
+    // Find the action bar element that fired this event (for result feedback)
+    const actionBars = this._messageListContainer.querySelectorAll('.parallx-chat-code-actions');
+    let actionBar: HTMLElement | null = null;
+    for (const bar of actionBars) {
+      const pathLabel = bar.querySelector('.parallx-chat-code-actions-path');
+      if (pathLabel?.textContent === request.filePath) {
+        actionBar = bar as HTMLElement;
+        break;
+      }
+    }
+
+    try {
+      if (request.action === 'create') {
+        // Direct file write
+        if (!this._services.writeFileRelative) {
+          if (actionBar) { replaceCodeActionsWithResult(actionBar, 'No file write access', false); }
+          return;
+        }
+        await this._services.writeFileRelative(request.filePath, request.code);
+        if (actionBar) { replaceCodeActionsWithResult(actionBar, `Created ${request.filePath}`, true); }
+      } else if (request.action === 'apply') {
+        // Diff flow: read existing → compute diff → show diff viewer → on accept, write
+        if (!this._services.readFileRelative || !this._services.writeFileRelative) {
+          if (actionBar) { replaceCodeActionsWithResult(actionBar, 'No file access', false); }
+          return;
+        }
+
+        const existing = await this._services.readFileRelative(request.filePath);
+        if (existing === null) {
+          // File doesn't exist — treat as create
+          await this._services.writeFileRelative(request.filePath, request.code);
+          if (actionBar) { replaceCodeActionsWithResult(actionBar, `Created ${request.filePath}`, true); }
+          return;
+        }
+
+        // Compute diff and show viewer
+        const { computeDiff } = await import('../../services/diffService.js');
+        const { renderDiffViewer } = await import('./chatDiffViewer.js');
+
+        const diff = computeDiff(existing, request.code, request.filePath);
+
+        if (diff.isIdentical) {
+          if (actionBar) { replaceCodeActionsWithResult(actionBar, 'No changes detected', true); }
+          return;
+        }
+
+        const diffEl = renderDiffViewer(diff, {
+          showActions: true,
+          wordLevelHighlight: true,
+          onReview: async (decision) => {
+            if (decision === 'accept') {
+              try {
+                await this._services.writeFileRelative!(request.filePath, request.code);
+                if (actionBar) { replaceCodeActionsWithResult(actionBar, `Applied to ${request.filePath}`, true); }
+              } catch (err) {
+                if (actionBar) { replaceCodeActionsWithResult(actionBar, `Write failed: ${err}`, false); }
+              }
+            } else {
+              if (actionBar) { replaceCodeActionsWithResult(actionBar, 'Rejected', false); }
+            }
+            // Remove diff viewer after decision
+            diffEl.remove();
+          },
+        });
+
+        // Insert diff viewer after the action bar
+        if (actionBar?.parentElement) {
+          actionBar.parentElement.insertBefore(diffEl, actionBar.nextSibling);
+        }
+      }
+    } catch (err) {
+      console.error('[ChatWidget] Code action failed:', err);
+      if (actionBar) { replaceCodeActionsWithResult(actionBar, `Error: ${err}`, false); }
     }
   }
 
