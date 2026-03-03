@@ -23,6 +23,7 @@ import type {
   IToolResult,
   ICancellationToken,
   ILanguageModelToolsService,
+  ToolPermissionLevel,
 } from '../../../services/chatTypes.js';
 
 // ── Database accessor interface ──
@@ -53,6 +54,19 @@ export interface IBuiltInToolFileSystem {
   exists(relativePath: string): Promise<boolean>;
   /** The workspace root display name. */
   readonly workspaceRootName: string;
+}
+
+// ── File write accessor interface (M11 Task 2.2) ──
+
+/**
+ * Minimal file write accessor for write tools.
+ * Wired from IFileService + IWorkspaceService in chatTool.ts.
+ */
+export interface IBuiltInToolFileWriter {
+  /** Write content to a file at a relative path. Creates parent dirs as needed. */
+  writeFile(relativePath: string, content: string): Promise<void>;
+  /** Check if a relative path is allowed by .parallxignore rules. */
+  isPathAllowed(relativePath: string): boolean;
 }
 
 // ── Retrieval accessor interface (M10 Phase 3) ──
@@ -95,6 +109,7 @@ function createSearchWorkspaceTool(db: IBuiltInToolDatabase | undefined): IChatT
       },
     },
     requiresConfirmation: false,
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const query = String(args['query'] || '');
@@ -136,6 +151,7 @@ function createReadPageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
       },
     },
     requiresConfirmation: false,
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const identifier = String(args['pageId'] || '');
@@ -187,6 +203,7 @@ function createReadPageByTitleTool(db: IBuiltInToolDatabase | undefined): IChatT
       },
     },
     requiresConfirmation: false,
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const title = String(args['title'] || '').trim();
@@ -233,6 +250,7 @@ function createReadCurrentPageTool(db: IBuiltInToolDatabase | undefined, getCurr
       properties: {},
     },
     requiresConfirmation: false,
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
     async handler(_args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const pageId = getCurrentPageId();
@@ -266,6 +284,7 @@ function createListPagesTool(db: IBuiltInToolDatabase | undefined): IChatTool {
       },
     },
     requiresConfirmation: false,
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const limit = Math.min(Number(args['limit']) || 50, 200);
@@ -301,6 +320,7 @@ function createGetPagePropertiesTool(db: IBuiltInToolDatabase | undefined): ICha
       },
     },
     requiresConfirmation: false,
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const pageId = String(args['pageId'] || '');
@@ -358,6 +378,7 @@ function createCreatePageTool(db: IBuiltInToolDatabase | undefined): IChatTool {
       },
     },
     requiresConfirmation: true,
+    permissionLevel: 'requires-approval' as ToolPermissionLevel,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireDb(db);
       const title = String(args['title'] || '').trim();
@@ -402,6 +423,7 @@ function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool 
       },
     },
     requiresConfirmation: false,
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireFs(fs);
       const relPath = String(args['path'] || '.').replace(/\\/g, '/');
@@ -439,6 +461,7 @@ function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
       },
     },
     requiresConfirmation: false,
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireFs(fs);
       const relPath = String(args['path'] || '').replace(/\\/g, '/');
@@ -470,6 +493,7 @@ function createSearchFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatToo
       },
     },
     requiresConfirmation: false,
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       requireFs(fs);
       const pattern = String(args['pattern'] || '').toLowerCase();
@@ -568,6 +592,7 @@ function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | undefined)
       },
     },
     requiresConfirmation: false,
+    permissionLevel: 'always-allowed' as ToolPermissionLevel,
     async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
       if (!retrieval) {
         return { content: 'Knowledge search is not available — the retrieval service has not been initialized.', isError: true };
@@ -605,6 +630,174 @@ function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | undefined)
   };
 }
 
+// ── Write tools (M11 Task 2.2 + 2.3) ──
+
+function requireWriter(writer: IBuiltInToolFileWriter | undefined): asserts writer is IBuiltInToolFileWriter {
+  if (!writer) {
+    throw new Error('File writer is not available — no workspace folder is open');
+  }
+}
+
+/**
+ * Sanitize a relative path: normalize separators, reject path traversal,
+ * and validate against .parallxignore.
+ */
+function sanitizeRelativePath(relPath: string, writer: IBuiltInToolFileWriter): string {
+  // Normalize
+  let clean = relPath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+
+  // Reject absolute paths
+  if (clean.startsWith('/') || /^[a-zA-Z]:/.test(clean)) {
+    throw new Error(`Absolute paths are not allowed: "${relPath}"`);
+  }
+
+  // Reject path traversal
+  if (clean.includes('..')) {
+    throw new Error(`Path traversal ("..") is not allowed: "${relPath}"`);
+  }
+
+  // Check .parallxignore rules
+  if (!writer.isPathAllowed(clean)) {
+    throw new Error(`Path "${clean}" is blocked by .parallxignore rules`);
+  }
+
+  return clean;
+}
+
+function createWriteFileTool(
+  fs: IBuiltInToolFileSystem | undefined,
+  writer: IBuiltInToolFileWriter | undefined,
+): IChatTool {
+  return {
+    name: 'write_file',
+    description:
+      'Write (create or overwrite) a file in the workspace. Path is relative to the workspace root. ' +
+      'Validates path against .parallxignore sandbox rules. Requires user approval.',
+    parameters: {
+      type: 'object',
+      required: ['path', 'content'],
+      properties: {
+        path: { type: 'string', description: 'Relative file path from workspace root' },
+        content: { type: 'string', description: 'The full file content to write' },
+      },
+    },
+    requiresConfirmation: true,
+    permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireWriter(writer);
+
+      const rawPath = String(args['path'] || '');
+      const content = String(args['content'] ?? '');
+
+      if (!rawPath) {
+        return { content: 'path is required', isError: true };
+      }
+
+      try {
+        const cleanPath = sanitizeRelativePath(rawPath, writer);
+
+        // Check if file exists for informational message
+        let existed = false;
+        if (fs) {
+          try { existed = await fs.exists(cleanPath); } catch { /* ignore */ }
+        }
+
+        await writer.writeFile(cleanPath, content);
+
+        const action = existed ? 'Overwrote' : 'Created';
+        const lineCount = content.split('\n').length;
+        return { content: `${action} "${cleanPath}" (${lineCount} lines, ${content.length} chars)` };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: `Failed to write file: ${msg}`, isError: true };
+      }
+    },
+  };
+}
+
+function createEditFileTool(
+  fs: IBuiltInToolFileSystem | undefined,
+  writer: IBuiltInToolFileWriter | undefined,
+): IChatTool {
+  return {
+    name: 'edit_file',
+    description:
+      'Edit an existing file by replacing a specific substring. ' +
+      'Provide the exact old content to replace and the new content. ' +
+      'The old content must match exactly (whitespace-sensitive). ' +
+      'Use read_file first to get the current content. Requires user approval.',
+    parameters: {
+      type: 'object',
+      required: ['path', 'old_content', 'new_content'],
+      properties: {
+        path: { type: 'string', description: 'Relative file path from workspace root' },
+        old_content: { type: 'string', description: 'The exact existing content to find and replace (must match exactly)' },
+        new_content: { type: 'string', description: 'The new content to replace it with' },
+      },
+    },
+    requiresConfirmation: true,
+    permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireFs(fs);
+      requireWriter(writer);
+
+      const rawPath = String(args['path'] || '');
+      const oldContent = String(args['old_content'] ?? '');
+      const newContent = String(args['new_content'] ?? '');
+
+      if (!rawPath) {
+        return { content: 'path is required', isError: true };
+      }
+      if (!oldContent) {
+        return { content: 'old_content is required — provide the exact text to replace', isError: true };
+      }
+
+      try {
+        const cleanPath = sanitizeRelativePath(rawPath, writer);
+
+        // Read current file content
+        const currentContent = await fs!.readFile(cleanPath);
+
+        // Find the old content
+        const idx = currentContent.indexOf(oldContent);
+        if (idx === -1) {
+          return {
+            content: `Could not find the specified old_content in "${cleanPath}". ` +
+              `Make sure it matches exactly (including whitespace and indentation). ` +
+              `Use read_file to see the current content.`,
+            isError: true,
+          };
+        }
+
+        // Check for multiple matches (ambiguous replace)
+        const secondIdx = currentContent.indexOf(oldContent, idx + 1);
+        if (secondIdx !== -1) {
+          return {
+            content: `The old_content matches multiple locations in "${cleanPath}" (at positions ${idx} and ${secondIdx}). ` +
+              `Include more surrounding context to make the match unique.`,
+            isError: true,
+          };
+        }
+
+        // Apply the edit
+        const newFile = currentContent.slice(0, idx) + newContent + currentContent.slice(idx + oldContent.length);
+
+        await writer.writeFile(cleanPath, newFile);
+
+        // Report simple stats
+        const oldLines = oldContent.split('\n').length;
+        const newLines = newContent.split('\n').length;
+        return {
+          content: `Edited "${cleanPath}": replaced ${oldLines} line(s) with ${newLines} line(s)`,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: `Failed to edit file: ${msg}`, isError: true };
+      }
+    },
+  };
+}
+
 // ── Registration ──
 
 /**
@@ -619,6 +812,7 @@ export function registerBuiltInTools(
   fs: IBuiltInToolFileSystem | undefined,
   getCurrentPageId?: CurrentPageIdGetter,
   retrieval?: IBuiltInToolRetrieval,
+  writer?: IBuiltInToolFileWriter,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
@@ -635,6 +829,9 @@ export function registerBuiltInTools(
     createListFilesTool(fs),
     createReadFileTool(fs),
     createSearchFilesTool(fs),
+    // ── Write tools (M11 Task 2.2 + 2.3) ──
+    createWriteFileTool(fs, writer),
+    createEditFileTool(fs, writer),
     // ── RAG tools (M10 Phase 3) ──
     createSearchKnowledgeTool(retrieval),
   ];

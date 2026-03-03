@@ -10,6 +10,7 @@
 
 import { $ } from '../../ui/dom.js';
 import { chatIcons } from './chatIcons.js';
+import { extractFilePath, renderCodeActionButtons } from './chatCodeActions.js';
 import { ChatContentPartKind } from '../../services/chatTypes.js';
 import type {
   IChatContentPart,
@@ -130,6 +131,9 @@ function _escapeHtml(text: string): string {
 function _renderCodeBlock(part: IChatCodeBlockContent): HTMLElement {
   const root = $('div.parallx-chat-code-block');
 
+  // Check for filepath header (M11 Task 2.6)
+  const fileInfo = extractFilePath(part.code);
+
   // Header with language label + copy button
   const header = $('div.parallx-chat-code-block-header');
   const langLabel = $('span', part.language || 'text');
@@ -140,7 +144,8 @@ function _renderCodeBlock(part: IChatCodeBlockContent): HTMLElement {
   copyBtn.title = 'Copy code';
   copyBtn.setAttribute('aria-label', 'Copy code');
   copyBtn.addEventListener('click', () => {
-    navigator.clipboard.writeText(part.code).then(() => {
+    const textToCopy = fileInfo ? fileInfo.codeWithoutHeader : part.code;
+    navigator.clipboard.writeText(textToCopy).then(() => {
       copyBtn.innerHTML = chatIcons.check;
       setTimeout(() => {
         copyBtn.innerHTML = chatIcons.copy;
@@ -151,12 +156,22 @@ function _renderCodeBlock(part: IChatCodeBlockContent): HTMLElement {
   header.appendChild(copyBtn);
   root.appendChild(header);
 
-  // Code content
+  // Code content (strip filepath header if present for display)
   const pre = document.createElement('pre');
   const code = document.createElement('code');
-  code.textContent = part.code;
+  code.textContent = fileInfo ? fileInfo.codeWithoutHeader : part.code;
   pre.appendChild(code);
   root.appendChild(pre);
+
+  // Code action buttons when filepath detected (M11 Task 2.6)
+  if (fileInfo) {
+    const actionBar = renderCodeActionButtons(
+      fileInfo.filePath,
+      fileInfo.codeWithoutHeader,
+      part.language,
+    );
+    root.appendChild(actionBar);
+  }
 
   return root;
 }
@@ -346,7 +361,7 @@ function _truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max) + '…' : text;
 }
 
-// ── Confirmation (Cap 6 Task 6.4) ──
+// ── Confirmation (Cap 6 Task 6.4, M11 Task 2.1) ──
 
 function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
   const root = $('div.parallx-chat-confirmation');
@@ -355,7 +370,40 @@ function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
   message.textContent = part.message;
   root.appendChild(message);
 
-  // If already decided, show the result
+  // Show tool arguments summary when available (M11 Task 2.1)
+  if (part.toolArgs && Object.keys(part.toolArgs).length > 0) {
+    const argsBlock = $('div.parallx-chat-confirmation-args');
+    const argsSummary = Object.entries(part.toolArgs)
+      .map(([k, v]) => {
+        const val = typeof v === 'string'
+          ? (v.length > 80 ? v.slice(0, 80) + '…' : v)
+          : JSON.stringify(v);
+        return `${k}: ${val}`;
+      })
+      .join('\n');
+    const pre = document.createElement('pre');
+    pre.textContent = argsSummary;
+    argsBlock.appendChild(pre);
+    root.appendChild(argsBlock);
+  }
+
+  // If already decided (3-tier grant), show result
+  if (part.grantDecision) {
+    const result = $('span.parallx-chat-confirmation-result');
+    const labels: Record<string, { text: string; cls: string }> = {
+      'allow-once': { text: '✓ Allowed (once)', cls: 'parallx-chat-confirmation-result--accepted' },
+      'allow-session': { text: '✓ Allowed (session)', cls: 'parallx-chat-confirmation-result--accepted' },
+      'always-allow': { text: '✓ Always allowed', cls: 'parallx-chat-confirmation-result--accepted' },
+      'reject': { text: '✗ Rejected', cls: 'parallx-chat-confirmation-result--rejected' },
+    };
+    const info = labels[part.grantDecision] ?? { text: '✓ Allowed', cls: 'parallx-chat-confirmation-result--accepted' };
+    result.textContent = info.text;
+    result.classList.add(info.cls);
+    root.appendChild(result);
+    return root;
+  }
+
+  // If already decided (legacy flow), show result
   if (part.isAccepted !== undefined) {
     const result = $('span.parallx-chat-confirmation-result');
     result.textContent = part.isAccepted ? '✓ Accepted' : '✗ Rejected';
@@ -368,7 +416,35 @@ function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
     return root;
   }
 
-  // Accept / Reject buttons
+  // Grant buttons (M11 Task 2.1 — 3-tier flow)
+  if (part.onGrant) {
+    const buttonBar = $('div.parallx-chat-confirmation-buttons');
+
+    const makeBtn = (label: string, cls: string, decision: import('../../services/chatTypes.js').ToolGrantDecision): void => {
+      const btn = document.createElement('button');
+      btn.className = `parallx-chat-confirmation-btn ${cls}`;
+      btn.textContent = label;
+      btn.type = 'button';
+      btn.addEventListener('click', () => {
+        part.grantDecision = decision;
+        // Also set legacy field for backward compat
+        part.isAccepted = decision !== 'reject';
+        part.onGrant!(decision);
+        _replaceWithGrantResult(root, decision);
+      });
+      buttonBar.appendChild(btn);
+    };
+
+    makeBtn('Allow once', 'parallx-chat-confirmation-btn--accept', 'allow-once');
+    makeBtn('Allow for session', 'parallx-chat-confirmation-btn--session', 'allow-session');
+    makeBtn('Always allow', 'parallx-chat-confirmation-btn--always', 'always-allow');
+    makeBtn('Reject', 'parallx-chat-confirmation-btn--reject', 'reject');
+
+    root.appendChild(buttonBar);
+    return root;
+  }
+
+  // Legacy Accept / Reject buttons (no onGrant callback)
   const buttonBar = $('div.parallx-chat-confirmation-buttons');
 
   const acceptBtn = document.createElement('button');
@@ -394,6 +470,25 @@ function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
   root.appendChild(buttonBar);
 
   return root;
+}
+
+function _replaceWithGrantResult(root: HTMLElement, decision: import('../../services/chatTypes.js').ToolGrantDecision): void {
+  // Remove buttons, show result text
+  const buttonBar = root.querySelector('.parallx-chat-confirmation-buttons');
+  if (buttonBar) { buttonBar.remove(); }
+
+  const labels: Record<string, { text: string; cls: string }> = {
+    'allow-once': { text: '✓ Allowed (once)', cls: 'parallx-chat-confirmation-result--accepted' },
+    'allow-session': { text: '✓ Allowed (session)', cls: 'parallx-chat-confirmation-result--accepted' },
+    'always-allow': { text: '✓ Always allowed', cls: 'parallx-chat-confirmation-result--accepted' },
+    'reject': { text: '✗ Rejected', cls: 'parallx-chat-confirmation-result--rejected' },
+  };
+  const info = labels[decision] ?? { text: '✓ Allowed', cls: 'parallx-chat-confirmation-result--accepted' };
+
+  const result = $('span.parallx-chat-confirmation-result');
+  result.textContent = info.text;
+  result.classList.add(info.cls);
+  root.appendChild(result);
 }
 
 function _replaceWithResult(root: HTMLElement, accepted: boolean): void {

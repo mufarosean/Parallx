@@ -455,6 +455,72 @@
   color: var(--vscode-editor-foreground, #d4d4d4);
 }
 
+/* ── Code Action Buttons (M11 Task 2.6) ── */
+
+.parallx-chat-code-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--vscode-widget-border, #2d2d2d);
+  background: var(--vscode-editor-background, #1e1e1e);
+  flex-wrap: wrap;
+}
+
+.parallx-chat-code-actions-path {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #989898);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.parallx-chat-code-action-btn {
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 100ms ease;
+  white-space: nowrap;
+}
+
+.parallx-chat-code-action-btn--apply {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  border-color: var(--vscode-button-background, #0e639c);
+}
+
+.parallx-chat-code-action-btn--apply:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.parallx-chat-code-action-btn--create {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #ffffff);
+  border-color: var(--vscode-button-secondaryBackground, #3a3d41);
+}
+
+.parallx-chat-code-action-btn--create:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+.parallx-chat-code-action-result {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.parallx-chat-code-action-result--success {
+  color: var(--vscode-testing-iconPassed, #388a34);
+}
+
+.parallx-chat-code-action-result--error {
+  color: var(--vscode-testing-iconFailed, #f14c4c);
+}
+
 /* Thinking block */
 .parallx-chat-thinking {
   margin: 6px 0;
@@ -677,7 +743,7 @@
   text-decoration: underline;
 }
 
-/* ── Confirmation Card (Cap 6 Task 6.4) ── */
+/* ── Confirmation Card (Cap 6 Task 6.4, M11 Task 2.1) ── */
 
 .parallx-chat-confirmation {
   margin: 6px 0;
@@ -693,9 +759,29 @@
   margin-bottom: 8px;
 }
 
+.parallx-chat-confirmation-args {
+  margin-bottom: 8px;
+}
+
+.parallx-chat-confirmation-args pre {
+  font-family: var(--vscode-editor-font-family, 'Cascadia Code', Consolas, monospace);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  background: var(--vscode-textCodeBlock-background, #1e1e1e);
+  padding: 6px 8px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
 .parallx-chat-confirmation-buttons {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .parallx-chat-confirmation-btn {
@@ -715,6 +801,26 @@
 
 .parallx-chat-confirmation-btn--accept:hover {
   background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.parallx-chat-confirmation-btn--session {
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #ffffff);
+  border-color: var(--vscode-button-secondaryBackground, #3a3d41);
+}
+
+.parallx-chat-confirmation-btn--session:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+.parallx-chat-confirmation-btn--always {
+  background: transparent;
+  color: var(--vscode-foreground, #cccccc);
+  border-color: var(--vscode-input-border, #3c3c3c);
+}
+
+.parallx-chat-confirmation-btn--always:hover {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
 }
 
 .parallx-chat-confirmation-btn--reject {
@@ -740,6 +846,228 @@
   color: var(--vscode-testing-iconFailed, #f14c4c);
 }
 
+
+/* ── Diff Review Viewer (M11 Task 2.5) ── */
+
+.parallx-chat-diff-viewer {
+  margin: 8px 0;
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  overflow: hidden;
+  font-family: var(--vscode-editor-font-family, 'Cascadia Code', Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.parallx-chat-diff-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--vscode-editorGroupHeader-tabsBackground, #1e1e1e);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+  flex-wrap: wrap;
+}
+
+.parallx-chat-diff-filepath {
+  font-weight: 600;
+  color: var(--vscode-foreground, #cccccc);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.parallx-chat-diff-summary {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.parallx-chat-diff-summary--added {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
+  background: rgba(129, 184, 139, 0.12);
+}
+
+.parallx-chat-diff-summary--removed {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+  background: rgba(199, 78, 57, 0.12);
+}
+
+.parallx-chat-diff-summary--mixed {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+  background: rgba(226, 192, 141, 0.12);
+}
+
+.parallx-chat-diff-tokens {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  white-space: nowrap;
+}
+
+.parallx-chat-diff-body {
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.parallx-chat-diff-hunk {
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+}
+
+.parallx-chat-diff-hunk:last-child {
+  border-bottom: none;
+}
+
+.parallx-chat-diff-hunk-header {
+  padding: 2px 12px;
+  font-size: 11px;
+  color: var(--vscode-editorLineNumber-foreground, #858585);
+  background: var(--vscode-diffEditor-unchangedRegionBackground, #1e1e1e);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+  user-select: none;
+}
+
+/* ── Diff lines ── */
+
+.parallx-chat-diff-line {
+  display: flex;
+  min-height: 20px;
+  white-space: pre;
+}
+
+.parallx-chat-diff-line--context {
+  background: transparent;
+}
+
+.parallx-chat-diff-line--add {
+  background: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
+}
+
+.parallx-chat-diff-line--remove {
+  background: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
+}
+
+.parallx-chat-diff-gutter {
+  display: inline-block;
+  width: 40px;
+  min-width: 40px;
+  padding: 0 4px;
+  text-align: right;
+  color: var(--vscode-editorLineNumber-foreground, #858585);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.parallx-chat-diff-indicator {
+  display: inline-block;
+  width: 16px;
+  min-width: 16px;
+  text-align: center;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.parallx-chat-diff-line--add .parallx-chat-diff-indicator {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
+}
+
+.parallx-chat-diff-line--remove .parallx-chat-diff-indicator {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+}
+
+.parallx-chat-diff-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Word-level highlighting ── */
+
+.parallx-chat-diff-word--removed {
+  background: var(--vscode-diffEditor-removedTextBackground, rgba(255, 0, 0, 0.35));
+  border-radius: 2px;
+}
+
+.parallx-chat-diff-word--added {
+  background: var(--vscode-diffEditor-insertedTextBackground, rgba(155, 185, 85, 0.35));
+  border-radius: 2px;
+}
+
+/* ── Truncation notice ── */
+
+.parallx-chat-diff-truncated {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  font-style: italic;
+  text-align: center;
+  background: var(--vscode-diffEditor-unchangedRegionBackground, #1e1e1e);
+}
+
+/* ── Diff Action Bar ── */
+
+.parallx-chat-diff-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--vscode-editorWidget-border, #454545);
+  background: var(--vscode-editorGroupHeader-tabsBackground, #1e1e1e);
+}
+
+.parallx-chat-diff-btn {
+  padding: 4px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 100ms ease;
+  font-family: var(--vscode-font-family, sans-serif);
+}
+
+.parallx-chat-diff-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.parallx-chat-diff-btn--accept {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  border-color: var(--vscode-button-background, #0e639c);
+}
+
+.parallx-chat-diff-btn--accept:hover:not(:disabled) {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.parallx-chat-diff-btn--reject {
+  background: transparent;
+  color: var(--vscode-foreground, #cccccc);
+  border-color: var(--vscode-input-border, #3c3c3c);
+}
+
+.parallx-chat-diff-btn--reject:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+}
+
+/* ── Diff result label ── */
+
+.parallx-chat-diff-result {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.parallx-chat-diff-result--accepted {
+  color: var(--vscode-testing-iconPassed, #388a34);
+}
+
+.parallx-chat-diff-result--rejected {
+  color: var(--vscode-testing-iconFailed, #f14c4c);
+}
 
 
 /* ═══════════════════════════════════════════════════════════════════════════════

@@ -1,7 +1,12 @@
-// languageModelToolsService.ts — Tool registry and invocation (M9 Task 6.1)
+// languageModelToolsService.ts — Tool registry and invocation (M9 Task 6.1, M11 Task 2.1)
 //
 // Implements ILanguageModelToolsService: registers tools, invokes them with
-// confirmation gates, and provides Ollama-formatted tool definitions.
+// permission gates, and provides Ollama-formatted tool definitions.
+//
+// M11 upgrade: 3-tier permission model via PermissionService.
+// The old binary `requiresConfirmation` is mapped to the new model:
+//   requiresConfirmation: false → 'always-allowed'
+//   requiresConfirmation: true  → 'requires-approval'
 //
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/common/tools/languageModelToolsService.ts
@@ -16,19 +21,22 @@ import type {
   IToolResult,
   IToolDefinition,
   ICancellationToken,
+  ToolPermissionLevel,
 } from './chatTypes.js';
+import type { PermissionService } from './permissionService.js';
 
-// ── Confirmation support ──
+// ── Helpers ──
 
 /**
- * Callback type for tool confirmation.
- * The service calls this when a tool requires confirmation.
- * Returns true if user approved, false if rejected.
+ * Derive the effective permission level for a tool.
+ * Uses explicit `permissionLevel` if set, otherwise maps `requiresConfirmation`.
  */
-export type ToolConfirmationHandler = (
-  toolName: string,
-  args: Record<string, unknown>,
-) => Promise<boolean>;
+function getEffectivePermission(tool: IChatTool): ToolPermissionLevel {
+  if (tool.permissionLevel) {
+    return tool.permissionLevel;
+  }
+  return tool.requiresConfirmation ? 'requires-approval' : 'always-allowed';
+}
 
 // ── Service implementation ──
 
@@ -48,10 +56,9 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
   private readonly _onDidChangeTools = this._register(new Emitter<void>());
   readonly onDidChangeTools: Event<void> = this._onDidChangeTools.event;
 
-  // ── Confirmation ──
+  // ── Permission service (M11 Task 2.1) ──
 
-  private _confirmationHandler: ToolConfirmationHandler | undefined;
-  private _autoApprove = false;
+  private _permissionService: PermissionService | undefined;
 
   constructor() {
     super();
@@ -70,6 +77,21 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
         }
       }
     } catch { /* ignore parse errors */ }
+  }
+
+  // ── Permission service binding ──
+
+  /**
+   * Set the permission service (M11 Task 2.1).
+   * Called from chatTool.ts during activation.
+   */
+  setPermissionService(service: PermissionService): void {
+    this._permissionService = service;
+  }
+
+  /** Get the bound permission service (if any). */
+  getPermissionService(): PermissionService | undefined {
+    return this._permissionService;
   }
 
   // ── Registration ──
@@ -104,11 +126,16 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
    * Get enabled tools formatted as Ollama tool definitions.
    *
    * These are included in the `tools` array of the chat request
-   * when in Agent mode.  Only enabled tools are returned.
+   * when in Agent mode. Only enabled, non-blocked tools are returned.
    */
   getToolDefinitions(): readonly IToolDefinition[] {
     return Array.from(this._tools.values())
-      .filter((tool) => !this._disabledTools.has(tool.name))
+      .filter((tool) => {
+        if (this._disabledTools.has(tool.name)) { return false; }
+        // Exclude never-allowed tools from the LLM's view entirely
+        const level = this._getEffectiveLevel(tool);
+        return level !== 'never-allowed';
+      })
       .map((tool) => ({
         name: tool.name,
         description: tool.description,
@@ -122,7 +149,11 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
    */
   getReadOnlyToolDefinitions(): readonly IToolDefinition[] {
     return Array.from(this._tools.values())
-      .filter((tool) => !this._disabledTools.has(tool.name) && !tool.requiresConfirmation)
+      .filter((tool) => {
+        if (this._disabledTools.has(tool.name)) { return false; }
+        const level = this._getEffectiveLevel(tool);
+        return level === 'always-allowed';
+      })
       .map((tool) => ({
         name: tool.name,
         description: tool.description,
@@ -142,15 +173,30 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
       return { content: `Tool "${name}" not found`, isError: true };
     }
 
-    // Confirmation gate
-    if (tool.requiresConfirmation && !this._autoApprove) {
-      if (!this._confirmationHandler) {
-        return { content: `Tool "${name}" requires confirmation but no handler is registered`, isError: true };
-      }
+    // Permission gate (M11 Task 2.1)
+    const defaultLevel = getEffectivePermission(tool);
 
-      const approved = await this._confirmationHandler(name, args);
+    if (this._permissionService) {
+      // New 3-tier permission model
+      const approved = await this._permissionService.confirmToolInvocation(
+        name,
+        tool.description,
+        args,
+        defaultLevel,
+      );
       if (!approved) {
         return { content: 'Tool execution rejected by user', isError: true };
+      }
+    } else {
+      // Fallback: legacy binary model (no PermissionService wired)
+      if (defaultLevel === 'requires-approval') {
+        return {
+          content: `Tool "${name}" requires approval but permission service is not available`,
+          isError: true,
+        };
+      }
+      if (defaultLevel === 'never-allowed') {
+        return { content: `Tool "${name}" is not allowed`, isError: true };
       }
     }
 
@@ -167,8 +213,6 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
       return { content: `Tool "${name}" failed: ${message}`, isError: true };
     }
   }
-
-  // ── Configuration ──
 
   // ── Tool enablement ──
 
@@ -205,26 +249,17 @@ export class LanguageModelToolsService extends Disposable implements ILanguageMo
     } catch { /* storage full or unavailable */ }
   }
 
-  // ── Confirmation ──
+  // ── Internal ──
 
   /**
-   * Set the confirmation handler (called by UI layer).
-   * When a tool requires confirmation, this handler is invoked.
+   * Get the effective permission level for a tool, accounting for
+   * persistent overrides from PermissionService.
    */
-  setConfirmationHandler(handler: ToolConfirmationHandler | undefined): void {
-    this._confirmationHandler = handler;
-  }
-
-  /**
-   * Set auto-approve mode (bypasses confirmation for all tools).
-   * Equivalent to VS Code's `chat.tools.global.autoApprove` YOLO mode.
-   */
-  setAutoApprove(enabled: boolean): void {
-    this._autoApprove = enabled;
-  }
-
-  /** Whether auto-approve is currently enabled. */
-  get autoApprove(): boolean {
-    return this._autoApprove;
+  private _getEffectiveLevel(tool: IChatTool): ToolPermissionLevel {
+    const defaultLevel = getEffectivePermission(tool);
+    if (this._permissionService) {
+      return this._permissionService.checkPermission(tool.name, defaultLevel).level;
+    }
+    return defaultLevel;
   }
 }

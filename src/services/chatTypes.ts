@@ -341,7 +341,24 @@ export interface IChatConfirmationContent {
   readonly kind: ChatContentPartKind.Confirmation;
   readonly message: string;
   readonly data: unknown;
+  /** @deprecated Use `grantDecision` for the new 3-tier flow. */
   isAccepted?: boolean;
+
+  // ── M11 Task 2.1 — 3-tier permission grant ──
+
+  /** The tool name this confirmation is for (if any). */
+  readonly toolName?: string;
+  /** A brief description of what the tool does. */
+  readonly toolDescription?: string;
+  /** The arguments being passed to the tool. */
+  readonly toolArgs?: Record<string, unknown>;
+  /** Resolved grant decision (set when user clicks a button). */
+  grantDecision?: ToolGrantDecision;
+  /**
+   * Callback invoked when the user picks a grant option.
+   * This resolves the pending `confirmToolInvocation()` promise.
+   */
+  onGrant?: (decision: ToolGrantDecision) => void;
 }
 
 /** Status of an edit proposal lifecycle. */
@@ -617,6 +634,27 @@ export interface IToolResult {
   readonly isError?: boolean;
 }
 
+// ── Permission Model (M11 Task 2.1) ──
+
+/**
+ * 3-tier permission level for tool execution.
+ *
+ * - `always-allowed`: Auto-approved, no confirmation needed (read-only tools).
+ * - `requires-approval`: User must approve before each execution (default for write tools).
+ * - `never-allowed`: Tool is blocked entirely (user can disable dangerous tools).
+ */
+export type ToolPermissionLevel = 'always-allowed' | 'requires-approval' | 'never-allowed';
+
+/**
+ * Grant decision returned from the confirmation UI.
+ *
+ * - `allow-once`: Approve this single invocation.
+ * - `allow-session`: Approve for the rest of this session.
+ * - `always-allow`: Persist as always-allowed (updates permissions.json).
+ * - `reject`: Deny execution.
+ */
+export type ToolGrantDecision = 'allow-once' | 'allow-session' | 'always-allow' | 'reject';
+
 /**
  * A registered chat tool — definition + handler.
  *
@@ -631,8 +669,10 @@ export interface IChatTool {
   readonly parameters: Record<string, unknown>;
   /** Execution handler. */
   readonly handler: (args: Record<string, unknown>, token: ICancellationToken) => Promise<IToolResult>;
-  /** Whether this tool requires user confirmation before execution. */
+  /** Whether this tool requires user confirmation before execution. @deprecated Use permissionLevel. */
   readonly requiresConfirmation: boolean;
+  /** 3-tier permission level (M11 Task 2.1). Defaults to 'always-allowed' if not set. */
+  readonly permissionLevel?: ToolPermissionLevel;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

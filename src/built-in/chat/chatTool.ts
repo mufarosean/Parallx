@@ -20,6 +20,7 @@ import { createDefaultParticipant } from './participants/defaultParticipant.js';
 import { createWorkspaceParticipant } from './participants/workspaceParticipant.js';
 import { createCanvasParticipant } from './participants/canvasParticipant.js';
 import { registerBuiltInTools, extractTextContent } from './tools/builtInTools.js';
+import type { IBuiltInToolFileWriter } from './tools/builtInTools.js';
 import { ChatTokenStatusBar } from './chatTokenStatusBar.js';
 import type { IPageSummary } from './participants/workspaceParticipant.js';
 import type { IBlockSummary, IPageStructure } from './participants/canvasParticipant.js';
@@ -44,6 +45,8 @@ import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './tools/builtInTools.js';
 import { PromptFileService } from '../../services/promptFileService.js';
 import type { IPromptFileAccess, IPromptFileLayers } from '../../services/promptFileService.js';
+import { PermissionService } from '../../services/permissionService.js';
+import type { ToolGrantDecision } from '../../services/chatTypes.js';
 
 // ── Helpers ──
 
@@ -120,6 +123,7 @@ let _chatIsStreamingKey: { set(value: boolean): void } | undefined;
 let _tokenStatusBar: ChatTokenStatusBar | undefined;
 let _lastIndexStats: { pages: number; files: number } | undefined;
 let _promptFileService: PromptFileService | undefined;
+let _permissionService: PermissionService | undefined;
 
 // ── Activation ──
 
@@ -655,6 +659,81 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   if (languageModelToolsService) {
     const getCurrentPageId = () => extractCanvasPageId(editorService?.activeEditor?.id);
 
+    // ── Wire permission service (M11 Task 2.1) ──
+    _permissionService = new PermissionService();
+    context.subscriptions.push(_permissionService);
+
+    // Inline DOM-based confirmation handler — creates a floating card in the
+    // chat panel and returns a Promise that resolves when the user clicks.
+    _permissionService.setConfirmationHandler(
+      (toolName: string, toolDescription: string, args: Record<string, unknown>): Promise<ToolGrantDecision> => {
+        return new Promise<ToolGrantDecision>((resolve) => {
+          // Find the chat list container to append the confirmation card
+          const chatContainer = document.querySelector('.parallx-chat-messages')
+            ?? document.querySelector('.parallx-chat-list')
+            ?? document.body;
+
+          const card = document.createElement('div');
+          card.className = 'parallx-chat-confirmation';
+
+          // Message
+          const msg = document.createElement('div');
+          msg.className = 'parallx-chat-confirmation-message';
+          msg.textContent = `"${toolName}" wants to run. ${toolDescription}`;
+          card.appendChild(msg);
+
+          // Args summary
+          if (args && Object.keys(args).length > 0) {
+            const argsBlock = document.createElement('div');
+            argsBlock.className = 'parallx-chat-confirmation-args';
+            const pre = document.createElement('pre');
+            pre.textContent = Object.entries(args)
+              .map(([k, v]) => {
+                const val = typeof v === 'string'
+                  ? (v.length > 80 ? v.slice(0, 80) + '…' : v)
+                  : JSON.stringify(v);
+                return `${k}: ${val}`;
+              })
+              .join('\n');
+            argsBlock.appendChild(pre);
+            card.appendChild(argsBlock);
+          }
+
+          // Button bar
+          const buttonBar = document.createElement('div');
+          buttonBar.className = 'parallx-chat-confirmation-buttons';
+
+          const decisions: Array<{ label: string; cls: string; decision: ToolGrantDecision }> = [
+            { label: 'Allow once', cls: 'parallx-chat-confirmation-btn--accept', decision: 'allow-once' },
+            { label: 'Allow for session', cls: 'parallx-chat-confirmation-btn--session', decision: 'allow-session' },
+            { label: 'Always allow', cls: 'parallx-chat-confirmation-btn--always', decision: 'always-allow' },
+            { label: 'Reject', cls: 'parallx-chat-confirmation-btn--reject', decision: 'reject' },
+          ];
+
+          for (const { label, cls, decision } of decisions) {
+            const btn = document.createElement('button');
+            btn.className = `parallx-chat-confirmation-btn ${cls}`;
+            btn.textContent = label;
+            btn.type = 'button';
+            btn.addEventListener('click', () => {
+              card.remove();
+              resolve(decision);
+            });
+            buttonBar.appendChild(btn);
+          }
+
+          card.appendChild(buttonBar);
+          chatContainer.appendChild(card);
+
+          // Scroll the card into view
+          card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+      },
+    );
+
+    // Bind to tools service
+    (languageModelToolsService as import('../../services/languageModelToolsService.js').LanguageModelToolsService).setPermissionService(_permissionService);
+
     // Build retrieval accessor for the search_knowledge tool (M10 Phase 3)
     const retrievalAccessor = retrievalService && indexingPipelineService
       ? {
@@ -677,7 +756,55 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       }
       : undefined;
 
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor);
+    // Build file writer accessor for write_file / edit_file tools (M11 Task 2.2 + 2.3)
+    const writerAccessor: IBuiltInToolFileWriter | undefined = (fileService && workspaceService?.folders?.length)
+      ? (() => {
+        // Lazy-load ParallxIgnore for path validation
+        let ignoreInstance: import('../../services/parallxIgnore.js').ParallxIgnore | undefined;
+        const getIgnore = async (): Promise<import('../../services/parallxIgnore.js').ParallxIgnore> => {
+          if (!ignoreInstance) {
+            const { createParallxIgnore } = await import('../../services/parallxIgnore.js');
+            ignoreInstance = createParallxIgnore();
+            // Try to load .parallxignore from workspace
+            if (fsAccessor) {
+              try {
+                const content = await fsAccessor.readFile('.parallxignore');
+                ignoreInstance.loadFromContent(content);
+              } catch { /* no .parallxignore — use defaults */ }
+            }
+          }
+          return ignoreInstance;
+        };
+        // Eagerly initialize
+        getIgnore().catch(() => {});
+
+        return {
+          async writeFile(relativePath: string, content: string): Promise<void> {
+            const rootUri = workspaceService!.folders[0].uri;
+            const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+            const targetUri = rootUri.joinPath(clean);
+
+            // Ensure parent directory exists
+            const parentPath = clean.includes('/') ? clean.slice(0, clean.lastIndexOf('/')) : '';
+            if (parentPath) {
+              const parentUri = rootUri.joinPath(parentPath);
+              try { await fileService!.mkdir(parentUri); } catch { /* may already exist */ }
+            }
+            await fileService!.writeFile(targetUri, content);
+          },
+          isPathAllowed(relativePath: string): boolean {
+            // Synchronous check with eagerly loaded ignore instance
+            if (ignoreInstance) {
+              return !ignoreInstance.isIgnored(relativePath, false);
+            }
+            // If not loaded yet, allow (will be checked again on write)
+            return true;
+          },
+        };
+      })()
+      : undefined;
+
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, writerAccessor);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
