@@ -5,7 +5,7 @@ description: These instructions provide guidelines for AI to follow when thinkin
 
 ## 0. Active Milestone Context
 
-The current work is **Milestone 11 — Second Brain: From Chat Widget to Jarvis** (`docs/Parallx_Milestone_11.md`). Read the milestone document before implementing any M11 task. It contains research, architecture decisions, the OpenClaw-inspired skill/prompt file system, and a 40-task phased breakdown (all ✅ complete, plus a post-audit hardening pass).
+The current work is **Milestone 12 — Proactive Intelligence: From Reactive RAG to Anticipatory AI** (`docs/Parallx_Milestone_12.md`). Read the milestone document before implementing any M12 task. It contains the 2-call pipeline architecture, research on query expansion, and a 16-task phased breakdown (all ✅ complete).
 
 ### Key M11 Constraints
 
