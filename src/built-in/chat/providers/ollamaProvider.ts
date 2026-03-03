@@ -80,6 +80,23 @@ interface OllamaChatChunk {
   eval_duration?: number;
 }
 
+// ── Retrieval Plan (M12 Task 1.2) ────────────────────────────────────────────
+
+/**
+ * Structured output from the retrieval planner LLM call.
+ * Contains intent classification, reasoning, and targeted search queries.
+ */
+export interface IRetrievalPlan {
+  /** Classified intent of the user's message. */
+  intent: 'question' | 'situation' | 'task' | 'conversational' | 'exploration';
+  /** 1-2 sentence explanation of what the user needs. */
+  reasoning: string;
+  /** Whether workspace retrieval is needed. */
+  needsRetrieval: boolean;
+  /** Targeted search queries (0-6) designed to match document vocabulary. */
+  queries: string[];
+}
+
 // ── Timeouts ──
 
 const METADATA_TIMEOUT_MS = 10_000;
@@ -397,6 +414,111 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  // ── Retrieval Planner (M12 Task 1.2) ──
+
+  /**
+   * Run a lightweight planning LLM call to classify intent and generate
+   * targeted search queries. Consumes the full streaming response, then
+   * parses JSON from the output.
+   *
+   * Returns a default fallback plan on any failure (malformed JSON, timeout,
+   * network error) so callers never crash.
+   */
+  async planRetrieval(
+    modelId: string,
+    messages: readonly IChatMessage[],
+    signal?: AbortSignal,
+  ): Promise<IRetrievalPlan> {
+    const fallback: IRetrievalPlan = {
+      intent: 'question',
+      reasoning: 'Planning call failed — falling back to direct query.',
+      needsRetrieval: true,
+      queries: [],
+    };
+
+    try {
+      // Use low temperature + limited tokens for deterministic, fast planning
+      const options: IChatRequestOptions = {
+        temperature: 0.1,
+        maxTokens: 400,
+      };
+
+      let fullText = '';
+      for await (const chunk of this.sendChatRequest(modelId, messages, options, signal)) {
+        if (chunk.content) { fullText += chunk.content; }
+      }
+
+      return this._parsePlannerResponse(fullText, fallback);
+    } catch (err) {
+      console.warn('[OllamaProvider] planRetrieval failed:', err);
+      return fallback;
+    }
+  }
+
+  /**
+   * Parse the planner LLM's text output into a structured IRetrievalPlan.
+   * Attempts JSON.parse first, then tries to extract a JSON block from
+   * markdown fences, then falls back to free-text query extraction.
+   */
+  private _parsePlannerResponse(text: string, fallback: IRetrievalPlan): IRetrievalPlan {
+    const trimmed = text.trim();
+
+    // Attempt 1: Direct JSON parse
+    let parsed = this._tryParseJson(trimmed);
+    if (parsed) { return this._normalizePlan(parsed); }
+
+    // Attempt 2: Extract JSON from markdown code fence
+    const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (fenceMatch) {
+      parsed = this._tryParseJson(fenceMatch[1].trim());
+      if (parsed) { return this._normalizePlan(parsed); }
+    }
+
+    // Attempt 3: Find first { ... } block
+    const braceStart = trimmed.indexOf('{');
+    const braceEnd = trimmed.lastIndexOf('}');
+    if (braceStart >= 0 && braceEnd > braceStart) {
+      parsed = this._tryParseJson(trimmed.slice(braceStart, braceEnd + 1));
+      if (parsed) { return this._normalizePlan(parsed); }
+    }
+
+    // All JSON parsing failed — return fallback
+    console.warn('[OllamaProvider] Could not parse planner JSON, using fallback. Raw:', trimmed.slice(0, 200));
+    return fallback;
+  }
+
+  private _tryParseJson(text: string): Record<string, unknown> | null {
+    try {
+      const obj = JSON.parse(text);
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) { return obj; }
+    } catch { /* not valid JSON */ }
+    return null;
+  }
+
+  private _normalizePlan(raw: Record<string, unknown>): IRetrievalPlan {
+    const validIntents = ['question', 'situation', 'task', 'conversational', 'exploration'];
+    const intent = typeof raw['intent'] === 'string' && validIntents.includes(raw['intent'])
+      ? raw['intent'] as IRetrievalPlan['intent']
+      : 'question';
+
+    const reasoning = typeof raw['reasoning'] === 'string'
+      ? raw['reasoning']
+      : '';
+
+    const needsRetrieval = typeof raw['needs_retrieval'] === 'boolean'
+      ? raw['needs_retrieval']
+      : (typeof raw['needsRetrieval'] === 'boolean' ? raw['needsRetrieval'] as boolean : true);
+
+    let queries: string[] = [];
+    if (Array.isArray(raw['queries'])) {
+      queries = raw['queries']
+        .filter((q): q is string => typeof q === 'string' && q.trim().length > 0)
+        .slice(0, 6); // Cap at 6 queries max
+    }
+
+    return { intent, reasoning, needsRetrieval, queries };
   }
 
   // ── Health Monitor (Task 1.3) ──

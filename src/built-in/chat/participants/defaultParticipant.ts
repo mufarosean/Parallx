@@ -33,6 +33,7 @@ import type {
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import { buildSystemPrompt } from '../chatSystemPrompts.js';
 import type { ISystemPromptContext } from '../chatSystemPrompts.js';
+import type { IRetrievalPlan } from '../providers/ollamaProvider.js';
 import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } from '../chatModeCapabilities.js';
 import { executeInitCommand } from '../commands/initCommand.js';
 import type { IInitCommandServices } from '../commands/initCommand.js';
@@ -51,6 +52,45 @@ const ASK_MODE_MAX_ITERATIONS = 5;
 const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
 /** Context overflow threshold — warn at this fraction of context length. */
 const CONTEXT_OVERFLOW_WARN_THRESHOLD = 0.8;
+
+// ── Skip-planning heuristic (M12 Task 1.3) ──
+
+/** Common greetings that don't need retrieval planning. */
+const GREETING_PATTERNS = /^(hi|hello|hey|sup|yo|thanks|thank you|bye|goodbye|ok|okay|sure|yes|no|cool|great|nice|got it)\b/i;
+
+/**
+ * Determine whether to skip the retrieval planning LLM call.
+ * Returns true when planning would be wasteful:
+ *   - Very short direct questions (≤6 words ending with ?)
+ *   - Greetings / affirmations
+ *   - Slash commands (already have a template)
+ *   - RAG not available (nothing to retrieve)
+ */
+function shouldSkipPlanning(
+  message: string,
+  isRAGAvailable: boolean,
+  hasSlashCommand: boolean,
+): boolean {
+  // No RAG = nothing to plan retrieval for
+  if (!isRAGAvailable) { return true; }
+
+  // Slash commands have their own prompts
+  if (hasSlashCommand) { return true; }
+
+  const trimmed = message.trim();
+
+  // Empty message
+  if (!trimmed) { return true; }
+
+  // Greetings
+  if (GREETING_PATTERNS.test(trimmed)) { return true; }
+
+  // Very short direct questions (≤6 words + '?' at end) — single-query is sufficient
+  const words = trimmed.split(/\s+/);
+  if (words.length <= 6 && trimmed.endsWith('?')) { return true; }
+
+  return false;
+}
 
 /**
  * Rough token estimation: chars / 4.
@@ -165,6 +205,20 @@ export interface IDefaultParticipantServices {
    * Returns undefined if the retrieval service is not available or indexing hasn't completed.
    */
   retrieveContext?(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string }> } | undefined>;
+
+  // ── Planned retrieval (M12 — 2-call pipeline) ──
+
+  /**
+   * Run the retrieval planner (LLM call 1) to classify intent and generate
+   * targeted search queries, then perform multi-query retrieval.
+   * Returns the formatted context, source citations, and the plan metadata.
+   * Falls back to single-query retrieval on planner failure.
+   */
+  planAndRetrieve?(
+    userText: string,
+    recentHistory?: string,
+    workspaceDigest?: string,
+  ): Promise<{ text: string; sources: Array<{ uri: string; label: string }>; plan?: IRetrievalPlan } | undefined>;
 
   // ── Memory (M10 Phase 5 — Tasks 5.1 + 5.2) ──
 
@@ -578,49 +632,120 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
-    // 1b. RAG context: per-turn re-query (M10 Phase 3, M11 Tasks 1.7, 3.9)
+    // 1b. RAG context: per-turn retrieval (M10 Phase 3 → M12 planned retrieval)
     //
-    // Fires on EVERY user message — re-embeds the query and re-searches.
-    // De-duplicates against explicitly attached files AND mention-resolved context
-    // to avoid redundant chunks. Source citations are emitted as Reference parts.
-    // Token budget trimming (Task 1.8) handles dropping stale chunks when tight.
+    // M12 upgrade: When planAndRetrieve is available, runs a 2-call pipeline:
+    //   Call 1 (planner): Classifies intent, generates 3-5 targeted search queries
+    //   Call 2 (response): Uses richer multi-query context for generation
+    // Falls back to single-query retrieveContext when planning is skipped or unavailable.
     const ragSources: Array<{ uri: string; label: string }> = [];
-    if (services.retrieveContext) {
+    let retrievalPlan: IRetrievalPlan | undefined;
+
+    // Determine whether to use the planner or direct retrieval
+    const hasActiveSlashCommand = !!(activeCommand && activeCommand !== 'compact');
+    const isRagReady = services.isRAGAvailable?.() ?? false;
+    const usePlanner = services.planAndRetrieve
+      && !shouldSkipPlanning(userText, isRagReady, hasActiveSlashCommand);
+
+    if (usePlanner) {
+      // ── M12 Planned retrieval path ──
+      try {
+        response.progress('Analyzing your message…');
+
+        // Build recent history excerpt for contextual understanding (last 2-3 turns, ~500 chars)
+        let recentHistory: string | undefined;
+        if (context.history.length > 0) {
+          const recentTurns = context.history.slice(-3);
+          const historyLines: string[] = [];
+          let historyChars = 0;
+          for (const pair of recentTurns) {
+            if (historyChars > 500) break;
+            const line = `User: ${pair.request.text.slice(0, 150)}`;
+            historyLines.push(line);
+            historyChars += line.length;
+          }
+          if (historyLines.length > 0) {
+            recentHistory = historyLines.join('\n');
+          }
+        }
+
+        const ragResult = await services.planAndRetrieve!(userText, recentHistory, workspaceDigest);
+
+        if (ragResult) {
+          retrievalPlan = ragResult.plan;
+
+          if (ragResult.plan) {
+            // Show the planner's reasoning as a progress update
+            const queryCount = ragResult.plan.queries.length;
+            if (queryCount > 0) {
+              response.progress(`Searching ${queryCount} source${queryCount !== 1 ? 's' : ''}…`);
+            }
+          }
+
+          if (ragResult.text) {
+            // Build a set of paths already in context for de-duplication
+            const alreadyInContext = new Set<string>();
+            if (request.attachments?.length) {
+              for (const att of request.attachments) {
+                alreadyInContext.add(att.fullPath);
+                alreadyInContext.add(att.name);
+              }
+            }
+            for (const pill of mentionPills) {
+              alreadyInContext.add(pill.label);
+              const colonIdx = pill.id.indexOf(':');
+              if (colonIdx > 0) {
+                alreadyInContext.add(pill.id.substring(colonIdx + 1));
+              }
+            }
+
+            const filteredSources = ragResult.sources.filter((s) => {
+              return !alreadyInContext.has(s.uri) && !alreadyInContext.has(s.label);
+            });
+
+            if (filteredSources.length > 0 || ragResult.sources.length === 0) {
+              contextParts.push(ragResult.text);
+            }
+
+            for (const source of filteredSources) {
+              response.reference(source.uri, source.label);
+              ragSources.push(source);
+            }
+          }
+        }
+      } catch {
+        // Planned retrieval failed — fall through to direct retrieval below
+      }
+    }
+
+    // Direct retrieval fallback: used when planner is skipped OR not available
+    if (!usePlanner && services.retrieveContext) {
       try {
         const ragResult = await services.retrieveContext(userText);
         if (ragResult) {
-          // Build a set of paths already in context for de-duplication
           const alreadyInContext = new Set<string>();
-
-          // Explicit attachments
           if (request.attachments?.length) {
             for (const att of request.attachments) {
               alreadyInContext.add(att.fullPath);
               alreadyInContext.add(att.name);
             }
           }
-
-          // Mention-resolved sources (e.g. @workspace already injected via mentions)
           for (const pill of mentionPills) {
             alreadyInContext.add(pill.label);
-            // Extract path from pill id if present
             const colonIdx = pill.id.indexOf(':');
             if (colonIdx > 0) {
               alreadyInContext.add(pill.id.substring(colonIdx + 1));
             }
           }
 
-          // Filter RAG sources to exclude already-in-context files
           const filteredSources = ragResult.sources.filter((s) => {
             return !alreadyInContext.has(s.uri) && !alreadyInContext.has(s.label);
           });
 
-          // Only inject RAG text if there are non-duplicate sources
           if (filteredSources.length > 0 || ragResult.sources.length === 0) {
             contextParts.push(ragResult.text);
           }
 
-          // Emit source citations as Reference content parts
           for (const source of filteredSources) {
             response.reference(source.uri, source.label);
             ragSources.push(source);
@@ -814,6 +939,9 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     //
     // If a slash command was detected, apply its prompt template now
     // (substituting {input} and {context}).
+    //
+    // M12: If a retrieval plan is available, inject a reasoning hint so the
+    // LLM understands the user's INTENT, not just their literal words.
     let userContent: string;
     if (slashResult.command && !slashResult.command.specialHandler) {
       const contextStr = contextParts.join('\n\n');
@@ -824,9 +952,24 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       );
       userContent = templated ?? effectiveText;
     } else {
-      userContent = contextParts.length > 0
-        ? `${contextParts.join('\n\n')}\n\n${userText}`
-        : userText;
+      const parts: string[] = [];
+
+      // M12: Inject planner reasoning as a hint before the retrieved context.
+      // This guides the LLM to reason about what the user NEEDS, not just what they said.
+      if (retrievalPlan && retrievalPlan.reasoning && retrievalPlan.needsRetrieval) {
+        parts.push(
+          `[Retrieval Analysis]\n` +
+          `Intent: ${retrievalPlan.intent}\n` +
+          `Analysis: ${retrievalPlan.reasoning}`,
+        );
+      }
+
+      if (contextParts.length > 0) {
+        parts.push(contextParts.join('\n\n'));
+      }
+
+      parts.push(userText);
+      userContent = parts.join('\n\n');
     }
 
     messages.push({
@@ -1134,6 +1277,19 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
             }
           }).catch(() => {});
         }
+      }
+
+      // M12: Append retrieval plan thought process (collapsible)
+      // Shows users the AI's reasoning and which queries it searched for.
+      if (retrievalPlan && retrievalPlan.needsRetrieval && retrievalPlan.queries.length > 0) {
+        const queryList = retrievalPlan.queries.map((q) => `  - ${q}`).join('\n');
+        response.markdown(
+          `\n\n<details>\n<summary>🧠 Thought process</summary>\n\n` +
+          `**Intent:** ${retrievalPlan.intent}\n\n` +
+          `**Analysis:** ${retrievalPlan.reasoning}\n\n` +
+          `**Searched for:**\n${queryList}\n\n` +
+          `</details>`,
+        );
       }
 
       return {};

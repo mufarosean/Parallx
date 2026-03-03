@@ -13,6 +13,8 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { Event } from '../../platform/events.js';
 import { OllamaProvider } from './providers/ollamaProvider.js';
+import type { IRetrievalPlan } from './providers/ollamaProvider.js';
+import { buildPlannerPrompt } from './chatSystemPrompts.js';
 import { createChatView } from './chatView.js';
 import type { IChatWidgetServices } from './chatWidget.js';
 import type { ChatWidget } from './chatWidget.js';
@@ -407,6 +409,106 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           }
           return { text, sources };
         } catch { return undefined; }
+      }
+      : undefined,
+
+    // ── Planned retrieval (M12 Phase 3 — 2-call pipeline) ──
+    //
+    // Runs the retrieval planner LLM call to classify intent and generate
+    // targeted search queries, then performs multi-query retrieval.
+    // Falls back to direct single-query retrieval on any failure.
+
+    planAndRetrieve: (retrievalService && _ollamaProvider)
+      ? async (
+        userText: string,
+        recentHistory?: string,
+        workspaceDigest?: string,
+      ): Promise<{ text: string; sources: Array<{ uri: string; label: string }>; plan?: IRetrievalPlan } | undefined> => {
+        // Only retrieve if initial indexing is complete
+        if (!indexingPipelineService?.isInitialIndexComplete) { return undefined; }
+
+        try {
+          // Build planner messages
+          const plannerSystemPrompt = buildPlannerPrompt(workspaceDigest);
+          const plannerMessages: IChatMessage[] = [
+            { role: 'system', content: plannerSystemPrompt },
+          ];
+
+          // Include recent history for contextual understanding
+          if (recentHistory) {
+            plannerMessages.push({
+              role: 'user',
+              content: `Recent conversation context:\n${recentHistory}\n\nNow analyse the LATEST message below.`,
+            });
+            plannerMessages.push({
+              role: 'assistant',
+              content: 'I understand the context. Please provide the latest user message.',
+            });
+          }
+
+          plannerMessages.push({ role: 'user', content: userText });
+
+          // Run the planner LLM call
+          const modelId = languageModelsService.getActiveModel() ?? '';
+          const plan = await _ollamaProvider!.planRetrieval(modelId, plannerMessages);
+
+          // If planner says no retrieval needed, return empty with plan metadata
+          if (!plan.needsRetrieval || plan.queries.length === 0) {
+            return { text: '', sources: [], plan };
+          }
+
+          // Multi-query retrieval
+          const chunks = await retrievalService!.retrieveMulti(plan.queries, {
+            topK: 10,
+            maxPerSource: 3,
+            tokenBudget: 3500,
+          });
+
+          if (chunks.length === 0) { return { text: '', sources: [], plan }; }
+
+          const text = retrievalService!.formatContext(chunks);
+
+          // Build source citations
+          const seen = new Set<string>();
+          const sources: Array<{ uri: string; label: string }> = [];
+          for (const chunk of chunks) {
+            const key = `${chunk.sourceType}:${chunk.sourceId}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const uri = chunk.sourceType === 'page'
+              ? `parallx-page://${chunk.sourceId}`
+              : chunk.sourceId;
+            const label = chunk.contextPrefix ?? (chunk.sourceType === 'page' ? 'Page' : 'File');
+            sources.push({ uri, label });
+          }
+
+          return { text, sources, plan };
+        } catch (err) {
+          // Graceful degradation: fall back to single-query retrieval
+          console.warn('[chatTool] planAndRetrieve failed, falling back to single query:', err);
+          try {
+            const chunks = await retrievalService!.retrieve(userText, {
+              topK: 8,
+              maxPerSource: 3,
+              tokenBudget: 3000,
+            });
+            if (chunks.length === 0) { return undefined; }
+            const text = retrievalService!.formatContext(chunks);
+            const seen = new Set<string>();
+            const sources: Array<{ uri: string; label: string }> = [];
+            for (const chunk of chunks) {
+              const key = `${chunk.sourceType}:${chunk.sourceId}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              const uri = chunk.sourceType === 'page'
+                ? `parallx-page://${chunk.sourceId}`
+                : chunk.sourceId;
+              const label = chunk.contextPrefix ?? (chunk.sourceType === 'page' ? 'Page' : 'File');
+              sources.push({ uri, label });
+            }
+            return { text, sources };
+          } catch { return undefined; }
+        }
       }
       : undefined,
 

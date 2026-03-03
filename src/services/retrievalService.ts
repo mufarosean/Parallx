@@ -187,6 +187,85 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     return sections.join('\n');
   }
 
+  // ── Multi-query Retrieval (M12 Task 2.1) ──
+
+  /**
+   * Run multiple queries in parallel, merge results, deduplicate, and
+   * apply token budget. This is the multi-query retrieval pipeline used
+   * by the retrieval planner.
+   *
+   * Pipeline:
+   *   1. Run retrieve() for each query in parallel
+   *   2. Merge all results, dedup by sourceType:sourceId:text hash (keep highest score)
+   *   3. Re-sort by score descending
+   *   4. Apply source dedup and token budget
+   *   5. Return merged, ranked results
+   */
+  async retrieveMulti(queries: string[], options?: RetrievalOptions): Promise<RetrievedContext[]> {
+    if (queries.length === 0) { return []; }
+
+    // Single query → just use regular retrieve
+    if (queries.length === 1) {
+      return this.retrieve(queries[0], options);
+    }
+
+    const topK = options?.topK ?? DEFAULT_TOP_K;
+    const maxPerSource = options?.maxPerSource ?? DEFAULT_MAX_PER_SOURCE;
+    const tokenBudget = options?.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
+
+    // 1. Run all queries in parallel — each gets a smaller per-query budget
+    const perQueryOptions: RetrievalOptions = {
+      ...options,
+      topK: Math.max(5, Math.ceil(topK / queries.length) + 2), // Over-fetch per query
+      maxPerSource: maxPerSource + 1, // Allow slightly more per query for dedup
+      tokenBudget: tokenBudget * 2, // Don't budget-constrain individual queries
+    };
+
+    const allResults = await Promise.all(
+      queries.map((q) => this.retrieve(q, perQueryOptions).catch(() => [] as RetrievedContext[])),
+    );
+
+    // 2. Merge and deduplicate — keep highest-scoring instance of each chunk
+    const deduped = new Map<string, RetrievedContext>();
+    for (const results of allResults) {
+      for (const chunk of results) {
+        // Key by source + first 100 chars of text to catch same content from different queries
+        const key = `${chunk.sourceType}:${chunk.sourceId}:${chunk.text.slice(0, 100)}`;
+        const existing = deduped.get(key);
+        if (!existing || chunk.score > existing.score) {
+          deduped.set(key, chunk);
+        }
+      }
+    }
+
+    // 3. Re-sort by score descending
+    let merged = Array.from(deduped.values()).sort((a, b) => b.score - a.score);
+
+    // 4. Apply source deduplication (cap chunks per source globally)
+    const sourceCounts = new Map<string, number>();
+    merged = merged.filter((chunk) => {
+      const key = `${chunk.sourceType}:${chunk.sourceId}`;
+      const count = sourceCounts.get(key) ?? 0;
+      if (count >= maxPerSource) { return false; }
+      sourceCounts.set(key, count + 1);
+      return true;
+    });
+
+    // 5. Apply token budget
+    let tokensUsed = 0;
+    const budgeted: RetrievedContext[] = [];
+    for (const chunk of merged) {
+      const tokens = estimateTokens(chunk.text);
+      if (tokensUsed + tokens > tokenBudget && budgeted.length > 0) {
+        break;
+      }
+      budgeted.push(chunk);
+      tokensUsed += tokens;
+    }
+
+    return budgeted.slice(0, topK);
+  }
+
   // ── Internal ──
 
   /**

@@ -290,3 +290,72 @@ function formatToolParams(tool: IToolDefinition): string {
     .map(([key, val]) => `${key}: ${val.type ?? 'any'}`)
     .join(', ');
 }
+
+// ── Retrieval Planner Prompt (M12 Task 1.1) ──
+
+/**
+ * Build the system prompt for the retrieval planner.
+ *
+ * The planner is an internal LLM call that analyses the user's message,
+ * classifies intent, and generates 3-5 targeted search queries.
+ * This enables proactive, situational retrieval instead of single-query RAG.
+ */
+export function buildPlannerPrompt(workspaceDigest?: string): string {
+  const lines: string[] = [
+    'You are a retrieval planner for a personal knowledge workspace called Parallx.',
+    'Your ONLY job is to analyse the user\'s message and decide what information to search for.',
+    '',
+    'The workspace contains canvas pages (rich-text notes) and files.',
+  ];
+
+  if (workspaceDigest) {
+    lines.push('', 'HERE IS WHAT THE WORKSPACE CONTAINS:', workspaceDigest);
+  }
+
+  lines.push(
+    '',
+    'OUTPUT INSTRUCTIONS:',
+    'Respond with a JSON object. No markdown. No explanation. Just the JSON.',
+    '',
+    '```',
+    '{',
+    '  "intent": "<one of: question | situation | task | conversational | exploration>",',
+    '  "reasoning": "<1-2 sentences: what does the user need? what information would help them?>",',
+    '  "needs_retrieval": true | false,',
+    '  "queries": ["search query 1", "search query 2", ...]',
+    '}',
+    '```',
+    '',
+    'INTENT DEFINITIONS:',
+    '- "question": The user is asking a direct question about workspace content. Generate 2-3 queries.',
+    '- "situation": The user describes a situation or event and needs proactive help. Generate 4-5 queries covering everything that would be useful — go beyond what they literally said.',
+    '- "task": The user wants you to DO something (write, create, edit). Generate 1-2 queries for context needed to perform the task.',
+    '- "conversational": Greetings, thanks, follow-ups that don\'t need workspace content. Set needs_retrieval to false.',
+    '- "exploration": The user wants to browse or discover what\'s in the workspace. Generate 2-3 broad queries.',
+    '',
+    'CRITICAL RULES:',
+    '- For "situation" intent: think about what the user NEEDS, not what they SAID. If someone describes a car accident, they need insurance details, claims procedures, contacts — not the phrase "car accident."',
+    '- Queries should use the VOCABULARY of the documents, not the user\'s casual language. Use technical/formal terms that would appear in the actual content.',
+    '- Each query should target a DIFFERENT information need. Do not generate near-duplicate queries.',
+    '- Use the workspace contents list above to generate queries that will actually match existing pages and files.',
+    '- If the workspace contains pages/files about a topic, reference that topic vocabulary in your queries.',
+    '- If the message is a simple follow-up referencing the conversation, set needs_retrieval to false unless new information is needed.',
+    '',
+    'EXAMPLES:',
+    '',
+    'User: "I got into a fender bender on the highway"',
+    'Workspace has: insurance policy pages, claims guides, agent contacts',
+    '{"intent":"situation","reasoning":"User had a car accident. They need coverage details, claims procedure, deductibles, and agent contact info.","needs_retrieval":true,"queries":["collision coverage limits deductible amount","auto insurance claims filing procedure deadline","insurance agent contact phone number","what to document after car accident police report"]}',
+    '',
+    'User: "What\'s my deductible?"',
+    '{"intent":"question","reasoning":"Direct question about policy specifics.","needs_retrieval":true,"queries":["deductible amount policy","coverage limits deductible"]}',
+    '',
+    'User: "Hello!"',
+    '{"intent":"conversational","reasoning":"Greeting, no workspace content needed.","needs_retrieval":false,"queries":[]}',
+    '',
+    'User: "What do I have in this workspace?"',
+    '{"intent":"exploration","reasoning":"User wants an overview of workspace contents.","needs_retrieval":true,"queries":["all pages overview","workspace summary contents","important documents list"]}',
+  );
+
+  return lines.join('\n');
+}

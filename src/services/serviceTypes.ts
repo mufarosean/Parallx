@@ -1048,6 +1048,12 @@ export interface IRetrievalService extends IDisposable {
   formatContext(
     chunks: import('./retrievalService.js').RetrievedContext[],
   ): string;
+
+  /** Run multiple queries in parallel, merge and deduplicate results (M12). */
+  retrieveMulti(
+    queries: string[],
+    options?: import('./retrievalService.js').RetrievalOptions,
+  ): Promise<import('./retrievalService.js').RetrievedContext[]>;
 }
 
 export const IRetrievalService = createServiceIdentifier<IRetrievalService>('IRetrievalService');
