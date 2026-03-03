@@ -195,4 +195,39 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     readText: () => clipboard.readText(),
     writeText: (text) => clipboard.writeText(text ?? ''),
   },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Terminal API (M11 Phase 4 — Task 4.1)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  terminal: {
+    /** Execute a single command and return stdout/stderr/exitCode. */
+    exec: (command, options) => ipcRenderer.invoke('terminal:exec', command, options),
+
+    /** Spawn an interactive shell session. Returns { id }. */
+    spawn: (options) => ipcRenderer.invoke('terminal:spawn', options),
+
+    /** Send data to a spawned shell. */
+    write: (id, data) => ipcRenderer.send('terminal:write', id, data),
+
+    /** Kill a spawned shell. */
+    kill: (id) => ipcRenderer.invoke('terminal:kill', id),
+
+    /** Get recent terminal output buffer. */
+    getOutput: (lineCount) => ipcRenderer.invoke('terminal:getOutput', lineCount),
+
+    /** Subscribe to terminal output data. Returns unsubscribe function. */
+    onData: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('terminal:data', handler);
+      return () => ipcRenderer.removeListener('terminal:data', handler);
+    },
+
+    /** Subscribe to terminal exit events. Returns unsubscribe function. */
+    onExit: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('terminal:exit', handler);
+      return () => ipcRenderer.removeListener('terminal:exit', handler);
+    },
+  },
 });

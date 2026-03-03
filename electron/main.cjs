@@ -998,11 +998,143 @@ function _cleanupWatcher(watchId) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// Terminal API (M11 Phase 4 — Task 4.1)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const { spawn, exec: execCb } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(execCb);
+
+/** Active terminal sessions (spawned interactive shells). */
+const _activeTerminals = new Map();
+let _terminalIdCounter = 0;
+
+/** Circular buffer of recent terminal output lines (for @terminal mention). */
+let _terminalOutputBuffer = [];
+const TERMINAL_BUFFER_MAX_LINES = 200;
+
+function _appendToTerminalBuffer(text) {
+  const lines = text.split('\n');
+  for (const line of lines) {
+    _terminalOutputBuffer.push(line);
+  }
+  // Trim to max
+  if (_terminalOutputBuffer.length > TERMINAL_BUFFER_MAX_LINES) {
+    _terminalOutputBuffer = _terminalOutputBuffer.slice(-TERMINAL_BUFFER_MAX_LINES);
+  }
+}
+
+// ── terminal:exec — Run a single command, capture output, return result ──
+ipcMain.handle('terminal:exec', async (_event, command, options) => {
+  try {
+    const timeout = options?.timeout ?? 30000;
+    const cwd = options?.cwd || (mainWindow ? app.getPath('home') : undefined);
+    const shellOption = process.platform === 'win32' ? { shell: 'powershell.exe' } : { shell: true };
+
+    const result = await execAsync(command, {
+      cwd,
+      timeout,
+      maxBuffer: 1024 * 1024, // 1 MB
+      ...shellOption,
+    });
+
+    const stdout = (result.stdout || '').toString();
+    const stderr = (result.stderr || '').toString();
+    _appendToTerminalBuffer(`$ ${command}\n${stdout}${stderr ? '\n[stderr] ' + stderr : ''}`);
+
+    return { stdout, stderr, exitCode: 0, error: null };
+  } catch (err) {
+    const stdout = (err.stdout || '').toString();
+    const stderr = (err.stderr || '').toString();
+    _appendToTerminalBuffer(`$ ${command}\n${stdout}${stderr ? '\n[stderr] ' + stderr : ''}`);
+
+    if (err.killed) {
+      return { stdout, stderr, exitCode: -1, error: { code: 'TIMEOUT', message: `Command timed out after ${options?.timeout ?? 30000}ms` } };
+    }
+    return { stdout, stderr, exitCode: err.code ?? 1, error: null };
+  }
+});
+
+// ── terminal:spawn — Spawn an interactive shell session ──
+ipcMain.handle('terminal:spawn', async (_event, options) => {
+  try {
+    const id = `term-${++_terminalIdCounter}`;
+    const shellCmd = options?.shell || (process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash');
+    const cwd = options?.cwd || app.getPath('home');
+
+    const proc = spawn(shellCmd, [], {
+      cwd,
+      env: { ...process.env, TERM: 'xterm-256color' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    _activeTerminals.set(id, { proc, cwd });
+
+    proc.stdout.on('data', (data) => {
+      const text = data.toString();
+      _appendToTerminalBuffer(text);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('terminal:data', { id, data: text });
+      }
+    });
+
+    proc.stderr.on('data', (data) => {
+      const text = data.toString();
+      _appendToTerminalBuffer(text);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('terminal:data', { id, data: text });
+      }
+    });
+
+    proc.on('exit', (code) => {
+      _activeTerminals.delete(id);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('terminal:exit', { id, exitCode: code ?? 0 });
+      }
+    });
+
+    return { id, error: null };
+  } catch (err) {
+    return { id: null, error: { code: 'SPAWN_FAILED', message: err.message } };
+  }
+});
+
+// ── terminal:write — Send data to a spawned shell ──
+ipcMain.on('terminal:write', (_event, id, data) => {
+  const entry = _activeTerminals.get(id);
+  if (entry && entry.proc.stdin.writable) {
+    entry.proc.stdin.write(data);
+  }
+});
+
+// ── terminal:kill — Kill a spawned shell ──
+ipcMain.handle('terminal:kill', async (_event, id) => {
+  const entry = _activeTerminals.get(id);
+  if (entry) {
+    try { entry.proc.kill(); } catch { /* ignore */ }
+    _activeTerminals.delete(id);
+  }
+  return { error: null };
+});
+
+// ── terminal:getOutput — Get recent terminal output buffer ──
+ipcMain.handle('terminal:getOutput', async (_event, lineCount) => {
+  const count = lineCount || TERMINAL_BUFFER_MAX_LINES;
+  const lines = _terminalOutputBuffer.slice(-count);
+  return { output: lines.join('\n'), lineCount: lines.length };
+});
+
 // Clean up all watchers on window close
 app.on('before-quit', () => {
   for (const [id] of _activeWatchers) {
     _cleanupWatcher(id);
   }
+  // Kill all terminal sessions
+  for (const [, entry] of _activeTerminals) {
+    try { entry.proc.kill(); } catch { /* ignore */ }
+  }
+  _activeTerminals.clear();
   // Close the database cleanly on app quit
   databaseManager.close();
 });

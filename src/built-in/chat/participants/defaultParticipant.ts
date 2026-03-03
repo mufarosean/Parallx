@@ -220,6 +220,12 @@ export interface IDefaultParticipantServices {
    */
   reportContextPills?(pills: IContextPill[]): void;
 
+  /**
+   * Report token budget breakdown — called after budget allocation so the UI
+   * can show slot usage (M11 Task 4.8).
+   */
+  reportBudget?(slots: ReadonlyArray<{ label: string; used: number; allocated: number; color: string }>): void;
+
   // ── @mention resolution (M11 Tasks 3.2–3.4) ──
 
   /**
@@ -723,6 +729,21 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
       if (budgetResult.warning) {
         response.progress(budgetResult.warning);
+      }
+
+      // Report budget breakdown to the UI (Task 4.8)
+      if (services.reportBudget) {
+        const sysTokens = Math.ceil((messages[0]?.content ?? '').length / 4);
+        const ragTokens = Math.ceil(ragContent.length / 4);
+        const histTokens = Math.ceil(historyContent.length / 4);
+        const userTokens = Math.ceil(userText.length / 4);
+        const totalSlots = contextWindow;
+        services.reportBudget([
+          { label: 'System', used: sysTokens, allocated: Math.ceil(totalSlots * 0.10), color: '#6c71c4' },
+          { label: 'RAG',    used: ragTokens,  allocated: Math.ceil(totalSlots * 0.30), color: '#268bd2' },
+          { label: 'History', used: histTokens, allocated: Math.ceil(totalSlots * 0.30), color: '#859900' },
+          { label: 'User',   used: userTokens,  allocated: Math.ceil(totalSlots * 0.30), color: '#cb4b16' },
+        ]);
       }
     }
 

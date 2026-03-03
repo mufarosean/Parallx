@@ -8,6 +8,10 @@
 // Each pill shows: source label + estimated token count.
 // RAG and rule pills are removable (click × to exclude from next message).
 //
+// Task 4.8: Token budget transparency —
+//   Shows a breakdown bar: system prompt (X tok) + RAG (Y tok) + history (Z tok) + user (W tok).
+//   Updated in real-time as context changes.
+//
 // VS Code reference:
 //   Copilot's "used X references" collapsible area beneath the response.
 //   Our implementation shows them ABOVE the input for pre-send transparency.
@@ -18,6 +22,20 @@ import type { Event } from '../../platform/events.js';
 import { $ } from '../../ui/dom.js';
 import { chatIcons } from './chatIcons.js';
 import type { IContextPill } from '../../services/chatTypes.js';
+
+// ── Budget Breakdown Types (Task 4.8) ──
+
+/** Per-slot token budget breakdown. */
+export interface ITokenBudgetSlot {
+  /** Slot name (displayed). */
+  label: string;
+  /** Tokens used in this slot. */
+  used: number;
+  /** Maximum tokens allocated. */
+  allocated: number;
+  /** CSS color for the bar segment. */
+  color: string;
+}
 
 // ── Component ──
 
@@ -32,9 +50,13 @@ export class ChatContextPills extends Disposable {
   private readonly _root: HTMLElement;
   private readonly _toggleBtn: HTMLElement;
   private readonly _pillsContainer: HTMLElement;
+  private readonly _budgetContainer: HTMLElement;
 
   /** Current pills data. */
   private _pills: IContextPill[] = [];
+
+  /** Token budget slots (Task 4.8). */
+  private _budgetSlots: ITokenBudgetSlot[] = [];
 
   /** IDs of pills the user has removed (excluded from next message). */
   private readonly _excluded = new Set<string>();
@@ -74,6 +96,10 @@ export class ChatContextPills extends Disposable {
     this._pillsContainer = $('div.parallx-chat-context-pills-list');
     this._root.appendChild(this._pillsContainer);
 
+    // Budget breakdown container (Task 4.8 — collapsible alongside pills)
+    this._budgetContainer = $('div.parallx-chat-context-budget');
+    this._root.appendChild(this._budgetContainer);
+
     // Start hidden
     this._root.style.display = 'none';
   }
@@ -105,6 +131,15 @@ export class ChatContextPills extends Disposable {
     this._pills = [];
     this._excluded.clear();
     this._render();
+  }
+
+  /**
+   * Update the token budget breakdown display (Task 4.8).
+   * Shows a segmented bar + per-slot label when expanded.
+   */
+  setBudget(slots: readonly ITokenBudgetSlot[]): void {
+    this._budgetSlots = [...slots];
+    this._renderBudget();
   }
 
   // ── Rendering ──
@@ -148,6 +183,60 @@ export class ChatContextPills extends Disposable {
       const el = this._createPill(pill, isExcluded);
       this._pillsContainer.appendChild(el);
     }
+
+    // Also render budget if expanded
+    this._renderBudget();
+  }
+
+  /** Render the token budget breakdown bar (Task 4.8). */
+  private _renderBudget(): void {
+    this._budgetContainer.innerHTML = '';
+    this._budgetContainer.style.display = (this._expanded && this._budgetSlots.length > 0) ? '' : 'none';
+    if (!this._expanded || this._budgetSlots.length === 0) { return; }
+
+    const totalAlloc = this._budgetSlots.reduce((s, b) => s + b.allocated, 0);
+    if (totalAlloc === 0) { return; }
+
+    // Label
+    const title = $('div.parallx-chat-context-budget-title', 'Token Budget');
+    this._budgetContainer.appendChild(title);
+
+    // Segmented bar
+    const bar = $('div.parallx-chat-context-budget-bar');
+    for (const slot of this._budgetSlots) {
+      const pct = (slot.allocated / totalAlloc) * 100;
+      const fillPct = slot.allocated > 0 ? Math.min(100, (slot.used / slot.allocated) * 100) : 0;
+      const segment = document.createElement('div');
+      segment.className = 'parallx-chat-context-budget-segment';
+      segment.style.width = `${pct}%`;
+      segment.title = `${slot.label}: ${this._formatTokenCount(slot.used)} / ${this._formatTokenCount(slot.allocated)}`;
+
+      const fill = document.createElement('div');
+      fill.className = 'parallx-chat-context-budget-fill';
+      fill.style.width = `${fillPct}%`;
+      fill.style.background = slot.color;
+      segment.appendChild(fill);
+      bar.appendChild(segment);
+    }
+    this._budgetContainer.appendChild(bar);
+
+    // Legend row
+    const legend = $('div.parallx-chat-context-budget-legend');
+    for (const slot of this._budgetSlots) {
+      const item = $('span.parallx-chat-context-budget-legend-item');
+
+      const dot = document.createElement('span');
+      dot.className = 'parallx-chat-context-budget-dot';
+      dot.style.background = slot.color;
+      item.appendChild(dot);
+
+      const text = document.createElement('span');
+      text.textContent = `${slot.label}: ${this._formatTokenCount(slot.used)}`;
+      item.appendChild(text);
+
+      legend.appendChild(item);
+    }
+    this._budgetContainer.appendChild(legend);
   }
 
   /** Create a single pill element. */

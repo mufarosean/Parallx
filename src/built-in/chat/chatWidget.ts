@@ -60,6 +60,9 @@ export interface IChatWidgetServices {
   readonly deleteSession?: (sessionId: string) => void;
   /** Open a file in the editor (for clicking attachment chips in messages). */
   readonly openFile?: (fullPath: string) => void;
+
+  /** Get the assembled system prompt text for display (Task 4.10). */
+  readonly getSystemPrompt?: () => Promise<string>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -208,6 +211,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     if (services.openFile) {
       this._listRenderer.setOpenAttachmentHandler(services.openFile);
     }
+    // Task 4.9: Wire cancel handler from widget into list renderer
+    this._listRenderer.setCancelHandler(() => this._handleStop());
 
     this._inputPart = this._register(new ChatInputPart(this._inputAreaContainer));
     this._register(this._inputPart.onDidAcceptInput((text) => this._handleSubmit(text)));
@@ -332,6 +337,11 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   /** Update context pills UI with sources the LLM sees (M11 Task 1.10). */
   setContextPills(pills: readonly IContextPill[]): void {
     this._inputPart.setContextPills(pills);
+  }
+
+  /** Update token budget breakdown (Task 4.8). */
+  setBudget(slots: readonly import('./chatContextPills.js').ITokenBudgetSlot[]): void {
+    this._inputPart.setBudget(slots);
   }
 
   // ── Input submission ──
@@ -562,6 +572,85 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     const clearBtn = createBtn(chatIcons.trash, 'Clear Session', 'parallx-chat-title-action--clear');
     clearBtn.addEventListener('click', (e) => { e.stopPropagation(); this._handleClearSession(); });
     container.appendChild(clearBtn);
+
+    // System prompt viewer button (Task 4.10)
+    if (this._services.getSystemPrompt) {
+      const promptBtn = createBtn(chatIcons.wrench, 'View System Prompt', 'parallx-chat-title-action--prompt');
+      promptBtn.addEventListener('click', (e) => { e.stopPropagation(); this._showSystemPromptViewer(); });
+      container.appendChild(promptBtn);
+    }
+  }
+
+  // ── System Prompt Viewer (Task 4.10) ──
+
+  /** Show a read-only modal with the fully assembled system prompt. */
+  private async _showSystemPromptViewer(): Promise<void> {
+    if (!this._services.getSystemPrompt) { return; }
+
+    const promptText = await this._services.getSystemPrompt();
+
+    // Create modal overlay
+    const overlay = $('div.parallx-system-prompt-overlay');
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) { overlay.remove(); }
+    });
+
+    const modal = $('div.parallx-system-prompt-modal');
+
+    // Header
+    const header = $('div.parallx-system-prompt-header');
+    const title = $('span.parallx-system-prompt-title', 'System Prompt');
+    header.appendChild(title);
+
+    const tokenEst = $('span.parallx-system-prompt-tokens',
+      `~${Math.ceil(promptText.length / 4).toLocaleString()} tokens`,
+    );
+    header.appendChild(tokenEst);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'parallx-system-prompt-close';
+    closeBtn.type = 'button';
+    closeBtn.title = 'Close';
+    closeBtn.innerHTML = chatIcons.close;
+    closeBtn.addEventListener('click', () => overlay.remove());
+    header.appendChild(closeBtn);
+
+    modal.appendChild(header);
+
+    // Content
+    const content = $('div.parallx-system-prompt-content');
+    const pre = document.createElement('pre');
+    pre.className = 'parallx-system-prompt-text';
+    pre.textContent = promptText;
+    content.appendChild(pre);
+    modal.appendChild(content);
+
+    // Footer: copy button
+    const footer = $('div.parallx-system-prompt-footer');
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'parallx-system-prompt-copy';
+    copyBtn.type = 'button';
+    copyBtn.textContent = 'Copy to clipboard';
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(promptText).then(() => {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy to clipboard'; }, 1500);
+      });
+    });
+    footer.appendChild(copyBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Close on Escape
+    const escHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        overlay.remove();
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
   }
 
   // ── Empty / Offline State Builders ──

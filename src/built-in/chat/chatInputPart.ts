@@ -301,6 +301,11 @@ export class ChatInputPart extends Disposable {
     this._contextPills.setPills(pills);
   }
 
+  /** Update token budget breakdown display (Task 4.8). */
+  setBudget(slots: readonly import('./chatContextPills.js').ITokenBudgetSlot[]): void {
+    this._contextPills.setBudget(slots);
+  }
+
   /** Get IDs of context sources the user has excluded via pills UI. */
   getExcludedContextIds(): ReadonlySet<string> {
     return this._contextPills.getExcluded();
@@ -333,13 +338,25 @@ export class ChatInputPart extends Disposable {
     this._attachLabel.style.display = hasAttachments ? 'none' : '';
   }
 
-  /** Open the file picker dropdown showing open editor files. */
+  /** Open the multi-file picker dropdown (Task 4.7). */
   private _openFilePicker(): void {
     this._closeFilePicker();
 
     const dropdown = $('div.parallx-chat-context-picker');
     dropdown.style.position = 'absolute';
     dropdown.style.zIndex = '100';
+
+    // ── Header with count + Done button ──
+    const headerBar = $('div.parallx-chat-context-picker-toolbar');
+    const countLabel = $('span.parallx-chat-context-picker-count', '0 files selected');
+    headerBar.appendChild(countLabel);
+    const doneBtn = document.createElement('button');
+    doneBtn.type = 'button';
+    doneBtn.className = 'parallx-chat-context-picker-done';
+    doneBtn.textContent = 'Done';
+    doneBtn.disabled = true;
+    headerBar.appendChild(doneBtn);
+    dropdown.appendChild(headerBar);
 
     // ── Search input ──
     const searchWrap = $('div.parallx-chat-context-picker-search');
@@ -353,6 +370,15 @@ export class ChatInputPart extends Disposable {
     // ── Scrollable list ──
     const listContainer = $('div.parallx-chat-context-picker-list');
     dropdown.appendChild(listContainer);
+
+    // ── Multi-select state ──
+    const selected = new Map<string, { name: string; fullPath: string }>();
+
+    const updateCount = (): void => {
+      const n = selected.size;
+      countLabel.textContent = n === 0 ? '0 files selected' : `${n} file${n > 1 ? 's' : ''} selected`;
+      doneBtn.disabled = n === 0;
+    };
 
     // Get open editor files from the attachment ribbon's services
     const services = (this._contextRibbon as any)._services as IAttachmentServices | undefined;
@@ -382,9 +408,13 @@ export class ChatInputPart extends Disposable {
           listContainer.appendChild(empty);
         } else {
           for (const file of filteredOpen) {
-            const item = this._createPickerItem(file.name, file.fullPath, false, () => {
-              this._contextRibbon.addAttachment(file);
-              this._closeFilePicker();
+            const item = this._createPickerItem(file.name, file.fullPath, false, selected.has(file.fullPath), (checked) => {
+              if (checked) {
+                selected.set(file.fullPath, file);
+              } else {
+                selected.delete(file.fullPath);
+              }
+              updateCount();
             });
             listContainer.appendChild(item);
           }
@@ -417,12 +447,14 @@ export class ChatInputPart extends Disposable {
                 entry.name,
                 entry.relativePath,
                 entry.isDirectory,
-                () => {
-                  this._contextRibbon.addAttachment({
-                    name: entry.name,
-                    fullPath: entry.fullPath,
-                  });
-                  this._closeFilePicker();
+                selected.has(entry.fullPath),
+                (checked) => {
+                  if (checked) {
+                    selected.set(entry.fullPath, { name: entry.name, fullPath: entry.fullPath });
+                  } else {
+                    selected.delete(entry.fullPath);
+                  }
+                  updateCount();
                 },
               );
               listContainer.appendChild(item);
@@ -464,6 +496,14 @@ export class ChatInputPart extends Disposable {
       renderItems(searchInput.value);
     });
 
+    // ── Done button — add all selected files ──
+    doneBtn.addEventListener('click', () => {
+      for (const file of selected.values()) {
+        this._contextRibbon.addAttachment(file);
+      }
+      this._closeFilePicker();
+    });
+
     // Position below button (opening upward from the attach button)
     const rect = this._attachBtn.getBoundingClientRect();
     dropdown.style.left = `${rect.left}px`;
@@ -494,14 +534,23 @@ export class ChatInputPart extends Disposable {
     document.addEventListener('keydown', escHandler);
   }
 
-  /** Create a picker item row. */
+  /** Create a multi-select picker item row with checkbox (Task 4.7). */
   private _createPickerItem(
     name: string,
     description: string,
     isDirectory: boolean,
-    onClick: () => void,
+    checked: boolean,
+    onToggle: (checked: boolean) => void,
   ): HTMLElement {
     const item = $('div.parallx-chat-context-picker-item');
+
+    // Checkbox
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'parallx-chat-context-picker-item-checkbox';
+    checkbox.checked = checked;
+    if (checked) { item.classList.add('parallx-chat-context-picker-item--selected'); }
+    item.appendChild(checkbox);
 
     const icon = document.createElement('span');
     icon.className = 'parallx-chat-context-picker-item-icon';
@@ -521,7 +570,15 @@ export class ChatInputPart extends Disposable {
 
     item.appendChild(textWrap);
 
-    item.addEventListener('click', onClick);
+    // Click row → toggle checkbox
+    item.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).tagName !== 'INPUT') {
+        checkbox.checked = !checkbox.checked;
+      }
+      item.classList.toggle('parallx-chat-context-picker-item--selected', checkbox.checked);
+      onToggle(checkbox.checked);
+    });
+
     return item;
   }
 

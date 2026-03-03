@@ -1,0 +1,120 @@
+/* terminal.css — Integrated terminal panel styles (M11 Task 4.1) */
+
+.parallx-terminal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--vscode-terminal-background, #1e1e1e);
+  color: var(--vscode-terminal-foreground, #cccccc);
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+}
+
+/* ── Output area ── */
+
+.parallx-terminal-output {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  cursor: text;
+  user-select: text;
+}
+
+.parallx-terminal-output::-webkit-scrollbar {
+  width: 8px;
+}
+
+.parallx-terminal-output::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+  border-radius: 4px;
+}
+
+/* ── Input line ── */
+
+.parallx-terminal-input-line {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px 8px;
+  border-top: 1px solid var(--vscode-panel-border, #333);
+  background: var(--vscode-terminal-background, #1e1e1e);
+  gap: 6px;
+}
+
+.parallx-terminal-prompt {
+  color: var(--vscode-terminal-ansiGreen, #6a9955);
+  font-weight: bold;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.parallx-terminal-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--vscode-terminal-foreground, #cccccc);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  caret-color: var(--vscode-terminalCursor-foreground, #aeafad);
+}
+
+.parallx-terminal-input::placeholder {
+  color: var(--vscode-input-placeholderForeground, #666);
+}
+
+/* ── Toolbar ── */
+
+.parallx-terminal-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  gap: 4px;
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+  background: var(--vscode-terminal-background, #1e1e1e);
+}
+
+.parallx-terminal-toolbar-btn {
+  background: none;
+  border: none;
+  color: var(--vscode-icon-foreground, #c5c5c5);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.parallx-terminal-toolbar-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.parallx-terminal-toolbar-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── ANSI color support (basic) ── */
+
+.ansi-bold { font-weight: bold; }
+.ansi-red { color: var(--vscode-terminal-ansiRed, #f44747); }
+.ansi-green { color: var(--vscode-terminal-ansiGreen, #6a9955); }
+.ansi-yellow { color: var(--vscode-terminal-ansiYellow, #d7ba7d); }
+.ansi-blue { color: var(--vscode-terminal-ansiBlue, #569cd6); }
+.ansi-magenta { color: var(--vscode-terminal-ansiMagenta, #c586c0); }
+.ansi-cyan { color: var(--vscode-terminal-ansiCyan, #4ec9b0); }
+.ansi-white { color: var(--vscode-terminal-ansiBrightWhite, #e5e5e5); }
+
+/* Empty state */
+.parallx-terminal-welcome {
+  color: var(--vscode-descriptionForeground, #888);
+  font-style: italic;
+  padding: 8px 0;
+}

@@ -530,6 +530,24 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         _activeWidget.setContextPills(pills);
       }
     },
+
+    // M11 Task 4.8 — token budget transparency bridge
+    reportBudget: (slots: readonly import('./chatContextPills.js').ITokenBudgetSlot[]) => {
+      if (_activeWidget) {
+        _activeWidget.setBudget(slots);
+      }
+    },
+
+    // M11 Task 4.2 — @terminal mention: get recent terminal output
+    getTerminalOutput: async (): Promise<string | undefined> => {
+      const electron = (globalThis as Record<string, unknown>).parallxElectron as Record<string, unknown> | undefined;
+      const terminal = electron?.terminal as { getOutput?: (lineCount?: number) => Promise<{ output: string; lineCount: number }> } | undefined;
+      if (!terminal?.getOutput) { return undefined; }
+      try {
+        const result = await terminal.getOutput(100);
+        return result.output || undefined;
+      } catch { return undefined; }
+    },
   };
 
   const defaultParticipant = createDefaultParticipant(defaultParticipantServices);
@@ -804,7 +822,19 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       })()
       : undefined;
 
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, writerAccessor);
+    // M11 Task 4.3 — Terminal accessor for run_command tool
+    const terminalAccessor: import('./tools/builtInTools.js').IBuiltInToolTerminal | undefined = (() => {
+      const electron = (globalThis as Record<string, unknown>).parallxElectron as Record<string, unknown> | undefined;
+      const termBridge = electron?.terminal as {
+        exec?: (cmd: string, opts?: { cwd?: string; timeout?: number }) => Promise<{ stdout: string; stderr: string; exitCode: number; error: { code: string; message: string } | null }>;
+      } | undefined;
+      if (!termBridge?.exec) { return undefined; }
+      return {
+        exec: (command: string, options?: { cwd?: string; timeout?: number }) => termBridge.exec!(command, options),
+      };
+    })();
+
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, writerAccessor, terminalAccessor);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
@@ -929,6 +959,36 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       onDidChangeTools: languageModelToolsService!.onDidChangeTools,
       getEnabledCount: () => languageModelToolsService!.getEnabledCount(),
     } : undefined,
+    // System prompt viewer (Task 4.10)
+    getSystemPrompt: async () => {
+      const { buildSystemPrompt } = await import('./chatSystemPrompts.js');
+      const { ChatMode } = await import('../../services/chatTypes.js');
+      const mode = ChatMode.Agent; // Show the full agent prompt (most complete)
+      const pageCount = databaseService?.isOpen ? (await databaseService.all<{ id: string }>('SELECT id FROM pages')).length : 0;
+      const fileCount = fsAccessor
+        ? (await (async () => { try { return (await fsAccessor!.readdir('')).length; } catch { return 0; } })())
+        : 0;
+
+      // Read prompt overlay if available
+      let promptOverlay: string | undefined;
+      if (_promptFileService) {
+        try {
+          const layers = await _promptFileService.loadLayers();
+          promptOverlay = _promptFileService.assemblePromptOverlay(layers);
+        } catch { /* best-effort */ }
+      }
+
+      return buildSystemPrompt(mode, {
+        workspaceName: workspaceService?.activeWorkspace?.name ?? 'Parallx Workspace',
+        pageCount,
+        currentPageTitle: undefined,
+        tools: languageModelToolsService?.getToolDefinitions() ?? [],
+        fileCount,
+        isRAGAvailable: !!retrievalService,
+        isIndexing: false,
+        promptOverlay,
+      });
+    },
   };
 
   // ── 5. Register the chat view in the Auxiliary Bar ──

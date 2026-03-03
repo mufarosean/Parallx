@@ -241,3 +241,125 @@ function _parseMode(mode: string): ChatMode {
   if (mode === 'agent') { return ChatMode.Agent; }
   return ChatMode.Ask;
 }
+
+// ── Cross-session search (M11 Task 4.5) ──
+
+/**
+ * Search result from cross-session keyword search.
+ */
+export interface ISessionSearchResult {
+  sessionId: string;
+  sessionTitle: string;
+  matchingRole: 'user' | 'assistant';
+  matchingContent: string;
+  timestamp: number;
+  createdAt: number;
+}
+
+/**
+ * Full-text search across all past chat sessions.
+ * Searches both user messages and assistant response content.
+ * Returns results sorted by relevance (most recent first).
+ */
+export async function searchSessions(
+  db: IChatPersistenceDatabase,
+  query: string,
+  limit: number = 20,
+): Promise<ISessionSearchResult[]> {
+  if (!db.isOpen || !query.trim()) { return []; }
+
+  const likePattern = `%${query.trim()}%`;
+
+  const rows = await db.all<{
+    session_id: string;
+    title: string;
+    role: string;
+    content: string;
+    timestamp: number;
+    created_at: number;
+  }>(
+    `SELECT m.session_id, s.title, m.role, m.content, m.timestamp, s.created_at
+     FROM chat_messages m
+     JOIN chat_sessions s ON s.id = m.session_id
+     WHERE m.content LIKE ?
+     ORDER BY m.timestamp DESC
+     LIMIT ?`,
+    [likePattern, limit],
+  );
+
+  return rows.map((r) => ({
+    sessionId: r.session_id,
+    sessionTitle: r.title,
+    matchingRole: r.role as 'user' | 'assistant',
+    matchingContent: _extractSearchSnippet(r.content, query),
+    timestamp: r.timestamp,
+    createdAt: r.created_at,
+  }));
+}
+
+/**
+ * Extract a snippet around the search query match.
+ */
+function _extractSearchSnippet(content: string, query: string): string {
+  const lower = content.toLowerCase();
+  const queryLower = query.toLowerCase();
+  const idx = lower.indexOf(queryLower);
+  if (idx === -1) { return content.slice(0, 100); }
+
+  const start = Math.max(0, idx - 40);
+  const end = Math.min(content.length, idx + query.length + 60);
+  let snippet = content.slice(start, end);
+  if (start > 0) { snippet = '...' + snippet; }
+  if (end < content.length) { snippet += '...'; }
+  return snippet;
+}
+
+// ── Semantic session search (M11 Task 4.6) ──
+
+/**
+ * Semantic search result — from vector-based memory search with session metadata.
+ */
+export interface ISemanticSessionSearchResult {
+  sessionId: string;
+  sessionTitle: string;
+  summary: string;
+  messageCount: number;
+  createdAt: string;
+  /** Similarity score from vector search. */
+  score?: number;
+}
+
+/**
+ * Search sessions semantically using conversation memory embeddings.
+ * Accepts pre-recalled memories from the MemoryService and enriches
+ * them with session titles from the sessions table.
+ *
+ * Usage:
+ *   const memories = await memoryService.recallMemories(query, { topK: 10 });
+ *   const results = await searchSessionsSemantic(db, memories);
+ */
+export async function searchSessionsSemantic(
+  db: IChatPersistenceDatabase,
+  memories: ReadonlyArray<{ sessionId: string; summary: string; messageCount: number; createdAt: string }>,
+): Promise<ISemanticSessionSearchResult[]> {
+  if (!db.isOpen || memories.length === 0) { return []; }
+
+  const results: ISemanticSessionSearchResult[] = [];
+
+  for (const mem of memories) {
+    const row = await db.get<{ title: string }>(
+      'SELECT title FROM chat_sessions WHERE id = ?',
+      [mem.sessionId],
+    );
+
+    results.push({
+      sessionId: mem.sessionId,
+      sessionTitle: row?.title ?? 'Untitled',
+      summary: mem.summary,
+      messageCount: mem.messageCount,
+      createdAt: mem.createdAt,
+    });
+  }
+
+  return results;
+}

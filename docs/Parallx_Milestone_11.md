@@ -1007,16 +1007,16 @@ workspace-root/
 
 | # | Task | Status | Est. | Depends On | Files to Change | What to Do |
 |---|------|--------|------|------------|-----------------|------------|
-| **4.1** | **Terminal panel (xterm.js)** | ⬜ | 6h | — | New: terminal built-in tool, panel component | Add xterm.js terminal panel to bottom panel area. IPC bridge to spawn shell in Electron main process. Capture output. |
-| **4.2** | **`@terminal` mention** | ⬜ | 2h | 4.1, 3.1 | Chat input, terminal service | `@terminal` injects last N lines of terminal output into context. |
-| **4.3** | **`run_command` skill** | ⬜ | 4h | 4.1, 2.1 | `src/built-in/chat/tools/builtInTools.ts`, New: `SKILL.md` | AI suggests a command → approval dialog → execute in terminal → capture output → feed back to LLM. Allowlist/blocklist in config. Timeout. |
-| **4.4** | **`delete_file` skill** | ⬜ | 2h | 2.1 | `src/built-in/chat/tools/builtInTools.ts`, New: `SKILL.md` | Delete file with confirmation. Move to trash if OS supports it. |
-| **4.5** | **Cross-session search** | ⬜ | 4h | — | New: session search UI, `src/services/chatSessionPersistence.ts` | Full-text search across all past sessions. Results show session title + matching message preview + date. Click to open session. |
-| **4.6** | **Semantic session search** | ⬜ | 4h | 4.5 | `src/services/memoryService.ts`, search UI | Embed search query, find similar session summaries in vector store. "Find conversations about auth" → returns relevant sessions. |
-| **4.7** | **Multi-file picker** | ⬜ | 3h | Phase 1 | "Add Context" dialog | Multi-select file/folder picker. Token budget indicator per file. Drag-and-drop from explorer. |
-| **4.8** | **Token budget transparency** | ⬜ | 2h | 1.8 | Chat status bar area | Show breakdown: system prompt (X tok) + RAG (Y tok) + history (Z tok) + user (W tok). Update in real-time as context changes. |
-| **4.9** | **Progress indication** | ⬜ | 2h | — | Chat response rendering | Typing indicator animation, elapsed time counter, token count during generation, cancel button. |
-| **4.10** | **System prompt viewer** | ⬜ | 2h | 1.4 | Chat toolbar | Button to view the full assembled system prompt (all layers). Read-only modal. Helps users understand what the AI "knows". |
+| **4.1** | **Terminal panel (xterm.js)** | ✅ | 6h | — | New: terminal built-in tool, panel component | Add xterm.js terminal panel to bottom panel area. IPC bridge to spawn shell in Electron main process. Capture output. |
+| **4.2** | **`@terminal` mention** | ✅ | 2h | 4.1, 3.1 | Chat input, terminal service | `@terminal` injects last N lines of terminal output into context. |
+| **4.3** | **`run_command` skill** | ✅ | 4h | 4.1, 2.1 | `src/built-in/chat/tools/builtInTools.ts`, New: `SKILL.md` | AI suggests a command → approval dialog → execute in terminal → capture output → feed back to LLM. Allowlist/blocklist in config. Timeout. |
+| **4.4** | **`delete_file` skill** | ✅ | 2h | 2.1 | `src/built-in/chat/tools/builtInTools.ts`, New: `SKILL.md` | Delete file with confirmation. Move to trash if OS supports it. |
+| **4.5** | **Cross-session search** | ✅ | 4h | — | New: session search UI, `src/services/chatSessionPersistence.ts` | Full-text search across all past sessions. Results show session title + matching message preview + date. Click to open session. |
+| **4.6** | **Semantic session search** | ✅ | 4h | 4.5 | `src/services/memoryService.ts`, search UI | Embed search query, find similar session summaries in vector store. "Find conversations about auth" → returns relevant sessions. |
+| **4.7** | **Multi-file picker** | ✅ | 3h | Phase 1 | "Add Context" dialog | Multi-select file/folder picker. Token budget indicator per file. Drag-and-drop from explorer. |
+| **4.8** | **Token budget transparency** | ✅ | 2h | 1.8 | Chat status bar area | Show breakdown: system prompt (X tok) + RAG (Y tok) + history (Z tok) + user (W tok). Update in real-time as context changes. |
+| **4.9** | **Progress indication** | ✅ | 2h | — | Chat response rendering | Typing indicator animation, elapsed time counter, token count during generation, cancel button. |
+| **4.10** | **System prompt viewer** | ✅ | 2h | 1.4 | Chat toolbar | Button to view the full assembled system prompt (all layers). Read-only modal. Helps users understand what the AI "knows". |
 
 **Phase 4 Total:** ~31h
 

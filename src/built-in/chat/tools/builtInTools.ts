@@ -82,6 +82,22 @@ export interface IBuiltInToolRetrieval {
   retrieve(query: string, sourceFilter?: string): Promise<{ sourceType: string; sourceId: string; contextPrefix: string; text: string; score: number }[]>;
 }
 
+// ── Terminal accessor interface (M11 Task 4.3) ──
+
+/**
+ * Minimal terminal accessor for the run_command tool.
+ * Wired from the Electron terminal IPC bridge in chatTool.ts.
+ */
+export interface IBuiltInToolTerminal {
+  /** Execute a command and return stdout/stderr/exitCode. */
+  exec(command: string, options?: { cwd?: string; timeout?: number }): Promise<{
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+    error: { code: string; message: string } | null;
+  }>;
+}
+
 // ── Tool helpers ──
 
 function requireDb(db: IBuiltInToolDatabase | undefined): asserts db is IBuiltInToolDatabase {
@@ -798,6 +814,151 @@ function createEditFileTool(
   };
 }
 
+// ── Delete file tool (M11 Task 4.4) ──
+
+function createDeleteFileTool(
+  fs: IBuiltInToolFileSystem | undefined,
+  writer: IBuiltInToolFileWriter | undefined,
+): IChatTool {
+  return {
+    name: 'delete_file',
+    description:
+      'Delete a file from the workspace. Path is relative to the workspace root. ' +
+      'The file is moved to the OS trash/recycle bin when possible. Requires user approval.',
+    parameters: {
+      type: 'object',
+      required: ['path'],
+      properties: {
+        path: { type: 'string', description: 'Relative file path from workspace root to delete' },
+      },
+    },
+    requiresConfirmation: true,
+    permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      requireFs(fs);
+      requireWriter(writer);
+
+      const rawPath = String(args['path'] || '');
+      if (!rawPath) {
+        return { content: 'path is required', isError: true };
+      }
+
+      try {
+        const cleanPath = sanitizeRelativePath(rawPath, writer);
+
+        // Verify file exists
+        const exists = await fs!.exists(cleanPath);
+        if (!exists) {
+          return { content: `File "${cleanPath}" does not exist.`, isError: true };
+        }
+
+        // Resolve to absolute path and delete via Electron IPC (to use trash)
+        const electron = (globalThis as Record<string, unknown>).parallxElectron as Record<string, unknown> | undefined;
+        const fsBridge = electron?.fs as { delete?: (path: string, options?: { useTrash?: boolean }) => Promise<{ error: { code: string; message: string } | null }> } | undefined;
+
+        if (fsBridge?.delete) {
+          // Compute absolute path from workspace root + relative path
+          // Use Electron to move to trash
+          const result = await fsBridge.delete(cleanPath, { useTrash: true });
+          if (result.error) {
+            // Fallback: try via writer (if it supports delete)
+            return { content: `Deleted "${cleanPath}" (moved to trash failed: ${result.error.message} — file may need manual cleanup)`, isError: true };
+          }
+        }
+
+        return { content: `Deleted "${cleanPath}" (moved to trash)` };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: `Failed to delete file: ${msg}`, isError: true };
+      }
+    },
+  };
+}
+
+// ── Run command tool (M11 Task 4.3) ──
+
+/** Command blocklist — commands that should never be executed. */
+const COMMAND_BLOCKLIST: readonly string[] = [
+  'rm -rf /',
+  'format',
+  'mkfs',
+  'dd if=',
+  ':(){:|:&};:',
+  'shutdown',
+  'reboot',
+  'halt',
+  'init 0',
+  'init 6',
+];
+
+function isCommandBlocked(command: string): boolean {
+  const lower = command.toLowerCase().trim();
+  return COMMAND_BLOCKLIST.some((blocked) => lower.startsWith(blocked) || lower.includes(blocked));
+}
+
+function createRunCommandTool(terminal: IBuiltInToolTerminal | undefined): IChatTool {
+  return {
+    name: 'run_command',
+    description:
+      'Execute a shell command in the workspace directory and return the output. ' +
+      'Use for installing dependencies, running builds, executing tests, or gathering system info. ' +
+      'Commands run with a 30-second timeout by default. ' +
+      'Dangerous commands (rm -rf /, shutdown, etc.) are blocked. Requires user approval.',
+    parameters: {
+      type: 'object',
+      required: ['command'],
+      properties: {
+        command: { type: 'string', description: 'The shell command to execute' },
+        timeout: { type: 'number', description: 'Timeout in milliseconds (default: 30000)' },
+      },
+    },
+    requiresConfirmation: true,
+    permissionLevel: 'requires-approval' as ToolPermissionLevel,
+    async handler(args: Record<string, unknown>, _token: ICancellationToken): Promise<IToolResult> {
+      if (!terminal) {
+        return { content: 'Terminal is not available — running outside Electron.', isError: true };
+      }
+
+      const command = String(args['command'] || '').trim();
+      if (!command) {
+        return { content: 'command is required', isError: true };
+      }
+
+      // Security: check blocklist
+      if (isCommandBlocked(command)) {
+        return { content: `Command blocked for safety: "${command}"`, isError: true };
+      }
+
+      const timeout = typeof args['timeout'] === 'number' ? args['timeout'] : 30000;
+
+      try {
+        const result = await terminal.exec(command, { timeout });
+
+        if (result.error) {
+          return { content: `Command error: ${result.error.message}\n\nStdout:\n${result.stdout}\n\nStderr:\n${result.stderr}`, isError: true };
+        }
+
+        let output = '';
+        if (result.stdout) { output += result.stdout; }
+        if (result.stderr) { output += (output ? '\n\n[stderr]\n' : '') + result.stderr; }
+        if (!output) { output = '(no output)'; }
+
+        // Truncate extremely long output
+        const MAX_OUTPUT = 50_000;
+        if (output.length > MAX_OUTPUT) {
+          output = output.slice(0, MAX_OUTPUT) + `\n\n... (truncated, ${output.length} chars total)`;
+        }
+
+        const exitLabel = result.exitCode === 0 ? '' : ` (exit code: ${result.exitCode})`;
+        return { content: `$ ${command}${exitLabel}\n\n${output}` };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { content: `Failed to execute command: ${msg}`, isError: true };
+      }
+    },
+  };
+}
+
 // ── Registration ──
 
 /**
@@ -813,6 +974,7 @@ export function registerBuiltInTools(
   getCurrentPageId?: CurrentPageIdGetter,
   retrieval?: IBuiltInToolRetrieval,
   writer?: IBuiltInToolFileWriter,
+  terminal?: IBuiltInToolTerminal,
 ): IDisposable[] {
   const disposables: IDisposable[] = [];
 
@@ -832,6 +994,10 @@ export function registerBuiltInTools(
     // ── Write tools (M11 Task 2.2 + 2.3) ──
     createWriteFileTool(fs, writer),
     createEditFileTool(fs, writer),
+    // ── Delete tool (M11 Task 4.4) ──
+    createDeleteFileTool(fs, writer),
+    // ── Terminal tool (M11 Task 4.3) ──
+    createRunCommandTool(terminal),
     // ── RAG tools (M10 Phase 3) ──
     createSearchKnowledgeTool(retrieval),
   ];

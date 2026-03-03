@@ -457,6 +457,55 @@
   font-style: italic;
 }
 
+/* ── Multi-select picker toolbar (Task 4.7) ── */
+
+.parallx-chat-context-picker-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+  flex-shrink: 0;
+}
+
+.parallx-chat-context-picker-count {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+}
+
+.parallx-chat-context-picker-done {
+  padding: 2px 10px;
+  border: none;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  cursor: pointer;
+}
+
+.parallx-chat-context-picker-done:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.parallx-chat-context-picker-done:not(:disabled):hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.parallx-chat-context-picker-item-checkbox {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--vscode-button-background, #0e639c);
+}
+
+.parallx-chat-context-picker-item--selected {
+  background: var(--vscode-list-activeSelectionBackground, #094771);
+}
+
 /* ── Configure Tools button (wrench icon in toolbar) ── */
 
 .parallx-chat-input-tools {
@@ -885,6 +934,65 @@
 .parallx-chat-context-pill-action svg {
   width: 8px;
   height: 8px;
+}
+
+/* ── Token Budget Breakdown (Task 4.8) ── */
+
+.parallx-chat-context-budget {
+  padding: 6px 0 2px;
+}
+
+.parallx-chat-context-budget-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.parallx-chat-context-budget-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--vscode-editor-background, #1e1e1e);
+  gap: 1px;
+}
+
+.parallx-chat-context-budget-segment {
+  position: relative;
+  background: var(--vscode-input-border, #3c3c3c);
+  overflow: hidden;
+}
+
+.parallx-chat-context-budget-fill {
+  height: 100%;
+  border-radius: 0;
+  transition: width 200ms ease;
+}
+
+.parallx-chat-context-budget-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.parallx-chat-context-budget-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+}
+
+.parallx-chat-context-budget-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 /* ── @Mention / /Command Autocomplete Dropdown (M11 Task 3.1) ── */
