@@ -44,7 +44,7 @@ import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManage
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './tools/builtInTools.js';
 import { PromptFileService } from '../../services/promptFileService.js';
-import type { IPromptFileAccess, IPromptFileLayers } from '../../services/promptFileService.js';
+import type { IPromptFileAccess } from '../../services/promptFileService.js';
 import { PermissionService } from '../../services/permissionService.js';
 import type { ToolGrantDecision } from '../../services/chatTypes.js';
 
@@ -481,7 +481,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
     listFilesRelative: fsAccessor
       ? async (relativePath: string) => {
-        return fsAccessor.readdir(relativePath);
+        const entries = await fsAccessor.readdir(relativePath);
+        return entries.map(e => ({ name: e.name, type: e.type }));
       }
       : undefined,
 
@@ -495,7 +496,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
     writeFileRelative: (fileService && workspaceService?.folders?.length)
       ? async (relativePath: string, content: string): Promise<void> => {
-        const { URI } = await import('../../platform/uri.js');
         const rootUri = workspaceService!.folders[0].uri;
         const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
         const targetUri = rootUri.joinPath(clean);
@@ -525,7 +525,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       : undefined,
 
     // M11 Task 1.10 — context pills UI bridge
-    reportContextPills: (pills) => {
+    reportContextPills: (pills: readonly import('../../services/chatTypes.js').IContextPill[]) => {
       if (_activeWidget) {
         _activeWidget.setContextPills(pills);
       }

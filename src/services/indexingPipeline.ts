@@ -314,9 +314,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     const ignoreUri = rootUri.joinPath('.parallxignore');
 
     try {
-      const content = await this._fileService.readFile(ignoreUri);
-      if (content) {
-        this._ignore.loadFromContent(content);
+      const ignoreFile = await this._fileService.readFile(ignoreUri);
+      if (ignoreFile) {
+        this._ignore.loadFromContent(ignoreFile.content);
         console.log('[IndexingPipeline] Loaded .parallxignore from workspace root');
       }
     } catch {
