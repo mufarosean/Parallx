@@ -123,60 +123,34 @@ const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
 /** Context overflow threshold — warn at this fraction of context length. */
 const CONTEXT_OVERFLOW_WARN_THRESHOLD = 0.8;
 
-// ── Skip-planning heuristic (M12 Task 1.3) ──
-
-/** Common greetings / affirmations that don't need a planner LLM call. */
-const GREETING_PATTERNS = /^(hi|hello|hey|sup|yo|thanks|thank you|bye|goodbye|ok|okay|sure|yes|no|cool|great|nice|got it|how are you|what's up|good morning|good afternoon|good evening)\b/i;
-
-/**
- * Lightweight heuristic to detect obviously conversational messages.
- *
- * This is used ONLY as a speed optimization to skip the planner LLM call
- * for messages where the answer is obvious.  When skipped, a synthetic
- * IRetrievalPlan with `intent: 'conversational'` and `needsRetrieval: false`
- * is created so the rest of the pipeline still has a plan to consult.
- *
- * The planner itself is the real "thinking layer" — it does proper intent
- * classification for non-trivial messages.  This heuristic just avoids
- * wasting an LLM call on "Hello".
- */
-function isObviouslyConversational(message: string): boolean {
-  const trimmed = message.trim();
-  if (!trimmed) { return false; }
-  if (GREETING_PATTERNS.test(trimmed)) { return true; }
-  // Very short messages (≤3 words, no question mark, no slash command)
-  const words = trimmed.split(/\s+/);
-  if (words.length <= 3 && !trimmed.includes('?') && !trimmed.startsWith('/')) {
-    if (words.length === 1 && /^[a-z_]+$/.test(trimmed)) { return false; }
-    return true;
-  }
-  return false;
-}
+// ── Planner gate ──
+//
+// The planner (thinking layer) runs on EVERY message when available.
+// It classifies intent and decides what context the model needs.
+// See docs/research/INTERACTION_LAYER_ARCHITECTURE.md for rationale.
 
 /**
- * Determine whether to skip the retrieval planning LLM call.
- * When skipped, the caller MUST still produce a synthetic IRetrievalPlan
- * so downstream logic can consult `plan.needsRetrieval` and `plan.intent`.
+ * Determine whether to use the retrieval planner.
+ *
+ * The planner runs on EVERY message when available — it is the AI's
+ * thinking layer that classifies intent and decides what context is
+ * needed.  Only skip when structurally impossible (no planner service,
+ * no RAG, or a slash command with its own prompt template).
+ *
+ * This replaces the old `shouldSkipPlanning()` which used heuristics
+ * (greeting regex, word count, question marks) to bypass the planner.
+ * Those heuristics caused misclassification — e.g. "Who are you?"
+ * was treated as a factual question needing RAG + tools.
  */
-function shouldSkipPlanning(
-  message: string,
+function shouldUsePlanner(
   isRAGAvailable: boolean,
   hasSlashCommand: boolean,
+  hasPlanAndRetrieve: boolean,
 ): boolean {
-  if (!isRAGAvailable) { return true; }
-  if (hasSlashCommand) { return true; }
-
-  const trimmed = message.trim();
-  if (!trimmed) { return true; }
-
-  // Obviously conversational — skip the planner call for latency
-  if (isObviouslyConversational(trimmed)) { return true; }
-
-  // Very short direct questions (≤6 words + '?' at end) — single-query retrieval is sufficient
-  const words = trimmed.split(/\s+/);
-  if (words.length <= 6 && trimmed.endsWith('?')) { return true; }
-
-  return false;
+  if (!hasPlanAndRetrieve) { return false; }
+  if (!isRAGAvailable) { return false; }
+  if (hasSlashCommand) { return false; }
+  return true;
 }
 
 /**
@@ -518,11 +492,10 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     const ragSources: Array<{ uri: string; label: string }> = [];
     let retrievalPlan: IRetrievalPlan | undefined;
 
-    // Determine whether to use the planner or direct retrieval
+    // Determine whether to use the planner (thinking layer)
     const hasActiveSlashCommand = !!(activeCommand && activeCommand !== 'compact');
     const isRagReady = services.isRAGAvailable?.() ?? false;
-    const usePlanner = services.planAndRetrieve
-      && !shouldSkipPlanning(userText, isRagReady, hasActiveSlashCommand);
+    const usePlanner = shouldUsePlanner(isRagReady, hasActiveSlashCommand, !!services.planAndRetrieve);
 
     if (usePlanner) {
       // ── M12 Planned retrieval path ──
@@ -531,8 +504,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       // and generates targeted search queries.  Its output drives whether we
       // fetch RAG context, recall memories, and send tools to the model.
       try {
-        response.progress('Analyzing your message…');
-
         // Build recent history excerpt for contextual understanding (last 2-3 turns, ~500 chars)
         let recentHistory: string | undefined;
         if (context.history.length > 0) {
@@ -599,30 +570,18 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
-    // ── Synthetic plan when planner was skipped ──
-    // When the planner LLM call is skipped (for speed), we still need a plan
-    // so downstream logic can check `retrievalPlan.needsRetrieval` and
-    // `retrievalPlan.intent` consistently.  The heuristic decides:
-    //   - Obviously conversational → { conversational, no retrieval }
-    //   - Short question or no RAG → { question, retrieval from direct fallback }
-    if (!usePlanner && !retrievalPlan) {
-      if (isObviouslyConversational(userText)) {
-        retrievalPlan = {
-          intent: 'conversational',
-          reasoning: 'Message appears to be a greeting or conversational remark.',
-          needsRetrieval: false,
-          queries: [],
-        };
-      } else {
-        // Non-conversational but planning was skipped (short question, no RAG, etc.)
-        // Let direct retrieval proceed
-        retrievalPlan = {
-          intent: 'question',
-          reasoning: 'Short question — using direct retrieval.',
-          needsRetrieval: isRagReady,
-          queries: [],
-        };
-      }
+    // ── Fallback plan when planner is unavailable ──
+    // The planner runs on every message when available.  This fallback
+    // only fires when the planner service isn't wired, RAG isn't ready,
+    // or a slash command is active.  Provides a safe default so
+    // downstream gates always have a plan to consult.
+    if (!retrievalPlan) {
+      retrievalPlan = {
+        intent: 'question',
+        reasoning: 'Planner unavailable — using default question intent.',
+        needsRetrieval: isRagReady,
+        queries: [],
+      };
     }
 
     // Direct retrieval fallback: used when planner is skipped OR not available.

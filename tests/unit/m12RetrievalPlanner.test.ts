@@ -5,7 +5,7 @@
 //   - OllamaProvider.planRetrieval() — streaming → JSON parsing
 //   - OllamaProvider._parsePlannerResponse() — robust JSON extraction
 //   - RetrievalService.retrieveMulti() — parallel queries, merge, dedup
-//   - shouldSkipPlanning() smart heuristic
+//   - shouldUsePlanner() — planner gate logic
 //   - buildPlannerPrompt() — prompt generation
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -493,75 +493,58 @@ describe('RetrievalService.retrieveMulti', () => {
   });
 });
 
-// ── shouldSkipPlanning tests (via import of the module) ──
-// Since shouldSkipPlanning is a module-private function, we test it indirectly
-// through the behavior of the defaultParticipant. However, we can also test
-// the logical rules directly by extracting the logic patterns.
+// ── shouldUsePlanner tests ──
+// Tests the simplified planner gate that replaced the old shouldSkipPlanning heuristic.
+// The planner now runs on EVERY message when structurally possible.
+// See docs/research/INTERACTION_LAYER_ARCHITECTURE.md
 
-describe('shouldSkipPlanning logic', () => {
-  // Re-implement the same logic here for unit testing
-  const GREETING_PATTERNS = /^(hi|hello|hey|sup|yo|thanks|thank you|bye|goodbye|ok|okay|sure|yes|no|cool|great|nice|got it)\b/i;
-
-  function shouldSkipPlanning(
-    message: string,
+describe('shouldUsePlanner logic', () => {
+  // Mirror the production function for direct unit testing
+  function shouldUsePlanner(
     isRAGAvailable: boolean,
     hasSlashCommand: boolean,
+    hasPlanAndRetrieve: boolean,
   ): boolean {
-    if (!isRAGAvailable) return true;
-    if (hasSlashCommand) return true;
-    const trimmed = message.trim();
-    if (!trimmed) return true;
-    if (GREETING_PATTERNS.test(trimmed)) return true;
-    const words = trimmed.split(/\s+/);
-    if (words.length <= 6 && trimmed.endsWith('?')) return true;
-    return false;
+    if (!hasPlanAndRetrieve) return false;
+    if (!isRAGAvailable) return false;
+    if (hasSlashCommand) return false;
+    return true;
   }
 
-  it('skips when RAG is unavailable', () => {
-    expect(shouldSkipPlanning('I got into a car accident', false, false)).toBe(true);
+  it('returns false when planAndRetrieve service is unavailable', () => {
+    expect(shouldUsePlanner(true, false, false)).toBe(false);
   });
 
-  it('skips for slash commands', () => {
-    expect(shouldSkipPlanning('/init', true, true)).toBe(true);
+  it('returns false when RAG is unavailable', () => {
+    expect(shouldUsePlanner(false, false, true)).toBe(false);
   });
 
-  it('skips for empty messages', () => {
-    expect(shouldSkipPlanning('', true, false)).toBe(true);
-    expect(shouldSkipPlanning('   ', true, false)).toBe(true);
+  it('returns false for slash commands', () => {
+    expect(shouldUsePlanner(true, true, true)).toBe(false);
   });
 
-  it('skips for greetings', () => {
-    expect(shouldSkipPlanning('Hello', true, false)).toBe(true);
-    expect(shouldSkipPlanning('hi there', true, false)).toBe(true);
-    expect(shouldSkipPlanning('thanks', true, false)).toBe(true);
-    expect(shouldSkipPlanning('bye', true, false)).toBe(true);
-    expect(shouldSkipPlanning('ok', true, false)).toBe(true);
-    expect(shouldSkipPlanning('Yes', true, false)).toBe(true);
+  it('returns true for greetings (planner classifies these)', () => {
+    // The planner runs for ALL messages including greetings.
+    // It will classify "Hello" as conversational and gate tools away.
+    expect(shouldUsePlanner(true, false, true)).toBe(true);
   });
 
-  it('skips for short direct questions (≤6 words + ?)', () => {
-    expect(shouldSkipPlanning('What is my deductible?', true, false)).toBe(true);
-    expect(shouldSkipPlanning('How much?', true, false)).toBe(true);
-    expect(shouldSkipPlanning('Who is my agent?', true, false)).toBe(true);
+  it('returns true for short questions (planner classifies these)', () => {
+    // Previously, short questions like "Who are you?" bypassed the planner
+    // and got a synthetic 'question' plan, causing tool pollution.
+    // Now the planner runs and correctly classifies them.
+    expect(shouldUsePlanner(true, false, true)).toBe(true);
   });
 
-  it('does NOT skip for situational messages', () => {
-    expect(shouldSkipPlanning('I got into a fender bender on the highway this morning', true, false)).toBe(false);
+  it('returns true for long situational messages', () => {
+    expect(shouldUsePlanner(true, false, true)).toBe(true);
   });
 
-  it('does NOT skip for longer questions', () => {
-    expect(shouldSkipPlanning('What are the steps I need to follow to file an insurance claim?', true, false)).toBe(false);
+  it('returns true for task requests', () => {
+    expect(shouldUsePlanner(true, false, true)).toBe(true);
   });
 
-  it('does NOT skip for task requests', () => {
-    expect(shouldSkipPlanning('Write a summary of my insurance coverage', true, false)).toBe(false);
-  });
-
-  it('does NOT skip for exploration requests', () => {
-    expect(shouldSkipPlanning('What do I have in this workspace', true, false)).toBe(false);
-  });
-
-  it('does NOT skip for follow-up context', () => {
-    expect(shouldSkipPlanning('What if the other driver was uninsured', true, false)).toBe(false);
+  it('returns true for exploration requests', () => {
+    expect(shouldUsePlanner(true, false, true)).toBe(true);
   });
 });
