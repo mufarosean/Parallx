@@ -159,6 +159,9 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   /** Tracks whether we're inside a `<think>` tag across stream chunks. */
   private _inThinkTag = false;
 
+  /** Models that returned 400 for think:true — skip on subsequent calls. */
+  private _noThinkModels = new Set<string>();
+
   /** Set context length override (0 = let Ollama decide). */
   setContextLengthOverride(value: number): void {
     this._contextLengthOverride = Math.max(0, Math.floor(value));
@@ -333,7 +336,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       if (options.format) {
         body['format'] = options.format;
       }
-      if (options.think) {
+      if (options.think && !this._noThinkModels.has(modelId)) {
         body['think'] = true;
       }
     }
@@ -348,12 +351,30 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     }
 
     try {
-      const response = await fetch(`${this._baseUrl}/api/chat`, {
+      let response = await fetch(`${this._baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: controller.signal,
       });
+
+      // If thinking is rejected, cache and retry without it
+      if (!response.ok && response.status === 400 && body['think']) {
+        const errorText = await response.text();
+        if (errorText.includes('does not support thinking')) {
+          console.warn(`[OllamaProvider] ${modelId} does not support thinking — retrying without think:true`);
+          this._noThinkModels.add(modelId);
+          delete body['think'];
+          response = await fetch(`${this._baseUrl}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          });
+        } else {
+          throw new Error(`Ollama returned HTTP ${response.status}: ${errorText}`);
+        }
+      }
 
       if (!response.ok) {
         throw new Error(`Ollama returned HTTP ${response.status}: ${await response.text()}`);
