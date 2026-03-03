@@ -281,9 +281,57 @@ The circular dependency that broke column editing (`978539d`) was caused by exac
 - `explorer/` — Built-in file explorer view
 - `output/` — Output panel view
 - `tool-gallery/` — Tool discovery and installation view
+- `canvas/` — Canvas built-in with five-registry gate architecture (see "Canvas Registry Gate Architecture" above)
+- `chat/` — AI chat assistant (see "Chat / AI Subsystem" below)
+- `search/` — Workspace search view
 
 > Built-in features follow the same `EditorInput` / `EditorPane` patterns as tool-contributed editors.
 > They may depend on `platform`, `services` (interfaces), `editor` (abstract base classes), and `configuration`.
+
+#### Chat / AI Subsystem (`built-in/chat/`)
+
+The chat built-in is the AI assistant — Parallx's "Jarvis". It runs entirely local via Ollama and comprises:
+
+| File | Responsibility |
+|------|---------------|
+| `chatTool.ts` | **Central activation** (~1700 lines). Constructs all chat services, builds `defaultParticipantServices` and `widgetServices`, wires providers, assembles workspace digest. |
+| `chatWidget.ts` | Chat panel UI — TipTap input, message list, context pills, code action handling |
+| `chatSystemPrompts.ts` | Mode-aware system prompt builder (Ask/Edit/Agent). Injects PARALLX_IDENTITY, prompt file layers, workspace digest. |
+| `chatContextPills.ts` | Visual context chips above chat input — shows attached files, RAG results, token counts |
+| `chatSessionSidebar.ts` | Session list with full-text search |
+| `chatListRenderer.ts` | Renders chat messages — markdown, code blocks with action buttons, token counts |
+| `participants/defaultParticipant.ts` | Default chat participant with agentic loop (max 10 iterations). Handles prompt assembly, tool invocation, RAG context, budget management. |
+| `tools/builtInTools.ts` | 11+ built-in tools (search, read, write, edit, delete, run_command, etc.) |
+
+**Workspace Digest Pipeline:**
+
+Every system prompt includes a pre-computed workspace digest (~2000 tokens) so the AI "already knows" the workspace without tool calls:
+
+```
+getWorkspaceDigest()
+  ├── DB query: canvas page titles (limit 30)
+  ├── File tree walk: depth 3, max 80 entries, skip hidden/node_modules
+  └── Key file previews: README.md, SOUL.md, AGENTS.md (first 500 chars)
+        │
+        ▼
+  ISystemPromptContext.workspaceDigest
+        │
+        ▼
+  appendWorkspaceStats() → injected into system prompt
+```
+
+**Prompt Assembly Order:**
+1. Core PARALLX_IDENTITY (hardcoded personality + behavior rules)
+2. `SOUL.md` (user-editable personality, workspace root)
+3. `AGENTS.md` (user-editable project context, workspace root)
+4. `TOOLS.md` (auto-generated from skill manifests)
+5. `.parallx/rules/*.md` (pattern-matched to active file)
+6. Workspace digest (auto-generated page titles + file tree + key file previews)
+7. RAG results (auto-retrieved per user message)
+8. Explicit `@` mentions / attachments
+9. Memory context (recalled from past sessions)
+10. Conversation history
+11. User's current message
 
 ### `electron/`
 **Electron main process and preload bridge (outside `src/`).**

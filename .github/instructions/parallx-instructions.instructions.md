@@ -5,25 +5,32 @@ description: These instructions provide guidelines for AI to follow when thinkin
 
 ## 0. Active Milestone Context
 
-The current work is **Milestone 10 — RAG-Powered AI Assistant** (`docs/Parallx_Milestone_10.md`). Read the milestone document before implementing any M10 task. It contains verified API specs, integration blueprints, TypeScript interfaces, and a phased task breakdown.
+The current work is **Milestone 11 — Second Brain: From Chat Widget to Jarvis** (`docs/Parallx_Milestone_11.md`). Read the milestone document before implementing any M11 task. It contains research, architecture decisions, the OpenClaw-inspired skill/prompt file system, and a 40-task phased breakdown (all ✅ complete, plus a post-audit hardening pass).
 
-### Key M10 Constraints
+### Key M11 Constraints
 
 - **Local-only AI via Ollama** (`localhost:11434`). No cloud providers, no API keys.
-- **Embedding model**: `nomic-embed-text` v1.5 via Ollama `/api/embed` (batch endpoint). **Task prefixes mandatory**: `search_document:` for indexing, `search_query:` for retrieval.
-- **Vector storage**: `sqlite-vec` extension loaded into existing `better-sqlite3` via `sqliteVec.load(db)`. Uses `vec0` virtual table with `float[768]` + auxiliary columns. No `electron-rebuild` needed — it's a prebuilt SQLite extension, not a Node addon.
-- **Keyword search**: SQLite FTS5 with built-in BM25 ranking. No external BM25 library.
-- **Hybrid retrieval**: Vector cosine similarity + FTS5 BM25, merged via Reciprocal Rank Fusion (k=60).
-- **Chunking**: Canvas pages chunk by TipTap block (natural boundaries). Files chunk by heading/paragraph. Structural context prefix prepended before embedding (Anthropic Contextual Retrieval pattern — no LLM cost).
-- **Workspace-wide scope**: The AI is NOT limited to canvas pages. It must index and retrieve from canvas pages, workspace files, and any future tool data sources.
-- **Existing M9 chat system** is the integration target — RAG feeds into `defaultParticipant.ts` context injection.
+- **Skill-based tool system**: Each tool is a skill with a `SKILL.md` manifest. Built-in skills ship with Parallx; workspace skills live in `.parallx/skills/`.
+- **Prompt file layering**: `SOUL.md` (personality) → `AGENTS.md` (project context) → `TOOLS.md` (tool instructions) → `.parallx/rules/*.md` (pattern-scoped). All at workspace root, user-editable.
+- **Workspace digest**: Every system prompt includes a pre-computed workspace digest (~2000 tokens) — canvas page titles, file tree (depth 3), key file previews. The AI "already knows" the workspace.
+- **3-tier permissions**: always-allowed / requires-approval / never-allowed. Per-skill config in `.parallx/permissions.json`.
+- **Token budget manager**: System 10%, RAG 30%, History 30%, User 30%. Priority-based trimming.
+- **`.parallxignore`**: Git-style patterns for both indexing exclusion and AI file access blocking.
+- **Small model guidance**: qwen2.5:32b-instruct needs explicit behavioral rules and pre-loaded context. System prompts include tool chaining instructions and personality directives.
+
+### Inherited M10 Constraints (Still Apply)
+
+- **Embedding model**: `nomic-embed-text` v1.5 via Ollama `/api/embed`. Task prefixes: `search_document:` / `search_query:`.
+- **Vector storage**: `sqlite-vec` with `vec0` virtual table, `float[768]`.
+- **Hybrid retrieval**: Vector cosine similarity + FTS5 BM25, merged via RRF (k=60).
+- **Workspace-wide scope**: Indexes canvas pages, workspace files, and all tool data sources.
 
 ### Inherited M9 Constraints (Still Apply)
 
 - **Tiptap reuse** for chat rendering and input.
 - **Session URIs**: `parallx-chat-session:///<uuid>`.
 - **Token estimation**: `chars / 4`.
-- **10 built-in tools** (M9) + new `search_knowledge` tool (M10).
+- **11+ built-in tools** (M9 base + M10 `search_knowledge` + M11 `write_file`, `edit_file`, `delete_file`, `run_command`).
 
 ### Canvas Gate Architecture
 

@@ -1065,4 +1065,112 @@ Phase 4 — "Full Jarvis" (4.1 → 4.10)
 
 ---
 
-*This document is the living plan for Milestone 11. Mark tasks ⬜ → ✅ as work progresses. Each task has enough context to be worked on independently — read the task description, check the files listed, and implement.*
+## Post-Audit Hardening Pass
+
+After all 40 tasks were marked ✅, a comprehensive quality audit was performed to identify runtime bugs, integration gaps, and architectural weaknesses. This section documents the fixes and improvements made during that hardening pass.
+
+### Audit Bug Fixes (commit `1a7df47`)
+
+A full audit of the M11 codebase identified ~30 issues across 13 categories. All were fixed in a single pass:
+
+| # | Fix | Files Changed | What Was Wrong |
+|---|-----|---------------|----------------|
+| **H1** | **Pass `workspaceRoot` to `registerBuiltInTools()`** | `chatTool.ts`, `builtInTools.ts` | `delete_file` and `run_command` tools received `undefined` for workspace root — sandbox validation would fail |
+| **H2** | **Wire code-action event listener in `chatWidget`** | `chatWidget.ts` | "Apply to File" buttons on code blocks dispatched `parallx-code-action` events, but nothing caught them — the diff flow never triggered |
+| **H3** | **Wire mention and command providers in `setActiveWidget()`** | `chatTool.ts` | Mention provider (workspace file autocomplete) and slash command provider were never connected to the widget |
+| **H4** | **Implement `listFolderFiles` helper** | `chatTool.ts` | `@folder:` mentions called `listFolderFiles()` which didn't exist — would crash at runtime |
+| **H5** | **Implement `userCommandFileSystem` helper** | `chatTool.ts` | User-defined slash commands from `.parallx/commands/` had no file reader — commands would silently fail |
+| **H6** | **Implement `/compact` handler** | `chatTool.ts`, `defaultParticipant.ts` | `/compact` summarized history but appended the summary instead of replacing old messages — context window kept growing |
+| **H7** | **Fix excluded context pill IDs** | `defaultParticipant.ts` | `getExcludedContextIds()` was never wired — removed pills still appeared in the prompt |
+| **H8** | **Fix token budget report** | `defaultParticipant.ts` | Budget report showed pre-trim token counts instead of post-trim actuals — misleading numbers |
+| **H9** | **Wire session search** | `chatTool.ts`, `chatSessionSidebar.ts` | Sidebar search input existed but `_performSearch()` was a stub — searching did nothing |
+| **H10** | **Instantiate SkillLoader, Config, Permission services** | `chatTool.ts` | Services were imported but never constructed — skill loading, config reading, and permission checks were dead code |
+| **H11** | **Fix CSS selector mismatch** | `chatWidget.css` | `.parallx-chat-diff-line--equal` class was applied in JS but missing from CSS — diff equal lines had no styling |
+| **H12** | **Fix token count property access** | `chatListRenderer.ts` | Token display read `.value` but the actual property was `.content` / `.code` — showed "undefined tokens" |
+| **H13** | **Hoist `pills` array scope** | `defaultParticipant.ts` | `pills` was declared inside an `if` block but referenced outside it — would throw ReferenceError |
+
+### Context Pill Crash Fix (commit `50f2a97`)
+
+**Bug:** `DOMTokenList.add` threw an error: `"token provided ('parallx-chat-context-pill parallx-chat-context-pill--system') contains HTML space characters."`
+
+**Root cause:** The `$()` DOM helper expects `tag.class1.class2` format (dot-separated), but `_createPill()` in `chatContextPills.ts` used `.join(' ')` (space-separated) for CSS modifier classes.
+
+**Fix:** Changed `.join(' ')` to `.join('.')` at line 247 so the class string follows the `$()` convention.
+
+### System Prompt Personality Overhaul (commit `5e2e804`)
+
+**Problem:** The AI assistant was passive and always asked for explicit instructions before acting. Users expected Jarvis-like behavior — proactive, opinionated, anticipating needs.
+
+**Changes to `chatSystemPrompts.ts`:**
+- Rewrote `PARALLX_IDENTITY` to include personality directives: *"Act like a trusted co-pilot who anticipates needs"*, *"Never ask for clarification when you can make a reasonable assumption"*, *"Be opinionated — suggest the best approach, don't list options"*
+- Updated all three mode prompts (Ask, Edit, Agent) with behavior rules tuned for the qwen2.5:32b-instruct model
+- Removed over-cautious phrasing that caused the model to hedge instead of act
+
+### Tool Chaining Prompt Guidance (commit `5b6ebde`)
+
+**Problem:** The AI would call `list_files` and return filenames to the user instead of following up with `read_file` to actually read content. Small local models take the path of least resistance — one tool call, then stop.
+
+**Changes:**
+- Added "ALWAYS READ CONTENT" rules to Ask and Agent mode system prompts
+- Updated `list_files` tool description: *"This only lists names — must follow up with read_file to see content"*
+- Updated `read_file` tool description: *"Always read files before summarizing or explaining them"*
+- These explicit instructions are necessary because small local models (unlike cloud GPT-4/Claude) don't infer multi-step workflows from context alone
+
+### Workspace Digest Architecture (commit `4a6ddc9`)
+
+**Problem:** The system prompt included numeric workspace stats (file count, page count) but zero information about WHAT existed. The AI had to discover everything via tool calls, making it feel slow and uninformed. Users expected it to "already know" the workspace.
+
+**Solution — `getWorkspaceDigest()` pipeline:**
+
+This is a significant architectural addition that pre-loads workspace knowledge into every system prompt (~2000 token budget).
+
+```
+Startup / Session Start
+    │
+    ▼
+┌── getWorkspaceDigest() ────────────────────────────────┐
+│                                                         │
+│  1. Query DB for canvas page titles (limit 30)          │
+│     → "Pages: Getting Started, Architecture Notes, ..." │
+│                                                         │
+│  2. Walk file tree (depth 3, max 80 entries)            │
+│     → Skip: node_modules, .git, hidden dirs             │
+│     → "Files:\n  src/\n    main.ts\n    services/\n..." │
+│                                                         │
+│  3. Read key files (first 500 chars each)               │
+│     → README.md, SOUL.md, AGENTS.md, package.json       │
+│     → "Key file previews:\n--- README.md ---\n..."      │
+│                                                         │
+│  Result: ~2000 tokens of structured workspace knowledge │
+└─────────────────────────────────────────────────────────┘
+    │
+    ▼
+ISystemPromptContext.workspaceDigest
+    │
+    ▼
+appendWorkspaceStats() injects into system prompt
+    │
+    ▼
+"YOU ALREADY KNOW THIS WORKSPACE" header + digest content
+```
+
+**Files changed:**
+- `chatTool.ts` — Added `getWorkspaceDigest()` function and wired it into `defaultParticipantServices`
+- `defaultParticipant.ts` — Added `getWorkspaceDigest?()` to `IDefaultParticipantServices`, calls it during prompt assembly
+- `chatSystemPrompts.ts` — Added `workspaceDigest?: string` to `ISystemPromptContext`, injected via `appendWorkspaceStats()`. Ask and Agent mode prompts now say *"You already know this workspace — use this knowledge to answer without tool calls when possible"*
+
+**Architectural insight:** Small local models (qwen2.5:32b-instruct) need both (a) explicit behavioral rules in the system prompt AND (b) pre-loaded context to avoid multi-step discovery. Cloud models can chain 5–10 tool calls naturally; local models take the path of least resistance and stop after 1–2 calls unless strongly guided.
+
+### Commit Log
+
+| Commit | Description | Files Changed |
+|--------|-------------|---------------|
+| `1a7df47` | M11 audit: fix bugs and wire missing integrations | 8 files, +409 −19 |
+| `50f2a97` | Fix context pill classList crash (dot-join, not space-join) | 1 file |
+| `5e2e804` | Rewrite system prompts with Jarvis-like personality | 1 file |
+| `5b6ebde` | Add tool chaining guidance to system prompts and tool descriptions | 2 files |
+| `4a6ddc9` | Add workspace digest pre-loading to system prompt pipeline | 3 files |
+
+---
+
+*This document is the living plan for Milestone 11. All 40 core tasks are ✅ complete. The post-audit hardening pass addressed runtime bugs, UX issues, and architectural gaps discovered during integration testing.*
