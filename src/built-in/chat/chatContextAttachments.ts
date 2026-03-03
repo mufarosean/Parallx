@@ -17,32 +17,10 @@ import type { Event } from '../../platform/events.js';
 import { $ } from '../../ui/dom.js';
 import { chatIcons } from './chatIcons.js';
 import type { IChatAttachment } from '../../services/chatTypes.js';
+import type { IOpenEditorFile, IAttachmentServices } from './chatTypes.js';
 
-// ── Service interface ──
-
-/** Information about an open editor file. */
-export interface IOpenEditorFile {
-  readonly name: string;
-  readonly fullPath: string;
-}
-
-/** A workspace file entry (from recursive directory listing). */
-export interface IWorkspaceFileEntry {
-  readonly name: string;
-  readonly fullPath: string;
-  readonly relativePath: string;
-  readonly isDirectory: boolean;
-}
-
-/** Services needed by the attachment ribbon. */
-export interface IAttachmentServices {
-  /** Get currently open editor files. */
-  getOpenEditorFiles(): IOpenEditorFile[];
-  /** Fires when open editors change (open/close/reorder). */
-  readonly onDidChangeOpenEditors: Event<void>;
-  /** List workspace files (recursive, up to a limit). Returns empty array if unavailable. */
-  listWorkspaceFiles?(): Promise<IWorkspaceFileEntry[]>;
-}
+// IOpenEditorFile, IWorkspaceFileEntry, IAttachmentServices — now defined in chatTypes.ts (M13 Phase 1)
+export type { IOpenEditorFile, IWorkspaceFileEntry, IAttachmentServices } from './chatTypes.js';
 
 // ── Component ──
 

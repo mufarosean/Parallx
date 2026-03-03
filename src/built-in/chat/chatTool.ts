@@ -13,19 +13,19 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { Event } from '../../platform/events.js';
 import { OllamaProvider } from './providers/ollamaProvider.js';
-import type { IRetrievalPlan } from './providers/ollamaProvider.js';
+import type { IRetrievalPlan } from './chatTypes.js';
 import { buildPlannerPrompt } from './chatSystemPrompts.js';
 import { createChatView } from './chatView.js';
-import type { IChatWidgetServices } from './chatWidget.js';
+import type { IChatWidgetServices } from './chatTypes.js';
 import type { ChatWidget } from './chatWidget.js';
 import { createDefaultParticipant } from './participants/defaultParticipant.js';
 import { createWorkspaceParticipant } from './participants/workspaceParticipant.js';
 import { createCanvasParticipant } from './participants/canvasParticipant.js';
 import { registerBuiltInTools, extractTextContent } from './tools/builtInTools.js';
-import type { IBuiltInToolFileWriter } from './tools/builtInTools.js';
+import type { IBuiltInToolFileWriter } from './chatTypes.js';
 import { ChatTokenStatusBar } from './chatTokenStatusBar.js';
-import type { IPageSummary } from './participants/workspaceParticipant.js';
-import type { IBlockSummary, IPageStructure } from './participants/canvasParticipant.js';
+import type { IPageSummary } from './chatTypes.js';
+import type { IBlockSummary, IPageStructure } from './chatTypes.js';
 import {
   ILanguageModelsService,
   IChatService,
@@ -46,7 +46,7 @@ import type {
 } from '../../services/chatTypes.js';
 import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
-import type { IBuiltInToolFileSystem } from './tools/builtInTools.js';
+import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
 import type { IPromptFileAccess } from '../../services/promptFileService.js';
 import { PermissionService } from '../../services/permissionService.js';

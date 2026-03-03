@@ -12,41 +12,10 @@
 import { Disposable } from '../../platform/lifecycle.js';
 import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
+import type { IChatSlashCommand, IParsedSlashCommand } from './chatTypes.js';
 
-// ── Types ──
-
-/**
- * A registered slash command.
- */
-export interface IChatSlashCommand {
-  /** Command name (without leading /). */
-  readonly name: string;
-  /** Short description shown in autocomplete. */
-  readonly description: string;
-  /**
-   * Prompt template. `{input}` is replaced with the user's remaining text.
-   * `{context}` is replaced with attached/mentioned context content.
-   */
-  readonly promptTemplate: string;
-  /** Whether this is a built-in (true) or user-defined (false) command. */
-  readonly isBuiltIn: boolean;
-  /**
-   * Special handler name. If set, the command is dispatched to a
-   * specific handler instead of using the prompt template.
-   * Examples: 'init', 'compact'.
-   */
-  readonly specialHandler?: string;
-}
-
-/** Result of parsing a slash command from user input. */
-export interface IParsedSlashCommand {
-  /** The matched command, or undefined if no command found. */
-  readonly command: IChatSlashCommand | undefined;
-  /** The command name (without leading /), or undefined. */
-  readonly commandName: string | undefined;
-  /** Remaining user text after the /command. */
-  readonly remainingText: string;
-}
+// IChatSlashCommand, IParsedSlashCommand — now defined in chatTypes.ts (M13 Phase 1)
+export type { IChatSlashCommand, IParsedSlashCommand } from './chatTypes.js';
 
 // ── Built-in Commands ──
 

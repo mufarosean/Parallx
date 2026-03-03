@@ -9,24 +9,10 @@
 //   src/vs/workbench/contrib/chat/common/chatAgents.ts — mode checked in invokeAgent()
 
 import { ChatMode } from '../../services/chatTypes.js';
+import type { IChatModeCapabilities } from './chatTypes.js';
 
-// ── Capability Matrix ──
-
-/**
- * Per-mode capability flags.
- *
- * Used by participants and the request pipeline to gate features.
- */
-export interface IChatModeCapabilities {
-  /** Can the mode read workspace/canvas context? (All modes can.) */
-  readonly canReadContext: boolean;
-  /** Can the mode invoke tools via the agentic loop? */
-  readonly canInvokeTools: boolean;
-  /** Can the mode propose edits to canvas blocks? */
-  readonly canProposeEdits: boolean;
-  /** Can the mode run autonomous multi-step reasoning? */
-  readonly canAutonomous: boolean;
-}
+// IChatModeCapabilities — now defined in chatTypes.ts (M13 Phase 1)
+export type { IChatModeCapabilities } from './chatTypes.js';
 
 /**
  * Frozen capability objects — one per mode.

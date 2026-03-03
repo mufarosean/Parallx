@@ -11,17 +11,11 @@ import { Disposable, toDisposable } from '../../platform/lifecycle.js';
 import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
-import type { ILanguageModelInfo } from '../../services/chatTypes.js';
 import { chatIcons } from './chatIcons.js';
+import type { IModelPickerServices } from './chatTypes.js';
 
-/** Service accessor for model picker. */
-export interface IModelPickerServices {
-  getModels(): Promise<readonly ILanguageModelInfo[]>;
-  getActiveModel(): string | undefined;
-  setActiveModel(modelId: string): void;
-  readonly onDidChangeModels: Event<void>;
-  getModelContextLength?(modelId: string): Promise<number>;
-}
+// IModelPickerServices — now defined in chatTypes.ts (M13 Phase 1)
+export type { IModelPickerServices } from './chatTypes.js';
 
 /**
  * Model picker — a button that opens a dropdown list of available models.

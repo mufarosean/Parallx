@@ -522,15 +522,10 @@ const EDIT_OP_LABELS: Record<string, { label: string; icon: string }> = {
   delete: { label: 'Delete', icon: '\u2212' },  // −
 };
 
-/**
- * Custom DOM event dispatched when the user accepts an edit proposal.
- *
- * The widget container or activation layer should listen for this event
- * and apply the edit to the canvas via IDatabaseService.
- */
-export interface EditApplyEventDetail {
-  readonly proposal: IChatEditProposalContent;
-}
+import type { EditApplyEventDetail } from './chatTypes.js';
+
+// EditApplyEventDetail — now defined in chatTypes.ts (M13 Phase 1)
+export type { EditApplyEventDetail } from './chatTypes.js';
 
 function _renderEditProposal(part: IChatEditProposalContent): HTMLElement {
   const root = $('div.parallx-chat-edit-proposal');

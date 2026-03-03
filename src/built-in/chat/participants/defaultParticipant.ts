@@ -22,8 +22,6 @@ import type {
   IChatParticipantResult,
   IChatMessage,
   IChatRequestOptions,
-  IChatResponseChunk,
-  IToolDefinition,
   IToolCall,
   IToolResult,
   IChatEditProposalContent,
@@ -31,18 +29,20 @@ import type {
   IContextPill,
 } from '../../../services/chatTypes.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
+import type {
+  IDefaultParticipantServices,
+  IInitCommandServices,
+  IMentionResolutionServices,
+  IRetrievalPlan,
+  ISystemPromptContext,
+} from '../chatTypes.js';
 import { buildSystemPrompt } from '../chatSystemPrompts.js';
-import type { ISystemPromptContext } from '../chatSystemPrompts.js';
-import type { IRetrievalPlan } from '../providers/ollamaProvider.js';
 import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } from '../chatModeCapabilities.js';
 import { executeInitCommand } from '../commands/initCommand.js';
-import type { IInitCommandServices } from '../commands/initCommand.js';
 import { TokenBudgetService } from '../../../services/tokenBudgetService.js';
 import { extractMentions, resolveMentions } from '../chatMentionResolver.js';
-import type { IMentionResolutionServices } from '../chatMentionResolver.js';
 import { SlashCommandRegistry, parseSlashCommand } from '../chatSlashCommands.js';
 import { loadUserCommands } from '../userCommandLoader.js';
-import type { IUserCommandFileSystem } from '../userCommandLoader.js';
 
 /** Default maximum agentic loop iterations. */
 const DEFAULT_MAX_ITERATIONS = 10;
@@ -138,192 +138,8 @@ function categorizeError(err: unknown): { message: string; isNetworkError: boole
   return { message: msg, isNetworkError: false };
 }
 
-/**
- * Service accessor for the default participant.
- * Passed in from the activation layer — avoids importing service implementations.
- */
-export interface IDefaultParticipantServices {
-  sendChatRequest(
-    messages: readonly IChatMessage[],
-    options?: IChatRequestOptions,
-    signal?: AbortSignal,
-  ): AsyncIterable<IChatResponseChunk>;
-  getActiveModel(): string | undefined;
-  /** Workspace name for system prompt context. */
-  getWorkspaceName(): string;
-  /** Page count for system prompt context. */
-  getPageCount(): Promise<number>;
-  /** Current page title, if any. */
-  getCurrentPageTitle(): string | undefined;
-  /** Available tool definitions (for Agent mode — all tools). */
-  getToolDefinitions(): readonly IToolDefinition[];
-  /** Read-only tool definitions (for Ask mode — no write tools). */
-  getReadOnlyToolDefinitions(): readonly IToolDefinition[];
-  /**
-   * Invoke a tool by name with confirmation gate (Cap 6).
-   * Returns the tool result (may include user rejection).
-   */
-  invokeTool?(
-    name: string,
-    args: Record<string, unknown>,
-    token: ICancellationToken,
-  ): Promise<IToolResult>;
-  /** Max agentic loop iterations (default: 10). */
-  maxIterations?: number;
-  /** Network timeout in milliseconds (default: 60000). */
-  networkTimeout?: number;
-  /** Context length of the active model (tokens). 0 = unknown. */
-  getModelContextLength?(): number;
-  /** Send a summarization request to compress conversation history. */
-  sendSummarizationRequest?(
-    messages: readonly IChatMessage[],
-    signal?: AbortSignal,
-  ): AsyncIterable<IChatResponseChunk>;
-
-  // ── Workspace statistics (M10 Phase 4 — dynamic system prompt) ──
-
-  /** Count of files in the workspace (undefined if no workspace folder). */
-  getFileCount?(): Promise<number>;
-  /** Whether the RAG knowledge index is ready for retrieval. */
-  isRAGAvailable?(): boolean;
-  /** Whether the indexing pipeline is currently running. */
-  isIndexing?(): boolean;
-  /** Read a file's text content by path (for attachment context injection). */
-  readFileContent?(fullPath: string): Promise<string>;
-
-  /**
-   * Read the content of the currently active canvas page (implicit context).
-   * Returns title + text content, or undefined if no page is open.
-   */
-  getCurrentPageContent?(): Promise<{ title: string; pageId: string; textContent: string } | undefined>;
-
-  // ── RAG context retrieval (M10 Phase 3) ──
-
-  /**
-   * Retrieve relevant context chunks for a user query via hybrid search.
-   * Returns formatted context string + source citations for Reference rendering.
-   * Returns undefined if the retrieval service is not available or indexing hasn't completed.
-   */
-  retrieveContext?(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string }> } | undefined>;
-
-  // ── Planned retrieval (M12 — 2-call pipeline) ──
-
-  /**
-   * Run the retrieval planner (LLM call 1) to classify intent and generate
-   * targeted search queries, then perform multi-query retrieval.
-   * Returns the formatted context, source citations, and the plan metadata.
-   * Falls back to single-query retrieval on planner failure.
-   */
-  planAndRetrieve?(
-    userText: string,
-    recentHistory?: string,
-    workspaceDigest?: string,
-  ): Promise<{ text: string; sources: Array<{ uri: string; label: string }>; plan?: IRetrievalPlan } | undefined>;
-
-  // ── Memory (M10 Phase 5 — Tasks 5.1 + 5.2) ──
-
-  /** Recall relevant memories from past conversations. */
-  recallMemories?(query: string): Promise<string | undefined>;
-  /** Store a conversation summary in memory. */
-  storeSessionMemory?(sessionId: string, summary: string, messageCount: number): Promise<void>;
-  /** Check if a session has enough messages for summarisation. */
-  isSessionEligibleForSummary?(messageCount: number): boolean;
-  /** Check if a session has already been summarised. */
-  hasSessionMemory?(sessionId: string): Promise<boolean>;
-  /** Extract and store user preferences from text. */
-  extractPreferences?(text: string): Promise<void>;
-  /** Get formatted preferences for system prompt injection. */
-  getPreferencesForPrompt?(): Promise<string | undefined>;
-
-  // ── Prompt file overlay (M11 Task 1.4) ──
-
-  /**
-   * Get assembled prompt file overlay from SOUL.md / AGENTS.md / TOOLS.md / rules/*.md.
-   * Returns the overlay text to replace the hardcoded PARALLX_IDENTITY in the system prompt.
-   * Returns undefined if no prompt files are configured.
-   * @param activeFilePath — relative path of the currently active file (for pattern-scoped rules)
-   */
-  getPromptOverlay?(activeFilePath?: string): Promise<string | undefined>;
-
-  // ── /init command support (M11 Task 1.6) ──
-
-  /**
-   * List files in a relative directory. For /init workspace scanning.
-   */
-  listFilesRelative?(relativePath: string): Promise<{ name: string; type: 'file' | 'directory' }[]>;
-  /**
-   * Read a file by relative path. Returns null on error.
-   */
-  readFileRelative?(relativePath: string): Promise<string | null>;
-  /**
-   * Write a file to workspace root by relative path.
-   */
-  writeFileRelative?(relativePath: string, content: string): Promise<void>;
-  /**
-   * Check if a relative path exists in the workspace.
-   */
-  existsRelative?(relativePath: string): Promise<boolean>;
-  /**
-   * Invalidate the prompt file cache (after AGENTS.md is written).
-   */
-  invalidatePromptFiles?(): void;
-
-  /**
-   * Report context pills — called after context resolution so the UI
-   * can show what the LLM sees (M11 Task 1.10).
-   */
-  reportContextPills?(pills: IContextPill[]): void;
-
-  /**
-   * Report token budget breakdown — called after budget allocation so the UI
-   * can show slot usage (M11 Task 4.8).
-   */
-  reportBudget?(slots: ReadonlyArray<{ label: string; used: number; allocated: number; color: string }>): void;
-
-  // ── @mention resolution (M11 Tasks 3.2–3.4) ──
-
-  /**
-   * List files in a folder by relative path (for @folder: mention).
-   * Returns relative paths and content of each file (respecting .parallxignore).
-   */
-  listFolderFiles?(folderPath: string): Promise<Array<{ relativePath: string; content: string }>>;
-  /**
-   * Get last N lines of terminal output (for @terminal mention).
-   */
-  getTerminalOutput?(): Promise<string | undefined>;
-
-  // ── User-defined commands (M11 Task 3.7) ──
-
-  /**
-   * Filesystem for loading user-defined slash commands from .parallx/commands/.
-   */
-  userCommandFileSystem?: IUserCommandFileSystem;
-
-  // ── /compact session compaction (M11 Task 3.8) ──
-
-  /**
-   * Replace session history with a compacted summary.
-   * Called by /compact after summarization is complete.
-   */
-  compactSession?(sessionId: string, summaryText: string): void;
-
-  // ── Excluded context (M11 Task 1.10) ──
-
-  /**
-   * Get the set of context pill IDs the user has excluded via the UI.
-   * Context sources whose ID matches an excluded pill should be skipped.
-   */
-  getExcludedContextIds?(): ReadonlySet<string>;
-
-  // ── Workspace digest (proactive context grounding) ──
-
-  /**
-   * Build a pre-loaded workspace digest: file tree, page titles, and
-   * key file previews (README, etc). This is injected into the system
-   * prompt so the AI already knows the workspace before the user types.
-   */
-  getWorkspaceDigest?(): Promise<string | undefined>;
-}
+// IDefaultParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
+export type { IDefaultParticipantServices } from '../chatTypes.js';
 
 /** Default participant ID — must match ChatAgentService's DEFAULT_AGENT_ID. */
 const DEFAULT_PARTICIPANT_ID = 'parallx.chat.default';

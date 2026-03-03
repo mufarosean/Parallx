@@ -6,29 +6,10 @@
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/common/requestParser/chatRequestParser.ts
 
-/**
- * Result of parsing user input.
- */
-export interface IChatParsedRequest {
-  /** Resolved participant ID (from @mention), or undefined for default. */
-  readonly participantId?: string;
-  /** Slash command (without leading /), or undefined. */
-  readonly command?: string;
-  /** Variable references extracted from the message. */
-  readonly variables: readonly IChatParsedVariable[];
-  /** Remaining message text after extracting mentions, commands, and variables. */
-  readonly text: string;
-}
+import type { IChatParsedRequest, IChatParsedVariable } from './chatTypes.js';
 
-/**
- * A variable reference found in the input.
- */
-export interface IChatParsedVariable {
-  /** Variable name (without leading #). */
-  readonly name: string;
-  /** Original text span (e.g. "#currentPage"). */
-  readonly original: string;
-}
+// IChatParsedRequest, IChatParsedVariable — now defined in chatTypes.ts (M13 Phase 1)
+export type { IChatParsedRequest, IChatParsedVariable } from './chatTypes.js';
 
 // ── Regex Patterns ──
 

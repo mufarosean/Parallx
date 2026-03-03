@@ -19,51 +19,11 @@ import type {
   ICancellationToken,
   IChatParticipantResult,
   IChatMessage,
-  IChatRequestOptions,
-  IChatResponseChunk,
 } from '../../../services/chatTypes.js';
+import type { IPageStructure, ICanvasParticipantServices } from '../chatTypes.js';
 
-// ── Service accessor ──
-
-/** Block summary returned by canvas queries. */
-export interface IBlockSummary {
-  readonly id: string;
-  readonly blockType: string;
-  readonly parentBlockId: string | null;
-  readonly sortOrder: number;
-  /** Plain text preview of the block content (truncated). */
-  readonly textPreview: string;
-}
-
-/** Page structure with blocks. */
-export interface IPageStructure {
-  readonly pageId: string;
-  readonly title: string;
-  readonly icon?: string;
-  readonly blocks: readonly IBlockSummary[];
-}
-
-/**
- * Services injected into the canvas participant.
- * Wired in chatTool.ts with real service implementations.
- */
-export interface ICanvasParticipantServices {
-  sendChatRequest(
-    messages: readonly IChatMessage[],
-    options?: IChatRequestOptions,
-    signal?: AbortSignal,
-  ): AsyncIterable<IChatResponseChunk>;
-  getActiveModel(): string | undefined;
-
-  /** Get the ID of the currently active page (from editor). */
-  getCurrentPageId(): string | undefined;
-  /** Get the title of the currently active page. */
-  getCurrentPageTitle(): string | undefined;
-  /** Get the block structure of a page. */
-  getPageStructure(pageId: string): Promise<IPageStructure | null>;
-  /** Workspace display name. */
-  getWorkspaceName(): string;
-}
+// IBlockSummary, IPageStructure, ICanvasParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
+export type { IBlockSummary, IPageStructure, ICanvasParticipantServices } from '../chatTypes.js';
 
 // ── Constants ──
 

@@ -17,44 +17,10 @@ import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import { chatIcons } from './chatIcons.js';
+import type { IMentionSuggestion, IMentionAcceptEvent, IMentionSuggestionProvider, ISlashCommandProvider } from './chatTypes.js';
 
-// ── Types ──
-
-/** A suggestion item in the autocomplete dropdown. */
-export interface IMentionSuggestion {
-  /** Display label (e.g. "workspace", "file:main.ts"). */
-  readonly label: string;
-  /** Kind determines icon and insertion behavior. */
-  readonly kind: 'scope' | 'file' | 'folder' | 'command';
-  /** Description shown alongside the label. */
-  readonly description?: string;
-  /** The full text to insert (e.g. "@workspace", "@file:src/main.ts"). */
-  readonly insertText: string;
-  /** Sort priority (lower = higher in list). */
-  readonly sortOrder?: number;
-}
-
-/** Fired when the user selects a suggestion. */
-export interface IMentionAcceptEvent {
-  /** The full insert text (e.g. "@file:src/main.ts "). */
-  readonly insertText: string;
-  /** Start offset of the trigger character in the textarea value. */
-  readonly triggerStart: number;
-  /** End offset (cursor position when accepted). */
-  readonly triggerEnd: number;
-}
-
-/** Service interface for providing workspace file/folder suggestions. */
-export interface IMentionSuggestionProvider {
-  /** List workspace files (relative paths). */
-  listFiles(): Promise<Array<{ name: string; relativePath: string; isDirectory: boolean }>>;
-}
-
-/** Service interface for providing slash command suggestions. */
-export interface ISlashCommandProvider {
-  /** Get all registered slash commands (built-in + user-defined). */
-  getCommands(): Array<{ name: string; description: string }>;
-}
+// Mention & autocomplete types — now defined in chatTypes.ts (M13 Phase 1)
+export type { IMentionSuggestion, IMentionAcceptEvent, IMentionSuggestionProvider, ISlashCommandProvider } from './chatTypes.js';
 
 // ── Built-in scopes ──
 

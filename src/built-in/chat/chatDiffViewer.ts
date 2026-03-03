@@ -12,28 +12,10 @@
 import { $ } from '../../ui/dom.js';
 import type { IDiffResult, IDiffHunk, ILineDiffChange, IWordChange } from '../../services/diffService.js';
 import { computeWordDiff, estimateDiffTokens } from '../../services/diffService.js';
+import type { DiffReviewDecision, IDiffViewerOptions } from './chatTypes.js';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Types
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/** Decision the user makes on a diff. */
-export type DiffReviewDecision = 'accept' | 'reject';
-
-/** Callback for when the user accepts or rejects a diff. */
-export type DiffReviewCallback = (decision: DiffReviewDecision, diff: IDiffResult) => void;
-
-/** Options for the diff viewer. */
-export interface IDiffViewerOptions {
-  /** Show word-level inline highlights within changed lines. */
-  wordLevelHighlight?: boolean;
-  /** Maximum number of lines to show before collapsing. */
-  maxVisibleLines?: number;
-  /** Show the Accept/Reject action bar. */
-  showActions?: boolean;
-  /** Callback when user accepts or rejects. */
-  onReview?: DiffReviewCallback;
-}
+// Diff viewer types — now defined in chatTypes.ts (M13 Phase 1)
+export type { DiffReviewDecision, DiffReviewCallback, IDiffViewerOptions } from './chatTypes.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Rendering

@@ -25,78 +25,24 @@ import type {
   ILanguageModelToolsService,
   ToolPermissionLevel,
 } from '../../../services/chatTypes.js';
+import type {
+  IBuiltInToolDatabase,
+  IBuiltInToolFileSystem,
+  IBuiltInToolFileWriter,
+  IBuiltInToolRetrieval,
+  IBuiltInToolTerminal,
+  CurrentPageIdGetter,
+} from '../chatTypes.js';
 
-// ── Database accessor interface ──
-
-/**
- * Minimal database accessor for built-in tools.
- * Wired from IDatabaseService in chatTool.ts.
- */
-export interface IBuiltInToolDatabase {
-  get<T>(sql: string, params?: unknown[]): Promise<T | null | undefined>;
-  all<T>(sql: string, params?: unknown[]): Promise<T[]>;
-  run(sql: string, params?: unknown[]): Promise<{ changes: number }>;
-  readonly isOpen: boolean;
-}
-
-// ── File system accessor interface ──
-
-/**
- * Minimal file system accessor for built-in tools.
- * Wired from IFileService + IWorkspaceService in chatTool.ts.
- */
-export interface IBuiltInToolFileSystem {
-  /** Read directory entries at a relative path. Returns { name, type, size }[]. */
-  readdir(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
-  /** Read file content at a relative path. Returns the text content. */
-  readFile(relativePath: string): Promise<string>;
-  /** Check if a path exists. */
-  exists(relativePath: string): Promise<boolean>;
-  /** The workspace root display name. */
-  readonly workspaceRootName: string;
-}
-
-// ── File write accessor interface (M11 Task 2.2) ──
-
-/**
- * Minimal file write accessor for write tools.
- * Wired from IFileService + IWorkspaceService in chatTool.ts.
- */
-export interface IBuiltInToolFileWriter {
-  /** Write content to a file at a relative path. Creates parent dirs as needed. */
-  writeFile(relativePath: string, content: string): Promise<void>;
-  /** Check if a relative path is allowed by .parallxignore rules. */
-  isPathAllowed(relativePath: string): boolean;
-}
-
-// ── Retrieval accessor interface (M10 Phase 3) ──
-
-/**
- * Minimal retrieval accessor for the search_knowledge tool.
- * Wired from IRetrievalService + IIndexingPipelineService in chatTool.ts.
- */
-export interface IBuiltInToolRetrieval {
-  /** Whether initial indexing has completed (search is available). */
-  isReady(): boolean;
-  /** Retrieve relevant context chunks for a query. */
-  retrieve(query: string, sourceFilter?: string): Promise<{ sourceType: string; sourceId: string; contextPrefix: string; text: string; score: number }[]>;
-}
-
-// ── Terminal accessor interface (M11 Task 4.3) ──
-
-/**
- * Minimal terminal accessor for the run_command tool.
- * Wired from the Electron terminal IPC bridge in chatTool.ts.
- */
-export interface IBuiltInToolTerminal {
-  /** Execute a command and return stdout/stderr/exitCode. */
-  exec(command: string, options?: { cwd?: string; timeout?: number }): Promise<{
-    stdout: string;
-    stderr: string;
-    exitCode: number;
-    error: { code: string; message: string } | null;
-  }>;
-}
+// Re-export for backward compatibility (M13 Phase 1)
+export type {
+  IBuiltInToolDatabase,
+  IBuiltInToolFileSystem,
+  IBuiltInToolFileWriter,
+  IBuiltInToolRetrieval,
+  IBuiltInToolTerminal,
+  CurrentPageIdGetter,
+} from '../chatTypes.js';
 
 // ── Tool helpers ──
 
@@ -250,12 +196,6 @@ function createReadPageByTitleTool(db: IBuiltInToolDatabase | undefined): IChatT
     },
   };
 }
-
-/**
- * Getter function type for the current active page ID.
- * Wired from editorService.activeEditor.id in chatTool.ts.
- */
-export type CurrentPageIdGetter = () => string | undefined;
 
 function createReadCurrentPageTool(db: IBuiltInToolDatabase | undefined, getCurrentPageId: CurrentPageIdGetter): IChatTool {
   return {

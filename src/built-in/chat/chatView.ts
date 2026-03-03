@@ -11,7 +11,7 @@ import { DisposableStore } from '../../platform/lifecycle.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { OllamaProvider } from './providers/ollamaProvider.js';
 import { ChatWidget } from './chatWidget.js';
-import type { IChatWidgetServices } from './chatWidget.js';
+import type { IChatWidgetServices } from './chatTypes.js';
 import { $ } from '../../ui/dom.js';
 import { setActiveWidget } from './chatTool.js';
 

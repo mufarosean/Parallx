@@ -22,20 +22,10 @@ import type { Event } from '../../platform/events.js';
 import { $ } from '../../ui/dom.js';
 import { chatIcons } from './chatIcons.js';
 import type { IContextPill } from '../../services/chatTypes.js';
+import type { ITokenBudgetSlot } from './chatTypes.js';
 
-// ── Budget Breakdown Types (Task 4.8) ──
-
-/** Per-slot token budget breakdown. */
-export interface ITokenBudgetSlot {
-  /** Slot name (displayed). */
-  label: string;
-  /** Tokens used in this slot. */
-  used: number;
-  /** Maximum tokens allocated. */
-  allocated: number;
-  /** CSS color for the bar segment. */
-  color: string;
-}
+// ITokenBudgetSlot — now defined in chatTypes.ts (M13 Phase 1)
+export type { ITokenBudgetSlot } from './chatTypes.js';
 
 // ── Component ──
 

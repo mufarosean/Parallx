@@ -13,20 +13,10 @@ import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
 import { $ } from '../../ui/dom.js';
 import { chatIcons } from './chatIcons.js';
+import type { IToolPickerServices } from './chatTypes.js';
 
-// ── Types ──
-
-/** Minimal service surface the tool picker needs. */
-export interface IToolPickerServices {
-  /** Get all registered tools with enablement state. */
-  getTools(): readonly { name: string; description: string; enabled: boolean }[];
-  /** Enable or disable a tool. */
-  setToolEnabled(name: string, enabled: boolean): void;
-  /** Fires when tools change (registered/unregistered or enablement). */
-  readonly onDidChangeTools: Event<void>;
-  /** Get count of enabled tools. */
-  getEnabledCount(): number;
-}
+// IToolPickerServices — now defined in chatTypes.ts (M13 Phase 1)
+export type { IToolPickerServices } from './chatTypes.js';
 
 /** Categorised tool for display. */
 interface ToolCategory {

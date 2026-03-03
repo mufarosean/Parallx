@@ -18,61 +18,21 @@ import { ChatInputPart } from './chatInputPart.js';
 import { chatIcons } from './chatIcons.js';
 import { ChatListRenderer } from './chatListRenderer.js';
 import { ChatModelPicker } from './chatModelPicker.js';
-import type { IModelPickerServices } from './chatModelPicker.js';
 import { ChatModePicker } from './chatModePicker.js';
-import type { IModePickerServices } from './chatModePicker.js';
 import { ChatSessionSidebar } from './chatSessionSidebar.js';
-import type { ISessionSidebarServices } from './chatSessionSidebar.js';
-import type { ICodeActionRequest } from './chatCodeActions.js';
-
 import type {
   IChatSession,
   IChatWidgetDescriptor,
-  IChatAttachment,
   IContextPill,
 } from '../../services/chatTypes.js';
-import type { IAttachmentServices } from './chatContextAttachments.js';
-import type { IToolPickerServices } from './chatToolPicker.js';
+import type {
+  IChatWidgetServices,
+  ICodeActionRequest,
+  ISessionSidebarServices,
+} from './chatTypes.js';
 
-// ── Types ──
-
-/** Service accessor passed from the activation layer. */
-export interface IChatWidgetServices {
-  readonly sendRequest: (sessionId: string, message: string, attachments?: readonly IChatAttachment[]) => Promise<void>;
-  readonly cancelRequest: (sessionId: string) => void;
-  readonly createSession: () => IChatSession;
-  readonly onDidChangeSession: Event<string>;
-  readonly getProviderStatus: () => { available: boolean };
-  readonly onDidChangeProviderStatus: Event<void>;
-  /** Optional model picker services — when provided, the model picker is shown. */
-  readonly modelPicker?: IModelPickerServices;
-  /** Optional mode picker services — when provided, the mode picker is shown. */
-  readonly modePicker?: IModePickerServices;
-  /** Optional attachment services — when provided, enables "Add Context" file picker. */
-  readonly attachmentServices?: IAttachmentServices;
-  /** Optional tool picker services — when provided, shows the Configure Tools button. */
-  readonly toolPickerServices?: IToolPickerServices;
-
-  /** Get a session by ID (for session switching from history). */
-  readonly getSession?: (sessionId: string) => IChatSession | undefined;
-  /** Get all sessions. */
-  readonly getSessions?: () => readonly IChatSession[];
-  /** Delete a session by ID. */
-  readonly deleteSession?: (sessionId: string) => void;
-  /** Open a file in the editor (for clicking attachment chips in messages). */
-  readonly openFile?: (fullPath: string) => void;
-
-  /** Get the assembled system prompt text for display (Task 4.10). */
-  readonly getSystemPrompt?: () => Promise<string>;
-
-  /** Read a workspace-relative file (for code action diff flow — Task 2.6). */
-  readonly readFileRelative?: (relativePath: string) => Promise<string | null>;
-  /** Write a workspace-relative file (for code action apply/create — Task 2.6). */
-  readonly writeFileRelative?: (relativePath: string, content: string) => Promise<void>;
-
-  /** Full-text search across session messages (Task 4.5). */
-  readonly searchSessions?: (query: string) => Promise<Array<{ sessionId: string; sessionTitle: string; matchingContent: string }>>;
-}
+// IChatWidgetServices — now defined in chatTypes.ts (M13 Phase 1)
+export type { IChatWidgetServices } from './chatTypes.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ChatWidget

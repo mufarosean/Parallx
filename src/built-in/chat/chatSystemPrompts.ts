@@ -16,42 +16,10 @@
 
 import { ChatMode } from '../../services/chatTypes.js';
 import type { IToolDefinition } from '../../services/chatTypes.js';
+import type { ISystemPromptContext } from './chatTypes.js';
 
-// ── Context types ──
-
-/**
- * Dynamic context injected into system prompts.
- *
- * M10 Phase 4: Removed `pageNames` and `fileNames` arrays — RAG retrieval
- * replaces static listings. Added workspace statistics and RAG status.
- */
-export interface ISystemPromptContext {
-  /** Workspace display name (e.g. "My Project"). */
-  readonly workspaceName: string;
-  /** Number of pages in the workspace. */
-  readonly pageCount: number;
-  /** Title of the currently active page, if any. */
-  readonly currentPageTitle?: string;
-  /** Tool definitions to include (Ask mode: read-only; Agent mode: all). */
-  readonly tools?: readonly IToolDefinition[];
-  /** Number of files in the workspace (0 if unknown). */
-  readonly fileCount?: number;
-  /** Whether the RAG knowledge index is ready for retrieval. */
-  readonly isRAGAvailable?: boolean;
-  /** Whether the indexing pipeline is currently running. */
-  readonly isIndexing?: boolean;
-  /**
-   * Assembled prompt file overlay from SOUL.md / AGENTS.md / TOOLS.md / rules/*.md.
-   * When present, replaces the hardcoded PARALLX_IDENTITY with layered prompt content.
-   * (M11 Task 1.4 — prompt file layering)
-   */
-  readonly promptOverlay?: string;
-  /**
-   * Pre-loaded workspace digest: file tree, page titles, key file previews.
-   * Injected so the AI already knows the workspace before the user speaks.
-   */
-  readonly workspaceDigest?: string;
-}
+// ISystemPromptContext — now defined in chatTypes.ts (M13 Phase 1)
+export type { ISystemPromptContext } from './chatTypes.js';
 
 // ── Parallx identity (Task 4.2) ──
 

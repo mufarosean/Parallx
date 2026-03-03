@@ -9,27 +9,10 @@
 // "Create File" writes the file directly (with permission check).
 
 import { $ } from '../../ui/dom.js';
+import type { ICodeActionRequest } from './chatTypes.js';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Types
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export type CodeActionKind = 'apply' | 'create';
-
-/** Dispatched when a code action button is clicked. */
-export interface ICodeActionRequest {
-  /** Relative file path extracted from the comment header. */
-  readonly filePath: string;
-  /** The code content (without the filepath header line). */
-  readonly code: string;
-  /** Language hint from the code block. */
-  readonly language?: string;
-  /** Which button was clicked. */
-  readonly action: CodeActionKind;
-}
-
-/** Callback for handling code action requests. */
-export type CodeActionHandler = (request: ICodeActionRequest) => void;
+// Code action types — now defined in chatTypes.ts (M13 Phase 1)
+export type { CodeActionKind, ICodeActionRequest, CodeActionHandler } from './chatTypes.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // filepath header detection

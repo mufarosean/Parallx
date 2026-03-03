@@ -7,30 +7,11 @@
 // OpenClaw reference: `/init` command auto-generates CLAUDE.md (now AGENTS.md)
 // from workspace inspection.
 
-import type { IChatResponseStream, IChatMessage, IChatResponseChunk } from '../../../services/chatTypes.js';
+import type { IChatResponseStream, IChatMessage } from '../../../services/chatTypes.js';
+import type { IInitCommandServices } from '../chatTypes.js';
 
-// ── Types ──
-
-export interface IInitCommandServices {
-  /** Send a chat request to the LLM (for generating AGENTS.md). */
-  sendChatRequest(
-    messages: readonly IChatMessage[],
-    options?: undefined,
-    signal?: AbortSignal,
-  ): AsyncIterable<IChatResponseChunk>;
-  /** Workspace name. */
-  getWorkspaceName(): string;
-  /** List files in a relative directory. Returns { name, type }[]. */
-  listFiles?(relativePath: string): Promise<{ name: string; type: 'file' | 'directory' }[]>;
-  /** Read a file's text content by relative path. Returns null on error. */
-  readFile?(relativePath: string): Promise<string | null>;
-  /** Write a file to the workspace. */
-  writeFile?(relativePath: string, content: string): Promise<void>;
-  /** Check if a path exists. */
-  exists?(relativePath: string): Promise<boolean>;
-  /** Invalidate prompt file cache (so AGENTS.md is picked up immediately). */
-  invalidatePromptFiles?(): void;
-}
+// IInitCommandServices — now defined in chatTypes.ts (M13 Phase 1)
+export type { IInitCommandServices } from '../chatTypes.js';
 
 // ── Constants ──
 

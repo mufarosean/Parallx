@@ -20,42 +20,14 @@ import { Disposable, toDisposable, type IDisposable } from '../../platform/lifec
 import { layoutPopup } from '../../ui/dom.js';
 import { $ } from '../../ui/dom.js';
 import { chatIcons } from './chatIcons.js';
-import { buildSystemPrompt, type ISystemPromptContext } from './chatSystemPrompts.js';
-import { ChatMode, type IChatSession, type IToolDefinition } from '../../services/chatTypes.js';
+import { buildSystemPrompt } from './chatSystemPrompts.js';
+import type { ISystemPromptContext } from './chatTypes.js';
+import { ChatMode } from '../../services/chatTypes.js';
 import './chatTokenStatusBar.css';
+import type { ITokenStatusBarServices } from './chatTypes.js';
 
-// ── Types ──
-
-/** Services needed for token breakdown calculations. */
-export interface ITokenStatusBarServices {
-  /** Get the active session from the widget. */
-  getActiveSession(): IChatSession | undefined;
-  /** Get context window size in tokens (async — fetches from Ollama if not cached). */
-  getContextLength(): Promise<number>;
-  /** Get the current chat mode. */
-  getMode(): ChatMode;
-  /** Get workspace name. */
-  getWorkspaceName(): string;
-  /** Get page count. */
-  getPageCount(): Promise<number>;
-  /** Get current page title. */
-  getCurrentPageTitle(): string | undefined;
-  /** Get tool definitions (agent mode). */
-  getToolDefinitions(): readonly IToolDefinition[];
-  /** Get file count for system prompt. */
-  getFileCount(): Promise<number>;
-  /** Whether RAG is available. */
-  isRAGAvailable(): boolean;
-  /** Whether indexing is in progress. */
-  isIndexing(): boolean;
-
-  // ── Indexing progress (M10 Phase 6 — Task 6.1) ──
-
-  /** Current indexing progress snapshot. */
-  getIndexingProgress?(): import('../../services/indexingPipeline.js').IndexingProgress;
-  /** Stats from the last completed initial index. */
-  getIndexStats?(): { pages: number; files: number } | undefined;
-}
+// ITokenStatusBarServices — now defined in chatTypes.ts (M13 Phase 1)
+export type { ITokenStatusBarServices } from './chatTypes.js';
 
 /** Breakdown of token usage by category. */
 interface ITokenBreakdown {

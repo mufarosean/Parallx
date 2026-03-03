@@ -16,9 +16,10 @@ import { $ } from '../../ui/dom.js';
 import { renderContentPart } from './chatContentParts.js';
 import { chatIcons } from './chatIcons.js';
 import type { IChatRequestResponsePair, IChatAssistantResponse, IChatUserMessage } from '../../services/chatTypes.js';
+import type { OpenAttachmentHandler } from './chatTypes.js';
 
-/** Optional callback for opening an attached file in the editor. */
-export type OpenAttachmentHandler = (fullPath: string) => void;
+// OpenAttachmentHandler — now defined in chatTypes.ts (M13 Phase 1)
+export type { OpenAttachmentHandler } from './chatTypes.js';
 
 /**
  * Renders the conversation message list.

@@ -18,49 +18,11 @@ import type {
   ICancellationToken,
   IChatParticipantResult,
   IChatMessage,
-  IChatRequestOptions,
-  IChatResponseChunk,
 } from '../../../services/chatTypes.js';
+import type { IWorkspaceParticipantServices } from '../chatTypes.js';
 
-// ── Service accessor ──
-
-/** Page summary returned by workspace queries. */
-export interface IPageSummary {
-  readonly id: string;
-  readonly title: string;
-  readonly icon?: string;
-}
-
-/**
- * Services injected into the workspace participant.
- * Wired in chatTool.ts with real service implementations.
- */
-export interface IWorkspaceParticipantServices {
-  sendChatRequest(
-    messages: readonly IChatMessage[],
-    options?: IChatRequestOptions,
-    signal?: AbortSignal,
-  ): AsyncIterable<IChatResponseChunk>;
-  getActiveModel(): string | undefined;
-
-  /** List all non-archived pages (summary only). */
-  listPages(): Promise<readonly IPageSummary[]>;
-  /** Search pages by title (LIKE match). */
-  searchPages(query: string): Promise<readonly IPageSummary[]>;
-  /** Get full page content by ID (Tiptap JSON string or null). */
-  getPageContent(pageId: string): Promise<string | null>;
-  /** Get the page title by ID. */
-  getPageTitle(pageId: string): Promise<string | null>;
-  /** Workspace display name. */
-  getWorkspaceName(): string;
-
-  // ── File system context (optional — undefined when no workspace folder is open) ──
-
-  /** List files/dirs at a relative path. Returns entry summaries. */
-  listFiles?(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
-  /** Read file content at a relative path (max 50 KB). */
-  readFileContent?(relativePath: string): Promise<string>;
-}
+// IPageSummary, IWorkspaceParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
+export type { IPageSummary, IWorkspaceParticipantServices } from '../chatTypes.js';
 
 // ── Constants ──
 

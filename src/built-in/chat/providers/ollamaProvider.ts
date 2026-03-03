@@ -80,22 +80,9 @@ interface OllamaChatChunk {
   eval_duration?: number;
 }
 
-// ── Retrieval Plan (M12 Task 1.2) ────────────────────────────────────────────
-
-/**
- * Structured output from the retrieval planner LLM call.
- * Contains intent classification, reasoning, and targeted search queries.
- */
-export interface IRetrievalPlan {
-  /** Classified intent of the user's message. */
-  intent: 'question' | 'situation' | 'task' | 'conversational' | 'exploration';
-  /** 1-2 sentence explanation of what the user needs. */
-  reasoning: string;
-  /** Whether workspace retrieval is needed. */
-  needsRetrieval: boolean;
-  /** Targeted search queries (0-6) designed to match document vocabulary. */
-  queries: string[];
-}
+// IRetrievalPlan — now defined in chatTypes.ts (M13 Phase 1)
+import type { IRetrievalPlan } from '../chatTypes.js';
+export type { IRetrievalPlan } from '../chatTypes.js';
 
 // ── Timeouts ──
 

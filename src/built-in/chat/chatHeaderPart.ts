@@ -15,12 +15,10 @@ import { Emitter } from '../../platform/events.js';
 import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import { chatIcons } from './chatIcons.js';
+import type { IChatHeaderAction } from './chatTypes.js';
 
-export interface IChatHeaderAction {
-  readonly onNewChat: Event<void>;
-  readonly onToggleHistory: Event<void>;
-  readonly onClearSession: Event<void>;
-}
+// IChatHeaderAction — now defined in chatTypes.ts (M13 Phase 1)
+export type { IChatHeaderAction } from './chatTypes.js';
 
 /**
  * Chat panel header — VS Code-style view title bar.

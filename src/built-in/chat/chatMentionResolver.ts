@@ -11,44 +11,10 @@
 // context injection, after history but before composing the final user message.
 
 import type { IContextPill } from '../../services/chatTypes.js';
+import type { IChatMention, IMentionResolutionResult, IMentionResolutionServices } from './chatTypes.js';
 
-// ── Types ──
-
-/** A mention extracted from user input. */
-export interface IChatMention {
-  /** Mention kind. */
-  readonly kind: 'file' | 'folder' | 'workspace' | 'terminal';
-  /** The path argument (for file: and folder:), undefined for workspace/terminal. */
-  readonly path?: string;
-  /** Original matched text (e.g. "@file:src/main.ts"). */
-  readonly original: string;
-  /** Start offset in the original text. */
-  readonly start: number;
-  /** End offset in the original text. */
-  readonly end: number;
-}
-
-/** Result of resolving all mentions in a message. */
-export interface IMentionResolutionResult {
-  /** Context blocks to prepend to the user's message. */
-  readonly contextBlocks: string[];
-  /** Context pills for the UI. */
-  readonly pills: IContextPill[];
-  /** Clean message text with mentions stripped out. */
-  readonly cleanText: string;
-}
-
-/** Service interface for mention resolution (injected from activation layer). */
-export interface IMentionResolutionServices {
-  /** Read a file's content by relative or full path. */
-  readFileContent?(path: string): Promise<string>;
-  /** List files in a folder (relative path). Returns file entries. */
-  listFolderFiles?(folderPath: string): Promise<Array<{ relativePath: string; content: string }>>;
-  /** Retrieve RAG context for a query (the @workspace handler). */
-  retrieveContext?(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string }> } | undefined>;
-  /** Get last N lines of terminal output (the @terminal handler). */
-  getTerminalOutput?(): Promise<string | undefined>;
-}
+// IChatMention, IMentionResolutionResult, IMentionResolutionServices — now defined in chatTypes.ts (M13 Phase 1)
+export type { IChatMention, IMentionResolutionResult, IMentionResolutionServices } from './chatTypes.js';
 
 // ── Regex: matches @file:path, @folder:path, @workspace, @terminal ──
 // Path can be quoted ("path with spaces") or unquoted (terminated by whitespace).

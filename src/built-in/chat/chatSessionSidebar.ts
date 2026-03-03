@@ -15,15 +15,10 @@ import type { Event } from '../../platform/events.js';
 import { $, addDisposableListener } from '../../ui/dom.js';
 import type { IChatSession } from '../../services/chatTypes.js';
 import { chatIcons } from './chatIcons.js';
+import type { ISessionSidebarServices } from './chatTypes.js';
 
-// ── Types ──
-
-export interface ISessionSidebarServices {
-  getSessions(): readonly IChatSession[];
-  deleteSession(sessionId: string): void;
-  /** Full-text search across session messages (M11 Task 4.5). */
-  searchSessions?(query: string): Promise<Array<{ sessionId: string; sessionTitle: string; matchingContent: string }>>;
-}
+// ISessionSidebarServices — now defined in chatTypes.ts (M13 Phase 1)
+export type { ISessionSidebarServices } from './chatTypes.js';
 
 // ── Date grouping buckets ──
 
