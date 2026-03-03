@@ -270,12 +270,28 @@ describe('extractCitationLabel', () => {
     })).toBe('Vehicle Info.md');
   });
 
+  it('extracts filename for file_chunk sourceType', () => {
+    expect(extractCitationLabel({
+      sourceType: 'file_chunk',
+      sourceId: 'D:/AI/Parallx/demo-workspace/Claims Guide.md',
+      contextPrefix: '[Source: "D:/AI/Parallx/demo-workspace/Claims Guide.md" | Section: "Filing"]',
+    })).toBe('Claims Guide.md');
+  });
+
   it('extracts page title from contextPrefix', () => {
     expect(extractCitationLabel({
       sourceType: 'page',
       sourceId: 'abc-123',
       contextPrefix: '[Source: "My Design Notes" | Type: heading]',
     })).toBe('My Design Notes');
+  });
+
+  it('extracts page title for page_block sourceType', () => {
+    expect(extractCitationLabel({
+      sourceType: 'page_block',
+      sourceId: 'def-456',
+      contextPrefix: '[Source: "Sprint Planning" | Type: paragraph]',
+    })).toBe('Sprint Planning');
   });
 
   it('returns "Session Memory" for conversation_memory chunks', () => {
@@ -286,9 +302,33 @@ describe('extractCitationLabel', () => {
     })).toBe('Session Memory');
   });
 
+  it('returns "Session Memory" for memory sourceType (actual retrieval value)', () => {
+    expect(extractCitationLabel({
+      sourceType: 'memory',
+      sourceId: 'session-abc',
+      contextPrefix: '[Conversation Memory — Session abc12345]',
+    })).toBe('Session Memory');
+  });
+
+  it('returns "Session Memory" for memory sourceType even without contextPrefix', () => {
+    expect(extractCitationLabel({
+      sourceType: 'memory',
+      sourceId: 'session-abc',
+      contextPrefix: undefined,
+    })).toBe('Session Memory');
+  });
+
   it('returns "Page" fallback when no contextPrefix for pages', () => {
     expect(extractCitationLabel({
       sourceType: 'page',
+      sourceId: 'some-uuid',
+      contextPrefix: undefined,
+    })).toBe('Page');
+  });
+
+  it('returns "Page" fallback for page_block without contextPrefix', () => {
+    expect(extractCitationLabel({
+      sourceType: 'page_block',
       sourceId: 'some-uuid',
       contextPrefix: undefined,
     })).toBe('Page');

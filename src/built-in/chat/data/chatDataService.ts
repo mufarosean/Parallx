@@ -122,7 +122,13 @@ export function extractCitationLabel(chunk: { sourceType: string; sourceId: stri
   const prefix = chunk.contextPrefix;
 
   // Conversation memory — always a fixed friendly label
-  if (chunk.sourceType === 'conversation_memory') {
+  // sourceType is 'memory' (from MEMORY_SOURCE_TYPE in memoryService)
+  if (chunk.sourceType === 'memory' || chunk.sourceType === 'conversation_memory') {
+    return 'Session Memory';
+  }
+
+  // Memory contextPrefix: "[Conversation Memory — Session abc12345]"
+  if (prefix && prefix.startsWith('[Conversation Memory')) {
     return 'Session Memory';
   }
 
@@ -132,7 +138,7 @@ export function extractCitationLabel(chunk: { sourceType: string; sourceId: stri
     if (m) {
       const raw = m[1];
       // For file paths, extract just the filename
-      if (chunk.sourceType === 'file' || raw.includes('/') || raw.includes('\\')) {
+      if (chunk.sourceType === 'file' || chunk.sourceType === 'file_chunk' || raw.includes('/') || raw.includes('\\')) {
         const segments = raw.replace(/\\/g, '/').split('/');
         return segments[segments.length - 1] || raw;
       }
@@ -142,7 +148,7 @@ export function extractCitationLabel(chunk: { sourceType: string; sourceId: stri
   }
 
   // Fallback: derive from sourceId
-  if (chunk.sourceType === 'page') {
+  if (chunk.sourceType === 'page' || chunk.sourceType === 'page_block') {
     return 'Page';
   }
   // sourceId for files is the file path
@@ -201,6 +207,37 @@ export function buildFileSystemAccessor(
   function resolveUri(relativePath: string): import('../../../platform/uri.js').URI {
     const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
     if (!clean || clean === '.') { return rootUri; }
+
+    // Detect absolute paths — if the path starts with a drive letter (C:/) or
+    // contains the workspace root path, strip the root prefix so we get a
+    // genuine relative path.  Otherwise the path gets doubled:
+    //   rootUri + "/AI/Parallx/demo-workspace/file.md"
+    //   → D:/AI/Parallx/demo-workspace/AI/Parallx/demo-workspace/file.md
+    const rootFsPath = rootUri.fsPath.replace(/\\/g, '/');
+    const rootFsPathNoSlash = rootFsPath.replace(/\/$/, '');
+
+    // Absolute path with drive letter (e.g. "D:/AI/Parallx/demo-workspace/file.md")
+    if (/^[a-zA-Z]:/.test(clean)) {
+      const norm = clean;
+      if (norm.startsWith(rootFsPathNoSlash + '/') || norm.startsWith(rootFsPathNoSlash + '\\')) {
+        const rel = norm.slice(rootFsPathNoSlash.length + 1);
+        return rootUri.joinPath(rel);
+      }
+      // Absolute path outside workspace — use as-is via URI.file
+      return { fsPath: clean, path: '/' + clean, scheme: 'file' } as any;
+    }
+
+    // Absolute-looking path without drive letter (e.g. "/AI/Parallx/demo-workspace/file.md")
+    if (clean.startsWith('/')) {
+      const stripped = clean.slice(1);
+      // Check if it matches the root path (without drive letter)
+      const rootNoDrive = rootFsPathNoSlash.replace(/^[a-zA-Z]:/, '').replace(/^\//, '');
+      if (stripped.startsWith(rootNoDrive + '/')) {
+        const rel = stripped.slice(rootNoDrive.length + 1);
+        return rootUri.joinPath(rel);
+      }
+    }
+
     return rootUri.joinPath(clean);
   }
 
@@ -482,7 +519,8 @@ export class ChatDataService {
       const key = `${chunk.sourceType}:${chunk.sourceId}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const uri = chunk.sourceType === 'page'
+      const isPage = chunk.sourceType === 'page' || chunk.sourceType === 'page_block';
+      const uri = isPage
         ? `parallx-page://${chunk.sourceId}`
         : chunk.sourceId;
       const label = extractCitationLabel(chunk);

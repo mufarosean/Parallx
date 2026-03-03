@@ -128,6 +128,18 @@ export class ChatListRenderer extends Disposable {
           body.appendChild(partEl);
         }
       }
+    } else if (newPartCount < existingParts.length) {
+      // Parts were removed (e.g. progress parts stripped on completion).
+      // Remove excess DOM elements from the end, then replace the last
+      // remaining part to ensure content is up-to-date.
+      for (let i = existingParts.length - 1; i >= newPartCount; i--) {
+        existingParts[i].remove();
+      }
+      if (newPartCount > 0) {
+        const lastPartEl = existingParts[newPartCount - 1] as HTMLElement;
+        const newPartEl = renderContentPart(response.parts[newPartCount - 1]);
+        lastPartEl.replaceWith(newPartEl);
+      }
     }
 
     // Update streaming cursor
