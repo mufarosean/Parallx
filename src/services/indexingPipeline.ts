@@ -569,7 +569,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       const hashes = validBatch.map((c) => c.contentHash);
 
       try {
-        const embeddings = await this._embeddingService.embedDocumentBatch(texts, hashes);
+        const embeddings = await this._embeddingService.embedDocumentBatch(
+          texts, hashes, this._abortController?.signal ?? undefined,
+        );
 
         for (let j = 0; j < validBatch.length; j++) {
           results.push({
@@ -585,6 +587,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
           try {
             const [embedding] = await this._embeddingService.embedDocumentBatch(
               [texts[j]], hashes[j] ? [hashes[j]] : undefined,
+              this._abortController?.signal ?? undefined,
             );
             results.push({ ...validBatch[j], embedding });
           } catch (chunkErr) {
@@ -698,6 +701,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     }
   }
 
+  /** Timestamp of last progress event emission (for throttling). */
+  private _lastProgressFire = 0;
+
   // ── Internal: Progress ──
 
   private _updateProgress(
@@ -707,7 +713,15 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     currentSource?: string,
   ): void {
     this._progress = { phase, processed, total, currentSource };
-    this._onDidChangeProgress.fire(this._progress);
+
+    // Throttle progress events to at most once per 250ms during bulk indexing.
+    // Always fire for phase transitions (idle, first item, last item).
+    const now = performance.now();
+    const isPhaseEdge = phase === 'idle' || processed === 0 || processed === total;
+    if (isPhaseEdge || now - this._lastProgressFire >= 250) {
+      this._lastProgressFire = now;
+      this._onDidChangeProgress.fire(this._progress);
+    }
   }
 
   // ── Internal: Abort ──

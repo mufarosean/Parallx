@@ -886,7 +886,7 @@ export interface IEmbeddingService extends IDisposable {
   embedQuery(query: string): Promise<number[]>;
 
   /** Embed multiple document texts in batch. */
-  embedDocumentBatch(texts: string[], contentHashes?: string[]): Promise<number[][]>;
+  embedDocumentBatch(texts: string[], contentHashes?: string[], signal?: AbortSignal): Promise<number[][]>;
 
   /** Get model info (name, dimensions, installed status). */
   getModelInfo(): { name: string; dimensions: number; installed: boolean };

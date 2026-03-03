@@ -141,6 +141,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
   async embedDocumentBatch(
     texts: string[],
     contentHashes?: string[],
+    signal?: AbortSignal,
   ): Promise<number[][]> {
     if (texts.length === 0) { return []; }
 
@@ -170,7 +171,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
     );
 
     // Batch embed
-    const embeddings = await this._embedBatch(prefixedTexts);
+    const embeddings = await this._embedBatch(prefixedTexts, signal);
 
     // Merge results and update cache
     for (let j = 0; j < uncachedIndices.length; j++) {
@@ -262,7 +263,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
    * Core batch embedding call via /api/embed.
    * Splits into MAX_BATCH_SIZE groups if needed.
    */
-  private async _embedBatch(prefixedTexts: string[]): Promise<number[][]> {
+  private async _embedBatch(prefixedTexts: string[], signal?: AbortSignal): Promise<number[][]> {
     await this.ensureModel();
 
     const totalCount = prefixedTexts.length;
@@ -273,8 +274,9 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
 
     // Process in chunks of MAX_BATCH_SIZE
     for (let i = 0; i < prefixedTexts.length; i += MAX_BATCH_SIZE) {
+      signal?.throwIfAborted();
       const batch = prefixedTexts.slice(i, i + MAX_BATCH_SIZE);
-      const embeddings = await this._callEmbedApi(batch);
+      const embeddings = await this._callEmbedApi(batch, signal);
       allEmbeddings.push(...embeddings);
     }
 
@@ -287,7 +289,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
   /**
    * Single /api/embed API call.
    */
-  private async _callEmbedApi(inputs: string[]): Promise<number[][]> {
+  private async _callEmbedApi(inputs: string[], signal?: AbortSignal): Promise<number[][]> {
     // Filter out empty inputs — Ollama rejects them with 400
     const cleanInputs = inputs.map((s) => s.trim() || 'empty');
 
@@ -301,7 +303,9 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(EMBED_TIMEOUT_MS)])
+        : AbortSignal.timeout(EMBED_TIMEOUT_MS),
     });
 
     if (!response.ok) {

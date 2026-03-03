@@ -482,33 +482,15 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     }
 
     // ── Build system prompt with workspace context ──
+    // Parallelize independent async calls to reduce pre-response latency.
 
-    const pageCount = await services.getPageCount().catch(() => 0);
-
-    // Gather workspace statistics for dynamic system prompt (M10 Phase 4)
-    const fileCount = services.getFileCount
-      ? await services.getFileCount().catch(() => 0)
-      : undefined;
-
-    // Load prompt file overlay (M11 Task 1.4 — SOUL.md / AGENTS.md / TOOLS.md / rules)
-    let promptOverlay: string | undefined;
-    if (services.getPromptOverlay) {
-      try {
-        promptOverlay = await services.getPromptOverlay();
-      } catch {
-        // Prompt file loading is best-effort — fall back to hardcoded identity
-      }
-    }
-
-    // Pre-load workspace digest so the AI already knows the workspace
-    let workspaceDigest: string | undefined;
-    if (services.getWorkspaceDigest) {
-      try {
-        workspaceDigest = await services.getWorkspaceDigest();
-      } catch {
-        // Workspace digest is best-effort
-      }
-    }
+    const [pageCount, fileCount, promptOverlay, workspaceDigest, prefsBlock] = await Promise.all([
+      services.getPageCount().catch(() => 0),
+      services.getFileCount ? services.getFileCount().catch(() => 0) : Promise.resolve(undefined),
+      services.getPromptOverlay ? services.getPromptOverlay().catch(() => undefined) : Promise.resolve(undefined),
+      services.getWorkspaceDigest ? services.getWorkspaceDigest().catch(() => undefined) : Promise.resolve(undefined),
+      services.getPreferencesForPrompt ? services.getPreferencesForPrompt().catch(() => undefined) : Promise.resolve(undefined),
+    ]);
 
     const promptContext: ISystemPromptContext = {
       workspaceName: services.getWorkspaceName(),
@@ -527,17 +509,9 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     const systemPrompt = buildSystemPrompt(request.mode, promptContext);
 
     // Append user preferences to system prompt (M10 Phase 5 — Task 5.2)
-    let finalSystemPrompt = systemPrompt;
-    if (services.getPreferencesForPrompt) {
-      try {
-        const prefsBlock = await services.getPreferencesForPrompt();
-        if (prefsBlock) {
-          finalSystemPrompt = systemPrompt + '\n\n' + prefsBlock;
-        }
-      } catch {
-        // Preferences are best-effort
-      }
-    }
+    const finalSystemPrompt = prefsBlock
+      ? systemPrompt + '\n\n' + prefsBlock
+      : systemPrompt;
 
     // Build the message list from conversation history + current request
     const messages: IChatMessage[] = [];

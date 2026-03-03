@@ -232,6 +232,9 @@ export class Workbench extends Layout {
   // Database Service (M6 Capability 1)
   private _databaseService!: DatabaseService;
 
+  // Indexing pipeline (M10) — tracked for cancel/dispose on workspace switch
+  private _indexingPipeline: import('../services/indexingPipeline.js').IndexingPipelineService | null = null;
+
   // Configuration (M2 Capability 4)
   private _configService!: ConfigurationService;
   private _configRegistry!: ConfigurationRegistry;
@@ -1853,11 +1856,7 @@ export class Workbench extends Layout {
     // Register embedding, chunking, vector store, and indexing pipeline services.
     // Start() is fire-and-forget: it runs in the background after DB is open.
     if (this._databaseService.isOpen) {
-      const { indexingPipeline } = registerIndexingServices(this._services);
-      this._register(indexingPipeline);
-      indexingPipeline.start().catch((err) => {
-        console.error('[Workbench] Indexing pipeline failed to start:', err);
-      });
+      this._startIndexingPipeline();
     }
 
     // React to workspace folder changes (open/close database)
@@ -2014,6 +2013,27 @@ export class Workbench extends Layout {
    * Migration files are resolved from the app's built-in canvas tool
    * directory. This is called during Phase 5 init and on folder changes.
    */
+  /**
+   * Start (or restart) the indexing pipeline for the current workspace.
+   * Cancels and disposes any previously running pipeline first.
+   */
+  private _startIndexingPipeline(): void {
+    // Dispose the old pipeline (cancels in-flight embeddings)
+    if (this._indexingPipeline) {
+      this._indexingPipeline.cancel();
+      this._indexingPipeline.dispose();
+      this._indexingPipeline = null;
+    }
+
+    if (!this._databaseService.isOpen) { return; }
+
+    const { indexingPipeline } = registerIndexingServices(this._services);
+    this._indexingPipeline = indexingPipeline;
+    indexingPipeline.start().catch((err) => {
+      console.error('[Workbench] Indexing pipeline failed to start:', err);
+    });
+  }
+
   private async _openDatabaseForWorkspace(): Promise<void> {
     const folders = this._workspace.folders;
     if (folders.length === 0) {
@@ -2417,7 +2437,14 @@ export class Workbench extends Layout {
     // 5. Dispose the view manager (disposes all remaining view instances)
     this._viewManager?.dispose();
 
-    // 6. Dispose the workspace saver (cancel pending debounce)
+    // 6. Cancel and dispose the indexing pipeline (M10/M12 — stops in-flight embeddings)
+    if (this._indexingPipeline) {
+      this._indexingPipeline.cancel();
+      this._indexingPipeline.dispose();
+      this._indexingPipeline = null;
+    }
+
+    // 7. Dispose the workspace saver (cancel pending debounce)
     this._workspaceSaver?.dispose();
     this._workspaceSaver = new WorkspaceSaver(this._storage);
 
@@ -2498,6 +2525,9 @@ export class Workbench extends Layout {
     }
 
     console.log('[Workbench] Rebuilt workspace content');
+
+    // 6. Restart the indexing pipeline for the new workspace
+    this._startIndexingPipeline();
   }
 
   /**

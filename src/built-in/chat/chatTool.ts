@@ -727,8 +727,29 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     //   3. Key file previews (README*, SOUL.md, etc. — first ~500 chars)
     //
     // Budget: ~2000 tokens max to avoid bloating the system prompt.
+    // Cached with a 60-second TTL to avoid redundant filesystem/DB queries.
 
-    getWorkspaceDigest: async (): Promise<string | undefined> => {
+    getWorkspaceDigest: (() => {
+      let _cachedDigest: string | undefined;
+      let _cacheTimestamp = 0;
+      const DIGEST_TTL_MS = 60_000; // 60 seconds
+
+      return async (): Promise<string | undefined> => {
+        const now = Date.now();
+        if (_cachedDigest !== undefined && now - _cacheTimestamp < DIGEST_TTL_MS) {
+          return _cachedDigest;
+        }
+
+        const result = await _computeWorkspaceDigest();
+        _cachedDigest = result;
+        _cacheTimestamp = now;
+        return result;
+      };
+    })(),
+  };
+
+  // Workspace digest computation (extracted for caching)
+  async function _computeWorkspaceDigest(): Promise<string | undefined> {
       const sections: string[] = [];
       const MAX_DIGEST_CHARS = 8000; // ~2000 tokens at 4 chars/token
       let totalChars = 0;
@@ -811,8 +832,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       return sections.length > 0
         ? `YOU ALREADY KNOW THIS WORKSPACE. Here is what exists:\n\n${sections.join('\n\n')}\n\nUse this knowledge to answer directly. You do NOT need to discover what files exist — you already know.`
         : undefined;
-    },
-  };
+  }
 
   const defaultParticipant = createDefaultParticipant(defaultParticipantServices);
   context.subscriptions.push(defaultParticipant);
