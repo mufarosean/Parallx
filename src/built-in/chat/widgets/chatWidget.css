@@ -458,6 +458,7 @@
 .parallx-chat-markdown ol {
   margin: 4px 0 8px;
   padding-left: 24px;
+  list-style-position: inside;
 }
 
 .parallx-chat-markdown li {

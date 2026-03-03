@@ -1210,16 +1210,14 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         }
       }
 
-      // M12: Append retrieval plan thought process (collapsible)
+      // M12: Append retrieval plan thought process (collapsible thinking UI)
       // Shows users the AI's reasoning and which queries it searched for.
       if (retrievalPlan && retrievalPlan.needsRetrieval && retrievalPlan.queries.length > 0) {
-        const queryList = retrievalPlan.queries.map((q) => `  - ${q}`).join('\n');
-        response.markdown(
-          `\n\n<details>\n<summary>🧠 Thought process</summary>\n\n` +
-          `**Intent:** ${retrievalPlan.intent}\n\n` +
-          `**Analysis:** ${retrievalPlan.reasoning}\n\n` +
-          `**Searched for:**\n${queryList}\n\n` +
-          `</details>`,
+        const queryList = retrievalPlan.queries.map((q) => `• ${q}`).join('\n');
+        response.thinking(
+          `Intent: ${retrievalPlan.intent}\n` +
+          `Analysis: ${retrievalPlan.reasoning}\n` +
+          `Searched for:\n${queryList}`,
         );
       }
 
