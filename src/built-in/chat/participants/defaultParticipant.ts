@@ -961,6 +961,10 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         : undefined,
       // Edit mode: use JSON structured output
       format: shouldUseStructuredOutput(request.mode) ? { type: 'object' } : undefined,
+      // Enable thinking/reasoning mode — the provider passes this to Ollama's
+      // `think` parameter.  Models that support it (DeepSeek-R1, QwQ) will
+      // stream reasoning tokens separately; others silently ignore it.
+      think: true,
     };
 
     // Create an AbortController linked to the cancellation token
@@ -1000,6 +1004,11 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       let producedContent = false;
 
       for (let iteration = 0; iteration <= maxIterations; iteration++) {
+        // Yield check — allow a steering/queued message to interrupt between iterations
+        if (token.isYieldRequested || token.isCancellationRequested) {
+          break;
+        }
+
         // Collect content and tool calls from the current LLM turn
         let turnContent = '';
         const turnToolCalls: IToolCall[] = [];
@@ -1013,7 +1022,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         );
 
         for await (const chunk of stream) {
-          if (token.isCancellationRequested) {
+          if (token.isCancellationRequested || token.isYieldRequested) {
             break;
           }
 
@@ -1048,8 +1057,8 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           response.reportTokenUsage(turnPromptTokens, turnCompletionTokens);
         }
 
-        // If cancelled, break out
-        if (token.isCancellationRequested) {
+        // If cancelled or yield requested, break out
+        if (token.isCancellationRequested || token.isYieldRequested) {
           break;
         }
 

@@ -37,6 +37,7 @@ import type {
 import {
   ChatContentPartKind,
   ChatMode,
+  ChatRequestQueueKind,
 } from '../../../services/chatTypes.js';
 
 import type { Event } from '../../../platform/events.js';
@@ -1172,6 +1173,14 @@ export class ChatDataService {
       searchSessions: this._d.databaseService
         ? (q) => this.searchSessions(q)
         : undefined,
+      // ── Pending request queue ──
+      queueRequest: (sessionId: string, message: string, kind: ChatRequestQueueKind) =>
+        this._d.chatService.queueRequest(sessionId, message, kind),
+      removePendingRequest: (sessionId: string, requestId: string) =>
+        this._d.chatService.removePendingRequest(sessionId, requestId),
+      requestYield: (sessionId: string) =>
+        this._d.chatService.requestYield(sessionId),
+      onDidChangePendingRequests: this._d.chatService.onDidChangePendingRequests,
     };
   }
 

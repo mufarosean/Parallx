@@ -233,12 +233,15 @@ export class ChatInputPart extends Disposable {
     this._textarea.focus();
   }
 
-  /** Show stop button during streaming, submit button otherwise. */
+  /** Show stop button during streaming, submit button otherwise.
+   * Input stays enabled so user can type queued messages. */
   setStreaming(streaming: boolean): void {
     this._streaming = streaming;
-    this._submitBtn.style.display = streaming ? 'none' : '';
+    // During streaming, show both send (for queuing) and stop buttons
+    this._submitBtn.style.display = '';
     this._stopBtn.style.display = streaming ? '' : 'none';
-    this._textarea.disabled = streaming;
+    // Keep textarea enabled during streaming so user can queue messages
+    this._textarea.disabled = false;
   }
 
   /** Enable or disable the entire input (e.g. when Ollama is offline). */
@@ -314,13 +317,14 @@ export class ChatInputPart extends Disposable {
   // ── Internal ──
 
   private _submit(): void {
-    if (!this._enabled || this._streaming) {
+    if (!this._enabled) {
       return;
     }
     const text = this._textarea.value.trim();
     if (!text) {
       return;
     }
+    // During streaming, still fire the event — the widget handles queuing
     this._onDidAcceptInput.fire(text);
   }
 

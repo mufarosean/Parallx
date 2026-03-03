@@ -544,6 +544,86 @@
   background: var(--vscode-sideBar-background, #1e1e1e);
 }
 
+/* ── Pending (Queued) Messages ── */
+
+.parallx-chat-pending-messages {
+  flex-shrink: 0;
+  padding: 0 12px;
+}
+
+.parallx-chat-pending-message {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  margin: 4px 0;
+  border-radius: 6px;
+  background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.08));
+  border: 1px dashed var(--vscode-widget-border, rgba(127, 127, 127, 0.25));
+  opacity: 0.6;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #989898);
+  transition: opacity 150ms ease;
+}
+
+.parallx-chat-pending-message:hover {
+  opacity: 0.9;
+}
+
+.parallx-chat-pending-message-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+}
+
+.parallx-chat-pending-message-actions {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.parallx-chat-pending-message:hover .parallx-chat-pending-message-actions {
+  display: flex;
+}
+
+.parallx-chat-pending-action-steer,
+.parallx-chat-pending-action-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #989898);
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.parallx-chat-pending-action-steer:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-pending-action-remove:hover {
+  background: var(--vscode-inputValidation-errorBackground, rgba(255, 0, 0, 0.15));
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+.parallx-chat-pending-action-steer svg {
+  width: 12px;
+  height: 12px;
+}
+
 /* ── Content Part Styles ── */
 
 /* Code blocks */

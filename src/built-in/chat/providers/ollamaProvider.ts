@@ -70,6 +70,7 @@ interface OllamaChatChunk {
   message: {
     role: string;
     content: string;
+    thinking?: string;
     tool_calls?: { function: { name: string; arguments: Record<string, unknown> } }[];
   };
   done: boolean;
@@ -154,6 +155,9 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
    * is sent — Ollama uses its own setting (desktop slider / OLLAMA_NUM_CTX).
    */
   private _contextLengthOverride = 0;
+
+  /** Tracks whether we're inside a `<think>` tag across stream chunks. */
+  private _inThinkTag = false;
 
   /** Set context length override (0 = let Ollama decide). */
   setContextLengthOverride(value: number): void {
@@ -550,9 +554,24 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   }
 
   private _parseChunk(chunk: OllamaChatChunk): IChatResponseChunk {
+    let content = chunk.message.content || '';
+    let thinking = chunk.message.thinking || undefined;
+
+    // Fallback: detect inline <think> tags for models that embed
+    // reasoning in the content stream (e.g. DeepSeek-R1 via older Ollama).
+    // Extract thinking text and strip the tags from the content.
+    if (!thinking && content) {
+      const parsed = _extractInlineThinking(content, this._inThinkTag);
+      if (parsed) {
+        content = parsed.content;
+        thinking = parsed.thinking || undefined;
+        this._inThinkTag = parsed.stillInTag;
+      }
+    }
+
     const result: IChatResponseChunk = {
-      content: chunk.message.content || '',
-      thinking: undefined,
+      content,
+      thinking,
       toolCalls: chunk.message.tool_calls?.map((tc) => ({
         function: { name: tc.function.name, arguments: tc.function.arguments },
       })),
@@ -561,6 +580,12 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       evalCount: chunk.eval_count,
       evalDuration: chunk.eval_duration,
     };
+
+    // Reset tag tracker on final chunk
+    if (chunk.done) {
+      this._inThinkTag = false;
+    }
+
     return result;
   }
 
@@ -737,4 +762,53 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     }
     super.dispose();
   }
+}
+
+// ── Inline <think> tag parser ──
+
+/**
+ * Extracts thinking content from `<think>...</think>` tags that some models
+ * (DeepSeek-R1, QwQ) embed inline in the content stream.  Handles partial
+ * tags across streaming chunks via the `wasInTag` carry-over flag.
+ *
+ * Returns `null` when the chunk contains no think tags and `wasInTag` is false.
+ */
+export function _extractInlineThinking(
+  text: string,
+  wasInTag: boolean,
+): { content: string; thinking: string; stillInTag: boolean } | null {
+  let content = '';
+  let thinking = '';
+  let inTag = wasInTag;
+  let i = 0;
+
+  // Quick bail: no tags and not continuing a tag
+  if (!inTag && !text.includes('<think')) {
+    return null;
+  }
+
+  while (i < text.length) {
+    if (!inTag) {
+      const openIdx = text.indexOf('<think>', i);
+      if (openIdx === -1) {
+        content += text.slice(i);
+        break;
+      }
+      content += text.slice(i, openIdx);
+      inTag = true;
+      i = openIdx + 7; // skip '<think>'
+    } else {
+      const closeIdx = text.indexOf('</think>', i);
+      if (closeIdx === -1) {
+        // Tag continues into next chunk
+        thinking += text.slice(i);
+        break;
+      }
+      thinking += text.slice(i, closeIdx);
+      inTag = false;
+      i = closeIdx + 8; // skip '</think>'
+    }
+  }
+
+  return { content, thinking, stillInTag: inTag };
 }

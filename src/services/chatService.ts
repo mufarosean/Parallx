@@ -41,11 +41,13 @@ import type {
   IChatEditProposalContent,
   EditProposalOperation,
   ICancellationToken,
+  IChatPendingRequest,
   ChatMode,
   IChatAgentService,
   IChatModeService,
   ILanguageModelsService,
 } from './chatTypes.js';
+import { ChatRequestQueueKind } from './chatTypes.js';
 
 // ── Session URI scheme ──
 
@@ -72,6 +74,7 @@ function generateUUID(): string {
 export class CancellationTokenSource implements IDisposable {
   private readonly _controller = new AbortController();
   private readonly _onCancellationRequested = new Emitter<void>();
+  private _yieldRequested = false;
   readonly token: ICancellationToken;
 
   constructor() {
@@ -81,6 +84,9 @@ export class CancellationTokenSource implements IDisposable {
       get isCancellationRequested() {
         return self._controller.signal.aborted;
       },
+      get isYieldRequested() {
+        return self._yieldRequested;
+      },
       onCancellationRequested: self._onCancellationRequested.event,
     };
   }
@@ -88,6 +94,11 @@ export class CancellationTokenSource implements IDisposable {
   /** Get the underlying AbortSignal for fetch() calls. */
   get signal(): AbortSignal {
     return this._controller.signal;
+  }
+
+  /** Request the participant to yield at next natural break point. */
+  requestYield(): void {
+    this._yieldRequested = true;
   }
 
   cancel(): void {
@@ -454,6 +465,9 @@ export class ChatService extends Disposable implements IChatService {
   private readonly _onDidChangeSession = this._register(new Emitter<string>());
   readonly onDidChangeSession: Event<string> = this._onDidChangeSession.event;
 
+  private readonly _onDidChangePendingRequests = this._register(new Emitter<string>());
+  readonly onDidChangePendingRequests: Event<string> = this._onDidChangePendingRequests.event;
+
   constructor(
     agentService: IChatAgentService,
     modeService: IChatModeService,
@@ -563,6 +577,7 @@ export class ChatService extends Disposable implements IChatService {
       modelId: modelId ?? this._languageModelsService.getActiveModel() ?? '',
       messages: [],
       requestInProgress: false,
+      pendingRequests: [],
     };
 
     this._sessions.set(id, session);
@@ -718,6 +733,9 @@ export class ChatService extends Disposable implements IChatService {
     // 12. Persist session after response completes
     this._schedulePersist(sessionId);
 
+    // 13. Process any pending queued requests
+    this._processNextPending(sessionId);
+
     return result;
   }
 
@@ -727,5 +745,80 @@ export class ChatService extends Disposable implements IChatService {
     if (cts) {
       cts.cancel();
     }
+  }
+
+  // ── Pending Request Queue ──
+
+  queueRequest(
+    sessionId: string,
+    message: string,
+    kind: ChatRequestQueueKind,
+    _options?: IChatSendRequestOptions,
+  ): IChatPendingRequest {
+    const session = this._sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    const pending: IChatPendingRequest = {
+      id: generateUUID(),
+      text: message,
+      kind,
+      timestamp: Date.now(),
+    };
+
+    // Steering goes to front (after other steering), Queued goes to end
+    if (kind === ChatRequestQueueKind.Steering) {
+      const lastSteeringIdx = session.pendingRequests.reduce(
+        (acc, p, i) => (p.kind === ChatRequestQueueKind.Steering ? i : acc), -1,
+      );
+      session.pendingRequests.splice(lastSteeringIdx + 1, 0, pending);
+      // Signal the active request to yield early
+      this.requestYield(sessionId);
+    } else {
+      session.pendingRequests.push(pending);
+    }
+
+    this._onDidChangePendingRequests.fire(sessionId);
+    this._onDidChangeSession.fire(sessionId);
+
+    return pending;
+  }
+
+  removePendingRequest(sessionId: string, requestId: string): void {
+    const session = this._sessions.get(sessionId);
+    if (!session) return;
+
+    const idx = session.pendingRequests.findIndex((p) => p.id === requestId);
+    if (idx >= 0) {
+      session.pendingRequests.splice(idx, 1);
+      this._onDidChangePendingRequests.fire(sessionId);
+      this._onDidChangeSession.fire(sessionId);
+    }
+  }
+
+  requestYield(sessionId: string): void {
+    const cts = this._activeCancellations.get(sessionId);
+    if (cts) {
+      cts.requestYield();
+    }
+  }
+
+  /**
+   * Process the next pending request after the active request completes.
+   * Runs asynchronously so sendRequest() has fully finished before we re-enter.
+   */
+  private _processNextPending(sessionId: string): void {
+    const session = this._sessions.get(sessionId);
+    if (!session || session.requestInProgress) return;
+    if (session.pendingRequests.length === 0) return;
+
+    const next = session.pendingRequests.shift()!;
+    this._onDidChangePendingRequests.fire(sessionId);
+
+    // Fire-and-forget — errors are handled inside sendRequest
+    queueMicrotask(() => {
+      this.sendRequest(sessionId, next.text).catch(() => { /* swallowed */ });
+    });
   }
 }

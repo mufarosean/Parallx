@@ -24,7 +24,9 @@ import type {
   IChatSession,
   IChatWidgetDescriptor,
   IContextPill,
+  IChatPendingRequest,
 } from '../../../services/chatTypes.js';
+import { ChatRequestQueueKind } from '../../../services/chatTypes.js';
 import type {
   IChatWidgetServices,
   ICodeActionRequest,
@@ -63,11 +65,15 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _root: HTMLElement;
   private readonly _mainArea: HTMLElement;
   private readonly _messageListContainer: HTMLElement;
+  private readonly _pendingMessagesContainer: HTMLElement;
   private readonly _scrollBtn: HTMLElement;
   private readonly _inputAreaContainer: HTMLElement;
   private readonly _emptyStateEl: HTMLElement;
   private readonly _offlineStateEl: HTMLElement;
   private readonly _sash: HTMLElement;
+
+  /** Map of pending request ID → DOM element for hover actions. */
+  private readonly _pendingMessageEls = new Map<string, HTMLElement>();
 
   // ── Sidebar resize state ──
   private _sidebarWidth = 260;
@@ -131,6 +137,10 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // Message list (scrollable)
     this._messageListContainer = $('div.parallx-chat-message-list');
     this._mainArea.appendChild(this._messageListContainer);
+
+    // Pending messages container (between message list and input)
+    this._pendingMessagesContainer = $('div.parallx-chat-pending-messages');
+    this._mainArea.appendChild(this._pendingMessagesContainer);
 
     // Scroll-to-bottom button (overlaid on message list)
     this._scrollBtn = $('div.parallx-chat-scroll-btn');
@@ -361,6 +371,23 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       this._sessionSidebar.refresh();
     }
 
+    const sessionId = this._session.id;
+
+    // If a request is already in progress, queue the message
+    if (this._session.requestInProgress) {
+      if (this._services.queueRequest) {
+        this._inputPart.clear();
+        const pending = this._services.queueRequest(
+          sessionId,
+          text,
+          ChatRequestQueueKind.Queued,
+        );
+        this._renderPendingMessage(pending);
+        this._onDidAcceptInput.fire(text);
+      }
+      return;
+    }
+
     // Collect attachments before clearing
     const attachments = this._inputPart.getAttachments();
 
@@ -369,17 +396,98 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._onDidAcceptInput.fire(text);
 
     try {
-      await this._services.sendRequest(this._session.id, text, attachments.length > 0 ? attachments : undefined);
+      await this._services.sendRequest(sessionId, text, attachments.length > 0 ? attachments : undefined);
     } catch (err) {
       console.error('[ChatWidget] Send request failed:', err);
     } finally {
       this._inputPart.setStreaming(false);
+      // Clear pending message UI for any that were processed
+      this._clearProcessedPendingMessages();
     }
   }
 
   private _handleStop(): void {
     if (this._session) {
       this._services.cancelRequest(this._session.id);
+    }
+  }
+
+  // ── Pending Message Queue UI ──
+
+  /**
+   * Render a queued message as a greyed-out bubble below the message list.
+   * On hover, shows an arrow (steer/interrupt) and X (remove) button.
+   */
+  private _renderPendingMessage(pending: IChatPendingRequest): void {
+    const el = $('div.parallx-chat-pending-message');
+    el.dataset.pendingId = pending.id;
+
+    // Message text (truncated)
+    const textEl = $('span.parallx-chat-pending-message-text');
+    textEl.textContent = pending.text.length > 80
+      ? pending.text.slice(0, 77) + '…'
+      : pending.text;
+    el.appendChild(textEl);
+
+    // Hover actions container
+    const actions = $('div.parallx-chat-pending-message-actions');
+
+    // Arrow (steer/send now) button
+    const steerBtn = $('button.parallx-chat-pending-action-steer');
+    steerBtn.innerHTML = chatIcons.send;
+    steerBtn.title = 'Send now (interrupts current response)';
+    steerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this._session && this._services.removePendingRequest) {
+        // Remove from queue and re-submit as a steering request
+        this._services.removePendingRequest(this._session.id, pending.id);
+        // Re-queue as steering (will signal yield + go to front)
+        if (this._services.queueRequest) {
+          this._services.queueRequest(this._session.id, pending.text, ChatRequestQueueKind.Steering);
+        }
+        this._removePendingMessageEl(pending.id);
+      }
+    });
+    actions.appendChild(steerBtn);
+
+    // X (remove) button
+    const removeBtn = $('button.parallx-chat-pending-action-remove');
+    removeBtn.innerHTML = '\u00D7'; // ×
+    removeBtn.title = 'Remove queued message';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this._session && this._services.removePendingRequest) {
+        this._services.removePendingRequest(this._session.id, pending.id);
+      }
+      this._removePendingMessageEl(pending.id);
+    });
+    actions.appendChild(removeBtn);
+
+    el.appendChild(actions);
+
+    this._pendingMessageEls.set(pending.id, el);
+    this._pendingMessagesContainer.appendChild(el);
+  }
+
+  private _removePendingMessageEl(pendingId: string): void {
+    const el = this._pendingMessageEls.get(pendingId);
+    if (el) {
+      el.remove();
+      this._pendingMessageEls.delete(pendingId);
+    }
+  }
+
+  /**
+   * After a request completes, remove any pending messages that have
+   * already been processed (dequeued by the service).
+   */
+  private _clearProcessedPendingMessages(): void {
+    if (!this._session) return;
+    const sessionPendingIds = new Set(this._session.pendingRequests.map((p) => p.id));
+    for (const [id] of this._pendingMessageEls) {
+      if (!sessionPendingIds.has(id)) {
+        this._removePendingMessageEl(id);
+      }
     }
   }
 

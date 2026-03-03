@@ -19,9 +19,13 @@ import type {
   IToolResult,
   IContextPill,
   ILanguageModelInfo,
+  IChatPendingRequest,
   ChatMode,
   IChatEditProposalContent,
 } from '../../services/chatTypes.js';
+import { ChatRequestQueueKind } from '../../services/chatTypes.js';
+export { ChatRequestQueueKind } from '../../services/chatTypes.js';
+export type { IChatPendingRequest } from '../../services/chatTypes.js';
 import type { IDiffResult } from '../../services/diffService.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -193,6 +197,11 @@ export interface IChatWidgetServices {
   readonly readFileRelative?: (relativePath: string) => Promise<string | null>;
   readonly writeFileRelative?: (relativePath: string, content: string) => Promise<void>;
   readonly searchSessions?: (query: string) => Promise<Array<{ sessionId: string; sessionTitle: string; matchingContent: string }>>;
+  // ── Pending request queue ──
+  readonly queueRequest?: (sessionId: string, message: string, kind: ChatRequestQueueKind) => IChatPendingRequest;
+  readonly removePendingRequest?: (sessionId: string, requestId: string) => void;
+  readonly requestYield?: (sessionId: string) => void;
+  readonly onDidChangePendingRequests?: Event<string>;
 }
 
 /** Services needed by the model picker dropdown. */

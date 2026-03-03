@@ -171,6 +171,38 @@ export interface IChatSession {
   readonly messages: IChatRequestResponsePair[];
   /** Whether a request is currently being processed. */
   requestInProgress: boolean;
+  /** Pending messages queued while a request is in progress. */
+  readonly pendingRequests: IChatPendingRequest[];
+}
+
+// ── Queued / Pending Requests ──
+
+/**
+ * A message queued while the AI is still responding.
+ *
+ * VS Code reference: IChatPendingRequest (model/chatModel.ts)
+ */
+export interface IChatPendingRequest {
+  /** Unique identifier for this pending request. */
+  readonly id: string;
+  /** The user's message text. */
+  readonly text: string;
+  /** Queue behavior: wait or steer. */
+  readonly kind: ChatRequestQueueKind;
+  /** Timestamp when the message was queued. */
+  readonly timestamp: number;
+}
+
+/**
+ * How a queued message interacts with the active request.
+ *
+ * VS Code reference: ChatRequestQueueKind (chatService.ts)
+ */
+export const enum ChatRequestQueueKind {
+  /** Wait until the active request finishes, then send. */
+  Queued = 0,
+  /** Signal the active request to yield, then send immediately. */
+  Steering = 1,
 }
 
 /**
@@ -606,6 +638,13 @@ export interface ICancellationToken {
   readonly isCancellationRequested: boolean;
   /** Event that fires when cancellation is requested. */
   readonly onCancellationRequested: Event<void>;
+  /**
+   * Whether a yield has been requested (soft interrupt).
+   * Participants should check this at natural break points (between tool
+   * iterations) and wrap up early when true, allowing the next queued
+   * message to be processed without a hard cancel.
+   */
+  readonly isYieldRequested?: boolean;
 }
 
 // ── Tool Types ──
@@ -781,6 +820,21 @@ export interface IChatService extends IDisposable {
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
   /** Cancel the in-progress request for a session. */
   cancelRequest(sessionId: string): void;
+
+  // ── Pending Request Queue ──
+
+  /** Queue a message to be sent after the in-progress request finishes. */
+  queueRequest(sessionId: string, message: string, kind: ChatRequestQueueKind, options?: IChatSendRequestOptions): IChatPendingRequest;
+  /** Remove a pending request from the queue (e.g. user clicked X). */
+  removePendingRequest(sessionId: string, requestId: string): void;
+  /**
+   * Signal the active request to yield early so the next pending
+   * request can be processed.  The participant checks this flag
+   * at natural break points (between tool iterations, etc.).
+   */
+  requestYield(sessionId: string): void;
+  /** Fires when pending requests change (added, removed, processed). */
+  readonly onDidChangePendingRequests: Event<string>;
 }
 
 /**

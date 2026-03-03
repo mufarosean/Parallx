@@ -16,6 +16,7 @@ import { $ } from '../../../ui/dom.js';
 import { renderContentPart } from './chatContentParts.js';
 import { chatIcons } from '../chatIcons.js';
 import type { IChatRequestResponsePair, IChatAssistantResponse, IChatUserMessage } from '../../../services/chatTypes.js';
+import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import type { OpenAttachmentHandler } from '../chatTypes.js';
 
 // OpenAttachmentHandler — now defined in chatTypes.ts (M13 Phase 1)
@@ -110,12 +111,23 @@ export class ChatListRenderer extends Disposable {
     const existingParts = body.querySelectorAll(':scope > :not(.parallx-chat-streaming-cursor):not(.parallx-chat-typing-indicator):not(.parallx-chat-message-actions)');
     const newPartCount = response.parts.length;
 
-    // If parts count is the same, update the last part's content
+    // If parts count is the same, update changed parts
     if (existingParts.length === newPartCount && newPartCount > 0) {
-      // Only the last part may have changed (streaming appends to last markdown part)
-      const lastPartEl = existingParts[existingParts.length - 1] as HTMLElement;
-      const newPartEl = renderContentPart(response.parts[newPartCount - 1]);
-      lastPartEl.replaceWith(newPartEl);
+      // Always re-render the thinking part (index 0) if it exists — thinking
+      // content streams incrementally and may have grown since last render.
+      if (response.parts[0]?.kind === ChatContentPartKind.Thinking && existingParts.length > 0) {
+        const thinkingEl = existingParts[0] as HTMLElement;
+        const newThinkingEl = renderContentPart(response.parts[0]);
+        thinkingEl.replaceWith(newThinkingEl);
+      }
+
+      // Re-render the last part (streaming appends to last markdown part)
+      const lastIdx2 = existingParts.length - 1;
+      if (lastIdx2 > 0 || response.parts[0]?.kind !== ChatContentPartKind.Thinking) {
+        const lastPartEl = existingParts[lastIdx2] as HTMLElement;
+        const newPartEl = renderContentPart(response.parts[newPartCount - 1]);
+        lastPartEl.replaceWith(newPartEl);
+      }
     } else if (newPartCount > existingParts.length) {
       // New parts added — append them
       for (let i = existingParts.length; i < newPartCount; i++) {

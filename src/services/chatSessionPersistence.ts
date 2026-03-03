@@ -206,6 +206,7 @@ export async function loadSessions(db: IChatPersistenceDatabase): Promise<IChatS
       modelId: row.model_id,
       messages,
       requestInProgress: false,
+      pendingRequests: [],
     });
   }
 
