@@ -244,9 +244,9 @@ export class ChatContextPills extends Disposable {
     const modifiers = [
       `parallx-chat-context-pill--${pill.type}`,
       isExcluded ? 'parallx-chat-context-pill--excluded' : '',
-    ].filter(Boolean).join(' ');
+    ].filter(Boolean).join('.');
 
-    const el = $(`div.parallx-chat-context-pill ${modifiers}`);
+    const el = $(`div.parallx-chat-context-pill.${modifiers}`);
 
     // Type icon
     const icon = document.createElement('span');
