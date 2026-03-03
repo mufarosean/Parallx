@@ -140,6 +140,16 @@ class ChatResponseStream implements IChatResponseStream {
   /** Mark the stream as closed — no more writes allowed. */
   close(): void {
     this._done = true;
+    // Strip transient progress parts — they are ephemeral status messages
+    // (e.g. "Analyzing your message…", "Searching 4 sources…") that should
+    // not persist once the response is complete.
+    const parts = this._response.parts as IChatContentPart[];
+    for (let i = parts.length - 1; i >= 0; i--) {
+      if (parts[i].kind === ChatContentPartKind.Progress) {
+        parts.splice(i, 1);
+      }
+    }
+    this._scheduleUpdate();
   }
 
   reportTokenUsage(promptTokens: number, completionTokens: number): void {
