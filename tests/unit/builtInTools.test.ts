@@ -48,18 +48,20 @@ function createMockToolsService(): ILanguageModelToolsService & { registeredTool
 // ── Tests ──
 
 describe('registerBuiltInTools', () => {
-  it('registers all 11 built-in tools', () => {
+  it('registers all 15 built-in tools', () => {
     const toolsService = createMockToolsService();
     const db = createMockDb();
 
     const disposables = registerBuiltInTools(toolsService, db);
 
-    expect(toolsService.registeredTools).toHaveLength(11);
-    expect(disposables).toHaveLength(11);
+    expect(toolsService.registeredTools).toHaveLength(15);
+    expect(disposables).toHaveLength(15);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
       'create_page',
+      'delete_file',
+      'edit_file',
       'get_page_properties',
       'list_files',
       'list_pages',
@@ -67,9 +69,11 @@ describe('registerBuiltInTools', () => {
       'read_file',
       'read_page',
       'read_page_by_title',
+      'run_command',
       'search_files',
       'search_knowledge',
       'search_workspace',
+      'write_file',
     ]);
   });
 

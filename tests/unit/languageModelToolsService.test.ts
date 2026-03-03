@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LanguageModelToolsService } from '../../src/services/languageModelToolsService';
-import type { ToolConfirmationHandler } from '../../src/services/languageModelToolsService';
+import { PermissionService } from '../../src/services/permissionService';
 import type { IChatTool, IToolResult, ICancellationToken } from '../../src/services/chatTypes';
 
 // ── Helpers ──
@@ -165,32 +165,36 @@ describe('LanguageModelToolsService', () => {
       expect(result.content).toBe('ok');
     });
 
-    it('returns error when tool requires confirmation but no handler registered', async () => {
+    it('returns error when tool requires approval but no permission service wired', async () => {
       service.registerTool(createTool({ requiresConfirmation: true }));
 
       const result = await service.invokeTool('test_tool', {}, createToken());
       expect(result.isError).toBe(true);
-      expect(result.content).toContain('requires confirmation');
+      expect(result.content).toContain('requires approval');
     });
 
-    it('invokes tool when confirmation handler approves', async () => {
+    it('invokes tool when permission service approves', async () => {
       const handler = vi.fn(async () => ({ content: 'created' }));
       service.registerTool(createTool({ requiresConfirmation: true, handler }));
 
-      const confirm: ToolConfirmationHandler = vi.fn(async () => true);
-      service.setConfirmationHandler(confirm);
+      const permissionService = new PermissionService();
+      const confirm = vi.fn(async () => 'allow-once' as const);
+      permissionService.setConfirmationHandler(confirm);
+      service.setPermissionService(permissionService);
 
       const result = await service.invokeTool('test_tool', { title: 'New Page' }, createToken());
-      expect(confirm).toHaveBeenCalledWith('test_tool', { title: 'New Page' });
+      expect(confirm).toHaveBeenCalledWith('test_tool', 'A test tool', { title: 'New Page' });
       expect(handler).toHaveBeenCalled();
       expect(result.content).toBe('created');
     });
 
-    it('returns rejection when confirmation handler rejects', async () => {
+    it('returns rejection when permission service rejects', async () => {
       const handler = vi.fn(async () => ({ content: 'should not reach' }));
       service.registerTool(createTool({ requiresConfirmation: true, handler }));
 
-      service.setConfirmationHandler(vi.fn(async () => false));
+      const permissionService = new PermissionService();
+      permissionService.setConfirmationHandler(vi.fn(async () => 'reject' as const));
+      service.setPermissionService(permissionService);
 
       const result = await service.invokeTool('test_tool', {}, createToken());
       expect(handler).not.toHaveBeenCalled();
@@ -198,12 +202,14 @@ describe('LanguageModelToolsService', () => {
       expect(result.isError).toBe(true);
     });
 
-    it('bypasses confirmation when autoApprove is enabled', async () => {
+    it('bypasses confirmation when autoApprove is enabled on permission service', async () => {
       const handler = vi.fn(async () => ({ content: 'auto-ok' }));
       service.registerTool(createTool({ requiresConfirmation: true, handler }));
 
-      service.setAutoApprove(true);
-      expect(service.autoApprove).toBe(true);
+      const permissionService = new PermissionService();
+      permissionService.setAutoApprove(true);
+      expect(permissionService.autoApprove).toBe(true);
+      service.setPermissionService(permissionService);
 
       const result = await service.invokeTool('test_tool', {}, createToken());
       expect(handler).toHaveBeenCalled();

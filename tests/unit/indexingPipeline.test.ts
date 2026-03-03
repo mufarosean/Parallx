@@ -274,6 +274,8 @@ describe('IndexingPipelineService', () => {
         { name: 'logo.png', uri: URI.file('/workspace/logo.png'), type: FileType.File, size: 5000, mtime: 0 },
       ]);
 
+      // First readFile call is .parallxignore from _loadIgnoreFile
+      fileService.readFile.mockResolvedValueOnce({ content: '', encoding: 'utf-8', size: 0, mtime: 0 });
       // File read for app.ts
       fileService.readFile.mockResolvedValueOnce({
         content: 'const x = 1;',
@@ -349,6 +351,8 @@ describe('IndexingPipelineService', () => {
         new Map<string, number>([[URI.file('/workspace/old.ts').fsPath, indexedAtMs]]),
       );
 
+      // First readFile call is .parallxignore from _loadIgnoreFile
+      fileService.readFile.mockResolvedValueOnce({ content: '', encoding: 'utf-8', size: 0, mtime: 0 });
       // Only new.ts should be read
       fileService.readFile.mockResolvedValueOnce({
         content: 'const y = 2;',
@@ -359,8 +363,9 @@ describe('IndexingPipelineService', () => {
 
       await pipeline.start();
 
-      // old.ts should be mtime-skipped entirely — no file read, no chunking, no events
-      expect(fileService.readFile).toHaveBeenCalledTimes(1);
+      // old.ts should be mtime-skipped entirely — no chunking
+      // readFile is called twice: once for .parallxignore (from _loadIgnoreFile), once for new.ts
+      expect(fileService.readFile).toHaveBeenCalledTimes(2);
       expect(chunkingService.chunkFile).toHaveBeenCalledTimes(1);
       expect(chunkingService.chunkFile).toHaveBeenCalledWith(
         expect.stringContaining('new.ts'),
@@ -383,6 +388,8 @@ describe('IndexingPipelineService', () => {
         new Map<string, number>([[URI.file('/workspace/changed.ts').fsPath, indexedAtMs]]),
       );
 
+      // First readFile call is .parallxignore from _loadIgnoreFile
+      fileService.readFile.mockResolvedValueOnce({ content: '', encoding: 'utf-8', size: 0, mtime: 0 });
       fileService.readFile.mockResolvedValueOnce({
         content: 'const z = 3;',
         encoding: 'utf-8',
@@ -393,7 +400,8 @@ describe('IndexingPipelineService', () => {
       await pipeline.start();
 
       // File should be processed normally (read + chunk)
-      expect(fileService.readFile).toHaveBeenCalledTimes(1);
+      // readFile called twice: once for .parallxignore, once for changed.ts
+      expect(fileService.readFile).toHaveBeenCalledTimes(2);
       expect(chunkingService.chunkFile).toHaveBeenCalledTimes(1);
     });
   });
