@@ -171,7 +171,8 @@ describe('renderContentPart — Reference (Task 6.2)', () => {
       label: 'My Page',
     });
     let capturedPageId: string | undefined;
-    document.addEventListener('parallx:navigate-page', ((e: CustomEvent) => {
+    // Events now bubble from the element — listen on el or any ancestor
+    el.addEventListener('parallx:navigate-page', ((e: CustomEvent) => {
       capturedPageId = e.detail.pageId;
     }) as EventListener, { once: true });
     el.click();
@@ -185,7 +186,8 @@ describe('renderContentPart — Reference (Task 6.2)', () => {
       label: 'helpers.ts',
     });
     let capturedPath: string | undefined;
-    document.addEventListener('parallx:open-file', ((e: CustomEvent) => {
+    // Events now bubble from the element — listen on el or any ancestor
+    el.addEventListener('parallx:open-file', ((e: CustomEvent) => {
       capturedPath = e.detail.path;
     }) as EventListener, { once: true });
     el.click();
@@ -199,12 +201,13 @@ describe('retrieveContext — source citation metadata (Task 6.2)', () => {
   it('returns both text and source citations', async () => {
     // Simulate what chatTool.ts closure does
     const mockChunks = [
-      { sourceType: 'page', sourceId: 'page-1', contextPrefix: 'Design Notes', text: 'chunk1', score: 0.9, sources: [], tokenCount: 50 },
-      { sourceType: 'page', sourceId: 'page-1', contextPrefix: 'Design Notes', text: 'chunk2', score: 0.8, sources: [], tokenCount: 50 },
-      { sourceType: 'file', sourceId: 'src/main.ts', contextPrefix: 'main.ts', text: 'chunk3', score: 0.7, sources: [], tokenCount: 50 },
+      { sourceType: 'page', sourceId: 'page-1', contextPrefix: '[Source: "Design Notes"]', text: 'chunk1', score: 0.9, sources: [], tokenCount: 50 },
+      { sourceType: 'page', sourceId: 'page-1', contextPrefix: '[Source: "Design Notes"]', text: 'chunk2', score: 0.8, sources: [], tokenCount: 50 },
+      { sourceType: 'file', sourceId: 'src/main.ts', contextPrefix: '[Source: "src/main.ts"]', text: 'chunk3', score: 0.7, sources: [], tokenCount: 50 },
     ];
 
-    // Build sources the same way chatTool.ts does
+    // Build sources the same way chatTool.ts does (using extractCitationLabel)
+    const { extractCitationLabel } = await import('../../src/built-in/chat/data/chatDataService');
     const seen = new Set<string>();
     const sources: Array<{ uri: string; label: string }> = [];
     for (const chunk of mockChunks) {
@@ -214,7 +217,7 @@ describe('retrieveContext — source citation metadata (Task 6.2)', () => {
       const uri = chunk.sourceType === 'page'
         ? `parallx-page://${chunk.sourceId}`
         : chunk.sourceId;
-      const label = chunk.contextPrefix ?? (chunk.sourceType === 'page' ? 'Page' : 'File');
+      const label = extractCitationLabel(chunk);
       sources.push({ uri, label });
     }
 
@@ -224,7 +227,8 @@ describe('retrieveContext — source citation metadata (Task 6.2)', () => {
     expect(sources[1]).toEqual({ uri: 'src/main.ts', label: 'main.ts' });
   });
 
-  it('uses fallback labels when contextPrefix is missing', () => {
+  it('uses fallback labels when contextPrefix is missing', async () => {
+    const { extractCitationLabel } = await import('../../src/built-in/chat/data/chatDataService');
     const mockChunks = [
       { sourceType: 'page', sourceId: 'page-1', contextPrefix: undefined, text: 'chunk1', score: 0.9, sources: [], tokenCount: 50 },
       { sourceType: 'file', sourceId: 'readme.md', contextPrefix: undefined, text: 'chunk2', score: 0.8, sources: [], tokenCount: 50 },
@@ -239,11 +243,70 @@ describe('retrieveContext — source citation metadata (Task 6.2)', () => {
       const uri = chunk.sourceType === 'page'
         ? `parallx-page://${chunk.sourceId}`
         : chunk.sourceId;
-      const label = chunk.contextPrefix ?? (chunk.sourceType === 'page' ? 'Page' : 'File');
+      const label = extractCitationLabel(chunk);
       sources.push({ uri, label });
     }
 
     expect(sources[0].label).toBe('Page');
-    expect(sources[1].label).toBe('File');
+    expect(sources[1].label).toBe('readme.md');
+  });
+});
+
+// ── extractCitationLabel — comprehensive coverage ──
+
+describe('extractCitationLabel', () => {
+  let extractCitationLabel: typeof import('../../src/built-in/chat/data/chatDataService').extractCitationLabel;
+
+  beforeEach(async () => {
+    const mod = await import('../../src/built-in/chat/data/chatDataService');
+    extractCitationLabel = mod.extractCitationLabel;
+  });
+
+  it('extracts filename from full file path in contextPrefix', () => {
+    expect(extractCitationLabel({
+      sourceType: 'file',
+      sourceId: 'D:/AI/Parallx/demo-workspace/Vehicle Info.md',
+      contextPrefix: '[Source: "D:/AI/Parallx/demo-workspace/Vehicle Info.md" | Section: "Overview"]',
+    })).toBe('Vehicle Info.md');
+  });
+
+  it('extracts page title from contextPrefix', () => {
+    expect(extractCitationLabel({
+      sourceType: 'page',
+      sourceId: 'abc-123',
+      contextPrefix: '[Source: "My Design Notes" | Type: heading]',
+    })).toBe('My Design Notes');
+  });
+
+  it('returns "Session Memory" for conversation_memory chunks', () => {
+    expect(extractCitationLabel({
+      sourceType: 'conversation_memory',
+      sourceId: 'session-xyz',
+      contextPrefix: '[Conversation Memory — Session abc12345]',
+    })).toBe('Session Memory');
+  });
+
+  it('returns "Page" fallback when no contextPrefix for pages', () => {
+    expect(extractCitationLabel({
+      sourceType: 'page',
+      sourceId: 'some-uuid',
+      contextPrefix: undefined,
+    })).toBe('Page');
+  });
+
+  it('extracts filename from sourceId fallback for files', () => {
+    expect(extractCitationLabel({
+      sourceType: 'file',
+      sourceId: 'src/utils/helpers.ts',
+      contextPrefix: undefined,
+    })).toBe('helpers.ts');
+  });
+
+  it('handles backslash paths in contextPrefix', () => {
+    expect(extractCitationLabel({
+      sourceType: 'file',
+      sourceId: 'D:\\Projects\\readme.md',
+      contextPrefix: '[Source: "D:\\Projects\\readme.md"]',
+    })).toBe('readme.md');
   });
 });

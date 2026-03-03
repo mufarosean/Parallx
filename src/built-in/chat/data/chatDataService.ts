@@ -78,6 +78,8 @@ export interface ChatDataServiceDeps {
   readonly maxIterations: number;
   readonly networkTimeout: number;
   readonly getActiveWidget: () => ChatWidget | undefined;
+  /** Callback to open a canvas page by its UUID. Provided by main.ts via api.editors. */
+  readonly openPage?: (pageId: string) => Promise<void>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -103,6 +105,49 @@ export function extractCanvasPageId(editorId: string | undefined): string | unde
     return editorId;
   }
   return undefined;
+}
+
+/**
+ * Extract a clean display label from a retrieval chunk's contextPrefix.
+ *
+ * Input formats produced by chunkingService.buildContextPrefix():
+ *   - `[Source: "D:/AI/Parallx/demo-workspace/file.md" | Section: "Heading"]`
+ *   - `[Source: "My Page Title" | Type: heading]`
+ *   - `[Conversation Memory — Session abc12345]`
+ *
+ * Returns a short, human-friendly label (e.g. "file.md", "My Page Title",
+ * "Session Memory").
+ */
+export function extractCitationLabel(chunk: { sourceType: string; sourceId: string; contextPrefix?: string }): string {
+  const prefix = chunk.contextPrefix;
+
+  // Conversation memory — always a fixed friendly label
+  if (chunk.sourceType === 'conversation_memory') {
+    return 'Session Memory';
+  }
+
+  // Try to extract Source: "..." from the contextPrefix
+  if (prefix) {
+    const m = /Source:\s*"([^"]+)"/.exec(prefix);
+    if (m) {
+      const raw = m[1];
+      // For file paths, extract just the filename
+      if (chunk.sourceType === 'file' || raw.includes('/') || raw.includes('\\')) {
+        const segments = raw.replace(/\\/g, '/').split('/');
+        return segments[segments.length - 1] || raw;
+      }
+      // For pages the source is the page title — use as-is
+      return raw;
+    }
+  }
+
+  // Fallback: derive from sourceId
+  if (chunk.sourceType === 'page') {
+    return 'Page';
+  }
+  // sourceId for files is the file path
+  const segments = chunk.sourceId.replace(/\\/g, '/').split('/');
+  return segments[segments.length - 1] || 'File';
 }
 
 /**
@@ -440,7 +485,7 @@ export class ChatDataService {
       const uri = chunk.sourceType === 'page'
         ? `parallx-page://${chunk.sourceId}`
         : chunk.sourceId;
-      const label = chunk.contextPrefix ?? (chunk.sourceType === 'page' ? 'Page' : 'File');
+      const label = extractCitationLabel(chunk);
       sources.push({ uri, label });
     }
     return sources;
@@ -1065,6 +1110,9 @@ export class ChatDataService {
       } : undefined,
       openFile: (this._d.editorService && this._d.fileService)
         ? (fullPath: string) => this.openFile(fullPath)
+        : undefined,
+      openPage: this._d.openPage
+        ? (pageId: string) => { this._d.openPage!(pageId); }
         : undefined,
       toolPickerServices: this._d.languageModelToolsService ? {
         getTools: () => this._d.languageModelToolsService!.getTools().map((t) => ({

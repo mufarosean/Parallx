@@ -77,6 +77,9 @@ interface ParallxApi {
     get<T>(id: { readonly id: string }): T;
     has(id: { readonly id: string }): boolean;
   };
+  editors: {
+    openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
+  };
 }
 
 
@@ -238,6 +241,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     maxIterations: chatConfig.get<number>('agent.maxIterations', 10),
     networkTimeout: 60_000,
     getActiveWidget: () => _activeWidget,
+    openPage: (pageId: string) => api.editors.openEditor({ typeId: 'canvas', title: 'Page', instanceId: pageId }),
   });
 
   // ── 3a. Register the default chat participant with IChatAgentService ──

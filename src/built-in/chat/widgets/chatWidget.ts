@@ -189,6 +189,19 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       this._handleCodeAction(e.detail);
     }) as EventListener));
 
+    // Wire source citation click handlers (navigate-page + open-file)
+    this._register(addDisposableListener(this._messageListContainer, 'parallx:navigate-page' as keyof HTMLElementEventMap, ((e: CustomEvent<{ pageId: string }>) => {
+      if (this._services.openPage) {
+        this._services.openPage(e.detail.pageId);
+      }
+    }) as EventListener));
+
+    this._register(addDisposableListener(this._messageListContainer, 'parallx:open-file' as keyof HTMLElementEventMap, ((e: CustomEvent<{ path: string }>) => {
+      if (this._services.openFile) {
+        this._services.openFile(e.detail.path);
+      }
+    }) as EventListener));
+
     this._inputPart = this._register(new ChatInputPart(this._inputAreaContainer));
     this._register(this._inputPart.onDidAcceptInput((text) => this._handleSubmit(text)));
     this._register(this._inputPart.onDidRequestStop(() => this._handleStop()));

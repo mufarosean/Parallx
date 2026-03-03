@@ -251,14 +251,17 @@ function _renderReference(part: IChatReferenceContent): HTMLElement {
   root.addEventListener('click', () => {
     if (isPage) {
       const pageId = part.uri.replace('parallx-page://', '');
-      // Navigate to the page via the workspace command
-      // This uses the global command registry — the same pattern as other internal links
-      const event = new CustomEvent('parallx:navigate-page', { detail: { pageId } });
-      document.dispatchEvent(event);
+      // Bubble through DOM so ChatWidget can listen on _messageListContainer
+      root.dispatchEvent(new CustomEvent('parallx:navigate-page', {
+        bubbles: true,
+        detail: { pageId },
+      }));
     } else {
       // File paths — open in editor
-      const event = new CustomEvent('parallx:open-file', { detail: { path: part.uri } });
-      document.dispatchEvent(event);
+      root.dispatchEvent(new CustomEvent('parallx:open-file', {
+        bubbles: true,
+        detail: { path: part.uri },
+      }));
     }
   });
 

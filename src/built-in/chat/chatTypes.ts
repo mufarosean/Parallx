@@ -188,6 +188,7 @@ export interface IChatWidgetServices {
   readonly getSessions?: () => readonly IChatSession[];
   readonly deleteSession?: (sessionId: string) => void;
   readonly openFile?: (fullPath: string) => void;
+  readonly openPage?: (pageId: string) => void;
   readonly getSystemPrompt?: () => Promise<string>;
   readonly readFileRelative?: (relativePath: string) => Promise<string | null>;
   readonly writeFileRelative?: (relativePath: string, content: string) => Promise<void>;
