@@ -988,16 +988,16 @@ workspace-root/
 
 | # | Task | Status | Est. | Depends On | Files to Change | What to Do |
 |---|------|--------|------|------------|-----------------|------------|
-| **3.1** | **`@` autocomplete trigger in chat input** | ⬜ | 3h | — | Chat input widget | Detect `@` keystroke in chat input, show dropdown with: file names (from workspace index), folder names, special scopes (@workspace, @terminal). Fuzzy search. |
-| **3.2** | **`@file:` mention handler** | ⬜ | 2h | 3.1, Phase 1 | `src/built-in/chat/participants/defaultParticipant.ts` | When user selects `@file:path/to/file.ts`, read file content via FileService, inject into message context, show as pill. |
-| **3.3** | **`@folder:` mention handler** | ⬜ | 2h | 3.1 | `src/built-in/chat/participants/defaultParticipant.ts` | Read all files in folder (respecting `.parallxignore`), inject with token budget, show as pill with file count. |
-| **3.4** | **`@workspace` mention handler** | ⬜ | 1h | 3.1, 1.7 | `src/built-in/chat/participants/defaultParticipant.ts` | Trigger full RAG search with user's message, inject top-K results. Different from auto-RAG: user is explicitly requesting broad context. |
-| **3.5** | **Slash command parser** | ⬜ | 2h | — | Chat input handling code | Detect `/` at start of message. Parse command name. Show autocomplete dropdown with built-in + user-defined commands. |
-| **3.6** | **Built-in commands** | ⬜ | 3h | 3.5 | `src/built-in/chat/participants/defaultParticipant.ts` | `/explain`, `/fix`, `/test`, `/doc`, `/review` — each wraps user's context in a structured prompt template. `/init` and `/compact` are special (1.6, 3.8). |
-| **3.7** | **User-defined commands from `.parallx/commands/`** | ⬜ | 2h | 3.5, 2.9 | `src/services/promptFileService.ts`, command parser | Read `.parallx/commands/*.md`, parse frontmatter (name, description), register as slash commands. `{context}` placeholder replaced with user's attached context. |
-| **3.8** | **`/compact` command** | ⬜ | 2h | 3.5 | `src/built-in/chat/participants/defaultParticipant.ts` | Trigger history summarization (logic already exists in `summarizeHistory()`). Replace old messages with summary. Show token savings. |
-| **3.9** | **Per-turn RAG re-query** | ⬜ | 2h | 1.7 | `src/built-in/chat/participants/defaultParticipant.ts` | On each user message, re-embed and re-search. Merge with previously injected context. Drop stale chunks if token budget is tight. |
-| **3.10** | **Streaming polish** | ⬜ | 3h | — | Chat response rendering | Verify token-by-token rendering works. Add typing indicator animation. Add stop/cancel button. Progressive markdown rendering (headings appear as they complete). |
+| **3.1** | **`@` autocomplete trigger in chat input** | ✅ | 3h | — | Chat input widget | Detect `@` keystroke in chat input, show dropdown with: file names (from workspace index), folder names, special scopes (@workspace, @terminal). Fuzzy search. |
+| **3.2** | **`@file:` mention handler** | ✅ | 2h | 3.1, Phase 1 | `src/built-in/chat/participants/defaultParticipant.ts` | When user selects `@file:path/to/file.ts`, read file content via FileService, inject into message context, show as pill. |
+| **3.3** | **`@folder:` mention handler** | ✅ | 2h | 3.1 | `src/built-in/chat/participants/defaultParticipant.ts` | Read all files in folder (respecting `.parallxignore`), inject with token budget, show as pill with file count. |
+| **3.4** | **`@workspace` mention handler** | ✅ | 1h | 3.1, 1.7 | `src/built-in/chat/participants/defaultParticipant.ts` | Trigger full RAG search with user's message, inject top-K results. Different from auto-RAG: user is explicitly requesting broad context. |
+| **3.5** | **Slash command parser** | ✅ | 2h | — | Chat input handling code | Detect `/` at start of message. Parse command name. Show autocomplete dropdown with built-in + user-defined commands. |
+| **3.6** | **Built-in commands** | ✅ | 3h | 3.5 | `src/built-in/chat/participants/defaultParticipant.ts` | `/explain`, `/fix`, `/test`, `/doc`, `/review` — each wraps user's context in a structured prompt template. `/init` and `/compact` are special (1.6, 3.8). |
+| **3.7** | **User-defined commands from `.parallx/commands/`** | ✅ | 2h | 3.5, 2.9 | `src/services/promptFileService.ts`, command parser | Read `.parallx/commands/*.md`, parse frontmatter (name, description), register as slash commands. `{context}` placeholder replaced with user's attached context. |
+| **3.8** | **`/compact` command** | ✅ | 2h | 3.5 | `src/built-in/chat/participants/defaultParticipant.ts` | Trigger history summarization (logic already exists in `summarizeHistory()`). Replace old messages with summary. Show token savings. |
+| **3.9** | **Per-turn RAG re-query** | ✅ | 2h | 1.7 | `src/built-in/chat/participants/defaultParticipant.ts` | On each user message, re-embed and re-search. Merge with previously injected context. Drop stale chunks if token budget is tight. |
+| **3.10** | **Streaming polish** | ✅ | 3h | — | Chat response rendering | Verify token-by-token rendering works. Add typing indicator animation. Add stop/cancel button. Progressive markdown rendering (headings appear as they complete). |
 
 **Phase 3 Total:** ~22h
 
