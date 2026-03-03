@@ -33,8 +33,6 @@ export class ChatListRenderer extends Disposable {
 
   private _onOpenAttachment: OpenAttachmentHandler | undefined;
   private _onCancelRequest: (() => void) | undefined;
-  private _streamingStartTime: number | null = null;
-  private _elapsedTimer: ReturnType<typeof setInterval> | null = null;
 
   /**
    * Track the last rendered state so we can do incremental updates.
@@ -165,14 +163,10 @@ export class ChatListRenderer extends Disposable {
       }
       // Update progress footer (Task 4.9)
       this._updateProgressFooter(lastPair.assistantEl, response);
-      if (!this._elapsedTimer) {
-        this._startElapsedTimer(lastPair.assistantEl.closest('.parallx-chat-message-list') ?? lastPair.assistantEl.parentElement!);
-      }
     } else if (existingCursor) {
       existingCursor.remove();
       // Remove progress footer when done
       this._removeProgressFooter(lastPair.assistantEl);
-      this._stopElapsedTimer();
       // Add message actions bar now that streaming is complete
       this._addMessageActions(lastPair.assistantEl, body);
     }
@@ -228,10 +222,6 @@ export class ChatListRenderer extends Disposable {
           this._addProgressFooter(lastEl.assistantEl, lastResponse);
         }
       }
-      // Start elapsed timer
-      this._startElapsedTimer(container);
-    } else {
-      this._stopElapsedTimer();
     }
   }
 
@@ -347,51 +337,12 @@ export class ChatListRenderer extends Disposable {
 
   // ── Progress Indication (Task 4.9) ──
 
-  /** Start the elapsed time timer. */
-  private _startElapsedTimer(container: HTMLElement): void {
-    if (this._streamingStartTime === null) {
-      this._streamingStartTime = Date.now();
-    }
-    if (this._elapsedTimer) { return; }
-
-    this._elapsedTimer = setInterval(() => {
-      const elapsed = Date.now() - (this._streamingStartTime ?? Date.now());
-      const elapsedLabel = container.querySelector('.parallx-chat-progress-elapsed');
-      if (elapsedLabel) {
-        elapsedLabel.textContent = this._formatElapsed(elapsed);
-      }
-    }, 500);
-  }
-
-  /** Stop elapsed timer and reset. */
-  private _stopElapsedTimer(): void {
-    if (this._elapsedTimer) {
-      clearInterval(this._elapsedTimer);
-      this._elapsedTimer = null;
-    }
-    this._streamingStartTime = null;
-  }
-
   /** Add progress footer below assistant message (Task 4.9). */
-  private _addProgressFooter(assistantEl: HTMLElement, response: IChatAssistantResponse): void {
+  private _addProgressFooter(assistantEl: HTMLElement, _response: IChatAssistantResponse): void {
     // Don't duplicate
     if (assistantEl.querySelector('.parallx-chat-progress-footer')) { return; }
 
     const footer = $('div.parallx-chat-progress-footer');
-
-    // Elapsed time
-    const elapsed = $('span.parallx-chat-progress-elapsed');
-    elapsed.textContent = '0s';
-    footer.appendChild(elapsed);
-
-    // Separator
-    footer.appendChild(document.createTextNode(' · '));
-
-    // Token count
-    const tokens = $('span.parallx-chat-progress-tokens');
-    const totalChars = response.parts.reduce((s, p) => s + ((p as any).content?.length ?? (p as any).code?.length ?? 0), 0);
-    tokens.textContent = `~${Math.ceil(totalChars / 4)} tokens`;
-    footer.appendChild(tokens);
 
     // Cancel button
     const cancelBtn = document.createElement('button');
@@ -409,17 +360,9 @@ export class ChatListRenderer extends Disposable {
 
   /** Update the progress footer during streaming (Task 4.9). */
   private _updateProgressFooter(assistantEl: HTMLElement, response: IChatAssistantResponse): void {
-    let footer = assistantEl.querySelector('.parallx-chat-progress-footer');
+    const footer = assistantEl.querySelector('.parallx-chat-progress-footer');
     if (!footer) {
       this._addProgressFooter(assistantEl, response);
-      return;
-    }
-
-    // Update token count
-    const tokensEl = footer.querySelector('.parallx-chat-progress-tokens');
-    if (tokensEl) {
-      const totalChars = response.parts.reduce((s, p) => s + ((p as any).content?.length ?? (p as any).code?.length ?? 0), 0);
-      tokensEl.textContent = `~${Math.ceil(totalChars / 4)} tokens`;
     }
   }
 
@@ -428,16 +371,7 @@ export class ChatListRenderer extends Disposable {
     assistantEl.querySelector('.parallx-chat-progress-footer')?.remove();
   }
 
-  /** Format elapsed milliseconds to human string. */
-  private _formatElapsed(ms: number): string {
-    const secs = Math.floor(ms / 1000);
-    if (secs < 60) { return `${secs}s`; }
-    const mins = Math.floor(secs / 60);
-    return `${mins}m ${secs % 60}s`;
-  }
-
   override dispose(): void {
-    this._stopElapsedTimer();
     super.dispose();
   }
 }
