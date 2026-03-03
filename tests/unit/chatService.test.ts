@@ -224,3 +224,74 @@ describe('ChatService', () => {
     });
   });
 });
+
+// ── _extractToolCallsFromText — text-based tool call fallback ──
+
+describe('_extractToolCallsFromText', () => {
+  let _extractToolCallsFromText: typeof import('../../src/built-in/chat/participants/defaultParticipant')._extractToolCallsFromText;
+
+  beforeEach(async () => {
+    const mod = await import('../../src/built-in/chat/participants/defaultParticipant');
+    _extractToolCallsFromText = mod._extractToolCallsFromText;
+  });
+
+  it('extracts a bare JSON tool call object', () => {
+    const text = 'Here is the tool call:\n{"name": "read_file", "parameters": {"path": "file.md"}}';
+    const { toolCalls, cleanedText } = _extractToolCallsFromText(text);
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].function.name).toBe('read_file');
+    expect(toolCalls[0].function.arguments).toEqual({ path: 'file.md' });
+    expect(cleanedText).toBe('Here is the tool call:');
+  });
+
+  it('extracts a JSON tool call inside a code block', () => {
+    const text = 'I will read the file:\n```json\n{"name": "read_file", "parameters": {"path": "test.md"}}\n```\nDone.';
+    const { toolCalls, cleanedText } = _extractToolCallsFromText(text);
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].function.name).toBe('read_file');
+    expect(cleanedText).toContain('I will read the file:');
+    expect(cleanedText).toContain('Done.');
+    expect(cleanedText).not.toContain('read_file');
+  });
+
+  it('returns empty array when no tool calls found', () => {
+    const text = 'Hello! How can I help you today?';
+    const { toolCalls, cleanedText } = _extractToolCallsFromText(text);
+    expect(toolCalls).toHaveLength(0);
+    expect(cleanedText).toBe(text);
+  });
+
+  it('handles tool call with nested parameters', () => {
+    const text = '{"name": "search_workspace", "parameters": {"query": "hello world", "limit": 5}}';
+    const { toolCalls } = _extractToolCallsFromText(text);
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].function.name).toBe('search_workspace');
+    expect(toolCalls[0].function.arguments).toEqual({ query: 'hello world', limit: 5 });
+  });
+
+  it('does not extract invalid JSON', () => {
+    const text = '{"name": "read_file", "parameters": {broken}}';
+    const { toolCalls } = _extractToolCallsFromText(text);
+    expect(toolCalls).toHaveLength(0);
+  });
+
+  it('does not extract objects missing name or parameters', () => {
+    const text = '{"action": "read_file", "params": {"path": "x"}}';
+    const { toolCalls } = _extractToolCallsFromText(text);
+    expect(toolCalls).toHaveLength(0);
+  });
+
+  it('strips the matched JSON from cleaned text', () => {
+    const text = '{"name": "list_files", "parameters": {"directory": "."}}';
+    const { cleanedText } = _extractToolCallsFromText(text);
+    expect(cleanedText).toBe('');
+  });
+
+  it('preserves surrounding text when stripping tool call', () => {
+    const text = 'Let me check.\n{"name": "list_files", "parameters": {"directory": "."}}\nHere are the results:';
+    const { toolCalls, cleanedText } = _extractToolCallsFromText(text);
+    expect(toolCalls).toHaveLength(1);
+    expect(cleanedText).toContain('Let me check.');
+    expect(cleanedText).toContain('Here are the results:');
+  });
+});

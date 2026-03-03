@@ -539,6 +539,12 @@ export interface IChatResponseStream {
   /** Push a raw content part. */
   push(part: IChatContentPart): void;
   /**
+   * Replace the content of the most recent Markdown part.
+   * Used when text-based tool calls are detected post-streaming — the
+   * raw JSON needs to be stripped from the already-rendered markdown.
+   */
+  replaceLastMarkdown(content: string): void;
+  /**
    * Guard: throws Error('Stream is closed') if the response has been
    * finalized or cancelled. Prevents writing after completion.
    */

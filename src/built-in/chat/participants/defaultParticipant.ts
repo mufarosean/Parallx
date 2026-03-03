@@ -48,6 +48,66 @@ import { loadUserCommands } from '../utilities/userCommandLoader.js';
 const DEFAULT_MAX_ITERATIONS = 10;
 /** Ask mode needs fewer iterations — it only reads, never writes. */
 const ASK_MODE_MAX_ITERATIONS = 5;
+
+/**
+ * Fallback: extract tool calls from text content when the model emits them
+ * as JSON instead of using the structured tool_calls API field.
+ *
+ * Small models (e.g. llama3.1:8b, qwen2.5) sometimes respond with:
+ *   {"name": "read_file", "parameters": {"path": "file.md"}}
+ * or wrapped in markdown code blocks, rather than using Ollama's tool_calls.
+ *
+ * @returns Extracted tool calls and the cleaned text (JSON stripped).
+ */
+/** @internal Exported for unit testing. */
+export function _extractToolCallsFromText(text: string): { toolCalls: IToolCall[]; cleanedText: string } {
+  const toolCalls: IToolCall[] = [];
+  let cleaned = text;
+
+  // Pattern 1: JSON object with "name" + "parameters" (single or in array)
+  // Matches both bare JSON and JSON inside ```json code blocks
+  const jsonPatterns = [
+    // Code-fenced JSON block
+    /```(?:json)?\s*\n?(\{[\s\S]*?"name"\s*:\s*"[\w]+"[\s\S]*?"parameters"\s*:[\s\S]*?\})\s*\n?```/g,
+    /```(?:json)?\s*\n?(\[[\s\S]*?"name"\s*:\s*"[\w]+"[\s\S]*?"parameters"\s*:[\s\S]*?\])\s*\n?```/g,
+    // Bare JSON object
+    /(\{\s*"name"\s*:\s*"[\w]+"\s*,\s*"parameters"\s*:\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}\s*\})/g,
+    // JSON array of tool calls
+    /(\[\s*\{\s*"name"\s*:\s*"[\w]+"\s*,\s*"parameters"\s*:[\s\S]*?\}\s*\])/g,
+  ];
+
+  for (const pattern of jsonPatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const jsonStr = match[1] || match[0];
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const items = Array.isArray(parsed) ? parsed : [parsed];
+        for (const item of items) {
+          if (
+            typeof item === 'object' && item !== null &&
+            typeof item.name === 'string' && item.name.length > 0 &&
+            typeof item.parameters === 'object' && item.parameters !== null
+          ) {
+            toolCalls.push({
+              function: { name: item.name, arguments: item.parameters },
+            });
+            // Strip the matched JSON (including code fence if present) from cleaned text
+            cleaned = cleaned.replace(match[0], '');
+          }
+        }
+      } catch {
+        // Not valid JSON — skip
+      }
+    }
+    if (toolCalls.length > 0) { break; } // Don't double-match
+  }
+
+  // Trim leftover whitespace / empty lines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+
+  return { toolCalls, cleanedText: cleaned };
+}
 /** Default network timeout in milliseconds. */
 const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
 /** Context overflow threshold — warn at this fraction of context length. */
@@ -922,6 +982,25 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         if (isEditMode && turnContent) {
           _parseEditResponse(turnContent, response);
           break; // Edit mode is single-turn (no tool calls)
+        }
+
+        // ── Fallback: detect tool calls embedded as JSON in text content ──
+        // Small models (llama3.1:8b, qwen2.5) sometimes emit tool calls as
+        // JSON text in the content field instead of using the structured
+        // tool_calls API.  If no structured tool calls were found, scan the
+        // accumulated text for JSON tool call patterns.
+        if (turnToolCalls.length === 0 && turnContent && canInvokeTools) {
+          const { toolCalls: textToolCalls, cleanedText } = _extractToolCallsFromText(turnContent);
+          if (textToolCalls.length > 0) {
+            for (const tc of textToolCalls) {
+              turnToolCalls.push(tc);
+            }
+            // Replace the already-rendered markdown to strip the raw JSON
+            if (!isEditMode) {
+              response.replaceLastMarkdown(cleanedText);
+            }
+            turnContent = cleanedText;
+          }
         }
 
         // No tool calls → model gave a final answer, done

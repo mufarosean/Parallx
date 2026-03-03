@@ -157,6 +157,24 @@ class ChatResponseStream implements IChatResponseStream {
     (this._response as any).completionTokens = completionTokens;
   }
 
+  replaceLastMarkdown(content: string): void {
+    this.throwIfDone();
+    const parts = this._response.parts as IChatContentPart[];
+    // Walk backwards to find the last Markdown part
+    for (let i = parts.length - 1; i >= 0; i--) {
+      if (parts[i].kind === ChatContentPartKind.Markdown) {
+        (parts[i] as IChatMarkdownContent).content = content;
+        this._scheduleUpdate();
+        return;
+      }
+    }
+    // No markdown part found — push one if there's content
+    if (content) {
+      parts.push({ kind: ChatContentPartKind.Markdown, content });
+      this._scheduleUpdate();
+    }
+  }
+
   markdown(content: string): void {
     this.throwIfDone();
 
