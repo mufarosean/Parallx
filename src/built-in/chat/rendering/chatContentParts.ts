@@ -70,52 +70,168 @@ function _renderMarkdown(part: IChatMarkdownContent): HTMLElement {
 }
 
 /**
- * Minimal markdown → HTML converter for M9.0.
- * Covers the most common constructs that appear in LLM responses.
- * No external dependencies — pure regex transforms.
+ * Block-level markdown → HTML converter.
+ *
+ * Parses markdown line-by-line into blocks (code, heading, list, blockquote,
+ * horizontal rule, paragraph), then applies inline formatting within each
+ * block. This avoids the corruption caused by chaining global regex
+ * replacements — paragraphs can't leak into lists, `<br>` can't appear
+ * between `<li>` items, etc.
+ *
+ * Exported for testing.
  */
-function _markdownToHtml(md: string): string {
-  let html = _escapeHtml(md);
-
-  // Code blocks (``` ... ```) — must be processed before inline code
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang, code) => {
-    const langAttr = lang ? ` data-lang="${lang}"` : '';
-    return `<pre${langAttr}><code>${code.trimEnd()}</code></pre>`;
+export function _markdownToHtml(md: string): string {
+  // Phase 1: extract fenced code blocks into placeholders so their
+  // content is never touched by block or inline processing
+  const codeBlocks: string[] = [];
+  const prepared = md.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
+    const i = codeBlocks.length;
+    const langAttr = lang ? ` data-lang="${_escapeHtml(lang)}"` : '';
+    codeBlocks.push(`<pre${langAttr}><code>${_escapeHtml(code.trimEnd())}</code></pre>`);
+    return `\x00CB${i}\x00`;
   });
 
-  // Inline code (`...`)
-  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  // Phase 2: walk lines, grouping into blocks
+  const lines = prepared.split('\n');
+  const blocks: string[] = [];
+  let i = 0;
 
-  // Headings (### ...)
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  while (i < lines.length) {
+    const line = lines[i];
 
-  // Bold (**...**)
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    // -- Code block placeholder --
+    const cbMatch = line.match(/^\x00CB(\d+)\x00$/);
+    if (cbMatch) {
+      blocks.push(codeBlocks[parseInt(cbMatch[1])]);
+      i++;
+      continue;
+    }
 
-  // Italic (*...*)
-  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    // -- Empty line — skip --
+    if (line.trim() === '') {
+      i++;
+      continue;
+    }
 
-  // Links [text](url)
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // -- Heading --
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      blocks.push(`<h${level}>${_inlineFormat(_escapeHtml(headingMatch[2]))}</h${level}>`);
+      i++;
+      continue;
+    }
 
-  // Unordered lists (- item or * item)
-  html = html.replace(/^[*-] (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+    // -- Horizontal rule --
+    if (/^[-*_]{3,}\s*$/.test(line)) {
+      blocks.push('<hr>');
+      i++;
+      continue;
+    }
 
-  // Ordered lists (1. item)
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+    // -- Blockquote --
+    if (/^\s*>\s?/.test(line)) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+        quoteLines.push(lines[i].replace(/^\s*>\s?/, ''));
+        i++;
+      }
+      // Recurse for nested markdown inside blockquote
+      blocks.push(`<blockquote>${_markdownToHtml(quoteLines.join('\n'))}</blockquote>`);
+      continue;
+    }
 
-  // Paragraphs: wrap remaining text blocks
-  html = html.replace(/\n{2,}/g, '</p><p>');
-  html = html.replace(/\n/g, '<br>');
+    // -- Unordered list (-, *, +) with optional leading whitespace --
+    if (/^\s*[-*+]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length) {
+        const ulMatch = lines[i].match(/^\s*[-*+]\s+(.*)/);
+        if (ulMatch) {
+          items.push(ulMatch[1]);
+          i++;
+        } else if (lines[i].trim() === '') {
+          // Blank line — peek ahead: if the next non-blank line is still
+          // a list item, keep consuming (loose list); otherwise stop.
+          let peek = i + 1;
+          while (peek < lines.length && lines[peek].trim() === '') peek++;
+          if (peek < lines.length && /^\s*[-*+]\s+/.test(lines[peek])) {
+            i++;            // skip blank line
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+      }
+      blocks.push('<ul>' + items.map(t => `<li>${_inlineFormat(_escapeHtml(t))}</li>`).join('') + '</ul>');
+      continue;
+    }
 
-  // Wrap in paragraph if not already wrapped in a block element
-  if (!html.startsWith('<h') && !html.startsWith('<ul') && !html.startsWith('<ol') && !html.startsWith('<pre')) {
-    html = `<p>${html}</p>`;
+    // -- Ordered list --
+    if (/^\s*\d+[.)]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length) {
+        const olMatch = lines[i].match(/^\s*\d+[.)]\s+(.*)/);
+        if (olMatch) {
+          items.push(olMatch[1]);
+          i++;
+        } else if (lines[i].trim() === '') {
+          let peek = i + 1;
+          while (peek < lines.length && lines[peek].trim() === '') peek++;
+          if (peek < lines.length && /^\s*\d+[.)]\s+/.test(lines[peek])) {
+            i++;
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+      }
+      blocks.push('<ol>' + items.map(t => `<li>${_inlineFormat(_escapeHtml(t))}</li>`).join('') + '</ol>');
+      continue;
+    }
+
+    // -- Paragraph: consecutive non-blank, non-block lines --
+    const paraLines: string[] = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== '' &&
+      !lines[i].match(/^#{1,3}\s+/) &&
+      !lines[i].match(/^\s*[-*+]\s+/) &&
+      !lines[i].match(/^\s*\d+[.)]\s+/) &&
+      !lines[i].match(/^[-*_]{3,}\s*$/) &&
+      !lines[i].match(/^\s*>\s?/) &&
+      !lines[i].match(/^\x00CB\d+\x00$/)
+    ) {
+      paraLines.push(lines[i]);
+      i++;
+    }
+    if (paraLines.length > 0) {
+      const content = paraLines.map(l => _inlineFormat(_escapeHtml(l))).join('<br>');
+      blocks.push(`<p>${content}</p>`);
+    }
   }
 
+  return blocks.join('\n');
+}
+
+/**
+ * Apply inline formatting to an already-escaped HTML string.
+ * Order matters: code spans first (so their content is opaque to bold/italic).
+ */
+function _inlineFormat(html: string): string {
+  // Inline code (`...`) — first, so code content won't be styled
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  // Bold (**...**  or __...__)
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+  // Italic (*...* or _..._) — must come after bold
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  html = html.replace(/(?<!\w)_(.+?)_(?!\w)/g, '<em>$1</em>');
+  // Strikethrough (~~...~~)
+  html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
+  // Links [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   return html;
 }
 
