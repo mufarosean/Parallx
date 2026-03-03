@@ -9,13 +9,13 @@
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/common/chatSlashCommands.ts
 
-import { Disposable } from '../../platform/lifecycle.js';
-import { Emitter } from '../../platform/events.js';
-import type { Event } from '../../platform/events.js';
-import type { IChatSlashCommand, IParsedSlashCommand } from './chatTypes.js';
+import { Disposable } from '../../../platform/lifecycle.js';
+import { Emitter } from '../../../platform/events.js';
+import type { Event } from '../../../platform/events.js';
+import type { IChatSlashCommand, IParsedSlashCommand } from '../chatTypes.js';
 
 // IChatSlashCommand, IParsedSlashCommand — now defined in chatTypes.ts (M13 Phase 1)
-export type { IChatSlashCommand, IParsedSlashCommand } from './chatTypes.js';
+export type { IChatSlashCommand, IParsedSlashCommand } from '../chatTypes.js';
 
 // ── Built-in Commands ──
 

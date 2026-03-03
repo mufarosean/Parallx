@@ -9,13 +9,13 @@
 //   Parallx uses a lightweight HTML-based renderer instead of the
 //   full Monaco diff editor, since diffs are displayed inline in chat.
 
-import { $ } from '../../ui/dom.js';
-import type { IDiffResult, IDiffHunk, ILineDiffChange, IWordChange } from '../../services/diffService.js';
-import { computeWordDiff, estimateDiffTokens } from '../../services/diffService.js';
-import type { DiffReviewDecision, IDiffViewerOptions } from './chatTypes.js';
+import { $ } from '../../../ui/dom.js';
+import type { IDiffResult, IDiffHunk, ILineDiffChange, IWordChange } from '../../../services/diffService.js';
+import { computeWordDiff, estimateDiffTokens } from '../../../services/diffService.js';
+import type { DiffReviewDecision, IDiffViewerOptions } from '../chatTypes.js';
 
 // Diff viewer types — now defined in chatTypes.ts (M13 Phase 1)
-export type { DiffReviewDecision, DiffReviewCallback, IDiffViewerOptions } from './chatTypes.js';
+export type { DiffReviewDecision, DiffReviewCallback, IDiffViewerOptions } from '../chatTypes.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Rendering

@@ -2,7 +2,7 @@
 // Unit tests for chatRequestParser — M9.0
 
 import { describe, it, expect } from 'vitest';
-import { parseChatRequest } from '../../src/built-in/chat/chatRequestParser';
+import { parseChatRequest } from '../../src/built-in/chat/input/chatRequestParser';
 
 describe('parseChatRequest', () => {
 

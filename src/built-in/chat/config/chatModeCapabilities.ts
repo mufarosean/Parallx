@@ -8,11 +8,11 @@
 //   src/vs/workbench/contrib/chat/common/chatModes.ts — ChatModeKind enum,
 //   src/vs/workbench/contrib/chat/common/chatAgents.ts — mode checked in invokeAgent()
 
-import { ChatMode } from '../../services/chatTypes.js';
-import type { IChatModeCapabilities } from './chatTypes.js';
+import { ChatMode } from '../../../services/chatTypes.js';
+import type { IChatModeCapabilities } from '../chatTypes.js';
 
 // IChatModeCapabilities — now defined in chatTypes.ts (M13 Phase 1)
-export type { IChatModeCapabilities } from './chatTypes.js';
+export type { IChatModeCapabilities } from '../chatTypes.js';
 
 /**
  * Frozen capability objects — one per mode.

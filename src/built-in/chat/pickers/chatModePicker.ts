@@ -8,16 +8,16 @@
 //   src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts
 //   (mode picker portion integrated into input toolbar)
 
-import { Disposable, toDisposable } from '../../platform/lifecycle.js';
-import { Emitter } from '../../platform/events.js';
-import type { Event } from '../../platform/events.js';
-import { $, addDisposableListener } from '../../ui/dom.js';
-import { ChatMode } from '../../services/chatTypes.js';
-import { chatIcons } from './chatIcons.js';
-import type { IModePickerServices } from './chatTypes.js';
+import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
+import { Emitter } from '../../../platform/events.js';
+import type { Event } from '../../../platform/events.js';
+import { $, addDisposableListener } from '../../../ui/dom.js';
+import { ChatMode } from '../../../services/chatTypes.js';
+import { chatIcons } from '../chatIcons.js';
+import type { IModePickerServices } from '../chatTypes.js';
 
 // IModePickerServices — now defined in chatTypes.ts (M13 Phase 1)
-export type { IModePickerServices } from './chatTypes.js';
+export type { IModePickerServices } from '../chatTypes.js';
 
 /** Mode display metadata. */
 const MODE_META: Record<ChatMode, { label: string; title: string; description: string }> = {

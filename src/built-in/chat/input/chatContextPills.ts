@@ -16,16 +16,16 @@
 //   Copilot's "used X references" collapsible area beneath the response.
 //   Our implementation shows them ABOVE the input for pre-send transparency.
 
-import { Disposable, toDisposable } from '../../platform/lifecycle.js';
-import { Emitter } from '../../platform/events.js';
-import type { Event } from '../../platform/events.js';
-import { $ } from '../../ui/dom.js';
-import { chatIcons } from './chatIcons.js';
-import type { IContextPill } from '../../services/chatTypes.js';
-import type { ITokenBudgetSlot } from './chatTypes.js';
+import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
+import { Emitter } from '../../../platform/events.js';
+import type { Event } from '../../../platform/events.js';
+import { $ } from '../../../ui/dom.js';
+import { chatIcons } from '../chatIcons.js';
+import type { IContextPill } from '../../../services/chatTypes.js';
+import type { ITokenBudgetSlot } from '../chatTypes.js';
 
 // ITokenBudgetSlot — now defined in chatTypes.ts (M13 Phase 1)
-export type { ITokenBudgetSlot } from './chatTypes.js';
+export type { ITokenBudgetSlot } from '../chatTypes.js';
 
 // ── Component ──
 

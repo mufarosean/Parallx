@@ -8,11 +8,11 @@
 // computes a diff, and shows the diff viewer for review.
 // "Create File" writes the file directly (with permission check).
 
-import { $ } from '../../ui/dom.js';
-import type { ICodeActionRequest } from './chatTypes.js';
+import { $ } from '../../../ui/dom.js';
+import type { ICodeActionRequest } from '../chatTypes.js';
 
 // Code action types — now defined in chatTypes.ts (M13 Phase 1)
-export type { CodeActionKind, ICodeActionRequest, CodeActionHandler } from './chatTypes.js';
+export type { CodeActionKind, ICodeActionRequest, CodeActionHandler } from '../chatTypes.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // filepath header detection

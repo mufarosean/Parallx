@@ -11,15 +11,15 @@
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/browser/chatListRenderer.ts
 
-import { Disposable } from '../../platform/lifecycle.js';
-import { $ } from '../../ui/dom.js';
+import { Disposable } from '../../../platform/lifecycle.js';
+import { $ } from '../../../ui/dom.js';
 import { renderContentPart } from './chatContentParts.js';
-import { chatIcons } from './chatIcons.js';
-import type { IChatRequestResponsePair, IChatAssistantResponse, IChatUserMessage } from '../../services/chatTypes.js';
-import type { OpenAttachmentHandler } from './chatTypes.js';
+import { chatIcons } from '../chatIcons.js';
+import type { IChatRequestResponsePair, IChatAssistantResponse, IChatUserMessage } from '../../../services/chatTypes.js';
+import type { OpenAttachmentHandler } from '../chatTypes.js';
 
 // OpenAttachmentHandler — now defined in chatTypes.ts (M13 Phase 1)
-export type { OpenAttachmentHandler } from './chatTypes.js';
+export type { OpenAttachmentHandler } from '../chatTypes.js';
 
 /**
  * Renders the conversation message list.

@@ -45,9 +45,9 @@ import type { IDatabaseService, IFileService, IWorkspaceService, IEditorService,
 import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageModelToolsService } from '../../../services/chatTypes.js';
 import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import type { PromptFileService } from '../../../services/promptFileService.js';
-import type { ChatWidget } from '../chatWidget.js';
+import type { ChatWidget } from '../widgets/chatWidget.js';
 
-import { buildPlannerPrompt, buildSystemPrompt } from '../chatSystemPrompts.js';
+import { buildPlannerPrompt, buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { extractTextContent } from '../tools/builtInTools.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════

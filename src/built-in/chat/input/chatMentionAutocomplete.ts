@@ -12,15 +12,15 @@
 //   src/vs/workbench/contrib/chat/browser/chatInputPart.ts (mention detection)
 //   src/vs/workbench/contrib/chat/common/chatVariables.ts (variable resolution)
 
-import { Disposable } from '../../platform/lifecycle.js';
-import { Emitter } from '../../platform/events.js';
-import type { Event } from '../../platform/events.js';
-import { $, addDisposableListener } from '../../ui/dom.js';
-import { chatIcons } from './chatIcons.js';
-import type { IMentionSuggestion, IMentionAcceptEvent, IMentionSuggestionProvider, ISlashCommandProvider } from './chatTypes.js';
+import { Disposable } from '../../../platform/lifecycle.js';
+import { Emitter } from '../../../platform/events.js';
+import type { Event } from '../../../platform/events.js';
+import { $, addDisposableListener } from '../../../ui/dom.js';
+import { chatIcons } from '../chatIcons.js';
+import type { IMentionSuggestion, IMentionAcceptEvent, IMentionSuggestionProvider, ISlashCommandProvider } from '../chatTypes.js';
 
 // Mention & autocomplete types — now defined in chatTypes.ts (M13 Phase 1)
-export type { IMentionSuggestion, IMentionAcceptEvent, IMentionSuggestionProvider, ISlashCommandProvider } from './chatTypes.js';
+export type { IMentionSuggestion, IMentionAcceptEvent, IMentionSuggestionProvider, ISlashCommandProvider } from '../chatTypes.js';
 
 // ── Built-in scopes ──
 

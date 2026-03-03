@@ -6,8 +6,8 @@ import {
   getModeCapabilities,
   shouldIncludeTools,
   shouldUseStructuredOutput,
-} from '../../src/built-in/chat/chatModeCapabilities';
-import type { IChatModeCapabilities } from '../../src/built-in/chat/chatModeCapabilities';
+} from '../../src/built-in/chat/config/chatModeCapabilities';
+import type { IChatModeCapabilities } from '../../src/built-in/chat/config/chatModeCapabilities';
 
 // ── getModeCapabilities ──
 

@@ -7,15 +7,15 @@
 //   src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts
 //   (ChatModelPickerWidget portion)
 
-import { Disposable, toDisposable } from '../../platform/lifecycle.js';
-import { Emitter } from '../../platform/events.js';
-import type { Event } from '../../platform/events.js';
-import { $, addDisposableListener } from '../../ui/dom.js';
-import { chatIcons } from './chatIcons.js';
-import type { IModelPickerServices } from './chatTypes.js';
+import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
+import { Emitter } from '../../../platform/events.js';
+import type { Event } from '../../../platform/events.js';
+import { $, addDisposableListener } from '../../../ui/dom.js';
+import { chatIcons } from '../chatIcons.js';
+import type { IModelPickerServices } from '../chatTypes.js';
 
 // IModelPickerServices — now defined in chatTypes.ts (M13 Phase 1)
-export type { IModelPickerServices } from './chatTypes.js';
+export type { IModelPickerServices } from '../chatTypes.js';
 
 /**
  * Model picker — a button that opens a dropdown list of available models.

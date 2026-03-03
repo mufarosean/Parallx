@@ -9,16 +9,16 @@
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/browser/chatHistory.ts
 
-import { Disposable, toDisposable } from '../../platform/lifecycle.js';
-import { Emitter } from '../../platform/events.js';
-import type { Event } from '../../platform/events.js';
-import { $, addDisposableListener } from '../../ui/dom.js';
-import type { IChatSession } from '../../services/chatTypes.js';
-import { chatIcons } from './chatIcons.js';
-import type { ISessionSidebarServices } from './chatTypes.js';
+import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
+import { Emitter } from '../../../platform/events.js';
+import type { Event } from '../../../platform/events.js';
+import { $, addDisposableListener } from '../../../ui/dom.js';
+import type { IChatSession } from '../../../services/chatTypes.js';
+import { chatIcons } from '../chatIcons.js';
+import type { ISessionSidebarServices } from '../chatTypes.js';
 
 // ISessionSidebarServices — now defined in chatTypes.ts (M13 Phase 1)
-export type { ISessionSidebarServices } from './chatTypes.js';
+export type { ISessionSidebarServices } from '../chatTypes.js';
 
 // ── Date grouping buckets ──
 

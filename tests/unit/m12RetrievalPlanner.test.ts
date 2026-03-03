@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OllamaProvider } from '../../src/built-in/chat/providers/ollamaProvider';
 import type { IRetrievalPlan } from '../../src/built-in/chat/providers/ollamaProvider';
 import { RetrievalService } from '../../src/services/retrievalService';
-import { buildPlannerPrompt } from '../../src/built-in/chat/chatSystemPrompts';
+import { buildPlannerPrompt } from '../../src/built-in/chat/config/chatSystemPrompts';
 import type { SearchResult } from '../../src/services/vectorStoreService';
 
 // ── Helpers ──

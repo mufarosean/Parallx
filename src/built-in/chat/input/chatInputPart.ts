@@ -12,20 +12,20 @@
 
 import './chatInput.css';
 
-import { Disposable } from '../../platform/lifecycle.js';
-import { ChatMode } from '../../services/chatTypes.js';
-import { Emitter } from '../../platform/events.js';
-import type { Event } from '../../platform/events.js';
-import { $, addDisposableListener } from '../../ui/dom.js';
-import { chatIcons } from './chatIcons.js';
+import { Disposable } from '../../../platform/lifecycle.js';
+import { ChatMode } from '../../../services/chatTypes.js';
+import { Emitter } from '../../../platform/events.js';
+import type { Event } from '../../../platform/events.js';
+import { $, addDisposableListener } from '../../../ui/dom.js';
+import { chatIcons } from '../chatIcons.js';
 import { ChatContextAttachments } from './chatContextAttachments.js';
-import type { IAttachmentServices, IWorkspaceFileEntry } from './chatTypes.js';
-import type { IChatAttachment, IContextPill } from '../../services/chatTypes.js';
+import type { IAttachmentServices, IWorkspaceFileEntry } from '../chatTypes.js';
+import type { IChatAttachment, IContextPill } from '../../../services/chatTypes.js';
 import { ChatContextPills } from './chatContextPills.js';
-import { ChatToolPicker } from './chatToolPicker.js';
-import type { IToolPickerServices } from './chatTypes.js';
+import { ChatToolPicker } from '../pickers/chatToolPicker.js';
+import type { IToolPickerServices } from '../chatTypes.js';
 import { ChatMentionAutocomplete } from './chatMentionAutocomplete.js';
-import type { IMentionSuggestionProvider, ISlashCommandProvider } from './chatTypes.js';
+import type { IMentionSuggestionProvider, ISlashCommandProvider } from '../chatTypes.js';
 
 /**
  * Chat input area — textarea + context ribbon + toolbar (submit/stop, model/mode pickers).

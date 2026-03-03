@@ -13,14 +13,14 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import type { Event } from '../../platform/events.js';
 import { OllamaProvider } from './providers/ollamaProvider.js';
-import { createChatView } from './chatView.js';
-import type { ChatWidget } from './chatWidget.js';
+import { createChatView } from './widgets/chatView.js';
+import type { ChatWidget } from './widgets/chatWidget.js';
 import { createDefaultParticipant } from './participants/defaultParticipant.js';
 import { createWorkspaceParticipant } from './participants/workspaceParticipant.js';
 import { createCanvasParticipant } from './participants/canvasParticipant.js';
 import { registerBuiltInTools } from './tools/builtInTools.js';
 import type { IBuiltInToolFileWriter } from './chatTypes.js';
-import { ChatTokenStatusBar } from './chatTokenStatusBar.js';
+import { ChatTokenStatusBar } from './widgets/chatTokenStatusBar.js';
 import {
   ILanguageModelsService,
   IChatService,
@@ -808,7 +808,7 @@ export function setActiveWidget(widget: ChatWidget | undefined): void {
     }
 
     // Slash command provider: built-in + user commands from registry
-    import('./chatSlashCommands.js').then(({ SlashCommandRegistry }) => {
+    import('./config/chatSlashCommands.js').then(({ SlashCommandRegistry }) => {
       const reg = new SlashCommandRegistry();
       widget.setSlashCommandProvider({
         getCommands() {

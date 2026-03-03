@@ -8,10 +8,10 @@
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/browser/chatContentParts/
 
-import { $ } from '../../ui/dom.js';
-import { chatIcons } from './chatIcons.js';
+import { $ } from '../../../ui/dom.js';
+import { chatIcons } from '../chatIcons.js';
 import { extractFilePath, renderCodeActionButtons } from './chatCodeActions.js';
-import { ChatContentPartKind } from '../../services/chatTypes.js';
+import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import type {
   IChatContentPart,
   IChatMarkdownContent,
@@ -24,7 +24,7 @@ import type {
   IChatEditProposalContent,
   IChatEditBatchContent,
   IChatReferenceContent,
-} from '../../services/chatTypes.js';
+} from '../../../services/chatTypes.js';
 
 /**
  * Render a single content part into the given container.
@@ -420,7 +420,7 @@ function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
   if (part.onGrant) {
     const buttonBar = $('div.parallx-chat-confirmation-buttons');
 
-    const makeBtn = (label: string, cls: string, decision: import('../../services/chatTypes.js').ToolGrantDecision): void => {
+    const makeBtn = (label: string, cls: string, decision: import('../../../services/chatTypes.js').ToolGrantDecision): void => {
       const btn = document.createElement('button');
       btn.className = `parallx-chat-confirmation-btn ${cls}`;
       btn.textContent = label;
@@ -472,7 +472,7 @@ function _renderConfirmation(part: IChatConfirmationContent): HTMLElement {
   return root;
 }
 
-function _replaceWithGrantResult(root: HTMLElement, decision: import('../../services/chatTypes.js').ToolGrantDecision): void {
+function _replaceWithGrantResult(root: HTMLElement, decision: import('../../../services/chatTypes.js').ToolGrantDecision): void {
   // Remove buttons, show result text
   const buttonBar = root.querySelector('.parallx-chat-confirmation-buttons');
   if (buttonBar) { buttonBar.remove(); }
@@ -522,10 +522,10 @@ const EDIT_OP_LABELS: Record<string, { label: string; icon: string }> = {
   delete: { label: 'Delete', icon: '\u2212' },  // −
 };
 
-import type { EditApplyEventDetail } from './chatTypes.js';
+import type { EditApplyEventDetail } from '../chatTypes.js';
 
 // EditApplyEventDetail — now defined in chatTypes.ts (M13 Phase 1)
-export type { EditApplyEventDetail } from './chatTypes.js';
+export type { EditApplyEventDetail } from '../chatTypes.js';
 
 function _renderEditProposal(part: IChatEditProposalContent): HTMLElement {
   const root = $('div.parallx-chat-edit-proposal');

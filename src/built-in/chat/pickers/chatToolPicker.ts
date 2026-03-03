@@ -8,15 +8,15 @@
 //   src/vs/workbench/contrib/chat/browser/tools/toolSetsContribution.ts
 //   (ConfigureToolSets action — modal tool tree with checkboxes)
 
-import { Disposable } from '../../platform/lifecycle.js';
-import { Emitter } from '../../platform/events.js';
-import type { Event } from '../../platform/events.js';
-import { $ } from '../../ui/dom.js';
-import { chatIcons } from './chatIcons.js';
-import type { IToolPickerServices } from './chatTypes.js';
+import { Disposable } from '../../../platform/lifecycle.js';
+import { Emitter } from '../../../platform/events.js';
+import type { Event } from '../../../platform/events.js';
+import { $ } from '../../../ui/dom.js';
+import { chatIcons } from '../chatIcons.js';
+import type { IToolPickerServices } from '../chatTypes.js';
 
 // IToolPickerServices — now defined in chatTypes.ts (M13 Phase 1)
-export type { IToolPickerServices } from './chatTypes.js';
+export type { IToolPickerServices } from '../chatTypes.js';
 
 /** Categorised tool for display. */
 interface ToolCategory {

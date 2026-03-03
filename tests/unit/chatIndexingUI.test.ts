@@ -10,11 +10,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // ── Task 6.1: ChatTokenStatusBar indexing indicator ──
 
 describe('ChatTokenStatusBar — indexing indicator (Task 6.1)', () => {
-  let ChatTokenStatusBar: typeof import('../../src/built-in/chat/chatTokenStatusBar.js').ChatTokenStatusBar;
+  let ChatTokenStatusBar: typeof import('../../src/built-in/chat/widgets/chatTokenStatusBar.js').ChatTokenStatusBar;
 
   beforeEach(async () => {
     // Dynamic import to get the DOM-dependent class
-    const mod = await import('../../src/built-in/chat/chatTokenStatusBar.js');
+    const mod = await import('../../src/built-in/chat/widgets/chatTokenStatusBar.js');
     ChatTokenStatusBar = mod.ChatTokenStatusBar;
   });
 
@@ -117,11 +117,11 @@ describe('ChatTokenStatusBar — indexing indicator (Task 6.1)', () => {
 // ── Task 6.2: Reference content part rendering ──
 
 describe('renderContentPart — Reference (Task 6.2)', () => {
-  let renderContentPart: typeof import('../../src/built-in/chat/chatContentParts.js').renderContentPart;
+  let renderContentPart: typeof import('../../src/built-in/chat/rendering/chatContentParts.js').renderContentPart;
   let ChatContentPartKind: typeof import('../../src/services/chatTypes.js').ChatContentPartKind;
 
   beforeEach(async () => {
-    const partsMod = await import('../../src/built-in/chat/chatContentParts.js');
+    const partsMod = await import('../../src/built-in/chat/rendering/chatContentParts.js');
     renderContentPart = partsMod.renderContentPart;
     const typesMod = await import('../../src/services/chatTypes.js');
     ChatContentPartKind = typesMod.ChatContentPartKind;

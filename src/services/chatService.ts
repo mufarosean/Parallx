@@ -14,7 +14,7 @@ import { URI } from '../platform/uri.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
 import { ChatContentPartKind } from './chatTypes.js';
-import { parseChatRequest } from '../built-in/chat/chatRequestParser.js';
+import { parseChatRequest } from '../built-in/chat/input/chatRequestParser.js';
 import {
   ensureChatTables,
   saveSession,

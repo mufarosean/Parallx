@@ -9,30 +9,30 @@
 
 import './chatWidget.css';
 
-import { Disposable, DisposableStore, toDisposable } from '../../platform/lifecycle.js';
-import { Emitter } from '../../platform/events.js';
-import type { Event } from '../../platform/events.js';
-import { $, append, addDisposableListener } from '../../ui/dom.js';
-import type { OllamaProvider } from './providers/ollamaProvider.js';
-import { ChatInputPart } from './chatInputPart.js';
-import { chatIcons } from './chatIcons.js';
-import { ChatListRenderer } from './chatListRenderer.js';
-import { ChatModelPicker } from './chatModelPicker.js';
-import { ChatModePicker } from './chatModePicker.js';
+import { Disposable, DisposableStore, toDisposable } from '../../../platform/lifecycle.js';
+import { Emitter } from '../../../platform/events.js';
+import type { Event } from '../../../platform/events.js';
+import { $, append, addDisposableListener } from '../../../ui/dom.js';
+import type { OllamaProvider } from '../providers/ollamaProvider.js';
+import { ChatInputPart } from '../input/chatInputPart.js';
+import { chatIcons } from '../chatIcons.js';
+import { ChatListRenderer } from '../rendering/chatListRenderer.js';
+import { ChatModelPicker } from '../pickers/chatModelPicker.js';
+import { ChatModePicker } from '../pickers/chatModePicker.js';
 import { ChatSessionSidebar } from './chatSessionSidebar.js';
 import type {
   IChatSession,
   IChatWidgetDescriptor,
   IContextPill,
-} from '../../services/chatTypes.js';
+} from '../../../services/chatTypes.js';
 import type {
   IChatWidgetServices,
   ICodeActionRequest,
   ISessionSidebarServices,
-} from './chatTypes.js';
+} from '../chatTypes.js';
 
 // IChatWidgetServices — now defined in chatTypes.ts (M13 Phase 1)
-export type { IChatWidgetServices } from './chatTypes.js';
+export type { IChatWidgetServices } from '../chatTypes.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ChatWidget
@@ -315,7 +315,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   }
 
   /** Update token budget breakdown (Task 4.8). */
-  setBudget(slots: readonly import('./chatContextPills.js').ITokenBudgetSlot[]): void {
+  setBudget(slots: readonly import('../input/chatContextPills.js').ITokenBudgetSlot[]): void {
     this._inputPart.setBudget(slots);
   }
 
@@ -325,12 +325,12 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   }
 
   /** Bind @mention suggestion provider for workspace file autocomplete (Task 3.1). */
-  setMentionSuggestionProvider(provider: import('./chatMentionAutocomplete.js').IMentionSuggestionProvider): void {
+  setMentionSuggestionProvider(provider: import('../input/chatMentionAutocomplete.js').IMentionSuggestionProvider): void {
     this._inputPart.setMentionSuggestionProvider(provider);
   }
 
   /** Bind slash command provider for /command autocomplete (Task 3.5). */
-  setSlashCommandProvider(provider: import('./chatMentionAutocomplete.js').ISlashCommandProvider): void {
+  setSlashCommandProvider(provider: import('../input/chatMentionAutocomplete.js').ISlashCommandProvider): void {
     this._inputPart.setSlashCommandProvider(provider);
   }
 
@@ -378,7 +378,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
    * For 'create': writes the file directly.
    */
   private async _handleCodeAction(request: ICodeActionRequest): Promise<void> {
-    const { replaceCodeActionsWithResult } = await import('./chatCodeActions.js');
+    const { replaceCodeActionsWithResult } = await import('../rendering/chatCodeActions.js');
 
     // Find the action bar element that fired this event (for result feedback)
     const actionBars = this._messageListContainer.querySelectorAll('.parallx-chat-code-actions');
@@ -416,8 +416,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
         }
 
         // Compute diff and show viewer
-        const { computeDiff } = await import('../../services/diffService.js');
-        const { renderDiffViewer } = await import('./chatDiffViewer.js');
+        const { computeDiff } = await import('../../../services/diffService.js');
+        const { renderDiffViewer } = await import('../rendering/chatDiffViewer.js');
 
         const diff = computeDiff(existing, request.code, request.filePath);
 

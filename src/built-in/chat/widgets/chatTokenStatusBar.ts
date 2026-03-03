@@ -16,18 +16,18 @@
 // Context window size comes from OllamaProvider.getActiveModelContextLengthAsync()
 // which calls Ollama's /api/show endpoint to read the model's native context_length.
 
-import { Disposable, toDisposable, type IDisposable } from '../../platform/lifecycle.js';
-import { layoutPopup } from '../../ui/dom.js';
-import { $ } from '../../ui/dom.js';
-import { chatIcons } from './chatIcons.js';
-import { buildSystemPrompt } from './chatSystemPrompts.js';
-import type { ISystemPromptContext } from './chatTypes.js';
-import { ChatMode } from '../../services/chatTypes.js';
+import { Disposable, toDisposable, type IDisposable } from '../../../platform/lifecycle.js';
+import { layoutPopup } from '../../../ui/dom.js';
+import { $ } from '../../../ui/dom.js';
+import { chatIcons } from '../chatIcons.js';
+import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
+import type { ISystemPromptContext } from '../chatTypes.js';
+import { ChatMode } from '../../../services/chatTypes.js';
 import './chatTokenStatusBar.css';
-import type { ITokenStatusBarServices } from './chatTypes.js';
+import type { ITokenStatusBarServices } from '../chatTypes.js';
 
 // ITokenStatusBarServices — now defined in chatTypes.ts (M13 Phase 1)
-export type { ITokenStatusBarServices } from './chatTypes.js';
+export type { ITokenStatusBarServices } from '../chatTypes.js';
 
 /** Breakdown of token usage by category. */
 interface ITokenBreakdown {

@@ -2,8 +2,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { ChatMode } from '../../src/services/chatTypes';
-import { buildSystemPrompt } from '../../src/built-in/chat/chatSystemPrompts';
-import type { ISystemPromptContext } from '../../src/built-in/chat/chatSystemPrompts';
+import { buildSystemPrompt } from '../../src/built-in/chat/config/chatSystemPrompts';
+import type { ISystemPromptContext } from '../../src/built-in/chat/config/chatSystemPrompts';
 import type { IToolDefinition } from '../../src/services/chatTypes';
 
 // ── Helpers ──

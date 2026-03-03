@@ -11,16 +11,16 @@
 //   src/vs/workbench/contrib/chat/browser/widget/input/chatInputPart.ts
 //   (ChatAttachedContext portion)
 
-import { Disposable, toDisposable } from '../../platform/lifecycle.js';
-import { Emitter } from '../../platform/events.js';
-import type { Event } from '../../platform/events.js';
-import { $ } from '../../ui/dom.js';
-import { chatIcons } from './chatIcons.js';
-import type { IChatAttachment } from '../../services/chatTypes.js';
-import type { IOpenEditorFile, IAttachmentServices } from './chatTypes.js';
+import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
+import { Emitter } from '../../../platform/events.js';
+import type { Event } from '../../../platform/events.js';
+import { $ } from '../../../ui/dom.js';
+import { chatIcons } from '../chatIcons.js';
+import type { IChatAttachment } from '../../../services/chatTypes.js';
+import type { IOpenEditorFile, IAttachmentServices } from '../chatTypes.js';
 
 // IOpenEditorFile, IWorkspaceFileEntry, IAttachmentServices — now defined in chatTypes.ts (M13 Phase 1)
-export type { IOpenEditorFile, IWorkspaceFileEntry, IAttachmentServices } from './chatTypes.js';
+export type { IOpenEditorFile, IWorkspaceFileEntry, IAttachmentServices } from '../chatTypes.js';
 
 // ── Component ──
 

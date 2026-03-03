@@ -6,10 +6,10 @@
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/common/requestParser/chatRequestParser.ts
 
-import type { IChatParsedRequest, IChatParsedVariable } from './chatTypes.js';
+import type { IChatParsedRequest, IChatParsedVariable } from '../chatTypes.js';
 
 // IChatParsedRequest, IChatParsedVariable — now defined in chatTypes.ts (M13 Phase 1)
-export type { IChatParsedRequest, IChatParsedVariable } from './chatTypes.js';
+export type { IChatParsedRequest, IChatParsedVariable } from '../chatTypes.js';
 
 // ── Regex Patterns ──
 

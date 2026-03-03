@@ -14,12 +14,12 @@
 //   from multiple sources (agent description, mode, tools, workspace context).
 //   Parallx centralises prompt building here for consistency.
 
-import { ChatMode } from '../../services/chatTypes.js';
-import type { IToolDefinition } from '../../services/chatTypes.js';
-import type { ISystemPromptContext } from './chatTypes.js';
+import { ChatMode } from '../../../services/chatTypes.js';
+import type { IToolDefinition } from '../../../services/chatTypes.js';
+import type { ISystemPromptContext } from '../chatTypes.js';
 
 // ISystemPromptContext — now defined in chatTypes.ts (M13 Phase 1)
-export type { ISystemPromptContext } from './chatTypes.js';
+export type { ISystemPromptContext } from '../chatTypes.js';
 
 // ── Parallx identity (Task 4.2) ──
 

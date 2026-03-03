@@ -36,13 +36,13 @@ import type {
   IRetrievalPlan,
   ISystemPromptContext,
 } from '../chatTypes.js';
-import { buildSystemPrompt } from '../chatSystemPrompts.js';
-import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } from '../chatModeCapabilities.js';
+import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
+import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } from '../config/chatModeCapabilities.js';
 import { executeInitCommand } from '../commands/initCommand.js';
 import { TokenBudgetService } from '../../../services/tokenBudgetService.js';
-import { extractMentions, resolveMentions } from '../chatMentionResolver.js';
-import { SlashCommandRegistry, parseSlashCommand } from '../chatSlashCommands.js';
-import { loadUserCommands } from '../userCommandLoader.js';
+import { extractMentions, resolveMentions } from '../utilities/chatMentionResolver.js';
+import { SlashCommandRegistry, parseSlashCommand } from '../config/chatSlashCommands.js';
+import { loadUserCommands } from '../utilities/userCommandLoader.js';
 
 /** Default maximum agentic loop iterations. */
 const DEFAULT_MAX_ITERATIONS = 10;

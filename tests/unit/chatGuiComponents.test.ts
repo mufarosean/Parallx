@@ -19,7 +19,7 @@ describe('ChatHeaderPart', () => {
   });
 
   it('renders header with title and action buttons', async () => {
-    const { ChatHeaderPart } = await import('../../src/built-in/chat/chatHeaderPart');
+    const { ChatHeaderPart } = await import('../../src/built-in/chat/widgets/chatHeaderPart');
     const header = new ChatHeaderPart(container);
 
     const root = container.querySelector('.parallx-chat-header');
@@ -36,7 +36,7 @@ describe('ChatHeaderPart', () => {
   });
 
   it('setTitle updates the title text', async () => {
-    const { ChatHeaderPart } = await import('../../src/built-in/chat/chatHeaderPart');
+    const { ChatHeaderPart } = await import('../../src/built-in/chat/widgets/chatHeaderPart');
     const header = new ChatHeaderPart(container);
 
     header.setTitle('My Chat');
@@ -50,7 +50,7 @@ describe('ChatHeaderPart', () => {
   });
 
   it('setSessionInfo updates the info text', async () => {
-    const { ChatHeaderPart } = await import('../../src/built-in/chat/chatHeaderPart');
+    const { ChatHeaderPart } = await import('../../src/built-in/chat/widgets/chatHeaderPart');
     const header = new ChatHeaderPart(container);
 
     header.setSessionInfo('3 messages · Ask');
@@ -61,7 +61,7 @@ describe('ChatHeaderPart', () => {
   });
 
   it('fires onNewChat when new button is clicked', async () => {
-    const { ChatHeaderPart } = await import('../../src/built-in/chat/chatHeaderPart');
+    const { ChatHeaderPart } = await import('../../src/built-in/chat/widgets/chatHeaderPart');
     const header = new ChatHeaderPart(container);
 
     const spy = vi.fn();
@@ -75,7 +75,7 @@ describe('ChatHeaderPart', () => {
   });
 
   it('fires onToggleHistory when history button is clicked', async () => {
-    const { ChatHeaderPart } = await import('../../src/built-in/chat/chatHeaderPart');
+    const { ChatHeaderPart } = await import('../../src/built-in/chat/widgets/chatHeaderPart');
     const header = new ChatHeaderPart(container);
 
     const spy = vi.fn();
@@ -89,7 +89,7 @@ describe('ChatHeaderPart', () => {
   });
 
   it('fires onClearSession when clear button is clicked', async () => {
-    const { ChatHeaderPart } = await import('../../src/built-in/chat/chatHeaderPart');
+    const { ChatHeaderPart } = await import('../../src/built-in/chat/widgets/chatHeaderPart');
     const header = new ChatHeaderPart(container);
 
     const spy = vi.fn();
@@ -103,7 +103,7 @@ describe('ChatHeaderPart', () => {
   });
 
   it('cleans up DOM on dispose', async () => {
-    const { ChatHeaderPart } = await import('../../src/built-in/chat/chatHeaderPart');
+    const { ChatHeaderPart } = await import('../../src/built-in/chat/widgets/chatHeaderPart');
     const header = new ChatHeaderPart(container);
 
     expect(container.querySelector('.parallx-chat-header')).toBeTruthy();
@@ -176,7 +176,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('renders visible by default with sessions', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
@@ -199,7 +199,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('toggle() hides panel when visible by default', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
@@ -220,7 +220,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('groups sessions by date with section headers', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
@@ -246,7 +246,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('collapses a section when its header is clicked', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
@@ -272,7 +272,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('displays titles, metadata, and preview', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
@@ -294,7 +294,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('fires onDidSelectSession when a session info area is clicked', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
@@ -312,7 +312,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('double toggle() restores panel to visible', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
@@ -330,7 +330,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('shows empty state when no sessions exist', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => [],
@@ -346,7 +346,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('highlights the active session with --active class', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
@@ -364,7 +364,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('calls deleteSession and re-renders on delete button click', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const deleteSpy = vi.fn();
     const sidebar = new ChatSessionSidebar(container, {
@@ -381,7 +381,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('fires onDidRequestNewSession from header new button', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
@@ -400,7 +400,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('fires onDidToggle with boolean visibility state', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
@@ -421,7 +421,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('filter input filters sessions by title and preview', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
@@ -452,7 +452,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('shows "No matching sessions" when filter matches nothing', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,
@@ -475,7 +475,7 @@ describe('ChatSessionSidebar', () => {
   });
 
   it('cleans up DOM on dispose', async () => {
-    const { ChatSessionSidebar } = await import('../../src/built-in/chat/chatSessionSidebar');
+    const { ChatSessionSidebar } = await import('../../src/built-in/chat/widgets/chatSessionSidebar');
 
     const sidebar = new ChatSessionSidebar(container, {
       getSessions: () => mockSessions as any,

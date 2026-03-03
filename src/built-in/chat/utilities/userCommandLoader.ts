@@ -9,11 +9,11 @@
 // VS Code reference:
 //   Custom prompt files in VS Code chat (.github/copilot-instructions.md pattern)
 
-import type { IChatSlashCommand } from './chatTypes.js';
-import type { IUserCommandFileSystem } from './chatTypes.js';
+import type { IChatSlashCommand } from '../chatTypes.js';
+import type { IUserCommandFileSystem } from '../chatTypes.js';
 
 // IUserCommandFileSystem — now defined in chatTypes.ts (M13 Phase 1)
-export type { IUserCommandFileSystem } from './chatTypes.js';
+export type { IUserCommandFileSystem } from '../chatTypes.js';
 
 /** Parsed frontmatter from a command file. */
 interface ICommandFrontmatter {
