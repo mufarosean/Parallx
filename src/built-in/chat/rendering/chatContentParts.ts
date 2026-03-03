@@ -312,28 +312,30 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
   }
 
   // ── Toggle header ──
-  // Builds a summary line:  ▶ Thinking · Searching 4 sources · 3 sources
+  // Builds:  ▶ Thinking · Searching 4 sources · 3 sources
   const toggle = $('div.parallx-chat-thinking-toggle');
 
   function _rebuildToggle(): void {
     toggle.textContent = '';
 
-    // Arrow + "Thinking"/"Context"
+    // Arrow (CSS rotates it based on collapsed state)
+    const arrowEl = $('span.parallx-chat-thinking-arrow', '\u25B6');
+    toggle.appendChild(arrowEl);
+
+    // Label: "Thinking" if we have reasoning text, "Context" if just refs/progress
     const hasContent = !!part.content;
     const hasRefs = part.references && part.references.length > 0;
     const hasProgress = !!part.progressMessage;
     const baseLabel = hasContent ? 'Thinking' : (hasRefs || hasProgress ? 'Context' : 'Thinking');
-    const arrow = part.isCollapsed ? '\u25B6' : '\u25BC';
 
-    const label = $('span', `${arrow} ${baseLabel}`);
-    toggle.appendChild(label);
+    const labelEl = $('span.parallx-chat-thinking-label', baseLabel);
+    toggle.appendChild(labelEl);
 
     // Progress message (ephemeral, shown during streaming)
     if (hasProgress) {
-      const sep = $('span.parallx-chat-thinking-sep', ' \u00B7 ');
+      const sep = $('span.parallx-chat-thinking-sep', '\u00B7');
       toggle.appendChild(sep);
       const progressEl = $('span.parallx-chat-thinking-progress-label');
-      // Spinner + message
       const spinner = $('span.parallx-chat-thinking-spinner');
       progressEl.appendChild(spinner);
       const msgEl = $('span', ` ${part.progressMessage}`);
@@ -344,7 +346,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
     // Source count summary
     if (hasRefs) {
       const count = part.references!.length;
-      const sep = $('span.parallx-chat-thinking-sep', ' \u00B7 ');
+      const sep = $('span.parallx-chat-thinking-sep', '\u00B7');
       toggle.appendChild(sep);
       const countEl = $('span.parallx-chat-thinking-source-count', `${count} source${count !== 1 ? 's' : ''}`);
       toggle.appendChild(countEl);
@@ -374,14 +376,22 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
   if (part.references && part.references.length > 0) {
     const sourcesSection = $('div.parallx-chat-thinking-sources');
 
+    // Add a subtle label when there's also thinking text above
+    if (part.content) {
+      const sourcesLabel = $('div.parallx-chat-thinking-sources-label', 'Sources');
+      sourcesSection.appendChild(sourcesLabel);
+    }
+
+    const pillsRow = $('div.parallx-chat-thinking-sources-pills');
     for (const ref of part.references) {
       const pill = _renderReference({
         kind: ChatContentPartKind.Reference,
         uri: ref.uri,
         label: ref.label,
       });
-      sourcesSection.appendChild(pill);
+      pillsRow.appendChild(pill);
     }
+    sourcesSection.appendChild(pillsRow);
 
     content.appendChild(sourcesSection);
   }

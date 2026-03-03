@@ -568,8 +568,21 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           retrievalPlan = ragResult.plan;
 
           if (ragResult.plan) {
-            // Show the planner's reasoning as a progress update
-            const queryCount = ragResult.plan.queries.length;
+            // Emit the planner's reasoning into the thinking section so
+            // the user can see what the AI is thinking about their query.
+            const plan = ragResult.plan;
+            if (plan.reasoning) {
+              const thinkingLines: string[] = [];
+              thinkingLines.push(plan.reasoning);
+              if (plan.queries.length > 0) {
+                thinkingLines.push('');
+                thinkingLines.push(`Searching: ${plan.queries.join(' · ')}`);
+              }
+              response.thinking(thinkingLines.join('\n'));
+            }
+
+            // Show a progress indicator during retrieval
+            const queryCount = plan.queries.length;
             if (queryCount > 0) {
               response.progress(`Searching ${queryCount} source${queryCount !== 1 ? 's' : ''}…`);
             }
