@@ -28,6 +28,7 @@ import type {
   IChatSession,
   IChatWidgetDescriptor,
   IChatAttachment,
+  IContextPill,
 } from '../../services/chatTypes.js';
 import type { IAttachmentServices } from './chatContextAttachments.js';
 import type { IToolPickerServices } from './chatToolPicker.js';
@@ -326,6 +327,11 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   /** Get the current session (if any). */
   getSession(): IChatSession | undefined {
     return this._session;
+  }
+
+  /** Update context pills UI with sources the LLM sees (M11 Task 1.10). */
+  setContextPills(pills: readonly IContextPill[]): void {
+    this._inputPart.setContextPills(pills);
   }
 
   // ── Input submission ──

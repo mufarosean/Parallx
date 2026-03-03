@@ -20,7 +20,8 @@ import { $, addDisposableListener } from '../../ui/dom.js';
 import { chatIcons } from './chatIcons.js';
 import { ChatContextAttachments } from './chatContextAttachments.js';
 import type { IAttachmentServices, IWorkspaceFileEntry } from './chatContextAttachments.js';
-import type { IChatAttachment } from '../../services/chatTypes.js';
+import type { IChatAttachment, IContextPill } from '../../services/chatTypes.js';
+import { ChatContextPills } from './chatContextPills.js';
 import { ChatToolPicker } from './chatToolPicker.js';
 import type { IToolPickerServices } from './chatToolPicker.js';
 
@@ -40,6 +41,7 @@ export class ChatInputPart extends Disposable {
   private readonly _attachBtn: HTMLButtonElement;
   private readonly _attachLabel: HTMLSpanElement;
   private readonly _contextRibbon: ChatContextAttachments;
+  private readonly _contextPills: ChatContextPills;
   private _filePickerDropdown: HTMLElement | undefined;
   private readonly _toolsBtn: HTMLButtonElement;
   private readonly _toolPicker: ChatToolPicker;
@@ -73,6 +75,9 @@ export class ChatInputPart extends Disposable {
       this._updateAttachBtnLabel();
       this._onDidChangeAttachments.fire();
     }));
+
+    // Context pills strip — shows RAG sources, system context, token counts (M11 Task 1.10)
+    this._contextPills = this._register(new ChatContextPills(this._root));
 
     // Editor area (textarea wrapper)
     const editorArea = $('div.parallx-chat-input-editor');
@@ -255,6 +260,16 @@ export class ChatInputPart extends Disposable {
   /** Get current explicit attachments (to include in the request). */
   getAttachments(): readonly IChatAttachment[] {
     return this._contextRibbon.getAttachments();
+  }
+
+  /** Update context pills display with new data (M11 Task 1.10). */
+  setContextPills(pills: readonly IContextPill[]): void {
+    this._contextPills.setPills(pills);
+  }
+
+  /** Get IDs of context sources the user has excluded via pills UI. */
+  getExcludedContextIds(): ReadonlySet<string> {
+    return this._contextPills.getExcluded();
   }
 
   // ── Internal ──

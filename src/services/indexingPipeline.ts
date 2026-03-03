@@ -22,6 +22,7 @@ import type { Event } from '../platform/events.js';
 import { URI } from '../platform/uri.js';
 import { FileChangeType, FileType } from '../platform/fileTypes.js';
 import type { FileChangeEvent } from '../platform/fileTypes.js';
+import { createParallxIgnore, ParallxIgnore } from './parallxIgnore.js';
 import type {
   IDatabaseService,
   IFileService,
@@ -59,7 +60,7 @@ const INDEXABLE_EXTENSIONS = new Set([
 /** Max file size to index (256 KB). Larger files are skipped. */
 const MAX_FILE_SIZE = 256 * 1024;
 
-/** Directories to always skip. */
+/** @deprecated Use ParallxIgnore instead (M11 Task 1.9). Kept for backward compat / tests. */
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '.parallx', '.vscode', '.idea',
   '__pycache__', '.next', '.nuxt', 'dist', 'build', 'out',
@@ -140,6 +141,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   /** Whether initial full indexing has completed at least once. */
   private _initialIndexComplete = false;
 
+  /** ParallxIgnore instance for file exclusion (M11 Task 1.9). */
+  private _ignore: ParallxIgnore = createParallxIgnore();
+
   // ── Events ──
 
   private readonly _onDidChangeProgress = this._register(new Emitter<IndexingProgress>());
@@ -199,6 +203,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     const startTime = performance.now();
 
     try {
+      // 0. Load .parallxignore from workspace root (M11 Task 1.9)
+      await this._loadIgnoreFile();
+
       // 1. Ensure embedding model is installed
       this._updateProgress('pages', 0, 0, 'Checking embedding model...');
       await this._embeddingService.ensureModel();
@@ -288,6 +295,32 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
         status: 'error', error: String(err),
         durationMs: performance.now() - t0,
       });
+    }
+  }
+
+  // ── Internal: .parallxignore Loading (M11 Task 1.9) ──
+
+  /**
+   * Load `.parallxignore` from workspace root (if present) and merge with defaults.
+   * Falls back to defaults if the file doesn't exist or can't be read.
+   */
+  private async _loadIgnoreFile(): Promise<void> {
+    this._ignore = createParallxIgnore(); // start with defaults
+
+    const folders = this._workspaceService.folders;
+    if (!folders.length) { return; }
+
+    const rootUri = folders[0].uri;
+    const ignoreUri = rootUri.joinPath('.parallxignore');
+
+    try {
+      const content = await this._fileService.readFile(ignoreUri);
+      if (content) {
+        this._ignore.loadFromContent(content);
+        console.log('[IndexingPipeline] Loaded .parallxignore from workspace root');
+      }
+    } catch {
+      // File doesn't exist or can't be read — use defaults only
     }
   }
 
@@ -472,9 +505,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
   /**
    * Recursively walk a directory, collecting indexable file paths with mtimes.
-   * Respects SKIP_DIRS and INDEXABLE_EXTENSIONS filters.
+   * Respects .parallxignore patterns (M11 Task 1.9) and INDEXABLE_EXTENSIONS filters.
    */
-  private async _walkDirectory(dirUri: URI, results: IndexableFile[]): Promise<void> {
+  private async _walkDirectory(dirUri: URI, results: IndexableFile[], relativePath: string = ''): Promise<void> {
     this._checkAborted();
 
     let entries;
@@ -485,17 +518,24 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     }
 
     for (const entry of entries) {
+      const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+
       if (entry.type === FileType.Directory) {
-        // Skip hidden and known-large directories
-        if (entry.name.startsWith('.') && !SKIP_DIRS.has(entry.name)) {
-          continue; // Skip hidden dirs not in our explicit skip list
+        // Skip hidden directories by default (same as prior behavior)
+        if (entry.name.startsWith('.')) {
+          continue;
         }
-        if (SKIP_DIRS.has(entry.name)) {
+        // Check .parallxignore patterns (replaces hardcoded SKIP_DIRS)
+        if (this._ignore.isIgnored(relPath, true)) {
           continue;
         }
 
-        await this._walkDirectory(entry.uri, results);
+        await this._walkDirectory(entry.uri, results, relPath);
       } else if (entry.type === FileType.File) {
+        // Check .parallxignore patterns for files
+        if (this._ignore.isIgnored(relPath, false)) {
+          continue;
+        }
         const ext = getExtension(entry.name);
         if (ext && INDEXABLE_EXTENSIONS.has(ext) && entry.size <= MAX_FILE_SIZE) {
           results.push({ path: entry.uri.fsPath, mtime: entry.mtime });

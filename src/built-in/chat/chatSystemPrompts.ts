@@ -40,6 +40,12 @@ export interface ISystemPromptContext {
   readonly isRAGAvailable?: boolean;
   /** Whether the indexing pipeline is currently running. */
   readonly isIndexing?: boolean;
+  /**
+   * Assembled prompt file overlay from SOUL.md / AGENTS.md / TOOLS.md / rules/*.md.
+   * When present, replaces the hardcoded PARALLX_IDENTITY with layered prompt content.
+   * (M11 Task 1.4 — prompt file layering)
+   */
+  readonly promptOverlay?: string;
 }
 
 // ── Parallx identity (Task 4.2) ──
@@ -75,7 +81,7 @@ export function buildSystemPrompt(mode: ChatMode, context: ISystemPromptContext)
 // ── Ask mode ──
 
 function buildAskPrompt(ctx: ISystemPromptContext): string {
-  const lines: string[] = [PARALLX_IDENTITY];
+  const lines: string[] = [ctx.promptOverlay || PARALLX_IDENTITY];
 
   // Workspace statistics
   lines.push('');
@@ -164,7 +170,7 @@ function buildEditPrompt(ctx: ISystemPromptContext): string {
 
 function buildAgentPrompt(ctx: ISystemPromptContext): string {
   const lines: string[] = [
-    PARALLX_IDENTITY,
+    ctx.promptOverlay || PARALLX_IDENTITY,
     'You are in Agent mode — you can take autonomous actions using tools.',
   ];
 

@@ -42,6 +42,8 @@ import type {
 import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './tools/builtInTools.js';
+import { PromptFileService } from '../../services/promptFileService.js';
+import type { IPromptFileAccess, IPromptFileLayers } from '../../services/promptFileService.js';
 
 // ── Helpers ──
 
@@ -117,6 +119,7 @@ let _activeWidget: ChatWidget | undefined;
 let _chatIsStreamingKey: { set(value: boolean): void } | undefined;
 let _tokenStatusBar: ChatTokenStatusBar | undefined;
 let _lastIndexStats: { pages: number; files: number } | undefined;
+let _promptFileService: PromptFileService | undefined;
 
 // ── Activation ──
 
@@ -172,6 +175,42 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // ── 1b. Build file system accessor for built-in tools ──
 
   const fsAccessor = buildFileSystemAccessor(fileService, workspaceService);
+
+  // ── 1b2. Prompt file service (M11 Task 1.1 + 1.4) ──
+  //
+  // Reads SOUL.md / AGENTS.md / TOOLS.md / .parallx/rules/*.md from workspace root.
+  // Falls back to built-in defaults when files don't exist.
+
+  _promptFileService = new PromptFileService();
+  context.subscriptions.push(_promptFileService);
+
+  if (fsAccessor) {
+    const promptFileAccess: IPromptFileAccess = {
+      async readFile(relativePath: string): Promise<string | null> {
+        try {
+          return await fsAccessor.readFile(relativePath);
+        } catch {
+          return null;
+        }
+      },
+      async exists(relativePath: string): Promise<boolean> {
+        try {
+          return await fsAccessor.exists(relativePath);
+        } catch {
+          return false;
+        }
+      },
+      async listDir(relativePath: string): Promise<string[]> {
+        try {
+          const entries = await fsAccessor.readdir(relativePath);
+          return entries.map((e) => e.name);
+        } catch {
+          return [];
+        }
+      },
+    };
+    _promptFileService.setFileAccess(promptFileAccess);
+  }
 
   // ── 1c. Read configuration settings ──
 
@@ -408,6 +447,85 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         } catch { return undefined; }
       }
       : undefined,
+
+    // ── Prompt file overlay (M11 Task 1.4) ──
+
+    getPromptOverlay: _promptFileService
+      ? async (_activeFilePath?: string): Promise<string | undefined> => {
+        try {
+          // Determine active file's relative path (for pattern-scoped rules)
+          let activeRelPath = _activeFilePath;
+          if (!activeRelPath && editorService?.activeEditor) {
+            const ed = editorService.activeEditor;
+            // File editors have the full path in `description`
+            if (ed.description && !ed.id.includes('canvas:') && !ed.id.includes('database:')) {
+              // Convert to relative path within workspace
+              const rootPath = workspaceService?.folders?.[0]?.uri?.fsPath;
+              if (rootPath && ed.description.startsWith(rootPath)) {
+                activeRelPath = ed.description.slice(rootPath.length).replace(/^[\\/]/, '').replace(/\\/g, '/');
+              }
+            }
+          }
+          const layers = await _promptFileService!.loadLayers();
+          const overlay = _promptFileService!.assemblePromptOverlay(layers, activeRelPath);
+          return overlay || undefined;
+        } catch { return undefined; }
+      }
+      : undefined,
+
+    // ── /init command file system access (M11 Task 1.6) ──
+
+    listFilesRelative: fsAccessor
+      ? async (relativePath: string) => {
+        return fsAccessor.readdir(relativePath);
+      }
+      : undefined,
+
+    readFileRelative: fsAccessor
+      ? async (relativePath: string): Promise<string | null> => {
+        try {
+          return await fsAccessor.readFile(relativePath);
+        } catch { return null; }
+      }
+      : undefined,
+
+    writeFileRelative: (fileService && workspaceService?.folders?.length)
+      ? async (relativePath: string, content: string): Promise<void> => {
+        const { URI } = await import('../../platform/uri.js');
+        const rootUri = workspaceService!.folders[0].uri;
+        const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+        const targetUri = rootUri.joinPath(clean);
+
+        // Ensure parent directory exists
+        const parentPath = clean.includes('/') ? clean.slice(0, clean.lastIndexOf('/')) : '';
+        if (parentPath) {
+          const parentUri = rootUri.joinPath(parentPath);
+          try {
+            await fileService!.mkdir(parentUri);
+          } catch {
+            // Directory may already exist — that's fine
+          }
+        }
+        await fileService!.writeFile(targetUri, content);
+      }
+      : undefined,
+
+    existsRelative: fsAccessor
+      ? async (relativePath: string): Promise<boolean> => {
+        try { return await fsAccessor.exists(relativePath); } catch { return false; }
+      }
+      : undefined,
+
+    invalidatePromptFiles: _promptFileService
+      ? () => _promptFileService!.invalidate()
+      : undefined,
+
+    // M11 Task 1.10 — context pills UI bridge
+    reportContextPills: (pills) => {
+      if (_activeWidget) {
+        _activeWidget.setContextPills(pills);
+      }
+    },
   };
 
   const defaultParticipant = createDefaultParticipant(defaultParticipantServices);
@@ -1027,6 +1145,7 @@ export function deactivate(): void {
   _activeWidget = undefined;
   _chatIsStreamingKey = undefined;
   _tokenStatusBar = undefined;
+  _promptFileService = undefined;
 }
 
 // ── Helpers ──

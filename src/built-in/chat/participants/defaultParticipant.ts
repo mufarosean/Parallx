@@ -28,11 +28,15 @@ import type {
   IToolResult,
   IChatEditProposalContent,
   EditProposalOperation,
+  IContextPill,
 } from '../../../services/chatTypes.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
 import { buildSystemPrompt } from '../chatSystemPrompts.js';
 import type { ISystemPromptContext } from '../chatSystemPrompts.js';
 import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } from '../chatModeCapabilities.js';
+import { executeInitCommand } from '../commands/initCommand.js';
+import type { IInitCommandServices } from '../commands/initCommand.js';
+import { TokenBudgetService } from '../../../services/tokenBudgetService.js';
 
 /** Default maximum agentic loop iterations. */
 const DEFAULT_MAX_ITERATIONS = 10;
@@ -171,6 +175,45 @@ export interface IDefaultParticipantServices {
   extractPreferences?(text: string): Promise<void>;
   /** Get formatted preferences for system prompt injection. */
   getPreferencesForPrompt?(): Promise<string | undefined>;
+
+  // ── Prompt file overlay (M11 Task 1.4) ──
+
+  /**
+   * Get assembled prompt file overlay from SOUL.md / AGENTS.md / TOOLS.md / rules/*.md.
+   * Returns the overlay text to replace the hardcoded PARALLX_IDENTITY in the system prompt.
+   * Returns undefined if no prompt files are configured.
+   * @param activeFilePath — relative path of the currently active file (for pattern-scoped rules)
+   */
+  getPromptOverlay?(activeFilePath?: string): Promise<string | undefined>;
+
+  // ── /init command support (M11 Task 1.6) ──
+
+  /**
+   * List files in a relative directory. For /init workspace scanning.
+   */
+  listFilesRelative?(relativePath: string): Promise<{ name: string; type: 'file' | 'directory' }[]>;
+  /**
+   * Read a file by relative path. Returns null on error.
+   */
+  readFileRelative?(relativePath: string): Promise<string | null>;
+  /**
+   * Write a file to workspace root by relative path.
+   */
+  writeFileRelative?(relativePath: string, content: string): Promise<void>;
+  /**
+   * Check if a relative path exists in the workspace.
+   */
+  existsRelative?(relativePath: string): Promise<boolean>;
+  /**
+   * Invalidate the prompt file cache (after AGENTS.md is written).
+   */
+  invalidatePromptFiles?(): void;
+
+  /**
+   * Report context pills — called after context resolution so the UI
+   * can show what the LLM sees (M11 Task 1.10).
+   */
+  reportContextPills?(pills: IContextPill[]): void;
 }
 
 /** Default participant ID — must match ChatAgentService's DEFAULT_AGENT_ID. */
@@ -202,6 +245,30 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       ? configMaxIterations
       : Math.min(configMaxIterations, ASK_MODE_MAX_ITERATIONS);
 
+    // ── /init command handler (M11 Task 1.6) ──
+
+    if (request.command === 'init') {
+      const initServices: IInitCommandServices = {
+        sendChatRequest: services.sendChatRequest,
+        getWorkspaceName: services.getWorkspaceName,
+        listFiles: services.listFilesRelative
+          ? (rel) => services.listFilesRelative!(rel)
+          : undefined,
+        readFile: services.readFileRelative
+          ? (rel) => services.readFileRelative!(rel)
+          : undefined,
+        writeFile: services.writeFileRelative
+          ? (rel, content) => services.writeFileRelative!(rel, content)
+          : undefined,
+        exists: services.existsRelative
+          ? (rel) => services.existsRelative!(rel)
+          : undefined,
+        invalidatePromptFiles: services.invalidatePromptFiles,
+      };
+      await executeInitCommand(initServices, response);
+      return {};
+    }
+
     // ── Build system prompt with workspace context ──
 
     const pageCount = await services.getPageCount().catch(() => 0);
@@ -210,6 +277,16 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     const fileCount = services.getFileCount
       ? await services.getFileCount().catch(() => 0)
       : undefined;
+
+    // Load prompt file overlay (M11 Task 1.4 — SOUL.md / AGENTS.md / TOOLS.md / rules)
+    let promptOverlay: string | undefined;
+    if (services.getPromptOverlay) {
+      try {
+        promptOverlay = await services.getPromptOverlay();
+      } catch {
+        // Prompt file loading is best-effort — fall back to hardcoded identity
+      }
+    }
 
     const promptContext: ISystemPromptContext = {
       workspaceName: services.getWorkspaceName(),
@@ -221,6 +298,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       fileCount,
       isRAGAvailable: services.isRAGAvailable?.() ?? false,
       isIndexing: services.isIndexing?.() ?? false,
+      promptOverlay,
     };
 
     const systemPrompt = buildSystemPrompt(request.mode, promptContext);
@@ -298,15 +376,39 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
-    // 1b. RAG context: retrieve semantically relevant chunks (M10 Phase 3)
+    // 1b. RAG context: retrieve semantically relevant chunks (M10 Phase 3, M11 Task 1.7)
+    //
+    // Fires on EVERY user message. De-duplicates against explicitly attached files
+    // to avoid redundant context. Source citations are emitted as Reference parts.
+    const ragSources: Array<{ uri: string; label: string }> = [];
     if (services.retrieveContext) {
       try {
         const ragResult = await services.retrieveContext(request.text);
         if (ragResult) {
-          contextParts.push(ragResult.text);
-          // Emit source citations as Reference content parts (M10 Phase 6 — Task 6.2)
-          for (const source of ragResult.sources) {
+          // Build a set of explicitly attached file paths for de-duplication
+          const attachedPaths = new Set<string>();
+          if (request.attachments?.length) {
+            for (const att of request.attachments) {
+              attachedPaths.add(att.fullPath);
+              // Also match by filename for page URIs
+              attachedPaths.add(att.name);
+            }
+          }
+
+          // Filter RAG sources to exclude already-attached files
+          const filteredSources = ragResult.sources.filter((s) => {
+            return !attachedPaths.has(s.uri) && !attachedPaths.has(s.label);
+          });
+
+          // Only inject RAG text if there are non-duplicate sources
+          if (filteredSources.length > 0 || ragResult.sources.length === 0) {
+            contextParts.push(ragResult.text);
+          }
+
+          // Emit source citations as Reference content parts
+          for (const source of filteredSources) {
             response.reference(source.uri, source.label);
+            ragSources.push(source);
           }
         }
       } catch {
@@ -335,6 +437,122 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         } catch {
           contextParts.push(`File: ${attachment.name}\n[Could not read file]`);
         }
+      }
+    }
+
+    // 2b. Report context pills to the UI (M11 Task 1.10)
+    //
+    // After all context sources are resolved, build pills for display.
+    if (services.reportContextPills) {
+      const pills: IContextPill[] = [];
+
+      // System prompt overlay (SOUL + AGENTS + TOOLS)
+      const sysContent = messages[0]?.content ?? '';
+      pills.push({
+        id: 'system-prompt',
+        label: 'System prompt',
+        type: 'system',
+        tokens: Math.ceil(sysContent.length / 4),
+        removable: false,
+      });
+
+      // RAG sources
+      for (const src of ragSources) {
+        pills.push({
+          id: src.uri,
+          label: src.label,
+          type: 'rag',
+          tokens: 0, // token count is estimated from context part, rough
+          removable: true,
+        });
+      }
+
+      // Explicit attachments
+      if (request.attachments?.length) {
+        for (const att of request.attachments) {
+          pills.push({
+            id: att.fullPath,
+            label: att.name,
+            type: 'attachment',
+            tokens: 0,
+            removable: true,
+          });
+        }
+      }
+
+      // Estimate tokens for each pill from context parts
+      // (rough: distribute non-system context proportionally)
+      const totalNonSysChars = contextParts.reduce((sum, p) => sum + p.length, 0);
+      for (const pill of pills) {
+        if (pill.type === 'rag' || pill.type === 'attachment') {
+          // Find the matching context part by label
+          const match = contextParts.find(p => p.includes(pill.label));
+          if (match) {
+            (pill as { tokens: number }).tokens = Math.ceil(match.length / 4);
+          } else if (totalNonSysChars > 0 && pills.length > 1) {
+            // Fallback: evenly distribute
+            const nonSysPills = pills.filter(p => p.type !== 'system');
+            (pill as { tokens: number }).tokens = Math.ceil(totalNonSysChars / nonSysPills.length / 4);
+          }
+        }
+      }
+
+      services.reportContextPills(pills);
+    }
+
+    // 2c. Token budget allocation (M11 Task 1.8)
+    //
+    // Apply token budget to trim RAG context and history if they exceed
+    // their allotted slots. This prevents context window overflow before
+    // the ad-hoc summarization safety net kicks in.
+    const contextWindow = services.getModelContextLength?.() ?? 0;
+    if (contextWindow > 0 && contextParts.length > 0) {
+      const budgetService = new TokenBudgetService();
+      const ragContent = contextParts.join('\n\n');
+      const historyContent = messages
+        .filter(m => m.role !== 'system')
+        .map(m => m.content)
+        .join('\n');
+
+      const budgetResult = budgetService.allocate(
+        contextWindow,
+        messages[0]?.content ?? '',
+        ragContent,
+        historyContent,
+        request.text,
+      );
+
+      // If RAG was trimmed, replace contextParts with trimmed version
+      if (budgetResult.wasTrimmed && budgetResult.slots['ragContext'] !== ragContent) {
+        contextParts.length = 0;
+        const trimmed = budgetResult.slots['ragContext'];
+        if (trimmed) {
+          contextParts.push(trimmed);
+        }
+      }
+
+      // If history was trimmed, truncate the messages array
+      if (budgetResult.wasTrimmed && budgetResult.slots['history'] !== historyContent) {
+        // Keep system prompt (index 0) and replace history with trimmed version
+        const trimmedHistory = budgetResult.slots['history'];
+        // Remove old history messages, re-add as single summarized message
+        while (messages.length > 1) {
+          messages.pop();
+        }
+        if (trimmedHistory) {
+          messages.push({
+            role: 'user',
+            content: '[Summarized conversation context]\n' + trimmedHistory,
+          });
+          messages.push({
+            role: 'assistant',
+            content: 'Understood, I have the context.',
+          });
+        }
+      }
+
+      if (budgetResult.warning) {
+        response.progress(budgetResult.warning);
       }
     }
 
@@ -678,7 +896,9 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     id: DEFAULT_PARTICIPANT_ID,
     displayName: 'Chat',
     description: 'Default chat participant — sends messages to the active language model.',
-    commands: [],
+    commands: [
+      { name: 'init', description: 'Scan workspace and generate AGENTS.md' },
+    ],
     handler,
     dispose: () => {
       // No-op cleanup — the participant is just a descriptor

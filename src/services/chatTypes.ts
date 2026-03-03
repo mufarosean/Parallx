@@ -249,6 +249,25 @@ export interface IChatAssistantResponse {
   completionTokens?: number;
 }
 
+// ── Context Pills (M11 Task 1.10) ──
+
+/**
+ * A context pill — represents a single context source visible to the LLM.
+ * Displayed as visual chips above the chat input for transparency.
+ */
+export interface IContextPill {
+  /** Unique ID (file path, page URI, or synthetic like 'system'). */
+  readonly id: string;
+  /** Display label (filename or source description). */
+  readonly label: string;
+  /** Context source type. */
+  readonly type: 'attachment' | 'rag' | 'system' | 'rule';
+  /** Estimated token count for this source. */
+  readonly tokens: number;
+  /** Whether the user can remove this pill (false for system). */
+  readonly removable: boolean;
+}
+
 // ── Content Part Discriminated Union ──
 
 /**
