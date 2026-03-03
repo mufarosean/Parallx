@@ -431,7 +431,7 @@ function requireFs(fs: IBuiltInToolFileSystem | undefined): asserts fs is IBuilt
 function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'list_files',
-    description: 'List files and directories at a workspace path. Returns name, type (file/directory), and size. Path is relative to the workspace root.',
+    description: 'List files and directories at a workspace path. Returns name, type (file/directory), and size. Path is relative to the workspace root. IMPORTANT: This only lists names — to see file contents, you must follow up with read_file for each file you need.',
     parameters: {
       type: 'object',
       properties: {
@@ -468,7 +468,7 @@ function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): IChatTool 
 function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'read_file',
-    description: 'Read the text content of a workspace file. Path is relative to the workspace root. Max 50 KB.',
+    description: 'Read the text content of a workspace file. Path is relative to the workspace root. Max 50 KB. Use this to actually see what\'s inside a file — always read files before summarizing or answering questions about their content.',
     parameters: {
       type: 'object',
       required: ['path'],

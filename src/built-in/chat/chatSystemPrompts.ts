@@ -129,6 +129,13 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
     '- read_page accepts both a page UUID and a page title.',
     '- Be direct and useful. Use markdown formatting. Suggest next steps when appropriate.',
     '- If the user\'s message is short or vague, interpret it generously — deliver the most helpful response you can rather than asking what they meant.',
+    '',
+    'CRITICAL — TOOL CHAINING:',
+    '- NEVER just list files/folders and stop. If the user asks about content, you MUST read the actual files and synthesize the information.',
+    '- Pattern for folder/file questions: list_files → read_file (each relevant file) → synthesize a useful answer from the contents.',
+    '- Pattern for page questions: search_workspace or read_page → summarize/analyze the actual content.',
+    '- You have up to 5 tool calls per turn. Use them. A list of filenames is never a useful final answer — the user wants to know what\'s IN the files.',
+    '- When summarizing: extract key points, highlight important information, and organize it clearly. Don\'t just echo raw content back.',
   );
 
   return lines.join('\n');
@@ -224,6 +231,13 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     '- Explain your reasoning briefly. Don\'t narrate every step — focus on results the user cares about.',
     '- If a tool call fails, try alternatives before reporting failure.',
     '- When the user is vague, take the most useful action. Don\'t ask "what do you mean?" — infer and execute.',
+    '',
+    'CRITICAL — TOOL CHAINING:',
+    '- NEVER just list files/folders and stop. If the user asks about content, you MUST read the actual files and synthesize the information.',
+    '- Pattern for folder/file questions: list_files → read_file (each relevant file) → synthesize a useful answer from the contents.',
+    '- Pattern for page questions: search_workspace or read_page → summarize/analyze the actual content.',
+    '- A list of filenames is never a useful final answer — the user wants to know what\'s IN the files.',
+    '- When summarizing: extract key points, highlight important information, and organize it clearly. Don\'t just echo raw content back.',
   );
 
   return lines.join('\n');
