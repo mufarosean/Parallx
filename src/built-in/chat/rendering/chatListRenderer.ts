@@ -32,7 +32,6 @@ export type { OpenAttachmentHandler } from '../chatTypes.js';
 export class ChatListRenderer extends Disposable {
 
   private _onOpenAttachment: OpenAttachmentHandler | undefined;
-  private _onCancelRequest: (() => void) | undefined;
 
   /**
    * Track the last rendered state so we can do incremental updates.
@@ -46,8 +45,8 @@ export class ChatListRenderer extends Disposable {
   }
 
   /** Set callback for cancelling the in-progress request (Task 4.9). */
-  setCancelHandler(handler: () => void): void {
-    this._onCancelRequest = handler;
+  setCancelHandler(_handler: () => void): void {
+    // Cancel is now handled by the input part's stop button; kept for API compat.
   }
 
   /**
@@ -161,12 +160,8 @@ export class ChatListRenderer extends Disposable {
         const cursor = $('span.parallx-chat-streaming-cursor');
         body.appendChild(cursor);
       }
-      // Update progress footer (Task 4.9)
-      this._updateProgressFooter(lastPair.assistantEl, response);
     } else if (existingCursor) {
       existingCursor.remove();
-      // Remove progress footer when done
-      this._removeProgressFooter(lastPair.assistantEl);
       // Add message actions bar now that streaming is complete
       this._addMessageActions(lastPair.assistantEl, body);
     }
@@ -215,12 +210,6 @@ export class ChatListRenderer extends Disposable {
         }
         const cursor = $('span.parallx-chat-streaming-cursor');
         lastAssistant.appendChild(cursor);
-
-        // Add progress footer (Task 4.9)
-        const lastEl = this._renderedPairs.get(messages.length - 1);
-        if (lastEl) {
-          this._addProgressFooter(lastEl.assistantEl, lastResponse);
-        }
       }
     }
   }
@@ -333,42 +322,6 @@ export class ChatListRenderer extends Disposable {
       indicator.appendChild(dot);
     }
     return indicator;
-  }
-
-  // ── Progress Indication (Task 4.9) ──
-
-  /** Add progress footer below assistant message (Task 4.9). */
-  private _addProgressFooter(assistantEl: HTMLElement, _response: IChatAssistantResponse): void {
-    // Don't duplicate
-    if (assistantEl.querySelector('.parallx-chat-progress-footer')) { return; }
-
-    const footer = $('div.parallx-chat-progress-footer');
-
-    // Cancel button
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'parallx-chat-progress-cancel';
-    cancelBtn.type = 'button';
-    cancelBtn.title = 'Cancel generation';
-    cancelBtn.innerHTML = `${chatIcons.close} <span>Stop</span>`;
-    cancelBtn.addEventListener('click', () => {
-      this._onCancelRequest?.();
-    });
-    footer.appendChild(cancelBtn);
-
-    assistantEl.appendChild(footer);
-  }
-
-  /** Update the progress footer during streaming (Task 4.9). */
-  private _updateProgressFooter(assistantEl: HTMLElement, response: IChatAssistantResponse): void {
-    const footer = assistantEl.querySelector('.parallx-chat-progress-footer');
-    if (!footer) {
-      this._addProgressFooter(assistantEl, response);
-    }
-  }
-
-  /** Remove progress footer (Task 4.9). */
-  private _removeProgressFooter(assistantEl: HTMLElement): void {
-    assistantEl.querySelector('.parallx-chat-progress-footer')?.remove();
   }
 
   override dispose(): void {

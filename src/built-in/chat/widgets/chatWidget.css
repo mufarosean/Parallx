@@ -284,52 +284,6 @@
   }
 }
 
-/* ── Progress Footer (Task 4.9) ── */
-
-.parallx-chat-progress-footer {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 0 2px;
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground, #8b8b8b);
-  font-family: var(--vscode-font-family, system-ui, sans-serif);
-}
-
-.parallx-chat-progress-elapsed {
-  font-variant-numeric: tabular-nums;
-}
-
-.parallx-chat-progress-tokens {
-  opacity: 0.8;
-}
-
-.parallx-chat-progress-cancel {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  margin-left: auto;
-  padding: 1px 6px;
-  border: 1px solid var(--vscode-input-border, #3c3c3c);
-  border-radius: 3px;
-  background: transparent;
-  color: var(--vscode-descriptionForeground, #8b8b8b);
-  font-size: 11px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: color 100ms ease, border-color 100ms ease;
-}
-
-.parallx-chat-progress-cancel:hover {
-  color: var(--vscode-errorForeground, #f48771);
-  border-color: var(--vscode-errorForeground, #f48771);
-}
-
-.parallx-chat-progress-cancel svg {
-  width: 10px;
-  height: 10px;
-}
-
 /* ── Empty State ── */
 
 .parallx-chat-empty-state {
