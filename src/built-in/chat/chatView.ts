@@ -13,7 +13,6 @@ import type { OllamaProvider } from './providers/ollamaProvider.js';
 import { ChatWidget } from './chatWidget.js';
 import type { IChatWidgetServices } from './chatTypes.js';
 import { $ } from '../../ui/dom.js';
-import { setActiveWidget } from './chatTool.js';
 
 /**
  * Creates the chat view inside the given container.
@@ -23,6 +22,7 @@ export function createChatView(
   container: HTMLElement,
   provider: OllamaProvider,
   services: IChatWidgetServices,
+  setActiveWidget: (widget: ChatWidget | undefined) => void,
 ): IDisposable {
   const disposables = new DisposableStore();
 

@@ -1,4 +1,4 @@
-// chatTool.ts — Chat built-in tool activation (M9 Task 3.1)
+// main.ts — Chat built-in tool activation (M9 Task 3.1, M13 Phase 3)
 //
 // Entry point for the chat built-in tool. Follows the same pattern
 // as Explorer, Canvas, etc. — exports activate() and deactivate().
@@ -439,7 +439,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
     api.views.registerViewProvider('view.chat', {
       createView(container: HTMLElement): IDisposable {
-        const view = createChatView(container, _ollamaProvider!, widgetServices);
+        const view = createChatView(container, _ollamaProvider!, widgetServices, setActiveWidget);
         return view;
       },
     }),

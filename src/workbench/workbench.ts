@@ -130,7 +130,7 @@ import * as IndexingLogTool from '../built-in/indexing-log/main.js';
 import * as ToolGalleryTool from '../built-in/tool-gallery/main.js';
 import * as FileEditorTool from '../built-in/editor/main.js';
 import * as CanvasTool from '../built-in/canvas/main.js';
-import * as ChatTool from '../built-in/chat/chatTool.js';
+import * as ChatTool from '../built-in/chat/main.js';
 import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 import {
   EXPLORER_MANIFEST,

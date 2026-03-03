@@ -188,7 +188,7 @@ export const CHAT_MANIFEST: IToolManifest = {
   version: '1.0.0',
   publisher: 'parallx',
   description: 'AI Chat — local language model conversations powered by Ollama.',
-  main: './chatTool.js',
+  main: './main.js',
   engines: { parallx: '^0.1.0' },
   activationEvents: ['onStartupFinished'],
   contributes: {
