@@ -15,7 +15,6 @@
 //   Parallx centralises prompt building here for consistency.
 
 import { ChatMode } from '../../../services/chatTypes.js';
-import type { IToolDefinition } from '../../../services/chatTypes.js';
 import type { ISystemPromptContext } from '../chatTypes.js';
 
 // ISystemPromptContext — now defined in chatTypes.ts (M13 Phase 1)
@@ -81,17 +80,6 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
     '- If the user attaches files or pages, their content is also included directly in the message.',
   );
 
-  // Read-only tool list
-  if (ctx.tools && ctx.tools.length > 0) {
-    lines.push(
-      '',
-      'TOOLS (read-only):',
-    );
-    for (const tool of ctx.tools) {
-      lines.push(`- ${tool.name}: ${tool.description}`);
-    }
-  }
-
   // Rules
   lines.push(
     '',
@@ -99,8 +87,8 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
     '- Be direct and useful. Answer with real content, not meta-commentary about what you could do.',
     '- You already know this workspace — use the file tree, page list, and digest above. Go straight to the answer.',
     '- Do NOT invent content. Only reference what is in the provided context or discovered via tools.',
-    '- read_page accepts both a page UUID and a page title.',
-    '- You can READ workspace content with tools but CANNOT create, modify, or delete anything in Ask mode.',
+    '- NEVER describe function calls, tool names, or JSON objects in your response. Use tools silently — the user only sees the final answer.',
+    '- You can read workspace content but CANNOT create, modify, or delete anything in Ask mode.',
     '- If the user\'s message is short or vague, interpret it generously — deliver the most helpful response you can rather than asking what they meant.',
   );
 
@@ -174,18 +162,6 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     '- If the user attaches files or pages, their content is also included directly in the message.',
   );
 
-  // Full tool list
-  if (ctx.tools && ctx.tools.length > 0) {
-    lines.push(
-      '',
-      'TOOLS:',
-    );
-    for (const tool of ctx.tools) {
-      const paramSummary = formatToolParams(tool);
-      lines.push(`- ${tool.name}: ${tool.description}${paramSummary ? ` (${paramSummary})` : ''}`);
-    }
-  }
-
   // Rules
   lines.push(
     '',
@@ -193,7 +169,7 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     '- Be direct and useful. Deliver results, not narration about your process.',
     '- You already know this workspace — use the digest above. Go straight to relevant files.',
     '- Do NOT invent content. Only reference what is in the provided context or discovered via tools.',
-    '- read_page accepts both a page UUID and a page title.',
+    '- NEVER describe function calls, tool names, or JSON objects in your response. Use tools silently — the user only sees the final answer.',
     '- Read-only tools (search, read, list) can be used freely. Write tools (create, update, delete) require user confirmation.',
     '- If a tool call fails, try alternatives before reporting failure.',
     '- If the user\'s message is short or vague, interpret it generously — infer the most useful action and execute.',
@@ -231,19 +207,6 @@ function appendWorkspaceStats(lines: string[], ctx: ISystemPromptContext): void 
   if (ctx.workspaceDigest) {
     lines.push('', ctx.workspaceDigest);
   }
-}
-
-/**
- * Format tool parameter names compactly for the Agent mode tool list.
- * Returns empty string if no meaningful params.
- */
-function formatToolParams(tool: IToolDefinition): string {
-  const schema = tool.parameters as Record<string, unknown>;
-  const props = schema['properties'] as Record<string, { type?: string }> | undefined;
-  if (!props) { return ''; }
-  return Object.entries(props)
-    .map(([key, val]) => `${key}: ${val.type ?? 'any'}`)
-    .join(', ');
 }
 
 // ── Retrieval Planner Prompt (M12 Task 1.1) ──

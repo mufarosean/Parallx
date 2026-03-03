@@ -295,3 +295,55 @@ describe('_extractToolCallsFromText', () => {
     expect(cleanedText).toContain('Here are the results:');
   });
 });
+
+// ── _stripToolNarration — prose tool-call narration removal ──
+
+describe('_stripToolNarration', () => {
+  let _stripToolNarration: typeof import('../../src/built-in/chat/participants/defaultParticipant')._stripToolNarration;
+
+  beforeEach(async () => {
+    const mod = await import('../../src/built-in/chat/participants/defaultParticipant');
+    _stripToolNarration = mod._stripToolNarration;
+  });
+
+  it('strips "Here\'s a function call to X" narration', () => {
+    const text = 'Here\'s a function call to read_file with its proper arguments:\nSome useful content.';
+    const result = _stripToolNarration(text);
+    expect(result).toContain('Some useful content.');
+    expect(result).not.toContain('function call');
+  });
+
+  it('strips "Let me call/use the X tool" narration', () => {
+    const text = 'Let me use the list_files tool to find that.\nThe workspace has 5 files.';
+    const result = _stripToolNarration(text);
+    expect(result).not.toContain('Let me use');
+    expect(result).toContain('The workspace has 5 files.');
+  });
+
+  it('strips "This function call will..." narration', () => {
+    const text = 'This function call will read the text content of the specified file.\nHere is the summary.';
+    const result = _stripToolNarration(text);
+    expect(result).not.toContain('function call will');
+    expect(result).toContain('Here is the summary.');
+  });
+
+  it('strips hallucinated execution results', () => {
+    const text = 'It seems that the file "Auto Insurance Policy.md" is not located in the specified path. Let me try again with a different approach.';
+    const result = _stripToolNarration(text);
+    expect(result).not.toContain('not located');
+    expect(result).not.toContain('different approach');
+  });
+
+  it('preserves useful content among narration', () => {
+    const text = 'The workspace contains 7 files.\n\nHere\'s a function call to read_file with proper args:\nThis will read the insurance policy.\n\nPlease let me know if you need more.';
+    const result = _stripToolNarration(text);
+    expect(result).toContain('The workspace contains 7 files.');
+    expect(result).toContain('Please let me know if you need more.');
+  });
+
+  it('returns text unchanged when no narration is present', () => {
+    const text = 'The workspace has 5 pages about insurance. Here is a summary.';
+    const result = _stripToolNarration(text);
+    expect(result).toBe(text);
+  });
+});

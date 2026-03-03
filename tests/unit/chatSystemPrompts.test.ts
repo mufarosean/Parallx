@@ -195,22 +195,25 @@ describe('buildSystemPrompt — Agent mode', () => {
     expect(prompt).not.toContain('- search:');
   });
 
-  it('includes tool descriptions when tools are provided', () => {
+  it('does NOT include tool descriptions in prompt text (tools sent via API parameter)', () => {
     const tools = [
       makeTool('search', 'Search the workspace'),
       makeTool('read_page', 'Read a page by ID'),
     ];
     const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ tools }));
-    expect(prompt).toContain('search');
-    expect(prompt).toContain('Search the workspace');
-    expect(prompt).toContain('read_page');
-    expect(prompt).toContain('Read a page by ID');
+    // Tool descriptions should NOT appear in the system prompt — they are sent
+    // via the Ollama API tools parameter to prevent small models from narrating
+    // about tool calls instead of using the structured tool API.
+    expect(prompt).not.toContain('- search:');
+    expect(prompt).not.toContain('- read_page:');
+    expect(prompt).not.toMatch(/^TOOLS:/m);
   });
 
-  it('includes tool parameter details', () => {
+  it('does NOT include tool parameter details in prompt text', () => {
     const tools = [makeTool('search', 'Search workspace')];
     const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ tools }));
-    expect(prompt).toContain('query');
+    // Parameters should not appear in the system prompt text
+    expect(prompt).not.toContain('query: string');
   });
 
   it('includes rules section', () => {
