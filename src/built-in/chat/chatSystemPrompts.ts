@@ -46,6 +46,11 @@ export interface ISystemPromptContext {
    * (M11 Task 1.4 — prompt file layering)
    */
   readonly promptOverlay?: string;
+  /**
+   * Pre-loaded workspace digest: file tree, page titles, key file previews.
+   * Injected so the AI already knows the workspace before the user speaks.
+   */
+  readonly workspaceDigest?: string;
 }
 
 // ── Parallx identity (Task 4.2) ──
@@ -123,19 +128,19 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
   lines.push(
     '',
     'RULES:',
-    '- When the user asks about content NOT in the provided context, use tools (read_page, search_workspace, search_knowledge) to find it. Don\'t say "I don\'t have that" — go look for it.',
-    '- Do NOT invent page names, file names, or content. Only reference what is in the context or discovered via tools.',
+    '- You already know this workspace. Use the file tree, page list, and key file previews above to answer directly — do NOT waste time discovering what already exists.',
+    '- When the user asks about a file or page, go straight to reading it with read_file or read_page. You already know the name and path.',
+    '- Do NOT invent content. Only reference what is in the context, the workspace digest above, or discovered via tools.',
     '- You can READ workspace content with tools but CANNOT create, modify, or delete anything in Ask mode.',
     '- read_page accepts both a page UUID and a page title.',
     '- Be direct and useful. Use markdown formatting. Suggest next steps when appropriate.',
     '- If the user\'s message is short or vague, interpret it generously — deliver the most helpful response you can rather than asking what they meant.',
     '',
-    'CRITICAL — TOOL CHAINING:',
-    '- NEVER just list files/folders and stop. If the user asks about content, you MUST read the actual files and synthesize the information.',
-    '- Pattern for folder/file questions: list_files → read_file (each relevant file) → synthesize a useful answer from the contents.',
-    '- Pattern for page questions: search_workspace or read_page → summarize/analyze the actual content.',
-    '- You have up to 5 tool calls per turn. Use them. A list of filenames is never a useful final answer — the user wants to know what\'s IN the files.',
-    '- When summarizing: extract key points, highlight important information, and organize it clearly. Don\'t just echo raw content back.',
+    'CRITICAL — ALWAYS READ CONTENT:',
+    '- NEVER just list file or page names — the user wants to know what\'s IN them.',
+    '- When asked to summarize: read_file or read_page the relevant items, then synthesize key points clearly.',
+    '- When asked about the workspace: use the digest above + read specific items for detail. Provide a substantive answer.',
+    '- You have up to 5 tool-call iterations. Use them. Read first, then answer with real content.',
   );
 
   return lines.join('\n');
@@ -224,20 +229,19 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
   lines.push(
     '',
     'RULES:',
+    '- You already know this workspace. Use the file tree, page list, and key file previews above. Go straight to the relevant files — no discovery needed.',
     '- Use tools proactively — read before answering, search before claiming something does or does not exist. Take initiative.',
     '- Read-only tools (search, read, list) can be used freely. Write tools (create, update, delete) require user confirmation.',
-    '- Do NOT invent page names, file names, or content. Only reference what you discover via tools or context.',
+    '- Do NOT invent content. Only reference what is in the context, the workspace digest above, or discovered via tools.',
     '- read_page accepts both a page UUID and a page title.',
-    '- Explain your reasoning briefly. Don\'t narrate every step — focus on results the user cares about.',
+    '- Focus on results the user cares about. Don\'t narrate every step.',
     '- If a tool call fails, try alternatives before reporting failure.',
     '- When the user is vague, take the most useful action. Don\'t ask "what do you mean?" — infer and execute.',
     '',
-    'CRITICAL — TOOL CHAINING:',
-    '- NEVER just list files/folders and stop. If the user asks about content, you MUST read the actual files and synthesize the information.',
-    '- Pattern for folder/file questions: list_files → read_file (each relevant file) → synthesize a useful answer from the contents.',
-    '- Pattern for page questions: search_workspace or read_page → summarize/analyze the actual content.',
-    '- A list of filenames is never a useful final answer — the user wants to know what\'s IN the files.',
-    '- When summarizing: extract key points, highlight important information, and organize it clearly. Don\'t just echo raw content back.',
+    'CRITICAL — ALWAYS READ CONTENT:',
+    '- NEVER just list file or page names — the user wants to know what\'s IN them.',
+    '- When asked to summarize: read_file or read_page the relevant items, then synthesize key points clearly.',
+    '- When asked about the workspace: use the digest above + read specific items. Provide a substantive answer.',
   );
 
   return lines.join('\n');
@@ -266,6 +270,11 @@ function appendWorkspaceStats(lines: string[], ctx: ISystemPromptContext): void 
     lines.push('Knowledge index: building (some queries may return incomplete results).');
   } else if (ctx.isRAGAvailable) {
     lines.push('Knowledge index: ready (semantic search available across all workspace content).');
+  }
+
+  // Workspace digest — pre-loaded knowledge about what exists
+  if (ctx.workspaceDigest) {
+    lines.push('', ctx.workspaceDigest);
   }
 }
 

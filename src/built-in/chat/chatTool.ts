@@ -615,6 +615,101 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         },
       } as IChatRequestResponsePair);
     },
+
+    // ── Workspace digest (proactive context grounding) ──
+    //
+    // Assembles a pre-loaded snapshot of the workspace so the AI already
+    // knows what exists before the user types anything. Includes:
+    //   1. Canvas page titles (from database)
+    //   2. Workspace file tree (from filesystem, max depth 3)
+    //   3. Key file previews (README*, SOUL.md, etc. — first ~500 chars)
+    //
+    // Budget: ~2000 tokens max to avoid bloating the system prompt.
+
+    getWorkspaceDigest: async (): Promise<string | undefined> => {
+      const sections: string[] = [];
+      const MAX_DIGEST_CHARS = 8000; // ~2000 tokens at 4 chars/token
+      let totalChars = 0;
+
+      // 1. Canvas page titles
+      if (databaseService?.isOpen) {
+        try {
+          const pages = await databaseService.all<{ title: string; id: string }>(
+            'SELECT title, id FROM pages WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 30',
+          );
+          if (pages.length > 0) {
+            const pageLines = pages.map(p => `  - ${p.title}`);
+            const block = `CANVAS PAGES (${pages.length}):\n${pageLines.join('\n')}`;
+            sections.push(block);
+            totalChars += block.length;
+          }
+        } catch { /* best-effort */ }
+      }
+
+      // 2. Workspace file tree (depth 3, max 80 entries)
+      if (fsAccessor) {
+        try {
+          const treeLines: string[] = [];
+          const MAX_TREE_ENTRIES = 80;
+          let treeCount = 0;
+
+          async function walkTree(dir: string, depth: number, prefix: string): Promise<void> {
+            if (depth > 3 || treeCount >= MAX_TREE_ENTRIES) return;
+            const entries = await fsAccessor!.readdir(dir);
+            // Sort: dirs first, then files
+            const sorted = [...entries].sort((a, b) => {
+              if (a.type === 'directory' && b.type !== 'directory') return -1;
+              if (a.type !== 'directory' && b.type === 'directory') return 1;
+              return a.name.localeCompare(b.name);
+            });
+            for (const entry of sorted) {
+              if (treeCount >= MAX_TREE_ENTRIES) break;
+              // Skip hidden/system dirs
+              if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === '__pycache__' || entry.name === '.git') continue;
+              const icon = entry.type === 'directory' ? '📁' : '📄';
+              treeLines.push(`${prefix}${icon} ${entry.name}`);
+              treeCount++;
+              if (entry.type === 'directory') {
+                const childPath = dir === '.' ? entry.name : `${dir}/${entry.name}`;
+                await walkTree(childPath, depth + 1, prefix + '  ');
+              }
+            }
+          }
+
+          await walkTree('.', 0, '  ');
+          if (treeLines.length > 0) {
+            const block = `WORKSPACE FILES:\n${treeLines.join('\n')}`;
+            if (totalChars + block.length < MAX_DIGEST_CHARS) {
+              sections.push(block);
+              totalChars += block.length;
+            }
+          }
+        } catch { /* best-effort */ }
+      }
+
+      // 3. Key file previews (README, SOUL.md, etc.)
+      if (fsAccessor) {
+        const keyFiles = ['README.md', 'README.txt', 'README', 'SOUL.md', 'AGENTS.md'];
+        for (const fileName of keyFiles) {
+          if (totalChars >= MAX_DIGEST_CHARS) break;
+          try {
+            const exists = await fsAccessor.exists(fileName);
+            if (!exists) continue;
+            const content = await fsAccessor.readFile(fileName);
+            const preview = content.length > 500 ? content.slice(0, 500) + '\n...(truncated)' : content;
+            const block = `KEY FILE — ${fileName}:\n\`\`\`\n${preview}\n\`\`\``;
+            if (totalChars + block.length < MAX_DIGEST_CHARS) {
+              sections.push(block);
+              totalChars += block.length;
+            }
+          } catch { /* best-effort */ }
+        }
+      }
+
+      return sections.length > 0
+        ? `YOU ALREADY KNOW THIS WORKSPACE. Here is what exists:\n\n${sections.join('\n\n')}\n\nUse this knowledge to answer directly. You do NOT need to discover what files exist — you already know.`
+        : undefined;
+    },
   };
 
   const defaultParticipant = createDefaultParticipant(defaultParticipantServices);

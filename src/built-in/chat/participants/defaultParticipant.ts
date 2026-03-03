@@ -260,6 +260,15 @@ export interface IDefaultParticipantServices {
    * Context sources whose ID matches an excluded pill should be skipped.
    */
   getExcludedContextIds?(): ReadonlySet<string>;
+
+  // ── Workspace digest (proactive context grounding) ──
+
+  /**
+   * Build a pre-loaded workspace digest: file tree, page titles, and
+   * key file previews (README, etc). This is injected into the system
+   * prompt so the AI already knows the workspace before the user types.
+   */
+  getWorkspaceDigest?(): Promise<string | undefined>;
 }
 
 /** Default participant ID — must match ChatAgentService's DEFAULT_AGENT_ID. */
@@ -437,6 +446,16 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
+    // Pre-load workspace digest so the AI already knows the workspace
+    let workspaceDigest: string | undefined;
+    if (services.getWorkspaceDigest) {
+      try {
+        workspaceDigest = await services.getWorkspaceDigest();
+      } catch {
+        // Workspace digest is best-effort
+      }
+    }
+
     const promptContext: ISystemPromptContext = {
       workspaceName: services.getWorkspaceName(),
       pageCount,
@@ -448,6 +467,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       isRAGAvailable: services.isRAGAvailable?.() ?? false,
       isIndexing: services.isIndexing?.() ?? false,
       promptOverlay,
+      workspaceDigest,
     };
 
     const systemPrompt = buildSystemPrompt(request.mode, promptContext);
