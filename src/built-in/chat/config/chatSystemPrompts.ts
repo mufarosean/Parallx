@@ -96,6 +96,7 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
   lines.push(
     '',
     'RULES:',
+    '- For greetings, thanks, small talk, and casual conversation: respond naturally and warmly. Do NOT use tools for conversational messages.',
     '- You already know this workspace. Use the file tree, page list, and key file previews above to answer directly — do NOT waste time discovering what already exists.',
     '- When the user asks about a file or page, go straight to reading it with read_file or read_page. You already know the name and path.',
     '- Do NOT invent content. Only reference what is in the context, the workspace digest above, or discovered via tools.',
@@ -104,11 +105,12 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
     '- Be direct and useful. Use markdown formatting. Suggest next steps when appropriate.',
     '- If the user\'s message is short or vague, interpret it generously — deliver the most helpful response you can rather than asking what they meant.',
     '',
-    'CRITICAL — ALWAYS READ CONTENT:',
+    'WHEN TO USE TOOLS:',
+    '- Use tools when the user asks about workspace content, files, or pages.',
     '- NEVER just list file or page names — the user wants to know what\'s IN them.',
     '- When asked to summarize: read_file or read_page the relevant items, then synthesize key points clearly.',
     '- When asked about the workspace: use the digest above + read specific items for detail. Provide a substantive answer.',
-    '- You have up to 5 tool-call iterations. Use them. Read first, then answer with real content.',
+    '- You have up to 5 tool-call iterations. Use them when you need information. Read first, then answer with real content.',
   );
 
   return lines.join('\n');
@@ -197,16 +199,17 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
   lines.push(
     '',
     'RULES:',
+    '- For greetings, thanks, small talk, and casual conversation: respond naturally and warmly. Do NOT use tools for conversational messages.',
     '- You already know this workspace. Use the file tree, page list, and key file previews above. Go straight to the relevant files — no discovery needed.',
-    '- Use tools proactively — read before answering, search before claiming something does or does not exist. Take initiative.',
+    '- Use tools when you need workspace information — read before answering, search before claiming something does or does not exist.',
     '- Read-only tools (search, read, list) can be used freely. Write tools (create, update, delete) require user confirmation.',
     '- Do NOT invent content. Only reference what is in the context, the workspace digest above, or discovered via tools.',
     '- read_page accepts both a page UUID and a page title.',
     '- Focus on results the user cares about. Don\'t narrate every step.',
     '- If a tool call fails, try alternatives before reporting failure.',
-    '- When the user is vague, take the most useful action. Don\'t ask "what do you mean?" — infer and execute.',
+    '- When the user is vague about workspace content, take the most useful action. Don\'t ask "what do you mean?" — infer and execute.',
     '',
-    'CRITICAL — ALWAYS READ CONTENT:',
+    'WHEN TO USE TOOLS:',
     '- NEVER just list file or page names — the user wants to know what\'s IN them.',
     '- When asked to summarize: read_file or read_page the relevant items, then synthesize key points clearly.',
     '- When asked about the workspace: use the digest above + read specific items. Provide a substantive answer.',

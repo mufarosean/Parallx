@@ -103,6 +103,16 @@ export function _extractToolCallsFromText(text: string): { toolCalls: IToolCall[
     if (toolCalls.length > 0) { break; } // Don't double-match
   }
 
+  // Strip common preamble narration small models add before JSON tool calls.
+  // e.g. "Here is the JSON response with its proper arguments that best answers..."
+  // e.g. "Here's the JSON response for the function call:"
+  // e.g. "Based on the conversation history, here is a JSON response..."
+  if (toolCalls.length > 0) {
+    cleaned = cleaned
+      .replace(/(?:Based on[\s\S]{0,60},\s*)?[Hh]ere(?:'s| is) the JSON response[\s\S]{0,80}?:\s*/g, '')
+      .replace(/(?:I will|Let me|I'll)\s+(?:now\s+)?(?:call|use|invoke|execute)\s+the\s+\w+\s+tool[\s\S]{0,40}?[.:]/gi, '');
+  }
+
   // Trim leftover whitespace / empty lines
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
 
@@ -115,37 +125,54 @@ const CONTEXT_OVERFLOW_WARN_THRESHOLD = 0.8;
 
 // ── Skip-planning heuristic (M12 Task 1.3) ──
 
-/** Common greetings that don't need retrieval planning. */
-const GREETING_PATTERNS = /^(hi|hello|hey|sup|yo|thanks|thank you|bye|goodbye|ok|okay|sure|yes|no|cool|great|nice|got it)\b/i;
+/** Common greetings / affirmations that don't need a planner LLM call. */
+const GREETING_PATTERNS = /^(hi|hello|hey|sup|yo|thanks|thank you|bye|goodbye|ok|okay|sure|yes|no|cool|great|nice|got it|how are you|what's up|good morning|good afternoon|good evening)\b/i;
+
+/**
+ * Lightweight heuristic to detect obviously conversational messages.
+ *
+ * This is used ONLY as a speed optimization to skip the planner LLM call
+ * for messages where the answer is obvious.  When skipped, a synthetic
+ * IRetrievalPlan with `intent: 'conversational'` and `needsRetrieval: false`
+ * is created so the rest of the pipeline still has a plan to consult.
+ *
+ * The planner itself is the real "thinking layer" — it does proper intent
+ * classification for non-trivial messages.  This heuristic just avoids
+ * wasting an LLM call on "Hello".
+ */
+function isObviouslyConversational(message: string): boolean {
+  const trimmed = message.trim();
+  if (!trimmed) { return false; }
+  if (GREETING_PATTERNS.test(trimmed)) { return true; }
+  // Very short messages (≤3 words, no question mark, no slash command)
+  const words = trimmed.split(/\s+/);
+  if (words.length <= 3 && !trimmed.includes('?') && !trimmed.startsWith('/')) {
+    if (words.length === 1 && /^[a-z_]+$/.test(trimmed)) { return false; }
+    return true;
+  }
+  return false;
+}
 
 /**
  * Determine whether to skip the retrieval planning LLM call.
- * Returns true when planning would be wasteful:
- *   - Very short direct questions (≤6 words ending with ?)
- *   - Greetings / affirmations
- *   - Slash commands (already have a template)
- *   - RAG not available (nothing to retrieve)
+ * When skipped, the caller MUST still produce a synthetic IRetrievalPlan
+ * so downstream logic can consult `plan.needsRetrieval` and `plan.intent`.
  */
 function shouldSkipPlanning(
   message: string,
   isRAGAvailable: boolean,
   hasSlashCommand: boolean,
 ): boolean {
-  // No RAG = nothing to plan retrieval for
   if (!isRAGAvailable) { return true; }
-
-  // Slash commands have their own prompts
   if (hasSlashCommand) { return true; }
 
   const trimmed = message.trim();
-
-  // Empty message
   if (!trimmed) { return true; }
 
-  // Greetings
-  if (GREETING_PATTERNS.test(trimmed)) { return true; }
+  // Obviously conversational — skip the planner call for latency
+  if (isObviouslyConversational(trimmed)) { return true; }
 
-  // Very short direct questions (≤6 words + '?' at end) — single-query is sufficient
+  // Very short direct questions (≤6 words + '?' at end) — single-query retrieval is sufficient
   const words = trimmed.split(/\s+/);
   if (words.length <= 6 && trimmed.endsWith('?')) { return true; }
 
@@ -499,6 +526,10 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
     if (usePlanner) {
       // ── M12 Planned retrieval path ──
+      // The planner is the AI's "thinking layer": it reads the user's message,
+      // classifies intent (conversational / question / situation / task / exploration),
+      // and generates targeted search queries.  Its output drives whether we
+      // fetch RAG context, recall memories, and send tools to the model.
       try {
         response.progress('Analyzing your message…');
 
@@ -568,8 +599,35 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
-    // Direct retrieval fallback: used when planner is skipped OR not available
-    if (!usePlanner && services.retrieveContext) {
+    // ── Synthetic plan when planner was skipped ──
+    // When the planner LLM call is skipped (for speed), we still need a plan
+    // so downstream logic can check `retrievalPlan.needsRetrieval` and
+    // `retrievalPlan.intent` consistently.  The heuristic decides:
+    //   - Obviously conversational → { conversational, no retrieval }
+    //   - Short question or no RAG → { question, retrieval from direct fallback }
+    if (!usePlanner && !retrievalPlan) {
+      if (isObviouslyConversational(userText)) {
+        retrievalPlan = {
+          intent: 'conversational',
+          reasoning: 'Message appears to be a greeting or conversational remark.',
+          needsRetrieval: false,
+          queries: [],
+        };
+      } else {
+        // Non-conversational but planning was skipped (short question, no RAG, etc.)
+        // Let direct retrieval proceed
+        retrievalPlan = {
+          intent: 'question',
+          reasoning: 'Short question — using direct retrieval.',
+          needsRetrieval: isRagReady,
+          queries: [],
+        };
+      }
+    }
+
+    // Direct retrieval fallback: used when planner is skipped OR not available.
+    // Gated by the plan's needsRetrieval — conversational messages skip retrieval.
+    if (!usePlanner && services.retrieveContext && retrievalPlan?.needsRetrieval !== false) {
       try {
         const ragResult = await services.retrieveContext(userText);
         if (ragResult) {
@@ -607,7 +665,8 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     }
 
     // 1c. Memory context: retrieve relevant past conversation memories (M10 Phase 5)
-    if (services.recallMemories) {
+    // Gated by the plan — conversational messages don't need past memories.
+    if (services.recallMemories && retrievalPlan?.needsRetrieval !== false) {
       try {
         const memoryContext = await services.recallMemories(userText);
         if (memoryContext) {
@@ -879,9 +938,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     }
 
     // Build request options (mode-aware)
+    // When the plan says the message is conversational (intent: 'conversational'),
+    // don't send tools to the model — let it respond naturally.  This is decided
+    // by the planner (thinking layer) or the synthetic plan for obvious cases.
+    const isConversational = retrievalPlan?.intent === 'conversational';
     const options: IChatRequestOptions = {
-      // Ask mode: read-only tools; Agent mode: all tools
-      tools: shouldIncludeTools(request.mode)
+      tools: (!isConversational && shouldIncludeTools(request.mode))
         ? (capabilities.canAutonomous ? services.getToolDefinitions() : services.getReadOnlyToolDefinitions())
         : undefined,
       // Edit mode: use JSON structured output

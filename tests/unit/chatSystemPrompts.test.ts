@@ -190,7 +190,10 @@ describe('buildSystemPrompt — Agent mode', () => {
 
   it('omits tool section when no tools provided', () => {
     const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ tools: [] }));
-    expect(prompt).not.toContain('TOOLS:');
+    // The "TOOLS:" section listing individual tools should be absent,
+    // but "WHEN TO USE TOOLS:" rules section is always present.
+    expect(prompt).not.toMatch(/^TOOLS:\s*$/m);
+    expect(prompt).not.toContain('- search:');
   });
 
   it('includes tool descriptions when tools are provided', () => {
