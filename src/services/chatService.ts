@@ -498,6 +498,43 @@ export class ChatService extends Disposable implements IChatService {
     ensureChatTables(database).catch(() => { /* persistence is best-effort */ });
   }
 
+  /**
+   * Hard-reset for workspace switch.
+   *
+   * Cancels all active requests, clears all in-memory sessions,
+   * re-ensures tables exist (the singleton DatabaseService now points
+   * at the new workspace DB), and restores sessions from the new DB.
+   */
+  async resetForWorkspaceSwitch(): Promise<void> {
+    // 1. Cancel every active request
+    for (const [sessionId, cts] of this._activeCancellations) {
+      cts.cancel();
+      cts.dispose();
+      this._activeCancellations.delete(sessionId);
+    }
+
+    // 2. Flush pending persists for the OLD workspace before we ditch sessions
+    if (this._persistTimer !== undefined) {
+      clearTimeout(this._persistTimer);
+      this._persistTimer = undefined;
+    }
+    await this._flushPendingPersists();
+
+    // 3. Clear all in-memory sessions
+    const oldIds = [...this._sessions.keys()];
+    this._sessions.clear();
+    for (const id of oldIds) {
+      this._onDidDeleteSession.fire(id);
+    }
+
+    // 4. Re-ensure chat tables for the new DB, then restore
+    if (this._database) {
+      await ensureChatTables(this._database).catch(() => {});
+      await this.restoreSessions();
+    }
+  }
+
+
   // ── Session Persistence ──
 
   /**

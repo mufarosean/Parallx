@@ -125,13 +125,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const fileService = api.services.has(IFileService)
     ? api.services.get<import('../../services/serviceTypes.js').IFileService>(IFileService)
     : undefined;
-  const retrievalService = api.services.has(IRetrievalService)
+  let retrievalService = api.services.has(IRetrievalService)
     ? api.services.get<import('../../services/serviceTypes.js').IRetrievalService>(IRetrievalService)
     : undefined;
-  const indexingPipelineService = api.services.has(IIndexingPipelineService)
+  let indexingPipelineService = api.services.has(IIndexingPipelineService)
     ? api.services.get<import('../../services/serviceTypes.js').IIndexingPipelineService>(IIndexingPipelineService)
     : undefined;
-  const memoryService = api.services.has(IMemoryService)
+  let memoryService = api.services.has(IMemoryService)
     ? api.services.get<import('../../services/serviceTypes.js').IMemoryService>(IMemoryService)
     : undefined;
 
@@ -584,19 +584,30 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(tokenModeListener as unknown as IDisposable);
 
   // Update on indexing progress changes (M10 Phase 6 — Task 6.1)
-  if (indexingPipelineService) {
-    const indexProgressListener = indexingPipelineService.onDidChangeProgress(() => {
+  // Track these subscriptions so we can dispose/re-subscribe on workspace switch
+  let _indexingSubs: IDisposable[] = [];
+
+  const _subscribeIndexingEvents = (): void => {
+    // Dispose previous listeners
+    for (const d of _indexingSubs) d.dispose();
+    _indexingSubs = [];
+
+    if (!indexingPipelineService) return;
+
+    const progressSub = indexingPipelineService.onDidChangeProgress(() => {
       _tokenStatusBar?.update().catch(() => {});
     });
-    context.subscriptions.push(indexProgressListener as unknown as IDisposable);
+    _indexingSubs.push(progressSub as unknown as IDisposable);
 
-    const indexCompleteListener = indexingPipelineService.onDidCompleteInitialIndex((stats) => {
+    const completeSub = indexingPipelineService.onDidCompleteInitialIndex((stats) => {
       _lastIndexStats = { pages: stats.pages, files: stats.files };
       dataService.setLastIndexStats(_lastIndexStats);
       _tokenStatusBar?.update().catch(() => {});
     });
-    context.subscriptions.push(indexCompleteListener as unknown as IDisposable);
-  }
+    _indexingSubs.push(completeSub as unknown as IDisposable);
+  };
+
+  _subscribeIndexingEvents();
 
   // ── 7. Set context keys ──
 
@@ -783,6 +794,64 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       permsFileService.load().catch(() => { /* best-effort */ });
       context.subscriptions.push(permsFileService);
     }).catch(() => { /* optional service */ });
+  }
+
+  // ── 11. Workspace switch handler — hard reset ──
+  //
+  // When the user switches workspaces, the workbench recreates indexing
+  // services (RetrievalService, IndexingPipelineService, MemoryService,
+  // VectorStoreService, etc.) and registers new instances in the DI
+  // container.  But this tool is NOT re-activated — it still holds stale
+  // references from the original activation.
+  //
+  // This handler re-fetches the fresh services from the DI container,
+  // swaps them into ChatDataService, resets ChatService sessions, clears
+  // all caches (prompt files, permissions, workspace digest), and gives
+  // the active widget a new session for the new workspace.
+
+  if (workspaceService) {
+    const workspaceSwitchSub = workspaceService.onDidChangeWorkspace(() => {
+      // 1. Re-fetch stale services from DI container (new instances created
+      //    by registerIndexingServices() during the workbench's rebuild phase)
+      retrievalService = api.services.has(IRetrievalService)
+        ? api.services.get<import('../../services/serviceTypes.js').IRetrievalService>(IRetrievalService)
+        : undefined;
+      indexingPipelineService = api.services.has(IIndexingPipelineService)
+        ? api.services.get<import('../../services/serviceTypes.js').IIndexingPipelineService>(IIndexingPipelineService)
+        : undefined;
+      memoryService = api.services.has(IMemoryService)
+        ? api.services.get<import('../../services/serviceTypes.js').IMemoryService>(IMemoryService)
+        : undefined;
+
+      // 2. Swap stale refs in the data service + clear caches
+      dataService.resetForWorkspaceSwitch({
+        retrievalService,
+        indexingPipelineService,
+        memoryService,
+      });
+
+      // 3. Hard-reset chat sessions (cancel active, flush old, load new)
+      chatService.resetForWorkspaceSwitch().then(() => {
+        // Give the active widget a fresh session for the new workspace
+        if (_activeWidget) {
+          const session = chatService.createSession();
+          _activeWidget.setSession(session);
+        }
+      }).catch(() => { /* best-effort */ });
+
+      // 4. Clear module-level state
+      _lastIndexStats = undefined;
+
+      // 5. Clear permission session grants (they're workspace-scoped)
+      _permissionService?.clearSessionGrants();
+
+      // 6. Re-subscribe to new indexing pipeline events
+      _subscribeIndexingEvents();
+
+      // 7. Refresh the token bar
+      _tokenStatusBar?.update().catch(() => {});
+    });
+    context.subscriptions.push(workspaceSwitchSub as unknown as IDisposable);
   }
 }
 

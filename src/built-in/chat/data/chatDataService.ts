@@ -286,11 +286,43 @@ export class ChatDataService {
   // ── Externally set state ──
   private _lastIndexStats: { pages: number; files: number } | undefined;
 
-  constructor(private readonly _d: ChatDataServiceDeps) {}
+  constructor(private _d: ChatDataServiceDeps) {}
 
   /** Called by the indexing-complete listener in chatTool.ts. */
   setLastIndexStats(stats: { pages: number; files: number }): void {
     this._lastIndexStats = stats;
+  }
+
+  /**
+   * Swap stale service references after a workspace switch.
+   *
+   * Only the services that are recreated by `registerIndexingServices()`
+   * need refreshing — singletons (databaseService, fileService, etc.)
+   * survive across workspaces.
+   *
+   * Also invalidates all caches so the next prompt/digest build reads
+   * from the new workspace.
+   */
+  resetForWorkspaceSwitch(fresh: {
+    retrievalService: ChatDataServiceDeps['retrievalService'];
+    indexingPipelineService: ChatDataServiceDeps['indexingPipelineService'];
+    memoryService: ChatDataServiceDeps['memoryService'];
+  }): void {
+    // Swap stale refs
+    this._d = {
+      ...this._d,
+      retrievalService: fresh.retrievalService,
+      indexingPipelineService: fresh.indexingPipelineService,
+      memoryService: fresh.memoryService,
+    };
+
+    // Invalidate caches
+    this._cachedDigest = undefined;
+    this._cacheTimestamp = 0;
+    this._lastIndexStats = undefined;
+
+    // Invalidate prompt file cache so next build reads from new workspace
+    this._d.promptFileService.invalidate();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
