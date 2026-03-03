@@ -130,23 +130,27 @@ export function _extractToolCallsFromText(text: string): { toolCalls: IToolCall[
 export function _stripToolNarration(text: string): string {
   // Remove sentences that describe making function/tool calls
   let cleaned = text
-    // "Here's a function call to X with its proper arguments:"
-    .replace(/[Hh]ere(?:'s| is) (?:a|an|the) (?:function|tool) call[^.:\n]*[.:]\s*/g, '')
+    // "Here's a/an/the/an alternative function call to X with its proper arguments:"
+    .replace(/[Hh]ere(?:'s| is) (?:a|an|the|an alternative) (?:function|tool) call[^.:\n]*[.:]\s*/g, '')
+    // "Based on the functions/context provided..."
+    .replace(/[Bb]ased on the (?:functions?|tools?|context)[^.:\n]*[.:]\s*/g, '')
+    // "with its proper arguments:"
+    .replace(/with its proper arguments[.:]\s*/gi, '')
     // "I'll/Let me call/use/invoke the X tool/function"
     .replace(/(?:I'?(?:ll|m going to)|[Ll]et me)\s+(?:now\s+)?(?:call|use|invoke|try|execute)\s+(?:the\s+)?(?:`?\w+`?\s+)?(?:function|tool)[^.:\n]*[.:]\s*/gi, '')
     // "This function/tool call will..."
     .replace(/[Tt]his (?:function|tool) call will[^.\n]*\.\s*/g, '')
+    // "This will list/read/search/get all/the..."
+    .replace(/This will (?:read|list|search|get|fetch|retrieve|provide|show) (?:all |the )?[^.\n]*\.\s*/gi, '')
     // "The output of this function call indicates..."
     .replace(/[Tt]he output of this (?:function|tool) call[^.\n]*\.\s*/g, '')
-    // "Here's an alternative function call to X:"
-    .replace(/[Hh]ere(?:'s| is) an alternative (?:function|tool) call[^.:\n]*[.:]\s*/g, '')
+    // "Alternatively, since there are no pages... you could use X"
+    .replace(/[Aa]lternatively,?\s+(?:since\s+)?[^.\n]*(?:you could|you can)\s+use\s+`?\w+`?[^.\n]*[.:]\s*/g, '')
     // "It seems that the file X is not located..."  (hallucinated execution result)
     .replace(/It seems (?:that )?the (?:file|page)[^"\n]*(?:"[^"]*"[^.\n]*)?(?:not (?:located|found)|does(?:n't| not) exist)[^.\n]*\.\s*/gi, '')
     // "Let me try again with a different approach."
     .replace(/[Ll]et me try (?:again )?with a different approach\.\s*/g, '')
-    // "This will read/list/search the..."
-    .replace(/This will (?:read|list|search|get|fetch|retrieve) the[^.\n]*\.\s*/gi, '')
-    // "Based on the context and conversation history, I'll provide a JSON object for a function call..."
+    // "Based on the context and conversation history, I'll provide a JSON..."
     .replace(/Based on[^,.\n]*,\s*I'll provide a JSON[^.\n]*\.\s*/gi, '');
 
   // Trim excessive whitespace
@@ -1064,13 +1068,11 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         // ── Narration detection ──
         // Small models sometimes narrate about tool calls in prose instead of
         // actually calling them (e.g. "Here's a function call to read_file...").
-        // If the turn produced no real tool calls but the text describes tool
-        // calls, strip the narration and let the model's *actual* content stand.
+        // Strip narration regardless of whether real tool calls were found —
+        // the user should never see prose describing the mechanics.
         if (turnToolCalls.length === 0 && turnContent) {
-          const narrationPattern = /(?:here'?s?\s+(?:a|an|the)\s+(?:function|tool)\s+call|(?:I'?(?:ll|m going to)|let me)\s+(?:call|use|invoke|try)\s+(?:the\s+)?(?:`?\w+`?\s+)?(?:function|tool)|this (?:function|tool) call will)/i;
+          const narrationPattern = /(?:here'?s?\s+(?:a|an|the)\s+(?:function|tool)\s+call|(?:I'?(?:ll|m going to)|let me)\s+(?:call|use|invoke|try)\s+(?:the\s+)?(?:`?\w+`?\s+)?(?:function|tool)|this (?:function|tool) call will|based on the (?:functions?|tools?|context)\s+provided|with its proper arguments)/i;
           if (narrationPattern.test(turnContent)) {
-            // The model is narrating about tool calls instead of giving an answer.
-            // Strip tool-call narration and replace the rendered markdown.
             const cleaned = _stripToolNarration(turnContent);
             if (!isEditMode) {
               response.replaceLastMarkdown(cleaned);
@@ -1082,6 +1084,16 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         // No tool calls → model gave a final answer, done
         if (turnToolCalls.length === 0) {
           break;
+        }
+
+        // ── Tool-calling turn: discard streamed content ──
+        // When the model calls tools, any text it produced alongside the
+        // tool calls is intermediate thinking (raw JSON, narration, etc.)
+        // — not the final answer.  The real answer comes on the next turn
+        // after tool results are processed.  Clear streamed markdown so the
+        // user only sees the final synthesized response.
+        if (turnContent && !isEditMode) {
+          response.replaceLastMarkdown('');
         }
 
         // Tool calls but not in Agent mode or no invokeTool wired

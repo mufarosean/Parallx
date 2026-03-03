@@ -327,6 +327,29 @@ describe('_stripToolNarration', () => {
     expect(result).toContain('Here is the summary.');
   });
 
+  it('strips "Based on the functions provided" narration', () => {
+    const text = 'Based on the functions provided and the context:\n\nHere\'s a function call to list_pages with its proper arguments:\n\nSome useful content about the workspace.';
+    const result = _stripToolNarration(text);
+    expect(result).not.toContain('Based on the functions');
+    expect(result).not.toContain('proper arguments');
+    expect(result).toContain('Some useful content about the workspace.');
+  });
+
+  it('strips "Alternatively you could use X" narration', () => {
+    const text = 'Alternatively, since there are no pages in the workspace, you could use `read_file` to read the contents:\nHere are the files.';
+    const result = _stripToolNarration(text);
+    expect(result).not.toContain('Alternatively');
+    expect(result).not.toContain('read_file');
+    expect(result).toContain('Here are the files.');
+  });
+
+  it('strips "This will list all pages" narration', () => {
+    const text = 'This will list all pages in the workspace with their titles and IDs.\nThe workspace has 5 files.';
+    const result = _stripToolNarration(text);
+    expect(result).not.toContain('This will list');
+    expect(result).toContain('The workspace has 5 files.');
+  });
+
   it('strips hallucinated execution results', () => {
     const text = 'It seems that the file "Auto Insurance Policy.md" is not located in the specified path. Let me try again with a different approach.';
     const result = _stripToolNarration(text);
