@@ -498,6 +498,30 @@ describe('IndexingPipelineService', () => {
       await startPromise;
       expect(pipeline.isIndexing).toBe(false);
     });
+
+    it('cancels quickly during large flat directory walk', async () => {
+      db.all.mockResolvedValueOnce([]); // no pages
+
+      // 1200 files in one directory (worst-case loop for responsiveness)
+      const entries = Array.from({ length: 1200 }, (_, i) => ({
+        name: `file-${i}.ts`,
+        uri: URI.file(`/workspace/file-${i}.ts`),
+        type: FileType.File,
+        size: 100,
+        mtime: 0,
+      }));
+      fileService.readdir.mockResolvedValueOnce(entries);
+
+      const startPromise = pipeline.start();
+      setTimeout(() => pipeline.cancel(), 0);
+
+      await startPromise;
+
+      // If cancellation is cooperative during walk, we should abort before
+      // processing file chunking/embedding at scale.
+      expect(pipeline.isIndexing).toBe(false);
+      expect(chunkingService.chunkFile).not.toHaveBeenCalled();
+    });
   });
 
   describe('dispose()', () => {

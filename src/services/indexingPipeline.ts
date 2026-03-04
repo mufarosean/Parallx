@@ -60,6 +60,9 @@ const INDEXABLE_EXTENSIONS = new Set([
 /** Max file size to index (256 KB). Larger files are skipped. */
 const MAX_FILE_SIZE = 256 * 1024;
 
+/** Yield back to the event loop every N directory entries while walking. */
+const DIRECTORY_WALK_YIELD_EVERY = 200;
+
 /** @deprecated Use ParallxIgnore instead (M11 Task 1.9). Kept for backward compat / tests. */
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '.parallx', '.vscode', '.idea',
@@ -398,7 +401,10 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     // Collect all indexable files (with mtimes for fast-skip)
     const files: IndexableFile[] = [];
     for (const folder of folders) {
+      this._checkAborted();
       await this._walkDirectory(folder.uri, files);
+      // Cooperative yield between folder roots so UI / switch actions stay responsive.
+      await Promise.resolve();
     }
 
     // Bulk-fetch indexed_at timestamps for all file_chunk sources
@@ -517,7 +523,17 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       return; // Permission denied or other error — skip
     }
 
+    let processed = 0;
     for (const entry of entries) {
+      // Frequent cancellation check + cooperative yield to prevent long
+      // synchronous loops from starving the renderer event loop when a
+      // directory has many entries.
+      this._checkAborted();
+      processed++;
+      if (processed % DIRECTORY_WALK_YIELD_EVERY === 0) {
+        await Promise.resolve();
+      }
+
       const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
 
       if (entry.type === FileType.Directory) {
