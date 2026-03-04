@@ -1093,26 +1093,6 @@ html, body {
   position: relative;
 }
 
-/* ── Workspace transition overlay ── */
-.workspace-transition-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 10000;
-  background: var(--vscode-editor-background);
-  opacity: 0;
-  transition: opacity 120ms ease-in;
-  pointer-events: all;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--vscode-descriptionForeground);
-  font-size: 14px;
-}
-
-.workspace-transition-overlay.visible {
-  opacity: 1;
-}
-
 /* ── Editor Group View ── */
 .editor-group {
   display: flex;

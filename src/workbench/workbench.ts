@@ -418,15 +418,15 @@ export class Workbench extends Layout {
   /**
    * Switch to a different workspace by ID.
    *
-   * Flow:
-   *   1. Save current workspace state
-   *   2. Show transition overlay
-   *   3. Tear down DOM content (views, containers, DnD, grids)
-   *   4. Load new workspace state
-   *   5. Rebuild layout and parts
-   *   6. Apply restored state
-   *   7. Configure saver
-   *   8. Remove overlay
+   * Follows the VS Code model: save current state, then reload the
+   * renderer. On reload the normal startup path (`initialize()` →
+   * `_restoreWorkspace()`) reads the new active workspace ID from
+   * storage and bootstraps everything from scratch — fresh tool
+   * activations, fresh services, fresh database, fresh indexing.
+   *
+   * This eliminates an entire class of stale-state bugs that plagued
+   * the previous in-process switch (manual teardown/rebuild, service
+   * re-fetching, event ordering races, session leaks, etc.).
    */
   async switchWorkspace(targetId: string): Promise<void> {
     if (this._state !== WorkbenchState.Ready) {
@@ -443,95 +443,28 @@ export class Workbench extends Layout {
     }
 
     this._switching = true;
-    console.log('[Workbench] Switching workspace → %s', targetId);
-    const overlay = this._showTransitionOverlay();
+    console.log('[Workbench] Switching workspace → %s (via reload)', targetId);
 
     try {
-      // 1. Save current workspace
+      // 1. Save current workspace state to localStorage
       await this._workspaceSaver.save();
 
-      // 1b. Save view providers BEFORE teardown. removeContributions() in
-      //     teardown deletes _providers, but tools don't re-activate after a
-      //     switch — their registerViewProvider() call was one-time during
-      //     initial activation. We must preserve and re-apply them.
-      const savedProviders = this._viewContribution
-        ? this._viewContribution.getProviders()
-        : new Map();
+      // 2. Set the target as the active workspace so the reload picks it up
+      await this._workspaceLoader.setActiveWorkspaceId(targetId);
 
-      // 2. Tear down current workspace content (views, containers, DnD)
-      this._teardownWorkspaceContent();
-
-      // 3. Load target workspace state
-      const w = this._container.clientWidth;
-      const h = this._container.clientHeight;
-      const savedState = await this._workspaceLoader.loadById(targetId, w, h);
-
-      if (savedState) {
-        this._workspace = Workspace.fromSerialized(savedState.identity, savedState.metadata);
-        this._restoredState = savedState;
-      } else {
-        // No saved state — create a fresh workspace identity
-        this._workspace = Workspace.create('Workspace');
-        this._restoredState = undefined;
+      // 3. Close the database cleanly (best-effort — the main process
+      //    also handles re-open-before-close in openForWorkspace)
+      if (this._databaseService?.isOpen) {
+        await this._databaseService.close().catch(() => {});
       }
 
-      // 4. Rebuild views, containers, DnD inside existing layout
-      //    NOTE: Does NOT start the indexing pipeline — that happens after
-      //    the database is re-opened for the correct workspace (step 7b).
-      this._rebuildWorkspaceContent(savedProviders);
+      // 4. Reload the renderer — fresh startup picks up the new workspace
+      window.location.reload();
 
-      // 5. Apply restored state
-      this._applyRestoredState();
-
-      // 5b. Fire workspace-switch event BEFORE restoring folders.
-      //     WorkspaceService._bindFolderEvents must subscribe to the new
-      //     workspace's onDidChangeFolders BEFORE restoreFolders fires it,
-      //     otherwise the Explorer never learns about restored folders.
-      this._onDidSwitchWorkspace.fire(this._workspace);
-
-      // 6. Re-bind workspace-scoped listeners (context keys, database,
-      //     file watchers) to the NEW workspace object. The old listeners
-      //     were bound to the previous workspace and are now orphaned.
-      this._rebindWorkspaceListeners();
-
-      // 6b. Now restore workspace folders — the event flows through
-      //     WorkspaceService → WorkspaceBridge → Explorer → rebuildTree().
-      //     This also triggers _openDatabaseForWorkspace via the newly
-      //     re-bound listener.
-      if (this._restoredState?.folders) {
-        this._workspace.restoreFolders(this._restoredState.folders);
-      }
-
-      // 7. Wait for the database to finish opening for the new workspace.
-      //    restoreFolders() fires onDidChangeFolders which triggers
-      //    _openDatabaseForWorkspace asynchronously. Await it explicitly
-      //    so the pipeline indexes the correct workspace.
-      await this._openDatabaseForWorkspace();
-
-      // 7b. Late-bind database into ChatService for the new workspace
-      if (this._databaseService.isOpen && this._services.has(IChatService)) {
-        const chatService = this._services.get<IChatService>(IChatService);
-        chatService.setDatabase(this._databaseService as any);
-        chatService.restoreSessions().catch(() => { /* best-effort */ });
-      }
-
-      // 7c. Start the indexing pipeline NOW — database is open and
-      //     workspace context is fully ready.
-      this._startIndexingPipeline();
-
-      // 8. Re-configure the saver for the new workspace
-      this._configureSaver();
-
-      // 9. Update recent workspaces and active ID
-      await this._recentWorkspaces.add(this._workspace);
-      await this._workspaceLoader.setActiveWorkspaceId(this._workspace.id);
-
-      console.log('[Workbench] Switched to workspace "%s"', this._workspace.name);
+      // Note: code below this line never runs — the page is unloading.
     } catch (err) {
       console.error('[Workbench] Workspace switch failed:', err);
-    } finally {
       this._switching = false;
-      this._removeTransitionOverlay(overlay);
     }
   }
 
@@ -547,44 +480,6 @@ export class Workbench extends Layout {
    */
   async removeRecentWorkspace(workspaceId: string): Promise<void> {
     await this._recentWorkspaces.remove(workspaceId);
-  }
-
-  /**
-   * Clear and re-register all workspace-scoped listeners on the current
-   * `this._workspace` object. Called during workspace switch so that
-   * listeners for context keys, database, and file watchers bind to the
-   * new workspace instead of being orphaned on the old one.
-   */
-  private _rebindWorkspaceListeners(): void {
-    // Dispose all old workspace-scoped listeners (including folder watchers)
-    this._workspaceListeners.clear();
-
-    // 1. Context keys + status bar — live updates for folder count
-    if (this._workbenchContext) {
-      const folderCount = this._workspace.folders.length;
-      this._workbenchContext.setWorkspaceFolderCount(folderCount);
-      this._workbenchContext.setWorkbenchState(
-        folderCount === 0 ? 'empty' : 'folder',
-      );
-
-      this._workspaceListeners.add(this._workspace.onDidChangeFolders(() => {
-        const count = this._workspace.folders.length;
-        this._workbenchContext.setWorkspaceFolderCount(count);
-        this._workbenchContext.setWorkbenchState(
-          count === 0 ? 'empty' : 'folder',
-        );
-        this._statusBarController.updateWindowTitle();
-        this._updateEditorBreadcrumbs();
-      }));
-    }
-
-    // 2. Database open/close on folder changes
-    this._workspaceListeners.add(this._workspace.onDidChangeFolders(() => {
-      this._openDatabaseForWorkspace();
-    }));
-
-    // 3. File watchers for the new workspace
-    this._startWorkspaceFolderWatchers();
   }
 
   /**
@@ -2460,170 +2355,5 @@ export class Workbench extends Layout {
   private _setState(state: WorkbenchState): void {
     this._state = state;
     this._onDidChangeState.fire(state);
-  }
-
-  // ════════════════════════════════════════════════════════════════════════
-  // Workspace switch helpers
-  // ════════════════════════════════════════════════════════════════════════
-
-  /**
-   * Tear down workspace-specific content (views, containers, DnD)
-   * while keeping the structural layout (grids, parts elements) intact.
-   */
-  private _teardownWorkspaceContent(): void {
-    // 0. Tear down contribution handler state (tab observers, view contrib listeners,
-    //    builtin + contributed containers, container redirects)
-    this._contributionHandler.teardown();
-
-    // 1. Dispose DnD controller
-    this._dndController?.dispose();
-
-    // 2. Dispose generic view containers (builtin sidebar containers were disposed by handler)
-    this._panelContainer?.dispose();
-    this._auxBarContainer?.dispose();
-
-    // 3. Clear view container mount points in parts
-    if (this._contributionHandler.sidebarViewsSlot) this._contributionHandler.sidebarViewsSlot.innerHTML = '';
-    if (this._contributionHandler.sidebarHeaderSlot) this._contributionHandler.sidebarHeaderSlot.innerHTML = '';
-    if (this._contributionHandler.panelViewsSlot) this._contributionHandler.panelViewsSlot.innerHTML = '';
-
-    const auxBarPart = this._auxiliaryBar as unknown as AuxiliaryBarPart;
-    const auxViewSlot = auxBarPart.viewContainerSlot;
-    if (auxViewSlot) auxViewSlot.innerHTML = '';
-    const auxHeaderSlot = auxBarPart.headerSlot;
-    if (auxHeaderSlot) auxHeaderSlot.innerHTML = '';
-
-    // 4. Clear activity bar icons (the Part structure stays, only icons are removed)
-    for (const icon of this._activityBarPart.getIcons()) {
-      this._activityBarPart.removeIcon(icon.id);
-    }
-
-    // 4b. Clear manage gear icon (not tracked by addIcon/removeIcon)
-    const bottomSection = this._activityBarPart.contentElement.querySelector('.activity-bar-bottom');
-    const gearBtn = bottomSection?.querySelector('.activity-bar-manage-gear');
-    gearBtn?.remove();
-
-    // 5. Dispose the view manager (disposes all remaining view instances)
-    this._viewManager?.dispose();
-
-    // 6. Cancel and dispose the indexing pipeline (M10/M12 — stops in-flight embeddings)
-    if (this._indexingPipeline) {
-      this._indexingPipeline.cancel();
-      this._indexingPipeline.dispose();
-      this._indexingPipeline = null;
-    }
-
-    // 7. Dispose the workspace saver (cancel pending debounce)
-    this._workspaceSaver?.dispose();
-    this._workspaceSaver = new WorkspaceSaver(this._storage);
-
-    // 7. Reset aux bar visibility tracking
-    if (this._auxBarVisible) {
-      try { this._hGrid.removeView(this._auxiliaryBar.id); } catch { /* ok */ }
-      this._auxiliaryBar.setVisible(false);
-      this._auxBarVisible = false;
-    }
-
-    console.log('[Workbench] Torn down workspace content');
-  }
-
-  /**
-   * Rebuild workspace-specific content after a switch.
-   * Re-runs the same logic as Phase 3 (_initializeParts) but without
-   * rebuilding the structural layout, titlebar, or status bar.
-   *
-   * @param savedProviders View providers saved before teardown. Tools don't
-   *   re-activate after a switch, so we must re-register their providers
-   *   to replace placeholder stubs with real views.
-   */
-  private _rebuildWorkspaceContent(
-    savedProviders: ReadonlyMap<string, import('../contributions/viewContribution.js').IToolViewProvider> = new Map(),
-  ): void {
-    // 1. View system — register ALL descriptors, then create containers
-    this._viewManager = new ViewManager();
-    this._viewManager.registerMany(allPlaceholderViewDescriptors);
-    this._viewManager.registerMany(allAuxiliaryBarViewDescriptors);
-
-    this._sidebarContainer = this._setupSidebarViews();
-    this._panelContainer = this._setupPanelViews();
-    this._auxBarContainer = this._setupAuxBarViews();
-
-    // Wire new containers + view manager into contribution handler
-    this._contributionHandler.setViewManager(this._viewManager);
-    this._contributionHandler.setGenericContainers(this._sidebarContainer, this._panelContainer, this._auxBarContainer);
-    this._contributionHandler.panelViewsSlot = this._panel.element.querySelector('.panel-views') as HTMLElement;
-
-    // 2b. Manage gear icon
-    this._menuBuilder.addManageGearIcon();
-
-    // 3. DnD
-    this._dndController = this._setupDragAndDrop();
-
-    // 4. Layout view containers
-    this._layoutViewContainers();
-
-    // 5. Re-wire view contribution events (Cap 6)
-    if (this._viewContribution) {
-      this._viewContribution.updateViewManager(this._viewManager);
-      this._contributionHandler.setViewContribution(this._viewContribution);
-      this._contributionHandler.wireViewContributionEvents();
-
-      // Replay view contributions for all already-registered tools so
-      // contributed containers and views are re-created in the new DOM.
-      //
-      // Providers were already saved in switchWorkspace() BEFORE teardown
-      // (which clears them) and passed in as the savedProviders parameter.
-
-      const registry = this._services.get(IToolRegistryService) as unknown as ToolRegistry;
-      if (registry) {
-        for (const entry of registry.getAll()) {
-          const contributes = entry.description.manifest.contributes;
-          if (contributes?.viewContainers || contributes?.views) {
-            // Remove then re-process to rebuild DOM via events
-            this._viewContribution.removeContributions(entry.description.manifest.id);
-            this._viewContribution.processContributions(entry.description);
-          }
-        }
-      }
-
-      // Re-register saved providers — this triggers onDidRegisterProvider
-      // for each, which replaces placeholder view content with real tool views
-      for (const [viewId, provider] of savedProviders) {
-        this._viewContribution.registerProvider(viewId, provider);
-      }
-    }
-
-    console.log('[Workbench] Rebuilt workspace content');
-
-    // NOTE: The indexing pipeline is NOT started here. During a workspace
-    // switch, the pipeline must wait until the database is re-opened for the
-    // correct workspace (switchWorkspace step 7c). During initial startup,
-    // the pipeline is started from Phase 5 after the DB opens.
-  }
-
-  /**
-   * Show a fade overlay during workspace switch.
-   */
-  private _showTransitionOverlay(): HTMLElement {
-    const overlay = $('div');
-    overlay.classList.add('workspace-transition-overlay');
-    overlay.textContent = 'Switching workspace…';
-    this._container.appendChild(overlay);
-
-    // Trigger fade-in
-    requestAnimationFrame(() => { overlay.classList.add('visible'); });
-
-    return overlay;
-  }
-
-  /**
-   * Remove the transition overlay with a fade-out.
-   */
-  private _removeTransitionOverlay(overlay: HTMLElement): void {
-    overlay.classList.remove('visible');
-    overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
-    // Safety fallback
-    const TRANSITION_FALLBACK_MS = 300;
-    setTimeout(() => { if (overlay.parentElement) overlay.remove(); }, TRANSITION_FALLBACK_MS);
   }
 }

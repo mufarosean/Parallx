@@ -69,7 +69,6 @@ interface ParallxApi {
   workspace: {
     getConfiguration(section: string): { get<T>(key: string, defaultValue?: T): T };
     onDidChangeConfiguration: Event<{ affectsConfiguration(section: string): boolean }>;
-    onDidChangeWorkspace: (listener: (e: { id: string; name: string } | undefined) => void) => IDisposable;
   };
   context: {
     createContextKey<T extends string | number | boolean | undefined>(name: string, defaultValue: T): { key: string; get(): T; set(value: T): void; reset(): void };
@@ -812,73 +811,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }).catch(() => { /* optional service */ });
   }
 
-  // ── 11. Workspace switch handler — hard reset ──
+  // ── 11. Workspace switch ──
   //
-  // When the user switches workspaces, the workbench recreates indexing
-  // services (RetrievalService, IndexingPipelineService, MemoryService,
-  // VectorStoreService, etc.) and registers new instances in the DI
-  // container.  But this tool is NOT re-activated — it still holds stale
-  // references from the original activation.
-  //
-  // This handler re-fetches the fresh services from the DI container,
-  // swaps them into ChatDataService, resets ChatService sessions, clears
-  // all caches (prompt files, permissions, workspace digest), and gives
-  // the active widget a new session for the new workspace.
-  //
-  // NOTE: Uses the public `api.workspace.onDidChangeWorkspace` event —
-  // the authoritative signal for workspace transitions.  Tools must NOT
-  // reach through to internal IWorkspaceService for this purpose.
-
-  {
-    const workspaceSwitchSub = api.workspace.onDidChangeWorkspace(() => {
-      // 1. Re-fetch stale services from DI container (new instances created
-      //    by registerIndexingServices() during the workbench's rebuild phase)
-      retrievalService = api.services.has(IRetrievalService)
-        ? api.services.get<import('../../services/serviceTypes.js').IRetrievalService>(IRetrievalService)
-        : undefined;
-      indexingPipelineService = api.services.has(IIndexingPipelineService)
-        ? api.services.get<import('../../services/serviceTypes.js').IIndexingPipelineService>(IIndexingPipelineService)
-        : undefined;
-      memoryService = api.services.has(IMemoryService)
-        ? api.services.get<import('../../services/serviceTypes.js').IMemoryService>(IMemoryService)
-        : undefined;
-
-      // 2. Swap stale refs in the data service + clear caches
-      dataService.resetForWorkspaceSwitch({
-        retrievalService,
-        indexingPipelineService,
-        memoryService,
-      });
-
-      // 3. Hard-reset chat sessions (cancel active, flush old, load new)
-      chatService.resetForWorkspaceSwitch().then(() => {
-        // Give the active widget a fresh session for the new workspace
-        if (_activeWidget) {
-          const session = chatService.createSession();
-          _activeWidget.setSession(session);
-        }
-      }).catch(() => { /* best-effort */ });
-
-      // 4. Clear module-level state
-      _lastIndexStats = undefined;
-
-      // 4b. Reset .parallxignore cache — new workspace may have different rules.
-      //     The fsAccessor is already dynamic (reads workspaceService.folders),
-      //     so the next _loadWriterIgnore() call reads from the correct root.
-      _writerIgnoreInstance = undefined;
-      _loadWriterIgnore?.().catch(() => { /* folders may not be restored yet — best-effort */ });
-
-      // 5. Clear permission session grants (they're workspace-scoped)
-      _permissionService?.clearSessionGrants();
-
-      // 6. Re-subscribe to new indexing pipeline events
-      _subscribeIndexingEvents();
-
-      // 7. Refresh the token bar
-      _tokenStatusBar?.update().catch(() => {});
-    });
-    context.subscriptions.push(workspaceSwitchSub);
-  }
+  // No manual reset handler needed. The workbench reloads the renderer
+  // on workspace switch (mirroring VS Code's new-window model), so this
+  // tool gets a fresh activate() call with clean services, a new
+  // database, and correct indexing context. All stale-state bugs from
+  // the previous in-process switch approach are eliminated by design.
 }
 
 /** Set the active widget reference (called from chatView). */

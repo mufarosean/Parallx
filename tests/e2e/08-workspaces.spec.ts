@@ -30,18 +30,22 @@ async function getTitlebarWorkspaceName(window: Page): Promise<string> {
   return (await label.textContent()) ?? '';
 }
 
-/** Wait for the workspace switch transition overlay to disappear. */
+/** Wait for the workspace switch to complete.
+ *  Workspace switches trigger a full page reload (like VS Code opening a
+ *  new window). We wait for the page to navigate and the workbench to
+ *  become ready again.
+ */
 async function waitForSwitchComplete(window: Page) {
-  // The transition overlay has class 'workspace-transition-overlay'.
-  // Wait for it to appear and then vanish (or skip if it was too fast).
+  // Wait for the page to reload and the workbench to finish initializing.
+  // The `.parallx-ready` class is added to the container when Phase 5 completes.
   try {
-    const overlay = window.locator('.workspace-transition-overlay');
-    await overlay.waitFor({ state: 'detached', timeout: 10_000 });
+    await window.waitForLoadState('domcontentloaded', { timeout: 15_000 });
+    await window.locator('.parallx-ready').waitFor({ state: 'attached', timeout: 15_000 });
   } catch {
-    // Already gone or never appeared — fine
+    // Fallback: if timing is tricky, just settle
   }
   // Extra settling time for views to render
-  await window.waitForTimeout(1500);
+  await window.waitForTimeout(2000);
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
