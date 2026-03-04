@@ -892,7 +892,7 @@ export interface IEmbeddingService extends IDisposable {
   getModelInfo(): { name: string; dimensions: number; installed: boolean };
 
   /** Ensure the embedding model is installed (pulls if not). */
-  ensureModel(): Promise<void>;
+  ensureModel(signal?: AbortSignal): Promise<void>;
 
   /** Clear the in-memory embedding cache. */
   clearCache(): void;

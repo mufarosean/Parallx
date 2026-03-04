@@ -216,12 +216,20 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
   /**
    * Ensure the embedding model is installed. Pulls if not.
    * Should be called once at startup before first embed call.
+   *
+   * @param signal — optional AbortSignal from the caller (e.g. pipeline).
+   *   Combined with internal timeouts so cancellation is immediate.
    */
-  async ensureModel(): Promise<void> {
+  async ensureModel(signal?: AbortSignal): Promise<void> {
     if (this._modelVerified) { return; }
+    signal?.throwIfAborted();
 
     try {
       // Quick check: try a minimal embed call
+      const fetchSignal = signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(EMBED_TIMEOUT_MS)])
+        : AbortSignal.timeout(EMBED_TIMEOUT_MS);
+
       const response = await fetch(`${this._baseUrl}/api/embed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -229,7 +237,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
           model: this._model,
           input: 'test',
         }),
-        signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
+        signal: fetchSignal,
       });
 
       if (response.ok) {
@@ -240,14 +248,18 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
 
       // If 404 or model not found, try to pull
       if (response.status === 404 || response.status === 500) {
-        await this._pullModel();
+        await this._pullModel(signal);
         return;
       }
 
       throw new Error(`Ollama returned HTTP ${response.status}`);
     } catch (err) {
+      // Re-throw abort / pull errors as-is
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw err;
+      }
       if (err instanceof Error && err.message.includes('pull')) {
-        throw err; // Re-throw pull errors
+        throw err;
       }
       // Connection errors — Ollama might not be running
       throw new Error(
@@ -264,7 +276,7 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
    * Splits into MAX_BATCH_SIZE groups if needed.
    */
   private async _embedBatch(prefixedTexts: string[], signal?: AbortSignal): Promise<number[][]> {
-    await this.ensureModel();
+    await this.ensureModel(signal);
 
     const totalCount = prefixedTexts.length;
     this._onDidStartEmbedding.fire({ count: totalCount });
@@ -333,15 +345,23 @@ export class EmbeddingService extends Disposable implements IEmbeddingService {
 
   /**
    * Pull the embedding model from Ollama's registry.
+   *
+   * @param signal — optional caller-supplied AbortSignal so the pull can be
+   *   cancelled immediately when the pipeline is disposed (e.g. workspace switch).
    */
-  private async _pullModel(): Promise<void> {
+  private async _pullModel(signal?: AbortSignal): Promise<void> {
     console.log(`[EmbeddingService] Pulling model "${this._model}"...`);
+    signal?.throwIfAborted();
+
+    const pullSignal = signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(PULL_TIMEOUT_MS)])
+      : AbortSignal.timeout(PULL_TIMEOUT_MS);
 
     const response = await fetch(`${this._baseUrl}/api/pull`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: this._model, stream: false }),
-      signal: AbortSignal.timeout(PULL_TIMEOUT_MS),
+      signal: pullSignal,
     });
 
     if (!response.ok) {

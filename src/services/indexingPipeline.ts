@@ -208,7 +208,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
       // 1. Ensure embedding model is installed
       this._updateProgress('pages', 0, 0, 'Checking embedding model...');
-      await this._embeddingService.ensureModel();
+      await this._embeddingService.ensureModel(this._abortController?.signal);
 
       // 2. Index all pages
       const pageCount = await this._indexAllPages();

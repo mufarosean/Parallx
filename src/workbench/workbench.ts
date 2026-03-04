@@ -269,6 +269,11 @@ export class Workbench extends Layout {
   // Active file watchers for workspace folders (M4 — file watcher → tree refresh)
   private readonly _folderWatchers = new Map<string, IDisposable>();
 
+  // Listeners bound to the *current* workspace object (onDidChangeFolders).
+  // Cleared and re-registered on every workspace switch so they don't
+  // become orphaned when `this._workspace` is replaced.
+  private readonly _workspaceListeners = this._register(new DisposableStore());
+
   constructor(
     container: HTMLElement,
     services?: ServiceCollection,
@@ -471,6 +476,8 @@ export class Workbench extends Layout {
       }
 
       // 4. Rebuild views, containers, DnD inside existing layout
+      //    NOTE: Does NOT start the indexing pipeline — that happens after
+      //    the database is re-opened for the correct workspace (step 7b).
       this._rebuildWorkspaceContent(savedProviders);
 
       // 5. Apply restored state
@@ -482,16 +489,40 @@ export class Workbench extends Layout {
       //     otherwise the Explorer never learns about restored folders.
       this._onDidSwitchWorkspace.fire(this._workspace);
 
-      // 5c. Now restore workspace folders — the event flows through
+      // 6. Re-bind workspace-scoped listeners (context keys, database,
+      //     file watchers) to the NEW workspace object. The old listeners
+      //     were bound to the previous workspace and are now orphaned.
+      this._rebindWorkspaceListeners();
+
+      // 6b. Now restore workspace folders — the event flows through
       //     WorkspaceService → WorkspaceBridge → Explorer → rebuildTree().
+      //     This also triggers _openDatabaseForWorkspace via the newly
+      //     re-bound listener.
       if (this._restoredState?.folders) {
         this._workspace.restoreFolders(this._restoredState.folders);
       }
 
-      // 6. Re-configure the saver for the new workspace
+      // 7. Wait for the database to finish opening for the new workspace.
+      //    restoreFolders() fires onDidChangeFolders which triggers
+      //    _openDatabaseForWorkspace asynchronously. Await it explicitly
+      //    so the pipeline indexes the correct workspace.
+      await this._openDatabaseForWorkspace();
+
+      // 7b. Late-bind database into ChatService for the new workspace
+      if (this._databaseService.isOpen && this._services.has(IChatService)) {
+        const chatService = this._services.get<IChatService>(IChatService);
+        chatService.setDatabase(this._databaseService as any);
+        chatService.restoreSessions().catch(() => { /* best-effort */ });
+      }
+
+      // 7c. Start the indexing pipeline NOW — database is open and
+      //     workspace context is fully ready.
+      this._startIndexingPipeline();
+
+      // 8. Re-configure the saver for the new workspace
       this._configureSaver();
 
-      // 7. Update recent workspaces and active ID
+      // 9. Update recent workspaces and active ID
       await this._recentWorkspaces.add(this._workspace);
       await this._workspaceLoader.setActiveWorkspaceId(this._workspace.id);
 
@@ -516,6 +547,44 @@ export class Workbench extends Layout {
    */
   async removeRecentWorkspace(workspaceId: string): Promise<void> {
     await this._recentWorkspaces.remove(workspaceId);
+  }
+
+  /**
+   * Clear and re-register all workspace-scoped listeners on the current
+   * `this._workspace` object. Called during workspace switch so that
+   * listeners for context keys, database, and file watchers bind to the
+   * new workspace instead of being orphaned on the old one.
+   */
+  private _rebindWorkspaceListeners(): void {
+    // Dispose all old workspace-scoped listeners (including folder watchers)
+    this._workspaceListeners.clear();
+
+    // 1. Context keys + status bar — live updates for folder count
+    if (this._workbenchContext) {
+      const folderCount = this._workspace.folders.length;
+      this._workbenchContext.setWorkspaceFolderCount(folderCount);
+      this._workbenchContext.setWorkbenchState(
+        folderCount === 0 ? 'empty' : 'folder',
+      );
+
+      this._workspaceListeners.add(this._workspace.onDidChangeFolders(() => {
+        const count = this._workspace.folders.length;
+        this._workbenchContext.setWorkspaceFolderCount(count);
+        this._workbenchContext.setWorkbenchState(
+          count === 0 ? 'empty' : 'folder',
+        );
+        this._statusBarController.updateWindowTitle();
+        this._updateEditorBreadcrumbs();
+      }));
+    }
+
+    // 2. Database open/close on folder changes
+    this._workspaceListeners.add(this._workspace.onDidChangeFolders(() => {
+      this._openDatabaseForWorkspace();
+    }));
+
+    // 3. File watchers for the new workspace
+    this._startWorkspaceFolderWatchers();
   }
 
   /**
@@ -565,7 +634,7 @@ export class Workbench extends Layout {
     }
 
     // React to folder additions/removals
-    this._register(this._workspace.onDidChangeFolders((e: any) => {
+    this._workspaceListeners.add(this._workspace.onDidChangeFolders((e: any) => {
       if (e.added) {
         for (const f of e.added) {
           watchFolder(typeof f.uri === 'string' ? f.uri : f.uri.toString());
@@ -579,7 +648,7 @@ export class Workbench extends Layout {
     }));
 
     // Cleanup all watchers on dispose
-    this._register({ dispose: () => {
+    this._workspaceListeners.add({ dispose: () => {
       for (const d of this._folderWatchers.values()) {
         d.dispose();
       }
@@ -1016,7 +1085,7 @@ export class Workbench extends Layout {
       );
 
       // Subscribe to folder changes for live context key updates
-      this._register(this._workspace.onDidChangeFolders(() => {
+      this._workspaceListeners.add(this._workspace.onDidChangeFolders(() => {
         const count = this._workspace.folders.length;
         this._workbenchContext.setWorkspaceFolderCount(count);
         this._workbenchContext.setWorkbenchState(
@@ -1860,7 +1929,7 @@ export class Workbench extends Layout {
     }
 
     // React to workspace folder changes (open/close database)
-    this._register(this._workspace.onDidChangeFolders(() => {
+    this._workspaceListeners.add(this._workspace.onDidChangeFolders(() => {
       this._openDatabaseForWorkspace();
     }));
 
@@ -2526,8 +2595,10 @@ export class Workbench extends Layout {
 
     console.log('[Workbench] Rebuilt workspace content');
 
-    // 6. Restart the indexing pipeline for the new workspace
-    this._startIndexingPipeline();
+    // NOTE: The indexing pipeline is NOT started here. During a workspace
+    // switch, the pipeline must wait until the database is re-opened for the
+    // correct workspace (switchWorkspace step 7c). During initial startup,
+    // the pipeline is started from Phase 5 after the DB opens.
   }
 
   /**

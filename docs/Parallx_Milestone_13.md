@@ -786,3 +786,55 @@ Each numbered task in the tracker gets its own commit. This provides fine-graine
 ### Rule 6: No Functional Changes
 
 The app must behave identically before and after M13. Same features, same UI, same behavior. The only user-visible change is the file structure. If a test breaks, the migration is wrong — never adjust tests to match a migration error.
+
+---
+
+## Bug Fix: Workspace Switch Freeze (March 3, 2026)
+
+### Symptom
+
+Switching workspaces causes the app to freeze for several minutes. All Ollama-dependent features (chat, embeddings) become unresponsive.
+
+### Root Cause Analysis
+
+The freeze is a **compound bug** — four independent issues interact to produce the multi-minute hang.
+
+#### Bug 1 — `ensureModel()` / `_pullModel()` cascade with no abort signal (FREEZE CAUSE)
+
+Every workspace switch creates a new `EmbeddingService` with `_modelVerified = false`. The pipeline calls `ensureModel()` which sends a test embed to Ollama using only `AbortSignal.timeout(30s)` — **not** the pipeline's abort signal. If Ollama returns HTTP 500 (busy from the just-cancelled pipeline's server-side work), the code calls `_pullModel()` with `AbortSignal.timeout(600_000)` = **10 minutes** and **no pipeline abort signal**.
+
+When the user switches workspaces again mid-pull, the old pipeline's `cancel()` aborts its `_abortController` — but `ensureModel()` and `_pullModel()` don't use that signal. Concurrent un-cancellable pull requests accumulate, making Ollama unresponsive.
+
+**Files:** `src/services/embeddingService.ts` (L220–264, L337–358)
+
+#### Bug 2 — Pipeline starts before workspace context is ready (AMPLIFIER)
+
+`_rebuildWorkspaceContent()` runs at step 4 of `switchWorkspace()`, which calls `_startIndexingPipeline()`. But `onDidSwitchWorkspace` doesn't fire until step 5b, and `restoreFolders()` doesn't fire until step 5c. At step 4: `WorkspaceService` still references the old workspace; the database still points to the old `.parallx/data.db`. The pipeline indexes the **old** workspace's pages and files — wasted work that floods Ollama with embedding requests, amplifying Bug 1.
+
+**Files:** `src/workbench/workbench.ts` L466 (step 4) vs L483 (step 5b) vs L489 (step 5c)
+
+#### Bug 3 — Database never re-opens for new workspace (DATA CORRUPTION)
+
+The `_openDatabaseForWorkspace()` listener at L1864 subscribes to `this._workspace.onDidChangeFolders`. After `switchWorkspace()` step 3 creates a new `Workspace` object, this listener is orphaned on the old workspace. When `restoreFolders()` fires at step 5c on the new workspace, the listener never receives it. The `DatabaseService` stays pointing at the old workspace's `.parallx/data.db`.
+
+**Files:** `src/workbench/workbench.ts` L1864
+
+#### Bug 4 — Three orphaned workbench listeners (STALE STATE)
+
+Three `this._register(this._workspace.onDidChangeFolders(...))` calls are bound to the initial workspace and orphaned after switch:
+
+| Line | Listener | Effect |
+|------|----------|--------|
+| L568 | File watchers | Old watchers active; new workspace gets none |
+| L1019 | Context keys + status bar | Folder count, workbench state never update |
+| L1864 | Database open/close | DB never re-opens (= Bug 3) |
+
+Additionally, `_teardownWorkspaceContent()` does not dispose old folder watchers, and `_rebuildWorkspaceContent()` does not call `_startWorkspaceFolderWatchers()`.
+
+### Fix Plan
+
+1. **Thread abort signal** through `ensureModel(signal?)` and `_pullModel(signal?)` in `EmbeddingService`.
+2. **Re-order `switchWorkspace()`**: fire `onDidSwitchWorkspace` → `restoreFolders()` → explicit `_openDatabaseForWorkspace()` → then `_startIndexingPipeline()` (moved out of `_rebuildWorkspaceContent()`).
+3. **Re-register orphaned listeners** on the new workspace after switch.
+4. **Dispose old folder watchers** during teardown; start new ones after switch.
+5. Tests covering abort threading, listener re-registration, and pipeline ordering.
