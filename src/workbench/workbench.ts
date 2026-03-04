@@ -511,6 +511,7 @@ export class Workbench extends Layout {
       // 7b. Late-bind database into ChatService for the new workspace
       if (this._databaseService.isOpen && this._services.has(IChatService)) {
         const chatService = this._services.get<IChatService>(IChatService);
+        chatService.setWorkspaceScope(this._workspace.id);
         chatService.setDatabase(this._databaseService as any);
         chatService.restoreSessions().catch(() => { /* best-effort */ });
       }
@@ -1917,6 +1918,7 @@ export class Workbench extends Layout {
     // hand it over and restore persisted sessions.
     if (this._databaseService.isOpen && this._services.has(IChatService)) {
       const chatService = this._services.get<IChatService>(IChatService);
+      chatService.setWorkspaceScope(this._workspace.id);
       chatService.setDatabase(this._databaseService as any);
       chatService.restoreSessions().catch(() => { /* best-effort */ });
     }

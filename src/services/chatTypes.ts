@@ -157,6 +157,8 @@ export enum ChatMode {
 export interface IChatSession {
   /** Unique session identifier (UUID). */
   readonly id: string;
+  /** Workspace identity this session belongs to. */
+  readonly workspaceId: string;
   /** Session URI: parallx-chat-session:///<uuid>. */
   readonly sessionResource: URI;
   /** Timestamp when the session was created. */
@@ -816,14 +818,16 @@ export interface IChatService extends IDisposable {
   restoreSessions(): Promise<void>;
   /** Late-bind a database for persistence (called after DB opens in Phase 5). */
   setDatabase(database: import('./chatSessionPersistence.js').IChatPersistenceDatabase): void;
+  /** Set the active workspace scope for all session operations. */
+  setWorkspaceScope(workspaceId: string): void;
   /** Send a user message and orchestrate the full request pipeline. */
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
   /** Cancel the in-progress request for a session. */
   cancelRequest(sessionId: string): void;
   /**
    * Hard-reset for workspace switch.
-   * Cancels active requests, clears in-memory sessions,
-   * and re-restores from the (now new-workspace) database.
+    * Cancels active requests and clears in-memory sessions.
+    * Session restore is performed after DB rebind for the new workspace.
    */
   resetForWorkspaceSwitch(): Promise<void>;
 

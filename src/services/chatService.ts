@@ -448,6 +448,7 @@ export class ChatService extends Disposable implements IChatService {
   private readonly _modeService: IChatModeService;
   private readonly _languageModelsService: ILanguageModelsService;
   private _database: IChatPersistenceDatabase | undefined;
+  private _workspaceScopeId = '';
 
   /** Debounce timer for persistence writes. */
   private _persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -496,6 +497,10 @@ export class ChatService extends Disposable implements IChatService {
   setDatabase(database: IChatPersistenceDatabase): void {
     this._database = database;
     ensureChatTables(database).catch(() => { /* persistence is best-effort */ });
+  }
+
+  setWorkspaceScope(workspaceId: string): void {
+    this._workspaceScopeId = workspaceId || '';
   }
 
   /**
@@ -547,7 +552,7 @@ export class ChatService extends Disposable implements IChatService {
   async restoreSessions(): Promise<void> {
     if (!this._database) { return; }
     try {
-      const sessions = await loadSessions(this._database);
+      const sessions = await loadSessions(this._database, this._workspaceScopeId);
       for (const session of sessions) {
         this._sessions.set(session.id, session);
       }
@@ -587,7 +592,7 @@ export class ChatService extends Disposable implements IChatService {
     for (const id of ids) {
       const session = this._sessions.get(id);
       if (session && this._database) {
-        saveSession(this._database, session).catch(() => { /* best-effort */ });
+        saveSession(this._database, session, this._workspaceScopeId).catch(() => { /* best-effort */ });
       }
     }
   }
@@ -610,6 +615,7 @@ export class ChatService extends Disposable implements IChatService {
 
     const session: IChatSession = {
       id,
+      workspaceId: this._workspaceScopeId,
       sessionResource,
       createdAt: Date.now(),
       title: 'New Chat',
@@ -637,7 +643,7 @@ export class ChatService extends Disposable implements IChatService {
     if (this._sessions.delete(sessionId)) {
       // Remove from database
       if (this._database) {
-        deletePersistedSession(this._database, sessionId).catch(() => { /* best-effort */ });
+        deletePersistedSession(this._database, sessionId, this._workspaceScopeId).catch(() => { /* best-effort */ });
       }
       this._onDidDeleteSession.fire(sessionId);
     }

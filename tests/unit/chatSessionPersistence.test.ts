@@ -61,13 +61,14 @@ function createMockDb(): IChatPersistenceDatabase & {
 function createTestSession(): IChatSession {
   return {
     id: 'test-session-1',
+    workspaceId: 'ws-a',
     title: 'Test Session',
     mode: ChatMode.Ask,
     modelId: 'llama3.1:8b',
     createdAt: Date.now(),
-    updatedAt: Date.now(),
     messages: [],
     requestInProgress: false,
+    pendingRequests: [],
     sessionResource: URI.parse('parallx-chat-session:///test-session-1'),
   };
 }
@@ -121,6 +122,8 @@ describe('chatSessionPersistence', () => {
       // Should have run INSERT/REPLACE for session + DELETE + INSERT for messages
       const sqlStatements = db._runCalls.map((c) => c.sql);
       expect(sqlStatements.some((s) => s.includes('chat_sessions'))).toBe(true);
+      const sessionUpsert = db._runCalls.find((c) => c.sql.includes('INSERT OR REPLACE INTO chat_sessions'));
+      expect(sessionUpsert?.params).toContain('ws-a');
     });
 
     it('serializes parts as JSON', async () => {
@@ -150,20 +153,22 @@ describe('chatSessionPersistence', () => {
 
   describe('deletePersistedSession', () => {
     it('deletes session by ID', async () => {
-      await deletePersistedSession(db, 'session-1');
+      await deletePersistedSession(db, 'session-1', 'ws-a');
 
       const deleteStatements = db._runCalls.filter((c) =>
         c.sql.includes('DELETE') && c.sql.includes('chat_sessions'),
       );
       expect(deleteStatements.length).toBe(1);
       expect(deleteStatements[0].params).toContain('session-1');
+      expect(deleteStatements[0].params).toContain('ws-a');
     });
   });
 
   describe('loadSessions', () => {
     it('returns empty array when no sessions exist', async () => {
-      const sessions = await loadSessions(db);
+      const sessions = await loadSessions(db, 'ws-a');
       expect(sessions).toEqual([]);
+      expect(db._allCalls[0].params?.[0]).toBe('ws-a');
     });
   });
 });

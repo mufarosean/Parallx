@@ -111,13 +111,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const agentService = api.services.get<import('../../services/chatTypes.js').IChatAgentService>(IChatAgentService);
   const modeService = api.services.get<import('../../services/chatTypes.js').IChatModeService>(IChatModeService);
 
-  // Restore persisted sessions (fire and forget — non-blocking)
-  chatService.restoreSessions().catch(() => { /* persistence is best-effort */ });
-
   // Workspace context services (for mode-aware system prompts + participants)
   const workspaceService = api.services.has(IWorkspaceService)
     ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceService>(IWorkspaceService)
     : undefined;
+
+  // Set initial workspace scope for session creation/search operations.
+  chatService.setWorkspaceScope(workspaceService?.activeWorkspace?.id ?? '');
   const editorService = api.services.has(IEditorService)
     ? api.services.get<import('../../services/serviceTypes.js').IEditorService>(IEditorService)
     : undefined;
@@ -826,6 +826,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   if (workspaceService) {
     const workspaceSwitchSub = workspaceService.onDidChangeWorkspace(() => {
+      // Keep chat service scope in lockstep with active workspace identity.
+      chatService.setWorkspaceScope(workspaceService.activeWorkspace?.id ?? '');
+
       // 1. Re-fetch stale services from DI container (new instances created
       //    by registerIndexingServices() during the workbench's rebuild phase)
       retrievalService = api.services.has(IRetrievalService)

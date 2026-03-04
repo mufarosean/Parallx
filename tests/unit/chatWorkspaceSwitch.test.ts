@@ -295,4 +295,43 @@ describe('ChatService.resetForWorkspaceSwitch', () => {
     const sessions = service.getSessions();
     expect(sessions.some((s) => s.id === 'new-ws-session')).toBe(true);
   });
+
+  it('stamps new sessions with current workspace scope', () => {
+    chatService.setWorkspaceScope('workspace-abc');
+    const session = chatService.createSession();
+    expect(session.workspaceId).toBe('workspace-abc');
+  });
+
+  it('restores only sessions from current workspace scope', async () => {
+    const scopedDb: IChatPersistenceDatabase = {
+      ...createMockDb(),
+      async all<T>(sql: string, params?: unknown[]): Promise<T[]> {
+        if (sql.includes('FROM chat_sessions')) {
+          const scope = (params?.[0] as string) ?? '';
+          if (scope === 'ws-new') {
+            return [{
+              id: 'session-new',
+              workspace_id: 'ws-new',
+              title: 'Scoped Session',
+              mode: 'ask',
+              model_id: '',
+              created_at: Date.now(),
+              updated_at: Date.now(),
+            }] as T[];
+          }
+          return [];
+        }
+        return [];
+      },
+    };
+
+    const service = new ChatService(agentService, modeService, lmService, scopedDb);
+    service.setWorkspaceScope('ws-new');
+    await service.restoreSessions();
+
+    const sessions = service.getSessions();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].id).toBe('session-new');
+    expect(sessions[0].workspaceId).toBe('ws-new');
+  });
 });
