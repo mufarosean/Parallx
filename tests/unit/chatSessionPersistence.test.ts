@@ -170,5 +170,15 @@ describe('chatSessionPersistence', () => {
       expect(sessions).toEqual([]);
       expect(db._allCalls[0].params?.[0]).toBe('ws-a');
     });
+
+    it('backfills legacy workspace_id="" rows to current workspace scope', async () => {
+      await loadSessions(db, 'ws-a');
+
+      const updateCall = db._runCalls.find((c) =>
+        c.sql.includes('UPDATE chat_sessions') && c.sql.includes('SET workspace_id = ?'),
+      );
+      expect(updateCall).toBeDefined();
+      expect(updateCall?.params?.[0]).toBe('ws-a');
+    });
   });
 });
