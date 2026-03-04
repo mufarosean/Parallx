@@ -296,6 +296,16 @@ export function buildFileSystemAccessor(
       return result.content;
     },
 
+    isRichDocument(ext: string) {
+      return fileService.isRichDocument(ext);
+    },
+
+    async readDocumentText(relativePath: string) {
+      const uri = resolveUri(relativePath);
+      const result = await fileService.readDocumentText(uri);
+      return result.text;
+    },
+
     async exists(relativePath: string) {
       const uri = resolveUri(relativePath);
       return fileService.exists(uri);

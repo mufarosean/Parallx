@@ -74,7 +74,11 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
     '- The content of the currently open page (if any) is included in the user\'s message automatically.',
   );
   if (ctx.isRAGAvailable) {
-    lines.push('- Relevant knowledge from across the workspace is retrieved automatically via semantic search and included in the user\'s message.');
+    lines.push(
+      '- Relevant knowledge from across the workspace is retrieved automatically via semantic search and included in the user\'s message.',
+      '- This includes content extracted from PDFs, DOCX, XLSX, and other rich documents — they are fully indexed.',
+      '- When retrieved context appears in the message, USE IT DIRECTLY to answer. Do not re-read the file with a tool — the context IS the file content.',
+    );
   }
   lines.push(
     '- If the user attaches files or pages, their content is also included directly in the message.',
@@ -87,6 +91,7 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
     '- Be direct and useful. Answer with real content, not meta-commentary about what you could do.',
     '- You already know this workspace — use the file tree, page list, and digest above. Go straight to the answer.',
     '- Do NOT invent content. Only reference what is in the provided context or discovered via tools.',
+    '- NEVER say a file is "too large to read" — all files are indexed and searchable. Use the retrieved context or search_knowledge.',
     '- NEVER describe function calls, tool names, or JSON objects in your response. Use tools silently — the user only sees the final answer.',
     '- You can read workspace content but CANNOT create, modify, or delete anything in Ask mode.',
     '- If the user\'s message is short or vague, interpret it generously — deliver the most helpful response you can rather than asking what they meant.',
@@ -156,7 +161,11 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     '- The content of the currently open page (if any) is included in the user\'s message automatically.',
   );
   if (ctx.isRAGAvailable) {
-    lines.push('- Relevant knowledge from across the workspace is retrieved automatically via semantic search and included in the user\'s message.');
+    lines.push(
+      '- Relevant knowledge from across the workspace is retrieved automatically via semantic search and included in the user\'s message.',
+      '- This includes content extracted from PDFs, DOCX, XLSX, and other rich documents — they are fully indexed.',
+      '- When retrieved context appears in the message, USE IT DIRECTLY to answer. Do not re-read the file with a tool — the context IS the file content.',
+    );
   }
   lines.push(
     '- If the user attaches files or pages, their content is also included directly in the message.',
@@ -169,6 +178,7 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     '- Be direct and useful. Deliver results, not narration about your process.',
     '- You already know this workspace — use the digest above. Go straight to relevant files.',
     '- Do NOT invent content. Only reference what is in the provided context or discovered via tools.',
+    '- NEVER say a file is "too large to read" — all files are indexed and searchable. Use the retrieved context or search_knowledge.',
     '- NEVER describe function calls, tool names, or JSON objects in your response. Use tools silently — the user only sees the final answer.',
     '- Read-only tools (search, read, list) can be used freely. Write tools (create, update, delete) require user confirmation.',
     '- If a tool call fails, try alternatives before reporting failure.',

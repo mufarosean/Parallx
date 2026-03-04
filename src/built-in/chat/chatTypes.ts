@@ -359,6 +359,10 @@ export interface IBuiltInToolFileSystem {
   readdir(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
   readFile(relativePath: string): Promise<string>;
   exists(relativePath: string): Promise<boolean>;
+  /** Check whether a file extension belongs to a rich document format (PDF, DOCX, XLSX, etc.). */
+  isRichDocument(ext: string): boolean;
+  /** Extract text from a rich document (PDF, DOCX, XLSX). Returns extracted plain text. */
+  readDocumentText(relativePath: string): Promise<string>;
   readonly workspaceRootName: string;
 }
 

@@ -38,6 +38,9 @@ function createMockFileService(): IFileService {
     exists: vi.fn().mockResolvedValue(true),
     writeFile: vi.fn().mockResolvedValue(undefined),
     mkdir: vi.fn().mockResolvedValue(undefined),
+    isRichDocument: vi.fn().mockReturnValue(false),
+    readDocumentText: vi.fn().mockResolvedValue({ text: 'extracted text', format: 'pdf', metadata: {} }),
+    richDocumentExtensions: new Set(['.pdf', '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers', '.csv', '.tsv', '.docx']),
     onDidChangeFile: { event: vi.fn() } as any,
     dispose: vi.fn(),
   } as unknown as IFileService;

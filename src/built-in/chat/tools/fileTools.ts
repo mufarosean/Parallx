@@ -15,6 +15,13 @@ import type {
 
 const MAX_SEARCH_RESULTS = 50;
 const MAX_SEARCH_DEPTH = 5;
+/** Maximum characters returned by read_file for extracted rich document text. */
+const MAX_DOC_TEXT_CHARS = 50_000;
+/** Rich document extensions that should use document extraction instead of raw read. */
+const RICH_DOC_EXTS = new Set([
+  '.pdf', '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
+  '.csv', '.tsv', '.docx',
+]);
 
 // ── Tool helpers ──
 
@@ -66,7 +73,12 @@ export function createListFilesTool(fs: IBuiltInToolFileSystem | undefined): ICh
 export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): IChatTool {
   return {
     name: 'read_file',
-    description: 'Read the text content of a workspace file. Path is relative to the workspace root. Max 50 KB. Use this to actually see what\'s inside a file — always read files before summarizing or answering questions about their content.',
+    description:
+      'Read the content of a workspace file. Path is relative to the workspace root. ' +
+      'Supports text files (up to 50 KB) and rich documents (PDF, DOCX, XLSX — text is extracted automatically). ' +
+      'IMPORTANT: If the user\'s message already contains retrieved context from a file (via automatic semantic search), ' +
+      'use that context directly instead of re-reading the file. ' +
+      'For large documents like books, prefer search_knowledge which searches across all indexed chunks.',
     parameters: {
       type: 'object',
       required: ['path'],
@@ -84,11 +96,42 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
         return { content: 'path is required', isError: true };
       }
 
+      // Detect rich document by extension
+      const dotIdx = relPath.lastIndexOf('.');
+      const ext = dotIdx >= 0 ? relPath.slice(dotIdx).toLowerCase() : '';
+
       try {
+        if (RICH_DOC_EXTS.has(ext)) {
+          // Route through document extraction (PDF, DOCX, XLSX, etc.)
+          const text = await fs!.readDocumentText(relPath);
+          if (!text || text.trim().length === 0) {
+            return { content: `**${relPath}** (${ext} file)\n\n[Document is empty or could not extract text]` };
+          }
+          if (text.length > MAX_DOC_TEXT_CHARS) {
+            const truncated = text.slice(0, MAX_DOC_TEXT_CHARS);
+            return {
+              content:
+                `**${relPath}** (${ext} file — showing first ${MAX_DOC_TEXT_CHARS} characters, full document is indexed)\n\n` +
+                `\`\`\`\n${truncated}\n\`\`\`\n\n` +
+                `*Content truncated. Use search_knowledge to search across the full document.*`,
+            };
+          }
+          return { content: `**${relPath}** (${ext} file)\n\n\`\`\`\n${text}\n\`\`\`` };
+        }
+
+        // Regular text file
         const content = await fs!.readFile(relPath);
         return { content: `**${relPath}**\n\n\`\`\`\n${content}\n\`\`\`` };
       } catch (err) {
-        return { content: `Failed to read "${relPath}": ${err instanceof Error ? err.message : String(err)}`, isError: true };
+        const msg = err instanceof Error ? err.message : String(err);
+        // If file is too large, guide the AI to use search_knowledge
+        if (msg.includes('too large')) {
+          return {
+            content: `File "${relPath}" is too large for direct reading. Use search_knowledge to search across its indexed content instead.`,
+            isError: true,
+          };
+        }
+        return { content: `Failed to read "${relPath}": ${msg}`, isError: true };
       }
     },
   };
@@ -190,8 +233,9 @@ export function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | und
   return {
     name: 'search_knowledge',
     description:
-      'Semantic search across all indexed knowledge (canvas pages and workspace files). ' +
+      'Semantic search across all indexed knowledge (canvas pages, workspace files, and rich documents like PDFs, DOCX, and XLSX). ' +
       'Use this when you need to find information beyond what is already provided in the context. ' +
+      'This is the best tool for searching large documents — content is chunked and indexed for efficient retrieval. ' +
       'Returns the most relevant chunks with source attribution.',
     parameters: {
       type: 'object',
