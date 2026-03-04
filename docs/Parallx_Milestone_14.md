@@ -364,11 +364,11 @@ Add gate test that greps for `workspaceService.folders[0]` outside of `Workspace
 
 | Task | Description | Status |
 |------|-------------|--------|
-| 1.1 | **Create `IWorkspaceSessionContext` interface** in `src/workspace/workspaceSessionContext.ts`. Fields: `workspaceId`, `sessionId`, `roots`, `primaryRoot`, `abortController`, `cancellationSignal`, `isActive()`, `logPrefix`. Export from service types. | ☐ |
-| 1.2 | **Create `SessionManager` class** in `src/workspace/sessionManager.ts`. Implements `ISessionManager`. `beginSession()` creates new context with `crypto.randomUUID()`, aborts any previous context. `endSession()` signals abort. `onDidChangeSession` event. Register in `serviceTypes.ts`. | ☐ |
-| 1.3 | **Create `captureSession()` utility** in `src/workspace/staleGuard.ts`. Returns `{ isValid(), sessionId }` object. Lightweight, zero-dependency. Unit test in `tests/unit/staleGuard.test.ts`. | ☐ |
-| 1.4 | **Wire `SessionManager` into Workbench lifecycle.** In `workbenchServices.ts`: register `ISessionManager` as eager singleton. In `workbench.ts` Phase 4 (`_restoreWorkspace`): call `sessionManager.beginSession(workspaceId, roots)`. In `switchWorkspace()`: call `sessionManager.endSession()` before reload. | ☐ |
-| 1.5 | **Pass context to ChatDataService.** In `chat/main.ts` `activate()`: read `sessionManager.activeContext` and pass to `ChatDataService` constructor. `ChatDataService` stores the context and exposes `context.logPrefix` for sub-services. | ☐ |
+| 1.1 | **Create `IWorkspaceSessionContext` interface** in `src/workspace/workspaceSessionContext.ts`. Fields: `workspaceId`, `sessionId`, `roots`, `primaryRoot`, `abortController`, `cancellationSignal`, `isActive()`, `logPrefix`. Export from service types. | ✅ |
+| 1.2 | **Create `SessionManager` class** in `src/workspace/sessionManager.ts`. Implements `ISessionManager`. `beginSession()` creates new context with `crypto.randomUUID()`, aborts any previous context. `endSession()` signals abort. `onDidChangeSession` event. Register in `serviceTypes.ts`. | ✅ |
+| 1.3 | **Create `captureSession()` utility** in `src/workspace/staleGuard.ts`. Returns `{ isValid(), sessionId }` object. Lightweight, zero-dependency. Unit test in `tests/unit/staleGuard.test.ts`. | ✅ |
+| 1.4 | **Wire `SessionManager` into Workbench lifecycle.** In `workbenchServices.ts`: register `ISessionManager` as eager singleton. In `workbench.ts` Phase 4 (`_restoreWorkspace`): call `sessionManager.beginSession(workspaceId, roots)`. In `switchWorkspace()`: call `sessionManager.endSession()` before reload. | ✅ |
+| 1.5 | **Pass context to ChatDataService.** In `chat/main.ts` `activate()`: read `sessionManager.activeContext` and pass to `ChatDataService` constructor. `ChatDataService` stores the context and exposes `context.logPrefix` for sub-services. | ✅ |
 
 ### Phase 2: Stale Session Guards (5 tasks)
 
