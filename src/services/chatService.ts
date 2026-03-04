@@ -448,6 +448,8 @@ export class ChatService extends Disposable implements IChatService {
   private readonly _modeService: IChatModeService;
   private readonly _languageModelsService: ILanguageModelsService;
   private _database: IChatPersistenceDatabase | undefined;
+  /** Active workspace ID for session scoping. */
+  private _workspaceId: string = '';
 
   /** Debounce timer for persistence writes. */
   private _persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -492,9 +494,12 @@ export class ChatService extends Disposable implements IChatService {
    * ChatService is created in Phase 1 (Services) before the DatabaseService
    * exists. The workbench calls this in Phase 5 (Ready) after the database
    * is opened, then triggers restoreSessions().
+   *
+   * @param workspaceId — the active workspace ID for session scoping
    */
-  setDatabase(database: IChatPersistenceDatabase): void {
+  setDatabase(database: IChatPersistenceDatabase, workspaceId: string = ''): void {
     this._database = database;
+    this._workspaceId = workspaceId;
     ensureChatTables(database).catch(() => { /* persistence is best-effort */ });
   }
 
@@ -541,13 +546,14 @@ export class ChatService extends Disposable implements IChatService {
   // ── Session Persistence ──
 
   /**
-   * Restore sessions from SQLite.
+   * Restore sessions from SQLite for the active workspace.
    * Called once during workbench startup to hydrate the session store.
+   * Only loads sessions scoped to the current workspace ID.
    */
   async restoreSessions(): Promise<void> {
     if (!this._database) { return; }
     try {
-      const sessions = await loadSessions(this._database);
+      const sessions = await loadSessions(this._database, this._workspaceId);
       for (const session of sessions) {
         this._sessions.set(session.id, session);
       }
@@ -587,7 +593,7 @@ export class ChatService extends Disposable implements IChatService {
     for (const id of ids) {
       const session = this._sessions.get(id);
       if (session && this._database) {
-        saveSession(this._database, session).catch(() => { /* best-effort */ });
+        saveSession(this._database, session, this._workspaceId).catch(() => { /* best-effort */ });
       }
     }
   }

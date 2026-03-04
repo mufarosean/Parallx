@@ -165,5 +165,65 @@ describe('chatSessionPersistence', () => {
       const sessions = await loadSessions(db);
       expect(sessions).toEqual([]);
     });
+
+    it('passes workspace_id filter to SQL query', async () => {
+      await loadSessions(db, 'ws-abc');
+      const selectCalls = db._allCalls.filter((c) => c.sql.includes('chat_sessions'));
+      expect(selectCalls.length).toBe(1);
+      expect(selectCalls[0].params).toContain('ws-abc');
+      expect(selectCalls[0].sql).toContain('workspace_id');
+    });
+
+    it('defaults workspace_id to empty string', async () => {
+      await loadSessions(db);
+      const selectCalls = db._allCalls.filter((c) => c.sql.includes('chat_sessions'));
+      expect(selectCalls.length).toBe(1);
+      expect(selectCalls[0].params).toContain('');
+    });
+  });
+
+  describe('workspace scoping', () => {
+    it('saveSession includes workspace_id in the insert', async () => {
+      const session = createTestSession();
+      await saveSession(db, session, 'ws-123');
+
+      const insertCalls = db._runCalls.filter((c) =>
+        c.sql.includes('chat_sessions') && c.sql.includes('INSERT'),
+      );
+      expect(insertCalls.length).toBe(1);
+      expect(insertCalls[0].params).toContain('ws-123');
+    });
+
+    it('saveSession defaults workspace_id to empty string', async () => {
+      const session = createTestSession();
+      await saveSession(db, session);
+
+      const insertCalls = db._runCalls.filter((c) =>
+        c.sql.includes('chat_sessions') && c.sql.includes('INSERT'),
+      );
+      expect(insertCalls.length).toBe(1);
+      // workspace_id is the second param (after session id)
+      expect(insertCalls[0].params![1]).toBe('');
+    });
+
+    it('schema includes workspace_id column', async () => {
+      await ensureChatTables(db);
+
+      const createSessionSql = db._runCalls
+        .map((c) => c.sql)
+        .find((s) => s.includes('CREATE TABLE') && s.includes('chat_sessions'));
+
+      expect(createSessionSql).toContain('workspace_id');
+    });
+
+    it('schema includes workspace index', async () => {
+      await ensureChatTables(db);
+
+      const indexSql = db._runCalls
+        .map((c) => c.sql)
+        .filter((s) => s.includes('CREATE INDEX') && s.includes('workspace'));
+
+      expect(indexSql.length).toBeGreaterThan(0);
+    });
   });
 });

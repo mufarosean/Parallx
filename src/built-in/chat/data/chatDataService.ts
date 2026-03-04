@@ -943,7 +943,8 @@ export class ChatDataService {
   async searchSessions(query: string): Promise<Array<{ sessionId: string; sessionTitle: string; matchingContent: string }>> {
     if (!this._d.databaseService) { return []; }
     const { searchSessions } = await import('../../../services/chatSessionPersistence.js');
-    return searchSessions(this._d.databaseService, query);
+    const workspaceId = this._d.workspaceService?.activeWorkspace?.id ?? '';
+    return searchSessions(this._d.databaseService, query, workspaceId);
   }
 
   openFile(fullPath: string): void {

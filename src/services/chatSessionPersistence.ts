@@ -39,13 +39,19 @@ const CHAT_SESSION_SCHEME = 'parallx-chat-session';
 
 const CREATE_SESSIONS_TABLE = `
 CREATE TABLE IF NOT EXISTS chat_sessions (
-  id          TEXT PRIMARY KEY,
-  title       TEXT NOT NULL DEFAULT 'New Chat',
-  mode        TEXT NOT NULL DEFAULT 'ask',
-  model_id    TEXT NOT NULL DEFAULT '',
-  created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
+  id            TEXT PRIMARY KEY,
+  workspace_id  TEXT NOT NULL DEFAULT '',
+  title         TEXT NOT NULL DEFAULT 'New Chat',
+  mode          TEXT NOT NULL DEFAULT 'ask',
+  model_id      TEXT NOT NULL DEFAULT '',
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL
 )`;
+
+const CREATE_SESSIONS_WORKSPACE_INDEX = `
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace
+ON chat_sessions(workspace_id, updated_at DESC)
+`;
 
 const CREATE_MESSAGES_TABLE = `
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -73,22 +79,40 @@ ON chat_messages(session_id, sort_order)`;
 export async function ensureChatTables(db: IChatPersistenceDatabase): Promise<void> {
   if (!db.isOpen) { return; }
   await db.run(CREATE_SESSIONS_TABLE);
+  await db.run(CREATE_SESSIONS_WORKSPACE_INDEX);
   await db.run(CREATE_MESSAGES_TABLE);
   await db.run(CREATE_MESSAGES_INDEX);
+
+  // Migration: add workspace_id column to existing tables that lack it.
+  // SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first.
+  try {
+    const cols = await db.all<{ name: string }>(
+      `PRAGMA table_info(chat_sessions)`,
+    );
+    const hasWorkspaceId = cols.some((c) => c.name === 'workspace_id');
+    if (!hasWorkspaceId) {
+      await db.run(`ALTER TABLE chat_sessions ADD COLUMN workspace_id TEXT NOT NULL DEFAULT ''`);
+      await db.run(CREATE_SESSIONS_WORKSPACE_INDEX);
+    }
+  } catch {
+    // Migration failure is non-fatal — new tables already have the column
+  }
 }
 
 /**
  * Persist a session and all its messages.
  * Uses REPLACE INTO for idempotent upsert.
+ *
+ * @param workspaceId — the active workspace ID for scoping (empty string if unknown)
  */
-export async function saveSession(db: IChatPersistenceDatabase, session: IChatSession): Promise<void> {
+export async function saveSession(db: IChatPersistenceDatabase, session: IChatSession, workspaceId: string = ''): Promise<void> {
   if (!db.isOpen) { return; }
 
   // Upsert session row
   await db.run(
-    `INSERT OR REPLACE INTO chat_sessions (id, title, mode, model_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [session.id, session.title, session.mode, session.modelId, session.createdAt, Date.now()],
+    `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [session.id, workspaceId, session.title, session.mode, session.modelId, session.createdAt, Date.now()],
   );
 
   // Delete existing messages for this session (full replace)
@@ -133,10 +157,13 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
 }
 
 /**
- * Load all persisted sessions from the database.
- * Returns fully hydrated IChatSession objects.
+ * Load persisted sessions for a specific workspace from the database.
+ * Returns fully hydrated IChatSession objects scoped to the given workspace.
+ *
+ * @param workspaceId — only sessions belonging to this workspace are returned.
+ *   Pass empty string to load sessions with no workspace assignment (legacy data).
  */
-export async function loadSessions(db: IChatPersistenceDatabase): Promise<IChatSession[]> {
+export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: string = ''): Promise<IChatSession[]> {
   if (!db.isOpen) { return []; }
 
   const rows = await db.all<{
@@ -146,7 +173,7 @@ export async function loadSessions(db: IChatPersistenceDatabase): Promise<IChatS
     model_id: string;
     created_at: number;
     updated_at: number;
-  }>(`SELECT id, title, mode, model_id, created_at, updated_at FROM chat_sessions ORDER BY updated_at DESC`);
+  }>(`SELECT id, title, mode, model_id, created_at, updated_at FROM chat_sessions WHERE workspace_id = ? ORDER BY updated_at DESC`, [workspaceId]);
 
   const sessions: IChatSession[] = [];
 
@@ -258,13 +285,16 @@ export interface ISessionSearchResult {
 }
 
 /**
- * Full-text search across all past chat sessions.
+ * Full-text search across chat sessions for the given workspace.
  * Searches both user messages and assistant response content.
  * Returns results sorted by relevance (most recent first).
+ *
+ * @param workspaceId — scope search to this workspace's sessions
  */
 export async function searchSessions(
   db: IChatPersistenceDatabase,
   query: string,
+  workspaceId: string = '',
   limit: number = 20,
 ): Promise<ISessionSearchResult[]> {
   if (!db.isOpen || !query.trim()) { return []; }
@@ -282,10 +312,10 @@ export async function searchSessions(
     `SELECT m.session_id, s.title, m.role, m.content, m.timestamp, s.created_at
      FROM chat_messages m
      JOIN chat_sessions s ON s.id = m.session_id
-     WHERE m.content LIKE ?
+     WHERE s.workspace_id = ? AND m.content LIKE ?
      ORDER BY m.timestamp DESC
      LIMIT ?`,
-    [likePattern, limit],
+    [workspaceId, likePattern, limit],
   );
 
   return rows.map((r) => ({

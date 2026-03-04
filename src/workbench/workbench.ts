@@ -1812,7 +1812,7 @@ export class Workbench extends Layout {
     // hand it over and restore persisted sessions.
     if (this._databaseService.isOpen && this._services.has(IChatService)) {
       const chatService = this._services.get<IChatService>(IChatService);
-      chatService.setDatabase(this._databaseService as any);
+      chatService.setDatabase(this._databaseService as any, this._workspace?.id ?? '');
       chatService.restoreSessions().catch(() => { /* best-effort */ });
     }
 

@@ -111,8 +111,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const agentService = api.services.get<import('../../services/chatTypes.js').IChatAgentService>(IChatAgentService);
   const modeService = api.services.get<import('../../services/chatTypes.js').IChatModeService>(IChatModeService);
 
-  // Restore persisted sessions (fire and forget — non-blocking)
-  chatService.restoreSessions().catch(() => { /* persistence is best-effort */ });
+  // Sessions are restored by the workbench in Phase 5 (after DB binds).
+  // No need to call restoreSessions() here — it would duplicate the work
+  // and was the secondary path through which unscoped sessions could leak.
 
   // Workspace context services (for mode-aware system prompts + participants)
   const workspaceService = api.services.has(IWorkspaceService)

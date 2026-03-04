@@ -295,4 +295,56 @@ describe('ChatService.resetForWorkspaceSwitch', () => {
     const sessions = service.getSessions();
     expect(sessions.some((s) => s.id === 'new-ws-session')).toBe(true);
   });
+
+  it('setDatabase stores workspace ID and passes it to persistence calls', async () => {
+    // Track what workspace_id gets passed to DB queries
+    const queriedParams: unknown[][] = [];
+    const scopedDb: IChatPersistenceDatabase = {
+      ...createMockDb(),
+      async all<T>(_sql: string, params?: unknown[]): Promise<T[]> {
+        if (params) { queriedParams.push(params as unknown[]); }
+        return [];
+      },
+    };
+
+    const service = new ChatService(agentService, modeService, lmService);
+    service.setDatabase(scopedDb, 'workspace-xyz');
+    await service.restoreSessions();
+
+    // loadSessions should have received workspace_id = 'workspace-xyz'
+    expect(queriedParams.some((p) => p.includes('workspace-xyz'))).toBe(true);
+  });
+
+  it('sessions are scoped: different workspace ID yields different sessions', async () => {
+    // DB returns sessions only when workspace_id matches 'ws-b'
+    const scopedDb: IChatPersistenceDatabase = {
+      ...createMockDb(),
+      async all<T>(sql: string, params?: unknown[]): Promise<T[]> {
+        if (sql.includes('chat_sessions') && params?.[0] === 'ws-b') {
+          return [{
+            id: 'session-for-b',
+            title: 'B Session',
+            mode: 'ask',
+            model_id: '',
+            created_at: Date.now(),
+            updated_at: Date.now(),
+          }] as T[];
+        }
+        return [];
+      },
+    };
+
+    // Workspace A — should get no sessions
+    const serviceA = new ChatService(agentService, modeService, lmService);
+    serviceA.setDatabase(scopedDb, 'ws-a');
+    await serviceA.restoreSessions();
+    expect(serviceA.getSessions()).toHaveLength(0);
+
+    // Workspace B — should get the session
+    const serviceB = new ChatService(agentService, modeService, lmService);
+    serviceB.setDatabase(scopedDb, 'ws-b');
+    await serviceB.restoreSessions();
+    expect(serviceB.getSessions()).toHaveLength(1);
+    expect(serviceB.getSessions()[0].id).toBe('session-for-b');
+  });
 });
