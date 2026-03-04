@@ -491,6 +491,75 @@ export class Workbench extends Layout {
   }
 
   /**
+   * Open a folder in the current workspace (via full page reload).
+   *
+   * Mirrors VS Code: "Open Folder" replaces the workspace root and reloads
+   * the entire window. On reload the normal startup path (`initialize()` →
+   * `_restoreWorkspace()`) reads the saved state (now with the new folder)
+   * and bootstraps everything from scratch — fresh tool activations, fresh
+   * services, fresh database, fresh indexing.
+   *
+   * This eliminates the coordination burden of the previous in-place
+   * approach where every subsystem (explorer, database, filesystem bridges,
+   * indexing pipeline, etc.) had to correctly handle `onDidChangeFolders`.
+   */
+  async openFolder(folderPath: string): Promise<void> {
+    if (this._state !== WorkbenchState.Ready) {
+      console.warn('[Workbench] Cannot open folder while in state:', this._state);
+      return;
+    }
+    if (this._switching) {
+      console.warn('[Workbench] Workspace switch/open already in progress — ignoring');
+      return;
+    }
+
+    this._switching = true;
+    console.log('[Workbench] Opening folder "%s" (via reload)', folderPath);
+
+    try {
+      // 0. End the current workspace session (M14).
+      const sessionMgr = this._services.get(ISessionManager);
+      if (sessionMgr) {
+        sessionMgr.endSession();
+      }
+
+      // 1. Atomically replace workspace folders with the new folder.
+      //    This updates the in-memory model so the subsequent save()
+      //    persists the correct folder list.
+      const newFolder = {
+        uri: URI.file(folderPath),
+        name: URI.file(folderPath).basename,
+        index: 0,
+      };
+      this._workspace.setFolders([newFolder]);
+
+      // 2. Save workspace state (now includes the new folder).
+      await this._workspaceSaver.save();
+
+      // 3. Lock the active workspace ID so async cleanup saves
+      //    during page unload don't revert the folder list.
+      this._workspaceSaver.lockActiveId();
+
+      // 4. Close the database cleanly (best-effort).
+      if (this._databaseService?.isOpen) {
+        await this._databaseService.close().catch(() => {});
+      }
+
+      // 5. Signal pending reload (used in test mode to preserve
+      //    the active workspace ID through localStorage.clear()).
+      sessionStorage.setItem('parallx:pendingSwitch', '1');
+
+      // 6. Reload the renderer — fresh startup picks up the new folder.
+      window.location.reload();
+
+      // Note: code below this line never runs — the page is unloading.
+    } catch (err) {
+      console.error('[Workbench] Open folder failed:', err);
+      this._switching = false;
+    }
+  }
+
+  /**
    * Get the recent workspaces list.
    */
   async getRecentWorkspaces(): Promise<readonly import('../workspace/workspaceTypes.js').RecentWorkspaceEntry[]> {

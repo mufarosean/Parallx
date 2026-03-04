@@ -254,21 +254,12 @@ export const workspaceOpenFolder: CommandDescriptor = {
     if (!result || result.length === 0) return; // cancelled
     const folderPath = result[0];
 
-    const wsService = ctx.getService<IWorkspaceService>('IWorkspaceService');
-    if (!wsService) {
-      console.warn('[Command] workspace.openFolder — IWorkspaceService not available');
-      return;
-    }
-
-    // Atomically replace all workspace folders with the selected folder.
-    // Uses updateFolders() which fires a SINGLE onDidChangeFolders event,
-    // matching VS Code's atomic updateFolders pattern. This avoids the
-    // intermediate zero-folder state that would cause the explorer to
-    // flash "No folder opened" before showing the new tree.
-    wsService.updateFolders([{ uri: URI.file(folderPath) }]);
-
-    await w._workspaceSaver.save();
-    console.log('[Command] workspace.openFolder — opened "%s"', folderPath);
+    // Delegate to Workbench.openFolder() which follows the VS Code model:
+    // update folders → save state → reload the entire window.
+    // On reload, _restoreWorkspace() picks up the new folder from saved
+    // state and bootstraps everything from scratch — no in-place
+    // coordination needed.
+    await w.openFolder(folderPath);
   },
 };
 

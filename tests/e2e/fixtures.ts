@@ -337,6 +337,20 @@ export async function openFolderViaMenu(
   const openFolderItem = dropdown.locator('.context-menu-item', { hasText: 'Open Folder' });
   await openFolderItem.click();
 
-  // ── Wait for the explorer tree to populate ──
+  // ── Wait for the full page reload to complete ──
+  // Open Folder now follows the VS Code model: save state → reload window.
+  // The renderer is destroyed and re-created from scratch. We wait for the
+  // page to finish loading and the workbench to reach the ready state.
+  try {
+    await page.waitForLoadState('domcontentloaded', { timeout: 15_000 });
+    await page.locator('.parallx-ready').waitFor({ state: 'attached', timeout: 15_000 });
+  } catch {
+    // Fallback: if timing is tricky, just settle
+  }
+
+  // Extra settling time for views to render after reload
+  await page.waitForTimeout(2000);
+
+  // ── Wait for the explorer tree to populate with the new folder ──
   await page.waitForSelector('.tree-node', { timeout: 10_000 });
 }
