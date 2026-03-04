@@ -452,13 +452,22 @@ export class Workbench extends Layout {
       // 2. Set the target as the active workspace so the reload picks it up
       await this._workspaceLoader.setActiveWorkspaceId(targetId);
 
-      // 3. Close the database cleanly (best-effort — the main process
+      // 3. Lock the active workspace ID so that any async save() calls
+      //    triggered during page unload / tool deactivation don't overwrite
+      //    the target ID back to the current workspace.
+      this._workspaceSaver.lockActiveId();
+
+      // 4. Close the database cleanly (best-effort — the main process
       //    also handles re-open-before-close in openForWorkspace)
       if (this._databaseService?.isOpen) {
         await this._databaseService.close().catch(() => {});
       }
 
-      // 4. Reload the renderer — fresh startup picks up the new workspace
+      // 5. Signal that this is a workspace-switch reload (used in test mode
+      //    to preserve the active workspace ID through localStorage.clear())
+      sessionStorage.setItem('parallx:pendingSwitch', '1');
+
+      // 6. Reload the renderer — fresh startup picks up the new workspace
       window.location.reload();
 
       // Note: code below this line never runs — the page is unloading.

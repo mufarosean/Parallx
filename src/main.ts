@@ -55,11 +55,34 @@ async function bootstrap(): Promise<void> {
     throw new Error('Missing #workbench element');
   }
 
-  // In test mode, clear all persisted state so each test run starts clean
+  // In test mode, clear persisted state so each test run starts clean.
+  // BUT: if a workspace-switch reload is in progress (indicated by a
+  // sessionStorage flag set in switchWorkspace()), preserve the target
+  // workspace ID and its state blob so _restoreWorkspace() loads it.
   if (window.parallxElectron?.testMode) {
+    const switchFlag = sessionStorage.getItem('parallx:pendingSwitch');
+    const preserved: Array<[string, string]> = [];
+
+    if (switchFlag) {
+      const activeWsKey = 'parallx:parallx.activeWorkspaceId';
+      const pendingId = localStorage.getItem(activeWsKey);
+      if (pendingId) {
+        preserved.push([activeWsKey, pendingId]);
+        // Workspace state key: namespace('parallx') + workspaceStorageKey(id)
+        const stateKey = `parallx:parallx.workspace.${pendingId}.state`;
+        const blob = localStorage.getItem(stateKey);
+        if (blob) preserved.push([stateKey, blob]);
+      }
+    }
+
     localStorage.clear();
     sessionStorage.clear();
-    console.log('[TestMode] Cleared persisted state');
+
+    // Restore the switch target (if any)
+    for (const [k, v] of preserved) localStorage.setItem(k, v);
+
+    console.log('[TestMode] Cleared persisted state%s',
+      switchFlag ? ` (preserved switch → ${preserved.length} keys)` : '');
   }
 
   // Create and initialize the workbench (runs 5-phase lifecycle)
