@@ -40,7 +40,6 @@ const CHAT_SESSION_SCHEME = 'parallx-chat-session';
 const CREATE_SESSIONS_TABLE = `
 CREATE TABLE IF NOT EXISTS chat_sessions (
   id          TEXT PRIMARY KEY,
-  workspace_id TEXT NOT NULL DEFAULT '',
   title       TEXT NOT NULL DEFAULT 'New Chat',
   mode        TEXT NOT NULL DEFAULT 'ask',
   model_id    TEXT NOT NULL DEFAULT '',
@@ -65,10 +64,6 @@ const CREATE_MESSAGES_INDEX = `
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session
 ON chat_messages(session_id, sort_order)`;
 
-const CREATE_SESSIONS_WORKSPACE_INDEX = `
-CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace_updated
-ON chat_sessions(workspace_id, updated_at DESC)`;
-
 // ── Public API ──
 
 /**
@@ -78,34 +73,22 @@ ON chat_sessions(workspace_id, updated_at DESC)`;
 export async function ensureChatTables(db: IChatPersistenceDatabase): Promise<void> {
   if (!db.isOpen) { return; }
   await db.run(CREATE_SESSIONS_TABLE);
-  // Migration path for databases created before workspace scoping.
-  try {
-    await db.run(`ALTER TABLE chat_sessions ADD COLUMN workspace_id TEXT NOT NULL DEFAULT ''`);
-  } catch {
-    // Column already exists or ALTER not required.
-  }
   await db.run(CREATE_MESSAGES_TABLE);
   await db.run(CREATE_MESSAGES_INDEX);
-  await db.run(CREATE_SESSIONS_WORKSPACE_INDEX);
 }
 
 /**
  * Persist a session and all its messages.
  * Uses REPLACE INTO for idempotent upsert.
  */
-export async function saveSession(
-  db: IChatPersistenceDatabase,
-  session: IChatSession,
-  workspaceId?: string,
-): Promise<void> {
+export async function saveSession(db: IChatPersistenceDatabase, session: IChatSession): Promise<void> {
   if (!db.isOpen) { return; }
-  const scopedWorkspaceId = workspaceId ?? session.workspaceId ?? '';
 
   // Upsert session row
   await db.run(
-    `INSERT OR REPLACE INTO chat_sessions (id, workspace_id, title, mode, model_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [session.id, scopedWorkspaceId, session.title, session.mode, session.modelId, session.createdAt, Date.now()],
+    `INSERT OR REPLACE INTO chat_sessions (id, title, mode, model_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [session.id, session.title, session.mode, session.modelId, session.createdAt, Date.now()],
   );
 
   // Delete existing messages for this session (full replace)
@@ -153,24 +136,17 @@ export async function saveSession(
  * Load all persisted sessions from the database.
  * Returns fully hydrated IChatSession objects.
  */
-export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: string): Promise<IChatSession[]> {
+export async function loadSessions(db: IChatPersistenceDatabase): Promise<IChatSession[]> {
   if (!db.isOpen) { return []; }
 
   const rows = await db.all<{
     id: string;
-    workspace_id: string;
     title: string;
     mode: string;
     model_id: string;
     created_at: number;
     updated_at: number;
-  }>(
-    `SELECT id, workspace_id, title, mode, model_id, created_at, updated_at
-     FROM chat_sessions
-     WHERE workspace_id = ?
-     ORDER BY updated_at DESC`,
-    [workspaceId],
-  );
+  }>(`SELECT id, title, mode, model_id, created_at, updated_at FROM chat_sessions ORDER BY updated_at DESC`);
 
   const sessions: IChatSession[] = [];
 
@@ -223,7 +199,6 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
 
     sessions.push({
       id: row.id,
-      workspaceId: row.workspace_id,
       sessionResource,
       createdAt: row.created_at,
       title: row.title,
@@ -242,16 +217,8 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
  * Delete a session and its messages from the database.
  * Messages are cascade-deleted via the foreign key.
  */
-export async function deletePersistedSession(
-  db: IChatPersistenceDatabase,
-  sessionId: string,
-  workspaceId?: string,
-): Promise<void> {
+export async function deletePersistedSession(db: IChatPersistenceDatabase, sessionId: string): Promise<void> {
   if (!db.isOpen) { return; }
-  if (workspaceId !== undefined) {
-    await db.run(`DELETE FROM chat_sessions WHERE id = ? AND workspace_id = ?`, [sessionId, workspaceId]);
-    return;
-  }
   await db.run(`DELETE FROM chat_sessions WHERE id = ?`, [sessionId]);
 }
 
@@ -297,7 +264,6 @@ export interface ISessionSearchResult {
  */
 export async function searchSessions(
   db: IChatPersistenceDatabase,
-  workspaceId: string,
   query: string,
   limit: number = 20,
 ): Promise<ISessionSearchResult[]> {
@@ -316,10 +282,10 @@ export async function searchSessions(
     `SELECT m.session_id, s.title, m.role, m.content, m.timestamp, s.created_at
      FROM chat_messages m
      JOIN chat_sessions s ON s.id = m.session_id
-     WHERE s.workspace_id = ? AND m.content LIKE ?
+     WHERE m.content LIKE ?
      ORDER BY m.timestamp DESC
      LIMIT ?`,
-    [workspaceId, likePattern, limit],
+    [likePattern, limit],
   );
 
   return rows.map((r) => ({
@@ -375,7 +341,6 @@ export interface ISemanticSessionSearchResult {
  */
 export async function searchSessionsSemantic(
   db: IChatPersistenceDatabase,
-  workspaceId: string,
   memories: ReadonlyArray<{ sessionId: string; summary: string; messageCount: number; createdAt: string }>,
 ): Promise<ISemanticSessionSearchResult[]> {
   if (!db.isOpen || memories.length === 0) { return []; }
@@ -384,17 +349,13 @@ export async function searchSessionsSemantic(
 
   for (const mem of memories) {
     const row = await db.get<{ title: string }>(
-      'SELECT title FROM chat_sessions WHERE id = ? AND workspace_id = ?',
-      [mem.sessionId, workspaceId],
+      'SELECT title FROM chat_sessions WHERE id = ?',
+      [mem.sessionId],
     );
-
-    if (!row) {
-      continue;
-    }
 
     results.push({
       sessionId: mem.sessionId,
-      sessionTitle: row.title,
+      sessionTitle: row?.title ?? 'Untitled',
       summary: mem.summary,
       messageCount: mem.messageCount,
       createdAt: mem.createdAt,
