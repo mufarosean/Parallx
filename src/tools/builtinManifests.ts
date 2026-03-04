@@ -212,6 +212,34 @@ export const CHAT_MANIFEST: IToolManifest = {
   },
 };
 
+// ── AI Settings ──────────────────────────────────────────────────────────
+
+export const AI_SETTINGS_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.ai-settings',
+  name: 'AI Settings',
+  version: '1.0.0',
+  publisher: 'parallx',
+  description: 'Configure AI personality, behavior, and model settings.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'ai-settings.open', title: 'Parallx: Open AI Settings' },
+    ],
+    keybindings: [
+      { command: 'ai-settings.open', key: 'Ctrl+Shift+A' },
+    ],
+    viewContainers: [
+      { id: 'ai-settings-container', title: 'AI Settings', icon: '⚙', location: 'sidebar' as const },
+    ],
+    views: [
+      { id: 'view.aiSettings', name: 'AI Settings', defaultContainerId: 'ai-settings-container' },
+    ],
+  },
+};
+
 // ── Canvas ───────────────────────────────────────────────────────────────
 
 export const CANVAS_MANIFEST: IToolManifest = {
