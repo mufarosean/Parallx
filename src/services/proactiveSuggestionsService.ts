@@ -17,6 +17,7 @@ import type {
   IDatabaseService,
   IIndexingPipelineService,
 } from './serviceTypes.js';
+import type { IAISettingsService } from '../aiSettings/aiSettingsTypes.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -68,13 +69,27 @@ export class ProactiveSuggestionsService extends Disposable {
   private _lastAnalysisTime = 0;
   private _analysisTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // M15: Configurable thresholds (defaults match original hardcoded values)
+  private _suggestionsEnabled = true;
+  private _clusterThreshold = CLUSTER_THRESHOLD;
+  private _maxSuggestions = MAX_SUGGESTIONS;
+
   constructor(
     private readonly _embeddingService: IEmbeddingService,
     private readonly _vectorStoreService: IVectorStoreService,
     private readonly _db: IDatabaseService,
     private readonly _indexingPipeline: IIndexingPipelineService,
+    aiSettingsService?: IAISettingsService,
   ) {
     super();
+
+    // M15: Read initial AI settings and subscribe to changes
+    if (aiSettingsService) {
+      this._applyAISettings(aiSettingsService);
+      this._register(aiSettingsService.onDidChange(() => {
+        this._applyAISettings(aiSettingsService);
+      }));
+    }
 
     // Run analysis after initial indexing completes
     this._register(this._indexingPipeline.onDidCompleteInitialIndex(() => {
@@ -85,6 +100,18 @@ export class ProactiveSuggestionsService extends Disposable {
     this._register(this._vectorStoreService.onDidUpdateIndex(() => {
       this._scheduleAnalysis();
     }));
+  }
+
+  /** M15: Apply AI settings profile to configurable thresholds. */
+  private _applyAISettings(aiSettingsService: IAISettingsService): void {
+    const profile = aiSettingsService.getActiveProfile();
+    this._suggestionsEnabled = profile.suggestions.suggestionsEnabled;
+    this._clusterThreshold = profile.suggestions.suggestionConfidenceThreshold > 0
+      ? profile.suggestions.suggestionConfidenceThreshold
+      : CLUSTER_THRESHOLD;
+    this._maxSuggestions = profile.suggestions.maxPendingSuggestions > 0
+      ? profile.suggestions.maxPendingSuggestions
+      : MAX_SUGGESTIONS;
   }
 
   /** Get current suggestions (excluding dismissed). */
@@ -114,6 +141,9 @@ export class ProactiveSuggestionsService extends Disposable {
   // ── Analysis Engine ──
 
   private _scheduleAnalysis(): void {
+    // M15: Skip analysis entirely when suggestions are disabled
+    if (!this._suggestionsEnabled) { return; }
+
     if (this._analysisTimer) {
       clearTimeout(this._analysisTimer);
     }
@@ -198,7 +228,7 @@ export class ProactiveSuggestionsService extends Disposable {
       let totalScore = 0;
       for (const result of similar) {
         if (result.sourceId === page.id || assigned.has(result.sourceId)) continue;
-        if (result.score >= CLUSTER_THRESHOLD) {
+        if (result.score >= this._clusterThreshold) {
           clusterPageIds.add(result.sourceId);
           totalScore += result.score;
         }
@@ -230,7 +260,7 @@ export class ProactiveSuggestionsService extends Disposable {
       const similar = await this._vectorStoreService.vectorSearch(embedding, 5, 'page_block');
 
       // Count non-self results with decent score
-      const related = similar.filter(r => r.sourceId !== page.id && r.score >= CLUSTER_THRESHOLD);
+      const related = similar.filter(r => r.sourceId !== page.id && r.score >= this._clusterThreshold);
       if (related.length === 0) {
         orphans.push({ pageId: page.id, title: page.title });
       }
@@ -257,7 +287,7 @@ export class ProactiveSuggestionsService extends Disposable {
       }
     }
 
-    this._suggestions = newSuggestions.slice(0, MAX_SUGGESTIONS);
+    this._suggestions = newSuggestions.slice(0, this._maxSuggestions);
   }
 
   // ── Helpers ──

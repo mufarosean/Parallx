@@ -258,7 +258,10 @@ export function registerIndexingServices(
 
   const relatedContentService = new RelatedContentService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
   const autoTaggingService = new AutoTaggingService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
-  const proactiveSuggestionsService = new ProactiveSuggestionsService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
+
+  // M15: Pass AI Settings service so thresholds are configurable
+  const aiSettingsService = services.has(IAISettingsService) ? services.get(IAISettingsService) : undefined;
+  const proactiveSuggestionsService = new ProactiveSuggestionsService(embeddingService, vectorStoreService, databaseService, indexingPipeline, aiSettingsService);
 
   services.registerInstance(IRelatedContentService, relatedContentService);
   services.registerInstance(IAutoTaggingService, autoTaggingService);
