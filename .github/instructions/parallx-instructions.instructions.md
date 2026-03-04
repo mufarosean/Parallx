@@ -5,18 +5,20 @@ description: These instructions provide guidelines for AI to follow when thinkin
 
 ## 0. Active Milestone Context
 
-The current work is **Milestone 13 — Chat Architecture: Gate Registry Restructuring** (`docs/Parallx_Milestone_13.md`). Read the milestone document before implementing any M13 task. It contains a 6-phase plan (37 tasks) to restructure the chat built-in from a flat, god-file-driven layout into a gated, folder-scoped architecture matching canvas's structural discipline.
+The current work is **Milestone 15 — AI Personality & Behavior Settings** (`docs/Parallx_Milestone_15.md`). Read the milestone document before implementing any M15 task. It adds a first-class AI Settings panel so users can configure how all AI in Parallx thinks, speaks, and behaves — without touching code or config files.
 
-### Key M13 Constraints
+### Key M15 Constraints
 
-- **Pure refactoring — no behavioral changes.** The app must behave identically before and after M13. Same features, same UI, same behavior. If a test breaks, the migration is wrong.
-- **One phase at a time.** Complete and validate each phase (tsc clean + all tests pass + git commit) before starting the next.
-- **Move, don't rewrite.** Phases 1–5 are moving code between files and adjusting imports. No new features, no bug fixes (note bugs separately).
-- **Commit per sub-task.** Each numbered task gets its own commit for fine-grained rollback.
-- **Test after every file move.** `tsc --noEmit` + `npx vitest run` after each move.
-- **chatTypes.ts is the type hub.** All 44 interfaces consolidated here. No interface may be defined elsewhere.
-- **ChatDataService is the data hub.** All DB queries, workspace digest, FS ops in one testable class.
-- **Gate compliance enforced by test.** `chatGateCompliance.test.ts` (Phase 6) catches cross-folder imports.
+- **Service first, UI second.** `IAISettingsService` must fully work (persist, reload, emit events) before building any UI panel.
+- **One group at a time.** Complete and validate each group (tsc clean + all tests pass + git commit) before starting the next. Order: A (Foundation) → B (Wiring) → C (UI Primitives) → D (Core UI) → E (Persistence).
+- **Commit per task.** Each numbered task gets its own commit for fine-grained rollback.
+- **Test after every task.** `tsc --noEmit` + `npx vitest run` after each task.
+- **Use existing patterns.** DI: `createServiceIdentifier` + `registerInstance`. Events: `Emitter<T>/Event<T>` — no event bus. CSS: `var(--vscode-*)` tokens — no `--parallx-*`. Storage: `IStorage` from `platform/storage.ts`.
+- **System prompt injection via `promptOverlay`.** `buildSystemPrompt()` in `chatSystemPrompts.ts` already checks `promptOverlay`. M15 generates the persona block and passes it as `promptOverlay`.
+- **Use `ILanguageModelsService` for all Ollama communication.** Do NOT call Ollama HTTP endpoints directly.
+- **New UI primitives in `src/ui/` first.** Slider, Toggle, Dropdown, SegmentedControl, Textarea must exist before panel sections.
+- **Built-in presets are immutable.** Writing to a `isBuiltIn: true` profile silently clones it.
+- **Deferred capabilities (5–11) are NOT in scope** for the core milestone.
 
 ### Key M11 Constraints
 

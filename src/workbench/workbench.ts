@@ -16,7 +16,7 @@ import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
-import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices } from './workbenchServices.js';
+import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerAISettingsService } from './workbenchServices.js';
 import { IChatService } from '../services/chatTypes.js';
 
 // Layout base class (VS Code: Layout → Workbench extends Layout)
@@ -632,8 +632,8 @@ export class Workbench extends Layout {
     const lc = this._lifecycle!;
 
     // Phase 1: Services — create storage + persistence
-    lc.onStartup(LifecyclePhase.Services, () => {
-      this._initializeServices();
+    lc.onStartup(LifecyclePhase.Services, async () => {
+      await this._initializeServices();
     });
 
     // Phase 2: Layout — build grids, assemble DOM
@@ -710,7 +710,7 @@ export class Workbench extends Layout {
   // Phase 1 — Initialize storage + persistence + layout renderer
   // ════════════════════════════════════════════════════════════════════════
 
-  private _initializeServices(): void {
+  private async _initializeServices(): Promise<void> {
     // Storage: namespaced localStorage wrapper
     const rawStorage = new LocalStorage();
     this._storage = new NamespacedStorage(rawStorage, 'parallx');
@@ -756,6 +756,10 @@ export class Workbench extends Layout {
     const themeService = this._register(new ThemeService(colorRegistry, themeData));
     themeService.applyTheme(themeData);
     this._services.registerInstance(IThemeService, themeService);
+
+    // ── AI Settings Service (M15) ──
+    // Registered after storage and chat services are available.
+    await registerAISettingsService(this._services, this._storage);
   }
 
   // ════════════════════════════════════════════════════════════════════════

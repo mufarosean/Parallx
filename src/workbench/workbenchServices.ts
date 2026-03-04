@@ -3,7 +3,7 @@
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
-import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService } from '../services/serviceTypes.js';
+import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -36,6 +36,7 @@ import { MemoryService } from '../services/memoryService.js';
 import { RelatedContentService } from '../services/relatedContentService.js';
 import { AutoTaggingService } from '../services/autoTaggingService.js';
 import { ProactiveSuggestionsService } from '../services/proactiveSuggestionsService.js';
+import { AISettingsService } from '../aiSettings/aiSettingsService.js';
 import type { IStorage } from '../platform/storage.js';
 import type { ViewManager } from '../views/viewManager.js';
 
@@ -264,4 +265,24 @@ export function registerIndexingServices(
   services.registerInstance(IProactiveSuggestionsService, proactiveSuggestionsService);
 
   return { embeddingService, chunkingService, vectorStoreService, indexingPipeline, retrievalService, memoryService, relatedContentService, autoTaggingService, proactiveSuggestionsService };
+}
+
+/**
+ * Creates and registers the AI Settings service (M15 Capability 1).
+ * Called during Phase 1 (initializeServices) after storage and chat services
+ * are available.
+ *
+ * @returns The AISettingsService instance for further wiring.
+ */
+export async function registerAISettingsService(
+  services: ServiceCollection,
+  storage: IStorage,
+): Promise<AISettingsService> {
+  const languageModelsService = services.has(ILanguageModelsService)
+    ? services.get(ILanguageModelsService)
+    : undefined;
+  const aiSettingsService = new AISettingsService(storage, languageModelsService);
+  await aiSettingsService.initialize();
+  services.registerInstance(IAISettingsService, aiSettingsService);
+  return aiSettingsService;
 }

@@ -1186,6 +1186,20 @@ export interface IProactiveSuggestionsService extends IDisposable {
 
 export const IProactiveSuggestionsService = createServiceIdentifier<IProactiveSuggestionsService>('IProactiveSuggestionsService');
 
+// ─── IAISettingsService (M15) ────────────────────────────────────────────────
+
+/**
+ * Manages AI personality & behavior settings profiles.
+ *
+ * Persists profiles to IStorage, emits change events so consumers
+ * (chat prompt builder, proactive suggestions) react immediately.
+ *
+ * Interface defined in aiSettings/aiSettingsTypes.ts.
+ * DI identifier created here to follow the serviceTypes.ts pattern.
+ */
+import type { IAISettingsService as IAISettingsServiceType } from '../aiSettings/aiSettingsTypes.js';
+export const IAISettingsService = createServiceIdentifier<IAISettingsServiceType>('IAISettingsService');
+
 // ─── Status Bar Types ────────────────────────────────────────────────────────
 
 /**
