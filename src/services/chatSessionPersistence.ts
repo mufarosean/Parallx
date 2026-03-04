@@ -156,24 +156,6 @@ export async function saveSession(
 export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: string): Promise<IChatSession[]> {
   if (!db.isOpen) { return []; }
 
-  // Legacy backfill:
-  // Sessions created before workspace scoping used workspace_id = ''.
-  // Each workspace has its own DB file (<workspace>/.parallx/data.db), so
-  // it is safe to attribute legacy rows in THIS DB to the active workspace.
-  // This prevents "sessions disappeared after restart" in unchanged workspace.
-  if (workspaceId) {
-    try {
-      await db.run(
-        `UPDATE chat_sessions
-         SET workspace_id = ?
-         WHERE workspace_id = '' OR workspace_id IS NULL`,
-        [workspaceId],
-      );
-    } catch {
-      // Best-effort migration; continue with scoped load.
-    }
-  }
-
   const rows = await db.all<{
     id: string;
     workspace_id: string;
