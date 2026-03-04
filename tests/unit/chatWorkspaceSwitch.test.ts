@@ -225,8 +225,7 @@ describe('ChatService.resetForWorkspaceSwitch', () => {
 
     await chatService.resetForWorkspaceSwitch();
 
-    // After reset, sessions are only what restoreSessions() loads from the
-    // (empty mock) DB — which is empty
+    // Reset only clears memory; restore is deferred until DB rebind.
     expect(chatService.getSessions()).toHaveLength(0);
   });
 
@@ -263,7 +262,7 @@ describe('ChatService.resetForWorkspaceSwitch', () => {
     expect(noPersistService.getSessions()).toHaveLength(0);
   });
 
-  it('restores sessions from the new DB after reset', async () => {
+  it('does not restore sessions during reset (restore is deferred)', async () => {
     // Set up a mock DB that returns a "new workspace" session on `all()`
     const newDb: IChatPersistenceDatabase = {
       ...createMockDb(),
@@ -288,7 +287,11 @@ describe('ChatService.resetForWorkspaceSwitch', () => {
 
     await service.resetForWorkspaceSwitch();
 
-    // Should have the session from the "new" DB
+    // No restore during reset.
+    expect(service.getSessions()).toHaveLength(0);
+
+    // Restore runs later after DB rebind in workbench flow.
+    await service.restoreSessions();
     const sessions = service.getSessions();
     expect(sessions.some((s) => s.id === 'new-ws-session')).toBe(true);
   });

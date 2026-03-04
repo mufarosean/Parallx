@@ -501,9 +501,16 @@ export class ChatService extends Disposable implements IChatService {
   /**
    * Hard-reset for workspace switch.
    *
-   * Cancels all active requests, clears all in-memory sessions,
-   * re-ensures tables exist (the singleton DatabaseService now points
-   * at the new workspace DB), and restores sessions from the new DB.
+    * Cancels all active requests, flushes pending writes for the current DB,
+    * and clears all in-memory sessions.
+    *
+    * Important: this method intentionally does NOT call restoreSessions().
+    * During workbench workspace-switch flow, this reset can fire before
+    * DatabaseService is re-opened for the new workspace. Restoring here would
+    * hydrate sessions from the old workspace DB and leak stale history.
+    *
+    * The workbench rebinds the new DB via setDatabase() and then calls
+    * restoreSessions() once the new workspace database is ready.
    */
   async resetForWorkspaceSwitch(): Promise<void> {
     // 1. Cancel every active request
@@ -527,11 +534,7 @@ export class ChatService extends Disposable implements IChatService {
       this._onDidDeleteSession.fire(id);
     }
 
-    // 4. Re-ensure chat tables for the new DB, then restore
-    if (this._database) {
-      await ensureChatTables(this._database).catch(() => {});
-      await this.restoreSessions();
-    }
+    // 4. Do not restore sessions here; wait for workbench DB rebind.
   }
 
 
