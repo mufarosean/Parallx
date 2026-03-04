@@ -95,6 +95,11 @@ let _promptFileService: PromptFileService | undefined;
 let _permissionService: PermissionService | undefined;
 let _fsAccessor: IBuiltInToolFileSystem | undefined;
 
+// Writer-accessor .parallxignore cache — module-level so the workspace
+// switch handler (§11) can invalidate it.
+let _writerIgnoreInstance: import('../../services/parallxIgnore.js').ParallxIgnore | undefined;
+let _loadWriterIgnore: (() => Promise<unknown>) | undefined;
+
 // ── Activation ──
 
 export function activate(api: ParallxApi, context: ToolContext): void {
@@ -369,26 +374,36 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       : undefined;
 
     // Build file writer accessor for write_file / edit_file tools (M11 Task 2.2 + 2.3)
+    //
+    // The writer accessor has two concerns:
+    //   1. writeFile — resolves against workspaceService.folders[0].uri
+    //      dynamically (already correct across workspace switches).
+    //   2. isPathAllowed — checks .parallxignore patterns. The ignore
+    //      instance must be reloaded after a workspace switch because the
+    //      new workspace may have different rules.
+    //
+    // _writerIgnoreInstance and _loadWriterIgnore are module-level so the
+    // workspace switch handler (§11) can invalidate the cached patterns.
+
+    _loadWriterIgnore = async (): Promise<import('../../services/parallxIgnore.js').ParallxIgnore> => {
+      if (!_writerIgnoreInstance) {
+        const { createParallxIgnore } = await import('../../services/parallxIgnore.js');
+        _writerIgnoreInstance = createParallxIgnore();
+        // Try to load .parallxignore from workspace (fsAccessor is dynamic)
+        if (fsAccessor) {
+          try {
+            const content = await fsAccessor.readFile('.parallxignore');
+            _writerIgnoreInstance.loadFromContent(content);
+          } catch { /* no .parallxignore — use defaults */ }
+        }
+      }
+      return _writerIgnoreInstance;
+    };
+
     const writerAccessor: IBuiltInToolFileWriter | undefined = (fileService && workspaceService?.folders?.length)
       ? (() => {
-        // Lazy-load ParallxIgnore for path validation
-        let ignoreInstance: import('../../services/parallxIgnore.js').ParallxIgnore | undefined;
-        const getIgnore = async (): Promise<import('../../services/parallxIgnore.js').ParallxIgnore> => {
-          if (!ignoreInstance) {
-            const { createParallxIgnore } = await import('../../services/parallxIgnore.js');
-            ignoreInstance = createParallxIgnore();
-            // Try to load .parallxignore from workspace
-            if (fsAccessor) {
-              try {
-                const content = await fsAccessor.readFile('.parallxignore');
-                ignoreInstance.loadFromContent(content);
-              } catch { /* no .parallxignore — use defaults */ }
-            }
-          }
-          return ignoreInstance;
-        };
         // Eagerly initialize
-        getIgnore().catch(() => {});
+        _loadWriterIgnore().catch(() => {});
 
         return {
           async writeFile(relativePath: string, content: string): Promise<void> {
@@ -406,8 +421,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           },
           isPathAllowed(relativePath: string): boolean {
             // Synchronous check with eagerly loaded ignore instance
-            if (ignoreInstance) {
-              return !ignoreInstance.isIgnored(relativePath, false);
+            if (_writerIgnoreInstance) {
+              return !_writerIgnoreInstance.isIgnored(relativePath, false);
             }
             // If not loaded yet, allow (will be checked again on write)
             return true;
@@ -842,6 +857,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       // 4. Clear module-level state
       _lastIndexStats = undefined;
 
+      // 4b. Reset .parallxignore cache — new workspace may have different rules.
+      //     The fsAccessor is already dynamic (reads workspaceService.folders),
+      //     so the next _loadWriterIgnore() call reads from the correct root.
+      _writerIgnoreInstance = undefined;
+      _loadWriterIgnore?.().catch(() => { /* folders may not be restored yet — best-effort */ });
+
       // 5. Clear permission session grants (they're workspace-scoped)
       _permissionService?.clearSessionGrants();
 
@@ -904,4 +925,6 @@ export function deactivate(): void {
   _tokenStatusBar = undefined;
   _promptFileService = undefined;
   _fsAccessor = undefined;
+  _writerIgnoreInstance = undefined;
+  _loadWriterIgnore = undefined;
 }

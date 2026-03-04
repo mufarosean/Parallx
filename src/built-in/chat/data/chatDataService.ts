@@ -202,10 +202,30 @@ export function buildFileSystemAccessor(
   const folders = workspaceService.folders;
   if (!folders || folders.length === 0) { return undefined; }
 
-  const rootUri = folders[0].uri;
-  const rootName = workspaceService.activeWorkspace?.name ?? folders[0].name;
+  // ── Dynamic root resolution ──
+  // Read workspaceService.folders on every call instead of capturing rootUri
+  // once at activation time.  After a workspace switch the service's folder
+  // list points to the NEW workspace, so every consumer of this accessor
+  // (built-in tools, workspace digest, prompt-file reads, mention provider)
+  // automatically resolves against the correct root without any explicit
+  // rebuild step.
+
+  function getRootUri(): import('../../../platform/uri.js').URI {
+    const f = workspaceService!.folders;
+    if (!f || f.length === 0) {
+      throw new Error('No workspace root folder available');
+    }
+    return f[0].uri;
+  }
+
+  function getRootName(): string {
+    return workspaceService!.activeWorkspace?.name
+      ?? workspaceService!.folders[0]?.name
+      ?? '';
+  }
 
   function resolveUri(relativePath: string): import('../../../platform/uri.js').URI {
+    const rootUri = getRootUri();
     const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
     if (!clean || clean === '.') { return rootUri; }
 
@@ -243,7 +263,7 @@ export function buildFileSystemAccessor(
   }
 
   return {
-    workspaceRootName: rootName,
+    get workspaceRootName() { return getRootName(); },
 
     async readdir(relativePath: string) {
       const uri = resolveUri(relativePath);

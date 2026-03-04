@@ -838,3 +838,37 @@ Additionally, `_teardownWorkspaceContent()` does not dispose old folder watchers
 3. **Re-register orphaned listeners** on the new workspace after switch.
 4. **Dispose old folder watchers** during teardown; start new ones after switch.
 5. Tests covering abort threading, listener re-registration, and pipeline ordering.
+
+---
+
+## Bug Fix: Stale File System Accessor After Workspace Switch (March 3, 2026)
+
+### Symptom
+
+After switching workspaces, the Explorer shows the correct folders but Chat AI responds with files from the **old** workspace. The workspace digest, `list_files` tool, `read_file` tool, `@file:` mention provider, prompt file reads (SOUL.md/AGENTS.md/TOOLS.md), and `.parallxignore` checks all resolve against the previous workspace root.
+
+### Root Cause
+
+`buildFileSystemAccessor()` in `chatDataService.ts` captured `rootUri = folders[0].uri` in a closure at activation time. This `rootUri` was a static copy — after workspace switch, `workspaceService.folders[0].uri` pointed to the **new** workspace, but the accessor's closure still resolved against the old value. Since the chat tool is NOT re-activated on workspace switch, every consumer that held a reference to the accessor (15+ different closures) continued using the stale root.
+
+**Consumers affected:**
+- `ChatDataService._d.fsAccessor` → workspace digest
+- `PromptFileService._fileAccess` closures → SOUL.md, AGENTS.md, TOOLS.md
+- Module-level `_fsAccessor` → `@file:` mention provider
+- Built-in tools (`list_files`, `read_file`, `search_files`) → tool output
+- `SkillLoaderService`, `ParallxConfigService`, `PermissionsFileService` → skill/config reads
+- Writer accessor `.parallxignore` → path permission checks
+
+### Fix
+
+1. **Dynamic root resolution** (`chatDataService.ts`): Changed `buildFileSystemAccessor()` to read `workspaceService.folders[0].uri` dynamically on every operation instead of capturing it once. All methods (`readdir`, `readFile`, `exists`) and `workspaceRootName` now resolve against the current workspace root at call time. Since all 15+ consumers hold a reference to the **same** accessor object, they all automatically use the new workspace's root without any explicit rebuild or pointer swaps.
+
+2. **`.parallxignore` cache invalidation** (`main.ts`): Hoisted the writer accessor's ignore instance to module level so the workspace switch handler can clear it. After switch, the cached `ParallxIgnore` instance is set to `undefined` and a best-effort reload is triggered (reads from the new workspace's `.parallxignore` via the now-dynamic accessor).
+
+### Key Design Insight
+
+The elegant property of this fix: because all tools, services, and closures hold a reference to the **same** accessor object, making that object's methods dynamic (reading `workspaceService.folders` at call time rather than at creation time) fixes ALL consumers simultaneously — zero pointer swaps, zero re-registrations, zero coordination.
+
+### Tests Added
+
+- `tests/unit/fsAccessorWorkspaceSwitch.test.ts`: 13 tests verifying dynamic root resolution, workspace name updates, folder-empty error handling, and absolute path stripping after workspace switches.
