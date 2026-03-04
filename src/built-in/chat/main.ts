@@ -32,7 +32,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IAISettingsService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -158,6 +158,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     : undefined;
   const sessionContext = sessionManager?.activeContext;
 
+  // AI Settings service (M15) — persona overlay + model defaults
+  const aiSettingsService = api.services.has(IAISettingsService)
+    ? api.services.get<import('../../aiSettings/aiSettingsTypes.js').IAISettingsService>(IAISettingsService)
+    : undefined;
+
   // ── 1b. Build file system accessor for built-in tools ──
 
   const fsAccessor = buildFileSystemAccessor(fileService, workspaceService);
@@ -256,6 +261,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     openPage: (pageId: string) => api.editors.openEditor({ typeId: 'canvas', title: 'Page', instanceId: pageId }),
     sessionContext: sessionContext ?? undefined,
     sessionManager: sessionManager ?? undefined,
+    aiSettingsService: aiSettingsService ?? undefined,
   });
 
   // ── 3a. Register the default chat participant with IChatAgentService ──

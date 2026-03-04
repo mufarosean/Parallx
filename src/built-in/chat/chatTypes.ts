@@ -92,6 +92,8 @@ export interface IDefaultParticipantServices {
   getWorkspaceDigest?(): Promise<string | undefined>;
   /** Session manager for stale session detection during tool invocations. */
   sessionManager?: ISessionManager;
+  /** AI Settings service for persona overlay and model parameters (M15). */
+  aiSettingsService?: { getActiveProfile(): import('../../aiSettings/aiSettingsTypes.js').AISettingsProfile };
 }
 
 /** Services injected into the @workspace participant. */

@@ -43,6 +43,7 @@ import {
 import type { Event } from '../../../platform/events.js';
 
 import type { IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager } from '../../../services/serviceTypes.js';
+import type { IAISettingsService } from '../../../aiSettings/aiSettingsTypes.js';
 import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageModelToolsService } from '../../../services/chatTypes.js';
 import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import type { PromptFileService } from '../../../services/promptFileService.js';
@@ -86,6 +87,8 @@ export interface ChatDataServiceDeps {
   readonly sessionContext?: IWorkspaceSessionContext;
   /** Session manager (M14). Used for stale session detection in tool invocations. */
   readonly sessionManager?: ISessionManager;
+  /** AI Settings service (M15). Provides active persona and model defaults. */
+  readonly aiSettingsService?: IAISettingsService;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1134,6 +1137,7 @@ export class ChatDataService {
       compactSession: (s, t) => this.compactSession(s, t),
       getWorkspaceDigest: () => this.getWorkspaceDigest(),
       sessionManager: this._d.sessionManager,
+      aiSettingsService: this._d.aiSettingsService,
     };
   }
 

@@ -402,13 +402,18 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // ── Build system prompt with workspace context ──
     // Parallelize independent async calls to reduce pre-response latency.
 
-    const [pageCount, fileCount, promptOverlay, workspaceDigest, prefsBlock] = await Promise.all([
+    const [pageCount, fileCount, promptOverlayFromFiles, workspaceDigest, prefsBlock] = await Promise.all([
       services.getPageCount().catch(() => 0),
       services.getFileCount ? services.getFileCount().catch(() => 0) : Promise.resolve(undefined),
       services.getPromptOverlay ? services.getPromptOverlay().catch(() => undefined) : Promise.resolve(undefined),
       services.getWorkspaceDigest ? services.getWorkspaceDigest().catch(() => undefined) : Promise.resolve(undefined),
       services.getPreferencesForPrompt ? services.getPreferencesForPrompt().catch(() => undefined) : Promise.resolve(undefined),
     ]);
+
+    // M15: AI Settings persona overlay takes priority over file-based prompt overlay.
+    // Both replace PARALLX_IDENTITY in the system prompt via the promptOverlay field.
+    const aiProfile = services.aiSettingsService?.getActiveProfile();
+    const promptOverlay = aiProfile?.chat.systemPrompt || promptOverlayFromFiles;
 
     const promptContext: ISystemPromptContext = {
       workspaceName: services.getWorkspaceName(),
@@ -966,6 +971,9 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       // `think` parameter.  Models that support it (DeepSeek-R1, QwQ) will
       // stream reasoning tokens separately; others silently ignore it.
       think: true,
+      // M15: Apply model settings from the active AI profile
+      temperature: aiProfile?.model.temperature,
+      maxTokens: aiProfile?.model.maxTokens || undefined,
     };
 
     // Create an AbortController linked to the cancellation token
