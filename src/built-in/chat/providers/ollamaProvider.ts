@@ -94,6 +94,11 @@ const HEALTH_POLL_DISCONNECTED_MS = 5_000;
 const HEALTH_POLL_BACKOFF_MS = 60_000;
 const HEALTH_FAILURE_BACKOFF_THRESHOLD = 5;
 
+/** Fast-poll interval during the startup burst window. */
+const HEALTH_POLL_STARTUP_MS = 1_500;
+/** Duration of the startup burst window (15 seconds). */
+const HEALTH_STARTUP_WINDOW_MS = 15_000;
+
 /**
  * Language model provider for Ollama.
  *
@@ -117,6 +122,9 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   private _consecutiveFailures = 0;
   private _loadedModels: string[] = [];
 
+  /** True while in the startup burst window (fast polling). */
+  private _startupBurst = true;
+
   private readonly _onDidChangeStatus = this._register(new Emitter<IProviderStatus>());
   readonly onDidChangeStatus: Event<IProviderStatus> = this._onDidChangeStatus.event;
 
@@ -131,6 +139,10 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     // Initial check + start polling
     this._pollHealth();
     this._schedulePoll();
+
+    // End startup burst after the window expires
+    const startupTimeout = setTimeout(() => { this._startupBurst = false; this._schedulePoll(); }, HEALTH_STARTUP_WINDOW_MS);
+    this._register(toDisposable(() => clearTimeout(startupTimeout)));
   }
 
   // ── Public accessors for cached state ──
@@ -717,6 +729,8 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
 
     if (isAvailable) {
       this._consecutiveFailures = 0;
+      // Connected — end startup burst early
+      this._startupBurst = false;
       // Also poll loaded models
       await this._pollLoadedModels();
     } else {
@@ -755,7 +769,10 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     }
 
     let interval: number;
-    if (this._lastStatus.available) {
+    if (this._startupBurst) {
+      // Fast-poll during startup for snappy first connection
+      interval = HEALTH_POLL_STARTUP_MS;
+    } else if (this._lastStatus.available) {
       interval = HEALTH_POLL_CONNECTED_MS;
     } else if (this._consecutiveFailures >= HEALTH_FAILURE_BACKOFF_THRESHOLD) {
       interval = HEALTH_POLL_BACKOFF_MS;
@@ -766,14 +783,6 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     this._pollTimer = setInterval(() => {
       this._pollHealth();
     }, interval);
-
-    // Ensure polling stops on dispose
-    this._register(toDisposable(() => {
-      if (this._pollTimer !== null) {
-        clearInterval(this._pollTimer);
-        this._pollTimer = null;
-      }
-    }));
   }
 
   override dispose(): void {
