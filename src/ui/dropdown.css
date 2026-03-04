@@ -1,0 +1,100 @@
+/* ── Dropdown ── */
+
+.ui-dropdown {
+  position: relative;
+  display: inline-block;
+  min-width: 120px;
+}
+
+.ui-dropdown__button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 20px;
+  color: var(--vscode-dropdown-foreground, var(--vscode-foreground, #ccc));
+  background: var(--vscode-dropdown-background, var(--vscode-input-background, #3c3c3c));
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, #3c3c3c));
+  border-radius: 3px;
+  cursor: pointer;
+  outline: none;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-dropdown__button:hover {
+  background: var(--vscode-dropdown-background, var(--vscode-input-background, #454545));
+  border-color: var(--vscode-focusBorder, #007acc);
+}
+
+.ui-dropdown__button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007acc);
+  outline-offset: -1px;
+}
+
+.ui-dropdown__chevron {
+  margin-left: 6px;
+  font-size: 10px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+/* ── Options list ── */
+
+.ui-dropdown__list {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  margin-top: 2px;
+  padding: 4px 0;
+  background: var(--vscode-dropdown-listBackground, var(--vscode-editorWidget-background, #252526));
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-widget-border, #454545));
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ui-dropdown--open .ui-dropdown__list {
+  display: block;
+}
+
+.ui-dropdown__item {
+  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--vscode-foreground, #ccc);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-dropdown__item:hover,
+.ui-dropdown__item--focused {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+
+.ui-dropdown__item--selected {
+  color: var(--vscode-list-activeSelectionForeground, #fff);
+  background: var(--vscode-list-activeSelectionBackground, #094771);
+}
+
+.ui-dropdown__item--selected:hover {
+  background: var(--vscode-list-activeSelectionBackground, #094771);
+}
+
+/* ── Disabled ── */
+
+.ui-dropdown--disabled .ui-dropdown__button {
+  opacity: 0.5;
+  cursor: default;
+}
