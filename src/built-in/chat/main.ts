@@ -401,14 +401,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       return _writerIgnoreInstance;
     };
 
-    const writerAccessor: IBuiltInToolFileWriter | undefined = (fileService && workspaceService?.folders?.length)
+    const writerAccessor: IBuiltInToolFileWriter | undefined = fileService && workspaceService
       ? (() => {
-        // Eagerly initialize
+        // Eagerly attempt to load .parallxignore (best-effort)
         _loadWriterIgnore().catch(() => {});
 
         return {
           async writeFile(relativePath: string, content: string): Promise<void> {
-            const rootUri = workspaceService!.folders[0].uri;
+            const folders = workspaceService!.folders;
+            if (!folders || folders.length === 0) {
+              throw new Error('No workspace folder is open — cannot write files');
+            }
+            const rootUri = folders[0].uri;
             const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
             const targetUri = rootUri.joinPath(clean);
 
@@ -792,7 +796,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   }
 
   // PermissionsFileService (M11 Task 2.10): persist permission overrides
-  if (fsAccessor && fileService && workspaceService?.folders?.length && _permissionService) {
+  if (fsAccessor && fileService && workspaceService && _permissionService) {
     import('../../services/permissionsFileService.js').then(({ PermissionsFileService }) => {
       const permsFileService = new PermissionsFileService();
       permsFileService.setFileSystem({
@@ -801,7 +805,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       });
       permsFileService.setFileWriter({
         writeFile: async (relativePath: string, content: string) => {
-          const rootUri = workspaceService!.folders[0].uri;
+          const folders = workspaceService!.folders;
+          if (!folders || folders.length === 0) {
+            throw new Error('No workspace folder is open — cannot write permissions');
+          }
+          const rootUri = folders[0].uri;
           const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
           await fileService!.writeFile(rootUri.joinPath(clean), content);
         },

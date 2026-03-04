@@ -105,9 +105,10 @@ describe('buildFileSystemAccessor — dynamic workspace root', () => {
     expect(buildFileSystemAccessor(fileService, undefined)).toBeUndefined();
   });
 
-  it('returns undefined when folders array is empty', () => {
+  it('returns an accessor even when folders array is empty (lazy init)', () => {
     workspaceService._setFolders([]);
-    expect(buildFileSystemAccessor(fileService, workspaceService as any)).toBeUndefined();
+    const accessor = buildFileSystemAccessor(fileService, workspaceService as any);
+    expect(accessor).toBeDefined();
   });
 
   it('workspaceRootName reflects the active workspace name', () => {

@@ -191,16 +191,19 @@ function walkContentNode(node: unknown, texts: string[]): void {
 
 /**
  * Build an IBuiltInToolFileSystem from IFileService + IWorkspaceService.
- * Returns undefined if no workspace folder is open.
+ * Returns undefined only if the required services are missing.
+ *
+ * The accessor is LAZY — it does NOT check whether a folder is currently
+ * open.  Instead, every operation dynamically reads workspaceService.folders
+ * at call time.  This allows it to be created during tool activation (when
+ * the workspace might be empty) and start working as soon as a folder is
+ * opened later.
  */
 export function buildFileSystemAccessor(
   fileService: IFileService | undefined,
   workspaceService: IWorkspaceService | undefined,
 ): IBuiltInToolFileSystem | undefined {
   if (!fileService || !workspaceService) { return undefined; }
-
-  const folders = workspaceService.folders;
-  if (!folders || folders.length === 0) { return undefined; }
 
   // ── Dynamic root resolution ──
   // Read workspaceService.folders on every call instead of capturing rootUri
