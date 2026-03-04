@@ -152,6 +152,7 @@ export const IWorkspaceService = createServiceIdentifier<IWorkspaceService>('IWo
 // ─── IWorkspaceBoundaryService ───────────────────────────────────────────────
 
 import type { URI } from '../platform/uri.js';
+import type { IWorkspaceSessionContext } from '../workspace/workspaceSessionContext.js';
 
 /**
  * Centralized workspace boundary policy service.
@@ -1238,3 +1239,33 @@ export interface StatusBarEntryAccessor extends IDisposable {
 export interface IStatusBarPart {
   addEntry(entry: StatusBarEntry): StatusBarEntryAccessor;
 }
+
+// ─── Session Manager ─────────────────────────────────────────────────────────
+
+/**
+ * Manages workspace session identity.
+ *
+ * A "session" starts when a workspace is opened (or the page loads)
+ * and ends when the user switches workspace (or the page unloads).
+ * Each session gets a unique `sessionId`.
+ *
+ * VS Code reference: implicit — VS Code uses per-window process isolation.
+ * Parallx models the same guarantee explicitly via WorkspaceSessionContext.
+ */
+export interface ISessionManager {
+  /** The currently active session context, or `undefined` before first open. */
+  readonly activeContext: IWorkspaceSessionContext | undefined;
+
+  /**
+   * Create a new session for the given workspace.
+   * Invalidates any previous session (abort + isActive → false).
+   */
+  beginSession(workspaceId: string, roots: readonly URI[]): IWorkspaceSessionContext;
+
+  /** End the current session (abort + invalidate). No-op if no active session. */
+  endSession(): void;
+
+  /** Fired when the active session changes (begin or end). */
+  readonly onDidChangeSession: Event<IWorkspaceSessionContext | undefined>;
+}
+export const ISessionManager = createServiceIdentifier<ISessionManager>('ISessionManager');

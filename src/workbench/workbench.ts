@@ -14,7 +14,7 @@ import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices } from './workbenchServices.js';
 import { IChatService } from '../services/chatTypes.js';
@@ -446,6 +446,14 @@ export class Workbench extends Layout {
     console.log('[Workbench] Switching workspace → %s (via reload)', targetId);
 
     try {
+      // 0. End the current workspace session (M14).
+      //    Signals abort on the session AbortController so in-flight
+      //    async work can bail out. Must happen before save/reload.
+      const sessionMgr = this._services.get(ISessionManager);
+      if (sessionMgr) {
+        sessionMgr.endSession();
+      }
+
       // 1. Save current workspace state to localStorage
       await this._workspaceSaver.save();
 
@@ -1016,6 +1024,15 @@ export class Workbench extends Layout {
     // Fire onDidSwitchWorkspace so that the WorkspaceService (and any other
     // listener) re-binds its event subscriptions to the live workspace.
     this._onDidSwitchWorkspace.fire(this._workspace);
+
+    // Begin the workspace session (M14).
+    // Services can now read sessionManager.activeContext for identity,
+    // log prefix, and abort signal.
+    const sessionMgr = this._services.get(ISessionManager);
+    if (sessionMgr) {
+      const roots = this._workspace.folders.map(f => f.uri);
+      sessionMgr.beginSession(this._workspace.id, roots);
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════

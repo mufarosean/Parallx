@@ -32,7 +32,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -152,6 +152,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../services/serviceTypes.js').IProactiveSuggestionsService>(IProactiveSuggestionsService)
     : undefined;
 
+  // Session context (M14) — carries workspace/session identity for diagnostics
+  const sessionContext = api.services.has(ISessionManager)
+    ? api.services.get<import('../../services/serviceTypes.js').ISessionManager>(ISessionManager).activeContext
+    : undefined;
+
   // ── 1b. Build file system accessor for built-in tools ──
 
   const fsAccessor = buildFileSystemAccessor(fileService, workspaceService);
@@ -248,6 +253,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     networkTimeout: 60_000,
     getActiveWidget: () => _activeWidget,
     openPage: (pageId: string) => api.editors.openEditor({ typeId: 'canvas', title: 'Page', instanceId: pageId }),
+    sessionContext: sessionContext ?? undefined,
   });
 
   // ── 3a. Register the default chat participant with IChatAgentService ──

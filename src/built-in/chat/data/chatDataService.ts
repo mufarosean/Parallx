@@ -47,6 +47,7 @@ import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageM
 import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import type { PromptFileService } from '../../../services/promptFileService.js';
 import type { ChatWidget } from '../widgets/chatWidget.js';
+import type { IWorkspaceSessionContext } from '../../../workspace/workspaceSessionContext.js';
 
 import { buildPlannerPrompt, buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { extractTextContent } from '../tools/builtInTools.js';
@@ -81,6 +82,8 @@ export interface ChatDataServiceDeps {
   readonly getActiveWidget: () => ChatWidget | undefined;
   /** Callback to open a canvas page by its UUID. Provided by main.ts via api.editors. */
   readonly openPage?: (pageId: string) => Promise<void>;
+  /** Workspace session context (M14). Carries sessionId, logPrefix, abort signal. */
+  readonly sessionContext?: IWorkspaceSessionContext;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

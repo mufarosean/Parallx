@@ -1,7 +1,7 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
@@ -17,6 +17,7 @@ import { ChatModeService } from '../services/chatModeService.js';
 import { ChatWidgetService } from '../services/chatWidgetService.js';
 import { LanguageModelToolsService } from '../services/languageModelToolsService.js';
 import { ToolErrorService } from '../tools/toolErrorIsolation.js';
+import { SessionManager } from '../workspace/sessionManager.js';
 import { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
 import { ConfigurationService } from '../configuration/configurationService.js';
 import { CommandContributionProcessor } from '../contributions/commandContribution.js';
@@ -49,6 +50,9 @@ import type { ViewManager } from '../views/viewManager.js';
 export function registerWorkbenchServices(services: ServiceCollection): void {
   // ── Lifecycle ──
   services.registerInstance(ILifecycleService, new LifecycleService());
+
+  // ── Session Manager (M14) ── workspace session identity
+  services.registerInstance(ISessionManager, new SessionManager());
 
   // ── Context Key (Capability 8) ──
   services.registerInstance(IContextKeyService, new ContextKeyService());
