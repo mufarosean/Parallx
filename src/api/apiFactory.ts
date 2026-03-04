@@ -124,6 +124,7 @@ export interface ParallxApiObject {
     readonly workspaceFolders: readonly { uri: string; name: string; index: number }[] | undefined;
     getWorkspaceFolder(uri: string): { uri: string; name: string; index: number } | undefined;
     readonly onDidChangeWorkspaceFolders: (listener: (e: { added: readonly { uri: string; name: string; index: number }[]; removed: readonly { uri: string; name: string; index: number }[] }) => void) => IDisposable;
+    readonly onDidChangeWorkspace: (listener: (e: { id: string; name: string } | undefined) => void) => IDisposable;
     readonly onDidFilesChange: (listener: (events: { type: number; uri: string }[]) => void) => IDisposable;
     readonly name: string | undefined;
     readonly fs: {
@@ -427,6 +428,7 @@ export function createToolApi(
       get workspaceFolders() { return workspaceBridge.workspaceFolders; },
       getWorkspaceFolder: (uri: string) => workspaceBridge.getWorkspaceFolder(uri),
       onDidChangeWorkspaceFolders: workspaceBridge.onDidChangeWorkspaceFolders,
+      onDidChangeWorkspace: workspaceBridge.onDidChangeWorkspace,
       onDidFilesChange: workspaceBridge.onDidFilesChange,
       get name() { return workspaceBridge.name; },
       get fs() {

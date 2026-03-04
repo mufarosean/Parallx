@@ -13,11 +13,18 @@ import type { IWorkspaceConfiguration, IConfigurationChangeEvent } from '../../c
 import type { WorkspaceFolder, WorkspaceFoldersChangeEvent } from '../../workspace/workspaceTypes.js';
 import type { FileChangeEvent } from '../../platform/fileTypes.js';
 
+/** Minimal workspace identity exposed to tools on workspace switch. */
+export interface WorkspaceChangeInfo {
+  readonly id: string;
+  readonly name: string;
+}
+
 /** Minimal shape of the workspace service for the bridge. */
 interface WorkspaceServiceLike {
   readonly folders: readonly WorkspaceFolder[];
   readonly workspaceName: string;
   readonly onDidChangeFolders: Event<WorkspaceFoldersChangeEvent>;
+  readonly onDidChangeWorkspace: Event<{ id: string; name: string } | undefined>;
   getWorkspaceFolder(uri: URI): WorkspaceFolder | undefined;
 }
 
@@ -59,6 +66,21 @@ export class WorkspaceBridge {
   /** Forwarded file change event from IFileService. */
   readonly onDidFilesChange: Event<{ type: number; uri: string }[]>;
 
+  /**
+   * Forwarded workspace-switch event.
+   *
+   * Fires after the workbench has completed a workspace switch — the new
+   * workspace identity is active, the database is being re-opened, and
+   * folders are being restored.  Tools should use this event to:
+   *   1. Cancel any in-flight work from the old workspace
+   *   2. Clear in-memory caches
+   *   3. Reload data from the new workspace context
+   *
+   * This is the **single authoritative signal** for workspace transitions.
+   * Prefer this over subscribing to raw `IWorkspaceService` events.
+   */
+  readonly onDidChangeWorkspace: Event<WorkspaceChangeInfo | undefined>;
+
   constructor(
     private readonly _toolId: string,
     _subscriptions: IDisposable[],
@@ -91,6 +113,21 @@ export class WorkspaceBridge {
       const fallbackEmitter = new Emitter<ToolWorkspaceFoldersChangeEvent>();
       this._disposables.push(fallbackEmitter);
       this.onDidChangeWorkspaceFolders = fallbackEmitter.event;
+    }
+
+    // Workspace-switch events
+    if (this._workspaceService) {
+      const wsEmitter = new Emitter<WorkspaceChangeInfo | undefined>();
+      this._disposables.push(wsEmitter);
+      const wsSub = this._workspaceService.onDidChangeWorkspace((ws) => {
+        wsEmitter.fire(ws ? { id: ws.id, name: ws.name } : undefined);
+      });
+      this._disposables.push(wsSub);
+      this.onDidChangeWorkspace = wsEmitter.event;
+    } else {
+      const fallbackEmitter = new Emitter<WorkspaceChangeInfo | undefined>();
+      this._disposables.push(fallbackEmitter);
+      this.onDidChangeWorkspace = fallbackEmitter.event;
     }
 
     // File change events (M4 — file watcher → tree refresh)

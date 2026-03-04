@@ -69,6 +69,7 @@ interface ParallxApi {
   workspace: {
     getConfiguration(section: string): { get<T>(key: string, defaultValue?: T): T };
     onDidChangeConfiguration: Event<{ affectsConfiguration(section: string): boolean }>;
+    onDidChangeWorkspace: (listener: (e: { id: string; name: string } | undefined) => void) => IDisposable;
   };
   context: {
     createContextKey<T extends string | number | boolean | undefined>(name: string, defaultValue: T): { key: string; get(): T; set(value: T): void; reset(): void };
@@ -823,9 +824,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // swaps them into ChatDataService, resets ChatService sessions, clears
   // all caches (prompt files, permissions, workspace digest), and gives
   // the active widget a new session for the new workspace.
+  //
+  // NOTE: Uses the public `api.workspace.onDidChangeWorkspace` event —
+  // the authoritative signal for workspace transitions.  Tools must NOT
+  // reach through to internal IWorkspaceService for this purpose.
 
-  if (workspaceService) {
-    const workspaceSwitchSub = workspaceService.onDidChangeWorkspace(() => {
+  {
+    const workspaceSwitchSub = api.workspace.onDidChangeWorkspace(() => {
       // 1. Re-fetch stale services from DI container (new instances created
       //    by registerIndexingServices() during the workbench's rebuild phase)
       retrievalService = api.services.has(IRetrievalService)
@@ -872,7 +877,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       // 7. Refresh the token bar
       _tokenStatusBar?.update().catch(() => {});
     });
-    context.subscriptions.push(workspaceSwitchSub as unknown as IDisposable);
+    context.subscriptions.push(workspaceSwitchSub);
   }
 }
 
