@@ -42,7 +42,7 @@ import {
 
 import type { Event } from '../../../platform/events.js';
 
-import type { IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager } from '../../../services/serviceTypes.js';
+import type { IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager } from '../../../services/serviceTypes.js';
 import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageModelToolsService } from '../../../services/chatTypes.js';
 import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import type { PromptFileService } from '../../../services/promptFileService.js';
@@ -84,6 +84,8 @@ export interface ChatDataServiceDeps {
   readonly openPage?: (pageId: string) => Promise<void>;
   /** Workspace session context (M14). Carries sessionId, logPrefix, abort signal. */
   readonly sessionContext?: IWorkspaceSessionContext;
+  /** Session manager (M14). Used for stale session detection in tool invocations. */
+  readonly sessionManager?: ISessionManager;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -328,6 +330,9 @@ export class ChatDataService {
    *
    * Also invalidates all caches so the next prompt/digest build reads
    * from the new workspace.
+   *
+   * @deprecated M14: Dead code in the reload-based workspace switch flow.
+   * Kept for backward compatibility with existing tests.
    */
   resetForWorkspaceSwitch(fresh: {
     retrievalService: ChatDataServiceDeps['retrievalService'];
@@ -1128,6 +1133,7 @@ export class ChatDataService {
       userCommandFileSystem: this.getUserCommandFileSystem(),
       compactSession: (s, t) => this.compactSession(s, t),
       getWorkspaceDigest: () => this.getWorkspaceDigest(),
+      sessionManager: this._d.sessionManager,
     };
   }
 

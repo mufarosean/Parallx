@@ -31,7 +31,10 @@ import type {
   IVectorStoreService,
   IWorkspaceService,
   IIndexingPipelineService,
+  ISessionManager,
 } from './serviceTypes.js';
+import { captureSession } from '../workspace/staleGuard.js';
+import type { SessionGuard } from '../workspace/staleGuard.js';
 import type { Chunk } from './chunkingService.js';
 import type { EmbeddedChunk } from './vectorStoreService.js';
 import { hashText } from './chunkingService.js';
@@ -147,6 +150,17 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   /** ParallxIgnore instance for file exclusion (M11 Task 1.9). */
   private _ignore: ParallxIgnore = createParallxIgnore();
 
+  /** Optional session manager for stale-session guards (M14). */
+  private readonly _sessionManager: ISessionManager | undefined;
+
+  /** Session guard captured at pipeline start — checked before commits. */
+  private _sessionGuard: SessionGuard | undefined;
+
+  /** Diagnostic log prefix from session context (M14). */
+  private get _logPrefix(): string {
+    return this._sessionManager?.activeContext?.logPrefix ?? '[ws:? sid:?]';
+  }
+
   // ── Events ──
 
   private readonly _onDidChangeProgress = this._register(new Emitter<IndexingProgress>());
@@ -165,6 +179,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     chunkingService: IChunkingService,
     vectorStoreService: IVectorStoreService,
     workspaceService: IWorkspaceService,
+    sessionManager?: ISessionManager,
   ) {
     super();
     this._db = databaseService;
@@ -173,6 +188,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     this._chunkingService = chunkingService;
     this._vectorStore = vectorStoreService;
     this._workspaceService = workspaceService;
+    this._sessionManager = sessionManager;
   }
 
   // ── Public API ──
@@ -203,6 +219,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
     this._isIndexing = true;
     this._abortController = new AbortController();
+    this._sessionGuard = this._sessionManager ? captureSession(this._sessionManager) : undefined;
     const startTime = performance.now();
 
     try {
@@ -226,8 +243,8 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       const durationMs = performance.now() - startTime;
 
       console.log(
-        '[IndexingPipeline] Initial indexing complete: %d pages, %d files in %dms',
-        pageCount, fileCount, Math.round(durationMs),
+        '%s [IndexingPipeline] Initial indexing complete: %d pages, %d files in %dms',
+        this._logPrefix, pageCount, fileCount, Math.round(durationMs),
       );
 
       this._onDidCompleteInitialIndex.fire({ pages: pageCount, files: fileCount, durationMs });
@@ -386,6 +403,12 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       return false;
     }
 
+    // M14: stale session guard — skip commit if session changed
+    if (this._sessionGuard && !this._sessionGuard.isValid()) {
+      console.warn('[IndexingPipeline] Stale session — skipping page commit for %s', pageId);
+      return false;
+    }
+
     // Store
     await this._vectorStore.upsert('page_block', pageId, embeddedChunks, contentHash);
 
@@ -501,6 +524,12 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       return false;
     }
 
+    // M14: stale session guard — skip commit if session changed
+    if (this._sessionGuard && !this._sessionGuard.isValid()) {
+      console.warn('[IndexingPipeline] Stale session — skipping file commit for %s', filePath);
+      return false;
+    }
+
     // Store (partial results are fine — some chunks beat no chunks)
     await this._vectorStore.upsert('file_chunk', filePath, embeddedChunks, contentHash);
 
@@ -571,6 +600,12 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       this._checkAborted();
+
+      // Stale session guard: bail between batches if workspace changed
+      if (this._sessionGuard && !this._sessionGuard.isValid()) {
+        console.warn('[IndexingPipeline] Session stale during embedding — aborting remaining batches');
+        break;
+      }
 
       const batch = chunks.slice(i, i + BATCH_SIZE);
 

@@ -229,6 +229,7 @@ export function registerIndexingServices(
   const databaseService = services.get(IDatabaseService);
   const fileService = services.get(IFileService);
   const workspaceService = services.get(IWorkspaceService);
+  const sessionManager = services.has(ISessionManager) ? services.get(ISessionManager) : undefined;
 
   const embeddingService = new EmbeddingService();
   const chunkingService = new ChunkingService();
@@ -240,6 +241,7 @@ export function registerIndexingServices(
     chunkingService,
     vectorStoreService,
     workspaceService,
+    sessionManager,
   );
   const retrievalService = new RetrievalService(embeddingService, vectorStoreService);
   const memoryService = new MemoryService(databaseService, embeddingService, vectorStoreService);

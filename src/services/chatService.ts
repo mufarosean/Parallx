@@ -22,6 +22,9 @@ import {
   deletePersistedSession,
 } from './chatSessionPersistence.js';
 import type { IChatPersistenceDatabase } from './chatSessionPersistence.js';
+import type { ISessionManager } from './serviceTypes.js';
+import { captureSession } from '../workspace/staleGuard.js';
+import type { SessionGuard } from '../workspace/staleGuard.js';
 import type {
   IChatService,
   IChatSession,
@@ -450,6 +453,8 @@ export class ChatService extends Disposable implements IChatService {
   private _database: IChatPersistenceDatabase | undefined;
   /** Active workspace ID for session scoping. */
   private _workspaceId: string = '';
+  /** Session manager for stale session detection. */
+  private _sessionManager: ISessionManager | undefined;
 
   /** Debounce timer for persistence writes. */
   private _persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -504,18 +509,22 @@ export class ChatService extends Disposable implements IChatService {
   }
 
   /**
+   * Late-bind a session manager for stale session detection.
+   * Called after services are available.
+   */
+  setSessionManager(sessionManager: ISessionManager): void {
+    this._sessionManager = sessionManager;
+  }
+
+  /**
    * Hard-reset for workspace switch.
    *
     * Cancels all active requests, flushes pending writes for the current DB,
     * and clears all in-memory sessions.
     *
-    * Important: this method intentionally does NOT call restoreSessions().
-    * During workbench workspace-switch flow, this reset can fire before
-    * DatabaseService is re-opened for the new workspace. Restoring here would
-    * hydrate sessions from the old workspace DB and leak stale history.
-    *
-    * The workbench rebinds the new DB via setDatabase() and then calls
-    * restoreSessions() once the new workspace database is ready.
+    * @deprecated M14: This method is dead code in the reload-based workspace switch flow.
+    * The session manager + stale guards handle isolation. Kept for backward compatibility
+    * with existing tests. Will be removed in a future milestone.
    */
   async resetForWorkspaceSwitch(): Promise<void> {
     // 1. Cancel every active request
@@ -672,6 +681,17 @@ export class ChatService extends Disposable implements IChatService {
       throw new Error('A request is already in progress for this session.');
     }
 
+    // 0a. Capture session guard for stale detection
+    const guard: SessionGuard | undefined = this._sessionManager
+      ? captureSession(this._sessionManager)
+      : undefined;
+
+    // Session-scoped diagnostic log (M14 Phase 3)
+    const logPrefix = this._sessionManager?.activeContext?.logPrefix ?? '';
+    if (logPrefix) {
+      console.log('%s [ChatService] sendRequest sessionId=%s', logPrefix, sessionId);
+    }
+
     // 0. Parse user input for @participant, /command, #variables
     const parsed = parseChatRequest(message);
 
@@ -776,8 +796,12 @@ export class ChatService extends Disposable implements IChatService {
 
     this._onDidChangeSession.fire(sessionId);
 
-    // 12. Persist session after response completes
-    this._schedulePersist(sessionId);
+    // 12. Persist session after response completes (skip if session is stale)
+    if (!guard || guard.isValid()) {
+      this._schedulePersist(sessionId);
+    } else {
+      console.warn('[ChatService] Skipping persist — workspace session changed during request');
+    }
 
     // 13. Process any pending queued requests
     this._processNextPending(sessionId);

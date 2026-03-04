@@ -29,6 +29,7 @@ import type {
   IContextPill,
 } from '../../../services/chatTypes.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
+import { captureSession } from '../../../workspace/staleGuard.js';
 import type {
   IDefaultParticipantServices,
   IInitCommandServices,
@@ -976,6 +977,16 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       abortController.abort();
     });
 
+    // Link session cancellation signal (fires on workspace switch)
+    const sessionSignal = services.sessionManager?.activeContext?.cancellationSignal;
+    if (sessionSignal) {
+      if (sessionSignal.aborted) {
+        abortController.abort();
+      } else {
+        sessionSignal.addEventListener('abort', () => abortController.abort(), { once: true });
+      }
+    }
+
     // Network timeout — abort if no response within configured time
     const timeoutMs = services.networkTimeout ?? DEFAULT_NETWORK_TIMEOUT_MS;
     let networkTimeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -1002,6 +1013,11 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       const canInvokeTools = capabilities.canInvokeTools && !!services.invokeTool;
       const isEditMode = capabilities.canProposeEdits && !capabilities.canAutonomous;
       let producedContent = false;
+
+      // Capture session guard for stale detection during tool invocations
+      const toolGuard = services.sessionManager
+        ? captureSession(services.sessionManager)
+        : undefined;
 
       for (let iteration = 0; iteration <= maxIterations; iteration++) {
         // Yield check — allow a steering/queued message to interrupt between iterations
@@ -1148,13 +1164,18 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           // The user sees the final response, not the mechanics.
           producedContent = true;
 
-          // Invoke the tool
+          // Invoke the tool (skip if session is stale)
           let result: IToolResult;
-          try {
-            result = await services.invokeTool!(tcName, tcArgs, token);
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            result = { content: `Tool "${tcName}" failed: ${errMsg}`, isError: true };
+          if (toolGuard && !toolGuard.isValid()) {
+            result = { content: 'Workspace session changed — results discarded.', isError: true };
+            console.warn('[DefaultParticipant] Skipping tool "%s" — workspace session changed', tcName);
+          } else {
+            try {
+              result = await services.invokeTool!(tcName, tcArgs, token);
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              result = { content: `Tool "${tcName}" failed: ${errMsg}`, isError: true };
+            }
           }
 
           // Append tool result message for the model

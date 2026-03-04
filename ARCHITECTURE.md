@@ -441,3 +441,51 @@ getWorkspaceDigest()
 - **Types files are co-located.** Each module has a `*Types.ts` file for shared type definitions within that module.
 - **Interfaces before implementations.** Service interfaces live in `services/serviceTypes.ts`; implementations live alongside them in `services/`.
 - **Test files mirror source structure.** Tests for `src/layout/grid.ts` live at `tests/layout/grid.test.ts` (when testing is introduced).
+
+---
+
+## Window Semantics (M14)
+
+### Strategy: Single Window + Full-Page Reload
+
+Parallx runs as a single Electron `BrowserWindow`. Workspace switches are handled by a full-page reload — **not** by opening a new window. This matches VS Code's single-window UX model while avoiding the complexity of multi-window process management.
+
+### Why Not Multi-Window?
+
+| Concern | Multi-window | Single-window + reload |
+|---------|-------------|----------------------|
+| Process isolation | Each window gets its own renderer | Reload achieves the same — fresh JS heap per workspace |
+| Memory cleanup | Automatic (process teardown) | Automatic (reload tears down everything) |
+| Shared state risk | Impossible (process boundary) | Impossible (fresh module-level state on reload) |
+| Implementation complexity | High (IPC, window management, state sync) | Low (session context + stale guards) |
+| Ollama connection sharing | Needs coordination or proxy | Single connection, no contention |
+| User experience | Potentially confusing (multiple windows) | Clean (one window, one workspace) |
+
+### WorkspaceSessionContext as the Abstraction Layer
+
+To guarantee correctness during the async gap between "user clicks switch" and "reload completes", M14 introduces `WorkspaceSessionContext`:
+
+- **`SessionManager`** (`src/workspace/sessionManager.ts`) — owns the lifecycle. `beginSession()` creates a fresh context with a UUID; `endSession()` invalidates the previous context and signals its `AbortController`.
+- **`WorkspaceSessionContext`** (`src/workspace/workspaceSessionContext.ts`) — immutable snapshot: `workspaceId`, `sessionId`, `roots`, `abortController`, `cancellationSignal`, `isActive()`, `logPrefix`.
+- **`captureSession()`** (`src/workspace/staleGuard.ts`) — lightweight guard for async operations. Capture at start, check `isValid()` before committing results. Cost: one string comparison.
+- **`SessionLogger`** (`src/workspace/sessionLogger.ts`) — prepends `[ws:<id> sid:<id>]` to all diagnostic output.
+
+### Guard Points
+
+Stale session guards are placed at every async commit point:
+
+1. **Indexing pipeline** — before `_vectorStore.upsert()` in `_indexSinglePage()` and `_indexSingleFile()`
+2. **Embedding batches** — between batches in `_embedChunks()`
+3. **Chat requests** — before `_schedulePersist()` in `ChatService.sendRequest()`
+4. **Tool invocations** — before each tool call in the agentic loop (`defaultParticipant.ts`)
+5. **Abort propagation** — session's `cancellationSignal` is linked to the participant's `AbortController`
+
+### Migration Path to Multi-Window
+
+If Parallx ever needs true multi-window support:
+
+1. `WorkspaceSessionContext` already provides the right abstraction — each window would have its own context
+2. `SessionManager` would become per-window (one instance per `BrowserWindow`)
+3. Services reading `sessionManager.activeContext` would continue working unchanged
+4. The `captureSession()` guard pattern is window-agnostic — it only compares session IDs
+5. Database path is already workspace-scoped (`.parallx/data.db`) — no change needed

@@ -33,6 +33,8 @@ import type { IDiffResult } from '../../services/diffService.js';
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** Services injected into the default (agentic) participant. */
+import type { ISessionManager } from '../../services/serviceTypes.js';
+
 export interface IDefaultParticipantServices {
   sendChatRequest(
     messages: readonly IChatMessage[],
@@ -88,6 +90,8 @@ export interface IDefaultParticipantServices {
   compactSession?(sessionId: string, summaryText: string): void;
   getExcludedContextIds?(): ReadonlySet<string>;
   getWorkspaceDigest?(): Promise<string | undefined>;
+  /** Session manager for stale session detection during tool invocations. */
+  sessionManager?: ISessionManager;
 }
 
 /** Services injected into the @workspace participant. */

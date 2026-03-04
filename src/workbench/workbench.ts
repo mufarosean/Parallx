@@ -235,6 +235,9 @@ export class Workbench extends Layout {
   // Indexing pipeline (M10) — tracked for cancel/dispose on workspace switch
   private _indexingPipeline: import('../services/indexingPipeline.js').IndexingPipelineService | null = null;
 
+  /** Disposable store for RAG services created by registerIndexingServices (M14 Phase 4). */
+  private _ragServiceStore = new DisposableStore();
+
   // Configuration (M2 Capability 4)
   private _configService!: ConfigurationService;
   private _configRegistry!: ConfigurationRegistry;
@@ -1839,6 +1842,12 @@ export class Workbench extends Layout {
     if (this._databaseService.isOpen && this._services.has(IChatService)) {
       const chatService = this._services.get<IChatService>(IChatService);
       chatService.setDatabase(this._databaseService as any, this._workspace?.id ?? '');
+
+      // Late-bind session manager for stale session detection (M14 Phase 2)
+      if (this._services.has(ISessionManager)) {
+        chatService.setSessionManager(this._services.get(ISessionManager));
+      }
+
       chatService.restoreSessions().catch(() => { /* best-effort */ });
     }
 
@@ -2008,18 +2017,42 @@ export class Workbench extends Layout {
    * Cancels and disposes any previously running pipeline first.
    */
   private _startIndexingPipeline(): void {
-    // Dispose the old pipeline (cancels in-flight embeddings)
+    // Dispose the old pipeline AND all RAG services (M14 Phase 4 — prevent leaks)
     if (this._indexingPipeline) {
       this._indexingPipeline.cancel();
       this._indexingPipeline.dispose();
       this._indexingPipeline = null;
     }
+    this._ragServiceStore.dispose();
+    this._ragServiceStore = new DisposableStore();
 
     if (!this._databaseService.isOpen) { return; }
 
-    const { indexingPipeline } = registerIndexingServices(this._services);
-    this._indexingPipeline = indexingPipeline;
-    indexingPipeline.start().catch((err) => {
+    // Guard: skip pipeline start if session is ending (M14 Phase 4.3)
+    if (this._services.has(ISessionManager)) {
+      const ctx = this._services.get(ISessionManager).activeContext;
+      if (ctx && !ctx.isActive()) {
+        console.warn('[Workbench] Skipping pipeline start — session is ending');
+        return;
+      }
+    }
+
+    const result = registerIndexingServices(this._services);
+
+    // Track all new services for disposal on next restart
+    this._ragServiceStore.add(result.embeddingService);
+    this._ragServiceStore.add(result.chunkingService);
+    this._ragServiceStore.add(result.vectorStoreService);
+    this._ragServiceStore.add(result.retrievalService);
+    this._ragServiceStore.add(result.memoryService);
+    this._ragServiceStore.add(result.relatedContentService);
+    this._ragServiceStore.add(result.autoTaggingService);
+    this._ragServiceStore.add(result.proactiveSuggestionsService);
+
+    this._indexingPipeline = result.indexingPipeline;
+    this._ragServiceStore.add(result.indexingPipeline);
+
+    result.indexingPipeline.start().catch((err) => {
       console.error('[Workbench] Indexing pipeline failed to start:', err);
     });
   }

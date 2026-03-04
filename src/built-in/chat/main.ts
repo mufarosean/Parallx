@@ -152,10 +152,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../services/serviceTypes.js').IProactiveSuggestionsService>(IProactiveSuggestionsService)
     : undefined;
 
-  // Session context (M14) — carries workspace/session identity for diagnostics
-  const sessionContext = api.services.has(ISessionManager)
-    ? api.services.get<import('../../services/serviceTypes.js').ISessionManager>(ISessionManager).activeContext
+  // Session manager (M14) — carries workspace/session identity for diagnostics
+  const sessionManager = api.services.has(ISessionManager)
+    ? api.services.get<import('../../services/serviceTypes.js').ISessionManager>(ISessionManager)
     : undefined;
+  const sessionContext = sessionManager?.activeContext;
 
   // ── 1b. Build file system accessor for built-in tools ──
 
@@ -254,6 +255,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     getActiveWidget: () => _activeWidget,
     openPage: (pageId: string) => api.editors.openEditor({ typeId: 'canvas', title: 'Page', instanceId: pageId }),
     sessionContext: sessionContext ?? undefined,
+    sessionManager: sessionManager ?? undefined,
   });
 
   // ── 3a. Register the default chat participant with IChatAgentService ──
