@@ -6,8 +6,10 @@ import {
   getExtension,
   extToLanguage,
   INDEXABLE_EXTENSIONS,
+  RICH_DOCUMENT_EXTENSIONS,
   SKIP_DIRS,
   MAX_FILE_SIZE,
+  MAX_RICH_DOC_SIZE,
 } from '../../src/services/indexingPipeline.js';
 import type { IndexingProgress } from '../../src/services/indexingPipeline.js';
 import { FileType } from '../../src/platform/fileTypes.js';
@@ -47,6 +49,10 @@ function createMockFileService() {
     openFolderDialog: vi.fn(),
     saveFileDialog: vi.fn(),
     showMessageBox: vi.fn(),
+    // Rich document extraction
+    readDocumentText: vi.fn().mockResolvedValue({ text: '', format: 'unknown', metadata: {} }),
+    isRichDocument: vi.fn().mockReturnValue(false),
+    richDocumentExtensions: new Set(['.pdf', '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers', '.csv', '.tsv', '.docx']),
   };
 }
 
@@ -596,5 +602,180 @@ describe('SKIP_DIRS', () => {
     expect(SKIP_DIRS.has('node_modules')).toBe(true);
     expect(SKIP_DIRS.has('.git')).toBe(true);
     expect(SKIP_DIRS.has('.parallx')).toBe(true);
+  });
+});
+
+describe('RICH_DOCUMENT_EXTENSIONS', () => {
+  it('includes PDF', () => {
+    expect(RICH_DOCUMENT_EXTENSIONS.has('.pdf')).toBe(true);
+  });
+
+  it('includes Excel variants', () => {
+    expect(RICH_DOCUMENT_EXTENSIONS.has('.xlsx')).toBe(true);
+    expect(RICH_DOCUMENT_EXTENSIONS.has('.xls')).toBe(true);
+    expect(RICH_DOCUMENT_EXTENSIONS.has('.xlsm')).toBe(true);
+    expect(RICH_DOCUMENT_EXTENSIONS.has('.xlsb')).toBe(true);
+    expect(RICH_DOCUMENT_EXTENSIONS.has('.ods')).toBe(true);
+    expect(RICH_DOCUMENT_EXTENSIONS.has('.numbers')).toBe(true);
+  });
+
+  it('includes Word', () => {
+    expect(RICH_DOCUMENT_EXTENSIONS.has('.docx')).toBe(true);
+  });
+
+  it('does not include text extensions', () => {
+    expect(RICH_DOCUMENT_EXTENSIONS.has('.md')).toBe(false);
+    expect(RICH_DOCUMENT_EXTENSIONS.has('.ts')).toBe(false);
+    expect(RICH_DOCUMENT_EXTENSIONS.has('.txt')).toBe(false);
+  });
+});
+
+describe('MAX_RICH_DOC_SIZE', () => {
+  it('is 10 MB', () => {
+    expect(MAX_RICH_DOC_SIZE).toBe(10 * 1024 * 1024);
+  });
+
+  it('is larger than MAX_FILE_SIZE', () => {
+    expect(MAX_RICH_DOC_SIZE).toBeGreaterThan(MAX_FILE_SIZE);
+  });
+});
+
+describe('IndexingPipelineService — rich document indexing', () => {
+  let db: ReturnType<typeof createMockDb>;
+  let fileService: ReturnType<typeof createMockFileService>;
+  let embeddingService: ReturnType<typeof createMockEmbeddingService>;
+  let chunkingService: ReturnType<typeof createMockChunkingService>;
+  let vectorStore: ReturnType<typeof createMockVectorStore>;
+  let workspaceService: ReturnType<typeof createMockWorkspaceService>;
+  let pipeline: IndexingPipelineService;
+
+  beforeEach(() => {
+    db = createMockDb();
+    fileService = createMockFileService();
+    embeddingService = createMockEmbeddingService();
+    chunkingService = createMockChunkingService();
+    vectorStore = createMockVectorStore();
+    workspaceService = createMockWorkspaceService();
+
+    pipeline = new IndexingPipelineService(
+      db as any,
+      fileService as any,
+      embeddingService as any,
+      chunkingService as any,
+      vectorStore as any,
+      workspaceService as any,
+    );
+  });
+
+  afterEach(() => {
+    pipeline.dispose();
+  });
+
+  it('collects PDF files during directory walk', async () => {
+    // Setup: root dir has a PDF file
+    fileService.readdir.mockResolvedValueOnce([
+      { name: 'document.pdf', type: FileType.File, size: 500_000, mtime: 1000, uri: URI.file('/workspace/document.pdf') },
+    ]);
+
+    // Mock pages query
+    db.all.mockResolvedValueOnce([]);
+
+    // Mock for the PDF extraction
+    fileService.readDocumentText.mockResolvedValueOnce({
+      text: 'Hello from PDF content',
+      format: 'pdf',
+      metadata: { pageCount: 3 },
+    });
+
+    await pipeline.start();
+
+    // The readDocumentText should have been called for the PDF
+    expect(fileService.readDocumentText).toHaveBeenCalled();
+  });
+
+  it('collects Excel files during directory walk', async () => {
+    fileService.readdir.mockResolvedValueOnce([
+      { name: 'data.xlsx', type: FileType.File, size: 200_000, mtime: 1000, uri: URI.file('/workspace/data.xlsx') },
+    ]);
+
+    db.all.mockResolvedValueOnce([]);
+
+    fileService.readDocumentText.mockResolvedValueOnce({
+      text: 'col1,col2\nval1,val2',
+      format: 'spreadsheet',
+      metadata: { sheetCount: 1 },
+    });
+
+    await pipeline.start();
+
+    expect(fileService.readDocumentText).toHaveBeenCalled();
+  });
+
+  it('skips rich documents larger than MAX_RICH_DOC_SIZE', async () => {
+    fileService.readdir.mockResolvedValueOnce([
+      { name: 'huge.pdf', type: FileType.File, size: MAX_RICH_DOC_SIZE + 1, mtime: 1000, uri: URI.file('/workspace/huge.pdf') },
+    ]);
+
+    db.all.mockResolvedValueOnce([]);
+
+    await pipeline.start();
+
+    // Should not attempt to extract
+    expect(fileService.readDocumentText).not.toHaveBeenCalled();
+  });
+
+  it('handles extraction errors gracefully', async () => {
+    fileService.readdir.mockResolvedValueOnce([
+      { name: 'corrupted.pdf', type: FileType.File, size: 1000, mtime: 1000, uri: URI.file('/workspace/corrupted.pdf') },
+    ]);
+
+    db.all.mockResolvedValueOnce([]);
+
+    // Simulate extraction failure
+    fileService.readDocumentText.mockRejectedValueOnce(new Error('Corrupted PDF'));
+
+    // Should not throw
+    await expect(pipeline.start()).resolves.not.toThrow();
+  });
+
+  it('uses readDocumentText for .docx files', async () => {
+    fileService.readdir.mockResolvedValueOnce([
+      { name: 'report.docx', type: FileType.File, size: 50_000, mtime: 1000, uri: URI.file('/workspace/report.docx') },
+    ]);
+
+    db.all.mockResolvedValueOnce([]);
+
+    fileService.readDocumentText.mockResolvedValueOnce({
+      text: 'Word document content here',
+      format: 'docx',
+      metadata: {},
+    });
+
+    await pipeline.start();
+
+    expect(fileService.readDocumentText).toHaveBeenCalledWith(
+      expect.objectContaining({ fsPath: expect.stringContaining('report.docx') }),
+    );
+  });
+
+  it('uses readFile (not readDocumentText) for plain text files', async () => {
+    fileService.readdir.mockResolvedValueOnce([
+      { name: 'readme.md', type: FileType.File, size: 1000, mtime: 1000, uri: URI.file('/workspace/readme.md') },
+    ]);
+
+    db.all.mockResolvedValueOnce([]);
+
+    fileService.readFile.mockResolvedValueOnce({
+      content: '# Hello World',
+      encoding: 'utf-8',
+      size: 1000,
+      mtime: 1000,
+    });
+
+    await pipeline.start();
+
+    // readFile should be used, not readDocumentText
+    expect(fileService.readFile).toHaveBeenCalled();
+    expect(fileService.readDocumentText).not.toHaveBeenCalled();
   });
 });

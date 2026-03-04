@@ -811,6 +811,27 @@ export interface IFileService extends IDisposable {
 
   /** Show a native OS message box. */
   showMessageBox(options: import('../platform/fileTypes.js').MessageBoxOptions): Promise<import('../platform/fileTypes.js').MessageBoxResult>;
+
+  // ── Rich Document Extraction ──
+
+  /**
+   * Extract plain text from a rich document file (PDF, Excel, Word).
+   * Returns the extracted text, the format identifier, and optional metadata.
+   * Throws if the file is not a supported rich document format.
+   */
+  readDocumentText(uri: import('../platform/uri.js').URI): Promise<{ text: string; format: string; metadata?: Record<string, unknown> }>;
+
+  /**
+   * Check if a file extension represents a supported rich document format.
+   * @param ext — Lowercase extension including the dot (e.g. '.pdf')
+   */
+  isRichDocument(ext: string): boolean;
+
+  /**
+   * Set of file extensions for rich document formats that can be extracted.
+   * Each extension is lowercase with leading dot (e.g. '.pdf', '.docx').
+   */
+  readonly richDocumentExtensions: ReadonlySet<string>;
 }
 
 export const IFileService = createServiceIdentifier<IFileService>('IFileService');

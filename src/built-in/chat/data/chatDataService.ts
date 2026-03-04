@@ -1021,36 +1021,46 @@ export class ChatDataService {
       } catch { /* best-effort */ }
     }
 
-    // 2. Workspace file tree (depth 3, max 80 entries)
+    // 2. Workspace file tree (depth 3, max 80 entries) — breadth-first
     if (this._d.fsAccessor) {
       try {
         const treeLines: string[] = [];
         const MAX_TREE_ENTRIES = 80;
+        const MAX_DEPTH = 3;
         let treeCount = 0;
         const fsAccessor = this._d.fsAccessor;
 
-        async function walkTree(dir: string, depth: number, prefix: string): Promise<void> {
-          if (depth > 3 || treeCount >= MAX_TREE_ENTRIES) return;
-          const entries = await fsAccessor.readdir(dir);
+        // Breadth-first queue: each item is { dir, depth, prefix }
+        type QueueItem = { dir: string; depth: number; prefix: string };
+        const queue: QueueItem[] = [{ dir: '.', depth: 0, prefix: '  ' }];
+
+        while (queue.length > 0 && treeCount < MAX_TREE_ENTRIES) {
+          const { dir, depth, prefix } = queue.shift()!;
+          if (depth > MAX_DEPTH) continue;
+
+          let entries;
+          try {
+            entries = await fsAccessor.readdir(dir);
+          } catch { continue; }
+
           const sorted = [...entries].sort((a, b) => {
             if (a.type === 'directory' && b.type !== 'directory') return -1;
             if (a.type !== 'directory' && b.type === 'directory') return 1;
             return a.name.localeCompare(b.name);
           });
+
           for (const entry of sorted) {
             if (treeCount >= MAX_TREE_ENTRIES) break;
             if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === '__pycache__' || entry.name === '.git') continue;
             const icon = entry.type === 'directory' ? '📁' : '📄';
             treeLines.push(`${prefix}${icon} ${entry.name}`);
             treeCount++;
-            if (entry.type === 'directory') {
+            if (entry.type === 'directory' && depth + 1 <= MAX_DEPTH) {
               const childPath = dir === '.' ? entry.name : `${dir}/${entry.name}`;
-              await walkTree(childPath, depth + 1, prefix + '  ');
+              queue.push({ dir: childPath, depth: depth + 1, prefix: prefix + '  ' });
             }
           }
         }
-
-        await walkTree('.', 0, '  ');
         if (treeLines.length > 0) {
           const block = `WORKSPACE FILES:\n${treeLines.join('\n')}`;
           if (totalChars + block.length < MAX_DIGEST_CHARS) {

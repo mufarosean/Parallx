@@ -8,6 +8,7 @@ const fs = require('fs/promises');
 const fsSync = require('fs');
 const AdmZip = require('adm-zip');
 const { databaseManager } = require('./database.cjs');
+const { extractText, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
@@ -744,6 +745,34 @@ ipcMain.handle('dialog:showMessageBox', async (_event, options) => {
     checkboxChecked: options.checkboxChecked || false,
   });
   return { response: result.response, checkboxChecked: result.checkboxChecked };
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Document Extraction IPC Handlers
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Extracts plain text from rich document formats (PDF, Excel, Word) for the
+// indexing pipeline. Heavy extraction runs in the main process which has full
+// Node.js access to the parsing libraries.
+
+// ── document:extractText ──
+ipcMain.handle('document:extractText', async (_event, filePath) => {
+  try {
+    const result = await extractText(filePath);
+    return { text: result.text, format: result.format, metadata: result.metadata };
+  } catch (err) {
+    return { error: { code: 'EXTRACTION_FAILED', message: err.message || String(err), path: filePath } };
+  }
+});
+
+// ── document:isRichDocument ──
+ipcMain.handle('document:isRichDocument', (_event, ext) => {
+  return isRichDocument(ext);
+});
+
+// ── document:richExtensions ──
+ipcMain.handle('document:richExtensions', () => {
+  return [...RICH_DOCUMENT_EXTENSIONS];
 });
 
 // ════════════════════════════════════════════════════════════════════════════════

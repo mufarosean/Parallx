@@ -60,8 +60,22 @@ const INDEXABLE_EXTENSIONS = new Set([
   '.dockerfile', '.csv', '.mdx', '.svelte', '.vue',
 ]);
 
+/**
+ * File extensions for rich/binary document formats that require extraction.
+ * These are handled via IFileService.readDocumentText() which calls the
+ * Electron main process extractor (pdf-parse, xlsx, mammoth).
+ */
+const RICH_DOCUMENT_EXTENSIONS = new Set([
+  '.pdf',
+  '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
+  '.docx',
+]);
+
 /** Max file size to index (256 KB). Larger files are skipped. */
 const MAX_FILE_SIZE = 256 * 1024;
+
+/** Max file size for rich documents (10 MB). PDFs/Office docs can be larger. */
+const MAX_RICH_DOC_SIZE = 10 * 1024 * 1024;
 
 /** Yield back to the event loop every N directory entries while walking. */
 const DIRECTORY_WALK_YIELD_EVERY = 200;
@@ -487,17 +501,28 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
   /**
    * Index a single workspace file. Returns true if actually indexed.
+   * Handles both plain text files and rich documents (PDF, Excel, Word).
    */
   private async _indexSingleFile(filePath: string): Promise<boolean> {
     const uri = URI.file(filePath);
+    const ext = getExtension(filePath);
+    const isRichDoc = ext !== null && RICH_DOCUMENT_EXTENSIONS.has(ext);
 
-    // Read file content
+    // Read file content — route through extraction for rich documents
     let content: string;
     try {
-      const fileContent = await this._fileService.readFile(uri);
-      if (fileContent.size > MAX_FILE_SIZE) { return false; }
-      content = fileContent.content;
-    } catch {
+      if (isRichDoc) {
+        const result = await this._fileService.readDocumentText(uri);
+        content = result.text;
+      } else {
+        const fileContent = await this._fileService.readFile(uri);
+        if (fileContent.size > MAX_FILE_SIZE) { return false; }
+        content = fileContent.content;
+      }
+    } catch (err) {
+      if (isRichDoc) {
+        console.warn('[IndexingPipeline] Document extraction failed for "%s": %s', filePath, err);
+      }
       return false; // File may have been deleted between walk and read
     }
 
@@ -509,8 +534,8 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     if (storedHash === contentHash) { return false; }
 
     // Detect language from extension
-    const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
-    const language = extToLanguage(ext);
+    const rawExt = filePath.split('.').pop()?.toLowerCase() ?? '';
+    const language = extToLanguage(rawExt);
 
     // Chunk
     const chunks = await this._chunkingService.chunkFile(filePath, content, language);
@@ -583,6 +608,8 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
         }
         const ext = getExtension(entry.name);
         if (ext && INDEXABLE_EXTENSIONS.has(ext) && entry.size <= MAX_FILE_SIZE) {
+          results.push({ path: entry.uri.fsPath, mtime: entry.mtime });
+        } else if (ext && RICH_DOCUMENT_EXTENSIONS.has(ext) && entry.size <= MAX_RICH_DOC_SIZE) {
           results.push({ path: entry.uri.fsPath, mtime: entry.mtime });
         }
       }
@@ -826,4 +853,4 @@ function extToLanguage(ext: string): string | undefined {
   return map[ext];
 }
 
-export { getExtension, extToLanguage, INDEXABLE_EXTENSIONS, SKIP_DIRS, MAX_FILE_SIZE };
+export { getExtension, extToLanguage, INDEXABLE_EXTENSIONS, RICH_DOCUMENT_EXTENSIONS, SKIP_DIRS, MAX_FILE_SIZE, MAX_RICH_DOC_SIZE };

@@ -197,6 +197,21 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   },
 
   // ══════════════════════════════════════════════════════════════════════════
+  // Document Extraction API
+  // ══════════════════════════════════════════════════════════════════════════
+
+  document: {
+    /** Extract plain text from a rich document (PDF, Excel, Word). Returns { text, format, metadata } or { error }. */
+    extractText: (filePath) => ipcRenderer.invoke('document:extractText', filePath),
+
+    /** Check if a file extension is a supported rich document format. Returns boolean. */
+    isRichDocument: (ext) => ipcRenderer.invoke('document:isRichDocument', ext),
+
+    /** Get array of supported rich document extensions. Returns string[]. */
+    richExtensions: () => ipcRenderer.invoke('document:richExtensions'),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Terminal API (M11 Phase 4 — Task 4.1)
   // ══════════════════════════════════════════════════════════════════════════
 

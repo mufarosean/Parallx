@@ -344,6 +344,57 @@ export class FileService extends Disposable implements IFileService {
     return dlg.showMessageBox(options);
   }
 
+  // ── Rich Document Extraction ───────────────────────────────────────────
+
+  /**
+   * Set of file extensions that the document extractor supports.
+   * Populated lazily from the Electron bridge on first access.
+   */
+  private _richDocExtensions: ReadonlySet<string> | null = null;
+
+  private _ensureRichDocExtensions(): ReadonlySet<string> {
+    if (!this._richDocExtensions) {
+      // These match RICH_DOCUMENT_EXTENSIONS in electron/documentExtractor.cjs.
+      // Kept in sync here as a static set to avoid async overhead on every check.
+      this._richDocExtensions = new Set([
+        '.pdf',
+        '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
+        '.csv', '.tsv',
+        '.docx',
+      ]);
+    }
+    return this._richDocExtensions;
+  }
+
+  get richDocumentExtensions(): ReadonlySet<string> {
+    return this._ensureRichDocExtensions();
+  }
+
+  isRichDocument(ext: string): boolean {
+    return this._ensureRichDocExtensions().has(ext);
+  }
+
+  async readDocumentText(uri: URI): Promise<{ text: string; format: string; metadata?: Record<string, unknown> }> {
+    this._assertBoundary(uri, 'readDocumentText');
+    const api = (window as any).parallxElectron;
+    if (!api?.document?.extractText) {
+      throw new FileOperationError(
+        'Document extraction not available — Electron bridge not detected',
+        FileOperationErrorCode.FILE_UNAVAILABLE,
+        uri,
+      );
+    }
+    const result = await api.document.extractText(uri.fsPath);
+    if (result?.error) {
+      throw new FileOperationError(
+        result.error.message || 'Document extraction failed',
+        result.error.code || FileOperationErrorCode.FILE_UNKNOWN,
+        uri,
+      );
+    }
+    return { text: result.text, format: result.format, metadata: result.metadata };
+  }
+
   private _assertBoundary(uri: URI, operation: string): void {
     this._boundaryChecker?.(uri, operation);
   }
