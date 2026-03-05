@@ -645,8 +645,16 @@ export class BlockHandlesController {
     const rect = dom.getBoundingClientRect();
     const hw = BlockHandlesController._HANDLE_WIDTH;
 
-    let top = rect.top + (lineHeight - 24) / 2 + paddingTop;
-    let left = rect.left - hw;
+    // Convert viewport-relative getBoundingClientRect() to container-relative
+    // coordinates for position:absolute. The handles are children of
+    // editorContainer (.canvas-editor-wrapper, position:relative, overflow-y:auto).
+    // We must subtract the container's viewport offset and add its scrollTop
+    // so that the handle stays aligned with the block even when scrolled.
+    const ec = this._host.editorContainer!;
+    const ecRect = ec.getBoundingClientRect();
+
+    let top = (rect.top - ecRect.top) + ec.scrollTop + (lineHeight - 24) / 2 + paddingTop;
+    let left = (rect.left - ecRect.left) - hw;
 
     // Li markers — shift left to clear the bullet/number
     if (dom.matches('ul:not([data-type=taskList]) li, ol li')) {
