@@ -572,6 +572,14 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     const isRagReady = services.isRAGAvailable?.() ?? false;
     const usePlanner = shouldUsePlanner(isRagReady, hasActiveSlashCommand, !!services.planAndRetrieve);
 
+    // Build a slim digest for the planner — file/page NAMES only, no content
+    // summaries. The full digest with summaries (~12K chars) goes in the main
+    // system prompt; the planner only needs names to generate search queries.
+    // Summaries follow the " — <text>" pattern after each entry.
+    const plannerDigest = workspaceDigest
+      ? workspaceDigest.replace(/ — [^\n]+/g, '')
+      : undefined;
+
     if (usePlanner) {
       // ── M12 Planned retrieval path ──
       // The planner is the AI's "thinking layer": it reads the user's message,
@@ -620,7 +628,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           }
         }
 
-        const ragResult = await services.planAndRetrieve!(userText, recentHistory, workspaceDigest);
+        const ragResult = await services.planAndRetrieve!(userText, recentHistory, plannerDigest);
 
         if (ragResult) {
           retrievalPlan = ragResult.plan;
