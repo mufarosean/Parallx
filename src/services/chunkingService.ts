@@ -26,6 +26,13 @@ const MAX_CHUNK_CHARS = 2048;
 /** Minimum chunk size — don't create tiny standalone chunks. */
 const MIN_CHUNK_CHARS = 100;
 
+/** Overlap between consecutive file chunks (~50 tokens at 4 chars/token).
+ * Carries the tail of one chunk into the head of the next to preserve
+ * context that spans chunk boundaries (M10 DR-8 recommendation).
+ * Only applied to file chunks, not canvas page blocks (which have natural boundaries).
+ */
+const OVERLAP_CHARS = 200;
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /** A single chunk ready for embedding. */
@@ -177,7 +184,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
     let currentHeading = '';
     let buffer = '';
 
-    const flush = async (): Promise<void> => {
+    const flush = async (overlap: boolean = false): Promise<void> => {
       const trimmed = buffer.trim();
       if (!trimmed) {
         buffer = '';
@@ -202,25 +209,32 @@ export class ChunkingService extends Disposable implements IChunkingService {
         contextPrefix: prefix,
         contentHash: await hashText(trimmed),
       });
-      buffer = '';
+
+      // Carry tail of flushed text into next chunk for overlap
+      // Only when flushing due to size limit, not at heading boundaries
+      if (overlap && trimmed.length > OVERLAP_CHARS) {
+        buffer = trimmed.slice(-OVERLAP_CHARS);
+      } else {
+        buffer = '';
+      }
     };
 
     for (const line of lines) {
       // Detect markdown headings (# through ###)
       const headingMatch = line.match(/^(#{1,3})\s+(.+)/);
       if (headingMatch) {
-        await flush();
+        await flush(false); // heading = clean break, no overlap
         currentHeading = headingMatch[2].trim();
       }
 
       buffer += (buffer ? '\n' : '') + line;
 
       if (buffer.length > MAX_CHUNK_CHARS) {
-        await flush();
+        await flush(true); // size limit = carry overlap
       }
     }
 
-    await flush();
+    await flush(false); // final flush — no overlap needed
     return chunks;
   }
 
@@ -235,7 +249,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
     const chunks: Chunk[] = [];
     let buffer = '';
 
-    const flush = async (): Promise<void> => {
+    const flush = async (overlap: boolean = false): Promise<void> => {
       const trimmed = buffer.trim();
       if (!trimmed) {
         buffer = '';
@@ -251,7 +265,13 @@ export class ChunkingService extends Disposable implements IChunkingService {
         contextPrefix: prefix,
         contentHash: await hashText(trimmed),
       });
-      buffer = '';
+
+      // Carry tail of flushed text into next chunk for overlap
+      if (overlap && trimmed.length > OVERLAP_CHARS) {
+        buffer = trimmed.slice(-OVERLAP_CHARS);
+      } else {
+        buffer = '';
+      }
     };
 
     for (const line of lines) {
@@ -262,23 +282,30 @@ export class ChunkingService extends Disposable implements IChunkingService {
         const lastBlank = buffer.lastIndexOf('\n\n');
         if (lastBlank > MIN_CHUNK_CHARS) {
           const toFlush = buffer.slice(0, lastBlank);
-          buffer = buffer.slice(lastBlank + 2);
+          const remainder = buffer.slice(lastBlank + 2);
           const prefix = buildContextPrefix(filePath, undefined, language);
+          const flushedText = toFlush.trim();
           chunks.push({
             sourceType: 'file_chunk',
             sourceId: filePath,
             chunkIndex: chunks.length,
-            text: toFlush.trim(),
+            text: flushedText,
             contextPrefix: prefix,
-            contentHash: await hashText(toFlush.trim()),
+            contentHash: await hashText(flushedText),
           });
+          // Carry overlap from flushed text into the remainder
+          if (flushedText.length > OVERLAP_CHARS) {
+            buffer = flushedText.slice(-OVERLAP_CHARS) + '\n' + remainder;
+          } else {
+            buffer = remainder;
+          }
         } else {
-          await flush();
+          await flush(true); // size limit = carry overlap
         }
       }
     }
 
-    await flush();
+    await flush(false); // final flush — no overlap needed
     return chunks;
   }
 

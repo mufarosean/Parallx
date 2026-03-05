@@ -302,4 +302,46 @@ describe('ChunkingService', () => {
       expect(hash1).not.toBe(hash2);
     });
   });
+
+  // ── Chunk Overlap ──
+
+  describe('chunk overlap for files', () => {
+    it('carries overlap text between consecutive plain text chunks', async () => {
+      // Build content that exceeds MAX_CHUNK_CHARS (2048) to force a split
+      const line = 'ABCDEFGHIJ'.repeat(10) + '\n'; // 101 chars per line
+      const content = line.repeat(25); // ~2525 chars → should produce 2 chunks
+
+      const chunks = await service.chunkFile('test.txt', content);
+      expect(chunks.length).toBeGreaterThanOrEqual(2);
+
+      // The tail of chunk 0 should appear at the start of chunk 1 (overlap)
+      const tail = chunks[0].text.slice(-100);
+      expect(chunks[1].text).toContain(tail);
+    });
+
+    it('carries overlap text between consecutive markdown chunks', async () => {
+      // Build a long section under one heading to trigger size-based flush
+      const longLine = 'Lorem ipsum dolor sit amet. '.repeat(20) + '\n'; // ~560 chars
+      const content = '# Section\n' + longLine.repeat(6); // ~3360 chars under one heading
+
+      const chunks = await service.chunkFile('test.md', content, 'markdown');
+      expect(chunks.length).toBeGreaterThanOrEqual(2);
+
+      // The tail of chunk 0 should appear at the start of chunk 1 (overlap)
+      const tail = chunks[0].text.slice(-100);
+      expect(chunks[1].text).toContain(tail);
+    });
+
+    it('does NOT carry overlap at heading boundaries in markdown', async () => {
+      // Two sections each fitting in a single chunk — heading = clean break
+      const sectionContent = 'Content line.\n'.repeat(10);
+      const content = `# Section One\n${sectionContent}\n# Section Two\n${sectionContent}`;
+
+      const chunks = await service.chunkFile('test.md', content, 'markdown');
+      expect(chunks.length).toBe(2);
+
+      // The start of chunk 1 should be the heading, not overlap from chunk 0
+      expect(chunks[1].text).toMatch(/^# Section Two/);
+    });
+  });
 });

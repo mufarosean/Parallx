@@ -25,8 +25,11 @@ import type { Chunk } from './chunkingService.js';
 /** Smoothing constant for Reciprocal Rank Fusion (Cormack et al., 2009). */
 const RRF_K = 60;
 
-/** Default number of candidates to retrieve from each index before fusion. */
-const DEFAULT_CANDIDATE_K = 20;
+/** Default number of candidates to retrieve from each index before fusion.
+ * Increased from 20 to 40 to provide a larger candidate pool for RRF fusion
+ * and LLM re-ranking (Anthropic recommends top-150 → rerank → top-20).
+ */
+const DEFAULT_CANDIDATE_K = 40;
 
 /** Default final top-K after fusion. */
 const DEFAULT_TOP_K = 10;
@@ -491,8 +494,41 @@ function float32ArrayToBuffer(embedding: number[]): Uint8Array {
 }
 
 /**
+ * Common English stopwords that add noise to keyword search.
+ * These appear in nearly every document and dilute BM25 relevance.
+ */
+const FTS5_STOPWORDS = new Set([
+  // articles, prepositions, conjunctions
+  'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+  'should', 'may', 'might', 'can', 'shall', 'to', 'of', 'in', 'for',
+  'on', 'with', 'at', 'by', 'from', 'as', 'into', 'about', 'between',
+  'through', 'after', 'before', 'up', 'down', 'out', 'off', 'over',
+  'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when',
+  'where', 'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more',
+  'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own',
+  'same', 'so', 'than', 'too', 'very', 'just', 'because', 'but', 'and',
+  'or', 'if', 'while', 'what', 'which', 'who', 'whom', 'this', 'that',
+  'these', 'those', 'am', 'it', 'its',
+  // pronouns
+  'i', 'me', 'my', 'we', 'our', 'you', 'your', 'he', 'him', 'his',
+  'she', 'her', 'they', 'them', 'their',
+  // meta/structural words common in documents
+  'page', 'pages', 'number', 'numbers', 'chapter', 'section',
+  'figure', 'table', 'example', 'see', 'also', 'note', 'like',
+]);
+
+/**
  * Sanitize a user query for FTS5 MATCH syntax.
- * Wraps terms in quotes to avoid FTS5 syntax errors.
+ *
+ * Uses AND semantics (implicit in FTS5) instead of OR so that multi-term queries
+ * match only documents containing ALL content terms, dramatically reducing noise.
+ * Stopwords are filtered to prevent common words from diluting BM25 ranking.
+ *
+ * FTS5 treats space-separated quoted terms as implicit AND:
+ *   "FSI" "Shona" "vocabulary" → matches docs containing ALL three terms
+ *
+ * Reference: https://www.sqlite.org/fts5.html §3
  */
 function sanitizeFts5Query(query: string): string {
   // Remove FTS5 special chars, wrap individual terms in quotes
@@ -502,12 +538,25 @@ function sanitizeFts5Query(query: string): string {
 
   if (!cleaned) { return ''; }
 
-  // Split into words and wrap each in quotes for exact matching
-  const terms = cleaned.split(/\s+/).filter(Boolean);
-  if (terms.length === 0) { return ''; }
+  // Split into words
+  const allTerms = cleaned.split(/\s+/).filter(Boolean);
+  if (allTerms.length === 0) { return ''; }
 
-  // Use OR between terms for broader recall
-  return terms.map((t) => `"${t}"`).join(' OR ');
+  // Filter out stopwords — keep only content-bearing terms
+  const contentTerms = allTerms.filter(
+    (t) => !FTS5_STOPWORDS.has(t.toLowerCase()),
+  );
+
+  // If ALL terms were stopwords, keep the originals to avoid empty query
+  const terms = contentTerms.length > 0 ? contentTerms : allTerms;
+
+  // Single term → just wrap in quotes
+  if (terms.length === 1) {
+    return `"${terms[0]}"`;
+  }
+
+  // Multiple terms → implicit AND (FTS5 default: space-separated = AND)
+  return terms.map((t) => `"${t}"`).join(' ');
 }
 
 /**

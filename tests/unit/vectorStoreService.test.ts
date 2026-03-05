@@ -73,9 +73,28 @@ describe('sanitizeFts5Query()', () => {
     expect(result).toBe('"hello"');
   });
 
-  it('joins multiple terms with OR', () => {
+  it('joins multiple terms with implicit AND (space-separated)', () => {
     const result = sanitizeFts5Query('hello world');
-    expect(result).toBe('"hello" OR "world"');
+    // FTS5 treats space-separated quoted terms as AND
+    expect(result).toBe('"hello" "world"');
+  });
+
+  it('filters stopwords from multi-term queries', () => {
+    const result = sanitizeFts5Query('what is the meaning of life');
+    // "what", "is", "the", "of" are stopwords → only "meaning" and "life"
+    expect(result).toBe('"meaning" "life"');
+  });
+
+  it('preserves all terms when every term is a stopword', () => {
+    const result = sanitizeFts5Query('is the');
+    // Both are stopwords → keep originals to avoid empty query
+    expect(result).toBe('"is" "the"');
+  });
+
+  it('filters document-structural stopwords like page/chapter', () => {
+    const result = sanitizeFts5Query('FSI Shona vocabulary page numbers');
+    // "page" and "numbers" are stopwords → "FSI", "Shona", "vocabulary"
+    expect(result).toBe('"FSI" "Shona" "vocabulary"');
   });
 
   it('strips FTS5 special characters', () => {

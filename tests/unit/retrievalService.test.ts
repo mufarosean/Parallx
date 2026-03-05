@@ -51,6 +51,36 @@ function makeResult(overrides: Partial<SearchResult> = {}): SearchResult {
   };
 }
 
+// ── Mock LLM service for re-ranking tests ──
+
+function createMockLanguageModelsService(scoreMap: Record<string, number> = {}) {
+  const defaultScore = 7;
+  return {
+    getActiveModel: vi.fn(() => 'qwen2.5:32b'),
+    getModels: vi.fn(async () => []),
+    getProviders: vi.fn(() => []),
+    setActiveModel: vi.fn(),
+    registerProvider: vi.fn(() => ({ dispose: vi.fn() })),
+    checkStatus: vi.fn(async () => ({ available: true })),
+    onDidChangeProviders: vi.fn(() => ({ dispose: vi.fn() })) as any,
+    onDidChangeModels: vi.fn(() => ({ dispose: vi.fn() })) as any,
+    sendChatRequest: vi.fn(function (messages: any[]) {
+      // Extract query and passage from the user message to look up score
+      const userContent = messages[1]?.content ?? '';
+      const passageMatch = userContent.match(/Passage: (.{0,30})/);
+      const key = passageMatch?.[1]?.trim() ?? '';
+      const score = scoreMap[key] ?? defaultScore;
+      // Return an async iterable
+      return {
+        [Symbol.asyncIterator]: async function* () {
+          yield { content: JSON.stringify({ score }), done: true };
+        },
+      };
+    }),
+    dispose: vi.fn(),
+  };
+}
+
 // ── Tests ──
 
 describe('RetrievalService', () => {
@@ -241,6 +271,87 @@ describe('RetrievalService', () => {
 
       const formatted = service.formatContext(chunks);
       expect(formatted).toContain('Source: page-uuid-123');
+    });
+  });
+
+  describe('LLM re-ranking', () => {
+    it('filters out low-relevance chunks when LM service is available', async () => {
+      const lmService = createMockLanguageModelsService({
+        'Auth JWT tokens refresh': 8,  // high relevance → keep
+        'Insurance premium calc': 1,    // low relevance → drop
+      });
+      const rerankService = new RetrievalService(
+        embeddingService as any,
+        vectorStore as any,
+        lmService as any,
+      );
+
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, score: 0.05, chunkText: 'Auth JWT tokens refresh' }),
+        makeResult({ rowid: 2, score: 0.04, chunkText: 'Insurance premium calc' }),
+      ]);
+
+      const results = await rerankService.retrieve('authentication approach');
+      // Only the relevant chunk should survive (score 8 ≥ 4 threshold)
+      expect(results).toHaveLength(1);
+      expect(results[0].text).toBe('Auth JWT tokens refresh');
+    });
+
+    it('skips re-ranking when rerank=false is explicitly set', async () => {
+      const lmService = createMockLanguageModelsService({});
+      const rerankService = new RetrievalService(
+        embeddingService as any,
+        vectorStore as any,
+        lmService as any,
+      );
+
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, score: 0.05, chunkText: 'Chunk A' }),
+        makeResult({ rowid: 2, score: 0.04, chunkText: 'Chunk B' }),
+      ]);
+
+      const results = await rerankService.retrieve('query', { rerank: false });
+      // Both chunks should survive (no re-ranking applied)
+      expect(results).toHaveLength(2);
+      expect(lmService.sendChatRequest).not.toHaveBeenCalled();
+    });
+
+    it('falls back gracefully when no LM model is active', async () => {
+      const lmService = createMockLanguageModelsService({});
+      lmService.getActiveModel.mockReturnValue(undefined);
+      const rerankService = new RetrievalService(
+        embeddingService as any,
+        vectorStore as any,
+        lmService as any,
+      );
+
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, score: 0.05, chunkText: 'Chunk A' }),
+      ]);
+
+      const results = await rerankService.retrieve('query');
+      expect(results).toHaveLength(1);
+      expect(lmService.sendChatRequest).not.toHaveBeenCalled();
+    });
+
+    it('over-fetches 3× when re-ranking is active', async () => {
+      const lmService = createMockLanguageModelsService({});
+      const rerankService = new RetrievalService(
+        embeddingService as any,
+        vectorStore as any,
+        lmService as any,
+      );
+
+      vectorStore.search.mockResolvedValue([]);
+
+      await rerankService.retrieve('query', { topK: 10 });
+
+      // topK=10, overfetchFactor=3 → searchOptions.topK = 30
+      expect(vectorStore.search).toHaveBeenCalledWith(
+        expect.any(Array),
+        'query',
+        expect.objectContaining({ topK: 30 }),
+      );
     });
   });
 });

@@ -21,6 +21,10 @@ import type {
   IVectorStoreService,
   IRetrievalService,
 } from './serviceTypes.js';
+import type {
+  ILanguageModelsService,
+  IChatMessage,
+} from './chatTypes.js';
 import type { SearchResult, SearchOptions } from './vectorStoreService.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -28,14 +32,32 @@ import type { SearchResult, SearchOptions } from './vectorStoreService.js';
 /** Default number of final chunks to return. */
 const DEFAULT_TOP_K = 10;
 
-/** Minimum RRF score — chunks below this are dropped. */
-const DEFAULT_MIN_SCORE = 0.005;
+/** Minimum RRF score — chunks below this are dropped.
+ *
+ * With RRF k=60, a chunk ranked ~40th in a single list scores 1/(60+40+1)≈0.0099.
+ * A threshold of 0.01 requires meaningful ranking in at least one retrieval path.
+ * Previous value (0.005) was essentially zero — it would pass rank-135 results.
+ */
+const DEFAULT_MIN_SCORE = 0.01;
 
 /** Max chunks from the same source before dedup kicks in. */
 const DEFAULT_MAX_PER_SOURCE = 3;
 
 /** Default token budget for retrieved context (chars / 4 heuristic). */
 const DEFAULT_TOKEN_BUDGET = 4000;
+
+/** Minimum LLM relevance score (0-10) for a chunk to survive re-ranking.
+ * Chunks scoring below this are dropped as irrelevant.
+ */
+const RERANK_MIN_RELEVANCE = 4;
+
+/** Maximum characters of chunk text sent to the LLM for re-ranking.
+ * Longer chunks are truncated to save tokens during the scoring pass.
+ */
+const RERANK_MAX_CHUNK_CHARS = 600;
+
+/** Timeout per re-ranking LLM call in milliseconds. */
+const RERANK_TIMEOUT_MS = 8000;
 
 /** Rough token estimator: chars / 4 (same as defaultParticipant). */
 function estimateTokens(text: string): number {
@@ -50,7 +72,7 @@ export interface RetrievalOptions {
   topK?: number;
   /** Filter by source type ('page_block', 'file_chunk'). */
   sourceFilter?: string;
-  /** Minimum relevance score (default: 0.005). */
+  /** Minimum relevance score (default: 0.01). */
   minScore?: number;
   /** Whether to include FTS5 keyword search (default: true). */
   includeKeyword?: boolean;
@@ -58,6 +80,12 @@ export interface RetrievalOptions {
   maxPerSource?: number;
   /** Max total tokens of context to return (default: 4000). */
   tokenBudget?: number;
+  /**
+   * Whether to apply LLM re-ranking to candidates (default: true when LM available).
+   * Re-ranking uses the active Ollama chat model to score each candidate chunk's
+   * relevance to the query, filtering out irrelevant noise.
+   */
+  rerank?: boolean;
 }
 
 /** A retrieved context chunk with source attribution. */
@@ -91,14 +119,17 @@ export class RetrievalService extends Disposable implements IRetrievalService {
 
   private readonly _embeddingService: IEmbeddingService;
   private readonly _vectorStore: IVectorStoreService;
+  private readonly _languageModelsService: ILanguageModelsService | undefined;
 
   constructor(
     embeddingService: IEmbeddingService,
     vectorStore: IVectorStoreService,
+    languageModelsService?: ILanguageModelsService,
   ) {
     super();
     this._embeddingService = embeddingService;
     this._vectorStore = vectorStore;
+    this._languageModelsService = languageModelsService;
   }
 
   // ── Public API ──
@@ -120,13 +151,17 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     const minScore = options?.minScore ?? DEFAULT_MIN_SCORE;
     const maxPerSource = options?.maxPerSource ?? DEFAULT_MAX_PER_SOURCE;
     const tokenBudget = options?.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
+    const shouldRerank = options?.rerank ?? (this._languageModelsService !== undefined);
 
     // 1. Embed the user query
     const queryEmbedding = await this._embeddingService.embedQuery(query);
 
     // 2. Hybrid search — ask for more candidates than topK to allow filtering
+    //    When re-ranking is active, over-fetch even more (3×) to give the re-ranker
+    //    a larger candidate pool (Anthropic recommends top-150 → rerank → top-20)
+    const overfetchFactor = shouldRerank ? 3 : 2;
     const searchOptions: SearchOptions = {
-      topK: topK * 2, // Over-fetch to allow for dedup/score filtering
+      topK: topK * overfetchFactor,
       sourceFilter: options?.sourceFilter,
       minScore: 0, // We'll apply our own threshold after
       includeKeyword: options?.includeKeyword ?? true,
@@ -138,16 +173,21 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       searchOptions,
     );
 
-    // 3. Score threshold filter
+    // 3. Score threshold filter (RRF scores)
     let filtered = rawResults.filter((r) => r.score >= minScore);
 
-    // 4. Source deduplication — cap chunks from any single source
+    // 4. LLM re-ranking — score each candidate's relevance to the query
+    if (shouldRerank && filtered.length > 0) {
+      filtered = await this._rerankChunks(query, filtered);
+    }
+
+    // 5. Source deduplication — cap chunks from any single source
     filtered = this._deduplicateSources(filtered, maxPerSource);
 
-    // 5. Token budget enforcement
+    // 6. Token budget enforcement
     const budgeted = this._applyTokenBudget(filtered, tokenBudget);
 
-    // 6. Map to RetrievedContext and trim to topK
+    // 7. Map to RetrievedContext and trim to topK
     return budgeted.slice(0, topK).map((r) => ({
       sourceType: r.sourceType,
       sourceId: r.sourceId,
@@ -307,5 +347,134 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     }
 
     return budgeted;
+  }
+
+  // ── LLM Re-Ranking ──
+
+  /**
+   * Re-rank candidate chunks using LLM pointwise relevance scoring.
+   *
+   * Sends each (query, chunk) pair to the active Ollama chat model for a
+   * relevance score 0-10. Chunks below RERANK_MIN_RELEVANCE are dropped.
+   * Surviving chunks are re-sorted by relevance score (descending).
+   *
+   * Falls back to the original list if the LLM is unavailable or all calls fail.
+   *
+   * Reference: Anthropic Contextual Retrieval (2024), Galileo reranking research (2024)
+   */
+  private async _rerankChunks(query: string, candidates: SearchResult[]): Promise<SearchResult[]> {
+    if (!this._languageModelsService || candidates.length === 0) {
+      return candidates;
+    }
+
+    // Check if the LLM is available
+    const modelId = this._languageModelsService.getActiveModel();
+    if (!modelId) {
+      return candidates;
+    }
+
+    // Score each candidate in parallel with a timeout
+    const scored: Array<{ result: SearchResult; relevance: number }> = [];
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), RERANK_TIMEOUT_MS);
+
+    try {
+      const scorePromises = candidates.map(async (result) => {
+        try {
+          const relevance = await this._scoreChunk(query, result, controller.signal);
+          return { result, relevance };
+        } catch {
+          // If scoring fails for one chunk, give it a neutral score (keeps it if it was high-RRF)
+          return { result, relevance: -1 };
+        }
+      });
+
+      const results = await Promise.all(scorePromises);
+
+      for (const { result, relevance } of results) {
+        if (relevance >= RERANK_MIN_RELEVANCE) {
+          scored.push({ result, relevance });
+        } else if (relevance === -1) {
+          // LLM call failed — keep the chunk with a below-threshold marker
+          // so it doesn't disappear silently, but ranks lower
+          scored.push({ result, relevance: RERANK_MIN_RELEVANCE - 1 });
+        }
+        // Otherwise: relevance < RERANK_MIN_RELEVANCE → dropped as irrelevant
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    // If re-ranking produced no results (all below threshold), fall back to original
+    if (scored.length === 0) {
+      return candidates;
+    }
+
+    // Sort by relevance score descending, then by original RRF score as tiebreaker
+    scored.sort((a, b) => {
+      if (b.relevance !== a.relevance) { return b.relevance - a.relevance; }
+      return b.result.score - a.result.score;
+    });
+
+    return scored.map((s) => s.result);
+  }
+
+  /**
+   * Score a single chunk's relevance to a query using the LLM.
+   *
+   * Uses a minimalist prompt for fast inference. Requests JSON format
+   * for reliable parsing. Returns a number 0-10.
+   */
+  private async _scoreChunk(
+    query: string,
+    result: SearchResult,
+    signal: AbortSignal,
+  ): Promise<number> {
+    const chunkPreview = result.chunkText.length > RERANK_MAX_CHUNK_CHARS
+      ? result.chunkText.slice(0, RERANK_MAX_CHUNK_CHARS) + '...'
+      : result.chunkText;
+
+    const sourceInfo = result.contextPrefix || result.sourceId;
+
+    const messages: IChatMessage[] = [
+      {
+        role: 'system',
+        content: 'You are a relevance scoring assistant. Given a search query and a text passage, rate how relevant the passage is to answering the query. Reply with ONLY a JSON object: {"score": N} where N is an integer from 0 (completely irrelevant) to 10 (perfectly relevant).',
+      },
+      {
+        role: 'user',
+        content: `Query: ${query}\n\nSource: ${sourceInfo}\nPassage: ${chunkPreview}`,
+      },
+    ];
+
+    let fullResponse = '';
+
+    for await (const chunk of this._languageModelsService!.sendChatRequest(
+      messages,
+      { temperature: 0, maxTokens: 20, format: 'json' },
+      signal,
+    )) {
+      fullResponse += chunk.content;
+      if (chunk.done) { break; }
+    }
+
+    // Parse the JSON response
+    const trimmed = fullResponse.trim();
+    try {
+      const parsed = JSON.parse(trimmed);
+      const score = Number(parsed.score);
+      if (Number.isFinite(score) && score >= 0 && score <= 10) {
+        return Math.round(score);
+      }
+    } catch {
+      // Try to extract a bare number if JSON parsing fails
+      const numMatch = trimmed.match(/\d+/);
+      if (numMatch) {
+        const score = Number(numMatch[0]);
+        if (score >= 0 && score <= 10) { return score; }
+      }
+    }
+
+    return -1; // Parse failure
   }
 }

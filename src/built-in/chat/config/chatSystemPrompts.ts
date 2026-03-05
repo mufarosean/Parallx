@@ -268,6 +268,7 @@ export function buildPlannerPrompt(workspaceDigest?: string): string {
     '- Use the workspace contents list above to generate queries that will actually match existing pages and files.',
     '- If the workspace contains pages/files about a topic, reference that topic vocabulary in your queries.',
     '- If the message is a simple follow-up referencing the conversation, set needs_retrieval to false unless new information is needed.',
+    '- FOLLOW-UP CONTEXT: When recent conversation mentions a specific source (page, file, document), ALWAYS include the source name/title in your search queries. For example, if discussing "FSI Shona" textbook and the user asks "what vocabulary is on pages 30-50?", generate queries like "FSI Shona vocabulary pages 30 50" — NOT generic "vocabulary pages 30 50" which would match irrelevant documents.',
     '',
     'EXAMPLES:',
     '',
