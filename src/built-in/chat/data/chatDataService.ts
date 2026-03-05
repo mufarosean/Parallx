@@ -510,9 +510,9 @@ export class ChatDataService {
     if (!this._d.indexingPipelineService?.isInitialIndexComplete) { return undefined; }
     try {
       const chunks = await this._d.retrievalService.retrieve(query, {
-        topK: 8,
-        maxPerSource: 3,
-        tokenBudget: 3000,
+        topK: 6,
+        maxPerSource: 2,
+        tokenBudget: 2500,
       });
       if (chunks.length === 0) { return undefined; }
       const text = this._d.retrievalService.formatContext(chunks);
@@ -561,9 +561,9 @@ export class ChatDataService {
 
       // Multi-query retrieval
       const chunks = await this._d.retrievalService.retrieveMulti(plan.queries, {
-        topK: 10,
-        maxPerSource: 3,
-        tokenBudget: 3500,
+        topK: 7,
+        maxPerSource: 2,
+        tokenBudget: 3000,
       });
 
       if (chunks.length === 0) { return { text: '', sources: [], plan }; }
@@ -576,9 +576,9 @@ export class ChatDataService {
       console.warn('[chatTool] planAndRetrieve failed, falling back to single query:', err);
       try {
         const chunks = await this._d.retrievalService.retrieve(userText, {
-          topK: 8,
-          maxPerSource: 3,
-          tokenBudget: 3000,
+          topK: 6,
+          maxPerSource: 2,
+          tokenBudget: 2500,
         });
         if (chunks.length === 0) { return undefined; }
         const text = this._d.retrievalService.formatContext(chunks);

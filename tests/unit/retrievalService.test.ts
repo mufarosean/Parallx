@@ -120,7 +120,7 @@ describe('RetrievalService', () => {
       expect(vectorStore.search).toHaveBeenCalledWith(
         expect.any(Array),
         'authentication approach',
-        expect.objectContaining({ topK: 30, includeKeyword: true }),
+        expect.objectContaining({ topK: 21, includeKeyword: true }),
       );
       expect(results).toHaveLength(1);
       expect(results[0].text).toBe('JWT tokens');
@@ -152,14 +152,14 @@ describe('RetrievalService', () => {
       expect(results).toHaveLength(1);
     });
 
-    it('deduplicates sources — max 3 chunks per source by default', async () => {
+    it('deduplicates sources — max 2 chunks per source by default', async () => {
       const emb = new Array(768).fill(0.1);
       vectorStore.search.mockResolvedValue([
         makeResult({ rowid: 1, sourceId: 'p1', chunkIndex: 0, score: 0.10 }),
         makeResult({ rowid: 2, sourceId: 'p1', chunkIndex: 1, score: 0.09 }),
-        makeResult({ rowid: 3, sourceId: 'p1', chunkIndex: 2, score: 0.08 }),
-        makeResult({ rowid: 4, sourceId: 'p1', chunkIndex: 3, score: 0.07 }), // should be dropped
-        makeResult({ rowid: 5, sourceId: 'p2', chunkIndex: 0, score: 0.06 }),
+        makeResult({ rowid: 3, sourceId: 'p1', chunkIndex: 2, score: 0.08 }), // should be dropped (3rd)
+        makeResult({ rowid: 4, sourceId: 'p2', chunkIndex: 0, score: 0.07 }),
+        makeResult({ rowid: 5, sourceId: 'p2', chunkIndex: 1, score: 0.06 }),
       ]);
       vectorStore.getEmbeddings.mockResolvedValue(new Map(
         [1, 2, 3, 4, 5].map(id => [id, emb] as [number, number[]]),
@@ -167,8 +167,8 @@ describe('RetrievalService', () => {
 
       const results = await service.retrieve('query');
       const p1Chunks = results.filter((r) => r.sourceId === 'p1');
-      expect(p1Chunks).toHaveLength(3);
-      expect(results).toHaveLength(4); // 3 from p1 + 1 from p2
+      expect(p1Chunks).toHaveLength(2);
+      expect(results).toHaveLength(4); // 2 from p1 + 2 from p2
     });
 
     it('respects custom maxPerSource option', async () => {

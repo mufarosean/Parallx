@@ -26,7 +26,7 @@ import type { SearchResult, SearchOptions } from './vectorStoreService.js';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /** Default number of final chunks to return. */
-const DEFAULT_TOP_K = 10;
+const DEFAULT_TOP_K = 7;
 
 /** Minimum RRF score — chunks below this are dropped.
  *
@@ -43,10 +43,10 @@ const DEFAULT_TOP_K = 10;
 const DEFAULT_MIN_SCORE = 0.025;
 
 /** Max chunks from the same source before dedup kicks in. */
-const DEFAULT_MAX_PER_SOURCE = 3;
+const DEFAULT_MAX_PER_SOURCE = 2;
 
 /** Default token budget for retrieved context (chars / 4 heuristic). */
-const DEFAULT_TOKEN_BUDGET = 4000;
+const DEFAULT_TOKEN_BUDGET = 3000;
 
 /** Rough token estimator: chars / 4 (same as defaultParticipant). */
 function estimateTokens(text: string): number {
