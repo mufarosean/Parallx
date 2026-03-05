@@ -1014,7 +1014,17 @@ export class ChatDataService {
 
   private async _computeWorkspaceDigest(): Promise<string | undefined> {
     const sections: string[] = [];
-    const MAX_DIGEST_CHARS = 12000; // ~3000 tokens at 4 chars/token — increased for deeper file trees
+
+    // Dynamic digest cap based on model context window (M16 Task 3.2).
+    // System prompt gets 10% of context; digest gets at most 60% of that
+    // (leaving room for SOUL.md, AGENTS.md, rules, citation instructions).
+    // Fallback: 8192 context → 10% = 819 tokens → 60% = 491 tokens → ~2000 chars.
+    // For large contexts (128K): 10% = 12800 → 60% = 7680 → ~30720 chars → capped at 12000.
+    const contextLength = await this.getContextLength();
+    const effectiveContext = contextLength > 0 ? contextLength : 8192;
+    const systemBudgetTokens = Math.floor(effectiveContext * 0.10);
+    const digestBudgetTokens = Math.floor(systemBudgetTokens * 0.60);
+    const MAX_DIGEST_CHARS = Math.min(digestBudgetTokens * 4, 12000); // hard cap at 12K chars
     let totalChars = 0;
 
     // Pre-load document summaries from indexing_metadata.
