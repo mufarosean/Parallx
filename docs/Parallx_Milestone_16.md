@@ -480,18 +480,18 @@ These tasks re-enable the planner with safety guards. They are optional because 
 
 | Task | Description | Status | Commit |
 |------|-------------|--------|--------|
-| 1.1 | Chunk size 2048→1024 + page overlap | ⬜ | — |
-| 1.1b | Schema version bump for forced re-index | ⬜ | — |
-| 1.2 | Refine stopword list (remove 26 words) | ⬜ | — |
-| 1.3 | FTS5 AND→OR fallback | ⬜ | — |
-| 2.1 | Add embedding lookup to vectorStoreService | ⬜ | — |
-| 2.2 | Implement cosine re-ranking | ⬜ | — |
-| 2.3 | Update retrieval parameters (top-K, per-source, budget) | ⬜ | — |
-| 3.1 | BM25 metadata enrichment | ⬜ | — |
-| 3.2 | Wire context window into token budget | ⬜ | — |
-| 3.3 | Remove dead re-ranking code | ⬜ | — |
-| 4.1 | Re-enable planner with intent short-circuit | ⬜ | — |
-| 4.2 | Planner timeout with fallback | ⬜ | — |
+| 1.1 | Chunk size 2048→1024 + page overlap | ✅ | `8aa69e8` |
+| 1.1b | Schema version bump for forced re-index | ⏭️ | Deferred — re-index happens automatically when content hashes change |
+| 1.2 | Refine stopword list (remove 26 words) | ✅ | `21a3e5e` |
+| 1.3 | FTS5 AND→OR fallback | ✅ | `f2f72ab` |
+| 2.1 | Add embedding lookup to vectorStoreService | ✅ | `c7de338` |
+| 2.2 | Implement cosine re-ranking | ✅ | `d4a965c` |
+| 2.3 | Update retrieval parameters (top-K, per-source, budget) | ✅ | `ebbaac5` |
+| 3.1 | BM25 metadata enrichment | ✅ | `dde39ba` |
+| 3.2 | Wire context window into token budget | ✅ | `bfdb441` |
+| 3.3 | Remove dead re-ranking code | ✅ | `d4a965c` (combined with 2.2) |
+| 4.1 | Re-enable planner with intent short-circuit | ⏭️ | Deferred — all mainstream local AI apps skip planner LLM calls |
+| 4.2 | Planner timeout with fallback | ⏭️ | Deferred — coupled with 4.1 |
 
 ---
 
