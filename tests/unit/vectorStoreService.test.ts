@@ -93,10 +93,11 @@ describe('sanitizeFts5Query()', () => {
     expect(result).toBe('"is" "the"');
   });
 
-  it('filters document-structural stopwords like page/chapter/book/examples', () => {
+  it('filters document-structural stopwords like numbers', () => {
     const result = sanitizeFts5Query('FSI Shona vocabulary page numbers');
-    // "page" and "numbers" are stopwords → "FSI", "Shona", "vocabulary"
-    expect(result).toBe('"FSI" "Shona" "vocabulary"');
+    // "numbers" is a stopword → "FSI", "Shona", "vocabulary", "page" survive
+    // M16: "page" is no longer a stopword (domain-useful term)
+    expect(result).toBe('"FSI" "Shona" "vocabulary" "page"');
   });
 
   it('uses AND for multi-term queries for precision', () => {
@@ -132,32 +133,48 @@ describe('sanitizeFts5Query()', () => {
   });
 
   it('filters plurals of stopwords via de-pluralisation', () => {
-    // "books" → strip 's' → "book" → stopword → filtered
-    expect(sanitizeFts5Query('Shona books')).toBe('"Shona"');
-    // "pages" → strip 's' → "page" → stopword
-    expect(sanitizeFts5Query('grammar pages')).toBe('"grammar"');
-    // "tables" → strip 's' → "table" → stopword
-    expect(sanitizeFts5Query('data tables charts')).toBe('"data" "charts"');
+    // M16: "book" is no longer a stopword → "books" survives
+    expect(sanitizeFts5Query('Shona books')).toBe('"Shona" "books"');
+    // M16: "page" is no longer a stopword → "pages" survives
+    expect(sanitizeFts5Query('grammar pages')).toBe('"grammar" "pages"');
+    // M16: "table" is no longer a stopword → "tables" survives
+    expect(sanitizeFts5Query('data tables charts')).toBe('"data" "tables" "charts"');
   });
 });
 
 describe('isStopword()', () => {
   it('detects direct stopwords', () => {
     expect(isStopword('the')).toBe(true);
-    expect(isStopword('book')).toBe(true);
-    expect(isStopword('page')).toBe(true);
+    expect(isStopword('make')).toBe(true);
+    expect(isStopword('also')).toBe(true);
   });
 
   it('detects plural forms of stopwords', () => {
-    expect(isStopword('books')).toBe(true);
-    expect(isStopword('pages')).toBe(true);
-    expect(isStopword('examples')).toBe(true);
+    expect(isStopword('makes')).toBe(true);
+    expect(isStopword('numbers')).toBe(true);
+    expect(isStopword('tells')).toBe(true);
   });
 
   it('does not flag non-stopwords', () => {
     expect(isStopword('Shona')).toBe(false);
     expect(isStopword('vocabulary')).toBe(false);
     expect(isStopword('grammar')).toBe(false);
+  });
+
+  it('does not flag domain-useful words removed in M16', () => {
+    // These were previously stopwords but are now preserved for search quality
+    expect(isStopword('page')).toBe(false);
+    expect(isStopword('table')).toBe(false);
+    expect(isStopword('section')).toBe(false);
+    expect(isStopword('chapter')).toBe(false);
+    expect(isStopword('book')).toBe(false);
+    expect(isStopword('note')).toBe(false);
+    expect(isStopword('find')).toBe(false);
+    expect(isStopword('help')).toBe(false);
+    expect(isStopword('use')).toBe(false);
+    expect(isStopword('work')).toBe(false);
+    expect(isStopword('read')).toBe(false);
+    expect(isStopword('show')).toBe(false);
   });
 
   it('does not strip s from words ending in ss', () => {

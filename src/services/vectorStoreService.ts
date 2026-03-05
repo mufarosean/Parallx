@@ -529,6 +529,10 @@ function float32ArrayToBuffer(embedding: number[]): Uint8Array {
 /**
  * Common English stopwords that add noise to keyword search.
  * These appear in nearly every document and dilute BM25 relevance.
+ *
+ * M16: Removed domain-useful words (page, section, table, figure, note,
+ * chapter, book, part, example, find, show, help, use, work, read, look,
+ * call, give) that carry meaning in knowledge-base search contexts.
  */
 const FTS5_STOPWORDS = new Set([
   // articles, prepositions, conjunctions
@@ -546,14 +550,10 @@ const FTS5_STOPWORDS = new Set([
   // pronouns
   'i', 'me', 'my', 'we', 'our', 'you', 'your', 'he', 'him', 'his',
   'she', 'her', 'they', 'them', 'their',
-  // meta/structural words common in documents
-  'page', 'pages', 'number', 'numbers', 'chapter', 'chapters', 'section', 'sections',
-  'figure', 'figures', 'table', 'tables', 'example', 'examples',
-  'see', 'also', 'note', 'notes', 'like', 'part', 'parts', 'book',
-  // common verbs & fillers that appear everywhere
-  'tell', 'talk', 'give', 'make', 'know', 'think', 'want', 'need',
-  'use', 'find', 'get', 'go', 'come', 'take', 'say', 'ask', 'try',
-  'based', 'using', 'show', 'help', 'look', 'work', 'call', 'read',
+  // common verbs & fillers that appear everywhere but carry no search value
+  'tell', 'talk', 'make', 'know', 'think', 'want', 'need',
+  'get', 'go', 'come', 'take', 'say', 'ask', 'try',
+  'based', 'using', 'see', 'also', 'like', 'number', 'numbers',
 ]);
 
 /**
