@@ -652,6 +652,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           type: 'rag',
           tokens: 0, // token count is estimated from context part, rough
           removable: true,
+          index: src.index,
         });
       }
 

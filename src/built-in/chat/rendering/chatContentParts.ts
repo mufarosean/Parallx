@@ -72,6 +72,9 @@ function _renderMarkdown(part: IChatMarkdownContent): HTMLElement {
   // We replace those text nodes with interactive badges that navigate to the source.
   if (part.citations && part.citations.length > 0) {
     _postProcessCitations(el, part.citations);
+    // M15 Change 5: Auto-link any quoted or unquoted mention of a source
+    // label in the model's prose (Cursor-pattern dual layer).
+    _autoLinkSourceMentions(el, part.citations);
   }
 
   return el;
@@ -152,6 +155,131 @@ function _postProcessCitations(
       }
     }
     textNode.parentNode?.replaceChild(frag, textNode);
+  }
+}
+
+/**
+ * Auto-link mentions of source labels in the model's prose.
+ *
+ * After citation badges are placed, this second pass detects occurrences of
+ * source names (e.g. "FSI Shona Basic Course.pdf", project-notes.md) in
+ * remaining text nodes and wraps them in clickable links. This is the
+ * Cursor-pattern dual layer: even when the model doesn't use [N] notation,
+ * file/page references become navigable.
+ *
+ * Handles both quoted ("filename.pdf") and bare mentions. Skips nodes that
+ * are already inside <a>, <code>, or <sup> elements to avoid double-linking.
+ *
+ * M15 Change 5 — Auto-Link Workspace Mentions.
+ */
+function _autoLinkSourceMentions(
+  container: HTMLElement,
+  citations: Array<{ index: number; uri: string; label: string }>,
+): void {
+  if (citations.length === 0) { return; }
+
+  // Build an array of labels sorted longest-first so "FSI Shona Basic Course.pdf"
+  // matches before a hypothetical shorter substring.
+  const entries = citations
+    .map(c => ({ label: c.label, uri: c.uri, index: c.index }))
+    .sort((a, b) => b.label.length - a.label.length);
+
+  // Escape labels for use in regex
+  const escaped = entries.map(e => ({
+    ...e,
+    pattern: e.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+  }));
+
+  // Build a combined regex: match any label, optionally surrounded by quotes
+  // The regex captures optional leading quote, the label, and optional trailing quote.
+  const combined = new RegExp(
+    `(?:["\u201C\u201D])(${escaped.map(e => e.pattern).join('|')})(?:["\u201C\u201D])|\\b(${escaped.map(e => e.pattern).join('|')})(?=\\s|[.,;:!?)\\]]|$)`,
+    'gi',
+  );
+
+  // Build label → entry lookup (case-insensitive)
+  const labelMap = new Map<string, { uri: string; index: number }>();
+  for (const e of entries) {
+    labelMap.set(e.label.toLowerCase(), { uri: e.uri, index: e.index });
+  }
+
+  // Tags we never auto-link inside
+  const SKIP_TAGS = new Set(['A', 'CODE', 'PRE', 'SUP']);
+
+  function _isInsideSkipTag(node: Node): boolean {
+    let parent = node.parentElement;
+    while (parent && parent !== container) {
+      if (SKIP_TAGS.has(parent.tagName)) { return true; }
+      parent = parent.parentElement;
+    }
+    return false;
+  }
+
+  // Collect text nodes
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let tNode: Text | null;
+  while ((tNode = walker.nextNode() as Text | null)) {
+    if (!_isInsideSkipTag(tNode) && combined.test(tNode.textContent || '')) {
+      textNodes.push(tNode);
+    }
+    combined.lastIndex = 0; // reset stateful regex
+  }
+
+  for (const textNode of textNodes) {
+    const text = textNode.textContent || '';
+    const frag = document.createDocumentFragment();
+    let lastIdx = 0;
+
+    combined.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = combined.exec(text)) !== null) {
+      const matchedLabel = m[1] || m[2];
+      const entry = labelMap.get(matchedLabel.toLowerCase());
+      if (!entry) { continue; }
+
+      // Append text before this match
+      if (m.index > lastIdx) {
+        frag.appendChild(document.createTextNode(text.slice(lastIdx, m.index)));
+      }
+
+      // Create clickable link
+      const link = document.createElement('a');
+      link.className = 'parallx-source-mention';
+      link.textContent = matchedLabel;
+      link.title = `Open: ${matchedLabel}`;
+      link.href = '#';
+      link.setAttribute('data-citation-uri', entry.uri);
+      link.setAttribute('data-citation-index', String(entry.index));
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const isPage = entry.uri.startsWith('parallx-page://');
+        if (isPage) {
+          const pageId = entry.uri.replace('parallx-page://', '');
+          link.dispatchEvent(new CustomEvent('parallx:navigate-page', {
+            bubbles: true,
+            detail: { pageId },
+          }));
+        } else {
+          link.dispatchEvent(new CustomEvent('parallx:open-file', {
+            bubbles: true,
+            detail: { path: entry.uri },
+          }));
+        }
+      });
+      frag.appendChild(link);
+      lastIdx = m.index + m[0].length;
+    }
+
+    // Remaining text after last match
+    if (lastIdx < text.length) {
+      frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+    }
+
+    // Only replace if we actually found matches
+    if (lastIdx > 0) {
+      textNode.parentNode?.replaceChild(frag, textNode);
+    }
   }
 }
 

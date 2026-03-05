@@ -924,6 +924,22 @@
   background: var(--vscode-focusBorder, #007fd4);
 }
 
+/* ── Auto-Linked Source Mentions (M15 Change 5 — Cursor-pattern) ── */
+
+.parallx-source-mention {
+  color: var(--vscode-textLink-foreground, #3794ff);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.parallx-source-mention:hover {
+  color: var(--vscode-textLink-activeForeground, #3794ff);
+  text-decoration-style: solid;
+}
+
 /* ── Tool Invocation Card (Cap 6 Task 6.4) ── */
 
 .parallx-chat-tool-invocation {

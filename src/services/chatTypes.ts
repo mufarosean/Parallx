@@ -298,6 +298,8 @@ export interface IContextPill {
   readonly tokens: number;
   /** Whether the user can remove this pill (false for system). */
   readonly removable: boolean;
+  /** Citation index from the retrieval pipeline (1-based). RAG pills only. */
+  readonly index?: number;
 }
 
 // ── Content Part Discriminated Union ──
