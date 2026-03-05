@@ -537,12 +537,20 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     }
 
     // 1. Implicit context: active canvas page content
+    //
+    // Cap at ~4000 tokens (16K chars) so a large page doesn't drown
+    // the actual question and RAG context. The model can always use
+    // read_current_page tool for the full text.
+    const MAX_PAGE_CONTEXT_CHARS = 16_000;
     if (services.getCurrentPageContent) {
       try {
         const pageContext = await services.getCurrentPageContent();
         if (pageContext && pageContext.textContent) {
+          const text = pageContext.textContent.length > MAX_PAGE_CONTEXT_CHARS
+            ? pageContext.textContent.slice(0, MAX_PAGE_CONTEXT_CHARS) + '\n[…truncated — use read_current_page for full content]'
+            : pageContext.textContent;
           contextParts.push(
-            `[Currently open page: "${pageContext.title}" (id: ${pageContext.pageId})]\n${pageContext.textContent}`,
+            `[Currently open page: "${pageContext.title}" (id: ${pageContext.pageId})]\n${text}`,
           );
         }
       } catch {
@@ -729,10 +737,16 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
     // 1c. Memory context: retrieve relevant past conversation memories (M10 Phase 5)
     // Gated by the plan — conversational messages don't need past memories.
+    // Capped at ~1000 tokens (4K chars) so cross-session memory doesn't
+    // overwhelm the current query's context.
+    const MAX_MEMORY_CONTEXT_CHARS = 4_000;
     if (services.recallMemories && retrievalPlan?.needsRetrieval !== false) {
       try {
-        const memoryContext = await services.recallMemories(userText);
+        let memoryContext = await services.recallMemories(userText);
         if (memoryContext) {
+          if (memoryContext.length > MAX_MEMORY_CONTEXT_CHARS) {
+            memoryContext = memoryContext.slice(0, MAX_MEMORY_CONTEXT_CHARS) + '\n[…memory truncated]';
+          }
           contextParts.push(memoryContext);
         }
       } catch {
@@ -840,8 +854,13 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // Apply token budget to trim RAG context and history if they exceed
     // their allotted slots. This prevents context window overflow before
     // the ad-hoc summarization safety net kicks in.
-    const contextWindow = services.getModelContextLength?.() ?? 0;
-    if (contextWindow > 0 && contextParts.length > 0) {
+    //
+    // When the model's context length isn't available yet (first call before
+    // the cache is warm), use a conservative fallback so budgeting always runs.
+    // Without this, the very first request sends unbounded context.
+    const BUDGET_FALLBACK_CTX = 8192;
+    const contextWindow = services.getModelContextLength?.() || BUDGET_FALLBACK_CTX;
+    if (contextParts.length > 0) {
       const budgetService = new TokenBudgetService();
       const ragContent = contextParts.join('\n\n');
       const historyContent = messages
@@ -951,8 +970,8 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
     // ── Context overflow detection & LLM-based summarization ──
 
-    const contextLength = services.getModelContextLength?.() ?? 0;
-    if (contextLength > 0) {
+    const contextLength = services.getModelContextLength?.() || BUDGET_FALLBACK_CTX;
+    {
       const tokenEstimate = estimateTokens(messages);
       const warnThreshold = Math.floor(contextLength * CONTEXT_OVERFLOW_WARN_THRESHOLD);
 
