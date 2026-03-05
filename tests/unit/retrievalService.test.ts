@@ -275,7 +275,7 @@ describe('RetrievalService', () => {
   });
 
   describe('LLM re-ranking', () => {
-    it('filters out low-relevance chunks when LM service is available', async () => {
+    it('does not invoke LLM re-ranking in real-time chat (disabled for latency)', async () => {
       const lmService = createMockLanguageModelsService({
         'Auth JWT tokens refresh': 8,  // high relevance → keep
         'Insurance premium calc': 1,    // low relevance → drop
@@ -292,9 +292,9 @@ describe('RetrievalService', () => {
       ]);
 
       const results = await rerankService.retrieve('authentication approach');
-      // Only the relevant chunk should survive (score 8 ≥ 4 threshold)
-      expect(results).toHaveLength(1);
-      expect(results[0].text).toBe('Auth JWT tokens refresh');
+      // Re-ranking is disabled — both chunks survive (filtered only by score threshold)
+      expect(results).toHaveLength(2);
+      expect(lmService.sendChatRequest).not.toHaveBeenCalled();
     });
 
     it('skips re-ranking when rerank=false is explicitly set', async () => {
@@ -334,7 +334,7 @@ describe('RetrievalService', () => {
       expect(lmService.sendChatRequest).not.toHaveBeenCalled();
     });
 
-    it('over-fetches 3× when re-ranking is active', async () => {
+    it('uses 2× overfetch factor (re-ranking disabled)', async () => {
       const lmService = createMockLanguageModelsService({});
       const rerankService = new RetrievalService(
         embeddingService as any,
@@ -346,11 +346,11 @@ describe('RetrievalService', () => {
 
       await rerankService.retrieve('query', { topK: 10 });
 
-      // topK=10, overfetchFactor=3 → searchOptions.topK = 30
+      // topK=10, overfetchFactor=2 → searchOptions.topK = 20
       expect(vectorStore.search).toHaveBeenCalledWith(
         expect.any(Array),
         'query',
-        expect.objectContaining({ topK: 30 }),
+        expect.objectContaining({ topK: 20 }),
       );
     });
   });

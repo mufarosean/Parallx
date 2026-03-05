@@ -34,11 +34,15 @@ const DEFAULT_TOP_K = 10;
 
 /** Minimum RRF score — chunks below this are dropped.
  *
- * With RRF k=60, a chunk ranked ~40th in a single list scores 1/(60+40+1)≈0.0099.
- * A threshold of 0.01 requires meaningful ranking in at least one retrieval path.
- * Previous value (0.005) was essentially zero — it would pass rank-135 results.
+ * With RRF k=60, the maximum single-path rank score is 1/61 ≈ 0.0164.
+ * After two-path fusion (vector + keyword), a top-1 result in both paths
+ * scores ~0.033. A threshold of 0.02 requires a chunk to rank reasonably
+ * well in at least one retrieval path, filtering out obvious noise while
+ * preserving any result that genuinely matched the query.
+ *
+ * Previous value 0.01 let through rank-40+ garbage from a single path.
  */
-const DEFAULT_MIN_SCORE = 0.01;
+const DEFAULT_MIN_SCORE = 0.02;
 
 /** Max chunks from the same source before dedup kicks in. */
 const DEFAULT_MAX_PER_SOURCE = 3;
@@ -151,15 +155,19 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     const minScore = options?.minScore ?? DEFAULT_MIN_SCORE;
     const maxPerSource = options?.maxPerSource ?? DEFAULT_MAX_PER_SOURCE;
     const tokenBudget = options?.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
-    const shouldRerank = options?.rerank ?? (this._languageModelsService !== undefined);
+    // LLM re-ranking is disabled for real-time chat — it adds N serial LLM
+    // calls (one per chunk) which adds 5-15s of hidden latency before the user
+    // sees any response. The planner already classifies intent and generates
+    // targeted queries; the RRF score threshold handles the rest.
+    // Re-ranking infrastructure is preserved for potential async/background use.
+    const shouldRerank = false;
 
     // 1. Embed the user query
     const queryEmbedding = await this._embeddingService.embedQuery(query);
 
-    // 2. Hybrid search — ask for more candidates than topK to allow filtering
-    //    When re-ranking is active, over-fetch even more (3×) to give the re-ranker
-    //    a larger candidate pool (Anthropic recommends top-150 → rerank → top-20)
-    const overfetchFactor = shouldRerank ? 3 : 2;
+    // 2. Hybrid search — ask for slightly more candidates than topK to
+    //    allow for filtering by score threshold and source dedup.
+    const overfetchFactor = 2;
     const searchOptions: SearchOptions = {
       topK: topK * overfetchFactor,
       sourceFilter: options?.sourceFilter,

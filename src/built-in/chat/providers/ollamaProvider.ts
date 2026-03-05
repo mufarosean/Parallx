@@ -329,20 +329,13 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     // Always send num_ctx so Ollama allocates the model's full context
     // window (without this, Ollama may default to 2048 tokens).
     // User override takes priority; otherwise use the model's detected max.
-    // If the cache misses (first request), do an inline fetch so the model
-    // never runs on a truncated 2048-token default.
+    // The cache is pre-warmed in _pollLoadedModels() when a model loads.
+    // If the cache hasn't warmed yet (unlikely — health poll runs every 1.5s
+    // during startup), Ollama will use its own default or OLLAMA_NUM_CTX.
     const ollamaOptions: Record<string, unknown> = {};
-    let effectiveCtx = this._contextLengthOverride > 0
+    const effectiveCtx = this._contextLengthOverride > 0
       ? this._contextLengthOverride
       : this._contextLengthCache.get(modelId);
-    if (!effectiveCtx || effectiveCtx <= 0) {
-      // Cache miss — fetch inline (typically <100ms) to avoid Ollama's 2048 default
-      try {
-        const info = await this.getModelInfo(modelId);
-        this._contextLengthCache.set(modelId, info.contextLength);
-        effectiveCtx = info.contextLength;
-      } catch { /* best effort — Ollama will use its default */ }
-    }
     if (effectiveCtx && effectiveCtx > 0) {
       ollamaOptions['num_ctx'] = effectiveCtx;
     }
