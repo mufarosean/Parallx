@@ -91,7 +91,7 @@ function createMockVectorStore() {
     vectorSearch: vi.fn(async () => []),
     getContentHash: vi.fn(async () => null),
     getIndexedSources: vi.fn(async () => []),
-    getStats: vi.fn(async () => ({ totalChunks: 0, totalSources: 0, bySourceType: {} })),
+    getStats: vi.fn(async () => ({ totalChunks: 0, totalSources: 0, bySourceType: {}, sourceCountByType: {} })),
     onDidUpdateIndex: vi.fn(() => ({ dispose: vi.fn() })) as any,
     dispose: vi.fn(),
   };

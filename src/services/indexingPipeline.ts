@@ -292,12 +292,28 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       this._initialIndexComplete = true;
       const durationMs = performance.now() - startTime;
 
+      // Query the database for TOTAL indexed counts (not just session-changed).
+      // On workspace re-open where nothing changed, pageCount/fileCount are 0
+      // but the DB still has all previously indexed sources.  The status bar
+      // should show the total, not the session delta.
+      let totalPages = pageCount;
+      let totalFiles = fileCount;
+      try {
+        const stats = await this._vectorStore.getStats();
+        const dbPages = stats.sourceCountByType['page_block'] ?? 0;
+        const dbFiles = stats.sourceCountByType['file_chunk'] ?? 0;
+        if (dbPages >= pageCount) totalPages = dbPages;
+        if (dbFiles >= fileCount) totalFiles = dbFiles;
+      } catch {
+        // Fall back to session counts if DB query fails
+      }
+
       console.log(
-        '%s [IndexingPipeline] Initial indexing complete: %d pages, %d files in %dms',
-        this._logPrefix, pageCount, fileCount, Math.round(durationMs),
+        '%s [IndexingPipeline] Initial indexing complete: %d pages, %d files total (%d new) in %dms',
+        this._logPrefix, totalPages, totalFiles, pageCount + fileCount, Math.round(durationMs),
       );
 
-      this._onDidCompleteInitialIndex.fire({ pages: pageCount, files: fileCount, durationMs });
+      this._onDidCompleteInitialIndex.fire({ pages: totalPages, files: totalFiles, durationMs });
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
         console.log('[IndexingPipeline] Cancelled');

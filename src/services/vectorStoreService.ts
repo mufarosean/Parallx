@@ -92,6 +92,8 @@ export interface VectorStoreStats {
   totalChunks: number;
   totalSources: number;
   bySourceType: Record<string, number>;
+  /** Number of distinct sources (pages/files) per source_type. */
+  sourceCountByType: Record<string, number>;
 }
 
 // ─── VectorStoreService ──────────────────────────────────────────────────────
@@ -384,9 +386,11 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       );
 
       const bySourceType: Record<string, number> = {};
+      const sourceCountByType: Record<string, number> = {};
       let totalChunks = 0;
       for (const s of sources) {
         bySourceType[s.source_type] = s.chunks;
+        sourceCountByType[s.source_type] = s.count;
         totalChunks += s.chunks;
       }
 
@@ -394,9 +398,10 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
         totalChunks,
         totalSources: total?.count ?? 0,
         bySourceType,
+        sourceCountByType,
       };
     } catch {
-      return { totalChunks: 0, totalSources: 0, bySourceType: {} };
+      return { totalChunks: 0, totalSources: 0, bySourceType: {}, sourceCountByType: {} };
     }
   }
 

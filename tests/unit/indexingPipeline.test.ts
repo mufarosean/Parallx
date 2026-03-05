@@ -109,7 +109,7 @@ function createMockVectorStore() {
     getContentHash: vi.fn().mockResolvedValue(null), // null = not indexed yet
     getIndexedAtMap: vi.fn().mockResolvedValue(new Map()), // empty = no prior indexing
     getIndexedSources: vi.fn().mockResolvedValue([]),
-    getStats: vi.fn().mockResolvedValue({ totalChunks: 0, totalSources: 0, bySourceType: {} }),
+    getStats: vi.fn().mockResolvedValue({ totalChunks: 0, totalSources: 0, bySourceType: {}, sourceCountByType: {} }),
     onDidUpdateIndex: vi.fn().mockReturnValue({ dispose: vi.fn() }),
     dispose: vi.fn(),
   };

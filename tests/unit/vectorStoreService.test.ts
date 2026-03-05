@@ -341,6 +341,8 @@ describe('VectorStoreService', () => {
       expect(stats.totalChunks).toBe(23);
       expect(stats.bySourceType['page_block']).toBe(15);
       expect(stats.bySourceType['file_chunk']).toBe(8);
+      expect(stats.sourceCountByType['page_block']).toBe(3);
+      expect(stats.sourceCountByType['file_chunk']).toBe(2);
     });
 
     it('returns zeros on error', async () => {
