@@ -461,39 +461,58 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     topK: number,
     sourceFilter?: string,
   ): Promise<VectorRow[]> {
-    // Sanitize query for FTS5 (escape special characters)
+    // Sanitize query for FTS5 (escape special characters) — AND semantics
     const sanitized = sanitizeFts5Query(queryText);
     if (!sanitized) { return []; }
 
-    let sql: string;
-    let params: unknown[];
+    const runFts = async (ftsQuery: string): Promise<VectorRow[]> => {
+      let sql: string;
+      let params: unknown[];
 
-    if (sourceFilter) {
-      sql = `SELECT f.chunk_id as rowid, f.source_type, f.source_id, f.content,
-                    v.chunk_index, v.chunk_text, v.context_prefix, f.rank as distance
-             FROM fts_chunks f
-             JOIN vec_embeddings v ON v.rowid = f.chunk_id
-             WHERE fts_chunks MATCH ? AND f.source_type = ?
-             ORDER BY f.rank
-             LIMIT ?`;
-      params = [sanitized, sourceFilter, topK];
-    } else {
-      sql = `SELECT f.chunk_id as rowid, f.source_type, f.source_id, f.content,
-                    v.chunk_index, v.chunk_text, v.context_prefix, f.rank as distance
-             FROM fts_chunks f
-             JOIN vec_embeddings v ON v.rowid = f.chunk_id
-             WHERE fts_chunks MATCH ?
-             ORDER BY f.rank
-             LIMIT ?`;
-      params = [sanitized, topK];
+      if (sourceFilter) {
+        sql = `SELECT f.chunk_id as rowid, f.source_type, f.source_id, f.content,
+                      v.chunk_index, v.chunk_text, v.context_prefix, f.rank as distance
+               FROM fts_chunks f
+               JOIN vec_embeddings v ON v.rowid = f.chunk_id
+               WHERE fts_chunks MATCH ? AND f.source_type = ?
+               ORDER BY f.rank
+               LIMIT ?`;
+        params = [ftsQuery, sourceFilter, topK];
+      } else {
+        sql = `SELECT f.chunk_id as rowid, f.source_type, f.source_id, f.content,
+                      v.chunk_index, v.chunk_text, v.context_prefix, f.rank as distance
+               FROM fts_chunks f
+               JOIN vec_embeddings v ON v.rowid = f.chunk_id
+               WHERE fts_chunks MATCH ?
+               ORDER BY f.rank
+               LIMIT ?`;
+        params = [ftsQuery, topK];
+      }
+
+      try {
+        return await this._db.all<VectorRow>(sql, params);
+      } catch {
+        // FTS5 query syntax errors are non-fatal
+        return [];
+      }
+    };
+
+    // M16 Task 1.3: AND-first with OR fallback.
+    // AND semantics provide precision; if too few results, broaden to OR.
+    const andResults = await runFts(sanitized);
+
+    if (andResults.length >= Math.ceil(topK / 2)) {
+      return andResults;
     }
 
-    try {
-      return await this._db.all<VectorRow>(sql, params);
-    } catch {
-      // FTS5 query syntax errors are non-fatal
-      return [];
+    // AND returned too few results — try OR semantics for broader recall
+    const orQuery = sanitizeFts5QueryOr(queryText);
+    if (!orQuery || orQuery === sanitized) {
+      return andResults; // OR wouldn't differ (single term or same query)
     }
+
+    const orResults = await runFts(orQuery);
+    return orResults.length > andResults.length ? orResults : andResults;
   }
 }
 
@@ -618,6 +637,34 @@ function sanitizeFts5Query(query: string): string {
 }
 
 /**
+ * Sanitize query with OR semantics for FTS5 fallback.
+ * Used when AND returns too few results (M16 Task 1.3).
+ *
+ * OR semantics match documents containing ANY of the terms,
+ * providing broader recall at the cost of precision.
+ */
+function sanitizeFts5QueryOr(query: string): string {
+  const cleaned = query
+    .replace(/[*"():^~{}[\]]/g, ' ')
+    .trim();
+
+  if (!cleaned) { return ''; }
+
+  const allTerms = cleaned.split(/\s+/).filter(Boolean);
+  if (allTerms.length === 0) { return ''; }
+
+  const contentTerms = allTerms.filter((t) => !isStopword(t));
+  const terms = contentTerms.length > 0 ? contentTerms : allTerms;
+
+  if (terms.length === 1) {
+    return `"${terms[0]}"`;
+  }
+
+  // OR semantics — explicit OR keyword between quoted terms
+  return terms.map((t) => `"${t}"`).join(' OR ');
+}
+
+/**
  * Reciprocal Rank Fusion — merges multiple ranked result lists.
  *
  * Formula: RRF(d) = Σ 1/(k + rank(d))
@@ -663,4 +710,4 @@ function reciprocalRankFusion(
     .slice(0, topN);
 }
 
-export { float32ArrayToBuffer, sanitizeFts5Query, isStopword, reciprocalRankFusion };
+export { float32ArrayToBuffer, sanitizeFts5Query, sanitizeFts5QueryOr, isStopword, reciprocalRankFusion };

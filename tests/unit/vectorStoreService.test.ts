@@ -5,6 +5,7 @@ import {
   VectorStoreService,
   float32ArrayToBuffer,
   sanitizeFts5Query,
+  sanitizeFts5QueryOr,
   isStopword,
   reciprocalRankFusion,
 } from '../../src/services/vectorStoreService.js';
@@ -139,6 +140,26 @@ describe('sanitizeFts5Query()', () => {
     expect(sanitizeFts5Query('grammar pages')).toBe('"grammar" "pages"');
     // M16: "table" is no longer a stopword → "tables" survives
     expect(sanitizeFts5Query('data tables charts')).toBe('"data" "tables" "charts"');
+  });
+});
+
+describe('sanitizeFts5QueryOr()', () => {
+  it('joins multiple terms with OR for broader recall', () => {
+    const result = sanitizeFts5QueryOr('collision deductible coverage');
+    expect(result).toBe('"collision" OR "deductible" OR "coverage"');
+  });
+
+  it('wraps single term same as AND version', () => {
+    expect(sanitizeFts5QueryOr('hello')).toBe('"hello"');
+  });
+
+  it('filters stopwords same as AND version', () => {
+    const result = sanitizeFts5QueryOr('what is the deductible for collision');
+    expect(result).toBe('"deductible" OR "collision"');
+  });
+
+  it('returns empty for empty input', () => {
+    expect(sanitizeFts5QueryOr('')).toBe('');
   });
 });
 
