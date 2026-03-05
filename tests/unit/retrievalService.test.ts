@@ -217,6 +217,29 @@ describe('RetrievalService', () => {
       const results = await service.retrieve('query');
       expect(results[0].tokenCount).toBe(Math.ceil('Hello world'.length / 4));
     });
+
+    it('applies relative score drop-off filter — drops results < 60% of top score', async () => {
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, sourceId: 'p1', score: 0.10 }),   // top score
+        makeResult({ rowid: 2, sourceId: 'p2', score: 0.07 }),   // 70% of top → keeps
+        makeResult({ rowid: 3, sourceId: 'p3', score: 0.05 }),   // 50% of top → dropped
+        makeResult({ rowid: 4, sourceId: 'p4', score: 0.026 }),  // 26% of top → dropped
+      ]);
+
+      const results = await service.retrieve('query');
+      expect(results).toHaveLength(2);
+      expect(results[0].sourceId).toBe('p1');
+      expect(results[1].sourceId).toBe('p2');
+    });
+
+    it('does not apply drop-off filter when only one result', async () => {
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, sourceId: 'p1', score: 0.03 }),
+      ]);
+
+      const results = await service.retrieve('query');
+      expect(results).toHaveLength(1);
+    });
   });
 
   describe('formatContext()', () => {

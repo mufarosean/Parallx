@@ -186,6 +186,16 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     // 3. Score threshold filter (RRF scores)
     let filtered = rawResults.filter((r) => r.score >= minScore);
 
+    // 3b. Relative score drop-off — drop results below 60% of the top
+    //     score.  This catches noise that barely clears the absolute
+    //     threshold when there's a clear quality gap between the best
+    //     result and the rest.
+    if (filtered.length > 1) {
+      const topScore = filtered[0].score;
+      const dropoffThreshold = topScore * 0.6;
+      filtered = filtered.filter((r) => r.score >= dropoffThreshold);
+    }
+
     // 4. LLM re-ranking — score each candidate's relevance to the query
     if (shouldRerank && filtered.length > 0) {
       filtered = await this._rerankChunks(query, filtered);

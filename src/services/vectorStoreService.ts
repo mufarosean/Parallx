@@ -286,6 +286,14 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
 
     const fused = reciprocalRankFusion(rankedLists, RRF_K, topK);
 
+    // When only the vector path fired (keyword returned nothing), each
+    // result's RRF score is halved compared to dual-path results because
+    // it only gets one 1/(k+rank+1) contribution instead of two.
+    // Scale ×2 so the scores stay comparable to the min-score threshold.
+    if (keywordResults.length === 0) {
+      for (const r of fused) { r.score *= 2; }
+    }
+
     // 4. Filter by minimum score and return
     return fused
       .filter((r) => r.score >= minScore)
@@ -542,14 +550,39 @@ const FTS5_STOPWORDS = new Set([
   'page', 'pages', 'number', 'numbers', 'chapter', 'chapters', 'section', 'sections',
   'figure', 'figures', 'table', 'tables', 'example', 'examples',
   'see', 'also', 'note', 'notes', 'like', 'part', 'parts', 'book',
+  // common verbs & fillers that appear everywhere
+  'tell', 'talk', 'give', 'make', 'know', 'think', 'want', 'need',
+  'use', 'find', 'get', 'go', 'come', 'take', 'say', 'ask', 'try',
+  'based', 'using', 'show', 'help', 'look', 'work', 'call', 'read',
 ]);
+
+/**
+ * Check if a word is a stopword, with simple de-pluralisation.
+ * "books" → strip 's' → "book" → in stopword set → true.
+ * Prevents common plurals from polluting keyword search.
+ */
+function isStopword(word: string): boolean {
+  const w = word.toLowerCase();
+  if (FTS5_STOPWORDS.has(w)) { return true; }
+  // Simple de-plural: strip trailing 's' (not 'ss' — "less", "pass")
+  if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) {
+    return FTS5_STOPWORDS.has(w.slice(0, -1));
+  }
+  return false;
+}
 
 /**
  * Sanitize a user query for FTS5 MATCH syntax.
  *
- * Uses AND semantics (implicit in FTS5) instead of OR so that multi-term queries
- * match only documents containing ALL content terms, dramatically reducing noise.
- * Stopwords are filtered to prevent common words from diluting BM25 ranking.
+ * Uses AND semantics (implicit in FTS5) so that multi-term queries match only
+ * documents containing ALL content terms, dramatically reducing noise.
+ *
+ * The vector similarity path provides broad recall — the keyword path's job is
+ * precision.  When AND is too strict and returns nothing, the vector results
+ * still come through via score compensation in search().
+ *
+ * Stopwords are filtered with simple de-pluralisation ("books" → "book" →
+ * stopword) to prevent common words from polluting results.
  *
  * FTS5 treats space-separated quoted terms as implicit AND:
  *   "FSI" "Shona" "vocabulary" → matches docs containing ALL three terms
@@ -568,10 +601,8 @@ function sanitizeFts5Query(query: string): string {
   const allTerms = cleaned.split(/\s+/).filter(Boolean);
   if (allTerms.length === 0) { return ''; }
 
-  // Filter out stopwords — keep only content-bearing terms
-  const contentTerms = allTerms.filter(
-    (t) => !FTS5_STOPWORDS.has(t.toLowerCase()),
-  );
+  // Filter out stopwords (with de-pluralisation) — keep only content-bearing terms
+  const contentTerms = allTerms.filter((t) => !isStopword(t));
 
   // If ALL terms were stopwords, keep the originals to avoid empty query
   const terms = contentTerms.length > 0 ? contentTerms : allTerms;
@@ -581,13 +612,9 @@ function sanitizeFts5Query(query: string): string {
     return `"${terms[0]}"`;
   }
 
-  // Use OR to maximize recall — more terms means more potential matches,
-  // not fewer.  BM25 scoring already ranks chunks with more matching terms
-  // higher, so OR gives us broad recall while RRF fusion with the vector
-  // search path handles precision.  AND was the previous default and caused
-  // zero-result sets on multi-faceted queries (6+ terms that never all
-  // appear in a single chunk).
-  return terms.map((t) => `"${t}"`).join(' OR ');
+  // AND semantics (implicit in FTS5 — space-separated quoted terms).
+  // The vector path handles recall; the keyword path adds precision.
+  return terms.map((t) => `"${t}"`).join(' ');
 }
 
 /**
@@ -636,4 +663,4 @@ function reciprocalRankFusion(
     .slice(0, topN);
 }
 
-export { float32ArrayToBuffer, sanitizeFts5Query, reciprocalRankFusion };
+export { float32ArrayToBuffer, sanitizeFts5Query, isStopword, reciprocalRankFusion };

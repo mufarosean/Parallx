@@ -5,6 +5,7 @@ import {
   VectorStoreService,
   float32ArrayToBuffer,
   sanitizeFts5Query,
+  isStopword,
   reciprocalRankFusion,
 } from '../../src/services/vectorStoreService.js';
 import type { EmbeddedChunk, SearchResult } from '../../src/services/vectorStoreService.js';
@@ -73,39 +74,40 @@ describe('sanitizeFts5Query()', () => {
     expect(result).toBe('"hello"');
   });
 
-  it('joins multiple terms with OR for broad recall', () => {
+  it('joins multiple terms with AND (implicit) for precision', () => {
     const result = sanitizeFts5Query('hello world');
-    // OR maximizes recall; BM25 scoring handles precision
-    expect(result).toBe('"hello" OR "world"');
+    // AND (implicit in FTS5 — space-separated quoted terms) for precision;
+    // vector path handles recall
+    expect(result).toBe('"hello" "world"');
   });
 
   it('filters stopwords from multi-term queries', () => {
     const result = sanitizeFts5Query('what is the meaning of life');
     // "what", "is", "the", "of" are stopwords → only "meaning" and "life"
-    expect(result).toBe('"meaning" OR "life"');
+    expect(result).toBe('"meaning" "life"');
   });
 
   it('preserves all terms when every term is a stopword', () => {
     const result = sanitizeFts5Query('is the');
     // Both are stopwords → keep originals to avoid empty query
-    expect(result).toBe('"is" OR "the"');
+    expect(result).toBe('"is" "the"');
   });
 
   it('filters document-structural stopwords like page/chapter/book/examples', () => {
     const result = sanitizeFts5Query('FSI Shona vocabulary page numbers');
     // "page" and "numbers" are stopwords → "FSI", "Shona", "vocabulary"
-    expect(result).toBe('"FSI" OR "Shona" OR "vocabulary"');
+    expect(result).toBe('"FSI" "Shona" "vocabulary"');
   });
 
-  it('uses OR for multi-term queries to maximize recall', () => {
-    // 8 terms, all content-bearing — should all be kept with OR
+  it('uses AND for multi-term queries for precision', () => {
+    // 8 terms, all content-bearing — AND for precision, vector handles recall
     const result = sanitizeFts5Query('FSI Shona Basic Course vocabulary definitions grammar textbook');
-    expect(result).toBe('"FSI" OR "Shona" OR "Basic" OR "Course" OR "vocabulary" OR "definitions" OR "grammar" OR "textbook"');
+    expect(result).toBe('"FSI" "Shona" "Basic" "Course" "vocabulary" "definitions" "grammar" "textbook"');
   });
 
-  it('uses OR for 2+ content terms', () => {
+  it('uses AND for 2+ content terms', () => {
     const result = sanitizeFts5Query('FSI Shona Basic Course vocabulary');
-    expect(result).toBe('"FSI" OR "Shona" OR "Basic" OR "Course" OR "vocabulary"');
+    expect(result).toBe('"FSI" "Shona" "Basic" "Course" "vocabulary"');
   });
 
   it('strips FTS5 special characters', () => {
@@ -127,6 +129,41 @@ describe('sanitizeFts5Query()', () => {
 
   it('returns empty string for only special characters', () => {
     expect(sanitizeFts5Query('()^*~')).toBe('');
+  });
+
+  it('filters plurals of stopwords via de-pluralisation', () => {
+    // "books" → strip 's' → "book" → stopword → filtered
+    expect(sanitizeFts5Query('Shona books')).toBe('"Shona"');
+    // "pages" → strip 's' → "page" → stopword
+    expect(sanitizeFts5Query('grammar pages')).toBe('"grammar"');
+    // "tables" → strip 's' → "table" → stopword
+    expect(sanitizeFts5Query('data tables charts')).toBe('"data" "charts"');
+  });
+});
+
+describe('isStopword()', () => {
+  it('detects direct stopwords', () => {
+    expect(isStopword('the')).toBe(true);
+    expect(isStopword('book')).toBe(true);
+    expect(isStopword('page')).toBe(true);
+  });
+
+  it('detects plural forms of stopwords', () => {
+    expect(isStopword('books')).toBe(true);
+    expect(isStopword('pages')).toBe(true);
+    expect(isStopword('examples')).toBe(true);
+  });
+
+  it('does not flag non-stopwords', () => {
+    expect(isStopword('Shona')).toBe(false);
+    expect(isStopword('vocabulary')).toBe(false);
+    expect(isStopword('grammar')).toBe(false);
+  });
+
+  it('does not strip s from words ending in ss', () => {
+    // "less" → "les" would not be a stopword anyway, but double-s guard matters
+    expect(isStopword('less')).toBe(false);
+    expect(isStopword('pass')).toBe(false);
   });
 });
 
