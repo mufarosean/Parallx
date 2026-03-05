@@ -370,14 +370,8 @@ export class StatusBarController extends Disposable {
     }
 
     const workspace = this._getWorkspace();
-    const folders = workspace?.folders;
-    if (folders && folders.length === 1) {
-      parts.push(folders[0].name);
-    } else {
-      const wsName = workspace?.name;
-      if (wsName) {
-        parts.push(wsName);
-      }
+    if (workspace) {
+      parts.push(workspace.displayName);
     }
 
     parts.push('Parallx');

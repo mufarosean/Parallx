@@ -480,6 +480,9 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     const contextParts: string[] = [];
     const mentionPills: IContextPill[] = [];
 
+    // ── Latency instrumentation (M17 Task 0.2.7) ──
+    const _t0_contextAssembly = performance.now();
+
     // 0. @mention resolution (M11 Tasks 3.2–3.4)
     //
     // Extract @file:, @folder:, @workspace, @terminal mentions from
@@ -518,21 +521,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // the actual question and RAG context. The model can always use
     // read_current_page tool for the full text.
     const MAX_PAGE_CONTEXT_CHARS = 16_000;
-    if (services.getCurrentPageContent) {
-      try {
-        const pageContext = await services.getCurrentPageContent();
-        if (pageContext && pageContext.textContent) {
-          const text = pageContext.textContent.length > MAX_PAGE_CONTEXT_CHARS
-            ? pageContext.textContent.slice(0, MAX_PAGE_CONTEXT_CHARS) + '\n[…truncated — use read_current_page for full content]'
-            : pageContext.textContent;
-          contextParts.push(
-            `[Currently open page: "${pageContext.title}" (id: ${pageContext.pageId})]\n${text}`,
-          );
-        }
-      } catch {
-        // Silently skip — implicit context is best-effort
-      }
-    }
 
     // 1b. RAG context: per-turn retrieval
     //
@@ -559,72 +547,124 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       queries: [],
     };
 
-    // Direct retrieval: embed user's raw message → hybrid search → inject results.
-    if (services.retrieveContext && retrievalPlan.needsRetrieval) {
-      try {
-        const ragResult = await services.retrieveContext(userText);
-        if (ragResult) {
-          const alreadyInContext = new Set<string>();
-          if (request.attachments?.length) {
-            for (const att of request.attachments) {
-              alreadyInContext.add(att.fullPath);
-              alreadyInContext.add(att.name);
-            }
-          }
-          for (const pill of mentionPills) {
-            alreadyInContext.add(pill.label);
-            const colonIdx = pill.id.indexOf(':');
-            if (colonIdx > 0) {
-              alreadyInContext.add(pill.id.substring(colonIdx + 1));
-            }
-          }
-
-          const filteredSources = ragResult.sources.filter((s) => {
-            return !alreadyInContext.has(s.uri) && !alreadyInContext.has(s.label);
-          });
-
-          if (filteredSources.length > 0 || ragResult.sources.length === 0) {
-            contextParts.push(ragResult.text);
-          }
-
-          for (const source of filteredSources) {
-            response.reference(source.uri, source.label, source.index);
-            ragSources.push(source);
-          }
-        }
-      } catch {
-        // RAG retrieval is best-effort — don't block the request
-      }
-    }
-
-    // 1c. Memory context: retrieve relevant past conversation memories (M10 Phase 5)
-    // Gated by the plan — conversational messages don't need past memories.
-    // Capped at ~1000 tokens (4K chars) so cross-session memory doesn't
-    // overwhelm the current query's context.
+    // 1c. Memory context constants
     const MAX_MEMORY_CONTEXT_CHARS = 4_000;
-    if (services.recallMemories && retrievalPlan?.needsRetrieval !== false) {
-      try {
-        let memoryContext = await services.recallMemories(userText);
-        if (memoryContext) {
-          if (memoryContext.length > MAX_MEMORY_CONTEXT_CHARS) {
-            memoryContext = memoryContext.slice(0, MAX_MEMORY_CONTEXT_CHARS) + '\n[…memory truncated]';
-          }
-          contextParts.push(memoryContext);
+    const MAX_CONCEPT_CONTEXT_CHARS = 2_000;
+
+    // ── Parallel context assembly (M17 Task 0.2.4) ──
+    //
+    // Steps: page content, RAG retrieval, memory recall, concept recall,
+    // and attachment reading are all independent I/O operations. Run them
+    // concurrently to reduce pre-request latency from sequential to parallel.
+    // Mentions ran above (produces userText needed by RAG/memory).
+
+    type PageResult = { title: string; pageId: string; textContent: string } | null;
+    type RAGResult = { text: string; sources: Array<{ uri: string; label: string; index?: number }> } | null;
+    type MemoryResult = string | null;
+    type ConceptResult = string | null;
+    type AttachmentResult = { name: string; content: string | null };
+
+    const [pageResult, ragResult, memoryResult, conceptResult, attachmentResults] = await Promise.all([
+      // Page content
+      services.getCurrentPageContent
+        ? services.getCurrentPageContent().catch((): PageResult => null)
+        : Promise.resolve(null as PageResult),
+
+      // RAG retrieval
+      (services.retrieveContext && retrievalPlan.needsRetrieval)
+        ? services.retrieveContext(userText).catch((): RAGResult => null)
+        : Promise.resolve(null as RAGResult),
+
+      // Memory recall
+      (services.recallMemories && retrievalPlan.needsRetrieval !== false)
+        ? services.recallMemories(userText).catch((): MemoryResult => null)
+        : Promise.resolve(null as MemoryResult),
+
+      // Concept recall (M17 P1.2 Task 1.2.7)
+      (services.recallConcepts && retrievalPlan.needsRetrieval !== false)
+        ? services.recallConcepts(userText).catch((): ConceptResult => null)
+        : Promise.resolve(null as ConceptResult),
+
+      // Attachments
+      (request.attachments?.length && services.readFileContent)
+        ? Promise.all(request.attachments.map(async (att): Promise<AttachmentResult> => {
+            try {
+              const content = await services.readFileContent!(att.fullPath);
+              return { name: att.name, content };
+            } catch {
+              return { name: att.name, content: null };
+            }
+          }))
+        : Promise.resolve([] as AttachmentResult[]),
+    ]);
+
+    // ── Process parallel results sequentially ──
+
+    // Page content
+    if (pageResult && pageResult.textContent) {
+      const text = pageResult.textContent.length > MAX_PAGE_CONTEXT_CHARS
+        ? pageResult.textContent.slice(0, MAX_PAGE_CONTEXT_CHARS) + '\n[…truncated — use read_current_page for full content]'
+        : pageResult.textContent;
+      contextParts.push(
+        `[Currently open page: "${pageResult.title}" (id: ${pageResult.pageId})]\n${text}`,
+      );
+    }
+
+    // RAG context
+    if (ragResult) {
+      const alreadyInContext = new Set<string>();
+      if (request.attachments?.length) {
+        for (const att of request.attachments) {
+          alreadyInContext.add(att.fullPath);
+          alreadyInContext.add(att.name);
         }
-      } catch {
-        // Memory recall is best-effort — don't block the request
+      }
+      for (const pill of mentionPills) {
+        alreadyInContext.add(pill.label);
+        const colonIdx = pill.id.indexOf(':');
+        if (colonIdx > 0) {
+          alreadyInContext.add(pill.id.substring(colonIdx + 1));
+        }
+      }
+
+      const filteredSources = ragResult.sources.filter((s) => {
+        return !alreadyInContext.has(s.uri) && !alreadyInContext.has(s.label);
+      });
+
+      if (filteredSources.length > 0 || ragResult.sources.length === 0) {
+        contextParts.push(ragResult.text);
+      }
+
+      for (const source of filteredSources) {
+        response.reference(source.uri, source.label, source.index);
+        ragSources.push(source);
       }
     }
 
-    // 2. Explicit attachments: user-added file context
-    if (request.attachments?.length && services.readFileContent) {
-      for (const attachment of request.attachments) {
-        try {
-          const content = await services.readFileContent(attachment.fullPath);
-          contextParts.push(`File: ${attachment.name}\n\`\`\`\n${content}\n\`\`\``);
-        } catch {
-          contextParts.push(`File: ${attachment.name}\n[Could not read file]`);
-        }
+    // Memory context
+    if (memoryResult) {
+      let memoryContext = memoryResult;
+      if (memoryContext.length > MAX_MEMORY_CONTEXT_CHARS) {
+        memoryContext = memoryContext.slice(0, MAX_MEMORY_CONTEXT_CHARS) + '\n[…memory truncated]';
+      }
+      contextParts.push(memoryContext);
+    }
+
+    // Concept context (M17 P1.2 Task 1.2.7)
+    if (conceptResult) {
+      let conceptContext = conceptResult;
+      if (conceptContext.length > MAX_CONCEPT_CONTEXT_CHARS) {
+        conceptContext = conceptContext.slice(0, MAX_CONCEPT_CONTEXT_CHARS) + '\n[…concepts truncated]';
+      }
+      contextParts.push(conceptContext);
+    }
+
+    // Attachments
+    for (const att of attachmentResults) {
+      if (att.content !== null) {
+        contextParts.push(`File: ${att.name}\n\`\`\`\n${att.content}\n\`\`\``);
+      } else {
+        contextParts.push(`File: ${att.name}\n[Could not read file]`);
       }
     }
 
@@ -831,53 +871,43 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       content: userContent,
     });
 
-    // ── Context overflow detection & LLM-based summarization ──
+    // Latency: context assembly complete (M17 Task 0.2.7)
+    const _t1_contextAssembly = performance.now();
+    console.debug(`[Parallx:latency] Context assembly: ${(_t1_contextAssembly - _t0_contextAssembly).toFixed(1)}ms`);
+
+    // ── Context overflow detection & oldest-first truncation (M17 Task 0.2.5) ──
+    //
+    // When the assembled messages exceed the model's context window, drop
+    // the oldest history messages one-at-a-time until we fit.  This avoids
+    // the prior approach of making a blocking LLM summarization call before
+    // the main response — which added 20–60s of latency.
+    //
+    // The `/compact` command still exists for explicit LLM-based condensation.
 
     const contextLength = services.getModelContextLength?.() || BUDGET_FALLBACK_CTX;
     {
-      const tokenEstimate = estimateTokens(messages);
       const warnThreshold = Math.floor(contextLength * CONTEXT_OVERFLOW_WARN_THRESHOLD);
+      let tokenEstimate = estimateTokens(messages);
 
-      if (tokenEstimate > contextLength && services.sendSummarizationRequest) {
-        // Exceeded context — summarize older messages (invisible to user)
-        try {
-          const historyToSummarize = messages.slice(1, -1); // exclude system + current user
-          if (historyToSummarize.length > 2) {
-            const summaryPrompt: IChatMessage[] = [
-              {
-                role: 'system',
-                content:
-                  'You are a conversation summarizer. Condense the following conversation history into a concise context message. ' +
-                  'Preserve all key facts, decisions, and code references. Output ONLY the summary, no preamble.',
-              },
-              {
-                role: 'user',
-                content: historyToSummarize.map((m) => `[${m.role}]: ${m.content}`).join('\n\n'),
-              },
-            ];
+      if (tokenEstimate > contextLength) {
+        // Drop oldest history messages (indices 1..n-1, keeping system[0] + current user[last])
+        // until we fit within the context window.
+        while (tokenEstimate > contextLength && messages.length > 2) {
+          messages.splice(1, 1); // remove oldest non-system message
+          tokenEstimate = estimateTokens(messages);
+        }
 
-            let summaryText = '';
-            for await (const chunk of services.sendSummarizationRequest(summaryPrompt)) {
-              if (chunk.content) { summaryText += chunk.content; }
-            }
-
-            if (summaryText) {
-              // Replace history with summary — keep system prompt + summary + current user msg
-              const systemMsg = messages[0];
-              const currentMsg = messages[messages.length - 1];
-              messages.length = 0;
-              messages.push(systemMsg);
-              messages.push({ role: 'assistant', content: `[Conversation summary]: ${summaryText}` });
-              messages.push(currentMsg);
-            }
-          }
-        } catch {
-          // Summarization failed — proceed with full history (best effort)
+        if (messages.length <= 2) {
+          // Only system + current user left — warn that history was fully dropped
+          response.warning(
+            `Context window full (${tokenEstimate} / ${contextLength} estimated tokens). ` +
+            'All previous conversation history has been dropped. Use /compact to manage context.',
+          );
         }
       } else if (tokenEstimate > warnThreshold) {
         response.warning(
           `Approaching context limit (${tokenEstimate} / ${contextLength} estimated tokens). ` +
-          'Older messages may be summarized automatically if the conversation continues.',
+          'Older messages may be dropped automatically if the conversation continues.',
         );
       }
     }
@@ -977,7 +1007,17 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           abortController.signal,
         );
 
+        // Latency: start LLM streaming (M17 Task 0.2.7)
+        const _t2_streamStart = performance.now();
+        let _firstTokenLogged = false;
+
         for await (const chunk of stream) {
+          // Log time-to-first-token once
+          if (!_firstTokenLogged && (chunk.content || chunk.thinking)) {
+            console.debug(`[Parallx:latency] Time to first token: ${(performance.now() - _t2_streamStart).toFixed(1)}ms`);
+            _firstTokenLogged = true;
+          }
+
           if (token.isCancellationRequested || token.isYieldRequested) {
             break;
           }
@@ -1010,6 +1050,9 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           if (chunk.promptEvalCount) { turnPromptTokens = chunk.promptEvalCount; }
           if (chunk.evalCount) { turnCompletionTokens = chunk.evalCount; }
         }
+
+        // Latency: streaming complete (M17 Task 0.2.7)
+        console.debug(`[Parallx:latency] LLM stream complete: ${(performance.now() - _t2_streamStart).toFixed(1)}ms`);
 
         // Report token usage from this turn to the response stream
         if (turnPromptTokens > 0 || turnCompletionTokens > 0) {
@@ -1148,14 +1191,13 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         services.extractPreferences(request.text).catch(() => {});
       }
 
-      // ── Post-response: session memory (M10 Phase 5 — Task 5.1) ──
-      // If the session has enough messages and hasn't been summarised yet,
-      // create a summary for cross-session memory. We do this when the session
-      // grows beyond the threshold, using the summarization LLM.
+      // ── Post-response: session memory + concept extraction (M10/M17 P1.2) ──
+      // Create or *update* the session summary using growth-based re-summarisation.
+      // Also extract learning concepts in the same LLM call (M17 P1.2 Task 1.2.6).
       if (
         services.storeSessionMemory &&
         services.isSessionEligibleForSummary &&
-        services.hasSessionMemory &&
+        services.getSessionMemoryMessageCount &&
         services.sendSummarizationRequest &&
         context.history.length > 0
       ) {
@@ -1163,8 +1205,11 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         const messageCount = context.history.length + 1; // +1 for current exchange
         if (sessionId && services.isSessionEligibleForSummary(messageCount)) {
           // Fire and forget — don't block chat response
-          services.hasSessionMemory(sessionId).then(async (hasMemory) => {
-            if (hasMemory) { return; }
+          services.getSessionMemoryMessageCount(sessionId).then(async (storedCount) => {
+            const shouldSummarize = storedCount === null
+              || messageCount >= storedCount * 2
+              || messageCount >= storedCount + 10;
+            if (!shouldSummarize) { return; }
             try {
               // Build a compact conversation transcript for summarization
               const transcript = context.history.map((p) => {
@@ -1176,23 +1221,73 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
               const current = `User: ${request.text}`;
               const fullTranscript = transcript + '\n\n' + current;
 
+              // Combined prompt: summary + concept extraction (P1.2 Task 1.2.6)
+              const hasConcepts = !!services.storeConceptsFromSession;
               const summaryPrompt: IChatMessage[] = [
                 {
                   role: 'system',
-                  content:
-                    'Summarise this conversation in 2-4 sentences. Focus on the key topics discussed, ' +
-                    'decisions made, and any important context. Output ONLY the summary.',
+                  content: hasConcepts
+                    ? 'Analyse this conversation and produce JSON with two keys:\n' +
+                      '1. "summary": 2-4 sentence summary of key topics, decisions, and context.\n' +
+                      '2. "concepts": array of objects with fields: "concept" (topic name, 2-5 words), ' +
+                      '"category" (subject area), "summary" (user\'s current understanding), ' +
+                      '"struggled" (boolean — true if user showed confusion or needed rephrasing).\n' +
+                      'Only include concepts the user actively engaged with.\n' +
+                      'Output ONLY valid JSON, no markdown fences.'
+                    : 'Summarise this conversation in 2-4 sentences. Focus on the key topics discussed, ' +
+                      'decisions made, and any important context. Output ONLY the summary.',
                 },
                 { role: 'user', content: fullTranscript },
               ];
 
-              let summaryText = '';
+              let rawText = '';
               for await (const chunk of services.sendSummarizationRequest!(summaryPrompt)) {
-                if (chunk.content) { summaryText += chunk.content; }
+                if (chunk.content) { rawText += chunk.content; }
               }
 
-              if (summaryText.trim()) {
-                await services.storeSessionMemory!(sessionId, summaryText.trim(), messageCount);
+              if (!rawText.trim()) { return; }
+
+              // Parse response — try JSON first, fall back to plain summary
+              let summaryText = rawText.trim();
+              let extractedConcepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }> = [];
+
+              if (hasConcepts) {
+                try {
+                  // Strip markdown fences if the model wraps them
+                  let jsonStr = summaryText;
+                  const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+                  if (fenceMatch) { jsonStr = fenceMatch[1].trim(); }
+
+                  const parsed = JSON.parse(jsonStr);
+                  if (parsed && typeof parsed.summary === 'string') {
+                    summaryText = parsed.summary.trim();
+                  }
+                  if (Array.isArray(parsed.concepts)) {
+                    extractedConcepts = parsed.concepts
+                      .filter((c: unknown) =>
+                        c && typeof c === 'object' &&
+                        typeof (c as Record<string, unknown>).concept === 'string' &&
+                        (c as Record<string, unknown>).concept,
+                      )
+                      .map((c: Record<string, unknown>) => ({
+                        concept: String(c.concept),
+                        category: String(c.category || 'general'),
+                        summary: String(c.summary || ''),
+                        struggled: Boolean(c.struggled),
+                      }));
+                  }
+                } catch {
+                  // JSON parsing failed — use raw text as summary, no concepts
+                }
+              }
+
+              if (summaryText) {
+                await services.storeSessionMemory!(sessionId, summaryText, messageCount);
+              }
+
+              // Store extracted concepts (P1.2 Task 1.2.6)
+              if (extractedConcepts.length > 0 && services.storeConceptsFromSession) {
+                services.storeConceptsFromSession(extractedConcepts, sessionId).catch(() => {});
               }
             } catch {
               // Memory summarisation is best-effort

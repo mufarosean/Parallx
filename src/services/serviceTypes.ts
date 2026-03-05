@@ -1112,6 +1112,12 @@ export interface IMemoryService extends IDisposable {
   /** Whether a memory already exists for the given session. */
   hasMemory(sessionId: string): Promise<boolean>;
 
+  /**
+   * Get the message count stored with the last summary for a session.
+   * Returns `null` if no memory exists. Used for growth-based re-summarization (M17 Task 1.1.2).
+   */
+  getMemoryMessageCount(sessionId: string): Promise<number | null>;
+
   /** Store a conversation summary (after LLM summarisation). */
   storeMemory(sessionId: string, summary: string, messageCount: number): Promise<void>;
 
@@ -1141,6 +1147,25 @@ export interface IMemoryService extends IDisposable {
 
   /** Clear all memories and preferences. */
   clearAll(): Promise<void>;
+
+  // ── Concept-Level Memory (M17 P1.2) ──
+
+  /** Store or update learning concepts extracted from a session. */
+  storeConcepts(concepts: import('./memoryService.js').LearningConcept[], sessionId: string): Promise<void>;
+
+  /** Recall concepts relevant to a query via hybrid search. */
+  recallConcepts(query: string, topK?: number): Promise<import('./memoryService.js').LearningConcept[]>;
+
+  /** Format recalled concepts for system prompt injection. */
+  formatConceptContext(concepts: import('./memoryService.js').LearningConcept[]): string;
+
+  // ── Decay & Eviction (M17 P1.3) ──
+
+  /** Recalculate decay scores for all memories and concepts. */
+  recalculateDecayScores(): Promise<void>;
+
+  /** Evict stale memories and concepts that have decayed below threshold. */
+  evictStaleContent(): Promise<{ memoriesEvicted: number; conceptsEvicted: number }>;
 }
 
 export const IMemoryService = createServiceIdentifier<IMemoryService>('IMemoryService');

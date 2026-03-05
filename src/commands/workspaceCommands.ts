@@ -230,7 +230,7 @@ export const workspaceRename: CommandDescriptor = {
     if (newName === w.workspace.name) return; // no change
 
     w.workspace.rename(newName);
-    w._titlebar.setWorkspaceName(newName);
+    w._titlebar.setWorkspaceName(w.workspace.displayName);
     w._updateWindowTitle();
     await w._workspaceSaver.save();
     console.log('[Command] Workspace renamed to "%s"', newName);

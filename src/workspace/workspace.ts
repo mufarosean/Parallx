@@ -84,6 +84,19 @@ export class Workspace {
   get iconOrColor(): string | undefined { return this._identity.iconOrColor; }
   get identity(): WorkspaceIdentity { return this._identity; }
 
+  /**
+   * VS Code-style display name:
+   * - Single folder  → folder name (e.g. "Books")
+   * - Multiple folders → workspace identity name
+   * - No folders      → workspace identity name
+   */
+  get displayName(): string {
+    if (this._folders.length === 1) {
+      return this._folders[0].name;
+    }
+    return this._identity.name;
+  }
+
   // ── Metadata ──
 
   get metadata(): WorkspaceMetadata { return this._metadata; }
@@ -98,6 +111,18 @@ export class Workspace {
       ...this._metadata,
       lastAccessedAt: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Adopt a durable workspace identity recovered from `.parallx/workspace-identity.json`.
+   * This replaces the current random UUID so that session queries match persisted data.
+   */
+  adoptId(id: string): void {
+    if (id && id !== this._identity.id) {
+      const oldId = this._identity.id;
+      this._identity = { ...this._identity, id };
+      console.log('[Workspace] Adopted durable identity %s (was %s)', id, oldId);
+    }
   }
 
   /**

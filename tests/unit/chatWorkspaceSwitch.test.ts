@@ -90,7 +90,7 @@ describe('ChatDataService.resetForWorkspaceSwitch', () => {
   let deps: ChatDataServiceDeps;
   const oldRetrieval = { id: 'old-retrieval' } as any;
   const oldPipeline = { id: 'old-pipeline' } as any;
-  const oldMemory = { id: 'old-memory' } as any;
+  const oldMemory = { id: 'old-memory', evictStaleContent: vi.fn().mockResolvedValue({ memoriesEvicted: 0, conceptsEvicted: 0 }) } as any;
 
   beforeEach(() => {
     deps = createMinimalDeps({

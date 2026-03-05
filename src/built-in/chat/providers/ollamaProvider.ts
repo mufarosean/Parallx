@@ -81,14 +81,12 @@ interface OllamaChatChunk {
   eval_duration?: number;
 }
 
-// IRetrievalPlan — now defined in chatTypes.ts (M13 Phase 1)
-import type { IRetrievalPlan } from '../chatTypes.js';
+// IRetrievalPlan — re-exported for external consumers (now defined in chatTypes.ts)
 export type { IRetrievalPlan } from '../chatTypes.js';
 
 // ── Timeouts ──
 
 const METADATA_TIMEOUT_MS = 10_000;
-const CHAT_TIMEOUT_MS = 120_000;
 const HEALTH_POLL_CONNECTED_MS = 30_000;
 const HEALTH_POLL_DISCONNECTED_MS = 5_000;
 const HEALTH_POLL_BACKOFF_MS = 60_000;
@@ -124,6 +122,9 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
 
   /** True while in the startup burst window (fast polling). */
   private _startupBurst = true;
+
+  /** True once we've already sent a pre-load request (avoids duplicates). */
+  private _preloadRequested = false;
 
   private readonly _onDidChangeStatus = this._register(new Emitter<IProviderStatus>());
   readonly onDidChangeStatus: Event<IProviderStatus> = this._onDidChangeStatus.event;
@@ -225,6 +226,45 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     } catch {
       return 0;
     }
+  }
+
+  // ── Model Pre-loading (M17 Task 0.2.2 / 0.2.3) ──
+
+  /**
+   * Pre-loads a chat model (and the embedding model) into VRAM so the
+   * first real request doesn't pay a cold-start penalty.
+   *
+   * Sends a zero-token `/api/chat` request with `keep_alive: '30m'` and
+   * a single-token `/api/embed` request to warm both models in parallel.
+   * Fire-and-forget — failures are silently logged.
+   */
+  async preloadModel(modelId: string): Promise<void> {
+    if (!modelId) { return; }
+
+    const warmChat = fetch(`${this._baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [],
+        keep_alive: '30m',
+      }),
+    }).then(r => { if (!r.ok) { console.warn(`[OllamaProvider] preload chat model failed: HTTP ${r.status}`); } })
+      .catch(err => { console.warn('[OllamaProvider] preload chat model error:', err); });
+
+    const warmEmbed = fetch(`${this._baseUrl}/api/embed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'nomic-embed-text',
+        input: 'warmup',
+        keep_alive: '30m',
+      }),
+    }).then(r => { if (!r.ok) { console.warn(`[OllamaProvider] preload embed model failed: HTTP ${r.status}`); } })
+      .catch(err => { console.warn('[OllamaProvider] preload embed model error:', err); });
+
+    await Promise.all([warmChat, warmEmbed]);
+    console.log(`[OllamaProvider] Pre-loaded models: ${modelId} + nomic-embed-text`);
   }
 
   // ── ILanguageModelProvider ──
@@ -355,195 +395,98 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     }
     if (Object.keys(ollamaOptions).length > 0) body['options'] = ollamaOptions;
 
-    // Create a combined abort signal (user cancellation + timeout)
+    // Keep the model loaded in VRAM for 30 minutes after the last request
+    // instead of Ollama's default 5 minutes. This eliminates cold-start
+    // penalties during active study sessions (M17 Task 0.2.1).
+    body['keep_alive'] = '30m';
+
+    // Forward the caller's abort signal (user cancellation + participant stall
+    // timeout).  No hard total timeout here — the participant-level stall
+    // timeout (resets on each chunk) is the correct safeguard against hung
+    // connections.  A fixed total timeout would kill long-running thinking
+    // models (qwen3, DeepSeek-R1) mid-response.
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
 
     if (signal) {
-      signal.addEventListener('abort', () => controller.abort(), { once: true });
+      if (signal.aborted) {
+        controller.abort();
+      } else {
+        signal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
     }
 
+    let response = await fetch(`${this._baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    // If thinking is rejected, cache and retry without it
+    if (!response.ok && response.status === 400 && body['think']) {
+      const errorText = await response.text();
+      if (errorText.includes('does not support thinking')) {
+        console.warn(`[OllamaProvider] ${modelId} does not support thinking — retrying without think:true`);
+        this._noThinkModels.add(modelId);
+        delete body['think'];
+        response = await fetch(`${this._baseUrl}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+      } else {
+        throw new Error(`Ollama returned HTTP ${response.status}: ${errorText}`);
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Ollama returned HTTP ${response.status}: ${await response.text()}`);
+    }
+
+    if (!response.body) {
+      throw new Error('Response body is null — streaming not supported.');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
     try {
-      let response = await fetch(`${this._baseUrl}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      // If thinking is rejected, cache and retry without it
-      if (!response.ok && response.status === 400 && body['think']) {
-        const errorText = await response.text();
-        if (errorText.includes('does not support thinking')) {
-          console.warn(`[OllamaProvider] ${modelId} does not support thinking — retrying without think:true`);
-          this._noThinkModels.add(modelId);
-          delete body['think'];
-          response = await fetch(`${this._baseUrl}/api/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-          });
-        } else {
-          throw new Error(`Ollama returned HTTP ${response.status}: ${errorText}`);
-        }
-      }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-      if (!response.ok) {
-        throw new Error(`Ollama returned HTTP ${response.status}: ${await response.text()}`);
-      }
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
 
-      if (!response.body) {
-        throw new Error('Response body is null — streaming not supported.');
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            try {
-              const chunk = JSON.parse(trimmed) as OllamaChatChunk;
-              yield this._parseChunk(chunk);
-            } catch {
-              // Malformed JSON line — skip
-              console.warn('[OllamaProvider] Malformed streaming chunk:', trimmed);
-            }
-          }
-        }
-
-        // Process any remaining buffer content
-        if (buffer.trim()) {
           try {
-            const chunk = JSON.parse(buffer.trim()) as OllamaChatChunk;
+            const chunk = JSON.parse(trimmed) as OllamaChatChunk;
             yield this._parseChunk(chunk);
           } catch {
-            // Ignore trailing incomplete data
+            // Malformed JSON line — skip
+            console.warn('[OllamaProvider] Malformed streaming chunk:', trimmed);
           }
         }
-      } finally {
-        reader.releaseLock();
+      }
+
+      // Process any remaining buffer content
+      if (buffer.trim()) {
+        try {
+          const chunk = JSON.parse(buffer.trim()) as OllamaChatChunk;
+          yield this._parseChunk(chunk);
+        } catch {
+          // Ignore trailing incomplete data
+        }
       }
     } finally {
-      clearTimeout(timeoutId);
+      reader.releaseLock();
     }
-  }
-
-  // ── Retrieval Planner (M12 Task 1.2) ──
-
-  /**
-   * Run a lightweight planning LLM call to classify intent and generate
-   * targeted search queries. Consumes the full streaming response, then
-   * parses JSON from the output.
-   *
-   * Returns a default fallback plan on any failure (malformed JSON, timeout,
-   * network error) so callers never crash.
-   */
-  async planRetrieval(
-    modelId: string,
-    messages: readonly IChatMessage[],
-    signal?: AbortSignal,
-  ): Promise<IRetrievalPlan> {
-    const fallback: IRetrievalPlan = {
-      intent: 'question',
-      reasoning: 'Planning call failed — falling back to direct query.',
-      needsRetrieval: true,
-      queries: [],
-    };
-
-    try {
-      // Use low temperature + limited tokens for deterministic, fast planning
-      const options: IChatRequestOptions = {
-        temperature: 0.1,
-        maxTokens: 400,
-      };
-
-      let fullText = '';
-      for await (const chunk of this.sendChatRequest(modelId, messages, options, signal)) {
-        if (chunk.content) { fullText += chunk.content; }
-      }
-
-      return this._parsePlannerResponse(fullText, fallback);
-    } catch (err) {
-      console.warn('[OllamaProvider] planRetrieval failed:', err);
-      return fallback;
-    }
-  }
-
-  /**
-   * Parse the planner LLM's text output into a structured IRetrievalPlan.
-   * Attempts JSON.parse first, then tries to extract a JSON block from
-   * markdown fences, then falls back to free-text query extraction.
-   */
-  private _parsePlannerResponse(text: string, fallback: IRetrievalPlan): IRetrievalPlan {
-    const trimmed = text.trim();
-
-    // Attempt 1: Direct JSON parse
-    let parsed = this._tryParseJson(trimmed);
-    if (parsed) { return this._normalizePlan(parsed); }
-
-    // Attempt 2: Extract JSON from markdown code fence
-    const fenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    if (fenceMatch) {
-      parsed = this._tryParseJson(fenceMatch[1].trim());
-      if (parsed) { return this._normalizePlan(parsed); }
-    }
-
-    // Attempt 3: Find first { ... } block
-    const braceStart = trimmed.indexOf('{');
-    const braceEnd = trimmed.lastIndexOf('}');
-    if (braceStart >= 0 && braceEnd > braceStart) {
-      parsed = this._tryParseJson(trimmed.slice(braceStart, braceEnd + 1));
-      if (parsed) { return this._normalizePlan(parsed); }
-    }
-
-    // All JSON parsing failed — return fallback
-    console.warn('[OllamaProvider] Could not parse planner JSON, using fallback. Raw:', trimmed.slice(0, 200));
-    return fallback;
-  }
-
-  private _tryParseJson(text: string): Record<string, unknown> | null {
-    try {
-      const obj = JSON.parse(text);
-      if (obj && typeof obj === 'object' && !Array.isArray(obj)) { return obj; }
-    } catch { /* not valid JSON */ }
-    return null;
-  }
-
-  private _normalizePlan(raw: Record<string, unknown>): IRetrievalPlan {
-    const validIntents = ['question', 'situation', 'task', 'conversational', 'exploration'];
-    const intent = typeof raw['intent'] === 'string' && validIntents.includes(raw['intent'])
-      ? raw['intent'] as IRetrievalPlan['intent']
-      : 'question';
-
-    const reasoning = typeof raw['reasoning'] === 'string'
-      ? raw['reasoning']
-      : '';
-
-    const needsRetrieval = typeof raw['needs_retrieval'] === 'boolean'
-      ? raw['needs_retrieval']
-      : (typeof raw['needsRetrieval'] === 'boolean' ? raw['needsRetrieval'] as boolean : true);
-
-    let queries: string[] = [];
-    if (Array.isArray(raw['queries'])) {
-      queries = raw['queries']
-        .filter((q): q is string => typeof q === 'string' && q.trim().length > 0)
-        .slice(0, 6); // Cap at 6 queries max
-    }
-
-    return { intent, reasoning, needsRetrieval, queries };
   }
 
   // ── Health Monitor (Task 1.3) ──
@@ -734,12 +677,45 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       this._startupBurst = false;
       // Also poll loaded models
       await this._pollLoadedModels();
+
+      // Pre-load the active model on first availability detection (M17 Task 0.2.2)
+      if (!this._preloadRequested && this._loadedModels.length === 0) {
+        this._preloadRequested = true;
+        // Defer to avoid blocking the poll cycle — preload is fire-and-forget
+        this._triggerPreload();
+      }
     } else {
       this._consecutiveFailures++;
     }
 
     // Reschedule with dynamic interval
     this._schedulePoll();
+  }
+
+  /**
+   * Trigger model pre-loading. Attempts to find the configured/active model
+   * from the loaded models list or falls back to listing available models
+   * and picking the first one.
+   */
+  private _triggerPreload(): void {
+    // Use setTimeout to avoid blocking the poll cycle
+    setTimeout(async () => {
+      try {
+        // Try to detect the user's model — check loaded first, then list all
+        let modelId = this._loadedModels[0] ?? '';
+        if (!modelId) {
+          const models = await this.listModels();
+          if (models.length > 0) {
+            modelId = models[0].id;
+          }
+        }
+        if (modelId) {
+          await this.preloadModel(modelId);
+        }
+      } catch (err) {
+        console.warn('[OllamaProvider] _triggerPreload failed:', err);
+      }
+    }, 100);
   }
 
   private async _pollLoadedModels(): Promise<void> {

@@ -50,7 +50,7 @@ import type { PromptFileService } from '../../../services/promptFileService.js';
 import type { ChatWidget } from '../widgets/chatWidget.js';
 import type { IWorkspaceSessionContext } from '../../../workspace/workspaceSessionContext.js';
 
-import { buildPlannerPrompt, buildSystemPrompt } from '../config/chatSystemPrompts.js';
+import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { extractTextContent } from '../tools/builtInTools.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -89,6 +89,8 @@ export interface ChatDataServiceDeps {
   readonly sessionManager?: ISessionManager;
   /** AI Settings service (M15). Provides active persona and model defaults. */
   readonly aiSettingsService?: IAISettingsService;
+  /** Open a file in the editor via the standard EditorsBridge resolver (same as explorer). */
+  readonly openFileEditor?: (uri: string, options?: { pinned?: boolean }) => Promise<void>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -327,7 +329,12 @@ export class ChatDataService {
   // ── Externally set state ──
   private _lastIndexStats: { pages: number; files: number } | undefined;
 
-  constructor(private _d: ChatDataServiceDeps) {}
+  constructor(private _d: ChatDataServiceDeps) {
+    // M17 P1.3 Task 1.3.6: Fire-and-forget memory eviction + decay recalculation on startup
+    if (this._d.memoryService) {
+      this._d.memoryService.evictStaleContent().catch(() => {});
+    }
+  }
 
   /** Called by the indexing-complete listener in chatTool.ts. */
   setLastIndexStats(stats: { pages: number; files: number }): void {
@@ -521,71 +528,31 @@ export class ChatDataService {
     } catch { return undefined; }
   }
 
+  /**
+   * Plan-based retrieval. The planner LLM call was removed in M17 (Task 0.2.6)
+   * as dead code — defaultParticipant uses direct `retrieveContext()` instead.
+   * This method now falls through to single-query retrieval for any callers
+   * that still reference it.
+   */
   async planAndRetrieve(
     userText: string,
-    recentHistory?: string,
-    workspaceDigest?: string,
+    _recentHistory?: string,
+    _workspaceDigest?: string,
   ): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }>; plan?: IRetrievalPlan } | undefined> {
-    if (!this._d.retrievalService || !this._d.ollamaProvider) { return undefined; }
+    if (!this._d.retrievalService) { return undefined; }
     if (!this._d.indexingPipelineService?.isInitialIndexComplete) { return undefined; }
 
     try {
-      // Build planner messages
-      const plannerSystemPrompt = buildPlannerPrompt(workspaceDigest);
-      const plannerMessages: IChatMessage[] = [
-        { role: 'system', content: plannerSystemPrompt },
-      ];
-
-      // Include recent history for contextual understanding
-      if (recentHistory) {
-        plannerMessages.push({
-          role: 'user',
-          content: `Recent conversation context:\n${recentHistory}\n\nNow analyse the LATEST message below.`,
-        });
-        plannerMessages.push({
-          role: 'assistant',
-          content: 'I understand the context. Please provide the latest user message.',
-        });
-      }
-
-      plannerMessages.push({ role: 'user', content: userText });
-
-      // Run the planner LLM call
-      const modelId = this._d.languageModelsService.getActiveModel() ?? '';
-      const plan = await this._d.ollamaProvider.planRetrieval(modelId, plannerMessages);
-
-      // If planner says no retrieval needed, return empty with plan metadata
-      if (!plan.needsRetrieval || plan.queries.length === 0) {
-        return { text: '', sources: [], plan };
-      }
-
-      // Multi-query retrieval
-      const chunks = await this._d.retrievalService.retrieveMulti(plan.queries, {
-        topK: 7,
+      const chunks = await this._d.retrievalService.retrieve(userText, {
+        topK: 6,
         maxPerSource: 2,
-        tokenBudget: 3000,
+        tokenBudget: 2500,
       });
-
-      if (chunks.length === 0) { return { text: '', sources: [], plan }; }
-
+      if (chunks.length === 0) { return undefined; }
       const text = this._d.retrievalService.formatContext(chunks);
       const sources = this._buildSourceCitations(chunks);
-      return { text, sources, plan };
-    } catch (err) {
-      // Graceful degradation: fall back to single-query retrieval
-      console.warn('[chatTool] planAndRetrieve failed, falling back to single query:', err);
-      try {
-        const chunks = await this._d.retrievalService.retrieve(userText, {
-          topK: 6,
-          maxPerSource: 2,
-          tokenBudget: 2500,
-        });
-        if (chunks.length === 0) { return undefined; }
-        const text = this._d.retrievalService.formatContext(chunks);
-        const sources = this._buildSourceCitations(chunks);
-        return { text, sources };
-      } catch { return undefined; }
-    }
+      return { text, sources };
+    } catch { return undefined; }
   }
 
   /** Build deduplicated source citations from retrieval chunks. */
@@ -625,6 +592,46 @@ export class ChatDataService {
     try { await this._d.memoryService.storeMemory(sessionId, summary, messageCount); } catch { /* best-effort */ }
   }
 
+  /**
+   * Store learning concepts extracted from a session (M17 P1.2 Task 1.2.8).
+   */
+  async storeConceptsFromSession(
+    concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }>,
+    sessionId: string,
+  ): Promise<void> {
+    if (!this._d.memoryService) { return; }
+    try {
+      const mapped = concepts.map((c) => ({
+        concept: c.concept,
+        category: c.category,
+        summary: c.summary,
+        masteryLevel: 0,
+        encounterCount: 1,
+        struggleCount: c.struggled ? 1 : 0,
+        firstSeen: '',
+        lastSeen: '',
+        lastAccessed: '',
+        sourceSessions: '[]',
+        decayScore: 1.0,
+      }));
+      await this._d.memoryService.storeConcepts(mapped, sessionId);
+    } catch { /* best-effort */ }
+  }
+
+  /**
+   * Recall learning concepts relevant to a query (M17 P1.2 Task 1.2.8).
+   * Returns formatted context string or undefined.
+   */
+  async recallConcepts(query: string): Promise<string | undefined> {
+    if (!this._d.memoryService) { return undefined; }
+    try {
+      const concepts = await this._d.memoryService.recallConcepts(query);
+      if (!concepts.length) { return undefined; }
+      const formatted = this._d.memoryService.formatConceptContext(concepts);
+      return formatted || undefined;
+    } catch { return undefined; }
+  }
+
   isSessionEligibleForSummary(messageCount: number): boolean {
     return this._d.memoryService?.isSessionEligibleForSummary(messageCount) ?? false;
   }
@@ -632,6 +639,15 @@ export class ChatDataService {
   async hasSessionMemory(sessionId: string): Promise<boolean> {
     if (!this._d.memoryService) { return false; }
     try { return await this._d.memoryService.hasMemory(sessionId); } catch { return false; }
+  }
+
+  /**
+   * Get the message count stored with the last summary for a session.
+   * Returns `null` if no memory exists (M17 Task 1.1.3).
+   */
+  async getSessionMemoryMessageCount(sessionId: string): Promise<number | null> {
+    if (!this._d.memoryService) { return null; }
+    try { return await this._d.memoryService.getMemoryMessageCount(sessionId); } catch { return null; }
   }
 
   async extractPreferences(text: string): Promise<void> {
@@ -973,19 +989,29 @@ export class ChatDataService {
   }
 
   openFile(fullPath: string): void {
-    if (!this._d.editorService || !this._d.fileService) { return; }
-    const editorService = this._d.editorService;
-    const fileService = this._d.fileService;
-    const textFileManager = this._d.textFileModelManager;
-    import('../../../platform/uri.js').then(({ URI }) => {
-      return import('../../editor/fileEditorInput.js').then(({ FileEditorInput }) => {
-        const uri = URI.file(fullPath);
-        if (textFileManager) {
-          const input = FileEditorInput.create(uri, textFileManager, fileService);
-          editorService.openEditor(input);
-        }
-      });
-    }).catch(() => { /* best-effort */ });
+    // Resolve workspace-relative paths (e.g. "Claims Guide.md") to absolute
+    // filesystem paths, then open via the same EditorsBridge resolver the
+    // explorer uses.  This ensures correct editor type selection (text, image,
+    // PDF, markdown preview), deduplication of already-open tabs, and
+    // consistent behaviour across all file-opening surfaces.
+    if (!this._d.openFileEditor) { return; }
+
+    let fsPath: string;
+    const isAbsolute = /^[/\\]/.test(fullPath) || /^[a-zA-Z]:/.test(fullPath);
+    if (isAbsolute) {
+      fsPath = fullPath;
+    } else if (this._d.workspaceService?.folders?.length) {
+      // Workspace-relative → join with root folder's filesystem path
+      const rootFsPath = this._d.workspaceService.folders[0].uri.fsPath;
+      // Normalize: rootFsPath uses forward slashes from URI.fsPath
+      fsPath = rootFsPath.endsWith('/') ? rootFsPath + fullPath : rootFsPath + '/' + fullPath;
+    } else {
+      fsPath = fullPath;
+    }
+
+    this._d.openFileEditor(fsPath, { pinned: true }).catch((err) => {
+      console.error('[ChatDataService] openFile failed:', err);
+    });
   }
 
   async getContextLength(): Promise<number> {
@@ -1177,8 +1203,11 @@ export class ChatDataService {
         : undefined,
       recallMemories: this._d.memoryService ? (q) => this.recallMemories(q) : undefined,
       storeSessionMemory: this._d.memoryService ? (s, su, m) => this.storeSessionMemory(s, su, m) : undefined,
+      storeConceptsFromSession: this._d.memoryService ? (c, s) => this.storeConceptsFromSession(c, s) : undefined,
+      recallConcepts: this._d.memoryService ? (q) => this.recallConcepts(q) : undefined,
       isSessionEligibleForSummary: this._d.memoryService ? (m) => this.isSessionEligibleForSummary(m) : undefined,
       hasSessionMemory: this._d.memoryService ? (s) => this.hasSessionMemory(s) : undefined,
+      getSessionMemoryMessageCount: this._d.memoryService ? (s) => this.getSessionMemoryMessageCount(s) : undefined,
       extractPreferences: this._d.memoryService ? (t) => this.extractPreferences(t) : undefined,
       getPreferencesForPrompt: this._d.memoryService ? () => this.getPreferencesForPrompt() : undefined,
       getPromptOverlay: this._d.promptFileService ? (a) => this.getPromptOverlay(a) : undefined,

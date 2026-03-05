@@ -180,18 +180,18 @@ export class TokenBudgetService {
     // System prompt: never trim, but can overflow into other slots
     // User message: never trim — this is the current user's request
 
-    // 1. Trim history to fit budget
+    // 1. Trim history to fit budget (keep recent — from END)
     if (tokenEstimates.history > budget.history) {
-      const trimmed = this._trimToTokenBudget(history, budget.history);
+      const trimmed = this._trimToTokenBudget(history, budget.history, 'end');
       slots.history = trimmed;
       tokenEstimates.history = this.estimateTokens(trimmed);
       wasTrimmed = true;
     }
 
-    // 2. Trim RAG context if still over budget
+    // 2. Trim RAG context if still over budget (keep highest-scored — from START)
     const afterHistoryTrim = tokenEstimates.systemPrompt + tokenEstimates.ragContext + tokenEstimates.history + tokenEstimates.userMessage;
     if (afterHistoryTrim > contextWindow && tokenEstimates.ragContext > budget.ragContext) {
-      const trimmed = this._trimToTokenBudget(ragContext, budget.ragContext);
+      const trimmed = this._trimToTokenBudget(ragContext, budget.ragContext, 'start');
       slots.ragContext = trimmed;
       tokenEstimates.ragContext = this.estimateTokens(trimmed);
       wasTrimmed = true;
@@ -230,10 +230,11 @@ export class TokenBudgetService {
 
   /**
    * Trim text to fit within a token budget.
-   * For history: removes oldest messages (from the start).
-   * For RAG: removes text from the end (lowest-scoring chunks are typically last).
+   *
+   * @param keepFrom `'end'` keeps the LAST paragraphs (for history — most recent messages).
+   *                 `'start'` keeps the FIRST paragraphs (for RAG — highest-scored chunks).
    */
-  private _trimToTokenBudget(text: string, maxTokens: number): string {
+  private _trimToTokenBudget(text: string, maxTokens: number, keepFrom: 'start' | 'end' = 'end'): string {
     const targetChars = maxTokens * 4; // Reverse chars/4 heuristic
     if (text.length <= targetChars) {
       return text;
@@ -241,22 +242,34 @@ export class TokenBudgetService {
 
     // Try to trim at paragraph boundaries (double newline)
     const paragraphs = text.split('\n\n');
-    let result = '';
-    // Keep from the END for history (most recent messages)
-    // Build from the end to keep the most recent content
     const kept: string[] = [];
-    for (let i = paragraphs.length - 1; i >= 0; i--) {
-      const candidate = [paragraphs[i], ...kept].join('\n\n');
-      if (candidate.length > targetChars) {
-        break;
+
+    if (keepFrom === 'start') {
+      // Keep from the START for RAG (highest-scored chunks first)
+      for (let i = 0; i < paragraphs.length; i++) {
+        const candidate = [...kept, paragraphs[i]].join('\n\n');
+        if (candidate.length > targetChars) {
+          break;
+        }
+        kept.push(paragraphs[i]);
       }
-      kept.unshift(paragraphs[i]);
+    } else {
+      // Keep from the END for history (most recent messages)
+      for (let i = paragraphs.length - 1; i >= 0; i--) {
+        const candidate = [paragraphs[i], ...kept].join('\n\n');
+        if (candidate.length > targetChars) {
+          break;
+        }
+        kept.unshift(paragraphs[i]);
+      }
     }
 
-    result = kept.join('\n\n');
+    let result = kept.join('\n\n');
     if (result.length === 0 && text.length > 0) {
-      // Fallback: hard-truncate from the end
-      result = text.slice(-targetChars);
+      // Fallback: hard-truncate from the appropriate end
+      result = keepFrom === 'start'
+        ? text.slice(0, targetChars)
+        : text.slice(-targetChars);
     }
 
     return result;

@@ -79,6 +79,7 @@ interface ParallxApi {
   };
   editors: {
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
+    openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
   };
 }
 
@@ -262,6 +263,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     sessionContext: sessionContext ?? undefined,
     sessionManager: sessionManager ?? undefined,
     aiSettingsService: aiSettingsService ?? undefined,
+    openFileEditor: (uri, opts) => api.editors.openFileEditor(uri, opts),
   });
 
   // ── 3a. Register the default chat participant with IChatAgentService ──

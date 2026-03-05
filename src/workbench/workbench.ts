@@ -1103,6 +1103,11 @@ export class Workbench extends Layout {
     // listener) re-binds its event subscriptions to the live workspace.
     this._onDidSwitchWorkspace.fire(this._workspace);
 
+    // Update the titlebar with the correct display name after restore.
+    // Phase 3 ran before folders were restored, so the titlebar may show
+    // "Default Workspace" instead of the folder name.
+    this._titlebar.setWorkspaceName(this._workspace.displayName);
+
     // Begin the workspace session (M14).
     // Services can now read sessionManager.activeContext for identity,
     // log prefix, and abort signal.
@@ -1335,12 +1340,17 @@ export class Workbench extends Layout {
   // ════════════════════════════════════════════════════════════════════════
 
   private _setupTitlebar(): void {
-    // Task 1.1: Wire workspace name reactively
-    this._titlebar.setWorkspaceName(this._workspace.name);
+    // Task 1.1: Wire workspace name reactively (VS Code style: folder name for single-root)
+    this._titlebar.setWorkspaceName(this._workspace.displayName);
 
     // Subscribe to workspace switches so the label updates automatically
     this._register(this._onDidSwitchWorkspace.event((ws) => {
-      this._titlebar.setWorkspaceName(ws.name);
+      this._titlebar.setWorkspaceName(ws.displayName);
+    }));
+
+    // Also update when folders change (add/remove folder changes the display name)
+    this._workspaceListeners.add(this._workspace.onDidChangeFolders(() => {
+      this._titlebar.setWorkspaceName(this._workspace.displayName);
     }));
 
     // Task 1.2: Register default menu bar items via contribution system
@@ -2158,6 +2168,55 @@ export class Workbench extends Layout {
       console.log('[Workbench] Database opened for workspace folder: %s', folderPath);
     } catch (err) {
       console.error('[Workbench] Failed to open database for workspace:', err);
+    }
+
+    // ── Durable workspace identity (survives localStorage loss) ──
+    // Persist the workspace ID to .parallx/workspace-identity.json so that
+    // sessions stored under the original UUID are always recoverable.
+    await this._reconcileDurableWorkspaceId(folderPath);
+  }
+
+  /**
+   * Ensure the workspace UUID is consistent with the durable identity file
+   * stored in `<folder>/.parallx/workspace-identity.json`.
+   *
+   * - If the file exists and its ID differs from the current workspace ID,
+   *   adopt the stored ID (this recovers sessions after localStorage loss).
+   * - If the file does not exist, write the current workspace ID to it.
+   */
+  private async _reconcileDurableWorkspaceId(folderPath: string): Promise<void> {
+    const fs = (window as any).parallxElectron?.fs;
+    if (!fs) { return; }
+
+    const sep = folderPath.includes('/') ? '/' : '\\';
+    const identityPath = folderPath + sep + '.parallx' + sep + 'workspace-identity.json';
+
+    try {
+      const exists: boolean = await fs.exists(identityPath);
+
+      if (exists) {
+        // Read the stored identity
+        const result = await fs.readFile(identityPath, 'utf-8');
+        if (result?.content) {
+          const stored = JSON.parse(result.content);
+          if (stored?.id && stored.id !== this._workspace.id) {
+            console.log('[Workbench] Recovering durable workspace identity from %s', identityPath);
+            this._workspace.adoptId(stored.id);
+
+            // Re-sync localStorage so next launch uses the correct ID
+            await this._workspaceLoader.setActiveWorkspaceId(stored.id);
+            await this._workspaceSaver.save();
+          }
+        }
+      } else {
+        // First time — persist the current workspace identity for future recovery
+        const payload = JSON.stringify({ id: this._workspace.id, createdAt: new Date().toISOString() }, null, 2);
+        await fs.writeFile(identityPath, payload, 'utf-8');
+        console.log('[Workbench] Persisted durable workspace identity to %s', identityPath);
+      }
+    } catch (err) {
+      // Best-effort — do not block workspace startup
+      console.warn('[Workbench] Failed to reconcile durable workspace identity:', err);
     }
   }
 

@@ -162,6 +162,17 @@ export class ChatListRenderer extends Disposable {
       }
     } else if (existingCursor) {
       existingCursor.remove();
+
+      // Streaming → complete transition: force a full body re-render so ALL
+      // parts reflect their final state (citations, stripped transients, etc.).
+      // Without this, the equal-count optimisation above may skip middle parts
+      // that now carry citations set by setCitations() after streaming ended.
+      const finalParts = body.querySelectorAll(':scope > :not(.parallx-chat-message-actions)');
+      finalParts.forEach((el) => el.remove());
+      for (let k = 0; k < response.parts.length; k++) {
+        body.appendChild(renderContentPart(response.parts[k]));
+      }
+
       // Add message actions bar now that streaming is complete
       this._addMessageActions(lastPair.assistantEl, body);
     }

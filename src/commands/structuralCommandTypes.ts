@@ -23,7 +23,7 @@ export interface WorkbenchLike {
   showGoToLine(): void;
   selectColorTheme(): void;
   showSidebarView(viewId: string): void;
-  readonly workspace: { readonly id: string; readonly name: string; rename(name: string): void };
+  readonly workspace: { readonly id: string; readonly name: string; readonly displayName: string; rename(name: string): void };
   createWorkspace(name: string, path?: string, switchTo?: boolean, cloneState?: unknown): Promise<unknown>;
   switchWorkspace(targetId: string): Promise<void>;
   openFolder(folderPath: string): Promise<void>;

@@ -98,6 +98,16 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     // Subscribe to initial index completion
     const completeSub = pipeline.onDidCompleteInitialIndex((stats) => {
       currentPhaseLabel = `Complete — ${stats.pages} pages, ${stats.files} files in ${(stats.durationMs / 1000).toFixed(1)}s`;
+
+      // When all files were already indexed (skipped), per-source events
+      // may not fire so counters stay 0.  Use the pipeline's DB-queried
+      // totals as the authoritative count so the panel shows real numbers.
+      const dbTotal = stats.pages + stats.files;
+      if (dbTotal > 0 && totalCount === 0) {
+        totalCount = dbTotal;
+        indexedCount = dbTotal; // all previously indexed
+      }
+
       refreshHeader();
     });
     context.subscriptions.push(completeSub);

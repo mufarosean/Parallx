@@ -16,6 +16,7 @@
     "postinstall": "electron-rebuild && node scripts/patch-deps.mjs",
     "test:e2e": "npx playwright test",
     "test:e2e:headed": "npx playwright test --headed",
+    "test:ai-eval": "npx playwright test --config=playwright.ai-eval.config.ts",
     "test:unit": "npx vitest run",
     "test:unit:watch": "npx vitest"
   },

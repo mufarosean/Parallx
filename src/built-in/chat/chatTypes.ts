@@ -72,8 +72,11 @@ export interface IDefaultParticipantServices {
   ): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }>; plan?: IRetrievalPlan } | undefined>;
   recallMemories?(query: string): Promise<string | undefined>;
   storeSessionMemory?(sessionId: string, summary: string, messageCount: number): Promise<void>;
+  storeConceptsFromSession?(concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }>, sessionId: string): Promise<void>;
+  recallConcepts?(query: string): Promise<string | undefined>;
   isSessionEligibleForSummary?(messageCount: number): boolean;
   hasSessionMemory?(sessionId: string): Promise<boolean>;
+  getSessionMemoryMessageCount?(sessionId: string): Promise<number | null>;
   extractPreferences?(text: string): Promise<void>;
   getPreferencesForPrompt?(): Promise<string | undefined>;
   getPromptOverlay?(activeFilePath?: string): Promise<string | undefined>;

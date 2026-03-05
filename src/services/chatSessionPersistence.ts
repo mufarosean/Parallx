@@ -241,6 +241,42 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
 }
 
 /**
+ * Recover orphaned sessions whose workspace_id no longer matches the current
+ * workspace UUID (e.g., after localStorage loss regenerated the ID).
+ *
+ * Since .parallx/data.db is stored inside the workspace folder, ALL sessions
+ * in the database belong to this workspace regardless of their stored UUID.
+ * This function re-tags them with the current workspace ID and returns them.
+ */
+export async function adoptOrphanedSessions(
+  db: IChatPersistenceDatabase,
+  currentWorkspaceId: string,
+): Promise<IChatSession[]> {
+  if (!db.isOpen || !currentWorkspaceId) { return []; }
+
+  // Count sessions with a different workspace_id
+  const orphanCount = await db.get<{ cnt: number }>(
+    `SELECT COUNT(*) as cnt FROM chat_sessions WHERE workspace_id != ?`,
+    [currentWorkspaceId],
+  );
+  if (!orphanCount || orphanCount.cnt === 0) { return []; }
+
+  console.log(
+    '[ChatPersistence] Adopting %d orphaned sessions (workspace ID changed)',
+    orphanCount.cnt,
+  );
+
+  // Re-tag all sessions to the current workspace ID
+  await db.run(
+    `UPDATE chat_sessions SET workspace_id = ? WHERE workspace_id != ?`,
+    [currentWorkspaceId, currentWorkspaceId],
+  );
+
+  // Now load normally
+  return loadSessions(db, currentWorkspaceId);
+}
+
+/**
  * Delete a session and its messages from the database.
  * Messages are cascade-deleted via the foreign key.
  */
