@@ -353,8 +353,9 @@ describe('IndexingPipelineService', () => {
       ]);
 
       // Simulate prior indexing: old.ts was indexed at t=5000, new.ts not indexed
+      // Keys are now workspace-relative (not absolute) after path normalization fix
       vectorStore.getIndexedAtMap.mockResolvedValueOnce(
-        new Map<string, number>([[URI.file('/workspace/old.ts').fsPath, indexedAtMs]]),
+        new Map<string, number>([['old.ts', indexedAtMs]]),
       );
 
       // First readFile call is .parallxignore from _loadIgnoreFile
@@ -391,7 +392,7 @@ describe('IndexingPipelineService', () => {
       ]);
 
       vectorStore.getIndexedAtMap.mockResolvedValueOnce(
-        new Map<string, number>([[URI.file('/workspace/changed.ts').fsPath, indexedAtMs]]),
+        new Map<string, number>([['changed.ts', indexedAtMs]]),
       );
 
       // First readFile call is .parallxignore from _loadIgnoreFile
@@ -446,8 +447,9 @@ describe('IndexingPipelineService', () => {
 
       await pipeline.reindexFile('/workspace/README.md');
 
+      // reindexFile converts absolute path to workspace-relative for chunking
       expect(chunkingService.chunkFile).toHaveBeenCalledWith(
-        '/workspace/README.md',
+        'README.md',
         '# Hello\nWorld',
         'markdown',
       );

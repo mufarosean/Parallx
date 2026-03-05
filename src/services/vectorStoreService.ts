@@ -514,8 +514,9 @@ const FTS5_STOPWORDS = new Set([
   'i', 'me', 'my', 'we', 'our', 'you', 'your', 'he', 'him', 'his',
   'she', 'her', 'they', 'them', 'their',
   // meta/structural words common in documents
-  'page', 'pages', 'number', 'numbers', 'chapter', 'section',
-  'figure', 'table', 'example', 'see', 'also', 'note', 'like',
+  'page', 'pages', 'number', 'numbers', 'chapter', 'chapters', 'section', 'sections',
+  'figure', 'figures', 'table', 'tables', 'example', 'examples',
+  'see', 'also', 'note', 'notes', 'like', 'part', 'parts', 'book',
 ]);
 
 /**
@@ -555,8 +556,18 @@ function sanitizeFts5Query(query: string): string {
     return `"${terms[0]}"`;
   }
 
+  // Cap to MAX_FTS5_AND_TERMS to prevent zero-result sets on long queries.
+  // Strict AND across 6+ terms almost never matches a single chunk because
+  // no chunk contains every word from a multi-faceted query. We keep the
+  // first N terms (preserving the original query order where the subject/
+  // topic identifiers typically appear first).
+  const MAX_FTS5_AND_TERMS = 5;
+  const finalTerms = terms.length > MAX_FTS5_AND_TERMS
+    ? terms.slice(0, MAX_FTS5_AND_TERMS)
+    : terms;
+
   // Multiple terms → implicit AND (FTS5 default: space-separated = AND)
-  return terms.map((t) => `"${t}"`).join(' ');
+  return finalTerms.map((t) => `"${t}"`).join(' ');
 }
 
 /**

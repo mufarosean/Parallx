@@ -91,10 +91,22 @@ describe('sanitizeFts5Query()', () => {
     expect(result).toBe('"is" "the"');
   });
 
-  it('filters document-structural stopwords like page/chapter', () => {
+  it('filters document-structural stopwords like page/chapter/book/examples', () => {
     const result = sanitizeFts5Query('FSI Shona vocabulary page numbers');
     // "page" and "numbers" are stopwords → "FSI", "Shona", "vocabulary"
     expect(result).toBe('"FSI" "Shona" "vocabulary"');
+  });
+
+  it('caps long queries at 5 AND terms to prevent empty result sets', () => {
+    // 8 terms, all content-bearing (none are stopwords)
+    const result = sanitizeFts5Query('FSI Shona Basic Course vocabulary definitions grammar textbook');
+    // After stopword filtering: all 8 remain → cap to first 5
+    expect(result).toBe('"FSI" "Shona" "Basic" "Course" "vocabulary"');
+  });
+
+  it('does not cap queries with 5 or fewer content terms', () => {
+    const result = sanitizeFts5Query('FSI Shona Basic Course vocabulary');
+    expect(result).toBe('"FSI" "Shona" "Basic" "Course" "vocabulary"');
   });
 
   it('strips FTS5 special characters', () => {

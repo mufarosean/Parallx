@@ -128,7 +128,10 @@ interface PageRow {
 
 /** A file discovered during directory walk, with its mtime for fast-skip. */
 interface IndexableFile {
+  /** Absolute filesystem path (for file I/O). */
   path: string;
+  /** Workspace-relative path (for sourceId, contextPrefix, DB storage). */
+  relativePath: string;
   /** Modification time in ms since epoch (from stat/readdir). */
   mtime: number;
 }
@@ -312,20 +315,22 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
   /**
    * Force re-index a single file (bypass debounce).
+   * @param filePath — absolute filesystem path (from file watcher or external caller)
    */
   async reindexFile(filePath: string): Promise<void> {
+    const relativePath = this._toRelativePath(filePath);
     const t0 = performance.now();
     try {
-      const changed = await this._indexSingleFile(filePath);
+      const changed = await this._indexSingleFile(filePath, relativePath);
       this._onDidIndexSource.fire({
-        type: 'file', source: filePath, sourceId: filePath,
+        type: 'file', source: relativePath, sourceId: relativePath,
         status: changed ? 'indexed' : 'skipped',
         durationMs: performance.now() - t0,
       });
     } catch (err) {
-      console.error('[IndexingPipeline] Error re-indexing file %s:', filePath, err);
+      console.error('[IndexingPipeline] Error re-indexing file %s:', relativePath, err);
       this._onDidIndexSource.fire({
-        type: 'file', source: filePath, sourceId: filePath,
+        type: 'file', source: relativePath, sourceId: relativePath,
         status: 'error', error: String(err),
         durationMs: performance.now() - t0,
       });
@@ -447,6 +452,23 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     // Bulk-fetch indexed_at timestamps for all file_chunk sources
     const indexedAtMap = await this._vectorStore.getIndexedAtMap('file_chunk');
 
+    // ── Migration: purge stale absolute-path sourceIds ──
+    // Prior to this fix, sourceIds were stored as full absolute filesystem paths
+    // (e.g., "C:\Users\...\Books\Zimbabwe\file.pdf"). Now we store workspace-
+    // relative paths ("Books/Zimbabwe/file.pdf") so the LLM can use them directly
+    // with read_file. Purge any old absolute-path entries to avoid duplicates.
+    const staleAbsoluteIds = [...indexedAtMap.keys()].filter(k => /^[A-Za-z]:[\\\/]|^\//.test(k));
+    if (staleAbsoluteIds.length > 0) {
+      console.log(
+        '[IndexingPipeline] %s Purging %d stale absolute-path file entries for re-indexing',
+        this._logPrefix, staleAbsoluteIds.length,
+      );
+      for (const staleId of staleAbsoluteIds) {
+        await this._vectorStore.deleteSource('file_chunk', staleId);
+      }
+      indexedAtMap.clear();
+    }
+
     // Partition files into mtime-skipped (unchanged) and candidates (need checking).
     // This avoids firing 30K+ events in a tight synchronous loop which would
     // starve the renderer event loop and freeze the UI.
@@ -454,7 +476,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     let mtimeSkipped = 0;
 
     for (const file of files) {
-      const indexedAtMs = indexedAtMap.get(file.path);
+      const indexedAtMs = indexedAtMap.get(file.relativePath);
       if (indexedAtMs !== undefined && file.mtime < indexedAtMs) {
         mtimeSkipped++;
       } else {
@@ -478,22 +500,22 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       const t0 = performance.now();
 
       try {
-        const changed = await this._indexSingleFile(file.path);
+        const changed = await this._indexSingleFile(file.path, file.relativePath);
         if (changed) { indexed++; }
         this._onDidIndexSource.fire({
-          type: 'file', source: file.path, sourceId: file.path,
+          type: 'file', source: file.relativePath, sourceId: file.relativePath,
           status: changed ? 'indexed' : 'skipped',
           durationMs: performance.now() - t0,
         });
       } catch (err) {
-        console.warn('[IndexingPipeline] Failed to index file "%s": %s', file.path, err);
+        console.warn('[IndexingPipeline] Failed to index file "%s": %s', file.relativePath, err);
         this._onDidIndexSource.fire({
-          type: 'file', source: file.path, sourceId: file.path,
+          type: 'file', source: file.relativePath, sourceId: file.relativePath,
           status: 'error', error: String(err),
           durationMs: performance.now() - t0,
         });
       }
-      this._updateProgress('files', this._progress.processed + 1, candidates.length, file.path);
+      this._updateProgress('files', this._progress.processed + 1, candidates.length, file.relativePath);
     }
 
     return indexed;
@@ -502,10 +524,15 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   /**
    * Index a single workspace file. Returns true if actually indexed.
    * Handles both plain text files and rich documents (PDF, Excel, Word).
+   *
+   * @param absolutePath — full filesystem path (for file I/O)
+   * @param relativePath — workspace-relative path (for sourceId, contextPrefix, DB storage).
+   *   If omitted, computed via _toRelativePath().
    */
-  private async _indexSingleFile(filePath: string): Promise<boolean> {
-    const uri = URI.file(filePath);
-    const ext = getExtension(filePath);
+  private async _indexSingleFile(absolutePath: string, relativePath?: string): Promise<boolean> {
+    const relPath = relativePath ?? this._toRelativePath(absolutePath);
+    const uri = URI.file(absolutePath);
+    const ext = getExtension(absolutePath);
     const isRichDoc = ext !== null && RICH_DOCUMENT_EXTENSIONS.has(ext);
 
     // Read file content — route through extraction for rich documents
@@ -521,42 +548,42 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       }
     } catch (err) {
       if (isRichDoc) {
-        console.warn('[IndexingPipeline] Document extraction failed for "%s": %s', filePath, err);
+        console.warn('[IndexingPipeline] Document extraction failed for "%s": %s', relPath, err);
       }
       return false; // File may have been deleted between walk and read
     }
 
     if (!content.trim()) { return false; }
 
-    // Check content hash
+    // Check content hash — keyed by workspace-relative path
     const contentHash = await hashText(content);
-    const storedHash = await this._vectorStore.getContentHash('file_chunk', filePath);
+    const storedHash = await this._vectorStore.getContentHash('file_chunk', relPath);
     if (storedHash === contentHash) { return false; }
 
     // Detect language from extension
-    const rawExt = filePath.split('.').pop()?.toLowerCase() ?? '';
+    const rawExt = absolutePath.split('.').pop()?.toLowerCase() ?? '';
     const language = extToLanguage(rawExt);
 
-    // Chunk
-    const chunks = await this._chunkingService.chunkFile(filePath, content, language);
+    // Chunk — pass workspace-relative path so contextPrefix is LLM-friendly
+    const chunks = await this._chunkingService.chunkFile(relPath, content, language);
     if (chunks.length === 0) { return false; }
 
     // Embed
     const embeddedChunks = await this._embedChunks(chunks);
     if (embeddedChunks.length === 0) {
       // All chunks failed embedding — don't store, will retry next time content changes
-      console.warn('[IndexingPipeline] All chunks failed embedding for file %s', filePath);
+      console.warn('[IndexingPipeline] All chunks failed embedding for file %s', relPath);
       return false;
     }
 
     // M14: stale session guard — skip commit if session changed
     if (this._sessionGuard && !this._sessionGuard.isValid()) {
-      console.warn('[IndexingPipeline] Stale session — skipping file commit for %s', filePath);
+      console.warn('[IndexingPipeline] Stale session — skipping file commit for %s', relPath);
       return false;
     }
 
-    // Store (partial results are fine — some chunks beat no chunks)
-    await this._vectorStore.upsert('file_chunk', filePath, embeddedChunks, contentHash);
+    // Store — workspace-relative sourceId so retrieval context matches read_file paths
+    await this._vectorStore.upsert('file_chunk', relPath, embeddedChunks, contentHash);
 
     return true;
   }
@@ -608,9 +635,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
         }
         const ext = getExtension(entry.name);
         if (ext && INDEXABLE_EXTENSIONS.has(ext) && entry.size <= MAX_FILE_SIZE) {
-          results.push({ path: entry.uri.fsPath, mtime: entry.mtime });
+          results.push({ path: entry.uri.fsPath, relativePath: relPath, mtime: entry.mtime });
         } else if (ext && RICH_DOCUMENT_EXTENSIONS.has(ext) && entry.size <= MAX_RICH_DOC_SIZE) {
-          results.push({ path: entry.uri.fsPath, mtime: entry.mtime });
+          results.push({ path: entry.uri.fsPath, relativePath: relPath, mtime: entry.mtime });
         }
       }
     }
@@ -717,12 +744,15 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       const ext = getExtension(filePath);
 
       // Only care about indexable file types
-      if (!ext || !INDEXABLE_EXTENSIONS.has(ext)) { continue; }
+      if (!ext || (!INDEXABLE_EXTENSIONS.has(ext) && !RICH_DOCUMENT_EXTENSIONS.has(ext))) { continue; }
+
+      // Use workspace-relative path for DB operations (matches stored sourceId)
+      const relativePath = this._toRelativePath(filePath);
 
       if (event.type === FileChangeType.Deleted) {
         // Remove from index
-        this._vectorStore.deleteSource('file_chunk', filePath).catch((err) => {
-          console.warn('[IndexingPipeline] Failed to remove deleted file from index:', filePath, err);
+        this._vectorStore.deleteSource('file_chunk', relativePath).catch((err) => {
+          console.warn('[IndexingPipeline] Failed to remove deleted file from index:', relativePath, err);
         });
         this._cancelFileDebounce(filePath);
       } else {
@@ -751,6 +781,26 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     }, PAGE_DEBOUNCE_MS);
 
     this._pageDebounce.set(pageId, timer);
+  }
+
+  // ── Internal: Path Conversion ──
+
+  /**
+   * Convert an absolute filesystem path to a workspace-relative path.
+   * Used for storing sourceIds and building contextPrefixes that the LLM
+   * can use directly with workspace-relative tool calls (read_file, etc.).
+   */
+  private _toRelativePath(absolutePath: string): string {
+    const normalized = absolutePath.replace(/\\/g, '/');
+    for (const folder of this._workspaceService.folders) {
+      const root = folder.uri.fsPath.replace(/\\/g, '/');
+      const rootWithSlash = root.endsWith('/') ? root : root + '/';
+      if (normalized.startsWith(rootWithSlash)) {
+        return normalized.slice(rootWithSlash.length);
+      }
+    }
+    // Fallback: return the original path (shouldn't happen for workspace files)
+    return normalized;
   }
 
   /**
