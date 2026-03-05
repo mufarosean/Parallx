@@ -282,6 +282,59 @@ describe('ChatService', () => {
       expect(thinking.references[0].label).toBe('test.md');
     });
 
+    it('reference() stores index when provided', async () => {
+      const agent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Test',
+        description: 'Test',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          response.thinking('Finding context...');
+          response.reference('file://test.md', 'test.md', 1);
+          response.reference('file://notes.md', 'notes.md', 2);
+          response.markdown('Answer');
+          return {};
+        },
+      };
+      const svc = new ChatAgentService();
+      svc.registerAgent(agent);
+      const cs = new ChatService(svc, modeService, lmService);
+      const session = cs.createSession();
+      await cs.sendRequest(session.id, 'test');
+
+      const parts = session.messages[0].response.parts;
+      const thinking = parts.find(p => p.kind === ChatContentPartKind.Thinking) as any;
+      expect(thinking.references[0].index).toBe(1);
+      expect(thinking.references[1].index).toBe(2);
+    });
+
+    it('setCitations() attaches citations to all markdown parts', async () => {
+      const agent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Test',
+        description: 'Test',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          response.markdown('See [1] for details.');
+          response.setCitations([
+            { index: 1, uri: 'file://test.md', label: 'test.md' },
+          ]);
+          return {};
+        },
+      };
+      const svc = new ChatAgentService();
+      svc.registerAgent(agent);
+      const cs = new ChatService(svc, modeService, lmService);
+      const session = cs.createSession();
+      await cs.sendRequest(session.id, 'test');
+
+      const parts = session.messages[0].response.parts;
+      const md = parts.find(p => p.kind === ChatContentPartKind.Markdown) as any;
+      expect(md.citations).toHaveLength(1);
+      expect(md.citations[0].index).toBe(1);
+      expect(md.citations[0].label).toBe('test.md');
+    });
+
     it('progress creates thinking when none exists', async () => {
       const agent: IChatParticipant = {
         id: 'parallx.chat.default',

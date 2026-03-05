@@ -97,6 +97,19 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
     '- If the user\'s message is short or vague, interpret it generously — deliver the most helpful response you can rather than asking what they meant.',
   );
 
+  // Citation instructions — tell the model to use [N] notation for retrieved sources
+  if (ctx.isRAGAvailable) {
+    lines.push(
+      '',
+      'CITATION RULES:',
+      '- When your answer uses information from [Retrieved Context], cite the source using [N] notation (e.g. [1], [2]) at the end of each relevant sentence or paragraph.',
+      '- The number N corresponds to the source number shown in the context block (e.g. "Source [1]: filename.pdf").',
+      '- You may cite multiple sources in one sentence: "This topic is covered in detail [1][3]."',
+      '- Only cite sources that actually contributed to your answer. Do not cite every source.',
+      '- If your answer comes from the workspace digest or general knowledge rather than retrieved context, no citation is needed.',
+    );
+  }
+
   return lines.join('\n');
 }
 
@@ -184,6 +197,19 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     '- If a tool call fails, try alternatives before reporting failure.',
     '- If the user\'s message is short or vague, interpret it generously — infer the most useful action and execute.',
   );
+
+  // Citation instructions — tell the model to use [N] notation for retrieved sources
+  if (ctx.isRAGAvailable) {
+    lines.push(
+      '',
+      'CITATION RULES:',
+      '- When your answer uses information from [Retrieved Context], cite the source using [N] notation (e.g. [1], [2]) at the end of each relevant sentence or paragraph.',
+      '- The number N corresponds to the source number shown in the context block (e.g. "Source [1]: filename.pdf").',
+      '- You may cite multiple sources in one sentence: "This topic is covered in detail [1][3]."',
+      '- Only cite sources that actually contributed to your answer. Do not cite every source.',
+      '- If your answer comes from the workspace digest or general knowledge rather than retrieved context, no citation is needed.',
+    );
+  }
 
   return lines.join('\n');
 }

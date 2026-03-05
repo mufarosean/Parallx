@@ -544,7 +544,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // generate search queries before the response call.  That doubled
     // latency on local Ollama (e.g. 45s planner + 13s response = 58s
     // vs native Ollama's 13s).  No mainstream local AI app does this.
-    const ragSources: Array<{ uri: string; label: string }> = [];
+    const ragSources: Array<{ uri: string; label: string; index?: number }> = [];
     let retrievalPlan: IRetrievalPlan | undefined;
 
     const hasActiveSlashCommand = !!(activeCommand && activeCommand !== 'compact');
@@ -588,7 +588,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           }
 
           for (const source of filteredSources) {
-            response.reference(source.uri, source.label);
+            response.reference(source.uri, source.label, source.index);
             ragSources.push(source);
           }
         }
@@ -1209,6 +1209,17 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           `Analysis: ${retrievalPlan.reasoning}\n` +
           `Searched for:\n${queryList}`,
         );
+      }
+
+      // M15: Attach numbered citation map to all markdown parts so the
+      // renderer can resolve [N] markers to clickable source badges.
+      if (ragSources.length > 0) {
+        const citations = ragSources
+          .filter((s): s is { uri: string; label: string; index: number } => s.index != null)
+          .map(s => ({ index: s.index, uri: s.uri, label: s.label }));
+        if (citations.length > 0) {
+          response.setCitations(citations);
+        }
       }
 
       return {};

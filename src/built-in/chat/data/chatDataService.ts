@@ -505,7 +505,7 @@ export class ChatDataService {
   // RAG Context Retrieval
   // ═══════════════════════════════════════════════════════════════════════════
 
-  async retrieveContext(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string }> } | undefined> {
+  async retrieveContext(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined> {
     if (!this._d.retrievalService) { return undefined; }
     if (!this._d.indexingPipelineService?.isInitialIndexComplete) { return undefined; }
     try {
@@ -525,7 +525,7 @@ export class ChatDataService {
     userText: string,
     recentHistory?: string,
     workspaceDigest?: string,
-  ): Promise<{ text: string; sources: Array<{ uri: string; label: string }>; plan?: IRetrievalPlan } | undefined> {
+  ): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }>; plan?: IRetrievalPlan } | undefined> {
     if (!this._d.retrievalService || !this._d.ollamaProvider) { return undefined; }
     if (!this._d.indexingPipelineService?.isInitialIndexComplete) { return undefined; }
 
@@ -589,9 +589,10 @@ export class ChatDataService {
   }
 
   /** Build deduplicated source citations from retrieval chunks. */
-  private _buildSourceCitations(chunks: readonly { sourceType: string; sourceId: string; contextPrefix?: string }[]): Array<{ uri: string; label: string }> {
+  private _buildSourceCitations(chunks: readonly { sourceType: string; sourceId: string; contextPrefix?: string }[]): Array<{ uri: string; label: string; index: number }> {
     const seen = new Set<string>();
-    const sources: Array<{ uri: string; label: string }> = [];
+    const sources: Array<{ uri: string; label: string; index: number }> = [];
+    let nextIndex = 1;
     for (const chunk of chunks) {
       const key = `${chunk.sourceType}:${chunk.sourceId}`;
       if (seen.has(key)) continue;
@@ -601,7 +602,7 @@ export class ChatDataService {
         ? `parallx-page://${chunk.sourceId}`
         : chunk.sourceId;
       const label = extractCitationLabel(chunk);
-      sources.push({ uri, label });
+      sources.push({ uri, label, index: nextIndex++ });
     }
     return sources;
   }
@@ -1159,7 +1160,7 @@ export class ChatDataService {
       readFileContent: (p) => this.readFileContent(p),
       getCurrentPageContent: () => this.getCurrentPageContent(),
       retrieveContext: this._d.retrievalService
-        ? (q) => this.retrieveContext(q) as Promise<{ text: string; sources: Array<{ uri: string; label: string }> } | undefined>
+        ? (q) => this.retrieveContext(q) as Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>
         : undefined,
       planAndRetrieve: (this._d.retrievalService && this._d.ollamaProvider)
         ? (u, r, w) => this.planAndRetrieve(u, r, w)

@@ -898,6 +898,32 @@
   max-width: 180px;
 }
 
+/* ── Inline Citation Badges (M15 — Perplexity-style [N] markers) ── */
+
+.parallx-citation-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin: 0 1px;
+  border-radius: 8px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  cursor: pointer;
+  transition: background 120ms ease;
+  vertical-align: super;
+  text-decoration: none;
+}
+
+.parallx-citation-badge:hover {
+  background: var(--vscode-focusBorder, #007fd4);
+}
+
 /* ── Tool Invocation Card (Cap 6 Task 6.4) ── */
 
 .parallx-chat-tool-invocation {

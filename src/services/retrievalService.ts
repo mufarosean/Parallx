@@ -237,11 +237,21 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     if (chunks.length === 0) { return ''; }
 
     const sections: string[] = ['[Retrieved Context]'];
+    // Track unique sources for citation numbering.
+    // Multiple chunks from the same source share one citation number.
+    const sourceIndex = new Map<string, number>();
+    let nextIndex = 1;
 
     for (const chunk of chunks) {
+      const sourceKey = `${chunk.sourceType}:${chunk.sourceId}`;
+      if (!sourceIndex.has(sourceKey)) {
+        sourceIndex.set(sourceKey, nextIndex++);
+      }
+      const idx = sourceIndex.get(sourceKey)!;
+
       sections.push('---');
       const source = chunk.contextPrefix || chunk.sourceId;
-      sections.push(`Source: ${source}`);
+      sections.push(`[${idx}] Source: ${source}`);
       // Include the workspace-relative path for file chunks so the model
       // can use read_file or search_files to follow up on this source.
       if (chunk.sourceType === 'file_chunk' && chunk.sourceId) {

@@ -66,7 +66,93 @@ function _renderMarkdown(part: IChatMarkdownContent): HTMLElement {
   const el = $('div.parallx-chat-markdown');
   // Convert basic markdown to HTML
   el.innerHTML = _markdownToHtml(part.content);
+
+  // M15: Post-process [N] citation markers into clickable superscript badges.
+  // The model emits [1], [2] etc. based on numbered retrieved context.
+  // We replace those text nodes with interactive badges that navigate to the source.
+  if (part.citations && part.citations.length > 0) {
+    _postProcessCitations(el, part.citations);
+  }
+
   return el;
+}
+
+/**
+ * Post-process [N] citation markers within a rendered markdown element.
+ *
+ * Walks all text nodes looking for patterns like [1], [2], [1][3] etc.
+ * Replaces them with clickable superscript badges that navigate to the
+ * corresponding source. This is the Perplexity-style citation UX.
+ *
+ * M15 — Citation Attribution Redesign.
+ */
+function _postProcessCitations(
+  container: HTMLElement,
+  citations: Array<{ index: number; uri: string; label: string }>,
+): void {
+  // Build a lookup map: index → citation
+  const citationMap = new Map<number, { uri: string; label: string }>();
+  for (const c of citations) {
+    citationMap.set(c.index, { uri: c.uri, label: c.label });
+  }
+
+  // Walk all text nodes in the container
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const nodesToProcess: Text[] = [];
+  let node: Text | null;
+  while ((node = walker.nextNode() as Text | null)) {
+    if (/\[\d+\]/.test(node.textContent || '')) {
+      nodesToProcess.push(node);
+    }
+  }
+
+  // Process each text node that contains [N] markers
+  for (const textNode of nodesToProcess) {
+    const text = textNode.textContent || '';
+    // Split on [N] patterns, keeping the delimiters
+    const parts = text.split(/(\[\d+\])/g);
+    if (parts.length <= 1) { continue; }
+
+    const frag = document.createDocumentFragment();
+    for (const segment of parts) {
+      const match = segment.match(/^\[(\d+)\]$/);
+      if (match) {
+        const idx = parseInt(match[1], 10);
+        const citation = citationMap.get(idx);
+        if (citation) {
+          // Create a clickable superscript citation badge
+          const badge = document.createElement('sup');
+          badge.className = 'parallx-citation-badge';
+          badge.textContent = String(idx);
+          badge.title = citation.label;
+          badge.setAttribute('data-citation-index', String(idx));
+          badge.setAttribute('data-citation-uri', citation.uri);
+          badge.addEventListener('click', () => {
+            const isPage = citation.uri.startsWith('parallx-page://');
+            if (isPage) {
+              const pageId = citation.uri.replace('parallx-page://', '');
+              badge.dispatchEvent(new CustomEvent('parallx:navigate-page', {
+                bubbles: true,
+                detail: { pageId },
+              }));
+            } else {
+              badge.dispatchEvent(new CustomEvent('parallx:open-file', {
+                bubbles: true,
+                detail: { path: citation.uri },
+              }));
+            }
+          });
+          frag.appendChild(badge);
+        } else {
+          // Unknown citation index — render as plain text
+          frag.appendChild(document.createTextNode(segment));
+        }
+      } else {
+        frag.appendChild(document.createTextNode(segment));
+      }
+    }
+    textNode.parentNode?.replaceChild(frag, textNode);
+  }
 }
 
 /**
@@ -387,7 +473,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
       const pill = _renderReference({
         kind: ChatContentPartKind.Reference,
         uri: ref.uri,
-        label: ref.label,
+        label: ref.index != null ? `[${ref.index}] ${ref.label}` : ref.label,
       });
       pillsRow.appendChild(pill);
     }

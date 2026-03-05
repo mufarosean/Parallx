@@ -223,6 +223,18 @@ class ChatResponseStream implements IChatResponseStream {
     (this._response as any).completionTokens = completionTokens;
   }
 
+  setCitations(citations: Array<{ index: number; uri: string; label: string }>): void {
+    // Attach the citation map to every Markdown part so the renderer
+    // can resolve [N] markers to clickable source badges.
+    const parts = this._response.parts as IChatContentPart[];
+    for (const part of parts) {
+      if (part.kind === ChatContentPartKind.Markdown) {
+        (part as IChatMarkdownContent).citations = citations;
+      }
+    }
+    this._scheduleUpdate();
+  }
+
   replaceLastMarkdown(content: string): void {
     this.throwIfDone();
     const parts = this._response.parts as IChatContentPart[];
@@ -292,7 +304,7 @@ class ChatResponseStream implements IChatResponseStream {
     this._scheduleUpdate();
   }
 
-  reference(uri: string, label: string): void {
+  reference(uri: string, label: string, index?: number): void {
     this.throwIfDone();
     const parts = this._response.parts as IChatContentPart[];
 
@@ -306,14 +318,14 @@ class ChatResponseStream implements IChatResponseStream {
       if (!thinkingPart.references) {
         thinkingPart.references = [];
       }
-      thinkingPart.references.push({ uri, label });
+      thinkingPart.references.push({ uri, label, index });
     } else {
       // No thinking part yet — create one to host the reference
       parts.unshift({
         kind: ChatContentPartKind.Thinking,
         content: '',
         isCollapsed: true,
-        references: [{ uri, label }],
+        references: [{ uri, label, index }],
       });
     }
     this._scheduleUpdate();

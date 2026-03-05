@@ -64,12 +64,12 @@ export interface IDefaultParticipantServices {
   isIndexing?(): boolean;
   readFileContent?(fullPath: string): Promise<string>;
   getCurrentPageContent?(): Promise<{ title: string; pageId: string; textContent: string } | undefined>;
-  retrieveContext?(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string }> } | undefined>;
+  retrieveContext?(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>;
   planAndRetrieve?(
     userText: string,
     recentHistory?: string,
     workspaceDigest?: string,
-  ): Promise<{ text: string; sources: Array<{ uri: string; label: string }>; plan?: IRetrievalPlan } | undefined>;
+  ): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }>; plan?: IRetrievalPlan } | undefined>;
   recallMemories?(query: string): Promise<string | undefined>;
   storeSessionMemory?(sessionId: string, summary: string, messageCount: number): Promise<void>;
   isSessionEligibleForSummary?(messageCount: number): boolean;
@@ -338,7 +338,7 @@ export interface IMentionResolutionResult {
 export interface IMentionResolutionServices {
   readFileContent?(path: string): Promise<string>;
   listFolderFiles?(folderPath: string): Promise<Array<{ relativePath: string; content: string }>>;
-  retrieveContext?(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string }> } | undefined>;
+  retrieveContext?(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>;
   getTerminalOutput?(): Promise<string | undefined>;
 }
 

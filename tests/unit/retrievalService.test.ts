@@ -247,7 +247,7 @@ describe('RetrievalService', () => {
       expect(service.formatContext([])).toBe('');
     });
 
-    it('formats chunks with source attribution', () => {
+    it('formats chunks with source attribution and citation numbers', () => {
       const chunks = [
         {
           sourceType: 'page_block',
@@ -272,9 +272,9 @@ describe('RetrievalService', () => {
       const formatted = service.formatContext(chunks);
 
       expect(formatted).toContain('[Retrieved Context]');
-      expect(formatted).toContain('Source: Backend Architecture > Auth');
+      expect(formatted).toContain('[1] Source: Backend Architecture > Auth');
       expect(formatted).toContain('We chose JWT with refresh tokens.');
-      expect(formatted).toContain('Source: src/auth/middleware.ts');
+      expect(formatted).toContain('[2] Source: src/auth/middleware.ts');
       expect(formatted).toContain('function verifyToken() { ... }');
       expect(formatted).toContain('---');
     });
@@ -293,7 +293,47 @@ describe('RetrievalService', () => {
       ];
 
       const formatted = service.formatContext(chunks);
-      expect(formatted).toContain('Source: page-uuid-123');
+      expect(formatted).toContain('[1] Source: page-uuid-123');
+    });
+
+    it('assigns the same citation number to chunks from the same source', () => {
+      const chunks = [
+        {
+          sourceType: 'file_chunk',
+          sourceId: 'src/auth.ts',
+          contextPrefix: 'src/auth.ts',
+          text: 'First chunk',
+          score: 0.9,
+          sources: ['vector'],
+          tokenCount: 3,
+        },
+        {
+          sourceType: 'file_chunk',
+          sourceId: 'src/auth.ts',
+          contextPrefix: 'src/auth.ts',
+          text: 'Second chunk',
+          score: 0.8,
+          sources: ['vector'],
+          tokenCount: 3,
+        },
+        {
+          sourceType: 'page_block',
+          sourceId: 'p2',
+          contextPrefix: 'Notes',
+          text: 'Third chunk',
+          score: 0.7,
+          sources: ['vector'],
+          tokenCount: 3,
+        },
+      ];
+
+      const formatted = service.formatContext(chunks);
+      // Both auth.ts chunks get [1], the page gets [2]
+      const lines = formatted.split('\n');
+      const sourceLines = lines.filter(l => l.includes('Source:'));
+      expect(sourceLines[0]).toBe('[1] Source: src/auth.ts');
+      expect(sourceLines[1]).toBe('[1] Source: src/auth.ts');
+      expect(sourceLines[2]).toBe('[2] Source: Notes');
     });
   });
 

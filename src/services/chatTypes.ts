@@ -323,6 +323,8 @@ export enum ChatContentPartKind {
 export interface IChatMarkdownContent {
   readonly kind: ChatContentPartKind.Markdown;
   content: string;
+  /** Citation map: source index → { uri, label } for rendering [N] badges. */
+  citations?: Array<{ index: number; uri: string; label: string }>;
 }
 
 export interface IChatCodeBlockContent {
@@ -359,7 +361,7 @@ export interface IChatThinkingContent {
   /** Ephemeral status message shown while context is being gathered. */
   progressMessage?: string;
   /** Source references gathered during retrieval. */
-  references?: Array<{ uri: string; label: string }>;
+  references?: Array<{ uri: string; label: string; index?: number }>;
 }
 
 export interface IChatReferenceContent {
@@ -555,7 +557,7 @@ export interface IChatResponseStream {
   /** Show a progress indicator. */
   progress(message: string): void;
   /** Append a clickable reference. */
-  reference(uri: string, label: string): void;
+  reference(uri: string, label: string, index?: number): void;
   /** Append thinking/reasoning content. */
   thinking(content: string): void;
   /** Append a warning message. */
@@ -587,6 +589,8 @@ export interface IChatResponseStream {
   throwIfDone(): void;
   /** Report actual token usage from the LLM response (Ollama eval counts). */
   reportTokenUsage(promptTokens: number, completionTokens: number): void;
+  /** Attach a citation map to all existing Markdown parts so the renderer can resolve [N] markers. */
+  setCitations(citations: Array<{ index: number; uri: string; label: string }>): void;
 }
 
 /**
