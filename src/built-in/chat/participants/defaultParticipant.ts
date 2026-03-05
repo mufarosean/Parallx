@@ -56,6 +56,7 @@ const ASK_MODE_MAX_ITERATIONS = 5;
  *
  * Small models (e.g. llama3.1:8b, qwen2.5) sometimes respond with:
  *   {"name": "read_file", "parameters": {"path": "file.md"}}
+ *   {"name": "read_file", "arguments": {"path": "file.md"}}
  * or wrapped in markdown code blocks, rather than using Ollama's tool_calls.
  *
  * @returns Extracted tool calls and the cleaned text (JSON stripped).
@@ -65,16 +66,20 @@ export function _extractToolCallsFromText(text: string): { toolCalls: IToolCall[
   const toolCalls: IToolCall[] = [];
   let cleaned = text;
 
-  // Pattern 1: JSON object with "name" + "parameters" (single or in array)
-  // Matches both bare JSON and JSON inside ```json code blocks
+  // Pattern 1: JSON object with "name" + "parameters" or "arguments" (single or in array)
+  // Matches both bare JSON and JSON inside ```json code blocks.
+  // Ollama/OpenAI format uses "arguments"; some models also emit "parameters".
+  // ARGS_KEY includes surrounding quotes because JSON keys are quoted strings.
+  const ARGS_KEY = '"(?:parameters|arguments)"';
   const jsonPatterns = [
-    // Code-fenced JSON block
-    /```(?:json)?\s*\n?(\{[\s\S]*?"name"\s*:\s*"[\w]+"[\s\S]*?"parameters"\s*:[\s\S]*?\})\s*\n?```/g,
-    /```(?:json)?\s*\n?(\[[\s\S]*?"name"\s*:\s*"[\w]+"[\s\S]*?"parameters"\s*:[\s\S]*?\])\s*\n?```/g,
+    // Code-fenced JSON block (object)
+    new RegExp('```(?:json)?\\s*\\n?({[\\s\\S]*?"name"\\s*:\\s*"[\\w]+"[\\s\\S]*?' + ARGS_KEY + '\\s*:[\\s\\S]*?})\\s*\\n?```', 'g'),
+    // Code-fenced JSON block (array)
+    new RegExp('```(?:json)?\\s*\\n?(\\[[\\s\\S]*?"name"\\s*:\\s*"[\\w]+"[\\s\\S]*?' + ARGS_KEY + '\\s*:[\\s\\S]*?\\])\\s*\\n?```', 'g'),
     // Bare JSON object
-    /(\{\s*"name"\s*:\s*"[\w]+"\s*,\s*"parameters"\s*:\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}\s*\})/g,
+    new RegExp('({\\s*"name"\\s*:\\s*"[\\w]+"\\s*,\\s*' + ARGS_KEY + '\\s*:\\s*{[^{}]*(?:{[^{}]*}[^{}]*)*}\\s*})', 'g'),
     // JSON array of tool calls
-    /(\[\s*\{\s*"name"\s*:\s*"[\w]+"\s*,\s*"parameters"\s*:[\s\S]*?\}\s*\])/g,
+    new RegExp('(\\[\\s*{\\s*"name"\\s*:\\s*"[\\w]+"\\s*,\\s*' + ARGS_KEY + '\\s*:[\\s\\S]*?}\\s*\\])', 'g'),
   ];
 
   for (const pattern of jsonPatterns) {
@@ -85,13 +90,15 @@ export function _extractToolCallsFromText(text: string): { toolCalls: IToolCall[
         const parsed = JSON.parse(jsonStr);
         const items = Array.isArray(parsed) ? parsed : [parsed];
         for (const item of items) {
+          // Accept both "parameters" and "arguments" keys (Ollama / OpenAI formats)
+          const args = item.parameters ?? item.arguments;
           if (
             typeof item === 'object' && item !== null &&
             typeof item.name === 'string' && item.name.length > 0 &&
-            typeof item.parameters === 'object' && item.parameters !== null
+            typeof args === 'object' && args !== null
           ) {
             toolCalls.push({
-              function: { name: item.name, arguments: item.parameters },
+              function: { name: item.name, arguments: args },
             });
             // Strip the matched JSON (including code fence if present) from cleaned text
             cleaned = cleaned.replace(match[0], '');
@@ -152,7 +159,20 @@ export function _stripToolNarration(text: string): string {
     // "Let me try again with a different approach."
     .replace(/[Ll]et me try (?:again )?with a different approach\.\s*/g, '')
     // "Based on the context and conversation history, I'll provide a JSON..."
-    .replace(/Based on[^,.\n]*,\s*I'll provide a JSON[^.\n]*\.\s*/gi, '');
+    .replace(/Based on[^,.\n]*,\s*I'll provide a JSON[^.\n]*\.\s*/gi, '')
+    // ── Structured narration patterns ──
+    // "Action:" block followed by JSON — model narrating a tool call
+    .replace(/\bAction:\s*```[\s\S]*?```/gi, '')
+    .replace(/\bAction:\s*\{[\s\S]*?\}\s*/gi, '')
+    // "Execution:" block with hallucinated results
+    .replace(/\bExecution:\s*```[\s\S]*?```/gi, '')
+    .replace(/\bExecution:\s*\{[\s\S]*?\}\s*/gi, '')
+    // "Let's execute this action/tool/function..."
+    .replace(/[Ll]et'?s\s+execute\s+this\s+(?:action|tool|function)[^.\n]*\.?\s*/gi, '')
+    // "To determine/find/get X, I will Y"
+    .replace(/To (?:determine|find|get|check|count|list|know)\s+[^,.\n]*,\s*I (?:will|am going to|need to)[^.\n]*\.?\s*/gi, '')
+    // "The user wants to know..." (model restating the request)
+    .replace(/[Tt]he user (?:wants|needs|is asking|asked)\s+(?:to\s+)?(?:know|find|get|see|understand)[^.\n]*\.?\s*/gi, '');
 
   // Trim excessive whitespace
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
@@ -1137,11 +1157,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
         // ── Narration detection ──
         // Small models sometimes narrate about tool calls in prose instead of
-        // actually calling them (e.g. "Here's a function call to read_file...").
+        // actually calling them (e.g. "Here's a function call to read_file...",
+        // "Action: { name: list_files ... }", "The user wants to know...").
         // Strip narration regardless of whether real tool calls were found —
         // the user should never see prose describing the mechanics.
         if (turnToolCalls.length === 0 && turnContent) {
-          const narrationPattern = /(?:here'?s?\s+(?:a|an|the)\s+(?:function|tool)\s+call|(?:I'?(?:ll|m going to)|let me)\s+(?:call|use|invoke|try)\s+(?:the\s+)?(?:`?\w+`?\s+)?(?:function|tool)|this (?:function|tool) call will|based on the (?:functions?|tools?|context)\s+provided|with its proper arguments)/i;
+          const narrationPattern = /(?:here'?s?\s+(?:a|an|the)\s+(?:function|tool)\s+call|(?:I'?(?:ll|m going to)|let me)\s+(?:call|use|invoke|try)\s+(?:the\s+)?(?:`?\w+`?\s+)?(?:function|tool)|this (?:function|tool) call will|based on the (?:functions?|tools?|context)\s+provided|with its proper arguments|\bAction:\s*[{`]|\bExecution:\s*[{`]|let'?s\s+execute\s+this\s+(?:action|tool)|the user (?:wants|needs|is asking)\s+to\s+know)/i;
           if (narrationPattern.test(turnContent)) {
             const cleaned = _stripToolNarration(turnContent);
             if (!isEditMode) {

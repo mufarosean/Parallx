@@ -10,6 +10,7 @@ import {
   SKIP_DIRS,
   MAX_FILE_SIZE,
   MAX_RICH_DOC_SIZE,
+  _generateSummary,
 } from '../../src/services/indexingPipeline.js';
 import type { IndexingProgress } from '../../src/services/indexingPipeline.js';
 import { FileType } from '../../src/platform/fileTypes.js';
@@ -424,7 +425,7 @@ describe('IndexingPipelineService', () => {
       await pipeline.reindexPage('p1');
 
       expect(chunkingService.chunkPage).toHaveBeenCalledWith('p1', 'My Page', expect.any(String));
-      expect(vectorStore.upsert).toHaveBeenCalledWith('page_block', 'p1', expect.any(Array), expect.any(String));
+      expect(vectorStore.upsert).toHaveBeenCalledWith('page_block', 'p1', expect.any(Array), expect.any(String), expect.any(String));
     });
 
     it('does nothing for non-existent page', async () => {
@@ -779,5 +780,38 @@ describe('IndexingPipelineService — rich document indexing', () => {
     // readFile should be used, not readDocumentText
     expect(fileService.readFile).toHaveBeenCalled();
     expect(fileService.readDocumentText).not.toHaveBeenCalled();
+  });
+});
+
+// ─── _generateSummary Tests ──────────────────────────────────────────────────
+
+describe('_generateSummary', () => {
+  it('returns empty string for empty content', () => {
+    expect(_generateSummary('')).toBe('');
+    expect(_generateSummary('   ')).toBe('');
+  });
+
+  it('returns full text when under 200 chars', () => {
+    const short = 'This is a short document about Shona vocabulary.';
+    expect(_generateSummary(short)).toBe(short);
+  });
+
+  it('truncates at sentence boundary for long text', () => {
+    const text = 'This is the first sentence. This is the second sentence that is quite long and goes on for a while. And this third sentence pushes us well past the 200 character limit because it contains additional information.';
+    const summary = _generateSummary(text);
+    expect(summary.length).toBeLessThanOrEqual(200);
+    expect(summary).toMatch(/\.$/); // ends at a sentence
+  });
+
+  it('truncates at word boundary with ellipsis when no sentence end', () => {
+    const text = 'a'.repeat(50) + ' ' + 'b'.repeat(50) + ' ' + 'c'.repeat(50) + ' ' + 'd'.repeat(60);
+    const summary = _generateSummary(text);
+    expect(summary.length).toBeLessThanOrEqual(201); // 200 + ellipsis char
+    expect(summary).toMatch(/…$/);
+  });
+
+  it('collapses whitespace in content', () => {
+    const text = 'Hello   world\n\n\nthis is   a   test';
+    expect(_generateSummary(text)).toBe('Hello world this is a test');
   });
 });

@@ -964,6 +964,7 @@ export interface IVectorStoreService extends IDisposable {
     sourceId: string,
     chunks: import('./vectorStoreService.js').EmbeddedChunk[],
     contentHash: string,
+    summary?: string,
   ): Promise<void>;
 
   /** Delete all chunks for a source. */
@@ -994,6 +995,9 @@ export interface IVectorStoreService extends IDisposable {
 
   /** Get aggregate statistics. */
   getStats(): Promise<import('./vectorStoreService.js').VectorStoreStats>;
+
+  /** Get document summaries for all indexed sources. Map<sourceId, summary>. */
+  getDocumentSummaries(): Promise<Map<string, string>>;
 
   /** Fires when a source is indexed/re-indexed. */
   readonly onDidUpdateIndex: Event<{ sourceId: string; chunkCount: number }>;

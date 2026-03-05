@@ -1016,14 +1016,34 @@ export class ChatDataService {
     const MAX_DIGEST_CHARS = 12000; // ~3000 tokens at 4 chars/token — increased for deeper file trees
     let totalChars = 0;
 
-    // 1. Canvas page titles
+    // Pre-load document summaries from indexing_metadata.
+    // These are brief content descriptions (first ~200 chars) generated during
+    // indexing so the AI knows what each file/page contains, not just its name.
+    const summaries = new Map<string, string>();
+    if (this._d.databaseService?.isOpen) {
+      try {
+        const rows = await this._d.databaseService.all<{ source_id: string; summary: string }>(
+          `SELECT source_id, summary FROM indexing_metadata WHERE summary IS NOT NULL AND summary != ''`,
+        );
+        for (const row of rows) {
+          summaries.set(row.source_id, row.summary);
+        }
+      } catch { /* best-effort — column may not exist yet */ }
+    }
+
+    // 1. Canvas page titles (with content summaries when available)
     if (this._d.databaseService?.isOpen) {
       try {
         const pages = await this._d.databaseService.all<{ title: string; id: string }>(
           'SELECT title, id FROM pages WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 30',
         );
         if (pages.length > 0) {
-          const pageLines = pages.map(p => `  - ${p.title}`);
+          const pageLines = pages.map(p => {
+            const pageSummary = summaries.get(p.id);
+            return pageSummary
+              ? `  - ${p.title} — ${pageSummary}`
+              : `  - ${p.title}`;
+          });
           const block = `CANVAS PAGES (${pages.length}):\n${pageLines.join('\n')}`;
           sections.push(block);
           totalChars += block.length;
@@ -1035,6 +1055,8 @@ export class ChatDataService {
     //    The only limit is MAX_DIGEST_CHARS which caps the total system prompt
     //    budget. The AI should see EVERY file the workspace contains; the
     //    context window is the natural constraint, not arbitrary constants.
+    //    Files are annotated with content summaries so the AI knows what's
+    //    INSIDE each file, not just its name.
     if (this._d.fsAccessor) {
       try {
         const treeLines: string[] = [];
@@ -1061,10 +1083,15 @@ export class ChatDataService {
           for (const entry of sorted) {
             if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === '__pycache__' || entry.name === '.git') continue;
             const icon = entry.type === 'directory' ? '📁' : '📄';
-            treeLines.push(`${prefix}${icon} ${entry.name}`);
+            // Build workspace-relative path for summary lookup
+            const relPath = dir === '.' ? entry.name : `${dir}/${entry.name}`;
+            const fileSummary = entry.type !== 'directory' ? summaries.get(relPath) : undefined;
+            const line = fileSummary
+              ? `${prefix}${icon} ${entry.name} — ${fileSummary}`
+              : `${prefix}${icon} ${entry.name}`;
+            treeLines.push(line);
             if (entry.type === 'directory') {
-              const childPath = dir === '.' ? entry.name : `${dir}/${entry.name}`;
-              queue.push({ dir: childPath, depth: depth + 1, prefix: prefix + '  ' });
+              queue.push({ dir: relPath, depth: depth + 1, prefix: prefix + '  ' });
             }
           }
 
@@ -1104,7 +1131,7 @@ export class ChatDataService {
     }
 
     return sections.length > 0
-      ? `YOU ALREADY KNOW THIS WORKSPACE. Here is what exists:\n\n${sections.join('\n\n')}\n\nUse this knowledge to answer directly. You do NOT need to discover what files exist — you already know.\nWhen the user asks about a file, use the EXACT path shown above with read_file or search tools.`
+      ? `YOU ALREADY KNOW THIS WORKSPACE. Here is what exists:\n\n${sections.join('\n\n')}\n\nYou have read every document in this workspace. The summaries above tell you what each file contains. Use this knowledge to answer directly — you do NOT need to discover what files exist.\nWhen the user asks about a file, use the EXACT path shown above with read_file or search tools.`
       : undefined;
   }
 

@@ -401,6 +401,23 @@ describe('_extractToolCallsFromText', () => {
     expect(cleanedText).toContain('Let me check.');
     expect(cleanedText).toContain('Here are the results:');
   });
+
+  it('extracts tool call using "arguments" key (Ollama/OpenAI format)', () => {
+    const text = '{"name": "list_files", "arguments": {"path": "."}}';
+    const { toolCalls, cleanedText } = _extractToolCallsFromText(text);
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].function.name).toBe('list_files');
+    expect(toolCalls[0].function.arguments).toEqual({ path: '.' });
+    expect(cleanedText).toBe('');
+  });
+
+  it('extracts code-fenced tool call with "arguments" key', () => {
+    const text = 'Action:\n```json\n{"name": "read_file", "arguments": {"path": "docs/README.md"}}\n```';
+    const { toolCalls } = _extractToolCallsFromText(text);
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].function.name).toBe('read_file');
+    expect(toolCalls[0].function.arguments).toEqual({ path: 'docs/README.md' });
+  });
 });
 
 // ── _stripToolNarration — prose tool-call narration removal ──
@@ -475,5 +492,35 @@ describe('_stripToolNarration', () => {
     const text = 'The workspace has 5 pages about insurance. Here is a summary.';
     const result = _stripToolNarration(text);
     expect(result).toBe(text);
+  });
+
+  it('strips "Action:" block with JSON', () => {
+    const text = 'The user wants to know the number of files.\n\nAction:\n{"name": "list_files", "arguments": {"path": "."}}\n\nLet\'s execute this action.';
+    const result = _stripToolNarration(text);
+    expect(result).not.toContain('Action:');
+    expect(result).not.toContain('list_files');
+    expect(result).not.toContain("Let's execute");
+  });
+
+  it('strips "Execution:" block with hallucinated results', () => {
+    const text = 'Execution:\n{"result": [{"name": "Activism", "type": "directory"}]}\n\nThere are 5 folders.';
+    const result = _stripToolNarration(text);
+    expect(result).not.toContain('Execution:');
+    expect(result).not.toContain('Activism');
+    expect(result).toContain('There are 5 folders.');
+  });
+
+  it('strips "The user wants to know..." restating', () => {
+    const text = 'The user wants to know the number of files in the workspace.\n\nThere are 42 files.';
+    const result = _stripToolNarration(text);
+    expect(result).not.toContain('The user wants to know');
+    expect(result).toContain('There are 42 files.');
+  });
+
+  it('strips "To determine X, I will Y" narration', () => {
+    const text = 'To determine the number of files in the workspace, I will list all files.\n\nThere are 42 files.';
+    const result = _stripToolNarration(text);
+    expect(result).not.toContain('To determine');
+    expect(result).toContain('There are 42 files.');
   });
 });

@@ -136,6 +136,39 @@ interface IndexableFile {
   mtime: number;
 }
 
+/**
+ * Generate a brief content summary for the workspace digest.
+ * Extracts the first ~200 meaningful characters, trimmed to a sentence
+ * or word boundary. Zero-cost (no LLM call — pure text extraction).
+ */
+/** @internal Exported for unit testing. */
+export function _generateSummary(content: string): string {
+  // Normalize whitespace (collapse runs, trim leading/trailing)
+  let text = content.replace(/\s+/g, ' ').trim();
+  if (!text) { return ''; }
+
+  // Cap at 200 chars, trim to last sentence boundary if possible
+  const MAX = 200;
+  if (text.length <= MAX) { return text; }
+
+  const slice = text.slice(0, MAX);
+  // Try to break at last sentence end
+  const sentenceEnd = Math.max(
+    slice.lastIndexOf('. '),
+    slice.lastIndexOf('! '),
+    slice.lastIndexOf('? '),
+  );
+  if (sentenceEnd > MAX * 0.4) {
+    return slice.slice(0, sentenceEnd + 1);
+  }
+  // Fall back to last word boundary
+  const lastSpace = slice.lastIndexOf(' ');
+  if (lastSpace > MAX * 0.6) {
+    return slice.slice(0, lastSpace) + '…';
+  }
+  return slice + '…';
+}
+
 // ─── IndexingPipelineService ─────────────────────────────────────────────────
 
 export class IndexingPipelineService extends Disposable implements IIndexingPipelineService {
@@ -428,8 +461,10 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       return false;
     }
 
-    // Store
-    await this._vectorStore.upsert('page_block', pageId, embeddedChunks, contentHash);
+    // Store — generate a content summary from the page's first chunk for the workspace digest.
+    const pageText = chunks.map(c => c.text).join(' ');
+    const summary = _generateSummary(pageText);
+    await this._vectorStore.upsert('page_block', pageId, embeddedChunks, contentHash, summary);
 
     return true;
   }
@@ -583,7 +618,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     }
 
     // Store — workspace-relative sourceId so retrieval context matches read_file paths
-    await this._vectorStore.upsert('file_chunk', relPath, embeddedChunks, contentHash);
+    // Generate a content summary from the first ~200 chars for the workspace digest.
+    const summary = _generateSummary(content);
+    await this._vectorStore.upsert('file_chunk', relPath, embeddedChunks, contentHash, summary);
 
     return true;
   }

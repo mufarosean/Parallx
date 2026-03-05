@@ -83,6 +83,8 @@ export interface IndexingMeta {
   contentHash: string;
   chunkCount: number;
   indexedAt: string;
+  /** Brief content summary (first ~200 chars of extracted text). */
+  summary?: string;
 }
 
 /** Statistics about the vector store. */
@@ -125,12 +127,14 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
    * @param sourceId — page UUID or file path
    * @param chunks — chunks with embeddings to store
    * @param contentHash — hash of the full source content
+   * @param summary — optional brief content summary for the workspace digest
    */
   async upsert(
     sourceType: string,
     sourceId: string,
     chunks: EmbeddedChunk[],
     contentHash: string,
+    summary?: string,
   ): Promise<void> {
     // Build transaction operations: delete old, insert new
     const operations: { type: 'run'; sql: string; params?: unknown[] }[] = [];
@@ -190,12 +194,12 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       });
     }
 
-    // 3. Upsert indexing metadata
+    // 3. Upsert indexing metadata (with optional content summary)
     operations.push({
       type: 'run',
-      sql: `INSERT OR REPLACE INTO indexing_metadata(source_type, source_id, content_hash, chunk_count, indexed_at)
-            VALUES (?, ?, ?, ?, datetime('now'))`,
-      params: [sourceType, sourceId, contentHash, chunks.length],
+      sql: `INSERT OR REPLACE INTO indexing_metadata(source_type, source_id, content_hash, chunk_count, indexed_at, summary)
+            VALUES (?, ?, ?, ?, datetime('now'), ?)`,
+      params: [sourceType, sourceId, contentHash, chunks.length, summary ?? null],
     });
 
     // Execute all in one transaction
@@ -346,9 +350,25 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
    */
   async getIndexedSources(): Promise<IndexingMeta[]> {
     const rows = await this._db.all<IndexingMeta>(
-      'SELECT source_type as sourceType, source_id as sourceId, content_hash as contentHash, chunk_count as chunkCount, indexed_at as indexedAt FROM indexing_metadata ORDER BY indexed_at DESC',
+      'SELECT source_type as sourceType, source_id as sourceId, content_hash as contentHash, chunk_count as chunkCount, indexed_at as indexedAt, summary FROM indexing_metadata ORDER BY indexed_at DESC',
     );
     return rows;
+  }
+
+  /**
+   * Get document summaries for all indexed file sources.
+   * Returns a Map of source_id (workspace-relative path) → summary string.
+   * Used by the workspace digest to annotate files with content descriptions.
+   */
+  async getDocumentSummaries(): Promise<Map<string, string>> {
+    const rows = await this._db.all<{ source_id: string; summary: string }>(
+      `SELECT source_id, summary FROM indexing_metadata WHERE summary IS NOT NULL AND summary != ''`,
+    );
+    const map = new Map<string, string>();
+    for (const row of rows) {
+      map.set(row.source_id, row.summary);
+    }
+    return map;
   }
 
   /**
