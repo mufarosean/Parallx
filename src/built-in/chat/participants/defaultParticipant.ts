@@ -920,14 +920,20 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
-    // Network timeout — abort if no response within configured time
+    // Network stall timeout — abort if no data received for this duration.
+    // This resets on every chunk so thinking models (qwen3, DeepSeek-R1) that
+    // stream for 60+ seconds don't get killed mid-response.  Only fires when
+    // the model truly stalls (no data at all for the timeout period).
     const timeoutMs = services.networkTimeout ?? DEFAULT_NETWORK_TIMEOUT_MS;
     let networkTimeoutId: ReturnType<typeof setTimeout> | undefined;
-    if (timeoutMs > 0) {
+    const resetNetworkTimeout = () => {
+      if (timeoutMs <= 0) return;
+      if (networkTimeoutId !== undefined) clearTimeout(networkTimeoutId);
       networkTimeoutId = setTimeout(() => {
         abortController.abort(new DOMException('Request timed out', 'TimeoutError'));
       }, timeoutMs);
-    }
+    };
+    resetNetworkTimeout();
 
     try {
       // ── Agentic loop (Cap 6 Task 6.2) ──
@@ -974,6 +980,9 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           if (token.isCancellationRequested || token.isYieldRequested) {
             break;
           }
+
+          // Reset stall timeout — model is actively producing data
+          resetNetworkTimeout();
 
           // Thinking content
           if (chunk.thinking) {

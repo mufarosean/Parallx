@@ -41,8 +41,10 @@ const DEFAULT_TOP_K = 10;
  * preserving any result that genuinely matched the query.
  *
  * Previous value 0.01 let through rank-40+ garbage from a single path.
+ * Raised to 0.025 to better filter irrelevant results when the index is
+ * sparse or the query has low semantic overlap with indexed content.
  */
-const DEFAULT_MIN_SCORE = 0.02;
+const DEFAULT_MIN_SCORE = 0.025;
 
 /** Max chunks from the same source before dedup kicks in. */
 const DEFAULT_MAX_PER_SOURCE = 3;
