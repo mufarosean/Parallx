@@ -83,6 +83,7 @@ function createMockEmbeddingService() {
 }
 
 function createMockVectorStore() {
+  const defaultEmb = new Array(768).fill(0.1);
   return {
     initialize: vi.fn(async () => {}),
     upsert: vi.fn(async () => {}),
@@ -92,6 +93,7 @@ function createMockVectorStore() {
     getContentHash: vi.fn(async () => null),
     getIndexedSources: vi.fn(async () => []),
     getStats: vi.fn(async () => ({ totalChunks: 0, totalSources: 0, bySourceType: {}, sourceCountByType: {} })),
+    getEmbeddings: vi.fn(async (rowids: number[]) => new Map(rowids.map(id => [id, defaultEmb] as [number, number[]]))),
     onDidUpdateIndex: vi.fn(() => ({ dispose: vi.fn() })) as any,
     dispose: vi.fn(),
   };

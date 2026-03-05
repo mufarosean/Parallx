@@ -244,11 +244,7 @@ export function registerIndexingServices(
     workspaceService,
     sessionManager,
   );
-  // Pass ILanguageModelsService for LLM re-ranking (optional — degrades gracefully)
-  const languageModelsService = services.has(ILanguageModelsService)
-    ? services.get(ILanguageModelsService)
-    : undefined;
-  const retrievalService = new RetrievalService(embeddingService, vectorStoreService, languageModelsService);
+  const retrievalService = new RetrievalService(embeddingService, vectorStoreService);
   const memoryService = new MemoryService(databaseService, embeddingService, vectorStoreService);
 
   services.registerInstance(IEmbeddingService, embeddingService);

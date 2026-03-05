@@ -21,10 +21,6 @@ import type {
   IVectorStoreService,
   IRetrievalService,
 } from './serviceTypes.js';
-import type {
-  ILanguageModelsService,
-  IChatMessage,
-} from './chatTypes.js';
 import type { SearchResult, SearchOptions } from './vectorStoreService.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -52,22 +48,43 @@ const DEFAULT_MAX_PER_SOURCE = 3;
 /** Default token budget for retrieved context (chars / 4 heuristic). */
 const DEFAULT_TOKEN_BUDGET = 4000;
 
-/** Minimum LLM relevance score (0-10) for a chunk to survive re-ranking.
- * Chunks scoring below this are dropped as irrelevant.
- */
-const RERANK_MIN_RELEVANCE = 4;
-
-/** Maximum characters of chunk text sent to the LLM for re-ranking.
- * Longer chunks are truncated to save tokens during the scoring pass.
- */
-const RERANK_MAX_CHUNK_CHARS = 600;
-
-/** Timeout per re-ranking LLM call in milliseconds. */
-const RERANK_TIMEOUT_MS = 8000;
-
 /** Rough token estimator: chars / 4 (same as defaultParticipant). */
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
+}
+
+/**
+ * Minimum cosine similarity between query embedding and candidate embedding
+ * for a chunk to survive cosine re-ranking. 0.30 is a lenient threshold
+ * that removes only clearly unrelated candidates while preserving topical
+ * matches that may have been boosted by keyword overlap.
+ *
+ * Reference: docs/Parallx_Milestone_16.md Phase 2 — Cosine Re-ranking
+ */
+const MIN_COSINE_SCORE = 0.30;
+
+/**
+ * Dot product of two equal-length vectors.
+ * Used by cosineRerank to compute query-candidate similarity.
+ */
+export function dotProduct(a: number[], b: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) {
+    sum += a[i] * b[i];
+  }
+  return sum;
+}
+
+/**
+ * Cosine similarity between two vectors: dot(a,b) / (‖a‖ × ‖b‖).
+ * Returns 0 if either vector has zero magnitude.
+ */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  const dot = dotProduct(a, b);
+  const magA = Math.sqrt(dotProduct(a, a));
+  const magB = Math.sqrt(dotProduct(b, b));
+  if (magA === 0 || magB === 0) { return 0; }
+  return dot / (magA * magB);
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -86,12 +103,6 @@ export interface RetrievalOptions {
   maxPerSource?: number;
   /** Max total tokens of context to return (default: 4000). */
   tokenBudget?: number;
-  /**
-   * Whether to apply LLM re-ranking to candidates (default: true when LM available).
-   * Re-ranking uses the active Ollama chat model to score each candidate chunk's
-   * relevance to the query, filtering out irrelevant noise.
-   */
-  rerank?: boolean;
 }
 
 /** A retrieved context chunk with source attribution. */
@@ -118,24 +129,21 @@ export interface RetrievedContext {
  * Query-time retrieval service.
  *
  * Embeds a user query, runs hybrid search through the VectorStoreService,
- * applies post-retrieval filtering (score threshold, dedup, token budget),
- * and returns ranked context chunks.
+ * applies post-retrieval filtering (score threshold, cosine re-ranking,
+ * dedup, token budget), and returns ranked context chunks.
  */
 export class RetrievalService extends Disposable implements IRetrievalService {
 
   private readonly _embeddingService: IEmbeddingService;
   private readonly _vectorStore: IVectorStoreService;
-  private readonly _languageModelsService: ILanguageModelsService | undefined;
 
   constructor(
     embeddingService: IEmbeddingService,
     vectorStore: IVectorStoreService,
-    languageModelsService?: ILanguageModelsService,
   ) {
     super();
     this._embeddingService = embeddingService;
     this._vectorStore = vectorStore;
-    this._languageModelsService = languageModelsService;
   }
 
   // ── Public API ──
@@ -145,10 +153,11 @@ export class RetrievalService extends Disposable implements IRetrievalService {
    *
    * Pipeline:
    *   1. Embed query (search_query prefix)
-   *   2. Hybrid search (vector + keyword via VectorStoreService)
-   *   3. Score threshold filter
-   *   4. Source deduplication (cap chunks per source)
-   *   5. Token budget enforcement
+   *   2. Hybrid search (vector + keyword via VectorStoreService, 3× overfetch)
+   *   3. Score threshold filter (absolute + relative drop-off)
+   *   4. Cosine re-ranking (query↔candidate similarity, drops < 0.30)
+   *   5. Source deduplication (cap chunks per source)
+   *   6. Token budget enforcement
    */
   async retrieve(query: string, options?: RetrievalOptions): Promise<RetrievedContext[]> {
     if (!query.trim()) { return []; }
@@ -157,19 +166,13 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     const minScore = options?.minScore ?? DEFAULT_MIN_SCORE;
     const maxPerSource = options?.maxPerSource ?? DEFAULT_MAX_PER_SOURCE;
     const tokenBudget = options?.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
-    // LLM re-ranking is disabled for real-time chat — it adds N serial LLM
-    // calls (one per chunk) which adds 5-15s of hidden latency before the user
-    // sees any response. The planner already classifies intent and generates
-    // targeted queries; the RRF score threshold handles the rest.
-    // Re-ranking infrastructure is preserved for potential async/background use.
-    const shouldRerank = false;
 
     // 1. Embed the user query
     const queryEmbedding = await this._embeddingService.embedQuery(query);
 
-    // 2. Hybrid search — ask for slightly more candidates than topK to
-    //    allow for filtering by score threshold and source dedup.
-    const overfetchFactor = 2;
+    // 2. Hybrid search — ask for more candidates than topK to allow
+    //    for cosine re-ranking, score threshold, and source dedup.
+    const overfetchFactor = 3;
     const searchOptions: SearchOptions = {
       topK: topK * overfetchFactor,
       sourceFilter: options?.sourceFilter,
@@ -196,9 +199,11 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       filtered = filtered.filter((r) => r.score >= dropoffThreshold);
     }
 
-    // 4. LLM re-ranking — score each candidate's relevance to the query
-    if (shouldRerank && filtered.length > 0) {
-      filtered = await this._rerankChunks(query, filtered);
+    // 4. Cosine re-ranking — compute query↔candidate cosine similarity
+    //    using stored embeddings. Drops candidates below MIN_COSINE_SCORE.
+    //    This catches keyword-boosted noise that isn't semantically close.
+    if (filtered.length > 0) {
+      filtered = await this._cosineRerank(queryEmbedding, filtered);
     }
 
     // 5. Source deduplication — cap chunks from any single source
@@ -386,132 +391,48 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     return budgeted;
   }
 
-  // ── LLM Re-Ranking ──
+  // ── Cosine Re-Ranking (M16 Task 2.2) ──
 
   /**
-   * Re-rank candidate chunks using LLM pointwise relevance scoring.
+   * Re-rank candidates by cosine similarity between the query embedding
+   * and each candidate's stored embedding. Drops candidates below
+   * MIN_COSINE_SCORE and re-sorts by cosine similarity (descending).
    *
-   * Sends each (query, chunk) pair to the active Ollama chat model for a
-   * relevance score 0-10. Chunks below RERANK_MIN_RELEVANCE are dropped.
-   * Surviving chunks are re-sorted by relevance score (descending).
-   *
-   * Falls back to the original list if the LLM is unavailable or all calls fail.
-   *
-   * Reference: Anthropic Contextual Retrieval (2024), Galileo reranking research (2024)
+   * This is a lightweight, zero-latency re-ranker that uses already-computed
+   * embeddings — no additional model calls. It catches false positives from
+   * keyword-only matches that passed the RRF score threshold but aren't
+   * actually semantically related to the query.
    */
-  private async _rerankChunks(query: string, candidates: SearchResult[]): Promise<SearchResult[]> {
-    if (!this._languageModelsService || candidates.length === 0) {
-      return candidates;
-    }
+  private async _cosineRerank(
+    queryEmbedding: number[],
+    candidates: SearchResult[],
+  ): Promise<SearchResult[]> {
+    // Fetch stored embeddings for all candidate rowids
+    const rowids = candidates.map((c) => c.rowid);
+    const embeddings = await this._vectorStore.getEmbeddings(rowids);
 
-    // Check if the LLM is available
-    const modelId = this._languageModelsService.getActiveModel();
-    if (!modelId) {
-      return candidates;
-    }
-
-    // Score each candidate in parallel with a timeout
-    const scored: Array<{ result: SearchResult; relevance: number }> = [];
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), RERANK_TIMEOUT_MS);
-
-    try {
-      const scorePromises = candidates.map(async (result) => {
-        try {
-          const relevance = await this._scoreChunk(query, result, controller.signal);
-          return { result, relevance };
-        } catch {
-          // If scoring fails for one chunk, give it a neutral score (keeps it if it was high-RRF)
-          return { result, relevance: -1 };
-        }
-      });
-
-      const results = await Promise.all(scorePromises);
-
-      for (const { result, relevance } of results) {
-        if (relevance >= RERANK_MIN_RELEVANCE) {
-          scored.push({ result, relevance });
-        } else if (relevance === -1) {
-          // LLM call failed — keep the chunk with a below-threshold marker
-          // so it doesn't disappear silently, but ranks lower
-          scored.push({ result, relevance: RERANK_MIN_RELEVANCE - 1 });
-        }
-        // Otherwise: relevance < RERANK_MIN_RELEVANCE → dropped as irrelevant
+    // Score each candidate by cosine similarity
+    const scored: Array<{ result: SearchResult; cosine: number }> = [];
+    for (const candidate of candidates) {
+      const emb = embeddings.get(candidate.rowid);
+      if (!emb) {
+        // No stored embedding (shouldn't happen) — keep with neutral score
+        scored.push({ result: candidate, cosine: MIN_COSINE_SCORE });
+        continue;
       }
-    } finally {
-      clearTimeout(timeout);
+      const sim = cosineSimilarity(queryEmbedding, emb);
+      if (sim >= MIN_COSINE_SCORE) {
+        scored.push({ result: candidate, cosine: sim });
+      }
+      // else: dropped — not semantically close enough
     }
 
-    // If re-ranking produced no results (all below threshold), fall back to original
-    if (scored.length === 0) {
-      return candidates;
-    }
-
-    // Sort by relevance score descending, then by original RRF score as tiebreaker
+    // Sort by cosine similarity (descending), tie-break by RRF score
     scored.sort((a, b) => {
-      if (b.relevance !== a.relevance) { return b.relevance - a.relevance; }
+      if (Math.abs(b.cosine - a.cosine) > 0.001) { return b.cosine - a.cosine; }
       return b.result.score - a.result.score;
     });
 
     return scored.map((s) => s.result);
-  }
-
-  /**
-   * Score a single chunk's relevance to a query using the LLM.
-   *
-   * Uses a minimalist prompt for fast inference. Requests JSON format
-   * for reliable parsing. Returns a number 0-10.
-   */
-  private async _scoreChunk(
-    query: string,
-    result: SearchResult,
-    signal: AbortSignal,
-  ): Promise<number> {
-    const chunkPreview = result.chunkText.length > RERANK_MAX_CHUNK_CHARS
-      ? result.chunkText.slice(0, RERANK_MAX_CHUNK_CHARS) + '...'
-      : result.chunkText;
-
-    const sourceInfo = result.contextPrefix || result.sourceId;
-
-    const messages: IChatMessage[] = [
-      {
-        role: 'system',
-        content: 'You are a relevance scoring assistant. Given a search query and a text passage, rate how relevant the passage is to answering the query. Reply with ONLY a JSON object: {"score": N} where N is an integer from 0 (completely irrelevant) to 10 (perfectly relevant).',
-      },
-      {
-        role: 'user',
-        content: `Query: ${query}\n\nSource: ${sourceInfo}\nPassage: ${chunkPreview}`,
-      },
-    ];
-
-    let fullResponse = '';
-
-    for await (const chunk of this._languageModelsService!.sendChatRequest(
-      messages,
-      { temperature: 0, maxTokens: 20, format: 'json' },
-      signal,
-    )) {
-      fullResponse += chunk.content;
-      if (chunk.done) { break; }
-    }
-
-    // Parse the JSON response
-    const trimmed = fullResponse.trim();
-    try {
-      const parsed = JSON.parse(trimmed);
-      const score = Number(parsed.score);
-      if (Number.isFinite(score) && score >= 0 && score <= 10) {
-        return Math.round(score);
-      }
-    } catch {
-      // Try to extract a bare number if JSON parsing fails
-      const numMatch = trimmed.match(/\d+/);
-      if (numMatch) {
-        const score = Number(numMatch[0]);
-        if (score >= 0 && score <= 10) { return score; }
-      }
-    }
-
-    return -1; // Parse failure
   }
 }
