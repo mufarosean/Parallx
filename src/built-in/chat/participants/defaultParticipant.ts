@@ -191,30 +191,6 @@ const CONTEXT_OVERFLOW_WARN_THRESHOLD = 0.8;
 // See docs/research/INTERACTION_LAYER_ARCHITECTURE.md for rationale.
 
 /**
- * Determine whether to use the retrieval planner.
- *
- * The planner runs on EVERY message when available — it is the AI's
- * thinking layer that classifies intent and decides what context is
- * needed.  Only skip when structurally impossible (no planner service,
- * no RAG, or a slash command with its own prompt template).
- *
- * This replaces the old `shouldSkipPlanning()` which used heuristics
- * (greeting regex, word count, question marks) to bypass the planner.
- * Those heuristics caused misclassification — e.g. "Who are you?"
- * was treated as a factual question needing RAG + tools.
- */
-function shouldUsePlanner(
-  isRAGAvailable: boolean,
-  hasSlashCommand: boolean,
-  hasPlanAndRetrieve: boolean,
-): boolean {
-  if (!hasPlanAndRetrieve) { return false; }
-  if (!isRAGAvailable) { return false; }
-  if (hasSlashCommand) { return false; }
-  return true;
-}
-
-/**
  * Rough token estimation: chars / 4.
  * This is the same heuristic used by VS Code's chat implementation.
  */
@@ -558,155 +534,33 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
-    // 1b. RAG context: per-turn retrieval (M10 Phase 3 → M12 planned retrieval)
+    // 1b. RAG context: per-turn retrieval
     //
-    // M12 upgrade: When planAndRetrieve is available, runs a 2-call pipeline:
-    //   Call 1 (planner): Classifies intent, generates 3-5 targeted search queries
-    //   Call 2 (response): Uses richer multi-query context for generation
-    // Falls back to single-query retrieveContext when planning is skipped or unavailable.
+    // Direct embedding retrieval: embed the user's raw message, do hybrid
+    // vector + BM25 search, inject top results.  This is the pattern used
+    // by Open WebUI, AnythingLLM, Jan, and LibreChat — one LLM call total.
+    //
+    // The old M12 planner made a separate LLM call to classify intent and
+    // generate search queries before the response call.  That doubled
+    // latency on local Ollama (e.g. 45s planner + 13s response = 58s
+    // vs native Ollama's 13s).  No mainstream local AI app does this.
     const ragSources: Array<{ uri: string; label: string }> = [];
     let retrievalPlan: IRetrievalPlan | undefined;
 
-    // Determine whether to use the planner (thinking layer)
     const hasActiveSlashCommand = !!(activeCommand && activeCommand !== 'compact');
     const isRagReady = services.isRAGAvailable?.() ?? false;
-    const usePlanner = shouldUsePlanner(isRagReady, hasActiveSlashCommand, !!services.planAndRetrieve);
 
-    // Build a slim digest for the planner — file/page NAMES only, no content
-    // summaries. The full digest with summaries (~12K chars) goes in the main
-    // system prompt; the planner only needs names to generate search queries.
-    // Summaries follow the " — <text>" pattern after each entry.
-    const plannerDigest = workspaceDigest
-      ? workspaceDigest.replace(/ — [^\n]+/g, '')
-      : undefined;
+    // Synthetic plan — downstream code checks retrievalPlan for gating.
+    // Always retrieve when RAG is ready; embedding scores filter relevance.
+    retrievalPlan = {
+      intent: 'question',
+      reasoning: 'Direct retrieval — embedding similarity filters relevance.',
+      needsRetrieval: isRagReady && !hasActiveSlashCommand,
+      queries: [],
+    };
 
-    if (usePlanner) {
-      // ── M12 Planned retrieval path ──
-      // The planner is the AI's "thinking layer": it reads the user's message,
-      // classifies intent (conversational / question / situation / task / exploration),
-      // and generates targeted search queries.  Its output drives whether we
-      // fetch RAG context, recall memories, and send tools to the model.
-      try {
-        // Build recent history excerpt for the planner (last 3 turns, ~1200 chars).
-        // Include BOTH user and assistant messages so the planner can see what
-        // sources/topics were discussed — critical for follow-up queries where
-        // the user says "what vocabulary is on pages 30-50?" and the planner
-        // needs to know WHICH document from the assistant's prior answer.
-        let recentHistory: string | undefined;
-        if (context.history.length > 0) {
-          const recentTurns = context.history.slice(-3);
-          const historyLines: string[] = [];
-          let historyChars = 0;
-          const MAX_HISTORY_CHARS = 1200;
-          for (const pair of recentTurns) {
-            if (historyChars > MAX_HISTORY_CHARS) break;
-
-            // User message
-            const userLine = `User: ${pair.request.text.slice(0, 200)}`;
-            historyLines.push(userLine);
-            historyChars += userLine.length;
-
-            // Assistant response (truncated) — so planner sees what was discussed
-            const respText = pair.response.parts
-              .map((p) => {
-                const part = p as unknown as Record<string, unknown>;
-                if ('text' in part && typeof part.text === 'string') { return part.text; }
-                if ('content' in part && typeof part.content === 'string') { return part.content; }
-                return '';
-              })
-              .filter(Boolean)
-              .join(' ')
-              .slice(0, 300);
-            if (respText) {
-              const assistLine = `Assistant: ${respText}`;
-              historyLines.push(assistLine);
-              historyChars += assistLine.length;
-            }
-          }
-          if (historyLines.length > 0) {
-            recentHistory = historyLines.join('\n');
-          }
-        }
-
-        const ragResult = await services.planAndRetrieve!(userText, recentHistory, plannerDigest);
-
-        if (ragResult) {
-          retrievalPlan = ragResult.plan;
-
-          if (ragResult.plan) {
-            // Emit the planner's reasoning into the thinking section so
-            // the user can see what the AI is thinking about their query.
-            const plan = ragResult.plan;
-            if (plan.reasoning) {
-              const thinkingLines: string[] = [];
-              thinkingLines.push(plan.reasoning);
-              if (plan.queries.length > 0) {
-                thinkingLines.push('');
-                thinkingLines.push(`Searching: ${plan.queries.join(' · ')}`);
-              }
-              response.thinking(thinkingLines.join('\n'));
-            }
-
-            // Show a progress indicator during retrieval
-            const queryCount = plan.queries.length;
-            if (queryCount > 0) {
-              response.progress(`Searching ${queryCount} source${queryCount !== 1 ? 's' : ''}…`);
-            }
-          }
-
-          if (ragResult.text) {
-            // Build a set of paths already in context for de-duplication
-            const alreadyInContext = new Set<string>();
-            if (request.attachments?.length) {
-              for (const att of request.attachments) {
-                alreadyInContext.add(att.fullPath);
-                alreadyInContext.add(att.name);
-              }
-            }
-            for (const pill of mentionPills) {
-              alreadyInContext.add(pill.label);
-              const colonIdx = pill.id.indexOf(':');
-              if (colonIdx > 0) {
-                alreadyInContext.add(pill.id.substring(colonIdx + 1));
-              }
-            }
-
-            const filteredSources = ragResult.sources.filter((s) => {
-              return !alreadyInContext.has(s.uri) && !alreadyInContext.has(s.label);
-            });
-
-            if (filteredSources.length > 0 || ragResult.sources.length === 0) {
-              contextParts.push(ragResult.text);
-            }
-
-            for (const source of filteredSources) {
-              response.reference(source.uri, source.label);
-              ragSources.push(source);
-            }
-          }
-        }
-      } catch {
-        // Planned retrieval failed — fall through to direct retrieval below
-      }
-    }
-
-    // ── Fallback plan when planner is unavailable ──
-    // The planner runs on every message when available.  This fallback
-    // only fires when the planner service isn't wired, RAG isn't ready,
-    // or a slash command is active.  Provides a safe default so
-    // downstream gates always have a plan to consult.
-    if (!retrievalPlan) {
-      retrievalPlan = {
-        intent: 'question',
-        reasoning: 'Planner unavailable — using default question intent.',
-        needsRetrieval: isRagReady,
-        queries: [],
-      };
-    }
-
-    // Direct retrieval fallback: used when planner is skipped OR not available.
-    // Gated by the plan's needsRetrieval — conversational messages skip retrieval.
-    if (!usePlanner && services.retrieveContext && retrievalPlan?.needsRetrieval !== false) {
+    // Direct retrieval: embed user's raw message → hybrid search → inject results.
+    if (services.retrieveContext && retrievalPlan.needsRetrieval) {
       try {
         const ragResult = await services.retrieveContext(userText);
         if (ragResult) {
@@ -1028,10 +882,10 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     }
 
     // Build request options (mode-aware)
-    // When the plan says the message is conversational (intent: 'conversational'),
-    // don't send tools to the model — let it respond naturally.  This is decided
-    // by the planner (thinking layer) or the synthetic plan for obvious cases.
-    const isConversational = retrievalPlan?.intent === 'conversational';
+    // Without the LLM planner, we no longer classify intent.  Always send
+    // tools — the model ignores them when not needed.  This matches how
+    // ChatGPT and Open WebUI handle tool availability.
+    const isConversational = false;
     const options: IChatRequestOptions = {
       tools: (!isConversational && shouldIncludeTools(request.mode))
         ? (capabilities.canAutonomous ? services.getToolDefinitions() : services.getReadOnlyToolDefinitions())

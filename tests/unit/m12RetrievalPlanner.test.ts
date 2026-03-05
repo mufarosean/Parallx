@@ -494,57 +494,26 @@ describe('RetrievalService.retrieveMulti', () => {
 });
 
 // ── shouldUsePlanner tests ──
-// Tests the simplified planner gate that replaced the old shouldSkipPlanning heuristic.
-// The planner now runs on EVERY message when structurally possible.
-// See docs/research/INTERACTION_LAYER_ARCHITECTURE.md
+// The planner LLM call is DISABLED.  No mainstream local AI app (Open WebUI,
+// AnythingLLM, Jan, LibreChat) uses a separate LLM call as a router.
+// They all embed the user's raw message and do direct retrieval — one LLM call.
+// The planner doubled latency on local Ollama (~45s planner + 13s response).
 
 describe('shouldUsePlanner logic', () => {
   // Mirror the production function for direct unit testing
   function shouldUsePlanner(
-    isRAGAvailable: boolean,
-    hasSlashCommand: boolean,
-    hasPlanAndRetrieve: boolean,
+    _isRAGAvailable: boolean,
+    _hasSlashCommand: boolean,
+    _hasPlanAndRetrieve: boolean,
   ): boolean {
-    if (!hasPlanAndRetrieve) return false;
-    if (!isRAGAvailable) return false;
-    if (hasSlashCommand) return false;
-    return true;
+    return false;
   }
 
-  it('returns false when planAndRetrieve service is unavailable', () => {
+  it('always returns false — planner LLM call disabled', () => {
+    // All combinations return false — no separate planner call
+    expect(shouldUsePlanner(true, false, true)).toBe(false);
     expect(shouldUsePlanner(true, false, false)).toBe(false);
-  });
-
-  it('returns false when RAG is unavailable', () => {
     expect(shouldUsePlanner(false, false, true)).toBe(false);
-  });
-
-  it('returns false for slash commands', () => {
     expect(shouldUsePlanner(true, true, true)).toBe(false);
-  });
-
-  it('returns true for greetings (planner classifies these)', () => {
-    // The planner runs for ALL messages including greetings.
-    // It will classify "Hello" as conversational and gate tools away.
-    expect(shouldUsePlanner(true, false, true)).toBe(true);
-  });
-
-  it('returns true for short questions (planner classifies these)', () => {
-    // Previously, short questions like "Who are you?" bypassed the planner
-    // and got a synthetic 'question' plan, causing tool pollution.
-    // Now the planner runs and correctly classifies them.
-    expect(shouldUsePlanner(true, false, true)).toBe(true);
-  });
-
-  it('returns true for long situational messages', () => {
-    expect(shouldUsePlanner(true, false, true)).toBe(true);
-  });
-
-  it('returns true for task requests', () => {
-    expect(shouldUsePlanner(true, false, true)).toBe(true);
-  });
-
-  it('returns true for exploration requests', () => {
-    expect(shouldUsePlanner(true, false, true)).toBe(true);
   });
 });
