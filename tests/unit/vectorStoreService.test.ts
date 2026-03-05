@@ -501,4 +501,52 @@ describe('VectorStoreService', () => {
       expect(results[0].sources).toEqual(['vector']);
     });
   });
+
+  describe('getEmbeddings()', () => {
+    it('returns empty map for empty rowids', async () => {
+      const result = await service.getEmbeddings([]);
+      expect(result).toEqual(new Map());
+      expect(db.all).not.toHaveBeenCalled();
+    });
+
+    it('fetches and converts Float32Array embeddings by rowid', async () => {
+      // Create a Float32Array embedding and convert to Uint8Array (as stored in sqlite-vec)
+      const f32 = new Float32Array([0.1, 0.2, 0.3]);
+      const bytes = new Uint8Array(f32.buffer);
+
+      db.all.mockResolvedValueOnce([
+        { rowid: 10, embedding: bytes },
+        { rowid: 20, embedding: bytes },
+      ]);
+
+      const result = await service.getEmbeddings([10, 20]);
+      expect(result.size).toBe(2);
+
+      const emb10 = result.get(10)!;
+      expect(emb10).toHaveLength(3);
+      expect(emb10[0]).toBeCloseTo(0.1, 5);
+      expect(emb10[1]).toBeCloseTo(0.2, 5);
+      expect(emb10[2]).toBeCloseTo(0.3, 5);
+
+      expect(result.get(20)).toEqual(emb10);
+    });
+
+    it('batches large requests in groups of 100', async () => {
+      // 250 rowids → 3 batches (100, 100, 50)
+      const rowids = Array.from({ length: 250 }, (_, i) => i + 1);
+
+      db.all.mockResolvedValue([]); // return empty for all batches
+
+      await service.getEmbeddings(rowids);
+      expect(db.all).toHaveBeenCalledTimes(3);
+    });
+
+    it('handles database errors gracefully', async () => {
+      db.all.mockRejectedValueOnce(new Error('table not found'));
+
+      const result = await service.getEmbeddings([1, 2, 3]);
+      // Non-fatal — returns empty map on error
+      expect(result.size).toBe(0);
+    });
+  });
 });

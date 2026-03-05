@@ -999,6 +999,9 @@ export interface IVectorStoreService extends IDisposable {
   /** Get document summaries for all indexed sources. Map<sourceId, summary>. */
   getDocumentSummaries(): Promise<Map<string, string>>;
 
+  /** Batch-fetch stored embeddings by rowid. Returns Map<rowid, float[]>. */
+  getEmbeddings(rowids: number[]): Promise<Map<number, number[]>>;
+
   /** Fires when a source is indexed/re-indexed. */
   readonly onDidUpdateIndex: Event<{ sourceId: string; chunkCount: number }>;
 }

@@ -413,6 +413,49 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     }
   }
 
+  // ── Embedding Lookup (M16 Task 2.1) ──
+
+  /**
+   * Fetch stored embedding vectors for the given rowids.
+   * Used by cosine re-ranking to compute query-candidate similarity
+   * without re-embedding. Returns a Map of rowid → Float32 embedding.
+   */
+  async getEmbeddings(rowids: number[]): Promise<Map<number, number[]>> {
+    if (rowids.length === 0) { return new Map(); }
+
+    const result = new Map<number, number[]>();
+
+    // Batch fetch — sqlite-vec stores embeddings as BLOB (Float32Array bytes)
+    // Process in batches of 100 to avoid SQLite variable limits
+    const batchSize = 100;
+    for (let i = 0; i < rowids.length; i += batchSize) {
+      const batch = rowids.slice(i, i + batchSize);
+      const placeholders = batch.map(() => '?').join(',');
+      const sql = `SELECT rowid, embedding FROM vec_embeddings WHERE rowid IN (${placeholders})`;
+
+      try {
+        const rows = await this._db.all<{ rowid: number; embedding: Uint8Array }>(
+          sql,
+          batch,
+        );
+
+        for (const row of rows) {
+          // Convert raw bytes back to number[] via Float32Array view
+          const f32 = new Float32Array(
+            row.embedding.buffer,
+            row.embedding.byteOffset,
+            row.embedding.byteLength / 4,
+          );
+          result.set(row.rowid, Array.from(f32));
+        }
+      } catch {
+        // Non-fatal — re-ranking will skip candidates without embeddings
+      }
+    }
+
+    return result;
+  }
+
   // ── Internal: Vector Search ──
 
   private async _vectorSearch(
