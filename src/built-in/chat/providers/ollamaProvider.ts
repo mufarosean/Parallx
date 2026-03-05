@@ -326,18 +326,16 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       stream: true,
     };
 
-    // Always send num_ctx so Ollama allocates the model's full context
-    // window (without this, Ollama may default to 2048 tokens).
-    // User override takes priority; otherwise use the model's detected max.
-    // The cache is pre-warmed in _pollLoadedModels() when a model loads.
-    // If the cache hasn't warmed yet (unlikely — health poll runs every 1.5s
-    // during startup), Ollama will use its own default or OLLAMA_NUM_CTX.
+    // Only send num_ctx when the user has explicitly configured an override.
+    // Otherwise let Ollama use its own setting (Modelfile, desktop slider,
+    // or OLLAMA_NUM_CTX env var).  This matches native Ollama behavior —
+    // Ollama allocates KV-cache based on ITS configured num_ctx, not the
+    // model's theoretical maximum.  Sending the theoretical max (e.g. 262K
+    // for qwen3) forces Ollama to allocate a massive KV-cache that cripples
+    // inference speed even for tiny prompts.
     const ollamaOptions: Record<string, unknown> = {};
-    const effectiveCtx = this._contextLengthOverride > 0
-      ? this._contextLengthOverride
-      : this._contextLengthCache.get(modelId);
-    if (effectiveCtx && effectiveCtx > 0) {
-      ollamaOptions['num_ctx'] = effectiveCtx;
+    if (this._contextLengthOverride > 0) {
+      ollamaOptions['num_ctx'] = this._contextLengthOverride;
     }
     if (options) {
       if (options.temperature !== undefined) ollamaOptions['temperature'] = options.temperature;
@@ -759,16 +757,6 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       if (changed) {
         this._loadedModels = newLoaded;
         this._onDidChangeLoadedModels.fire(newLoaded);
-
-        // Pre-warm context length cache for newly loaded models so the
-        // first sendChatRequest always has num_ctx ready.
-        for (const name of newLoaded) {
-          if (!this._contextLengthCache.has(name)) {
-            this.getModelInfo(name).then((info) => {
-              this._contextLengthCache.set(name, info.contextLength);
-            }).catch(() => { /* best effort */ });
-          }
-        }
       }
     } catch {
       // Non-critical — don't change loaded models on failure
