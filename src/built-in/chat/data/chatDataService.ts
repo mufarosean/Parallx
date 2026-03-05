@@ -1013,7 +1013,7 @@ export class ChatDataService {
 
   private async _computeWorkspaceDigest(): Promise<string | undefined> {
     const sections: string[] = [];
-    const MAX_DIGEST_CHARS = 8000; // ~2000 tokens at 4 chars/token
+    const MAX_DIGEST_CHARS = 12000; // ~3000 tokens at 4 chars/token — increased for deeper file trees
     let totalChars = 0;
 
     // 1. Canvas page titles
@@ -1031,22 +1031,21 @@ export class ChatDataService {
       } catch { /* best-effort */ }
     }
 
-    // 2. Workspace file tree (depth 3, max 80 entries) — breadth-first
+    // 2. Workspace file tree — breadth-first, no artificial depth/entry caps.
+    //    The only limit is MAX_DIGEST_CHARS which caps the total system prompt
+    //    budget. The AI should see EVERY file the workspace contains; the
+    //    context window is the natural constraint, not arbitrary constants.
     if (this._d.fsAccessor) {
       try {
         const treeLines: string[] = [];
-        const MAX_TREE_ENTRIES = 80;
-        const MAX_DEPTH = 3;
-        let treeCount = 0;
         const fsAccessor = this._d.fsAccessor;
 
         // Breadth-first queue: each item is { dir, depth, prefix }
         type QueueItem = { dir: string; depth: number; prefix: string };
         const queue: QueueItem[] = [{ dir: '.', depth: 0, prefix: '  ' }];
 
-        while (queue.length > 0 && treeCount < MAX_TREE_ENTRIES) {
+        while (queue.length > 0) {
           const { dir, depth, prefix } = queue.shift()!;
-          if (depth > MAX_DEPTH) continue;
 
           let entries;
           try {
@@ -1060,16 +1059,20 @@ export class ChatDataService {
           });
 
           for (const entry of sorted) {
-            if (treeCount >= MAX_TREE_ENTRIES) break;
             if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === '__pycache__' || entry.name === '.git') continue;
             const icon = entry.type === 'directory' ? '📁' : '📄';
             treeLines.push(`${prefix}${icon} ${entry.name}`);
-            treeCount++;
-            if (entry.type === 'directory' && depth + 1 <= MAX_DEPTH) {
+            if (entry.type === 'directory') {
               const childPath = dir === '.' ? entry.name : `${dir}/${entry.name}`;
               queue.push({ dir: childPath, depth: depth + 1, prefix: prefix + '  ' });
             }
           }
+
+          // Budget check: stop walking if we've already exceeded the char budget.
+          // We check the running tree size against the remaining budget so we
+          // don't waste time traversing a massive repo we can't fit anyway.
+          const runningSize = treeLines.join('\n').length + 20; // +20 for header
+          if (totalChars + runningSize >= MAX_DIGEST_CHARS) break;
         }
         if (treeLines.length > 0) {
           const block = `WORKSPACE FILES:\n${treeLines.join('\n')}`;
@@ -1101,7 +1104,7 @@ export class ChatDataService {
     }
 
     return sections.length > 0
-      ? `YOU ALREADY KNOW THIS WORKSPACE. Here is what exists:\n\n${sections.join('\n\n')}\n\nUse this knowledge to answer directly. You do NOT need to discover what files exist — you already know.`
+      ? `YOU ALREADY KNOW THIS WORKSPACE. Here is what exists:\n\n${sections.join('\n\n')}\n\nUse this knowledge to answer directly. You do NOT need to discover what files exist — you already know.\nWhen the user asks about a file, use the EXACT path shown above with read_file or search tools.`
       : undefined;
   }
 

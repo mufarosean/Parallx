@@ -202,11 +202,13 @@ export class RetrievalService extends Disposable implements IRetrievalService {
   /**
    * Format retrieved context for injection into a chat message.
    *
-   * Produces a human-readable block with source attribution:
+   * Produces a human-readable block with source attribution and actionable
+   * file paths the model can use with read_file:
    * ```
    * [Retrieved Context]
    * ---
    * Source: Backend Architecture > Authentication
+   * Path: docs/architecture.md
    * We chose JWT with refresh tokens...
    * ---
    * ```
@@ -220,6 +222,11 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       sections.push('---');
       const source = chunk.contextPrefix || chunk.sourceId;
       sections.push(`Source: ${source}`);
+      // Include the workspace-relative path for file chunks so the model
+      // can use read_file or search_files to follow up on this source.
+      if (chunk.sourceType === 'file_chunk' && chunk.sourceId) {
+        sections.push(`Path: ${chunk.sourceId}`);
+      }
       sections.push(chunk.text);
     }
 

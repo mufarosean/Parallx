@@ -551,17 +551,41 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       // and generates targeted search queries.  Its output drives whether we
       // fetch RAG context, recall memories, and send tools to the model.
       try {
-        // Build recent history excerpt for contextual understanding (last 2-3 turns, ~500 chars)
+        // Build recent history excerpt for the planner (last 3 turns, ~1200 chars).
+        // Include BOTH user and assistant messages so the planner can see what
+        // sources/topics were discussed — critical for follow-up queries where
+        // the user says "what vocabulary is on pages 30-50?" and the planner
+        // needs to know WHICH document from the assistant's prior answer.
         let recentHistory: string | undefined;
         if (context.history.length > 0) {
           const recentTurns = context.history.slice(-3);
           const historyLines: string[] = [];
           let historyChars = 0;
+          const MAX_HISTORY_CHARS = 1200;
           for (const pair of recentTurns) {
-            if (historyChars > 500) break;
-            const line = `User: ${pair.request.text.slice(0, 150)}`;
-            historyLines.push(line);
-            historyChars += line.length;
+            if (historyChars > MAX_HISTORY_CHARS) break;
+
+            // User message
+            const userLine = `User: ${pair.request.text.slice(0, 200)}`;
+            historyLines.push(userLine);
+            historyChars += userLine.length;
+
+            // Assistant response (truncated) — so planner sees what was discussed
+            const respText = pair.response.parts
+              .map((p) => {
+                const part = p as unknown as Record<string, unknown>;
+                if ('text' in part && typeof part.text === 'string') { return part.text; }
+                if ('content' in part && typeof part.content === 'string') { return part.content; }
+                return '';
+              })
+              .filter(Boolean)
+              .join(' ')
+              .slice(0, 300);
+            if (respText) {
+              const assistLine = `Assistant: ${respText}`;
+              historyLines.push(assistLine);
+              historyChars += assistLine.length;
+            }
           }
           if (historyLines.length > 0) {
             recentHistory = historyLines.join('\n');

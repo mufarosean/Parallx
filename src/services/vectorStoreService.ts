@@ -556,18 +556,13 @@ function sanitizeFts5Query(query: string): string {
     return `"${terms[0]}"`;
   }
 
-  // Cap to MAX_FTS5_AND_TERMS to prevent zero-result sets on long queries.
-  // Strict AND across 6+ terms almost never matches a single chunk because
-  // no chunk contains every word from a multi-faceted query. We keep the
-  // first N terms (preserving the original query order where the subject/
-  // topic identifiers typically appear first).
-  const MAX_FTS5_AND_TERMS = 5;
-  const finalTerms = terms.length > MAX_FTS5_AND_TERMS
-    ? terms.slice(0, MAX_FTS5_AND_TERMS)
-    : terms;
-
-  // Multiple terms → implicit AND (FTS5 default: space-separated = AND)
-  return finalTerms.map((t) => `"${t}"`).join(' ');
+  // Use OR to maximize recall — more terms means more potential matches,
+  // not fewer.  BM25 scoring already ranks chunks with more matching terms
+  // higher, so OR gives us broad recall while RRF fusion with the vector
+  // search path handles precision.  AND was the previous default and caused
+  // zero-result sets on multi-faceted queries (6+ terms that never all
+  // appear in a single chunk).
+  return terms.map((t) => `"${t}"`).join(' OR ');
 }
 
 /**

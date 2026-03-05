@@ -73,40 +73,39 @@ describe('sanitizeFts5Query()', () => {
     expect(result).toBe('"hello"');
   });
 
-  it('joins multiple terms with implicit AND (space-separated)', () => {
+  it('joins multiple terms with OR for broad recall', () => {
     const result = sanitizeFts5Query('hello world');
-    // FTS5 treats space-separated quoted terms as AND
-    expect(result).toBe('"hello" "world"');
+    // OR maximizes recall; BM25 scoring handles precision
+    expect(result).toBe('"hello" OR "world"');
   });
 
   it('filters stopwords from multi-term queries', () => {
     const result = sanitizeFts5Query('what is the meaning of life');
     // "what", "is", "the", "of" are stopwords → only "meaning" and "life"
-    expect(result).toBe('"meaning" "life"');
+    expect(result).toBe('"meaning" OR "life"');
   });
 
   it('preserves all terms when every term is a stopword', () => {
     const result = sanitizeFts5Query('is the');
     // Both are stopwords → keep originals to avoid empty query
-    expect(result).toBe('"is" "the"');
+    expect(result).toBe('"is" OR "the"');
   });
 
   it('filters document-structural stopwords like page/chapter/book/examples', () => {
     const result = sanitizeFts5Query('FSI Shona vocabulary page numbers');
     // "page" and "numbers" are stopwords → "FSI", "Shona", "vocabulary"
-    expect(result).toBe('"FSI" "Shona" "vocabulary"');
+    expect(result).toBe('"FSI" OR "Shona" OR "vocabulary"');
   });
 
-  it('caps long queries at 5 AND terms to prevent empty result sets', () => {
-    // 8 terms, all content-bearing (none are stopwords)
+  it('uses OR for multi-term queries to maximize recall', () => {
+    // 8 terms, all content-bearing — should all be kept with OR
     const result = sanitizeFts5Query('FSI Shona Basic Course vocabulary definitions grammar textbook');
-    // After stopword filtering: all 8 remain → cap to first 5
-    expect(result).toBe('"FSI" "Shona" "Basic" "Course" "vocabulary"');
+    expect(result).toBe('"FSI" OR "Shona" OR "Basic" OR "Course" OR "vocabulary" OR "definitions" OR "grammar" OR "textbook"');
   });
 
-  it('does not cap queries with 5 or fewer content terms', () => {
+  it('uses OR for 2+ content terms', () => {
     const result = sanitizeFts5Query('FSI Shona Basic Course vocabulary');
-    expect(result).toBe('"FSI" "Shona" "Basic" "Course" "vocabulary"');
+    expect(result).toBe('"FSI" OR "Shona" OR "Basic" OR "Course" OR "vocabulary"');
   });
 
   it('strips FTS5 special characters', () => {
