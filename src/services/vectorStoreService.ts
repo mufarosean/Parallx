@@ -188,11 +188,18 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
         ],
       });
 
+      // BM25 metadata enrichment (M16 Task 3.1): prepend contextPrefix to
+      // FTS5 content so keyword search can match on page titles, section
+      // headings, and file paths — not just the chunk body text.
+      const ftsContent = chunk.contextPrefix
+        ? `${chunk.contextPrefix} ${chunk.text}`
+        : chunk.text;
+
       operations.push({
         type: 'run',
         sql: `INSERT INTO fts_chunks(chunk_id, source_type, source_id, content)
               VALUES (?, ?, ?, ?)`,
-        params: ['$lastRowId', chunk.sourceType, chunk.sourceId, chunk.text],
+        params: ['$lastRowId', chunk.sourceType, chunk.sourceId, ftsContent],
       });
     }
 

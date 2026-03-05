@@ -355,6 +355,19 @@ describe('VectorStoreService', () => {
       expect(updates).toHaveLength(1);
       expect(updates[0]).toEqual({ sourceId: 'page-1', chunkCount: 1 });
     });
+
+    it('prepends contextPrefix to FTS5 content for BM25 metadata enrichment', async () => {
+      db.all.mockResolvedValueOnce([]); // no existing rows
+
+      await service.upsert('page_block', 'page-1', fakeChunks, 'hash-meta');
+
+      const ops = db.runTransaction.mock.calls[0][0];
+      const insertFts = ops.find((o: any) => o.sql.includes('INSERT INTO fts_chunks'));
+      expect(insertFts).toBeDefined();
+      // The FTS content should be contextPrefix + space + chunk text
+      const ftsContent = insertFts.params[3];
+      expect(ftsContent).toBe('[Source: "My Page"] Chunk zero text');
+    });
   });
 
   describe('deleteSource()', () => {
