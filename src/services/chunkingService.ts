@@ -8,7 +8,7 @@
 //   - Canvas pages chunk at block boundaries (headings start new chunks)
 //   - Structural context prefix prepended to each chunk (Anthropic CR pattern)
 //   - No external dependencies — zero-cost chunking
-//   - Target ~512 tokens (~2048 chars) per chunk with flexible boundaries
+//   - Target ~256 tokens (~1024 chars) per chunk with flexible boundaries
 //   - Content hash (SHA-256 via SubtleCrypto) for change detection
 //
 // References:
@@ -20,16 +20,20 @@ import type { IChunkingService } from './serviceTypes.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-/** Target max characters per chunk (~512 tokens at 4 chars/token). */
-const MAX_CHUNK_CHARS = 2048;
+/** Target max characters per chunk (~256 tokens at 4 chars/token).
+ *  M16: Reduced from 2048 to 1024 — industry consensus is 800-1200 chars.
+ *  Smaller chunks produce more precise embeddings.
+ */
+const MAX_CHUNK_CHARS = 1024;
 
 /** Minimum chunk size — don't create tiny standalone chunks. */
 const MIN_CHUNK_CHARS = 100;
 
-/** Overlap between consecutive file chunks (~50 tokens at 4 chars/token).
+/** Overlap between consecutive chunks (~50 tokens at 4 chars/token).
  * Carries the tail of one chunk into the head of the next to preserve
  * context that spans chunk boundaries (M10 DR-8 recommendation).
- * Only applied to file chunks, not canvas page blocks (which have natural boundaries).
+ * Applied to both file chunks and canvas page size-limit flushes (M16).
+ * Heading boundaries remain clean breaks (no overlap).
  */
 const OVERLAP_CHARS = 200;
 
@@ -97,7 +101,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
     let buffer = '';
     let bufferBlockTypes: string[] = [];
 
-    const flush = async (): Promise<void> => {
+    const flush = async (overlap: boolean = false): Promise<void> => {
       const trimmed = buffer.trim();
       if (trimmed.length < MIN_CHUNK_CHARS && chunks.length > 0) {
         // Merge tiny trailing buffer into previous chunk
@@ -123,7 +127,14 @@ export class ChunkingService extends Disposable implements IChunkingService {
         contextPrefix: prefix,
         contentHash: await hashText(trimmed),
       });
-      buffer = '';
+
+      // M16: Carry overlap on size-limit flushes (same as file chunks).
+      // Heading boundaries remain clean breaks — overlap=false there.
+      if (overlap && trimmed.length > OVERLAP_CHARS) {
+        buffer = trimmed.slice(-OVERLAP_CHARS);
+      } else {
+        buffer = '';
+      }
       bufferBlockTypes = [];
     };
 
@@ -131,23 +142,23 @@ export class ChunkingService extends Disposable implements IChunkingService {
       const text = extractTextFromBlock(block);
       if (!text.trim()) { continue; }
 
-      // Headings start new chunks
+      // Headings start new chunks — clean break, no overlap
       if (block.type === 'heading') {
-        await flush();
+        await flush(false);
         currentHeading = text.trim();
       }
 
       buffer += (buffer ? '\n' : '') + text;
       bufferBlockTypes.push(block.type);
 
-      // Flush if buffer exceeds target size
+      // Flush if buffer exceeds target size — carry overlap
       if (buffer.length > MAX_CHUNK_CHARS) {
-        await flush();
+        await flush(true);
       }
     }
 
-    // Flush remaining buffer
-    await flush();
+    // Flush remaining buffer — no overlap needed for last chunk
+    await flush(false);
 
     return chunks;
   }

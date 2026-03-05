@@ -148,6 +148,39 @@ describe('ChunkingService', () => {
         expect(chunks[0].contentHash).not.toBe(chunks[1].contentHash);
       }
     });
+
+    it('carries overlap on size-limit flushes within a page section', async () => {
+      // Build a page with many paragraph blocks under one heading that exceed MAX_CHUNK_CHARS (1024)
+      const blocks = [heading(1, 'Long Section')];
+      for (let i = 0; i < 10; i++) {
+        blocks.push(paragraph('This is a substantial paragraph with plenty of text to fill up space. '.repeat(3)));
+      }
+      const content = makeTipTapDoc(blocks);
+
+      const chunks = await service.chunkPage('page-overlap', 'Overlap Test', content);
+      expect(chunks.length).toBeGreaterThanOrEqual(2);
+
+      // The tail of chunk 0 should appear at the start of chunk 1 (overlap)
+      const tail = chunks[0].text.slice(-80);
+      expect(chunks[1].text).toContain(tail);
+    });
+
+    it('does NOT carry overlap at heading boundaries in a page', async () => {
+      const content = makeTipTapDoc([
+        heading(1, 'First Section'),
+        paragraph('Content for the first section that is meaningful and complete. '.repeat(5)),
+        heading(2, 'Second Section'),
+        paragraph('Content for the second section that is also meaningful and has its own substance. '.repeat(5)),
+      ]);
+
+      const chunks = await service.chunkPage('page-no-overlap', 'Heading Test', content);
+      expect(chunks.length).toBeGreaterThanOrEqual(2);
+
+      // The second chunk should start with the heading text, not overlap from chunk 0
+      const secondChunk = chunks.find(c => c.text.includes('Second Section'));
+      expect(secondChunk).toBeDefined();
+      expect(secondChunk!.text).toMatch(/^Second Section/);
+    });
   });
 
   // ── File Chunking ──
@@ -307,9 +340,9 @@ describe('ChunkingService', () => {
 
   describe('chunk overlap for files', () => {
     it('carries overlap text between consecutive plain text chunks', async () => {
-      // Build content that exceeds MAX_CHUNK_CHARS (2048) to force a split
+      // Build content that exceeds MAX_CHUNK_CHARS (1024) to force a split
       const line = 'ABCDEFGHIJ'.repeat(10) + '\n'; // 101 chars per line
-      const content = line.repeat(25); // ~2525 chars → should produce 2 chunks
+      const content = line.repeat(15); // ~1515 chars → should produce 2 chunks
 
       const chunks = await service.chunkFile('test.txt', content);
       expect(chunks.length).toBeGreaterThanOrEqual(2);
@@ -321,8 +354,8 @@ describe('ChunkingService', () => {
 
     it('carries overlap text between consecutive markdown chunks', async () => {
       // Build a long section under one heading to trigger size-based flush
-      const longLine = 'Lorem ipsum dolor sit amet. '.repeat(20) + '\n'; // ~560 chars
-      const content = '# Section\n' + longLine.repeat(6); // ~3360 chars under one heading
+      const longLine = 'Lorem ipsum dolor sit amet. '.repeat(10) + '\n'; // ~280 chars
+      const content = '# Section\n' + longLine.repeat(6); // ~1680 chars under one heading
 
       const chunks = await service.chunkFile('test.md', content, 'markdown');
       expect(chunks.length).toBeGreaterThanOrEqual(2);
