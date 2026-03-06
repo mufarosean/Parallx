@@ -30,7 +30,7 @@ describe('ChatHeaderPart', () => {
     expect(title!.textContent).toBe('CHAT');
 
     const buttons = root!.querySelectorAll('.parallx-chat-header-btn');
-    expect(buttons.length).toBe(3); // new, history, clear
+    expect(buttons.length).toBe(4); // new, history, clear, settings
 
     header.dispose();
   });

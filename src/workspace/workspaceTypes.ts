@@ -160,6 +160,8 @@ export interface SerializedEditorInputSnapshot {
   readonly inputId: string;
   /** Whether the editor is pinned (vs preview). */
   readonly pinned: boolean;
+  /** Data needed to reconstruct the editor input (e.g. URI). */
+  readonly data?: Record<string, unknown>;
   /** Serialised editor-specific state (scroll, selection, etc.). */
   readonly state?: Record<string, unknown>;
 }

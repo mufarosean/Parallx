@@ -62,6 +62,8 @@ export interface IManifestViewContainerDescriptor {
   readonly icon?: string;
   /** Where the container should appear: 'sidebar' | 'panel' | 'auxiliaryBar'. */
   readonly location: 'sidebar' | 'panel' | 'auxiliaryBar';
+  /** When true, the container is created but hidden from the activity bar. */
+  readonly hidden?: boolean;
 }
 
 /**

@@ -15,6 +15,7 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
 import { $ } from '../../ui/dom.js';
+import { getFileTypeIcon, getFolderIcon } from '../../ui/iconRegistry.js';
 
 // ─── Types (avoid circular imports) ──────────────────────────────────────────
 
@@ -31,6 +32,7 @@ interface ParallxApi {
     readonly workspaceFolders: readonly { uri: string; name: string; index: number }[] | undefined;
     getWorkspaceFolder(uri: string): { uri: string; name: string; index: number } | undefined;
     readonly onDidChangeWorkspaceFolders: (listener: (e: { added: readonly { uri: string; name: string; index: number }[]; removed: readonly { uri: string; name: string; index: number }[] }) => void) => IDisposable;
+    readonly onDidRename?: (listener: (name: string) => void) => IDisposable;
     readonly onDidFilesChange: (listener: (events: { type: number; uri: string }[]) => void) => IDisposable;
     readonly name: string | undefined;
     readonly fs?: {
@@ -130,8 +132,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
     api.workspace.onDidChangeWorkspaceFolders(() => {
       rebuildTree();
+      _updateSectionTitle(); // A8: refresh workspace name in section header
     }),
   );
+
+  // A9: Subscribe to workspace rename events to update section header
+  if (api.workspace.onDidRename) {
+    context.subscriptions.push(
+      api.workspace.onDidRename(() => {
+        _updateSectionTitle();
+      }),
+    );
+  }
 
   // Subscribe to file system changes for live tree refresh
   let _refreshDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -159,6 +171,34 @@ export function deactivate(): void {
 
 // ─── Explorer View ───────────────────────────────────────────────────────────
 
+/**
+ * A8: Get a user-friendly workspace display name for the section header.
+ * Single-folder → folder name. Named workspace → workspace name.
+ * Unnamed/default → first folder name or "Explorer" fallback.
+ */
+function _getWorkspaceDisplayName(): string {
+  const folders = _api.workspace.workspaceFolders;
+  const wsName = _api.workspace.name;
+  if (folders && folders.length === 1) {
+    return folders[0].name;
+  }
+  if (wsName && wsName !== 'Default Workspace') {
+    return wsName;
+  }
+  return folders?.[0]?.name ?? 'Explorer';
+}
+
+/** A8: Update the view-section-title for the explorer section with the workspace name. */
+function _updateSectionTitle(): void {
+  if (!_treeContainer) return;
+  const section = _treeContainer.closest('.view-section');
+  if (!section) return;
+  const titleEl = section.querySelector('.view-section-title');
+  if (titleEl) {
+    titleEl.textContent = _getWorkspaceDisplayName();
+  }
+}
+
 function createExplorerView(container: HTMLElement): IDisposable {
   container.classList.add('explorer-tree');
   container.setAttribute('role', 'tree');
@@ -170,6 +210,9 @@ function createExplorerView(container: HTMLElement): IDisposable {
   container.addEventListener('keydown', handleTreeKeydown);
   // Context menu
   container.addEventListener('contextmenu', handleContextMenu);
+
+  // A8: Update section header to show workspace name instead of duplicate "Explorer"
+  _updateSectionTitle();
 
   // Initial build
   rebuildTree();
@@ -262,10 +305,7 @@ function renderTree(): void {
   if (_roots.length > 1) {
     const header = $('div');
     header.className = 'explorer-workspace-header';
-    const wsName = _api.workspace.name;
-    const displayName = (!wsName || wsName === 'Default Workspace')
-      ? 'UNTITLED'
-      : wsName.toUpperCase();
+    const displayName = _getWorkspaceDisplayName().toUpperCase();
     header.textContent = `${displayName} (WORKSPACE)`;
     _treeContainer.appendChild(header);
   }
@@ -299,10 +339,15 @@ function renderNodeFlat(container: HTMLElement, node: TreeNode): void {
     el.appendChild(spacer);
   }
 
-  // Icon
+  // Icon — file-type aware SVG from shared icon registry
   const icon = $('span');
   icon.className = 'tree-node-icon';
-  icon.textContent = node.type === FILE_TYPE_DIRECTORY ? '📁' : '📄';
+  if (node.type === FILE_TYPE_DIRECTORY) {
+    icon.innerHTML = getFolderIcon();
+  } else {
+    const extMatch = node.name.match(/\.([a-zA-Z0-9]+)$/);
+    icon.innerHTML = getFileTypeIcon(extMatch ? extMatch[1] : '');
+  }
   el.appendChild(icon);
 
   // Label
@@ -935,7 +980,7 @@ function insertCreateInput(parentNode: TreeNode, kind: 'file' | 'folder'): void 
 
   const iconSpan = $('span');
   iconSpan.className = 'tree-create-icon';
-  iconSpan.textContent = kind === 'folder' ? '📁' : '📄';
+  iconSpan.innerHTML = kind === 'folder' ? getFolderIcon() : getFileTypeIcon('');
   inputRow.appendChild(iconSpan);
 
   const input = $('input');

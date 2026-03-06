@@ -98,6 +98,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   shell: {
     /** Reveal file in OS native file manager (Explorer/Finder). */
     showItemInFolder: (filePath) => ipcRenderer.invoke('shell:showItemInFolder', filePath),
+    /** Open file with the system default application. Returns error string or ''. */
+    openPath: (filePath) => ipcRenderer.invoke('shell:openPath', filePath),
   },
 
   // ══════════════════════════════════════════════════════════════════════════

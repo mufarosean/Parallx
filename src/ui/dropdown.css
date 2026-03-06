@@ -58,7 +58,7 @@
   background: var(--vscode-dropdown-listBackground, var(--vscode-editorWidget-background, #252526));
   border: 1px solid var(--vscode-dropdown-border, var(--vscode-widget-border, #454545));
   border-radius: 3px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
   max-height: 200px;
   overflow-y: auto;
 }

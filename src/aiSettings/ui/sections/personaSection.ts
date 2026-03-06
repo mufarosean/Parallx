@@ -12,10 +12,14 @@ import { InputBox } from '../../../ui/inputBox.js';
 import type { IAISettingsService, AISettingsProfile } from '../../aiSettingsTypes.js';
 import { DEFAULT_PROFILE } from '../../aiSettingsDefaults.js';
 import { SettingsSection, createSettingRow } from '../sectionBase.js';
+import { AVATAR_ICON_IDS, getAvatarIcon } from '../../../ui/iconRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const AVATAR_EMOJIS = ['🧠', '💼', '✍️', '💰', '🔬', '📊', '🎯', '🤖', '🦊', '🌊', '⚡', '🧩'];
+/**
+ * Avatar IDs in display order. Each maps to a registered SVG in iconRegistry.
+ */
+const AVATARS = AVATAR_ICON_IDS;
 
 // ─── PersonaSection ──────────────────────────────────────────────────────────
 
@@ -77,14 +81,15 @@ export class PersonaSection extends SettingsSection {
       }),
     });
     const avatarGrid = $('div.ai-settings-avatar-grid');
-    for (const emoji of AVATAR_EMOJIS) {
+    for (const avatarId of AVATARS) {
       const btn = $('button.ai-settings-avatar-btn');
       btn.setAttribute('type', 'button');
-      btn.textContent = emoji;
-      btn.title = emoji;
-      btn.setAttribute('aria-label', `Select avatar ${emoji}`);
+      btn.innerHTML = getAvatarIcon(avatarId);
+      btn.dataset.avatarId = avatarId;
+      btn.title = avatarId.replace('avatar-', '');
+      btn.setAttribute('aria-label', `Select avatar ${avatarId.replace('avatar-', '')}`);
       btn.addEventListener('click', () => {
-        this._service.updateActiveProfile({ persona: { avatarEmoji: emoji } });
+        this._service.updateActiveProfile({ persona: { avatarEmoji: avatarId } });
       });
       avatarGrid.appendChild(btn);
       this._avatarButtons.push(btn);
@@ -108,7 +113,7 @@ export class PersonaSection extends SettingsSection {
     // Update avatar selection
     this._currentAvatar = profile.persona.avatarEmoji;
     for (const btn of this._avatarButtons) {
-      const isActive = btn.textContent === this._currentAvatar;
+      const isActive = btn.dataset.avatarId === this._currentAvatar;
       btn.classList.toggle('ai-settings-avatar-btn--active', isActive);
     }
   }

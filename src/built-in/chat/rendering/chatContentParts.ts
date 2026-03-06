@@ -12,6 +12,7 @@ import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import { extractFilePath, renderCodeActionButtons } from './chatCodeActions.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
+import { getFileTypeIcon, getPageIcon } from '../../../ui/iconRegistry.js';
 import type {
   IChatContentPart,
   IChatMarkdownContent,
@@ -639,9 +640,16 @@ function _renderReference(part: IChatReferenceContent): HTMLElement {
   // Determine source type from URI
   const isPage = part.uri.startsWith('parallx-page://');
 
-  // Icon
+  // Icon — file-type aware (C4)
   const icon = $('span.parallx-chat-reference-icon');
-  icon.textContent = isPage ? '\uD83D\uDCC4' : '\uD83D\uDCC1'; // 📄 for pages, 📁 for files
+  if (isPage) {
+    icon.innerHTML = getPageIcon();
+  } else {
+    // Extract extension from URI/path for file-type icon
+    const extMatch = part.uri.match(/\.([a-zA-Z0-9]+)$/);
+    const ext = extMatch ? extMatch[1] : '';
+    icon.innerHTML = getFileTypeIcon(ext);
+  }
   root.appendChild(icon);
 
   // Label

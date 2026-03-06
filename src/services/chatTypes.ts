@@ -593,6 +593,8 @@ export interface IChatResponseStream {
   reportTokenUsage(promptTokens: number, completionTokens: number): void;
   /** Attach a citation map to all existing Markdown parts so the renderer can resolve [N] markers. */
   setCitations(citations: Array<{ index: number; uri: string; label: string }>): void;
+  /** Return the concatenated text of all Markdown parts in the response. */
+  getMarkdownText(): string;
 }
 
 /**

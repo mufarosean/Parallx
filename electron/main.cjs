@@ -496,7 +496,8 @@ app.on('activate', () => {
 // errors with { code, message, path }. Matches VS Code's DiskFileSystemProvider
 // pattern adapted for Electron IPC.
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB guard
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB guard (text files)
+const MAX_BINARY_FILE_SIZE = 512 * 1024 * 1024; // 512MB guard (PDFs, images, etc.)
 
 /**
  * Normalize a filesystem error into a structured { code, message, path } object.
@@ -507,9 +508,29 @@ function normalizeError(err, filePath) {
 }
 
 /**
- * Check if a buffer is likely binary by scanning for null bytes in the first 8KB.
+ * File extensions that are always binary (no heuristic needed).
  */
-function isBinary(buffer) {
+const BINARY_EXTENSIONS = new Set([
+  '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg',
+  '.zip', '.tar', '.gz', '.7z', '.rar', '.bz2', '.xz',
+  '.exe', '.dll', '.so', '.dylib', '.bin',
+  '.mp3', '.mp4', '.wav', '.ogg', '.flac', '.avi', '.mkv', '.mov', '.webm',
+  '.woff', '.woff2', '.ttf', '.otf', '.eot',
+  '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.sqlite', '.db',
+]);
+
+/**
+ * Check if a buffer is likely binary by scanning for null bytes in the first 8KB.
+ * Also checks file extension for known binary types.
+ */
+function isBinary(buffer, filePath) {
+  // Fast path: known binary extensions
+  if (filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    if (BINARY_EXTENSIONS.has(ext)) return true;
+  }
+  // Heuristic: scan for null bytes
   const check = buffer.subarray(0, 8192);
   for (let i = 0; i < check.length; i++) {
     if (check[i] === 0) return true;
@@ -524,11 +545,14 @@ ipcMain.handle('fs:readFile', async (_event, filePath, encoding) => {
     if (stat.isDirectory()) {
       return { error: { code: 'EISDIR', message: 'Is a directory', path: filePath } };
     }
-    if (stat.size > MAX_FILE_SIZE) {
-      return { error: { code: 'ETOOLARGE', message: `File exceeds ${MAX_FILE_SIZE} byte limit`, path: filePath } };
+    // Apply higher limit for known binary files (PDFs, images, etc.)
+    const ext = path.extname(filePath).toLowerCase();
+    const sizeLimit = BINARY_EXTENSIONS.has(ext) ? MAX_BINARY_FILE_SIZE : MAX_FILE_SIZE;
+    if (stat.size > sizeLimit) {
+      return { error: { code: 'ETOOLARGE', message: `File exceeds ${sizeLimit} byte limit`, path: filePath } };
     }
     const buffer = await fs.readFile(filePath);
-    if (isBinary(buffer)) {
+    if (isBinary(buffer, filePath)) {
       return { content: buffer.toString('base64'), encoding: 'base64', size: stat.size, mtime: stat.mtimeMs };
     }
     return { content: buffer.toString(encoding || 'utf-8'), encoding: encoding || 'utf-8', size: stat.size, mtime: stat.mtimeMs };
@@ -662,6 +686,11 @@ ipcMain.handle('fs:delete', async (_event, filePath, options) => {
 // ── shell:showItemInFolder ──
 ipcMain.handle('shell:showItemInFolder', async (_event, filePath) => {
   shell.showItemInFolder(filePath);
+});
+
+// ── shell:openPath ──
+ipcMain.handle('shell:openPath', async (_event, filePath) => {
+  return shell.openPath(filePath);
 });
 
 // ── fs:mkdir ──

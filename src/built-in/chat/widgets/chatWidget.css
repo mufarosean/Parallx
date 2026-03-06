@@ -61,7 +61,7 @@
   pointer-events: none;
   transition: opacity 150ms ease;
   z-index: 1;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 6px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
 }
 
 .parallx-chat-scroll-btn svg {
@@ -195,7 +195,7 @@
   border: 1px solid var(--vscode-widget-border, #454545);
   border-radius: 4px;
   padding: 1px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 4px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.2));
 }
 
 .parallx-chat-message:hover .parallx-chat-message-actions {
@@ -996,17 +996,17 @@
 
 .parallx-chat-tool-status-badge--running {
   background: var(--vscode-progressBar-background, #0e70c0);
-  color: #ffffff;
+  color: var(--vscode-button-foreground, #ffffff);
 }
 
 .parallx-chat-tool-status-badge--completed {
   background: var(--vscode-testing-iconPassed, #388a34);
-  color: #ffffff;
+  color: var(--vscode-button-foreground, #ffffff);
 }
 
 .parallx-chat-tool-status-badge--rejected {
   background: var(--vscode-testing-iconFailed, #f14c4c);
-  color: #ffffff;
+  color: var(--vscode-button-foreground, #ffffff);
 }
 
 /* ── Tool Arguments ── */
@@ -1199,12 +1199,12 @@
 
 .parallx-chat-diff-summary--added {
   color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
-  background: rgba(129, 184, 139, 0.12);
+  background: var(--vscode-diffEditor-insertedLineBackground, rgba(129, 184, 139, 0.12));
 }
 
 .parallx-chat-diff-summary--removed {
   color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
-  background: rgba(199, 78, 57, 0.12);
+  background: var(--vscode-diffEditor-removedLineBackground, rgba(199, 78, 57, 0.12));
 }
 
 .parallx-chat-diff-summary--mixed {
@@ -1783,7 +1783,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5));
   animation: parallx-modal-fade-in 120ms ease-out;
 }
 
@@ -1801,7 +1801,7 @@
   border-radius: 8px;
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 8px 32px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.6));
   overflow: hidden;
 }
 

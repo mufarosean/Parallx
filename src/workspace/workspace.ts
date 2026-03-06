@@ -46,6 +46,8 @@ export class Workspace {
   readonly onDidChangeFolders: Event<WorkspaceFoldersChangeEvent> = this._onDidChangeFolders.event;
   private readonly _onDidChangeState = new Emitter<WorkbenchState>();
   readonly onDidChangeState: Event<WorkbenchState> = this._onDidChangeState.event;
+  private readonly _onDidRename = new Emitter<string>();
+  readonly onDidRename: Event<string> = this._onDidRename.event;
 
   constructor(identity: WorkspaceIdentity, metadata?: WorkspaceMetadata) {
     this._identity = identity;
@@ -130,6 +132,7 @@ export class Workspace {
    */
   rename(name: string): void {
     this._identity = { ...this._identity, name };
+    this._onDidRename.fire(name);
   }
 
   /**

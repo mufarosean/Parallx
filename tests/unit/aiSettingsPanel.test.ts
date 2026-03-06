@@ -359,7 +359,7 @@ describe('PersonaSection', () => {
 
     const activeBtns = section.element.querySelectorAll('.ai-settings-avatar-btn--active');
     expect(activeBtns.length).toBe(1);
-    expect(activeBtns[0].textContent).toBe('🧠');
+    expect((activeBtns[0] as HTMLElement).dataset.avatarId).toBe('avatar-brain');
     section.dispose();
   });
 
@@ -368,10 +368,10 @@ describe('PersonaSection', () => {
     section.build();
 
     const avatarBtns = section.element.querySelectorAll('.ai-settings-avatar-btn');
-    (avatarBtns[3] as HTMLElement).click(); // 💰
+    (avatarBtns[3] as HTMLElement).click(); // avatar-coins (index 3)
 
     expect(service.updateActiveProfile).toHaveBeenCalledWith({
-      persona: { avatarEmoji: '💰' },
+      persona: { avatarEmoji: 'avatar-coins' },
     });
     section.dispose();
   });
@@ -394,12 +394,12 @@ describe('PersonaSection', () => {
     section.build();
 
     const profile = structuredClone(DEFAULT_PROFILE);
-    profile.persona.avatarEmoji = '🤖';
+    profile.persona.avatarEmoji = 'avatar-robot';
     section.update(profile);
 
     const active = section.element.querySelectorAll('.ai-settings-avatar-btn--active');
     expect(active.length).toBe(1);
-    expect(active[0].textContent).toBe('🤖');
+    expect((active[0] as HTMLElement).dataset.avatarId).toBe('avatar-robot');
     section.dispose();
   });
 });

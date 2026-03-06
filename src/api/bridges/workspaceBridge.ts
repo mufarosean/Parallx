@@ -25,6 +25,7 @@ interface WorkspaceServiceLike {
   readonly workspaceName: string;
   readonly onDidChangeFolders: Event<WorkspaceFoldersChangeEvent>;
   readonly onDidChangeWorkspace: Event<{ id: string; name: string } | undefined>;
+  readonly onDidRename?: Event<string>;
   getWorkspaceFolder(uri: URI): WorkspaceFolder | undefined;
 }
 
@@ -81,6 +82,9 @@ export class WorkspaceBridge {
    */
   readonly onDidChangeWorkspace: Event<WorkspaceChangeInfo | undefined>;
 
+  /** Fires when the workspace is renamed via `workspace.rename` command. */
+  readonly onDidRename: Event<string>;
+
   constructor(
     private readonly _toolId: string,
     _subscriptions: IDisposable[],
@@ -128,6 +132,21 @@ export class WorkspaceBridge {
       const fallbackEmitter = new Emitter<WorkspaceChangeInfo | undefined>();
       this._disposables.push(fallbackEmitter);
       this.onDidChangeWorkspace = fallbackEmitter.event;
+    }
+
+    // Workspace rename events (A9)
+    if (this._workspaceService?.onDidRename) {
+      const renameEmitter = new Emitter<string>();
+      this._disposables.push(renameEmitter);
+      const renameSub = this._workspaceService.onDidRename((name) => {
+        renameEmitter.fire(name);
+      });
+      this._disposables.push(renameSub);
+      this.onDidRename = renameEmitter.event;
+    } else {
+      const fallbackEmitter = new Emitter<string>();
+      this._disposables.push(fallbackEmitter);
+      this.onDidRename = fallbackEmitter.event;
     }
 
     // File change events (M4 — file watcher → tree refresh)

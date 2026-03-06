@@ -125,6 +125,9 @@ export interface IWorkspaceService extends IDisposable {
   /** Fires when workbench state changes (e.g., EMPTY → FOLDER). */
   readonly onDidChangeWorkbenchState: Event<WorkbenchState>;
 
+  /** Fires when the workspace is renamed. */
+  readonly onDidRename: Event<string>;
+
   /** Add a folder to the workspace. */
   addFolder(uri: import('../platform/uri.js').URI, name?: string): void;
 

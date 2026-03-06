@@ -330,7 +330,7 @@
 .ui-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -586,7 +586,7 @@
   border: 1px solid var(--vscode-editorWidget-border, #454545);
   border-top: none;
   border-radius: 0 0 4px 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
   padding: 4px 4px 4px 2px;
   min-width: 340px;
   max-width: 480px;

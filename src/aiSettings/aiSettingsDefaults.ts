@@ -17,7 +17,7 @@ function makeDefaultProfile(): AISettingsProfile {
     persona: {
       name: 'Parallx AI',
       description: 'Your intelligent workspace assistant',
-      avatarEmoji: '🧠',
+      avatarEmoji: 'avatar-brain',
     },
     chat: {
       systemPrompt: '', // filled below
@@ -62,7 +62,7 @@ function makeFinanceFocusProfile(): AISettingsProfile {
     persona: {
       name: 'Finance Assistant',
       description: 'Focused on transactions, budgeting, and financial insights',
-      avatarEmoji: '💰',
+      avatarEmoji: 'avatar-coins',
     },
     suggestions: {
       ...DEFAULT_PROFILE.suggestions,
@@ -86,7 +86,7 @@ function makeCreativeModeProfile(): AISettingsProfile {
     persona: {
       name: 'Creative Partner',
       description: 'Playful and exploratory — great for writing and brainstorming',
-      avatarEmoji: '✍️',
+      avatarEmoji: 'avatar-pen',
     },
     model: {
       ...DEFAULT_PROFILE.model,

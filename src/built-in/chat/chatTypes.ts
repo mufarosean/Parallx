@@ -206,6 +206,7 @@ export interface IChatWidgetServices {
   readonly readFileRelative?: (relativePath: string) => Promise<string | null>;
   readonly writeFileRelative?: (relativePath: string, content: string) => Promise<void>;
   readonly searchSessions?: (query: string) => Promise<Array<{ sessionId: string; sessionTitle: string; matchingContent: string }>>;
+  readonly openAISettings?: () => void;
   // ── Pending request queue ──
   readonly queueRequest?: (sessionId: string, message: string, kind: ChatRequestQueueKind) => IChatPendingRequest;
   readonly removePendingRequest?: (sessionId: string, requestId: string) => void;
@@ -273,6 +274,7 @@ export interface IChatHeaderAction {
   readonly onNewChat: Event<void>;
   readonly onToggleHistory: Event<void>;
   readonly onClearSession: Event<void>;
+  readonly onOpenSettings: Event<void>;
 }
 
 // ── Attachment data types ──

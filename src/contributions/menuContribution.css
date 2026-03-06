@@ -14,7 +14,7 @@
 
 .menu-action-btn:hover {
   opacity: 1;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--vscode-menu-separatorBackground, rgba(255, 255, 255, 0.1));
 }
 
 /* ── Context menu ─────────────────────────────────────────────────────── */
@@ -37,7 +37,7 @@
   border: 1px solid var(--vscode-editorWidget-border, #3c3c3c);
   border-radius: 4px;
   padding: 4px 0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
   z-index: 10002;
   font-size: 13px;
 }

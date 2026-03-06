@@ -62,9 +62,9 @@
   user-select: none;
   background: none;
   border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
   width: 100%;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
   font-size: 12px;
   font-family: inherit;
   flex-shrink: 0;
@@ -72,13 +72,13 @@
 }
 
 .canvas-sidebar-trash-btn:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.6);
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.6));
 }
 
 .canvas-sidebar-trash-badge {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.5);
+  background: var(--vscode-badge-background, rgba(255, 255, 255, 0.1));
+  color: var(--vscode-badge-foreground, rgba(255, 255, 255, 0.5));
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 8px;
@@ -213,7 +213,7 @@
 }
 
 .canvas-node-chevron:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
 }
 
 /* On hover: show chevron and hide icon (only for nodes with children) */
@@ -335,7 +335,7 @@
 .canvas-tiptap-editor .is-empty::before {
   content: attr(data-placeholder);
   position: absolute;
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--vscode-input-placeholderForeground, rgba(255, 255, 255, 0.25));
   pointer-events: none;
   font-style: normal;
 }
@@ -448,7 +448,7 @@
   appearance: none;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.3));
   border-radius: 3px;
   background: transparent;
   cursor: pointer;
@@ -459,13 +459,13 @@
 }
 
 .canvas-tiptap-editor ul[data-type="taskList"] li label input[type="checkbox"]:hover {
-  border-color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--vscode-widget-border, rgba(255, 255, 255, 0.5));
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
 }
 
 .canvas-tiptap-editor ul[data-type="taskList"] li label input[type="checkbox"]:checked {
-  background: #2383e2;
-  border-color: #2383e2;
+  background: var(--vscode-button-background, #2383e2);
+  border-color: var(--vscode-button-background, #2383e2);
 }
 
 .canvas-tiptap-editor ul[data-type="taskList"] li label input[type="checkbox"]:checked::before {
@@ -473,19 +473,19 @@
   width: 8px;
   height: 8px;
   clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
-  background: #fff;
+  background: var(--vscode-button-foreground, #fff);
   transform: scale(1);
 }
 
 .canvas-tiptap-editor ul[data-type="taskList"] li[data-checked="true"] > div > p {
   text-decoration: line-through;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
 }
 
 /* ── Blockquote — clean border, Notion-style ── */
 
 .canvas-tiptap-editor blockquote {
-  border-left: 3px solid rgba(255, 255, 255, 0.4);
+  border-left: 3px solid var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
   padding-left: 16px;
   margin: 8px 0;
   color: inherit;
@@ -494,12 +494,12 @@
 /* ── Inline Code — rounded pill style ── */
 
 .canvas-tiptap-editor code {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--vscode-textCodeBlock-background, rgba(255, 255, 255, 0.08));
   padding: 2px 6px;
   border-radius: 4px;
   font-family: 'SFMono-Regular', 'Cascadia Code', 'Fira Code', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
   font-size: 0.875em;
-  color: #eb5757;
+  color: var(--vscode-errorForeground, #eb5757);
 }
 
 /* ── Horizontal Rule — subtle divider ── */
@@ -540,7 +540,7 @@
 /* ── Selection — soft blue ── */
 
 .canvas-tiptap-editor ::selection {
-  background: rgba(45, 170, 219, 0.3);
+  background: var(--vscode-editor-selectionBackground, rgba(45, 170, 219, 0.3));
 }
 
 /* Underline */
@@ -555,7 +555,7 @@
 .canvas-tiptap-editor .canvas-link {
   color: inherit;
   text-decoration: underline;
-  text-decoration-color: rgba(255, 255, 255, 0.4);
+  text-decoration-color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.4));
   text-underline-offset: 3px;
   cursor: pointer;
   transition: text-decoration-color 0.15s ease;
@@ -594,14 +594,14 @@
 }
 
 .canvas-tiptap-editor img.ProseMirror-selectednode {
-  outline: 3px solid #5abbf7;
+  outline: 3px solid var(--vscode-focusBorder, #5abbf7);
   filter: brightness(0.92);
 }
 
 /* ── Node selection — soft highlight, no harsh outline ── */
 .canvas-tiptap-editor:not(.dragging) .ProseMirror-selectednode {
   outline: none !important;
-  background-color: rgba(45, 170, 219, 0.15);
+  background-color: var(--vscode-editor-selectionBackground, rgba(45, 170, 219, 0.15));
   transition: background-color 0.15s ease;
   border-radius: 4px;
 }
@@ -616,7 +616,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background-color: rgba(35, 131, 226, 0.17);
+  background-color: var(--vscode-list-dropBackground, rgba(35, 131, 226, 0.17));
   border-radius: 3px;
   pointer-events: none;
   z-index: 1;
@@ -626,8 +626,8 @@
 .block-marquee {
   display: none;
   position: absolute;
-  border: 1.5px solid rgba(45, 170, 219, 0.6);
-  background-color: rgba(45, 170, 219, 0.08);
+  border: 1.5px solid var(--vscode-focusBorder, rgba(45, 170, 219, 0.6));
+  background-color: var(--vscode-list-dropBackground, rgba(45, 170, 219, 0.08));
   border-radius: 2px;
   pointer-events: none;
   z-index: 10;
@@ -696,13 +696,13 @@
 
 .drag-handle:hover {
   opacity: 1 !important;
-  box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 100px var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' style='fill: rgba(255, 255, 255, 0.7)'%3E%3Cpath d='M3,2 C2.44771525,2 2,1.55228475 2,1 C2,0.44771525 2.44771525,0 3,0 C3.55228475,0 4,0.44771525 4,1 C4,1.55228475 3.55228475,2 3,2 Z M3,6 C2.44771525,6 2,5.55228475 2,5 C2,4.44771525 2.44771525,4 3,4 C3.55228475,4 4,4.44771525 4,5 C4,5.55228475 3.55228475,6 3,6 Z M3,10 C2.44771525,10 2,9.55228475 2,9 C2,8.44771525 2.44771525,8 3,8 C3.55228475,8 4,8.44771525 4,9 C4,9.55228475 3.55228475,10 3,10 Z M7,2 C6.44771525,2 6,1.55228475 6,1 C6,0.44771525 6.44771525,0 7,0 C7.55228475,0 8,0.44771525 8,1 C8,1.55228475 7.55228475,2 7,2 Z M7,6 C6.44771525,6 6,5.55228475 6,5 C6,4.44771525 6.44771525,4 7,4 C7.55228475,4 8,4.44771525 8,5 C8,5.55228475 7.55228475,6 7,6 Z M7,10 C6.44771525,10 6,9.55228475 6,9 C6,8.44771525 6.44771525,8 7,8 C7.55228475,8 8,8.44771525 8,9 C8,9.55228475 7.55228475,10 7,10 Z'%3E%3C/path%3E%3C/svg%3E");
   transition: box-shadow 0.15s ease;
 }
 
 .drag-handle:active {
-  box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 100px var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.12));
   cursor: grabbing;
 }
 
@@ -736,15 +736,15 @@
   justify-content: center;
   border-radius: 4px;
   z-index: 56;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.35));
   /* Match drag-handle shift so they stay aligned */
   transform: translateX(-8px);
 }
 
 .block-add-btn:hover {
   opacity: 1 !important;
-  background-color: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.7);
+  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.7));
 }
 
 .block-add-btn.hide {
@@ -767,8 +767,8 @@
 
 .handle-area-hovered > .block-add-btn:hover {
   opacity: 1 !important;
-  background-color: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.7);
+  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.7));
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -779,10 +779,10 @@
 .block-action-submenu {
   position: fixed;
   z-index: 1002;
-  background: #252525;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--vscode-menu-background, #252525);
+  border: 1px solid var(--vscode-menu-border, rgba(255, 255, 255, 0.1));
   border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5)), 0 0 0 1px rgba(0, 0, 0, 0.2);
   padding: 4px;
   min-width: 200px;
   max-height: 70vh;
@@ -803,7 +803,7 @@
   padding: 4px 8px 2px;
   font-size: 11px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.35));
   text-transform: capitalize;
   user-select: none;
 }
@@ -817,12 +817,12 @@
   cursor: pointer;
   user-select: none;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--vscode-foreground, rgba(255, 255, 255, 0.8));
   transition: background-color 0.08s ease;
 }
 
 .block-action-item:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
 }
 
 .block-action-icon {
@@ -831,7 +831,7 @@
   justify-content: center;
   width: 22px;
   height: 22px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.5));
   flex-shrink: 0;
 }
 
@@ -847,7 +847,7 @@
 
 .block-action-shortcut {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.25));
   margin-left: auto;
   font-family: inherit;
 }
@@ -855,28 +855,28 @@
 .block-action-arrow {
   display: flex;
   align-items: center;
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--vscode-descriptionForeground, rgba(255, 255, 255, 0.25));
   margin-left: auto;
 }
 
 .block-action-check {
   font-size: 14px;
-  color: rgba(45, 170, 219, 0.8);
+  color: var(--vscode-textLink-foreground, rgba(45, 170, 219, 0.8));
   margin-left: auto;
 }
 
 .block-action-separator {
   height: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
   margin: 4px 0;
 }
 
 .block-action-item--danger .block-action-label {
-  color: #e06666;
+  color: var(--vscode-errorForeground, #e06666);
 }
 
 .block-action-item--danger .block-action-icon {
-  color: #e06666;
+  color: var(--vscode-errorForeground, #e06666);
 }
 
 /* ── Color Submenu ── */
@@ -1745,47 +1745,47 @@
 /* highlight.js token colors — refined dark palette */
 .canvas-tiptap-editor .hljs-comment,
 .canvas-tiptap-editor .hljs-quote {
-  color: #6a9955;
+  color: var(--vscode-debugTokenExpression-string, #6a9955);
   font-style: italic;
 }
 
 .canvas-tiptap-editor .hljs-keyword,
 .canvas-tiptap-editor .hljs-selector-tag,
 .canvas-tiptap-editor .hljs-addition {
-  color: #569cd6;
+  color: var(--vscode-debugTokenExpression-name, #569cd6);
 }
 
 .canvas-tiptap-editor .hljs-number,
 .canvas-tiptap-editor .hljs-literal,
 .canvas-tiptap-editor .hljs-selector-id {
-  color: #b5cea8;
+  color: var(--vscode-debugTokenExpression-number, #b5cea8);
 }
 
 .canvas-tiptap-editor .hljs-string,
 .canvas-tiptap-editor .hljs-doctag,
 .canvas-tiptap-editor .hljs-selector-class {
-  color: #ce9178;
+  color: var(--vscode-debugTokenExpression-string, #ce9178);
 }
 
 .canvas-tiptap-editor .hljs-type,
 .canvas-tiptap-editor .hljs-built_in,
 .canvas-tiptap-editor .hljs-title {
-  color: #4ec9b0;
+  color: var(--vscode-debugTokenExpression-type, #4ec9b0);
 }
 
 .canvas-tiptap-editor .hljs-attr,
 .canvas-tiptap-editor .hljs-variable,
 .canvas-tiptap-editor .hljs-template-variable {
-  color: #9cdcfe;
+  color: var(--vscode-debugTokenExpression-name, #9cdcfe);
 }
 
 .canvas-tiptap-editor .hljs-function {
-  color: #dcdcaa;
+  color: var(--vscode-symbolIcon-functionForeground, #dcdcaa);
 }
 
 .canvas-tiptap-editor .hljs-regexp,
 .canvas-tiptap-editor .hljs-link {
-  color: #d16969;
+  color: var(--vscode-debugTokenExpression-error, #d16969);
 }
 
 .canvas-tiptap-editor .hljs-symbol,
@@ -1798,7 +1798,7 @@
 }
 
 .canvas-tiptap-editor .hljs-deletion {
-  color: #ce9178;
+  color: var(--vscode-debugTokenExpression-string, #ce9178);
   background: rgba(206, 145, 120, 0.1);
 }
 
@@ -2839,16 +2839,34 @@
 /* ── Full Width Mode ── */
 
 .canvas-full-width .canvas-tiptap-editor {
-  max-width: none;
-  padding-left: 96px;
-  padding-right: 96px;
+  max-width: 1200px;
+  padding-left: 5%;
+  padding-right: 5%;
   transition: max-width 0.2s ease;
 }
 
 .canvas-full-width .canvas-page-header {
-  max-width: none;
-  padding-left: 96px;
-  padding-right: 96px;
+  max-width: 1200px;
+  padding-left: 5%;
+  padding-right: 5%;
+}
+
+/* Narrow viewports (<768px): minimal gutters */
+@media (max-width: 768px) {
+  .canvas-full-width .canvas-tiptap-editor,
+  .canvas-full-width .canvas-page-header {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+/* Wide viewports (>1440px): larger gutters to keep lines readable */
+@media (min-width: 1441px) {
+  .canvas-full-width .canvas-tiptap-editor,
+  .canvas-full-width .canvas-page-header {
+    padding-left: 8%;
+    padding-right: 8%;
+  }
 }
 
 /* ── Small Text Mode ── */
@@ -2893,11 +2911,7 @@
   user-select: none;
 }
 
-.canvas-sidebar-separator {
-  height: 1px;
-  background: rgba(255, 255, 255, 0.06);
-  margin: 4px 12px;
-}
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Sidebar Favorites Section (Cap 10 — Task 10.2)
@@ -3476,10 +3490,10 @@
   align-items: center;
   gap: 2px;
   padding: 3px 6px;
-  background: #1e1e2e;
+  background: var(--vscode-editorWidget-background, #1e1e2e);
   border: 1px solid rgba(139, 92, 246, 0.3);
   border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(139, 92, 246, 0.1);
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5)), 0 0 0 1px rgba(139, 92, 246, 0.1);
   white-space: nowrap;
   animation: inlineAIFadeIn 0.12s ease-out;
 }
@@ -3526,10 +3540,10 @@
   min-width: 280px;
   max-width: 480px;
   max-height: 300px;
-  background: #1e1e2e;
+  background: var(--vscode-editorWidget-background, #1e1e2e);
   border: 1px solid rgba(139, 92, 246, 0.3);
   border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(139, 92, 246, 0.1);
+  box-shadow: 0 8px 32px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.6)), 0 0 0 1px rgba(139, 92, 246, 0.1);
   overflow: hidden;
   animation: inlineAIFadeIn 0.15s ease-out;
 }
@@ -3541,7 +3555,7 @@
   color: rgba(139, 92, 246, 0.9);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
 }
 
 .canvas-inline-ai-result-content {
@@ -3564,14 +3578,14 @@
   display: flex;
   gap: 8px;
   padding: 8px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
   justify-content: flex-end;
 }
 
 .canvas-inline-ai-accept {
   background: rgba(34, 197, 94, 0.15);
   border: 1px solid rgba(34, 197, 94, 0.3);
-  color: #4ade80;
+  color: var(--vscode-testing-iconPassed, #4ade80);
   cursor: pointer;
   font-size: 12px;
   padding: 4px 12px;
@@ -3587,7 +3601,7 @@
 .canvas-inline-ai-reject {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.2);
-  color: #f87171;
+  color: var(--vscode-testing-iconFailed, #f87171);
   cursor: pointer;
   font-size: 12px;
   padding: 4px 12px;

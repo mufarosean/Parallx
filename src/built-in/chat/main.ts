@@ -473,6 +473,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // ── 4. Build widget services bridge (delegates to ChatDataService) ──
 
   const widgetServices = dataService.buildWidgetServices();
+  // C2: Wire AI Settings opener — accessible from the chat title bar gear icon
+  (widgetServices as unknown as Record<string, unknown>).openAISettings = () => {
+    api.commands.executeCommand('ai-settings.open');
+  };
 
   // ── 5. Register the chat view in the Auxiliary Bar ──
 

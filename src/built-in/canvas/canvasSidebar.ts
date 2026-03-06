@@ -280,10 +280,6 @@ export class CanvasSidebar {
       }
 
       this._treeList.appendChild(favSection);
-
-      // Separator
-      const sep = $('div.canvas-sidebar-separator');
-      this._treeList.appendChild(sep);
     }
 
     // ── Pages section header with inline + button ──

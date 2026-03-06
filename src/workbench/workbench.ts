@@ -29,6 +29,7 @@ import {
 import { Part } from '../parts/part.js';
 import { PartId } from '../parts/partTypes.js';
 import { EditorPart } from '../parts/editorPart.js';
+import { GroupDirection, EditorActivation } from '../editor/editorTypes.js';
 import { StatusBarPart } from '../parts/statusBarPart.js';
 
 // Layout
@@ -48,7 +49,9 @@ import {
   createDefaultEditorSnapshot,
   workspaceStorageKey,
 } from '../workspace/workspaceTypes.js';
+import type { SerializedEditorSnapshot, SerializedEditorInputSnapshot } from '../workspace/workspaceTypes.js';
 import { createDefaultLayoutState } from '../layout/layoutModel.js';
+import { registerBuiltinEditorDeserializers, deserializeEditorInput } from '../editor/editorInputDeserializer.js';
 
 // Commands
 import { CommandService } from '../commands/commandRegistry.js';
@@ -875,6 +878,8 @@ export class Workbench extends Layout {
       auxiliaryBar: this._auxiliaryBar,
       activityBarPart: this._activityBarPart,
       toggleSidebar: () => this.toggleSidebar(),
+      togglePanel: () => this.togglePanel(),
+      toggleAuxiliaryBar: () => this.toggleAuxiliaryBar(),
       layoutViewContainers: () => this._layoutViewContainers(),
     }));
     this._contributionHandler.setWorkbenchContext(this._workbenchContext);
@@ -1054,6 +1059,18 @@ export class Workbench extends Layout {
 
     // Configure the saver with live sources so subsequent saves capture real state
     this._configureSaver();
+
+    // Wire file editor resolver + pane factories BEFORE restoring editors.
+    // The pane factory maps input types (PdfEditorInput, ImageEditorInput, etc.)
+    // to their rendering panes. Without this, restored editors fall through to
+    // PlaceholderEditorPane and render as plain text.
+    this._initFileEditorResolver();
+
+    // Restore editor tabs from saved state (async, errors swallowed per-editor)
+    if (this._restoredState?.editors) {
+      this._registerEditorDeserializers();
+      await this._restoreEditors(this._restoredState.editors);
+    }
 
     // Persist the initial state so there is always a storage entry for the
     // active workspace. Without this, first-launch windows (or test-mode with
@@ -1290,6 +1307,110 @@ export class Workbench extends Layout {
   }
 
   // ════════════════════════════════════════════════════════════════════════
+  // Build editor snapshot for workspace persistence
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Serialize all open editor groups and their editors into a snapshot.
+   * Captures: typeId, inputId, pinned, reconstruction data, and active pane view state.
+   */
+  private _buildEditorSnapshot(): SerializedEditorSnapshot {
+    try {
+      const editorPart = this._editor as EditorPart;
+      const groups = editorPart.groups;
+      const activeGroup = editorPart.activeGroup;
+
+      const serializedGroups = groups.map(group => {
+        const serialized = group.model.serialize();
+        const editors: SerializedEditorInputSnapshot[] = serialized.editors.map((entry, i) => {
+          // Capture view state from the active pane of the active editor
+          let state: Record<string, unknown> | undefined;
+          if (i === serialized.activeEditorIndex && group.activePane) {
+            try { state = group.activePane.saveViewState(); } catch { /* best-effort */ }
+          }
+          return {
+            typeId: entry.typeId,
+            inputId: entry.inputId,
+            pinned: entry.pinned,
+            data: entry.data,
+            state,
+          };
+        });
+        return { editors, activeEditorIndex: serialized.activeEditorIndex };
+      });
+
+      return {
+        groups: serializedGroups,
+        activeGroupIndex: activeGroup ? groups.indexOf(activeGroup) : 0,
+      };
+    } catch (err) {
+      console.error('[Workbench] Failed to build editor snapshot:', err);
+      return createDefaultEditorSnapshot();
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Restore editor state from snapshot
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Reopen editors from a serialized snapshot.
+   * Creates additional editor groups as needed.
+   * Errors for individual editors are swallowed — partial restore is acceptable.
+   */
+  private async _restoreEditors(snapshot: SerializedEditorSnapshot): Promise<void> {
+    const editorPart = this._editor as EditorPart;
+
+    // Filter out groups with no restorable editors
+    const nonEmptyGroups = snapshot.groups.filter(g => g.editors.length > 0);
+    if (nonEmptyGroups.length === 0) return;
+
+    for (let gi = 0; gi < nonEmptyGroups.length; gi++) {
+      const groupSnap = nonEmptyGroups[gi];
+
+      // Get or create the editor group
+      let group = editorPart.groups[gi];
+      if (!group && gi > 0) {
+        group = editorPart.addGroup(editorPart.groups[gi - 1].id, GroupDirection.Right)!;
+      }
+      if (!group) continue;
+
+      // Open each editor in tab order
+      for (let ei = 0; ei < groupSnap.editors.length; ei++) {
+        const editorSnap = groupSnap.editors[ei];
+        try {
+          const input = deserializeEditorInput(editorSnap.typeId, editorSnap.data);
+          if (!input) continue;
+
+          const isActive = ei === groupSnap.activeEditorIndex;
+          await editorPart.openEditor(input, {
+            pinned: editorSnap.pinned,
+            activation: isActive ? EditorActivation.Activate : EditorActivation.Restore,
+            preserveFocus: !isActive,
+          }, group.id);
+
+          // Apply view state to the active editor's pane
+          if (isActive && editorSnap.state && group.activePane) {
+            try {
+              group.activePane.restoreViewState(editorSnap.state);
+            } catch { /* best-effort — pane may not support view state */ }
+          }
+        } catch (err) {
+          console.warn('[Workbench] Failed to restore editor "%s":', editorSnap.typeId, err);
+        }
+      }
+    }
+
+    // Activate the correct group
+    const targetGroupIdx = Math.min(snapshot.activeGroupIndex, editorPart.groups.length - 1);
+    if (targetGroupIdx >= 0 && editorPart.groups[targetGroupIdx]) {
+      editorPart.activateGroup(editorPart.groups[targetGroupIdx].id);
+    }
+
+    console.log('[Workbench] Restored %d editor group(s)', nonEmptyGroups.length);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
   // Configure the WorkspaceSaver with live sources
   // ════════════════════════════════════════════════════════════════════════
 
@@ -1326,13 +1447,25 @@ export class Workbench extends Layout {
           activeEditorGroup: undefined,
         };
       },
-      editorProvider: () => createDefaultEditorSnapshot(),
+      editorProvider: () => this._buildEditorSnapshot(),
     });
 
     // Wire auto-save on structural changes (dispose old listeners first)
     this._saverListeners.clear();
     this._saverListeners.add(this._hGrid.onDidChange(() => this._workspaceSaver.requestSave()));
     this._saverListeners.add(this._vGrid.onDidChange(() => this._workspaceSaver.requestSave()));
+
+    // Wire auto-save on editor changes (open, close, activate)
+    const editorService = this._services.has(IEditorService) ? this._services.get(IEditorService) : undefined;
+    const editorGroupService = this._services.has(IEditorGroupService) ? this._services.get(IEditorGroupService) : undefined;
+    if (editorService) {
+      this._saverListeners.add(editorService.onDidChangeOpenEditors(() => this._workspaceSaver.requestSave()));
+      this._saverListeners.add(editorService.onDidActiveEditorChange(() => this._workspaceSaver.requestSave()));
+    }
+    if (editorGroupService) {
+      this._saverListeners.add(editorGroupService.onDidGroupCountChange(() => this._workspaceSaver.requestSave()));
+      this._saverListeners.add(editorGroupService.onDidActiveGroupChange(() => this._workspaceSaver.requestSave()));
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1351,6 +1484,12 @@ export class Workbench extends Layout {
     // Also update when folders change (add/remove folder changes the display name)
     this._workspaceListeners.add(this._workspace.onDidChangeFolders(() => {
       this._titlebar.setWorkspaceName(this._workspace.displayName);
+    }));
+
+    // A9: Update titlebar and window title when workspace is renamed
+    this._workspaceListeners.add(this._workspace.onDidRename(() => {
+      this._titlebar.setWorkspaceName(this._workspace.displayName);
+      this._statusBarController.updateWindowTitle();
     }));
 
     // Task 1.2: Register default menu bar items via contribution system
@@ -1737,6 +1876,26 @@ export class Workbench extends Layout {
 
 
   // ════════════════════════════════════════════════════════════════════════
+  // Editor input deserializer registration
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Register built-in editor input deserializers.
+   * Called once before editor state restoration.
+   */
+  private _registerEditorDeserializers(): void {
+    const textFileModelManager = this._services.has(ITextFileModelManager)
+      ? this._services.get(ITextFileModelManager) : undefined;
+    const fileService = this._services.has(IFileService)
+      ? this._services.get(IFileService) : undefined;
+    if (!textFileModelManager || !fileService) {
+      console.warn('[Workbench] Cannot register editor deserializers — services not available');
+      return;
+    }
+    registerBuiltinEditorDeserializers({ textFileModelManager, fileService });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
   // Editor watermark
   // ════════════════════════════════════════════════════════════════════════
 
@@ -2016,8 +2175,8 @@ export class Workbench extends Layout {
       this._titlebar.setContextKeyEvaluator(this._contextKeyService);
     }
 
-    // ── Wire file editor resolver (M4 Capability 4) ──
-    this._initFileEditorResolver();
+    // ── File editor resolver is wired in Phase 4 (_restoreWorkspace) ──
+    // so that pane factories are available before editor state restoration.
 
     // ── Register and activate built-in tools (M2 Capability 7) ──
     await this._registerAndActivateBuiltinTools(registry, activationEvents);

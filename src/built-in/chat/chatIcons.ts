@@ -6,6 +6,8 @@
 //
 // Usage: element.innerHTML = chatIcons.newChat;
 
+import { registerIcon } from '../../ui/iconRegistry.js';
+
 /** All chat SVG icons, sized 16×16 with currentColor. */
 export const chatIcons = {
 
@@ -38,6 +40,12 @@ export const chatIcons = {
   search: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
     <circle cx="7" cy="7" r="4" stroke="currentColor" stroke-width="1.2"/>
     <path d="M10 10l3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+  </svg>`,
+
+  /** Gear / cog icon — settings */
+  gear: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" stroke-width="1.2"/>
+    <path d="M13.3 9.5l-.8-.5a4.6 4.6 0 000-2l.8-.5a.5.5 0 00.2-.6l-.7-1.2a.5.5 0 00-.6-.2l-.9.3a4.5 4.5 0 00-1.7-1l-.2-.9a.5.5 0 00-.5-.4H7.5a.5.5 0 00-.5.4l-.2.9a4.5 4.5 0 00-1.7 1l-.9-.3a.5.5 0 00-.6.2l-.7 1.2a.5.5 0 00.2.6l.8.5a4.6 4.6 0 000 2l-.8.5a.5.5 0 00-.2.6l.7 1.2a.5.5 0 00.6.2l.9-.3a4.5 4.5 0 001.7 1l.2.9a.5.5 0 00.5.4h1.4a.5.5 0 00.5-.4l.2-.9a4.5 4.5 0 001.7-1l.9.3a.5.5 0 00.6-.2l.7-1.2a.5.5 0 00-.2-.6z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
   </svg>`,
 
   // ── Input actions ──
@@ -178,3 +186,8 @@ export const chatIcons = {
   </svg>`,
 
 } as const;
+
+// ─── Register all chat icons into the shared app-wide icon registry ──────────
+for (const [id, svg] of Object.entries(chatIcons)) {
+  registerIcon(`chat-${id}`, svg);
+}

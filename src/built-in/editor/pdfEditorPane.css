@@ -1,4 +1,12 @@
-/* pdfEditorPane.css — Styles for the PDF viewer pane */
+/* pdfEditorPane.css — Styles for the PDF.js Viewer layer pane */
+/*
+ * This file provides:
+ *   1. Layout for our custom toolbar, search bar, outline sidebar
+ *   2. Theme overrides for pdf_viewer.css (imported from pdfjs-dist)
+ *      to match Parallx's dark/light theme tokens
+ */
+
+/* ── Root container ────────────────────────────────────────────────────── */
 
 .pdf-editor-pane {
   display: flex;
@@ -8,11 +16,506 @@
   position: relative;
 }
 
-.pdf-embed {
-  flex: 1;
-  border: none;
-  background: #525659;
+/* ── Toolbar ───────────────────────────────────────────────────────────── */
+
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0 6px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+  user-select: none;
+  z-index: 10;
 }
+
+/* ── Toolbar groups — logical clusters with dividers ──────────────────── */
+
+.pdf-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+}
+
+/* Dividers between groups (not before first, not after last) */
+.pdf-toolbar-group + .pdf-toolbar-group::before {
+  content: '';
+  display: block;
+  width: 1px;
+  height: 18px;
+  margin-right: 4px;
+  background: var(--vscode-editorWidget-border, #454545);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+/* No divider before center spacer or after it */
+.pdf-toolbar-spacer + .pdf-toolbar-group::before {
+  display: none;
+}
+
+.pdf-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground, #ccc);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+  position: relative;
+}
+
+.pdf-toolbar-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.pdf-toolbar-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+  color: var(--vscode-foreground, #fff);
+}
+
+.pdf-toolbar-btn:active {
+  background: var(--vscode-toolbar-activeBackground, #5a5d5e80);
+  transform: scale(0.95);
+}
+
+/* Tooltip-like title handled by native title attribute */
+
+.pdf-toolbar-page-input {
+  width: 44px;
+  height: 24px;
+  text-align: center;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 3px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+  font-size: 12px;
+  outline: none;
+  padding: 0 2px;
+  transition: border-color 0.15s ease;
+}
+
+.pdf-toolbar-page-input:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.pdf-toolbar-page-sep {
+  color: var(--vscode-descriptionForeground, #999);
+  font-size: 12px;
+  margin: 0 2px;
+  opacity: 0.7;
+}
+
+.pdf-toolbar-page-total {
+  color: var(--vscode-descriptionForeground, #999);
+  font-size: 12px;
+  min-width: 20px;
+}
+
+.pdf-toolbar-spacer {
+  flex: 1;
+}
+
+.pdf-toolbar-zoom-label {
+  color: var(--vscode-descriptionForeground, #999);
+  font-size: 11px;
+  min-width: 42px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Search bar ────────────────────────────────────────────────────────── */
+
+.pdf-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 8px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+  z-index: 10;
+  animation: pdf-slide-down 0.12s ease-out;
+}
+
+@keyframes pdf-slide-down {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pdf-search-input {
+  flex: 1;
+  max-width: 260px;
+  height: 22px;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 3px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #ccc);
+  font-size: 12px;
+  outline: none;
+  padding: 0 6px;
+  transition: border-color 0.15s ease;
+}
+
+.pdf-search-input:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.pdf-search-input.pdf-search-not-found {
+  border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+}
+
+.pdf-search-match-count {
+  color: var(--vscode-descriptionForeground, #999);
+  font-size: 11px;
+  min-width: 60px;
+  white-space: nowrap;
+}
+
+.pdf-search-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  transition: background 0.1s;
+}
+
+.pdf-search-btn:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.pdf-search-btn:active {
+  background: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.08));
+}
+
+.pdf-search-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Body (sidebar + viewer) ───────────────────────────────────────────── */
+
+.pdf-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Viewer wrapper (flex child, positioning context) ──────────────────── */
+
+.pdf-viewer-wrapper {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Outline sidebar ───────────────────────────────────────────────────── */
+
+.pdf-outline-sidebar {
+  width: 240px;
+  min-width: 150px;
+  max-width: 500px;
+  border-right: 1px solid var(--vscode-editorWidget-border, #454545);
+  background: var(--vscode-sideBar-background, #252526);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+  animation: pdf-sidebar-in 0.15s ease-out;
+}
+
+.pdf-outline-sash {
+  width: 4px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 10;
+  transition: background-color 0.15s;
+}
+
+.pdf-outline-sash:hover,
+.pdf-outline-sash.active {
+  background: var(--vscode-sash-hoverBorder, rgba(0, 122, 204, 0.6));
+}
+
+@keyframes pdf-sidebar-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.pdf-outline-header {
+  height: 30px;
+  line-height: 30px;
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-sideBarSectionHeader-foreground, #bbb);
+  background: var(--vscode-sideBarSectionHeader-background, transparent);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+  user-select: none;
+}
+
+.pdf-outline-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.pdf-outline-item {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  padding-right: 8px;
+  border-radius: 3px;
+  transition: background 0.1s ease;
+}
+
+.pdf-outline-item:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.pdf-outline-item--parent {
+  /* parent rows have clickable children (toggle + title) */
+}
+
+/* ── Outline toggle (expand/collapse arrow) ───────────────────────────── */
+
+.pdf-outline-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  color: var(--vscode-foreground, #ccc);
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity 0.12s ease, background 0.1s ease;
+}
+
+.pdf-outline-toggle:hover {
+  opacity: 1;
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.pdf-outline-item:hover .pdf-outline-toggle {
+  opacity: 1;
+}
+
+.pdf-outline-toggle svg {
+  width: 12px;
+  height: 12px;
+}
+
+.pdf-outline-toggle--leaf {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pdf-outline-toggle--leaf:hover {
+  background: none;
+}
+
+/* ── Outline children (collapsible container) ─────────────────────────── */
+
+.pdf-outline-children {
+  overflow: hidden;
+  transition: max-height 0.2s ease;
+}
+
+.pdf-outline-children--collapsed {
+  display: none;
+}
+
+.pdf-outline-title {
+  font-size: 12px;
+  color: var(--vscode-foreground, #ccc);
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: color 0.1s ease, background 0.1s ease;
+}
+
+.pdf-outline-title:hover {
+  color: var(--vscode-list-hoverForeground, #fff);
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+/* ── Viewer container (PDFViewer binds here) ───────────────────────────── */
+/* PDFViewer constructor requires position: absolute on its container div.
+   The parent .pdf-viewer-wrapper provides the positioning context. */
+
+.pdf-viewer-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: auto;
+  background: var(--vscode-editor-background, #1e1e1e);
+}
+
+/* ── PDF.js Viewer theme overrides ─────────────────────────────────────── */
+
+/* Page background — keep white for readability (PDFs are authored on white) */
+.pdf-editor-pane .pdfViewer .page {
+  background-color: #fff;
+  box-shadow: 0 1px 4px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.35)), 0 0 0 1px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.08));
+  margin: 8px auto;
+  border-radius: 2px;
+}
+
+/* Page gap via padding on pdfViewer */
+.pdf-editor-pane .pdfViewer {
+  padding: 12px 0;
+  --pdfViewer-padding-bottom: 12px;
+}
+
+/* Text layer — selection color follows Parallx theme */
+.pdf-editor-pane .textLayer ::selection {
+  background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.6));
+}
+
+/* Search highlight colors */
+.pdf-editor-pane .textLayer .highlight {
+  --highlight-bg-color: var(--vscode-editor-findMatchHighlightBackground, rgba(230, 175, 46, 0.35));
+  --highlight-selected-bg-color: var(--vscode-editor-findMatchBackground, rgba(80, 145, 230, 0.45));
+}
+
+/* Annotation layer links */
+.pdf-editor-pane .annotationLayer .linkAnnotation > a:hover {
+  background: var(--vscode-editor-hoverHighlightBackground, rgba(255, 255, 0, 0.15));
+}
+
+/* ── Thumbnail sidebar ─────────────────────────────────────────────────── */
+
+.pdf-thumbnail-sidebar {
+  width: 160px;
+  min-width: 140px;
+  max-width: 200px;
+  border-right: 1px solid var(--vscode-editorWidget-border, #454545);
+  background: var(--vscode-sideBar-background, #252526);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+  animation: pdf-sidebar-in 0.15s ease-out;
+}
+
+.pdf-thumbnail-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.pdf-thumbnail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.pdf-thumbnail-item:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.pdf-thumbnail-active {
+  background: var(--vscode-list-activeSelectionBackground, #094771) !important;
+}
+
+.pdf-thumbnail-canvas {
+  max-width: 120px;
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  border-radius: 2px;
+  background: #fff;
+}
+
+.pdf-thumbnail-label {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #999);
+  user-select: none;
+}
+
+/* ── Page label in toolbar ─────────────────────────────────────────────── */
+
+.pdf-toolbar-page-label {
+  color: var(--vscode-descriptionForeground, #999);
+  font-size: 11px;
+  margin: 0 2px;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+/* ── Text selection context menu ───────────────────────────────────────── */
+
+.pdf-context-menu {
+  position: absolute;
+  z-index: 100;
+  min-width: 140px;
+  padding: 4px 0;
+  background: var(--vscode-menu-background, #252526);
+  border: 1px solid var(--vscode-menu-border, #454545);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+  animation: pdf-menu-in 0.1s ease-out;
+}
+
+@keyframes pdf-menu-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.pdf-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--vscode-menu-foreground, #ccc);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.pdf-context-menu-item:hover {
+  background: var(--vscode-menu-selectionBackground, #094771);
+  color: var(--vscode-menu-selectionForeground, #fff);
+}
+
+.pdf-context-menu-item svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+/* ── Loading ───────────────────────────────────────────────────────────── */
 
 .pdf-loading {
   position: absolute;
@@ -20,8 +523,28 @@
   left: 50%;
   transform: translate(-50%, -50%);
   color: var(--vscode-descriptionForeground, #999);
-  font-size: 14px;
+  font-size: 13px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+
+.pdf-loading::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--vscode-descriptionForeground, #999);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: pdf-spin 0.7s linear infinite;
+}
+
+@keyframes pdf-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Error ─────────────────────────────────────────────────────────────── */
 
 .pdf-error {
   position: absolute;
@@ -29,7 +552,10 @@
   left: 50%;
   transform: translate(-50%, -50%);
   color: var(--vscode-errorForeground, #f48771);
-  font-size: 14px;
+  font-size: 13px;
   text-align: center;
   padding: 24px;
+  z-index: 5;
+  max-width: 400px;
+  line-height: 1.5;
 }

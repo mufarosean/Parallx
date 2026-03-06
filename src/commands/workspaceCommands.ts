@@ -71,9 +71,26 @@ export const workspaceAddFolder: CommandDescriptor = {
       return;
     }
 
+    // A9.4: Detect first multi-root creation (going from 1 folder to 2+)
+    const wasSingleFolder = wsService.folders.length === 1;
+
     for (const p of folderPaths) {
       const uri = URI.file(p);
       wsService.addFolder(uri);
+    }
+
+    // A9.4: Prompt for workspace name when creating a multi-root workspace
+    if (wasSingleFolder && wsService.folders.length > 1) {
+      const { showInputBoxModal } = await import('../api/notificationService.js');
+      const name = await showInputBoxModal(document.body, {
+        prompt: 'Name this workspace',
+        value: w.workspace.name === 'Default Workspace' ? '' : w.workspace.name,
+        placeholder: 'Enter a workspace name',
+        validateInput: (v: string) => (v.trim().length === 0 ? 'Name cannot be empty' : undefined),
+      });
+      if (name) {
+        w.workspace.rename(name.trim());
+      }
     }
 
     await w._workspaceSaver.save();

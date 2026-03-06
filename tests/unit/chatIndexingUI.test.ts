@@ -140,8 +140,9 @@ describe('renderContentPart — Reference (Task 6.2)', () => {
     expect(icon).toBeTruthy();
     expect(label).toBeTruthy();
     expect(label!.textContent).toBe('My Canvas Page');
-    // Should have page icon (📄)
-    expect(icon!.textContent).toBe('\uD83D\uDCC4');
+    // Should have page icon (SVG from icon registry)
+    expect(icon!.innerHTML).toContain('<svg');
+    expect(icon!.innerHTML).toContain('viewBox');
   });
 
   it('renders a file reference with file icon', () => {
@@ -151,8 +152,8 @@ describe('renderContentPart — Reference (Task 6.2)', () => {
       label: 'main.ts',
     });
     const icon = el.querySelector('.parallx-chat-reference-icon');
-    // Should have file icon (📁)
-    expect(icon!.textContent).toBe('\uD83D\uDCC1');
+    // Should have file-type icon (SVG from icon registry)
+    expect(icon!.innerHTML).toContain('<svg');
   });
 
   it('has a title attribute for tooltip', () => {

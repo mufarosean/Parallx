@@ -48,6 +48,9 @@ export class WorkspaceService extends Disposable implements IWorkspaceService {
   private readonly _onDidChangeWorkbenchState = this._register(new Emitter<WorkbenchState>());
   readonly onDidChangeWorkbenchState: Event<WorkbenchState> = this._onDidChangeWorkbenchState.event;
 
+  private readonly _onDidRename = this._register(new Emitter<string>());
+  readonly onDidRename: Event<string> = this._onDidRename.event;
+
   /**
    * Bind the workspace host (Workbench). Called once during Phase 3.
    */
@@ -76,6 +79,11 @@ export class WorkspaceService extends Disposable implements IWorkspaceService {
     this._folderSubs.push(
       ws.onDidChangeState((s) => {
         this._onDidChangeWorkbenchState.fire(s);
+      }),
+    );
+    this._folderSubs.push(
+      ws.onDidRename((name) => {
+        this._onDidRename.fire(name);
       }),
     );
   }

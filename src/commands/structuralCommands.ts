@@ -24,7 +24,7 @@ export {
   showCommands, quickOpen, gotoLine,
   toggleSidebar, togglePanel, toggleMaximizedPanel, toggleAuxiliaryBar, toggleStatusBar, toggleZenMode,
   viewMoveToSidebar, viewMoveToPanel, partResize,
-  showSearchView, showExplorerView,
+  showSearchView, showExplorerView, showView,
 } from './viewCommands.js';
 export {
   splitEditor, splitEditorOrthogonal, closeActiveEditor, nextEditor, previousEditor,
@@ -50,7 +50,7 @@ import {
   showCommands, quickOpen, gotoLine,
   toggleSidebar, togglePanel, toggleMaximizedPanel, toggleAuxiliaryBar, toggleStatusBar, toggleZenMode,
   viewMoveToSidebar, viewMoveToPanel, partResize,
-  showSearchView, showExplorerView,
+  showSearchView, showExplorerView, showView,
 } from './viewCommands.js';
 import {
   splitEditor, splitEditorOrthogonal, closeActiveEditor, nextEditor, previousEditor,
@@ -278,6 +278,7 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // Sidebar view switch
   showSearchView,
   showExplorerView,
+  showView,
   // Preferences
   openSettings,
   openKeybindings,

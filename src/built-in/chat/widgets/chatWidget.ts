@@ -776,6 +776,13 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       promptBtn.addEventListener('click', (e) => { e.stopPropagation(); this._showSystemPromptViewer(); });
       container.appendChild(promptBtn);
     }
+
+    // AI Settings gear button (C2)
+    if (this._services.openAISettings) {
+      const gearBtn = createBtn(chatIcons.gear, 'AI Settings (Ctrl+Shift+A)', 'parallx-chat-title-action--settings');
+      gearBtn.addEventListener('click', (e) => { e.stopPropagation(); this._services.openAISettings!(); });
+      container.appendChild(gearBtn);
+    }
   }
 
   // ── System Prompt Viewer (Task 4.10) ──

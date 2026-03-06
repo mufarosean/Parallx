@@ -236,6 +236,15 @@ class ChatResponseStream implements IChatResponseStream {
     this._scheduleUpdate();
   }
 
+  /** Return the concatenated text of all Markdown parts in the response. */
+  getMarkdownText(): string {
+    const parts = this._response.parts as IChatContentPart[];
+    return parts
+      .filter(p => p.kind === ChatContentPartKind.Markdown)
+      .map(p => (p as IChatMarkdownContent).content)
+      .join('');
+  }
+
   replaceLastMarkdown(content: string): void {
     this.throwIfDone();
     const parts = this._response.parts as IChatContentPart[];

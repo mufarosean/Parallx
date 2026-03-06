@@ -200,7 +200,7 @@
   border-radius: 6px;
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
 }
 
 .parallx-chat-picker-item {
@@ -347,7 +347,7 @@
   border-radius: 6px;
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5));
   overflow: hidden;
 }
 
@@ -558,7 +558,7 @@
   border-radius: 8px;
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5));
   overflow: hidden;
 }
 
@@ -1005,7 +1005,7 @@
   border-radius: 6px;
   background: var(--vscode-editorWidget-background, #252526);
   border: 1px solid var(--vscode-editorWidget-border, #454545);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
   overflow: hidden;
   animation: parallx-mention-fadeIn 80ms ease-out;
 }

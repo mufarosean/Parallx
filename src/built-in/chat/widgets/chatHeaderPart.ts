@@ -41,6 +41,9 @@ export class ChatHeaderPart extends Disposable implements IChatHeaderAction {
   private readonly _onClearSession = this._register(new Emitter<void>());
   readonly onClearSession: Event<void> = this._onClearSession.event;
 
+  private readonly _onOpenSettings = this._register(new Emitter<void>());
+  readonly onOpenSettings: Event<void> = this._onOpenSettings.event;
+
   constructor(container: HTMLElement) {
     super();
 
@@ -87,6 +90,15 @@ export class ChatHeaderPart extends Disposable implements IChatHeaderAction {
     );
     this._register(addDisposableListener(clearBtn, 'click', () => this._onClearSession.fire()));
     right.appendChild(clearBtn);
+
+    // Settings (gear) button — opens AI Settings
+    const settingsBtn = this._createActionButton(
+      chatIcons.gear,
+      'AI Settings (Ctrl+Shift+A)',
+      'parallx-chat-header-btn--settings',
+    );
+    this._register(addDisposableListener(settingsBtn, 'click', () => this._onOpenSettings.fire()));
+    right.appendChild(settingsBtn);
   }
 
   // ── Public API ──

@@ -444,6 +444,129 @@ getWorkspaceDigest()
 
 ---
 
+## Menu Pattern (M19)
+
+All context menus must use one of two sanctioned patterns:
+
+### 1. Shared `ContextMenu` — the default
+
+`src/ui/contextMenu.ts` provides a VS Code-patterned floating menu with keyboard navigation, group separators, submenus, keybinding labels, and click-outside-to-dismiss.
+
+**Usage:**
+
+```ts
+import { ContextMenu } from '../ui/contextMenu.js';
+import type { IContextMenuItem } from '../ui/contextMenu.js';
+
+const items: IContextMenuItem[] = [
+  { id: 'copy',   label: 'Copy',   keybinding: 'Ctrl+C', group: 'clipboard' },
+  { id: 'paste',  label: 'Paste',  keybinding: 'Ctrl+V', group: 'clipboard' },
+  { id: 'delete', label: 'Delete', group: 'edit', className: 'danger' },
+];
+
+const menu = ContextMenu.show({
+  items,
+  anchor: { x: event.clientX, y: event.clientY },
+});
+
+menu.onDidSelect(e => {
+  commandService.executeCommand(e.item.id);
+});
+
+// To dismiss programmatically:
+menu.dismiss();
+```
+
+**Key points:**
+
+- `id` is required on every item and should match the command ID when possible.
+- `group` drives automatic group separators — items with the same group appear together, a separator is inserted between different groups.
+- `onDidSelect` fires when the user picks an item. The handler runs the action.
+- `ContextMenu.show()` returns an instance; call `instance.dismiss()` to close it. There is no static `hide()`.
+- The menu auto-dismisses on click-outside and on item selection.
+
+**Who uses it:** 14+ call sites across the app (explorer, editor tabs, search, views, sidebar, menu contributions, etc.).
+
+### 2. Canvas `CanvasMenuRegistry` — canvas-internal only
+
+`src/built-in/canvas/menus/canvasMenuRegistry.ts` manages 10+ menu surfaces specific to the canvas (block menus, page chrome, icon/cover pickers, bookmarks, etc.). It registers items declaratively and renders them through the canvas gate architecture.
+
+**When to use:** Only for menus that are part of the canvas editing experience and need access to canvas-internal state (block types, page data, etc.).
+
+**Rule:** Code outside `src/built-in/canvas/` must not import from `CanvasMenuRegistry`.
+
+### Adding menus in tools
+
+Tool-contributed menus (`contributes.menus` in the tool manifest) are processed by `src/contributions/menuContribution.ts`, which builds `IContextMenuItem[]` arrays and delegates to the shared `ContextMenu`. Tool authors never construct menus with raw DOM — the contribution system handles it.
+
+### IMenuService decision (M19 A3.4)
+
+**Decision: Not warranted at this time.**
+
+A DI-registered `IMenuService` (like VS Code's `MenuRegistry` + `IMenuService`) would formalize menu contribution, support dynamic when-clause filtering, and unify the command palette with context menus. However:
+
+1. **14+ files already consistently use `ContextMenu.show()`** — the pattern is well-established and understood.
+2. **Tool menus flow through `menuContribution.ts`** — the contribution processor already acts as a lightweight menu service for tools.
+3. **Canvas menus are deliberately isolated** behind the gate architecture — forcing them through a global service would break the gate contract.
+4. **The command palette** (`src/commands/commandPalette.ts`) is a fundamentally different UI (filtered list with search) that shares commands but not rendering logic.
+
+If the app grows to need per-view dynamic menu contribution from 20+ tools with complex when-clause evaluation, introducing `IMenuService` would be appropriate. For now, the current `ContextMenu` + `menuContribution.ts` + `CanvasMenuRegistry` trio is sufficient and well-documented.
+
+---
+
+## Icon System (M19)
+
+All icons across Parallx are registered in a shared icon registry (`src/ui/iconRegistry.ts`). Individual modules (canvas, chat, PDF) may define their own icon constants but storage is centralised.
+
+### Registry API
+
+```ts
+import { registerIcon, getIcon, getFileTypeIcon, getFolderIcon, getPageIcon } from '../ui/iconRegistry.js';
+
+// Register a custom icon
+registerIcon('my-tool-search', '<svg ...>...</svg>');
+
+// Retrieve by ID
+const svg = getIcon('my-tool-search');
+
+// File-type icon by extension (handles leading dot)
+const icon = getFileTypeIcon('.ts');   // → TypeScript file icon SVG
+const icon2 = getFileTypeIcon('pdf');  // → PDF file icon SVG
+```
+
+### Naming Conventions
+
+| Pattern | Example | Use |
+|---------|---------|-----|
+| `file-<type>` | `file-ts`, `file-pdf`, `file-folder`, `file-page` | File-type icons (16×16) |
+| `avatar-<name>` | `avatar-brain`, `avatar-robot`, `avatar-fox` | AI persona avatars (20×20) |
+| `icon-<domain>-<name>` | `icon-chat-send`, `icon-canvas-bold` | Domain-specific UI icons |
+| `gear` | `gear` | Shared settings/gear icon |
+
+### Size Requirements
+
+| Category | ViewBox | Style |
+|----------|---------|-------|
+| File-type icons | 16×16 | Stroke-based, monochrome (`currentColor`), `stroke-width="1.2"` |
+| Avatar icons | 20×20 | Stroke-based, monochrome (`currentColor`), `stroke-width="1.3"` |
+| UI action icons | 16×16 | Stroke-based, monochrome (`currentColor`) |
+
+### Rules
+
+1. **All icons use `currentColor`** — they inherit colour from the parent element and respond to theme changes.
+2. **Stroke-based, not filled** — consistent minimalist aesthetic across the app.
+3. **Register at module load** — icons are registered via `registerIcon()` when the module evaluates, before any UI renders.
+4. **Use `getFileTypeIcon(ext)` for file references** — never hardcode emojis (📁, 📄) for file-type indicators. The helper resolves extension aliases (e.g. `.jpg` → `image`, `.mjs` → `js`).
+5. **Canvas icons stay behind the gate** — `src/built-in/canvas/config/canvasIcons.ts` has its own internal icon set managed via `IconRegistry` (the canvas gate). App-level code should not import canvas-internal icons directly.
+
+### Available Icon Sets
+
+- **File-type icons** (22): `file`, `folder`, `md`, `pdf`, `txt`, `json`, `yaml`, `js`, `ts`, `jsx`, `tsx`, `py`, `rs`, `go`, `css`, `html`, `image`, `page`, plus extension aliases
+- **Avatar icons** (12): `brain`, `briefcase`, `pen`, `coins`, `microscope`, `chart`, `target`, `robot`, `fox`, `wave`, `lightning`, `puzzle`
+- **Shared utility**: `gear`
+
+---
+
 ## Window Semantics (M14)
 
 ### Strategy: Single Window + Full-Page Reload
