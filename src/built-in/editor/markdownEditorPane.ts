@@ -14,6 +14,7 @@ import { type IEditorInput } from '../../editor/editorInput.js';
 import { DisposableStore } from '../../platform/lifecycle.js';
 import { FileEditorInput } from './fileEditorInput.js';
 import { MarkdownPreviewInput } from './markdownPreviewInput.js';
+import { ReadonlyMarkdownInput } from './readonlyMarkdownInput.js';
 import { $ } from '../../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -54,6 +55,15 @@ export class MarkdownEditorPane extends EditorPane {
     _previous: IEditorInput | undefined,
   ): Promise<void> {
     this._inputListeners.clear();
+
+    // ReadonlyMarkdownInput — in-memory content, no file resolution needed
+    if (input instanceof ReadonlyMarkdownInput) {
+      this._renderMarkdown(input.content);
+      this._inputListeners.add(input.onDidChangeContent((newContent) => {
+        this._renderMarkdown(newContent);
+      }));
+      return;
+    }
 
     // Accept MarkdownPreviewInput (wraps FileEditorInput) or direct FileEditorInput
     const fileInput = input instanceof MarkdownPreviewInput

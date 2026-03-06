@@ -52,7 +52,7 @@ import type { IWorkspaceSessionContext } from '../../../workspace/workspaceSessi
 
 import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { extractTextContent } from '../tools/builtInTools.js';
-import { UntitledEditorInput } from '../../editor/untitledEditorInput.js';
+import { ReadonlyMarkdownInput } from '../../editor/readonlyMarkdownInput.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -1058,7 +1058,7 @@ export class ChatDataService {
         ].join('\n');
       }
 
-      const input = UntitledEditorInput.createReadonly(content, 'Session Memory');
+      const input = ReadonlyMarkdownInput.create(content, 'Session Memory');
       await this._d.editorService.openEditor(input, { pinned: false });
     } catch (err) {
       console.error('[ChatDataService] openMemoryViewer failed:', err);

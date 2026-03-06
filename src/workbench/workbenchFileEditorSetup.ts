@@ -31,6 +31,7 @@ import { GroupDirection } from '../editor/editorTypes.js';
 import { FileEditorInput } from '../built-in/editor/fileEditorInput.js';
 import { UntitledEditorInput } from '../built-in/editor/untitledEditorInput.js';
 import { MarkdownPreviewInput } from '../built-in/editor/markdownPreviewInput.js';
+import { ReadonlyMarkdownInput } from '../built-in/editor/readonlyMarkdownInput.js';
 import { ImageEditorInput } from '../built-in/editor/imageEditorInput.js';
 import { PdfEditorInput } from '../built-in/editor/pdfEditorInput.js';
 import { KeybindingsEditorInput } from '../built-in/editor/keybindingsEditorInput.js';
@@ -139,6 +140,7 @@ function _initFileEditorResolver(
   // 2. Pane factory (routes input → pane)
   disposables.add(registerEditorPaneFactory((input) => {
     if (input instanceof MarkdownPreviewInput) return new MarkdownEditorPane();
+    if (input instanceof ReadonlyMarkdownInput) return new MarkdownEditorPane();
     if (input instanceof ImageEditorInput) return new ImageEditorPane();
     if (input instanceof PdfEditorInput) return new PdfEditorPane();
 
