@@ -485,13 +485,26 @@ VectorStoreService        TokenBudgetManager
 
 > Ensure the user always knows what happened.
 
-### Task D.1 — Inline save indicators (2h)
+### Task D.1 — Inline save indicators (2h) ✅
+- Added `showSaveIndicator(element)` utility in `sectionBase.ts`: creates "✓ Saved" span, fades in, holds 1.5s, fades out
+- Added `_notifySaved(key)` protected method on `SettingsSection` base class: finds row by `data-setting-key`, calls `showSaveIndicator`
+- All 8 sections with editable fields updated: personaSection (3), chatSection (6), suggestionsSection (3), modelSection (4), retrievalSection (4+budget), agentSection (1), indexingSection (4)
+- CSS: `.ai-settings-save-indicator` with opacity transition
+
+**Original spec:**
 - After any field change: show a brief "✓ Saved" label next to the control
   (fade in, hold 1.5s, fade out)
 - Implementation: utility function `showSaveIndicator(element: HTMLElement)`
 - Applied universally in `sectionBase.ts`'s `_onFieldChange()` handler
 
-### Task D.2 — Toast notifications for significant actions (1h)
+### Task D.2 — Toast notifications for significant actions (1h) ✅
+- Wired `INotificationService` in `ai-settings/main.ts`
+- Preset switch: tracks `_lastPresetName`, fires toast on change
+- Workspace override created: tracks `_lastOverrideCount`, toasts when first override appears
+- Workspace override cleared: toasts when override drops to 0 or workspace override removed
+- Memory cleared toast: deferred to Phase F
+
+**Original spec:**
 - Preset switched → toast: "Switched to preset: Research Mode"
 - Workspace override created → toast: "Workspace override saved"
 - Workspace override cleared → toast: "Reset to global preset"
@@ -499,12 +512,22 @@ VectorStoreService        TokenBudgetManager
 - Imported from config.json → toast: "Imported AI settings from .parallx/config.json"
 - Use existing `INotificationService`
 
-### Task D.3 — Clone-on-write notification (1h)
+### Task D.3 — Clone-on-write notification (1h) ✅
+- Added `onDidCloneBuiltIn: Event<{originalName, cloneName}>` to `IUnifiedAIConfigService` interface
+- Emitter fires in `_cloneBuiltIn()` in `unifiedAIConfigService.ts`
+- `main.ts` listens and fires toast: "Built-in preset 'X' is read-only. Created editable copy: 'X (Modified)'"
+
+**Original spec:**
 - When editing a built-in preset triggers clone-on-write, show a toast:
   "Built-in preset 'Default' is read-only. Created editable copy: 'Default (Modified)'"
 - Currently this happens silently — user may not realize they're on a new preset
 
-### Task D.4 — Status bar enhancements (1h)
+### Task D.4 — Status bar enhancements (1h) ✅
+- Tooltip updated: "Click to open AI Hub" (base), extended with preset name + workspace override count when overrides exist
+- Format: "Active preset: X. Workspace overrides: N fields. Click to open AI Hub."
+- Already had preset name + ⚙ indicator from Phase B; this adds explicit AI Hub wording
+
+**Original spec:**
 - Show preset name + workspace indicator: "AI: Research Mode" or "AI: Research Mode ⚙" (if workspace override active)
 - Tooltip: "Click to open AI Hub. Active preset: Research Mode. Workspace overrides: 3 fields."
 
@@ -605,10 +628,10 @@ VectorStoreService        TokenBudgetManager
 | **C.3** | Retrieval section UI | 3h | C.1, A.4 | ✅ |
 | **C.4** | Agent controls | 1h | C.1, A.4 | ✅ |
 | **C.5** | Indexing section UI | 2h | C.1, A.4 | ✅ |
-| **D.1** | Inline save indicators | 2h | C.1 | ⬜ |
-| **D.2** | Toast notifications | 1h | A.2 | ⬜ |
-| **D.3** | Clone-on-write notification | 1h | D.2 | ⬜ |
-| **D.4** | Status bar enhancements | 1h | B.2 | ⬜ |
+| **D.1** | Inline save indicators | 2h | C.1 | ✅ |
+| **D.2** | Toast notifications | 1h | A.2 | ✅ |
+| **D.3** | Clone-on-write notification | 1h | D.2 | ✅ |
+| **D.4** | Status bar enhancements | 1h | B.2 | ✅ |
 | **E.1** | Tool section in AI Hub | 3h | C.1 | ⬜ |
 | **E.2** | Deprecate modal tool picker | 1h | E.1 | ⬜ |
 | **E.3** | Per-workspace tool overrides | 2h | E.1, B.1 | ⬜ |
@@ -642,9 +665,10 @@ VectorStoreService        TokenBudgetManager
 - [x] Scope indicators show "Global" vs "Workspace ↩" correctly (click to reset)
 
 ### Phase D
-- [ ] "✓ Saved" indicator appears after every field change
-- [ ] Toast fires on preset switch, override clear, memory clear
-- [ ] Clone-on-write shows explanatory toast
+- [x] "✓ Saved" indicator appears after every field change (all 8 editable sections wired)
+- [x] Toast fires on preset switch, workspace override create/clear
+- [x] Clone-on-write shows explanatory toast via `onDidCloneBuiltIn` event
+- [x] Status bar shows "Click to open AI Hub" with workspace override details
 - [ ] Status bar shows workspace override indicator
 
 ### Phase E

@@ -170,6 +170,10 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
 
   private readonly _onDidChangeLegacy: Emitter<AISettingsProfile>;
 
+  /** Fires when a built-in preset is cloned on write. */
+  private readonly _onDidCloneBuiltInEmitter: Emitter<{ originalName: string; cloneName: string }>;
+  readonly onDidCloneBuiltIn: Event<{ originalName: string; cloneName: string }>;
+
   constructor(
     private readonly _storage: IStorage,
     private readonly _languageModelsService: ILanguageModelsService | undefined,
@@ -179,6 +183,8 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
     this.onDidChangeConfig = this._onDidChangeUnified.event;
     this._onDidChangeLegacy = this._register(new Emitter<AISettingsProfile>());
     this.onDidChange = this._onDidChangeLegacy.event;
+    this._onDidCloneBuiltInEmitter = this._register(new Emitter<{ originalName: string; cloneName: string }>());
+    this.onDidCloneBuiltIn = this._onDidCloneBuiltInEmitter.event;
   }
 
   // ── Initialization ──
@@ -814,6 +820,10 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
     };
     this._presets.push(clone);
     this._activePresetId = clone.id;
+    this._onDidCloneBuiltInEmitter.fire({
+      originalName: preset.presetName,
+      cloneName: clone.presetName,
+    });
     return clone;
   }
 

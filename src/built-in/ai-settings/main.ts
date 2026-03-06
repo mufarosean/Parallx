@@ -5,7 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { IAISettingsService, IUnifiedAIConfigService } from '../../services/serviceTypes.js';
+import { IAISettingsService, IUnifiedAIConfigService, INotificationService } from '../../services/serviceTypes.js';
 import { ILanguageModelsService } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
 import { getIcon } from '../../ui/iconRegistry.js';
@@ -63,6 +63,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../services/chatTypes.js').ILanguageModelsService>(ILanguageModelsService)
     : undefined;
 
+  // Get the Notification service for toast messages (M20 D.2/D.3)
+  const notificationService = api.services.has(INotificationService)
+    ? api.services.get<import('../../api/notificationService.js').NotificationService>(INotificationService)
+    : undefined;
+
   // Register view provider
   context.subscriptions.push(
     api.views.registerViewProvider('view.aiSettings', {
@@ -90,7 +95,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // Helper: build status text + tooltip with workspace scope indicator (M20 B.2)
   function updateStatusBar(presetName: string): void {
     let text = `AI: ${presetName}`;
-    let tooltip = 'Open AI Settings';
+    let tooltip = 'Click to open AI Hub';
     if (unifiedConfigService) {
       const wsOverride = unifiedConfigService.getWorkspaceOverride();
       const overriddenKeys = unifiedConfigService.getOverriddenKeys();
@@ -103,7 +108,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         if (overriddenKeys.length > 0) {
           parts.push(`Workspace overrides: ${overriddenKeys.length} field${overriddenKeys.length > 1 ? 's' : ''}`);
         }
-        tooltip = parts.join('. ') + '. Click to configure.';
+        parts.push('Click to open AI Hub');
+        tooltip = parts.join('. ') + '.';
       }
     }
     statusItem.text = text;
@@ -129,6 +135,52 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       updateStatusBar(profile.presetName);
     });
     context.subscriptions.push(unifiedListener);
+  }
+
+  // ── Toast Notifications (M20 D.2) ──
+
+  if (notificationService) {
+    // Track preset name for switch detection
+    let _lastPresetName = aiSettingsService.getActiveProfile().presetName;
+
+    const presetSwitchListener = aiSettingsService.onDidChange((profile) => {
+      if (profile.presetName !== _lastPresetName) {
+        notificationService.info(`Switched to preset: ${profile.presetName}`);
+        _lastPresetName = profile.presetName;
+      }
+    });
+    context.subscriptions.push(presetSwitchListener);
+
+    // Workspace override toasts
+    if (unifiedConfigService) {
+      let _lastOverrideCount = unifiedConfigService.getOverriddenKeys().length;
+      let _hadOverride = !!unifiedConfigService.getWorkspaceOverride();
+
+      const overrideListener = unifiedConfigService.onDidChangeConfig(() => {
+        const currentCount = unifiedConfigService.getOverriddenKeys().length;
+        const hasOverride = !!unifiedConfigService.getWorkspaceOverride();
+
+        if (currentCount > _lastOverrideCount && _lastOverrideCount === 0) {
+          notificationService.info('Workspace override saved');
+        } else if (!hasOverride && _hadOverride) {
+          notificationService.info('Reset to global preset');
+        } else if (currentCount === 0 && _lastOverrideCount > 0 && hasOverride) {
+          notificationService.info('Reset to global preset');
+        }
+
+        _lastOverrideCount = currentCount;
+        _hadOverride = hasOverride;
+      });
+      context.subscriptions.push(overrideListener);
+
+      // Clone-on-write notification (M20 D.3)
+      const cloneListener = unifiedConfigService.onDidCloneBuiltIn(({ originalName, cloneName }) => {
+        notificationService.info(
+          `Built-in preset '${originalName}' is read-only. Created editable copy: '${cloneName}'`,
+        );
+      });
+      context.subscriptions.push(cloneListener);
+    }
   }
 }
 

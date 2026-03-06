@@ -53,6 +53,7 @@ export class SuggestionsSection extends SettingsSection {
     }));
     this._register(this._enabledToggle.onDidChange((checked) => {
       this._service.updateActiveProfile({ suggestions: { suggestionsEnabled: checked } });
+      this._notifySaved('suggestions.suggestionsEnabled');
     }));
     this._addRow(enabledRow.row);
 
@@ -82,6 +83,7 @@ export class SuggestionsSection extends SettingsSection {
         suggestions: { suggestionConfidenceThreshold: value / 100 },
       });
       this._confidenceDesc.textContent = getConfidenceDescription(value);
+      this._notifySaved('suggestions.suggestionConfidenceThreshold');
     }));
     this._addRow(confidenceRow.row);
 
@@ -111,6 +113,7 @@ export class SuggestionsSection extends SettingsSection {
       const n = parseInt(value, 10);
       if (!isNaN(n) && n >= 1 && n <= 20) {
         this._service.updateActiveProfile({ suggestions: { maxPendingSuggestions: n } });
+        this._notifySaved('suggestions.maxPendingSuggestions');
       }
     }));
     this._addRow(backlogRow.row);

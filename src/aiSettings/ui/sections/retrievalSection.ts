@@ -67,6 +67,7 @@ export class RetrievalSection extends SettingsSection {
     }));
     this._register(this._autoRagToggle.onDidChange((checked) => {
       this._updateRetrieval({ autoRag: checked });
+      this._notifySaved('retrieval.autoRag');
     }));
     this._addRow(autoRagRow.row);
 
@@ -91,6 +92,7 @@ export class RetrievalSection extends SettingsSection {
     this._register(this._topKSlider.onDidChange((value) => {
       this._topKValue.textContent = String(value);
       this._updateRetrieval({ ragTopK: value });
+      this._notifySaved('retrieval.ragTopK');
     }));
     this._addRow(topKRow.row);
 
@@ -116,6 +118,7 @@ export class RetrievalSection extends SettingsSection {
       const threshold = value / 100;
       this._thresholdValue.textContent = threshold.toFixed(2);
       this._updateRetrieval({ ragScoreThreshold: threshold });
+      this._notifySaved('retrieval.ragScoreThreshold');
     }));
     this._addRow(thresholdRow.row);
 
@@ -282,6 +285,7 @@ export class RetrievalSection extends SettingsSection {
         userMessage: values[3],
       },
     });
+    this._notifySaved('retrieval.contextBudget');
   }
 
   private _updateBudgetBar(): void {

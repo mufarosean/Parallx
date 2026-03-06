@@ -8,6 +8,35 @@ import { $ } from '../../ui/dom.js';
 import type { IAISettingsService, AISettingsProfile } from '../aiSettingsTypes.js';
 import type { IUnifiedAIConfigService } from '../unifiedConfigTypes.js';
 
+// ─── Save Indicator ──────────────────────────────────────────────────────────
+
+/**
+ * Show a brief "✓ Saved" indicator next to a control.
+ * Fades in, holds 1.5s, fades out. Removes itself from the DOM when done.
+ */
+export function showSaveIndicator(element: HTMLElement): void {
+  // Remove any existing indicator on this element first
+  const existing = element.querySelector('.ai-settings-save-indicator');
+  if (existing) existing.remove();
+
+  const indicator = document.createElement('span');
+  indicator.className = 'ai-settings-save-indicator';
+  indicator.textContent = '✓ Saved';
+  element.appendChild(indicator);
+
+  // Trigger fade-in (rAF allows CSS transition to kick in)
+  requestAnimationFrame(() => {
+    indicator.classList.add('ai-settings-save-indicator--visible');
+  });
+
+  // Hold 1.5s, then fade out
+  setTimeout(() => {
+    indicator.classList.remove('ai-settings-save-indicator--visible');
+    // Remove from DOM after fade-out transition
+    setTimeout(() => indicator.remove(), 300);
+  }, 1500);
+}
+
 // ─── Setting Row ─────────────────────────────────────────────────────────────
 
 export interface ISettingRowOptions {
@@ -169,5 +198,16 @@ export abstract class SettingsSection extends Disposable {
   protected _addRow(row: HTMLElement): void {
     this._rows.push(row);
     this.contentElement.appendChild(row);
+  }
+
+  /**
+   * Show a "✓ Saved" indicator on the row matching the given setting key.
+   * Call this after persisting a field change.
+   */
+  protected _notifySaved(key: string): void {
+    const row = this._rows.find(r => r.dataset.settingKey === key);
+    if (row) {
+      showSaveIndicator(row);
+    }
   }
 }

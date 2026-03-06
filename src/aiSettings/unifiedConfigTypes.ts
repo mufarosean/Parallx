@@ -297,6 +297,9 @@ export interface IUnifiedAIConfigService extends IDisposable {
 
   /** Fires whenever the effective config changes (preset switch, override, field edit). */
   readonly onDidChangeConfig: Event<IUnifiedAIConfig>;
+
+  /** Fires when a built-in preset is cloned on write (D.3). */
+  readonly onDidCloneBuiltIn: Event<{ originalName: string; cloneName: string }>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

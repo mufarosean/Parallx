@@ -58,6 +58,7 @@ export class ModelSection extends SettingsSection {
 
     this._register(this._defaultModelDropdown.onDidChange((value) => {
       this._service.updateActiveProfile({ model: { defaultModel: value } });
+      this._notifySaved('model.defaultModel');
     }));
     this._addRow(defaultModelRow.row);
 
@@ -102,6 +103,7 @@ export class ModelSection extends SettingsSection {
       const temp = value / 100;
       this._service.updateActiveProfile({ model: { temperature: temp } });
       this._temperatureValue.textContent = `Current value: ${temp.toFixed(2)}`;
+      this._notifySaved('model.temperature');
     }));
     this._addRow(tempRow.row);
 
@@ -131,6 +133,7 @@ export class ModelSection extends SettingsSection {
       if (!isNaN(n) && n >= 0) {
         this._service.updateActiveProfile({ model: { maxTokens: n } });
         this._maxTokensWarning.style.display = (n > 0 && n < 200) ? '' : 'none';
+        this._notifySaved('model.maxTokens');
       }
     }));
     this._addRow(maxTokensRow.row);
@@ -155,6 +158,7 @@ export class ModelSection extends SettingsSection {
       const n = parseInt(value, 10);
       if (!isNaN(n) && n >= 0) {
         this._service.updateActiveProfile({ model: { contextWindow: n } });
+        this._notifySaved('model.contextWindow');
       }
     }));
     this._addRow(ctxRow.row);

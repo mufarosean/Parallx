@@ -50,6 +50,7 @@ export class PersonaSection extends SettingsSection {
     }));
     this._register(this._nameInput.onDidChange((value) => {
       this._service.updateActiveProfile({ persona: { name: value } });
+      this._notifySaved('persona.name');
     }));
     this._addRow(nameRow.row);
 
@@ -68,6 +69,7 @@ export class PersonaSection extends SettingsSection {
     }));
     this._register(this._descInput.onDidChange((value) => {
       this._service.updateActiveProfile({ persona: { description: value } });
+      this._notifySaved('persona.description');
     }));
     this._addRow(descRow.row);
 
@@ -90,6 +92,7 @@ export class PersonaSection extends SettingsSection {
       btn.setAttribute('aria-label', `Select avatar ${avatarId.replace('avatar-', '')}`);
       btn.addEventListener('click', () => {
         this._service.updateActiveProfile({ persona: { avatarEmoji: avatarId } });
+        this._notifySaved('persona.avatar');
       });
       avatarGrid.appendChild(btn);
       this._avatarButtons.push(btn);

@@ -57,6 +57,7 @@ export class AgentSection extends SettingsSection {
     this._register(this._maxIterationsSlider.onDidChange((value) => {
       this._maxIterationsValue.textContent = String(value);
       this._updateAgent({ maxIterations: value });
+      this._notifySaved('agent.maxIterations');
     }));
     this._addRow(iterRow.row);
 

@@ -73,6 +73,7 @@ export class IndexingSection extends SettingsSection {
     }));
     this._register(this._autoIndexToggle.onDidChange((checked) => {
       this._updateIndexing({ autoIndex: checked });
+      this._notifySaved('indexing.autoIndex');
     }));
     this._addRow(autoRow.row);
 
@@ -90,6 +91,7 @@ export class IndexingSection extends SettingsSection {
     }));
     this._register(this._watchFilesToggle.onDidChange((checked) => {
       this._updateIndexing({ watchFiles: checked });
+      this._notifySaved('indexing.watchFiles');
     }));
     this._addRow(watchRow.row);
 
@@ -109,6 +111,7 @@ export class IndexingSection extends SettingsSection {
     this._register(this._maxFileSizeInput.onDidChange((value) => {
       const bytes = parseBytes(value);
       this._updateIndexing({ maxFileSize: bytes });
+      this._notifySaved('indexing.maxFileSize');
     }));
     this._addRow(sizeRow.row);
 
@@ -129,6 +132,7 @@ export class IndexingSection extends SettingsSection {
     this._register(this._excludeTextarea.onDidChange((value) => {
       const patterns = value.split('\n').map(l => l.trim()).filter(Boolean);
       this._updateIndexing({ excludePatterns: patterns });
+      this._notifySaved('indexing.excludePatterns');
     }));
     this._addRow(excludeRow.row);
   }

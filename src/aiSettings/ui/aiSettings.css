@@ -632,3 +632,20 @@
   border-left: 3px solid var(--vscode-textBlockQuote-border, rgba(255, 255, 255, 0.1));
   border-radius: 3px;
 }
+
+/* ── Save Indicator (D.1) ─────────────────────────────────────────────── */
+
+.ai-settings-save-indicator {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--vscode-testing-iconPassed, #73c991);
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  pointer-events: none;
+  vertical-align: middle;
+}
+
+.ai-settings-save-indicator--visible {
+  opacity: 1;
+}

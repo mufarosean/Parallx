@@ -60,6 +60,7 @@ export class ChatSection extends SettingsSection {
     }));
     this._register(this._responseLengthDropdown.onDidChange((value) => {
       this._service.updateActiveProfile({ chat: { responseLength: value as AIResponseLength } });
+      this._notifySaved('chat.responseLength');
     }));
     this._addRow(lengthRow.row);
 
@@ -82,6 +83,7 @@ export class ChatSection extends SettingsSection {
     }));
     this._register(this._toneControl.onDidChange((value) => {
       this._service.updateActiveProfile({ suggestions: { tone: value as AITone } });
+      this._notifySaved('suggestions.tone');
     }));
     this._addRow(toneRow.row);
 
@@ -108,6 +110,7 @@ export class ChatSection extends SettingsSection {
     this._register(this._domainDropdown.onDidChange((value) => {
       this._service.updateActiveProfile({ suggestions: { focusDomain: value as AIFocusDomain } });
       this._toggleCustomFocus(value === 'custom');
+      this._notifySaved('suggestions.focusDomain');
     }));
     this._addRow(domainRow.row);
 
@@ -128,6 +131,7 @@ export class ChatSection extends SettingsSection {
     }));
     this._register(this._customFocusTextarea.onDidChange((value) => {
       this._service.updateActiveProfile({ suggestions: { customFocusDescription: value } });
+      this._notifySaved('suggestions.customFocusDescription');
     }));
     this._addRow(customFocusRow.row);
 
@@ -182,6 +186,7 @@ export class ChatSection extends SettingsSection {
         chat: { systemPromptIsCustom: checked },
       });
       this._systemPromptTextarea.readonly = !checked;
+      this._notifySaved('chat.systemPromptIsCustom');
     }));
 
     // Warning message
@@ -226,6 +231,7 @@ export class ChatSection extends SettingsSection {
     // ── Events: system prompt textarea changes ──
     this._register(this._systemPromptTextarea.onDidChange((value) => {
       this._service.updateActiveProfile({ chat: { systemPrompt: value } });
+      this._notifySaved('chat.systemPrompt');
     }));
 
     // ── Reset section link ──
