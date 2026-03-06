@@ -88,7 +88,7 @@ export class AISettingsPanel extends Disposable {
     // ── Build Sections ──
     this._sections = [
       this._register(new PersonaSection(this._service)),
-      this._register(new ChatSection(this._service)),
+      this._register(new ChatSection(this._service, this._unifiedConfigService)),
       this._register(new SuggestionsSection(this._service)),
       this._register(new ModelSection(this._service, this._languageModelsService)),
       this._register(new RetrievalSection(this._service, this._unifiedConfigService)),

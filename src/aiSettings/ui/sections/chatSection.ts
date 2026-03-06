@@ -15,6 +15,8 @@ import { SegmentedControl } from '../../../ui/segmentedControl.js';
 import { Textarea } from '../../../ui/textarea.js';
 import { Toggle } from '../../../ui/toggle.js';
 import type { IAISettingsService, AISettingsProfile, AIResponseLength, AITone, AIFocusDomain } from '../../aiSettingsTypes.js';
+import type { IUnifiedAIConfigService } from '../../unifiedConfigTypes.js';
+import { DEFAULT_UNIFIED_CONFIG } from '../../unifiedConfigTypes.js';
 import { DEFAULT_PROFILE } from '../../aiSettingsDefaults.js';
 import { generateChatSystemPrompt, buildGenInputFromProfile } from '../../systemPromptGenerator.js';
 import { SettingsSection, createSettingRow } from '../sectionBase.js';
@@ -23,6 +25,7 @@ import { SettingsSection, createSettingRow } from '../sectionBase.js';
 
 export class ChatSection extends SettingsSection {
 
+  private _workspaceDescriptionTextarea!: Textarea;
   private _responseLengthDropdown!: Dropdown;
   private _toneControl!: SegmentedControl;
   private _domainDropdown!: Dropdown;
@@ -35,11 +38,34 @@ export class ChatSection extends SettingsSection {
   private _promptCollapsible!: HTMLElement;
   private _promptCollapseBtn!: HTMLButtonElement;
 
-  constructor(service: IAISettingsService) {
+  private readonly _unifiedService: IUnifiedAIConfigService | undefined;
+
+  constructor(service: IAISettingsService, unifiedService?: IUnifiedAIConfigService) {
     super(service, 'chat', 'Chat');
+    this._unifiedService = unifiedService;
   }
 
   build(): void {
+    // ── Workspace Description ──
+    const wsDescRow = createSettingRow({
+      label: 'Workspace Description',
+      description: 'Describe what this workspace contains so the AI understands what "workspace" means in context. Leave empty for auto-generated.',
+      key: 'chat.workspaceDescription',
+      onReset: () => this._updateChat({ workspaceDescription: DEFAULT_UNIFIED_CONFIG.chat.workspaceDescription }),
+      scopePath: 'chat.workspaceDescription',
+      unifiedService: this._unifiedService,
+    });
+    this._workspaceDescriptionTextarea = this._register(new Textarea(wsDescRow.controlSlot, {
+      placeholder: 'e.g. This workspace contains my auto insurance documents, claims guides, agent contacts, and vehicle information for managing my car insurance.',
+      rows: 3,
+      ariaLabel: 'Workspace description',
+    }));
+    this._register(this._workspaceDescriptionTextarea.onDidChange((value) => {
+      this._updateChat({ workspaceDescription: value });
+      this._notifySaved('chat.workspaceDescription');
+    }));
+    this._addRow(wsDescRow.row);
+
     // ── Response Length ──
     const lengthRow = createSettingRow({
       label: 'Response Length',
@@ -239,6 +265,14 @@ export class ChatSection extends SettingsSection {
   }
 
   update(profile: AISettingsProfile): void {
+    // Workspace description (from unified config)
+    const wsDesc = this._unifiedService
+      ? this._unifiedService.getEffectiveConfig().chat.workspaceDescription
+      : DEFAULT_UNIFIED_CONFIG.chat.workspaceDescription;
+    if (this._workspaceDescriptionTextarea.value !== wsDesc) {
+      this._workspaceDescriptionTextarea.value = wsDesc;
+    }
+
     // Response length
     if (this._responseLengthDropdown.value !== profile.chat.responseLength) {
       this._responseLengthDropdown.value = profile.chat.responseLength;
@@ -278,6 +312,12 @@ export class ChatSection extends SettingsSection {
       : generateChatSystemPrompt(buildGenInputFromProfile(profile));
     if (this._effectivePromptTextarea.value !== effectivePrompt) {
       this._effectivePromptTextarea.value = effectivePrompt;
+    }
+  }
+
+  private _updateChat(patch: Partial<import('../../unifiedConfigTypes.js').IUnifiedAIConfig['chat']>): void {
+    if (this._unifiedService) {
+      this._unifiedService.updateActivePreset({ chat: patch });
     }
   }
 

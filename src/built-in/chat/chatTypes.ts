@@ -411,6 +411,12 @@ export interface ISystemPromptContext {
   readonly isIndexing?: boolean;
   readonly promptOverlay?: string;
   readonly workspaceDigest?: string;
+  /**
+   * User-editable description of the workspace's purpose and contents.
+   * Injected into the system prompt before the digest to prime the AI's
+   * understanding of what "workspace" means in this context.
+   */
+  readonly workspaceDescription?: string;
 }
 
 /** Mode capability matrix (Ask/Edit/Agent). */

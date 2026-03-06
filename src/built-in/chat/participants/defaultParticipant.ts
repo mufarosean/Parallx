@@ -411,6 +411,10 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     const aiProfile = services.aiSettingsService?.getActiveProfile();
     const promptOverlay = aiProfile?.chat.systemPrompt || promptOverlayFromFiles;
 
+    // Workspace description — primes the AI with what "workspace" means here.
+    // Read from unified config; falls back to empty (auto-generation handled by digest).
+    const workspaceDescription = services.unifiedConfigService?.getEffectiveConfig().chat.workspaceDescription ?? '';
+
     const promptContext: ISystemPromptContext = {
       workspaceName: services.getWorkspaceName(),
       pageCount,
@@ -424,6 +428,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       isIndexing: services.isIndexing?.() ?? false,
       promptOverlay,
       workspaceDigest,
+      workspaceDescription,
     };
 
     const systemPrompt = buildSystemPrompt(request.mode, promptContext);

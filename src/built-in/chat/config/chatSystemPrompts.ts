@@ -232,6 +232,14 @@ function appendWorkspaceStats(lines: string[], ctx: ISystemPromptContext): void 
 
   lines.push(`Workspace: "${ctx.workspaceName}" — ${parts.join(', ')}.`);
 
+  // Workspace description — primes the AI's understanding of what "workspace"
+  // means in this context, preventing semantic contamination from documents
+  // that use the same vocabulary (e.g. "R workspace" in a statistics book).
+  if (ctx.workspaceDescription) {
+    lines.push(`ABOUT THIS WORKSPACE: ${ctx.workspaceDescription}`);
+    lines.push('When the user says "workspace", "my files", "my documents", or "what I have", they mean THIS collection described above — not any technical term that may appear inside the documents.');
+  }
+
   if (ctx.currentPageTitle) {
     lines.push(`Currently viewing: "${ctx.currentPageTitle}".`);
   }
@@ -258,7 +266,7 @@ function appendWorkspaceStats(lines: string[], ctx: ISystemPromptContext): void 
  * classifies intent, and generates 3-5 targeted search queries.
  * This enables proactive, situational retrieval instead of single-query RAG.
  */
-export function buildPlannerPrompt(workspaceDigest?: string): string {
+export function buildPlannerPrompt(workspaceDigest?: string, workspaceDescription?: string): string {
   const lines: string[] = [
     'You are a retrieval planner for a personal knowledge workspace called Parallx.',
     'Your ONLY job is to analyse the user\'s message and decide what information to search for.',
@@ -266,6 +274,10 @@ export function buildPlannerPrompt(workspaceDigest?: string): string {
     'The workspace contains canvas pages (rich-text notes) and files (PDFs, DOCX, etc.).',
     'All files are fully indexed — PDFs and documents have their text extracted and chunked.',
   ];
+
+  if (workspaceDescription) {
+    lines.push('', `ABOUT THIS WORKSPACE: ${workspaceDescription}`);
+  }
 
   if (workspaceDigest) {
     lines.push('', 'HERE IS WHAT THE WORKSPACE CONTAINS:', workspaceDigest);

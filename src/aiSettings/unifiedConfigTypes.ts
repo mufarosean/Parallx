@@ -42,6 +42,14 @@ export interface IUnifiedChatConfig {
   readonly systemPromptIsCustom: boolean;
   /** Controls response length preference */
   readonly responseLength: AIResponseLength;
+  /**
+   * User-editable description of what this workspace contains.
+   * Injected prominently into every system prompt so the AI knows the
+   * meaning of "workspace" / "my files" in context — preventing semantic
+   * contamination from documents that use the same vocabulary.
+   * Empty string = auto-generated from workspace digest.
+   */
+  readonly workspaceDescription: string;
 }
 
 // ─── Model (merged from M15 + config.json) ──────────────────────────────────
@@ -351,6 +359,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     systemPrompt: '', // generated at runtime from tone/focus/length
     systemPromptIsCustom: false,
     responseLength: 'adaptive',
+    workspaceDescription: '', // empty = auto-generated from workspace digest
   },
   model: {
     chatModel: '',               // auto-select
@@ -434,6 +443,7 @@ export function fromLegacyProfile(profile: AISettingsProfile): IUnifiedPreset {
         systemPrompt: profile.chat.systemPrompt,
         systemPromptIsCustom: profile.chat.systemPromptIsCustom,
         responseLength: profile.chat.responseLength,
+        workspaceDescription: '', // not present in legacy profiles
       },
       model: {
         chatModel: profile.model.defaultModel,
