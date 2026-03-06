@@ -76,7 +76,7 @@ Full code audit of 9 source files, tracing every layer from ingestion through re
 
 ## Industry Research — How 8 Systems Solve This
 
-Full analysis in [docs/research/RAG_ARCHITECTURE_COMPARISON.md](research/RAG_ARCHITECTURE_COMPARISON.md). Summary of findings across 6 layers:
+Full analysis in [docs/ai/RAG_ARCHITECTURE_COMPARISON.md](ai/RAG_ARCHITECTURE_COMPARISON.md). Summary of findings across 6 layers:
 
 ### Chunking
 

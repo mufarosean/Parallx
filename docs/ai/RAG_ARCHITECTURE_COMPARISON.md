@@ -3,7 +3,7 @@
 **Date**: 2026-03-04  
 **Status**: Research complete  
 **Purpose**: Inform Parallx RAG pipeline optimization decisions  
-**Related**: `docs/research/RAG_RETRIEVAL_HARDENING_RESEARCH.md`, `docs/RETRIEVAL_PERFORMANCE_FIX_PLAN.md`
+**Related**: `docs/ai/RAG_RETRIEVAL_HARDENING_RESEARCH.md`, `docs/ai/RETRIEVAL_PERFORMANCE_FIX_PLAN.md`
 
 ---
 
