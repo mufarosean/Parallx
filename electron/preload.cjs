@@ -247,4 +247,22 @@ contextBridge.exposeInMainWorld('parallxElectron', {
       return () => ipcRenderer.removeListener('terminal:exit', handler);
     },
   },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Docling Bridge API (M21 Phase A)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  docling: {
+    /** Get Docling bridge status. Returns { status, port, pythonPath, doclingInstalled }. */
+    status: () => ipcRenderer.invoke('docling:status'),
+
+    /** Start the Docling bridge service. Returns { ok, status, ... }. */
+    start: () => ipcRenderer.invoke('docling:start'),
+
+    /** Convert a single document. Returns { ok, markdown, page_count, tables_found, ... } or { ok: false, error }. */
+    convert: (filePath, options) => ipcRenderer.invoke('docling:convert', filePath, options),
+
+    /** Convert multiple documents. Returns { ok, results } or { ok: false, error }. */
+    convertBatch: (files) => ipcRenderer.invoke('docling:convertBatch', files),
+  },
 });

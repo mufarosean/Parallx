@@ -9,6 +9,7 @@ const fsSync = require('fs');
 const AdmZip = require('adm-zip');
 const { databaseManager } = require('./database.cjs');
 const { extractText, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
+const doclingBridge = require('./doclingBridge.cjs');
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
@@ -805,6 +806,51 @@ ipcMain.handle('document:richExtensions', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
+// Docling Bridge IPC Handlers (M21 Phase A)
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Manages the Docling Python bridge for intelligent document extraction.
+// Falls back to legacy extractors (above) when Docling is unavailable.
+
+// ── docling:status ──
+ipcMain.handle('docling:status', () => {
+  return doclingBridge.getStatus();
+});
+
+// ── docling:start ──
+// Explicitly request the bridge to start (e.g. after workspace open).
+ipcMain.handle('docling:start', async () => {
+  try {
+    const started = await doclingBridge.startService();
+    return { ok: started, ...doclingBridge.getStatus() };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
+// ── docling:convert ──
+// Convert a single rich document to structured Markdown via Docling.
+ipcMain.handle('docling:convert', async (_event, filePath, options) => {
+  try {
+    const result = await doclingBridge.convertDocument(filePath, options || {});
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
+// ── docling:convertBatch ──
+// Convert multiple documents in a single batch call.
+ipcMain.handle('docling:convertBatch', async (_event, files) => {
+  try {
+    const results = await doclingBridge.convertBatch(files || []);
+    return { ok: true, results };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err), results: [] };
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
 // Database IPC Handlers (M6 Cap 1 — Task 1.4)
 // ════════════════════════════════════════════════════════════════════════════════
 //
@@ -1195,4 +1241,6 @@ app.on('before-quit', () => {
   _activeTerminals.clear();
   // Close the database cleanly on app quit
   databaseManager.close();
+  // Shut down Docling bridge (M21)
+  doclingBridge.stopService().catch(() => { /* best-effort */ });
 });
