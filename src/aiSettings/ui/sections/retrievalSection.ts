@@ -104,19 +104,6 @@ export class RetrievalSection extends SettingsSection {
       this._notifySaved('retrieval.ragScoreThreshold');
     }));
     this._addRow(thresholdRow.row);
-
-    // ── Context Budget (Elastic — M20 Phase G) ──
-    const budgetRow = createSettingRow({
-      label: 'Context Budget',
-      description: 'Elastic allocation — each slot uses only what it needs. When the context window overflows, content is trimmed in priority order.',
-      key: 'retrieval.contextBudget',
-    });
-
-    const budgetInfo = $('div.ai-settings-section__info');
-    budgetInfo.textContent = 'Trim order: History (oldest first) → RAG (lowest-scored first) → System Prompt. User messages are never trimmed.';
-    budgetRow.controlSlot.appendChild(budgetInfo);
-
-    this._addRow(budgetRow.row);
   }
 
   private _updateRetrieval(patch: Partial<IUnifiedAIConfig['retrieval']>): void {
