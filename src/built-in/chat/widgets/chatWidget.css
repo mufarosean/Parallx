@@ -887,8 +887,16 @@
 }
 
 .parallx-chat-reference-icon {
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
+}
+
+.parallx-chat-reference-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .parallx-chat-reference-label {

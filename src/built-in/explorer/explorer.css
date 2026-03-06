@@ -99,8 +99,11 @@
 .tree-node-chevron {
   width: 16px;
   flex-shrink: 0;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 10px;
+  line-height: 22px;
   color: var(--vscode-foreground);
 }
 
@@ -112,8 +115,12 @@
 /* ── Icon ── */
 
 .tree-node-icon {
+  display: inline-flex;
+  align-items: center;
   margin-right: 4px;
   flex-shrink: 0;
+  width: 16px;
+  height: 16px;
 }
 
 /* ── Label ── */
@@ -121,6 +128,7 @@
 .tree-node-label {
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 22px;
 }
 
 /* ── Loading / Empty placeholders ── */
