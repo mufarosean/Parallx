@@ -1355,12 +1355,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
               for (let i = 0; i < firstAppearance.length; i++) {
                 remap.set(firstAppearance[i], sortedCitations[i].index);
               }
-              citations = citations.map(c => ({
-                ...c,
-                index: remap.get(c.index) ?? c.index,
-              }));
 
-              // Also remap the [N] markers in markdown parts
+              // Remap the [N] markers in markdown parts from LLM numbering
+              // to our actual citation indices.
+              // NOTE: We do NOT remap citations[].index — those already carry
+              // the correct source indices from ragSources. Only the markdown
+              // text needs rewriting.
               const parts = (response as any)._response?.parts;
               if (Array.isArray(parts)) {
                 for (const part of parts) {
