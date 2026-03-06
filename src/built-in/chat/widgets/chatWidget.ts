@@ -212,6 +212,12 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       }
     }) as EventListener));
 
+    this._register(addDisposableListener(this._messageListContainer, 'parallx:open-memory' as keyof HTMLElementEventMap, ((e: CustomEvent<{ sessionId: string }>) => {
+      if (this._services.openMemory) {
+        this._services.openMemory(e.detail.sessionId);
+      }
+    }) as EventListener));
+
     this._inputPart = this._register(new ChatInputPart(this._inputAreaContainer));
     this._register(this._inputPart.onDidAcceptInput((text) => this._handleSubmit(text)));
     this._register(this._inputPart.onDidRequestStop(() => this._handleStop()));

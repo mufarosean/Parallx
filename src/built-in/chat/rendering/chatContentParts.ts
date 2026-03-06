@@ -133,11 +133,18 @@ function _postProcessCitations(
           badge.setAttribute('data-citation-uri', citation.uri);
           badge.addEventListener('click', () => {
             const isPage = citation.uri.startsWith('parallx-page://');
+            const isMemory = citation.uri.startsWith('parallx-memory://');
             if (isPage) {
               const pageId = citation.uri.replace('parallx-page://', '');
               badge.dispatchEvent(new CustomEvent('parallx:navigate-page', {
                 bubbles: true,
                 detail: { pageId },
+              }));
+            } else if (isMemory) {
+              const sessionId = citation.uri.replace('parallx-memory://', '');
+              badge.dispatchEvent(new CustomEvent('parallx:open-memory', {
+                bubbles: true,
+                detail: { sessionId },
               }));
             } else {
               badge.dispatchEvent(new CustomEvent('parallx:open-file', {

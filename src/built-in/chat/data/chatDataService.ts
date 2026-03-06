@@ -52,6 +52,7 @@ import type { IWorkspaceSessionContext } from '../../../workspace/workspaceSessi
 
 import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { extractTextContent } from '../tools/builtInTools.js';
+import { UntitledEditorInput } from '../../editor/untitledEditorInput.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -565,9 +566,12 @@ export class ChatDataService {
       if (seen.has(key)) continue;
       seen.add(key);
       const isPage = chunk.sourceType === 'page' || chunk.sourceType === 'page_block';
+      const isMemory = chunk.sourceType === 'memory' || chunk.sourceType === 'conversation_memory';
       const uri = isPage
         ? `parallx-page://${chunk.sourceId}`
-        : chunk.sourceId;
+        : isMemory
+          ? `parallx-memory://${chunk.sourceId}`
+          : chunk.sourceId;
       const label = extractCitationLabel(chunk);
       sources.push({ uri, label, index: nextIndex++ });
     }
@@ -1014,6 +1018,53 @@ export class ChatDataService {
     });
   }
 
+  /**
+   * Open a session memory entry in a read-only editor tab formatted as Markdown.
+   *
+   * Called when the user clicks a "Session Memory" citation badge.  Fetches the
+   * stored summary for the given sessionId from IMemoryService and displays it
+   * as an untitled editor so the user can review what the AI "remembered".
+   */
+  async openMemoryViewer(sessionId: string): Promise<void> {
+    if (!this._d.memoryService || !this._d.editorService) { return; }
+
+    try {
+      const memories = await this._d.memoryService.getAllMemories();
+      const match = memories.find((m) => m.sessionId === sessionId);
+
+      let content: string;
+      if (match) {
+        const lines = [
+          `# Session Memory`,
+          ``,
+          `**Session ID:** \`${match.sessionId}\`  `,
+          `**Created:** ${match.createdAt}  `,
+          `**Messages in session:** ${match.messageCount}`,
+          ``,
+          `---`,
+          ``,
+          `## Summary`,
+          ``,
+          match.summary,
+        ];
+        content = lines.join('\n');
+      } else {
+        content = [
+          `# Session Memory`,
+          ``,
+          `No memory found for session \`${sessionId}\`.`,
+          ``,
+          `The memory may have been pruned or the session may still be in progress.`,
+        ].join('\n');
+      }
+
+      const input = UntitledEditorInput.createReadonly(content, 'Session Memory');
+      await this._d.editorService.openEditor(input, { pinned: false });
+    } catch (err) {
+      console.error('[ChatDataService] openMemoryViewer failed:', err);
+    }
+  }
+
   async getContextLength(): Promise<number> {
     const modelId = this._d.languageModelsService.getActiveModel();
     if (modelId && this._d.ollamaProvider) {
@@ -1311,6 +1362,9 @@ export class ChatDataService {
         : undefined,
       openPage: this._d.openPage
         ? (pageId: string) => { this._d.openPage!(pageId); }
+        : undefined,
+      openMemory: (this._d.memoryService && this._d.editorService)
+        ? (sessionId: string) => { this.openMemoryViewer(sessionId); }
         : undefined,
       toolPickerServices: this._d.languageModelToolsService ? {
         getTools: () => this._d.languageModelToolsService!.getTools().map((t) => ({
