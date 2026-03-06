@@ -730,24 +730,24 @@ specific files or disable OCR for performance-sensitive workspaces.
 
 | Task | Description | Est. | Depends On | Status |
 |------|-------------|------|------------|--------|
-| **A.1** | Python wrapper package (FastAPI + Docling) | 4h | — | ⬜ |
-| **A.2** | Electron bridge module (subprocess management) | 4h | A.1 | ⬜ |
-| **A.3** | IPC integration (main.cjs channels) | 2h | A.2 | ⬜ |
-| **A.4** | Renderer-side service interface | 2h | A.3 | ⬜ |
-| **B.1** | Document classifier service | 3h | — | ⬜ |
-| **B.2** | PDF scan detection heuristic | 2h | B.1 | ⬜ |
-| **C.1** | Update indexing pipeline extraction step | 4h | A.4, B.1 | ⬜ |
-| **C.2** | Extended format support (PPTX, images, etc.) | 1h | C.1 | ⬜ |
-| **C.3** | Batch processing optimization | 2h | C.1 | ⬜ |
-| **D.1** | Table-aware chunk boundaries | 3h | C.1 | ⬜ |
-| **D.2** | Code block integrity in chunker | 2h | C.1 | ⬜ |
-| **D.3** | Structural context breadcrumbs | 2h | C.1 | ⬜ |
-| **E.1** | Graceful fallback to legacy extractors | 2h | C.1 | ⬜ |
-| **E.2** | Per-document error handling | 2h | E.1 | ⬜ |
-| **E.3** | Docling service lifecycle management | 3h | A.2 | ⬜ |
-| **F.1** | Indexing Log enhancements | 3h | C.1 | ⬜ |
-| **F.2** | Docling status in status bar | 2h | A.2 | ⬜ |
-| **F.3** | Installation guide command | 2h | A.2 | ⬜ |
+| **A.1** | Python wrapper package (FastAPI + Docling) | 4h | — | ✅ |
+| **A.2** | Electron bridge module (subprocess management) | 4h | A.1 | ✅ |
+| **A.3** | IPC integration (main.cjs channels) | 2h | A.2 | ✅ |
+| **A.4** | Renderer-side service interface | 2h | A.3 | ✅ |
+| **B.1** | Document classifier service | 3h | — | ✅ |
+| **B.2** | PDF scan detection heuristic | 2h | B.1 | ✅ |
+| **C.1** | Update indexing pipeline extraction step | 4h | A.4, B.1 | ✅ |
+| **C.2** | Extended format support (PPTX, images, etc.) | 1h | C.1 | ✅ |
+| **C.3** | Batch processing optimization | 2h | C.1 | ✅ |
+| **D.1** | Table-aware chunk boundaries | 3h | C.1 | ✅ |
+| **D.2** | Code block integrity in chunker | 2h | C.1 | ✅ |
+| **D.3** | Structural context breadcrumbs | 2h | C.1 | ✅ |
+| **E.1** | Graceful fallback to legacy extractors | 2h | C.1 | ✅ |
+| **E.2** | Per-document error handling | 2h | E.1 | ✅ |
+| **E.3** | Docling service lifecycle management | 3h | A.2 | ✅ |
+| **F.1** | Indexing Log enhancements | 3h | C.1 | ✅ |
+| **F.2** | Docling status in status bar | 2h | A.2 | ✅ |
+| **F.3** | Installation guide command | 2h | A.2 | ✅ |
 
 **Total estimated: ~43 hours across 18 tasks**
 
