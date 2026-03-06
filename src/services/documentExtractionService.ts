@@ -147,6 +147,74 @@ export class DocumentExtractionService extends Disposable implements IDocumentEx
     return this._extractViaLegacy(filePath);
   }
 
+  // ── Batch Extraction (C.3) ──────────────────────────────────────────────
+
+  async extractBatch(
+    files: { path: string; ocr?: boolean }[],
+  ): Promise<Map<string, DocumentExtractionResult>> {
+    const results = new Map<string, DocumentExtractionResult>();
+    if (files.length === 0) return results;
+
+    // Try Docling batch API first
+    if (this._isDoclingAvailable) {
+      try {
+        return await this._extractBatchViaDocling(files);
+      } catch (err) {
+        console.warn(
+          '[DocumentExtractionService] Docling batch extraction failed, falling back to sequential: %s', err,
+        );
+      }
+    }
+
+    // Fallback: sequential extraction
+    for (const file of files) {
+      try {
+        const result = await this.extractDocument(file.path, { ocr: file.ocr ?? false });
+        results.set(file.path, result);
+      } catch (err) {
+        console.warn('[DocumentExtractionService] Failed to extract "%s": %s', file.path, err);
+      }
+    }
+    return results;
+  }
+
+  private async _extractBatchViaDocling(
+    files: { path: string; ocr?: boolean }[],
+  ): Promise<Map<string, DocumentExtractionResult>> {
+    const api = getDoclingAPI();
+    if (!api) throw new Error('Docling API not available');
+
+    const batchResult = await api.convertBatch(files.map(f => ({ path: f.path, ocr: f.ocr ?? false })));
+    if (!batchResult.ok) {
+      throw new Error(batchResult.error ?? 'Docling batch conversion failed');
+    }
+
+    const results = new Map<string, DocumentExtractionResult>();
+    const batchResults = batchResult.results ?? [];
+
+    for (let i = 0; i < files.length && i < batchResults.length; i++) {
+      const file = files[i];
+      const r = batchResults[i];
+
+      if (r.ok === false || r.error) {
+        console.warn('[DocumentExtractionService] Batch item failed for "%s": %s', file.path, r.error);
+        continue;
+      }
+
+      const pipeline: ExtractionPipeline = file.ocr ? 'docling-ocr' : 'docling';
+      results.set(file.path, {
+        markdown: r.markdown ?? '',
+        pageCount: r.page_count ?? 0,
+        tablesFound: r.tables_found ?? 0,
+        elapsedMs: r.elapsed_ms ?? 0,
+        diagnostics: r.diagnostics ?? [],
+        pipeline,
+      });
+    }
+
+    return results;
+  }
+
   // ── Docling Path ────────────────────────────────────────────────────────
 
   private async _extractViaDocling(

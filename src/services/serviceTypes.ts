@@ -953,6 +953,15 @@ export interface IDocumentExtractionService extends IDisposable {
   }): Promise<DocumentExtractionResult>;
 
   /**
+   * Extract a batch of rich documents via Docling in a single round-trip.
+   * Falls back to sequential extractDocument() calls if batch API is unavailable.
+   *
+   * @param files — Array of file paths with extraction options.
+   * @returns Map from file path to extraction result (or error).
+   */
+  extractBatch(files: { path: string; ocr?: boolean }[]): Promise<Map<string, DocumentExtractionResult>>;
+
+  /**
    * Initialize the service: detect Python, start Docling bridge.
    * Called once during workbench initialization.
    */

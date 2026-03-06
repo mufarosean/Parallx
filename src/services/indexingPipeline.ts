@@ -33,6 +33,7 @@ import type {
   IIndexingPipelineService,
   ISessionManager,
   IDocumentExtractionService,
+  DocumentExtractionResult,
 } from './serviceTypes.js';
 import { captureSession } from '../workspace/staleGuard.js';
 import type { SessionGuard } from '../workspace/staleGuard.js';
@@ -193,6 +194,13 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   private readonly _workspaceService: IWorkspaceService;
   private readonly _documentExtractionService: IDocumentExtractionService | undefined;
   private readonly _classifier: DocumentClassifier;
+
+  /**
+   * Cache for batch-extracted document content (C.3).
+   * Populated in _indexAllFiles() before the per-file loop, cleared after.
+   * Key: absolute file path → extraction result.
+   */
+  private _batchExtractionCache = new Map<string, DocumentExtractionResult>();
 
   // ── State ──
 
@@ -563,6 +571,44 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     this._updateProgress('files', 0, candidates.length);
     let indexed = 0;
 
+    // ── C.3: Batch pre-extract digital docs via Docling ──────────────────
+    // Group candidates by classification. Digital docs get batched (fewer
+    // round-trips to the Python bridge). Scanned/image docs stay sequential
+    // because OCR is memory-intensive.
+    if (this._documentExtractionService?.isDoclingAvailable && candidates.length > 0) {
+      const digitalDocs: { path: string; ocr: boolean }[] = [];
+      for (const file of candidates) {
+        const ext = getExtension(file.path);
+        const isRich = ext !== null && RICH_DOCUMENT_EXTENSIONS.has(ext);
+        if (isRich) {
+          const cls = this._classifier.classify(file.path);
+          if (cls.documentClass === 'digital-doc') {
+            digitalDocs.push({ path: file.path, ocr: false });
+          }
+          // scanned-doc and image are processed individually inside _indexSingleFile
+        }
+      }
+
+      if (digitalDocs.length > 0) {
+        console.log(
+          '[IndexingPipeline] %s Batch pre-extracting %d digital documents via Docling',
+          this._logPrefix, digitalDocs.length,
+        );
+        try {
+          const batchResults = await this._documentExtractionService.extractBatch(digitalDocs);
+          for (const [path, result] of batchResults) {
+            this._batchExtractionCache.set(path, result);
+          }
+          console.log(
+            '[IndexingPipeline] %s Batch extraction complete: %d/%d succeeded',
+            this._logPrefix, this._batchExtractionCache.size, digitalDocs.length,
+          );
+        } catch (err) {
+          console.warn('[IndexingPipeline] Batch pre-extraction failed, will extract individually:', err);
+        }
+      }
+    }
+
     for (const file of candidates) {
       this._checkAborted();
       const t0 = performance.now();
@@ -586,6 +632,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       this._updateProgress('files', this._progress.processed + 1, candidates.length, file.relativePath);
     }
 
+    // Clear batch cache after indexing run
+    this._batchExtractionCache.clear();
+
     return indexed;
   }
 
@@ -608,7 +657,13 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     let content: string;
     let language: string | undefined;
     try {
-      if ((isRichDoc || isImage) && this._documentExtractionService) {
+      // C.3: Check batch extraction cache first (populated by _indexAllFiles batch pre-extraction)
+      const cachedResult = this._batchExtractionCache.get(absolutePath);
+      if (cachedResult) {
+        content = cachedResult.markdown;
+        language = cachedResult.pipeline !== 'legacy' ? 'markdown' : undefined;
+        this._batchExtractionCache.delete(absolutePath); // Free memory
+      } else if ((isRichDoc || isImage) && this._documentExtractionService) {
         // M21: Classify the document and use the appropriate extraction pipeline
         const classification = this._classifier.classify(absolutePath);
 
