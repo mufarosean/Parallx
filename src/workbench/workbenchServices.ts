@@ -3,7 +3,7 @@
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
-import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService } from '../services/serviceTypes.js';
+import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -36,6 +36,7 @@ import { MemoryService } from '../services/memoryService.js';
 import { RelatedContentService } from '../services/relatedContentService.js';
 import { AutoTaggingService } from '../services/autoTaggingService.js';
 import { ProactiveSuggestionsService } from '../services/proactiveSuggestionsService.js';
+import { DocumentExtractionService } from '../services/documentExtractionService.js';
 import { AISettingsService } from '../aiSettings/aiSettingsService.js';
 import { UnifiedAIConfigService } from '../aiSettings/unifiedAIConfigService.js';
 import type { IStorage } from '../platform/storage.js';
@@ -236,6 +237,7 @@ export function registerIndexingServices(
   const embeddingService = new EmbeddingService();
   const chunkingService = new ChunkingService();
   const vectorStoreService = new VectorStoreService(databaseService);
+  const documentExtractionService = new DocumentExtractionService();
   const indexingPipeline = new IndexingPipelineService(
     databaseService,
     fileService,
@@ -251,6 +253,7 @@ export function registerIndexingServices(
   services.registerInstance(IEmbeddingService, embeddingService);
   services.registerInstance(IChunkingService, chunkingService);
   services.registerInstance(IVectorStoreService, vectorStoreService);
+  services.registerInstance(IDocumentExtractionService, documentExtractionService);
   services.registerInstance(IIndexingPipelineService, indexingPipeline);
   services.registerInstance(IRetrievalService, retrievalService);
   services.registerInstance(IMemoryService, memoryService);

@@ -895,6 +895,72 @@ export interface IThemeService extends IDisposable {
 
 export const IThemeService = createServiceIdentifier<IThemeService>('IThemeService');
 
+// ─── IDocumentExtractionService (M21 Phase A) ─────────────────────────────
+
+/**
+ * Pipeline type indicating which extraction method was used.
+ */
+export type ExtractionPipeline = 'docling' | 'docling-ocr' | 'legacy';
+
+/**
+ * Result of extracting structured content from a rich document.
+ */
+export interface DocumentExtractionResult {
+  /** Structured Markdown output (or plain text for legacy). */
+  markdown: string;
+  /** Number of pages detected (0 if unknown). */
+  pageCount: number;
+  /** Number of tables recovered from the document. */
+  tablesFound: number;
+  /** Time in ms the extraction took. */
+  elapsedMs: number;
+  /** Diagnostic messages from the extraction pipeline. */
+  diagnostics: string[];
+  /** Which pipeline was used. */
+  pipeline: ExtractionPipeline;
+}
+
+/**
+ * Status of the Docling bridge service.
+ */
+export type DoclingBridgeStatus = 'unavailable' | 'starting' | 'available' | 'downloading-models' | 'error';
+
+/**
+ * Manages document extraction via the Docling bridge (primary) with
+ * fallback to legacy extractors (pdf-parse, mammoth, SheetJS).
+ *
+ * Reference: docs/Parallx_Milestone_21.md Phase A
+ */
+export interface IDocumentExtractionService extends IDisposable {
+  /** Whether Docling is available on this system. */
+  readonly isDoclingAvailable: boolean;
+
+  /** Current bridge status. */
+  readonly bridgeStatus: DoclingBridgeStatus;
+
+  /** Event fired when Docling availability changes. */
+  readonly onDidChangeAvailability: Event<boolean>;
+
+  /** Event fired when bridge status changes. */
+  readonly onDidChangeBridgeStatus: Event<DoclingBridgeStatus>;
+
+  /**
+   * Extract structured Markdown from a rich document.
+   * Tries Docling first, falls back to legacy extractors.
+   */
+  extractDocument(filePath: string, options?: {
+    ocr?: boolean;
+  }): Promise<DocumentExtractionResult>;
+
+  /**
+   * Initialize the service: detect Python, start Docling bridge.
+   * Called once during workbench initialization.
+   */
+  initialize(): Promise<void>;
+}
+
+export const IDocumentExtractionService = createServiceIdentifier<IDocumentExtractionService>('IDocumentExtractionService');
+
 // ─── IEmbeddingService (M10 Task 1.1) ──────────────────────────────────────
 
 /**
