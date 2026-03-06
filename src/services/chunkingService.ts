@@ -299,7 +299,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
         await flush(false);
 
         const fenceMarker = fenceMatch[1]; // e.g. ``` or ````
-        const langTag = fenceMatch[2].trim(); // e.g. "python", "ts", ""
+        // langTag is preserved in openFence line, no need to extract separately
         const openFence = line;
         const codeLines: string[] = [openFence];
         i++;

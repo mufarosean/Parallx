@@ -130,6 +130,10 @@ export interface IndexingSourceResult {
   chunkCount?: number;
   /** Time taken in milliseconds. */
   durationMs: number;
+  /** Which extraction pipeline was used (M21 E.1). */
+  pipeline?: 'docling' | 'docling-ocr' | 'legacy' | 'text';
+  /** True if Docling failed and the file fell back to legacy (M21 E.2). */
+  fallback?: boolean;
 }
 
 /** Raw page row from the database. */
@@ -201,6 +205,13 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
    * Key: absolute file path → extraction result.
    */
   private _batchExtractionCache = new Map<string, DocumentExtractionResult>();
+
+  /**
+   * Set by _indexSingleFile after extraction to communicate pipeline metadata
+   * back to the calling loop without changing the method's boolean return type.
+   */
+  private _lastFilePipeline: 'docling' | 'docling-ocr' | 'legacy' | 'text' = 'text';
+  private _lastFileFallback = false;
 
   // ── State ──
 
@@ -620,6 +631,8 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
           type: 'file', source: file.relativePath, sourceId: file.relativePath,
           status: changed ? 'indexed' : 'skipped',
           durationMs: performance.now() - t0,
+          pipeline: changed ? this._lastFilePipeline : undefined,
+          fallback: changed ? this._lastFileFallback : undefined,
         });
       } catch (err) {
         console.warn('[IndexingPipeline] Failed to index file "%s": %s', file.relativePath, err);
@@ -656,11 +669,14 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     // Read file content — route through extraction for rich documents
     let content: string;
     let language: string | undefined;
+    let pipelineUsed: 'docling' | 'docling-ocr' | 'legacy' | 'text' = 'text';
+    let didFallback = false;
     try {
       // C.3: Check batch extraction cache first (populated by _indexAllFiles batch pre-extraction)
       const cachedResult = this._batchExtractionCache.get(absolutePath);
       if (cachedResult) {
         content = cachedResult.markdown;
+        pipelineUsed = cachedResult.pipeline;
         language = cachedResult.pipeline !== 'legacy' ? 'markdown' : undefined;
         this._batchExtractionCache.delete(absolutePath); // Free memory
       } else if ((isRichDoc || isImage) && this._documentExtractionService) {
@@ -688,16 +704,20 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
 
         const result = await this._documentExtractionService.extractDocument(absolutePath, { ocr: useOcr });
         content = result.markdown;
+        pipelineUsed = result.pipeline;
+        didFallback = result.pipeline === 'legacy' && this._documentExtractionService.isDoclingAvailable;
         // Docling output is structured Markdown → route through heading-aware chunker
         language = result.pipeline !== 'legacy' ? 'markdown' : undefined;
       } else if (isRichDoc) {
         // Fallback: no DocumentExtractionService → use legacy path directly
         const result = await this._fileService.readDocumentText(uri);
         content = result.text;
+        pipelineUsed = 'legacy';
       } else {
         const fileContent = await this._fileService.readFile(uri);
         if (fileContent.size > MAX_FILE_SIZE) { return false; }
         content = fileContent.content;
+        pipelineUsed = 'text';
       }
     } catch (err) {
       if (isRichDoc || isImage) {
@@ -741,6 +761,10 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     // Generate a content summary from the first ~200 chars for the workspace digest.
     const summary = _generateSummary(content);
     await this._vectorStore.upsert('file_chunk', relPath, embeddedChunks, contentHash, summary);
+
+    // E.1/E.2: Record pipeline metadata for the caller
+    this._lastFilePipeline = pipelineUsed;
+    this._lastFileFallback = didFallback;
 
     return true;
   }
