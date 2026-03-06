@@ -51,8 +51,8 @@ describe('IUnifiedAIConfig defaults', () => {
 
   it('retrieval defaults match retrievalService constants', () => {
     // These must match the hardcoded values in retrievalService.ts
-    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragTopK).toBe(7);
-    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragScoreThreshold).toBe(0.025);
+    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragTopK).toBe(20);
+    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragScoreThreshold).toBe(0.01);
   });
 
   it('context budget has elastic shape (M20 Phase G)', () => {
@@ -95,7 +95,7 @@ describe('fromLegacyProfile', () => {
 
     // Sections not in legacy profiles should come from defaults
     expect(preset.config.retrieval.autoRag).toBe(true);
-    expect(preset.config.retrieval.ragTopK).toBe(7);
+    expect(preset.config.retrieval.ragTopK).toBe(20);
     expect(preset.config.agent.maxIterations).toBe(10);
     expect(preset.config.memory.memoryEnabled).toBe(true);
     expect(preset.config.indexing.autoIndex).toBe(true);
@@ -263,7 +263,7 @@ describe('UnifiedAIConfigService', () => {
     it('returns default config on fresh start', () => {
       const config = service.getEffectiveConfig();
       expect(config.persona.name).toBe('Parallx AI');
-      expect(config.retrieval.ragTopK).toBe(7);
+      expect(config.retrieval.ragTopK).toBe(20);
       expect(config.agent.maxIterations).toBe(10);
     });
 
@@ -276,7 +276,7 @@ describe('UnifiedAIConfigService', () => {
       expect(config.retrieval.ragTopK).toBe(15);
       // Other retrieval fields unchanged
       expect(config.retrieval.autoRag).toBe(true);
-      expect(config.retrieval.ragScoreThreshold).toBe(0.025);
+      expect(config.retrieval.ragScoreThreshold).toBe(0.01);
     });
   });
 
@@ -468,7 +468,7 @@ describe('UnifiedAIConfigService', () => {
       await service.resetAll();
       const config = service.getEffectiveConfig();
       expect(config.model.temperature).toBe(0.7);
-      expect(config.retrieval.ragTopK).toBe(7);
+      expect(config.retrieval.ragTopK).toBe(20);
     });
 
     it('reset is no-op for built-in presets', async () => {

@@ -91,8 +91,16 @@ export interface IUnifiedRetrievalConfig {
   readonly autoRag: boolean;
   /** Number of top results to return from hybrid search */
   readonly ragTopK: number;
-  /** Minimum score to include a retrieval result (0–1 cosine similarity) */
+  /** Maximum chunks from any single source (prevents one doc monopolizing context) */
+  readonly ragMaxPerSource: number;
+  /** Token budget for retrieved context. 0 = auto (30% of model context window). */
+  readonly ragTokenBudget: number;
+  /** Minimum RRF score to include a retrieval result (0–1) */
   readonly ragScoreThreshold: number;
+  /** Minimum cosine similarity for re-ranking filter (0–1). 0 = disabled. */
+  readonly ragCosineThreshold: number;
+  /** Relative score drop-off ratio (0–1). Results below topScore × ratio are dropped. 0 = disabled. */
+  readonly ragDropoffRatio: number;
   /** Token budget allocation across system/RAG/history/user */
   readonly contextBudget: IUnifiedContextBudgetConfig;
 }
@@ -353,8 +361,12 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   },
   retrieval: {
     autoRag: true,
-    ragTopK: 7,
-    ragScoreThreshold: 0.025,
+    ragTopK: 20,
+    ragMaxPerSource: 5,
+    ragTokenBudget: 0,         // 0 = auto (30% of model context window)
+    ragScoreThreshold: 0.01,
+    ragCosineThreshold: 0.20,
+    ragDropoffRatio: 0,         // 0 = disabled — let the AI decide what's relevant
     contextBudget: {
       trimPriority: {
         systemPrompt: 3,
@@ -462,6 +474,7 @@ export function fromLegacyParallxConfig(config: IParallxConfig): DeepPartial<IUn
       autoRag: config.agent.autoRag,
       ragTopK: config.agent.ragTopK,
       ragScoreThreshold: config.agent.ragScoreThreshold,
+      // New fields not in legacy config — omit to use defaults
       contextBudget: {
         trimPriority: {
           systemPrompt: 3,

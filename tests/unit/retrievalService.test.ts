@@ -120,7 +120,7 @@ describe('RetrievalService', () => {
       expect(vectorStore.search).toHaveBeenCalledWith(
         expect.any(Array),
         'authentication approach',
-        expect.objectContaining({ topK: 21, includeKeyword: true }),
+        expect.objectContaining({ topK: 60, includeKeyword: true }),
       );
       expect(results).toHaveLength(1);
       expect(results[0].text).toBe('JWT tokens');
@@ -152,12 +152,12 @@ describe('RetrievalService', () => {
       expect(results).toHaveLength(1);
     });
 
-    it('deduplicates sources — max 2 chunks per source by default', async () => {
+    it('deduplicates sources — max 5 chunks per source by default', async () => {
       const emb = new Array(768).fill(0.1);
       vectorStore.search.mockResolvedValue([
         makeResult({ rowid: 1, sourceId: 'p1', chunkIndex: 0, score: 0.10 }),
         makeResult({ rowid: 2, sourceId: 'p1', chunkIndex: 1, score: 0.09 }),
-        makeResult({ rowid: 3, sourceId: 'p1', chunkIndex: 2, score: 0.08 }), // should be dropped (3rd)
+        makeResult({ rowid: 3, sourceId: 'p1', chunkIndex: 2, score: 0.08 }), // kept (3rd of 5 allowed)
         makeResult({ rowid: 4, sourceId: 'p2', chunkIndex: 0, score: 0.07 }),
         makeResult({ rowid: 5, sourceId: 'p2', chunkIndex: 1, score: 0.06 }),
       ]);
@@ -167,8 +167,8 @@ describe('RetrievalService', () => {
 
       const results = await service.retrieve('query');
       const p1Chunks = results.filter((r) => r.sourceId === 'p1');
-      expect(p1Chunks).toHaveLength(2);
-      expect(results).toHaveLength(4); // 2 from p1 + 2 from p2
+      expect(p1Chunks).toHaveLength(3);
+      expect(results).toHaveLength(5); // 3 from p1 + 2 from p2
     });
 
     it('respects custom maxPerSource option', async () => {
@@ -250,22 +250,20 @@ describe('RetrievalService', () => {
       expect(results[0].tokenCount).toBe(Math.ceil('Hello world'.length / 4));
     });
 
-    it('applies relative score drop-off filter — drops results < 60% of top score', async () => {
+    it('does not apply drop-off filter by default (ragDropoffRatio = 0)', async () => {
       const emb = new Array(768).fill(0.1);
       vectorStore.search.mockResolvedValue([
         makeResult({ rowid: 1, sourceId: 'p1', score: 0.10 }),   // top score
-        makeResult({ rowid: 2, sourceId: 'p2', score: 0.07 }),   // 70% of top → keeps
-        makeResult({ rowid: 3, sourceId: 'p3', score: 0.05 }),   // 50% of top → dropped
-        makeResult({ rowid: 4, sourceId: 'p4', score: 0.026 }),  // 26% of top → dropped
+        makeResult({ rowid: 2, sourceId: 'p2', score: 0.07 }),   // 70% of top
+        makeResult({ rowid: 3, sourceId: 'p3', score: 0.05 }),   // 50% of top
+        makeResult({ rowid: 4, sourceId: 'p4', score: 0.026 }),  // 26% of top — all kept (dropoff disabled)
       ]);
       vectorStore.getEmbeddings.mockResolvedValue(new Map(
-        [1, 2].map(id => [id, emb] as [number, number[]]),
+        [1, 2, 3, 4].map(id => [id, emb] as [number, number[]]),
       ));
 
       const results = await service.retrieve('query');
-      expect(results).toHaveLength(2);
-      expect(results[0].sourceId).toBe('p1');
-      expect(results[1].sourceId).toBe('p2');
+      expect(results).toHaveLength(4); // dropoff disabled by default
     });
 
     it('does not apply drop-off filter when only one result', async () => {
@@ -376,7 +374,7 @@ describe('RetrievalService', () => {
   });
 
   describe('cosine re-ranking (M16)', () => {
-    it('drops candidates with cosine similarity below 0.30', async () => {
+    it('drops candidates with cosine similarity below 0.20 (default threshold)', async () => {
       // Create two different embeddings: one similar to query, one orthogonal
       const queryEmb = new Array(768).fill(0);
       queryEmb[0] = 1.0; // unit vector along dim 0

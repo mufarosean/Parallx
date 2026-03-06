@@ -26,27 +26,24 @@ import type { SearchResult, SearchOptions } from './vectorStoreService.js';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /** Default number of final chunks to return. */
-const DEFAULT_TOP_K = 7;
+const DEFAULT_TOP_K = 20;
 
 /** Minimum RRF score — chunks below this are dropped.
  *
  * With RRF k=60, the maximum single-path rank score is 1/61 ≈ 0.0164.
  * After two-path fusion (vector + keyword), a top-1 result in both paths
- * scores ~0.033. A threshold of 0.02 requires a chunk to rank reasonably
- * well in at least one retrieval path, filtering out obvious noise while
- * preserving any result that genuinely matched the query.
- *
- * Previous value 0.01 let through rank-40+ garbage from a single path.
- * Raised to 0.025 to better filter irrelevant results when the index is
- * sparse or the query has low semantic overlap with indexed content.
+ * scores ~0.033. A threshold of 0.01 is lenient — it filters only clear
+ * noise while letting the AI see more context and decide what's relevant.
  */
-const DEFAULT_MIN_SCORE = 0.025;
+const DEFAULT_MIN_SCORE = 0.01;
 
 /** Max chunks from the same source before dedup kicks in. */
-const DEFAULT_MAX_PER_SOURCE = 2;
+const DEFAULT_MAX_PER_SOURCE = 5;
 
-/** Default token budget for retrieved context (chars / 4 heuristic). */
-const DEFAULT_TOKEN_BUDGET = 3000;
+/** Default token budget for retrieved context.
+ *  0 = auto (computed from model context window at call time).
+ */
+const DEFAULT_TOKEN_BUDGET = 0;
 
 /** Rough token estimator: chars / 4 (same as defaultParticipant). */
 function estimateTokens(text: string): number {
@@ -55,13 +52,19 @@ function estimateTokens(text: string): number {
 
 /**
  * Minimum cosine similarity between query embedding and candidate embedding
- * for a chunk to survive cosine re-ranking. 0.30 is a lenient threshold
- * that removes only clearly unrelated candidates while preserving topical
- * matches that may have been boosted by keyword overlap.
+ * for a chunk to survive cosine re-ranking. 0.20 is lenient — it removes
+ * only clearly unrelated candidates. Set to 0 to disable cosine filtering
+ * entirely and let the AI see everything above the RRF score threshold.
  *
  * Reference: docs/Parallx_Milestone_16.md Phase 2 — Cosine Re-ranking
  */
-const MIN_COSINE_SCORE = 0.30;
+const DEFAULT_MIN_COSINE_SCORE = 0.20;
+
+/**
+ * Default relative score drop-off ratio. 0 = disabled (no drop-off filter).
+ * When > 0, results below topScore × ratio are dropped.
+ */
+const DEFAULT_DROPOFF_RATIO = 0;
 
 /**
  * Dot product of two equal-length vectors.
@@ -132,11 +135,26 @@ export interface RetrievedContext {
  * applies post-retrieval filtering (score threshold, cosine re-ranking,
  * dedup, token budget), and returns ranked context chunks.
  */
+/** Config provider shape — all retrieval settings from AI Settings. */
+interface IRetrievalConfigProvider {
+  getEffectiveConfig(): {
+    retrieval: {
+      ragTopK: number;
+      ragMaxPerSource: number;
+      ragTokenBudget: number;
+      ragScoreThreshold: number;
+      ragCosineThreshold: number;
+      ragDropoffRatio: number;
+    };
+    model?: { contextWindow?: number };
+  };
+}
+
 export class RetrievalService extends Disposable implements IRetrievalService {
 
   private readonly _embeddingService: IEmbeddingService;
   private readonly _vectorStore: IVectorStoreService;
-  private _configProvider?: { getEffectiveConfig(): { retrieval: { ragTopK: number; ragScoreThreshold: number } } };
+  private _configProvider?: IRetrievalConfigProvider;
 
   constructor(
     embeddingService: IEmbeddingService,
@@ -148,7 +166,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
   }
 
   /** Bind a config provider (M20: UnifiedAIConfigService) for runtime defaults. */
-  setConfigProvider(provider: { getEffectiveConfig(): { retrieval: { ragTopK: number; ragScoreThreshold: number } } }): void {
+  setConfigProvider(provider: IRetrievalConfigProvider): void {
     this._configProvider = provider;
   }
 
@@ -160,19 +178,31 @@ export class RetrievalService extends Disposable implements IRetrievalService {
    * Pipeline:
    *   1. Embed query (search_query prefix)
    *   2. Hybrid search (vector + keyword via VectorStoreService, 3× overfetch)
-   *   3. Score threshold filter (absolute + relative drop-off)
-   *   4. Cosine re-ranking (query↔candidate similarity, drops < 0.30)
+   *   3. Score threshold filter (absolute + optional relative drop-off)
+   *   4. Cosine re-ranking (optional, drops below cosine threshold)
    *   5. Source deduplication (cap chunks per source)
-   *   6. Token budget enforcement
+   *   6. Token budget enforcement (auto-scales to model context window)
    */
   async retrieve(query: string, options?: RetrievalOptions): Promise<RetrievedContext[]> {
     if (!query.trim()) { return []; }
 
-    const cfgRetrieval = this._configProvider?.getEffectiveConfig().retrieval;
+    const cfg = this._configProvider?.getEffectiveConfig();
+    const cfgRetrieval = cfg?.retrieval;
     const topK = options?.topK ?? cfgRetrieval?.ragTopK ?? DEFAULT_TOP_K;
     const minScore = options?.minScore ?? cfgRetrieval?.ragScoreThreshold ?? DEFAULT_MIN_SCORE;
-    const maxPerSource = options?.maxPerSource ?? DEFAULT_MAX_PER_SOURCE;
-    const tokenBudget = options?.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
+    const maxPerSource = options?.maxPerSource ?? cfgRetrieval?.ragMaxPerSource ?? DEFAULT_MAX_PER_SOURCE;
+    const cosineThreshold = cfgRetrieval?.ragCosineThreshold ?? DEFAULT_MIN_COSINE_SCORE;
+    const dropoffRatio = cfgRetrieval?.ragDropoffRatio ?? DEFAULT_DROPOFF_RATIO;
+
+    // Token budget: 0 = auto (30% of model context window, floor 3000).
+    const rawBudget = options?.tokenBudget ?? cfgRetrieval?.ragTokenBudget ?? DEFAULT_TOKEN_BUDGET;
+    let tokenBudget: number;
+    if (rawBudget > 0) {
+      tokenBudget = rawBudget;
+    } else {
+      const ctxWindow = cfg?.model?.contextWindow ?? 0;
+      tokenBudget = ctxWindow > 0 ? Math.floor(ctxWindow * 0.30) : 8000;
+    }
 
     // 1. Embed the user query
     const queryEmbedding = await this._embeddingService.embedQuery(query);
@@ -196,21 +226,17 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     // 3. Score threshold filter (RRF scores)
     let filtered = rawResults.filter((r) => r.score >= minScore);
 
-    // 3b. Relative score drop-off — drop results below 60% of the top
-    //     score.  This catches noise that barely clears the absolute
-    //     threshold when there's a clear quality gap between the best
-    //     result and the rest.
-    if (filtered.length > 1) {
+    // 3b. Relative score drop-off (configurable, 0 = disabled).
+    //     When enabled, drops results below topScore × dropoffRatio.
+    if (dropoffRatio > 0 && filtered.length > 1) {
       const topScore = filtered[0].score;
-      const dropoffThreshold = topScore * 0.6;
+      const dropoffThreshold = topScore * dropoffRatio;
       filtered = filtered.filter((r) => r.score >= dropoffThreshold);
     }
 
-    // 4. Cosine re-ranking — compute query↔candidate cosine similarity
-    //    using stored embeddings. Drops candidates below MIN_COSINE_SCORE.
-    //    This catches keyword-boosted noise that isn't semantically close.
-    if (filtered.length > 0) {
-      filtered = await this._cosineRerank(queryEmbedding, filtered);
+    // 4. Cosine re-ranking (configurable threshold, 0 = disabled).
+    if (cosineThreshold > 0 && filtered.length > 0) {
+      filtered = await this._cosineRerank(queryEmbedding, filtered, cosineThreshold);
     }
 
     // 5. Source deduplication — cap chunks from any single source
@@ -402,8 +428,8 @@ export class RetrievalService extends Disposable implements IRetrievalService {
 
   /**
    * Re-rank candidates by cosine similarity between the query embedding
-   * and each candidate's stored embedding. Drops candidates below
-   * MIN_COSINE_SCORE and re-sorts by cosine similarity (descending).
+   * and each candidate's stored embedding. Drops candidates below the
+   * configured cosine threshold and re-sorts by cosine similarity (descending).
    *
    * This is a lightweight, zero-latency re-ranker that uses already-computed
    * embeddings — no additional model calls. It catches false positives from
@@ -413,6 +439,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
   private async _cosineRerank(
     queryEmbedding: number[],
     candidates: SearchResult[],
+    minCosine: number = DEFAULT_MIN_COSINE_SCORE,
   ): Promise<SearchResult[]> {
     // Fetch stored embeddings for all candidate rowids
     const rowids = candidates.map((c) => c.rowid);
@@ -424,11 +451,11 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       const emb = embeddings.get(candidate.rowid);
       if (!emb) {
         // No stored embedding (shouldn't happen) — keep with neutral score
-        scored.push({ result: candidate, cosine: MIN_COSINE_SCORE });
+        scored.push({ result: candidate, cosine: minCosine });
         continue;
       }
       const sim = cosineSimilarity(queryEmbedding, emb);
-      if (sim >= MIN_COSINE_SCORE) {
+      if (sim >= minCosine) {
         scored.push({ result: candidate, cosine: sim });
       }
       // else: dropped — not semantically close enough

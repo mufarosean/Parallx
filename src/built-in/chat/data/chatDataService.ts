@@ -520,11 +520,10 @@ export class ChatDataService {
     if (!this._d.retrievalService) { return undefined; }
     if (!this._d.indexingPipelineService?.isInitialIndexComplete) { return undefined; }
     try {
-      const chunks = await this._d.retrievalService.retrieve(query, {
-        topK: 6,
-        maxPerSource: 2,
-        tokenBudget: 2500,
-      });
+      // No hardcoded overrides — retrieval parameters come from AI Settings
+      // (ragTopK, ragMaxPerSource, ragTokenBudget, etc.) via the config
+      // provider bound to the retrieval service. Users control the limits.
+      const chunks = await this._d.retrievalService.retrieve(query);
       if (chunks.length === 0) { return undefined; }
       const text = this._d.retrievalService.formatContext(chunks);
       const sources = this._buildSourceCitations(chunks);
@@ -547,11 +546,8 @@ export class ChatDataService {
     if (!this._d.indexingPipelineService?.isInitialIndexComplete) { return undefined; }
 
     try {
-      const chunks = await this._d.retrievalService.retrieve(userText, {
-        topK: 6,
-        maxPerSource: 2,
-        tokenBudget: 2500,
-      });
+      // No hardcoded overrides — retrieval parameters from AI Settings.
+      const chunks = await this._d.retrievalService.retrieve(userText);
       if (chunks.length === 0) { return undefined; }
       const text = this._d.retrievalService.formatContext(chunks);
       const sources = this._buildSourceCitations(chunks);
