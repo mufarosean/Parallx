@@ -42,11 +42,38 @@ export interface AssertionResult {
   passed: boolean;
 }
 
+export interface RetrievalMetrics {
+  expectedSourceHitRate: number;
+  requiredTermCoverage: number;
+  forbiddenTermViolationCount: number;
+  citationPresent: boolean;
+  expectedSourcesMentioned: string[];
+  missingSources: string[];
+  matchedRequiredTerms: string[];
+  missingRequiredTerms: string[];
+}
+
+export interface RetrievalExpectation {
+  expectedSources: string[];
+  requiredTerms?: string[];
+  forbiddenTerms?: string[];
+  requireCitation?: boolean;
+}
+
+export interface RetrievalSummary {
+  turnCount: number;
+  avgExpectedSourceHitRate: number;
+  avgRequiredTermCoverage: number;
+  citationRate: number;
+  avgForbiddenTermViolations: number;
+}
+
 export interface TurnResult {
   prompt: string;
   response: string;
   latencyMs: number;
   assertions: AssertionResult[];
+  retrievalMetrics?: RetrievalMetrics;
   /** Weighted score for this turn: 0–1. */
   score: number;
 }
@@ -74,6 +101,7 @@ export interface EvalReport {
   overallScore: number;
   grade: Grade;
   dimensionScores: Record<string, DimensionScore>;
+  retrievalSummary?: RetrievalSummary;
   tests: TestCaseResult[];
   /** Pretty-printed text summary for console/file output. */
   summary: string;
@@ -129,6 +157,55 @@ export function matchesPattern(pattern: RegExp): (r: string) => boolean {
   return (r) => pattern.test(r);
 }
 
+export function evaluateRetrievalMetrics(
+  response: string,
+  expectation: RetrievalExpectation,
+): RetrievalMetrics {
+  const lower = response.toLowerCase();
+
+  const expectedSourcesMentioned = expectation.expectedSources.filter((source) => {
+    const baseName = source.replace(/\.md$/i, '');
+    const normalized = baseName.toLowerCase();
+    const tokens = normalized
+      .split(/[^a-z0-9]+/i)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 4);
+
+    return lower.includes(normalized) || tokens.some((token) => lower.includes(token));
+  });
+  const missingSources = expectation.expectedSources.filter(
+    (source) => !expectedSourcesMentioned.includes(source),
+  );
+
+  const requiredTerms = expectation.requiredTerms ?? [];
+  const matchedRequiredTerms = requiredTerms.filter((term) => lower.includes(term.toLowerCase()));
+  const missingRequiredTerms = requiredTerms.filter((term) => !matchedRequiredTerms.includes(term));
+
+  const forbiddenTerms = expectation.forbiddenTerms ?? [];
+  const forbiddenTermViolationCount = forbiddenTerms.filter(
+    (term) => lower.includes(term.toLowerCase()),
+  ).length;
+
+  const citationPresent = hasCitationMarkers()(response)
+    || /(?:source|sources|agent contacts|claims guide|vehicle info|insurance policy)/i.test(response)
+    || /[¹²³⁴⁵⁶⁷⁸⁹]/.test(response);
+
+  return {
+    expectedSourceHitRate: expectation.expectedSources.length > 0
+      ? expectedSourcesMentioned.length / expectation.expectedSources.length
+      : 0,
+    requiredTermCoverage: requiredTerms.length > 0
+      ? matchedRequiredTerms.length / requiredTerms.length
+      : 1,
+    forbiddenTermViolationCount,
+    citationPresent,
+    expectedSourcesMentioned,
+    missingSources,
+    matchedRequiredTerms,
+    missingRequiredTerms,
+  };
+}
+
 // ── Scoring ──────────────────────────────────────────────────────────────────
 
 /** Weighted score: sum(weight × pass) / sum(weight). Returns 0–1. */
@@ -179,7 +256,21 @@ export function buildReport(tests: TestCaseResult[], model: string): EvalReport 
     : 0;
   const grade = gradeFromScore(overallScore);
 
-  const summary = formatReport({ overallScore, grade, dimensionScores, tests, model });
+  const retrievalTurns = tests.flatMap((test) => test.turns)
+    .map((turn) => turn.retrievalMetrics)
+    .filter((metrics): metrics is RetrievalMetrics => !!metrics);
+
+  const retrievalSummary: RetrievalSummary | undefined = retrievalTurns.length > 0
+    ? {
+        turnCount: retrievalTurns.length,
+        avgExpectedSourceHitRate: retrievalTurns.reduce((sum, metrics) => sum + metrics.expectedSourceHitRate, 0) / retrievalTurns.length,
+        avgRequiredTermCoverage: retrievalTurns.reduce((sum, metrics) => sum + metrics.requiredTermCoverage, 0) / retrievalTurns.length,
+        citationRate: retrievalTurns.filter((metrics) => metrics.citationPresent).length / retrievalTurns.length,
+        avgForbiddenTermViolations: retrievalTurns.reduce((sum, metrics) => sum + metrics.forbiddenTermViolationCount, 0) / retrievalTurns.length,
+      }
+    : undefined;
+
+  const summary = formatReport({ overallScore, grade, dimensionScores, retrievalSummary, tests, model });
 
   return {
     timestamp: new Date().toISOString(),
@@ -188,6 +279,7 @@ export function buildReport(tests: TestCaseResult[], model: string): EvalReport 
     overallScore,
     grade,
     dimensionScores,
+    retrievalSummary,
     tests,
     summary,
   };
@@ -199,10 +291,11 @@ function formatReport(opts: {
   overallScore: number;
   grade: Grade;
   dimensionScores: Record<string, DimensionScore>;
+  retrievalSummary?: RetrievalSummary;
   tests: TestCaseResult[];
   model: string;
 }): string {
-  const { overallScore, grade, dimensionScores, tests, model } = opts;
+  const { overallScore, grade, dimensionScores, retrievalSummary, tests, model } = opts;
   const W = 64;
   const sep = '='.repeat(W);
   const thin = '-'.repeat(W);
@@ -251,6 +344,17 @@ function formatReport(opts: {
     const filled = Math.round(data.score * 20);
     const bar = '#'.repeat(filled) + '.'.repeat(20 - filled);
     lines.push(`    ${dim.padEnd(24)} [${bar}] ${(data.score * 100).toFixed(0)}%`);
+  }
+
+  if (retrievalSummary) {
+    lines.push('');
+    lines.push('  RETRIEVAL BASELINE');
+    lines.push(thin);
+    lines.push(`    Turns with retrieval metrics  ${String(retrievalSummary.turnCount).padStart(6)}`);
+    lines.push(`    Expected-source hit rate      ${(retrievalSummary.avgExpectedSourceHitRate * 100).toFixed(0)}%`);
+    lines.push(`    Required-term coverage       ${(retrievalSummary.avgRequiredTermCoverage * 100).toFixed(0)}%`);
+    lines.push(`    Citation presence rate       ${(retrievalSummary.citationRate * 100).toFixed(0)}%`);
+    lines.push(`    Avg forbidden violations     ${retrievalSummary.avgForbiddenTermViolations.toFixed(2)}`);
   }
 
   lines.push('');

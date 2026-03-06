@@ -43,8 +43,10 @@ import {
   LIVE_DATA_CHANGE_TEST,
   MEMORY_VS_RAG_TEST,
 } from './rubric';
+import { getRetrievalBenchmarkById } from './retrievalBenchmark';
 import {
   evaluateAssertions,
+  evaluateRetrievalMetrics,
   scoreTurn,
   buildReport,
   type TestCaseResult,
@@ -103,8 +105,9 @@ test.describe.serial('AI Quality Evaluation', () => {
       await window.waitForTimeout(500);
 
       const turns: TurnResult[] = [];
+      const retrievalBenchmark = getRetrievalBenchmarkById(tc.id);
 
-      for (const turn of tc.turns) {
+      for (const [turnIndex, turn] of tc.turns.entries()) {
         let text = '';
         let latencyMs = 0;
 
@@ -124,12 +127,17 @@ test.describe.serial('AI Quality Evaluation', () => {
         // Quality evaluation (never throws — empty text just scores 0)
         const assertionResults = evaluateAssertions(text, turn.assertions);
         const score = scoreTurn(assertionResults);
+        const retrievalExpectation = retrievalBenchmark?.turns[turnIndex];
+        const retrievalMetrics = retrievalExpectation
+          ? evaluateRetrievalMetrics(text, retrievalExpectation)
+          : undefined;
 
         turns.push({
           prompt: turn.prompt,
           response: text || '(empty response)',
           latencyMs,
           assertions: assertionResults,
+          retrievalMetrics,
           score,
         });
 
