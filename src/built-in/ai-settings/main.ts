@@ -67,7 +67,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
     api.views.registerViewProvider('view.aiSettings', {
       createView(container: HTMLElement): IDisposable {
-        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService);
+        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService);
         return _panel;
       },
     }),

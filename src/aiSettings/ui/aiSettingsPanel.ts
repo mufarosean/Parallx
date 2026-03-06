@@ -1,8 +1,11 @@
-// aiSettingsPanel.ts — AI Settings Panel Shell (M15 Task 2.2)
+// aiSettingsPanel.ts — AI Hub Panel Shell (M20 Task C.1, originally M15 Task 2.2)
 //
 // Two-column layout:
 //   Left (200px): section navigation + preset switcher
 //   Right (flex): search bar + scrollable section content
+//
+// Sections: Behavior (Persona+Chat merged), Suggestions, Model, Retrieval,
+// Agent, Indexing, Advanced, Preview
 //
 // All sections stack vertically. Navigation smooth-scrolls to section headers.
 // Search bar dims non-matching fields (never hides them).
@@ -12,12 +15,16 @@ import { $ } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import type { IAISettingsService, AISettingsProfile } from '../aiSettingsTypes.js';
 import type { ILanguageModelsService } from '../../services/chatTypes.js';
+import type { IUnifiedAIConfigService } from '../unifiedConfigTypes.js';
 import { PresetSwitcher } from './presetSwitcher.js';
 import type { SettingsSection } from './sectionBase.js';
 import { PersonaSection } from './sections/personaSection.js';
 import { ChatSection } from './sections/chatSection.js';
 import { SuggestionsSection } from './sections/suggestionsSection.js';
 import { ModelSection } from './sections/modelSection.js';
+import { RetrievalSection } from './sections/retrievalSection.js';
+import { AgentSection } from './sections/agentSection.js';
+import { IndexingSection } from './sections/indexingSection.js';
 import { AdvancedSection } from './sections/advancedSection.js';
 import { PreviewSection } from './sections/previewSection.js';
 import './aiSettings.css';
@@ -36,6 +43,7 @@ export class AISettingsPanel extends Disposable {
     container: HTMLElement,
     private readonly _service: IAISettingsService,
     private readonly _languageModelsService?: ILanguageModelsService,
+    private readonly _unifiedConfigService?: IUnifiedAIConfigService,
   ) {
     super();
 
@@ -77,6 +85,9 @@ export class AISettingsPanel extends Disposable {
       this._register(new ChatSection(this._service)),
       this._register(new SuggestionsSection(this._service)),
       this._register(new ModelSection(this._service, this._languageModelsService)),
+      this._register(new RetrievalSection(this._service, this._unifiedConfigService)),
+      this._register(new AgentSection(this._service, this._unifiedConfigService)),
+      this._register(new IndexingSection(this._service, this._unifiedConfigService)),
       this._register(new AdvancedSection(this._service)),
       this._register(new PreviewSection(this._service)),
     ];
@@ -114,6 +125,9 @@ export class AISettingsPanel extends Disposable {
       { id: 'chat', label: 'Chat' },
       { id: 'suggestions', label: 'Suggestions' },
       { id: 'model', label: 'Model' },
+      { id: 'retrieval', label: 'Retrieval' },
+      { id: 'agent', label: 'Agent' },
+      { id: 'indexing', label: 'Indexing' },
       { id: 'advanced', label: 'Advanced' },
       { id: 'preview', label: 'Preview' },
     ];

@@ -407,7 +407,13 @@ VectorStoreService        TokenBudgetManager
 
 > Redesign the AI Settings panel into the AI Hub with new sections.
 
-### Task C.1 — Rename and restructure panel sections (3h)
+### Task C.1 — Rename and restructure panel sections (3h) ✅
+- Panel restructured: 9 sections (Persona, Chat, Suggestions, Model, Retrieval, Agent, Indexing, Advanced, Preview)
+- Navigation expanded from 6 to 9 items with new sections interleaved
+- Panel constructor accepts `IUnifiedAIConfigService` as 4th parameter
+- Header comment updated to "AI Hub Panel Shell"
+
+**Original spec:**
 - Rename panel title: "AI Settings" → "AI Hub" (or "AI Configuration")
 - Restructure sections into tabs or collapsible groups:
   - **Behavior**: Persona + Chat sections merged (name, description, avatar, tone,
@@ -420,13 +426,25 @@ VectorStoreService        TokenBudgetManager
   - **Memory**: NEW section (Phase F)
   - **Advanced**: Export/Import, Reset All, Raw JSON editor toggle
 
-### Task C.2 — Scope indicator per field (2h)
+### Task C.2 — Scope indicator per field (2h) ✅
+- Extended `ISettingRowOptions` with `scopePath` and `unifiedService` properties
+- `createSettingRow()` renders scope badge: "Global" (muted) or "Workspace ↩" (blue)
+- Clicking "Workspace ↩" badge calls `clearWorkspaceOverride(path)` to reset field
+- CSS: `.ai-settings-row__scope` and `.ai-settings-row__scope--workspace`
+
+**Original spec:**
 - Each setting row gets a visual indicator: "Global" (default) or "Workspace ↩"
 - Clicking "Workspace ↩" resets that field to the global preset value
 - A toggle to "Override for this workspace" sets the field in workspace override
 - Implementation: extend `_createRow()` in `sectionBase.ts`
 
-### Task C.3 — Retrieval section UI (3h)
+### Task C.3 — Retrieval section UI (3h) ✅
+- Created `src/aiSettings/ui/sections/retrievalSection.ts` (~310 lines)
+- Controls: Auto-RAG toggle, RAG Top K slider (1-30), Score Threshold slider (0-100 → 0.0-1.0)
+- Context Budget: 4 linked sliders with `_redistributeBudget()` and visual bar (green/blue/orange/purple)
+- All controls read/write through `IUnifiedAIConfigService`, all rows pass `scopePath` for scope indicators
+
+**Original spec:**
 - New file: `src/aiSettings/ui/sections/retrievalSection.ts`
 - Controls:
   - Auto-RAG toggle (Toggle widget)
@@ -436,12 +454,23 @@ VectorStoreService        TokenBudgetManager
     showing allocation. Sliders are linked — adjusting one redistributes others.
 - Each control reads/writes through `UnifiedAIConfigService`
 
-### Task C.4 — Agent section or inline controls (1h)
+### Task C.4 — Agent section or inline controls (1h) ✅
+- Created `src/aiSettings/ui/sections/agentSection.ts` (~85 lines)
+- Max Iterations slider (1-50) with labeled stops at 1/10/25/50
+- Info note linking to Retrieval section for related controls
+- Dedicated "Agent" nav section rather than subsection of Retrieval
+
+**Original spec:**
 - `maxIterations` control (InputBox, 1–50) — can live in Advanced or Behavior
 - Consider: expose `autoRag` and `maxIterations` as a small "Agent Behavior"
   subsection within Behavior or as part of Retrieval
 
-### Task C.5 — Indexing section UI (2h)
+### Task C.5 — Indexing section UI (2h) ✅
+- Created `src/aiSettings/ui/sections/indexingSection.ts` (~155 lines)
+- Controls: Auto-index toggle, Watch files toggle, Max file size InputBox (with `formatBytes`/`parseBytes` helpers), Exclude patterns Textarea
+- Top-level nav section for easy access
+
+**Original spec:**
 - New file: `src/aiSettings/ui/sections/indexingSection.ts`
 - Controls:
   - Auto-index toggle
@@ -568,14 +597,14 @@ VectorStoreService        TokenBudgetManager
 | **A.4** | Wire consumers to unified service | 3h | A.2 | ✅ |
 | **A.5** | Retire `ParallxConfigService` usage | 1h | A.4 | ✅ |
 | **A.6** | Update `AISettingsService` delegation | 2h | A.2 | ✅ |
-| **B.1** | Workspace override persistence | 2h | A.2 | ⬜ |
-| **B.2** | Per-workspace preset selection | 1h | B.1 | ⬜ |
-| **B.3** | Override resolution logic | 2h | B.1 | ⬜ |
-| **C.1** | Rename and restructure panel sections | 3h | A.6 | ⬜ |
-| **C.2** | Scope indicator per field | 2h | B.3, C.1 | ⬜ |
-| **C.3** | Retrieval section UI | 3h | C.1, A.4 | ⬜ |
-| **C.4** | Agent controls | 1h | C.1, A.4 | ⬜ |
-| **C.5** | Indexing section UI | 2h | C.1, A.4 | ⬜ |
+| **B.1** | Workspace override persistence | 2h | A.2 | ✅ |
+| **B.2** | Per-workspace preset selection | 1h | B.1 | ✅ |
+| **B.3** | Override resolution logic | 2h | B.1 | ✅ |
+| **C.1** | Rename and restructure panel sections | 3h | A.6 | ✅ |
+| **C.2** | Scope indicator per field | 2h | B.3, C.1 | ✅ |
+| **C.3** | Retrieval section UI | 3h | C.1, A.4 | ✅ |
+| **C.4** | Agent controls | 1h | C.1, A.4 | ✅ |
+| **C.5** | Indexing section UI | 2h | C.1, A.4 | ✅ |
 | **D.1** | Inline save indicators | 2h | C.1 | ⬜ |
 | **D.2** | Toast notifications | 1h | A.2 | ⬜ |
 | **D.3** | Clone-on-write notification | 1h | D.2 | ⬜ |
@@ -607,10 +636,10 @@ VectorStoreService        TokenBudgetManager
 - [x] `isOverridden(path)` correctly identifies workspace-level changes
 
 ### Phase C
-- [ ] AI Hub shows all sections: Behavior, Retrieval, Model, Suggestions, Tools, Memory, Advanced
-- [ ] Retrieval section sliders control `ragTopK` and `ragScoreThreshold`
-- [ ] Context budget sliders sum to 100%
-- [ ] Scope indicators show "Global" vs "Workspace" correctly
+- [x] AI Hub shows all 9 sections: Persona, Chat, Suggestions, Model, Retrieval, Agent, Indexing, Advanced, Preview
+- [x] Retrieval section sliders control `ragTopK` and `ragScoreThreshold`
+- [x] Context budget 4 linked sliders sum to 100% with visual bar
+- [x] Scope indicators show "Global" vs "Workspace ↩" correctly (click to reset)
 
 ### Phase D
 - [ ] "✓ Saved" indicator appears after every field change

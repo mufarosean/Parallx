@@ -1,12 +1,12 @@
 // sectionBase.ts — Base class and types for AI Settings panel sections
 //
-// Each section (Persona, Chat, Suggestions, Model, Advanced, Preview)
-// extends SettingsSection to get a consistent layout, reset button,
-// and search-dimming support.
+// Sections: Persona, Chat, Suggestions, Model, Retrieval, Agent, Indexing, Advanced, Preview
+// Each extends SettingsSection for consistent layout, reset, scope indicators, and search.
 
 import { Disposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
 import type { IAISettingsService, AISettingsProfile } from '../aiSettingsTypes.js';
+import type { IUnifiedAIConfigService } from '../unifiedConfigTypes.js';
 
 // ─── Setting Row ─────────────────────────────────────────────────────────────
 
@@ -19,6 +19,10 @@ export interface ISettingRowOptions {
   readonly key: string;
   /** Callback when reset icon is clicked. */
   readonly onReset?: () => void;
+  /** Dot-path for scope indicator (e.g. 'retrieval.ragTopK'). When provided, shows Global/Workspace badge. */
+  readonly scopePath?: string;
+  /** Unified config service reference — needed for scope indicator. */
+  readonly unifiedService?: IUnifiedAIConfigService;
 }
 
 /**
@@ -39,6 +43,25 @@ export function createSettingRow(options: ISettingRowOptions): {
 
   const label = $('div.ai-settings-row__label', options.label);
   headerLine.appendChild(label);
+
+  // Scope indicator (M20 C.2)
+  if (options.scopePath && options.unifiedService) {
+    const scopeBadge = $('span.ai-settings-row__scope');
+    const isWs = options.unifiedService.isOverridden(options.scopePath);
+    scopeBadge.textContent = isWs ? 'Workspace ↩' : 'Global';
+    scopeBadge.classList.toggle('ai-settings-row__scope--workspace', isWs);
+    scopeBadge.title = isWs
+      ? `This field is overridden for this workspace. Click to reset to global preset value.`
+      : 'Using the global preset value';
+    if (isWs) {
+      scopeBadge.style.cursor = 'pointer';
+      scopeBadge.addEventListener('click', (e) => {
+        e.stopPropagation();
+        options.unifiedService!.clearWorkspaceOverride(options.scopePath!);
+      });
+    }
+    headerLine.appendChild(scopeBadge);
+  }
 
   if (options.onReset) {
     const resetBtn = $('button.ai-settings-row__reset');
@@ -132,12 +155,12 @@ export abstract class SettingsSection extends Disposable {
   }
 
   /** Add a "Reset section to defaults" link at the bottom. */
-  protected _addResetSectionLink(sectionKey: 'persona' | 'chat' | 'model' | 'suggestions'): void {
+  protected _addResetSectionLink(sectionKey: string): void {
     const link = $('button.ai-settings-section__reset-link');
     link.setAttribute('type', 'button');
     link.textContent = 'Reset section to defaults';
     link.addEventListener('click', () => {
-      this._service.resetSection(sectionKey);
+      this._service.resetSection(sectionKey as 'persona' | 'chat' | 'model' | 'suggestions');
     });
     this.contentElement.appendChild(link);
   }
