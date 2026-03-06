@@ -1222,7 +1222,7 @@ export class ChatDataService {
     }
 
     return sections.length > 0
-      ? `YOU ALREADY KNOW THIS WORKSPACE. Here is what exists:\n\n${sections.join('\n\n')}\n\nYou have read every document in this workspace. The summaries above tell you what each file contains. Use this knowledge to answer directly — you do NOT need to discover what files exist.\nWhen the user asks about a file, use the EXACT path shown above with read_file or search tools.`
+      ? `HERE IS WHAT EXISTS IN THIS WORKSPACE (file names and brief summaries):\n\n${sections.join('\n\n')}\n\nIMPORTANT: The list above shows file NAMES and short previews only — NOT the full content of each file. You have NOT read every document. When the user asks about specific file content, rely on [Retrieved Context] chunks provided in the user message, or use search_knowledge / read_file tools to look up the actual content. NEVER guess or fabricate what a file contains based on its title alone.`
       : undefined;
   }
 
