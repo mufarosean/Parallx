@@ -616,13 +616,19 @@ async function fsCreateFolder(parentUri: string, name: string): Promise<void> {
 async function fsDelete(uri: string): Promise<void> {
   const electronFs = (globalThis as any).parallxElectron?.fs;
   if (!electronFs) return;
-  await electronFs.delete(uriToFsPath(uri), { recursive: true, useTrash: true });
+  const result = await electronFs.delete(uriToFsPath(uri), { recursive: true, useTrash: true });
+  if (result?.error) {
+    throw new Error(result.error.message || 'Delete failed');
+  }
 }
 
 async function fsRename(oldUri: string, newUri: string): Promise<void> {
   const electronFs = (globalThis as any).parallxElectron?.fs;
   if (!electronFs) return;
-  await electronFs.rename(uriToFsPath(oldUri), uriToFsPath(newUri));
+  const result = await electronFs.rename(uriToFsPath(oldUri), uriToFsPath(newUri));
+  if (result?.error) {
+    throw new Error(result.error.message || 'Rename failed');
+  }
 }
 
 // ─── Keyboard Navigation ─────────────────────────────────────────────────────

@@ -1062,22 +1062,43 @@ ipcMain.handle('fs:watch', async (_event, watchPath, _options) => {
       const entry = _activeWatchers.get(watchId);
       if (!entry) return;
 
-      const changeType = eventType === 'rename' ? 'created' : 'changed';
       const fullPath = path.join(watchPath, filename);
-      entry.pendingEvents.push({ type: changeType, path: fullPath });
 
-      // Debounce: coalesce rapid changes
-      if (entry.debounceTimer) clearTimeout(entry.debounceTimer);
-      entry.debounceTimer = setTimeout(() => {
-        const events = entry.pendingEvents.splice(0);
+      if (eventType === 'rename') {
+        // Node.js fs.watch fires 'rename' for BOTH creates and deletes.
+        // Stat the file to determine which actually happened.
+        fsSync.stat(fullPath, (err) => {
+          const entryNow = _activeWatchers.get(watchId);
+          if (!entryNow) return;
+          const changeType = err ? 'deleted' : 'created';
+          entryNow.pendingEvents.push({ type: changeType, path: fullPath });
+          _flushWatcherDebounce(watchId);
+        });
+      } else {
+        entry.pendingEvents.push({ type: 'changed', path: fullPath });
+        _flushWatcherDebounce(watchId);
+      }
+    });
+
+    /**
+     * Flush pending watcher events after debounce.
+     * Extracted so both the sync (changed) and async (rename→stat) paths
+     * can share the same debounce/send logic.
+     */
+    function _flushWatcherDebounce(id) {
+      const e = _activeWatchers.get(id);
+      if (!e) return;
+      if (e.debounceTimer) clearTimeout(e.debounceTimer);
+      e.debounceTimer = setTimeout(() => {
+        const events = e.pendingEvents.splice(0);
         if (events.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
           // Deduplicate by path — keep last event per path
           const deduped = new Map();
-          for (const e of events) deduped.set(e.path, e);
-          mainWindow.webContents.send('fs:change', { watchId, events: [...deduped.values()] });
+          for (const ev of events) deduped.set(ev.path, ev);
+          mainWindow.webContents.send('fs:change', { watchId: id, events: [...deduped.values()] });
         }
       }, WATCHER_DEBOUNCE_MS);
-    });
+    }
 
     watcher.on('error', (err) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
