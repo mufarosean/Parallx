@@ -1080,6 +1080,9 @@ export interface IVectorStoreService extends IDisposable {
   /** Batch-fetch stored embeddings by rowid. Returns Map<rowid, float[]>. */
   getEmbeddings(rowids: number[]): Promise<Map<number, number[]>>;
 
+  /** Get trace information for the most recent hybrid search. */
+  getLastSearchTrace?(): import('./vectorStoreService.js').HybridSearchTrace | undefined;
+
   /** Delete ALL data from vec_embeddings, fts_chunks, and indexing_metadata. */
   purgeAll(): Promise<void>;
 
@@ -1164,6 +1167,9 @@ export interface IRetrievalService extends IDisposable {
     queries: string[],
     options?: import('./retrievalService.js').RetrievalOptions,
   ): Promise<import('./retrievalService.js').RetrievedContext[]>;
+
+  /** Get trace information for the most recent retrieval request. */
+  getLastTrace?(): import('./retrievalService.js').RetrievalTrace | undefined;
 }
 
 export const IRetrievalService = createServiceIdentifier<IRetrievalService>('IRetrievalService');

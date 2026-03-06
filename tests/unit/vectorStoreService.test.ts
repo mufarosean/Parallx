@@ -499,6 +499,27 @@ describe('VectorStoreService', () => {
       const results = await service.search([0.1], 'query', { topK: 3 });
       expect(results.length).toBeLessThanOrEqual(3);
     });
+
+    it('captures keyword fallback and fusion details in the search trace', async () => {
+      db.all.mockResolvedValueOnce([
+        vectorRow(1, 'page_block', 'p1', 0, 'Architecture overview'),
+      ]);
+      db.all.mockResolvedValueOnce([]); // AND keyword path
+      db.all.mockResolvedValueOnce([
+        vectorRow(1, 'page_block', 'p1', 0, 'Architecture overview'),
+        vectorRow(2, 'file_chunk', 'ARCHITECTURE.md', 0, 'System architecture notes'),
+      ]); // OR fallback path
+
+      await service.search([0.1, 0.2], 'architecture overview', { topK: 5 });
+
+      const trace = service.getLastSearchTrace();
+      expect(trace).toBeDefined();
+      expect(trace?.vectorResultCount).toBe(1);
+      expect(trace?.keywordResultCount).toBe(2);
+      expect(trace?.keywordTrace?.fallbackUsed).toBe(true);
+      expect(trace?.keywordTrace?.andResultCount).toBe(0);
+      expect(trace?.fusedResultCount).toBeGreaterThan(0);
+    });
   });
 
   describe('vectorSearch()', () => {

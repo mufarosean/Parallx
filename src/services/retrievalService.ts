@@ -21,7 +21,7 @@ import type {
   IVectorStoreService,
   IRetrievalService,
 } from './serviceTypes.js';
-import type { SearchResult, SearchOptions } from './vectorStoreService.js';
+import type { SearchResult, SearchOptions, HybridSearchTrace } from './vectorStoreService.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -126,6 +126,39 @@ export interface RetrievedContext {
   tokenCount: number;
 }
 
+export interface RetrievalTrace {
+  query: string;
+  topK: number;
+  minScore: number;
+  maxPerSource: number;
+  tokenBudget: number;
+  cosineThreshold: number;
+  dropoffRatio: number;
+  rawCandidateCount: number;
+  afterScoreFilterCount: number;
+  afterDropoffCount: number;
+  afterCosineCount: number;
+  afterDedupCount: number;
+  finalCount: number;
+  scoreThresholdDrops: number;
+  dropoffDrops: number;
+  cosineDrops: number;
+  dedupDrops: number;
+  tokenBudgetDrops: number;
+  tokenBudgetUsed: number;
+  finalChunks: Array<{
+    sourceType: string;
+    sourceId: string;
+    score: number;
+    tokenCount: number;
+  }>;
+  vectorStoreTrace?: HybridSearchTrace;
+}
+
+interface IVectorStoreTraceAccessor {
+  getLastSearchTrace?(): HybridSearchTrace | undefined;
+}
+
 // ─── RetrievalService ────────────────────────────────────────────────────────
 
 /**
@@ -155,6 +188,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
   private readonly _embeddingService: IEmbeddingService;
   private readonly _vectorStore: IVectorStoreService;
   private _configProvider?: IRetrievalConfigProvider;
+  private _lastTrace: RetrievalTrace | undefined;
 
   constructor(
     embeddingService: IEmbeddingService,
@@ -222,9 +256,11 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       query,
       searchOptions,
     );
+    const vectorStoreTrace = (this._vectorStore as IVectorStoreTraceAccessor).getLastSearchTrace?.();
 
     // 3. Score threshold filter (RRF scores)
     let filtered = rawResults.filter((r) => r.score >= minScore);
+    const afterScoreFilterCount = filtered.length;
 
     // 3b. Relative score drop-off (configurable, 0 = disabled).
     //     When enabled, drops results below topScore × dropoffRatio.
@@ -233,20 +269,23 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       const dropoffThreshold = topScore * dropoffRatio;
       filtered = filtered.filter((r) => r.score >= dropoffThreshold);
     }
+    const afterDropoffCount = filtered.length;
 
     // 4. Cosine re-ranking (configurable threshold, 0 = disabled).
     if (cosineThreshold > 0 && filtered.length > 0) {
       filtered = await this._cosineRerank(queryEmbedding, filtered, cosineThreshold);
     }
+    const afterCosineCount = filtered.length;
 
     // 5. Source deduplication — cap chunks from any single source
     filtered = this._deduplicateSources(filtered, maxPerSource);
+    const afterDedupCount = filtered.length;
 
     // 6. Token budget enforcement
     const budgeted = this._applyTokenBudget(filtered, tokenBudget);
 
     // 7. Map to RetrievedContext and trim to topK
-    return budgeted.slice(0, topK).map((r) => ({
+    const finalResults = budgeted.results.slice(0, topK).map((r) => ({
       sourceType: r.sourceType,
       sourceId: r.sourceId,
       contextPrefix: r.contextPrefix,
@@ -255,6 +294,41 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       sources: r.sources,
       tokenCount: estimateTokens(r.chunkText),
     }));
+
+    this._lastTrace = {
+      query,
+      topK,
+      minScore,
+      maxPerSource,
+      tokenBudget,
+      cosineThreshold,
+      dropoffRatio,
+      rawCandidateCount: rawResults.length,
+      afterScoreFilterCount,
+      afterDropoffCount,
+      afterCosineCount,
+      afterDedupCount,
+      finalCount: finalResults.length,
+      scoreThresholdDrops: rawResults.length - afterScoreFilterCount,
+      dropoffDrops: afterScoreFilterCount - afterDropoffCount,
+      cosineDrops: afterDropoffCount - afterCosineCount,
+      dedupDrops: afterCosineCount - afterDedupCount,
+      tokenBudgetDrops: afterDedupCount - budgeted.results.length,
+      tokenBudgetUsed: budgeted.tokensUsed,
+      finalChunks: finalResults.map((chunk) => ({
+        sourceType: chunk.sourceType,
+        sourceId: chunk.sourceId,
+        score: chunk.score,
+        tokenCount: chunk.tokenCount,
+      })),
+      vectorStoreTrace,
+    };
+
+    return finalResults;
+  }
+
+  getLastTrace(): RetrievalTrace | undefined {
+    return this._lastTrace ? structuredClone(this._lastTrace) : undefined;
   }
 
   /**
@@ -407,7 +481,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
   /**
    * Enforce a token budget — include chunks in score order until the budget is exhausted.
    */
-  private _applyTokenBudget(results: SearchResult[], tokenBudget: number): SearchResult[] {
+  private _applyTokenBudget(results: SearchResult[], tokenBudget: number): { results: SearchResult[]; tokensUsed: number } {
     let tokensUsed = 0;
     const budgeted: SearchResult[] = [];
 
@@ -421,7 +495,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       tokensUsed += chunkTokens;
     }
 
-    return budgeted;
+    return { results: budgeted, tokensUsed };
   }
 
   // ── Cosine Re-Ranking (M16 Task 2.2) ──

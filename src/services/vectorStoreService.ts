@@ -76,6 +76,27 @@ export interface SearchOptions {
   includeKeyword?: boolean;
 }
 
+export interface KeywordSearchTrace {
+  query: string;
+  fallbackQuery?: string;
+  fallbackUsed: boolean;
+  andResultCount: number;
+  finalResultCount: number;
+}
+
+export interface HybridSearchTrace {
+  queryText: string;
+  topK: number;
+  candidateK: number;
+  sourceFilter?: string;
+  includeKeyword: boolean;
+  vectorResultCount: number;
+  keywordResultCount: number;
+  fusedResultCount: number;
+  finalResultCount: number;
+  keywordTrace?: KeywordSearchTrace;
+}
+
 /** Indexing metadata for a source (page or file). */
 export interface IndexingMeta {
   sourceType: string;
@@ -107,6 +128,7 @@ export interface VectorStoreStats {
 export class VectorStoreService extends Disposable implements IVectorStoreService {
 
   private readonly _db: IDatabaseService;
+  private _lastSearchTrace: HybridSearchTrace | undefined;
 
   // ── Events ──
 
@@ -310,8 +332,11 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
 
     // 2. Keyword search (FTS5 BM25)
     let keywordResults: VectorRow[] = [];
+    let keywordTrace: KeywordSearchTrace | undefined;
     if (includeKeyword && queryText.trim()) {
-      keywordResults = await this._keywordSearch(queryText, candidateK, options.sourceFilter);
+      const keywordSearch = await this._keywordSearch(queryText, candidateK, options.sourceFilter);
+      keywordResults = keywordSearch.results;
+      keywordTrace = keywordSearch.trace;
     }
 
     // 3. Reciprocal Rank Fusion
@@ -332,9 +357,28 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     }
 
     // 4. Filter by minimum score and return
-    return fused
+    const finalResults = fused
       .filter((r) => r.score >= minScore)
       .slice(0, topK);
+
+    this._lastSearchTrace = {
+      queryText,
+      topK,
+      candidateK,
+      sourceFilter: options.sourceFilter,
+      includeKeyword,
+      vectorResultCount: vectorResults.length,
+      keywordResultCount: keywordResults.length,
+      fusedResultCount: fused.length,
+      finalResultCount: finalResults.length,
+      keywordTrace,
+    };
+
+    return finalResults;
+  }
+
+  getLastSearchTrace(): HybridSearchTrace | undefined {
+    return this._lastSearchTrace ? structuredClone(this._lastSearchTrace) : undefined;
   }
 
   /**
@@ -540,10 +584,20 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     queryText: string,
     topK: number,
     sourceFilter?: string,
-  ): Promise<VectorRow[]> {
+  ): Promise<{ results: VectorRow[]; trace: KeywordSearchTrace }> {
     // Sanitize query for FTS5 (escape special characters) — AND semantics
     const sanitized = sanitizeFts5Query(queryText);
-    if (!sanitized) { return []; }
+    if (!sanitized) {
+      return {
+        results: [],
+        trace: {
+          query: '',
+          fallbackUsed: false,
+          andResultCount: 0,
+          finalResultCount: 0,
+        },
+      };
+    }
 
     const runFts = async (ftsQuery: string): Promise<VectorRow[]> => {
       let sql: string;
@@ -582,17 +636,44 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     const andResults = await runFts(sanitized);
 
     if (andResults.length >= Math.ceil(topK / 2)) {
-      return andResults;
+      return {
+        results: andResults,
+        trace: {
+          query: sanitized,
+          fallbackUsed: false,
+          andResultCount: andResults.length,
+          finalResultCount: andResults.length,
+        },
+      };
     }
 
     // AND returned too few results — try OR semantics for broader recall
     const orQuery = sanitizeFts5QueryOr(queryText);
     if (!orQuery || orQuery === sanitized) {
-      return andResults; // OR wouldn't differ (single term or same query)
+      return {
+        results: andResults,
+        trace: {
+          query: sanitized,
+          fallbackUsed: false,
+          andResultCount: andResults.length,
+          finalResultCount: andResults.length,
+        },
+      }; // OR wouldn't differ (single term or same query)
     }
 
     const orResults = await runFts(orQuery);
-    return orResults.length > andResults.length ? orResults : andResults;
+    const finalResults = orResults.length > andResults.length ? orResults : andResults;
+
+    return {
+      results: finalResults,
+      trace: {
+        query: sanitized,
+        fallbackQuery: orQuery,
+        fallbackUsed: finalResults === orResults,
+        andResultCount: andResults.length,
+        finalResultCount: finalResults.length,
+      },
+    };
   }
 }
 

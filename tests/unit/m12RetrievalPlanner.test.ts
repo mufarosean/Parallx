@@ -1,71 +1,14 @@
 // @vitest-environment jsdom
-// Unit tests for M12 — Retrieval Planner Pipeline
+// Unit tests for retrieval multi-query behavior.
 //
 // Tests cover:
-//   - OllamaProvider.planRetrieval() — streaming → JSON parsing
-//   - OllamaProvider._parsePlannerResponse() — robust JSON extraction
 //   - RetrievalService.retrieveMulti() — parallel queries, merge, dedup
-//   - shouldUsePlanner() — planner gate logic
-//   - buildPlannerPrompt() — prompt generation
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { OllamaProvider } from '../../src/built-in/chat/providers/ollamaProvider';
-import type { IRetrievalPlan } from '../../src/built-in/chat/providers/ollamaProvider';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RetrievalService } from '../../src/services/retrievalService';
-import { buildPlannerPrompt } from '../../src/built-in/chat/config/chatSystemPrompts';
 import type { SearchResult } from '../../src/services/vectorStoreService';
 
 // ── Helpers ──
-
-function jsonResponse(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-function streamResponse(chunks: string[]): Response {
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    start(controller) {
-      for (const chunk of chunks) {
-        controller.enqueue(encoder.encode(chunk + '\n'));
-      }
-      controller.close();
-    },
-  });
-  return new Response(stream, { status: 200 });
-}
-
-function createMockFetch(chatResponse: () => Response) {
-  return vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
-    if (url.includes('/api/version')) return jsonResponse({ version: '0.5.4' });
-    if (url.includes('/api/tags')) return jsonResponse({ models: [] });
-    if (url.includes('/api/ps')) return jsonResponse({ models: [] });
-    if (url.includes('/api/chat')) return chatResponse();
-    throw new Error(`Unexpected fetch to: ${url}`);
-  });
-}
-
-function makePlannerStreamChunks(jsonText: string): string[] {
-  // Simulate streaming: break the JSON into character-level chunks
-  const words = jsonText.split(' ');
-  const chunks: string[] = [];
-  for (const word of words) {
-    chunks.push(JSON.stringify({
-      model: 'test',
-      message: { role: 'assistant', content: word + ' ' },
-      done: false,
-    }));
-  }
-  chunks.push(JSON.stringify({
-    model: 'test',
-    message: { role: 'assistant', content: '' },
-    done: true,
-  }));
-  return chunks;
-}
 
 function createMockEmbeddingService() {
   return {
@@ -94,6 +37,16 @@ function createMockVectorStore() {
     getIndexedSources: vi.fn(async () => []),
     getStats: vi.fn(async () => ({ totalChunks: 0, totalSources: 0, bySourceType: {}, sourceCountByType: {} })),
     getEmbeddings: vi.fn(async (rowids: number[]) => new Map(rowids.map(id => [id, defaultEmb] as [number, number[]]))),
+    getLastSearchTrace: vi.fn(() => ({
+      queryText: 'test query',
+      topK: 6,
+      candidateK: 40,
+      includeKeyword: true,
+      vectorResultCount: 3,
+      keywordResultCount: 2,
+      fusedResultCount: 3,
+      finalResultCount: 3,
+    })),
     onDidUpdateIndex: vi.fn(() => ({ dispose: vi.fn() })) as any,
     dispose: vi.fn(),
   };
@@ -112,54 +65,6 @@ function makeResult(overrides: Partial<SearchResult> = {}): SearchResult {
     ...overrides,
   };
 }
-
-// ── buildPlannerPrompt tests ──
-
-describe('buildPlannerPrompt', () => {
-  it('returns a non-empty prompt string', () => {
-    const prompt = buildPlannerPrompt();
-    expect(prompt.length).toBeGreaterThan(100);
-  });
-
-  it('includes intent taxonomy', () => {
-    const prompt = buildPlannerPrompt();
-    expect(prompt).toContain('question');
-    expect(prompt).toContain('situation');
-    expect(prompt).toContain('task');
-    expect(prompt).toContain('conversational');
-    expect(prompt).toContain('exploration');
-  });
-
-  it('includes JSON output instructions', () => {
-    const prompt = buildPlannerPrompt();
-    expect(prompt).toContain('"intent"');
-    expect(prompt).toContain('"reasoning"');
-    expect(prompt).toContain('"needs_retrieval"');
-    expect(prompt).toContain('"queries"');
-  });
-
-  it('includes few-shot examples', () => {
-    const prompt = buildPlannerPrompt();
-    expect(prompt).toContain('fender bender');
-    expect(prompt).toContain('Hello');
-  });
-
-  it('includes workspace digest when provided', () => {
-    const digest = 'CANVAS PAGES (3):\n  - Insurance Policy\n  - Claims Guide';
-    const prompt = buildPlannerPrompt(digest);
-    expect(prompt).toContain('Insurance Policy');
-    expect(prompt).toContain('Claims Guide');
-    expect(prompt).toContain('WHAT THE WORKSPACE CONTAINS');
-  });
-
-  it('omits workspace section when no digest', () => {
-    const prompt = buildPlannerPrompt();
-    expect(prompt).not.toContain('WHAT THE WORKSPACE CONTAINS');
-  });
-});
-
-// ── OllamaProvider.planRetrieval tests ──
-// Removed in M17 Task 0.2.6: planRetrieval() was dead code and has been deleted.
 
 // ── RetrievalService.retrieveMulti tests ──
 
@@ -309,29 +214,25 @@ describe('RetrievalService.retrieveMulti', () => {
     const results = await service.retrieveMulti(['good query', 'bad query']);
     expect(results.length).toBeGreaterThanOrEqual(0); // At least doesn't crash
   });
-});
 
-// ── shouldUsePlanner tests ──
-// The planner LLM call is DISABLED.  No mainstream local AI app (Open WebUI,
-// AnythingLLM, Jan, LibreChat) uses a separate LLM call as a router.
-// They all embed the user's raw message and do direct retrieval — one LLM call.
-// The planner doubled latency on local Ollama (~45s planner + 13s response).
+  it('captures retrieval trace counts and final chunk identities', async () => {
+    vectorStore.search.mockResolvedValue([
+      makeResult({ rowid: 1, sourceId: 'policy', score: 0.12, chunkText: 'Collision deductible is $500.' }),
+      makeResult({ rowid: 2, sourceId: 'policy', score: 0.11, chunkIndex: 1, chunkText: 'Comprehensive deductible is $250.' }),
+      makeResult({ rowid: 3, sourceId: 'contacts', score: 0.05, chunkText: 'Agent contact details.' }),
+    ]);
 
-describe('shouldUsePlanner logic', () => {
-  // Mirror the production function for direct unit testing
-  function shouldUsePlanner(
-    _isRAGAvailable: boolean,
-    _hasSlashCommand: boolean,
-    _hasPlanAndRetrieve: boolean,
-  ): boolean {
-    return false;
-  }
+    const results = await service.retrieve('collision deductible', { topK: 2, maxPerSource: 1, tokenBudget: 40 });
+    const trace = service.getLastTrace();
 
-  it('always returns false — planner LLM call disabled', () => {
-    // All combinations return false — no separate planner call
-    expect(shouldUsePlanner(true, false, true)).toBe(false);
-    expect(shouldUsePlanner(true, false, false)).toBe(false);
-    expect(shouldUsePlanner(false, false, true)).toBe(false);
-    expect(shouldUsePlanner(true, true, true)).toBe(false);
+    expect(results).toHaveLength(2);
+    expect(trace).toBeDefined();
+    expect(trace?.rawCandidateCount).toBe(3);
+    expect(trace?.afterDedupCount).toBe(2);
+    expect(trace?.dedupDrops).toBe(1);
+    expect(trace?.finalChunks).toHaveLength(2);
+    expect(trace?.finalChunks[0]?.sourceId).toBe('policy');
+    expect(trace?.vectorStoreTrace?.fusedResultCount).toBe(3);
   });
 });
+

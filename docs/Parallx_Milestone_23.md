@@ -1274,6 +1274,37 @@ That means each slice is only complete when:
 
 - Sequence 1C: add runtime retrieval tracing and stage diagnostics.
 
+#### Slice 1C — Runtime retrieval tracing + stage diagnostics
+
+**What changed**
+
+- added vector-store search tracing for vector count, keyword count, fused
+  count, final count, and FTS5 fallback behavior;
+- added retrieval-service tracing for post-search stage counts, drop reasons,
+  token-budget usage, and final selected chunk identities;
+- exposed last-trace accessors so retrieval benchmarks and future diagnostics
+  can inspect the most recent retrieval pipeline run without changing behavior;
+- added unit coverage for vector-store fallback tracing and retrieval-stage
+  trace summaries.
+
+**Tasks completed**
+
+- A3. Add retrieval tracing / stage diagnostics
+
+**Tests/evals run**
+
+- targeted unit coverage for vector-store and retrieval trace behavior;
+- TypeScript/build validation.
+
+**Behavior impact**
+
+- retrieval ranking/selection behavior is unchanged;
+- observability and future baseline reporting are improved.
+
+**Next slice**
+
+- Sequence 1D: run baseline retrieval report and capture benchmark artifacts.
+
 ---
 
 ## Migration & Compatibility
@@ -1357,7 +1388,7 @@ Milestone 23 should not be considered complete unless:
 ### Phase A — Measurement First
 - [x] A1. Build Parallx retrieval benchmark set
 - [x] A2. Define milestone-owned retrieval metrics
-- [ ] A3. Add retrieval tracing / stage diagnostics
+- [x] A3. Add retrieval tracing / stage diagnostics
 
 ### Phase B — Index & Metadata Overhaul
 - [ ] B1. Extend retrieval index schema for richer metadata
