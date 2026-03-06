@@ -27,7 +27,7 @@ describe('DocumentClassifier', () => {
   // ── Office documents (always digital) ───────────────────────────────────
 
   describe('office documents', () => {
-    const officeExts = ['.docx', '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers', '.pptx'];
+    const officeExts = ['.docx', '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers', '.pptx', '.ppt', '.epub'];
 
     for (const ext of officeExts) {
       it(`classifies ${ext} as digital-doc`, () => {

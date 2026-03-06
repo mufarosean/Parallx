@@ -57,6 +57,8 @@ const RICH_DOC_EXTENSIONS = new Set([
   '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
   '.docx',
   '.pptx',  // New: PowerPoint via Docling
+  '.ppt',   // Legacy PowerPoint via Docling
+  '.epub',  // E-books via Docling
 ]);
 
 /**
@@ -71,7 +73,8 @@ const IMAGE_EXTENSIONS = new Set([
  */
 const ALWAYS_DIGITAL_EXTENSIONS = new Set([
   '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
-  '.docx', '.pptx',
+  '.docx', '.pptx', '.ppt',
+  '.epub',
 ]);
 
 // ─── Classifier Service ─────────────────────────────────────────────────────

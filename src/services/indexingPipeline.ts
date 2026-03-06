@@ -72,6 +72,8 @@ const RICH_DOCUMENT_EXTENSIONS = new Set([
   '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
   '.docx',
   '.pptx',  // M21: PowerPoint support via Docling
+  '.ppt',   // M21 C.2: Legacy PowerPoint
+  '.epub',  // M21 C.2: E-books via Docling
 ]);
 
 /**
@@ -847,7 +849,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       const ext = getExtension(filePath);
 
       // Only care about indexable file types
-      if (!ext || (!INDEXABLE_EXTENSIONS.has(ext) && !RICH_DOCUMENT_EXTENSIONS.has(ext))) { continue; }
+      if (!ext || (!INDEXABLE_EXTENSIONS.has(ext) && !RICH_DOCUMENT_EXTENSIONS.has(ext) && !IMAGE_EXTENSIONS.has(ext))) { continue; }
 
       // Use workspace-relative path for DB operations (matches stored sourceId)
       const relativePath = this._toRelativePath(filePath);
@@ -1006,4 +1008,4 @@ function extToLanguage(ext: string): string | undefined {
   return map[ext];
 }
 
-export { getExtension, extToLanguage, INDEXABLE_EXTENSIONS, RICH_DOCUMENT_EXTENSIONS, SKIP_DIRS, MAX_FILE_SIZE, MAX_RICH_DOC_SIZE };
+export { getExtension, extToLanguage, INDEXABLE_EXTENSIONS, RICH_DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS, SKIP_DIRS, MAX_FILE_SIZE, MAX_RICH_DOC_SIZE };
