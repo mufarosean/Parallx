@@ -1256,6 +1256,18 @@ export const IProactiveSuggestionsService = createServiceIdentifier<IProactiveSu
 import type { IAISettingsService as IAISettingsServiceType } from '../aiSettings/aiSettingsTypes.js';
 export const IAISettingsService = createServiceIdentifier<IAISettingsServiceType>('IAISettingsService');
 
+// ─── IUnifiedAIConfigService (M20) ──────────────────────────────────────────
+
+/**
+ * Unified AI Configuration Service — replaces both AISettingsService (M15)
+ * and ParallxConfigService (M11) with a single source of truth.
+ *
+ * Provides preset management, workspace overrides, and merged effective config.
+ * Interface defined in aiSettings/unifiedConfigTypes.ts.
+ */
+import type { IUnifiedAIConfigService as IUnifiedAIConfigServiceType } from '../aiSettings/unifiedConfigTypes.js';
+export const IUnifiedAIConfigService = createServiceIdentifier<IUnifiedAIConfigServiceType>('IUnifiedAIConfigService');
+
 // ─── Status Bar Types ────────────────────────────────────────────────────────
 
 /**

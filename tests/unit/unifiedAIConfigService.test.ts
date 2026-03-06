@@ -1,0 +1,551 @@
+// tests/unit/unifiedAIConfigService.test.ts — M20 Task A.1 + A.2 tests
+//
+// Tests for:
+//   - IUnifiedAIConfig types and defaults
+//   - Migration helpers (fromLegacyProfile, fromLegacyParallxConfig, tolegacyProfile)
+//   - UnifiedAIConfigService: preset management, workspace overrides,
+//     effective config resolution, legacy compatibility, clone-on-write
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  DEFAULT_UNIFIED_CONFIG,
+  fromLegacyProfile,
+  fromLegacyParallxConfig,
+  tolegacyProfile,
+} from '../../src/aiSettings/unifiedConfigTypes';
+import type { IUnifiedAIConfig, IUnifiedPreset } from '../../src/aiSettings/unifiedConfigTypes';
+import type { AISettingsProfile } from '../../src/aiSettings/aiSettingsTypes';
+import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from '../../src/aiSettings/aiSettingsDefaults';
+import { UnifiedAIConfigService, deepMerge } from '../../src/aiSettings/unifiedAIConfigService';
+import { DEFAULT_CONFIG } from '../../src/services/parallxConfigService';
+
+// ─── Mock Storage ─────────────────────────────────────────────────────────
+
+function createMockStorage(): Record<string, string> & {
+  get(key: string): Promise<string | undefined>;
+  set(key: string, value: string): Promise<void>;
+} {
+  const data: Record<string, string> = {};
+  return Object.assign(data, {
+    async get(key: string) { return data[key]; },
+    async set(key: string, value: string) { data[key] = value; },
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Types & Defaults
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('IUnifiedAIConfig defaults', () => {
+  it('has all required sections', () => {
+    expect(DEFAULT_UNIFIED_CONFIG.persona).toBeDefined();
+    expect(DEFAULT_UNIFIED_CONFIG.chat).toBeDefined();
+    expect(DEFAULT_UNIFIED_CONFIG.model).toBeDefined();
+    expect(DEFAULT_UNIFIED_CONFIG.retrieval).toBeDefined();
+    expect(DEFAULT_UNIFIED_CONFIG.suggestions).toBeDefined();
+    expect(DEFAULT_UNIFIED_CONFIG.agent).toBeDefined();
+    expect(DEFAULT_UNIFIED_CONFIG.memory).toBeDefined();
+    expect(DEFAULT_UNIFIED_CONFIG.indexing).toBeDefined();
+  });
+
+  it('retrieval defaults match retrievalService constants', () => {
+    // These must match the hardcoded values in retrievalService.ts
+    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragTopK).toBe(7);
+    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragScoreThreshold).toBe(0.025);
+  });
+
+  it('context budget sums to 100', () => {
+    const b = DEFAULT_UNIFIED_CONFIG.retrieval.contextBudget;
+    expect(b.systemPrompt + b.ragContext + b.history + b.userMessage).toBe(100);
+  });
+
+  it('agent defaults match defaultParticipant constants', () => {
+    expect(DEFAULT_UNIFIED_CONFIG.agent.maxIterations).toBe(10);
+  });
+
+  it('memory defaults enable features', () => {
+    expect(DEFAULT_UNIFIED_CONFIG.memory.memoryEnabled).toBe(true);
+    expect(DEFAULT_UNIFIED_CONFIG.memory.autoSummarize).toBe(true);
+    expect(DEFAULT_UNIFIED_CONFIG.memory.evictionDays).toBe(90);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Migration Helpers
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('fromLegacyProfile', () => {
+  it('converts an AISettingsProfile to IUnifiedPreset', () => {
+    const preset = fromLegacyProfile(DEFAULT_PROFILE);
+
+    expect(preset.id).toBe('default');
+    expect(preset.presetName).toBe('Default');
+    expect(preset.isBuiltIn).toBe(true);
+    expect(preset.config.persona.name).toBe('Parallx AI');
+    expect(preset.config.model.chatModel).toBe(''); // was defaultModel
+    expect(preset.config.model.temperature).toBe(0.7);
+  });
+
+  it('fills new sections from defaults', () => {
+    const preset = fromLegacyProfile(DEFAULT_PROFILE);
+
+    // Sections not in legacy profiles should come from defaults
+    expect(preset.config.retrieval.autoRag).toBe(true);
+    expect(preset.config.retrieval.ragTopK).toBe(7);
+    expect(preset.config.agent.maxIterations).toBe(10);
+    expect(preset.config.memory.memoryEnabled).toBe(true);
+    expect(preset.config.indexing.autoIndex).toBe(true);
+  });
+
+  it('preserves custom profile values', () => {
+    const custom: AISettingsProfile = {
+      ...structuredClone(DEFAULT_PROFILE),
+      id: 'my-custom',
+      presetName: 'My Custom',
+      isBuiltIn: false,
+      persona: { name: 'Test Bot', description: 'Testing', avatarEmoji: '🤖' },
+      model: { defaultModel: 'llama3.1', temperature: 0.5, maxTokens: 2048, contextWindow: 4096 },
+    };
+
+    const preset = fromLegacyProfile(custom);
+    expect(preset.config.persona.name).toBe('Test Bot');
+    expect(preset.config.model.chatModel).toBe('llama3.1');
+    expect(preset.config.model.temperature).toBe(0.5);
+    expect(preset.config.model.maxTokens).toBe(2048);
+  });
+});
+
+describe('fromLegacyParallxConfig', () => {
+  it('converts IParallxConfig to workspace override patch', () => {
+    const override = fromLegacyParallxConfig(DEFAULT_CONFIG);
+
+    expect(override.model?.chatModel).toBe('qwen2.5:32b-instruct');
+    expect(override.model?.embeddingModel).toBe('nomic-embed-text');
+    expect(override.retrieval?.autoRag).toBe(true);
+    expect(override.retrieval?.ragTopK).toBe(10);
+    expect(override.retrieval?.ragScoreThreshold).toBe(0.3);
+    expect(override.agent?.maxIterations).toBe(10);
+    expect(override.indexing?.autoIndex).toBe(true);
+  });
+
+  it('does not include persona/chat/suggestions (not in config.json)', () => {
+    const override = fromLegacyParallxConfig(DEFAULT_CONFIG);
+
+    expect(override.persona).toBeUndefined();
+    expect(override.chat).toBeUndefined();
+    expect(override.suggestions).toBeUndefined();
+    expect(override.memory).toBeUndefined();
+  });
+});
+
+describe('tolegacyProfile', () => {
+  it('converts IUnifiedPreset back to AISettingsProfile shape', () => {
+    const preset: IUnifiedPreset = {
+      id: 'test-1',
+      presetName: 'Test',
+      isBuiltIn: false,
+      createdAt: 1000,
+      updatedAt: 2000,
+      config: { ...DEFAULT_UNIFIED_CONFIG },
+    };
+
+    const profile = tolegacyProfile(preset);
+    expect(profile.id).toBe('test-1');
+    expect(profile.presetName).toBe('Test');
+    expect(profile.persona.name).toBe('Parallx AI');
+    expect(profile.model.defaultModel).toBe(''); // chatModel → defaultModel
+    expect(profile.suggestions.tone).toBe('balanced');
+  });
+
+  it('round-trips: fromLegacyProfile → tolegacyProfile preserves key fields', () => {
+    for (const builtIn of BUILT_IN_PRESETS) {
+      const preset = fromLegacyProfile(builtIn);
+      const backToProfile = tolegacyProfile(preset);
+
+      expect(backToProfile.id).toBe(builtIn.id);
+      expect(backToProfile.presetName).toBe(builtIn.presetName);
+      expect(backToProfile.persona.name).toBe(builtIn.persona.name);
+      expect(backToProfile.model.temperature).toBe(builtIn.model.temperature);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// deepMerge
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('deepMerge', () => {
+  it('merges nested objects', () => {
+    const target = { a: { b: 1, c: 2 }, d: 3 };
+    const patch = { a: { b: 10 } };
+    const result = deepMerge(target, patch);
+
+    expect(result.a.b).toBe(10);
+    expect(result.a.c).toBe(2); // untouched
+    expect(result.d).toBe(3);
+  });
+
+  it('does not merge arrays — replaces them', () => {
+    const target = { arr: [1, 2, 3] };
+    const patch = { arr: [4, 5] };
+    const result = deepMerge(target, patch as any);
+    expect(result.arr).toEqual([4, 5]);
+  });
+
+  it('ignores undefined patch values', () => {
+    const target = { a: 1, b: 2 };
+    const result = deepMerge(target, { a: undefined } as any);
+    expect(result.a).toBe(1);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UnifiedAIConfigService
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('UnifiedAIConfigService', () => {
+  let storage: ReturnType<typeof createMockStorage>;
+  let service: UnifiedAIConfigService;
+
+  beforeEach(async () => {
+    storage = createMockStorage();
+    service = new UnifiedAIConfigService(storage as any, undefined);
+    await service.initialize();
+  });
+
+  // ── Initialization ──
+
+  describe('initialization', () => {
+    it('seeds with 3 built-in presets on fresh start', () => {
+      const presets = service.getAllPresets();
+      expect(presets.length).toBe(3);
+      expect(presets.map(p => p.presetName)).toEqual(['Default', 'Finance Focus', 'Creative Mode']);
+    });
+
+    it('sets default as active preset', () => {
+      expect(service.getActivePreset().id).toBe('default');
+    });
+
+    it('persists presets to storage on init', async () => {
+      const stored = await storage.get('unified-ai.presets');
+      expect(stored).toBeDefined();
+      const parsed = JSON.parse(stored!);
+      expect(parsed.length).toBe(3);
+    });
+
+    it('migrates legacy M15 profiles on first load', async () => {
+      const legacyStorage = createMockStorage();
+      // Seed with legacy format
+      await legacyStorage.set('ai-settings.profiles', JSON.stringify(BUILT_IN_PRESETS.map(p => structuredClone(p))));
+      await legacyStorage.set('ai-settings.activeProfileId', 'finance-focus');
+
+      const svc = new UnifiedAIConfigService(legacyStorage as any, undefined);
+      await svc.initialize();
+
+      expect(svc.getActivePreset().id).toBe('finance-focus');
+      expect(svc.getAllPresets().length).toBe(3);
+
+      // Should have written new-format keys
+      const newFormat = await legacyStorage.get('unified-ai.presets');
+      expect(newFormat).toBeDefined();
+
+      svc.dispose();
+    });
+  });
+
+  // ── Effective Config ──
+
+  describe('getEffectiveConfig', () => {
+    it('returns default config on fresh start', () => {
+      const config = service.getEffectiveConfig();
+      expect(config.persona.name).toBe('Parallx AI');
+      expect(config.retrieval.ragTopK).toBe(7);
+      expect(config.agent.maxIterations).toBe(10);
+    });
+
+    it('returns merged config when workspace override is set', async () => {
+      await service.updateWorkspaceOverride({
+        retrieval: { ragTopK: 15 },
+      });
+
+      const config = service.getEffectiveConfig();
+      expect(config.retrieval.ragTopK).toBe(15);
+      // Other retrieval fields unchanged
+      expect(config.retrieval.autoRag).toBe(true);
+      expect(config.retrieval.ragScoreThreshold).toBe(0.025);
+    });
+  });
+
+  // ── Preset Management ──
+
+  describe('preset management', () => {
+    it('switches active preset', async () => {
+      await service.setActivePreset('finance-focus');
+      expect(service.getActivePreset().id).toBe('finance-focus');
+      expect(service.getActivePreset().presetName).toBe('Finance Focus');
+    });
+
+    it('throws on switch to non-existent preset', async () => {
+      await expect(service.setActivePreset('nonexistent')).rejects.toThrow('not found');
+    });
+
+    it('creates a new preset cloned from active', async () => {
+      const created = await service.createPreset('My Preset');
+      expect(created.presetName).toBe('My Preset');
+      expect(created.isBuiltIn).toBe(false);
+      expect(service.getActivePreset().id).toBe(created.id);
+      expect(service.getAllPresets().length).toBe(4);
+    });
+
+    it('creates a preset from a specific base', async () => {
+      const created = await service.createPreset('Research', 'creative-mode');
+      expect(created.config.model.temperature).toBe(0.9); // from creative
+    });
+
+    it('deletes a custom preset', async () => {
+      const created = await service.createPreset('Throwaway');
+      await service.deletePreset(created.id);
+      expect(service.getAllPresets().length).toBe(3); // back to built-ins
+      expect(service.getActivePreset().id).toBe('default'); // reverted
+    });
+
+    it('cannot delete built-in presets', async () => {
+      await expect(service.deletePreset('default')).rejects.toThrow('Cannot delete');
+    });
+
+    it('renames a custom preset', async () => {
+      const created = await service.createPreset('Old Name');
+      await service.renamePreset(created.id, 'New Name');
+      expect(service.getPreset(created.id)?.presetName).toBe('New Name');
+    });
+
+    it('cannot rename built-in presets', async () => {
+      await expect(service.renamePreset('default', 'Renamed')).rejects.toThrow('Cannot rename');
+    });
+  });
+
+  // ── Clone on Write ──
+
+  describe('clone-on-write for built-in presets', () => {
+    it('clones a built-in when updating it', async () => {
+      expect(service.getActivePreset().isBuiltIn).toBe(true);
+
+      await service.updateActivePreset({
+        persona: { name: 'Custom Name' },
+      });
+
+      // Active should now be a cloned non-built-in
+      const active = service.getActivePreset();
+      expect(active.isBuiltIn).toBe(false);
+      expect(active.presetName).toBe('Default (Modified)');
+      expect(active.config.persona.name).toBe('Custom Name');
+      expect(service.getAllPresets().length).toBe(4); // 3 built-in + 1 clone
+    });
+  });
+
+  // ── Workspace Override ──
+
+  describe('workspace override', () => {
+    it('starts with no workspace override', () => {
+      expect(service.getWorkspaceOverride()).toBeUndefined();
+    });
+
+    it('sets and reads workspace override', async () => {
+      await service.updateWorkspaceOverride({
+        model: { temperature: 0.3 },
+        retrieval: { ragTopK: 20 },
+      });
+
+      const override = service.getWorkspaceOverride();
+      expect(override).toBeDefined();
+      expect(override!.overrides.model?.temperature).toBe(0.3);
+      expect(override!.overrides.retrieval?.ragTopK).toBe(20);
+    });
+
+    it('merges multiple workspace override updates', async () => {
+      await service.updateWorkspaceOverride({ model: { temperature: 0.3 } });
+      await service.updateWorkspaceOverride({ retrieval: { ragTopK: 20 } });
+
+      const config = service.getEffectiveConfig();
+      expect(config.model.temperature).toBe(0.3);
+      expect(config.retrieval.ragTopK).toBe(20);
+    });
+
+    it('clears all workspace overrides', async () => {
+      await service.updateWorkspaceOverride({ model: { temperature: 0.3 } });
+      await service.clearWorkspaceOverride();
+
+      expect(service.getWorkspaceOverride()).toBeUndefined();
+      expect(service.getEffectiveConfig().model.temperature).toBe(0.7); // back to default
+    });
+
+    it('clears a specific path override', async () => {
+      await service.updateWorkspaceOverride({
+        model: { temperature: 0.3 },
+        retrieval: { ragTopK: 20 },
+      });
+
+      await service.clearWorkspaceOverride('model.temperature');
+
+      const config = service.getEffectiveConfig();
+      expect(config.model.temperature).toBe(0.7); // reset to preset
+      expect(config.retrieval.ragTopK).toBe(20); // still overridden
+    });
+
+    it('isOverridden returns true for overridden paths', async () => {
+      await service.updateWorkspaceOverride({ retrieval: { ragTopK: 5 } });
+
+      expect(service.isOverridden('retrieval.ragTopK')).toBe(true);
+      expect(service.isOverridden('retrieval.autoRag')).toBe(false);
+      expect(service.isOverridden('model.temperature')).toBe(false);
+    });
+
+    it('getOverriddenKeys lists all overridden leaf paths', async () => {
+      await service.updateWorkspaceOverride({
+        model: { temperature: 0.3 },
+        retrieval: { ragTopK: 5, autoRag: false },
+      });
+
+      const keys = service.getOverriddenKeys();
+      expect(keys).toContain('model.temperature');
+      expect(keys).toContain('retrieval.ragTopK');
+      expect(keys).toContain('retrieval.autoRag');
+      expect(keys).not.toContain('persona.name');
+    });
+  });
+
+  // ── Workspace Preset Pinning ──
+
+  describe('workspace preset pinning', () => {
+    it('pins a preset for the workspace', async () => {
+      await service.setWorkspacePreset('creative-mode');
+
+      // getActivePreset should now return the pinned preset
+      expect(service.getActivePreset().id).toBe('creative-mode');
+    });
+
+    it('clears workspace preset pinning', async () => {
+      await service.setWorkspacePreset('creative-mode');
+      await service.clearWorkspacePreset();
+
+      // Should fall back to global active
+      expect(service.getActivePreset().id).toBe('default');
+    });
+
+    it('workspace pin + override = pin as base with override applied', async () => {
+      await service.setWorkspacePreset('creative-mode');
+      await service.updateWorkspaceOverride({ model: { temperature: 0.1 } });
+
+      const config = service.getEffectiveConfig();
+      // Creative mode base = 0.9, overridden to 0.1
+      expect(config.model.temperature).toBe(0.1);
+    });
+  });
+
+  // ── Reset ──
+
+  describe('reset', () => {
+    it('resets a section to defaults', async () => {
+      await service.createPreset('Custom');
+      await service.updateActivePreset({ model: { temperature: 0.1 } });
+      expect(service.getEffectiveConfig().model.temperature).toBe(0.1);
+
+      await service.resetSection('model');
+      expect(service.getEffectiveConfig().model.temperature).toBe(0.7);
+    });
+
+    it('resets all to defaults', async () => {
+      await service.createPreset('Custom');
+      await service.updateActivePreset({
+        model: { temperature: 0.1 },
+        retrieval: { ragTopK: 100 },
+      });
+
+      await service.resetAll();
+      const config = service.getEffectiveConfig();
+      expect(config.model.temperature).toBe(0.7);
+      expect(config.retrieval.ragTopK).toBe(7);
+    });
+
+    it('reset is no-op for built-in presets', async () => {
+      await service.resetAll(); // should not throw
+      expect(service.getActivePreset().isBuiltIn).toBe(true);
+    });
+  });
+
+  // ── Change Events ──
+
+  describe('change events', () => {
+    it('fires onDidChangeConfig on preset switch', async () => {
+      const listener = vi.fn();
+      service.onDidChangeConfig(listener);
+
+      await service.setActivePreset('finance-focus');
+
+      expect(listener).toHaveBeenCalledOnce();
+      expect(listener.mock.calls[0][0].persona.name).toBe('Finance Assistant');
+    });
+
+    it('fires onDidChangeConfig on workspace override', async () => {
+      const listener = vi.fn();
+      service.onDidChangeConfig(listener);
+
+      await service.updateWorkspaceOverride({ retrieval: { ragTopK: 3 } });
+
+      expect(listener).toHaveBeenCalledOnce();
+      expect(listener.mock.calls[0][0].retrieval.ragTopK).toBe(3);
+    });
+
+    it('fires legacy onDidChange (AISettingsProfile shape)', async () => {
+      const listener = vi.fn();
+      service.onDidChange(listener);
+
+      await service.setActivePreset('finance-focus');
+
+      expect(listener).toHaveBeenCalledOnce();
+      const profile = listener.mock.calls[0][0];
+      expect(profile.id).toBe('finance-focus');
+      expect(profile.persona.name).toBe('Finance Assistant');
+    });
+  });
+
+  // ── Legacy Compatibility ──
+
+  describe('legacy IAISettingsService compatibility', () => {
+    it('getActiveProfile returns AISettingsProfile shape', () => {
+      const profile = service.getActiveProfile();
+      expect(profile.id).toBe('default');
+      expect(profile.presetName).toBe('Default');
+      expect(profile.persona).toBeDefined();
+      expect(profile.chat).toBeDefined();
+      expect(profile.model).toBeDefined();
+      expect(profile.model.defaultModel).toBeDefined(); // legacy field name
+      expect(profile.suggestions).toBeDefined();
+    });
+
+    it('getAllProfiles returns AISettingsProfile[] shape', () => {
+      const profiles = service.getAllProfiles();
+      expect(profiles.length).toBe(3);
+      expect(profiles[0].model.defaultModel).toBeDefined();
+    });
+
+    it('updateActiveProfile accepts legacy patch format', async () => {
+      // First clone to avoid clone-on-write
+      await service.createPreset('Test');
+
+      await service.updateActiveProfile({
+        model: { defaultModel: 'llama3', temperature: 0.5 },
+      });
+
+      const config = service.getEffectiveConfig();
+      expect(config.model.chatModel).toBe('llama3');
+      expect(config.model.temperature).toBe(0.5);
+    });
+
+    it('generateSystemPrompt produces non-empty prompt', () => {
+      const prompt = service.generateSystemPrompt();
+      expect(prompt.length).toBeGreaterThan(0);
+      expect(prompt).toContain('Parallx');
+    });
+  });
+});
