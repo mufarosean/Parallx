@@ -6,6 +6,7 @@
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { IAISettingsService } from '../../services/serviceTypes.js';
+import { ILanguageModelsService } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 
@@ -52,11 +53,16 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // Get the AI Settings service from DI
   const aiSettingsService = api.services.get<import('../../aiSettings/aiSettingsTypes.js').IAISettingsService>(IAISettingsService);
 
+  // Get the Language Models service (for Default Model dropdown in Model section)
+  const languageModelsService = api.services.has(ILanguageModelsService)
+    ? api.services.get<import('../../services/chatTypes.js').ILanguageModelsService>(ILanguageModelsService)
+    : undefined;
+
   // Register view provider
   context.subscriptions.push(
     api.views.registerViewProvider('view.aiSettings', {
       createView(container: HTMLElement): IDisposable {
-        _panel = new AISettingsPanel(container, aiSettingsService);
+        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService);
         return _panel;
       },
     }),

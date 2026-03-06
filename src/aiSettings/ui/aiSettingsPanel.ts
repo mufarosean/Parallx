@@ -11,6 +11,7 @@ import { Disposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
 import type { IAISettingsService, AISettingsProfile } from '../aiSettingsTypes.js';
+import type { ILanguageModelsService } from '../../services/chatTypes.js';
 import { PresetSwitcher } from './presetSwitcher.js';
 import type { SettingsSection } from './sectionBase.js';
 import { PersonaSection } from './sections/personaSection.js';
@@ -34,6 +35,7 @@ export class AISettingsPanel extends Disposable {
   constructor(
     container: HTMLElement,
     private readonly _service: IAISettingsService,
+    private readonly _languageModelsService?: ILanguageModelsService,
   ) {
     super();
 
@@ -74,7 +76,7 @@ export class AISettingsPanel extends Disposable {
       this._register(new PersonaSection(this._service)),
       this._register(new ChatSection(this._service)),
       this._register(new SuggestionsSection(this._service)),
-      this._register(new ModelSection(this._service)),
+      this._register(new ModelSection(this._service, this._languageModelsService)),
       this._register(new AdvancedSection(this._service)),
       this._register(new PreviewSection(this._service)),
     ];

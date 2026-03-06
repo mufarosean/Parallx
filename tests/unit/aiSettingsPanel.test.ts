@@ -494,14 +494,15 @@ describe('ModelSection', () => {
     service = createMockService();
   });
 
-  it('builds with temperature, maxTokens, and contextWindow rows', () => {
+  it('builds with defaultModel, temperature, maxTokens, and contextWindow rows', () => {
     const section = new ModelSection(service as any);
     section.build();
 
     const rows = section.element.querySelectorAll('.ai-settings-row');
-    expect(rows.length).toBe(3);
+    expect(rows.length).toBe(4);
 
     const keys = Array.from(rows).map(r => (r as HTMLElement).dataset.settingKey);
+    expect(keys).toContain('model.defaultModel');
     expect(keys).toContain('model.temperature');
     expect(keys).toContain('model.maxTokens');
     expect(keys).toContain('model.contextWindow');
@@ -647,8 +648,11 @@ describe('AI Settings built-in activation', () => {
         })),
       },
       services: {
-        get: vi.fn(() => service),
-        has: vi.fn(() => true),
+        get: vi.fn((token: { readonly id: string }) => {
+          if (token.id === 'IAISettingsService') { return service; }
+          return undefined;
+        }),
+        has: vi.fn((token: { readonly id: string }) => token.id === 'IAISettingsService'),
       },
     };
 
