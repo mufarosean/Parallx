@@ -307,5 +307,11 @@ export async function registerUnifiedAIConfigService(
   const unifiedConfigService = new UnifiedAIConfigService(storage, languageModelsService);
   await unifiedConfigService.initialize();
   services.registerInstance(IUnifiedAIConfigService, unifiedConfigService);
+
+  // Also register as IAISettingsService for backward compatibility.
+  // Consumers that resolve IAISettingsService get the unified service,
+  // which implements the full IAISettingsService interface.
+  services.registerInstance(IAISettingsService, unifiedConfigService);
+
   return unifiedConfigService;
 }
