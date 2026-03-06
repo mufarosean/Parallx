@@ -1,0 +1,1136 @@
+// indexingPipeline.ts — IIndexingPipelineService implementation (M10 Task 2.1, 2.2)
+//
+// Orchestrates the indexing pipeline:
+//   1. On workspace open: index all canvas pages + workspace text files
+//   2. On page save: re-index changed pages (debounced)
+//   3. On file change: re-index changed files (debounced)
+//   4. Incremental: skip sources whose content hash hasn't changed
+//
+// Design:
+//   - The pipeline is a renderer-side singleton, created after database is open
+//   - Pages are queried via IDatabaseService (direct SQL, not CanvasDataService)
+//   - Files are walked via IFileService (Electron IPC bridge)
+//   - Chunks + embeddings flow through IChunkingService → IEmbeddingService → IVectorStoreService
+//   - All long-running work is serialized through a queue to avoid Ollama overload
+//
+// References:
+//   - docs/Parallx_Milestone_10.md Phase 2 (Tasks 2.1, 2.2)
+
+import { Disposable } from '../platform/lifecycle.js';
+import { Emitter } from '../platform/events.js';
+import type { Event } from '../platform/events.js';
+import { URI } from '../platform/uri.js';
+import { FileChangeType, FileType } from '../platform/fileTypes.js';
+import type { FileChangeEvent } from '../platform/fileTypes.js';
+import { createParallxIgnore, ParallxIgnore } from './parallxIgnore.js';
+import type {
+  IDatabaseService,
+  IFileService,
+  IEmbeddingService,
+  IChunkingService,
+  IVectorStoreService,
+  IWorkspaceService,
+  IIndexingPipelineService,
+  ISessionManager,
+  IDocumentExtractionService,
+  DocumentExtractionResult,
+} from './serviceTypes.js';
+import { captureSession } from '../workspace/staleGuard.js';
+import type { SessionGuard } from '../workspace/staleGuard.js';
+import type { Chunk } from './chunkingService.js';
+import type { EmbeddedChunk } from './vectorStoreService.js';
+import { hashText } from './chunkingService.js';
+import { DocumentClassifier } from './documentClassifier.js';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+/** Debounce delay for page re-indexing after save (ms). */
+const PAGE_DEBOUNCE_MS = 5_000;
+
+/** Debounce delay for file re-indexing after change (ms). */
+const FILE_DEBOUNCE_MS = 5_000;
+
+/** Max concurrent embedding batches (serialized — one at a time). */
+const BATCH_SIZE = 32;
+
+/** File extensions supported for text indexing. */
+const INDEXABLE_EXTENSIONS = new Set([
+  '.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.json',
+  '.py', '.css', '.scss', '.html', '.htm', '.xml', '.yaml', '.yml',
+  '.toml', '.ini', '.cfg', '.conf', '.sh', '.bash', '.zsh',
+  '.rs', '.go', '.java', '.kt', '.swift', '.c', '.cpp', '.h', '.hpp',
+  '.rb', '.lua', '.sql', '.graphql', '.gql', '.env', '.gitignore',
+  '.dockerfile', '.csv', '.mdx', '.svelte', '.vue',
+]);
+
+/**
+ * File extensions for rich/binary document formats that require extraction.
+ * These are handled via IFileService.readDocumentText() which calls the
+ * Electron main process extractor (pdf-parse, xlsx, mammoth).
+ */
+const RICH_DOCUMENT_EXTENSIONS = new Set([
+  '.pdf',
+  '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
+  '.docx',
+  '.pptx',  // M21: PowerPoint support via Docling
+  '.ppt',   // M21 C.2: Legacy PowerPoint
+  '.epub',  // M21 C.2: E-books via Docling
+]);
+
+/**
+ * Image extensions that can be indexed via Docling OCR (M21).
+ */
+const IMAGE_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp', '.webp',
+]);
+
+/** Max file size to index (256 KB). Larger files are skipped. */
+const MAX_FILE_SIZE = 256 * 1024;
+
+/** Max file size for rich documents (10 MB). PDFs/Office docs can be larger. */
+const MAX_RICH_DOC_SIZE = 10 * 1024 * 1024;
+
+/** Yield back to the event loop every N directory entries while walking. */
+const DIRECTORY_WALK_YIELD_EVERY = 200;
+
+/** @deprecated Use ParallxIgnore instead (M11 Task 1.9). Kept for backward compat / tests. */
+const SKIP_DIRS = new Set([
+  'node_modules', '.git', '.parallx', '.vscode', '.idea',
+  '__pycache__', '.next', '.nuxt', 'dist', 'build', 'out',
+  'coverage', '.cache', '.turbo', 'vendor', 'target',
+]);
+
+/**
+ * Pipeline version — bump this whenever the extraction / chunking / embedding
+ * pipeline changes in a way that makes previously-indexed data stale (e.g.
+ * Docling integration, new chunking strategy, model change).
+ *
+ * When the stored version doesn't match, the pipeline purges ALL indexed data
+ * and re-indexes everything from scratch on the next run.
+ *
+ * History:
+ *   1 — implicit (pre-M21 pipeline)
+ *   2 — M21: Docling integration, rich-document extraction overhaul
+ */
+const PIPELINE_VERSION = 2;
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+/** Progress state for the indexing pipeline. */
+export interface IndexingProgress {
+  /** Current phase: 'idle' | 'pages' | 'files' | 'incremental'. */
+  phase: 'idle' | 'pages' | 'files' | 'incremental';
+  /** Number of sources processed so far. */
+  processed: number;
+  /** Total sources to process (0 if unknown). */
+  total: number;
+  /** Currently processing source name (for status bar). */
+  currentSource?: string;
+}
+
+/** Result of indexing a single source (page or file). */
+export interface IndexingSourceResult {
+  /** Whether this is a canvas page or a workspace file. */
+  type: 'page' | 'file';
+  /** Display name (page title or short file path). */
+  source: string;
+  /** Unique identifier (page ID or full file path). */
+  sourceId: string;
+  /** Outcome of the indexing attempt. */
+  status: 'indexed' | 'skipped' | 'error';
+  /** Error message if status is 'error'. */
+  error?: string;
+  /** Number of chunks produced (when indexed). */
+  chunkCount?: number;
+  /** Time taken in milliseconds. */
+  durationMs: number;
+  /** Which extraction pipeline was used (M21 E.1). */
+  pipeline?: 'docling' | 'docling-ocr' | 'legacy' | 'text';
+  /** True if Docling failed and the file fell back to legacy (M21 E.2). */
+  fallback?: boolean;
+}
+
+/** Raw page row from the database. */
+interface PageRow {
+  id: string;
+  title: string;
+  content: string;
+}
+
+/** A file discovered during directory walk, with its mtime for fast-skip. */
+interface IndexableFile {
+  /** Absolute filesystem path (for file I/O). */
+  path: string;
+  /** Workspace-relative path (for sourceId, contextPrefix, DB storage). */
+  relativePath: string;
+  /** Modification time in ms since epoch (from stat/readdir). */
+  mtime: number;
+}
+
+/**
+ * Generate a brief content summary for the workspace digest.
+ * Extracts the first ~200 meaningful characters, trimmed to a sentence
+ * or word boundary. Zero-cost (no LLM call — pure text extraction).
+ */
+/** @internal Exported for unit testing. */
+export function _generateSummary(content: string): string {
+  // Normalize whitespace (collapse runs, trim leading/trailing)
+  let text = content.replace(/\s+/g, ' ').trim();
+  if (!text) { return ''; }
+
+  // Cap at 200 chars, trim to last sentence boundary if possible
+  const MAX = 200;
+  if (text.length <= MAX) { return text; }
+
+  const slice = text.slice(0, MAX);
+  // Try to break at last sentence end
+  const sentenceEnd = Math.max(
+    slice.lastIndexOf('. '),
+    slice.lastIndexOf('! '),
+    slice.lastIndexOf('? '),
+  );
+  if (sentenceEnd > MAX * 0.4) {
+    return slice.slice(0, sentenceEnd + 1);
+  }
+  // Fall back to last word boundary
+  const lastSpace = slice.lastIndexOf(' ');
+  if (lastSpace > MAX * 0.6) {
+    return slice.slice(0, lastSpace) + '…';
+  }
+  return slice + '…';
+}
+
+// ─── IndexingPipelineService ─────────────────────────────────────────────────
+
+export class IndexingPipelineService extends Disposable implements IIndexingPipelineService {
+
+  private readonly _db: IDatabaseService;
+  private readonly _fileService: IFileService;
+  private readonly _embeddingService: IEmbeddingService;
+  private readonly _chunkingService: IChunkingService;
+  private readonly _vectorStore: IVectorStoreService;
+  private readonly _workspaceService: IWorkspaceService;
+  private readonly _documentExtractionService: IDocumentExtractionService | undefined;
+  private readonly _classifier: DocumentClassifier;
+
+  /**
+   * Cache for batch-extracted document content (C.3).
+   * Populated in _indexAllFiles() before the per-file loop, cleared after.
+   * Key: absolute file path → extraction result.
+   */
+  private _batchExtractionCache = new Map<string, DocumentExtractionResult>();
+
+  /**
+   * Set by _indexSingleFile after extraction to communicate pipeline metadata
+   * back to the calling loop without changing the method's boolean return type.
+   */
+  private _lastFilePipeline: 'docling' | 'docling-ocr' | 'legacy' | 'text' = 'text';
+  private _lastFileFallback = false;
+
+  // ── State ──
+
+  private _isIndexing = false;
+  private _progress: IndexingProgress = { phase: 'idle', processed: 0, total: 0 };
+
+  /** Per-page debounce timers for incremental re-indexing. */
+  private readonly _pageDebounce = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Per-file debounce timers for incremental re-indexing. */
+  private readonly _fileDebounce = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Abort controller for cancelling in-progress initial indexing. */
+  private _abortController: AbortController | null = null;
+
+  /** Whether initial full indexing has completed at least once. */
+  private _initialIndexComplete = false;
+
+  /** ParallxIgnore instance for file exclusion (M11 Task 1.9). */
+  private _ignore: ParallxIgnore = createParallxIgnore();
+
+  /** Optional session manager for stale-session guards (M14). */
+  private readonly _sessionManager: ISessionManager | undefined;
+
+  /** Session guard captured at pipeline start — checked before commits. */
+  private _sessionGuard: SessionGuard | undefined;
+
+  /** Diagnostic log prefix from session context (M14). */
+  private get _logPrefix(): string {
+    return this._sessionManager?.activeContext?.logPrefix ?? '[ws:? sid:?]';
+  }
+
+  // ── Events ──
+
+  private readonly _onDidChangeProgress = this._register(new Emitter<IndexingProgress>());
+  readonly onDidChangeProgress: Event<IndexingProgress> = this._onDidChangeProgress.event;
+
+  private readonly _onDidCompleteInitialIndex = this._register(new Emitter<{ pages: number; files: number; durationMs: number }>());
+  readonly onDidCompleteInitialIndex: Event<{ pages: number; files: number; durationMs: number }> = this._onDidCompleteInitialIndex.event;
+
+  private readonly _onDidIndexSource = this._register(new Emitter<IndexingSourceResult>());
+  readonly onDidIndexSource: Event<IndexingSourceResult> = this._onDidIndexSource.event;
+
+  constructor(
+    databaseService: IDatabaseService,
+    fileService: IFileService,
+    embeddingService: IEmbeddingService,
+    chunkingService: IChunkingService,
+    vectorStoreService: IVectorStoreService,
+    workspaceService: IWorkspaceService,
+    sessionManager?: ISessionManager,
+    documentExtractionService?: IDocumentExtractionService,
+  ) {
+    super();
+    this._db = databaseService;
+    this._fileService = fileService;
+    this._embeddingService = embeddingService;
+    this._chunkingService = chunkingService;
+    this._vectorStore = vectorStoreService;
+    this._workspaceService = workspaceService;
+    this._sessionManager = sessionManager;
+    this._documentExtractionService = documentExtractionService;
+    this._classifier = this._register(new DocumentClassifier());
+  }
+
+  // ── Public API ──
+
+  /** Whether the pipeline is currently running (initial or incremental). */
+  get isIndexing(): boolean { return this._isIndexing; }
+
+  /** Current progress snapshot. */
+  get progress(): IndexingProgress { return { ...this._progress }; }
+
+  /** Whether initial full indexing has completed. */
+  get isInitialIndexComplete(): boolean { return this._initialIndexComplete; }
+
+  /**
+   * Start the full indexing pipeline.
+   * Call this after the database is open and migrations have run.
+   *
+   * - Ensures the embedding model is available (auto-pulls if needed)
+   * - Initializes the vector store
+   * - Indexes all pages, then all workspace files
+   * - Sets up listeners for incremental re-indexing
+   */
+  async start(): Promise<void> {
+    if (this._isIndexing) {
+      console.warn('[IndexingPipeline] Already running — ignoring start()');
+      return;
+    }
+
+    this._isIndexing = true;
+    this._abortController = new AbortController();
+    this._sessionGuard = this._sessionManager ? captureSession(this._sessionManager) : undefined;
+    const startTime = performance.now();
+
+    try {
+      // 0. Load .parallxignore from workspace root (M11 Task 1.9)
+      await this._loadIgnoreFile();
+
+      // 0b. Pipeline version check — purge all indexed data if the pipeline
+      //     version has changed (e.g. new extraction/chunking strategy).
+      await this._checkPipelineVersion();
+
+      // 1. Ensure embedding model is installed
+      this._updateProgress('pages', 0, 0, 'Checking embedding model...');
+      await this._embeddingService.ensureModel(this._abortController?.signal);
+
+      // 2. Index all pages
+      const pageCount = await this._indexAllPages();
+
+      // 3. Index all workspace files
+      const fileCount = await this._indexAllFiles();
+
+      // Mark initial index as complete before setting up listeners.
+      this._initialIndexComplete = true;
+
+      // 4. Set up listeners
+      this._setupListeners();
+
+      const durationMs = performance.now() - startTime;
+
+      // Query the database for TOTAL indexed counts (not just session-changed).
+      // On workspace re-open where nothing changed, pageCount/fileCount are 0
+      // but the DB still has all previously indexed sources.  The status bar
+      // should show the total, not the session delta.
+      let totalPages = pageCount;
+      let totalFiles = fileCount;
+      try {
+        const stats = await this._vectorStore.getStats();
+        const dbPages = stats.sourceCountByType['page_block'] ?? 0;
+        const dbFiles = stats.sourceCountByType['file_chunk'] ?? 0;
+        if (dbPages >= pageCount) totalPages = dbPages;
+        if (dbFiles >= fileCount) totalFiles = dbFiles;
+      } catch {
+        // Fall back to session counts if DB query fails
+      }
+
+      console.log(
+        '%s [IndexingPipeline] Initial indexing complete: %d pages, %d files total (%d new) in %dms',
+        this._logPrefix, totalPages, totalFiles, pageCount + fileCount, Math.round(durationMs),
+      );
+
+      this._onDidCompleteInitialIndex.fire({ pages: totalPages, files: totalFiles, durationMs });
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        console.log('[IndexingPipeline] Cancelled');
+      } else {
+        console.error('[IndexingPipeline] Error during initial indexing:', err);
+      }
+    } finally {
+      this._isIndexing = false;
+      this._abortController = null;
+      this._updateProgress('idle', 0, 0);
+    }
+  }
+
+  /**
+   * Cancel any in-progress indexing.
+   */
+  cancel(): void {
+    this._abortController?.abort();
+  }
+
+  /**
+   * Force re-index a single page (bypass debounce).
+   */
+  async reindexPage(pageId: string): Promise<void> {
+    const t0 = performance.now();
+    try {
+      const row = await this._db.get<PageRow>(
+        'SELECT id, title, content FROM pages WHERE id = ? AND is_archived = 0',
+        [pageId],
+      );
+      if (!row) { return; }
+
+      const changed = await this._indexSinglePage(row.id, row.title, row.content);
+      this._onDidIndexSource.fire({
+        type: 'page', source: row.title, sourceId: pageId,
+        status: changed ? 'indexed' : 'skipped',
+        durationMs: performance.now() - t0,
+      });
+    } catch (err) {
+      console.error('[IndexingPipeline] Error re-indexing page %s:', pageId, err);
+      this._onDidIndexSource.fire({
+        type: 'page', source: pageId, sourceId: pageId,
+        status: 'error', error: String(err),
+        durationMs: performance.now() - t0,
+      });
+    }
+  }
+
+  /**
+   * Force re-index a single file (bypass debounce).
+   * @param filePath — absolute filesystem path (from file watcher or external caller)
+   */
+  async reindexFile(filePath: string): Promise<void> {
+    const relativePath = this._toRelativePath(filePath);
+    const t0 = performance.now();
+    try {
+      const changed = await this._indexSingleFile(filePath, relativePath);
+      this._onDidIndexSource.fire({
+        type: 'file', source: relativePath, sourceId: relativePath,
+        status: changed ? 'indexed' : 'skipped',
+        durationMs: performance.now() - t0,
+      });
+    } catch (err) {
+      console.error('[IndexingPipeline] Error re-indexing file %s:', relativePath, err);
+      this._onDidIndexSource.fire({
+        type: 'file', source: relativePath, sourceId: relativePath,
+        status: 'error', error: String(err),
+        durationMs: performance.now() - t0,
+      });
+    }
+  }
+
+  // ── Internal: .parallxignore Loading (M11 Task 1.9) ──
+
+  /**
+   * Load `.parallxignore` from workspace root (if present) and merge with defaults.
+   * Falls back to defaults if the file doesn't exist or can't be read.
+   */
+  private async _loadIgnoreFile(): Promise<void> {
+    this._ignore = createParallxIgnore(); // start with defaults
+
+    const folders = this._workspaceService.folders;
+    if (!folders.length) { return; }
+
+    const rootUri = folders[0].uri;
+    const ignoreUri = rootUri.joinPath('.parallxignore');
+
+    try {
+      const ignoreFile = await this._fileService.readFile(ignoreUri);
+      if (ignoreFile) {
+        this._ignore.loadFromContent(ignoreFile.content);
+        console.log('[IndexingPipeline] Loaded .parallxignore from workspace root');
+      }
+    } catch {
+      // File doesn't exist or can't be read — use defaults only
+    }
+  }
+
+  // ── Internal: Full Page Indexing ──
+
+  private async _indexAllPages(): Promise<number> {
+    const pages = await this._db.all<PageRow>(
+      'SELECT id, title, content FROM pages WHERE is_archived = 0',
+    );
+
+    this._updateProgress('pages', 0, pages.length);
+    let indexed = 0;
+
+    for (const page of pages) {
+      this._checkAborted();
+      const t0 = performance.now();
+      try {
+        const changed = await this._indexSinglePage(page.id, page.title, page.content);
+        if (changed) { indexed++; }
+        this._onDidIndexSource.fire({
+          type: 'page', source: page.title, sourceId: page.id,
+          status: changed ? 'indexed' : 'skipped',
+          durationMs: performance.now() - t0,
+        });
+      } catch (err) {
+        console.warn('[IndexingPipeline] Failed to index page "%s": %s', page.title, err);
+        this._onDidIndexSource.fire({
+          type: 'page', source: page.title, sourceId: page.id,
+          status: 'error', error: String(err),
+          durationMs: performance.now() - t0,
+        });
+      }
+      this._updateProgress('pages', this._progress.processed + 1, pages.length, page.title);
+    }
+
+    return indexed;
+  }
+
+  /**
+   * Index a single page. Returns true if the page was actually re-indexed
+   * (content changed), false if skipped (hash match).
+   */
+  private async _indexSinglePage(pageId: string, title: string, content: string): Promise<boolean> {
+    if (!content || content === '{}') { return false; }
+
+    // Check content hash — skip if unchanged
+    const contentHash = await hashText(content);
+    const storedHash = await this._vectorStore.getContentHash('page_block', pageId);
+    if (storedHash === contentHash) { return false; }
+
+    // Chunk
+    const chunks = await this._chunkingService.chunkPage(pageId, title, content);
+    if (chunks.length === 0) { return false; }
+
+    // Embed
+    const embeddedChunks = await this._embedChunks(chunks);
+    if (embeddedChunks.length === 0) {
+      // All chunks failed embedding — mark as indexed to avoid retrying unchanged content
+      console.warn('[IndexingPipeline] All chunks failed embedding for page %s', pageId);
+      return false;
+    }
+
+    // M14: stale session guard — skip commit if session changed
+    if (this._sessionGuard && !this._sessionGuard.isValid()) {
+      console.warn('[IndexingPipeline] Stale session — skipping page commit for %s', pageId);
+      return false;
+    }
+
+    // Store — generate a content summary from the page's first chunk for the workspace digest.
+    const pageText = chunks.map(c => c.text).join(' ');
+    const summary = _generateSummary(pageText);
+    await this._vectorStore.upsert('page_block', pageId, embeddedChunks, contentHash, summary);
+
+    return true;
+  }
+
+  // ── Internal: Full File Indexing ──
+
+  private async _indexAllFiles(): Promise<number> {
+    const folders = this._workspaceService.folders;
+    if (folders.length === 0) { return 0; }
+
+    // Collect all indexable files (with mtimes for fast-skip)
+    const files: IndexableFile[] = [];
+    for (const folder of folders) {
+      this._checkAborted();
+      await this._walkDirectory(folder.uri, files);
+      // Cooperative yield between folder roots so UI / switch actions stay responsive.
+      await Promise.resolve();
+    }
+
+    // Bulk-fetch indexed_at timestamps for all file_chunk sources
+    const indexedAtMap = await this._vectorStore.getIndexedAtMap('file_chunk');
+
+    // ── Migration: purge stale absolute-path sourceIds ──
+    // Prior to this fix, sourceIds were stored as full absolute filesystem paths
+    // (e.g., "C:\Users\...\Books\Zimbabwe\file.pdf"). Now we store workspace-
+    // relative paths ("Books/Zimbabwe/file.pdf") so the LLM can use them directly
+    // with read_file. Purge any old absolute-path entries to avoid duplicates.
+    const staleAbsoluteIds = [...indexedAtMap.keys()].filter(k => /^[A-Za-z]:[\\\/]|^\//.test(k));
+    if (staleAbsoluteIds.length > 0) {
+      console.log(
+        '[IndexingPipeline] %s Purging %d stale absolute-path file entries for re-indexing',
+        this._logPrefix, staleAbsoluteIds.length,
+      );
+      for (const staleId of staleAbsoluteIds) {
+        await this._vectorStore.deleteSource('file_chunk', staleId);
+      }
+      indexedAtMap.clear();
+    }
+
+    // Partition files into mtime-skipped (unchanged) and candidates (need checking).
+    // This avoids firing 30K+ events in a tight synchronous loop which would
+    // starve the renderer event loop and freeze the UI.
+    const candidates: IndexableFile[] = [];
+    let mtimeSkipped = 0;
+
+    for (const file of files) {
+      const indexedAtMs = indexedAtMap.get(file.relativePath);
+      if (indexedAtMs !== undefined && file.mtime < indexedAtMs) {
+        mtimeSkipped++;
+      } else {
+        candidates.push(file);
+      }
+    }
+
+    if (mtimeSkipped > 0) {
+      console.log(
+        '[IndexingPipeline] mtime fast-skip: %d/%d files unchanged since last index',
+        mtimeSkipped, files.length,
+      );
+    }
+
+    // Report progress against candidates only (skipped files are already done)
+    this._updateProgress('files', 0, candidates.length);
+    let indexed = 0;
+
+    // ── C.3: Batch pre-extract digital docs via Docling ──────────────────
+    // Group candidates by classification. Digital docs get batched (fewer
+    // round-trips to the Python bridge). Scanned/image docs stay sequential
+    // because OCR is memory-intensive.
+    if (this._documentExtractionService?.isDoclingAvailable && candidates.length > 0) {
+      const digitalDocs: { path: string; ocr: boolean }[] = [];
+      for (const file of candidates) {
+        const ext = getExtension(file.path);
+        const isRich = ext !== null && RICH_DOCUMENT_EXTENSIONS.has(ext);
+        if (isRich) {
+          const cls = this._classifier.classify(file.path);
+          if (cls.documentClass === 'digital-doc') {
+            digitalDocs.push({ path: file.path, ocr: false });
+          }
+          // scanned-doc and image are processed individually inside _indexSingleFile
+        }
+      }
+
+      if (digitalDocs.length > 0) {
+        console.log(
+          '[IndexingPipeline] %s Batch pre-extracting %d digital documents via Docling',
+          this._logPrefix, digitalDocs.length,
+        );
+        try {
+          const batchResults = await this._documentExtractionService.extractBatch(digitalDocs);
+          for (const [path, result] of batchResults) {
+            this._batchExtractionCache.set(path, result);
+          }
+          console.log(
+            '[IndexingPipeline] %s Batch extraction complete: %d/%d succeeded',
+            this._logPrefix, this._batchExtractionCache.size, digitalDocs.length,
+          );
+        } catch (err) {
+          console.warn('[IndexingPipeline] Batch pre-extraction failed, will extract individually:', err);
+        }
+      }
+    }
+
+    for (const file of candidates) {
+      this._checkAborted();
+      const t0 = performance.now();
+
+      try {
+        const changed = await this._indexSingleFile(file.path, file.relativePath);
+        if (changed) { indexed++; }
+        this._onDidIndexSource.fire({
+          type: 'file', source: file.relativePath, sourceId: file.relativePath,
+          status: changed ? 'indexed' : 'skipped',
+          durationMs: performance.now() - t0,
+          pipeline: changed ? this._lastFilePipeline : undefined,
+          fallback: changed ? this._lastFileFallback : undefined,
+        });
+      } catch (err) {
+        console.warn('[IndexingPipeline] Failed to index file "%s": %s', file.relativePath, err);
+        this._onDidIndexSource.fire({
+          type: 'file', source: file.relativePath, sourceId: file.relativePath,
+          status: 'error', error: String(err),
+          durationMs: performance.now() - t0,
+        });
+      }
+      this._updateProgress('files', this._progress.processed + 1, candidates.length, file.relativePath);
+    }
+
+    // Clear batch cache after indexing run
+    this._batchExtractionCache.clear();
+
+    return indexed;
+  }
+
+  /**
+   * Index a single workspace file. Returns true if actually indexed.
+   * Handles both plain text files and rich documents (PDF, Excel, Word).
+   *
+   * @param absolutePath — full filesystem path (for file I/O)
+   * @param relativePath — workspace-relative path (for sourceId, contextPrefix, DB storage).
+   *   If omitted, computed via _toRelativePath().
+   */
+  private async _indexSingleFile(absolutePath: string, relativePath?: string): Promise<boolean> {
+    const relPath = relativePath ?? this._toRelativePath(absolutePath);
+    const uri = URI.file(absolutePath);
+    const ext = getExtension(absolutePath);
+    const isRichDoc = ext !== null && RICH_DOCUMENT_EXTENSIONS.has(ext);
+    const isImage = ext !== null && IMAGE_EXTENSIONS.has(ext);
+
+    // Read file content — route through extraction for rich documents
+    let content: string;
+    let language: string | undefined;
+    let pipelineUsed: 'docling' | 'docling-ocr' | 'legacy' | 'text' = 'text';
+    let didFallback = false;
+    try {
+      // C.3: Check batch extraction cache first (populated by _indexAllFiles batch pre-extraction)
+      const cachedResult = this._batchExtractionCache.get(absolutePath);
+      if (cachedResult) {
+        content = cachedResult.markdown;
+        pipelineUsed = cachedResult.pipeline;
+        language = cachedResult.pipeline !== 'legacy' ? 'markdown' : undefined;
+        this._batchExtractionCache.delete(absolutePath); // Free memory
+      } else if ((isRichDoc || isImage) && this._documentExtractionService) {
+        // M21: Classify the document and use the appropriate extraction pipeline
+        const classification = this._classifier.classify(absolutePath);
+
+        // For PDFs, attempt scan detection via lightweight pre-check
+        let useOcr = classification.documentClass === 'scanned-doc' || classification.documentClass === 'image';
+
+        if (classification.documentClass === 'digital-doc' && ext === '.pdf') {
+          // Quick pre-check: try legacy extraction to measure text density
+          try {
+            const legacyResult = await this._fileService.readDocumentText(uri);
+            const pageCount = (legacyResult.metadata?.pageCount as number) ?? 1;
+            const refined = this._classifier.refinePdfClassification(
+              (legacyResult.text ?? '').length, pageCount,
+            );
+            if (refined.documentClass === 'scanned-doc') {
+              useOcr = true;
+            }
+          } catch {
+            // Pre-check failed — proceed without OCR
+          }
+        }
+
+        const result = await this._documentExtractionService.extractDocument(absolutePath, { ocr: useOcr });
+        content = result.markdown;
+        pipelineUsed = result.pipeline;
+        didFallback = result.pipeline === 'legacy' && this._documentExtractionService.isDoclingAvailable;
+        // Docling output is structured Markdown → route through heading-aware chunker
+        language = result.pipeline !== 'legacy' ? 'markdown' : undefined;
+      } else if (isRichDoc) {
+        // Fallback: no DocumentExtractionService → use legacy path directly
+        const result = await this._fileService.readDocumentText(uri);
+        content = result.text;
+        pipelineUsed = 'legacy';
+      } else {
+        const fileContent = await this._fileService.readFile(uri);
+        if (fileContent.size > MAX_FILE_SIZE) { return false; }
+        content = fileContent.content;
+        pipelineUsed = 'text';
+      }
+    } catch (err) {
+      if (isRichDoc || isImage) {
+        console.warn('[IndexingPipeline] Document extraction failed for "%s": %s', relPath, err);
+      }
+      return false; // File may have been deleted between walk and read
+    }
+
+    if (!content.trim()) { return false; }
+
+    // Check content hash — keyed by workspace-relative path
+    const contentHash = await hashText(content);
+    const storedHash = await this._vectorStore.getContentHash('file_chunk', relPath);
+    if (storedHash === contentHash) { return false; }
+
+    // Detect language from extension (unless already set by Docling pipeline)
+    if (!language) {
+      const rawExt = absolutePath.split('.').pop()?.toLowerCase() ?? '';
+      language = extToLanguage(rawExt);
+    }
+
+    // Chunk — pass workspace-relative path so contextPrefix is LLM-friendly
+    const chunks = await this._chunkingService.chunkFile(relPath, content, language);
+    if (chunks.length === 0) { return false; }
+
+    // Embed
+    const embeddedChunks = await this._embedChunks(chunks);
+    if (embeddedChunks.length === 0) {
+      // All chunks failed embedding — don't store, will retry next time content changes
+      console.warn('[IndexingPipeline] All chunks failed embedding for file %s', relPath);
+      return false;
+    }
+
+    // M14: stale session guard — skip commit if session changed
+    if (this._sessionGuard && !this._sessionGuard.isValid()) {
+      console.warn('[IndexingPipeline] Stale session — skipping file commit for %s', relPath);
+      return false;
+    }
+
+    // Store — workspace-relative sourceId so retrieval context matches read_file paths
+    // Generate a content summary from the first ~200 chars for the workspace digest.
+    const summary = _generateSummary(content);
+    await this._vectorStore.upsert('file_chunk', relPath, embeddedChunks, contentHash, summary);
+
+    // E.1/E.2: Record pipeline metadata for the caller
+    this._lastFilePipeline = pipelineUsed;
+    this._lastFileFallback = didFallback;
+
+    return true;
+  }
+
+  // ── Internal: File Tree Walking ──
+
+  /**
+   * Recursively walk a directory, collecting indexable file paths with mtimes.
+   * Respects .parallxignore patterns (M11 Task 1.9) and INDEXABLE_EXTENSIONS filters.
+   */
+  private async _walkDirectory(dirUri: URI, results: IndexableFile[], relativePath: string = ''): Promise<void> {
+    this._checkAborted();
+
+    let entries;
+    try {
+      entries = await this._fileService.readdir(dirUri);
+    } catch {
+      return; // Permission denied or other error — skip
+    }
+
+    let processed = 0;
+    for (const entry of entries) {
+      // Frequent cancellation check + cooperative yield to prevent long
+      // synchronous loops from starving the renderer event loop when a
+      // directory has many entries.
+      this._checkAborted();
+      processed++;
+      if (processed % DIRECTORY_WALK_YIELD_EVERY === 0) {
+        await Promise.resolve();
+      }
+
+      const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+
+      if (entry.type === FileType.Directory) {
+        // Skip hidden directories by default (same as prior behavior)
+        if (entry.name.startsWith('.')) {
+          continue;
+        }
+        // Check .parallxignore patterns (replaces hardcoded SKIP_DIRS)
+        if (this._ignore.isIgnored(relPath, true)) {
+          continue;
+        }
+
+        await this._walkDirectory(entry.uri, results, relPath);
+      } else if (entry.type === FileType.File) {
+        // Check .parallxignore patterns for files
+        if (this._ignore.isIgnored(relPath, false)) {
+          continue;
+        }
+        const ext = getExtension(entry.name);
+        if (ext && INDEXABLE_EXTENSIONS.has(ext) && entry.size <= MAX_FILE_SIZE) {
+          results.push({ path: entry.uri.fsPath, relativePath: relPath, mtime: entry.mtime });
+        } else if (ext && RICH_DOCUMENT_EXTENSIONS.has(ext) && entry.size <= MAX_RICH_DOC_SIZE) {
+          results.push({ path: entry.uri.fsPath, relativePath: relPath, mtime: entry.mtime });
+        } else if (ext && IMAGE_EXTENSIONS.has(ext) && entry.size <= MAX_RICH_DOC_SIZE) {
+          // M21: Images are indexable via Docling OCR
+          results.push({ path: entry.uri.fsPath, relativePath: relPath, mtime: entry.mtime });
+        }
+      }
+    }
+  }
+
+  // ── Internal: Embedding ──
+
+  /**
+   * Embed an array of chunks in batches.
+   * Returns EmbeddedChunk[] with embedding vectors attached.
+   */
+  private async _embedChunks(chunks: Chunk[]): Promise<EmbeddedChunk[]> {
+    const results: EmbeddedChunk[] = [];
+
+    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+      this._checkAborted();
+
+      // Stale session guard: bail between batches if workspace changed
+      if (this._sessionGuard && !this._sessionGuard.isValid()) {
+        console.warn('[IndexingPipeline] Session stale during embedding — aborting remaining batches');
+        break;
+      }
+
+      const batch = chunks.slice(i, i + BATCH_SIZE);
+
+      // Filter out empty/whitespace-only text before embedding
+      const validBatch = batch.filter((c) => {
+        const text = c.contextPrefix ? `${c.contextPrefix}\n${c.text}` : c.text;
+        return text.trim().length > 0;
+      });
+      if (validBatch.length === 0) { continue; }
+
+      const texts = validBatch.map((c) => c.contextPrefix ? `${c.contextPrefix}\n${c.text}` : c.text);
+      const hashes = validBatch.map((c) => c.contentHash);
+
+      try {
+        const embeddings = await this._embeddingService.embedDocumentBatch(
+          texts, hashes, this._abortController?.signal ?? undefined,
+        );
+
+        for (let j = 0; j < validBatch.length; j++) {
+          results.push({
+            ...validBatch[j],
+            embedding: embeddings[j],
+          });
+        }
+      } catch (batchErr) {
+        // Batch failed — retry each chunk individually so one bad chunk
+        // doesn't kill the entire file
+        console.warn('[IndexingPipeline] Batch embed failed, retrying individually:', batchErr);
+        for (let j = 0; j < validBatch.length; j++) {
+          try {
+            const [embedding] = await this._embeddingService.embedDocumentBatch(
+              [texts[j]], hashes[j] ? [hashes[j]] : undefined,
+              this._abortController?.signal ?? undefined,
+            );
+            results.push({ ...validBatch[j], embedding });
+          } catch (chunkErr) {
+            // Skip this chunk — log once and move on
+            console.warn(
+              '[IndexingPipeline] Skipping chunk %d of %s: %s',
+              j, validBatch[j].sourceId, chunkErr instanceof Error ? chunkErr.message : String(chunkErr),
+            );
+          }
+        }
+      }
+    }
+
+    return results;
+  }
+
+  // ── Internal: Pipeline Version ──
+
+  /**
+   * Check whether the stored pipeline version matches PIPELINE_VERSION.
+   * If it doesn't (or no version is stored yet), purge ALL indexed data
+   * so that every page and file is re-indexed from scratch.
+   */
+  private async _checkPipelineVersion(): Promise<void> {
+    const stored = await this._vectorStore.getContentHash('_system', 'pipeline_version');
+    const current = String(PIPELINE_VERSION);
+
+    if (stored === current) return;
+
+    console.log(
+      '[IndexingPipeline] %s Pipeline version changed (%s → %s) — purging all indexed data',
+      this._logPrefix, stored ?? 'none', current,
+    );
+
+    await this._vectorStore.purgeAll();
+
+    // Store the new version so subsequent runs skip the purge.
+    await this._vectorStore.upsert('_system', 'pipeline_version', [], current);
+
+    console.log('[IndexingPipeline] %s Purge complete — full re-index will follow', this._logPrefix);
+  }
+
+  // ── Internal: Listeners ──
+
+  /**
+   * Set up listeners for incremental re-indexing:
+   * - Database changes (page saves) via polling the onDidSavePage-equivalent
+   * - File system changes via IFileService.onDidFileChange
+   */
+  private _setupListeners(): void {
+    // Listen for page content changes via a database trigger approach.
+    // Since CanvasDataService.onDidSavePage is inside the canvas built-in
+    // and not accessible from the service layer, we listen for database
+    // changes by watching the `pages` table revision column.
+    // However, the simplest approach is to listen on IDatabaseService
+    // for direct notification. For now, we expose a public reindexPage()
+    // method and set up file watchers below.
+    //
+    // Page re-indexing is triggered externally by calling reindexPage()
+    // or schedulePageReindex() — the canvas built-in will call this
+    // after saves via its onDidSavePage event.
+
+    // File system changes
+    this._register(
+      this._fileService.onDidFileChange((events) => this._handleFileChanges(events)),
+    );
+  }
+
+  /**
+   * Handle file system change events — schedule re-indexing for changed files.
+   */
+  private _handleFileChanges(events: FileChangeEvent[]): void {
+    for (const event of events) {
+      const filePath = event.uri.fsPath;
+      const ext = getExtension(filePath);
+
+      // Only care about indexable file types
+      if (!ext || (!INDEXABLE_EXTENSIONS.has(ext) && !RICH_DOCUMENT_EXTENSIONS.has(ext) && !IMAGE_EXTENSIONS.has(ext))) { continue; }
+
+      // Use workspace-relative path for DB operations (matches stored sourceId)
+      const relativePath = this._toRelativePath(filePath);
+
+      if (event.type === FileChangeType.Deleted) {
+        // Remove from index
+        this._vectorStore.deleteSource('file_chunk', relativePath).catch((err) => {
+          console.warn('[IndexingPipeline] Failed to remove deleted file from index:', relativePath, err);
+        });
+        this._cancelFileDebounce(filePath);
+      } else {
+        // Created or changed — schedule re-index
+        this.scheduleFileReindex(filePath);
+      }
+    }
+  }
+
+  /**
+   * Schedule a debounced page re-index.
+   * Multiple calls within PAGE_DEBOUNCE_MS are coalesced.
+   */
+  schedulePageReindex(pageId: string): void {
+    // Cancel existing timer
+    const existing = this._pageDebounce.get(pageId);
+    if (existing) { clearTimeout(existing); }
+
+    const timer = setTimeout(async () => {
+      this._pageDebounce.delete(pageId);
+      try {
+        await this.reindexPage(pageId);
+      } catch (err) {
+        console.warn('[IndexingPipeline] Debounced page re-index failed:', pageId, err);
+      }
+    }, PAGE_DEBOUNCE_MS);
+
+    this._pageDebounce.set(pageId, timer);
+  }
+
+  // ── Internal: Path Conversion ──
+
+  /**
+   * Convert an absolute filesystem path to a workspace-relative path.
+   * Used for storing sourceIds and building contextPrefixes that the LLM
+   * can use directly with workspace-relative tool calls (read_file, etc.).
+   */
+  private _toRelativePath(absolutePath: string): string {
+    const normalized = absolutePath.replace(/\\/g, '/');
+    for (const folder of this._workspaceService.folders) {
+      const root = folder.uri.fsPath.replace(/\\/g, '/');
+      const rootWithSlash = root.endsWith('/') ? root : root + '/';
+      if (normalized.startsWith(rootWithSlash)) {
+        return normalized.slice(rootWithSlash.length);
+      }
+    }
+    // Fallback: return the original path (shouldn't happen for workspace files)
+    return normalized;
+  }
+
+  /**
+   * Schedule a debounced file re-index.
+   */
+  scheduleFileReindex(filePath: string): void {
+    this._cancelFileDebounce(filePath);
+
+    const timer = setTimeout(async () => {
+      this._fileDebounce.delete(filePath);
+      try {
+        await this.reindexFile(filePath);
+      } catch (err) {
+        console.warn('[IndexingPipeline] Debounced file re-index failed:', filePath, err);
+      }
+    }, FILE_DEBOUNCE_MS);
+
+    this._fileDebounce.set(filePath, timer);
+  }
+
+  private _cancelFileDebounce(filePath: string): void {
+    const existing = this._fileDebounce.get(filePath);
+    if (existing) {
+      clearTimeout(existing);
+      this._fileDebounce.delete(filePath);
+    }
+  }
+
+  /** Timestamp of last progress event emission (for throttling). */
+  private _lastProgressFire = 0;
+
+  // ── Internal: Progress ──
+
+  private _updateProgress(
+    phase: IndexingProgress['phase'],
+    processed: number,
+    total: number,
+    currentSource?: string,
+  ): void {
+    this._progress = { phase, processed, total, currentSource };
+
+    // Throttle progress events to at most once per 250ms during bulk indexing.
+    // Always fire for phase transitions (idle, first item, last item).
+    const now = performance.now();
+    const isPhaseEdge = phase === 'idle' || processed === 0 || processed === total;
+    if (isPhaseEdge || now - this._lastProgressFire >= 250) {
+      this._lastProgressFire = now;
+      this._onDidChangeProgress.fire(this._progress);
+    }
+  }
+
+  // ── Internal: Abort ──
+
+  private _checkAborted(): void {
+    if (this._abortController?.signal.aborted) {
+      const err = new Error('Indexing cancelled');
+      err.name = 'AbortError';
+      throw err;
+    }
+  }
+
+  // ── Cleanup ──
+
+  override dispose(): void {
+    this.cancel();
+
+    // Clear all debounce timers
+    for (const timer of this._pageDebounce.values()) { clearTimeout(timer); }
+    this._pageDebounce.clear();
+
+    for (const timer of this._fileDebounce.values()) { clearTimeout(timer); }
+    this._fileDebounce.clear();
+
+    super.dispose();
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Extract file extension including the dot, e.g. '.ts'. */
+function getExtension(filePath: string): string | null {
+  const lastDot = filePath.lastIndexOf('.');
+  const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+  if (lastDot <= lastSlash || lastDot === filePath.length - 1) { return null; }
+  return filePath.slice(lastDot).toLowerCase();
+}
+
+/** Map file extension to a language name for the chunking service. */
+function extToLanguage(ext: string): string | undefined {
+  const map: Record<string, string> = {
+    ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+    py: 'python', rs: 'rust', go: 'go', java: 'java', kt: 'kotlin',
+    swift: 'swift', c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
+    rb: 'ruby', lua: 'lua', sql: 'sql', css: 'css', scss: 'scss',
+    html: 'html', htm: 'html', xml: 'xml', json: 'json',
+    yaml: 'yaml', yml: 'yaml', toml: 'toml', md: 'markdown',
+    mdx: 'markdown', sh: 'shell', bash: 'shell', zsh: 'shell',
+    graphql: 'graphql', gql: 'graphql', svelte: 'svelte', vue: 'vue',
+  };
+  return map[ext];
+}
+
+export { getExtension, extToLanguage, INDEXABLE_EXTENSIONS, RICH_DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS, SKIP_DIRS, MAX_FILE_SIZE, MAX_RICH_DOC_SIZE };

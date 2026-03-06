@@ -14,9 +14,10 @@ import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
-import { registerWorkbenchServices, registerConfigurationServices } from './workbenchServices.js';
+import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerAISettingsService, registerUnifiedAIConfigService } from './workbenchServices.js';
+import { IChatService, ILanguageModelsService } from '../services/chatTypes.js';
 
 // Layout base class (VS Code: Layout → Workbench extends Layout)
 import {
@@ -28,6 +29,7 @@ import {
 import { Part } from '../parts/part.js';
 import { PartId } from '../parts/partTypes.js';
 import { EditorPart } from '../parts/editorPart.js';
+import { GroupDirection, EditorActivation } from '../editor/editorTypes.js';
 import { StatusBarPart } from '../parts/statusBarPart.js';
 
 // Layout
@@ -47,7 +49,9 @@ import {
   createDefaultEditorSnapshot,
   workspaceStorageKey,
 } from '../workspace/workspaceTypes.js';
+import type { SerializedEditorSnapshot, SerializedEditorInputSnapshot } from '../workspace/workspaceTypes.js';
 import { createDefaultLayoutState } from '../layout/layoutModel.js';
+import { registerBuiltinEditorDeserializers, deserializeEditorInput } from '../editor/editorInputDeserializer.js';
 
 // Commands
 import { CommandService } from '../commands/commandRegistry.js';
@@ -125,9 +129,12 @@ import * as ExplorerTool from '../built-in/explorer/main.js';
 import * as SearchTool from '../built-in/search/main.js';
 import * as WelcomeTool from '../built-in/welcome/main.js';
 import * as OutputTool from '../built-in/output/main.js';
+import * as IndexingLogTool from '../built-in/indexing-log/main.js';
 import * as ToolGalleryTool from '../built-in/tool-gallery/main.js';
 import * as FileEditorTool from '../built-in/editor/main.js';
 import * as CanvasTool from '../built-in/canvas/main.js';
+import * as ChatTool from '../built-in/chat/main.js';
+import * as AISettingsTool from '../built-in/ai-settings/main.js';
 import type { IToolManifest, IToolDescription } from '../tools/toolManifest.js';
 import {
   EXPLORER_MANIFEST,
@@ -135,8 +142,11 @@ import {
   TEXT_EDITOR_MANIFEST,
   WELCOME_MANIFEST,
   OUTPUT_MANIFEST,
+  INDEXING_LOG_MANIFEST,
   TOOL_GALLERY_MANIFEST,
   CANVAS_MANIFEST,
+  CHAT_MANIFEST,
+  AI_SETTINGS_MANIFEST,
 } from '../tools/builtinManifests.js';
 
 // File Editor Resolver (M4 Capability 4)
@@ -197,7 +207,7 @@ export class Workbench extends Layout {
   private _sidebarContainer!: ViewContainer;
   private _panelContainer!: ViewContainer;
   private _auxBarContainer!: ViewContainer;
-  private _secondaryActivityBarEl!: HTMLElement;
+
 
   // Storage + Persistence
   private _storage!: IStorage;
@@ -226,6 +236,12 @@ export class Workbench extends Layout {
 
   // Database Service (M6 Capability 1)
   private _databaseService!: DatabaseService;
+
+  // Indexing pipeline (M10) — tracked for cancel/dispose on workspace switch
+  private _indexingPipeline: import('../services/indexingPipeline.js').IndexingPipelineService | null = null;
+
+  /** Disposable store for RAG services created by registerIndexingServices (M14 Phase 4). */
+  private _ragServiceStore = new DisposableStore();
 
   // Configuration (M2 Capability 4)
   private _configService!: ConfigurationService;
@@ -261,6 +277,11 @@ export class Workbench extends Layout {
   // Active file watchers for workspace folders (M4 — file watcher → tree refresh)
   private readonly _folderWatchers = new Map<string, IDisposable>();
 
+  // Listeners bound to the *current* workspace object (onDidChangeFolders).
+  // Cleared and re-registered on every workspace switch so they don't
+  // become orphaned when `this._workspace` is replaced.
+  private readonly _workspaceListeners = this._register(new DisposableStore());
+
   constructor(
     container: HTMLElement,
     services?: ServiceCollection,
@@ -282,15 +303,9 @@ export class Workbench extends Layout {
   override toggleAuxiliaryBar(): void {
     super.toggleAuxiliaryBar();
 
-    // Secondary activity bar element visibility
-    if (this._auxBarVisible) {
-      this._secondaryActivityBarEl.classList.remove('hidden');
-      // Ensure the aux bar content is populated
-      if (!this._auxBarContainer) {
-        this._auxBarContainer = this._setupAuxBarViews();
-      }
-    } else {
-      this._secondaryActivityBarEl.classList.add('hidden');
+    // Ensure the aux bar content is populated on first open
+    if (this._auxBarVisible && !this._auxBarContainer) {
+      this._auxBarContainer = this._setupAuxBarViews();
     }
   }
 
@@ -411,15 +426,15 @@ export class Workbench extends Layout {
   /**
    * Switch to a different workspace by ID.
    *
-   * Flow:
-   *   1. Save current workspace state
-   *   2. Show transition overlay
-   *   3. Tear down DOM content (views, containers, DnD, grids)
-   *   4. Load new workspace state
-   *   5. Rebuild layout and parts
-   *   6. Apply restored state
-   *   7. Configure saver
-   *   8. Remove overlay
+   * Follows the VS Code model: save current state, then reload the
+   * renderer. On reload the normal startup path (`initialize()` →
+   * `_restoreWorkspace()`) reads the new active workspace ID from
+   * storage and bootstraps everything from scratch — fresh tool
+   * activations, fresh services, fresh database, fresh indexing.
+   *
+   * This eliminates an entire class of stale-state bugs that plagued
+   * the previous in-process switch (manual teardown/rebuild, service
+   * re-fetching, event ordering races, session leaks, etc.).
    */
   async switchWorkspace(targetId: string): Promise<void> {
     if (this._state !== WorkbenchState.Ready) {
@@ -436,69 +451,114 @@ export class Workbench extends Layout {
     }
 
     this._switching = true;
-    console.log('[Workbench] Switching workspace → %s', targetId);
-    const overlay = this._showTransitionOverlay();
+    console.log('[Workbench] Switching workspace → %s (via reload)', targetId);
 
     try {
-      // 1. Save current workspace
+      // 0. End the current workspace session (M14).
+      //    Signals abort on the session AbortController so in-flight
+      //    async work can bail out. Must happen before save/reload.
+      const sessionMgr = this._services.get(ISessionManager);
+      if (sessionMgr) {
+        sessionMgr.endSession();
+      }
+
+      // 1. Save current workspace state to localStorage
       await this._workspaceSaver.save();
 
-      // 1b. Save view providers BEFORE teardown. removeContributions() in
-      //     teardown deletes _providers, but tools don't re-activate after a
-      //     switch — their registerViewProvider() call was one-time during
-      //     initial activation. We must preserve and re-apply them.
-      const savedProviders = this._viewContribution
-        ? this._viewContribution.getProviders()
-        : new Map();
+      // 2. Set the target as the active workspace so the reload picks it up
+      await this._workspaceLoader.setActiveWorkspaceId(targetId);
 
-      // 2. Tear down current workspace content (views, containers, DnD)
-      this._teardownWorkspaceContent();
+      // 3. Lock the active workspace ID so that any async save() calls
+      //    triggered during page unload / tool deactivation don't overwrite
+      //    the target ID back to the current workspace.
+      this._workspaceSaver.lockActiveId();
 
-      // 3. Load target workspace state
-      const w = this._container.clientWidth;
-      const h = this._container.clientHeight;
-      const savedState = await this._workspaceLoader.loadById(targetId, w, h);
-
-      if (savedState) {
-        this._workspace = Workspace.fromSerialized(savedState.identity, savedState.metadata);
-        this._restoredState = savedState;
-      } else {
-        // No saved state — create a fresh workspace identity
-        this._workspace = Workspace.create('Workspace');
-        this._restoredState = undefined;
+      // 4. Close the database cleanly (best-effort — the main process
+      //    also handles re-open-before-close in openForWorkspace)
+      if (this._databaseService?.isOpen) {
+        await this._databaseService.close().catch(() => {});
       }
 
-      // 4. Rebuild views, containers, DnD inside existing layout
-      this._rebuildWorkspaceContent(savedProviders);
+      // 5. Signal that this is a workspace-switch reload (used in test mode
+      //    to preserve the active workspace ID through localStorage.clear())
+      sessionStorage.setItem('parallx:pendingSwitch', '1');
 
-      // 5. Apply restored state
-      this._applyRestoredState();
+      // 6. Reload the renderer — fresh startup picks up the new workspace
+      window.location.reload();
 
-      // 5b. Fire workspace-switch event BEFORE restoring folders.
-      //     WorkspaceService._bindFolderEvents must subscribe to the new
-      //     workspace's onDidChangeFolders BEFORE restoreFolders fires it,
-      //     otherwise the Explorer never learns about restored folders.
-      this._onDidSwitchWorkspace.fire(this._workspace);
-
-      // 5c. Now restore workspace folders — the event flows through
-      //     WorkspaceService → WorkspaceBridge → Explorer → rebuildTree().
-      if (this._restoredState?.folders) {
-        this._workspace.restoreFolders(this._restoredState.folders);
-      }
-
-      // 6. Re-configure the saver for the new workspace
-      this._configureSaver();
-
-      // 7. Update recent workspaces and active ID
-      await this._recentWorkspaces.add(this._workspace);
-      await this._workspaceLoader.setActiveWorkspaceId(this._workspace.id);
-
-      console.log('[Workbench] Switched to workspace "%s"', this._workspace.name);
+      // Note: code below this line never runs — the page is unloading.
     } catch (err) {
       console.error('[Workbench] Workspace switch failed:', err);
-    } finally {
       this._switching = false;
-      this._removeTransitionOverlay(overlay);
+    }
+  }
+
+  /**
+   * Open a folder in the current workspace (via full page reload).
+   *
+   * Mirrors VS Code: "Open Folder" replaces the workspace root and reloads
+   * the entire window. On reload the normal startup path (`initialize()` →
+   * `_restoreWorkspace()`) reads the saved state (now with the new folder)
+   * and bootstraps everything from scratch — fresh tool activations, fresh
+   * services, fresh database, fresh indexing.
+   *
+   * This eliminates the coordination burden of the previous in-place
+   * approach where every subsystem (explorer, database, filesystem bridges,
+   * indexing pipeline, etc.) had to correctly handle `onDidChangeFolders`.
+   */
+  async openFolder(folderPath: string): Promise<void> {
+    if (this._state !== WorkbenchState.Ready) {
+      console.warn('[Workbench] Cannot open folder while in state:', this._state);
+      return;
+    }
+    if (this._switching) {
+      console.warn('[Workbench] Workspace switch/open already in progress — ignoring');
+      return;
+    }
+
+    this._switching = true;
+    console.log('[Workbench] Opening folder "%s" (via reload)', folderPath);
+
+    try {
+      // 0. End the current workspace session (M14).
+      const sessionMgr = this._services.get(ISessionManager);
+      if (sessionMgr) {
+        sessionMgr.endSession();
+      }
+
+      // 1. Atomically replace workspace folders with the new folder.
+      //    This updates the in-memory model so the subsequent save()
+      //    persists the correct folder list.
+      const newFolder = {
+        uri: URI.file(folderPath),
+        name: URI.file(folderPath).basename,
+        index: 0,
+      };
+      this._workspace.setFolders([newFolder]);
+
+      // 2. Save workspace state (now includes the new folder).
+      await this._workspaceSaver.save();
+
+      // 3. Lock the active workspace ID so async cleanup saves
+      //    during page unload don't revert the folder list.
+      this._workspaceSaver.lockActiveId();
+
+      // 4. Close the database cleanly (best-effort).
+      if (this._databaseService?.isOpen) {
+        await this._databaseService.close().catch(() => {});
+      }
+
+      // 5. Signal pending reload (used in test mode to preserve
+      //    the active workspace ID through localStorage.clear()).
+      sessionStorage.setItem('parallx:pendingSwitch', '1');
+
+      // 6. Reload the renderer — fresh startup picks up the new folder.
+      window.location.reload();
+
+      // Note: code below this line never runs — the page is unloading.
+    } catch (err) {
+      console.error('[Workbench] Open folder failed:', err);
+      this._switching = false;
     }
   }
 
@@ -563,7 +623,7 @@ export class Workbench extends Layout {
     }
 
     // React to folder additions/removals
-    this._register(this._workspace.onDidChangeFolders((e: any) => {
+    this._workspaceListeners.add(this._workspace.onDidChangeFolders((e: any) => {
       if (e.added) {
         for (const f of e.added) {
           watchFolder(typeof f.uri === 'string' ? f.uri : f.uri.toString());
@@ -577,7 +637,7 @@ export class Workbench extends Layout {
     }));
 
     // Cleanup all watchers on dispose
-    this._register({ dispose: () => {
+    this._workspaceListeners.add({ dispose: () => {
       for (const d of this._folderWatchers.values()) {
         d.dispose();
       }
@@ -635,6 +695,7 @@ export class Workbench extends Layout {
 
   private _registerServices(): void {
     registerWorkbenchServices(this._services);
+    registerChatServices(this._services);
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -645,8 +706,8 @@ export class Workbench extends Layout {
     const lc = this._lifecycle!;
 
     // Phase 1: Services — create storage + persistence
-    lc.onStartup(LifecyclePhase.Services, () => {
-      this._initializeServices();
+    lc.onStartup(LifecyclePhase.Services, async () => {
+      await this._initializeServices();
     });
 
     // Phase 2: Layout — build grids, assemble DOM
@@ -723,7 +784,7 @@ export class Workbench extends Layout {
   // Phase 1 — Initialize storage + persistence + layout renderer
   // ════════════════════════════════════════════════════════════════════════
 
-  private _initializeServices(): void {
+  private async _initializeServices(): Promise<void> {
     // Storage: namespaced localStorage wrapper
     const rawStorage = new LocalStorage();
     this._storage = new NamespacedStorage(rawStorage, 'parallx');
@@ -769,6 +830,31 @@ export class Workbench extends Layout {
     const themeService = this._register(new ThemeService(colorRegistry, themeData));
     themeService.applyTheme(themeData);
     this._services.registerInstance(IThemeService, themeService);
+
+    // ── AI Settings Service (M15) ──
+    // Registered after storage and chat services are available.
+    await registerAISettingsService(this._services, this._storage);
+
+    // ── Unified AI Config Service (M20) ──
+    // Replaces AISettingsService + ParallxConfigService as single source of truth.
+    await registerUnifiedAIConfigService(this._services, this._storage);
+
+    // ── Language Models Service: late-bind storage + default model ──
+    // The service was created pre-Phase-1 (no-arg), so we inject storage now.
+    const lms = this._services.get(ILanguageModelsService);
+    if (lms) {
+      await lms.setStorage(this._globalStorage);
+      // Seed the default model from the AI Settings active profile
+      const aiSettings = this._services.get(IAISettingsService);
+      if (aiSettings) {
+        const profile = aiSettings.getActiveProfile();
+        lms.setDefaultModel(profile.model.defaultModel || undefined);
+        // Keep in sync when AI Settings change
+        aiSettings.onDidChange((p) => {
+          lms.setDefaultModel(p.model.defaultModel || undefined);
+        });
+      }
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -813,6 +899,8 @@ export class Workbench extends Layout {
       auxiliaryBar: this._auxiliaryBar,
       activityBarPart: this._activityBarPart,
       toggleSidebar: () => this.toggleSidebar(),
+      togglePanel: () => this.togglePanel(),
+      toggleAuxiliaryBar: () => this.toggleAuxiliaryBar(),
       layoutViewContainers: () => this._layoutViewContainers(),
     }));
     this._contributionHandler.setWorkbenchContext(this._workbenchContext);
@@ -834,8 +922,7 @@ export class Workbench extends Layout {
     this._contributionHandler.setGenericContainers(this._sidebarContainer, this._panelContainer, this._auxBarContainer);
     this._contributionHandler.panelViewsSlot = this._panel.element.querySelector('.panel-views') as HTMLElement;
 
-    // 2b. Secondary activity bar (right edge, for aux bar views)
-    this._setupSecondaryActivityBar();
+
 
     // 3. Editor watermark
     this._setupEditorWatermark();
@@ -991,8 +1078,28 @@ export class Workbench extends Layout {
       this._workspace.restoreFolders(this._restoredState.folders);
     }
 
+    // Update the titlebar IMMEDIATELY after folder restore, before any
+    // fallible async operations.  Phase 3 ran before folders were loaded,
+    // so the label is still "Default Workspace".  Moving this here ensures
+    // the correct name appears even if later operations throw (the
+    // lifecycle catches & swallows errors, which would silently skip the
+    // title update if it were at the end of this method).
+    this._titlebar.setWorkspaceName(this._workspace.displayName);
+
     // Configure the saver with live sources so subsequent saves capture real state
     this._configureSaver();
+
+    // Wire file editor resolver + pane factories BEFORE restoring editors.
+    // The pane factory maps input types (PdfEditorInput, ImageEditorInput, etc.)
+    // to their rendering panes. Without this, restored editors fall through to
+    // PlaceholderEditorPane and render as plain text.
+    this._initFileEditorResolver();
+
+    // Restore editor tabs from saved state (async, errors swallowed per-editor)
+    if (this._restoredState?.editors) {
+      this._registerEditorDeserializers();
+      await this._restoreEditors(this._restoredState.editors);
+    }
 
     // Persist the initial state so there is always a storage entry for the
     // active workspace. Without this, first-launch windows (or test-mode with
@@ -1014,7 +1121,7 @@ export class Workbench extends Layout {
       );
 
       // Subscribe to folder changes for live context key updates
-      this._register(this._workspace.onDidChangeFolders(() => {
+      this._workspaceListeners.add(this._workspace.onDidChangeFolders(() => {
         const count = this._workspace.folders.length;
         this._workbenchContext.setWorkspaceFolderCount(count);
         this._workbenchContext.setWorkbenchState(
@@ -1041,6 +1148,20 @@ export class Workbench extends Layout {
     // Fire onDidSwitchWorkspace so that the WorkspaceService (and any other
     // listener) re-binds its event subscriptions to the live workspace.
     this._onDidSwitchWorkspace.fire(this._workspace);
+
+    // Safety-net: re-set the titlebar in case onDidSwitchWorkspace
+    // handlers or folder changes altered the display name since the
+    // early update above (after restoreFolders).
+    this._titlebar.setWorkspaceName(this._workspace.displayName);
+
+    // Begin the workspace session (M14).
+    // Services can now read sessionManager.activeContext for identity,
+    // log prefix, and abort signal.
+    const sessionMgr = this._services.get(ISessionManager);
+    if (sessionMgr) {
+      const roots = this._workspace.folders.map(f => f.uri);
+      sessionMgr.beginSession(this._workspace.id, roots);
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1215,6 +1336,110 @@ export class Workbench extends Layout {
   }
 
   // ════════════════════════════════════════════════════════════════════════
+  // Build editor snapshot for workspace persistence
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Serialize all open editor groups and their editors into a snapshot.
+   * Captures: typeId, inputId, pinned, reconstruction data, and active pane view state.
+   */
+  private _buildEditorSnapshot(): SerializedEditorSnapshot {
+    try {
+      const editorPart = this._editor as EditorPart;
+      const groups = editorPart.groups;
+      const activeGroup = editorPart.activeGroup;
+
+      const serializedGroups = groups.map(group => {
+        const serialized = group.model.serialize();
+        const editors: SerializedEditorInputSnapshot[] = serialized.editors.map((entry, i) => {
+          // Capture view state from the active pane of the active editor
+          let state: Record<string, unknown> | undefined;
+          if (i === serialized.activeEditorIndex && group.activePane) {
+            try { state = group.activePane.saveViewState(); } catch { /* best-effort */ }
+          }
+          return {
+            typeId: entry.typeId,
+            inputId: entry.inputId,
+            pinned: entry.pinned,
+            data: entry.data,
+            state,
+          };
+        });
+        return { editors, activeEditorIndex: serialized.activeEditorIndex };
+      });
+
+      return {
+        groups: serializedGroups,
+        activeGroupIndex: activeGroup ? groups.indexOf(activeGroup) : 0,
+      };
+    } catch (err) {
+      console.error('[Workbench] Failed to build editor snapshot:', err);
+      return createDefaultEditorSnapshot();
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Restore editor state from snapshot
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Reopen editors from a serialized snapshot.
+   * Creates additional editor groups as needed.
+   * Errors for individual editors are swallowed — partial restore is acceptable.
+   */
+  private async _restoreEditors(snapshot: SerializedEditorSnapshot): Promise<void> {
+    const editorPart = this._editor as EditorPart;
+
+    // Filter out groups with no restorable editors
+    const nonEmptyGroups = snapshot.groups.filter(g => g.editors.length > 0);
+    if (nonEmptyGroups.length === 0) return;
+
+    for (let gi = 0; gi < nonEmptyGroups.length; gi++) {
+      const groupSnap = nonEmptyGroups[gi];
+
+      // Get or create the editor group
+      let group = editorPart.groups[gi];
+      if (!group && gi > 0) {
+        group = editorPart.addGroup(editorPart.groups[gi - 1].id, GroupDirection.Right)!;
+      }
+      if (!group) continue;
+
+      // Open each editor in tab order
+      for (let ei = 0; ei < groupSnap.editors.length; ei++) {
+        const editorSnap = groupSnap.editors[ei];
+        try {
+          const input = deserializeEditorInput(editorSnap.typeId, editorSnap.data);
+          if (!input) continue;
+
+          const isActive = ei === groupSnap.activeEditorIndex;
+          await editorPart.openEditor(input, {
+            pinned: editorSnap.pinned,
+            activation: isActive ? EditorActivation.Activate : EditorActivation.Restore,
+            preserveFocus: !isActive,
+          }, group.id);
+
+          // Apply view state to the active editor's pane
+          if (isActive && editorSnap.state && group.activePane) {
+            try {
+              group.activePane.restoreViewState(editorSnap.state);
+            } catch { /* best-effort — pane may not support view state */ }
+          }
+        } catch (err) {
+          console.warn('[Workbench] Failed to restore editor "%s":', editorSnap.typeId, err);
+        }
+      }
+    }
+
+    // Activate the correct group
+    const targetGroupIdx = Math.min(snapshot.activeGroupIndex, editorPart.groups.length - 1);
+    if (targetGroupIdx >= 0 && editorPart.groups[targetGroupIdx]) {
+      editorPart.activateGroup(editorPart.groups[targetGroupIdx].id);
+    }
+
+    console.log('[Workbench] Restored %d editor group(s)', nonEmptyGroups.length);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
   // Configure the WorkspaceSaver with live sources
   // ════════════════════════════════════════════════════════════════════════
 
@@ -1251,13 +1476,25 @@ export class Workbench extends Layout {
           activeEditorGroup: undefined,
         };
       },
-      editorProvider: () => createDefaultEditorSnapshot(),
+      editorProvider: () => this._buildEditorSnapshot(),
     });
 
     // Wire auto-save on structural changes (dispose old listeners first)
     this._saverListeners.clear();
     this._saverListeners.add(this._hGrid.onDidChange(() => this._workspaceSaver.requestSave()));
     this._saverListeners.add(this._vGrid.onDidChange(() => this._workspaceSaver.requestSave()));
+
+    // Wire auto-save on editor changes (open, close, activate)
+    const editorService = this._services.has(IEditorService) ? this._services.get(IEditorService) : undefined;
+    const editorGroupService = this._services.has(IEditorGroupService) ? this._services.get(IEditorGroupService) : undefined;
+    if (editorService) {
+      this._saverListeners.add(editorService.onDidChangeOpenEditors(() => this._workspaceSaver.requestSave()));
+      this._saverListeners.add(editorService.onDidActiveEditorChange(() => this._workspaceSaver.requestSave()));
+    }
+    if (editorGroupService) {
+      this._saverListeners.add(editorGroupService.onDidGroupCountChange(() => this._workspaceSaver.requestSave()));
+      this._saverListeners.add(editorGroupService.onDidActiveGroupChange(() => this._workspaceSaver.requestSave()));
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1265,13 +1502,43 @@ export class Workbench extends Layout {
   // ════════════════════════════════════════════════════════════════════════
 
   private _setupTitlebar(): void {
-    // Task 1.1: Wire workspace name reactively
-    this._titlebar.setWorkspaceName(this._workspace.name);
+    // Task 1.1: Wire workspace name reactively (VS Code style: folder name for single-root)
+    this._titlebar.setWorkspaceName(this._workspace.displayName);
+
+    // Track per-workspace subscriptions so they can be rebound when the
+    // workspace object is replaced (Phase 4 replaces this._workspace).
+    let wsFolderSub: IDisposable | undefined;
+    let wsRenameSub: IDisposable | undefined;
+
+    const bindWorkspaceEvents = (ws: Workspace) => {
+      // Dispose old subscriptions (they point at the previous workspace object)
+      wsFolderSub?.dispose();
+      wsRenameSub?.dispose();
+
+      // Update when folders change (add/remove folder changes the display name)
+      wsFolderSub = ws.onDidChangeFolders(() => {
+        this._titlebar.setWorkspaceName(this._workspace.displayName);
+      });
+
+      // A9: Update titlebar and window title when workspace is renamed
+      wsRenameSub = ws.onDidRename(() => {
+        this._titlebar.setWorkspaceName(this._workspace.displayName);
+        this._statusBarController.updateWindowTitle();
+      });
+    };
+
+    // Bind to the initial workspace
+    bindWorkspaceEvents(this._workspace);
 
     // Subscribe to workspace switches so the label updates automatically
+    // AND rebind per-workspace events to the new workspace object.
     this._register(this._onDidSwitchWorkspace.event((ws) => {
-      this._titlebar.setWorkspaceName(ws.name);
+      this._titlebar.setWorkspaceName(ws.displayName);
+      bindWorkspaceEvents(ws);
     }));
+
+    // Clean up per-workspace subs when the workbench is disposed
+    this._register({ dispose: () => { wsFolderSub?.dispose(); wsRenameSub?.dispose(); } });
 
     // Task 1.2: Register default menu bar items via contribution system
     this._menuBuilder.registerDefaultMenuBarItems();
@@ -1643,6 +1910,10 @@ export class Workbench extends Layout {
           headerLabel.textContent = (view?.name ?? 'SECONDARY SIDE BAR').toUpperCase();
         }
       });
+
+      // Share with contribution handler so contributed aux bar containers
+      // can update the same header label when their views activate.
+      this._contributionHandler.auxBarHeaderLabel = headerLabel;
     }
 
     // No views registered yet — extensions will populate this in later milestones.
@@ -1650,19 +1921,26 @@ export class Workbench extends Layout {
     return container;
   }
 
+
+
   // ════════════════════════════════════════════════════════════════════════
-  // Secondary activity bar (right edge)
+  // Editor input deserializer registration
   // ════════════════════════════════════════════════════════════════════════
 
-  private _setupSecondaryActivityBar(): void {
-    this._secondaryActivityBarEl = $('div');
-    this._secondaryActivityBarEl.classList.add('secondary-activity-bar', 'hidden');
-
-    // No hardcoded view buttons — extensions will register their own
-    // activity bar items when they add views to the auxiliary bar.
-
-    // Append to body row (after hGrid, at the right edge)
-    this._bodyRow.appendChild(this._secondaryActivityBarEl);
+  /**
+   * Register built-in editor input deserializers.
+   * Called once before editor state restoration.
+   */
+  private _registerEditorDeserializers(): void {
+    const textFileModelManager = this._services.has(ITextFileModelManager)
+      ? this._services.get(ITextFileModelManager) : undefined;
+    const fileService = this._services.has(IFileService)
+      ? this._services.get(IFileService) : undefined;
+    if (!textFileModelManager || !fileService) {
+      console.warn('[Workbench] Cannot register editor deserializers — services not available');
+      return;
+    }
+    registerBuiltinEditorDeserializers({ textFileModelManager, fileService });
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1849,8 +2127,31 @@ export class Workbench extends Layout {
     this._services.registerInstance(IDatabaseService, this._databaseService);
     // Open database for current workspace if a folder is open
     await this._openDatabaseForWorkspace();
+
+    // Late-bind the database into ChatService — it was created in Phase 1
+    // before the DatabaseService existed. Now that the DB is open we can
+    // hand it over and restore persisted sessions.
+    if (this._databaseService.isOpen && this._services.has(IChatService)) {
+      const chatService = this._services.get<IChatService>(IChatService);
+      chatService.setDatabase(this._databaseService as any, this._workspace?.id ?? '');
+
+      // Late-bind session manager for stale session detection (M14 Phase 2)
+      if (this._services.has(ISessionManager)) {
+        chatService.setSessionManager(this._services.get(ISessionManager));
+      }
+
+      chatService.restoreSessions().catch(() => { /* best-effort */ });
+    }
+
+    // ── RAG Indexing Services (M10 Phase 1–2) ──
+    // Register embedding, chunking, vector store, and indexing pipeline services.
+    // Start() is fire-and-forget: it runs in the background after DB is open.
+    if (this._databaseService.isOpen) {
+      this._startIndexingPipeline();
+    }
+
     // React to workspace folder changes (open/close database)
-    this._register(this._workspace.onDidChangeFolders(() => {
+    this._workspaceListeners.add(this._workspace.onDidChangeFolders(() => {
       this._openDatabaseForWorkspace();
     }));
 
@@ -1922,8 +2223,8 @@ export class Workbench extends Layout {
       this._titlebar.setContextKeyEvaluator(this._contextKeyService);
     }
 
-    // ── Wire file editor resolver (M4 Capability 4) ──
-    this._initFileEditorResolver();
+    // ── File editor resolver is wired in Phase 4 (_restoreWorkspace) ──
+    // so that pane factories are available before editor state restoration.
 
     // ── Register and activate built-in tools (M2 Capability 7) ──
     await this._registerAndActivateBuiltinTools(registry, activationEvents);
@@ -1938,6 +2239,13 @@ export class Workbench extends Layout {
 
     // Fire startup finished — triggers * and onStartupFinished activation events
     activationEvents.fireStartupFinished();
+
+    // ── Post-activation layout pass ──
+    // Built-in tools (Chat, etc.) may have contributed new view containers
+    // during activation that were appended to the DOM but never received a
+    // layout pass. Re-layout all view containers so contributed views like
+    // the chat aux bar panel render at correct dimensions immediately.
+    this._layoutViewContainers();
 
     // ── Wire tool install/uninstall callbacks for the API (M6 Package Install) ──
     // These callbacks are invoked by api.tools.installFromFile() and api.tools.uninstall()
@@ -1996,6 +2304,56 @@ export class Workbench extends Layout {
    * Migration files are resolved from the app's built-in canvas tool
    * directory. This is called during Phase 5 init and on folder changes.
    */
+  /**
+   * Start (or restart) the indexing pipeline for the current workspace.
+   * Cancels and disposes any previously running pipeline first.
+   */
+  private _startIndexingPipeline(): void {
+    // Dispose the old pipeline AND all RAG services (M14 Phase 4 — prevent leaks)
+    if (this._indexingPipeline) {
+      this._indexingPipeline.cancel();
+      this._indexingPipeline.dispose();
+      this._indexingPipeline = null;
+    }
+    this._ragServiceStore.dispose();
+    this._ragServiceStore = new DisposableStore();
+
+    if (!this._databaseService.isOpen) { return; }
+
+    // Guard: skip pipeline start if session is ending (M14 Phase 4.3)
+    if (this._services.has(ISessionManager)) {
+      const ctx = this._services.get(ISessionManager).activeContext;
+      if (ctx && !ctx.isActive()) {
+        console.warn('[Workbench] Skipping pipeline start — session is ending');
+        return;
+      }
+    }
+
+    const result = registerIndexingServices(this._services);
+
+    // M20: Wire retrieval service to read defaults from unified config
+    if (this._services.has(IUnifiedAIConfigService)) {
+      result.retrievalService.setConfigProvider(this._services.get(IUnifiedAIConfigService));
+    }
+
+    // Track all new services for disposal on next restart
+    this._ragServiceStore.add(result.embeddingService);
+    this._ragServiceStore.add(result.chunkingService);
+    this._ragServiceStore.add(result.vectorStoreService);
+    this._ragServiceStore.add(result.retrievalService);
+    this._ragServiceStore.add(result.memoryService);
+    this._ragServiceStore.add(result.relatedContentService);
+    this._ragServiceStore.add(result.autoTaggingService);
+    this._ragServiceStore.add(result.proactiveSuggestionsService);
+
+    this._indexingPipeline = result.indexingPipeline;
+    this._ragServiceStore.add(result.indexingPipeline);
+
+    result.indexingPipeline.start().catch((err) => {
+      console.error('[Workbench] Indexing pipeline failed to start:', err);
+    });
+  }
+
   private async _openDatabaseForWorkspace(): Promise<void> {
     const folders = this._workspace.folders;
     if (folders.length === 0) {
@@ -2022,6 +2380,55 @@ export class Workbench extends Layout {
       console.log('[Workbench] Database opened for workspace folder: %s', folderPath);
     } catch (err) {
       console.error('[Workbench] Failed to open database for workspace:', err);
+    }
+
+    // ── Durable workspace identity (survives localStorage loss) ──
+    // Persist the workspace ID to .parallx/workspace-identity.json so that
+    // sessions stored under the original UUID are always recoverable.
+    await this._reconcileDurableWorkspaceId(folderPath);
+  }
+
+  /**
+   * Ensure the workspace UUID is consistent with the durable identity file
+   * stored in `<folder>/.parallx/workspace-identity.json`.
+   *
+   * - If the file exists and its ID differs from the current workspace ID,
+   *   adopt the stored ID (this recovers sessions after localStorage loss).
+   * - If the file does not exist, write the current workspace ID to it.
+   */
+  private async _reconcileDurableWorkspaceId(folderPath: string): Promise<void> {
+    const fs = (window as any).parallxElectron?.fs;
+    if (!fs) { return; }
+
+    const sep = folderPath.includes('/') ? '/' : '\\';
+    const identityPath = folderPath + sep + '.parallx' + sep + 'workspace-identity.json';
+
+    try {
+      const exists: boolean = await fs.exists(identityPath);
+
+      if (exists) {
+        // Read the stored identity
+        const result = await fs.readFile(identityPath, 'utf-8');
+        if (result?.content) {
+          const stored = JSON.parse(result.content);
+          if (stored?.id && stored.id !== this._workspace.id) {
+            console.log('[Workbench] Recovering durable workspace identity from %s', identityPath);
+            this._workspace.adoptId(stored.id);
+
+            // Re-sync localStorage so next launch uses the correct ID
+            await this._workspaceLoader.setActiveWorkspaceId(stored.id);
+            await this._workspaceSaver.save();
+          }
+        }
+      } else {
+        // First time — persist the current workspace identity for future recovery
+        const payload = JSON.stringify({ id: this._workspace.id, createdAt: new Date().toISOString() }, null, 2);
+        await fs.writeFile(identityPath, payload, 'utf-8');
+        console.log('[Workbench] Persisted durable workspace identity to %s', identityPath);
+      }
+    } catch (err) {
+      // Best-effort — do not block workspace startup
+      console.warn('[Workbench] Failed to reconcile durable workspace identity:', err);
     }
   }
 
@@ -2109,8 +2516,11 @@ export class Workbench extends Layout {
       { manifest: TEXT_EDITOR_MANIFEST, module: FileEditorTool },
       { manifest: WELCOME_MANIFEST, module: WelcomeTool },
       { manifest: OUTPUT_MANIFEST, module: OutputTool },
+      { manifest: INDEXING_LOG_MANIFEST, module: IndexingLogTool },
       { manifest: TOOL_GALLERY_MANIFEST, module: ToolGalleryTool },
       { manifest: CANVAS_MANIFEST, module: CanvasTool },
+      { manifest: CHAT_MANIFEST, module: ChatTool },
+      { manifest: AI_SETTINGS_MANIFEST, module: AISettingsTool },
     ];
 
     const activationPromises: Promise<void>[] = [];
@@ -2280,7 +2690,13 @@ export class Workbench extends Layout {
       this._panelContainer.layout(this._panel.width, this._panel.height, Orientation.Horizontal);
     }
     if (this._auxBarVisible && this._auxiliaryBar.width > 0) {
-      this._auxBarContainer?.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - PART_HEADER_HEIGHT_PX, Orientation.Vertical);
+      // Only layout the generic aux bar container when no contributed containers
+      // exist. Contributed containers are laid out by the contribution handler.
+      // Both share the same parent slot — if both get full-size layout, the
+      // generic one (empty) pushes the contributed one below overflow: hidden.
+      if (this._contributionHandler.contributedAuxBarContainers.size === 0) {
+        this._auxBarContainer?.layout(this._auxiliaryBar.width, this._auxiliaryBar.height - PART_HEADER_HEIGHT_PX, Orientation.Vertical);
+      }
     }
 
     // Delegate sidebar switching + contributed container layout to handler
@@ -2345,159 +2761,5 @@ export class Workbench extends Layout {
   private _setState(state: WorkbenchState): void {
     this._state = state;
     this._onDidChangeState.fire(state);
-  }
-
-  // ════════════════════════════════════════════════════════════════════════
-  // Workspace switch helpers
-  // ════════════════════════════════════════════════════════════════════════
-
-  /**
-   * Tear down workspace-specific content (views, containers, DnD)
-   * while keeping the structural layout (grids, parts elements) intact.
-   */
-  private _teardownWorkspaceContent(): void {
-    // 0. Tear down contribution handler state (tab observers, view contrib listeners,
-    //    builtin + contributed containers, container redirects)
-    this._contributionHandler.teardown();
-
-    // 1. Dispose DnD controller
-    this._dndController?.dispose();
-
-    // 2. Dispose generic view containers (builtin sidebar containers were disposed by handler)
-    this._panelContainer?.dispose();
-    this._auxBarContainer?.dispose();
-
-    // 3. Clear view container mount points in parts
-    if (this._contributionHandler.sidebarViewsSlot) this._contributionHandler.sidebarViewsSlot.innerHTML = '';
-    if (this._contributionHandler.sidebarHeaderSlot) this._contributionHandler.sidebarHeaderSlot.innerHTML = '';
-    if (this._contributionHandler.panelViewsSlot) this._contributionHandler.panelViewsSlot.innerHTML = '';
-
-    const auxBarPart = this._auxiliaryBar as unknown as AuxiliaryBarPart;
-    const auxViewSlot = auxBarPart.viewContainerSlot;
-    if (auxViewSlot) auxViewSlot.innerHTML = '';
-    const auxHeaderSlot = auxBarPart.headerSlot;
-    if (auxHeaderSlot) auxHeaderSlot.innerHTML = '';
-
-    // 4. Clear activity bar icons (the Part structure stays, only icons are removed)
-    for (const icon of this._activityBarPart.getIcons()) {
-      this._activityBarPart.removeIcon(icon.id);
-    }
-
-    // 4b. Clear manage gear icon (not tracked by addIcon/removeIcon)
-    const bottomSection = this._activityBarPart.contentElement.querySelector('.activity-bar-bottom');
-    const gearBtn = bottomSection?.querySelector('.activity-bar-manage-gear');
-    gearBtn?.remove();
-
-    // 5. Dispose the view manager (disposes all remaining view instances)
-    this._viewManager?.dispose();
-
-    // 6. Dispose the workspace saver (cancel pending debounce)
-    this._workspaceSaver?.dispose();
-    this._workspaceSaver = new WorkspaceSaver(this._storage);
-
-    // 7. Reset aux bar visibility tracking
-    if (this._auxBarVisible) {
-      try { this._hGrid.removeView(this._auxiliaryBar.id); } catch { /* ok */ }
-      this._auxiliaryBar.setVisible(false);
-      this._secondaryActivityBarEl.classList.add('hidden');
-      this._auxBarVisible = false;
-    }
-
-    console.log('[Workbench] Torn down workspace content');
-  }
-
-  /**
-   * Rebuild workspace-specific content after a switch.
-   * Re-runs the same logic as Phase 3 (_initializeParts) but without
-   * rebuilding the structural layout, titlebar, or status bar.
-   *
-   * @param savedProviders View providers saved before teardown. Tools don't
-   *   re-activate after a switch, so we must re-register their providers
-   *   to replace placeholder stubs with real views.
-   */
-  private _rebuildWorkspaceContent(
-    savedProviders: ReadonlyMap<string, import('../contributions/viewContribution.js').IToolViewProvider> = new Map(),
-  ): void {
-    // 1. View system — register ALL descriptors, then create containers
-    this._viewManager = new ViewManager();
-    this._viewManager.registerMany(allPlaceholderViewDescriptors);
-    this._viewManager.registerMany(allAuxiliaryBarViewDescriptors);
-
-    this._sidebarContainer = this._setupSidebarViews();
-    this._panelContainer = this._setupPanelViews();
-    this._auxBarContainer = this._setupAuxBarViews();
-
-    // Wire new containers + view manager into contribution handler
-    this._contributionHandler.setViewManager(this._viewManager);
-    this._contributionHandler.setGenericContainers(this._sidebarContainer, this._panelContainer, this._auxBarContainer);
-    this._contributionHandler.panelViewsSlot = this._panel.element.querySelector('.panel-views') as HTMLElement;
-
-    // 2b. Manage gear icon
-    this._menuBuilder.addManageGearIcon();
-
-    // 3. DnD
-    this._dndController = this._setupDragAndDrop();
-
-    // 4. Layout view containers
-    this._layoutViewContainers();
-
-    // 5. Re-wire view contribution events (Cap 6)
-    if (this._viewContribution) {
-      this._viewContribution.updateViewManager(this._viewManager);
-      this._contributionHandler.setViewContribution(this._viewContribution);
-      this._contributionHandler.wireViewContributionEvents();
-
-      // Replay view contributions for all already-registered tools so
-      // contributed containers and views are re-created in the new DOM.
-      //
-      // Providers were already saved in switchWorkspace() BEFORE teardown
-      // (which clears them) and passed in as the savedProviders parameter.
-
-      const registry = this._services.get(IToolRegistryService) as unknown as ToolRegistry;
-      if (registry) {
-        for (const entry of registry.getAll()) {
-          const contributes = entry.description.manifest.contributes;
-          if (contributes?.viewContainers || contributes?.views) {
-            // Remove then re-process to rebuild DOM via events
-            this._viewContribution.removeContributions(entry.description.manifest.id);
-            this._viewContribution.processContributions(entry.description);
-          }
-        }
-      }
-
-      // Re-register saved providers — this triggers onDidRegisterProvider
-      // for each, which replaces placeholder view content with real tool views
-      for (const [viewId, provider] of savedProviders) {
-        this._viewContribution.registerProvider(viewId, provider);
-      }
-    }
-
-    console.log('[Workbench] Rebuilt workspace content');
-  }
-
-  /**
-   * Show a fade overlay during workspace switch.
-   */
-  private _showTransitionOverlay(): HTMLElement {
-    const overlay = $('div');
-    overlay.classList.add('workspace-transition-overlay');
-    overlay.textContent = 'Switching workspace…';
-    this._container.appendChild(overlay);
-
-    // Trigger fade-in
-    requestAnimationFrame(() => { overlay.classList.add('visible'); });
-
-    return overlay;
-  }
-
-  /**
-   * Remove the transition overlay with a fade-out.
-   */
-  private _removeTransitionOverlay(overlay: HTMLElement): void {
-    overlay.classList.remove('visible');
-    overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
-    // Safety fallback
-    const TRANSITION_FALLBACK_MS = 300;
-    setTimeout(() => { if (overlay.parentElement) overlay.remove(); }, TRANSITION_FALLBACK_MS);
   }
 }

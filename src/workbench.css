@@ -40,6 +40,7 @@ html, body {
   position: relative;
   display: flex;
   flex-direction: column;
+  contain: size layout style;
 }
 
 /* Activity bar part — fixed width, must fill full height of body row */
@@ -184,7 +185,7 @@ html, body {
 
 /* ── Window control close button (M3 Cap 1.3) ── */
 .window-control-btn--close:hover {
-  background: #e81123 !important;
+  background: var(--vscode-titleBar-closeForeground, #e81123) !important;
   color: white !important;
 }
 
@@ -258,11 +259,15 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-height: 0;
+  /* Distribute available space equally among expanded sections */
+  flex: 1 1 0;
+  /* Minimum: header (22px) + minimum body (80px) */
+  min-height: 102px;
 }
 
 .view-section.collapsed {
   flex: 0 0 auto;
+  min-height: 0;
 }
 
 .view-section-header {
@@ -325,14 +330,16 @@ html, body {
 
 .view-section-body {
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
   position: relative;
+  /* Allow flex shrinking below content height so body scrolls */
+  min-height: 0;
 }
 
 .view-section-sash {
   height: 4px;
   min-height: 4px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
   cursor: row-resize;
   background: transparent;
   z-index: 10;
@@ -571,6 +578,14 @@ html, body {
   color: var(--vscode-auxiliaryBar-headerForeground);
 }
 
+.parallx-chat-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .auxiliary-bar-content {
   flex: 1;
   overflow: hidden;
@@ -580,19 +595,6 @@ html, body {
   flex: 1;
   height: 100%;
   overflow: hidden;
-}
-
-/* ── Secondary Activity Bar (right edge) ── */
-.secondary-activity-bar {
-  width: 48px;
-  flex-shrink: 0;
-  background: var(--vscode-activityBar-background);
-  border-left: 1px solid var(--vscode-activityBar-border);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: 4px;
-  gap: 2px;
 }
 
 /* ── Panel ── */
@@ -715,20 +717,39 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+  background: transparent;
   border-radius: 5px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121, 121, 121, 0.7));
-}
-
-::-webkit-scrollbar-thumb:active {
-  background: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.5));
+  transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* Reveal scrollbar thumb when hovering anywhere on a non-editor surface.
+   Hovering the sidebar, panel, or aux bar shows all scrollbar thumbs within.
+   Part root elements use class: part-workbench-parts-<name> (dots→dashes). */
+.part-workbench-parts-sidebar:hover ::-webkit-scrollbar-thumb,
+.part-workbench-parts-panel:hover ::-webkit-scrollbar-thumb,
+.part-workbench-parts-auxiliarybar:hover ::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
+}
+
+.part-workbench-parts-sidebar:hover ::-webkit-scrollbar-thumb:hover,
+.part-workbench-parts-panel:hover ::-webkit-scrollbar-thumb:hover,
+.part-workbench-parts-auxiliarybar:hover ::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(121, 121, 121, 0.7));
+}
+
+.part-workbench-parts-sidebar:hover ::-webkit-scrollbar-thumb:active,
+.part-workbench-parts-panel:hover ::-webkit-scrollbar-thumb:active,
+.part-workbench-parts-auxiliarybar:hover ::-webkit-scrollbar-thumb:active {
+  background: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.5));
+}
+
+/* Editor area: always show scrollbars (editors manage their own scrolling) */
+.part-workbench-parts-editor ::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
 }
 
 /* ── Blinking cursor animation ── */
@@ -770,7 +791,10 @@ html, body {
   flex: 1;
   overflow: hidden;
   position: relative;
-  background: var(--vscode-editor-background);
+  background: inherit;
+  /* Flex column so stacked sections distribute space and scroll */
+  display: flex;
+  flex-direction: column;
 }
 
 .view-tab {
@@ -842,6 +866,13 @@ html, body {
   cursor: col-resize;
   margin-left: -2px;
   margin-right: -2px;
+  background: linear-gradient(
+    to right,
+    transparent calc(50% - 0.5px),
+    var(--vscode-editorGroup-border, rgba(255, 255, 255, 0.06)) calc(50% - 0.5px),
+    var(--vscode-editorGroup-border, rgba(255, 255, 255, 0.06)) calc(50% + 0.5px),
+    transparent calc(50% + 0.5px)
+  );
 }
 
 .grid-sash-horizontal {
@@ -850,6 +881,24 @@ html, body {
   cursor: row-resize;
   margin-top: -2px;
   margin-bottom: -2px;
+  background: linear-gradient(
+    to bottom,
+    transparent calc(50% - 0.5px),
+    var(--vscode-editorGroup-border, rgba(255, 255, 255, 0.06)) calc(50% - 0.5px),
+    var(--vscode-editorGroup-border, rgba(255, 255, 255, 0.06)) calc(50% + 0.5px),
+    transparent calc(50% + 0.5px)
+  );
+}
+
+/* Hover / active overrides the resting 1px line with the full-width highlight */
+.grid-sash-vertical:hover,
+.grid-sash-vertical.active {
+  background: var(--vscode-sash-hoverBorder);
+}
+
+.grid-sash-horizontal:hover,
+.grid-sash-horizontal.active {
+  background: var(--vscode-sash-hoverBorder);
 }
 
 /* ── Sash directional cursors (VS Code parity: SashState) ── */
@@ -872,6 +921,7 @@ html, body {
   overflow: hidden;
   min-width: 0;
   min-height: 0;
+  contain: strict;
 }
 
 /* ── Drop overlay ── */
@@ -891,7 +941,7 @@ html, body {
   z-index: 1000;
   display: flex;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
 }
 
 .command-palette {
@@ -1094,26 +1144,6 @@ html, body {
   flex-direction: column;
   overflow: hidden;
   position: relative;
-}
-
-/* ── Workspace transition overlay ── */
-.workspace-transition-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 10000;
-  background: var(--vscode-editor-background);
-  opacity: 0;
-  transition: opacity 120ms ease-in;
-  pointer-events: all;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--vscode-descriptionForeground);
-  font-size: 14px;
-}
-
-.workspace-transition-overlay.visible {
-  opacity: 1;
 }
 
 /* ── Editor Group View ── */
@@ -1665,9 +1695,9 @@ html, body {
   color: var(--vscode-foreground);
 }
 
-.placeholder-terminal-prompt { color: #6a9955; }
-.placeholder-terminal-cmd { color: #569cd6; }
-.placeholder-terminal-ok { color: #4ec9b0; }
+.placeholder-terminal-prompt { color: var(--vscode-terminal-ansiGreen, #6a9955); }
+.placeholder-terminal-cmd { color: var(--vscode-terminal-ansiBlue, #569cd6); }
+.placeholder-terminal-ok { color: var(--vscode-terminal-ansiCyan, #4ec9b0); }
 
 /* ── Placeholder View: Output ── */
 .placeholder-output {
@@ -1824,7 +1854,7 @@ html, body {
   z-index: 1000;
   display: flex;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
 }
 
 .theme-picker-box {

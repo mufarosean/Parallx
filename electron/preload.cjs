@@ -98,6 +98,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   shell: {
     /** Reveal file in OS native file manager (Explorer/Finder). */
     showItemInFolder: (filePath) => ipcRenderer.invoke('shell:showItemInFolder', filePath),
+    /** Open file with the system default application. Returns error string or ''. */
+    openPath: (filePath) => ipcRenderer.invoke('shell:openPath', filePath),
   },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -194,5 +196,76 @@ contextBridge.exposeInMainWorld('parallxElectron', {
   clipboard: {
     readText: () => clipboard.readText(),
     writeText: (text) => clipboard.writeText(text ?? ''),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Document Extraction API
+  // ══════════════════════════════════════════════════════════════════════════
+
+  document: {
+    /** Extract plain text from a rich document (PDF, Excel, Word). Returns { text, format, metadata } or { error }. */
+    extractText: (filePath) => ipcRenderer.invoke('document:extractText', filePath),
+
+    /** Check if a file extension is a supported rich document format. Returns boolean. */
+    isRichDocument: (ext) => ipcRenderer.invoke('document:isRichDocument', ext),
+
+    /** Get array of supported rich document extensions. Returns string[]. */
+    richExtensions: () => ipcRenderer.invoke('document:richExtensions'),
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Terminal API (M11 Phase 4 — Task 4.1)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  terminal: {
+    /** Execute a single command and return stdout/stderr/exitCode. */
+    exec: (command, options) => ipcRenderer.invoke('terminal:exec', command, options),
+
+    /** Spawn an interactive shell session. Returns { id }. */
+    spawn: (options) => ipcRenderer.invoke('terminal:spawn', options),
+
+    /** Send data to a spawned shell. */
+    write: (id, data) => ipcRenderer.send('terminal:write', id, data),
+
+    /** Kill a spawned shell. */
+    kill: (id) => ipcRenderer.invoke('terminal:kill', id),
+
+    /** Get recent terminal output buffer. */
+    getOutput: (lineCount) => ipcRenderer.invoke('terminal:getOutput', lineCount),
+
+    /** Subscribe to terminal output data. Returns unsubscribe function. */
+    onData: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('terminal:data', handler);
+      return () => ipcRenderer.removeListener('terminal:data', handler);
+    },
+
+    /** Subscribe to terminal exit events. Returns unsubscribe function. */
+    onExit: (callback) => {
+      const handler = (_event, payload) => callback(payload);
+      ipcRenderer.on('terminal:exit', handler);
+      return () => ipcRenderer.removeListener('terminal:exit', handler);
+    },
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Docling Bridge API (M21 Phase A)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  docling: {
+    /** Get Docling bridge status. Returns { status, port, pythonPath, doclingInstalled }. */
+    status: () => ipcRenderer.invoke('docling:status'),
+
+    /** Start the Docling bridge service. Returns { ok, status, ... }. */
+    start: () => ipcRenderer.invoke('docling:start'),
+
+    /** Convert a single document. Returns { ok, markdown, page_count, tables_found, ... } or { ok: false, error }. */
+    convert: (filePath, options) => ipcRenderer.invoke('docling:convert', filePath, options),
+
+    /** Convert multiple documents. Returns { ok, results } or { ok: false, error }. */
+    convertBatch: (files) => ipcRenderer.invoke('docling:convertBatch', files),
+
+    /** Install Docling via pip. Returns { ok, pythonPath, output, alreadyInstalled }. */
+    install: () => ipcRenderer.invoke('docling:install'),
   },
 });

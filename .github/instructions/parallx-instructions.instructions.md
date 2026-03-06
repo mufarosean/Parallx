@@ -5,16 +5,45 @@ description: These instructions provide guidelines for AI to follow when thinkin
 
 ## 0. Active Milestone Context
 
-The current work is **Milestone 9 — AI Chat System** (`docs/Parallx_Milestone_09.md`). Read the milestone document before implementing any M9 task. It contains resolved design decisions, type definitions, and verification checklists that govern all AI chat code.
+The current work is **Milestone 15 — AI Personality & Behavior Settings** (`docs/Parallx_Milestone_15.md`). Read the milestone document before implementing any M15 task. It adds a first-class AI Settings panel so users can configure how all AI in Parallx thinks, speaks, and behaves — without touching code or config files.
 
-### Key M9 Constraints
+### Key M15 Constraints
+
+- **Service first, UI second.** `IAISettingsService` must fully work (persist, reload, emit events) before building any UI panel.
+- **One group at a time.** Complete and validate each group (tsc clean + all tests pass + git commit) before starting the next. Order: A (Foundation) → B (Wiring) → C (UI Primitives) → D (Core UI) → E (Persistence).
+- **Commit per task.** Each numbered task gets its own commit for fine-grained rollback.
+- **Test after every task.** `tsc --noEmit` + `npx vitest run` after each task.
+- **Use existing patterns.** DI: `createServiceIdentifier` + `registerInstance`. Events: `Emitter<T>/Event<T>` — no event bus. CSS: `var(--vscode-*)` tokens — no `--parallx-*`. Storage: `IStorage` from `platform/storage.ts`.
+- **System prompt injection via `promptOverlay`.** `buildSystemPrompt()` in `chatSystemPrompts.ts` already checks `promptOverlay`. M15 generates the persona block and passes it as `promptOverlay`.
+- **Use `ILanguageModelsService` for all Ollama communication.** Do NOT call Ollama HTTP endpoints directly.
+- **New UI primitives in `src/ui/` first.** Slider, Toggle, Dropdown, SegmentedControl, Textarea must exist before panel sections.
+- **Built-in presets are immutable.** Writing to a `isBuiltIn: true` profile silently clones it.
+- **Deferred capabilities (5–11) are NOT in scope** for the core milestone.
+
+### Key M11 Constraints
 
 - **Local-only AI via Ollama** (`localhost:11434`). No cloud providers, no API keys.
-- **Tiptap reuse**: Chat rendering uses a single Tiptap read-only instance; chat input uses a writable Tiptap instance with Mention extension. No custom markdown renderer.
-- **JSON structured output** for edit mode via Ollama `format` param.
-- **Session URIs** from day one: `parallx-chat-session:///<uuid>`.
-- **Token estimation**: `chars / 4` + LLM history summarization on context overflow.
-- **Follow-up suggestions** (`provideFollowups()`) are M9.2 required.
+- **Skill-based tool system**: Each tool is a skill with a `SKILL.md` manifest. Built-in skills ship with Parallx; workspace skills live in `.parallx/skills/`.
+- **Prompt file layering**: `SOUL.md` (personality) → `AGENTS.md` (project context) → `TOOLS.md` (tool instructions) → `.parallx/rules/*.md` (pattern-scoped). All at workspace root, user-editable.
+- **Workspace digest**: Every system prompt includes a pre-computed workspace digest (~2000 tokens) — canvas page titles, file tree (depth 3), key file previews. The AI "already knows" the workspace.
+- **3-tier permissions**: always-allowed / requires-approval / never-allowed. Per-skill config in `.parallx/permissions.json`.
+- **Token budget manager**: System 10%, RAG 30%, History 30%, User 30%. Priority-based trimming.
+- **`.parallxignore`**: Git-style patterns for both indexing exclusion and AI file access blocking.
+- **Small model guidance**: qwen2.5:32b-instruct needs explicit behavioral rules and pre-loaded context. System prompts include tool chaining instructions and personality directives.
+
+### Inherited M10 Constraints (Still Apply)
+
+- **Embedding model**: `nomic-embed-text` v1.5 via Ollama `/api/embed`. Task prefixes: `search_document:` / `search_query:`.
+- **Vector storage**: `sqlite-vec` with `vec0` virtual table, `float[768]`.
+- **Hybrid retrieval**: Vector cosine similarity + FTS5 BM25, merged via RRF (k=60).
+- **Workspace-wide scope**: Indexes canvas pages, workspace files, and all tool data sources.
+
+### Inherited M9 Constraints (Still Apply)
+
+- **Tiptap reuse** for chat rendering and input.
+- **Session URIs**: `parallx-chat-session:///<uuid>`.
+- **Token estimation**: `chars / 4`.
+- **11+ built-in tools** (M9 base + M10 `search_knowledge` + M11 `write_file`, `edit_file`, `delete_file`, `run_command`).
 
 ### Canvas Gate Architecture
 

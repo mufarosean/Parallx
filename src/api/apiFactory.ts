@@ -34,12 +34,19 @@ import { ContextBridge } from './bridges/contextBridge.js';
 import { WorkspaceBridge } from './bridges/workspaceBridge.js';
 import { FileSystemBridge } from './bridges/fileSystemBridge.js';
 import { EditorsBridge } from './bridges/editorsBridge.js';
+import { LanguageModelBridge } from './bridges/languageModelBridge.js';
+import { ChatBridge } from './bridges/chatBridge.js';
 import type { IThemeService } from '../services/serviceTypes.js';
 import { ThemeType } from '../theme/colorRegistry.js';
 import type { ViewManager } from '../views/viewManager.js';
 import type { ConfigurationService } from '../configuration/configurationService.js';
 import type { CommandContributionProcessor } from '../contributions/commandContribution.js';
 import type { ViewContributionProcessor } from '../contributions/viewContribution.js';
+import {
+  ILanguageModelsService,
+  IChatAgentService,
+  ILanguageModelToolsService,
+} from '../services/chatTypes.js';
 
 // ─── API Dependencies ────────────────────────────────────────────────────────
 
@@ -117,6 +124,8 @@ export interface ParallxApiObject {
     readonly workspaceFolders: readonly { uri: string; name: string; index: number }[] | undefined;
     getWorkspaceFolder(uri: string): { uri: string; name: string; index: number } | undefined;
     readonly onDidChangeWorkspaceFolders: (listener: (e: { added: readonly { uri: string; name: string; index: number }[]; removed: readonly { uri: string; name: string; index: number }[] }) => void) => IDisposable;
+    readonly onDidChangeWorkspace: (listener: (e: { id: string; name: string } | undefined) => void) => IDisposable;
+    readonly onDidRename: (listener: (name: string) => void) => IDisposable;
     readonly onDidFilesChange: (listener: (events: { type: number; uri: string }[]) => void) => IDisposable;
     readonly name: string | undefined;
     readonly fs: {
@@ -158,6 +167,25 @@ export interface ParallxApiObject {
     readonly appVersion: string;
     readonly toolPath: string;
   };
+  readonly services: {
+    /**
+     * Get a DI service instance by its ServiceIdentifier.
+     * Throws if the service is not registered.
+     */
+    get<T>(id: { readonly id: string }): T;
+    /** Check if a DI service is registered. */
+    has(id: { readonly id: string }): boolean;
+  };
+  readonly lm: {
+    getModels(): Promise<readonly { id: string; displayName: string; family: string; parameterSize: string; quantization: string; contextLength: number; capabilities: readonly string[] }[]>;
+    sendChatRequest(modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>): AsyncIterable<{ content: string; done: boolean }>;
+    registerProvider(provider: { id: string; displayName: string; getModels(): Promise<unknown[]>; checkStatus(): Promise<unknown>; sendChatRequest(...args: unknown[]): AsyncIterable<unknown>; getModelInfo(id: string): Promise<unknown> }): IDisposable;
+    onDidChangeModels: (listener: () => void) => IDisposable;
+  } | undefined;
+  readonly chat: {
+    createChatParticipant(id: string, handler: (...args: unknown[]) => Promise<unknown>): IDisposable & { id: string; displayName: string; description: string; iconPath?: string; commands: { name: string; description: string }[] };
+    registerTool(name: string, tool: { description: string; parameters: Record<string, unknown>; handler: (args: Record<string, unknown>, token: unknown) => Promise<{ content: string; isError?: boolean }>; requiresConfirmation: boolean }): IDisposable;
+  } | undefined;
 }
 
 // ─── Global Tool Lifecycle Emitters ──────────────────────────────────────────
@@ -245,6 +273,27 @@ export function createToolApi(
 
   const editorsBridge = new EditorsBridge(toolId, editorService, subscriptions);
 
+  // AI chat bridges (M9 Cap 8)
+  const languageModelsService = deps.services.has(ILanguageModelsService)
+    ? deps.services.get<import('../services/chatTypes.js').ILanguageModelsService>(ILanguageModelsService)
+    : undefined;
+
+  const chatAgentService = deps.services.has(IChatAgentService)
+    ? deps.services.get<import('../services/chatTypes.js').IChatAgentService>(IChatAgentService)
+    : undefined;
+
+  const languageModelToolsService = deps.services.has(ILanguageModelToolsService)
+    ? deps.services.get<import('../services/chatTypes.js').ILanguageModelToolsService>(ILanguageModelToolsService)
+    : undefined;
+
+  const languageModelBridge = languageModelsService
+    ? new LanguageModelBridge(toolId, languageModelsService, subscriptions)
+    : undefined;
+
+  const chatBridge = chatAgentService
+    ? new ChatBridge(toolId, chatAgentService, languageModelToolsService, subscriptions)
+    : undefined;
+
   // ── Build API object ──
   const api: ParallxApiObject = {
     views: Object.freeze({
@@ -289,6 +338,8 @@ export function createToolApi(
         let _tooltip: string | undefined;
         let _command: string | undefined;
         let _name: string | undefined;
+        let _iconSvg: string | undefined;
+        let _htmlElement: HTMLElement | undefined;
         let _visible = false;
         let _accessor: StatusBarEntryAccessor | undefined;
 
@@ -312,6 +363,13 @@ export function createToolApi(
           },
           get name() { return _name; },
           set name(v: string | undefined) { _name = v; },
+          get iconSvg() { return _iconSvg; },
+          set iconSvg(v: string | undefined) {
+            _iconSvg = v;
+            if (_visible && _accessor) _accessor.update({ iconSvg: v });
+          },
+          get htmlElement() { return _htmlElement; },
+          set htmlElement(v: HTMLElement | undefined) { _htmlElement = v; },
           show() {
             if (_visible || !sbPart) return;
             _visible = true;
@@ -323,6 +381,8 @@ export function createToolApi(
               tooltip: _tooltip,
               command: _command,
               name: _name,
+              iconSvg: _iconSvg,
+              htmlElement: _htmlElement,
             });
             // NOT pushed to subscriptions — lifecycle is managed by show/hide/dispose
           },
@@ -369,6 +429,8 @@ export function createToolApi(
       get workspaceFolders() { return workspaceBridge.workspaceFolders; },
       getWorkspaceFolder: (uri: string) => workspaceBridge.getWorkspaceFolder(uri),
       onDidChangeWorkspaceFolders: workspaceBridge.onDidChangeWorkspaceFolders,
+      onDidChangeWorkspace: workspaceBridge.onDidChangeWorkspace,
+      onDidRename: workspaceBridge.onDidRename,
       onDidFilesChange: workspaceBridge.onDidFilesChange,
       get name() { return workspaceBridge.name; },
       get fs() {
@@ -499,6 +561,29 @@ export function createToolApi(
       appVersion: PARALLX_VERSION,
       toolPath: toolDescription.toolPath,
     }),
+
+    services: Object.freeze({
+      get: <T>(id: { readonly id: string }) => deps.services.get(id as any) as T,
+      has: (id: { readonly id: string }) => deps.services.has(id as any),
+    }),
+
+    // AI chat namespaces (M9 Cap 8) — undefined if services not available
+    lm: languageModelBridge
+      ? Object.freeze({
+          getModels: () => languageModelBridge.getModels(),
+          sendChatRequest: (modelId: string, messages: readonly { role: string; content: string }[], options?: Record<string, unknown>) =>
+            languageModelBridge.sendChatRequest(modelId, messages as any, options as any),
+          registerProvider: (provider: any) => languageModelBridge.registerProvider(provider),
+          onDidChangeModels: (listener: () => void) => languageModelBridge.onDidChangeModels(listener),
+        })
+      : undefined,
+
+    chat: chatBridge
+      ? Object.freeze({
+          createChatParticipant: (id: string, handler: any) => chatBridge.createChatParticipant(id, handler),
+          registerTool: (name: string, tool: any) => chatBridge.registerTool(name, tool),
+        })
+      : undefined,
   };
 
   // Freeze the top-level API object
@@ -513,6 +598,8 @@ export function createToolApi(
     workspaceBridge.dispose();
     fileSystemBridge?.dispose();
     editorsBridge.dispose();
+    languageModelBridge?.dispose();
+    chatBridge?.dispose();
 
     // Dispose all tracked subscriptions
     for (const s of subscriptions) {

@@ -22,6 +22,7 @@ export class UntitledEditorInput extends EditorInput {
 
   private readonly _uri: URI;
   private readonly _name: string;
+  private _customName: string | undefined;
   private _content: string = '';
   private _hasTyped: boolean = false;
 
@@ -45,6 +46,19 @@ export class UntitledEditorInput extends EditorInput {
     return input;
   }
 
+  /**
+   * Create an untitled editor with content that is NOT marked as dirty.
+   * Useful for read-only viewers (e.g. session memory) that should close
+   * without prompting the user to save.
+   */
+  static createReadonly(content: string, name?: string): UntitledEditorInput {
+    const input = UntitledEditorInput.create();
+    input._content = content;
+    input._hasTyped = false; // Not dirty — close without prompt
+    if (name) { input._customName = name; }
+    return input;
+  }
+
   private constructor(n: number) {
     const id = `untitled-${n}`;
     super(id);
@@ -59,7 +73,7 @@ export class UntitledEditorInput extends EditorInput {
   }
 
   get name(): string {
-    return this._name;
+    return this._customName ?? this._name;
   }
 
   get description(): string {

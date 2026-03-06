@@ -32,6 +32,6 @@
 
 /* Invalid drop target */
 .parallx-drop-overlay--invalid {
-  background-color: rgba(220, 38, 38, 0.08);
-  border: 2px dashed rgba(220, 38, 38, 0.4);
+  background-color: var(--vscode-inputValidation-errorBackground, rgba(220, 38, 38, 0.08));
+  border: 2px dashed var(--vscode-inputValidation-errorBorder, rgba(220, 38, 38, 0.4));
 }

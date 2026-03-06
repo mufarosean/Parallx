@@ -12,7 +12,7 @@
   background: var(--color-surface-overlay, #252525);
   border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
   border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 30px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5)), 0 0 0 1px rgba(0, 0, 0, 0.15);
   padding: 8px;
   display: flex;
   flex-direction: column;

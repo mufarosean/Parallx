@@ -1,14 +1,23 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
+import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
+import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
 import { ToolRegistry } from '../tools/toolRegistry.js';
 import { NotificationService } from '../api/notificationService.js';
 import { ActivationEventService } from '../tools/activationEventService.js';
+import { LanguageModelsService } from '../services/languageModelsService.js';
+import { ChatService } from '../services/chatService.js';
+import { ChatAgentService } from '../services/chatAgentService.js';
+import { ChatModeService } from '../services/chatModeService.js';
+import { ChatWidgetService } from '../services/chatWidgetService.js';
+import { LanguageModelToolsService } from '../services/languageModelToolsService.js';
 import { ToolErrorService } from '../tools/toolErrorIsolation.js';
+import { SessionManager } from '../workspace/sessionManager.js';
 import { ConfigurationRegistry } from '../configuration/configurationRegistry.js';
 import { ConfigurationService } from '../configuration/configurationService.js';
 import { CommandContributionProcessor } from '../contributions/commandContribution.js';
@@ -18,6 +27,18 @@ import { ViewContributionProcessor } from '../contributions/viewContribution.js'
 import { KeybindingService } from '../services/keybindingService.js';
 import { FileService } from '../services/fileService.js';
 import { TextFileModelManager } from '../services/textFileModelManager.js';
+import { EmbeddingService } from '../services/embeddingService.js';
+import { ChunkingService } from '../services/chunkingService.js';
+import { VectorStoreService } from '../services/vectorStoreService.js';
+import { IndexingPipelineService } from '../services/indexingPipeline.js';
+import { RetrievalService } from '../services/retrievalService.js';
+import { MemoryService } from '../services/memoryService.js';
+import { RelatedContentService } from '../services/relatedContentService.js';
+import { AutoTaggingService } from '../services/autoTaggingService.js';
+import { ProactiveSuggestionsService } from '../services/proactiveSuggestionsService.js';
+import { DocumentExtractionService } from '../services/documentExtractionService.js';
+import { AISettingsService } from '../aiSettings/aiSettingsService.js';
+import { UnifiedAIConfigService } from '../aiSettings/unifiedAIConfigService.js';
 import type { IStorage } from '../platform/storage.js';
 import type { ViewManager } from '../views/viewManager.js';
 
@@ -32,6 +53,9 @@ import type { ViewManager } from '../views/viewManager.js';
 export function registerWorkbenchServices(services: ServiceCollection): void {
   // ── Lifecycle ──
   services.registerInstance(ILifecycleService, new LifecycleService());
+
+  // ── Session Manager (M14) ── workspace session identity
+  services.registerInstance(ISessionManager, new SessionManager());
 
   // ── Context Key (Capability 8) ──
   services.registerInstance(IContextKeyService, new ContextKeyService());
@@ -145,4 +169,159 @@ export function registerViewContributionProcessor(
   const viewContribution = new ViewContributionProcessor(viewManager);
   services.registerInstance(IViewContributionService, viewContribution);
   return viewContribution;
+}
+
+/**
+ * Creates and registers the AI chat services (M9 Capability 0–2).
+ * Called during Phase 5 after core services are available.
+ *
+ * @returns The service instances for further wiring.
+ */
+export function registerChatServices(
+  services: ServiceCollection,
+): {
+  languageModelsService: LanguageModelsService;
+  chatService: ChatService;
+  chatAgentService: ChatAgentService;
+  chatModeService: ChatModeService;
+  chatWidgetService: ChatWidgetService;
+  languageModelToolsService: LanguageModelToolsService;
+} {
+  const languageModelsService = new LanguageModelsService();
+  const chatAgentService = new ChatAgentService();
+  const chatModeService = new ChatModeService();
+  const chatWidgetService = new ChatWidgetService();
+  const languageModelToolsService = new LanguageModelToolsService();
+  const chatService = new ChatService(
+    chatAgentService,
+    chatModeService,
+    languageModelsService,
+    undefined, // database is late-bound via setDatabase() after Phase 5 opens it
+  );
+
+  services.registerInstance(ILanguageModelsService, languageModelsService);
+  services.registerInstance(IChatService, chatService);
+  services.registerInstance(IChatAgentService, chatAgentService);
+  services.registerInstance(IChatModeService, chatModeService);
+  services.registerInstance(IChatWidgetService, chatWidgetService);
+  services.registerInstance(ILanguageModelToolsService, languageModelToolsService);
+
+  return { languageModelsService, chatService, chatAgentService, chatModeService, chatWidgetService, languageModelToolsService };
+}
+
+/**
+ * Creates and registers the RAG / indexing services (M10 Phase 1–2).
+ * Called during Phase 5 after DatabaseService and FileService are available.
+ *
+ * Returns the IndexingPipelineService — the caller should call `.start()`
+ * after the database is fully open and canvas migrations have run.
+ */
+export function registerIndexingServices(
+  services: ServiceCollection,
+): {
+  embeddingService: EmbeddingService;
+  chunkingService: ChunkingService;
+  vectorStoreService: VectorStoreService;
+  indexingPipeline: IndexingPipelineService;
+  retrievalService: RetrievalService;
+  memoryService: MemoryService;
+  relatedContentService: RelatedContentService;
+  autoTaggingService: AutoTaggingService;
+  proactiveSuggestionsService: ProactiveSuggestionsService;
+} {
+  const databaseService = services.get(IDatabaseService);
+  const fileService = services.get(IFileService);
+  const workspaceService = services.get(IWorkspaceService);
+  const sessionManager = services.has(ISessionManager) ? services.get(ISessionManager) : undefined;
+
+  const embeddingService = new EmbeddingService();
+  const chunkingService = new ChunkingService();
+  const vectorStoreService = new VectorStoreService(databaseService);
+  const documentExtractionService = new DocumentExtractionService();
+  // M21: Kick off Docling bridge detection in the background.
+  // This is fire-and-forget — the pipeline will use legacy extractors
+  // until Docling becomes available, then auto-reindex rich documents.
+  documentExtractionService.initialize().catch((err) => {
+    console.warn('[WorkbenchServices] DocumentExtractionService.initialize() failed:', err);
+  });
+  const indexingPipeline = new IndexingPipelineService(
+    databaseService,
+    fileService,
+    embeddingService,
+    chunkingService,
+    vectorStoreService,
+    workspaceService,
+    sessionManager,
+    documentExtractionService,
+  );
+  const retrievalService = new RetrievalService(embeddingService, vectorStoreService);
+  const memoryService = new MemoryService(databaseService, embeddingService, vectorStoreService);
+
+  services.registerInstance(IEmbeddingService, embeddingService);
+  services.registerInstance(IChunkingService, chunkingService);
+  services.registerInstance(IVectorStoreService, vectorStoreService);
+  services.registerInstance(IDocumentExtractionService, documentExtractionService);
+  services.registerInstance(IIndexingPipelineService, indexingPipeline);
+  services.registerInstance(IRetrievalService, retrievalService);
+  services.registerInstance(IMemoryService, memoryService);
+
+  // ── Phase 7: Advanced Feature Services (M10) ──
+
+  const relatedContentService = new RelatedContentService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
+  const autoTaggingService = new AutoTaggingService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
+
+  // M15: Pass AI Settings service so thresholds are configurable
+  const aiSettingsService = services.has(IAISettingsService) ? services.get(IAISettingsService) : undefined;
+  const proactiveSuggestionsService = new ProactiveSuggestionsService(embeddingService, vectorStoreService, databaseService, indexingPipeline, aiSettingsService);
+
+  services.registerInstance(IRelatedContentService, relatedContentService);
+  services.registerInstance(IAutoTaggingService, autoTaggingService);
+  services.registerInstance(IProactiveSuggestionsService, proactiveSuggestionsService);
+
+  return { embeddingService, chunkingService, vectorStoreService, indexingPipeline, retrievalService, memoryService, relatedContentService, autoTaggingService, proactiveSuggestionsService };
+}
+
+/**
+ * Creates and registers the AI Settings service (M15 Capability 1).
+ * Called during Phase 1 (initializeServices) after storage and chat services
+ * are available.
+ *
+ * @returns The AISettingsService instance for further wiring.
+ */
+export async function registerAISettingsService(
+  services: ServiceCollection,
+  storage: IStorage,
+): Promise<AISettingsService> {
+  const languageModelsService = services.has(ILanguageModelsService)
+    ? services.get(ILanguageModelsService)
+    : undefined;
+  const aiSettingsService = new AISettingsService(storage, languageModelsService);
+  await aiSettingsService.initialize();
+  services.registerInstance(IAISettingsService, aiSettingsService);
+  return aiSettingsService;
+}
+
+/**
+ * Creates and registers the Unified AI Config service (M20 Task A.4).
+ * Called after registerAISettingsService so legacy migration can read old profiles.
+ *
+ * @returns The UnifiedAIConfigService instance for further wiring.
+ */
+export async function registerUnifiedAIConfigService(
+  services: ServiceCollection,
+  storage: IStorage,
+): Promise<UnifiedAIConfigService> {
+  const languageModelsService = services.has(ILanguageModelsService)
+    ? services.get(ILanguageModelsService)
+    : undefined;
+  const unifiedConfigService = new UnifiedAIConfigService(storage, languageModelsService);
+  await unifiedConfigService.initialize();
+  services.registerInstance(IUnifiedAIConfigService, unifiedConfigService);
+
+  // Also register as IAISettingsService for backward compatibility.
+  // Consumers that resolve IAISettingsService get the unified service,
+  // which implements the full IAISettingsService interface.
+  services.registerInstance(IAISettingsService, unifiedConfigService);
+
+  return unifiedConfigService;
 }

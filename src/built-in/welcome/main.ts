@@ -199,7 +199,9 @@ function renderWelcomePage(container: HTMLElement, api: ParallxApi): IDisposable
 
     for (const ws of recentWorkspaces.slice(0, 5)) {
       const row = _createRecentRow('📁', ws.name, ws.path || '', () => {
-        api.commands.executeCommand('workbench.action.switchWorkspace', ws.id).catch(() => {});
+        api.commands.executeCommand('workspace.switch', ws.id).catch((err) => {
+          console.error('[Welcome] Failed to switch workspace:', err);
+        });
       });
       rightCol.appendChild(row);
     }

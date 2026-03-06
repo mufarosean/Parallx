@@ -408,6 +408,14 @@ export function columnDropPlugin(): Plugin {
         dragover: (view: EditorView, event: DragEvent) => {
           if (!view.dragging) { hideAll(); return false; }
 
+          // List item drags are handled by ProseMirror's native drop logic
+          // which respects schema constraints and places items within lists.
+          const draggedFirst = view.dragging?.slice?.content?.firstChild;
+          if (draggedFirst && (draggedFirst.type.name === 'listItem' || draggedFirst.type.name === 'taskItem')) {
+            hideAll();
+            return false;
+          }
+
           resetStaleTimer();
 
           const x = event.clientX;
@@ -470,6 +478,14 @@ export function columnDropPlugin(): Plugin {
         },
 
         drop: (view: EditorView, event: DragEvent) => {
+          // List item drags are handled by ProseMirror's native drop logic
+          // which respects schema constraints and reorders within lists.
+          const firstDragged = view.dragging?.slice?.content?.firstChild;
+          if (firstDragged && (firstDragged.type.name === 'listItem' || firstDragged.type.name === 'taskItem')) {
+            hideAll();
+            return false;
+          }
+
           // If the drop landed on a pageBlock's interior (cross-page
           // move), pageBlockNode's drop handler already called
           // stopPropagation — we never reach here.  If we DO reach here

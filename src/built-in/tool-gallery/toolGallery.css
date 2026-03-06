@@ -249,7 +249,7 @@
 }
 
 .tool-gallery-toggle-enable:hover {
-  background: rgba(86, 156, 214, 0.15);
+  background: var(--vscode-badge-background, rgba(86, 156, 214, 0.15));
 }
 
 /* Built-in tool toggle (greyed out) */
@@ -376,7 +376,7 @@
 }
 
 .tool-editor-action-uninstall:hover {
-  background: rgba(244, 71, 71, 0.15);
+  background: var(--vscode-inputValidation-errorBackground, rgba(244, 71, 71, 0.15));
 }
 
 .tool-editor-action-uninstall:disabled {
@@ -548,15 +548,15 @@
 }
 
 .tool-editor-status-dot-active {
-  background: #4ec9b0;
+  background: var(--vscode-testing-iconPassed, #4ec9b0);
 }
 
 .tool-editor-status-dot-inactive {
-  background: #888;
+  background: var(--vscode-descriptionForeground, #888);
 }
 
 .tool-editor-status-dot-pending {
-  background: #dcdcaa;
+  background: var(--vscode-editorWarning-foreground, #dcdcaa);
 }
 
 .tool-editor-status-row {

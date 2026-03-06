@@ -9,6 +9,8 @@
 //
 // See docs/ICON_REGISTRY.md for the three-registry architecture.
 
+import { registerIcon } from '../../ui/iconRegistry.js';
+
 // ─── Icon SVG Strings ────────────────────────────────────────────────────────
 // All icons use viewBox="0 0 16 16" to match VS Code codicon convention.
 // They use `currentColor` fill/stroke so they adapt to the theme automatically.
@@ -221,6 +223,11 @@ const ICONS: Record<string, string> = {
   'color': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="5" r="1.2" fill="currentColor"/><circle cx="5.5" cy="7.5" r="1.2" fill="currentColor"/><circle cx="10.5" cy="7.5" r="1.2" fill="currentColor"/><circle cx="6.5" cy="10.5" r="1.2" fill="currentColor"/><circle cx="9.5" cy="10.5" r="1.2" fill="currentColor"/></svg>',
   'highlight': '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.5 2L3.5 9V12.5H7L14 5.5L10.5 2Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M8.5 4L12 7.5" stroke="currentColor" stroke-width="1"/><path d="M2 14.5H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
 };
+
+// ─── Register all canvas icons into the shared app-wide icon registry ────────
+for (const [id, svg] of Object.entries(ICONS)) {
+  registerIcon(`canvas-${id}`, svg);
+}
 
 // ─── Icon IDs (for type safety) ──────────────────────────────────────────────
 

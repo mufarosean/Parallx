@@ -18,7 +18,7 @@ import { $, clearNode } from '../../ui/dom.js';
 interface ToolContributions {
   commands?: { id: string; title: string; category?: string; icon?: string; keybinding?: string; when?: string }[];
   views?: { id: string; name: string; icon?: string; defaultContainerId?: string; when?: string }[];
-  viewContainers?: { id: string; title: string; icon?: string; location?: string }[];
+  viewContainers?: { id: string; title: string; icon?: string; location?: string; hidden?: boolean }[];
   configuration?: { title: string; properties: Record<string, { type: string; default?: unknown; description?: string; enum?: string[] }> }[];
   menus?: Record<string, { command: string; group?: string; when?: string }[]>;
   keybindings?: { command: string; key: string; when?: string }[];

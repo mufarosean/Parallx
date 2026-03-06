@@ -8,6 +8,8 @@ const fs = require('fs/promises');
 const fsSync = require('fs');
 const AdmZip = require('adm-zip');
 const { databaseManager } = require('./database.cjs');
+const { extractText, isRichDocument, RICH_DOCUMENT_EXTENSIONS } = require('./documentExtractor.cjs');
+const doclingBridge = require('./doclingBridge.cjs');
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null;
@@ -495,7 +497,8 @@ app.on('activate', () => {
 // errors with { code, message, path }. Matches VS Code's DiskFileSystemProvider
 // pattern adapted for Electron IPC.
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB guard
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB guard (text files)
+const MAX_BINARY_FILE_SIZE = 512 * 1024 * 1024; // 512MB guard (PDFs, images, etc.)
 
 /**
  * Normalize a filesystem error into a structured { code, message, path } object.
@@ -506,9 +509,29 @@ function normalizeError(err, filePath) {
 }
 
 /**
- * Check if a buffer is likely binary by scanning for null bytes in the first 8KB.
+ * File extensions that are always binary (no heuristic needed).
  */
-function isBinary(buffer) {
+const BINARY_EXTENSIONS = new Set([
+  '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.svg',
+  '.zip', '.tar', '.gz', '.7z', '.rar', '.bz2', '.xz',
+  '.exe', '.dll', '.so', '.dylib', '.bin',
+  '.mp3', '.mp4', '.wav', '.ogg', '.flac', '.avi', '.mkv', '.mov', '.webm',
+  '.woff', '.woff2', '.ttf', '.otf', '.eot',
+  '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.sqlite', '.db',
+]);
+
+/**
+ * Check if a buffer is likely binary by scanning for null bytes in the first 8KB.
+ * Also checks file extension for known binary types.
+ */
+function isBinary(buffer, filePath) {
+  // Fast path: known binary extensions
+  if (filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    if (BINARY_EXTENSIONS.has(ext)) return true;
+  }
+  // Heuristic: scan for null bytes
   const check = buffer.subarray(0, 8192);
   for (let i = 0; i < check.length; i++) {
     if (check[i] === 0) return true;
@@ -523,11 +546,14 @@ ipcMain.handle('fs:readFile', async (_event, filePath, encoding) => {
     if (stat.isDirectory()) {
       return { error: { code: 'EISDIR', message: 'Is a directory', path: filePath } };
     }
-    if (stat.size > MAX_FILE_SIZE) {
-      return { error: { code: 'ETOOLARGE', message: `File exceeds ${MAX_FILE_SIZE} byte limit`, path: filePath } };
+    // Apply higher limit for known binary files (PDFs, images, etc.)
+    const ext = path.extname(filePath).toLowerCase();
+    const sizeLimit = BINARY_EXTENSIONS.has(ext) ? MAX_BINARY_FILE_SIZE : MAX_FILE_SIZE;
+    if (stat.size > sizeLimit) {
+      return { error: { code: 'ETOOLARGE', message: `File exceeds ${sizeLimit} byte limit`, path: filePath } };
     }
     const buffer = await fs.readFile(filePath);
-    if (isBinary(buffer)) {
+    if (isBinary(buffer, filePath)) {
       return { content: buffer.toString('base64'), encoding: 'base64', size: stat.size, mtime: stat.mtimeMs };
     }
     return { content: buffer.toString(encoding || 'utf-8'), encoding: encoding || 'utf-8', size: stat.size, mtime: stat.mtimeMs };
@@ -643,7 +669,9 @@ ipcMain.handle('fs:delete', async (_event, filePath, options) => {
   try {
     const useTrash = options?.useTrash !== false; // default: true
     if (useTrash) {
-      await shell.trashItem(filePath);
+      // shell.trashItem uses Windows Shell COM APIs (IFileOperation) which
+      // require native backslash paths. path.resolve normalises slashes.
+      await shell.trashItem(path.resolve(filePath));
     } else {
       const stat = await fs.stat(filePath);
       if (stat.isDirectory()) {
@@ -661,6 +689,11 @@ ipcMain.handle('fs:delete', async (_event, filePath, options) => {
 // ── shell:showItemInFolder ──
 ipcMain.handle('shell:showItemInFolder', async (_event, filePath) => {
   shell.showItemInFolder(filePath);
+});
+
+// ── shell:openPath ──
+ipcMain.handle('shell:openPath', async (_event, filePath) => {
+  return shell.openPath(filePath);
 });
 
 // ── fs:mkdir ──
@@ -747,6 +780,89 @@ ipcMain.handle('dialog:showMessageBox', async (_event, options) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
+// Document Extraction IPC Handlers
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Extracts plain text from rich document formats (PDF, Excel, Word) for the
+// indexing pipeline. Heavy extraction runs in the main process which has full
+// Node.js access to the parsing libraries.
+
+// ── document:extractText ──
+ipcMain.handle('document:extractText', async (_event, filePath) => {
+  try {
+    const result = await extractText(filePath);
+    return { text: result.text, format: result.format, metadata: result.metadata };
+  } catch (err) {
+    return { error: { code: 'EXTRACTION_FAILED', message: err.message || String(err), path: filePath } };
+  }
+});
+
+// ── document:isRichDocument ──
+ipcMain.handle('document:isRichDocument', (_event, ext) => {
+  return isRichDocument(ext);
+});
+
+// ── document:richExtensions ──
+ipcMain.handle('document:richExtensions', () => {
+  return [...RICH_DOCUMENT_EXTENSIONS];
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Docling Bridge IPC Handlers (M21 Phase A)
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Manages the Docling Python bridge for intelligent document extraction.
+// Falls back to legacy extractors (above) when Docling is unavailable.
+
+// ── docling:status ──
+ipcMain.handle('docling:status', () => {
+  return doclingBridge.getStatus();
+});
+
+// ── docling:start ──
+// Explicitly request the bridge to start (e.g. after workspace open).
+ipcMain.handle('docling:start', async () => {
+  try {
+    const started = await doclingBridge.startService();
+    return { ok: started, ...doclingBridge.getStatus() };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
+// ── docling:convert ──
+// Convert a single rich document to structured Markdown via Docling.
+ipcMain.handle('docling:convert', async (_event, filePath, options) => {
+  try {
+    const result = await doclingBridge.convertDocument(filePath, options || {});
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
+// ── docling:convertBatch ──
+// Convert multiple documents in a single batch call.
+ipcMain.handle('docling:convertBatch', async (_event, files) => {
+  try {
+    const results = await doclingBridge.convertBatch(files || []);
+    return { ok: true, results };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err), results: [] };
+  }
+});
+
+// ── docling:install ──
+// Install the Docling Python package via pip. Returns { ok, pythonPath, output, alreadyInstalled }.
+ipcMain.handle('docling:install', async () => {
+  try {
+    return await doclingBridge.installDocling();
+  } catch (err) {
+    return { ok: false, pythonPath: null, output: err.message || String(err), alreadyInstalled: false };
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
 // Database IPC Handlers (M6 Cap 1 — Task 1.4)
 // ════════════════════════════════════════════════════════════════════════════════
 //
@@ -807,11 +923,39 @@ ipcMain.handle('database:close', async () => {
   }
 });
 
+/**
+ * Normalize IPC-transported params for better-sqlite3.
+ *
+ * Electron's structured clone can deliver Uint8Array/ArrayBuffer as
+ * a `{ type: 'Buffer', data: [...] }` object, or as a Uint8Array that
+ * isn't a Node Buffer. better-sqlite3 (and sqlite-vec) require Node
+ * Buffer for blob binding.
+ */
+function normalizeDbParams(params) {
+  if (!Array.isArray(params)) return params || [];
+  return params.map((p, idx) => {
+    if (!p || typeof p !== 'object') return p;
+    // Electron sometimes serializes Buffer/Uint8Array as { type: 'Buffer', data: [...] }
+    if (p.type === 'Buffer' && Array.isArray(p.data)) {
+      return Buffer.from(p.data);
+    }
+    // Convert Uint8Array (or any TypedArray view) to a proper Node Buffer
+    if (ArrayBuffer.isView(p) && !(p instanceof Buffer)) {
+      return Buffer.from(p.buffer, p.byteOffset, p.byteLength);
+    }
+    // Convert raw ArrayBuffer to Buffer
+    if (p instanceof ArrayBuffer) {
+      return Buffer.from(p);
+    }
+    return p;
+  });
+}
+
 // ── database:run ──
 // Execute SQL (INSERT, UPDATE, DELETE, CREATE, etc.)
 ipcMain.handle('database:run', async (_event, sql, params) => {
   try {
-    const result = databaseManager.run(sql, params || []);
+    const result = databaseManager.run(sql, normalizeDbParams(params));
     return {
       error: null,
       changes: result.changes,
@@ -828,7 +972,7 @@ ipcMain.handle('database:run', async (_event, sql, params) => {
 // Fetch a single row. Returns null if no match.
 ipcMain.handle('database:get', async (_event, sql, params) => {
   try {
-    const row = databaseManager.get(sql, params || []);
+    const row = databaseManager.get(sql, normalizeDbParams(params));
     return { error: null, row: row || null };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -839,7 +983,7 @@ ipcMain.handle('database:get', async (_event, sql, params) => {
 // Fetch all matching rows.
 ipcMain.handle('database:all', async (_event, sql, params) => {
   try {
-    const rows = databaseManager.all(sql, params || []);
+    const rows = databaseManager.all(sql, normalizeDbParams(params));
     return { error: null, rows };
   } catch (err) {
     return { error: normalizeDatabaseError(err) };
@@ -856,7 +1000,12 @@ ipcMain.handle('database:isOpen', async () => {
 // Execute multiple operations inside a single IMMEDIATE transaction.
 ipcMain.handle('database:runTransaction', async (_event, operations) => {
   try {
-    const rawResults = databaseManager.runTransaction(operations);
+    // Normalize blob params before passing to better-sqlite3
+    const normalizedOps = operations.map(op => ({
+      ...op,
+      params: normalizeDbParams(op.params),
+    }));
+    const rawResults = databaseManager.runTransaction(normalizedOps);
     // Normalize results for IPC (BigInt → Number for lastInsertRowid)
     const results = rawResults.map((r, i) => {
       const op = operations[i];
@@ -915,22 +1064,43 @@ ipcMain.handle('fs:watch', async (_event, watchPath, _options) => {
       const entry = _activeWatchers.get(watchId);
       if (!entry) return;
 
-      const changeType = eventType === 'rename' ? 'created' : 'changed';
       const fullPath = path.join(watchPath, filename);
-      entry.pendingEvents.push({ type: changeType, path: fullPath });
 
-      // Debounce: coalesce rapid changes
-      if (entry.debounceTimer) clearTimeout(entry.debounceTimer);
-      entry.debounceTimer = setTimeout(() => {
-        const events = entry.pendingEvents.splice(0);
+      if (eventType === 'rename') {
+        // Node.js fs.watch fires 'rename' for BOTH creates and deletes.
+        // Stat the file to determine which actually happened.
+        fsSync.stat(fullPath, (err) => {
+          const entryNow = _activeWatchers.get(watchId);
+          if (!entryNow) return;
+          const changeType = err ? 'deleted' : 'created';
+          entryNow.pendingEvents.push({ type: changeType, path: fullPath });
+          _flushWatcherDebounce(watchId);
+        });
+      } else {
+        entry.pendingEvents.push({ type: 'changed', path: fullPath });
+        _flushWatcherDebounce(watchId);
+      }
+    });
+
+    /**
+     * Flush pending watcher events after debounce.
+     * Extracted so both the sync (changed) and async (rename→stat) paths
+     * can share the same debounce/send logic.
+     */
+    function _flushWatcherDebounce(id) {
+      const e = _activeWatchers.get(id);
+      if (!e) return;
+      if (e.debounceTimer) clearTimeout(e.debounceTimer);
+      e.debounceTimer = setTimeout(() => {
+        const events = e.pendingEvents.splice(0);
         if (events.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
           // Deduplicate by path — keep last event per path
           const deduped = new Map();
-          for (const e of events) deduped.set(e.path, e);
-          mainWindow.webContents.send('fs:change', { watchId, events: [...deduped.values()] });
+          for (const ev of events) deduped.set(ev.path, ev);
+          mainWindow.webContents.send('fs:change', { watchId: id, events: [...deduped.values()] });
         }
       }, WATCHER_DEBOUNCE_MS);
-    });
+    }
 
     watcher.on('error', (err) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -965,11 +1135,145 @@ function _cleanupWatcher(watchId) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// Terminal API (M11 Phase 4 — Task 4.1)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const { spawn, exec: execCb } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(execCb);
+
+/** Active terminal sessions (spawned interactive shells). */
+const _activeTerminals = new Map();
+let _terminalIdCounter = 0;
+
+/** Circular buffer of recent terminal output lines (for @terminal mention). */
+let _terminalOutputBuffer = [];
+const TERMINAL_BUFFER_MAX_LINES = 200;
+
+function _appendToTerminalBuffer(text) {
+  const lines = text.split('\n');
+  for (const line of lines) {
+    _terminalOutputBuffer.push(line);
+  }
+  // Trim to max
+  if (_terminalOutputBuffer.length > TERMINAL_BUFFER_MAX_LINES) {
+    _terminalOutputBuffer = _terminalOutputBuffer.slice(-TERMINAL_BUFFER_MAX_LINES);
+  }
+}
+
+// ── terminal:exec — Run a single command, capture output, return result ──
+ipcMain.handle('terminal:exec', async (_event, command, options) => {
+  try {
+    const timeout = options?.timeout ?? 30000;
+    const cwd = options?.cwd || (mainWindow ? app.getPath('home') : undefined);
+    const shellOption = process.platform === 'win32' ? { shell: 'powershell.exe' } : { shell: true };
+
+    const result = await execAsync(command, {
+      cwd,
+      timeout,
+      maxBuffer: 1024 * 1024, // 1 MB
+      ...shellOption,
+    });
+
+    const stdout = (result.stdout || '').toString();
+    const stderr = (result.stderr || '').toString();
+    _appendToTerminalBuffer(`$ ${command}\n${stdout}${stderr ? '\n[stderr] ' + stderr : ''}`);
+
+    return { stdout, stderr, exitCode: 0, error: null };
+  } catch (err) {
+    const stdout = (err.stdout || '').toString();
+    const stderr = (err.stderr || '').toString();
+    _appendToTerminalBuffer(`$ ${command}\n${stdout}${stderr ? '\n[stderr] ' + stderr : ''}`);
+
+    if (err.killed) {
+      return { stdout, stderr, exitCode: -1, error: { code: 'TIMEOUT', message: `Command timed out after ${options?.timeout ?? 30000}ms` } };
+    }
+    return { stdout, stderr, exitCode: err.code ?? 1, error: null };
+  }
+});
+
+// ── terminal:spawn — Spawn an interactive shell session ──
+ipcMain.handle('terminal:spawn', async (_event, options) => {
+  try {
+    const id = `term-${++_terminalIdCounter}`;
+    const shellCmd = options?.shell || (process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash');
+    const cwd = options?.cwd || app.getPath('home');
+
+    const proc = spawn(shellCmd, [], {
+      cwd,
+      env: { ...process.env, TERM: 'xterm-256color' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    _activeTerminals.set(id, { proc, cwd });
+
+    proc.stdout.on('data', (data) => {
+      const text = data.toString();
+      _appendToTerminalBuffer(text);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('terminal:data', { id, data: text });
+      }
+    });
+
+    proc.stderr.on('data', (data) => {
+      const text = data.toString();
+      _appendToTerminalBuffer(text);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('terminal:data', { id, data: text });
+      }
+    });
+
+    proc.on('exit', (code) => {
+      _activeTerminals.delete(id);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('terminal:exit', { id, exitCode: code ?? 0 });
+      }
+    });
+
+    return { id, error: null };
+  } catch (err) {
+    return { id: null, error: { code: 'SPAWN_FAILED', message: err.message } };
+  }
+});
+
+// ── terminal:write — Send data to a spawned shell ──
+ipcMain.on('terminal:write', (_event, id, data) => {
+  const entry = _activeTerminals.get(id);
+  if (entry && entry.proc.stdin.writable) {
+    entry.proc.stdin.write(data);
+  }
+});
+
+// ── terminal:kill — Kill a spawned shell ──
+ipcMain.handle('terminal:kill', async (_event, id) => {
+  const entry = _activeTerminals.get(id);
+  if (entry) {
+    try { entry.proc.kill(); } catch { /* ignore */ }
+    _activeTerminals.delete(id);
+  }
+  return { error: null };
+});
+
+// ── terminal:getOutput — Get recent terminal output buffer ──
+ipcMain.handle('terminal:getOutput', async (_event, lineCount) => {
+  const count = lineCount || TERMINAL_BUFFER_MAX_LINES;
+  const lines = _terminalOutputBuffer.slice(-count);
+  return { output: lines.join('\n'), lineCount: lines.length };
+});
+
 // Clean up all watchers on window close
 app.on('before-quit', () => {
   for (const [id] of _activeWatchers) {
     _cleanupWatcher(id);
   }
+  // Kill all terminal sessions
+  for (const [, entry] of _activeTerminals) {
+    try { entry.proc.kill(); } catch { /* ignore */ }
+  }
+  _activeTerminals.clear();
   // Close the database cleanly on app quit
   databaseManager.close();
+  // Shut down Docling bridge (M21)
+  doclingBridge.stopService().catch(() => { /* best-effort */ });
 });

@@ -14,6 +14,7 @@
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $,  hide, show } from '../../ui/dom.js';
+import { getFileTypeIcon } from '../../ui/iconRegistry.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -720,7 +721,7 @@ function renderResults(): void {
 
     const fileIcon = $('span');
     fileIcon.className = 'search-file-icon';
-    fileIcon.textContent = getFileIcon(fileResult.fileName);
+    fileIcon.innerHTML = getFileIcon(fileResult.fileName);
     fileHeader.appendChild(fileIcon);
 
     const filePath = $('span');
@@ -819,15 +820,9 @@ function renderMatchLine(container: HTMLElement, match: SearchMatch): void {
 
 function getFileIcon(fileName: string): string {
   const ext = getExtension(fileName);
-  const iconMap: Record<string, string> = {
-    '.ts': '📄', '.tsx': '📄', '.js': '📄', '.jsx': '📄',
-    '.json': '📋', '.md': '📝', '.css': '🎨', '.html': '🌐',
-    '.yml': '⚙️', '.yaml': '⚙️', '.toml': '⚙️',
-    '.py': '🐍', '.rs': '⚙️', '.go': '⚙️',
-    '.sh': '💻', '.bash': '💻', '.zsh': '💻',
-    '.gitignore': '🔧', '.env': '🔧',
-  };
-  return iconMap[ext] ?? '📄';
+  // Strip leading dot — shared icon registry handles both '.ts' and 'ts'
+  const normalized = ext.startsWith('.') ? ext.slice(1) : ext;
+  return getFileTypeIcon(normalized);
 }
 
 async function openResult(uri: string, _line: number, _column: number): Promise<void> {

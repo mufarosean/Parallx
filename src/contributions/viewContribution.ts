@@ -44,6 +44,8 @@ export interface IContributedContainer {
   readonly location: ContainerLocation;
   /** Ordering priority (lower = higher position). Built-ins use 0–50. */
   readonly priority: number;
+  /** When true, the container is created but hidden from the activity bar. */
+  readonly hidden?: boolean;
 }
 
 // ─── Contributed View ────────────────────────────────────────────────────────
@@ -203,6 +205,7 @@ export class ViewContributionProcessor extends Disposable implements IContributi
           icon: vc.icon,
           location: vc.location,
           priority: 100, // tool-contributed containers sort below built-ins (0–50)
+          hidden: vc.hidden,
         };
 
         this._containers.set(vc.id, contributed);

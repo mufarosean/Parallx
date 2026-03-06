@@ -1,0 +1,30 @@
+{
+  "manifestVersion": 1,
+  "id": "parallx.terminal",
+  "name": "Terminal",
+  "version": "1.0.0",
+  "publisher": "parallx",
+  "description": "Integrated terminal panel — runs shell commands in the workspace.",
+  "main": "./main.js",
+  "engines": { "parallx": "^0.1.0" },
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "commands": [
+      {
+        "id": "terminal.clear",
+        "title": "Terminal: Clear"
+      },
+      {
+        "id": "terminal.restart",
+        "title": "Terminal: Restart Shell"
+      }
+    ],
+    "views": [
+      {
+        "id": "view.terminal",
+        "name": "Terminal",
+        "defaultContainerId": "panel"
+      }
+    ]
+  }
+}

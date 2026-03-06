@@ -1,0 +1,976 @@
+/* ── AI Settings Panel (M15 Tasks 4.1 + 4.2) ────────────────────────────── */
+/* All colors via var(--vscode-*) tokens. No --parallx-* variables. */
+
+/* ── Panel Layout ─────────────────────────────────────────────────────── */
+
+.ai-settings-panel {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+  background: var(--vscode-sideBar-background, #181818);
+  color: var(--vscode-foreground, #ccc);
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+}
+
+.ai-settings-panel__left {
+  width: 200px;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  overflow-y: auto;
+}
+
+.ai-settings-panel__right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ai-settings-panel__search {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+}
+
+.ai-settings-panel__search .ui-input-box {
+  width: 100%;
+}
+
+.ai-settings-panel__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 24px;
+}
+
+/* ── Section Navigation ───────────────────────────────────────────────── */
+
+.ai-settings-nav {
+  padding: 12px 0 8px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+}
+
+.ai-settings-nav__item {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 12px;
+  color: var(--vscode-foreground, #ccc);
+  cursor: pointer;
+}
+
+.ai-settings-nav__item:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.ai-settings-nav__item--active {
+  color: var(--vscode-focusBorder, #007fd4);
+  font-weight: 600;
+}
+
+/* ── Preset Switcher ──────────────────────────────────────────────────── */
+
+.ai-settings-preset-switcher {
+  flex: 1;
+  padding: 12px 0;
+  overflow-y: auto;
+}
+
+.ai-settings-preset-switcher__header {
+  padding: 0 16px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground, #888);
+  letter-spacing: 0.08em;
+}
+
+.ai-settings-preset-switcher__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ai-settings-preset-switcher__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ai-settings-preset-switcher__item:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.ai-settings-preset-switcher__item--active {
+  background: var(--vscode-list-activeSelectionBackground, rgba(0, 127, 212, 0.25));
+  color: var(--vscode-list-activeSelectionForeground, #fff);
+}
+
+.ai-settings-preset-switcher__indicator {
+  font-size: 10px;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  color: var(--vscode-focusBorder, #007fd4);
+}
+
+.ai-settings-preset-switcher__label {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-settings-preset-switcher__badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ccc);
+  flex-shrink: 0;
+}
+
+.ai-settings-preset-switcher__new {
+  padding: 8px 16px 4px;
+}
+
+.ai-settings-preset-switcher__new .ui-button {
+  width: 100%;
+  font-size: 12px;
+  background: transparent;
+  border: 1px dashed var(--vscode-widget-border, rgba(255, 255, 255, 0.15));
+  color: var(--vscode-descriptionForeground, #888);
+  border-radius: 4px;
+  padding: 5px 12px;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+
+.ai-settings-preset-switcher__new .ui-button:hover {
+  color: var(--vscode-foreground, #ccc);
+  border-color: var(--vscode-focusBorder, #007fd4);
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.ai-settings-preset-switcher__input-row {
+  padding: 4px 16px;
+}
+
+.ai-settings-preset-switcher__input-row .ui-input-box {
+  width: 100%;
+}
+
+/* ── Settings Section ─────────────────────────────────────────────────── */
+
+.ai-settings-section {
+  padding-top: 16px;
+}
+
+.ai-settings-section__header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground, #888);
+  letter-spacing: 0.08em;
+  padding: 8px 0 4px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  margin-bottom: 8px;
+}
+
+.ai-settings-section__content {
+  display: flex;
+  flex-direction: column;
+}
+
+.ai-settings-section__reset-link {
+  background: none;
+  border: none;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 8px 0;
+  text-align: left;
+}
+
+.ai-settings-section__reset-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Settings Row ─────────────────────────────────────────────────────── */
+
+.ai-settings-row {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  position: relative;
+}
+
+.ai-settings-row__header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-settings-row__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vscode-foreground, #ccc);
+  flex: 1;
+}
+
+.ai-settings-row__description {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+.ai-settings-row__control {
+  margin-top: 6px;
+}
+
+/* Per-field reset icon — appears on hover */
+.ai-settings-row__reset {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground, #888);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.ai-settings-row:hover .ai-settings-row__reset {
+  opacity: 1;
+}
+
+.ai-settings-row__reset:hover {
+  color: var(--vscode-foreground, #ccc);
+}
+
+/* Search dimming */
+.ai-settings-row--dimmed {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.ai-settings-section--no-matches .ai-settings-section__header {
+  opacity: 0.5;
+}
+
+/* ── Avatar Grid ──────────────────────────────────────────────────────── */
+
+.ai-settings-avatar-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-settings-avatar-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vscode-input-background, #3c3c3c);
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+  color: var(--vscode-descriptionForeground, rgba(204, 204, 204, 0.7));
+  padding: 6px;
+}
+
+.ai-settings-avatar-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.ai-settings-avatar-btn:hover {
+  border-color: var(--vscode-widget-border, rgba(255, 255, 255, 0.2));
+  transform: scale(1.1);
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.ai-settings-avatar-btn--active {
+  border-color: var(--vscode-focusBorder, #007fd4);
+  background: var(--vscode-list-activeSelectionBackground, rgba(0, 127, 212, 0.25));
+  color: var(--vscode-foreground, #cccccc);
+}
+
+/* ── Collapsible ──────────────────────────────────────────────────────── */
+
+.ai-settings-collapse-btn {
+  background: none;
+  border: none;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: left;
+}
+
+.ai-settings-collapse-btn:hover {
+  text-decoration: underline;
+}
+
+.ai-settings-collapsible {
+  margin-top: 6px;
+}
+
+/* ── Warning / Link ───────────────────────────────────────────────────── */
+
+.ai-settings-warning {
+  font-size: 11px;
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.ai-settings-link {
+  background: none;
+  border: none;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ai-settings-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Copy Button ──────────────────────────────────────────────────────── */
+
+.ai-settings-copy-btn {
+  background: none;
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  color: var(--vscode-foreground, #ccc);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 3px;
+  margin-top: 4px;
+}
+
+.ai-settings-copy-btn:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+/* ── Danger Button ────────────────────────────────────────────────────── */
+
+.ai-settings-danger-btn {
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d) !important;
+  border-color: var(--vscode-inputValidation-errorBorder, #be1100) !important;
+  color: var(--vscode-errorForeground, #f48771) !important;
+}
+
+.ai-settings-danger-btn:hover {
+  opacity: 0.9;
+}
+
+/* ── Import Status ────────────────────────────────────────────────────── */
+
+.ai-settings-import-status {
+  font-size: 11px;
+  margin-top: 4px;
+  min-height: 16px;
+}
+
+.ai-settings-import-status--error {
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+.ai-settings-import-status--success {
+  color: var(--vscode-testing-iconPassed, #73c991);
+}
+
+/* ── Confirm Dialog ───────────────────────────────────────────────────── */
+
+.ai-settings-confirm-dialog {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  margin-top: 8px;
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+  border-radius: 4px;
+}
+
+.ai-settings-confirm-dialog__msg {
+  flex: 1;
+  font-size: 13px;
+}
+
+/* ── Confidence Description ───────────────────────────────────────────── */
+
+.ai-settings-confidence-desc {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* ── Temperature Value ────────────────────────────────────────────────── */
+
+.ai-settings-temperature-value {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #888);
+  margin-top: 4px;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+/* ── Preview Section ──────────────────────────────────────────────────── */
+
+.ai-settings-preview__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.ai-settings-preview__chip {
+  background: var(--vscode-input-background, #3c3c3c);
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  color: var(--vscode-foreground, #ccc);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ai-settings-preview__chip:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.ai-settings-preview__input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.ai-settings-preview__input-row .ui-input-box {
+  flex: 1;
+}
+
+.ai-settings-preview__metadata {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+  margin: 8px 0 4px;
+}
+
+.ai-settings-preview__response {
+  background: var(--vscode-input-background, #3c3c3c);
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  padding: 12px;
+  min-height: 80px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.ai-settings-preview__response--loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-preview__spinner {
+  font-size: 13px;
+}
+
+.ai-settings-preview__error {
+  color: var(--vscode-errorForeground, #f48771);
+  margin-bottom: 8px;
+}
+
+.ai-settings-preview__retry {
+  background: none;
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  color: var(--vscode-textLink-foreground, #3794ff);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 10px;
+  border-radius: 3px;
+}
+
+.ai-settings-preview__retry:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.ai-settings-preview__open {
+  margin-top: 8px;
+}
+
+/* ── Slider Styling (Task 4.2) ────────────────────────────────────────── */
+/* Additional slider theming specific to the AI Settings panel context.
+   Base slider styles are in src/ui/slider.css. */
+
+.ai-settings-row .ui-slider {
+  --slider-track-height: 6px;
+  --slider-thumb-size: 16px;
+}
+
+.ai-settings-row .ui-slider__stops {
+  padding-top: 2px;
+}
+
+.ai-settings-row .ui-slider__stop {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #888);
+  cursor: pointer;
+  transition: color 0.12s;
+}
+
+.ai-settings-row .ui-slider__stop:hover {
+  color: var(--vscode-foreground, #ccc);
+}
+
+/* ── Scope Indicator (M20 C.2) ────────────────────────────────────────── */
+
+.ai-settings-row__scope {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--vscode-badge-background, rgba(255, 255, 255, 0.08));
+  color: var(--vscode-descriptionForeground, #888);
+  margin-left: auto;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.ai-settings-row__scope--workspace {
+  background: var(--vscode-editorInfo-foreground, #3794ff);
+  color: var(--vscode-editor-background, #1e1e1e);
+  cursor: pointer;
+}
+
+.ai-settings-row__scope--workspace:hover {
+  opacity: 0.85;
+}
+
+/* ── Value Display ────────────────────────────────────────────────────── */
+
+.ai-settings-row__value {
+  display: inline-block;
+  min-width: 36px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--vscode-foreground, #ccc);
+  font-variant-numeric: tabular-nums;
+  margin-left: 8px;
+}
+
+/* ── Section Info Note ────────────────────────────────────────────────── */
+
+.ai-settings-section__info {
+  padding: 8px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #888);
+  background: var(--vscode-textBlockQuote-background, rgba(255, 255, 255, 0.04));
+  border-left: 3px solid var(--vscode-textBlockQuote-border, rgba(255, 255, 255, 0.1));
+  border-radius: 3px;
+}
+
+/* ── Save Indicator (D.1) ─────────────────────────────────────────────── */
+
+.ai-settings-save-indicator {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--vscode-testing-iconPassed, #73c991);
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  pointer-events: none;
+  vertical-align: middle;
+}
+
+.ai-settings-save-indicator--visible {
+  opacity: 1;
+}
+
+/* ── Tools Section (E.1) ──────────────────────────────────────────────── */
+
+.ai-settings-tools-summary {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-tools-search {
+  margin-bottom: 8px;
+}
+
+.ai-settings-tools-search .ui-input-box {
+  width: 100%;
+}
+
+.ai-settings-tools-tree {
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  padding: 4px 0;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.ai-settings-tools-empty {
+  padding: 12px 16px;
+  font-style: italic;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-tools-group-header,
+.ai-settings-tools-cat-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ai-settings-tools-group-header:hover,
+.ai-settings-tools-cat-header:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+
+.ai-settings-tools-cat-header {
+  padding-left: 28px;
+}
+
+.ai-settings-tools-chevron {
+  width: 16px;
+  text-align: center;
+  font-size: 10px;
+  flex-shrink: 0;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.ai-settings-tools-checkbox {
+  flex-shrink: 0;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.ai-settings-tools-group-label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.ai-settings-tools-cat-label {
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.ai-settings-tools-cat-desc {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-tools-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px 3px 52px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ai-settings-tools-tool-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+
+.ai-settings-tools-tool-info {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ai-settings-tools-tool-name {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.ai-settings-tools-tool-desc {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Memory Section (F.1) ─────────────────────────────────────────────── */
+
+.ai-settings-memory-summary {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-memory-stats {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #888);
+  background: var(--vscode-textBlockQuote-background, rgba(255, 255, 255, 0.04));
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.ai-settings-memory-subheader {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--vscode-foreground, #ccc);
+  margin: 12px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+}
+
+.ai-settings-memory-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  margin-bottom: 8px;
+}
+
+.ai-settings-memory-empty {
+  padding: 12px 16px;
+  font-style: italic;
+  color: var(--vscode-descriptionForeground, #888);
+  font-size: 12px;
+}
+
+.ai-settings-memory-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.06));
+  cursor: default;
+}
+
+.ai-settings-memory-item:last-child {
+  border-bottom: none;
+}
+
+.ai-settings-memory-item:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
+}
+
+.ai-settings-memory-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-settings-memory-item-date {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.ai-settings-memory-item-meta {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-memory-delete-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground, #888);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+}
+
+.ai-settings-memory-item:hover .ai-settings-memory-delete-btn {
+  opacity: 1;
+}
+
+.ai-settings-memory-delete-btn:hover {
+  color: var(--vscode-errorForeground, #f48771);
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+
+.ai-settings-memory-item-summary {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #888);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.ai-settings-memory-item-summary--truncated {
+  cursor: pointer;
+}
+
+.ai-settings-memory-item-summary--expanded {
+  white-space: pre-wrap;
+}
+
+.ai-settings-memory-concept-name {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.ai-settings-memory-concept-category {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--vscode-badge-background, rgba(255, 255, 255, 0.08));
+}
+
+.ai-settings-memory-concept-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.ai-settings-memory-mastery-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ai-settings-memory-mastery-label {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-memory-mastery-bar {
+  display: inline-block;
+  width: 60px;
+  height: 6px;
+  background: var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ai-settings-memory-mastery-fill {
+  display: block;
+  height: 100%;
+  background: var(--vscode-testing-iconPassed, #73c991);
+  border-radius: 3px;
+  transition: width 0.15s ease;
+}
+
+.ai-settings-memory-decay {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-memory-decay--low {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.ai-settings-memory-pref-key {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--vscode-foreground, #ccc);
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.ai-settings-memory-pref-value {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #888);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-settings-memory-pref-meta {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+  margin-top: 2px;
+}
+
+.ai-settings-memory-clear-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+}
+
+.ai-settings-memory-clear-btn {
+  background: none;
+  border: 1px solid var(--vscode-errorForeground, #f48771);
+  color: var(--vscode-errorForeground, #f48771);
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.ai-settings-memory-clear-btn:hover {
+  background: rgba(244, 135, 113, 0.1);
+}
+
+.ai-settings-memory-clear-confirm {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--vscode-inputValidation-warningBackground, rgba(204, 167, 0, 0.1));
+  border: 1px solid var(--vscode-editorWarning-foreground, #cca700);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.ai-settings-memory-clear-confirm-btn {
+  background: var(--vscode-errorForeground, #f48771);
+  border: none;
+  color: var(--vscode-editor-background, #1e1e1e);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-left: 8px;
+}
+
+.ai-settings-memory-clear-confirm-btn:hover {
+  opacity: 0.85;
+}
+
+.ai-settings-memory-clear-cancel-btn {
+  background: none;
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  color: var(--vscode-foreground, #ccc);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-left: 4px;
+}

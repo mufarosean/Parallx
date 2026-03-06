@@ -15,7 +15,9 @@ import { Emitter, Event } from '../platform/events.js';
 import type { IToolDescription } from '../tools/toolManifest.js';
 import type { CommandService } from '../commands/commandRegistry.js';
 import type { IContributedMenuItem, MenuLocationId, IContributionProcessor } from './contributionTypes.js';
-import { $, layoutPopup } from '../ui/dom.js';
+import { $ } from '../ui/dom.js';
+import { ContextMenu } from '../ui/contextMenu.js';
+import type { IContextMenuItem } from '../ui/contextMenu.js';
 
 // ─── Minimal shape to avoid circular imports ─────────────────────────────────
 
@@ -52,11 +54,8 @@ export class MenuContributionProcessor extends Disposable implements IContributi
   /** Rendered title bar action elements for cleanup. */
   private readonly _renderedActions = new Map<string, Map<string, HTMLElement[]>>();
 
-  /** Active context menu overlay (if any). */
-  private _activeContextMenu: HTMLElement | null = null;
-
-  /** Active context menu escape handler for cleanup. */
-  private _activeEscHandler: ((e: KeyboardEvent) => void) | null = null;
+  /** Currently active context menu instance (if any). */
+  private _activeMenu: ContextMenu | null = null;
 
   /** Optional context key service for when-clause evaluation. */
   private _contextKeyService: IContextKeyServiceLike | undefined;
@@ -346,88 +345,41 @@ export class MenuContributionProcessor extends Disposable implements IContributi
     // Close any existing context menu
     this.dismissContextMenu();
 
-    const items = this.getViewContextMenuItems(viewId);
-    if (items.length === 0) {
+    const contributedItems = this.getViewContextMenuItems(viewId);
+    if (contributedItems.length === 0) {
       return { dispose: () => {} };
     }
 
-    // Create context menu overlay
-    const overlay = $('div');
-    overlay.className = 'context-menu-overlay';
+    // Build IContextMenuItem[] from contributed items.
+    // ContextMenu auto-inserts separators between different `group` values.
+    const menuItems: IContextMenuItem[] = [];
 
-    const menu = $('div');
-    menu.className = 'context-menu';
-
-    let lastGroup: string | undefined;
-
-    for (const item of items) {
+    for (const item of contributedItems) {
       const cmd = this._commandService.getCommand(item.commandId);
       if (!cmd) continue;
 
-      // Add separator between groups
-      if (lastGroup !== undefined && item.group !== lastGroup) {
-        const sep = $('div');
-        sep.className = 'context-menu-separator';
-        menu.appendChild(sep);
-      }
-      lastGroup = item.group;
-
-      const menuItem = $('div');
-      menuItem.className = 'context-menu-item';
-
-      const label = $('span');
-      if (cmd.category) {
-        label.textContent = `${cmd.category}: ${cmd.title}`;
-      } else {
-        label.textContent = cmd.title;
-      }
-      menuItem.appendChild(label);
-
-      // Keybinding display
-      if (cmd.keybinding) {
-        const kbd = $('span');
-        kbd.className = 'context-menu-kbd';
-        kbd.textContent = cmd.keybinding;
-        menuItem.appendChild(kbd);
-      }
-
-      menuItem.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.dismissContextMenu();
-        this._commandService.executeCommand(item.commandId).catch(err => {
-          console.error(`[MenuContribution] Error executing context menu item "${item.commandId}":`, err);
-        });
+      const label = cmd.category ? `${cmd.category}: ${cmd.title}` : cmd.title;
+      menuItems.push({
+        id: item.commandId,
+        label,
+        keybinding: cmd.keybinding,
+        group: item.group,
+        order: item.order,
       });
-
-      menu.appendChild(menuItem);
     }
 
-    overlay.addEventListener('mousedown', (e) => {
-      if (e.target === overlay) {
-        this.dismissContextMenu();
-      }
+    this._activeMenu = ContextMenu.show({ items: menuItems, anchor: { x, y } });
+
+    // Execute the command when a menu item is selected
+    this._activeMenu.onDidSelect(e => {
+      this._commandService.executeCommand(e.item.id).catch(err => {
+        console.error(`[MenuContribution] Error executing context menu item "${e.item.id}":`, err);
+      });
     });
 
-    // Escape to close
-    const escHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        this.dismissContextMenu();
-      }
-    };
-    document.addEventListener('keydown', escHandler, true);
-    this._activeEscHandler = escHandler;
-
-    overlay.appendChild(menu);
-    document.body.appendChild(overlay);
-    layoutPopup(menu, { x, y });
-    this._activeContextMenu = overlay;
-
     return toDisposable(() => {
-      document.removeEventListener('keydown', escHandler, true);
-      overlay.remove();
-      if (this._activeContextMenu === overlay) {
-        this._activeContextMenu = null;
-      }
+      this._activeMenu?.dismiss();
+      this._activeMenu = null;
     });
   }
 
@@ -435,14 +387,8 @@ export class MenuContributionProcessor extends Disposable implements IContributi
    * Dismiss the currently active context menu.
    */
   dismissContextMenu(): void {
-    if (this._activeEscHandler) {
-      document.removeEventListener('keydown', this._activeEscHandler, true);
-      this._activeEscHandler = null;
-    }
-    if (this._activeContextMenu) {
-      this._activeContextMenu.remove();
-      this._activeContextMenu = null;
-    }
+    this._activeMenu?.dismiss();
+    this._activeMenu = null;
   }
 
   // ── Queries ──

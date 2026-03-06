@@ -137,6 +137,27 @@ export const OUTPUT_MANIFEST: IToolManifest = {
   },
 };
 
+// ── Indexing Log ─────────────────────────────────────────────────────────
+
+export const INDEXING_LOG_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.indexing-log',
+  name: 'Indexing',
+  version: '1.0.0',
+  publisher: 'parallx',
+  description: 'Indexing Log — real-time view of files and pages being indexed into the knowledge base.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'indexingLog.clear', title: 'Indexing: Clear Log' },
+      { id: 'indexingLog.toggleErrorFilter', title: 'Indexing: Toggle Error Filter' },
+    ],
+    views: [{ id: 'view.indexingLog', name: 'Indexing', defaultContainerId: 'panel' }],
+  },
+};
+
 // ── Tool Gallery ─────────────────────────────────────────────────────────
 
 export const TOOL_GALLERY_MANIFEST: IToolManifest = {
@@ -155,6 +176,67 @@ export const TOOL_GALLERY_MANIFEST: IToolManifest = {
       { id: 'tools-container', title: 'Tools', icon: '🧩', location: 'sidebar' as const },
     ],
     views: [{ id: 'view.tools', name: 'Installed Tools', defaultContainerId: 'tools-container' }],
+  },
+};
+
+// ── Chat ─────────────────────────────────────────────────────────────────
+
+export const CHAT_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.chat',
+  name: 'Chat',
+  version: '1.0.0',
+  publisher: 'parallx',
+  description: 'AI Chat — local language model conversations powered by Ollama.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'chat.toggle', title: 'Chat: Toggle Chat Panel' },
+      { id: 'chat.newSession', title: 'Chat: New Session' },
+      { id: 'chat.clearSession', title: 'Chat: Clear Session' },
+      { id: 'chat.stop', title: 'Chat: Stop Response' },
+      { id: 'chat.focus', title: 'Chat: Focus Input' },
+    ],
+    keybindings: [
+      { command: 'chat.toggle', key: 'Ctrl+Shift+I' },
+      { command: 'chat.focus', key: 'Ctrl+L' },
+    ],
+    viewContainers: [
+      { id: 'chat-container', title: 'Chat', icon: '💬', location: 'auxiliaryBar' as const },
+    ],
+    views: [
+      { id: 'view.chat', name: 'Chat', defaultContainerId: 'chat-container' },
+    ],
+  },
+};
+
+// ── AI Settings ──────────────────────────────────────────────────────────
+
+export const AI_SETTINGS_MANIFEST: IToolManifest = {
+  manifestVersion: 1,
+  id: 'parallx.ai-settings',
+  name: 'AI Settings',
+  version: '1.0.0',
+  publisher: 'parallx',
+  description: 'Configure AI personality, behavior, and model settings.',
+  main: './main.js',
+  engines: { parallx: '^0.1.0' },
+  activationEvents: ['onStartupFinished'],
+  contributes: {
+    commands: [
+      { id: 'ai-settings.open', title: 'Parallx: Open AI Settings' },
+    ],
+    keybindings: [
+      { command: 'ai-settings.open', key: 'Ctrl+Shift+A' },
+    ],
+    viewContainers: [
+      { id: 'ai-settings-container', title: 'AI Settings', icon: 'gear', location: 'auxiliaryBar' as const, hidden: true },
+    ],
+    views: [
+      { id: 'view.aiSettings', name: 'AI Settings', defaultContainerId: 'ai-settings-container' },
+    ],
   },
 };
 

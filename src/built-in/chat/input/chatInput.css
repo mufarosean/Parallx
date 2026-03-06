@@ -1,0 +1,1101 @@
+/* chatInput.css — Chat input part styles (M9 Task 3.4)
+ *
+ * VS Code-style: rounded container wrapping textarea + toolbar.
+ * Toolbar sits INSIDE the container below the textarea with
+ * pickers on the left, submit/stop icon-button on the right.
+ */
+
+/* ── Outer container (rounded card around textarea + toolbar) ── */
+
+.parallx-chat-input {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 8px;
+  background: var(--vscode-input-background, #3c3c3c);
+  overflow: hidden;
+  transition: border-color 120ms ease;
+}
+
+.parallx-chat-input:focus-within {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+/* ── Text Area ── */
+
+.parallx-chat-input-editor {
+  position: relative;
+}
+
+.parallx-chat-input-textarea {
+  width: 100%;
+  min-height: 36px;
+  max-height: 200px;
+  padding: 10px 12px 4px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-input-foreground, #cccccc);
+  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.parallx-chat-input-textarea::placeholder {
+  color: var(--vscode-input-placeholderForeground, #6e6e6e);
+}
+
+.parallx-chat-input-textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Toolbar (inside the container, below textarea) ── */
+
+.parallx-chat-input-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 6px;
+}
+
+.parallx-chat-input-toolbar-pickers {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.parallx-chat-input-toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+/* ── Add Context button (VS Code-style attach) ── */
+
+.parallx-chat-input-attach {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  font-size: 11px;
+  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.parallx-chat-input-attach:hover {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-input-attach svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.parallx-chat-input-attach-label {
+  font-size: 11px;
+}
+
+/* ── Submit button (icon-circle, VS Code style) ── */
+
+.parallx-chat-input-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 120ms ease;
+}
+
+.parallx-chat-input-submit svg {
+  width: 16px;
+  height: 16px;
+}
+
+.parallx-chat-input-submit:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.parallx-chat-input-submit:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ── Stop button (matches submit dimensions) ── */
+
+.parallx-chat-input-stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--vscode-button-secondaryBorder, #454545);
+  border-radius: 6px;
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  color: var(--vscode-button-secondaryForeground, #cccccc);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 120ms ease;
+}
+
+.parallx-chat-input-stop svg {
+  width: 14px;
+  height: 14px;
+}
+
+.parallx-chat-input-stop:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+/* ── Model picker button ── */
+
+.parallx-chat-model-picker {
+  position: relative;
+}
+
+.parallx-chat-picker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  font-size: 11px;
+  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.parallx-chat-picker-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+  color: var(--vscode-foreground, #cccccc);
+}
+
+/* Dropdown panel */
+.parallx-chat-picker-dropdown {
+  min-width: 180px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+}
+
+.parallx-chat-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-picker-item:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.parallx-chat-picker-item--active {
+  background: var(--vscode-list-activeSelectionBackground, #04395e);
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+}
+
+.parallx-chat-picker-item--empty {
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  font-style: italic;
+  cursor: default;
+}
+
+.parallx-chat-picker-item-name {
+  flex: 1;
+}
+
+.parallx-chat-picker-item-size {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+}
+
+/* ── Mode picker (dropdown — reuses picker-btn / picker-dropdown) ── */
+
+.parallx-chat-mode-picker {
+  position: relative;
+}
+
+/* Picker chevron (shared by model + mode pickers) */
+
+.parallx-chat-picker-chevron {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
+}
+
+.parallx-chat-picker-chevron svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* ── Context attachment ribbon ── */
+
+.parallx-chat-context-ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px 2px;
+}
+
+.parallx-chat-context-ribbon:empty {
+  display: none;
+}
+
+.parallx-chat-context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
+  font-size: 11px;
+  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.parallx-chat-context-chip--implicit {
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  border: 1px dashed var(--vscode-input-border, #3c3c3c);
+  font-style: italic;
+}
+
+.parallx-chat-context-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.parallx-chat-context-chip-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.parallx-chat-context-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.parallx-chat-context-chip-close,
+.parallx-chat-context-chip-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 100ms ease, background 100ms ease;
+}
+
+.parallx-chat-context-chip-close:hover,
+.parallx-chat-context-chip-add:hover {
+  opacity: 1;
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+}
+
+.parallx-chat-context-chip-close svg,
+.parallx-chat-context-chip-add svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* ── Context picker (full VS Code-style "Add Context" menu) ── */
+
+.parallx-chat-context-picker {
+  width: 340px;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5));
+  overflow: hidden;
+}
+
+.parallx-chat-context-picker-search {
+  padding: 8px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+  flex-shrink: 0;
+}
+
+.parallx-chat-context-picker-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 4px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  font-size: 12px;
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  outline: none;
+}
+
+.parallx-chat-context-picker-search-input:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.parallx-chat-context-picker-search-input::placeholder {
+  color: var(--vscode-input-placeholderForeground, #8b8b8b);
+}
+
+.parallx-chat-context-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.parallx-chat-context-picker-header {
+  padding: 4px 12px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.parallx-chat-context-picker-header:not(:first-child) {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--vscode-editorWidget-border, #3c3c3c33);
+}
+
+.parallx-chat-context-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-context-picker-item:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.parallx-chat-context-picker-item-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+}
+
+.parallx-chat-context-picker-item-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.parallx-chat-context-picker-item-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.parallx-chat-context-picker-item-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.parallx-chat-context-picker-item-desc {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+}
+
+.parallx-chat-context-picker-empty {
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  font-style: italic;
+}
+
+/* ── Multi-select picker toolbar (Task 4.7) ── */
+
+.parallx-chat-context-picker-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+  flex-shrink: 0;
+}
+
+.parallx-chat-context-picker-count {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+}
+
+.parallx-chat-context-picker-done {
+  padding: 2px 10px;
+  border: none;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  cursor: pointer;
+}
+
+.parallx-chat-context-picker-done:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.parallx-chat-context-picker-done:not(:disabled):hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.parallx-chat-context-picker-item-checkbox {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--vscode-button-background, #0e639c);
+}
+
+.parallx-chat-context-picker-item--selected {
+  background: var(--vscode-list-activeSelectionBackground, #094771);
+}
+
+/* ── Configure Tools button (wrench icon in toolbar) ── */
+
+.parallx-chat-input-tools {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.parallx-chat-input-tools:hover {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-input-tools svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Configure Tools dialog (modal overlay) ── */
+
+.parallx-chat-tool-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.parallx-chat-tool-picker-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.parallx-chat-tool-picker-dialog {
+  position: relative;
+  width: 620px;
+  max-width: 90vw;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  box-shadow: 0 8px 32px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5));
+  overflow: hidden;
+}
+
+/* ── Title bar ── */
+
+.parallx-chat-tool-picker-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+  flex-shrink: 0;
+}
+
+.parallx-chat-tool-picker-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-tool-picker-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground, #cccccc);
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.parallx-chat-tool-picker-close:hover {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+}
+
+.parallx-chat-tool-picker-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Search row ── */
+
+.parallx-chat-tool-picker-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #454545);
+  flex-shrink: 0;
+}
+
+.parallx-chat-tool-picker-search-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 4px;
+  background: var(--vscode-input-background, #3c3c3c);
+}
+
+.parallx-chat-tool-picker-search-wrap:focus-within {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.parallx-chat-tool-picker-search-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  flex-shrink: 0;
+}
+
+.parallx-chat-tool-picker-search-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.parallx-chat-tool-picker-search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--vscode-input-foreground, #cccccc);
+  font-size: 12px;
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  outline: none;
+}
+
+.parallx-chat-tool-picker-search-input::placeholder {
+  color: var(--vscode-input-placeholderForeground, #8b8b8b);
+}
+
+.parallx-chat-tool-picker-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.parallx-chat-tool-picker-ok {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 4px;
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  font-size: 12px;
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 100ms ease;
+}
+
+.parallx-chat-tool-picker-ok:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+/* ── Description ── */
+
+.parallx-chat-tool-picker-description {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+/* ── Tool tree ── */
+
+.parallx-chat-tool-picker-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+
+/* Group header (Built-In) */
+.parallx-chat-tool-picker-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.parallx-chat-tool-picker-group-header:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.parallx-chat-tool-picker-group-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+/* Category header (Pages, Files) */
+.parallx-chat-tool-picker-cat-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 4px 28px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.parallx-chat-tool-picker-cat-header:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.parallx-chat-tool-picker-cat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-tool-picker-cat-desc {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  margin-left: auto;
+}
+
+/* Chevron */
+.parallx-chat-tool-picker-chevron {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-tool-picker-chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Checkbox */
+.parallx-chat-tool-picker-checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--vscode-checkbox-background, #0e639c);
+  flex-shrink: 0;
+}
+
+/* Individual tool row */
+.parallx-chat-tool-picker-tool-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 12px 4px 52px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.parallx-chat-tool-picker-tool-row:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.parallx-chat-tool-picker-tool-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.parallx-chat-tool-picker-tool-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-foreground, #cccccc);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.parallx-chat-tool-picker-tool-desc {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Context pills strip (M11 Task 1.10) ── */
+
+.parallx-chat-context-pills {
+  padding: 2px 8px;
+  font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
+}
+
+.parallx-chat-context-pills-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 100ms ease, background 100ms ease;
+}
+
+.parallx-chat-context-pills-toggle:hover {
+  color: var(--vscode-foreground, #cccccc);
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+}
+
+.parallx-chat-context-pills-arrow {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.parallx-chat-context-pills-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 0 2px;
+}
+
+.parallx-chat-context-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
+  font-size: 10px;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.parallx-chat-context-pill--rag {
+  background: var(--vscode-textLink-foreground, #3794ff)22;
+  border: 1px solid var(--vscode-textLink-foreground, #3794ff)44;
+  color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.parallx-chat-context-pill--system {
+  background: transparent;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+}
+
+.parallx-chat-context-pill--rule {
+  background: var(--vscode-textPreformat-foreground, #d7ba7d)18;
+  border: 1px solid var(--vscode-textPreformat-foreground, #d7ba7d)33;
+  color: var(--vscode-textPreformat-foreground, #d7ba7d);
+}
+
+.parallx-chat-context-pill--excluded {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.parallx-chat-context-pill-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.parallx-chat-context-pill-icon svg {
+  width: 10px;
+  height: 10px;
+}
+
+.parallx-chat-context-pill-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.parallx-chat-context-pill-tokens {
+  opacity: 0.6;
+  font-size: 9px;
+  flex-shrink: 0;
+}
+
+.parallx-chat-context-pill-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.6;
+  font-size: 10px;
+  line-height: 1;
+  transition: opacity 100ms ease;
+}
+
+.parallx-chat-context-pill-action:hover {
+  opacity: 1;
+}
+
+.parallx-chat-context-pill-action svg {
+  width: 8px;
+  height: 8px;
+}
+
+/* ── Token Budget Breakdown (Task 4.8) ── */
+
+.parallx-chat-context-budget {
+  padding: 6px 0 2px;
+}
+
+.parallx-chat-context-budget-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.parallx-chat-context-budget-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--vscode-editor-background, #1e1e1e);
+  gap: 1px;
+}
+
+.parallx-chat-context-budget-segment {
+  position: relative;
+  background: var(--vscode-input-border, #3c3c3c);
+  overflow: hidden;
+}
+
+.parallx-chat-context-budget-fill {
+  height: 100%;
+  border-radius: 0;
+  transition: width 200ms ease;
+}
+
+.parallx-chat-context-budget-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.parallx-chat-context-budget-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+}
+
+.parallx-chat-context-budget-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── @Mention / /Command Autocomplete Dropdown (M11 Task 3.1) ── */
+
+.parallx-mention-dropdown {
+  width: 320px;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, #252526);
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+  overflow: hidden;
+  animation: parallx-mention-fadeIn 80ms ease-out;
+}
+
+@keyframes parallx-mention-fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.parallx-mention-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.parallx-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: 0;
+  transition: background 60ms ease;
+}
+
+.parallx-mention-item:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.parallx-mention-item--active {
+  background: var(--vscode-list-activeSelectionBackground, #094771) !important;
+  color: var(--vscode-list-activeSelectionForeground, #fff);
+}
+
+.parallx-mention-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--vscode-descriptionForeground, #999);
+}
+
+.parallx-mention-item--active .parallx-mention-item-icon {
+  color: inherit;
+}
+
+.parallx-mention-item-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.parallx-mention-item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.parallx-mention-item-label {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.parallx-mention-item--active .parallx-mention-item-label {
+  color: inherit;
+}
+
+.parallx-mention-item-desc {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #999);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.parallx-mention-item--active .parallx-mention-item-desc {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.parallx-mention-empty {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #999);
+  text-align: center;
+  font-style: italic;
+}

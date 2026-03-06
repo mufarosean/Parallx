@@ -125,6 +125,9 @@ export interface IWorkspaceService extends IDisposable {
   /** Fires when workbench state changes (e.g., EMPTY → FOLDER). */
   readonly onDidChangeWorkbenchState: Event<WorkbenchState>;
 
+  /** Fires when the workspace is renamed. */
+  readonly onDidRename: Event<string>;
+
   /** Add a folder to the workspace. */
   addFolder(uri: import('../platform/uri.js').URI, name?: string): void;
 
@@ -152,6 +155,7 @@ export const IWorkspaceService = createServiceIdentifier<IWorkspaceService>('IWo
 // ─── IWorkspaceBoundaryService ───────────────────────────────────────────────
 
 import type { URI } from '../platform/uri.js';
+import type { IWorkspaceSessionContext } from '../workspace/workspaceSessionContext.js';
 
 /**
  * Centralized workspace boundary policy service.
@@ -810,6 +814,27 @@ export interface IFileService extends IDisposable {
 
   /** Show a native OS message box. */
   showMessageBox(options: import('../platform/fileTypes.js').MessageBoxOptions): Promise<import('../platform/fileTypes.js').MessageBoxResult>;
+
+  // ── Rich Document Extraction ──
+
+  /**
+   * Extract plain text from a rich document file (PDF, Excel, Word).
+   * Returns the extracted text, the format identifier, and optional metadata.
+   * Throws if the file is not a supported rich document format.
+   */
+  readDocumentText(uri: import('../platform/uri.js').URI): Promise<{ text: string; format: string; metadata?: Record<string, unknown> }>;
+
+  /**
+   * Check if a file extension represents a supported rich document format.
+   * @param ext — Lowercase extension including the dot (e.g. '.pdf')
+   */
+  isRichDocument(ext: string): boolean;
+
+  /**
+   * Set of file extensions for rich document formats that can be extracted.
+   * Each extension is lowercase with leading dot (e.g. '.pdf', '.docx').
+   */
+  readonly richDocumentExtensions: ReadonlySet<string>;
 }
 
 export const IFileService = createServiceIdentifier<IFileService>('IFileService');
@@ -870,6 +895,466 @@ export interface IThemeService extends IDisposable {
 
 export const IThemeService = createServiceIdentifier<IThemeService>('IThemeService');
 
+// ─── IDocumentExtractionService (M21 Phase A) ─────────────────────────────
+
+/**
+ * Pipeline type indicating which extraction method was used.
+ */
+export type ExtractionPipeline = 'docling' | 'docling-ocr' | 'legacy';
+
+/**
+ * Result of extracting structured content from a rich document.
+ */
+export interface DocumentExtractionResult {
+  /** Structured Markdown output (or plain text for legacy). */
+  markdown: string;
+  /** Number of pages detected (0 if unknown). */
+  pageCount: number;
+  /** Number of tables recovered from the document. */
+  tablesFound: number;
+  /** Time in ms the extraction took. */
+  elapsedMs: number;
+  /** Diagnostic messages from the extraction pipeline. */
+  diagnostics: string[];
+  /** Which pipeline was used. */
+  pipeline: ExtractionPipeline;
+}
+
+/**
+ * Status of the Docling bridge service.
+ */
+export type DoclingBridgeStatus = 'unavailable' | 'starting' | 'available' | 'downloading-models' | 'error';
+
+/**
+ * Manages document extraction via the Docling bridge (primary) with
+ * fallback to legacy extractors (pdf-parse, mammoth, SheetJS).
+ *
+ * Reference: docs/Parallx_Milestone_21.md Phase A
+ */
+export interface IDocumentExtractionService extends IDisposable {
+  /** Whether Docling is available on this system. */
+  readonly isDoclingAvailable: boolean;
+
+  /** Current bridge status. */
+  readonly bridgeStatus: DoclingBridgeStatus;
+
+  /** Event fired when Docling availability changes. */
+  readonly onDidChangeAvailability: Event<boolean>;
+
+  /** Event fired when bridge status changes. */
+  readonly onDidChangeBridgeStatus: Event<DoclingBridgeStatus>;
+
+  /**
+   * Extract structured Markdown from a rich document.
+   * Tries Docling first, falls back to legacy extractors.
+   */
+  extractDocument(filePath: string, options?: {
+    ocr?: boolean;
+  }): Promise<DocumentExtractionResult>;
+
+  /**
+   * Extract a batch of rich documents via Docling in a single round-trip.
+   * Falls back to sequential extractDocument() calls if batch API is unavailable.
+   *
+   * @param files — Array of file paths with extraction options.
+   * @returns Map from file path to extraction result (or error).
+   */
+  extractBatch(files: { path: string; ocr?: boolean }[]): Promise<Map<string, DocumentExtractionResult>>;
+
+  /**
+   * Initialize the service: detect Python, start Docling bridge.
+   * Called once during workbench initialization.
+   */
+  initialize(): Promise<void>;
+}
+
+export const IDocumentExtractionService = createServiceIdentifier<IDocumentExtractionService>('IDocumentExtractionService');
+
+// ─── IEmbeddingService (M10 Task 1.1) ──────────────────────────────────────
+
+/**
+ * Generates text embeddings via Ollama's /api/embed endpoint.
+ * Uses nomic-embed-text v1.5 with mandatory task prefixes.
+ *
+ * Reference: docs/Parallx_Milestone_10.md DR-1, DR-2
+ */
+export interface IEmbeddingService extends IDisposable {
+  /** Embed a single document text (adds 'search_document:' prefix). */
+  embedDocument(text: string, contentHash?: string): Promise<number[]>;
+
+  /** Embed a user query (adds 'search_query:' prefix). */
+  embedQuery(query: string): Promise<number[]>;
+
+  /** Embed multiple document texts in batch. */
+  embedDocumentBatch(texts: string[], contentHashes?: string[], signal?: AbortSignal): Promise<number[][]>;
+
+  /** Get model info (name, dimensions, installed status). */
+  getModelInfo(): { name: string; dimensions: number; installed: boolean };
+
+  /** Ensure the embedding model is installed (pulls if not). */
+  ensureModel(signal?: AbortSignal): Promise<void>;
+
+  /** Clear the in-memory embedding cache. */
+  clearCache(): void;
+
+  /** Current number of cached embeddings. */
+  readonly cacheSize: number;
+
+  /** Fires when an embedding batch starts. */
+  readonly onDidStartEmbedding: Event<{ count: number }>;
+
+  /** Fires when an embedding batch completes. */
+  readonly onDidFinishEmbedding: Event<{ count: number; durationMs: number }>;
+}
+
+export const IEmbeddingService = createServiceIdentifier<IEmbeddingService>('IEmbeddingService');
+
+// ─── IChunkingService (M10 Task 1.3) ───────────────────────────────────────
+
+/**
+ * Splits content into chunks suitable for embedding and retrieval.
+ * Supports canvas pages (TipTap JSON) and workspace files.
+ *
+ * Reference: docs/Parallx_Milestone_10.md DR-6, DR-8
+ */
+export interface IChunkingService extends IDisposable {
+  /** Chunk a canvas page by TipTap block boundaries. */
+  chunkPage(pageId: string, pageTitle: string, contentJson: string): Promise<import('./chunkingService.js').Chunk[]>;
+
+  /** Chunk a workspace file by headings/paragraphs. */
+  chunkFile(filePath: string, content: string, language?: string): Promise<import('./chunkingService.js').Chunk[]>;
+}
+
+export const IChunkingService = createServiceIdentifier<IChunkingService>('IChunkingService');
+
+// ─── IVectorStoreService (M10 Task 1.2) ────────────────────────────────────
+
+/**
+ * Manages the dual vector + keyword index (sqlite-vec vec0 + FTS5).
+ * Provides upsert, delete, and hybrid search with RRF fusion.
+ *
+ * Reference: docs/Parallx_Milestone_10.md DR-3, DR-4, DR-5
+ */
+export interface IVectorStoreService extends IDisposable {
+  /** Upsert embedded chunks for a source. */
+  upsert(
+    sourceType: string,
+    sourceId: string,
+    chunks: import('./vectorStoreService.js').EmbeddedChunk[],
+    contentHash: string,
+    summary?: string,
+  ): Promise<void>;
+
+  /** Delete all chunks for a source. */
+  deleteSource(sourceType: string, sourceId: string): Promise<void>;
+
+  /** Hybrid search: vector + keyword, merged via RRF. */
+  search(
+    queryEmbedding: number[],
+    queryText: string,
+    options?: import('./vectorStoreService.js').SearchOptions,
+  ): Promise<import('./vectorStoreService.js').SearchResult[]>;
+
+  /** Vector-only search (for "find similar"). */
+  vectorSearch(
+    queryEmbedding: number[],
+    topK?: number,
+    sourceFilter?: string,
+  ): Promise<import('./vectorStoreService.js').SearchResult[]>;
+
+  /** Get stored content hash for incremental re-indexing. */
+  getContentHash(sourceType: string, sourceId: string): Promise<string | null>;
+
+  /** Bulk-fetch indexed_at timestamps: source_id → epoch ms. */
+  getIndexedAtMap(sourceType: string): Promise<Map<string, number>>;
+
+  /** Get all indexed sources. */
+  getIndexedSources(): Promise<import('./vectorStoreService.js').IndexingMeta[]>;
+
+  /** Get aggregate statistics. */
+  getStats(): Promise<import('./vectorStoreService.js').VectorStoreStats>;
+
+  /** Get document summaries for all indexed sources. Map<sourceId, summary>. */
+  getDocumentSummaries(): Promise<Map<string, string>>;
+
+  /** Batch-fetch stored embeddings by rowid. Returns Map<rowid, float[]>. */
+  getEmbeddings(rowids: number[]): Promise<Map<number, number[]>>;
+
+  /** Delete ALL data from vec_embeddings, fts_chunks, and indexing_metadata. */
+  purgeAll(): Promise<void>;
+
+  /** Fires when a source is indexed/re-indexed. */
+  readonly onDidUpdateIndex: Event<{ sourceId: string; chunkCount: number }>;
+}
+
+export const IVectorStoreService = createServiceIdentifier<IVectorStoreService>('IVectorStoreService');
+
+// ─── IIndexingPipelineService (M10 Task 2.1, 2.2) ─────────────────────────
+
+/**
+ * Orchestrates indexing of canvas pages and workspace files into the
+ * vector store. Handles initial full-index on workspace open and
+ * incremental re-indexing on saves/file changes.
+ *
+ * Reference: docs/Parallx_Milestone_10.md Phase 2
+ */
+export interface IIndexingPipelineService extends IDisposable {
+  /** Whether the pipeline is currently running. */
+  readonly isIndexing: boolean;
+
+  /** Current progress snapshot. */
+  readonly progress: import('./indexingPipeline.js').IndexingProgress;
+
+  /** Whether the initial full indexing has completed at least once. */
+  readonly isInitialIndexComplete: boolean;
+
+  /** Start the full indexing pipeline (pages + files). */
+  start(): Promise<void>;
+
+  /** Cancel in-progress indexing. */
+  cancel(): void;
+
+  /** Force re-index a single page (bypass debounce). */
+  reindexPage(pageId: string): Promise<void>;
+
+  /** Force re-index a single file (bypass debounce). */
+  reindexFile(filePath: string): Promise<void>;
+
+  /** Schedule a debounced page re-index. */
+  schedulePageReindex(pageId: string): void;
+
+  /** Schedule a debounced file re-index. */
+  scheduleFileReindex(filePath: string): void;
+
+  /** Fires when indexing progress changes. */
+  readonly onDidChangeProgress: Event<import('./indexingPipeline.js').IndexingProgress>;
+
+  /** Fires when a single source (page or file) finishes indexing. */
+  readonly onDidIndexSource: Event<import('./indexingPipeline.js').IndexingSourceResult>;
+
+  /** Fires when initial indexing completes. */
+  readonly onDidCompleteInitialIndex: Event<{ pages: number; files: number; durationMs: number }>;
+}
+
+export const IIndexingPipelineService = createServiceIdentifier<IIndexingPipelineService>('IIndexingPipelineService');
+
+// ─── IRetrievalService (M10 Task 3.1) ─────────────────────────────────────
+
+/**
+ * Query-time retrieval: embeds user queries, runs hybrid search, applies
+ * post-retrieval filtering (score threshold, dedup, token budget), and
+ * returns ranked context chunks with source attribution.
+ *
+ * Reference: docs/Parallx_Milestone_10.md Phase 3 Task 3.1
+ */
+export interface IRetrievalService extends IDisposable {
+  /** Retrieve relevant context chunks for a query. */
+  retrieve(
+    query: string,
+    options?: import('./retrievalService.js').RetrievalOptions,
+  ): Promise<import('./retrievalService.js').RetrievedContext[]>;
+
+  /** Format retrieved chunks for injection into a chat message. */
+  formatContext(
+    chunks: import('./retrievalService.js').RetrievedContext[],
+  ): string;
+
+  /** Run multiple queries in parallel, merge and deduplicate results (M12). */
+  retrieveMulti(
+    queries: string[],
+    options?: import('./retrievalService.js').RetrievalOptions,
+  ): Promise<import('./retrievalService.js').RetrievedContext[]>;
+}
+
+export const IRetrievalService = createServiceIdentifier<IRetrievalService>('IRetrievalService');
+
+// ─── IMemoryService (M10 Tasks 5.1 + 5.2) ──────────────────────────────────
+
+/**
+ * Manages conversation memory and user preference learning.
+ *
+ * Task 5.1 — Conversation Memory:
+ *   Stores LLM-generated summaries of past sessions, embeds them in the
+ *   vector index, and retrieves relevant memories for new sessions.
+ *
+ * Task 5.2 — User Preference Learning:
+ *   Extracts and persists preference statements from conversations,
+ *   formats them for injection into the system prompt.
+ */
+export interface IMemoryService extends IDisposable {
+  /** Fires when a conversation memory is stored or updated. */
+  readonly onDidUpdateMemory: Event<string>;
+  /** Fires when a user preference is created or updated. */
+  readonly onDidUpdatePreferences: Event<import('./memoryService.js').UserPreference>;
+
+  /** Whether a session has enough messages to summarise. */
+  isSessionEligibleForSummary(messageCount: number): boolean;
+
+  /** Whether a memory already exists for the given session. */
+  hasMemory(sessionId: string): Promise<boolean>;
+
+  /**
+   * Get the message count stored with the last summary for a session.
+   * Returns `null` if no memory exists. Used for growth-based re-summarization (M17 Task 1.1.2).
+   */
+  getMemoryMessageCount(sessionId: string): Promise<number | null>;
+
+  /** Store a conversation summary (after LLM summarisation). */
+  storeMemory(sessionId: string, summary: string, messageCount: number): Promise<void>;
+
+  /** Retrieve relevant memories for a query via hybrid search. */
+  recallMemories(
+    query: string,
+    options?: import('./memoryService.js').MemoryRetrievalOptions,
+  ): Promise<import('./memoryService.js').ConversationMemory[]>;
+
+  /** Format retrieved memories for injection into a chat message. */
+  formatMemoryContext(memories: import('./memoryService.js').ConversationMemory[]): string;
+
+  /** Get all stored memories. */
+  getAllMemories(): Promise<import('./memoryService.js').ConversationMemory[]>;
+
+  /** Delete a specific memory by session ID (M20 F.2). */
+  deleteMemory(sessionId: string): Promise<void>;
+
+  /** Get all stored learning concepts (M20 F.1). */
+  getAllConcepts(): Promise<import('./memoryService.js').LearningConcept[]>;
+
+  /** Delete a specific learning concept by ID (M20 F.2). */
+  deleteConcept(conceptId: number): Promise<void>;
+
+  /** Extract and store user preferences from text. */
+  extractAndStorePreferences(text: string): Promise<import('./memoryService.js').UserPreference[]>;
+
+  /** Get all stored user preferences, ordered by frequency. */
+  getPreferences(): Promise<import('./memoryService.js').UserPreference[]>;
+
+  /** Format preferences for system prompt injection. */
+  formatPreferencesForPrompt(preferences: import('./memoryService.js').UserPreference[]): string;
+
+  /** Delete a specific preference by key. */
+  deletePreference(key: string): Promise<void>;
+
+  /** Clear all memories and preferences. */
+  clearAll(): Promise<void>;
+
+  // ── Concept-Level Memory (M17 P1.2) ──
+
+  /** Store or update learning concepts extracted from a session. */
+  storeConcepts(concepts: import('./memoryService.js').LearningConcept[], sessionId: string): Promise<void>;
+
+  /** Recall concepts relevant to a query via hybrid search. */
+  recallConcepts(query: string, topK?: number): Promise<import('./memoryService.js').LearningConcept[]>;
+
+  /** Format recalled concepts for system prompt injection. */
+  formatConceptContext(concepts: import('./memoryService.js').LearningConcept[]): string;
+
+  // ── Decay & Eviction (M17 P1.3) ──
+
+  /** Recalculate decay scores for all memories and concepts. */
+  recalculateDecayScores(): Promise<void>;
+
+  /** Evict stale memories and concepts that have decayed below threshold. */
+  evictStaleContent(): Promise<{ memoriesEvicted: number; conceptsEvicted: number }>;
+}
+
+export const IMemoryService = createServiceIdentifier<IMemoryService>('IMemoryService');
+
+// ─── IRelatedContentService (M10 Task 7.1) ─────────────────────────────────
+
+/**
+ * Finds pages and files semantically related to a given page using
+ * vector similarity search.  Powers the "Related Content" sidebar.
+ */
+export interface IRelatedContentService extends IDisposable {
+  /** Fires when the related content results may have changed. */
+  readonly onDidChangeRelated: Event<string>;
+
+  /** Find items related to a given page. */
+  findRelated(
+    pageId: string,
+    options?: import('./relatedContentService.js').FindRelatedOptions,
+  ): Promise<import('./relatedContentService.js').RelatedItem[]>;
+}
+
+export const IRelatedContentService = createServiceIdentifier<IRelatedContentService>('IRelatedContentService');
+
+// ─── IAutoTaggingService (M10 Task 7.2) ────────────────────────────────────
+
+/**
+ * Embedding-based auto-tagging for canvas pages.
+ * Suggests and applies tags by propagating from similar pages.
+ */
+export interface IAutoTaggingService extends IDisposable {
+  /** Fires when a page's tags change. */
+  readonly onDidChangeTags: Event<import('./autoTaggingService.js').TagChangeEvent>;
+  /** Fires when tag suggestions are generated. */
+  readonly onDidSuggestTags: Event<{ pageId: string; suggestions: import('./autoTaggingService.js').TagSuggestion[] }>;
+
+  /** Get all tags for a page. */
+  getPageTags(pageId: string): Promise<import('./autoTaggingService.js').PageTag[]>;
+  /** Suggest tags for a page (does not apply them). */
+  suggestTags(pageId: string): Promise<import('./autoTaggingService.js').TagSuggestion[]>;
+  /** Auto-tag on save — suggest + apply high-confidence tags. Returns applied suggestions. */
+  autoTagOnSave(pageId: string): Promise<import('./autoTaggingService.js').TagSuggestion[]>;
+  /** Add a tag to a page. Returns the created tag. */
+  addTag(pageId: string, tagName: string, tagColor?: string): Promise<import('./autoTaggingService.js').PageTag>;
+  /** Remove a tag from a page. */
+  removeTag(pageId: string, tagName: string): Promise<void>;
+  /** Get all known tags across all pages. */
+  getAllTags(): Promise<import('./autoTaggingService.js').PageTag[]>;
+}
+
+export const IAutoTaggingService = createServiceIdentifier<IAutoTaggingService>('IAutoTaggingService');
+
+// ─── IProactiveSuggestionsService (M10 Task 7.4) ──────────────────────────
+
+/**
+ * Periodically analyses the knowledge base to detect patterns and
+ * surface actionable suggestions (consolidation, orphans, coverage gaps).
+ */
+export interface IProactiveSuggestionsService extends IDisposable {
+  /** Fires when the suggestions list updates. */
+  readonly onDidUpdateSuggestions: Event<import('./proactiveSuggestionsService.js').ProactiveSuggestion[]>;
+
+  /** Current active suggestions (excluding dismissed). */
+  readonly suggestions: import('./proactiveSuggestionsService.js').ProactiveSuggestion[];
+
+  /** Dismiss a suggestion. */
+  dismiss(suggestionId: string): void;
+
+  /** Force an immediate analysis. */
+  analyze(): Promise<import('./proactiveSuggestionsService.js').ProactiveSuggestion[]>;
+}
+
+export const IProactiveSuggestionsService = createServiceIdentifier<IProactiveSuggestionsService>('IProactiveSuggestionsService');
+
+// ─── IAISettingsService (M15) ────────────────────────────────────────────────
+
+/**
+ * Manages AI personality & behavior settings profiles.
+ *
+ * Persists profiles to IStorage, emits change events so consumers
+ * (chat prompt builder, proactive suggestions) react immediately.
+ *
+ * Interface defined in aiSettings/aiSettingsTypes.ts.
+ * DI identifier created here to follow the serviceTypes.ts pattern.
+ */
+import type { IAISettingsService as IAISettingsServiceType } from '../aiSettings/aiSettingsTypes.js';
+export const IAISettingsService = createServiceIdentifier<IAISettingsServiceType>('IAISettingsService');
+
+// ─── IUnifiedAIConfigService (M20) ──────────────────────────────────────────
+
+/**
+ * Unified AI Configuration Service — replaces both AISettingsService (M15)
+ * and ParallxConfigService (M11) with a single source of truth.
+ *
+ * Provides preset management, workspace overrides, and merged effective config.
+ * Interface defined in aiSettings/unifiedConfigTypes.ts.
+ */
+import type { IUnifiedAIConfigService as IUnifiedAIConfigServiceType } from '../aiSettings/unifiedConfigTypes.js';
+export const IUnifiedAIConfigService = createServiceIdentifier<IUnifiedAIConfigServiceType>('IUnifiedAIConfigService');
+
 // ─── Status Bar Types ────────────────────────────────────────────────────────
 
 /**
@@ -899,6 +1384,12 @@ export interface StatusBarEntry {
   readonly name?: string;
   /** Optional SVG icon string rendered before the text. */
   readonly iconSvg?: string;
+  /**
+   * Optional custom DOM element to render instead of text/iconSvg.
+   * When set, `text` and `iconSvg` are ignored for rendering.
+   * The element is appended directly into the label container.
+   */
+  readonly htmlElement?: HTMLElement;
 }
 
 /**
@@ -907,7 +1398,7 @@ export interface StatusBarEntry {
  */
 export interface StatusBarEntryAccessor extends IDisposable {
   /** Update the entry's mutable properties. */
-  update(entry: Partial<Pick<StatusBarEntry, 'text' | 'tooltip' | 'command' | 'iconSvg'>>): void;
+  update(entry: Partial<Pick<StatusBarEntry, 'text' | 'tooltip' | 'command' | 'iconSvg' | 'htmlElement'>>): void;
 }
 
 /**
@@ -917,3 +1408,33 @@ export interface StatusBarEntryAccessor extends IDisposable {
 export interface IStatusBarPart {
   addEntry(entry: StatusBarEntry): StatusBarEntryAccessor;
 }
+
+// ─── Session Manager ─────────────────────────────────────────────────────────
+
+/**
+ * Manages workspace session identity.
+ *
+ * A "session" starts when a workspace is opened (or the page loads)
+ * and ends when the user switches workspace (or the page unloads).
+ * Each session gets a unique `sessionId`.
+ *
+ * VS Code reference: implicit — VS Code uses per-window process isolation.
+ * Parallx models the same guarantee explicitly via WorkspaceSessionContext.
+ */
+export interface ISessionManager {
+  /** The currently active session context, or `undefined` before first open. */
+  readonly activeContext: IWorkspaceSessionContext | undefined;
+
+  /**
+   * Create a new session for the given workspace.
+   * Invalidates any previous session (abort + isActive → false).
+   */
+  beginSession(workspaceId: string, roots: readonly URI[]): IWorkspaceSessionContext;
+
+  /** End the current session (abort + invalidate). No-op if no active session. */
+  endSession(): void;
+
+  /** Fired when the active session changes (begin or end). */
+  readonly onDidChangeSession: Event<IWorkspaceSessionContext | undefined>;
+}
+export const ISessionManager = createServiceIdentifier<ISessionManager>('ISessionManager');

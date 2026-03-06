@@ -25,7 +25,7 @@
   font-size: 13px;
   font-family: system-ui, -apple-system, sans-serif;
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5));
   border-left: 3px solid transparent;
   transition: opacity 0.2s ease, transform 0.2s ease;
   pointer-events: auto;
@@ -112,7 +112,7 @@
 .parallx-modal-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -128,7 +128,7 @@
   padding: 16px;
   min-width: 400px;
   max-width: 500px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.6));
 }
 
 .parallx-modal-label {
@@ -212,7 +212,7 @@
   max-height: 400px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.6));
   overflow: hidden;
 }
 

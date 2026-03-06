@@ -629,8 +629,7 @@ export class BlockHandlesController {
 
     // Exclude certain block types from showing a handle
     const notDraggable = dom.closest('.not-draggable');
-    const excludedTag = dom.matches('ol, ul');
-    if (notDraggable || excludedTag) {
+    if (notDraggable) {
       this._hideHandle();
       return;
     }
@@ -645,8 +644,16 @@ export class BlockHandlesController {
     const rect = dom.getBoundingClientRect();
     const hw = BlockHandlesController._HANDLE_WIDTH;
 
-    let top = rect.top + (lineHeight - 24) / 2 + paddingTop;
-    let left = rect.left - hw;
+    // Convert viewport-relative getBoundingClientRect() to container-relative
+    // coordinates for position:absolute. The handles are children of
+    // editorContainer (.canvas-editor-wrapper, position:relative, overflow-y:auto).
+    // We must subtract the container's viewport offset and add its scrollTop
+    // so that the handle stays aligned with the block even when scrolled.
+    const ec = this._host.editorContainer!;
+    const ecRect = ec.getBoundingClientRect();
+
+    let top = (rect.top - ecRect.top) + ec.scrollTop + (lineHeight - 24) / 2 + paddingTop;
+    let left = (rect.left - ecRect.left) - hw;
 
     // Li markers — shift left to clear the bullet/number
     if (dom.matches('ul:not([data-type=taskList]) li, ol li')) {
@@ -806,6 +813,27 @@ export class BlockHandlesController {
       return this._resolveFirstBlockInsideColumnList(view, blockPos, node, targetDepth + 1);
     }
     if (node.type.name === 'column') {
+      return null;
+    }
+
+    // List wrappers → drill into the innermost listItem at the cursor position.
+    // Walk from the cursor depth upward to find the deepest listItem/taskItem
+    // ancestor so that nested lists also resolve to their specific items.
+    if (node.type.name === 'bulletList' || node.type.name === 'orderedList' || node.type.name === 'taskList') {
+      for (let d = $pos.depth; d > targetDepth; d--) {
+        const ancestor = $pos.node(d);
+        if (ancestor.type.name === 'listItem' || ancestor.type.name === 'taskItem') {
+          const itemPos = $pos.before(d);
+          const itemNode = view.state.doc.nodeAt(itemPos);
+          if (itemNode) {
+            return { pos: itemPos, node: itemNode, depth: d };
+          }
+        }
+      }
+      // Fallback: first child of the list
+      if (node.firstChild) {
+        return { pos: blockPos + 1, node: node.firstChild, depth: targetDepth + 1 };
+      }
       return null;
     }
 

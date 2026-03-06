@@ -132,3 +132,182 @@ export class ColorRegistry implements IColorRegistry {
  * Import this from modules that need to register or query colors.
  */
 export const colorRegistry = new ColorRegistry();
+
+// ─── Built-in Color Registrations ────────────────────────────────────────────
+// Note: Core workbench colors (foreground, background, editor, list, input,
+// button, badge, menu, scrollbar, etc.) are registered in workbenchColors.ts.
+// Only tokens NOT covered there are registered below.
+
+// --- Layout & Structure (supplemental) ---
+
+colorRegistry.registerColor('widget.border', 'Border color for floating widgets', {
+  dark: 'rgba(255, 255, 255, 0.08)',
+  light: 'rgba(0, 0, 0, 0.1)',
+  hcDark: '#6FC3DF',
+  hcLight: '#0F4A85',
+});
+
+// --- List (supplemental) ---
+
+colorRegistry.registerColor('list.dropBackground', 'Background color when dragging over a valid drop target', {
+  dark: 'rgba(35, 131, 226, 0.17)',
+  light: 'rgba(35, 131, 226, 0.12)',
+  hcDark: 'rgba(35, 131, 226, 0.3)',
+  hcLight: 'rgba(35, 131, 226, 0.2)',
+});
+
+// --- Editor (supplemental) ---
+
+colorRegistry.registerColor('editor.selectionBackground', 'Background for selected text in the editor', {
+  dark: 'rgba(38, 79, 120, 0.6)',
+  light: 'rgba(173, 214, 255, 0.6)',
+  hcDark: 'rgba(38, 79, 120, 0.8)',
+  hcLight: 'rgba(0, 90, 180, 0.3)',
+});
+
+colorRegistry.registerColor('editor.findMatchBackground', 'Background for the current active find match', {
+  dark: 'rgba(81, 92, 106, 0.6)',
+  light: 'rgba(161, 222, 253, 0.6)',
+  hcDark: 'rgba(81, 92, 106, 0.8)',
+  hcLight: 'rgba(161, 222, 253, 0.8)',
+});
+
+colorRegistry.registerColor('editor.hoverHighlightBackground', 'Background when hovering a reference', {
+  dark: 'rgba(38, 79, 120, 0.25)',
+  light: 'rgba(173, 214, 255, 0.4)',
+  hcDark: 'rgba(38, 79, 120, 0.4)',
+  hcLight: 'rgba(0, 90, 180, 0.2)',
+});
+
+// --- Diff Editor ---
+
+colorRegistry.registerColor('diffEditor.insertedLineBackground', 'Background for inserted lines in diff', {
+  dark: 'rgba(129, 184, 139, 0.12)',
+  light: 'rgba(129, 184, 139, 0.2)',
+  hcDark: 'rgba(129, 184, 139, 0.2)',
+  hcLight: 'rgba(0, 150, 50, 0.15)',
+});
+
+colorRegistry.registerColor('diffEditor.removedLineBackground', 'Background for removed lines in diff', {
+  dark: 'rgba(199, 78, 57, 0.12)',
+  light: 'rgba(199, 78, 57, 0.2)',
+  hcDark: 'rgba(199, 78, 57, 0.2)',
+  hcLight: 'rgba(200, 50, 30, 0.15)',
+});
+
+// --- Validation ---
+
+colorRegistry.registerColor('inputValidation.errorBackground', 'Background for input validation errors', {
+  dark: 'rgba(244, 71, 71, 0.06)',
+  light: 'rgba(244, 71, 71, 0.08)',
+  hcDark: 'rgba(244, 71, 71, 0.1)',
+  hcLight: 'rgba(220, 0, 0, 0.08)',
+});
+
+colorRegistry.registerColor('inputValidation.errorBorder', 'Border for input validation errors', {
+  dark: 'rgba(220, 38, 38, 0.4)',
+  light: 'rgba(220, 38, 38, 0.5)',
+  hcDark: '#f48771',
+  hcLight: '#b5200d',
+});
+
+// --- Testing ---
+
+colorRegistry.registerColor('testing.iconPassed', 'Color for passed tests / success status', {
+  dark: '#73c991',
+  light: '#388a34',
+  hcDark: '#73c991',
+  hcLight: '#388a34',
+});
+
+colorRegistry.registerColor('testing.iconFailed', 'Color for failed tests / error status', {
+  dark: '#f14c4c',
+  light: '#f14c4c',
+  hcDark: '#f14c4c',
+  hcLight: '#b5200d',
+});
+
+// --- Warning ---
+
+colorRegistry.registerColor('editorWarning.foreground', 'Warning squiggly / warning indicator color', {
+  dark: '#cca700',
+  light: '#bf8803',
+  hcDark: '#cca700',
+  hcLight: '#945d00',
+});
+
+// --- Terminal ---
+
+colorRegistry.registerColor('terminal.ansiGreen', 'Terminal ANSI green', {
+  dark: '#6a9955',
+  light: '#388a34',
+  hcDark: '#89d185',
+  hcLight: '#388a34',
+});
+
+colorRegistry.registerColor('terminal.ansiBlue', 'Terminal ANSI blue', {
+  dark: '#569cd6',
+  light: '#0451a5',
+  hcDark: '#9cdcfe',
+  hcLight: '#0451a5',
+});
+
+colorRegistry.registerColor('terminal.ansiCyan', 'Terminal ANSI cyan', {
+  dark: '#4ec9b0',
+  light: '#0598bc',
+  hcDark: '#4ec9b0',
+  hcLight: '#0598bc',
+});
+
+// --- Syntax Highlighting ---
+
+colorRegistry.registerColor('debugTokenExpression.string', 'Token color for strings', {
+  dark: '#ce9178',
+  light: '#a31515',
+  hcDark: '#ce9178',
+  hcLight: '#a31515',
+});
+
+colorRegistry.registerColor('debugTokenExpression.name', 'Token color for names / keywords', {
+  dark: '#569cd6',
+  light: '#0451a5',
+  hcDark: '#9cdcfe',
+  hcLight: '#0451a5',
+});
+
+colorRegistry.registerColor('debugTokenExpression.number', 'Token color for numbers', {
+  dark: '#b5cea8',
+  light: '#098658',
+  hcDark: '#b5cea8',
+  hcLight: '#098658',
+});
+
+colorRegistry.registerColor('debugTokenExpression.type', 'Token color for types', {
+  dark: '#4ec9b0',
+  light: '#267f99',
+  hcDark: '#4ec9b0',
+  hcLight: '#267f99',
+});
+
+colorRegistry.registerColor('debugTokenExpression.error', 'Token color for errors / regex', {
+  dark: '#d16969',
+  light: '#cd3131',
+  hcDark: '#d16969',
+  hcLight: '#cd3131',
+});
+
+colorRegistry.registerColor('symbolIcon.functionForeground', 'Color for function symbol icons', {
+  dark: '#dcdcaa',
+  light: '#795e26',
+  hcDark: '#dcdcaa',
+  hcLight: '#795e26',
+});
+
+// --- Title Bar ---
+
+colorRegistry.registerColor('titleBar.closeForeground', 'Color for the window close button', {
+  dark: '#e81123',
+  light: '#e81123',
+  hcDark: '#ffffff',
+  hcLight: '#e81123',
+});

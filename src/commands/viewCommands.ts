@@ -216,6 +216,19 @@ export const showExplorerView: CommandDescriptor = {
   },
 };
 
+/** Generic command to show any sidebar view by its view ID. */
+export const showView: CommandDescriptor = {
+  id: 'workbench.view.show',
+  title: 'View: Show View',
+  category: 'View',
+  handler(ctx, ...args: unknown[]) {
+    const viewId = args[0];
+    if (typeof viewId === 'string') {
+      wb(ctx).showSidebarView(viewId);
+    }
+  },
+};
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function _findViewContainer(w: WorkbenchLike, viewId: string): ViewContainerLike | undefined {

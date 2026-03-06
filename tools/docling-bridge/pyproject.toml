@@ -1,0 +1,18 @@
+[project]
+name = "parallx-docling-bridge"
+version = "0.1.0"
+description = "Local FastAPI bridge between Parallx (Electron) and Docling (IBM)"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "docling>=2.70.0,<3.0.0",
+    "fastapi>=0.115.0,<1.0.0",
+    "uvicorn[standard]>=0.34.0,<1.0.0",
+]
+
+[project.optional-dependencies]
+ocr = ["easyocr>=1.7.0"]
+vlm = ["docling[vlm]"]
+
+[project.scripts]
+parallx-docling = "parallx_docling.server:main"

@@ -273,7 +273,9 @@ export class Grid extends Disposable {
     // current size except the flex view, which gets the remainder.
     this._distributeWithFlex(this._root, flexViewId);
 
-    this._layoutNode(this._root, width, height);
+    // Sizes are already correct from _distributeWithFlex — use direct
+    // layout that skips _distributeSizes to avoid rounding re-scale jitter.
+    this._layoutNodeDirect(this._root, width, height);
     this._onDidChange.fire({ type: 'resize' });
   }
 
@@ -498,6 +500,39 @@ export class Grid extends Disposable {
   }
 
   /**
+   * Layout nodes using their already-set cached sizes (skip _distributeSizes).
+   * Used by resizeWithFixedViews where _distributeWithFlex has already computed
+   * the correct sizes — avoids proportional re-scaling jitter from rounding.
+   */
+  private _layoutNodeDirect(node: GridNode, width: number, height: number): void {
+    if (node.type === GridNodeType.Leaf) {
+      node.cachedSize =
+        node.view.element.parentElement && this._getParentOrientation(node) === Orientation.Horizontal
+          ? width
+          : height;
+      node.view.layout(width, height, this._getParentOrientation(node) ?? this._root.orientation);
+      return;
+    }
+
+    // Branch: use existing cached sizes directly
+    const branch = node;
+    const isHorizontal = branch.orientation === Orientation.Horizontal;
+
+    for (let i = 0; i < branch.childCount; i++) {
+      const child = branch.getChild(i);
+      const childSize = this._getNodeSize(child);
+
+      if (isHorizontal) {
+        this._setNodeDimensions(child, childSize, height);
+        this._layoutNodeDirect(child, childSize, height);
+      } else {
+        this._setNodeDimensions(child, width, childSize);
+        this._layoutNodeDirect(child, width, childSize);
+      }
+    }
+  }
+
+  /**
    * Distribute available space among children, respecting constraints.
    */
   private _distributeSizes(branch: GridBranchNode, available: number): number[] {
@@ -716,7 +751,10 @@ export class Grid extends Disposable {
    * browser can optimise compositing during drag.
    */
   private _setWillChange(branch: GridBranchNode, sashIndex: number, active: boolean): void {
-    const value = active ? 'width, height' : '';
+    // Use 'transform' instead of 'width, height' — will-change on layout
+    // properties doesn't help (browser still needs main-thread reflow);
+    // 'transform' promotes the element to its own compositor layer.
+    const value = active ? 'transform' : '';
     const childA = branch.getChild(sashIndex);
     const childB = branch.getChild(sashIndex + 1);
     if (childA) {
@@ -904,14 +942,16 @@ export class Grid extends Disposable {
     el.style.flexShrink = '0';
   }
 
-  private _getNodeWidth(node: GridNode): number {
-    const el = node.type === GridNodeType.Leaf ? node.view.element : node.element;
-    return el.clientWidth || this._width;
+  private _getNodeWidth(_node: GridNode): number {
+    // Use cached grid width instead of el.clientWidth to avoid
+    // synchronous reflow when called between style writes.
+    return this._width;
   }
 
-  private _getNodeHeight(node: GridNode): number {
-    const el = node.type === GridNodeType.Leaf ? node.view.element : node.element;
-    return el.clientHeight || this._height;
+  private _getNodeHeight(_node: GridNode): number {
+    // Use cached grid height instead of el.clientHeight to avoid
+    // synchronous reflow when called between style writes.
+    return this._height;
   }
 
   private _getMinSizeAlongOrientation(node: GridNode, orientation: Orientation): number {

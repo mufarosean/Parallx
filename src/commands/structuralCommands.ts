@@ -24,7 +24,7 @@ export {
   showCommands, quickOpen, gotoLine,
   toggleSidebar, togglePanel, toggleMaximizedPanel, toggleAuxiliaryBar, toggleStatusBar, toggleZenMode,
   viewMoveToSidebar, viewMoveToPanel, partResize,
-  showSearchView, showExplorerView,
+  showSearchView, showExplorerView, showView,
 } from './viewCommands.js';
 export {
   splitEditor, splitEditorOrthogonal, closeActiveEditor, nextEditor, previousEditor,
@@ -44,13 +44,14 @@ export {
   focusFirstEditorGroup, focusSecondEditorGroup, focusThirdEditorGroup,
   focusSideBar, focusPanel, focusActivityBar, focusStatusBar,
 } from './focusCommands.js';
+export { installDocling } from './doclingCommands.js';
 
 //  Import for aggregation 
 import {
   showCommands, quickOpen, gotoLine,
   toggleSidebar, togglePanel, toggleMaximizedPanel, toggleAuxiliaryBar, toggleStatusBar, toggleZenMode,
   viewMoveToSidebar, viewMoveToPanel, partResize,
-  showSearchView, showExplorerView,
+  showSearchView, showExplorerView, showView,
 } from './viewCommands.js';
 import {
   splitEditor, splitEditorOrthogonal, closeActiveEditor, nextEditor, previousEditor,
@@ -70,6 +71,7 @@ import {
   focusFirstEditorGroup, focusSecondEditorGroup, focusThirdEditorGroup,
   focusSideBar, focusPanel, focusActivityBar, focusStatusBar,
 } from './focusCommands.js';
+import { installDocling } from './doclingCommands.js';
 
 //  Layout Commands 
 
@@ -278,10 +280,13 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   // Sidebar view switch
   showSearchView,
   showExplorerView,
+  showView,
   // Preferences
   openSettings,
   openKeybindings,
   selectColorTheme,
+  // Docling (M21)
+  installDocling,
 ];
 
 /**

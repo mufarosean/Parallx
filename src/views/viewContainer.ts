@@ -65,9 +65,12 @@ export class ViewContainer extends Disposable implements IGridView {
     return this._sectionElements.get(viewId)?.actionsSlot;
   }
   private _sectionSashes: HTMLElement[] = [];
+  /** User-specified section body heights from sash drag. Cleared on section add/remove. */
+  private _customSectionHeights = new Map<string, number>();
 
   static readonly SECTION_HEADER_HEIGHT = 22;
   static readonly SECTION_SASH_HEIGHT = 4;
+  static readonly SECTION_MIN_BODY_HEIGHT = 80;
 
   // ── Events ──
 
@@ -197,6 +200,7 @@ export class ViewContainer extends Disposable implements IGridView {
       }
       this._rebuildSectionSashes();
       this._updateStackedHeaders();
+      this._layoutStacked();
     }
   }
 
@@ -271,6 +275,7 @@ export class ViewContainer extends Disposable implements IGridView {
       view.setVisible(true);
       this._rebuildSectionSashes();
       this._updateStackedHeaders();
+      this._layoutStacked();
     } else {
       // Tabbed mode: create view element hidden, create tab
       view.createElement(this._contentArea);
@@ -331,6 +336,7 @@ export class ViewContainer extends Disposable implements IGridView {
     this._views.delete(viewId);
     this._tabOrder = this._tabOrder.filter(id => id !== viewId);
     this._collapsedSections.delete(viewId);
+    this._customSectionHeights.delete(viewId);
 
     this._onDidRemoveView.fire(viewId);
 
@@ -352,6 +358,7 @@ export class ViewContainer extends Disposable implements IGridView {
     if (this._mode === 'stacked') {
       this._rebuildSectionSashes();
       this._updateStackedHeaders();
+      this._layoutStacked();
     }
 
     return view;
@@ -641,25 +648,33 @@ export class ViewContainer extends Disposable implements IGridView {
     const belowId = expandedIds[sashIndex + 1];
     if (!aboveId || !belowId) return;
 
-    const aboveBody = this._sectionElements.get(aboveId)?.body;
-    const belowBody = this._sectionElements.get(belowId)?.body;
-    if (!aboveBody || !belowBody) return;
+    const aboveSection = this._sectionElements.get(aboveId);
+    const belowSection = this._sectionElements.get(belowId);
+    if (!aboveSection || !belowSection) return;
 
-    let aboveH = aboveBody.offsetHeight;
-    let belowH = belowBody.offsetHeight;
+    const singleView = this._views.size <= 1;
+    const headerH = singleView ? 0 : ViewContainer.SECTION_HEADER_HEIGHT;
+    const minH = ViewContainer.SECTION_MIN_BODY_HEIGHT;
+    let aboveH = aboveSection.body.offsetHeight;
+    let belowH = belowSection.body.offsetHeight;
 
     const onMouseMove = (e: MouseEvent): void => {
       const delta = e.clientY - startY;
       startY = e.clientY;
 
-      const newAbove = Math.max(22, aboveH + delta);
-      const newBelow = Math.max(22, belowH - delta);
+      const newAbove = Math.max(minH, aboveH + delta);
+      const newBelow = Math.max(minH, belowH - delta);
 
-      aboveBody.style.height = `${newAbove}px`;
-      belowBody.style.height = `${newBelow}px`;
+      // Update wrapper flex-basis so CSS flex layout handles scroll/overflow
+      aboveSection.wrapper.style.flex = `0 0 ${newAbove + headerH}px`;
+      belowSection.wrapper.style.flex = `0 0 ${newBelow + headerH}px`;
 
       aboveH = newAbove;
       belowH = newBelow;
+
+      // Persist custom heights so _layoutStacked() respects them
+      this._customSectionHeights.set(aboveId, newAbove);
+      this._customSectionHeights.set(belowId, newBelow);
 
       // Layout views within resized sections
       const aboveView = this._views.get(aboveId);
@@ -697,6 +712,11 @@ export class ViewContainer extends Disposable implements IGridView {
 
   /**
    * Distribute heights among stacked sections.
+   *
+   * Sets `flex` on each section wrapper so the CSS flex-column layout in
+   * `.view-container-content` handles overflow and scrolling automatically.
+   * Respects custom sash-resized heights when available, otherwise falls
+   * back to equal distribution.
    */
   private _layoutStacked(): void {
     if (this._mode !== 'stacked') return;
@@ -705,18 +725,61 @@ export class ViewContainer extends Disposable implements IGridView {
     const singleView = this._views.size <= 1;
     const headerH = singleView ? 0 : ViewContainer.SECTION_HEADER_HEIGHT;
     const sashH = ViewContainer.SECTION_SASH_HEIGHT;
+    const minH = ViewContainer.SECTION_MIN_BODY_HEIGHT;
 
     const viewIds = this._tabOrder.filter(id => this._views.has(id));
     const expandedIds = viewIds.filter(id => !this._collapsedSections.has(id));
 
-    // Space used by all section headers + collapsed sections + sashes
+    // Space used by all section headers + sashes
     const headerSpace = viewIds.length * headerH;
     const sashSpace = Math.max(0, viewIds.length - 1) * sashH;
     const availableForBodies = Math.max(0, totalH - headerSpace - sashSpace);
 
-    // Split body space equally among expanded sections
     const expandedCount = expandedIds.length;
-    const perSectionBodyH = expandedCount > 0 ? Math.floor(availableForBodies / expandedCount) : 0;
+
+    // Check if we have custom heights from sash-resizing
+    const hasCustom = expandedIds.some(id => this._customSectionHeights.has(id));
+
+    // Compute body heights for each expanded section
+    const bodyHeights = new Map<string, number>();
+
+    if (hasCustom && expandedCount > 0) {
+      // Proportional distribution: use stored ratios, clamped to minimums
+      let totalStored = 0;
+      const stored: number[] = [];
+      for (const id of expandedIds) {
+        const h = this._customSectionHeights.get(id) ?? 0;
+        stored.push(h);
+        totalStored += h;
+      }
+
+      if (totalStored > 0) {
+        // Distribute proportionally, enforce minimum
+        let remaining = availableForBodies;
+        const heights: number[] = [];
+        for (let i = 0; i < expandedIds.length; i++) {
+          const ratio = stored[i] / totalStored;
+          const h = Math.max(minH, Math.floor(ratio * availableForBodies));
+          heights.push(h);
+          remaining -= h;
+        }
+        // Give any leftover to the last section
+        if (heights.length > 0) {
+          heights[heights.length - 1] = Math.max(minH, heights[heights.length - 1] + remaining);
+        }
+        for (let i = 0; i < expandedIds.length; i++) {
+          bodyHeights.set(expandedIds[i], heights[i]);
+        }
+      } else {
+        // All stored are 0 — equal split
+        const perH = expandedCount > 0 ? Math.floor(availableForBodies / expandedCount) : 0;
+        for (const id of expandedIds) bodyHeights.set(id, Math.max(minH, perH));
+      }
+    } else {
+      // No custom heights — equal split
+      const perH = expandedCount > 0 ? Math.floor(availableForBodies / expandedCount) : 0;
+      for (const id of expandedIds) bodyHeights.set(id, Math.max(minH, perH));
+    }
 
     for (const viewId of viewIds) {
       const section = this._sectionElements.get(viewId);
@@ -728,12 +791,17 @@ export class ViewContainer extends Disposable implements IGridView {
       }
 
       if (this._collapsedSections.has(viewId)) {
+        // Collapsed: auto-size to header only
+        section.wrapper.style.flex = '0 0 auto';
         section.body.style.height = '0px';
         hide(section.body);
       } else {
+        const bodyH = bodyHeights.get(viewId) ?? 0;
+        // Lock wrapper to computed size; body fills via CSS flex: 1 + min-height: 0
+        section.wrapper.style.flex = `0 0 ${bodyH + headerH}px`;
+        section.body.style.height = '';
         show(section.body);
-        section.body.style.height = `${perSectionBodyH}px`;
-        view.layout(this._width, perSectionBodyH);
+        view.layout(this._width, bodyH);
       }
     }
   }

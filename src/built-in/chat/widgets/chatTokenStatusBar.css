@@ -1,0 +1,167 @@
+/* chatTokenStatusBar.css — Token usage status bar + detail popup styles */
+
+/* ── Status bar item ── */
+
+/*
+ * The root element is rendered inside .statusbar-item > a.statusbar-item-label,
+ * which already has display:flex, padding:0 5px, gap:3px.
+ * We just add our own gap and cursor; no extra padding to avoid double-spacing.
+ */
+.parallx-token-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  height: 100%;
+}
+
+.parallx-token-statusbar-label {
+  font-size: 12px;
+  white-space: nowrap;
+  color: inherit;
+  line-height: 22px;
+}
+
+.parallx-token-statusbar-bar {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.parallx-token-statusbar-bar svg {
+  display: block;
+}
+
+/* ── Detail popup ── */
+
+.parallx-token-popup {
+  position: fixed;
+  z-index: 10000;
+  background: var(--parallx-menu-background, #252526);
+  border: 1px solid var(--parallx-menu-border, #454545);
+  border-radius: 6px;
+  padding: 12px 16px;
+  min-width: 220px;
+  max-width: 280px;
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+  font-size: 12px;
+  color: var(--parallx-foreground, #ccc);
+  line-height: 1.4;
+}
+
+/* Header */
+.parallx-token-popup-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--parallx-foreground, #e0e0e0);
+  margin-bottom: 4px;
+}
+
+/* Summary text */
+.parallx-token-popup-summary {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.parallx-token-popup-summary-text {
+  font-size: 11px;
+  color: var(--parallx-descriptionForeground, #999);
+}
+
+/* Full-width bar */
+.parallx-token-popup-bar {
+  margin-bottom: 10px;
+}
+
+.parallx-token-popup-bar svg {
+  display: block;
+  width: 100%;
+}
+
+/* Section */
+.parallx-token-popup-section {
+  margin-bottom: 6px;
+}
+
+.parallx-token-popup-section:last-child {
+  margin-bottom: 0;
+}
+
+.parallx-token-popup-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--parallx-foreground, #e0e0e0);
+  margin-bottom: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--parallx-menu-separatorBackground, #3c3c3c);
+}
+
+.parallx-token-popup-section:first-of-type .parallx-token-popup-section-title {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* Row (label + percentage) */
+.parallx-token-popup-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1px 0;
+}
+
+.parallx-token-popup-row-label {
+  font-size: 11px;
+  color: var(--parallx-descriptionForeground, #999);
+  padding-left: 8px;
+}
+
+.parallx-token-popup-row-value {
+  font-size: 11px;
+  color: var(--parallx-foreground, #ccc);
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* ── Indexing indicator (M10 Phase 6 — Task 6.1) ── */
+
+.parallx-token-statusbar-indexing {
+  font-size: 11px;
+  white-space: nowrap;
+  line-height: 22px;
+  padding-left: 6px;
+  border-left: 1px solid var(--parallx-menu-separatorBackground, #3c3c3c);
+  margin-left: 2px;
+}
+
+.parallx-token-statusbar-indexing-active {
+  color: var(--vscode-editorWarning-foreground, #cca700); /* amber — indexing in progress */
+}
+
+.parallx-token-statusbar-indexing-complete {
+  color: var(--parallx-descriptionForeground, #999);
+}
+
+.parallx-token-statusbar-indexing-icon {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-right: 3px;
+}
+
+.parallx-token-statusbar-indexing-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Popup index progress bar row */
+.parallx-token-popup-index-bar {
+  margin-top: 4px;
+  margin-bottom: 2px;
+}
+
+.parallx-token-popup-index-bar svg {
+  display: block;
+  width: 100%;
+}

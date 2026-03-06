@@ -25,7 +25,7 @@ import { $ } from '../ui/dom.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-export const BREADCRUMBS_HEIGHT = 22; // VS Code: BreadcrumbsControl.HEIGHT = 22
+export const BREADCRUMBS_HEIGHT = 28; // Aligned with canvas ribbon height (was 22)
 
 // Codicon-style SVG icons (16×16 viewBox, currentColor, matches project convention)
 const FOLDER_ICON_SVG = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 2.5H6L7.5 4H14.5V13.5H1.5V2.5Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>';

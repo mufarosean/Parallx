@@ -121,6 +121,19 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
     }),
   );
 
+  // 4b. Wire inline AI provider from chat tool (M10 Phase 7 — Task 7.3)
+  //     The chat tool may activate before or after the canvas tool.
+  //     Try immediately, and if the command doesn't exist yet, it's okay —
+  //     new editor panes created after the chat tool activates will get the provider.
+  api.commands.executeCommand<{
+    sendChatRequest: (...args: any[]) => AsyncIterable<any>;
+    retrieveContext?: (query: string) => Promise<string | undefined>;
+  }>('chat.getInlineAIProvider').then((provider) => {
+    if (provider?.sendChatRequest) {
+      editorProvider.setInlineAIProvider(provider.sendChatRequest, provider.retrieveContext);
+    }
+  }).catch(() => { /* chat tool not activated yet — that's fine */ });
+
   // 4a. Register editor provider for Database panes (M8 Phase 2)
   const dbEditorProvider = new DatabaseEditorProvider(_databaseDataService!, _dataService);
   dbEditorProvider.setOpenEditor((opts) => api.editors.openEditor(opts));

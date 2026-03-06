@@ -71,9 +71,26 @@ export const workspaceAddFolder: CommandDescriptor = {
       return;
     }
 
+    // A9.4: Detect first multi-root creation (going from 1 folder to 2+)
+    const wasSingleFolder = wsService.folders.length === 1;
+
     for (const p of folderPaths) {
       const uri = URI.file(p);
       wsService.addFolder(uri);
+    }
+
+    // A9.4: Prompt for workspace name when creating a multi-root workspace
+    if (wasSingleFolder && wsService.folders.length > 1) {
+      const { showInputBoxModal } = await import('../api/notificationService.js');
+      const name = await showInputBoxModal(document.body, {
+        prompt: 'Name this workspace',
+        value: w.workspace.name === 'Default Workspace' ? '' : w.workspace.name,
+        placeholder: 'Enter a workspace name',
+        validateInput: (v: string) => (v.trim().length === 0 ? 'Name cannot be empty' : undefined),
+      });
+      if (name) {
+        w.workspace.rename(name.trim());
+      }
     }
 
     await w._workspaceSaver.save();
@@ -230,7 +247,7 @@ export const workspaceRename: CommandDescriptor = {
     if (newName === w.workspace.name) return; // no change
 
     w.workspace.rename(newName);
-    w._titlebar.setWorkspaceName(newName);
+    w._titlebar.setWorkspaceName(w.workspace.displayName);
     w._updateWindowTitle();
     await w._workspaceSaver.save();
     console.log('[Command] Workspace renamed to "%s"', newName);
@@ -254,21 +271,12 @@ export const workspaceOpenFolder: CommandDescriptor = {
     if (!result || result.length === 0) return; // cancelled
     const folderPath = result[0];
 
-    const wsService = ctx.getService<IWorkspaceService>('IWorkspaceService');
-    if (!wsService) {
-      console.warn('[Command] workspace.openFolder — IWorkspaceService not available');
-      return;
-    }
-
-    // Atomically replace all workspace folders with the selected folder.
-    // Uses updateFolders() which fires a SINGLE onDidChangeFolders event,
-    // matching VS Code's atomic updateFolders pattern. This avoids the
-    // intermediate zero-folder state that would cause the explorer to
-    // flash "No folder opened" before showing the new tree.
-    wsService.updateFolders([{ uri: URI.file(folderPath) }]);
-
-    await w._workspaceSaver.save();
-    console.log('[Command] workspace.openFolder — opened "%s"', folderPath);
+    // Delegate to Workbench.openFolder() which follows the VS Code model:
+    // update folders → save state → reload the entire window.
+    // On reload, _restoreWorkspace() picks up the new folder from saved
+    // state and bootstraps everything from scratch — no in-place
+    // coordination needed.
+    await w.openFolder(folderPath);
   },
 };
 
