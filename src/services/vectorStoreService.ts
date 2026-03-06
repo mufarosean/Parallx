@@ -317,14 +317,14 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     sourceFilter?: string,
   ): Promise<SearchResult[]> {
     const rows = await this._vectorSearch(queryEmbedding, topK, sourceFilter);
-    return rows.map((r, i) => ({
+    return rows.map((r) => ({
       rowid: r.rowid,
       sourceType: r.source_type,
       sourceId: r.source_id,
       chunkIndex: Number(r.chunk_index),
       chunkText: r.chunk_text,
       contextPrefix: r.context_prefix,
-      score: 1 / (RRF_K + i + 1), // Convert rank to RRF-like score
+      score: 1 - ((r.distance ?? 0) / 2), // Cosine similarity 0–1 (sqlite-vec distance is 0–2)
       sources: ['vector'],
     }));
   }

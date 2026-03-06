@@ -24,8 +24,8 @@ import type { IAISettingsService } from '../aiSettings/aiSettingsTypes.js';
 /** Minimum pages to analyze before generating suggestions. */
 const MIN_PAGES_FOR_ANALYSIS = 5;
 
-/** Similarity threshold for pages to be considered related. */
-const CLUSTER_THRESHOLD = 0.003;
+/** Similarity threshold for pages to be considered related (cosine similarity 0–1). */
+const CLUSTER_THRESHOLD = 0.65;
 
 /** Maximum suggestions to store. */
 const MAX_SUGGESTIONS = 10;

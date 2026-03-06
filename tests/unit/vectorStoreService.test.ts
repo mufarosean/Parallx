@@ -502,16 +502,40 @@ describe('VectorStoreService', () => {
   });
 
   describe('vectorSearch()', () => {
-    it('returns vector-only results', async () => {
+    it('returns vector-only results with cosine similarity scores', async () => {
       db.get.mockResolvedValueOnce({ max_id: 0 });
       db.all.mockResolvedValueOnce([
-        vectorRow(5, 'file_chunk', 'main.ts', 0, 'entry point code'),
+        vectorRow(5, 'file_chunk', 'main.ts', 0, 'entry point code', 0.4),
+        vectorRow(6, 'file_chunk', 'utils.ts', 0, 'helper code', 1.2),
       ]);
 
       const results = await service.vectorSearch([0.1, 0.2, 0.3], 5);
-      expect(results).toHaveLength(1);
+      expect(results).toHaveLength(2);
       expect(results[0].rowid).toBe(5);
       expect(results[0].sources).toEqual(['vector']);
+      // Cosine similarity = 1 - (distance / 2)
+      expect(results[0].score).toBeCloseTo(0.8, 5);  // 1 - (0.4 / 2)
+      expect(results[1].score).toBeCloseTo(0.4, 5);  // 1 - (1.2 / 2)
+    });
+
+    it('returns score 1.0 for distance 0 (identical)', async () => {
+      db.get.mockResolvedValueOnce({ max_id: 0 });
+      db.all.mockResolvedValueOnce([
+        vectorRow(7, 'page_block', 'p1', 0, 'identical content', 0),
+      ]);
+
+      const results = await service.vectorSearch([0.1], 5);
+      expect(results[0].score).toBe(1.0);
+    });
+
+    it('returns score 0.0 for distance 2 (opposite)', async () => {
+      db.get.mockResolvedValueOnce({ max_id: 0 });
+      db.all.mockResolvedValueOnce([
+        vectorRow(8, 'page_block', 'p2', 0, 'opposite content', 2.0),
+      ]);
+
+      const results = await service.vectorSearch([0.1], 5);
+      expect(results[0].score).toBe(0.0);
     });
   });
 

@@ -25,7 +25,7 @@ import type { SearchResult } from './vectorStoreService.js';
 const DEFAULT_MAX_RESULTS = 8;
 
 /** Minimum similarity score to include in results. */
-const MIN_SCORE = 0.001;
+const MIN_SCORE = 0.3;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

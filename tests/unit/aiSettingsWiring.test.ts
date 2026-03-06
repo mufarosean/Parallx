@@ -231,8 +231,8 @@ describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
 
     // Vector search returns results with moderate scores
     mockVector.vectorSearch.mockResolvedValue([
-      { sourceType: 'page_block', sourceId: 'p2', score: 0.005, text: 'moderately similar' },
-      { sourceType: 'page_block', sourceId: 'p3', score: 0.004, text: 'somewhat similar' },
+      { sourceType: 'page_block', sourceId: 'p2', score: 0.75, text: 'moderately similar' },
+      { sourceType: 'page_block', sourceId: 'p3', score: 0.70, text: 'somewhat similar' },
     ]);
 
     const service = new ProactiveSuggestionsService(

@@ -380,7 +380,7 @@ describe('ProactiveSuggestionsService', () => {
   it('analyze returns suggestions when enough pages exist', async () => {
     // Mock 5+ pages
     mockVector.vectorSearch.mockResolvedValue([
-      { sourceType: 'page_block', sourceId: 'p2', score: 0.005, text: 'similar' },
+      { sourceType: 'page_block', sourceId: 'p2', score: 0.75, text: 'similar' },
     ]);
 
     const result = await service.analyze();
