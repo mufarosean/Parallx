@@ -7,7 +7,7 @@
   display: flex;
   height: 100%;
   overflow: hidden;
-  background: var(--vscode-editor-background, #1e1e1e);
+  background: var(--vscode-sideBar-background, #181818);
   color: var(--vscode-foreground, #ccc);
   font-family: var(--vscode-font-family, sans-serif);
   font-size: var(--vscode-font-size, 13px);
@@ -144,6 +144,18 @@
 .ai-settings-preset-switcher__new .ui-button {
   width: 100%;
   font-size: 12px;
+  background: transparent;
+  border: 1px dashed var(--vscode-widget-border, rgba(255, 255, 255, 0.15));
+  color: var(--vscode-descriptionForeground, #888);
+  border-radius: 4px;
+  padding: 5px 12px;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+
+.ai-settings-preset-switcher__new .ui-button:hover {
+  color: var(--vscode-foreground, #ccc);
+  border-color: var(--vscode-focusBorder, #007fd4);
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.04));
 }
 
 .ai-settings-preset-switcher__input-row {
@@ -266,7 +278,6 @@
 .ai-settings-avatar-btn {
   width: 36px;
   height: 36px;
-  font-size: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -275,16 +286,25 @@
   border-radius: 6px;
   cursor: pointer;
   transition: border-color 0.15s, transform 0.1s;
+  color: var(--vscode-descriptionForeground, rgba(204, 204, 204, 0.7));
+  padding: 6px;
+}
+
+.ai-settings-avatar-btn svg {
+  width: 20px;
+  height: 20px;
 }
 
 .ai-settings-avatar-btn:hover {
   border-color: var(--vscode-widget-border, rgba(255, 255, 255, 0.2));
   transform: scale(1.1);
+  color: var(--vscode-foreground, #cccccc);
 }
 
 .ai-settings-avatar-btn--active {
   border-color: var(--vscode-focusBorder, #007fd4);
   background: var(--vscode-list-activeSelectionBackground, rgba(0, 127, 212, 0.25));
+  color: var(--vscode-foreground, #cccccc);
 }
 
 /* ── Collapsible ──────────────────────────────────────────────────────── */
@@ -501,6 +521,11 @@
 /* Additional slider theming specific to the AI Settings panel context.
    Base slider styles are in src/ui/slider.css. */
 
+.ai-settings-row .ui-slider {
+  --slider-track-height: 6px;
+  --slider-thumb-size: 16px;
+}
+
 .ai-settings-row .ui-slider__stops {
   padding-top: 2px;
 }
@@ -509,6 +534,7 @@
   font-size: 10px;
   color: var(--vscode-descriptionForeground, #888);
   cursor: pointer;
+  transition: color 0.12s;
 }
 
 .ai-settings-row .ui-slider__stop:hover {

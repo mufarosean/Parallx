@@ -89,20 +89,24 @@ export class Slider extends Disposable {
     }
     this.element.appendChild(this._input);
 
-    // Labeled stops
+    // Labeled stops — positioned via flexbox space-between
     if (options?.labeledStops && options.labeledStops.length > 0) {
       this._stopsEl = $('div.ui-slider__stops');
-      for (const stop of options.labeledStops) {
-        const pct = ((stop.value - min) / (max - min)) * 100;
+      // Sort stops by value so order matches visual position
+      const sorted = [...options.labeledStops].sort((a, b) => a.value - b.value);
+      for (const stop of sorted) {
         const stopEl = $('span.ui-slider__stop', stop.label);
-        stopEl.style.left = `${pct}%`;
         this._stopsEl.appendChild(stopEl);
       }
       this.element.appendChild(this._stopsEl);
     }
 
-    // Events
+    // Set initial fill
+    this._syncFill();
+
+    // Events — sync fill on every input
     this._register(addDisposableListener(this._input, 'input', () => {
+      this._syncFill();
       this._onDidChange.fire(this.value);
     }));
 
@@ -117,6 +121,7 @@ export class Slider extends Disposable {
 
   set value(v: number) {
     this._input.value = String(v);
+    this._syncFill();
   }
 
   get disabled(): boolean {
@@ -132,5 +137,16 @@ export class Slider extends Disposable {
 
   focus(): void {
     this._input.focus();
+  }
+
+  // ─── Private ─────────────────────────────────────────────────────────
+
+  /** Keep `--slider-fill` in sync with the current value. */
+  private _syncFill(): void {
+    const min = parseFloat(this._input.min);
+    const max = parseFloat(this._input.max);
+    const val = parseFloat(this._input.value);
+    const pct = ((val - min) / (max - min)) * 100;
+    this.element.style.setProperty('--slider-fill', `${pct}%`);
   }
 }
