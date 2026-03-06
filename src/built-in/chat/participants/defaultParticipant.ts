@@ -766,14 +766,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     if (contextParts.length > 0) {
       const budgetService = new TokenBudgetService();
 
-      // M20: Apply context budget from unified config if available
+      // M20: Apply elastic context budget from unified config if available
       const unifiedBudget = services.unifiedConfigService?.getEffectiveConfig().retrieval.contextBudget;
       if (unifiedBudget) {
-        budgetService.setConfig({
-          systemPrompt: unifiedBudget.systemPrompt,
-          ragContext: unifiedBudget.ragContext,
-          history: unifiedBudget.history,
-          userMessage: unifiedBudget.userMessage,
+        budgetService.setElasticConfig({
+          trimPriority: unifiedBudget.trimPriority,
+          minPercent: unifiedBudget.minPercent,
         });
       }
 
@@ -826,18 +824,17 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
       // Report budget breakdown to the UI (Task 4.8)
       // Use post-trim values from budgetResult.slots so the UI shows actual usage
+      // M20 Phase G: With elastic allocation, "allocated" = actual demand (no fixed ceilings)
       if (services.reportBudget) {
         const sysTokens = Math.ceil((messages[0]?.content ?? '').length / 4);
         const ragTokens = Math.ceil((budgetResult.slots['ragContext'] ?? ragContent).length / 4);
         const histTokens = Math.ceil((budgetResult.slots['history'] ?? historyContent).length / 4);
         const userTokens = Math.ceil(userText.length / 4);
-        const totalSlots = contextWindow;
-        const budgetCfg = budgetService.getConfig();
         services.reportBudget([
-          { label: 'System', used: sysTokens, allocated: Math.ceil(totalSlots * budgetCfg.systemPrompt / 100), color: '#6c71c4' },
-          { label: 'RAG',    used: ragTokens,  allocated: Math.ceil(totalSlots * budgetCfg.ragContext / 100), color: '#268bd2' },
-          { label: 'History', used: histTokens, allocated: Math.ceil(totalSlots * budgetCfg.history / 100), color: '#859900' },
-          { label: 'User',   used: userTokens,  allocated: Math.ceil(totalSlots * budgetCfg.userMessage / 100), color: '#cb4b16' },
+          { label: 'System', used: sysTokens, allocated: sysTokens, color: '#6c71c4' },
+          { label: 'RAG',    used: ragTokens,  allocated: ragTokens,  color: '#268bd2' },
+          { label: 'History', used: histTokens, allocated: histTokens, color: '#859900' },
+          { label: 'User',   used: userTokens,  allocated: userTokens,  color: '#cb4b16' },
         ]);
       }
     }

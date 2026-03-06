@@ -55,9 +55,12 @@ describe('IUnifiedAIConfig defaults', () => {
     expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragScoreThreshold).toBe(0.025);
   });
 
-  it('context budget sums to 100', () => {
+  it('context budget has elastic shape (M20 Phase G)', () => {
     const b = DEFAULT_UNIFIED_CONFIG.retrieval.contextBudget;
-    expect(b.systemPrompt + b.ragContext + b.history + b.userMessage).toBe(100);
+    expect(b).toHaveProperty('trimPriority');
+    expect(b).toHaveProperty('minPercent');
+    expect(b.trimPriority.userMessage).toBe(4); // never trimmed (highest)
+    expect(b.trimPriority.history).toBe(1); // trimmed first (lowest)
   });
 
   it('agent defaults match defaultParticipant constants', () => {
@@ -606,32 +609,32 @@ describe('A.4 Consumer wiring', () => {
   // ── TokenBudgetService.setConfig ──
 
   describe('TokenBudgetService reads unified config budget', () => {
-    it('setConfig overrides default budget percentages', async () => {
+    it('setElasticConfig applies elastic config from unified defaults', async () => {
       const { TokenBudgetService } = await import('../../src/services/tokenBudgetService');
       const budgetService = new TokenBudgetService();
 
-      budgetService.setConfig({
-        systemPrompt: 15,
-        ragContext: 25,
-        history: 35,
-        userMessage: 25,
+      const budget = DEFAULT_UNIFIED_CONFIG.retrieval.contextBudget;
+      budgetService.setElasticConfig({
+        trimPriority: budget.trimPriority,
+        minPercent: budget.minPercent,
       });
 
-      const cfg = budgetService.getConfig();
-      expect(cfg.systemPrompt).toBe(15);
-      expect(cfg.ragContext).toBe(25);
-      expect(cfg.history).toBe(35);
-      expect(cfg.userMessage).toBe(25);
+      const cfg = budgetService.getElasticConfig();
+      expect(cfg.trimPriority.history).toBe(1);
+      expect(cfg.trimPriority.ragContext).toBe(2);
+      expect(cfg.trimPriority.systemPrompt).toBe(3);
+      expect(cfg.trimPriority.userMessage).toBe(4);
     });
 
-    it('contextBudget shape matches TokenBudgetService config shape', () => {
+    it('contextBudget shape has elastic trimPriority and minPercent', () => {
       const budget = DEFAULT_UNIFIED_CONFIG.retrieval.contextBudget;
-      expect(budget).toHaveProperty('systemPrompt');
-      expect(budget).toHaveProperty('ragContext');
-      expect(budget).toHaveProperty('history');
-      expect(budget).toHaveProperty('userMessage');
-      // Values should sum to 100
-      expect(budget.systemPrompt + budget.ragContext + budget.history + budget.userMessage).toBe(100);
+      expect(budget).toHaveProperty('trimPriority');
+      expect(budget).toHaveProperty('minPercent');
+      expect(budget.trimPriority).toHaveProperty('systemPrompt');
+      expect(budget.trimPriority).toHaveProperty('ragContext');
+      expect(budget.trimPriority).toHaveProperty('history');
+      expect(budget.trimPriority).toHaveProperty('userMessage');
+      expect(budget.minPercent).toHaveProperty('systemPrompt');
     });
   });
 

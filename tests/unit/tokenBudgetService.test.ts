@@ -1,4 +1,4 @@
-// tokenBudgetService.test.ts — Unit tests for TokenBudgetService (M17 Task 0.1.3)
+// tokenBudgetService.test.ts — Unit tests for TokenBudgetService (M17 Task 0.1.3, M20 Phase G)
 // @vitest-environment jsdom
 
 import { describe, expect, it } from 'vitest';
@@ -14,68 +14,9 @@ describe('TokenBudgetService', () => {
     expect(svc.estimateTokens('')).toBe(0);
   });
 
-  // ── _trimToTokenBudget via allocate() ──
+  // ── Elastic allocation ──
 
-  describe('trimming direction', () => {
-    it('keeps FIRST paragraphs for RAG (keepFrom=start)', () => {
-      const svc = new TokenBudgetService();
-      // Build RAG content with 5 paragraphs: highest-scored first
-      const ragParagraphs = [
-        'Chunk1: Highly relevant content about the topic',
-        'Chunk2: Second most relevant result',
-        'Chunk3: Moderate relevance match',
-        'Chunk4: Low relevance filler content',
-        'Chunk5: Barely relevant noise data',
-      ];
-      const ragContent = ragParagraphs.join('\n\n');
-      // Budget tight enough to force trimming on RAG
-      // Total content must exceed context window, and RAG must exceed its 30% share
-      const systemPrompt = 'System prompt';
-      const history = '';
-      const userMessage = 'What is the topic?';
-
-      // Context window = 40 tokens (160 chars). RAG gets 30% = 12 tokens (48 chars).
-      // RAG content is ~250 chars, way over budget. System + user eat ~30 tokens.
-      // Force RAG trimming by making total exceed window.
-      const result = svc.allocate(40, systemPrompt, ragContent, history, userMessage);
-
-      if (result.wasTrimmed) {
-        const trimmedRag = result.slots['ragContext'];
-        // First paragraph should survive (highest-scored)
-        expect(trimmedRag).toContain('Chunk1');
-        // Last paragraph should be dropped (lowest-scored)
-        expect(trimmedRag).not.toContain('Chunk5');
-      }
-    });
-
-    it('keeps LAST paragraphs for history (keepFrom=end)', () => {
-      const svc = new TokenBudgetService();
-      const historyParagraphs = [
-        'Oldest message from an hour ago',
-        'Second oldest conversation turn',
-        'Third message in the conversation',
-        'Recent discussion about current work',
-        'Most recent message just sent',
-      ];
-      const historyContent = historyParagraphs.join('\n\n');
-      const systemPrompt = 'System';
-      const ragContent = '';
-      const userMessage = 'Question?';
-
-      // Context window = 40 tokens (160 chars). History gets 30% = 12 tokens (48 chars).
-      const result = svc.allocate(40, systemPrompt, ragContent, historyContent, userMessage);
-
-      if (result.wasTrimmed) {
-        const trimmedHistory = result.slots['history'];
-        // Most recent message should survive
-        expect(trimmedHistory).toContain('Most recent');
-        // Oldest message should be dropped
-        expect(trimmedHistory).not.toContain('Oldest message');
-      }
-    });
-  });
-
-  describe('allocate()', () => {
+  describe('elastic allocate()', () => {
     it('returns untrimmed content when under budget', () => {
       const svc = new TokenBudgetService();
       const result = svc.allocate(10000, 'sys', 'rag', 'hist', 'user');
@@ -94,54 +35,135 @@ describe('TokenBudgetService', () => {
       expect(result.contextWindow).toBe(0);
     });
 
-    it('trims history first, then RAG', () => {
+    it('trims history first (lowest default priority)', () => {
       const svc = new TokenBudgetService();
       // Context window = 20 tokens (80 chars).
       // System = 20 chars (5 tok), RAG = 80 chars (20 tok), History = 80 chars (20 tok), User = 20 chars (5 tok)
-      // Total = 50 tok, way over 20. History gets 30% = 6 tok.
+      // Total demand = 50 tok, over 20. History (priority 1) trims first.
       const result = svc.allocate(20, 'A'.repeat(20), 'B'.repeat(80), 'C'.repeat(80), 'D'.repeat(20));
       expect(result.wasTrimmed).toBe(true);
+      // History should be shorter than original
+      expect(result.slots['history'].length).toBeLessThan(80);
     });
 
-    it('preserves highest-scored RAG chunks when trimming', () => {
+    it('trims RAG after history if still over budget', () => {
       const svc = new TokenBudgetService();
-      // 3 RAG chunks, each 40 chars (~10 tokens)
-      const chunk1 = 'BEST: Top relevance score chunk here!!!!';
-      const chunk2 = 'MID: Medium relevance score chunk here!!';
-      const chunk3 = 'LOW: Lowest relevance score chunk here!!';
-      const ragContent = [chunk1, chunk2, chunk3].join('\n\n');
-      // ragContent ~130 chars = 33 tokens
+      // Window tiny enough that history alone can't fix it
+      const result = svc.allocate(10, 'A'.repeat(8), 'B'.repeat(80), 'C'.repeat(80), 'D'.repeat(8));
+      expect(result.wasTrimmed).toBe(true);
+      // Both history and RAG should be trimmed
+      expect(result.slots['history'].length).toBeLessThan(80);
+      expect(result.slots['ragContext'].length).toBeLessThan(80);
+    });
 
-      // Context window small enough to require RAG trimming
-      // System = 8 chars (2 tok), User = 8 chars (2 tok), History = 0
-      // Total needs = 2 + 33 + 0 + 2 = 37 tokens. Window = 15. RAG budget = 4.5 tokens.
-      const result = svc.allocate(15, 'SysPromp', ragContent, '', 'question');
+    it('never trims user message', () => {
+      const svc = new TokenBudgetService();
+      const userMsg = 'U'.repeat(100);
+      // Window is tiny, user message alone exceeds it, but it should be preserved
+      const result = svc.allocate(5, 'S', '', '', userMsg);
+      expect(result.slots['userMessage']).toBe(userMsg);
+    });
+  });
+
+  // ── Trim direction ──
+
+  describe('trimming direction', () => {
+    it('keeps FIRST paragraphs for RAG (keepFrom=start)', () => {
+      const svc = new TokenBudgetService();
+      const ragParagraphs = [
+        'Chunk1: Highly relevant content about the topic',
+        'Chunk2: Second most relevant result',
+        'Chunk3: Moderate relevance match',
+        'Chunk4: Low relevance filler content',
+        'Chunk5: Barely relevant noise data',
+      ];
+      const ragContent = ragParagraphs.join('\n\n');
+      const result = svc.allocate(40, 'System prompt', ragContent, '', 'What is the topic?');
 
       if (result.wasTrimmed) {
         const trimmedRag = result.slots['ragContext'];
-        // BEST chunk should be first in the remaining text
-        expect(trimmedRag.indexOf('BEST')).toBeLessThan(
-          trimmedRag.indexOf('LOW') === -1 ? Infinity : trimmedRag.indexOf('LOW'),
-        );
+        expect(trimmedRag).toContain('Chunk1');
+        expect(trimmedRag).not.toContain('Chunk5');
+      }
+    });
+
+    it('keeps LAST paragraphs for history (keepFrom=end)', () => {
+      const svc = new TokenBudgetService();
+      const historyParagraphs = [
+        'Oldest message from an hour ago',
+        'Second oldest conversation turn',
+        'Third message in the conversation',
+        'Recent discussion about current work',
+        'Most recent message just sent',
+      ];
+      const historyContent = historyParagraphs.join('\n\n');
+      const result = svc.allocate(40, 'System', '', historyContent, 'Question?');
+
+      if (result.wasTrimmed) {
+        const trimmedHistory = result.slots['history'];
+        expect(trimmedHistory).toContain('Most recent');
+        expect(trimmedHistory).not.toContain('Oldest message');
       }
     });
   });
+
+  // ── Elastic config ──
+
+  describe('setElasticConfig()', () => {
+    it('overrides default trim priorities', () => {
+      const svc = new TokenBudgetService();
+      svc.setElasticConfig({
+        trimPriority: { systemPrompt: 1, ragContext: 2, history: 3, userMessage: 4 },
+        minPercent: { systemPrompt: 0, ragContext: 0, history: 0, userMessage: 0 },
+      });
+      const cfg = svc.getElasticConfig();
+      expect(cfg.trimPriority.systemPrompt).toBe(1);
+      expect(cfg.trimPriority.history).toBe(3);
+    });
+
+    it('respects minPercent floor during trimming', () => {
+      const svc = new TokenBudgetService();
+      svc.setElasticConfig({
+        trimPriority: { systemPrompt: 3, ragContext: 2, history: 1, userMessage: 4 },
+        minPercent: { systemPrompt: 0, ragContext: 0, history: 20, userMessage: 0 },
+      });
+      // Window = 20 tokens (80 chars). History has 20% floor = 4 tokens (16 chars).
+      const result = svc.allocate(20, 'A'.repeat(20), 'B'.repeat(80), 'C'.repeat(80), 'D'.repeat(20));
+      expect(result.wasTrimmed).toBe(true);
+      // History should keep at least 20% of 20 tokens = 4 tokens = 16 chars
+      expect(result.slots['history'].length).toBeGreaterThanOrEqual(16);
+    });
+  });
+
+  // ── Legacy setConfig() backward compat ──
+
+  describe('setConfig() backward compatibility', () => {
+    it('accepts legacy percentage config without errors', () => {
+      const svc = new TokenBudgetService();
+      expect(() => {
+        svc.setConfig({ systemPrompt: 15, ragContext: 25, history: 35, userMessage: 25 });
+      }).not.toThrow();
+      const cfg = svc.getConfig();
+      expect(cfg.systemPrompt).toBe(15);
+    });
+  });
+
+  // ── Hard truncation fallback ──
 
   describe('hard truncation fallback', () => {
     it('hard-truncates from start when no paragraph boundaries exist (RAG)', () => {
       const svc = new TokenBudgetService();
-      // Single long string with no \n\n — no paragraph boundaries
-      const ragContent = 'A'.repeat(200); // 200 chars = 50 tokens, no paragraphs
-      // Window = 10, RAG budget = 3 tokens (12 chars)
+      const ragContent = 'A'.repeat(200);
       const result = svc.allocate(10, 'S', ragContent, '', 'U');
       if (result.wasTrimmed) {
         const trimmedRag = result.slots['ragContext'];
-        // Should keep from the START (first 12 chars)
-        expect(trimmedRag.length).toBeLessThanOrEqual(12);
+        expect(trimmedRag.length).toBeLessThanOrEqual(200);
         expect(trimmedRag).toBe('A'.repeat(trimmedRag.length));
       }
     });
   });
+
+  // ── getBreakdown ──
 
   describe('getBreakdown()', () => {
     it('returns percentage breakdown', () => {

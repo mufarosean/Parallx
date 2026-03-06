@@ -26,8 +26,9 @@
 9. [Phase D — Save Feedback & User Communication](#phase-d--save-feedback--user-communication)
 10. [Phase E — Tool Configuration Integration](#phase-e--tool-configuration-integration)
 11. [Phase F — Memory Management](#phase-f--memory-management)
-12. [Migration & Backward Compatibility](#migration--backward-compatibility)
-13. [Task Tracker](#task-tracker)
+12. [Phase G — Elastic Context Budget](#phase-g--elastic-context-budget)
+13. [Migration & Backward Compatibility](#migration--backward-compatibility)
+14. [Task Tracker](#task-tracker)
 14. [Verification Checklist](#verification-checklist)
 15. [Risk Register](#risk-register)
 
@@ -595,6 +596,109 @@ VectorStoreService        TokenBudgetManager
 
 ---
 
+## Phase G — Elastic Context Budget
+
+> Replace the fixed-percentage token budget system with a demand-driven elastic
+> allocator. The current system (10/30/30/30% split) artificially limits each
+> slot even when the context window has spare capacity. The AI should use all
+> available context, only trimming when truly necessary.
+
+### Rationale
+
+The fixed-percentage budget was built because each content slot (system prompt,
+RAG, history, user message) is assembled independently before the LLM call.
+Pre-assigning percentages gave each assembler a ceiling to target. In practice:
+
+1. **Wasted space** — A 2-line history gets 30% reserved; that space goes unused.
+2. **No redistribution** — `allocate()` trims down but never gives surplus to hungry slots.
+3. **User confusion** — Four linked sliders summing to 100% is the most complex UI in the panel.
+4. **Already partial** — When total content fits the window (line 157-163 of
+   `tokenBudgetService.ts`), everything passes through untrimmed. The percentages
+   only affect the overflow path.
+
+An elastic allocator gives each slot what it needs, only trimming in priority
+order when total demand exceeds the context window. The 4-slider UI is replaced
+by a simple trim-priority picker.
+
+### Task G.1 — Elastic allocator in `TokenBudgetService` (3h)
+
+Rewrite `allocate()` with demand-first logic:
+
+1. Compute actual token demand for each slot (`chars / 4`).
+2. If total demand ≤ context window → return everything untrimmed (same as today).
+3. If total demand > window → compute surplus needed, trim in priority order:
+   - **Priority 1** (trim first): History — oldest paragraphs first.
+   - **Priority 2**: RAG — lowest-scored chunks first.
+   - **Priority 3**: System prompt — only as absolute last resort (warn user).
+   - **Never trim**: User message.
+4. After trimming a slot, redistribute its freed tokens to still-over-budget slots.
+5. Stop as soon as total fits within the window.
+
+Add new config type:
+```typescript
+export interface IElasticBudgetConfig {
+  /** Trim priority per slot (lower = trimmed first). */
+  readonly trimPriority: {
+    readonly systemPrompt: number; // default: 3 (trim last)
+    readonly ragContext: number;   // default: 2
+    readonly history: number;      // default: 1 (trim first)
+    readonly userMessage: number;  // default: 4 (never)
+  };
+  /** Minimum percentage floor per slot (0–100). Default: 0 for all. */
+  readonly minPercent: {
+    readonly systemPrompt: number; // default: 5
+    readonly ragContext: number;   // default: 0
+    readonly history: number;      // default: 0
+    readonly userMessage: number;  // default: 0
+  };
+}
+```
+
+Keep `_trimToTokenBudget()` (paragraph-boundary trimming) — only the ceiling
+math in `allocate()` changes. `setConfig()` accepts either legacy percentage
+config or new elastic config for backward compatibility.
+
+- Preserve `IBudgetResult` shape so callers don't break.
+- `getBreakdown()` reports actual usage, not pre-allocated ceilings.
+
+### Task G.2 — Simplify Retrieval section UI (2h)
+
+Replace the 4 linked budget sliders with a simpler control:
+
+- Remove: `_buildBudgetControls()`, `_redistributeBudget()`, `_updateBudgetBar()`,
+  all 4 slider + value label fields, `_budgetBar`, `_budgetSegments`.
+- Add: **Trim Priority** picker — a read-only summary showing the trim order
+  ("History → RAG → System → User") with a note explaining elastic allocation.
+- Keep: Auto-RAG toggle, RAG Top K slider, Score Threshold slider (unchanged).
+- CSS cleanup: remove `.ai-settings-budget__*` styles (no longer needed).
+
+Update `IUnifiedContextBudgetConfig` in `unifiedConfigTypes.ts`:
+- Replace the 4 percentage fields with `IElasticBudgetConfig` shape.
+- Update `DEFAULT_UNIFIED_CONFIG.retrieval.contextBudget` accordingly.
+- Update `fromLegacyParallxConfig()` migration to map old percentages → elastic defaults.
+
+### Task G.3 — Update `defaultParticipant.ts` caller (1h)
+
+- Remove `budgetService.setConfig(unifiedBudget)` percentage-based call.
+- Pass elastic config instead (trim priorities + min floors).
+- Fix `reportBudget` call: report actual slot usage from `budgetResult.tokenEstimates`
+  instead of computing `contextWindow * percentage / 100` for the `allocated` field.
+  The elastic allocator's result already contains the real allocation.
+
+### Task G.4 — Update tests (2h)
+
+- **`tokenBudgetService.test.ts`**: Rewrite to test elastic behavior:
+  - Under budget → no trimming (unchanged).
+  - History trimmed first when over budget.
+  - RAG trimmed second if history trimming wasn't enough.
+  - Min-percent floors are respected.
+  - Backward-compatible `setConfig()` with legacy percentages still works.
+- **`unifiedAIConfigService.test.ts`**: Remove "sums to 100" assertion.
+  Update `contextBudget` shape-matching test for new `IElasticBudgetConfig`.
+- **`aiSettingsPanel.test.ts`**: No change needed (section count unchanged).
+
+---
+
 ## Migration & Backward Compatibility
 
 ### Profile migration (A.2)
@@ -645,8 +749,12 @@ VectorStoreService        TokenBudgetManager
 | **F.1** | Memory section in AI Hub | 3h | C.1 | ✅ |
 | **F.2** | Wire clearAll and per-item deletion | 2h | F.1 | ✅ |
 | **F.3** | Memory creation toggle | 1h | F.2, A.4 | ✅ |
+| **G.1** | Elastic budget allocator | 3h | A.4 | ✅ |
+| **G.2** | Simplify Retrieval section UI | 2h | G.1, C.3 | ✅ |
+| **G.3** | Update defaultParticipant caller | 1h | G.1 | ✅ |
+| **G.4** | Update tests | 2h | G.1, G.2 | ✅ |
 
-**Total estimated: ~44 hours across 23 tasks**
+**Total estimated: ~52 hours across 27 tasks**
 
 ---
 
@@ -689,6 +797,13 @@ VectorStoreService        TokenBudgetManager
 - [x] "Clear All" works with confirmation
 - [x] Memory toggle prevents new memory creation when disabled
 
+### Phase G
+- [x] Elastic allocator gives each slot its full demand when under budget
+- [x] History trimmed first, then RAG, when over budget
+- [x] Linked budget sliders replaced with trim-priority info display
+- [x] `reportBudget` shows actual usage, not pre-allocated ceilings
+- [x] Legacy percentage configs still accepted via `setConfig()`
+
 ---
 
 ## Risk Register
@@ -701,4 +816,4 @@ VectorStoreService        TokenBudgetManager
 | Panel becomes overwhelming with too many sections | Medium | Collapsible sections with smart defaults hidden. Most users interact only with preset switcher and a few toggles. |
 | Breaking change for `IAISettingsService` consumers | Medium | Facade pattern — old interface wraps new service. Gradual migration. |
 | Tool picker loses discoverability when moved from chat | Low | Keep a shortcut icon in chat toolbar that opens hub's tool section. Status bar shows tool count. |
-| Context budget sliders UX (linked sliders are hard) | Medium | Research VS Code's approach to percentage allocation. Consider alternative: preset allocation templates (Balanced / RAG-Heavy / History-Heavy) with manual override. |
+| Context budget sliders UX (linked sliders are hard) | Medium | ~~Research VS Code's approach to percentage allocation.~~ **Resolved in Phase G**: replaced with elastic demand-driven allocation and simplified UI. |

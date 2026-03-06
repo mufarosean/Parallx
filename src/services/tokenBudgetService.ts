@@ -1,15 +1,18 @@
-// tokenBudgetService.ts — Token budget manager (M11 Task 1.8)
+// tokenBudgetService.ts — Token budget manager (M11 Task 1.8, M20 Phase G)
 //
-// Allocates the model's context window into priority-based slots:
-//   System prompt (SOUL.md + AGENTS.md + TOOLS.md + rules): 10%
-//   RAG context (auto-retrieved + @mentions):               30%
-//   Conversation history:                                   30%
-//   User message (current message + explicit attachments):  30%
+// M20 Phase G rewrote the allocator from fixed-percentage ceilings to elastic
+// demand-driven allocation:
 //
-// When a slot overflows, content is trimmed with this priority:
-//   1. Trim history (oldest first)
-//   2. Trim RAG results (lowest-scoring first)
-//   3. Warn user (never trim system prompt or current message)
+//   1. Compute each slot's actual token demand.
+//   2. If total demand ≤ context window → return everything (no trimming).
+//   3. If over → trim in priority order (lowest priority first) until it fits.
+//      Default: History (1) → RAG (2) → SystemPrompt (3). User message is
+//      never trimmed.
+//
+// The old percentage-based `ITokenBudgetConfig` is still accepted by
+// `setConfig()` for backward compatibility but is no longer used for
+// allocation. The elastic config (`IElasticBudgetConfig`) controls trim
+// priorities and optional per-slot minimum floors.
 //
 // Token estimation uses chars/4 heuristic (same as VS Code).
 //
@@ -20,9 +23,9 @@
 // ── Types ──
 
 /**
- * Token budget configuration.
- * Each field is a percentage (0-100) of the total context window.
- * Must sum to 100.
+ * Legacy token budget configuration (percentage-based).
+ * Kept for backward compatibility with `setConfig()`.
+ * No longer used for allocation — elastic config takes priority.
  */
 export interface ITokenBudgetConfig {
   /** Budget for system prompt (SOUL.md / AGENTS.md / TOOLS.md / rules). Default: 10 */
@@ -36,11 +39,42 @@ export interface ITokenBudgetConfig {
 }
 
 /**
+ * Elastic budget configuration (M20 Phase G).
+ *
+ * Instead of fixed percentage ceilings, the allocator gives each slot its full
+ * demand when the window has capacity. When over budget, it trims slots in
+ * priority order (lower number = trimmed first).
+ */
+export interface IElasticBudgetConfig {
+  /** Trim priority per slot (lower = trimmed first). */
+  readonly trimPriority: {
+    readonly systemPrompt: number;
+    readonly ragContext: number;
+    readonly history: number;
+    readonly userMessage: number;
+  };
+  /**
+   * Minimum percentage floor per slot (0–100). Even when trimming aggressively,
+   * each slot keeps at least this percentage of the context window.
+   * Default: { systemPrompt: 5, ragContext: 0, history: 0, userMessage: 0 }
+   */
+  readonly minPercent: {
+    readonly systemPrompt: number;
+    readonly ragContext: number;
+    readonly history: number;
+    readonly userMessage: number;
+  };
+}
+
+/** Slot name literals. */
+export type BudgetSlotName = 'systemPrompt' | 'ragContext' | 'history' | 'userMessage';
+
+/**
  * A content slot to be budgeted.
  */
 export interface IBudgetSlot {
   /** Slot identifier. */
-  readonly name: 'systemPrompt' | 'ragContext' | 'history' | 'userMessage';
+  readonly name: BudgetSlotName;
   /** The content to budget. */
   readonly content: string;
   /** Whether this content can be trimmed. System prompt and user message are typically not trimmable. */
@@ -57,9 +91,9 @@ export interface IBudgetResult {
   readonly wasTrimmed: boolean;
   /** Trimmed content per slot. */
   readonly slots: Record<string, string>;
-  /** Token estimates per slot. */
+  /** Token estimates per slot (post-trim). */
   readonly tokenEstimates: Record<string, number>;
-  /** Total estimated tokens. */
+  /** Total estimated tokens (post-trim). */
   readonly totalTokens: number;
   /** Context window size. */
   readonly contextWindow: number;
@@ -69,7 +103,32 @@ export interface IBudgetResult {
 
 // ── Constants ──
 
-const DEFAULT_BUDGET: ITokenBudgetConfig = {
+const DEFAULT_ELASTIC_CONFIG: IElasticBudgetConfig = {
+  trimPriority: {
+    systemPrompt: 3,  // trim last (important system context)
+    ragContext: 2,     // trim second
+    history: 1,        // trim first (oldest messages most expendable)
+    userMessage: 4,    // never trim (current request)
+  },
+  minPercent: {
+    systemPrompt: 5,   // always keep at least 5% for system prompt
+    ragContext: 0,
+    history: 0,
+    userMessage: 0,
+  },
+};
+
+/** Slot → trim direction mapping. */
+const TRIM_DIRECTION: Record<BudgetSlotName, 'start' | 'end'> = {
+  systemPrompt: 'start', // keep beginning of system prompt
+  ragContext: 'start',    // keep highest-scored chunks (first)
+  history: 'end',         // keep most recent messages (last)
+  userMessage: 'start',   // keep beginning of user message
+};
+
+// ── Legacy defaults (for backward-compatible getConfig) ──
+
+const DEFAULT_LEGACY_BUDGET: ITokenBudgetConfig = {
   systemPrompt: 10,
   ragContext: 30,
   history: 30,
@@ -81,26 +140,47 @@ const DEFAULT_BUDGET: ITokenBudgetConfig = {
 /**
  * Token budget manager.
  *
- * Allocates context window into prioritized slots, trims overflowing content,
- * and provides token estimates for transparency.
+ * Allocates context window using elastic demand-driven logic. Each slot gets
+ * its full demand when the context window has capacity. When over budget, slots
+ * are trimmed in priority order (lowest first) until the total fits.
  */
 export class TokenBudgetService {
 
-  private _config: ITokenBudgetConfig = DEFAULT_BUDGET;
+  private _legacyConfig: ITokenBudgetConfig = DEFAULT_LEGACY_BUDGET;
+  private _elasticConfig: IElasticBudgetConfig = DEFAULT_ELASTIC_CONFIG;
 
-  /** Update budget configuration. */
+  /**
+   * Update budget configuration.
+   *
+   * Accepts either legacy percentage config (backward compat) or elastic config.
+   * If a legacy config is provided, it is stored for `getConfig()` but does NOT
+   * affect allocation — the elastic allocator is always used.
+   */
   setConfig(config: Partial<ITokenBudgetConfig>): void {
-    this._config = {
-      systemPrompt: config.systemPrompt ?? DEFAULT_BUDGET.systemPrompt,
-      ragContext: config.ragContext ?? DEFAULT_BUDGET.ragContext,
-      history: config.history ?? DEFAULT_BUDGET.history,
-      userMessage: config.userMessage ?? DEFAULT_BUDGET.userMessage,
+    this._legacyConfig = {
+      systemPrompt: config.systemPrompt ?? DEFAULT_LEGACY_BUDGET.systemPrompt,
+      ragContext: config.ragContext ?? DEFAULT_LEGACY_BUDGET.ragContext,
+      history: config.history ?? DEFAULT_LEGACY_BUDGET.history,
+      userMessage: config.userMessage ?? DEFAULT_LEGACY_BUDGET.userMessage,
     };
   }
 
-  /** Get current budget configuration. */
+  /** Update elastic budget configuration (M20 Phase G). */
+  setElasticConfig(config: Partial<IElasticBudgetConfig>): void {
+    this._elasticConfig = {
+      trimPriority: { ...DEFAULT_ELASTIC_CONFIG.trimPriority, ...config.trimPriority },
+      minPercent: { ...DEFAULT_ELASTIC_CONFIG.minPercent, ...config.minPercent },
+    };
+  }
+
+  /** Get current elastic config. */
+  getElasticConfig(): Readonly<IElasticBudgetConfig> {
+    return this._elasticConfig;
+  }
+
+  /** Get legacy budget configuration (backward compat). */
   getConfig(): Readonly<ITokenBudgetConfig> {
-    return this._config;
+    return this._legacyConfig;
   }
 
   /**
@@ -111,7 +191,12 @@ export class TokenBudgetService {
   }
 
   /**
-   * Allocate content to budget slots and trim if necessary.
+   * Allocate content to budget slots using elastic demand-driven logic.
+   *
+   * 1. If total demand ≤ context window → return everything (no trimming).
+   * 2. If over → trim slots in priority order (lowest priority first).
+   * 3. Each slot is trimmed to free tokens for over-budget total.
+   * 4. Min-percent floors are respected (slot keeps at least that % of window).
    *
    * @param contextWindow Total context window size in tokens (0 = no limit).
    * @param systemPrompt System prompt content.
@@ -154,7 +239,7 @@ export class TokenBudgetService {
       };
     }
 
-    // Under budget — return as-is
+    // Under budget — return as-is (elastic: everyone gets what they need)
     if (totalTokens <= contextWindow) {
       return {
         wasTrimmed: false,
@@ -165,40 +250,47 @@ export class TokenBudgetService {
       };
     }
 
-    // Over budget — trim in priority order
-    // Priority: history first (lowest priority), then RAG, then warn
-    const budget = {
-      systemPrompt: Math.floor(contextWindow * this._config.systemPrompt / 100),
-      ragContext: Math.floor(contextWindow * this._config.ragContext / 100),
-      history: Math.floor(contextWindow * this._config.history / 100),
-      userMessage: Math.floor(contextWindow * this._config.userMessage / 100),
-    };
+    // ── Over budget: elastic trimming ──
+    //
+    // Sort trimmable slots by priority (lowest = trimmed first).
+    // For each slot in order, compute how much to trim to bring total
+    // within the window, respecting the min-percent floor.
+
+    const { trimPriority, minPercent } = this._elasticConfig;
+    const slotNames: BudgetSlotName[] = ['systemPrompt', 'ragContext', 'history', 'userMessage'];
+
+    // Sort by trim priority (ascending = trimmed first)
+    const trimOrder = slotNames
+      .filter(name => trimPriority[name] < 4) // priority 4 = never trim (user message)
+      .sort((a, b) => trimPriority[a] - trimPriority[b]);
 
     let wasTrimmed = false;
-    let warning: string | undefined;
 
-    // System prompt: never trim, but can overflow into other slots
-    // User message: never trim — this is the current user's request
+    for (const slotName of trimOrder) {
+      const currentTotal = Object.values(tokenEstimates).reduce((a, b) => a + b, 0);
+      if (currentTotal <= contextWindow) break; // We fit now
 
-    // 1. Trim history to fit budget (keep recent — from END)
-    if (tokenEstimates.history > budget.history) {
-      const trimmed = this._trimToTokenBudget(history, budget.history, 'end');
-      slots.history = trimmed;
-      tokenEstimates.history = this.estimateTokens(trimmed);
+      const excess = currentTotal - contextWindow;
+      const currentTokens = tokenEstimates[slotName];
+      const floor = Math.floor(contextWindow * minPercent[slotName] / 100);
+      const maxTrimmable = Math.max(0, currentTokens - floor);
+
+      if (maxTrimmable <= 0) continue; // Already at or below floor
+
+      // Trim this slot by min(excess, maxTrimmable)
+      const trimAmount = Math.min(excess, maxTrimmable);
+      const targetTokens = currentTokens - trimAmount;
+      const direction = TRIM_DIRECTION[slotName];
+
+      const trimmed = this._trimToTokenBudget(slots[slotName], targetTokens, direction);
+      slots[slotName] = trimmed;
+      tokenEstimates[slotName] = this.estimateTokens(trimmed);
       wasTrimmed = true;
     }
 
-    // 2. Trim RAG context if still over budget (keep highest-scored — from START)
-    const afterHistoryTrim = tokenEstimates.systemPrompt + tokenEstimates.ragContext + tokenEstimates.history + tokenEstimates.userMessage;
-    if (afterHistoryTrim > contextWindow && tokenEstimates.ragContext > budget.ragContext) {
-      const trimmed = this._trimToTokenBudget(ragContext, budget.ragContext, 'start');
-      slots.ragContext = trimmed;
-      tokenEstimates.ragContext = this.estimateTokens(trimmed);
-      wasTrimmed = true;
-    }
-
-    // 3. Check final total
+    // Check final total
     const finalTotal = Object.values(tokenEstimates).reduce((a, b) => a + b, 0);
+    let warning: string | undefined;
     if (finalTotal > contextWindow) {
       warning = `Context exceeds model limit (${finalTotal} / ${contextWindow} tokens). Older messages were trimmed.`;
     }
@@ -267,6 +359,9 @@ export class TokenBudgetService {
     let result = kept.join('\n\n');
     if (result.length === 0 && text.length > 0) {
       // Fallback: hard-truncate from the appropriate end
+      if (targetChars <= 0) {
+        return '';
+      }
       result = keepFrom === 'start'
         ? text.slice(0, targetChars)
         : text.slice(-targetChars);

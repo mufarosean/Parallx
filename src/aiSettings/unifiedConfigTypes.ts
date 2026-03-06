@@ -61,15 +61,29 @@ export interface IUnifiedModelConfig {
 
 // ─── Retrieval (from config.json — newly surfaced in UI) ─────────────────────
 
+/**
+ * Elastic context budget configuration (M20 Phase G).
+ *
+ * Replaces the old fixed-percentage system. Trim priority controls which
+ * slots are trimmed first when the context window is exceeded. Lower
+ * numbers are trimmed first. Min-percent floors guarantee a slot keeps
+ * at least that percentage of the window.
+ */
 export interface IUnifiedContextBudgetConfig {
-  /** System prompt budget percentage */
-  readonly systemPrompt: number;
-  /** RAG context budget percentage */
-  readonly ragContext: number;
-  /** Conversation history budget percentage */
-  readonly history: number;
-  /** User message budget percentage */
-  readonly userMessage: number;
+  /** Trim priority per slot (lower = trimmed first). */
+  readonly trimPriority: {
+    readonly systemPrompt: number;
+    readonly ragContext: number;
+    readonly history: number;
+    readonly userMessage: number;
+  };
+  /** Minimum percentage floor per slot (0–100). */
+  readonly minPercent: {
+    readonly systemPrompt: number;
+    readonly ragContext: number;
+    readonly history: number;
+    readonly userMessage: number;
+  };
 }
 
 export interface IUnifiedRetrievalConfig {
@@ -342,10 +356,18 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     ragTopK: 7,
     ragScoreThreshold: 0.025,
     contextBudget: {
-      systemPrompt: 10,
-      ragContext: 30,
-      history: 30,
-      userMessage: 30,
+      trimPriority: {
+        systemPrompt: 3,
+        ragContext: 2,
+        history: 1,
+        userMessage: 4,
+      },
+      minPercent: {
+        systemPrompt: 5,
+        ragContext: 0,
+        history: 0,
+        userMessage: 0,
+      },
     },
   },
   suggestions: {
@@ -441,10 +463,18 @@ export function fromLegacyParallxConfig(config: IParallxConfig): DeepPartial<IUn
       ragTopK: config.agent.ragTopK,
       ragScoreThreshold: config.agent.ragScoreThreshold,
       contextBudget: {
-        systemPrompt: config.contextBudget.systemPrompt,
-        ragContext: config.contextBudget.ragContext,
-        history: config.contextBudget.history,
-        userMessage: config.contextBudget.userMessage,
+        trimPriority: {
+          systemPrompt: 3,
+          ragContext: 2,
+          history: 1,
+          userMessage: 4,
+        },
+        minPercent: {
+          systemPrompt: 5,
+          ragContext: 0,
+          history: 0,
+          userMessage: 0,
+        },
       },
     },
     agent: {
