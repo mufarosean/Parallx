@@ -671,4 +671,49 @@ describe('A.4 Consumer wiring', () => {
       expect(service.getEffectiveConfig().agent.maxIterations).toBe(20);
     });
   });
+
+  // ── loadWorkspaceConfig ──
+
+  describe('loadWorkspaceConfig loads overrides from filesystem', () => {
+    it('loads workspace overrides after setFileSystem', async () => {
+      const storage = createMockStorage();
+      const svc = new UnifiedAIConfigService(storage as any, undefined);
+      await svc.initialize();
+
+      // Default config before workspace
+      expect(svc.getEffectiveConfig().agent.maxIterations).toBe(10);
+
+      // Simulate a .parallx/ai-config.json file
+      const mockFs = {
+        readFile: vi.fn().mockResolvedValue(JSON.stringify({
+          overrides: { agent: { maxIterations: 3 } },
+        })),
+        exists: vi.fn().mockResolvedValue(true),
+      };
+      svc.setFileSystem(mockFs);
+      await svc.loadWorkspaceConfig();
+
+      expect(svc.getEffectiveConfig().agent.maxIterations).toBe(3);
+    });
+
+    it('fires onDidChangeConfig after loadWorkspaceConfig', async () => {
+      const storage = createMockStorage();
+      const svc = new UnifiedAIConfigService(storage as any, undefined);
+      await svc.initialize();
+
+      const listener = vi.fn();
+      svc.onDidChangeConfig(listener);
+
+      svc.setFileSystem({
+        readFile: vi.fn().mockResolvedValue(JSON.stringify({
+          overrides: { retrieval: { ragTopK: 2 } },
+        })),
+        exists: vi.fn().mockResolvedValue(true),
+      });
+      await svc.loadWorkspaceConfig();
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener.mock.calls[0][0].retrieval.ragTopK).toBe(2);
+    });
+  });
 });

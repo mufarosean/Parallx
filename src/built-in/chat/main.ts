@@ -808,17 +808,14 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }).catch(() => { /* optional service */ });
   }
 
-  // ParallxConfigService (M11 Task 2.9): read .parallx/config.json
-  if (fsAccessor) {
-    import('../../services/parallxConfigService.js').then(({ ParallxConfigService }) => {
-      const configService = new ParallxConfigService();
-      configService.setFileSystem({
-        readFile: (path: string) => fsAccessor!.readFile(path),
-        exists: (path: string) => fsAccessor!.exists(path),
-      });
-      configService.load().catch(() => { /* best-effort */ });
-      context.subscriptions.push(configService);
-    }).catch(() => { /* optional service */ });
+  // M20: Wire workspace filesystem to UnifiedAIConfigService for config.json import
+  // Replaces the standalone ParallxConfigService (M11 Task 2.9).
+  if (fsAccessor && unifiedConfigService) {
+    unifiedConfigService.setFileSystem({
+      readFile: (path: string) => fsAccessor!.readFile(path),
+      exists: (path: string) => fsAccessor!.exists(path),
+    });
+    unifiedConfigService.loadWorkspaceConfig().catch(() => { /* best-effort */ });
   }
 
   // PermissionsFileService (M11 Task 2.10): persist permission overrides

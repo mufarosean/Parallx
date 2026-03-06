@@ -18,6 +18,7 @@ import type {
   DeepPartial,
 } from './aiSettingsTypes.js';
 import type { IParallxConfig } from '../services/parallxConfigService.js';
+import type { IConfigFileSystem } from '../services/parallxConfigService.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Unified Configuration Shape
@@ -283,6 +284,14 @@ export interface IUnifiedAIConfigService extends IDisposable {
 
   /** Send a test message using current effective config. */
   runPreviewTest(userMessage: string): Promise<string>;
+
+  // ── Filesystem ──
+
+  /** Bind a filesystem accessor for reading workspace-level config files. */
+  setFileSystem(fs: IConfigFileSystem): void;
+
+  /** Load (or reload) workspace overrides from filesystem. Call after setFileSystem(). */
+  loadWorkspaceConfig(): Promise<void>;
 
   // ── Events ──
 

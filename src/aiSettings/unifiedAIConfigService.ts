@@ -199,6 +199,17 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
     this._fs = fs;
   }
 
+  /**
+   * Load (or reload) workspace overrides from the filesystem.
+   * Call this after setFileSystem() to pick up .parallx/ai-config.json
+   * or legacy .parallx/config.json. Safe to call multiple times.
+   */
+  async loadWorkspaceConfig(): Promise<void> {
+    await this._loadWorkspaceOverride();
+    this._onDidChangeUnified.fire(this.getEffectiveConfig());
+    this._onDidChangeLegacy.fire(this.getActiveProfile());
+  }
+
   // ── Effective Config ──
 
   getEffectiveConfig(): IUnifiedAIConfig {
