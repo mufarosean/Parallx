@@ -198,8 +198,17 @@ export class ChunkingService extends Disposable implements IChunkingService {
   private async _chunkMarkdown(filePath: string, content: string): Promise<Chunk[]> {
     const lines = content.split('\n');
     const chunks: Chunk[] = [];
-    let currentHeading = '';
     let buffer = '';
+
+    // D.3: Heading stack for structural breadcrumbs.
+    // Each entry: { level: 1-6, text: "heading text" }
+    const headingStack: { level: number; text: string }[] = [];
+
+    /** Build a breadcrumb string from the heading stack. */
+    const headingBreadcrumb = (): string => {
+      if (headingStack.length === 0) return '';
+      return headingStack.map(h => h.text).join(' > ');
+    };
 
     const flush = async (overlap: boolean = false): Promise<void> => {
       const trimmed = buffer.trim();
@@ -217,7 +226,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
         return;
       }
 
-      const prefix = buildContextPrefix(filePath, currentHeading);
+      const prefix = buildContextPrefix(filePath, headingBreadcrumb());
       chunks.push({
         sourceType: 'file_chunk',
         sourceId: filePath,
@@ -339,11 +348,18 @@ export class ChunkingService extends Disposable implements IChunkingService {
         continue;
       }
 
-      // Detect markdown headings (# through ###)
-      const headingMatch = line.match(/^(#{1,3})\s+(.+)/);
+      // Detect markdown headings (# through ######) — D.3: maintain heading stack
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
       if (headingMatch) {
         await flush(false); // heading = clean break, no overlap
-        currentHeading = headingMatch[2].trim();
+        const level = headingMatch[1].length;
+        const text = headingMatch[2].trim();
+
+        // Pop any headings at same or deeper level
+        while (headingStack.length > 0 && headingStack[headingStack.length - 1].level >= level) {
+          headingStack.pop();
+        }
+        headingStack.push({ level, text });
       }
 
       buffer += (buffer ? '\n' : '') + line;

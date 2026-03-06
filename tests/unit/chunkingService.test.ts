@@ -527,4 +527,85 @@ describe('ChunkingService', () => {
       expect(codeChunk!.contextPrefix).toContain('Installation');
     });
   });
+
+  // ── D.3: Structural context breadcrumbs ──
+
+  describe('structural context breadcrumbs (D.3)', () => {
+    it('builds breadcrumb from nested headings', async () => {
+      const content = [
+        '# Chapter 1',
+        '',
+        '## Section 1.1',
+        '',
+        '### Subsection 1.1.1',
+        '',
+        'Detailed content about the subsection that is long enough to be its own chunk.',
+      ].join('\n');
+
+      const chunks = await service.chunkFile('doc.md', content, 'markdown');
+      const detailChunk = chunks.find(c => c.text.includes('Detailed content'));
+      expect(detailChunk).toBeDefined();
+      expect(detailChunk!.contextPrefix).toContain('Chapter 1 > Section 1.1 > Subsection 1.1.1');
+    });
+
+    it('pops heading stack when encountering same-level heading', async () => {
+      const longContent = 'This is a substantial paragraph of text that contains enough characters to exceed the minimum chunk size threshold and ensure it becomes its own standalone chunk rather than being merged into the previous chunk. It provides detailed information and context.';
+      const content = [
+        '# Chapter 1',
+        '',
+        '## Section A',
+        '',
+        longContent,
+        '',
+        '## Section B',
+        '',
+        longContent.replace('substantial', 'different'),
+      ].join('\n');
+
+      const chunks = await service.chunkFile('doc.md', content, 'markdown');
+      const sectionBChunk = chunks.find(c => c.text.includes('different paragraph'));
+      expect(sectionBChunk).toBeDefined();
+      expect(sectionBChunk!.contextPrefix).toContain('Chapter 1 > Section B');
+      expect(sectionBChunk!.contextPrefix).not.toContain('Section A');
+    });
+
+    it('resets stack when a higher-level heading appears', async () => {
+      const longContent = 'This is a substantial paragraph of text that contains enough characters to exceed the minimum chunk size threshold and ensure it becomes its own standalone chunk rather than being merged into the previous chunk. It provides detailed information and context.';
+      const content = [
+        '# Part 1',
+        '',
+        '## Details',
+        '',
+        longContent,
+        '',
+        '# Part 2',
+        '',
+        longContent.replace('substantial', 'different'),
+      ].join('\n');
+
+      const chunks = await service.chunkFile('doc.md', content, 'markdown');
+      const part2Chunk = chunks.find(c => c.text.includes('different paragraph'));
+      expect(part2Chunk).toBeDefined();
+      expect(part2Chunk!.contextPrefix).toContain('Part 2');
+      expect(part2Chunk!.contextPrefix).not.toContain('Part 1');
+      expect(part2Chunk!.contextPrefix).not.toContain('Details');
+    });
+
+    it('handles h4-h6 headings for deeper nesting', async () => {
+      const longContent = 'This is a substantial paragraph of text that contains enough characters to exceed the minimum chunk size threshold and ensure it becomes its own standalone chunk rather than being merged into the previous chunk. It provides detailed information and context.';
+      const content = [
+        '# Top',
+        '## Mid',
+        '### Sub',
+        '#### Deep',
+        '',
+        longContent,
+      ].join('\n');
+
+      const chunks = await service.chunkFile('doc.md', content, 'markdown');
+      const deepChunk = chunks.find(c => c.text.includes('substantial'));
+      expect(deepChunk).toBeDefined();
+      expect(deepChunk!.contextPrefix).toContain('Top > Mid > Sub > Deep');
+    });
+  });
 });
