@@ -246,6 +246,7 @@ export function registerIndexingServices(
     vectorStoreService,
     workspaceService,
     sessionManager,
+    documentExtractionService,
   );
   const retrievalService = new RetrievalService(embeddingService, vectorStoreService);
   const memoryService = new MemoryService(databaseService, embeddingService, vectorStoreService);

@@ -32,12 +32,14 @@ import type {
   IWorkspaceService,
   IIndexingPipelineService,
   ISessionManager,
+  IDocumentExtractionService,
 } from './serviceTypes.js';
 import { captureSession } from '../workspace/staleGuard.js';
 import type { SessionGuard } from '../workspace/staleGuard.js';
 import type { Chunk } from './chunkingService.js';
 import type { EmbeddedChunk } from './vectorStoreService.js';
 import { hashText } from './chunkingService.js';
+import { DocumentClassifier } from './documentClassifier.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -69,6 +71,14 @@ const RICH_DOCUMENT_EXTENSIONS = new Set([
   '.pdf',
   '.xlsx', '.xls', '.xlsm', '.xlsb', '.ods', '.numbers',
   '.docx',
+  '.pptx',  // M21: PowerPoint support via Docling
+]);
+
+/**
+ * Image extensions that can be indexed via Docling OCR (M21).
+ */
+const IMAGE_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp', '.webp',
 ]);
 
 /** Max file size to index (256 KB). Larger files are skipped. */
@@ -179,6 +189,8 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   private readonly _chunkingService: IChunkingService;
   private readonly _vectorStore: IVectorStoreService;
   private readonly _workspaceService: IWorkspaceService;
+  private readonly _documentExtractionService: IDocumentExtractionService | undefined;
+  private readonly _classifier: DocumentClassifier;
 
   // ── State ──
 
@@ -230,6 +242,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     vectorStoreService: IVectorStoreService,
     workspaceService: IWorkspaceService,
     sessionManager?: ISessionManager,
+    documentExtractionService?: IDocumentExtractionService,
   ) {
     super();
     this._db = databaseService;
@@ -239,6 +252,8 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     this._vectorStore = vectorStoreService;
     this._workspaceService = workspaceService;
     this._sessionManager = sessionManager;
+    this._documentExtractionService = documentExtractionService;
+    this._classifier = this._register(new DocumentClassifier());
   }
 
   // ── Public API ──
@@ -585,11 +600,41 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     const uri = URI.file(absolutePath);
     const ext = getExtension(absolutePath);
     const isRichDoc = ext !== null && RICH_DOCUMENT_EXTENSIONS.has(ext);
+    const isImage = ext !== null && IMAGE_EXTENSIONS.has(ext);
 
     // Read file content — route through extraction for rich documents
     let content: string;
+    let language: string | undefined;
     try {
-      if (isRichDoc) {
+      if ((isRichDoc || isImage) && this._documentExtractionService) {
+        // M21: Classify the document and use the appropriate extraction pipeline
+        const classification = this._classifier.classify(absolutePath);
+
+        // For PDFs, attempt scan detection via lightweight pre-check
+        let useOcr = classification.documentClass === 'scanned-doc' || classification.documentClass === 'image';
+
+        if (classification.documentClass === 'digital-doc' && ext === '.pdf') {
+          // Quick pre-check: try legacy extraction to measure text density
+          try {
+            const legacyResult = await this._fileService.readDocumentText(uri);
+            const pageCount = (legacyResult.metadata?.pageCount as number) ?? 1;
+            const refined = this._classifier.refinePdfClassification(
+              (legacyResult.text ?? '').length, pageCount,
+            );
+            if (refined.documentClass === 'scanned-doc') {
+              useOcr = true;
+            }
+          } catch {
+            // Pre-check failed — proceed without OCR
+          }
+        }
+
+        const result = await this._documentExtractionService.extractDocument(absolutePath, { ocr: useOcr });
+        content = result.markdown;
+        // Docling output is structured Markdown → route through heading-aware chunker
+        language = result.pipeline !== 'legacy' ? 'markdown' : undefined;
+      } else if (isRichDoc) {
+        // Fallback: no DocumentExtractionService → use legacy path directly
         const result = await this._fileService.readDocumentText(uri);
         content = result.text;
       } else {
@@ -598,7 +643,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
         content = fileContent.content;
       }
     } catch (err) {
-      if (isRichDoc) {
+      if (isRichDoc || isImage) {
         console.warn('[IndexingPipeline] Document extraction failed for "%s": %s', relPath, err);
       }
       return false; // File may have been deleted between walk and read
@@ -611,9 +656,11 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     const storedHash = await this._vectorStore.getContentHash('file_chunk', relPath);
     if (storedHash === contentHash) { return false; }
 
-    // Detect language from extension
-    const rawExt = absolutePath.split('.').pop()?.toLowerCase() ?? '';
-    const language = extToLanguage(rawExt);
+    // Detect language from extension (unless already set by Docling pipeline)
+    if (!language) {
+      const rawExt = absolutePath.split('.').pop()?.toLowerCase() ?? '';
+      language = extToLanguage(rawExt);
+    }
 
     // Chunk — pass workspace-relative path so contextPrefix is LLM-friendly
     const chunks = await this._chunkingService.chunkFile(relPath, content, language);
@@ -690,6 +737,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
         if (ext && INDEXABLE_EXTENSIONS.has(ext) && entry.size <= MAX_FILE_SIZE) {
           results.push({ path: entry.uri.fsPath, relativePath: relPath, mtime: entry.mtime });
         } else if (ext && RICH_DOCUMENT_EXTENSIONS.has(ext) && entry.size <= MAX_RICH_DOC_SIZE) {
+          results.push({ path: entry.uri.fsPath, relativePath: relPath, mtime: entry.mtime });
+        } else if (ext && IMAGE_EXTENSIONS.has(ext) && entry.size <= MAX_RICH_DOC_SIZE) {
+          // M21: Images are indexable via Docling OCR
           results.push({ path: entry.uri.fsPath, relativePath: relPath, mtime: entry.mtime });
         }
       }
