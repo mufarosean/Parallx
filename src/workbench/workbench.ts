@@ -1057,6 +1057,14 @@ export class Workbench extends Layout {
       this._workspace.restoreFolders(this._restoredState.folders);
     }
 
+    // Update the titlebar IMMEDIATELY after folder restore, before any
+    // fallible async operations.  Phase 3 ran before folders were loaded,
+    // so the label is still "Default Workspace".  Moving this here ensures
+    // the correct name appears even if later operations throw (the
+    // lifecycle catches & swallows errors, which would silently skip the
+    // title update if it were at the end of this method).
+    this._titlebar.setWorkspaceName(this._workspace.displayName);
+
     // Configure the saver with live sources so subsequent saves capture real state
     this._configureSaver();
 
@@ -1120,9 +1128,9 @@ export class Workbench extends Layout {
     // listener) re-binds its event subscriptions to the live workspace.
     this._onDidSwitchWorkspace.fire(this._workspace);
 
-    // Update the titlebar with the correct display name after restore.
-    // Phase 3 ran before folders were restored, so the titlebar may show
-    // "Default Workspace" instead of the folder name.
+    // Safety-net: re-set the titlebar in case onDidSwitchWorkspace
+    // handlers or folder changes altered the display name since the
+    // early update above (after restoreFolders).
     this._titlebar.setWorkspaceName(this._workspace.displayName);
 
     // Begin the workspace session (M14).
@@ -1476,21 +1484,40 @@ export class Workbench extends Layout {
     // Task 1.1: Wire workspace name reactively (VS Code style: folder name for single-root)
     this._titlebar.setWorkspaceName(this._workspace.displayName);
 
+    // Track per-workspace subscriptions so they can be rebound when the
+    // workspace object is replaced (Phase 4 replaces this._workspace).
+    let wsFolderSub: IDisposable | undefined;
+    let wsRenameSub: IDisposable | undefined;
+
+    const bindWorkspaceEvents = (ws: Workspace) => {
+      // Dispose old subscriptions (they point at the previous workspace object)
+      wsFolderSub?.dispose();
+      wsRenameSub?.dispose();
+
+      // Update when folders change (add/remove folder changes the display name)
+      wsFolderSub = ws.onDidChangeFolders(() => {
+        this._titlebar.setWorkspaceName(this._workspace.displayName);
+      });
+
+      // A9: Update titlebar and window title when workspace is renamed
+      wsRenameSub = ws.onDidRename(() => {
+        this._titlebar.setWorkspaceName(this._workspace.displayName);
+        this._statusBarController.updateWindowTitle();
+      });
+    };
+
+    // Bind to the initial workspace
+    bindWorkspaceEvents(this._workspace);
+
     // Subscribe to workspace switches so the label updates automatically
+    // AND rebind per-workspace events to the new workspace object.
     this._register(this._onDidSwitchWorkspace.event((ws) => {
       this._titlebar.setWorkspaceName(ws.displayName);
+      bindWorkspaceEvents(ws);
     }));
 
-    // Also update when folders change (add/remove folder changes the display name)
-    this._workspaceListeners.add(this._workspace.onDidChangeFolders(() => {
-      this._titlebar.setWorkspaceName(this._workspace.displayName);
-    }));
-
-    // A9: Update titlebar and window title when workspace is renamed
-    this._workspaceListeners.add(this._workspace.onDidRename(() => {
-      this._titlebar.setWorkspaceName(this._workspace.displayName);
-      this._statusBarController.updateWindowTitle();
-    }));
+    // Clean up per-workspace subs when the workbench is disposed
+    this._register({ dispose: () => { wsFolderSub?.dispose(); wsRenameSub?.dispose(); } });
 
     // Task 1.2: Register default menu bar items via contribution system
     this._menuBuilder.registerDefaultMenuBarItems();
