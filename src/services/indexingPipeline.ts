@@ -100,6 +100,20 @@ const SKIP_DIRS = new Set([
   'coverage', '.cache', '.turbo', 'vendor', 'target',
 ]);
 
+/**
+ * Pipeline version — bump this whenever the extraction / chunking / embedding
+ * pipeline changes in a way that makes previously-indexed data stale (e.g.
+ * Docling integration, new chunking strategy, model change).
+ *
+ * When the stored version doesn't match, the pipeline purges ALL indexed data
+ * and re-indexes everything from scratch on the next run.
+ *
+ * History:
+ *   1 — implicit (pre-M21 pipeline)
+ *   2 — M21: Docling integration, rich-document extraction overhaul
+ */
+const PIPELINE_VERSION = 2;
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /** Progress state for the indexing pipeline. */
@@ -312,6 +326,10 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       // 0. Load .parallxignore from workspace root (M11 Task 1.9)
       await this._loadIgnoreFile();
 
+      // 0b. Pipeline version check — purge all indexed data if the pipeline
+      //     version has changed (e.g. new extraction/chunking strategy).
+      await this._checkPipelineVersion();
+
       // 1. Ensure embedding model is installed
       this._updateProgress('pages', 0, 0, 'Checking embedding model...');
       await this._embeddingService.ensureModel(this._abortController?.signal);
@@ -322,10 +340,12 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       // 3. Index all workspace files
       const fileCount = await this._indexAllFiles();
 
+      // Mark initial index as complete before setting up listeners.
+      this._initialIndexComplete = true;
+
       // 4. Set up listeners
       this._setupListeners();
 
-      this._initialIndexComplete = true;
       const durationMs = performance.now() - startTime;
 
       // Query the database for TOTAL indexed counts (not just session-changed).
@@ -893,6 +913,32 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     return results;
   }
 
+  // ── Internal: Pipeline Version ──
+
+  /**
+   * Check whether the stored pipeline version matches PIPELINE_VERSION.
+   * If it doesn't (or no version is stored yet), purge ALL indexed data
+   * so that every page and file is re-indexed from scratch.
+   */
+  private async _checkPipelineVersion(): Promise<void> {
+    const stored = await this._vectorStore.getContentHash('_system', 'pipeline_version');
+    const current = String(PIPELINE_VERSION);
+
+    if (stored === current) return;
+
+    console.log(
+      '[IndexingPipeline] %s Pipeline version changed (%s → %s) — purging all indexed data',
+      this._logPrefix, stored ?? 'none', current,
+    );
+
+    await this._vectorStore.purgeAll();
+
+    // Store the new version so subsequent runs skip the purge.
+    await this._vectorStore.upsert('_system', 'pipeline_version', [], current);
+
+    console.log('[IndexingPipeline] %s Purge complete — full re-index will follow', this._logPrefix);
+  }
+
   // ── Internal: Listeners ──
 
   /**
@@ -916,97 +962,6 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     // File system changes
     this._register(
       this._fileService.onDidFileChange((events) => this._handleFileChanges(events)),
-    );
-
-    // M21: When Docling becomes newly available after initial indexing,
-    // mark all rich-document entries as stale and trigger a background
-    // re-index so they benefit from Docling's superior extraction.
-    if (this._documentExtractionService) {
-      this._register(
-        this._documentExtractionService.onDidChangeAvailability((available) => {
-          if (available && this._initialIndexComplete && !this._isIndexing) {
-            this._reindexRichDocumentsForDocling().catch((err) => {
-              console.warn('[IndexingPipeline] Docling re-index sweep failed:', err);
-            });
-          }
-        }),
-      );
-    }
-  }
-
-  /**
-   * M21: Background re-index of rich documents when Docling becomes newly available.
-   *
-   * Walks workspace files, finds entries with rich-doc or image extensions that
-   * are already indexed (via legacy pipeline), deletes their vector store entries
-   * so the content-hash check won't short-circuit, then re-indexes them through
-   * the Docling pipeline for better quality extraction.
-   */
-  private async _reindexRichDocumentsForDocling(): Promise<void> {
-    console.log('[IndexingPipeline] %s Docling newly available — starting rich-document re-index sweep', this._logPrefix);
-
-    const folders = this._workspaceService.folders;
-    if (folders.length === 0) return;
-
-    // Walk all workspace files
-    const allFiles: IndexableFile[] = [];
-    for (const folder of folders) {
-      await this._walkDirectory(folder.uri, allFiles);
-    }
-
-    // Filter to rich docs + images that are already indexed
-    const richFiles: IndexableFile[] = [];
-    const indexedAtMap = await this._vectorStore.getIndexedAtMap('file_chunk');
-
-    for (const file of allFiles) {
-      const ext = getExtension(file.path);
-      if (!ext) continue;
-      if (!RICH_DOCUMENT_EXTENSIONS.has(ext) && !IMAGE_EXTENSIONS.has(ext)) continue;
-      // Only re-index files that were previously indexed (with legacy)
-      if (indexedAtMap.has(file.relativePath)) {
-        richFiles.push(file);
-      }
-    }
-
-    if (richFiles.length === 0) {
-      console.log('[IndexingPipeline] %s No previously-indexed rich documents to re-index', this._logPrefix);
-      return;
-    }
-
-    console.log(
-      '[IndexingPipeline] %s Re-indexing %d rich documents through Docling',
-      this._logPrefix, richFiles.length,
-    );
-
-    // Delete existing entries so _indexSingleFile won't skip on content hash
-    for (const file of richFiles) {
-      await this._vectorStore.deleteSource('file_chunk', file.relativePath);
-    }
-
-    // Re-index each file through the Docling pipeline
-    this._updateProgress('files', 0, richFiles.length, 'Re-indexing with Docling…');
-    let reindexed = 0;
-    for (const file of richFiles) {
-      try {
-        const changed = await this._indexSingleFile(file.path, file.relativePath);
-        if (changed) reindexed++;
-        this._onDidIndexSource.fire({
-          type: 'file', source: file.relativePath, sourceId: file.relativePath,
-          status: changed ? 'indexed' : 'skipped',
-          durationMs: 0, // individual timing not tracked in sweep
-          pipeline: changed ? this._lastFilePipeline : undefined,
-          fallback: changed ? this._lastFileFallback : undefined,
-        });
-      } catch (err) {
-        console.warn('[IndexingPipeline] Docling re-index failed for "%s": %s', file.relativePath, err);
-      }
-      this._updateProgress('files', this._progress.processed + 1, richFiles.length, file.relativePath);
-    }
-
-    this._updateProgress('idle', 0, 0);
-    console.log(
-      '[IndexingPipeline] %s Docling re-index sweep complete: %d/%d documents re-indexed',
-      this._logPrefix, reindexed, richFiles.length,
     );
   }
 

@@ -255,6 +255,36 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     }
   }
 
+  /**
+   * Delete ALL data from vec_embeddings, fts_chunks, and indexing_metadata.
+   * Used by the pipeline-version mechanism to force a full re-index.
+   */
+  async purgeAll(): Promise<void> {
+    // vec0 virtual tables don't support unqualified DELETE (no WHERE clause).
+    // We must delete row-by-row via rowid.
+    const rows = await this._db.all<{ rowid: number }>(
+      'SELECT rowid FROM vec_embeddings',
+      [],
+    );
+
+    const operations: { type: 'run'; sql: string; params?: unknown[] }[] = [];
+
+    for (const row of rows) {
+      operations.push({
+        type: 'run',
+        sql: 'DELETE FROM vec_embeddings WHERE rowid = ?',
+        params: [row.rowid],
+      });
+    }
+
+    operations.push({ type: 'run', sql: 'DELETE FROM fts_chunks' });
+    operations.push({ type: 'run', sql: 'DELETE FROM indexing_metadata' });
+
+    if (operations.length > 0) {
+      await this._db.runTransaction(operations);
+    }
+  }
+
   // ── Search ──
 
   /**

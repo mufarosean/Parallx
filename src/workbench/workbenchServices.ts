@@ -238,6 +238,12 @@ export function registerIndexingServices(
   const chunkingService = new ChunkingService();
   const vectorStoreService = new VectorStoreService(databaseService);
   const documentExtractionService = new DocumentExtractionService();
+  // M21: Kick off Docling bridge detection in the background.
+  // This is fire-and-forget — the pipeline will use legacy extractors
+  // until Docling becomes available, then auto-reindex rich documents.
+  documentExtractionService.initialize().catch((err) => {
+    console.warn('[WorkbenchServices] DocumentExtractionService.initialize() failed:', err);
+  });
   const indexingPipeline = new IndexingPipelineService(
     databaseService,
     fileService,

@@ -104,12 +104,20 @@ function createMockVectorStore() {
   return {
     upsert: vi.fn().mockResolvedValue(undefined),
     deleteSource: vi.fn().mockResolvedValue(undefined),
+    purgeAll: vi.fn().mockResolvedValue(undefined),
     search: vi.fn().mockResolvedValue([]),
     vectorSearch: vi.fn().mockResolvedValue([]),
-    getContentHash: vi.fn().mockResolvedValue(null), // null = not indexed yet
+    // Return the current pipeline version for _system/pipeline_version so
+    // the version-check purge path doesn't fire in most tests.
+    getContentHash: vi.fn().mockImplementation(
+      async (sourceType: string, sourceId: string) =>
+        sourceType === '_system' && sourceId === 'pipeline_version' ? '2' : null,
+    ),
     getIndexedAtMap: vi.fn().mockResolvedValue(new Map()), // empty = no prior indexing
     getIndexedSources: vi.fn().mockResolvedValue([]),
     getStats: vi.fn().mockResolvedValue({ totalChunks: 0, totalSources: 0, bySourceType: {}, sourceCountByType: {} }),
+    getDocumentSummaries: vi.fn().mockResolvedValue(new Map()),
+    getEmbeddings: vi.fn().mockResolvedValue(new Map()),
     onDidUpdateIndex: vi.fn().mockReturnValue({ dispose: vi.fn() }),
     dispose: vi.fn(),
   };

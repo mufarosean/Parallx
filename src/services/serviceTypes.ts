@@ -1080,6 +1080,9 @@ export interface IVectorStoreService extends IDisposable {
   /** Batch-fetch stored embeddings by rowid. Returns Map<rowid, float[]>. */
   getEmbeddings(rowids: number[]): Promise<Map<number, number[]>>;
 
+  /** Delete ALL data from vec_embeddings, fts_chunks, and indexing_metadata. */
+  purgeAll(): Promise<void>;
+
   /** Fires when a source is indexed/re-indexed. */
   readonly onDidUpdateIndex: Event<{ sourceId: string; chunkCount: number }>;
 }
