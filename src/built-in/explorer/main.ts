@@ -557,7 +557,7 @@ function uriToFsPath(uri: string): string {
   if (!uri.startsWith('file:///')) return uri;
   // Strip scheme.  On Windows: file:///D:/foo → D:/foo
   //                On Linux:   file:///home   → /home
-  const raw = uri.slice('file:///'.length);
+  const raw = decodeURIComponent(uri.slice('file:///'.length));
   // If it looks like a Windows drive letter (e.g. D:/...), keep as-is
   if (/^[a-zA-Z]:/.test(raw)) return raw;
   // Otherwise it's a Unix path — prepend the leading /

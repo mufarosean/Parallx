@@ -669,7 +669,9 @@ ipcMain.handle('fs:delete', async (_event, filePath, options) => {
   try {
     const useTrash = options?.useTrash !== false; // default: true
     if (useTrash) {
-      await shell.trashItem(filePath);
+      // shell.trashItem uses Windows Shell COM APIs (IFileOperation) which
+      // require native backslash paths. path.resolve normalises slashes.
+      await shell.trashItem(path.resolve(filePath));
     } else {
       const stat = await fs.stat(filePath);
       if (stat.isDirectory()) {
