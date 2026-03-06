@@ -831,9 +831,9 @@ export class MemoryService extends Disposable implements IMemoryService {
 
     for (const m of staleMemories) {
       await this._db.run('DELETE FROM conversation_memories WHERE session_id = ?', [m.session_id]);
-      // Clean up vector store entry
+      // Clean up vector store entry (vec_embeddings + fts_chunks + indexing_metadata)
       try {
-        await this._vectorStore.upsert(MEMORY_SOURCE_TYPE, m.session_id, [], '');
+        await this._vectorStore.deleteSource(MEMORY_SOURCE_TYPE, m.session_id);
       } catch { /* best-effort */ }
     }
 
@@ -849,7 +849,7 @@ export class MemoryService extends Disposable implements IMemoryService {
     for (const c of staleConcepts) {
       await this._db.run('DELETE FROM learning_concepts WHERE id = ?', [c.id]);
       try {
-        await this._vectorStore.upsert(CONCEPT_SOURCE_TYPE, `concept:${c.concept.toLowerCase()}`, [], '');
+        await this._vectorStore.deleteSource(CONCEPT_SOURCE_TYPE, `concept:${c.concept.toLowerCase()}`);
       } catch { /* best-effort */ }
     }
 
@@ -861,12 +861,35 @@ export class MemoryService extends Disposable implements IMemoryService {
 
   /**
    * Clear all memories, concepts, and preferences (reset).
+   * Also removes all corresponding vector/FTS/indexing_metadata entries.
    */
   async clearAll(): Promise<void> {
     await this._ensureInitialized();
+
+    // Collect all source IDs before deleting SQL rows
+    const memories = await this._db.all<{ session_id: string }>(
+      'SELECT session_id FROM conversation_memories',
+    );
+    const concepts = await this._db.all<{ concept: string }>(
+      'SELECT concept FROM learning_concepts',
+    );
+
+    // Delete SQL rows
     await this._db.run('DELETE FROM conversation_memories');
     await this._db.run('DELETE FROM learning_concepts');
     await this._db.run('DELETE FROM user_preferences');
+
+    // Clean up vector store entries (vec_embeddings + fts_chunks + indexing_metadata)
+    for (const m of memories) {
+      try {
+        await this._vectorStore.deleteSource(MEMORY_SOURCE_TYPE, m.session_id);
+      } catch { /* best-effort */ }
+    }
+    for (const c of concepts) {
+      try {
+        await this._vectorStore.deleteSource(CONCEPT_SOURCE_TYPE, `concept:${c.concept.toLowerCase()}`);
+      } catch { /* best-effort */ }
+    }
   }
 
   // ── Preference Detection (internal) ──

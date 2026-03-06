@@ -267,6 +267,14 @@ function createMockVectorStore() {
     async upsert(sourceType: string, sourceId: string, chunks: unknown[], _contentHash: string): Promise<void> {
       storedChunks.push({ sourceType, sourceId, chunks });
     },
+    async deleteSource(sourceType: string, sourceId: string): Promise<void> {
+      // Remove matching entries from storedChunks
+      for (let i = storedChunks.length - 1; i >= 0; i--) {
+        if (storedChunks[i].sourceType === sourceType && storedChunks[i].sourceId === sourceId) {
+          storedChunks.splice(i, 1);
+        }
+      }
+    },
     async search(
       _embedding: number[],
       _queryText: string,
@@ -779,6 +787,20 @@ describe('MemoryService', () => {
       const prefs = await service.getPreferences();
       expect(memories).toEqual([]);
       expect(prefs).toEqual([]);
+    });
+
+    it('cleans up vector store entries on clearAll', async () => {
+      await service.storeMemory('s-vec-1', 'summary one', 3);
+      await service.storeMemory('s-vec-2', 'summary two', 4);
+
+      // Vector store should have entries before clear
+      expect(vectorStore._storedChunks.filter(c => c.sourceType === 'memory').length).toBeGreaterThan(0);
+
+      await service.clearAll();
+
+      // Vector store entries for memories should be cleaned up
+      const remaining = vectorStore._storedChunks.filter(c => c.sourceType === 'memory');
+      expect(remaining).toEqual([]);
     });
   });
 
