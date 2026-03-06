@@ -35,6 +35,8 @@ export interface ContributionHandlerHost {
   readonly auxiliaryBar: Part;
   readonly activityBarPart: ActivityBarPart;
   toggleSidebar(): void;
+  togglePanel(): void;
+  toggleAuxiliaryBar(): void;
   layoutViewContainers(): void;
 }
 
@@ -49,6 +51,10 @@ export class WorkbenchContributionHandler extends Disposable {
   private _containerRedirects = new Map<string, string>();
   private _activeSidebarContainerId: string | undefined;
   private _sidebarHeaderLabel: HTMLElement | undefined;
+
+  // ── Auxiliary bar container switching ──
+  private _activeAuxBarContainerId: string | undefined;
+  private _defaultAuxBarContainerId: string | undefined;
 
   // ── DOM slots (set once, reused) ──
   private _sidebarViewsSlot: HTMLElement | undefined;
@@ -178,7 +184,9 @@ export class WorkbenchContributionHandler extends Disposable {
         this._sidebarViewsSlot.appendChild(vc.element);
       }
       this._contributedSidebarContainers.set(info.id, vc);
-      this._addContributedActivityBarIcon(info);
+      if (!info.hidden) {
+        this._addContributedActivityBarIcon(info);
+      }
       console.log(`[Workbench] Added sidebar container "${info.id}" (${info.title})`);
 
     } else if (info.location === 'panel') {
@@ -191,10 +199,6 @@ export class WorkbenchContributionHandler extends Disposable {
 
     } else if (info.location === 'auxiliaryBar') {
       vc.hideTabBar();
-      // Aux bar containers are visible immediately — the AuxiliaryBarPart
-      // itself controls overall show/hide, so individual containers don't
-      // need to start hidden (unlike sidebar where only one is active).
-      vc.setVisible(true);
       const auxBarPart = this._host.auxiliaryBar as unknown as AuxiliaryBarPart;
       const viewSlot = auxBarPart.viewContainerSlot;
       if (viewSlot) {
@@ -202,29 +206,38 @@ export class WorkbenchContributionHandler extends Disposable {
       }
       this._contributedAuxBarContainers.set(info.id, vc);
 
-      // Hide the generic (empty) aux bar container so it doesn't consume
-      // space and push the contributed container below overflow: hidden.
-      this._genericAuxBarContainer?.setVisible(false);
+      // First contributed aux bar container becomes the default (active).
+      // Subsequent ones start hidden and are shown via switchAuxBarContainer.
+      if (!this._defaultAuxBarContainerId) {
+        this._defaultAuxBarContainerId = info.id;
+        this._activeAuxBarContainerId = info.id;
+        vc.setVisible(true);
+        // Hide the generic (empty) aux bar container.
+        this._genericAuxBarContainer?.setVisible(false);
+      } else {
+        vc.setVisible(false);
+      }
 
       // Wire header label to the contributed container's active view
       if (this._auxBarHeaderLabel) {
         vc.onDidChangeActiveView((viewId) => {
-          if (viewId) {
+          // Only update header if this container is the currently active one
+          if (viewId && this._activeAuxBarContainerId === info.id) {
             const view = vc.getView(viewId);
             if (this._auxBarHeaderLabel) {
               this._auxBarHeaderLabel.textContent = (view?.name ?? info.title).toUpperCase();
             }
           }
         });
-        // Set header immediately to the container title
-        this._auxBarHeaderLabel.textContent = info.title.toUpperCase();
+        // Set header immediately only for the active container
+        if (this._activeAuxBarContainerId === info.id) {
+          this._auxBarHeaderLabel.textContent = info.title.toUpperCase();
+        }
       }
 
       console.log(`[Workbench] Added auxiliary bar container "${info.id}" (${info.title})`);
 
       // Trigger a layout pass so the newly-added container gets proper dimensions.
-      // Without this, the container sits in the DOM with 0×0 size until the next
-      // resize or sidebar interaction triggers _layoutViewContainers().
       this._host.layoutViewContainers();
     }
   }
@@ -255,11 +268,21 @@ export class WorkbenchContributionHandler extends Disposable {
 
     const auxVc = this._contributedAuxBarContainers.get(containerId);
     if (auxVc) {
+      // If the removed container was active, switch back to default
+      if (this._activeAuxBarContainerId === containerId) {
+        const fallback = this._defaultAuxBarContainerId !== containerId
+          ? this._defaultAuxBarContainerId : undefined;
+        this.switchAuxBarContainer(fallback);
+      }
+      if (this._defaultAuxBarContainerId === containerId) {
+        this._defaultAuxBarContainerId = undefined;
+      }
       auxVc.dispose();
       this._contributedAuxBarContainers.delete(containerId);
       // If no more contributed aux bar containers, restore the generic one
       if (this._contributedAuxBarContainers.size === 0) {
         this._genericAuxBarContainer?.setVisible(true);
+        this._activeAuxBarContainerId = undefined;
       }
       return;
     }
@@ -389,6 +412,8 @@ export class WorkbenchContributionHandler extends Disposable {
       '🧩': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.5 7H16V4.5C16 3.12 14.88 2 13.5 2C12.12 2 11 3.12 11 4.5V7H6.5C5.67 7 5 7.67 5 8.5V13H7.5C8.88 13 10 14.12 10 15.5C10 16.88 8.88 18 7.5 18H5V22.5C5 23.33 5.67 24 6.5 24H11V21.5C11 20.12 12.12 19 13.5 19C14.88 19 16 20.12 16 21.5V24H20.5C21.33 24 22 23.33 22 22.5V18H19.5C18.12 18 17 16.88 17 15.5C17 14.12 18.12 13 19.5 13H22V8.5C22 7.67 21.33 7 20.5 7Z" fill="currentColor"/></svg>',
       'codicon-extensions': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.5 7H16V4.5C16 3.12 14.88 2 13.5 2C12.12 2 11 3.12 11 4.5V7H6.5C5.67 7 5 7.67 5 8.5V13H7.5C8.88 13 10 14.12 10 15.5C10 16.88 8.88 18 7.5 18H5V22.5C5 23.33 5.67 24 6.5 24H11V21.5C11 20.12 12.12 19 13.5 19C14.88 19 16 20.12 16 21.5V24H20.5C21.33 24 22 23.33 22 22.5V18H19.5C18.12 18 17 16.88 17 15.5C17 14.12 18.12 13 19.5 13H22V8.5C22 7.67 21.33 7 20.5 7Z" fill="currentColor"/></svg>',
       '⚙️': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.85 8.75L18.01 8.07L19 6.54L17.46 5L15.93 5.99L15.25 4.15H13.25L12.57 5.99L11.04 5L9.5 6.54L10.49 8.07L8.65 8.75V10.75L10.49 11.43L9.5 12.96L11.04 14.5L12.57 13.51L13.25 15.35H15.25L15.93 13.51L17.46 14.5L19 12.96L18.01 11.43L19.85 10.75V8.75ZM14.25 12.5C13.01 12.5 12 11.49 12 10.25C12 9.01 13.01 8 14.25 8C15.49 8 16.5 9.01 16.5 10.25C16.5 11.49 15.49 12.5 14.25 12.5Z" fill="currentColor"/></svg>',
+      '⚙': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.85 8.75L18.01 8.07L19 6.54L17.46 5L15.93 5.99L15.25 4.15H13.25L12.57 5.99L11.04 5L9.5 6.54L10.49 8.07L8.65 8.75V10.75L10.49 11.43L9.5 12.96L11.04 14.5L12.57 13.51L13.25 15.35H15.25L15.93 13.51L17.46 14.5L19 12.96L18.01 11.43L19.85 10.75V8.75ZM14.25 12.5C13.01 12.5 12 11.49 12 10.25C12 9.01 13.01 8 14.25 8C15.49 8 16.5 9.01 16.5 10.25C16.5 11.49 15.49 12.5 14.25 12.5Z" fill="currentColor"/></svg>',
+      'gear': '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19.85 8.75L18.01 8.07L19 6.54L17.46 5L15.93 5.99L15.25 4.15H13.25L12.57 5.99L11.04 5L9.5 6.54L10.49 8.07L8.65 8.75V10.75L10.49 11.43L9.5 12.96L11.04 14.5L12.57 13.51L13.25 15.35H15.25L15.93 13.51L17.46 14.5L19 12.96L18.01 11.43L19.85 10.75V8.75ZM14.25 12.5C13.01 12.5 12 11.49 12 10.25C12 9.01 13.01 8 14.25 8C15.49 8 16.5 9.01 16.5 10.25C16.5 11.49 15.49 12.5 14.25 12.5Z" fill="currentColor"/></svg>',
       '📓': '<svg width="24" height="24" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L2 13.59 2.41 14l4.12-1.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.5 1.5-3.01 1.5zm3.52-2.02l-1.5-1.5L12 2.5l1.5 1.5-7.57 7.57z" fill="currentColor"/></svg>',
     };
     return icon ? codiconMap[icon] : undefined;
@@ -462,15 +487,129 @@ export class WorkbenchContributionHandler extends Disposable {
   }
 
   /**
-   * Programmatically switch to a specific sidebar view and ensure sidebar is visible.
+   * Switch the active auxiliary bar container.
+   * Pass `undefined` to return to the default (first-registered, usually Chat).
+   * Mirrors `switchSidebarContainer` for the secondary sidebar.
+   */
+  switchAuxBarContainer(containerId: string | undefined): void {
+    const targetId = containerId ?? this._defaultAuxBarContainerId;
+    if (this._activeAuxBarContainerId === targetId) return;
+
+    // Hide current active container
+    if (this._activeAuxBarContainerId) {
+      const current = this._contributedAuxBarContainers.get(this._activeAuxBarContainerId);
+      current?.setVisible(false);
+    } else {
+      this._genericAuxBarContainer?.setVisible(false);
+    }
+
+    this._activeAuxBarContainerId = targetId;
+
+    // Show new container
+    if (targetId) {
+      const next = this._contributedAuxBarContainers.get(targetId);
+      if (next) {
+        next.setVisible(true);
+      }
+    } else {
+      // No contributed containers — fall back to generic
+      this._genericAuxBarContainer?.setVisible(true);
+    }
+
+    // Update header label
+    if (this._auxBarHeaderLabel) {
+      if (targetId) {
+        const vc = this._contributedAuxBarContainers.get(targetId);
+        if (vc) {
+          const activeViewId = vc.activeViewId;
+          const activeView = activeViewId ? vc.getView(activeViewId) : undefined;
+          const info = this._viewContribution?.getContainer(targetId);
+          this._auxBarHeaderLabel.textContent = (activeView?.name ?? info?.title ?? 'SECONDARY SIDE BAR').toUpperCase();
+        }
+      } else {
+        this._auxBarHeaderLabel.textContent = 'SECONDARY SIDE BAR';
+      }
+    }
+
+    this._host.layoutViewContainers();
+  }
+
+  /**
+   * Programmatically show a view by its view ID.
+   *
+   * Resolution order:
+   *  1. viewId matches a sidebar container ID directly → switch to it.
+   *  2. A sidebar container holds a view with that ID → switch to that container.
+   *  3. The default sidebar container holds the view → switch to it.
+   *  4. An auxiliary bar container holds the view → show the aux bar.
+   *  5. A panel container holds the view → show the panel.
    */
   showSidebarView(viewId: string): void {
-    if (!this._host.sidebar.visible) {
-      this._host.toggleSidebar();
-    }
+    // 1. Direct container ID match (sidebar)
     if (this._builtinSidebarContainers.has(viewId) || this._contributedSidebarContainers.has(viewId)) {
+      if (!this._host.sidebar.visible) this._host.toggleSidebar();
       this.switchSidebarContainer(viewId);
+      return;
     }
+
+    // 2. Search sidebar containers for a view with that ID
+    for (const [containerId, vc] of this._builtinSidebarContainers) {
+      if (vc.getView(viewId)) {
+        if (!this._host.sidebar.visible) this._host.toggleSidebar();
+        this.switchSidebarContainer(containerId);
+        return;
+      }
+    }
+    for (const [containerId, vc] of this._contributedSidebarContainers) {
+      if (vc.getView(viewId)) {
+        if (!this._host.sidebar.visible) this._host.toggleSidebar();
+        this.switchSidebarContainer(containerId);
+        return;
+      }
+    }
+
+    // 3. Default sidebar container
+    if (this._defaultSidebarContainer?.getView(viewId)) {
+      if (!this._host.sidebar.visible) this._host.toggleSidebar();
+      this.switchSidebarContainer(undefined); // back to default
+      return;
+    }
+
+    // 4. Auxiliary bar containers (generic + contributed)
+    if (this._genericAuxBarContainer?.getView(viewId)) {
+      if (!this._host.auxiliaryBar.visible) this._host.toggleAuxiliaryBar();
+      this.switchAuxBarContainer(undefined);
+      return;
+    }
+    for (const [containerId, vc] of this._contributedAuxBarContainers) {
+      if (vc.getView(viewId)) {
+        if (!this._host.auxiliaryBar.visible) {
+          // Aux bar was hidden — show it with the target container
+          this._host.toggleAuxiliaryBar();
+          this.switchAuxBarContainer(containerId);
+        } else if (this._activeAuxBarContainerId === containerId) {
+          // Already showing this container — toggle back to default
+          this.switchAuxBarContainer(this._defaultAuxBarContainerId);
+        } else {
+          this.switchAuxBarContainer(containerId);
+        }
+        return;
+      }
+    }
+
+    // 5. Panel containers (generic + contributed)
+    if (this._genericPanelContainer?.getView(viewId)) {
+      if (!this._host.panel.visible) this._host.togglePanel();
+      return;
+    }
+    for (const vc of this._contributedPanelContainers.values()) {
+      if (vc.getView(viewId)) {
+        if (!this._host.panel.visible) this._host.togglePanel();
+        return;
+      }
+    }
+
+    console.warn(`[ContributionHandler] showSidebarView: view "${viewId}" not found in any container`);
   }
 
   /**
@@ -551,6 +690,8 @@ export class WorkbenchContributionHandler extends Disposable {
     this._contributedAuxBarContainers.clear();
 
     this._activeSidebarContainerId = undefined;
+    this._activeAuxBarContainerId = undefined;
+    this._defaultAuxBarContainerId = undefined;
     this._sidebarHeaderLabel = undefined;
     this._auxBarHeaderLabel = undefined;
     this._containerRedirects.clear();

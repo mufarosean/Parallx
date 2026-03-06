@@ -232,7 +232,7 @@ export const AI_SETTINGS_MANIFEST: IToolManifest = {
       { command: 'ai-settings.open', key: 'Ctrl+Shift+A' },
     ],
     viewContainers: [
-      { id: 'ai-settings-container', title: 'AI Settings', icon: '⚙', location: 'sidebar' as const },
+      { id: 'ai-settings-container', title: 'AI Settings', icon: 'gear', location: 'auxiliaryBar' as const, hidden: true },
     ],
     views: [
       { id: 'view.aiSettings', name: 'AI Settings', defaultContainerId: 'ai-settings-container' },

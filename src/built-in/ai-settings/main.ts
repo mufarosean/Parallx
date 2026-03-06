@@ -7,6 +7,7 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { IAISettingsService } from '../../services/serviceTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
+import { getIcon } from '../../ui/iconRegistry.js';
 
 // ─── Local API type ──────────────────────────────────────────────────────────
 
@@ -28,6 +29,7 @@ interface ParallxApi {
       tooltip: string | undefined;
       command: string | undefined;
       name: string | undefined;
+      iconSvg: string | undefined;
       show(): void;
       hide(): void;
       dispose(): void;
@@ -67,12 +69,13 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     }),
   );
 
-  // Status bar entry: ⚙ AI: {presetName}
+  // Status bar entry: gear icon + AI: {presetName}
   const statusItem = api.window.createStatusBarItem(
     1, // Right alignment
     100,
   );
-  statusItem.text = `⚙ AI: ${aiSettingsService.getActiveProfile().presetName}`;
+  statusItem.iconSvg = getIcon('gear');
+  statusItem.text = `AI: ${aiSettingsService.getActiveProfile().presetName}`;
   statusItem.tooltip = 'Open AI Settings';
   statusItem.command = 'ai-settings.open';
   statusItem.name = 'AI Settings';
@@ -81,7 +84,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   // Update status bar when profile changes
   const changeListener = aiSettingsService.onDidChange((profile) => {
-    statusItem.text = `⚙ AI: ${profile.presetName}`;
+    statusItem.text = `AI: ${profile.presetName}`;
   });
   context.subscriptions.push(changeListener);
 }
