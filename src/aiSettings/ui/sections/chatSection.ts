@@ -1,6 +1,7 @@
 // chatSection.ts — Chat settings section (M15 Task 2.4)
 //
 // Fields:
+//   - Workspace Description (Textarea, workspace-scoped)
 //   - Response Length (Dropdown)
 //   - Communication Tone (SegmentedControl)
 //   - Domain Focus (Dropdown)
@@ -46,12 +47,16 @@ export class ChatSection extends SettingsSection {
   }
 
   build(): void {
-    // ── Workspace Description ──
+    // ── Workspace Description (always workspace-scoped) ──
     const wsDescRow = createSettingRow({
       label: 'Workspace Description',
-      description: 'Describe what this workspace contains so the AI understands what "workspace" means in context. Leave empty for auto-generated.',
+      description: 'Describe what this workspace contains so the AI understands what "workspace" means in context. This is unique to each workspace. Leave empty for auto-generated.',
       key: 'chat.workspaceDescription',
-      onReset: () => this._updateChat({ workspaceDescription: DEFAULT_UNIFIED_CONFIG.chat.workspaceDescription }),
+      onReset: () => {
+        this._unifiedService?.clearWorkspaceOverride('chat.workspaceDescription');
+        this._workspaceDescriptionTextarea.value = '';
+        this._notifySaved('chat.workspaceDescription');
+      },
       scopePath: 'chat.workspaceDescription',
       unifiedService: this._unifiedService,
     });
@@ -61,7 +66,8 @@ export class ChatSection extends SettingsSection {
       ariaLabel: 'Workspace description',
     }));
     this._register(this._workspaceDescriptionTextarea.onDidChange((value) => {
-      this._updateChat({ workspaceDescription: value });
+      // Write to workspace override, NOT global preset — each workspace has its own description
+      this._unifiedService?.updateWorkspaceOverride({ chat: { workspaceDescription: value } });
       this._notifySaved('chat.workspaceDescription');
     }));
     this._addRow(wsDescRow.row);
@@ -312,12 +318,6 @@ export class ChatSection extends SettingsSection {
       : generateChatSystemPrompt(buildGenInputFromProfile(profile));
     if (this._effectivePromptTextarea.value !== effectivePrompt) {
       this._effectivePromptTextarea.value = effectivePrompt;
-    }
-  }
-
-  private _updateChat(patch: Partial<import('../../unifiedConfigTypes.js').IUnifiedAIConfig['chat']>): void {
-    if (this._unifiedService) {
-      this._unifiedService.updateActivePreset({ chat: patch });
     }
   }
 
