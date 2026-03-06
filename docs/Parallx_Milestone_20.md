@@ -378,27 +378,28 @@ VectorStoreService        TokenBudgetManager
 
 ---
 
-## Phase B — Workspace Overrides & Preset Scoping
+## Phase B — Workspace Overrides & Preset Scoping ✅
 
 > Give the user the ability to use different presets and overrides per workspace.
 
-### Task B.1 — Workspace override persistence (2h)
-- Read/write `.parallx/ai-config.json` through `IFileService` + workspace root
-- File format: `{ _presetId?: string, overrides: Partial<IUnifiedAIConfig> }`
-- `_presetId` pins a specific global preset for this workspace (optional — if
-  absent, uses the globally active preset)
-- File watcher for external edits (optional, can defer)
+### Task B.1 — Workspace override persistence ✅
+- Extended `IConfigFileSystem` with optional `writeFile` method
+- Implemented `_writeWorkspaceOverride()` — writes JSON to `.parallx/ai-config.json`
+- Wired write-capable filesystem in `chat/main.ts` using `fileService.writeFile()`
+- File watcher for external edits deferred to Phase C+
 
-### Task B.2 — Per-workspace preset selection (1h)
-- `setWorkspacePreset(presetId)`: writes `_presetId` to workspace override file
-- `clearWorkspacePreset()`: removes pinning, falls back to global active preset
-- Status bar indicator updates: "AI: Research Mode (workspace)" vs "AI: Default"
+### Task B.2 — Per-workspace preset selection ✅
+- `setWorkspacePreset(presetId)` / `clearWorkspacePreset()` already implemented in Phase A
+- Status bar in `ai-settings/main.ts` enhanced: shows "AI: {preset} ⚙" when workspace override active
+- Tooltip shows override count and workspace pin status
+- Subscribes to both `onDidChange` (legacy) and `onDidChangeConfig` (unified) events
 
-### Task B.3 — Override resolution logic (2h)
-- Deep merge: `defaultConfig ← activePreset ← workspaceOverride`
+### Task B.3 — Override resolution logic ✅
+- Fixed `getEffectiveConfig()` to respect workspace `_presetId` pinning (was using global `_activePresetId`)
+- Deep merge: `defaultConfig ← activePreset ← workspaceOverride` verified
+- `isOverridden(path)` and `getOverriddenKeys()` implemented and tested
 - Only non-undefined keys from override are applied
-- `isOverridden(path: string): boolean` — for UI to show override indicator
-- `getOverriddenKeys(): string[]` — list all workspace-overridden paths
+- 16 new Phase B tests added (persistence writes, preset pinning, resolution order, round-trip)
 
 ---
 
@@ -601,9 +602,9 @@ VectorStoreService        TokenBudgetManager
 - [ ] All existing AI Settings tests still pass
 
 ### Phase B
-- [ ] Switching presets per-workspace persists to `.parallx/ai-config.json`
-- [ ] Opening a different workspace shows its own preset/overrides
-- [ ] `isOverridden(path)` correctly identifies workspace-level changes
+- [x] Switching presets per-workspace persists to `.parallx/ai-config.json`
+- [x] Opening a different workspace shows its own preset/overrides
+- [x] `isOverridden(path)` correctly identifies workspace-level changes
 
 ### Phase C
 - [ ] AI Hub shows all sections: Behavior, Retrieval, Model, Suggestions, Tools, Memory, Advanced

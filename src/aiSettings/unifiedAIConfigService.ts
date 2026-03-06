@@ -213,7 +213,9 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
   // ── Effective Config ──
 
   getEffectiveConfig(): IUnifiedAIConfig {
-    const preset = this._presets.find(p => p.id === this._activePresetId);
+    // Resolve the active preset: workspace pin overrides global active
+    const resolvedId = this._workspaceOverride?._presetId ?? this._activePresetId;
+    const preset = this._presets.find(p => p.id === resolvedId);
     const baseConfig = preset?.config ?? DEFAULT_UNIFIED_CONFIG;
 
     if (!this._workspaceOverride?.overrides) {
@@ -707,9 +709,22 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
   }
 
   private async _writeWorkspaceOverride(): Promise<void> {
-    // Workspace override persistence is handled by the caller (file write).
-    // For now, this is a no-op since IConfigFileSystem is read-only.
-    // Phase B.1 will add write support.
+    if (!this._fs?.writeFile) return; // No write capability — skip silently
+
+    try {
+      if (!this._workspaceOverride || (
+        !this._workspaceOverride._presetId &&
+        Object.keys(this._workspaceOverride.overrides).length === 0
+      )) {
+        // Nothing to persist — could optionally delete the file, but leave it.
+        return;
+      }
+
+      const json = JSON.stringify(this._workspaceOverride, null, 2);
+      await this._fs.writeFile(WORKSPACE_OVERRIDE_PATH, json);
+    } catch (err) {
+      console.warn('[UnifiedAIConfigService] Failed to write workspace override:', err);
+    }
   }
 
   private _fireChange(): void {

@@ -814,6 +814,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     unifiedConfigService.setFileSystem({
       readFile: (path: string) => fsAccessor!.readFile(path),
       exists: (path: string) => fsAccessor!.exists(path),
+      // B.1: write support for .parallx/ai-config.json persistence
+      writeFile: (fileService && workspaceService)
+        ? async (relativePath: string, content: string) => {
+            const folders = workspaceService!.folders;
+            if (!folders || folders.length === 0) {
+              throw new Error('No workspace folder — cannot write config');
+            }
+            const rootUri = folders[0].uri;
+            const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+            await fileService!.writeFile(rootUri.joinPath(clean), content);
+          }
+        : undefined,
     });
     unifiedConfigService.loadWorkspaceConfig().catch(() => { /* best-effort */ });
   }

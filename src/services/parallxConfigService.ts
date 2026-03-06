@@ -163,6 +163,8 @@ function _mergeSection(defaults: Record<string, unknown>, override: unknown): Re
 export interface IConfigFileSystem {
   readFile(relativePath: string): Promise<string>;
   exists(relativePath: string): Promise<boolean>;
+  /** Optional write capability — required for workspace override persistence (M20 B.1). */
+  writeFile?(relativePath: string, content: string): Promise<void>;
 }
 
 /**

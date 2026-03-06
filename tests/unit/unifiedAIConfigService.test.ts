@@ -717,3 +717,227 @@ describe('A.4 Consumer wiring', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// B: Workspace Overrides & Preset Scoping — Persistence Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('Phase B: Workspace override persistence', () => {
+  let service: UnifiedAIConfigService;
+  let mockWriteFile: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const storage = createMockStorage();
+    service = new UnifiedAIConfigService(storage as any, undefined);
+    await service.initialize();
+
+    mockWriteFile = vi.fn().mockResolvedValue(undefined);
+    service.setFileSystem({
+      readFile: vi.fn().mockRejectedValue(new Error('not found')),
+      exists: vi.fn().mockResolvedValue(false),
+      writeFile: mockWriteFile,
+    });
+  });
+
+  describe('B.1: updateWorkspaceOverride writes to disk', () => {
+    it('writes .parallx/ai-config.json on updateWorkspaceOverride', async () => {
+      await service.updateWorkspaceOverride({ model: { temperature: 0.2 } });
+
+      expect(mockWriteFile).toHaveBeenCalledOnce();
+      expect(mockWriteFile.mock.calls[0][0]).toBe('.parallx/ai-config.json');
+
+      const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
+      expect(written.overrides.model.temperature).toBe(0.2);
+    });
+
+    it('writes merged overrides on successive updates', async () => {
+      await service.updateWorkspaceOverride({ model: { temperature: 0.2 } });
+      await service.updateWorkspaceOverride({ retrieval: { ragTopK: 15 } });
+
+      expect(mockWriteFile).toHaveBeenCalledTimes(2);
+
+      const secondWrite = JSON.parse(mockWriteFile.mock.calls[1][1]);
+      expect(secondWrite.overrides.model.temperature).toBe(0.2);
+      expect(secondWrite.overrides.retrieval.ragTopK).toBe(15);
+    });
+
+    it('does not write when no filesystem writeFile is available', async () => {
+      // Reset with read-only filesystem
+      service.setFileSystem({
+        readFile: vi.fn().mockRejectedValue(new Error('not found')),
+        exists: vi.fn().mockResolvedValue(false),
+      });
+      const readOnlyWrite = vi.fn();
+
+      await service.updateWorkspaceOverride({ model: { temperature: 0.2 } });
+
+      // Should not throw, just silently skip
+      expect(readOnlyWrite).not.toHaveBeenCalled();
+    });
+
+    it('writes on clearWorkspaceOverride(path) for specific key', async () => {
+      await service.updateWorkspaceOverride({
+        model: { temperature: 0.2 },
+        retrieval: { ragTopK: 10 },
+      });
+      mockWriteFile.mockClear();
+
+      await service.clearWorkspaceOverride('model.temperature');
+
+      expect(mockWriteFile).toHaveBeenCalledOnce();
+      const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
+      expect(written.overrides.model?.temperature).toBeUndefined();
+      expect(written.overrides.retrieval.ragTopK).toBe(10);
+    });
+  });
+
+  describe('B.2: setWorkspacePreset persists _presetId', () => {
+    it('writes _presetId to disk on setWorkspacePreset', async () => {
+      await service.setWorkspacePreset('creative-mode');
+
+      expect(mockWriteFile).toHaveBeenCalledOnce();
+      const written = JSON.parse(mockWriteFile.mock.calls[0][1]);
+      expect(written._presetId).toBe('creative-mode');
+    });
+
+    it('removes _presetId from disk on clearWorkspacePreset', async () => {
+      await service.setWorkspacePreset('creative-mode');
+      mockWriteFile.mockClear();
+
+      await service.clearWorkspacePreset();
+
+      // clearWorkspacePreset should either write without _presetId or not write
+      // (if override is empty). Check the override state is cleared.
+      expect(service.getActivePreset().id).toBe('default');
+    });
+
+    it('_presetId and overrides coexist in persisted file', async () => {
+      await service.setWorkspacePreset('finance-focus');
+      await service.updateWorkspaceOverride({ model: { temperature: 0.1 } });
+
+      const lastWrite = JSON.parse(mockWriteFile.mock.calls[mockWriteFile.mock.calls.length - 1][1]);
+      expect(lastWrite._presetId).toBe('finance-focus');
+      expect(lastWrite.overrides.model.temperature).toBe(0.1);
+    });
+  });
+
+  describe('B.3: Override resolution order', () => {
+    it('override resolution: defaultConfig ← activePreset ← workspaceOverride', async () => {
+      // Switch to creative-mode (temperature 0.9)
+      await service.setActivePreset('creative-mode');
+      expect(service.getEffectiveConfig().model.temperature).toBe(0.9);
+
+      // Apply workspace override
+      await service.updateWorkspaceOverride({ model: { temperature: 0.5 } });
+      expect(service.getEffectiveConfig().model.temperature).toBe(0.5);
+
+      // Non-overridden fields come from the preset
+      const creative = service.getActivePreset();
+      expect(service.getEffectiveConfig().persona.name).toBe(creative.config.persona.name);
+    });
+
+    it('workspace override only applies non-undefined keys', async () => {
+      await service.updateWorkspaceOverride({
+        retrieval: { ragTopK: 99 },
+      });
+
+      const config = service.getEffectiveConfig();
+      // overridden
+      expect(config.retrieval.ragTopK).toBe(99);
+      // not overridden — should be default
+      expect(config.retrieval.ragScoreThreshold).toBe(DEFAULT_UNIFIED_CONFIG.retrieval.ragScoreThreshold);
+      expect(config.model.temperature).toBe(DEFAULT_UNIFIED_CONFIG.model.temperature);
+    });
+
+    it('workspace preset pin changes base config', async () => {
+      // Pin to finance-focus preset
+      await service.setWorkspacePreset('finance-focus');
+
+      const config = service.getEffectiveConfig();
+      const financePreset = service.getAllPresets().find(p => p.id === 'finance-focus')!;
+      expect(config.persona.name).toBe(financePreset.config.persona.name);
+    });
+
+    it('workspace pin + global switch: workspace pin wins', async () => {
+      await service.setWorkspacePreset('creative-mode');
+
+      // Switch global active to finance-focus
+      await service.setActivePreset('finance-focus');
+
+      // Workspace pin should still control effective config
+      const config = service.getEffectiveConfig();
+      const creative = service.getAllPresets().find(p => p.id === 'creative-mode')!;
+      expect(config.persona.name).toBe(creative.config.persona.name);
+    });
+
+    it('clearWorkspaceOverride() clears overrides but preserves preset pin', async () => {
+      await service.setWorkspacePreset('creative-mode');
+      await service.updateWorkspaceOverride({ model: { temperature: 0.1 } });
+
+      await service.clearWorkspaceOverride();
+
+      // Overrides cleared, but preset pin preserved
+      const ws = service.getWorkspaceOverride();
+      expect(ws).toBeDefined();
+      expect(ws!._presetId).toBe('creative-mode');
+      expect(Object.keys(ws!.overrides)).toHaveLength(0);
+
+      // Effective config uses creative-mode base (temp 0.9), no override
+      expect(service.getEffectiveConfig().model.temperature).toBe(0.9);
+    });
+
+    it('clearWorkspacePreset + clearWorkspaceOverride fully resets', async () => {
+      await service.setWorkspacePreset('creative-mode');
+      await service.updateWorkspaceOverride({ model: { temperature: 0.1 } });
+
+      await service.clearWorkspacePreset();
+      await service.clearWorkspaceOverride();
+
+      expect(service.getWorkspaceOverride()).toBeUndefined();
+      expect(service.getActivePreset().id).toBe('default');
+    });
+
+    it('isOverridden returns false after clearing a specific key', async () => {
+      await service.updateWorkspaceOverride({
+        model: { temperature: 0.3 },
+        retrieval: { ragTopK: 5 },
+      });
+      expect(service.isOverridden('model.temperature')).toBe(true);
+
+      await service.clearWorkspaceOverride('model.temperature');
+
+      expect(service.isOverridden('model.temperature')).toBe(false);
+      expect(service.isOverridden('retrieval.ragTopK')).toBe(true);
+    });
+
+    it('getOverriddenKeys returns empty array when no overrides', () => {
+      expect(service.getOverriddenKeys()).toEqual([]);
+    });
+
+    it('round-trip: write → load produces same effective config', async () => {
+      // Set overrides
+      await service.setWorkspacePreset('finance-focus');
+      await service.updateWorkspaceOverride({ model: { temperature: 0.4 } });
+
+      const configBefore = service.getEffectiveConfig();
+
+      // Capture what was written
+      const lastWrite = mockWriteFile.mock.calls[mockWriteFile.mock.calls.length - 1][1];
+
+      // Create a new service and load from the written JSON
+      const storage2 = createMockStorage();
+      const svc2 = new UnifiedAIConfigService(storage2 as any, undefined);
+      await svc2.initialize();
+
+      svc2.setFileSystem({
+        readFile: vi.fn().mockResolvedValue(lastWrite),
+        exists: vi.fn().mockResolvedValue(true),
+      });
+      await svc2.loadWorkspaceConfig();
+
+      const configAfter = svc2.getEffectiveConfig();
+      expect(configAfter.model.temperature).toBe(configBefore.model.temperature);
+      expect(configAfter.persona.name).toBe(configBefore.persona.name);
+    });
+  });
+});

@@ -5,7 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { IAISettingsService } from '../../services/serviceTypes.js';
+import { IAISettingsService, IUnifiedAIConfigService } from '../../services/serviceTypes.js';
 import { ILanguageModelsService } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
 import { getIcon } from '../../ui/iconRegistry.js';
@@ -53,6 +53,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // Get the AI Settings service from DI
   const aiSettingsService = api.services.get<import('../../aiSettings/aiSettingsTypes.js').IAISettingsService>(IAISettingsService);
 
+  // Get the Unified AI Config service for workspace override info (M20 B.2)
+  const unifiedConfigService = api.services.has(IUnifiedAIConfigService)
+    ? api.services.get<import('../../aiSettings/unifiedConfigTypes.js').IUnifiedAIConfigService>(IUnifiedAIConfigService)
+    : undefined;
+
   // Get the Language Models service (for Default Model dropdown in Model section)
   const languageModelsService = api.services.has(ILanguageModelsService)
     ? api.services.get<import('../../services/chatTypes.js').ILanguageModelsService>(ILanguageModelsService)
@@ -81,8 +86,31 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     100,
   );
   statusItem.iconSvg = getIcon('gear');
-  statusItem.text = `AI: ${aiSettingsService.getActiveProfile().presetName}`;
-  statusItem.tooltip = 'Open AI Settings';
+
+  // Helper: build status text + tooltip with workspace scope indicator (M20 B.2)
+  function updateStatusBar(presetName: string): void {
+    let text = `AI: ${presetName}`;
+    let tooltip = 'Open AI Settings';
+    if (unifiedConfigService) {
+      const wsOverride = unifiedConfigService.getWorkspaceOverride();
+      const overriddenKeys = unifiedConfigService.getOverriddenKeys();
+      if (wsOverride && (wsOverride._presetId || overriddenKeys.length > 0)) {
+        text += ' \u2699'; // ⚙ gear symbol
+        const parts: string[] = [`Active preset: ${presetName}`];
+        if (wsOverride._presetId) {
+          parts.push('Workspace preset pinned');
+        }
+        if (overriddenKeys.length > 0) {
+          parts.push(`Workspace overrides: ${overriddenKeys.length} field${overriddenKeys.length > 1 ? 's' : ''}`);
+        }
+        tooltip = parts.join('. ') + '. Click to configure.';
+      }
+    }
+    statusItem.text = text;
+    statusItem.tooltip = tooltip;
+  }
+
+  updateStatusBar(aiSettingsService.getActiveProfile().presetName);
   statusItem.command = 'ai-settings.open';
   statusItem.name = 'AI Settings';
   statusItem.show();
@@ -90,9 +118,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   // Update status bar when profile changes
   const changeListener = aiSettingsService.onDidChange((profile) => {
-    statusItem.text = `AI: ${profile.presetName}`;
+    updateStatusBar(profile.presetName);
   });
   context.subscriptions.push(changeListener);
+
+  // Also update when unified config changes (workspace overrides may change)
+  if (unifiedConfigService) {
+    const unifiedListener = unifiedConfigService.onDidChangeConfig(() => {
+      const profile = aiSettingsService.getActiveProfile();
+      updateStatusBar(profile.presetName);
+    });
+    context.subscriptions.push(unifiedListener);
+  }
 }
 
 export function deactivate(): void {
