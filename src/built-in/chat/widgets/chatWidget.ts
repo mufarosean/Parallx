@@ -100,6 +100,10 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _onDidAcceptInput = this._register(new Emitter<string>());
   readonly onDidAcceptInput: Event<string> = this._onDidAcceptInput.event;
 
+  private readonly _onDidRequestOpenToolSettings = this._register(new Emitter<void>());
+  /** Fired when the wrench icon is clicked — callers should open AI Hub → Tools (M20 E.2). */
+  readonly onDidRequestOpenToolSettings: Event<void> = this._onDidRequestOpenToolSettings.event;
+
   private readonly _sessionDisposables = this._register(new DisposableStore());
 
   // ── Constructor ──
@@ -223,6 +227,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._inputPart = this._register(new ChatInputPart(this._inputAreaContainer));
     this._register(this._inputPart.onDidAcceptInput((text) => this._handleSubmit(text)));
     this._register(this._inputPart.onDidRequestStop(() => this._handleStop()));
+    this._register(this._inputPart.onDidRequestOpenToolSettings(() => this._onDidRequestOpenToolSettings.fire()));
 
     // ── Pickers (attached to input toolbar's picker slot) ──
 

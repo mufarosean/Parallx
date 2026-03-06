@@ -65,6 +65,10 @@ export class ChatInputPart extends Disposable {
   private readonly _onDidChangeAttachments = this._register(new Emitter<void>());
   readonly onDidChangeAttachments: Event<void> = this._onDidChangeAttachments.event;
 
+  private readonly _onDidRequestOpenToolSettings = this._register(new Emitter<void>());
+  /** Fired when the wrench icon is clicked — opens AI Hub → Tools section. */
+  readonly onDidRequestOpenToolSettings: Event<void> = this._onDidRequestOpenToolSettings.event;
+
   constructor(container: HTMLElement) {
     super();
 
@@ -123,24 +127,20 @@ export class ChatInputPart extends Disposable {
       }
     }));
 
-    // Configure Tools button (wrench icon — opens tool picker overlay)
+    // Configure Tools button (wrench icon — opens AI Hub → Tools section, M20 E.2)
     this._toolsBtn = document.createElement('button');
     this._toolsBtn.className = 'parallx-chat-input-tools';
     this._toolsBtn.type = 'button';
-    this._toolsBtn.title = 'Configure Tools\u2026';
-    this._toolsBtn.setAttribute('aria-label', 'Configure Tools');
+    this._toolsBtn.title = '\u2699 Configure AI\u2026';
+    this._toolsBtn.setAttribute('aria-label', 'Configure AI Tools');
     this._toolsBtn.innerHTML = chatIcons.tools;
     this._toolsBtn.style.display = 'none'; // hidden until services wired
     this._toolbar.appendChild(this._toolsBtn);
 
-    // Tool picker dialog (modal overlay)
+    // @deprecated — ChatToolPicker kept for backward compat but no longer opened inline (M20 E.2)
     this._toolPicker = this._register(new ChatToolPicker());
     this._register(addDisposableListener(this._toolsBtn, 'click', () => {
-      if (this._toolPicker.isOpen) {
-        this._toolPicker.close();
-      } else {
-        this._toolPicker.open();
-      }
+      this._onDidRequestOpenToolSettings.fire();
     }));
 
     // Spacer
@@ -289,9 +289,6 @@ export class ChatInputPart extends Disposable {
   updateToolsButtonForMode(mode: ChatMode): void {
     const show = mode !== ChatMode.Ask;
     this._toolsBtn.style.display = show ? '' : 'none';
-    if (!show && this._toolPicker.isOpen) {
-      this._toolPicker.close();
-    }
   }
 
   /** Get current explicit attachments (to include in the request). */

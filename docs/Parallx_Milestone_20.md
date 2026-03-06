@@ -537,24 +537,31 @@ VectorStoreService        TokenBudgetManager
 
 > Move the tool picker from a floating modal into the AI Hub.
 
-### Task E.1 — Tool section in AI Hub (3h)
-- New section: "Tools" in the AI Hub panel
-- Render the tool tree inline (same checkbox-tree UX as current picker, but
-  embedded in the panel instead of a modal overlay)
+### Task E.1 — Tool section in AI Hub (3h) ✅
+- Created `src/aiSettings/ui/sections/toolsSection.ts` (~270 lines)
+- Inline tool tree with checkboxes (Pages/Files categories), same UX as ChatToolPicker
 - Search/filter input within the section
-- "N tools enabled" summary at the section header
-- Uses same `IToolPickerServices` interface — no backend changes
+- "N/M enabled" summary badge in section header
+- Collapse/expand per category, tri-state checkboxes
+- Uses `IToolPickerServices` interface — no backend changes
+- Added comprehensive CSS in `aiSettings.css` (tools tree styles)
+- Panel updated: 10 sections (9→10), Tools between Indexing and Advanced
 
-### Task E.2 — Deprecate modal tool picker (1h)
-- Remove or redirect the wrench icon in chat toolbar → opens AI Hub scrolled to
-  Tools section
-- Keep the `chatToolPicker.ts` file but mark as deprecated
-- The wrench icon can become a shortcut: "⚙ Configure AI" → opens hub
+### Task E.2 — Deprecate modal tool picker (1h) ✅
+- Wrench icon now fires `onDidRequestOpenToolSettings` event
+- Event forwarded: ChatInputPart → ChatWidget → chat main.ts
+- Handler executes `ai-settings.open` + `ai-settings.scrollToSection('tools')` with 150ms delay
+- Registered `ai-settings.scrollToSection` command in ai-settings main.ts
+- Added public `scrollToSection()` method on `AISettingsPanel`
+- `chatToolPicker.ts` class marked `@deprecated` with M20 E.2 note
+- Wrench tooltip changed to "⚙ Configure AI…"
 
-### Task E.3 — Per-workspace tool overrides (2h, optional)
-- Store tool enable/disable state in workspace override
-- Allows different tool sets per workspace (e.g., disable `write_file` in a
-  read-only reference workspace)
+### Task E.3 — Per-workspace tool overrides (2h, optional) ✅
+- Added `IUnifiedToolsConfig` interface with `enabledOverrides: Record<string, boolean>`
+- Added `tools` section to `IUnifiedAIConfig` and `DEFAULT_UNIFIED_CONFIG`
+- `ToolsSection` persists tool enable/disable to unified config via `updateActivePreset()`
+- `deepMerge()` handles the new section automatically
+- Updated migration helper `fromLegacyProfile` to include `tools` defaults
 
 ---
 

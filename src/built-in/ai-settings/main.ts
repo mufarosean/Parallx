@@ -6,7 +6,8 @@
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { IAISettingsService, IUnifiedAIConfigService, INotificationService } from '../../services/serviceTypes.js';
-import { ILanguageModelsService } from '../../services/chatTypes.js';
+import { ILanguageModelsService, ILanguageModelToolsService } from '../../services/chatTypes.js';
+import type { IToolPickerServices } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 
@@ -68,11 +69,31 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../api/notificationService.js').NotificationService>(INotificationService)
     : undefined;
 
+  // Get the Language Model Tools service for tool tree in Tools section (M20 E.1)
+  const languageModelToolsService = api.services.has(ILanguageModelToolsService)
+    ? api.services.get<import('../../services/chatTypes.js').ILanguageModelToolsService>(ILanguageModelToolsService)
+    : undefined;
+
+  // Build IToolPickerServices adapter (same shape as chatDataService.ts)
+  const toolPickerServices: IToolPickerServices | undefined = languageModelToolsService
+    ? {
+        getTools: () => languageModelToolsService.getTools().map((t) => ({
+          name: t.name,
+          description: t.description,
+          enabled: languageModelToolsService.isToolEnabled(t.name),
+        })),
+        setToolEnabled: (name: string, enabled: boolean) =>
+          languageModelToolsService.setToolEnabled(name, enabled),
+        onDidChangeTools: languageModelToolsService.onDidChangeTools,
+        getEnabledCount: () => languageModelToolsService.getEnabledCount(),
+      }
+    : undefined;
+
   // Register view provider
   context.subscriptions.push(
     api.views.registerViewProvider('view.aiSettings', {
       createView(container: HTMLElement): IDisposable {
-        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService);
+        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices);
         return _panel;
       },
     }),
@@ -82,6 +103,15 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
     api.commands.registerCommand('ai-settings.open', () => {
       api.commands.executeCommand('workbench.view.show', 'view.aiSettings');
+    }),
+  );
+
+  // Register the "Scroll to section" command (M20 E.2 — wrench icon redirect)
+  context.subscriptions.push(
+    api.commands.registerCommand('ai-settings.scrollToSection', (sectionId: unknown) => {
+      if (_panel && typeof sectionId === 'string') {
+        _panel.scrollToSection(sectionId);
+      }
     }),
   );
 

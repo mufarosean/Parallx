@@ -30,6 +30,10 @@ interface ToolCategory {
 /**
  * The "Configure Tools" dialog.
  *
+ * @deprecated M20 E.2 — Tool configuration moved to AI Hub → Tools section.
+ * The wrench icon now opens the AI Hub instead of this modal overlay.
+ * This class is kept for backward compatibility but should not be used for new code.
+ *
  * Renders as a centered modal overlay on `document.body` with:
  *   • Title bar — "Configure Tools" + close button
  *   • Search row — filter input + "N Selected" badge + OK button

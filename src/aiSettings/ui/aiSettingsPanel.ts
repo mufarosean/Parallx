@@ -25,8 +25,10 @@ import { ModelSection } from './sections/modelSection.js';
 import { RetrievalSection } from './sections/retrievalSection.js';
 import { AgentSection } from './sections/agentSection.js';
 import { IndexingSection } from './sections/indexingSection.js';
+import { ToolsSection } from './sections/toolsSection.js';
 import { AdvancedSection } from './sections/advancedSection.js';
 import { PreviewSection } from './sections/previewSection.js';
+import type { IToolPickerServices } from '../../services/chatTypes.js';
 import './aiSettings.css';
 
 // ─── AISettingsPanel ─────────────────────────────────────────────────────────
@@ -44,6 +46,7 @@ export class AISettingsPanel extends Disposable {
     private readonly _service: IAISettingsService,
     private readonly _languageModelsService?: ILanguageModelsService,
     private readonly _unifiedConfigService?: IUnifiedAIConfigService,
+    private readonly _toolPickerServices?: IToolPickerServices,
   ) {
     super();
 
@@ -88,6 +91,7 @@ export class AISettingsPanel extends Disposable {
       this._register(new RetrievalSection(this._service, this._unifiedConfigService)),
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
       this._register(new IndexingSection(this._service, this._unifiedConfigService)),
+      this._register(new ToolsSection(this._service, this._toolPickerServices, this._unifiedConfigService)),
       this._register(new AdvancedSection(this._service)),
       this._register(new PreviewSection(this._service)),
     ];
@@ -128,6 +132,7 @@ export class AISettingsPanel extends Disposable {
       { id: 'retrieval', label: 'Retrieval' },
       { id: 'agent', label: 'Agent' },
       { id: 'indexing', label: 'Indexing' },
+      { id: 'tools', label: 'Tools' },
       { id: 'advanced', label: 'Advanced' },
       { id: 'preview', label: 'Preview' },
     ];
@@ -153,6 +158,11 @@ export class AISettingsPanel extends Disposable {
     for (const item of this._navItems) {
       item.el.classList.toggle('ai-settings-nav__item--active', item.id === sectionId);
     }
+  }
+
+  /** Scroll to a named section (public API for external callers like wrench icon redirect). */
+  scrollToSection(sectionId: string): void {
+    this._scrollToSection(sectionId);
   }
 
   // ─── Update ────────────────────────────────────────────────────────

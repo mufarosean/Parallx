@@ -1000,3 +1000,17 @@ export interface ILanguageModelToolsService extends IDisposable {
 }
 
 export const ILanguageModelToolsService = createServiceIdentifier<ILanguageModelToolsService>('ILanguageModelToolsService');
+
+// ── IToolPickerServices (lightweight adapter for UI) ──
+
+/**
+ * Lightweight adapter interface for tool picker UI components.
+ * Wraps ILanguageModelToolsService into a simpler shape for the
+ * AI Hub Tools section and the (deprecated) ChatToolPicker modal.
+ */
+export interface IToolPickerServices {
+  getTools(): readonly { name: string; description: string; enabled: boolean }[];
+  setToolEnabled(name: string, enabled: boolean): void;
+  readonly onDidChangeTools: Event<void>;
+  getEnabledCount(): number;
+}

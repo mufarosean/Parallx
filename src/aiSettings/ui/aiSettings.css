@@ -649,3 +649,121 @@
 .ai-settings-save-indicator--visible {
   opacity: 1;
 }
+
+/* ── Tools Section (E.1) ──────────────────────────────────────────────── */
+
+.ai-settings-tools-summary {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-tools-search {
+  margin-bottom: 8px;
+}
+
+.ai-settings-tools-search .ui-input-box {
+  width: 100%;
+}
+
+.ai-settings-tools-tree {
+  border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  padding: 4px 0;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.ai-settings-tools-empty {
+  padding: 12px 16px;
+  font-style: italic;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-tools-group-header,
+.ai-settings-tools-cat-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ai-settings-tools-group-header:hover,
+.ai-settings-tools-cat-header:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+
+.ai-settings-tools-cat-header {
+  padding-left: 28px;
+}
+
+.ai-settings-tools-chevron {
+  width: 16px;
+  text-align: center;
+  font-size: 10px;
+  flex-shrink: 0;
+  color: var(--vscode-foreground, #ccc);
+}
+
+.ai-settings-tools-checkbox {
+  flex-shrink: 0;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.ai-settings-tools-group-label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.ai-settings-tools-cat-label {
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.ai-settings-tools-cat-desc {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.ai-settings-tools-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px 3px 52px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ai-settings-tools-tool-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+
+.ai-settings-tools-tool-info {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ai-settings-tools-tool-name {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.ai-settings-tools-tool-desc {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

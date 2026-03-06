@@ -131,6 +131,18 @@ export interface IUnifiedIndexingConfig {
   readonly excludePatterns: readonly string[];
 }
 
+// ─── Tool Overrides (M20 E.3) ────────────────────────────────────────────────
+
+/**
+ * Per-workspace tool enable/disable overrides.
+ * Keys are tool names, values are whether the tool is enabled.
+ * Tools not listed here use the global (service-level) default.
+ */
+export interface IUnifiedToolsConfig {
+  /** Tool enablement overrides: { toolName: enabled } */
+  readonly enabledOverrides: Readonly<Record<string, boolean>>;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // The Full Unified Config
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -148,6 +160,7 @@ export interface IUnifiedAIConfig {
   readonly agent: IUnifiedAgentConfig;
   readonly memory: IUnifiedMemoryConfig;
   readonly indexing: IUnifiedIndexingConfig;
+  readonly tools: IUnifiedToolsConfig;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -357,6 +370,9 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
     maxFileSize: 262144, // 256 KB
     excludePatterns: [],
   },
+  tools: {
+    enabledOverrides: {},
+  },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -404,6 +420,7 @@ export function fromLegacyProfile(profile: AISettingsProfile): IUnifiedPreset {
       agent: { ...DEFAULT_UNIFIED_CONFIG.agent },
       memory: { ...DEFAULT_UNIFIED_CONFIG.memory },
       indexing: { ...DEFAULT_UNIFIED_CONFIG.indexing },
+      tools: { ...DEFAULT_UNIFIED_CONFIG.tools },
     },
   };
 }

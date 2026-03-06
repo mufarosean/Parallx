@@ -95,6 +95,7 @@ let _lastIndexStats: { pages: number; files: number } | undefined;
 let _promptFileService: PromptFileService | undefined;
 let _permissionService: PermissionService | undefined;
 let _fsAccessor: IBuiltInToolFileSystem | undefined;
+let _api: ParallxApi | undefined;
 
 // Writer-accessor .parallxignore cache — module-level so the workspace
 // switch handler (§11) can invalidate it.
@@ -104,6 +105,7 @@ let _loadWriterIgnore: (() => Promise<unknown>) | undefined;
 // ── Activation ──
 
 export function activate(api: ParallxApi, context: ToolContext): void {
+  _api = api;
 
   // ── 1. Retrieve DI services ──
 
@@ -871,6 +873,14 @@ export function setActiveWidget(widget: ChatWidget | undefined): void {
 
   // Wire mention/command providers once the widget is available
   if (widget) {
+    // Wrench icon → open AI Hub scrolled to Tools section (M20 E.2)
+    widget.onDidRequestOpenToolSettings(() => {
+      _api?.commands.executeCommand('ai-settings.open');
+      // Allow the view to render before scrolling
+      setTimeout(() => {
+        _api?.commands.executeCommand('ai-settings.scrollToSection', 'tools');
+      }, 150);
+    });
     // Mention provider: list workspace files for @file: autocomplete
     if (_fsAccessor) {
       widget.setMentionSuggestionProvider({
@@ -913,6 +923,7 @@ export function deactivate(): void {
   _tokenStatusBar = undefined;
   _promptFileService = undefined;
   _fsAccessor = undefined;
+  _api = undefined;
   _writerIgnoreInstance = undefined;
   _loadWriterIgnore = undefined;
 }

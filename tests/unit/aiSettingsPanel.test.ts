@@ -271,10 +271,10 @@ describe('AISettingsPanel', () => {
     panel.dispose();
   });
 
-  it('renders navigation with 9 section buttons', () => {
+  it('renders navigation with 10 section buttons', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const navItems = parent.querySelectorAll('.ai-settings-nav__item');
-    expect(navItems.length).toBe(9);
+    expect(navItems.length).toBe(10);
     expect(navItems[0].textContent).toBe('Persona');
     expect(navItems[1].textContent).toBe('Chat');
     expect(navItems[2].textContent).toBe('Suggestions');
@@ -282,8 +282,9 @@ describe('AISettingsPanel', () => {
     expect(navItems[4].textContent).toBe('Retrieval');
     expect(navItems[5].textContent).toBe('Agent');
     expect(navItems[6].textContent).toBe('Indexing');
-    expect(navItems[7].textContent).toBe('Advanced');
-    expect(navItems[8].textContent).toBe('Preview');
+    expect(navItems[7].textContent).toBe('Tools');
+    expect(navItems[8].textContent).toBe('Advanced');
+    expect(navItems[9].textContent).toBe('Preview');
     panel.dispose();
   });
 
@@ -293,13 +294,13 @@ describe('AISettingsPanel', () => {
     panel.dispose();
   });
 
-  it('renders all nine sections in content area', () => {
+  it('renders all ten sections in content area', () => {
     const panel = new AISettingsPanel(parent, service as any);
     const sections = parent.querySelectorAll('.ai-settings-section');
-    expect(sections.length).toBe(9);
+    expect(sections.length).toBe(10);
     // Verify section IDs
     const ids = Array.from(sections).map(s => (s as HTMLElement).dataset.sectionId);
-    expect(ids).toEqual(['persona', 'chat', 'suggestions', 'model', 'retrieval', 'agent', 'indexing', 'advanced', 'preview']);
+    expect(ids).toEqual(['persona', 'chat', 'suggestions', 'model', 'retrieval', 'agent', 'indexing', 'tools', 'advanced', 'preview']);
     panel.dispose();
   });
 

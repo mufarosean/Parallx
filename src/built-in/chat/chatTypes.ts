@@ -23,6 +23,7 @@ import type {
   ChatMode,
   IChatEditProposalContent,
 } from '../../services/chatTypes.js';
+import type { IToolPickerServices } from '../../services/chatTypes.js';
 import { ChatRequestQueueKind } from '../../services/chatTypes.js';
 export { ChatRequestQueueKind } from '../../services/chatTypes.js';
 export type { IChatPendingRequest } from '../../services/chatTypes.js';
@@ -249,13 +250,8 @@ export interface IAttachmentServices {
   listWorkspaceFiles?(): Promise<IWorkspaceFileEntry[]>;
 }
 
-/** Services needed by the tool picker. */
-export interface IToolPickerServices {
-  getTools(): readonly { name: string; description: string; enabled: boolean }[];
-  setToolEnabled(name: string, enabled: boolean): void;
-  readonly onDidChangeTools: Event<void>;
-  getEnabledCount(): number;
-}
+/** Services needed by the tool picker — re-exported from main service types. */
+export type { IToolPickerServices } from '../../services/chatTypes.js';
 
 /** Services needed for token breakdown calculations. */
 export interface ITokenStatusBarServices {

@@ -46,6 +46,7 @@ describe('IUnifiedAIConfig defaults', () => {
     expect(DEFAULT_UNIFIED_CONFIG.agent).toBeDefined();
     expect(DEFAULT_UNIFIED_CONFIG.memory).toBeDefined();
     expect(DEFAULT_UNIFIED_CONFIG.indexing).toBeDefined();
+    expect(DEFAULT_UNIFIED_CONFIG.tools).toBeDefined();
   });
 
   it('retrieval defaults match retrievalService constants', () => {
