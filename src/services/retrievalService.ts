@@ -136,6 +136,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
 
   private readonly _embeddingService: IEmbeddingService;
   private readonly _vectorStore: IVectorStoreService;
+  private _configProvider?: { getEffectiveConfig(): { retrieval: { ragTopK: number; ragScoreThreshold: number } } };
 
   constructor(
     embeddingService: IEmbeddingService,
@@ -144,6 +145,11 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     super();
     this._embeddingService = embeddingService;
     this._vectorStore = vectorStore;
+  }
+
+  /** Bind a config provider (M20: UnifiedAIConfigService) for runtime defaults. */
+  setConfigProvider(provider: { getEffectiveConfig(): { retrieval: { ragTopK: number; ragScoreThreshold: number } } }): void {
+    this._configProvider = provider;
   }
 
   // ── Public API ──
@@ -162,8 +168,9 @@ export class RetrievalService extends Disposable implements IRetrievalService {
   async retrieve(query: string, options?: RetrievalOptions): Promise<RetrievedContext[]> {
     if (!query.trim()) { return []; }
 
-    const topK = options?.topK ?? DEFAULT_TOP_K;
-    const minScore = options?.minScore ?? DEFAULT_MIN_SCORE;
+    const cfgRetrieval = this._configProvider?.getEffectiveConfig().retrieval;
+    const topK = options?.topK ?? cfgRetrieval?.ragTopK ?? DEFAULT_TOP_K;
+    const minScore = options?.minScore ?? cfgRetrieval?.ragScoreThreshold ?? DEFAULT_MIN_SCORE;
     const maxPerSource = options?.maxPerSource ?? DEFAULT_MAX_PER_SOURCE;
     const tokenBudget = options?.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
 

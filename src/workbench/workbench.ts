@@ -14,9 +14,9 @@ import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
-import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerAISettingsService } from './workbenchServices.js';
+import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerAISettingsService, registerUnifiedAIConfigService } from './workbenchServices.js';
 import { IChatService, ILanguageModelsService } from '../services/chatTypes.js';
 
 // Layout base class (VS Code: Layout → Workbench extends Layout)
@@ -834,6 +834,10 @@ export class Workbench extends Layout {
     // ── AI Settings Service (M15) ──
     // Registered after storage and chat services are available.
     await registerAISettingsService(this._services, this._storage);
+
+    // ── Unified AI Config Service (M20) ──
+    // Replaces AISettingsService + ParallxConfigService as single source of truth.
+    await registerUnifiedAIConfigService(this._services, this._storage);
 
     // ── Language Models Service: late-bind storage + default model ──
     // The service was created pre-Phase-1 (no-arg), so we inject storage now.
@@ -2326,6 +2330,11 @@ export class Workbench extends Layout {
     }
 
     const result = registerIndexingServices(this._services);
+
+    // M20: Wire retrieval service to read defaults from unified config
+    if (this._services.has(IUnifiedAIConfigService)) {
+      result.retrievalService.setConfigProvider(this._services.get(IUnifiedAIConfigService));
+    }
 
     // Track all new services for disposal on next restart
     this._ragServiceStore.add(result.embeddingService);

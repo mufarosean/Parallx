@@ -32,7 +32,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IAISettingsService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IAISettingsService, IUnifiedAIConfigService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -164,6 +164,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     ? api.services.get<import('../../aiSettings/aiSettingsTypes.js').IAISettingsService>(IAISettingsService)
     : undefined;
 
+  // Unified AI Config service (M20) — single source of truth
+  const unifiedConfigService = api.services.has(IUnifiedAIConfigService)
+    ? api.services.get<import('../../aiSettings/unifiedConfigTypes.js').IUnifiedAIConfigService>(IUnifiedAIConfigService)
+    : undefined;
+
   // ── 1b. Build file system accessor for built-in tools ──
 
   const fsAccessor = buildFileSystemAccessor(fileService, workspaceService);
@@ -256,13 +261,14 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     textFileModelManager: api.services.has(ITextFileModelManager)
       ? api.services.get<import('../../services/serviceTypes.js').ITextFileModelManager>(ITextFileModelManager)
       : undefined,
-    maxIterations: chatConfig.get<number>('agent.maxIterations', 10),
+    maxIterations: unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? chatConfig.get<number>('agent.maxIterations', 10),
     networkTimeout: 60_000,
     getActiveWidget: () => _activeWidget,
     openPage: (pageId: string) => api.editors.openEditor({ typeId: 'canvas', title: 'Page', instanceId: pageId }),
     sessionContext: sessionContext ?? undefined,
     sessionManager: sessionManager ?? undefined,
     aiSettingsService: aiSettingsService ?? undefined,
+    unifiedConfigService: unifiedConfigService ?? undefined,
     openFileEditor: (uri, opts) => api.editors.openFileEditor(uri, opts),
   });
 

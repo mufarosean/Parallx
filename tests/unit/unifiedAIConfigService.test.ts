@@ -549,3 +549,126 @@ describe('UnifiedAIConfigService', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// A.4: Consumer Wiring Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('A.4 Consumer wiring', () => {
+
+  // ── RetrievalService.setConfigProvider ──
+
+  describe('RetrievalService.setConfigProvider', () => {
+    it('RetrievalService has setConfigProvider method', async () => {
+      const { RetrievalService } = await import('../../src/services/retrievalService');
+      const mockEmbed = { embed: vi.fn().mockResolvedValue([new Float32Array(768)]) };
+      const mockVector = {
+        search: vi.fn().mockResolvedValue([]),
+        initialize: vi.fn(),
+        dispose: vi.fn(),
+      } as any;
+      const svc = new RetrievalService(mockEmbed as any, mockVector);
+      expect(typeof svc.setConfigProvider).toBe('function');
+    });
+
+    it('uses config provider values for topK and minScore', async () => {
+      const { RetrievalService } = await import('../../src/services/retrievalService');
+
+      const embedding = new Float32Array(768).fill(0.1);
+      const mockEmbed = {
+        embed: vi.fn().mockResolvedValue([embedding]),
+        embedQuery: vi.fn().mockResolvedValue(embedding),
+      };
+      const mockVector = {
+        search: vi.fn().mockResolvedValue([]),
+        initialize: vi.fn(),
+        dispose: vi.fn(),
+      } as any;
+
+      const svc = new RetrievalService(mockEmbed as any, mockVector);
+      svc.setConfigProvider({
+        getEffectiveConfig: () => ({
+          retrieval: { ragTopK: 3, ragScoreThreshold: 0.5 },
+        }),
+      });
+
+      const results = await svc.retrieve('test query');
+      // Search was called (proving the config path was reached without error)
+      expect(mockVector.search).toHaveBeenCalled();
+      // The search options should contain topK = 3 * overfetchFactor = 9
+      const searchOpts = mockVector.search.mock.calls[0][2];
+      expect(searchOpts.topK).toBe(9); // 3 × 3 (overfetch factor)
+      expect(results).toEqual([]);
+    });
+  });
+
+  // ── TokenBudgetService.setConfig ──
+
+  describe('TokenBudgetService reads unified config budget', () => {
+    it('setConfig overrides default budget percentages', async () => {
+      const { TokenBudgetService } = await import('../../src/services/tokenBudgetService');
+      const budgetService = new TokenBudgetService();
+
+      budgetService.setConfig({
+        systemPrompt: 15,
+        ragContext: 25,
+        history: 35,
+        userMessage: 25,
+      });
+
+      const cfg = budgetService.getConfig();
+      expect(cfg.systemPrompt).toBe(15);
+      expect(cfg.ragContext).toBe(25);
+      expect(cfg.history).toBe(35);
+      expect(cfg.userMessage).toBe(25);
+    });
+
+    it('contextBudget shape matches TokenBudgetService config shape', () => {
+      const budget = DEFAULT_UNIFIED_CONFIG.retrieval.contextBudget;
+      expect(budget).toHaveProperty('systemPrompt');
+      expect(budget).toHaveProperty('ragContext');
+      expect(budget).toHaveProperty('history');
+      expect(budget).toHaveProperty('userMessage');
+      // Values should sum to 100
+      expect(budget.systemPrompt + budget.ragContext + budget.history + budget.userMessage).toBe(100);
+    });
+  });
+
+  // ── ChatDataServiceDeps accepts unifiedConfigService ──
+
+  describe('ChatDataServiceDeps unifiedConfigService field', () => {
+    it('IDefaultParticipantServices accepts unifiedConfigService', async () => {
+      // Type-level test: if this compiles, the field exists on the interface
+      const mockServices: Partial<import('../../src/built-in/chat/chatTypes').IDefaultParticipantServices> = {
+        unifiedConfigService: undefined,
+      };
+      expect(mockServices).toHaveProperty('unifiedConfigService');
+    });
+  });
+
+  // ── Unified config maxIterations flows through ──
+
+  describe('maxIterations flows from unified config', () => {
+    let service: UnifiedAIConfigService;
+
+    beforeEach(async () => {
+      const storage = createMockStorage();
+      service = new UnifiedAIConfigService(storage as any, undefined);
+      await service.initialize();
+    });
+
+    it('default maxIterations is 10', () => {
+      expect(service.getEffectiveConfig().agent.maxIterations).toBe(10);
+    });
+
+    it('workspace override changes maxIterations', async () => {
+      await service.updateWorkspaceOverride({ agent: { maxIterations: 5 } });
+      expect(service.getEffectiveConfig().agent.maxIterations).toBe(5);
+    });
+
+    it('preset change changes maxIterations', async () => {
+      await service.updateActivePreset({ agent: { maxIterations: 20 } });
+      expect(service.getEffectiveConfig().agent.maxIterations).toBe(20);
+    });
+  });
+});

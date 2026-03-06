@@ -765,6 +765,18 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     const contextWindow = services.getModelContextLength?.() || BUDGET_FALLBACK_CTX;
     if (contextParts.length > 0) {
       const budgetService = new TokenBudgetService();
+
+      // M20: Apply context budget from unified config if available
+      const unifiedBudget = services.unifiedConfigService?.getEffectiveConfig().retrieval.contextBudget;
+      if (unifiedBudget) {
+        budgetService.setConfig({
+          systemPrompt: unifiedBudget.systemPrompt,
+          ragContext: unifiedBudget.ragContext,
+          history: unifiedBudget.history,
+          userMessage: unifiedBudget.userMessage,
+        });
+      }
+
       const ragContent = contextParts.join('\n\n');
       const historyContent = messages
         .filter(m => m.role !== 'system')
@@ -820,11 +832,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         const histTokens = Math.ceil((budgetResult.slots['history'] ?? historyContent).length / 4);
         const userTokens = Math.ceil(userText.length / 4);
         const totalSlots = contextWindow;
+        const budgetCfg = budgetService.getConfig();
         services.reportBudget([
-          { label: 'System', used: sysTokens, allocated: Math.ceil(totalSlots * 0.10), color: '#6c71c4' },
-          { label: 'RAG',    used: ragTokens,  allocated: Math.ceil(totalSlots * 0.30), color: '#268bd2' },
-          { label: 'History', used: histTokens, allocated: Math.ceil(totalSlots * 0.30), color: '#859900' },
-          { label: 'User',   used: userTokens,  allocated: Math.ceil(totalSlots * 0.30), color: '#cb4b16' },
+          { label: 'System', used: sysTokens, allocated: Math.ceil(totalSlots * budgetCfg.systemPrompt / 100), color: '#6c71c4' },
+          { label: 'RAG',    used: ragTokens,  allocated: Math.ceil(totalSlots * budgetCfg.ragContext / 100), color: '#268bd2' },
+          { label: 'History', used: histTokens, allocated: Math.ceil(totalSlots * budgetCfg.history / 100), color: '#859900' },
+          { label: 'User',   used: userTokens,  allocated: Math.ceil(totalSlots * budgetCfg.userMessage / 100), color: '#cb4b16' },
         ]);
       }
     }

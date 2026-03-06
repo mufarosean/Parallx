@@ -3,7 +3,7 @@
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
-import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService } from '../services/serviceTypes.js';
+import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
 import { CommandService } from '../services/commandService.js';
 import { ContextKeyService } from '../services/contextKeyService.js';
@@ -37,6 +37,7 @@ import { RelatedContentService } from '../services/relatedContentService.js';
 import { AutoTaggingService } from '../services/autoTaggingService.js';
 import { ProactiveSuggestionsService } from '../services/proactiveSuggestionsService.js';
 import { AISettingsService } from '../aiSettings/aiSettingsService.js';
+import { UnifiedAIConfigService } from '../aiSettings/unifiedAIConfigService.js';
 import type { IStorage } from '../platform/storage.js';
 import type { ViewManager } from '../views/viewManager.js';
 
@@ -288,4 +289,23 @@ export async function registerAISettingsService(
   await aiSettingsService.initialize();
   services.registerInstance(IAISettingsService, aiSettingsService);
   return aiSettingsService;
+}
+
+/**
+ * Creates and registers the Unified AI Config service (M20 Task A.4).
+ * Called after registerAISettingsService so legacy migration can read old profiles.
+ *
+ * @returns The UnifiedAIConfigService instance for further wiring.
+ */
+export async function registerUnifiedAIConfigService(
+  services: ServiceCollection,
+  storage: IStorage,
+): Promise<UnifiedAIConfigService> {
+  const languageModelsService = services.has(ILanguageModelsService)
+    ? services.get(ILanguageModelsService)
+    : undefined;
+  const unifiedConfigService = new UnifiedAIConfigService(storage, languageModelsService);
+  await unifiedConfigService.initialize();
+  services.registerInstance(IUnifiedAIConfigService, unifiedConfigService);
+  return unifiedConfigService;
 }

@@ -44,6 +44,7 @@ import type { Event } from '../../../platform/events.js';
 
 import type { IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager } from '../../../services/serviceTypes.js';
 import type { IAISettingsService } from '../../../aiSettings/aiSettingsTypes.js';
+import type { IUnifiedAIConfigService } from '../../../aiSettings/unifiedConfigTypes.js';
 import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageModelToolsService } from '../../../services/chatTypes.js';
 import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import type { PromptFileService } from '../../../services/promptFileService.js';
@@ -90,6 +91,8 @@ export interface ChatDataServiceDeps {
   readonly sessionManager?: ISessionManager;
   /** AI Settings service (M15). Provides active persona and model defaults. */
   readonly aiSettingsService?: IAISettingsService;
+  /** Unified AI Config service (M20). Single source of truth for all AI configuration. */
+  readonly unifiedConfigService?: IUnifiedAIConfigService;
   /** Open a file in the editor via the standard EditorsBridge resolver (same as explorer). */
   readonly openFileEditor?: (uri: string, options?: { pinned?: boolean }) => Promise<void>;
 }
@@ -1241,7 +1244,7 @@ export class ChatDataService {
       getToolDefinitions: () => this.getToolDefinitions(),
       getReadOnlyToolDefinitions: () => this.getReadOnlyToolDefinitions(),
       invokeTool: (n, a, t) => this.invokeTool(n, a, t),
-      maxIterations: this._d.maxIterations,
+      maxIterations: this._d.unifiedConfigService?.getEffectiveConfig().agent.maxIterations ?? this._d.maxIterations,
       networkTimeout: this._d.networkTimeout,
       getModelContextLength: () => this.getModelContextLength(),
       sendSummarizationRequest: (m, s) => this.sendSummarizationRequest(m, s),
@@ -1283,6 +1286,7 @@ export class ChatDataService {
       getWorkspaceDigest: () => this.getWorkspaceDigest(),
       sessionManager: this._d.sessionManager,
       aiSettingsService: this._d.aiSettingsService,
+      unifiedConfigService: this._d.unifiedConfigService,
     };
   }
 

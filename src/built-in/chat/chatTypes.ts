@@ -34,6 +34,7 @@ import type { IDiffResult } from '../../services/diffService.js';
 
 /** Services injected into the default (agentic) participant. */
 import type { ISessionManager } from '../../services/serviceTypes.js';
+import type { IUnifiedAIConfigService } from '../../aiSettings/unifiedConfigTypes.js';
 
 export interface IDefaultParticipantServices {
   sendChatRequest(
@@ -97,6 +98,8 @@ export interface IDefaultParticipantServices {
   sessionManager?: ISessionManager;
   /** AI Settings service for persona overlay and model parameters (M15). */
   aiSettingsService?: { getActiveProfile(): import('../../aiSettings/aiSettingsTypes.js').AISettingsProfile };
+  /** Unified AI Config service for all configuration (M20). */
+  unifiedConfigService?: IUnifiedAIConfigService;
 }
 
 /** Services injected into the @workspace participant. */
