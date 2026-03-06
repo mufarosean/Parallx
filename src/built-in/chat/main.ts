@@ -381,10 +381,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       ? {
         isReady: () => indexingPipelineService!.isInitialIndexComplete,
         async retrieve(query: string, sourceFilter?: string) {
+          // No hardcoded limits — retrieval params from AI Settings.
           const chunks = await retrievalService!.retrieve(query, {
-            topK: 10,
-            maxPerSource: 3,
-            tokenBudget: 4000,
             sourceFilter,
           });
           return chunks.map((c) => ({
@@ -719,7 +717,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
           ? async (query: string): Promise<string | undefined> => {
             if (!indexingPipelineService!.isInitialIndexComplete) return undefined;
             try {
-              const chunks = await retrievalService!.retrieve(query, { topK: 5, maxPerSource: 2, tokenBudget: 1500 });
+              // No hardcoded limits — retrieval params from AI Settings.
+              const chunks = await retrievalService!.retrieve(query);
               return chunks.length > 0 ? retrievalService!.formatContext(chunks) : undefined;
             } catch { return undefined; }
           }
