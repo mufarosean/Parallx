@@ -262,11 +262,18 @@ function _autoLinkSourceMentions(
       link.addEventListener('click', (e) => {
         e.preventDefault();
         const isPage = entry.uri.startsWith('parallx-page://');
+        const isMemory = entry.uri.startsWith('parallx-memory://');
         if (isPage) {
           const pageId = entry.uri.replace('parallx-page://', '');
           link.dispatchEvent(new CustomEvent('parallx:navigate-page', {
             bubbles: true,
             detail: { pageId },
+          }));
+        } else if (isMemory) {
+          const sessionId = entry.uri.replace('parallx-memory://', '');
+          link.dispatchEvent(new CustomEvent('parallx:open-memory', {
+            bubbles: true,
+            detail: { sessionId },
           }));
         } else {
           link.dispatchEvent(new CustomEvent('parallx:open-file', {

@@ -1026,7 +1026,11 @@ export class ChatDataService {
    * as an untitled editor so the user can review what the AI "remembered".
    */
   async openMemoryViewer(sessionId: string): Promise<void> {
-    if (!this._d.memoryService || !this._d.editorService) { return; }
+    if (!this._d.memoryService || !this._d.editorService) {
+      console.warn('[ChatDataService] openMemoryViewer: missing memoryService or editorService');
+      return;
+    }
+    console.log('[ChatDataService] openMemoryViewer for session:', sessionId);
 
     try {
       const memories = await this._d.memoryService.getAllMemories();

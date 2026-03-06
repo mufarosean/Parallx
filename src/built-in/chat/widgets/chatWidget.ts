@@ -215,6 +215,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._register(addDisposableListener(this._messageListContainer, 'parallx:open-memory' as keyof HTMLElementEventMap, ((e: CustomEvent<{ sessionId: string }>) => {
       if (this._services.openMemory) {
         this._services.openMemory(e.detail.sessionId);
+      } else {
+        console.warn('[ChatWidget] openMemory service not available — memoryService or editorService may be missing');
       }
     }) as EventListener));
 
