@@ -32,6 +32,7 @@ export class ModelSection extends SettingsSection {
   private _contextWindowInput!: InputBox;
 
   private readonly _languageModelsService: ILanguageModelsService | undefined;
+  private _isLoadingModels = false;
 
   constructor(service: IAISettingsService, languageModelsService?: ILanguageModelsService) {
     super(service, 'model', 'Model');
@@ -197,7 +198,8 @@ export class ModelSection extends SettingsSection {
    * Always includes an "Auto-select" entry with value ''.
    */
   private async _loadModelOptions(): Promise<void> {
-    if (!this._languageModelsService) { return; }
+    if (!this._languageModelsService || this._isLoadingModels) { return; }
+    this._isLoadingModels = true;
     try {
       const models = await this._languageModelsService.getModels();
       const items: IDropdownItem[] = [{ value: '', label: 'Auto-select' }];
@@ -214,6 +216,8 @@ export class ModelSection extends SettingsSection {
       this._defaultModelDropdown.value = profile.model.defaultModel;
     } catch {
       // Models unavailable — keep the "Auto-select" default
+    } finally {
+      this._isLoadingModels = false;
     }
   }
 }
