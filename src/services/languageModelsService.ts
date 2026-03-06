@@ -155,9 +155,20 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
   /**
    * Set the default model from AI Settings.  Used as fallback when the
    * persisted model is unavailable.
+   *
+   * When the new default is a valid, available model, it also becomes
+   * the active model immediately — so newly created chat sessions use it.
    */
   setDefaultModel(modelId: string | undefined): void {
     this._defaultModelId = modelId;
+
+    // If the model is currently available, switch to it right away so
+    // new chat sessions pick it up via getActiveModel().
+    if (modelId && this._modelToProvider.has(modelId) && this._activeModelId !== modelId) {
+      this._activeModelId = modelId;
+      this._persistActiveModel();
+      this._onDidChangeModels.fire();
+    }
   }
 
   /** Fire-and-forget persist of the active model ID. */
