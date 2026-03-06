@@ -25,6 +25,7 @@ function makeDefaultProfile(): AISettingsProfile {
       responseLength: 'adaptive',
     },
     model: {
+      defaultModel: '', // auto-select
       temperature: 0.7,
       maxTokens: 0, // model default
       contextWindow: 0, // model default

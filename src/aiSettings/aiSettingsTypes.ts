@@ -46,6 +46,12 @@ export interface AIChatSettings {
 
 export interface AIModelSettings {
   /**
+   * Preferred model ID for new chat sessions (empty = auto-select).
+   * When set, new sessions start with this model and the fallback chain
+   * uses it when the last-used model becomes unavailable.
+   */
+  defaultModel: string;
+  /**
    * 0.0 = fully deterministic (precise)
    * 1.0 = fully creative (variable)
    * Maps directly to Ollama's `temperature` parameter.

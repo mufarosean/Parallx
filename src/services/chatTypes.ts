@@ -21,6 +21,7 @@ import { createServiceIdentifier } from '../platform/types.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
 import type { URI } from '../platform/uri.js';
+import type { IStorage } from '../platform/storage.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 1. Provider & Message Types (Task 0.1)
@@ -786,6 +787,10 @@ export interface ILanguageModelsService extends IDisposable {
   getActiveModel(): string | undefined;
   /** Set the user's active model. */
   setActiveModel(modelId: string): void;
+  /** Late-bind persistent storage (called after Phase 1 creates IStorage). */
+  setStorage(storage: IStorage): Promise<void>;
+  /** Set the AI Settings default model (used as fallback in the selection chain). */
+  setDefaultModel(modelId: string | undefined): void;
   /** Delegate a chat request to the appropriate provider. */
   sendChatRequest(
     messages: readonly IChatMessage[],

@@ -3,6 +3,13 @@
 // Manages language model providers, aggregates models, tracks active model
 // selection, and delegates chat requests to the appropriate provider.
 //
+// Active model persistence:
+//   The user's last-selected model is persisted to IStorage so it survives
+//   app restarts. On refresh, the persisted ID is validated against available
+//   models. If the model is gone, the service falls back to:
+//     1. A configured default model from AI Settings  (defaultModel field)
+//     2. The first non-embedding model from the provider
+//
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/common/languageModels.ts
 
@@ -11,6 +18,7 @@ import { Emitter } from '../platform/events.js';
 import { toDisposable } from '../platform/lifecycle.js';
 import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
+import type { IStorage } from '../platform/storage.js';
 import type {
   ILanguageModelsService,
   ILanguageModelProvider,
@@ -20,6 +28,9 @@ import type {
   IChatRequestOptions,
   IChatResponseChunk,
 } from './chatTypes.js';
+
+/** Storage key for the persisted active model ID. */
+const ACTIVE_MODEL_STORAGE_KEY = 'languageModels.activeModelId';
 
 /**
  * Singleton service managing language model providers.
@@ -44,6 +55,16 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
 
   private _activeModelId: string | undefined;
 
+  // ── Storage (optional — late-bound via setStorage) ──
+
+  private _storage: IStorage | undefined;
+
+  /**
+   * Configured default model from AI Settings.
+   * Used as fallback when no persisted model exists or persisted model is gone.
+   */
+  private _defaultModelId: string | undefined;
+
   // ── Events ──
 
   private readonly _onDidChangeProviders = this._register(new Emitter<void>());
@@ -67,16 +88,23 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
 
     return toDisposable(() => {
       this._providers.delete(provider.id);
-      // Clear model mappings for this provider
+
+      // BUG FIX: Check whether the active model belongs to this provider
+      // BEFORE deleting its mappings.  Previously the check ran after the
+      // delete loop, so .get() always returned undefined and _activeModelId
+      // was never cleared — leaving a stale ghost model ID.
+      if (this._activeModelId && this._modelToProvider.get(this._activeModelId) === provider.id) {
+        this._activeModelId = undefined;
+        this._persistActiveModel();
+      }
+
+      // Now safe to remove the mappings
       for (const [modelId, providerId] of this._modelToProvider) {
         if (providerId === provider.id) {
           this._modelToProvider.delete(modelId);
         }
       }
-      // If active model was from this provider, clear it
-      if (this._activeModelId && this._modelToProvider.get(this._activeModelId) === provider.id) {
-        this._activeModelId = undefined;
-      }
+
       this._onDidChangeProviders.fire();
       this._onDidChangeModels.fire();
     });
@@ -104,7 +132,42 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
       return;
     }
     this._activeModelId = modelId;
+    this._persistActiveModel();
     this._onDidChangeModels.fire();
+  }
+
+  // ── Storage (late-bound) ──
+
+  /**
+   * Bind persistent storage.  Called after Phase 1 when IStorage becomes
+   * available.  Restores the persisted active model ID (if still valid).
+   */
+  async setStorage(storage: IStorage): Promise<void> {
+    this._storage = storage;
+    const persisted = await storage.get(ACTIVE_MODEL_STORAGE_KEY);
+    if (persisted && !this._activeModelId) {
+      // Don't validate yet — providers may not have registered.
+      // _refreshModels() will validate when providers fire.
+      this._activeModelId = persisted;
+    }
+  }
+
+  /**
+   * Set the default model from AI Settings.  Used as fallback when the
+   * persisted model is unavailable.
+   */
+  setDefaultModel(modelId: string | undefined): void {
+    this._defaultModelId = modelId;
+  }
+
+  /** Fire-and-forget persist of the active model ID. */
+  private _persistActiveModel(): void {
+    if (!this._storage) { return; }
+    if (this._activeModelId) {
+      this._storage.set(ACTIVE_MODEL_STORAGE_KEY, this._activeModelId);
+    } else {
+      this._storage.delete(ACTIVE_MODEL_STORAGE_KEY);
+    }
   }
 
   // ── Chat Request Delegation ──
@@ -181,11 +244,31 @@ export class LanguageModelsService extends Disposable implements ILanguageModels
 
     this._cachedModels = allModels;
 
-    // Auto-select first chat model if none selected and models are available.
-    // Skip embedding models (e.g. nomic-embed-text) — they can't handle chat.
-    if (!this._activeModelId && allModels.length > 0) {
+    // ── Active model fallback chain ──
+    // 1. Keep current active model if it's still available
+    if (this._activeModelId && this._modelToProvider.has(this._activeModelId)) {
+      // Model still valid — nothing to do
+      this._onDidChangeModels.fire();
+      return;
+    }
+
+    // 2. Try the configured default model from AI Settings
+    if (this._defaultModelId && this._modelToProvider.has(this._defaultModelId)) {
+      this._activeModelId = this._defaultModelId;
+      this._persistActiveModel();
+      this._onDidChangeModels.fire();
+      return;
+    }
+
+    // 3. Fall back to first non-embedding model, or first model available
+    if (allModels.length > 0) {
       const chatModel = allModels.find(m => !this._isEmbeddingModel(m));
       this._activeModelId = chatModel?.id ?? allModels[0].id;
+      this._persistActiveModel();
+    } else {
+      // No models available — clear
+      this._activeModelId = undefined;
+      this._persistActiveModel();
     }
 
     this._onDidChangeModels.fire();

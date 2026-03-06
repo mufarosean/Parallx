@@ -14,10 +14,10 @@ import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager } from '../services/serviceTypes.js';
+import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerAISettingsService } from './workbenchServices.js';
-import { IChatService } from '../services/chatTypes.js';
+import { IChatService, ILanguageModelsService } from '../services/chatTypes.js';
 
 // Layout base class (VS Code: Layout → Workbench extends Layout)
 import {
@@ -834,6 +834,23 @@ export class Workbench extends Layout {
     // ── AI Settings Service (M15) ──
     // Registered after storage and chat services are available.
     await registerAISettingsService(this._services, this._storage);
+
+    // ── Language Models Service: late-bind storage + default model ──
+    // The service was created pre-Phase-1 (no-arg), so we inject storage now.
+    const lms = this._services.get(ILanguageModelsService);
+    if (lms) {
+      await lms.setStorage(this._globalStorage);
+      // Seed the default model from the AI Settings active profile
+      const aiSettings = this._services.get(IAISettingsService);
+      if (aiSettings) {
+        const profile = aiSettings.getActiveProfile();
+        lms.setDefaultModel(profile.model.defaultModel || undefined);
+        // Keep in sync when AI Settings change
+        aiSettings.onDidChange((p) => {
+          lms.setDefaultModel(p.model.defaultModel || undefined);
+        });
+      }
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════
