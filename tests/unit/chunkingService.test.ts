@@ -454,4 +454,77 @@ describe('ChunkingService', () => {
       expect(tableChunk!.contextPrefix).toContain('Results');
     });
   });
+
+  // ── D.2: Code block integrity ──
+
+  describe('code block integrity (D.2)', () => {
+    it('keeps a small code block in a single chunk', async () => {
+      const content = [
+        '# Setup',
+        '',
+        '```python',
+        'def hello():',
+        '    print("Hello, world!")',
+        '```',
+        '',
+        '# Usage',
+      ].join('\n');
+
+      const chunks = await service.chunkFile('guide.md', content, 'markdown');
+      const codeChunk = chunks.find(c => c.text.includes('def hello'));
+      expect(codeChunk).toBeDefined();
+      expect(codeChunk!.text).toContain('```python');
+      expect(codeChunk!.text).toContain('```');
+    });
+
+    it('keeps medium code block (< 2× max) as single chunk', async () => {
+      const codeLines = Array.from({ length: 40 }, (_, i) => `  const item_${i} = compute(${i}); // line ${i}`);
+      const content = [
+        '```typescript',
+        ...codeLines,
+        '```',
+      ].join('\n');
+      expect(content.length).toBeGreaterThan(1024);
+      expect(content.length).toBeLessThan(2048);
+
+      const chunks = await service.chunkFile('big-fn.md', content, 'markdown');
+      expect(chunks.length).toBe(1);
+      expect(chunks[0].text).toContain('```typescript');
+      expect(chunks[0].text.endsWith('```')).toBe(true);
+    });
+
+    it('splits very large code block preserving fence markers', async () => {
+      const codeLines = Array.from({ length: 100 }, (_, i) => `  const item_${i} = compute(${i}); // detailed line ${i} with longer text`);
+      const content = [
+        '```javascript',
+        ...codeLines,
+        '```',
+      ].join('\n');
+      expect(content.length).toBeGreaterThan(2048);
+
+      const chunks = await service.chunkFile('huge-fn.md', content, 'markdown');
+      expect(chunks.length).toBeGreaterThan(1);
+
+      // Each chunk should be properly fenced
+      for (const chunk of chunks) {
+        expect(chunk.text).toContain('```javascript');
+        expect(chunk.text.trimEnd().endsWith('```')).toBe(true);
+      }
+    });
+
+    it('code block preceded by heading gets correct contextPrefix', async () => {
+      const content = [
+        '# Installation',
+        '',
+        '```bash',
+        'pip install docling',
+        '```',
+      ].join('\n');
+
+      const chunks = await service.chunkFile('setup.md', content, 'markdown');
+      const codeChunk = chunks.find(c => c.text.includes('pip install'));
+      expect(codeChunk).toBeDefined();
+      expect(codeChunk!.contextPrefix).toContain('Installation');
+    });
+  });
 });

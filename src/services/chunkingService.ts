@@ -283,6 +283,62 @@ export class ChunkingService extends Disposable implements IChunkingService {
         continue;
       }
 
+      // ── D.2: Detect fenced code blocks (```...```) ──
+      const fenceMatch = line.match(/^(`{3,})(.*)/);
+      if (fenceMatch) {
+        // Flush any accumulated text before the code block
+        await flush(false);
+
+        const fenceMarker = fenceMatch[1]; // e.g. ``` or ````
+        const langTag = fenceMatch[2].trim(); // e.g. "python", "ts", ""
+        const openFence = line;
+        const codeLines: string[] = [openFence];
+        i++;
+
+        // Collect until closing fence
+        while (i < lines.length) {
+          codeLines.push(lines[i]);
+          if (lines[i].startsWith(fenceMarker) && lines[i].trim() === fenceMarker) {
+            i++;
+            break;
+          }
+          i++;
+        }
+
+        const codeText = codeLines.join('\n');
+
+        if (codeText.length <= MAX_STRUCTURAL_BLOCK_CHARS) {
+          // Code block fits within 2× max — keep as single chunk
+          buffer = codeText;
+          await flush(false);
+        } else {
+          // Code block exceeds 2× max — split at blank lines within the block
+          const closeFence = codeLines[codeLines.length - 1]?.startsWith(fenceMarker)
+            ? codeLines.pop()! : fenceMarker;
+          const bodyLines = codeLines.slice(1); // skip opening fence
+
+          let codeBuffer = openFence; // start each chunk with the opening fence
+          for (const codeLine of bodyLines) {
+            const candidate = codeBuffer + '\n' + codeLine;
+            if (candidate.length > MAX_CHUNK_CHARS && codeBuffer.length > openFence.length) {
+              // Close this chunk with fence marker
+              buffer = codeBuffer + '\n' + closeFence;
+              await flush(false);
+              // Start new chunk with opening fence (preserve language tag)
+              codeBuffer = openFence + '\n' + codeLine;
+            } else {
+              codeBuffer = candidate;
+            }
+          }
+          // Flush remaining code with close fence
+          if (codeBuffer.length > openFence.length) {
+            buffer = codeBuffer + '\n' + closeFence;
+            await flush(false);
+          }
+        }
+        continue;
+      }
+
       // Detect markdown headings (# through ###)
       const headingMatch = line.match(/^(#{1,3})\s+(.+)/);
       if (headingMatch) {
