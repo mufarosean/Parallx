@@ -5,9 +5,10 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { IAISettingsService, IUnifiedAIConfigService, INotificationService } from '../../services/serviceTypes.js';
+import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IMemoryService } from '../../services/serviceTypes.js';
 import { ILanguageModelsService, ILanguageModelToolsService } from '../../services/chatTypes.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
+import type { IMemorySectionServices } from '../../aiSettings/ui/sections/memorySection.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
 import { getIcon } from '../../ui/iconRegistry.js';
 
@@ -89,11 +90,29 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       }
     : undefined;
 
+  // Get the Memory service for Memory section (M20 F.1)
+  const memoryService = api.services.has(IMemoryService)
+    ? api.services.get<import('../../services/serviceTypes.js').IMemoryService>(IMemoryService)
+    : undefined;
+
+  // Build IMemorySectionServices adapter (M20 F.1)
+  const memorySectionServices: IMemorySectionServices | undefined = memoryService
+    ? {
+        getAllMemories: () => memoryService.getAllMemories(),
+        getAllConcepts: () => memoryService.getAllConcepts(),
+        getPreferences: () => memoryService.getPreferences(),
+        deleteMemory: (sessionId: string) => memoryService.deleteMemory(sessionId),
+        deleteConcept: (conceptId: number) => memoryService.deleteConcept(conceptId),
+        deletePreference: (key: string) => memoryService.deletePreference(key),
+        clearAll: () => memoryService.clearAll(),
+      }
+    : undefined;
+
   // Register view provider
   context.subscriptions.push(
     api.views.registerViewProvider('view.aiSettings', {
       createView(container: HTMLElement): IDisposable {
-        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices);
+        _panel = new AISettingsPanel(container, aiSettingsService, languageModelsService, unifiedConfigService, toolPickerServices, memorySectionServices);
         return _panel;
       },
     }),

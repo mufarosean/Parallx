@@ -1200,14 +1200,18 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
       // ── Post-response: preference extraction (M10 Phase 5 — Task 5.2) ──
       // Fire-and-forget — don't block the response
-      if (services.extractPreferences && request.text) {
+      // Gated by memory.memoryEnabled toggle (M20 F.3)
+      const memoryEnabled = services.unifiedConfigService?.getEffectiveConfig().memory.memoryEnabled ?? true;
+      if (memoryEnabled && services.extractPreferences && request.text) {
         services.extractPreferences(request.text).catch(() => {});
       }
 
       // ── Post-response: session memory + concept extraction (M10/M17 P1.2) ──
       // Create or *update* the session summary using growth-based re-summarisation.
       // Also extract learning concepts in the same LLM call (M17 P1.2 Task 1.2.6).
+      // Gated by memory.memoryEnabled toggle (M20 F.3)
       if (
+        memoryEnabled &&
         services.storeSessionMemory &&
         services.isSessionEligibleForSummary &&
         services.getSessionMemoryMessageCount &&

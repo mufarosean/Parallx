@@ -639,12 +639,12 @@ VectorStoreService        TokenBudgetManager
 | **D.2** | Toast notifications | 1h | A.2 | ✅ |
 | **D.3** | Clone-on-write notification | 1h | D.2 | ✅ |
 | **D.4** | Status bar enhancements | 1h | B.2 | ✅ |
-| **E.1** | Tool section in AI Hub | 3h | C.1 | ⬜ |
-| **E.2** | Deprecate modal tool picker | 1h | E.1 | ⬜ |
-| **E.3** | Per-workspace tool overrides | 2h | E.1, B.1 | ⬜ |
-| **F.1** | Memory section in AI Hub | 3h | C.1 | ⬜ |
-| **F.2** | Wire clearAll and per-item deletion | 2h | F.1 | ⬜ |
-| **F.3** | Memory creation toggle | 1h | F.2, A.4 | ⬜ |
+| **E.1** | Tool section in AI Hub | 3h | C.1 | ✅ |
+| **E.2** | Deprecate modal tool picker | 1h | E.1 | ✅ |
+| **E.3** | Per-workspace tool overrides | 2h | E.1, B.1 | ✅ |
+| **F.1** | Memory section in AI Hub | 3h | C.1 | ✅ |
+| **F.2** | Wire clearAll and per-item deletion | 2h | F.1 | ✅ |
+| **F.3** | Memory creation toggle | 1h | F.2, A.4 | ✅ |
 
 **Total estimated: ~44 hours across 23 tasks**
 
@@ -666,7 +666,7 @@ VectorStoreService        TokenBudgetManager
 - [x] `isOverridden(path)` correctly identifies workspace-level changes
 
 ### Phase C
-- [x] AI Hub shows all 9 sections: Persona, Chat, Suggestions, Model, Retrieval, Agent, Indexing, Advanced, Preview
+- [x] AI Hub shows all 11 sections: Persona, Chat, Suggestions, Model, Retrieval, Agent, Indexing, Tools, Memory, Advanced, Preview
 - [x] Retrieval section sliders control `ragTopK` and `ragScoreThreshold`
 - [x] Context budget 4 linked sliders sum to 100% with visual bar
 - [x] Scope indicators show "Global" vs "Workspace ↩" correctly (click to reset)
@@ -679,15 +679,15 @@ VectorStoreService        TokenBudgetManager
 - [ ] Status bar shows workspace override indicator
 
 ### Phase E
-- [ ] Tool picker is rendered inline in AI Hub
-- [ ] Wrench icon in chat opens AI Hub tools section
-- [ ] Tool enable/disable persists per-workspace (if E.3 completed)
+- [x] Tool picker is rendered inline in AI Hub (ToolsSection, 11 sections total)
+- [x] Wrench icon in chat opens AI Hub tools section (via ai-settings.scrollToSection command)
+- [x] Tool enable/disable persists per-workspace (IUnifiedToolsConfig.enabledOverrides)
 
 ### Phase F
-- [ ] Memory section shows count of memories, concepts, preferences
-- [ ] Individual memories can be deleted
-- [ ] "Clear All" works with confirmation
-- [ ] Memory toggle prevents new memory creation when disabled
+- [x] Memory section shows count of memories, concepts, preferences
+- [x] Individual memories can be deleted
+- [x] "Clear All" works with confirmation
+- [x] Memory toggle prevents new memory creation when disabled
 
 ---
 

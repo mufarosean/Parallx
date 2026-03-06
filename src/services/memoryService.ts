@@ -770,6 +770,56 @@ export class MemoryService extends Disposable implements IMemoryService {
     await this._db.run('DELETE FROM user_preferences WHERE key = ?', [key]);
   }
 
+  /** Delete a specific memory by session ID (M20 F.2). */
+  async deleteMemory(sessionId: string): Promise<void> {
+    await this._ensureInitialized();
+    await this._db.run('DELETE FROM conversation_memories WHERE session_id = ?', [sessionId]);
+    try {
+      await this._vectorStore.deleteSource(MEMORY_SOURCE_TYPE, sessionId);
+    } catch { /* best-effort */ }
+    this._onDidUpdateMemory.fire(sessionId);
+  }
+
+  /** Get all stored concepts (M20 F.1). */
+  async getAllConcepts(): Promise<LearningConcept[]> {
+    await this._ensureInitialized();
+    const rows = await this._db.all<{
+      id: number; concept: string; category: string; summary: string;
+      mastery_level: number; encounter_count: number; struggle_count: number;
+      first_seen: string; last_seen: string; last_accessed: string;
+      source_sessions: string; decay_score: number;
+    }>('SELECT * FROM learning_concepts ORDER BY last_seen DESC');
+    return rows.map((r) => ({
+      id: r.id,
+      concept: r.concept,
+      category: r.category,
+      summary: r.summary,
+      masteryLevel: r.mastery_level,
+      encounterCount: r.encounter_count,
+      struggleCount: r.struggle_count,
+      firstSeen: r.first_seen,
+      lastSeen: r.last_seen,
+      lastAccessed: r.last_accessed,
+      sourceSessions: r.source_sessions,
+      decayScore: r.decay_score,
+    }));
+  }
+
+  /** Delete a specific concept by ID (M20 F.2). */
+  async deleteConcept(conceptId: number): Promise<void> {
+    await this._ensureInitialized();
+    // Get the concept name for vector cleanup
+    const row = await this._db.get<{ concept: string }>(
+      'SELECT concept FROM learning_concepts WHERE id = ?', [conceptId],
+    );
+    await this._db.run('DELETE FROM learning_concepts WHERE id = ?', [conceptId]);
+    if (row) {
+      try {
+        await this._vectorStore.deleteSource(CONCEPT_SOURCE_TYPE, `concept:${row.concept.toLowerCase()}`);
+      } catch { /* best-effort */ }
+    }
+  }
+
   // ── Decay & Eviction (M17 P1.3) ──
 
   /**

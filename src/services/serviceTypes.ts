@@ -1136,6 +1136,15 @@ export interface IMemoryService extends IDisposable {
   /** Get all stored memories. */
   getAllMemories(): Promise<import('./memoryService.js').ConversationMemory[]>;
 
+  /** Delete a specific memory by session ID (M20 F.2). */
+  deleteMemory(sessionId: string): Promise<void>;
+
+  /** Get all stored learning concepts (M20 F.1). */
+  getAllConcepts(): Promise<import('./memoryService.js').LearningConcept[]>;
+
+  /** Delete a specific learning concept by ID (M20 F.2). */
+  deleteConcept(conceptId: number): Promise<void>;
+
   /** Extract and store user preferences from text. */
   extractAndStorePreferences(text: string): Promise<import('./memoryService.js').UserPreference[]>;
 
