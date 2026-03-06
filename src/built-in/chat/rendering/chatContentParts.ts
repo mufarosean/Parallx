@@ -653,11 +653,14 @@ function _renderReference(part: IChatReferenceContent): HTMLElement {
 
   // Determine source type from URI
   const isPage = part.uri.startsWith('parallx-page://');
+  const isMemory = part.uri.startsWith('parallx-memory://');
 
   // Icon — file-type aware (C4)
   const icon = $('span.parallx-chat-reference-icon');
   if (isPage) {
     icon.innerHTML = getPageIcon();
+  } else if (isMemory) {
+    icon.innerHTML = chatIcons.sparkleSmall;
   } else {
     // Extract extension from URI/path for file-type icon
     const extMatch = part.uri.match(/\.([a-zA-Z0-9]+)$/);
@@ -680,6 +683,12 @@ function _renderReference(part: IChatReferenceContent): HTMLElement {
         bubbles: true,
         detail: { pageId },
       }));
+    } else if (isMemory) {
+      const sessionId = part.uri.replace('parallx-memory://', '');
+      root.dispatchEvent(new CustomEvent('parallx:open-memory', {
+        bubbles: true,
+        detail: { sessionId },
+      }));
     } else {
       // File paths — open in editor
       root.dispatchEvent(new CustomEvent('parallx:open-file', {
@@ -689,9 +698,11 @@ function _renderReference(part: IChatReferenceContent): HTMLElement {
     }
   });
 
-  root.title = isPage
-    ? `Open page: ${part.label}`
-    : `Open file: ${part.label}`;
+  root.title = isMemory
+    ? `View memory: ${part.label}`
+    : isPage
+      ? `Open page: ${part.label}`
+      : `Open file: ${part.label}`;
 
   return root;
 }
