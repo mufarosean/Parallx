@@ -60,6 +60,7 @@ interface ParallxApi {
   editors: {
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
     openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
+    closeEditor(editorId: string): Promise<boolean>;
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
@@ -1058,6 +1059,20 @@ async function confirmDelete(node: TreeNode): Promise<void> {
   if (result?.title === 'Move to Trash') {
     try {
       await fsDelete(node.uri);
+
+      // Close any open editors for the deleted file (or files under a deleted folder)
+      const deletedPath = uriToFsPath(node.uri);
+      const normalised = deletedPath.replace(/\\/g, '/').toLowerCase();
+      for (const editor of _api.editors.openEditors) {
+        const editorPath = editor.description.replace(/\\/g, '/').toLowerCase();
+        const isMatch = node.type === FILE_TYPE_DIRECTORY
+          ? editorPath === normalised || editorPath.startsWith(normalised + '/')
+          : editorPath === normalised;
+        if (isMatch) {
+          _api.editors.closeEditor(editor.id).catch(() => {});
+        }
+      }
+
       // Remove from parent
       if (node.parent) {
         node.parent.children = node.parent.children.filter(c => c !== node);
