@@ -29,6 +29,12 @@ const MAX_CHUNK_CHARS = 1024;
 /** Minimum chunk size — don't create tiny standalone chunks. */
 const MIN_CHUNK_CHARS = 100;
 
+/** Max table/code block size before forced split (2× normal max).
+ * Tables and code blocks can exceed MAX_CHUNK_CHARS up to this limit
+ * to preserve structural integrity (M21 D.1/D.2).
+ */
+const MAX_STRUCTURAL_BLOCK_CHARS = MAX_CHUNK_CHARS * 2;
+
 /** Overlap between consecutive chunks (~50 tokens at 4 chars/token).
  * Carries the tail of one chunk into the head of the next to preserve
  * context that spans chunk boundaries (M10 DR-8 recommendation).
@@ -230,7 +236,53 @@ export class ChunkingService extends Disposable implements IChunkingService {
       }
     };
 
-    for (const line of lines) {
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+
+      // ── D.1: Detect Markdown table blocks (lines starting with |) ──
+      if (line.trimStart().startsWith('|')) {
+        // Flush any accumulated text before the table
+        await flush(false);
+
+        // Collect the entire table block
+        const tableLines: string[] = [];
+        while (i < lines.length && lines[i].trimStart().startsWith('|')) {
+          tableLines.push(lines[i]);
+          i++;
+        }
+
+        const tableText = tableLines.join('\n');
+        const tableHeader = tableLines.length >= 2
+          ? tableLines[0] + '\n' + tableLines[1] // header row + separator
+          : tableLines[0] ?? '';
+
+        if (tableText.length <= MAX_STRUCTURAL_BLOCK_CHARS) {
+          // Table fits within 2× max — keep it as a single chunk
+          buffer = tableText;
+          await flush(false);
+        } else {
+          // Table exceeds 2× max — split at row boundaries, prefix with header
+          let rowBuffer = tableHeader;
+          for (let r = 2; r < tableLines.length; r++) {
+            const nextRow = tableLines[r];
+            if ((rowBuffer + '\n' + nextRow).length > MAX_CHUNK_CHARS && rowBuffer.trim()) {
+              buffer = rowBuffer;
+              await flush(false);
+              // Start new chunk with header prefix for context
+              rowBuffer = tableHeader + '\n' + nextRow;
+            } else {
+              rowBuffer += '\n' + nextRow;
+            }
+          }
+          if (rowBuffer.trim()) {
+            buffer = rowBuffer;
+            await flush(false);
+          }
+        }
+        continue;
+      }
+
       // Detect markdown headings (# through ###)
       const headingMatch = line.match(/^(#{1,3})\s+(.+)/);
       if (headingMatch) {
@@ -239,6 +291,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
       }
 
       buffer += (buffer ? '\n' : '') + line;
+      i++;
 
       if (buffer.length > MAX_CHUNK_CHARS) {
         await flush(true); // size limit = carry overlap

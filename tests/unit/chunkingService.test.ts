@@ -377,4 +377,81 @@ describe('ChunkingService', () => {
       expect(chunks[1].text).toMatch(/^# Section Two/);
     });
   });
+
+  // ── D.1: Table-aware chunk boundaries ──
+
+  describe('table-aware chunking (D.1)', () => {
+    it('keeps a small table in a single chunk', async () => {
+      const table = [
+        '| Name | Age |',
+        '|------|-----|',
+        '| Alice | 30 |',
+        '| Bob | 25 |',
+      ].join('\n');
+      const content = `# People\n\n${table}\n\n# Other`;
+      const chunks = await service.chunkFile('data.md', content, 'markdown');
+
+      // Table should stay intact in one chunk
+      const tableChunk = chunks.find(c => c.text.includes('| Name'));
+      expect(tableChunk).toBeDefined();
+      expect(tableChunk!.text).toContain('| Alice');
+      expect(tableChunk!.text).toContain('| Bob');
+    });
+
+    it('keeps medium table (< 2× max) as single chunk', async () => {
+      // Build a table with enough rows to exceed MAX_CHUNK_CHARS (1024) but under 2048
+      const header = '| Col A | Col B | Col C |';
+      const sep = '|-------|-------|-------|';
+      const rows = Array.from({ length: 30 }, (_, i) => `| Row${i} data item | More data here | Even more ${i} |`);
+      const table = [header, sep, ...rows].join('\n');
+      expect(table.length).toBeGreaterThan(1024);
+      expect(table.length).toBeLessThan(2048);
+
+      const chunks = await service.chunkFile('report.md', table, 'markdown');
+
+      // Entire table in one chunk since < 2× max
+      expect(chunks.length).toBe(1);
+      expect(chunks[0].text).toContain('| Col A');
+      expect(chunks[0].text).toContain(rows[rows.length - 1]);
+    });
+
+    it('splits very large table at row boundaries with header prefix', async () => {
+      const header = '| ID | Name | Description |';
+      const sep = '|----|------|-------------|';
+      // Make enough rows to exceed 2× max (2048 chars)
+      const rows = Array.from({ length: 100 }, (_, i) =>
+        `| ${i} | Item_${i}_name | This is a longer description for row number ${i} in the table |`,
+      );
+      const table = [header, sep, ...rows].join('\n');
+      expect(table.length).toBeGreaterThan(2048);
+
+      const chunks = await service.chunkFile('big-table.md', table, 'markdown');
+
+      // Should be split into multiple chunks
+      expect(chunks.length).toBeGreaterThan(1);
+
+      // Each chunk should start with the table header (for context)
+      for (const chunk of chunks) {
+        expect(chunk.text).toContain('| ID | Name | Description |');
+      }
+
+      // No chunk should split mid-row (each | line should be complete)
+      for (const chunk of chunks) {
+        for (const line of chunk.text.split('\n')) {
+          if (line.startsWith('|')) {
+            expect(line).toMatch(/\|$/); // line ends with |
+          }
+        }
+      }
+    });
+
+    it('table preceded by heading gets correct contextPrefix', async () => {
+      const content = `# Results\n\n| A | B |\n|---|---|\n| 1 | 2 |`;
+      const chunks = await service.chunkFile('report.md', content, 'markdown');
+
+      const tableChunk = chunks.find(c => c.text.includes('| A | B |'));
+      expect(tableChunk).toBeDefined();
+      expect(tableChunk!.contextPrefix).toContain('Results');
+    });
+  });
 });
