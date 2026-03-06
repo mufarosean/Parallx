@@ -917,6 +917,97 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     this._register(
       this._fileService.onDidFileChange((events) => this._handleFileChanges(events)),
     );
+
+    // M21: When Docling becomes newly available after initial indexing,
+    // mark all rich-document entries as stale and trigger a background
+    // re-index so they benefit from Docling's superior extraction.
+    if (this._documentExtractionService) {
+      this._register(
+        this._documentExtractionService.onDidChangeAvailability((available) => {
+          if (available && this._initialIndexComplete && !this._isIndexing) {
+            this._reindexRichDocumentsForDocling().catch((err) => {
+              console.warn('[IndexingPipeline] Docling re-index sweep failed:', err);
+            });
+          }
+        }),
+      );
+    }
+  }
+
+  /**
+   * M21: Background re-index of rich documents when Docling becomes newly available.
+   *
+   * Walks workspace files, finds entries with rich-doc or image extensions that
+   * are already indexed (via legacy pipeline), deletes their vector store entries
+   * so the content-hash check won't short-circuit, then re-indexes them through
+   * the Docling pipeline for better quality extraction.
+   */
+  private async _reindexRichDocumentsForDocling(): Promise<void> {
+    console.log('[IndexingPipeline] %s Docling newly available — starting rich-document re-index sweep', this._logPrefix);
+
+    const folders = this._workspaceService.folders;
+    if (folders.length === 0) return;
+
+    // Walk all workspace files
+    const allFiles: IndexableFile[] = [];
+    for (const folder of folders) {
+      await this._walkDirectory(folder.uri, allFiles);
+    }
+
+    // Filter to rich docs + images that are already indexed
+    const richFiles: IndexableFile[] = [];
+    const indexedAtMap = await this._vectorStore.getIndexedAtMap('file_chunk');
+
+    for (const file of allFiles) {
+      const ext = getExtension(file.path);
+      if (!ext) continue;
+      if (!RICH_DOCUMENT_EXTENSIONS.has(ext) && !IMAGE_EXTENSIONS.has(ext)) continue;
+      // Only re-index files that were previously indexed (with legacy)
+      if (indexedAtMap.has(file.relativePath)) {
+        richFiles.push(file);
+      }
+    }
+
+    if (richFiles.length === 0) {
+      console.log('[IndexingPipeline] %s No previously-indexed rich documents to re-index', this._logPrefix);
+      return;
+    }
+
+    console.log(
+      '[IndexingPipeline] %s Re-indexing %d rich documents through Docling',
+      this._logPrefix, richFiles.length,
+    );
+
+    // Delete existing entries so _indexSingleFile won't skip on content hash
+    for (const file of richFiles) {
+      await this._vectorStore.deleteSource('file_chunk', file.relativePath);
+    }
+
+    // Re-index each file through the Docling pipeline
+    this._updateProgress('files', 0, richFiles.length, 'Re-indexing with Docling…');
+    let reindexed = 0;
+    for (const file of richFiles) {
+      try {
+        const changed = await this._indexSingleFile(file.path, file.relativePath);
+        if (changed) reindexed++;
+        this._onDidIndexSource.fire({
+          type: 'file', source: file.relativePath, sourceId: file.relativePath,
+          status: changed ? 'indexed' : 'skipped',
+          durationMs: 0, // individual timing not tracked in sweep
+          pipeline: changed ? this._lastFilePipeline : undefined,
+          fallback: changed ? this._lastFileFallback : undefined,
+        });
+      } catch (err) {
+        console.warn('[IndexingPipeline] Docling re-index failed for "%s": %s', file.relativePath, err);
+      }
+      this._updateProgress('files', this._progress.processed + 1, richFiles.length, file.relativePath);
+    }
+
+    this._updateProgress('idle', 0, 0);
+    console.log(
+      '[IndexingPipeline] %s Docling re-index sweep complete: %d/%d documents re-indexed',
+      this._logPrefix, reindexed, richFiles.length,
+    );
   }
 
   /**
