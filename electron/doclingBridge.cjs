@@ -502,6 +502,67 @@ function isAvailable() {
   return _status === 'available';
 }
 
+/**
+ * Install the `docling` Python package via pip.
+ *
+ * Returns a result object with install output and whether it succeeded.
+ * Does NOT start the service — caller can do that after a successful install.
+ *
+ * @returns {Promise<{ ok: boolean, pythonPath: string | null, output: string, alreadyInstalled: boolean }>}
+ */
+async function installDocling() {
+  const python = detectPython();
+  if (!python) {
+    return {
+      ok: false,
+      pythonPath: null,
+      output: 'Python 3.10+ not found. Please install Python 3.10 or later from https://www.python.org/downloads/',
+      alreadyInstalled: false,
+    };
+  }
+
+  // Check if already installed
+  if (checkDoclingInstalled()) {
+    return {
+      ok: true,
+      pythonPath: python,
+      output: 'Docling is already installed.',
+      alreadyInstalled: true,
+    };
+  }
+
+  // Run pip install
+  try {
+    const { execSync: execSyncLocal } = require('child_process');
+    const output = execSyncLocal(
+      `${python} -m pip install docling`,
+      {
+        encoding: 'utf-8',
+        timeout: 300000, // 5 min — first install downloads models
+        windowsHide: true,
+      },
+    );
+
+    // Verify installation
+    const installed = checkDoclingInstalled();
+    return {
+      ok: installed,
+      pythonPath: python,
+      output: installed
+        ? 'Docling installed successfully.'
+        : `pip install appeared to succeed but import verification failed.\n${output}`,
+      alreadyInstalled: false,
+    };
+  } catch (/** @type {any} */ err) {
+    return {
+      ok: false,
+      pythonPath: python,
+      output: `pip install docling failed:\n${err.stderr || err.stdout || err.message || String(err)}`,
+      alreadyInstalled: false,
+    };
+  }
+}
+
 module.exports = {
   detectPython,
   checkDoclingInstalled,
@@ -512,4 +573,5 @@ module.exports = {
   getStatus,
   onStatusChange,
   isAvailable,
+  installDocling,
 };

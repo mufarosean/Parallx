@@ -44,6 +44,7 @@ export {
   focusFirstEditorGroup, focusSecondEditorGroup, focusThirdEditorGroup,
   focusSideBar, focusPanel, focusActivityBar, focusStatusBar,
 } from './focusCommands.js';
+export { installDocling } from './doclingCommands.js';
 
 //  Import for aggregation 
 import {
@@ -70,6 +71,7 @@ import {
   focusFirstEditorGroup, focusSecondEditorGroup, focusThirdEditorGroup,
   focusSideBar, focusPanel, focusActivityBar, focusStatusBar,
 } from './focusCommands.js';
+import { installDocling } from './doclingCommands.js';
 
 //  Layout Commands 
 
@@ -283,6 +285,8 @@ const ALL_BUILTIN_COMMANDS: CommandDescriptor[] = [
   openSettings,
   openKeybindings,
   selectColorTheme,
+  // Docling (M21)
+  installDocling,
 ];
 
 /**

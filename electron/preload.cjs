@@ -264,5 +264,8 @@ contextBridge.exposeInMainWorld('parallxElectron', {
 
     /** Convert multiple documents. Returns { ok, results } or { ok: false, error }. */
     convertBatch: (files) => ipcRenderer.invoke('docling:convertBatch', files),
+
+    /** Install Docling via pip. Returns { ok, pythonPath, output, alreadyInstalled }. */
+    install: () => ipcRenderer.invoke('docling:install'),
   },
 });

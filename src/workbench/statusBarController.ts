@@ -11,7 +11,7 @@
 import { Disposable, IDisposable, toDisposable } from '../platform/lifecycle.js';
 import { URI } from '../platform/uri.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ICommandService, IEditorService, INotificationService } from '../services/serviceTypes.js';
+import { ICommandService, IEditorService, INotificationService, IDocumentExtractionService } from '../services/serviceTypes.js';
 import { StatusBarPart, StatusBarAlignment, StatusBarEntryAccessor } from '../parts/statusBarPart.js';
 import { getLanguageForFileName } from '../services/languageDetection.js';
 import { EditorPart } from '../parts/editorPart.js';
@@ -168,6 +168,9 @@ export class StatusBarController extends Disposable {
 
     // Notification Center Badge
     this._setupNotificationBadge(sb);
+
+    // M21 F.2: Docling status indicator
+    this._setupDoclingStatusIndicator(sb);
   }
 
   // ── Editor status tracking ─────────────────────────────────────────────
@@ -402,5 +405,81 @@ export class StatusBarController extends Disposable {
       wbCtx.setResourceExtname('');
       wbCtx.setResourceFilename('');
     }
+  }
+
+  // ── M21 F.2: Docling status indicator ──────────────────────────────────
+
+  private _setupDoclingStatusIndicator(sb: StatusBarPart): void {
+    const extractionService = this._services.has(IDocumentExtractionService)
+      ? this._services.get(IDocumentExtractionService) as import('../services/documentExtractionService.js').DocumentExtractionService
+      : undefined;
+    if (!extractionService) return;
+
+    const docSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1h7l3 3v9.5a1.5 1.5 0 01-1.5 1.5h-7A1.5 1.5 0 013 13.5v-11A1.5 1.5 0 014.5 1H3zm7 0v3h3M6 8h4M6 10h4M6 6h2"/></svg>';
+
+    const accessor = sb.addEntry({
+      id: 'status.docling',
+      text: 'Docling',
+      iconSvg: docSvg,
+      alignment: StatusBarAlignment.Right,
+      priority: 50,
+      tooltip: 'Docling: Checking…',
+      name: 'Docling Status',
+      command: 'parallx.installDocling',
+    });
+
+    const makeLabel = (text: string, color?: string): HTMLElement => {
+      const span = $('span');
+      span.textContent = text;
+      if (color) span.style.color = color;
+      return span;
+    };
+
+    const updateStatus = (): void => {
+      const status = extractionService.bridgeStatus;
+      const available = extractionService.isDoclingAvailable;
+
+      let text: string;
+      let tooltip: string;
+      let color: string | undefined;
+
+      switch (status) {
+        case 'available':
+          text = 'Docling';
+          tooltip = 'Docling: Available and healthy';
+          color = '#4ec9b0'; // green
+          break;
+        case 'starting':
+          text = 'Docling…';
+          tooltip = 'Docling: Starting bridge service…';
+          color = '#dcdcaa'; // yellow
+          break;
+        case 'downloading-models':
+          text = 'Docling ↓';
+          tooltip = 'Docling: Downloading models…';
+          color = '#dcdcaa'; // yellow
+          break;
+        case 'error':
+          text = 'Docling ✗';
+          tooltip = 'Docling: Service error — click for diagnostics';
+          color = '#f44747'; // red
+          break;
+        case 'unavailable':
+        default:
+          text = available ? 'Docling' : 'Docling —';
+          tooltip = 'Docling: Not installed — run: pip install docling';
+          color = undefined; // default/gray
+          break;
+      }
+
+      accessor.update({ text: '', tooltip, htmlElement: makeLabel(text, color) });
+    };
+
+    // Initial update
+    updateStatus();
+
+    // Subscribe to changes
+    this._register(extractionService.onDidChangeBridgeStatus(() => updateStatus()));
+    this._register(extractionService.onDidChangeAvailability(() => updateStatus()));
   }
 }

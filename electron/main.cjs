@@ -850,6 +850,16 @@ ipcMain.handle('docling:convertBatch', async (_event, files) => {
   }
 });
 
+// ── docling:install ──
+// Install the Docling Python package via pip. Returns { ok, pythonPath, output, alreadyInstalled }.
+ipcMain.handle('docling:install', async () => {
+  try {
+    return await doclingBridge.installDocling();
+  } catch (err) {
+    return { ok: false, pythonPath: null, output: err.message || String(err), alreadyInstalled: false };
+  }
+});
+
 // ════════════════════════════════════════════════════════════════════════════════
 // Database IPC Handlers (M6 Cap 1 — Task 1.4)
 // ════════════════════════════════════════════════════════════════════════════════

@@ -372,6 +372,24 @@ function createEntryRow(entry: IndexingLogEntry): HTMLElement {
     : `${(result.durationMs / 1000).toFixed(1)}s`;
   row.appendChild(duration);
 
+  // M21 F.1: Pipeline badge
+  if (result.pipeline && result.status === 'indexed') {
+    const badge = $('span.indexing-log-pipeline');
+    const pipelineLabels: Record<string, string> = {
+      'docling': 'Docling',
+      'docling-ocr': 'Docling+OCR',
+      'legacy': 'Legacy',
+      'text': 'Text',
+    };
+    badge.textContent = pipelineLabels[result.pipeline] ?? result.pipeline;
+    badge.classList.add(`indexing-log-pipeline--${result.pipeline}`);
+    if (result.fallback) {
+      badge.classList.add('indexing-log-pipeline--fallback');
+      badge.title = 'Docling failed — fell back to legacy extractor';
+    }
+    row.appendChild(badge);
+  }
+
   // Error message (if any)
   if (result.error) {
     const err = $('span.indexing-log-error');

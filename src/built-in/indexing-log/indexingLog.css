@@ -198,3 +198,38 @@
   max-width: 300px;
   flex-shrink: 1;
 }
+
+/* M21 F.1: Pipeline badges */
+.indexing-log-pipeline {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+.indexing-log-pipeline--docling {
+  color: #4ec9b0;
+  background: rgba(78, 201, 176, 0.12);
+}
+
+.indexing-log-pipeline--docling-ocr {
+  color: #dcdcaa;
+  background: rgba(220, 220, 170, 0.12);
+}
+
+.indexing-log-pipeline--legacy {
+  color: var(--vscode-descriptionForeground, #888);
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.indexing-log-pipeline--text {
+  color: var(--vscode-descriptionForeground, #888);
+  background: transparent;
+}
+
+.indexing-log-pipeline--fallback {
+  color: var(--vscode-notificationsWarningIcon-foreground, #cc8800);
+  background: rgba(204, 136, 0, 0.12);
+}
