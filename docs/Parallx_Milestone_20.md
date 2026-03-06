@@ -561,12 +561,12 @@ VectorStoreService        TokenBudgetManager
 
 | ID | Task | Est. | Depends | Status |
 |----|------|------|---------|--------|
-| **A.1** | Define `IUnifiedAIConfig` type | 1h | — | ⬜ |
-| **A.2** | Implement `UnifiedAIConfigService` | 4h | A.1 | ⬜ |
-| **A.3** | Legacy import from config.json | 2h | A.2 | ⬜ |
-| **A.4** | Wire consumers to unified service | 3h | A.2 | ⬜ |
-| **A.5** | Retire `ParallxConfigService` usage | 1h | A.4 | ⬜ |
-| **A.6** | Update `AISettingsService` delegation | 2h | A.2 | ⬜ |
+| **A.1** | Define `IUnifiedAIConfig` type | 1h | — | ✅ |
+| **A.2** | Implement `UnifiedAIConfigService` | 4h | A.1 | ✅ |
+| **A.3** | Legacy import from config.json | 2h | A.2 | ✅ |
+| **A.4** | Wire consumers to unified service | 3h | A.2 | ✅ |
+| **A.5** | Retire `ParallxConfigService` usage | 1h | A.4 | ✅ |
+| **A.6** | Update `AISettingsService` delegation | 2h | A.2 | ✅ |
 | **B.1** | Workspace override persistence | 2h | A.2 | ⬜ |
 | **B.2** | Per-workspace preset selection | 1h | B.1 | ⬜ |
 | **B.3** | Override resolution logic | 2h | B.1 | ⬜ |
