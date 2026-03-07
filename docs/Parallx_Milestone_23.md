@@ -1433,6 +1433,90 @@ That means each slice is only complete when:
 - indexing now records richer metadata and forces a clean rebuild via pipeline
   version `3`, preparing the system for later Phase C/D/E ranking logic.
 
+### 2026-03-07 — Sequence 3 initial slice: guarded query planning
+
+This first Phase C slice upgrades candidate generation in the retrieval service
+without introducing a new heavyweight ranking model.
+
+**Implemented**
+
+- added lightweight query-planning heuristics in `RetrievalService` to classify
+  questions as simple vs hard before searching;
+- kept identifier-heavy prompts on a single-query fast path so exact-match
+  retrieval remains protected for values like dollar amounts, percentages,
+  acronyms, filenames, and phone numbers;
+- added guarded query rewriting that strips obvious prompt filler while
+  preserving critical identifiers;
+- added bounded query decomposition for multi-clause / cross-source questions
+  and merged the resulting candidate pools before downstream filtering;
+- made candidate breadth adaptive by query class instead of using one fixed
+  overfetch multiplier for every request;
+- extended retrieval trace output so later eval work can inspect the generated
+  query plan and per-search trace set.
+
+**Files changed**
+
+- `src/services/retrievalService.ts`
+- `tests/unit/retrievalService.test.ts`
+
+**Why this slice matters**
+
+- it directly targets the planned C2/C3/C4 work while staying local-first and
+  preserving the existing hybrid retriever as the underlying search engine;
+- it creates a measurable query-planning layer that can be tuned against `T07`,
+  `T15`, and `T17` before any heavier Phase D reranking work lands;
+- it reduces the chance that complex questions are forced through the same
+  narrow candidate path as simple fact lookups.
+
+**Behavior impact**
+
+- simple identifier-sensitive prompts remain on the fast path;
+- harder, multi-clause prompts can now fan out into multiple bounded retrieval
+  queries before score filtering, cosine reranking, dedup, and token packing;
+- retrieval traces now capture enough planning context to support the later C1
+  benchmark-retuning pass.
+
+### 2026-03-06 — Sequence 3 tuning: lexical focus and heading-aware boosts
+
+This follow-up Phase C tuning pass targeted the first benchmark regressions seen
+after the initial query-planning slice.
+
+**Implemented**
+
+- excluded citation-formatting phrases from hard-query classification so prompts
+  like "Please cite your sources" no longer create bad decomposition branches;
+- added a lightweight keyword-focused lexical rewrite for simple,
+  non-identifier prompts so the lexical half of hybrid retrieval can search on
+  denser terms like `repair shops recommended` without losing the original
+  semantic embedding query;
+- added a small heading/context-prefix overlap boost so chunks whose section or
+  source heading directly matches the lexical focus terms are favored in the
+  fused candidate set;
+- added unit coverage for the new lexical rewrite and heading-aware boost.
+
+**Files changed**
+
+- `src/services/retrievalService.ts`
+- `tests/unit/retrievalService.test.ts`
+
+**Validation**
+
+- `npx tsc --noEmit` ✅
+- `npx vitest run tests/unit/retrievalService.test.ts` ✅
+- targeted AI eval reruns on `T07` and `T15` showed mixed but directional
+  behavior: one rerun improved `T07` from `0%` to `50%` with citation presence
+  restored, while repeated reruns still showed model/runtime instability via
+  intermittent empty responses.
+
+**Interpretation**
+
+- the retrieval-side changes are helping candidate focus, but the end-to-end
+  benchmark remains noisy because the current eval path can still fail with
+  empty model responses;
+- before further C1 tuning, the next best step is to expose or capture runtime
+  retrieval traces during the AI eval path so candidate quality can be measured
+  independently from response-generation flakiness.
+
 ---
 
 ## Migration & Compatibility
@@ -1487,7 +1571,7 @@ new system beats the baseline on real Parallx tasks.
    - questions that rely on prior source focus.
 
 5. **Multi-hop retrieval**
-   - questions that need multiple evidence pieces before synthesis.
+   - questions/ that need multiple evidence pieces before synthesis.
 
 ### Required reporting
 

@@ -28,6 +28,22 @@ import type { SearchResult, SearchOptions, HybridSearchTrace } from './vectorSto
 /** Default number of final chunks to return. */
 const DEFAULT_TOP_K = 20;
 
+/** Phase C adaptive candidate generation defaults. */
+const SIMPLE_OVERFETCH_FACTOR = 3;
+const EXACT_OVERFETCH_FACTOR = 2;
+const HARD_OVERFETCH_FACTOR = 5;
+const HARD_QUERY_TERM_THRESHOLD = 12;
+const MAX_QUERY_VARIANTS = 4;
+const MAX_SEARCH_TOP_K = 60;
+
+const KEYWORD_FOCUS_STOPWORDS = new Set([
+  'a', 'an', 'and', 'any', 'are', 'at', 'be', 'call', 'can', 'cite', 'cited', 'do', 'does', 'for',
+  'from', 'get', 'have', 'how', 'i', 'in', 'is', 'it', 'me', 'my', 'of', 'on', 'or', 'our', 'please',
+  'point', 'right', 'should', 'show', 'source', 'sources', 'tell', 'that', 'the', 'their', 'them',
+  'there', 'these', 'this', 'those', 'to', 'under', 'what', 'when', 'where', 'which', 'who', 'would',
+  'your', 'yours', 'policy', 'according', 'about', 'with', 'now', 'into', 'just', 'want', 'like',
+]);
+
 /** Minimum RRF score — chunks below this are dropped.
  *
  * With RRF k=60, the maximum single-path rank score is 1/61 ≈ 0.0164.
@@ -90,6 +106,149 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (magA * magB);
 }
 
+function collapseWhitespace(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeQueryKey(text: string): string {
+  return collapseWhitespace(text).replace(/[?!;:.]+$/g, '').toLowerCase();
+}
+
+function stripFormattingRequests(query: string): string {
+  return collapseWhitespace(
+    query
+      .replace(/please\s+cite\s+(?:your\s+)?sources?/gi, ' ')
+      .replace(/with\s+(?:source\s+)?citations?/gi, ' ')
+      .replace(/(?:and\s+)?cite\s+(?:your\s+)?sources?/gi, ' '),
+  );
+}
+
+function extractCriticalIdentifiers(query: string): string[] {
+  const identifiers: string[] = [];
+  const patterns = [
+    /"([^"]+)"/g,
+    /'([^']+)'/g,
+    /(\$\d[\d,]*(?:\.\d+)?)/g,
+    /(\b\d+(?:\.\d+)?%)/g,
+    /(\([0-9]{3}\)\s*[0-9]{3}-[0-9]{4}\b)/g,
+    /(\b[0-9]{3}-[0-9]{3}-[0-9]{4}\b)/g,
+    /(\b[A-Z]{2,}(?:[-_][A-Z0-9]+)*\b)/g,
+    /(\b[a-zA-Z0-9_-]+\.[a-z0-9]{1,8}\b)/g,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of query.matchAll(pattern)) {
+      const value = collapseWhitespace(match[1] ?? match[0] ?? '');
+      if (value) {
+        identifiers.push(value);
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const identifier of identifiers) {
+    const key = identifier.toLowerCase();
+    if (seen.has(key)) { continue; }
+    seen.add(key);
+    deduped.push(identifier);
+  }
+
+  return deduped;
+}
+
+function stripPromptFiller(query: string): string {
+  let rewritten = collapseWhitespace(query);
+  rewritten = rewritten.replace(/^(?:please\s+)?(?:can|could|would|will)\s+you\s+/i, '');
+  rewritten = rewritten.replace(/^(?:please\s+)?(?:show|tell|find|look up|summarize|explain)\s+(?:me\s+)?/i, '');
+  return collapseWhitespace(rewritten.replace(/[?]+$/g, ''));
+}
+
+function buildGuardedRewrite(query: string, identifiers: readonly string[]): string | undefined {
+  const rewritten = stripPromptFiller(query);
+  if (!rewritten || normalizeQueryKey(rewritten) === normalizeQueryKey(query)) {
+    return undefined;
+  }
+
+  const lowered = rewritten.toLowerCase();
+  const missing = identifiers.filter((identifier) => !lowered.includes(identifier.toLowerCase()));
+  return collapseWhitespace(missing.length > 0 ? `${rewritten} ${missing.join(' ')}` : rewritten);
+}
+
+function buildKeywordFocusedQuery(query: string, identifiers: readonly string[]): string | undefined {
+  const cleaned = collapseWhitespace(
+    stripFormattingRequests(query)
+      .replace(/under\s+my\s+policy/gi, ' ')
+      .replace(/according\s+to\s+my\s+policy/gi, ' ')
+      .replace(/[?!.,:;()[\]{}]/g, ' '),
+  );
+
+  const tokens = cleaned
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+
+  const filtered = tokens.filter((token) => {
+    const lowered = token.toLowerCase();
+    if (identifiers.some((identifier) => identifier.toLowerCase() === lowered)) {
+      return true;
+    }
+    if (/^\d+$/.test(token)) { return false; }
+    return token.length >= 3 && !KEYWORD_FOCUS_STOPWORDS.has(lowered);
+  });
+
+  if (filtered.length < 2) {
+    return undefined;
+  }
+
+  const focused = collapseWhitespace(filtered.join(' '));
+  return normalizeQueryKey(focused) === normalizeQueryKey(query) ? undefined : focused;
+}
+
+function extractFocusTerms(query: string, identifiers: readonly string[]): string[] {
+  const tokens = stripFormattingRequests(query)
+    .replace(/[?!.,:;()[\]{}]/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim().toLowerCase())
+    .filter((token) => token.length >= 3 && !KEYWORD_FOCUS_STOPWORDS.has(token));
+
+  const merged = [...identifiers.map((identifier) => identifier.toLowerCase()), ...tokens];
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const token of merged) {
+    if (seen.has(token)) { continue; }
+    seen.add(token);
+    deduped.push(token);
+  }
+  return deduped;
+}
+
+function decomposeQuery(query: string): string[] {
+  const lowered = query.toLowerCase();
+  if (/\b(compare|difference|versus|vs\.?|between)\b/i.test(lowered)) {
+    return [];
+  }
+
+  const firstPass = query
+    .split(/[;?]+/)
+    .flatMap((part) => part.split(/\s+(?:then|after that|afterwards|next|finally)\s+/i))
+    .flatMap((part) => part.split(/\s+(?:and|also)\s+(?=(?:how|what|where|who|when|which|should|can|do|does|is|are|call|contact|file|report|find|get)\b)/i))
+    .map((part) => collapseWhitespace(part))
+    .filter((part) => part.length > 0);
+
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  for (const part of firstPass) {
+    if (part.split(/\s+/).length < 4) { continue; }
+    const key = normalizeQueryKey(part);
+    if (!key || key === normalizeQueryKey(query) || seen.has(key)) { continue; }
+    seen.add(key);
+    deduped.push(part);
+  }
+
+  return deduped;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /** Options for a retrieval query. */
@@ -126,6 +285,22 @@ export interface RetrievedContext {
   tokenCount: number;
 }
 
+export interface RetrievalQueryPlanTrace {
+  rawQuery: string;
+  complexity: 'simple' | 'hard';
+  strategy: 'single' | 'decomposed';
+  exactMatchBias: boolean;
+  identifiers: string[];
+  reasons: string[];
+  candidateMultiplier: number;
+  perQueryTopK: number;
+  variants: Array<{
+    text: string;
+    reason: 'raw' | 'rewrite' | 'decomposition' | 'identifier-focus';
+    keywordQuery?: string;
+  }>;
+}
+
 export interface RetrievalTrace {
   query: string;
   topK: number;
@@ -146,6 +321,7 @@ export interface RetrievalTrace {
   dedupDrops: number;
   tokenBudgetDrops: number;
   tokenBudgetUsed: number;
+  queryPlan?: RetrievalQueryPlanTrace;
   finalChunks: Array<{
     sourceType: string;
     sourceId: string;
@@ -153,6 +329,24 @@ export interface RetrievalTrace {
     tokenCount: number;
   }>;
   vectorStoreTrace?: HybridSearchTrace;
+  vectorStoreTraces?: HybridSearchTrace[];
+}
+
+interface PlannedQueryVariant {
+  text: string;
+  reason: 'raw' | 'rewrite' | 'decomposition' | 'identifier-focus';
+  keywordQuery?: string;
+}
+
+interface RetrievalQueryPlan {
+  complexity: 'simple' | 'hard';
+  strategy: 'single' | 'decomposed';
+  exactMatchBias: boolean;
+  identifiers: string[];
+  reasons: string[];
+  candidateMultiplier: number;
+  perQueryTopK: number;
+  variants: PlannedQueryVariant[];
 }
 
 interface IVectorStoreTraceAccessor {
@@ -227,6 +421,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     const maxPerSource = options?.maxPerSource ?? cfgRetrieval?.ragMaxPerSource ?? DEFAULT_MAX_PER_SOURCE;
     const cosineThreshold = cfgRetrieval?.ragCosineThreshold ?? DEFAULT_MIN_COSINE_SCORE;
     const dropoffRatio = cfgRetrieval?.ragDropoffRatio ?? DEFAULT_DROPOFF_RATIO;
+    const queryPlan = this._buildQueryPlan(query, topK);
 
     // Token budget: 0 = auto (30% of model context window, floor 3000).
     const rawBudget = options?.tokenBudget ?? cfgRetrieval?.ragTokenBudget ?? DEFAULT_TOKEN_BUDGET;
@@ -241,22 +436,16 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     // 1. Embed the user query
     const queryEmbedding = await this._embeddingService.embedQuery(query);
 
-    // 2. Hybrid search — ask for more candidates than topK to allow
-    //    for cosine re-ranking, score threshold, and source dedup.
-    const overfetchFactor = 3;
-    const searchOptions: SearchOptions = {
-      topK: topK * overfetchFactor,
-      sourceFilter: options?.sourceFilter,
-      minScore: 0, // We'll apply our own threshold after
-      includeKeyword: options?.includeKeyword ?? true,
-    };
-
-    const rawResults = await this._vectorStore.search(
-      queryEmbedding,
+    // 2. Phase C candidate generation — stay on the fast path for simple
+    //    exact questions, but widen and decompose harder questions.
+    const { results: candidateResults, traces: vectorStoreTraces } = await this._collectCandidates(
       query,
-      searchOptions,
+      queryEmbedding,
+      queryPlan,
+      options,
     );
-    const vectorStoreTrace = (this._vectorStore as IVectorStoreTraceAccessor).getLastSearchTrace?.();
+    const rawResults = this._applyLexicalFocusBoost(candidateResults, queryPlan);
+    const vectorStoreTrace = vectorStoreTraces.at(-1);
 
     // 3. Score threshold filter (RRF scores)
     let filtered = rawResults.filter((r) => r.score >= minScore);
@@ -303,6 +492,21 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       tokenBudget,
       cosineThreshold,
       dropoffRatio,
+      queryPlan: {
+        rawQuery: query,
+        complexity: queryPlan.complexity,
+        strategy: queryPlan.strategy,
+        exactMatchBias: queryPlan.exactMatchBias,
+        identifiers: [...queryPlan.identifiers],
+        reasons: [...queryPlan.reasons],
+        candidateMultiplier: queryPlan.candidateMultiplier,
+        perQueryTopK: queryPlan.perQueryTopK,
+        variants: queryPlan.variants.map((variant) => ({
+          text: variant.text,
+          reason: variant.reason,
+          keywordQuery: variant.keywordQuery,
+        })),
+      },
       rawCandidateCount: rawResults.length,
       afterScoreFilterCount,
       afterDropoffCount,
@@ -322,6 +526,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
         tokenCount: chunk.tokenCount,
       })),
       vectorStoreTrace,
+      vectorStoreTraces,
     };
 
     return finalResults;
@@ -456,6 +661,210 @@ export class RetrievalService extends Disposable implements IRetrievalService {
   }
 
   // ── Internal ──
+
+  private _buildQueryPlan(query: string, topK: number): RetrievalQueryPlan {
+    const normalized = collapseWhitespace(query);
+    const analysisQuery = stripFormattingRequests(normalized);
+    const identifiers = extractCriticalIdentifiers(normalized);
+    const termCount = analysisQuery.split(/\s+/).filter(Boolean).length;
+    const reasons: string[] = [];
+
+    const hasCrossSourceSignal = /\b(across|cross-source|multiple|both|all|workflow|steps|process|follow-up|continue)\b/i.test(analysisQuery);
+    const hasSequentialSignal = /\b(then|after that|afterwards|next|finally)\b/i.test(analysisQuery);
+    const questionHeadMatches = analysisQuery.match(/\b(what|how|where|who|when|which)\b/gi) ?? [];
+    const hasMultipleQuestionHeads =
+      questionHeadMatches.length >= 2
+      || /\b(?:and|also)\s+(?:what|how|where|who|when|which|should|can)\b/i.test(analysisQuery);
+    const isLongQuestion = termCount >= HARD_QUERY_TERM_THRESHOLD;
+    const exactMatchBias = identifiers.length > 0;
+
+    if (hasCrossSourceSignal) { reasons.push('cross-source-signal'); }
+    if (hasSequentialSignal) { reasons.push('sequential-signal'); }
+    if (hasMultipleQuestionHeads) { reasons.push('multi-clause-question'); }
+    if (isLongQuestion && !exactMatchBias) { reasons.push('long-query'); }
+    if (exactMatchBias) { reasons.push('identifier-sensitive'); }
+
+    const complexity: 'simple' | 'hard' =
+      hasCrossSourceSignal || hasSequentialSignal || hasMultipleQuestionHeads || (isLongQuestion && !exactMatchBias)
+        ? 'hard'
+        : 'simple';
+
+    const variants: PlannedQueryVariant[] = [{ text: normalized, reason: 'raw' }];
+    const rewrite = buildGuardedRewrite(normalized, identifiers);
+    if (complexity === 'hard' && rewrite) {
+      variants.push({ text: rewrite, reason: 'rewrite' });
+    }
+
+    const keywordFocused = !exactMatchBias
+      ? buildKeywordFocusedQuery(rewrite ?? normalized, identifiers)
+      : undefined;
+
+    if (complexity === 'simple' && keywordFocused) {
+      variants[0] = { ...variants[0], keywordQuery: keywordFocused };
+      reasons.push('keyword-focused-lexical');
+    }
+
+    if (complexity === 'hard') {
+      for (const part of decomposeQuery(analysisQuery)) {
+        variants.push({
+          text: part,
+          reason: 'decomposition',
+          keywordQuery: !exactMatchBias ? buildKeywordFocusedQuery(part, identifiers) : undefined,
+        });
+      }
+      if (identifiers.length >= 2) {
+        variants.push({ text: identifiers.join(' '), reason: 'identifier-focus' });
+      }
+    }
+
+    const seen = new Set<string>();
+    const dedupedVariants: PlannedQueryVariant[] = [];
+    for (const variant of variants) {
+      const key = normalizeQueryKey(variant.text);
+      if (!key || seen.has(key)) { continue; }
+      seen.add(key);
+      dedupedVariants.push({
+        text: collapseWhitespace(variant.text),
+        reason: variant.reason,
+        keywordQuery: variant.keywordQuery,
+      });
+      if (dedupedVariants.length >= MAX_QUERY_VARIANTS) { break; }
+    }
+
+    const strategy: 'single' | 'decomposed' = dedupedVariants.length > 1 ? 'decomposed' : 'single';
+    const candidateMultiplier = complexity === 'hard'
+      ? HARD_OVERFETCH_FACTOR
+      : exactMatchBias
+        ? EXACT_OVERFETCH_FACTOR
+        : SIMPLE_OVERFETCH_FACTOR;
+    const perQueryTopK = strategy === 'single'
+      ? Math.min(MAX_SEARCH_TOP_K, Math.max(topK * candidateMultiplier, topK + 4))
+      : Math.min(MAX_SEARCH_TOP_K, Math.max(8, Math.ceil((topK * candidateMultiplier) / dedupedVariants.length) + 2));
+
+    return {
+      complexity,
+      strategy,
+      exactMatchBias,
+      identifiers,
+      reasons,
+      candidateMultiplier,
+      perQueryTopK,
+      variants: dedupedVariants,
+    };
+  }
+
+  private async _collectCandidates(
+    rawQuery: string,
+    rawQueryEmbedding: number[],
+    queryPlan: RetrievalQueryPlan,
+    options?: RetrievalOptions,
+  ): Promise<{ results: SearchResult[]; traces: HybridSearchTrace[] }> {
+    const traces: HybridSearchTrace[] = [];
+
+    if (queryPlan.variants.length === 1) {
+      const singleResult = await this._runSingleSearch(
+        rawQuery,
+        queryPlan.variants[0].keywordQuery,
+        rawQueryEmbedding,
+        queryPlan.perQueryTopK,
+        options,
+      );
+      if (singleResult.trace) {
+        traces.push(singleResult.trace);
+      }
+      return { results: singleResult.results, traces };
+    }
+
+    const merged = new Map<string, SearchResult>();
+    for (const variant of queryPlan.variants) {
+      const queryEmbedding = normalizeQueryKey(variant.text) === normalizeQueryKey(rawQuery)
+        ? rawQueryEmbedding
+        : await this._embeddingService.embedQuery(variant.text);
+      const variantResult = await this._runSingleSearch(
+        variant.text,
+        variant.keywordQuery,
+        queryEmbedding,
+        queryPlan.perQueryTopK,
+        options,
+      );
+      if (variantResult.trace) {
+        traces.push(variantResult.trace);
+      }
+      for (const result of variantResult.results) {
+        const key = `${result.rowid}:${result.sourceType}:${result.sourceId}:${result.chunkIndex}`;
+        const existing = merged.get(key);
+        if (!existing) {
+          merged.set(key, { ...result, sources: [...result.sources] });
+          continue;
+        }
+        existing.score = Math.max(existing.score, result.score);
+        existing.sources = Array.from(new Set([...existing.sources, ...result.sources]));
+      }
+    }
+
+    return {
+      results: Array.from(merged.values()).sort((a, b) => b.score - a.score),
+      traces,
+    };
+  }
+
+  private _applyLexicalFocusBoost(
+    results: SearchResult[],
+    queryPlan: RetrievalQueryPlan,
+  ): SearchResult[] {
+    if (queryPlan.exactMatchBias) {
+      return results;
+    }
+
+    const focusSeed = queryPlan.variants[0]?.keywordQuery ?? queryPlan.variants[0]?.text ?? '';
+    const focusTerms = extractFocusTerms(focusSeed, queryPlan.identifiers);
+    if (focusTerms.length === 0) {
+      return results;
+    }
+
+    return results.map((result) => {
+      const context = [result.contextPrefix, result.headingPath, result.parentHeadingPath]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        .join(' ')
+        .toLowerCase();
+
+      if (!context) {
+        return result;
+      }
+
+      const matchedTerms = focusTerms.filter((term) => context.includes(term));
+      if (matchedTerms.length === 0) {
+        return result;
+      }
+
+      const coverage = matchedTerms.length / focusTerms.length;
+      const contextBoost = Math.min(0.012, coverage * 0.012);
+      return { ...result, score: result.score + contextBoost };
+    });
+  }
+
+  private async _runSingleSearch(
+    queryText: string,
+    keywordQueryText: string | undefined,
+    queryEmbedding: number[],
+    searchTopK: number,
+    options?: RetrievalOptions,
+  ): Promise<{ results: SearchResult[]; trace?: HybridSearchTrace }> {
+    const searchOptions: SearchOptions = {
+      topK: searchTopK,
+      sourceFilter: options?.sourceFilter,
+      minScore: 0,
+      includeKeyword: options?.includeKeyword ?? true,
+    };
+
+    const results = await this._vectorStore.search(
+      queryEmbedding,
+      keywordQueryText ?? queryText,
+      searchOptions,
+    );
+    const trace = (this._vectorStore as IVectorStoreTraceAccessor).getLastSearchTrace?.();
+    return { results, trace };
+  }
 
   /**
    * Cap the number of chunks from any single source.

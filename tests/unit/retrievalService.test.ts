@@ -454,5 +454,106 @@ describe('RetrievalService', () => {
         expect.objectContaining({ topK: 30 }),
       );
     });
+
+    it('decomposes hard multi-clause queries and merges candidates', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+
+      vectorStore.search.mockImplementation(async (_queryEmbedding: number[], queryText: string) => {
+        if (/who do i call/i.test(queryText)) {
+          return [makeResult({ rowid: 2, sourceId: 'contacts', score: 0.08, chunkText: 'Call Sarah to start a claim.' })];
+        }
+        return [makeResult({ rowid: 1, sourceId: 'accident-guide', score: 0.09, chunkText: 'Take photos and document the scene.' })];
+      });
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve('What should I do after an accident and who do I call to start a claim?');
+
+      expect(vectorStore.search.mock.calls.length).toBeGreaterThan(1);
+      expect(results.map((result) => result.sourceId)).toEqual(expect.arrayContaining(['accident-guide', 'contacts']));
+
+      const trace = service.getLastTrace();
+      expect(trace?.queryPlan?.complexity).toBe('hard');
+      expect(trace?.queryPlan?.strategy).toBe('decomposed');
+      expect(trace?.queryPlan?.variants.length).toBeGreaterThan(1);
+    });
+
+    it('keeps identifier-heavy queries on the single-query fast path', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, sourceId: 'vehicle-info', score: 0.08, chunkText: 'The total loss threshold is 75% of KBB value.' }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
+
+      await service.retrieve('What is the 75% KBB total loss rule? Please find it.');
+
+      expect(vectorStore.search).toHaveBeenCalledTimes(1);
+      expect(vectorStore.search).toHaveBeenCalledWith(
+        expect.any(Array),
+        'What is the 75% KBB total loss rule? Please find it.',
+        expect.objectContaining({ topK: 40 }),
+      );
+
+      const trace = service.getLastTrace();
+      expect(trace?.queryPlan?.exactMatchBias).toBe(true);
+      expect(trace?.queryPlan?.strategy).toBe('single');
+      expect(trace?.queryPlan?.identifiers).toEqual(expect.arrayContaining(['75%', 'KBB']));
+    });
+
+    it('uses a keyword-focused lexical query for simple non-identifier prompts', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, sourceId: 'contacts', score: 0.08, chunkText: 'AutoCraft Collision Center and Precision Auto Body are preferred repair shops.' }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
+
+      await service.retrieve('Which repair shops are recommended under my policy? Please cite your sources.');
+
+      expect(vectorStore.search).toHaveBeenCalledWith(
+        expect.any(Array),
+        'repair shops recommended',
+        expect.objectContaining({ topK: 60 }),
+      );
+
+      const trace = service.getLastTrace();
+      expect(trace?.queryPlan?.strategy).toBe('single');
+      expect(trace?.queryPlan?.reasons).toContain('keyword-focused-lexical');
+      expect(trace?.queryPlan?.variants[0]?.keywordQuery).toBe('repair shops recommended');
+    });
+
+    it('boosts candidates whose headings match the lexical focus terms', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'claims-guide',
+          score: 0.05,
+          contextPrefix: 'Claims Guide > Repair Authorization',
+          chunkText: 'You can choose any licensed repair shop.',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'agent-contacts',
+          score: 0.05,
+          contextPrefix: 'Agent Contacts > Preferred Repair Shops',
+          headingPath: 'Preferred Repair Shops',
+          chunkText: 'AutoCraft Collision Center is a preferred shop.',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve('Which repair shops are recommended under my policy? Please cite your sources.');
+
+      expect(results[0].sourceId).toBe('agent-contacts');
+    });
   });
 });
