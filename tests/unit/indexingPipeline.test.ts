@@ -111,7 +111,7 @@ function createMockVectorStore() {
     // the version-check purge path doesn't fire in most tests.
     getContentHash: vi.fn().mockImplementation(
       async (sourceType: string, sourceId: string) =>
-        sourceType === '_system' && sourceId === 'pipeline_version' ? '2' : null,
+        sourceType === '_system' && sourceId === 'pipeline_version' ? '3' : null,
     ),
     getIndexedAtMap: vi.fn().mockResolvedValue(new Map()), // empty = no prior indexing
     getIndexedSources: vi.fn().mockResolvedValue([]),
@@ -241,6 +241,29 @@ describe('IndexingPipelineService', () => {
       expect(completions[0].durationMs).toBeGreaterThanOrEqual(0);
     });
 
+    it('stores source-level retrieval metadata for canvas pages', async () => {
+      db.all.mockResolvedValueOnce([
+        { id: 'p1', title: 'Page 1', content: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hello"}]}]}' },
+      ]);
+      fileService.readdir.mockResolvedValueOnce([]);
+
+      await pipeline.start();
+
+      expect(vectorStore.upsert).toHaveBeenCalledWith(
+        'page_block',
+        'p1',
+        expect.any(Array),
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({
+          documentKind: 'canvas',
+          extractionPipeline: 'canvas',
+          extractionFallback: false,
+          classificationConfidence: 1,
+        }),
+      );
+    });
+
     it('fires progress events', async () => {
       db.all.mockResolvedValueOnce([]);
       fileService.readdir.mockResolvedValueOnce([]);
@@ -276,6 +299,34 @@ describe('IndexingPipelineService', () => {
 
       await Promise.all([p1, p2]);
       expect(embeddingService.ensureModel).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('file metadata persistence', () => {
+    it('stores extraction metadata for indexed workspace files', async () => {
+      fileService.readFile.mockResolvedValueOnce({
+        content: '# Policy\nCollision coverage applies.',
+        encoding: 'utf-8',
+        size: 36,
+        mtime: 1,
+      });
+
+      await (pipeline as any)._indexSingleFile('/workspace/Claims Guide.md', 'Claims Guide.md');
+
+      expect(vectorStore.upsert).toHaveBeenCalledWith(
+        'file_chunk',
+        'Claims Guide.md',
+        expect.any(Array),
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({
+          documentKind: 'text',
+          extractionPipeline: 'text',
+          extractionFallback: false,
+          classificationConfidence: 1,
+          classificationReason: 'Text file (.md)',
+        }),
+      );
     });
   });
 
@@ -433,7 +484,14 @@ describe('IndexingPipelineService', () => {
       await pipeline.reindexPage('p1');
 
       expect(chunkingService.chunkPage).toHaveBeenCalledWith('p1', 'My Page', expect.any(String));
-      expect(vectorStore.upsert).toHaveBeenCalledWith('page_block', 'p1', expect.any(Array), expect.any(String), expect.any(String));
+      expect(vectorStore.upsert).toHaveBeenCalledWith(
+        'page_block',
+        'p1',
+        expect.any(Array),
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({ documentKind: 'canvas', extractionPipeline: 'canvas' }),
+      );
     });
 
     it('does nothing for non-existent page', async () => {

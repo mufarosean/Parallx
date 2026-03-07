@@ -59,6 +59,12 @@ export interface Chunk {
   contextPrefix: string;
   /** SHA-256 hash of the text content for change detection. */
   contentHash: string;
+  /** Nested heading breadcrumb for this chunk, if one exists. */
+  headingPath?: string;
+  /** Immediate structural parent breadcrumb for this chunk, if one exists. */
+  parentHeadingPath?: string;
+  /** Coarse structural role used by later retrieval/ranking passes. */
+  structuralRole?: string;
 }
 
 // ─── TipTap AST Types (minimal) ──────────────────────────────────────────────
@@ -132,6 +138,8 @@ export class ChunkingService extends Disposable implements IChunkingService {
         text: trimmed,
         contextPrefix: prefix,
         contentHash: await hashText(trimmed),
+        headingPath: currentHeading || undefined,
+        structuralRole: normalizeStructuralRole(bufferBlockTypes[0]),
       });
 
       // M16: Carry overlap on size-limit flushes (same as file chunks).
@@ -199,6 +207,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
     const lines = content.split('\n');
     const chunks: Chunk[] = [];
     let buffer = '';
+    let activeStructuralRole: string | undefined;
 
     // D.3: Heading stack for structural breadcrumbs.
     // Each entry: { level: 1-6, text: "heading text" }
@@ -227,6 +236,10 @@ export class ChunkingService extends Disposable implements IChunkingService {
       }
 
       const prefix = buildContextPrefix(filePath, headingBreadcrumb());
+      const currentHeadingPath = headingBreadcrumb() || undefined;
+      const parentHeadingPath = headingStack.length > 1
+        ? headingStack.slice(0, -1).map(h => h.text).join(' > ')
+        : undefined;
       chunks.push({
         sourceType: 'file_chunk',
         sourceId: filePath,
@@ -234,6 +247,9 @@ export class ChunkingService extends Disposable implements IChunkingService {
         text: trimmed,
         contextPrefix: prefix,
         contentHash: await hashText(trimmed),
+        headingPath: currentHeadingPath,
+        parentHeadingPath,
+        structuralRole: activeStructuralRole ?? 'section',
       });
 
       // Carry tail of flushed text into next chunk for overlap
@@ -243,6 +259,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
       } else {
         buffer = '';
       }
+      activeStructuralRole = undefined;
     };
 
     let i = 0;
@@ -269,6 +286,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
         if (tableText.length <= MAX_STRUCTURAL_BLOCK_CHARS) {
           // Table fits within 2× max — keep it as a single chunk
           buffer = tableText;
+          activeStructuralRole = 'table';
           await flush(false);
         } else {
           // Table exceeds 2× max — split at row boundaries, prefix with header
@@ -277,6 +295,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
             const nextRow = tableLines[r];
             if ((rowBuffer + '\n' + nextRow).length > MAX_CHUNK_CHARS && rowBuffer.trim()) {
               buffer = rowBuffer;
+              activeStructuralRole = 'table';
               await flush(false);
               // Start new chunk with header prefix for context
               rowBuffer = tableHeader + '\n' + nextRow;
@@ -286,6 +305,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
           }
           if (rowBuffer.trim()) {
             buffer = rowBuffer;
+            activeStructuralRole = 'table';
             await flush(false);
           }
         }
@@ -319,6 +339,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
         if (codeText.length <= MAX_STRUCTURAL_BLOCK_CHARS) {
           // Code block fits within 2× max — keep as single chunk
           buffer = codeText;
+          activeStructuralRole = 'code';
           await flush(false);
         } else {
           // Code block exceeds 2× max — split at blank lines within the block
@@ -332,6 +353,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
             if (candidate.length > MAX_CHUNK_CHARS && codeBuffer.length > openFence.length) {
               // Close this chunk with fence marker
               buffer = codeBuffer + '\n' + closeFence;
+              activeStructuralRole = 'code';
               await flush(false);
               // Start new chunk with opening fence (preserve language tag)
               codeBuffer = openFence + '\n' + codeLine;
@@ -342,6 +364,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
           // Flush remaining code with close fence
           if (codeBuffer.length > openFence.length) {
             buffer = codeBuffer + '\n' + closeFence;
+            activeStructuralRole = 'code';
             await flush(false);
           }
         }
@@ -363,6 +386,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
       }
 
       buffer += (buffer ? '\n' : '') + line;
+  activeStructuralRole ??= 'section';
       i++;
 
       if (buffer.length > MAX_CHUNK_CHARS) {
@@ -400,6 +424,7 @@ export class ChunkingService extends Disposable implements IChunkingService {
         text: trimmed,
         contextPrefix: prefix,
         contentHash: await hashText(trimmed),
+        structuralRole: 'body',
       });
 
       // Carry tail of flushed text into next chunk for overlap
@@ -497,6 +522,26 @@ function buildContextPrefix(
     parts.push(`Type: ${typeOrLang}`);
   }
   return `[${parts.join(' | ')}]`;
+}
+
+function normalizeStructuralRole(type?: string): string | undefined {
+  if (!type) { return undefined; }
+  switch (type) {
+    case 'table':
+    case 'tableRow':
+    case 'tableCell':
+      return 'table';
+    case 'codeBlock':
+      return 'code';
+    case 'heading':
+      return 'section';
+    case 'bulletList':
+    case 'orderedList':
+    case 'listItem':
+      return 'list';
+    default:
+      return 'body';
+  }
 }
 
 /**

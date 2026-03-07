@@ -1393,6 +1393,46 @@ That means each slice is only complete when:
   weakness, deep retrieval weakness, and the remaining multi-turn UI/runtime
   instability.
 
+### 2026-03-07 — Sequence 2 foundation: retrieval metadata schema + persistence
+
+**What changed**
+
+- added an additive retrieval metadata schema for chunk-level structure and
+  source-level extraction/classification details;
+- extended chunk production so indexed chunks now carry heading breadcrumbs,
+  immediate parent breadcrumbs, and coarse structural roles;
+- persisted source metadata including document kind, extraction pipeline,
+  fallback state, and classifier confidence/reason alongside existing summaries;
+- surfaced the richer metadata through vector/keyword retrieval result shapes
+  without changing ranking or answer behavior yet;
+- bumped the indexing pipeline version so existing workspaces reindex cleanly
+  and populate the new metadata fields.
+
+**Files changed**
+
+- `src/built-in/canvas/migrations/011_retrieval_metadata.sql`
+- `src/services/chunkingService.ts`
+- `src/services/indexingPipeline.ts`
+- `src/services/vectorStoreService.ts`
+- `src/services/serviceTypes.ts`
+- `tests/unit/indexingPipeline.test.ts`
+- `tests/unit/vectorStoreService.test.ts`
+
+**Why this slice matters**
+
+- `T07` and `T15` are currently failing partly because the retriever has no
+  persisted notion of section ancestry, structural role, or extraction quality;
+- this slice does not tune ranking yet, but it creates the durable metadata
+  needed for later query decomposition, section expansion, and reranking work;
+- parent breadcrumb storage provides the minimum parent-child retrieval
+  primitive needed for later expansion passes.
+
+**Behavior impact**
+
+- retrieval answers should remain behaviorally unchanged for now;
+- indexing now records richer metadata and forces a clean rebuild via pipeline
+  version `3`, preparing the system for later Phase C/D/E ranking logic.
+
 ---
 
 ## Migration & Compatibility
@@ -1479,9 +1519,9 @@ Milestone 23 should not be considered complete unless:
 - [x] A3. Add retrieval tracing / stage diagnostics
 
 ### Phase B — Index & Metadata Overhaul
-- [ ] B1. Extend retrieval index schema for richer metadata
-- [ ] B2. Add parent-child structural retrieval primitives
-- [ ] B3. Add extraction-quality metadata to ranking inputs
+- [x] B1. Extend retrieval index schema for richer metadata
+- [x] B2. Add parent-child structural retrieval primitives
+- [x] B3. Add extraction-quality metadata to ranking inputs
 
 ### Phase C — Candidate Generation 2.0
 - [ ] C1. Re-evaluate hybrid retrieval composition against benchmarks

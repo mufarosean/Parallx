@@ -1043,6 +1043,7 @@ export interface IVectorStoreService extends IDisposable {
     chunks: import('./vectorStoreService.js').EmbeddedChunk[],
     contentHash: string,
     summary?: string,
+    sourceMetadata?: import('./vectorStoreService.js').SourceIndexMetadata,
   ): Promise<void>;
 
   /** Delete all chunks for a source. */

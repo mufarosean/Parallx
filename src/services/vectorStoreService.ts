@@ -44,6 +44,16 @@ export interface EmbeddedChunk extends Chunk {
   embedding: number[];
 }
 
+export type RetrievalExtractionPipeline = 'canvas' | 'docling' | 'docling-ocr' | 'legacy' | 'text';
+
+export interface SourceIndexMetadata {
+  documentKind?: string;
+  extractionPipeline?: RetrievalExtractionPipeline;
+  extractionFallback?: boolean;
+  classificationConfidence?: number;
+  classificationReason?: string;
+}
+
 /** A single search result from the vector store. */
 export interface SearchResult {
   /** Auto-assigned rowid from vec_embeddings. */
@@ -62,6 +72,18 @@ export interface SearchResult {
   score: number;
   /** Which retrieval methods contributed to this result. */
   sources: string[];
+  /** Nested heading breadcrumb for this chunk, if one exists. */
+  headingPath?: string;
+  /** Immediate structural parent breadcrumb for this chunk, if one exists. */
+  parentHeadingPath?: string;
+  /** Coarse structural role used by later retrieval/ranking passes. */
+  structuralRole?: string;
+  /** Source-level retrieval metadata persisted during indexing. */
+  documentKind?: string;
+  extractionPipeline?: RetrievalExtractionPipeline;
+  extractionFallback?: boolean;
+  classificationConfidence?: number;
+  classificationReason?: string;
 }
 
 /** Options for search queries. */
@@ -106,6 +128,11 @@ export interface IndexingMeta {
   indexedAt: string;
   /** Brief content summary (first ~200 chars of extracted text). */
   summary?: string;
+  documentKind?: string;
+  extractionPipeline?: RetrievalExtractionPipeline;
+  extractionFallback?: boolean;
+  classificationConfidence?: number;
+  classificationReason?: string;
 }
 
 /** Statistics about the vector store. */
@@ -159,6 +186,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     chunks: EmbeddedChunk[],
     contentHash: string,
     summary?: string,
+    sourceMetadata?: SourceIndexMetadata,
   ): Promise<void> {
     // Build transaction operations: delete old, insert new
     const operations: { type: 'run'; sql: string; params?: unknown[] }[] = [];
@@ -167,6 +195,11 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     operations.push({
       type: 'run',
       sql: 'DELETE FROM fts_chunks WHERE source_type = ? AND source_id = ?',
+      params: [sourceType, sourceId],
+    });
+    operations.push({
+      type: 'run',
+      sql: 'DELETE FROM chunk_metadata WHERE source_type = ? AND source_id = ?',
       params: [sourceType, sourceId],
     });
 
@@ -210,6 +243,21 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
         ],
       });
 
+      operations.push({
+        type: 'run',
+        sql: `INSERT INTO chunk_metadata(chunk_id, source_type, source_id, chunk_index, heading_path, parent_heading_path, structural_role)
+              VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          '$lastRowId',
+          chunk.sourceType,
+          chunk.sourceId,
+          chunk.chunkIndex,
+          chunk.headingPath ?? null,
+          chunk.parentHeadingPath ?? null,
+          chunk.structuralRole ?? null,
+        ],
+      });
+
       // BM25 metadata enrichment (M16 Task 3.1): prepend contextPrefix to
       // FTS5 content so keyword search can match on page titles, section
       // headings, and file paths — not just the chunk body text.
@@ -228,9 +276,31 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     // 3. Upsert indexing metadata (with optional content summary)
     operations.push({
       type: 'run',
-      sql: `INSERT OR REPLACE INTO indexing_metadata(source_type, source_id, content_hash, chunk_count, indexed_at, summary)
-            VALUES (?, ?, ?, ?, datetime('now'), ?)`,
-      params: [sourceType, sourceId, contentHash, chunks.length, summary ?? null],
+      sql: `INSERT OR REPLACE INTO indexing_metadata(
+              source_type,
+              source_id,
+              content_hash,
+              chunk_count,
+              indexed_at,
+              summary,
+              document_kind,
+              extraction_pipeline,
+              extraction_fallback,
+              classification_confidence,
+              classification_reason
+            ) VALUES (?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?)`,
+      params: [
+        sourceType,
+        sourceId,
+        contentHash,
+        chunks.length,
+        summary ?? null,
+        sourceMetadata?.documentKind ?? null,
+        sourceMetadata?.extractionPipeline ?? null,
+        sourceMetadata?.extractionFallback ? 1 : 0,
+        sourceMetadata?.classificationConfidence ?? null,
+        sourceMetadata?.classificationReason ?? null,
+      ],
     });
 
     // Execute all in one transaction
@@ -268,6 +338,11 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     });
     operations.push({
       type: 'run',
+      sql: 'DELETE FROM chunk_metadata WHERE source_type = ? AND source_id = ?',
+      params: [sourceType, sourceId],
+    });
+    operations.push({
+      type: 'run',
       sql: 'DELETE FROM indexing_metadata WHERE source_type = ? AND source_id = ?',
       params: [sourceType, sourceId],
     });
@@ -300,6 +375,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     }
 
     operations.push({ type: 'run', sql: 'DELETE FROM fts_chunks' });
+    operations.push({ type: 'run', sql: 'DELETE FROM chunk_metadata' });
     operations.push({ type: 'run', sql: 'DELETE FROM indexing_metadata' });
 
     if (operations.length > 0) {
@@ -400,6 +476,14 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       contextPrefix: r.context_prefix,
       score: 1 - ((r.distance ?? 0) / 2), // Cosine similarity 0–1 (sqlite-vec distance is 0–2)
       sources: ['vector'],
+      headingPath: r.heading_path,
+      parentHeadingPath: r.parent_heading_path,
+      structuralRole: r.structural_role,
+      documentKind: r.document_kind,
+      extractionPipeline: r.extraction_pipeline,
+      extractionFallback: toBoolean(r.extraction_fallback),
+      classificationConfidence: r.classification_confidence,
+      classificationReason: r.classification_reason,
     }));
   }
 
@@ -441,7 +525,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
    */
   async getIndexedSources(): Promise<IndexingMeta[]> {
     const rows = await this._db.all<IndexingMeta>(
-      'SELECT source_type as sourceType, source_id as sourceId, content_hash as contentHash, chunk_count as chunkCount, indexed_at as indexedAt, summary FROM indexing_metadata ORDER BY indexed_at DESC',
+      'SELECT source_type as sourceType, source_id as sourceId, content_hash as contentHash, chunk_count as chunkCount, indexed_at as indexedAt, summary, document_kind as documentKind, extraction_pipeline as extractionPipeline, CAST(extraction_fallback AS INTEGER) as extractionFallback, classification_confidence as classificationConfidence, classification_reason as classificationReason FROM indexing_metadata ORDER BY indexed_at DESC',
     );
     return rows;
   }
@@ -553,14 +637,24 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       // vec0 KNN with source_type filter via a subquery approach
       // Note: vec0 WHERE clause only supports embedding MATCH and k constraint
       // We filter after the KNN search
-      sql = `SELECT rowid, distance, source_type, source_id, chunk_index, chunk_text, context_prefix
+          sql = `SELECT rowid, distance, source_type, source_id, chunk_index, chunk_text, context_prefix,
+              cm.heading_path, cm.parent_heading_path, cm.structural_role,
+              im.document_kind, im.extraction_pipeline, im.extraction_fallback,
+              im.classification_confidence, im.classification_reason
              FROM vec_embeddings
+            LEFT JOIN chunk_metadata cm ON cm.chunk_id = vec_embeddings.rowid
+            LEFT JOIN indexing_metadata im ON im.source_type = vec_embeddings.source_type AND im.source_id = vec_embeddings.source_id
              WHERE embedding MATCH ? AND k = ?
              ORDER BY distance`;
       params = [embeddingBlob, topK * 2]; // Over-fetch to account for filtering
     } else {
-      sql = `SELECT rowid, distance, source_type, source_id, chunk_index, chunk_text, context_prefix
+          sql = `SELECT rowid, distance, source_type, source_id, chunk_index, chunk_text, context_prefix,
+              cm.heading_path, cm.parent_heading_path, cm.structural_role,
+              im.document_kind, im.extraction_pipeline, im.extraction_fallback,
+              im.classification_confidence, im.classification_reason
              FROM vec_embeddings
+            LEFT JOIN chunk_metadata cm ON cm.chunk_id = vec_embeddings.rowid
+            LEFT JOIN indexing_metadata im ON im.source_type = vec_embeddings.source_type AND im.source_id = vec_embeddings.source_id
              WHERE embedding MATCH ? AND k = ?
              ORDER BY distance`;
       params = [embeddingBlob, topK];
@@ -605,18 +699,28 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
 
       if (sourceFilter) {
         sql = `SELECT f.chunk_id as rowid, f.source_type, f.source_id, f.content,
-                      v.chunk_index, v.chunk_text, v.context_prefix, f.rank as distance
+             v.chunk_index, v.chunk_text, v.context_prefix, f.rank as distance,
+             cm.heading_path, cm.parent_heading_path, cm.structural_role,
+             im.document_kind, im.extraction_pipeline, im.extraction_fallback,
+             im.classification_confidence, im.classification_reason
                FROM fts_chunks f
                JOIN vec_embeddings v ON v.rowid = f.chunk_id
+           LEFT JOIN chunk_metadata cm ON cm.chunk_id = f.chunk_id
+           LEFT JOIN indexing_metadata im ON im.source_type = f.source_type AND im.source_id = f.source_id
                WHERE fts_chunks MATCH ? AND f.source_type = ?
                ORDER BY f.rank
                LIMIT ?`;
         params = [ftsQuery, sourceFilter, topK];
       } else {
         sql = `SELECT f.chunk_id as rowid, f.source_type, f.source_id, f.content,
-                      v.chunk_index, v.chunk_text, v.context_prefix, f.rank as distance
+             v.chunk_index, v.chunk_text, v.context_prefix, f.rank as distance,
+             cm.heading_path, cm.parent_heading_path, cm.structural_role,
+             im.document_kind, im.extraction_pipeline, im.extraction_fallback,
+             im.classification_confidence, im.classification_reason
                FROM fts_chunks f
                JOIN vec_embeddings v ON v.rowid = f.chunk_id
+           LEFT JOIN chunk_metadata cm ON cm.chunk_id = f.chunk_id
+           LEFT JOIN indexing_metadata im ON im.source_type = f.source_type AND im.source_id = f.source_id
                WHERE fts_chunks MATCH ?
                ORDER BY f.rank
                LIMIT ?`;
@@ -688,6 +792,19 @@ interface VectorRow {
   chunk_index: string | number;
   chunk_text: string;
   context_prefix: string;
+  heading_path?: string;
+  parent_heading_path?: string;
+  structural_role?: string;
+  document_kind?: string;
+  extraction_pipeline?: RetrievalExtractionPipeline;
+  extraction_fallback?: number | boolean | null;
+  classification_confidence?: number;
+  classification_reason?: string;
+}
+
+function toBoolean(value: number | boolean | null | undefined): boolean | undefined {
+  if (value === null || value === undefined) { return undefined; }
+  return typeof value === 'boolean' ? value : value !== 0;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -861,6 +978,14 @@ function reciprocalRankFusion(
           contextPrefix: row.context_prefix,
           score: contribution,
           sources: [listName],
+          headingPath: row.heading_path,
+          parentHeadingPath: row.parent_heading_path,
+          structuralRole: row.structural_role,
+          documentKind: row.document_kind,
+          extractionPipeline: row.extraction_pipeline,
+          extractionFallback: toBoolean(row.extraction_fallback),
+          classificationConfidence: row.classification_confidence,
+          classificationReason: row.classification_reason,
         });
       }
     }

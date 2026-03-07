@@ -309,6 +309,9 @@ describe('VectorStoreService', () => {
         text: 'Chunk zero text',
         contextPrefix: '[Source: "My Page"]',
         contentHash: 'abc123',
+        headingPath: 'Overview > Repair Shops',
+        parentHeadingPath: 'Overview',
+        structuralRole: 'table',
         embedding: [0.1, 0.2, 0.3],
       },
     ];
@@ -367,6 +370,49 @@ describe('VectorStoreService', () => {
       // The FTS content should be contextPrefix + space + chunk text
       const ftsContent = insertFts.params[3];
       expect(ftsContent).toBe('[Source: "My Page"] Chunk zero text');
+    });
+
+    it('persists chunk and source retrieval metadata for later ranking', async () => {
+      db.all.mockResolvedValueOnce([]);
+
+      await service.upsert(
+        'page_block',
+        'page-1',
+        fakeChunks,
+        'hash-meta-2',
+        'Repair shop summary',
+        {
+          documentKind: 'canvas',
+          extractionPipeline: 'canvas',
+          extractionFallback: false,
+          classificationConfidence: 1,
+          classificationReason: 'Canvas page',
+        },
+      );
+
+      const ops = db.runTransaction.mock.calls[0][0];
+      const chunkMetaInsert = ops.find((o: any) => o.sql.includes('INSERT INTO chunk_metadata'));
+      expect(chunkMetaInsert).toBeDefined();
+      expect(chunkMetaInsert.params).toEqual([
+        '$lastRowId',
+        'page_block',
+        'page-1',
+        0,
+        'Overview > Repair Shops',
+        'Overview',
+        'table',
+      ]);
+
+      const sourceMetaInsert = ops.find((o: any) => o.sql.includes('INSERT OR REPLACE INTO indexing_metadata'));
+      expect(sourceMetaInsert).toBeDefined();
+      expect(sourceMetaInsert.params.slice(4)).toEqual([
+        'Repair shop summary',
+        'canvas',
+        'canvas',
+        0,
+        1,
+        'Canvas page',
+      ]);
     });
   });
 
@@ -438,6 +484,43 @@ describe('VectorStoreService', () => {
       const stats = await service.getStats();
       expect(stats.totalChunks).toBe(0);
       expect(stats.totalSources).toBe(0);
+    });
+  });
+
+  describe('getIndexedSources()', () => {
+    it('returns persisted retrieval metadata with source rows', async () => {
+      db.all.mockResolvedValueOnce([
+        {
+          sourceType: 'file_chunk',
+          sourceId: 'docs/Vehicle Info.md',
+          contentHash: 'hash-1',
+          chunkCount: 3,
+          indexedAt: '2025-01-01 00:00:00',
+          summary: 'Vehicle value and total loss guidance.',
+          documentKind: 'text',
+          extractionPipeline: 'text',
+          extractionFallback: 0,
+          classificationConfidence: 1,
+          classificationReason: 'Text file (.md)',
+        },
+      ]);
+
+      const rows = await service.getIndexedSources();
+      expect(rows).toEqual([
+        {
+          sourceType: 'file_chunk',
+          sourceId: 'docs/Vehicle Info.md',
+          contentHash: 'hash-1',
+          chunkCount: 3,
+          indexedAt: '2025-01-01 00:00:00',
+          summary: 'Vehicle value and total loss guidance.',
+          documentKind: 'text',
+          extractionPipeline: 'text',
+          extractionFallback: 0,
+          classificationConfidence: 1,
+          classificationReason: 'Text file (.md)',
+        },
+      ]);
     });
   });
 

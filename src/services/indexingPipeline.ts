@@ -41,6 +41,8 @@ import type { Chunk } from './chunkingService.js';
 import type { EmbeddedChunk } from './vectorStoreService.js';
 import { hashText } from './chunkingService.js';
 import { DocumentClassifier } from './documentClassifier.js';
+import type { ClassificationResult } from './documentClassifier.js';
+import type { SourceIndexMetadata } from './vectorStoreService.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -111,8 +113,9 @@ const SKIP_DIRS = new Set([
  * History:
  *   1 — implicit (pre-M21 pipeline)
  *   2 — M21: Docling integration, rich-document extraction overhaul
+ *   3 — M23: retrieval metadata expansion (chunk/source metadata persisted)
  */
-const PIPELINE_VERSION = 2;
+const PIPELINE_VERSION = 3;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -536,7 +539,20 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     // Store — generate a content summary from the page's first chunk for the workspace digest.
     const pageText = chunks.map(c => c.text).join(' ');
     const summary = _generateSummary(pageText);
-    await this._vectorStore.upsert('page_block', pageId, embeddedChunks, contentHash, summary);
+    await this._vectorStore.upsert(
+      'page_block',
+      pageId,
+      embeddedChunks,
+      contentHash,
+      summary,
+      {
+        documentKind: 'canvas',
+        extractionPipeline: 'canvas',
+        extractionFallback: false,
+        classificationConfidence: 1,
+        classificationReason: 'Canvas page',
+      },
+    );
 
     return true;
   }
@@ -691,6 +707,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     let language: string | undefined;
     let pipelineUsed: 'docling' | 'docling-ocr' | 'legacy' | 'text' = 'text';
     let didFallback = false;
+    let classification: ClassificationResult = this._classifier.classify(absolutePath);
     try {
       // C.3: Check batch extraction cache first (populated by _indexAllFiles batch pre-extraction)
       const cachedResult = this._batchExtractionCache.get(absolutePath);
@@ -701,8 +718,6 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
         this._batchExtractionCache.delete(absolutePath); // Free memory
       } else if ((isRichDoc || isImage) && this._documentExtractionService) {
         // M21: Classify the document and use the appropriate extraction pipeline
-        const classification = this._classifier.classify(absolutePath);
-
         // For PDFs, attempt scan detection via lightweight pre-check
         let useOcr = classification.documentClass === 'scanned-doc' || classification.documentClass === 'image';
 
@@ -717,6 +732,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
             if (refined.documentClass === 'scanned-doc') {
               useOcr = true;
             }
+            classification = refined;
           } catch {
             // Pre-check failed — proceed without OCR
           }
@@ -780,7 +796,14 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     // Store — workspace-relative sourceId so retrieval context matches read_file paths
     // Generate a content summary from the first ~200 chars for the workspace digest.
     const summary = _generateSummary(content);
-    await this._vectorStore.upsert('file_chunk', relPath, embeddedChunks, contentHash, summary);
+    await this._vectorStore.upsert(
+      'file_chunk',
+      relPath,
+      embeddedChunks,
+      contentHash,
+      summary,
+      toSourceIndexMetadata(classification, pipelineUsed, didFallback),
+    );
 
     // E.1/E.2: Record pipeline metadata for the caller
     this._lastFilePipeline = pipelineUsed;
@@ -1131,6 +1154,20 @@ function extToLanguage(ext: string): string | undefined {
     graphql: 'graphql', gql: 'graphql', svelte: 'svelte', vue: 'vue',
   };
   return map[ext];
+}
+
+function toSourceIndexMetadata(
+  classification: ClassificationResult,
+  pipelineUsed: SourceIndexMetadata['extractionPipeline'],
+  didFallback: boolean,
+): SourceIndexMetadata {
+  return {
+    documentKind: classification.documentClass,
+    extractionPipeline: pipelineUsed,
+    extractionFallback: didFallback,
+    classificationConfidence: classification.confidence,
+    classificationReason: classification.reason,
+  };
 }
 
 export { getExtension, extToLanguage, INDEXABLE_EXTENSIONS, RICH_DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS, SKIP_DIRS, MAX_FILE_SIZE, MAX_RICH_DOC_SIZE };
