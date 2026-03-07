@@ -179,6 +179,27 @@ export function _stripToolNarration(text: string): string {
   return cleaned;
 }
 
+/** @internal Exported for unit testing. */
+export function _buildMissingCitationFooter(
+  text: string,
+  citations: Array<{ index: number; label: string }>,
+  maxVisibleSources = 3,
+): string {
+  if (citations.length === 0 || /\[(\d+)\]/.test(text)) {
+    return '';
+  }
+
+  const visibleSources = [...citations]
+    .sort((a, b) => a.index - b.index)
+    .slice(0, Math.max(1, maxVisibleSources));
+
+  if (visibleSources.length === 0) {
+    return '';
+  }
+
+  return `\n\nSources: ${visibleSources.map((source) => `[${source.index}] ${source.label}`).join('; ')}`;
+}
+
 /** Default network timeout in milliseconds. */
 const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
 /** Context overflow threshold — warn at this fraction of context length. */
@@ -1425,6 +1446,20 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
                 `Unmatched: [${unmatchedRefs.join(', ')}]`,
               );
             }
+          }
+
+          const responseParts = (response as any)._response?.parts;
+          const lastMarkdownContent = Array.isArray(responseParts)
+            ? [...responseParts]
+              .reverse()
+              .find((part) => part.kind === ChatContentPartKind.Markdown && typeof part.content === 'string')?.content ?? ''
+            : response.getMarkdownText();
+          const citationFooter = _buildMissingCitationFooter(
+            lastMarkdownContent,
+            citations.map(({ index, label }) => ({ index, label })),
+          );
+          if (citationFooter) {
+            response.markdown(citationFooter);
           }
 
           response.setCitations(citations);

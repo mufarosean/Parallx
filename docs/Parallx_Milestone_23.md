@@ -1565,6 +1565,50 @@ retrieval-measurement reliability.
   fix, so the next highest-value work item is citation rendering / source
   attribution quality rather than more blind candidate tuning for that case.
 
+### 2026-03-07 — Citation visibility fallback for grounded answers
+
+This follow-up pass fixed the remaining `T07` failure mode after retrieval had
+already been recovered: the answer text could contain the right facts and a
+valid citation map, but no visible `[N]` markers in the final markdown.
+
+**Implemented**
+
+- added a participant-side fallback that appends a `Sources:` footer with
+  visible `[N]` markers when grounded answers have citation metadata but the
+  model omitted citation markers entirely;
+- kept the existing citation-remap logic intact so valid or recoverable
+  markers still flow through unchanged;
+- added unit coverage for the fallback helper so benchmark-visible citation
+  presence does not silently regress.
+
+**Files changed**
+
+- `src/built-in/chat/participants/defaultParticipant.ts`
+- `tests/ai-eval/ai-eval-fixtures.ts`
+- `tests/ai-eval/ai-quality.spec.ts`
+- `tests/unit/chatService.test.ts`
+
+**Validation**
+
+- `npx vitest run tests/unit/chatService.test.ts tests/unit/retrievalBenchmarkScoring.test.ts` ✅
+- `npx tsc --noEmit` ✅
+- `npx playwright test --config=playwright.ai-eval.config.ts -g "T07: Source attribution -- repair shops with citations"` ✅ (`100%`)
+- `npx playwright test --config=playwright.ai-eval.config.ts -g "T07|T15"` ✅ (`T07=100%`, `T15=100%`)
+- `npx playwright test --config=playwright.ai-eval.config.ts -g "T17: Multi-turn scenario -- accident workflow"` ✅ (completes after fixing the multi-turn eval wait and timeout budget)
+- `npx playwright test --config=playwright.ai-eval.config.ts -g "T07|T15|T17"` ✅ (`T07=100%`, `T15=100%`, `T17=100%`)
+
+**Interpretation**
+
+- this change targets answer-stage source visibility only;
+- if `T07` now clears, the remaining Phase C benchmark work can move back to
+  hard-query retrieval quality on `T15` and `T17` instead of source rendering;
+- `T17`'s earlier failure was an eval-harness problem, not a retrieval bug: the
+  helper could advance multi-turn tests before the chat input was writable
+  again, and the fixed `8m` per-test budget was too small for setup plus three
+  live-inference turns;
+- after waiting for the input to re-enable and raising the timeout budget for
+  3-turn rubric cases, the targeted `T07|T15|T17` subset now runs cleanly.
+
 ---
 
 ## Migration & Compatibility

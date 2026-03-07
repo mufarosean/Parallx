@@ -341,6 +341,17 @@ export async function sendAndWaitForResponse(
   // Extra settle for DOM to finalize rendering
   await page.waitForTimeout(2_000);
 
+  // Multi-turn evals should not send the next prompt until the input is
+  // writable again. The streaming cursor can disappear before the widget has
+  // fully unwound request completion and re-enabled the textarea.
+  await page.waitForFunction(
+    () => {
+      const textarea = document.querySelector('.parallx-chat-input-textarea') as HTMLTextAreaElement | null;
+      return !!textarea && !textarea.disabled;
+    },
+    { timeout },
+  );
+
   const latencyMs = Date.now() - start;
 
   // Extract the answer text from the LAST assistant message using JS evaluation.

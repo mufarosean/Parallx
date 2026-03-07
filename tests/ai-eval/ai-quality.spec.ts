@@ -121,6 +121,10 @@ test.describe.serial('AI Quality Evaluation', () => {
 
   for (const tc of RUBRIC) {
     test(`${tc.id}: ${tc.name}`, async ({ window }) => {
+      if (tc.turns.length >= 3) {
+        test.setTimeout(12 * 60 * 1000);
+      }
+
       await startNewSession(window);
       await window.waitForTimeout(500);
 

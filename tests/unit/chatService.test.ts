@@ -577,3 +577,33 @@ describe('_stripToolNarration', () => {
     expect(result).toContain('There are 42 files.');
   });
 });
+
+describe('_buildMissingCitationFooter', () => {
+  let _buildMissingCitationFooter: typeof import('../../src/built-in/chat/participants/defaultParticipant')._buildMissingCitationFooter;
+
+  beforeEach(async () => {
+    const mod = await import('../../src/built-in/chat/participants/defaultParticipant');
+    _buildMissingCitationFooter = mod._buildMissingCitationFooter;
+  });
+
+  it('adds a visible citation footer when markdown has no [N] markers', () => {
+    const footer = _buildMissingCitationFooter(
+      'Recommended shops are AutoCraft Collision Center and Precision Auto Body.',
+      [
+        { index: 4, label: 'Agent Contacts.md' },
+        { index: 7, label: 'Claims Guide.md' },
+      ],
+    );
+
+    expect(footer).toBe('\n\nSources: [4] Agent Contacts.md; [7] Claims Guide.md');
+  });
+
+  it('skips the fallback when markdown already contains visible citations', () => {
+    const footer = _buildMissingCitationFooter(
+      'Recommended shops are AutoCraft Collision Center [4].',
+      [{ index: 4, label: 'Agent Contacts.md' }],
+    );
+
+    expect(footer).toBe('');
+  });
+});
