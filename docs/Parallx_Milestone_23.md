@@ -1305,6 +1305,49 @@ That means each slice is only complete when:
 
 - Sequence 1D: run baseline retrieval report and capture benchmark artifacts.
 
+#### Slice 1D — Baseline retrieval report (initial capture)
+
+**What changed**
+
+- ran the retrieval-focused AI eval subset against the live demo workspace and
+  saved the first milestone-owned baseline report to `test-results/`;
+- captured machine-readable retrieval metrics and human-readable summary output
+  for the benchmark cases that completed before the worker failed;
+- identified an environment/runtime stability issue during the eval run: a
+  stale Electron process was holding the fixed renderer port, and a later test
+  still hit a page-closed / worker-teardown failure.
+
+**Baseline artifacts**
+
+- `test-results/ai-eval-report.json`
+- `test-results/ai-eval-report.txt`
+
+**Observed baseline (initial subset)**
+
+- model: `qwen3.5:27b`
+- completed tests before worker failure: `T01`, `T02`, `T05`
+- overall score: `11.1%` (Poor)
+- expected-source hit rate: `0%`
+- required-term coverage: `0%`
+- citation presence rate: `0%`
+- average latency on the completed factual/detail turns: ~65–67s
+
+**Known weaknesses exposed by the baseline**
+
+- the current retriever frequently returns no usable grounded answer for direct
+  factual and contact-detail questions;
+- multi-document accident-workflow synthesis is failing before evidence is
+  assembled into a usable answer;
+- citation behavior is absent in the captured baseline subset;
+- runtime stability for long AI eval runs still needs hardening before the full
+  retrieval benchmark sweep can be treated as reliable.
+
+**Behavior impact**
+
+- retrieval behavior is still unchanged;
+- Milestone 23 now has a saved baseline artifact, but the full retrieval subset
+  should be re-run after AI-eval stability is hardened.
+
 ---
 
 ## Migration & Compatibility
