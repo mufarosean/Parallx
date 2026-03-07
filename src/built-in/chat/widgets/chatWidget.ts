@@ -247,12 +247,6 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       this._inputPart.setAttachmentServices(services.attachmentServices);
     }
 
-    // ── Tool picker services (enable "Configure Tools" wrench button) ──
-
-    if (services.toolPickerServices) {
-      this._inputPart.setToolPickerServices(services.toolPickerServices);
-    }
-
     // ── Mode-aware UI updates ──
     // Hide tools button in Ask mode (read-only tools are always on).
 

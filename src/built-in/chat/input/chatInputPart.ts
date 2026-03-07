@@ -22,8 +22,6 @@ import { ChatContextAttachments } from './chatContextAttachments.js';
 import type { IAttachmentServices, IWorkspaceFileEntry } from '../chatTypes.js';
 import type { IChatAttachment, IContextPill } from '../../../services/chatTypes.js';
 import { ChatContextPills } from './chatContextPills.js';
-import { ChatToolPicker } from '../pickers/chatToolPicker.js';
-import type { IToolPickerServices } from '../chatTypes.js';
 import { ChatMentionAutocomplete } from './chatMentionAutocomplete.js';
 import type { IMentionSuggestionProvider, ISlashCommandProvider } from '../chatTypes.js';
 
@@ -46,7 +44,6 @@ export class ChatInputPart extends Disposable {
   private readonly _contextPills: ChatContextPills;
   private _filePickerDropdown: HTMLElement | undefined;
   private readonly _toolsBtn: HTMLButtonElement;
-  private readonly _toolPicker: ChatToolPicker;
   private readonly _mentionAutocomplete: ChatMentionAutocomplete;
 
   // ── State ──
@@ -137,8 +134,6 @@ export class ChatInputPart extends Disposable {
     this._toolsBtn.style.display = 'none'; // hidden until services wired
     this._toolbar.appendChild(this._toolsBtn);
 
-    // @deprecated — ChatToolPicker kept for backward compat but no longer opened inline (M20 E.2)
-    this._toolPicker = this._register(new ChatToolPicker());
     this._register(addDisposableListener(this._toolsBtn, 'click', () => {
       this._onDidRequestOpenToolSettings.fire();
     }));
@@ -259,12 +254,6 @@ export class ChatInputPart extends Disposable {
   /** Bind attachment services for editor file tracking. */
   setAttachmentServices(services: IAttachmentServices): void {
     this._contextRibbon.setServices(services);
-  }
-
-  /** Bind tool picker services — shows the wrench icon and enables the dialog. */
-  setToolPickerServices(services: IToolPickerServices): void {
-    this._toolPicker.setServices(services);
-    // Visibility is controlled by updateToolsButtonForMode(); leave hidden until called.
   }
 
   /** Bind @mention autocomplete suggestion provider (workspace files). */

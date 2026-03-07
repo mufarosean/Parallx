@@ -23,6 +23,10 @@ function createMockStorage(initial?: Record<string, string>): IStorage {
   };
 }
 
+function findProfile(service: { getAllProfiles(): AISettingsProfile[] }, id: string): AISettingsProfile | undefined {
+  return service.getAllProfiles().find(profile => profile.id === id);
+}
+
 // ─── Test Suite ────────────────────────────────────────────────────────────
 
 describe('AISettingsService', () => {
@@ -67,7 +71,7 @@ describe('AISettingsService', () => {
       await service2.initialize();
 
       expect(service2.getAllProfiles()).toHaveLength(4);
-      const found = service2.getProfile(created.id);
+      const found = findProfile(service2, created.id);
       expect(found).toBeDefined();
       expect(found!.presetName).toBe('My Custom');
 
@@ -177,7 +181,7 @@ describe('AISettingsService', () => {
       expect(active.suggestions.tone).toBe('concise');
 
       // Original built-in should be untouched
-      const original = service.getProfile('default')!;
+      const original = findProfile(service, 'default')!;
       expect(original.isBuiltIn).toBe(true);
       expect(original.suggestions.tone).toBe('balanced');
     });
@@ -241,7 +245,7 @@ describe('AISettingsService', () => {
       const custom = await service.createProfile('Old Name');
       await service.renameProfile(custom.id, 'New Name');
 
-      const renamed = service.getProfile(custom.id)!;
+      const renamed = findProfile(service, custom.id)!;
       expect(renamed.presetName).toBe('New Name');
     });
 
@@ -322,7 +326,7 @@ describe('AISettingsService', () => {
       const svc = new AISettingsService(storageWithOld, undefined);
       await svc.initialize();
 
-      const loaded = svc.getProfile('custom-old')!;
+      const loaded = findProfile(svc, 'custom-old')!;
       expect(loaded).toBeDefined();
       expect(loaded.presetName).toBe('Old Format');
       // Missing fields should be filled from defaults
@@ -349,20 +353,6 @@ describe('AISettingsService', () => {
 
       warnSpy.mockRestore();
       svc.dispose();
-    });
-  });
-
-  // ── generateSystemPrompt ──
-
-  describe('generateSystemPrompt', () => {
-    it('generates a prompt from combined settings', () => {
-      const profile = service.getActiveProfile();
-      const prompt = service.generateSystemPrompt({
-        ...profile.chat,
-        ...profile.suggestions,
-      });
-      expect(prompt).toBeTruthy();
-      expect(prompt).toContain('Parallx workspace');
     });
   });
 

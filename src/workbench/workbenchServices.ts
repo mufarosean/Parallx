@@ -37,7 +37,6 @@ import { RelatedContentService } from '../services/relatedContentService.js';
 import { AutoTaggingService } from '../services/autoTaggingService.js';
 import { ProactiveSuggestionsService } from '../services/proactiveSuggestionsService.js';
 import { DocumentExtractionService } from '../services/documentExtractionService.js';
-import { AISettingsService } from '../aiSettings/aiSettingsService.js';
 import { UnifiedAIConfigService } from '../aiSettings/unifiedAIConfigService.js';
 import type { IStorage } from '../platform/storage.js';
 import type { ViewManager } from '../views/viewManager.js';
@@ -282,28 +281,8 @@ export function registerIndexingServices(
 }
 
 /**
- * Creates and registers the AI Settings service (M15 Capability 1).
- * Called during Phase 1 (initializeServices) after storage and chat services
- * are available.
- *
- * @returns The AISettingsService instance for further wiring.
- */
-export async function registerAISettingsService(
-  services: ServiceCollection,
-  storage: IStorage,
-): Promise<AISettingsService> {
-  const languageModelsService = services.has(ILanguageModelsService)
-    ? services.get(ILanguageModelsService)
-    : undefined;
-  const aiSettingsService = new AISettingsService(storage, languageModelsService);
-  await aiSettingsService.initialize();
-  services.registerInstance(IAISettingsService, aiSettingsService);
-  return aiSettingsService;
-}
-
-/**
  * Creates and registers the Unified AI Config service (M20 Task A.4).
- * Called after registerAISettingsService so legacy migration can read old profiles.
+ * Called after storage and chat services are available.
  *
  * @returns The UnifiedAIConfigService instance for further wiring.
  */

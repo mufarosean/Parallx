@@ -23,7 +23,6 @@ import type {
   ChatMode,
   IChatEditProposalContent,
 } from '../../services/chatTypes.js';
-import type { IToolPickerServices } from '../../services/chatTypes.js';
 import { ChatRequestQueueKind } from '../../services/chatTypes.js';
 export { ChatRequestQueueKind } from '../../services/chatTypes.js';
 export type { IChatPendingRequest } from '../../services/chatTypes.js';
@@ -67,11 +66,6 @@ export interface IDefaultParticipantServices {
   readFileContent?(fullPath: string): Promise<string>;
   getCurrentPageContent?(): Promise<{ title: string; pageId: string; textContent: string } | undefined>;
   retrieveContext?(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>;
-  planAndRetrieve?(
-    userText: string,
-    recentHistory?: string,
-    workspaceDigest?: string,
-  ): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }>; plan?: IRetrievalPlan } | undefined>;
   recallMemories?(query: string): Promise<string | undefined>;
   storeSessionMemory?(sessionId: string, summary: string, messageCount: number): Promise<void>;
   storeConceptsFromSession?(concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }>, sessionId: string): Promise<void>;
@@ -200,7 +194,6 @@ export interface IChatWidgetServices {
   readonly modelPicker?: IModelPickerServices;
   readonly modePicker?: IModePickerServices;
   readonly attachmentServices?: IAttachmentServices;
-  readonly toolPickerServices?: IToolPickerServices;
   readonly getSession?: (sessionId: string) => IChatSession | undefined;
   readonly getSessions?: () => readonly IChatSession[];
   readonly deleteSession?: (sessionId: string) => void;
@@ -267,14 +260,6 @@ export interface ITokenStatusBarServices {
   isIndexing(): boolean;
   getIndexingProgress?(): import('../../services/indexingPipeline.js').IndexingProgress;
   getIndexStats?(): { pages: number; files: number } | undefined;
-}
-
-/** Header toolbar action events. */
-export interface IChatHeaderAction {
-  readonly onNewChat: Event<void>;
-  readonly onToggleHistory: Event<void>;
-  readonly onClearSession: Event<void>;
-  readonly onOpenSettings: Event<void>;
 }
 
 // ── Attachment data types ──

@@ -546,11 +546,6 @@ describe('UnifiedAIConfigService', () => {
       expect(config.model.temperature).toBe(0.5);
     });
 
-    it('generateSystemPrompt produces non-empty prompt', () => {
-      const prompt = service.generateSystemPrompt();
-      expect(prompt.length).toBeGreaterThan(0);
-      expect(prompt).toContain('Parallx');
-    });
   });
 });
 
@@ -592,7 +587,14 @@ describe('A.4 Consumer wiring', () => {
       const svc = new RetrievalService(mockEmbed as any, mockVector);
       svc.setConfigProvider({
         getEffectiveConfig: () => ({
-          retrieval: { ragTopK: 3, ragScoreThreshold: 0.5 },
+          retrieval: {
+            ragTopK: 3,
+            ragMaxPerSource: 2,
+            ragTokenBudget: 1200,
+            ragScoreThreshold: 0.5,
+            ragCosineThreshold: 0.2,
+            ragDropoffRatio: 0.75,
+          },
         }),
       });
 
@@ -735,11 +737,11 @@ describe('Phase B: Workspace override persistence', () => {
     service = new UnifiedAIConfigService(storage as any, undefined);
     await service.initialize();
 
-    mockWriteFile = vi.fn().mockResolvedValue(undefined);
+    mockWriteFile = vi.fn(async (_relativePath: string, _content: string) => undefined);
     service.setFileSystem({
       readFile: vi.fn().mockRejectedValue(new Error('not found')),
       exists: vi.fn().mockResolvedValue(false),
-      writeFile: mockWriteFile,
+      writeFile: mockWriteFile as (relativePath: string, content: string) => Promise<void>,
     });
   });
 

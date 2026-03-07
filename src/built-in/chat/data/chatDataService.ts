@@ -20,7 +20,6 @@ import type {
   IPageSummary,
   IBlockSummary,
   IPageStructure,
-  IRetrievalPlan,
   IWorkspaceFileEntry,
 } from '../chatTypes.js';
 
@@ -524,30 +523,6 @@ export class ChatDataService {
       // (ragTopK, ragMaxPerSource, ragTokenBudget, etc.) via the config
       // provider bound to the retrieval service. Users control the limits.
       const chunks = await this._d.retrievalService.retrieve(query);
-      if (chunks.length === 0) { return undefined; }
-      const text = this._d.retrievalService.formatContext(chunks);
-      const sources = this._buildSourceCitations(chunks);
-      return { text, sources };
-    } catch { return undefined; }
-  }
-
-  /**
-   * Plan-based retrieval. The planner LLM call was removed in M17 (Task 0.2.6)
-   * as dead code — defaultParticipant uses direct `retrieveContext()` instead.
-   * This method now falls through to single-query retrieval for any callers
-   * that still reference it.
-   */
-  async planAndRetrieve(
-    userText: string,
-    _recentHistory?: string,
-    _workspaceDigest?: string,
-  ): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }>; plan?: IRetrievalPlan } | undefined> {
-    if (!this._d.retrievalService) { return undefined; }
-    if (!this._d.indexingPipelineService?.isInitialIndexComplete) { return undefined; }
-
-    try {
-      // No hardcoded overrides — retrieval parameters from AI Settings.
-      const chunks = await this._d.retrievalService.retrieve(userText);
       if (chunks.length === 0) { return undefined; }
       const text = this._d.retrievalService.formatContext(chunks);
       const sources = this._buildSourceCitations(chunks);
@@ -1151,6 +1126,7 @@ export class ChatDataService {
     if (this._d.fsAccessor) {
       try {
         const treeLines: string[] = [];
+        let treeChars = 0;
         const fsAccessor = this._d.fsAccessor;
 
         // Breadth-first queue: each item is { dir, depth, prefix }
@@ -1181,6 +1157,7 @@ export class ChatDataService {
               ? `${prefix}${icon} ${entry.name} — ${fileSummary}`
               : `${prefix}${icon} ${entry.name}`;
             treeLines.push(line);
+            treeChars += line.length + 1;
             if (entry.type === 'directory') {
               queue.push({ dir: relPath, depth: depth + 1, prefix: prefix + '  ' });
             }
@@ -1189,7 +1166,7 @@ export class ChatDataService {
           // Budget check: stop walking if we've already exceeded the char budget.
           // We check the running tree size against the remaining budget so we
           // don't waste time traversing a massive repo we can't fit anyway.
-          const runningSize = treeLines.join('\n').length + 20; // +20 for header
+          const runningSize = treeChars + 20; // +20 for header
           if (totalChars + runningSize >= MAX_DIGEST_CHARS) break;
         }
         if (treeLines.length > 0) {
@@ -1251,9 +1228,6 @@ export class ChatDataService {
       getCurrentPageContent: () => this.getCurrentPageContent(),
       retrieveContext: this._d.retrievalService
         ? (q) => this.retrieveContext(q) as Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>
-        : undefined,
-      planAndRetrieve: (this._d.retrievalService && this._d.ollamaProvider)
-        ? (u, r, w) => this.planAndRetrieve(u, r, w)
         : undefined,
       recallMemories: this._d.memoryService ? (q) => this.recallMemories(q) : undefined,
       storeSessionMemory: this._d.memoryService ? (s, su, m) => this.storeSessionMemory(s, su, m) : undefined,
@@ -1370,16 +1344,6 @@ export class ChatDataService {
       openMemory: (this._d.memoryService && this._d.editorService)
         ? (sessionId: string) => { this.openMemoryViewer(sessionId); }
         : undefined,
-      toolPickerServices: this._d.languageModelToolsService ? {
-        getTools: () => this._d.languageModelToolsService!.getTools().map((t) => ({
-          name: t.name,
-          description: t.description,
-          enabled: this._d.languageModelToolsService!.isToolEnabled(t.name),
-        })),
-        setToolEnabled: (name: string, enabled: boolean) => this._d.languageModelToolsService!.setToolEnabled(name, enabled),
-        onDidChangeTools: this._d.languageModelToolsService!.onDidChangeTools,
-        getEnabledCount: () => this._d.languageModelToolsService!.getEnabledCount(),
-      } : undefined,
       getSystemPrompt: () => this.getSystemPrompt(),
       readFileRelative: this._d.fsAccessor
         ? (r) => this.readFileRelative(r)

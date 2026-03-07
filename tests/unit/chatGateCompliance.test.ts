@@ -58,15 +58,13 @@ const FOLDER_RULES: Record<string, string[]> = {
   // ── input/ — chat input components ──────────────────────────────────────
   'input/chatContextAttachments.ts': ['chatIcons'],
   'input/chatContextPills.ts':       ['chatIcons'],
-  'input/chatInputPart.ts':          ['chatIcons', 'input/', 'pickers/'],
+  'input/chatInputPart.ts':          ['chatIcons', 'input/'],
   'input/chatMentionAutocomplete.ts': ['chatIcons'],
   'input/chatRequestParser.ts':      [],
 
   // ── pickers/ — model/mode/tool pickers ──────────────────────────────────
   'pickers/chatModelPicker.ts': ['chatIcons'],
   'pickers/chatModePicker.ts':  ['chatIcons'],
-  'pickers/chatToolPicker.ts':  ['chatIcons'],
-
   // ── rendering/ — message rendering ──────────────────────────────────────
   'rendering/chatCodeActions.ts':   [],
   'rendering/chatContentParts.ts':  ['chatIcons', 'rendering/'],
@@ -86,7 +84,6 @@ const FOLDER_RULES: Record<string, string[]> = {
   'participants/workspaceParticipant.ts': [],
 
   // ── widgets/ — chat widget components ───────────────────────────────────
-  'widgets/chatHeaderPart.ts':     ['chatIcons'],
   'widgets/chatSessionSidebar.ts': ['chatIcons'],
   'widgets/chatTokenStatusBar.ts': ['chatIcons', 'config/'],
   'widgets/chatView.ts':          ['providers/', 'widgets/'],

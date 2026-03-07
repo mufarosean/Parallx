@@ -10,8 +10,6 @@ import type { Event } from '../platform/events.js';
 import type { IStorage } from '../platform/storage.js';
 import type {
   AISettingsProfile,
-  AISuggestionSettings,
-  AIChatSettings,
   IAISettingsService,
   DeepPartial,
 } from './aiSettingsTypes.js';
@@ -99,14 +97,6 @@ export class AISettingsService extends Disposable implements IAISettingsService 
   getActiveProfile(): AISettingsProfile {
     const profile = this._profiles.find(p => p.id === this._activeProfileId);
     return profile ?? this._profiles[0] ?? structuredClone(DEFAULT_PROFILE);
-  }
-
-  getGlobalProfile(): AISettingsProfile {
-    return this.getActiveProfile();
-  }
-
-  getProfile(id: string): AISettingsProfile | undefined {
-    return this._profiles.find(p => p.id === id);
   }
 
   getAllProfiles(): AISettingsProfile[] {
@@ -269,19 +259,6 @@ export class AISettingsService extends Disposable implements IAISettingsService 
 
     await this._persist();
     this._onDidChange.fire(reset);
-  }
-
-  // ── System Prompt Generation ──
-
-  generateSystemPrompt(settings: AISuggestionSettings & AIChatSettings): string {
-    return generateChatSystemPrompt({
-      systemPrompt: settings.systemPrompt,
-      systemPromptIsCustom: settings.systemPromptIsCustom,
-      responseLength: settings.responseLength,
-      tone: settings.tone,
-      focusDomain: settings.focusDomain,
-      customFocusDescription: settings.customFocusDescription,
-    });
   }
 
   // ── Preview Test ──

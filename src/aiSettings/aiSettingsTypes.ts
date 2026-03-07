@@ -103,12 +103,6 @@ export interface IAISettingsService extends IDisposable {
   /** Get the currently active profile (effective = global merged with workspace override) */
   getActiveProfile(): AISettingsProfile;
 
-  /** Get the un-merged global profile (needed by the UI to show override badges) */
-  getGlobalProfile(): AISettingsProfile;
-
-  /** Get a specific profile by ID */
-  getProfile(id: string): AISettingsProfile | undefined;
-
   /** List all saved profiles */
   getAllProfiles(): AISettingsProfile[];
 
@@ -132,9 +126,6 @@ export interface IAISettingsService extends IDisposable {
 
   /** Reset the entire active profile to factory defaults */
   resetAll(): Promise<void>;
-
-  /** Generate a system prompt string from the current friendly settings */
-  generateSystemPrompt(settings: AISuggestionSettings & AIChatSettings): string;
 
   /** Test: send a single message using the active profile settings and return the response */
   runPreviewTest(userMessage: string): Promise<string>;

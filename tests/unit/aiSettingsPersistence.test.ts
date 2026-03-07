@@ -38,6 +38,10 @@ async function getPersistedActiveId(storage: IStorage): Promise<string | undefin
   return storage.get('ai-settings.activeProfileId');
 }
 
+function findProfile(service: { getAllProfiles(): AISettingsProfile[] }, id: string): AISettingsProfile | undefined {
+  return service.getAllProfiles().find(profile => profile.id === id);
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Task 3.1 — Storage Key Design Audit
 // ═════════════════════════════════════════════════════════════════════════════
@@ -166,7 +170,7 @@ describe('Task 3.1 — Storage Key Design', () => {
     const service2 = new AISettingsService(storage, undefined);
     await service2.initialize();
 
-    expect(service2.getProfile(c.id)).toBeUndefined();
+    expect(findProfile(service2, c.id)).toBeUndefined();
     expect(service2.getAllProfiles()).toHaveLength(3);
     service2.dispose();
   });
@@ -178,7 +182,7 @@ describe('Task 3.1 — Storage Key Design', () => {
     const service2 = new AISettingsService(storage, undefined);
     await service2.initialize();
 
-    expect(service2.getProfile(custom.id)!.presetName).toBe('NewName');
+    expect(findProfile(service2, custom.id)!.presetName).toBe('NewName');
     service2.dispose();
   });
 
@@ -390,7 +394,7 @@ describe('Task 3.3 — Settings Health Check', () => {
     const svc = new AISettingsService(storage, undefined);
     await svc.initialize();
 
-    const loaded = svc.getProfile('custom-legacy')!;
+    const loaded = findProfile(svc, 'custom-legacy')!;
     expect(loaded.suggestions.tone).toBe('concise'); // preserved
     expect(loaded.suggestions.focusDomain).toBe('finance'); // preserved
     expect(loaded.suggestions.suggestionsEnabled).toBe(DEFAULT_PROFILE.suggestions.suggestionsEnabled);
@@ -419,7 +423,7 @@ describe('Task 3.3 — Settings Health Check', () => {
     const svc = new AISettingsService(storage, undefined);
     await svc.initialize();
 
-    const loaded = svc.getProfile('no-persona')!;
+    const loaded = findProfile(svc, 'no-persona')!;
     expect(loaded.persona.name).toBe(DEFAULT_PROFILE.persona.name);
     expect(loaded.persona.avatarEmoji).toBe(DEFAULT_PROFILE.persona.avatarEmoji);
     svc.dispose();
@@ -445,7 +449,7 @@ describe('Task 3.3 — Settings Health Check', () => {
     const svc = new AISettingsService(storage, undefined);
     await svc.initialize();
 
-    const loaded = svc.getProfile('no-model')!;
+    const loaded = findProfile(svc, 'no-model')!;
     expect(loaded.model.temperature).toBe(DEFAULT_PROFILE.model.temperature);
     expect(loaded.model.maxTokens).toBe(DEFAULT_PROFILE.model.maxTokens);
     svc.dispose();
@@ -494,9 +498,9 @@ describe('Task 3.3 — Settings Health Check', () => {
 
     // All 3 built-ins should be restored
     expect(svc.getAllProfiles()).toHaveLength(3);
-    expect(svc.getProfile('default')).toBeDefined();
-    expect(svc.getProfile('finance-focus')).toBeDefined();
-    expect(svc.getProfile('creative-mode')).toBeDefined();
+    expect(findProfile(svc, 'default')).toBeDefined();
+    expect(findProfile(svc, 'finance-focus')).toBeDefined();
+    expect(findProfile(svc, 'creative-mode')).toBeDefined();
     svc.dispose();
   });
 
@@ -521,7 +525,7 @@ describe('Task 3.3 — Settings Health Check', () => {
     await svc.initialize();
 
     expect(svc.getAllProfiles()).toHaveLength(4); // 3 built-in + 1 custom
-    expect(svc.getProfile('my-custom')).toBeDefined();
+    expect(findProfile(svc, 'my-custom')).toBeDefined();
     expect(svc.getActiveProfile().id).toBe('my-custom');
     svc.dispose();
   });
@@ -561,7 +565,7 @@ describe('Task 3.3 — Settings Health Check', () => {
     const svc = new AISettingsService(storage, undefined);
     await svc.initialize();
 
-    const loaded = svc.getProfile('custom-extra')!;
+    const loaded = findProfile(svc, 'custom-extra')!;
     expect(loaded.presetName).toBe('Extra Fields');
     // The extra field should survive deep merge
     expect((loaded as any).futureField).toBe('hello from the future');
@@ -587,7 +591,7 @@ describe('Task 3.3 — Settings Health Check', () => {
     const svc = new AISettingsService(storage, undefined);
     await svc.initialize();
 
-    const loaded = svc.getProfile('fake-builtin')!;
+    const loaded = findProfile(svc, 'fake-builtin')!;
     expect(loaded).toBeDefined();
     expect(loaded.isBuiltIn).toBe(false); // forced to false by health check
     svc.dispose();
@@ -615,7 +619,7 @@ describe('Task 3.3 — Settings Health Check', () => {
     const svc = new AISettingsService(storage, undefined);
     await svc.initialize();
 
-    const loaded = svc.getProfile('default')!;
+    const loaded = findProfile(svc, 'default')!;
     expect(loaded.isBuiltIn).toBe(true);
     // New fields from current BUILT_IN_PRESETS should be merged in
     expect(loaded.suggestions.suggestionsEnabled).toBeDefined();

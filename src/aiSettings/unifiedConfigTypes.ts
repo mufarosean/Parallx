@@ -317,12 +317,6 @@ export interface IUnifiedAIConfigService extends IDisposable {
    */
   getActiveProfile(): AISettingsProfile;
 
-  /**
-   * Generate system prompt from current effective config.
-   * Convenience: calls systemPromptGenerator with the right inputs.
-   */
-  generateSystemPrompt(): string;
-
   // ── Preview ──
 
   /** Send a test message using current effective config. */

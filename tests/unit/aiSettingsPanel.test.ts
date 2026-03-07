@@ -36,8 +36,6 @@ function createMockService(overrides?: Partial<AISettingsProfile>) {
 
   return {
     getActiveProfile: vi.fn(() => structuredClone(profile)),
-    getGlobalProfile: vi.fn(() => structuredClone(profile)),
-    getProfile: vi.fn((id: string) => profiles.find(p => p.id === id)),
     getAllProfiles: vi.fn(() => [...profiles]),
     setActiveProfile: vi.fn(async () => {}),
     updateActiveProfile: vi.fn(async () => {}),
@@ -55,7 +53,6 @@ function createMockService(overrides?: Partial<AISettingsProfile>) {
     renameProfile: vi.fn(async () => {}),
     resetSection: vi.fn(async () => {}),
     resetAll: vi.fn(async () => {}),
-    generateSystemPrompt: vi.fn(() => 'Generated system prompt'),
     runPreviewTest: vi.fn(async (msg: string) => `Echo: ${msg}`),
     onDidChange: onDidChangeEmitter.event,
     dispose: vi.fn(),

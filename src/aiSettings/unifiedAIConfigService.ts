@@ -515,15 +515,6 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
     return tolegacyProfile(this.getActivePreset());
   }
 
-  getGlobalProfile(): AISettingsProfile {
-    return this.getActiveProfile();
-  }
-
-  getProfile(id: string): AISettingsProfile | undefined {
-    const preset = this.getPreset(id);
-    return preset ? tolegacyProfile(preset) : undefined;
-  }
-
   getAllProfiles(): AISettingsProfile[] {
     return this._presets.map(tolegacyProfile);
   }
@@ -574,22 +565,6 @@ export class UnifiedAIConfigService extends Disposable implements IUnifiedAIConf
 
   async renameProfile(id: string, newName: string): Promise<void> {
     return this.renamePreset(id, newName);
-  }
-
-  async resetLegacySection(section: 'persona' | 'chat' | 'model' | 'suggestions'): Promise<void> {
-    return this.resetSection(section);
-  }
-
-  generateSystemPrompt(): string {
-    const config = this.getEffectiveConfig();
-    return generateChatSystemPrompt({
-      systemPrompt: config.chat.systemPrompt,
-      systemPromptIsCustom: config.chat.systemPromptIsCustom,
-      responseLength: config.chat.responseLength,
-      tone: config.suggestions.tone,
-      focusDomain: config.suggestions.focusDomain,
-      customFocusDescription: config.suggestions.customFocusDescription,
-    });
   }
 
   async runPreviewTest(userMessage: string): Promise<string> {

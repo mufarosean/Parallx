@@ -16,7 +16,7 @@ import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
 import { ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
-import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerAISettingsService, registerUnifiedAIConfigService } from './workbenchServices.js';
+import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerUnifiedAIConfigService } from './workbenchServices.js';
 import { IChatService, ILanguageModelsService } from '../services/chatTypes.js';
 
 // Layout base class (VS Code: Layout → Workbench extends Layout)
@@ -830,10 +830,6 @@ export class Workbench extends Layout {
     const themeService = this._register(new ThemeService(colorRegistry, themeData));
     themeService.applyTheme(themeData);
     this._services.registerInstance(IThemeService, themeService);
-
-    // ── AI Settings Service (M15) ──
-    // Registered after storage and chat services are available.
-    await registerAISettingsService(this._services, this._storage);
 
     // ── Unified AI Config Service (M20) ──
     // Replaces AISettingsService + ParallxConfigService as single source of truth.
