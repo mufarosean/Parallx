@@ -30,12 +30,14 @@ import {
   expect,
   openFolderViaMenu,
   openChatPanel,
+  waitForRagReady,
   startNewSession,
   sendAndWaitForResponse,
   modifyWorkspaceFile,
   revertWorkspaceFile,
   RESPONSE_TIMEOUT,
   MEMORY_STORE_WAIT,
+  type ChatEvalDebugSnapshot,
 } from './ai-eval-fixtures';
 import {
   RUBRIC,
@@ -60,6 +62,21 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const REPORT_DIR = path.join(PROJECT_ROOT, 'test-results');
+
+function logDebugSnapshot(testId: string, prompt: string, debug: ChatEvalDebugSnapshot | undefined): void {
+  if (!debug) {
+    console.warn(`  [DEBUG] ${testId}: no debug snapshot for "${prompt}"`);
+    return;
+  }
+
+  const sourceLabels = (debug.ragSources ?? []).map((source) => source.label).join(', ');
+  const pillLabels = (debug.contextPills ?? []).map((pill) => `${pill.type}:${pill.label}`).join(', ');
+  console.warn(`  [DEBUG] ${testId}: ragSources=[${sourceLabels || 'none'}] pills=[${pillLabels || 'none'}]`);
+
+  if (debug.retrievalTrace) {
+    console.warn(`  [DEBUG] ${testId}: retrievalTrace=${JSON.stringify(debug.retrievalTrace)}`);
+  }
+}
 
 // ── Accumulated results (module-level, safe with workers:1) ──────────────────
 const allResults: TestCaseResult[] = [];
@@ -86,6 +103,9 @@ test.describe.serial('AI Quality Evaluation', () => {
       console.log('  [Setup] Opening chat panel...');
       await openChatPanel(window);
 
+      console.log('  [Setup] Waiting for RAG readiness...');
+      await waitForRagReady(window);
+
       console.log('  [Setup] Ready. Running evaluation...\n');
     },
   );
@@ -110,6 +130,7 @@ test.describe.serial('AI Quality Evaluation', () => {
       for (const [turnIndex, turn] of tc.turns.entries()) {
         let text = '';
         let latencyMs = 0;
+        let debug: ChatEvalDebugSnapshot | undefined;
 
         try {
           const result = await sendAndWaitForResponse(
@@ -119,6 +140,10 @@ test.describe.serial('AI Quality Evaluation', () => {
           );
           text = result.text;
           latencyMs = result.latencyMs;
+          debug = result.debug;
+          if (!text.trim()) {
+            logDebugSnapshot(tc.id, turn.prompt, debug);
+          }
         } catch (err) {
           // Infrastructure error (timeout/crash) — record but don't abort suite
           console.warn(`  [WARN] ${tc.id}: Infrastructure error for "${turn.prompt}": ${err}`);
@@ -138,6 +163,7 @@ test.describe.serial('AI Quality Evaluation', () => {
           latencyMs,
           assertions: assertionResults,
           retrievalMetrics,
+          debug,
           score,
         });
 

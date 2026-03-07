@@ -49,6 +49,7 @@ import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import type { PromptFileService } from '../../../services/promptFileService.js';
 import type { ChatWidget } from '../widgets/chatWidget.js';
 import type { IWorkspaceSessionContext } from '../../../workspace/workspaceSessionContext.js';
+import type { RetrievalTrace } from '../../../services/retrievalService.js';
 
 import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { extractTextContent } from '../tools/builtInTools.js';
@@ -94,6 +95,24 @@ export interface ChatDataServiceDeps {
   readonly unifiedConfigService?: IUnifiedAIConfigService;
   /** Open a file in the editor via the standard EditorsBridge resolver (same as explorer). */
   readonly openFileEditor?: (uri: string, options?: { pinned?: boolean }) => Promise<void>;
+}
+
+export interface IChatTestDebugSnapshot {
+  query?: string;
+  retrievedContextText?: string;
+  ragSources: Array<{ uri: string; label: string; index: number }>;
+  contextPills: Array<{ id: string; label: string; type: string; removable: boolean; index?: number; tokens?: number }>;
+  retrievalTrace?: RetrievalTrace;
+  isRAGAvailable: boolean;
+  isIndexing: boolean;
+  retrievalGate?: {
+    hasActiveSlashCommand: boolean;
+    isRagReady: boolean;
+    needsRetrieval: boolean;
+    attempted: boolean;
+    returnedSources?: number;
+  };
+  retrievalError?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -331,6 +350,12 @@ export class ChatDataService {
 
   // ── Externally set state ──
   private _lastIndexStats: { pages: number; files: number } | undefined;
+  private _lastTestDebugSnapshot: IChatTestDebugSnapshot = {
+    ragSources: [],
+    contextPills: [],
+    isRAGAvailable: false,
+    isIndexing: false,
+  };
 
   constructor(private _d: ChatDataServiceDeps) {
     // M17 P1.3 Task 1.3.6: Fire-and-forget memory eviction + decay recalculation on startup
@@ -516,18 +541,70 @@ export class ChatDataService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async retrieveContext(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined> {
-    if (!this._d.retrievalService) { return undefined; }
-    if (!this._d.indexingPipelineService?.isInitialIndexComplete) { return undefined; }
+    if (!this._d.retrievalService) {
+      this._lastTestDebugSnapshot = {
+        query,
+        ragSources: [],
+        contextPills: [],
+        isRAGAvailable: this.isRAGAvailable(),
+        isIndexing: this.isIndexing(),
+        retrievalError: undefined,
+      };
+      return undefined;
+    }
+    if (!this._d.indexingPipelineService?.isInitialIndexComplete) {
+      this._lastTestDebugSnapshot = {
+        query,
+        ragSources: [],
+        contextPills: [],
+        isRAGAvailable: this.isRAGAvailable(),
+        isIndexing: this.isIndexing(),
+        retrievalError: undefined,
+      };
+      return undefined;
+    }
     try {
       // No hardcoded overrides — retrieval parameters come from AI Settings
       // (ragTopK, ragMaxPerSource, ragTokenBudget, etc.) via the config
       // provider bound to the retrieval service. Users control the limits.
       const chunks = await this._d.retrievalService.retrieve(query);
-      if (chunks.length === 0) { return undefined; }
+      const retrievalTrace = this._d.retrievalService.getLastTrace?.();
+      if (chunks.length === 0) {
+        this._lastTestDebugSnapshot = {
+          query,
+          ragSources: [],
+          contextPills: this._lastTestDebugSnapshot.contextPills,
+          retrievalTrace,
+          isRAGAvailable: this.isRAGAvailable(),
+          isIndexing: this.isIndexing(),
+          retrievalError: undefined,
+        };
+        return undefined;
+      }
       const text = this._d.retrievalService.formatContext(chunks);
       const sources = this._buildSourceCitations(chunks);
+      this._lastTestDebugSnapshot = {
+        query,
+        retrievedContextText: text,
+        ragSources: sources.map((source) => ({ ...source })),
+        contextPills: this._lastTestDebugSnapshot.contextPills,
+        retrievalTrace,
+        isRAGAvailable: this.isRAGAvailable(),
+        isIndexing: this.isIndexing(),
+        retrievalError: undefined,
+      };
       return { text, sources };
-    } catch { return undefined; }
+    } catch (error) {
+      this._lastTestDebugSnapshot = {
+        query,
+        ragSources: [],
+        contextPills: this._lastTestDebugSnapshot.contextPills,
+        isRAGAvailable: this.isRAGAvailable(),
+        isIndexing: this.isIndexing(),
+        retrievalError: error instanceof Error ? error.message : String(error),
+      };
+      return undefined;
+    }
   }
 
   /** Build deduplicated source citations from retrieval chunks. */
@@ -711,10 +788,44 @@ export class ChatDataService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   reportContextPills(pills: readonly IContextPill[]): void {
+    this._lastTestDebugSnapshot = {
+      ...this._lastTestDebugSnapshot,
+      contextPills: pills.map((pill) => ({
+        id: pill.id,
+        label: pill.label,
+        type: pill.type,
+        removable: pill.removable,
+        index: pill.index,
+        tokens: pill.tokens,
+      })),
+    };
     const widget = this._d.getActiveWidget();
     if (widget) {
       widget.setContextPills(pills);
     }
+  }
+
+  reportRetrievalDebug(debug: {
+    hasActiveSlashCommand: boolean;
+    isRagReady: boolean;
+    needsRetrieval: boolean;
+    attempted: boolean;
+    returnedSources?: number;
+  }): void {
+    this._lastTestDebugSnapshot = {
+      ...this._lastTestDebugSnapshot,
+      retrievalGate: { ...debug },
+      isRAGAvailable: this.isRAGAvailable(),
+      isIndexing: this.isIndexing(),
+    };
+  }
+
+  getTestDebugSnapshot(): IChatTestDebugSnapshot {
+    return {
+      ...structuredClone(this._lastTestDebugSnapshot),
+      isRAGAvailable: this.isRAGAvailable(),
+      isIndexing: this.isIndexing(),
+    };
   }
 
   getExcludedContextIds(): ReadonlySet<string> {
@@ -1247,6 +1358,7 @@ export class ChatDataService {
       existsRelative: this._d.fsAccessor ? (r) => this.existsRelative(r) : undefined,
       invalidatePromptFiles: this._d.promptFileService ? () => this.invalidatePromptFiles() : undefined,
       reportContextPills: (p) => this.reportContextPills(p),
+      reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
       getExcludedContextIds: () => this.getExcludedContextIds(),
       reportBudget: (s) => this.reportBudget(s),
       getTerminalOutput: () => this.getTerminalOutput(),

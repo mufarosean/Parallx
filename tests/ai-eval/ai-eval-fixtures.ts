@@ -33,6 +33,24 @@ export const RESPONSE_TIMEOUT = 120_000;
 /** Time to wait for fire-and-forget memory summarization after a session (20s). */
 export const MEMORY_STORE_WAIT = 20_000;
 
+export interface ChatEvalDebugSnapshot {
+  query?: string;
+  retrievedContextText?: string;
+  ragSources: Array<{ uri: string; label: string; index: number }>;
+  contextPills: Array<{ id: string; label: string; type: string; removable: boolean; index?: number; tokens?: number }>;
+  retrievalTrace?: unknown;
+  isRAGAvailable: boolean;
+  isIndexing: boolean;
+  retrievalGate?: {
+    hasActiveSlashCommand: boolean;
+    isRagReady: boolean;
+    needsRetrieval: boolean;
+    attempted: boolean;
+    returnedSources?: number;
+  };
+  retrievalError?: string;
+}
+
 // ── Workspace Copy ───────────────────────────────────────────────────────────
 
 /**
@@ -228,6 +246,19 @@ export async function openChatPanel(page: Page): Promise<void> {
   await collapseSessionSidebar(page);
 }
 
+export async function waitForRagReady(page: Page, timeout = 120_000): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const host = window as unknown as {
+        __parallx_chat_debug__?: { getSnapshot?: () => { isRAGAvailable?: boolean; isIndexing?: boolean } };
+      };
+      const snapshot = host.__parallx_chat_debug__?.getSnapshot?.();
+      return !!snapshot?.isRAGAvailable && !snapshot?.isIndexing;
+    },
+    { timeout },
+  );
+}
+
 /** Collapse the session sidebar if it overlaps the input area. */
 async function collapseSessionSidebar(page: Page): Promise<void> {
   const sidebar = page.locator('.parallx-chat-session-sidebar--visible');
@@ -266,7 +297,7 @@ export async function sendAndWaitForResponse(
   page: Page,
   message: string,
   timeout = RESPONSE_TIMEOUT,
-): Promise<{ text: string; latencyMs: number }> {
+): Promise<{ text: string; latencyMs: number; debug?: ChatEvalDebugSnapshot }> {
   // Count existing assistant messages BEFORE sending
   const assistantMsgs = page.locator('.parallx-chat-message--assistant');
   const beforeCount = await assistantMsgs.count();
@@ -378,7 +409,21 @@ export async function sendAndWaitForResponse(
     return parts.join('\n\n').trim();
   }, beforeCount);
 
-  return { text: text.trim(), latencyMs };
+  const debug = await page.evaluate(() => {
+    const host = window as unknown as {
+      __parallx_chat_debug__?: { getSnapshot?: () => unknown };
+    };
+    if (!host.__parallx_chat_debug__?.getSnapshot) {
+      return undefined;
+    }
+    try {
+      return host.__parallx_chat_debug__.getSnapshot();
+    } catch {
+      return undefined;
+    }
+  });
+
+  return { text: text.trim(), latencyMs, debug: debug as ChatEvalDebugSnapshot | undefined };
 }
 
 /**

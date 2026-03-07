@@ -274,6 +274,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     openFileEditor: (uri, opts) => api.editors.openFileEditor(uri, opts),
   });
 
+  if (window.parallxElectron?.testMode) {
+    (window as unknown as Record<string, unknown>).__parallx_chat_debug__ = {
+      getSnapshot: () => dataService.getTestDebugSnapshot(),
+    };
+  }
+
   // ── 3a. Register the default chat participant with IChatAgentService ──
 
   const defaultParticipantServices = dataService.buildDefaultParticipantServices();

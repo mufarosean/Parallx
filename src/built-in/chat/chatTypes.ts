@@ -82,6 +82,13 @@ export interface IDefaultParticipantServices {
   existsRelative?(relativePath: string): Promise<boolean>;
   invalidatePromptFiles?(): void;
   reportContextPills?(pills: IContextPill[]): void;
+  reportRetrievalDebug?(debug: {
+    hasActiveSlashCommand: boolean;
+    isRagReady: boolean;
+    needsRetrieval: boolean;
+    attempted: boolean;
+    returnedSources?: number;
+  }): void;
   reportBudget?(slots: ReadonlyArray<{ label: string; used: number; allocated: number; color: string }>): void;
   listFolderFiles?(folderPath: string): Promise<Array<{ relativePath: string; content: string }>>;
   getTerminalOutput?(): Promise<string | undefined>;

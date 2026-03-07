@@ -637,7 +637,8 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       // vec0 KNN with source_type filter via a subquery approach
       // Note: vec0 WHERE clause only supports embedding MATCH and k constraint
       // We filter after the KNN search
-          sql = `SELECT rowid, distance, source_type, source_id, chunk_index, chunk_text, context_prefix,
+            sql = `SELECT vec_embeddings.rowid, distance, vec_embeddings.source_type, vec_embeddings.source_id,
+              vec_embeddings.chunk_index, vec_embeddings.chunk_text, vec_embeddings.context_prefix,
               cm.heading_path, cm.parent_heading_path, cm.structural_role,
               im.document_kind, im.extraction_pipeline, im.extraction_fallback,
               im.classification_confidence, im.classification_reason
@@ -648,7 +649,8 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
              ORDER BY distance`;
       params = [embeddingBlob, topK * 2]; // Over-fetch to account for filtering
     } else {
-          sql = `SELECT rowid, distance, source_type, source_id, chunk_index, chunk_text, context_prefix,
+            sql = `SELECT vec_embeddings.rowid, distance, vec_embeddings.source_type, vec_embeddings.source_id,
+              vec_embeddings.chunk_index, vec_embeddings.chunk_text, vec_embeddings.context_prefix,
               cm.heading_path, cm.parent_heading_path, cm.structural_role,
               im.document_kind, im.extraction_pipeline, im.extraction_fallback,
               im.classification_confidence, im.classification_reason

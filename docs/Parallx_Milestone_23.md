@@ -1517,6 +1517,54 @@ after the initial query-planning slice.
   retrieval traces during the AI eval path so candidate quality can be measured
   independently from response-generation flakiness.
 
+### 2026-03-07 — Eval trace plumbing and vector-search SQL fix
+
+This follow-up pass shifted the work from retrieval tuning alone to
+retrieval-measurement reliability.
+
+**Implemented**
+
+- added test-mode AI eval snapshots for per-turn retrieval state, including
+  RAG readiness, context pills, retrieved source list, retrieval gate status,
+  retrieval trace, and retrieval-path errors;
+- changed the AI eval setup to wait for actual RAG readiness instead of relying
+  only on a fixed 30-second sleep;
+- instrumented the default participant so the eval harness can tell whether a
+  turn actually attempted retrieval and how many RAG sources came back;
+- used that trace data to identify and fix a real runtime failure in
+  `VectorStoreService`: joined vector-search queries were selecting unqualified
+  `source_type` / `source_id` columns, which threw `ambiguous column name`
+  errors at runtime and prevented RAG from returning any results on `T07`.
+
+**Files changed**
+
+- `src/services/vectorStoreService.ts`
+- `src/built-in/chat/data/chatDataService.ts`
+- `src/built-in/chat/main.ts`
+- `src/built-in/chat/participants/defaultParticipant.ts`
+- `src/built-in/chat/chatTypes.ts`
+- `tests/ai-eval/ai-eval-fixtures.ts`
+- `tests/ai-eval/ai-quality.spec.ts`
+- `tests/ai-eval/scoring.ts`
+
+**Validation**
+
+- `npx vitest run tests/unit/vectorStoreService.test.ts tests/unit/retrievalService.test.ts` ✅
+- `npx tsc --noEmit` ✅
+- targeted `T07` rerun after the SQL fix:
+  - expected-source hit rate: `0% -> 100%`
+  - required-term coverage: `0% -> 100%`
+  - latency improved from roughly `262s` to `152s`
+  - remaining failure is citation formatting/presence, not retrieval.
+
+**Interpretation**
+
+- the new eval trace surface is now proving whether failures happen before
+  retrieval, during retrieval, or after retrieval in answer synthesis;
+- `T07` is no longer blocked by retrieval candidate generation after the SQL
+  fix, so the next highest-value work item is citation rendering / source
+  attribution quality rather than more blind candidate tuning for that case.
+
 ---
 
 ## Migration & Compatibility

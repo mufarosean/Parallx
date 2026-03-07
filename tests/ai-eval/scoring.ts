@@ -74,6 +74,23 @@ export interface TurnResult {
   latencyMs: number;
   assertions: AssertionResult[];
   retrievalMetrics?: RetrievalMetrics;
+  debug?: {
+    query?: string;
+    retrievedContextText?: string;
+    ragSources?: Array<{ uri: string; label: string; index: number }>;
+    contextPills?: Array<{ id: string; label: string; type: string; removable: boolean; index?: number; tokens?: number }>;
+    retrievalTrace?: unknown;
+    isRAGAvailable?: boolean;
+    isIndexing?: boolean;
+    retrievalGate?: {
+      hasActiveSlashCommand: boolean;
+      isRagReady: boolean;
+      needsRetrieval: boolean;
+      attempted: boolean;
+      returnedSources?: number;
+    };
+    retrievalError?: string;
+  };
   /** Weighted score for this turn: 0–1. */
   score: number;
 }

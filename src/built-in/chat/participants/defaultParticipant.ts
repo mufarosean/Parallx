@@ -552,6 +552,13 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       queries: [],
     };
 
+    services.reportRetrievalDebug?.({
+      hasActiveSlashCommand,
+      isRagReady,
+      needsRetrieval: retrievalPlan.needsRetrieval,
+      attempted: false,
+    });
+
     // 1c. Memory context constants
     const MAX_MEMORY_CONTEXT_CHARS = 4_000;
     const MAX_CONCEPT_CONTEXT_CHARS = 2_000;
@@ -577,7 +584,27 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
       // RAG retrieval
       (services.retrieveContext && retrievalPlan.needsRetrieval)
-        ? services.retrieveContext(userText).catch((): RAGResult => null)
+        ? services.retrieveContext(userText)
+            .then((result): RAGResult => {
+              services.reportRetrievalDebug?.({
+                hasActiveSlashCommand,
+                isRagReady,
+                needsRetrieval: retrievalPlan!.needsRetrieval,
+                attempted: true,
+                returnedSources: result?.sources.length ?? 0,
+              });
+              return result ?? null;
+            })
+            .catch((): RAGResult => {
+              services.reportRetrievalDebug?.({
+                hasActiveSlashCommand,
+                isRagReady,
+                needsRetrieval: retrievalPlan!.needsRetrieval,
+                attempted: true,
+                returnedSources: 0,
+              });
+              return null;
+            })
         : Promise.resolve(null as RAGResult),
 
       // Memory recall
