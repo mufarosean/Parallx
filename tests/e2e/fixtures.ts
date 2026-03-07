@@ -23,6 +23,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
+const ELECTRON_CLOSE_TIMEOUT = 10_000;
 
 // ── Temp workspace helpers ──────────────────────────────────────────────────
 
@@ -44,6 +45,21 @@ async function cleanupTestWorkspace(dir: string): Promise<void> {
   try {
     await fs.rm(dir, { recursive: true, force: true });
   } catch { /* best effort */ }
+}
+
+async function closeElectronApp(app: ElectronApplication): Promise<void> {
+  const child = app.process();
+
+  try {
+    await Promise.race([
+      app.close(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Electron close timeout')), ELECTRON_CLOSE_TIMEOUT)),
+    ]);
+  } catch {
+    if (child && child.exitCode === null && !child.killed) {
+      try { child.kill(); } catch { /* best effort */ }
+    }
+  }
 }
 
 // ── Fixture types ───────────────────────────────────────────────────────────
@@ -75,10 +91,11 @@ export const test = base.extend<TestFixtures>({
         ...process.env,
         // Prevent persisted state from interfering with tests
         PARALLX_TEST_MODE: '1',
+        PARALLX_RENDERER_PORT: '0',
       },
     });
     await use(app);
-    await app.close();
+    await closeElectronApp(app);
   },
 
   window: async ({ electronApp }, use) => {
@@ -113,10 +130,11 @@ export const sharedTest = base.extend<{}, SharedWorkerFixtures>({
       env: {
         ...process.env,
         PARALLX_TEST_MODE: '1',
+        PARALLX_RENDERER_PORT: '0',
       },
     });
     await use(app);
-    await app.close();
+    await closeElectronApp(app);
   }, { scope: 'worker' }],
 
   window: [async ({ electronApp }, use) => {

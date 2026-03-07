@@ -1348,6 +1348,51 @@ That means each slice is only complete when:
 - Milestone 23 now has a saved baseline artifact, but the full retrieval subset
   should be re-run after AI-eval stability is hardened.
 
+#### Slice 1D follow-up — AI eval stability hardening + full retrieval subset rerun
+
+**What changed**
+
+- hardened Electron-based eval startup by allowing test runs to bind the
+  renderer server on an ephemeral port instead of the fixed development port;
+- hardened test shutdown by bypassing the unsaved-close interception in test
+  mode and adding bounded fixture teardown with forced process cleanup as a
+  fallback;
+- re-ran the full retrieval-focused benchmark subset after the stability fix and
+  replaced the partial baseline with a complete eight-test retrieval report.
+
+**Updated baseline artifacts**
+
+- `test-results/ai-eval-report.json`
+- `test-results/ai-eval-report.txt`
+
+**Updated baseline (full retrieval subset)**
+
+- model: `qwen3.5:27b`
+- completed tests: `T01`, `T02`, `T05`, `T07`, `T08`, `T09`, `T15`, `T17`
+- overall score: `66.7%` (`Needs Work`)
+- expected-source hit rate: `36%`
+- required-term coverage: `64%`
+- citation presence rate: `27%`
+- average forbidden violations: `0.09`
+
+**Primary failures now exposed by the fuller baseline**
+
+- `T07` source attribution remains a hard failure: the system is still weak at
+  citation-oriented retrieval/answering for recommended repair shops;
+- `T15` deep retrieval remains a hard failure: the retriever is still missing
+  the total-loss-threshold / KBB-style evidence path;
+- `T17` remains only partially successful because the third turn still failed
+  to progress cleanly through the chat input lifecycle, even though the overall
+  test run now completes reliably.
+
+**Behavior impact**
+
+- retrieval runtime behavior remains unchanged;
+- the milestone now has a materially more trustworthy baseline for Phase B
+  retrieval work, and the next implementation slices should target citation
+  weakness, deep retrieval weakness, and the remaining multi-turn UI/runtime
+  instability.
+
 ---
 
 ## Migration & Compatibility

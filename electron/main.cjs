@@ -17,9 +17,27 @@ let mainWindow = null;
 let rendererServer = null;
 /** @type {number | null} */
 let rendererServerPort = null;
+let isAppQuitting = false;
 
 const RENDERER_ROOT = path.join(__dirname, '..');
-const RENDERER_PORT = 31789;
+const DEFAULT_RENDERER_PORT = 31789;
+const IS_TEST_MODE = process.env.PARALLX_TEST_MODE === '1';
+
+function getRequestedRendererPort() {
+  const raw = process.env.PARALLX_RENDERER_PORT;
+  if (raw === undefined || raw === '') {
+    return DEFAULT_RENDERER_PORT;
+  }
+
+  const parsed = Number(raw);
+  if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 65535) {
+    return parsed;
+  }
+
+  return DEFAULT_RENDERER_PORT;
+}
+
+const RENDERER_PORT = getRequestedRendererPort();
 
 function contentTypeFor(filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -222,7 +240,7 @@ async function createWindow() {
   mainWindow.on('close', (e) => {
     // Save window position/size before anything else
     saveWindowState();
-    if (closeConfirmed) return; // already confirmed — let it close
+    if (closeConfirmed || isAppQuitting || IS_TEST_MODE) return; // already confirmed — let it close
     e.preventDefault();
     mainWindow?.webContents.send('lifecycle:beforeClose');
   });
@@ -263,6 +281,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => {
+  isAppQuitting = true;
   if (rendererServer) {
     try { rendererServer.close(); } catch { /* ignore */ }
     rendererServer = null;
