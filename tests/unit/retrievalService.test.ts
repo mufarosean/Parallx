@@ -555,5 +555,67 @@ describe('RetrievalService', () => {
 
       expect(results[0].sourceId).toBe('agent-contacts');
     });
+
+    it('keeps short what-about follow-ups on the simple keyword-focused path', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, sourceId: 'policy', score: 0.08, chunkText: 'Comprehensive deductible is $250.' }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
+
+      await service.retrieve('And what about comprehensive?');
+
+      const [, queryText, searchOptions] = vectorStore.search.mock.calls[0];
+      expect(queryText).toBe('And what about comprehensive?');
+      expect(searchOptions).toEqual(expect.objectContaining({ topK: 60 }));
+
+      const trace = service.getLastTrace();
+      expect(trace?.queryPlan?.complexity).toBe('simple');
+      expect(trace?.queryPlan?.strategy).toBe('single');
+      expect(trace?.queryPlan?.reasons).not.toContain('multi-clause-question');
+    });
+
+    it('boosts direct contact queries toward Agent Contacts over generic accident references', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'Claims Guide.md',
+          score: 0.050,
+          contextPrefix: 'Claims Guide > Within 24 Hours',
+          chunkText: 'Call your insurance agent and the claims hotline.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Agent Contacts.md',
+          score: 0.044,
+          contextPrefix: 'Agent Contacts > Your Agent',
+          headingPath: 'Your Agent',
+          chunkText: 'Sarah Chen — (555) 234-5678',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 3,
+          sourceId: 'concept:coverage details',
+          score: 0.046,
+          contextPrefix: 'Coverage Details',
+          chunkText: 'The user reviewed policy coverage details.',
+          sourceType: 'concept',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+        [3, emb],
+      ]));
+
+      const results = await service.retrieve("What is my insurance agent's phone number?");
+
+      expect(results[0].sourceId).toBe('Agent Contacts.md');
+      expect(results.at(-1)?.sourceType).toBe('concept');
+    });
   });
 });

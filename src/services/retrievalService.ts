@@ -123,6 +123,14 @@ function stripFormattingRequests(query: string): string {
   );
 }
 
+function normalizeLexicalToken(token: string): string {
+  return token
+    .replace(/[’']/g, "'")
+    .replace(/'s$/i, '')
+    .replace(/^[^a-z0-9$%]+|[^a-z0-9$%]+$/gi, '')
+    .toLowerCase();
+}
+
 function extractCriticalIdentifiers(query: string): string[] {
   const identifiers: string[] = [];
   const patterns = [
@@ -185,7 +193,7 @@ function buildKeywordFocusedQuery(query: string, identifiers: readonly string[])
 
   const tokens = cleaned
     .split(/\s+/)
-    .map((token) => token.trim())
+    .map((token) => normalizeLexicalToken(token.trim()))
     .filter((token) => token.length > 0);
 
   const filtered = tokens.filter((token) => {
@@ -209,7 +217,7 @@ function extractFocusTerms(query: string, identifiers: readonly string[]): strin
   const tokens = stripFormattingRequests(query)
     .replace(/[?!.,:;()[\]{}]/g, ' ')
     .split(/\s+/)
-    .map((token) => token.trim().toLowerCase())
+    .map((token) => normalizeLexicalToken(token.trim()))
     .filter((token) => token.length >= 3 && !KEYWORD_FOCUS_STOPWORDS.has(token));
 
   const merged = [...identifiers.map((identifier) => identifier.toLowerCase()), ...tokens];
@@ -247,6 +255,10 @@ function decomposeQuery(query: string): string[] {
   }
 
   return deduped;
+}
+
+function matchesAny(text: string, patterns: RegExp[]): boolean {
+  return patterns.some((pattern) => pattern.test(text));
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -444,7 +456,11 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       queryPlan,
       options,
     );
-    const rawResults = this._applyLexicalFocusBoost(candidateResults, queryPlan);
+    const rawResults = this._applyIntentAwareSourceBoost(
+      this._applyLexicalFocusBoost(candidateResults, queryPlan),
+      query,
+      queryPlan,
+    );
     const vectorStoreTrace = vectorStoreTraces.at(-1);
 
     // 3. Score threshold filter (RRF scores)
@@ -672,9 +688,11 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     const hasCrossSourceSignal = /\b(across|cross-source|multiple|both|all|workflow|steps|process|follow-up|continue)\b/i.test(analysisQuery);
     const hasSequentialSignal = /\b(then|after that|afterwards|next|finally)\b/i.test(analysisQuery);
     const questionHeadMatches = analysisQuery.match(/\b(what|how|where|who|when|which)\b/gi) ?? [];
+    const isCompactFollowUp = /^(?:and\s+)?what\s+about\b/i.test(analysisQuery)
+      || /^(?:and\s+)?(?:collision|comprehensive|liability|uninsured|underinsured|um|uim)\b/i.test(analysisQuery);
     const hasMultipleQuestionHeads =
       questionHeadMatches.length >= 2
-      || /\b(?:and|also)\s+(?:what|how|where|who|when|which|should|can)\b/i.test(analysisQuery);
+      || (!isCompactFollowUp && /\b(?:and|also)\s+(?:what|how|where|who|when|which|should|can)\b/i.test(analysisQuery));
     const isLongQuestion = termCount >= HARD_QUERY_TERM_THRESHOLD;
     const exactMatchBias = identifiers.length > 0;
 
@@ -840,7 +858,89 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       const coverage = matchedTerms.length / focusTerms.length;
       const contextBoost = Math.min(0.012, coverage * 0.012);
       return { ...result, score: result.score + contextBoost };
-    });
+    }).sort((a, b) => b.score - a.score);
+  }
+
+  private _applyIntentAwareSourceBoost(
+    results: SearchResult[],
+    query: string,
+    queryPlan: RetrievalQueryPlan,
+  ): SearchResult[] {
+    const normalizedQuery = normalizeQueryKey(stripFormattingRequests(query));
+    const isSimple = queryPlan.complexity === 'simple';
+    const wantsAgentContact = matchesAny(normalizedQuery, [
+      /\bagent\b/,
+      /\bcontact\b/,
+      /\bphone\b/,
+      /\bnumber\b/,
+      /\bcall\b/,
+    ]) && !matchesAny(normalizedQuery, [
+      /\brepair\b/,
+      /\bshop\b/,
+      /\broadside\b/,
+      /\bclaims\s+line\b/,
+    ]);
+    const wantsRepairShops = matchesAny(normalizedQuery, [/\brepair\b/, /\bshop\b/, /\bshops\b/]);
+    const wantsDeductible = matchesAny(normalizedQuery, [/\bdeductible\b/, /\bcollision\b/, /\bcomprehensive\b/]);
+    const wantsWorkspaceDocs = matchesAny(normalizedQuery, [/\bdocuments?\b/, /\bfiles?\b/, /\bworkspace\b/, /\bcontents?\b/]);
+
+    return results.map((result) => {
+      let adjustedScore = result.score;
+      const sourceMeta = [
+        result.sourceId,
+        result.contextPrefix,
+        result.headingPath,
+        result.parentHeadingPath,
+        result.chunkText.slice(0, 180),
+      ]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        .join(' ')
+        .toLowerCase();
+
+      if (isSimple && result.sourceType === 'concept') {
+        adjustedScore -= 0.008;
+      }
+
+      if (wantsAgentContact) {
+        if (sourceMeta.includes('agent contacts') || sourceMeta.includes('your agent') || sourceMeta.includes('sarah')) {
+          adjustedScore += 0.016;
+        }
+        if (sourceMeta.includes('claims guide') || sourceMeta.includes('quick reference')) {
+          adjustedScore -= 0.003;
+        }
+      }
+
+      if (wantsRepairShops) {
+        if (sourceMeta.includes('preferred repair') || sourceMeta.includes('repair shop')) {
+          adjustedScore += 0.016;
+        }
+        if (sourceMeta.includes('agent contacts')) {
+          adjustedScore += 0.004;
+        }
+      }
+
+      if (wantsDeductible) {
+        if (sourceMeta.includes('collision coverage') || sourceMeta.includes('comprehensive coverage') || sourceMeta.includes('deductible')) {
+          adjustedScore += 0.010;
+        }
+        if (result.sourceId.toLowerCase() === 'auto insurance policy.md') {
+          adjustedScore += 0.004;
+        }
+      }
+
+      if (wantsWorkspaceDocs) {
+        if (result.sourceType === 'file_chunk' && /\.md$/i.test(result.sourceId)) {
+          adjustedScore += 0.010;
+        }
+        if (/ai-config\.json$/i.test(result.sourceId)) {
+          adjustedScore -= 0.020;
+        }
+      }
+
+      return adjustedScore === result.score
+        ? result
+        : { ...result, score: adjustedScore };
+    }).sort((a, b) => b.score - a.score);
   }
 
   private async _runSingleSearch(

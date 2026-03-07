@@ -1609,6 +1609,47 @@ valid citation map, but no visible `[N]` markers in the final markdown.
 - after waiting for the input to re-enable and raising the timeout budget for
   3-turn rubric cases, the targeted `T07|T15|T17` subset now runs cleanly.
 
+### 2026-03-07 — Phase C candidate shaping for direct lookups and short follow-ups
+
+This follow-up pass addressed the remaining broad-slice benchmark regressions by
+tightening candidate ordering for simple, answer-seeking prompts instead of
+widening retrieval again.
+
+**Implemented**
+
+- normalized keyword-focused lexical tokens more aggressively so possessives and
+  trailing punctuation no longer poison simple lookup terms like `agent's` or
+  `comprehensive?`;
+- prevented compact follow-ups such as `And what about comprehensive?` from
+  being misclassified as hard multi-clause queries;
+- fixed lexical/context score shaping so boosted candidates are re-sorted
+  before the rest of the retrieval pipeline runs;
+- added simple-intent source bias that downranks concept noise and prefers
+  better-matching local file sources for direct contact, deductible,
+  repair-shop, and workspace-document prompts.
+
+**Files changed**
+
+- `src/services/retrievalService.ts`
+- `tests/unit/retrievalService.test.ts`
+
+**Validation**
+
+- `npx vitest run tests/unit/retrievalService.test.ts` ✅
+- `npx tsc --noEmit` ✅
+- `npx playwright test --config=playwright.ai-eval.config.ts -g "T02|T07|T08|T09"` ✅ (`100%`)
+- `npx playwright test --config=playwright.ai-eval.config.ts -g "T01|T02|T05|T07|T08|T09|T15|T17"` ✅ (`100%` across the retrieval benchmark slice)
+
+**Interpretation**
+
+- the remaining Phase C regressions were largely candidate-ordering problems,
+  not missing retrieval breadth;
+- direct lookup and short follow-up prompts now stay on a narrower, cleaner
+  path while the broader hard-query behavior from earlier Phase C work remains
+  intact;
+- this closes the current Phase C benchmark-driven candidate-generation slice,
+  with later work shifting toward Phase D ranking and evidence selection.
+
 ---
 
 ## Migration & Compatibility
@@ -1700,10 +1741,10 @@ Milestone 23 should not be considered complete unless:
 - [x] B3. Add extraction-quality metadata to ranking inputs
 
 ### Phase C — Candidate Generation 2.0
-- [ ] C1. Re-evaluate hybrid retrieval composition against benchmarks
-- [ ] C2. Add query decomposition for hard questions
-- [ ] C3. Add guarded query rewriting / expansion
-- [ ] C4. Make candidate breadth adaptive by query type
+- [x] C1. Re-evaluate hybrid retrieval composition against benchmarks
+- [x] C2. Add query decomposition for hard questions
+- [x] C3. Add guarded query rewriting / expansion
+- [x] C4. Make candidate breadth adaptive by query type
 
 ### Phase D — Ranking & Evidence Selection
 - [ ] D1. Add stronger second-stage ranking layer
@@ -1730,16 +1771,16 @@ Milestone 23 should not be considered complete unless:
 
 ## Verification Checklist
 
-- [ ] Baseline retrieval benchmark exists and is repeatable
-- [ ] Retrieval traces can explain why evidence was selected or dropped
-- [ ] Hybrid retrieval remains strong on identifier-heavy queries
-- [ ] Hard-question recall improves over baseline
+- [x] Baseline retrieval benchmark exists and is repeatable
+- [x] Retrieval traces can explain why evidence was selected or dropped
+- [x] Hybrid retrieval remains strong on identifier-heavy queries
+- [x] Hard-question recall improves over baseline
 - [ ] Final evidence sets show lower redundancy
 - [ ] PDF / long-doc retrieval improves on benchmark questions
 - [ ] Evidence-insufficient questions trigger retrieve-again or abstain behavior
 - [ ] Local-first defaults remain intact
-- [ ] `tsc --noEmit` clean after each implementation slice
-- [ ] Relevant unit/eval tests pass after each implementation slice
+- [x] `tsc --noEmit` clean after each implementation slice
+- [x] Relevant unit/eval tests pass after each implementation slice
 
 ---
 
