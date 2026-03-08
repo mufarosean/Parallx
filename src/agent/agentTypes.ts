@@ -123,9 +123,14 @@ export interface AgentApprovalRequest {
   readonly id: string;
   readonly taskId: string;
   readonly stepId: string;
+  readonly stepIds: readonly string[];
   readonly actionClass: AgentActionClass;
   readonly toolName: string;
   readonly summary: string;
+  readonly explanation: string;
+  readonly affectedTargets: readonly string[];
+  readonly bundleKey?: string;
+  readonly requestCount: number;
   readonly scope: AgentApprovalScope;
   readonly reason: string;
   readonly status: AgentApprovalStatus;
@@ -137,9 +142,13 @@ export interface AgentApprovalRequestInput {
   readonly id: string;
   readonly taskId: string;
   readonly stepId: string;
+  readonly stepIds?: readonly string[];
   readonly actionClass: AgentActionClass;
   readonly toolName: string;
   readonly summary: string;
+  readonly explanation?: string;
+  readonly affectedTargets?: readonly string[];
+  readonly bundleKey?: string;
   readonly scope: AgentApprovalScope;
   readonly reason: string;
   readonly createdAt?: string;

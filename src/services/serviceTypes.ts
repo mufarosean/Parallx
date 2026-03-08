@@ -247,7 +247,7 @@ export interface IAgentApprovalService extends IDisposable {
   /** Bind storage and hydrate any persisted approval state. */
   setStorage(storage: IStorage): Promise<void>;
 
-  /** Create and persist a new pending approval request. */
+  /** Create and persist a new pending approval request, or merge into an existing bundle. */
   createApprovalRequest(input: AgentApprovalRequestInput): Promise<AgentApprovalRequest>;
 
   /** Resolve a persisted approval request. */
@@ -261,6 +261,9 @@ export interface IAgentApprovalService extends IDisposable {
 
   /** List pending approval requests. */
   listPendingApprovalRequests(): readonly AgentApprovalRequest[];
+
+  /** Group pending approval requests by task + bundle identity for rendering. */
+  listPendingApprovalBundles(): readonly AgentApprovalRequest[];
 
   /** Fires when an approval request is created or resolved. */
   readonly onDidChangeApprovalRequests: Event<AgentApprovalRequest>;

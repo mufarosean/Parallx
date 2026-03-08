@@ -87,7 +87,7 @@ export class AgentSessionService extends Disposable implements IAgentSessionServ
       throw new Error(`Agent task not found: ${taskId}`);
     }
 
-    if (!canTransitionAgentTaskStatus(existing.status, 'awaiting-approval')) {
+    if (existing.status !== 'awaiting-approval' && !canTransitionAgentTaskStatus(existing.status, 'awaiting-approval')) {
       throw new Error(`Task ${taskId} cannot queue approval from status ${existing.status}.`);
     }
 
@@ -102,8 +102,10 @@ export class AgentSessionService extends Disposable implements IAgentSessionServ
       status: 'awaiting-approval',
       updatedAt: now,
       currentStepId: request.stepId,
-      blockerReason: `Awaiting approval: ${approvalRequest.summary}`,
-      resumeStatus: existing.status,
+      blockerReason: this._buildApprovalBlockerReason(approvalRequest),
+      resumeStatus: existing.status === 'awaiting-approval'
+        ? existing.resumeStatus
+        : existing.status,
     };
 
     await this._taskStore.upsertTask(task);
@@ -178,5 +180,15 @@ export class AgentSessionService extends Disposable implements IAgentSessionServ
     }
 
     return this._taskStore.listTasksForWorkspace(workspace.id);
+  }
+
+  private _buildApprovalBlockerReason(request: import('../agent/agentTypes.js').AgentApprovalRequest): string {
+    const targetSummary = request.affectedTargets.length > 0
+      ? ` Targets: ${request.affectedTargets.join(', ')}.`
+      : '';
+    const bundleSummary = request.requestCount > 1
+      ? ` Bundled actions: ${request.requestCount}.`
+      : '';
+    return `Awaiting approval: ${request.summary}.${targetSummary}${bundleSummary}`.trim();
   }
 }
