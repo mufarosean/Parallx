@@ -71,6 +71,32 @@ describe('AgentSessionService', () => {
     expect(queued.task.blockerReason).toContain('docs/README.md');
   });
 
+  it('persists task plan steps', async () => {
+    const service = await createSessionService();
+    await service.createTask({ goal: 'Review the workspace' }, 'task-1', '2026-03-08T13:02:00.000Z');
+
+    const steps = await service.setPlanSteps('task-1', [
+      {
+        id: 'step-1',
+        taskId: 'task-1',
+        title: 'Inspect workspace',
+        description: 'Read workspace files',
+        kind: 'read',
+      },
+      {
+        id: 'step-2',
+        taskId: 'task-1',
+        title: 'Summarize findings',
+        description: 'Prepare a summary',
+        kind: 'analysis',
+        dependsOn: ['step-1'],
+      },
+    ], '2026-03-08T13:02:30.000Z');
+
+    expect(steps).toHaveLength(2);
+    expect(service.getPlanSteps('task-1').map((step) => step.id)).toEqual(['step-1', 'step-2']);
+  });
+
   it('resumes the prior task status after approval', async () => {
     const service = await createSessionService();
     await service.createTask({ goal: 'Patch the docs' }, 'task-1', '2026-03-08T13:03:00.000Z');

@@ -47,4 +47,29 @@ describe('AgentTaskStore', () => {
     expect(second.listPendingApprovalRequests()).toHaveLength(1);
     expect(second.getApprovalRequest('approval-1')?.toolName).toBe('apply_patch');
   });
+
+  it('persists plan steps across store instances', async () => {
+    const storage = new InMemoryStorage();
+    const first = new AgentTaskStore();
+    await first.setStorage(storage);
+
+    await first.upsertPlanStep({
+      id: 'step-1',
+      taskId: 'task-1',
+      title: 'Inspect workspace',
+      description: 'Read the workspace files.',
+      kind: 'read',
+      status: 'pending',
+      approvalState: 'not-required',
+      dependsOn: [],
+      createdAt: '2026-03-08T14:00:00.000Z',
+      updatedAt: '2026-03-08T14:00:00.000Z',
+    });
+
+    const second = new AgentTaskStore();
+    await second.setStorage(storage);
+
+    expect(second.listPlanStepsForTask('task-1')).toHaveLength(1);
+    expect(second.getPlanStep('step-1')?.title).toBe('Inspect workspace');
+  });
 });

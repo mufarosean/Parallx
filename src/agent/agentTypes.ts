@@ -86,6 +86,29 @@ export interface AgentPlanStep {
   readonly proposedAction?: AgentProposedAction;
   readonly approvalState: AgentPlanStepApprovalState;
   readonly dependsOn: readonly string[];
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly resultSummary?: string;
+  readonly lastError?: string;
+  readonly approvalRequestId?: string;
+}
+
+export interface AgentPlanStepInput {
+  readonly id: string;
+  readonly taskId: string;
+  readonly title: string;
+  readonly description: string;
+  readonly kind: AgentPlanStepKind;
+  readonly proposedAction?: AgentProposedAction;
+  readonly dependsOn?: readonly string[];
+  readonly createdAt?: string;
+}
+
+export interface AgentRunResult {
+  readonly task: AgentTaskRecord;
+  readonly executedStepIds: readonly string[];
+  readonly blockedStepId?: string;
+  readonly approvalRequestId?: string;
 }
 
 export interface AgentBoundaryDecision {

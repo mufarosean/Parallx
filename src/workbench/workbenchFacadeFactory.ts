@@ -14,6 +14,7 @@ import { IDisposable } from '../platform/lifecycle.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import {
   IAgentApprovalService,
+  IAgentExecutionService,
   IAgentPolicyService,
   IAgentSessionService,
   IAgentTaskStore,
@@ -30,6 +31,7 @@ import { ViewService } from '../services/viewService.js';
 import { WorkspaceService } from '../services/workspaceService.js';
 import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
 import { AgentPolicyService } from '../services/agentPolicyService.js';
+import { AgentExecutionService } from '../services/agentExecutionService.js';
 import { AgentSessionService } from '../services/agentSessionService.js';
 
 import type { Workspace } from '../workspace/workspace.js';
@@ -131,6 +133,14 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
     );
     disposables.push(agentSessionService);
     services.registerInstance(IAgentSessionService, agentSessionService);
+
+    const agentExecutionService = new AgentExecutionService(
+      services.get(IAgentTaskStore),
+      agentSessionService,
+      agentPolicyService,
+    );
+    disposables.push(agentExecutionService);
+    services.registerInstance(IAgentExecutionService, agentExecutionService);
   }
 
   // Enforce workspace boundary on FileService

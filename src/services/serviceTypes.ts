@@ -160,8 +160,11 @@ import type {
   AgentApprovalRequest,
   AgentApprovalRequestInput,
   AgentApprovalResolution,
+  AgentPlanStep,
+  AgentPlanStepInput,
   AgentPolicyDecision,
   AgentProposedAction,
+  AgentRunResult,
   AgentTaskStatus,
   AgentTaskRecord,
 } from '../agent/agentTypes.js';
@@ -222,6 +225,15 @@ export interface IAgentTaskStore extends IDisposable {
 
   /** List tasks for a workspace. */
   listTasksForWorkspace(workspaceId: string): readonly AgentTaskRecord[];
+
+  /** Insert or replace a plan step. */
+  upsertPlanStep(step: AgentPlanStep): Promise<void>;
+
+  /** Get a plan step by id. */
+  getPlanStep(stepId: string): AgentPlanStep | undefined;
+
+  /** List plan steps for a task. */
+  listPlanStepsForTask(taskId: string): readonly AgentPlanStep[];
 
   /** Insert or replace an approval request. */
   upsertApprovalRequest(request: AgentApprovalRequest): Promise<void>;
@@ -286,6 +298,12 @@ export interface IAgentSessionService extends IDisposable {
   /** Move a task into awaiting-approval and enqueue an approval request. */
   queueApprovalForTask(taskId: string, request: Omit<AgentApprovalRequestInput, 'taskId'>, now?: string): Promise<{ task: AgentTaskRecord; approvalRequest: AgentApprovalRequest }>;
 
+  /** Persist plan steps for a task. */
+  setPlanSteps(taskId: string, steps: readonly AgentPlanStepInput[], now?: string): Promise<readonly AgentPlanStep[]>;
+
+  /** List plan steps for a task. */
+  getPlanSteps(taskId: string): readonly AgentPlanStep[];
+
   /** Resolve an approval request and resume or block the task accordingly. */
   resolveTaskApproval(taskId: string, requestId: string, resolution: AgentApprovalResolution, now?: string): Promise<AgentTaskRecord>;
 
@@ -300,6 +318,18 @@ export interface IAgentSessionService extends IDisposable {
 }
 
 export const IAgentSessionService = createServiceIdentifier<IAgentSessionService>('IAgentSessionService');
+
+// ─── IAgentExecutionService ────────────────────────────────────────────────
+
+/**
+ * Runs the minimal autonomous execution loop over persisted plan steps.
+ */
+export interface IAgentExecutionService extends IDisposable {
+  /** Execute runnable plan steps until the task completes or yields. */
+  runTask(taskId: string, now?: string): Promise<AgentRunResult>;
+}
+
+export const IAgentExecutionService = createServiceIdentifier<IAgentExecutionService>('IAgentExecutionService');
 
 // ─── IDatabaseService ────────────────────────────────────────────────────────
 

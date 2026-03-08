@@ -1,20 +1,23 @@
 import { Disposable } from '../platform/lifecycle.js';
 import type { IStorage } from '../platform/storage.js';
-import type { AgentApprovalRequest, AgentTaskRecord } from '../agent/agentTypes.js';
+import type { AgentApprovalRequest, AgentPlanStep, AgentTaskRecord } from '../agent/agentTypes.js';
 import type { IAgentTaskStore } from './serviceTypes.js';
 
 const TASKS_STORAGE_KEY = 'agent.tasks.v1';
+const PLAN_STEPS_STORAGE_KEY = 'agent.planSteps.v1';
 const APPROVALS_STORAGE_KEY = 'agent.approvals.v1';
 
 export class AgentTaskStore extends Disposable implements IAgentTaskStore {
   private _storage: IStorage | undefined;
   private readonly _tasks = new Map<string, AgentTaskRecord>();
+  private readonly _planSteps = new Map<string, AgentPlanStep>();
   private readonly _approvalRequests = new Map<string, AgentApprovalRequest>();
 
   async setStorage(storage: IStorage): Promise<void> {
     this._storage = storage;
     await Promise.all([
       this._loadTasks(),
+      this._loadPlanSteps(),
       this._loadApprovalRequests(),
     ]);
   }
@@ -31,6 +34,21 @@ export class AgentTaskStore extends Disposable implements IAgentTaskStore {
   listTasksForWorkspace(workspaceId: string): readonly AgentTaskRecord[] {
     return [...this._tasks.values()]
       .filter((task) => task.workspaceId === workspaceId)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }
+
+  async upsertPlanStep(step: AgentPlanStep): Promise<void> {
+    this._planSteps.set(step.id, step);
+    await this._persistPlanSteps();
+  }
+
+  getPlanStep(stepId: string): AgentPlanStep | undefined {
+    return this._planSteps.get(stepId);
+  }
+
+  listPlanStepsForTask(taskId: string): readonly AgentPlanStep[] {
+    return [...this._planSteps.values()]
+      .filter((step) => step.taskId === taskId)
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
 
@@ -111,6 +129,34 @@ export class AgentTaskStore extends Disposable implements IAgentTaskStore {
     }
   }
 
+  private async _loadPlanSteps(): Promise<void> {
+    this._planSteps.clear();
+    if (!this._storage) {
+      return;
+    }
+
+    const raw = await this._storage.get(PLAN_STEPS_STORAGE_KEY);
+    if (!raw) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as AgentPlanStep[];
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+
+      for (const step of parsed) {
+        if (!step || typeof step !== 'object' || typeof step.id !== 'string') {
+          continue;
+        }
+        this._planSteps.set(step.id, step);
+      }
+    } catch {
+      console.warn('[AgentTaskStore] Failed to parse persisted plan steps, resetting to empty state.');
+    }
+  }
+
   private async _persistTasks(): Promise<void> {
     if (!this._storage) {
       return;
@@ -125,5 +171,13 @@ export class AgentTaskStore extends Disposable implements IAgentTaskStore {
     }
 
     await this._storage.set(APPROVALS_STORAGE_KEY, JSON.stringify([...this._approvalRequests.values()]));
+  }
+
+  private async _persistPlanSteps(): Promise<void> {
+    if (!this._storage) {
+      return;
+    }
+
+    await this._storage.set(PLAN_STEPS_STORAGE_KEY, JSON.stringify([...this._planSteps.values()]));
   }
 }

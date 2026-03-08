@@ -4,6 +4,8 @@ import { assertAgentTaskTransition, canTransitionAgentTaskStatus } from '../agen
 import { createAgentTaskRecord } from '../agent/agentTaskModels.js';
 import type {
   AgentApprovalRequestInput,
+  AgentPlanStep,
+  AgentPlanStepInput,
   AgentApprovalResolution,
   AgentTaskRecord,
   AgentTaskStatus,
@@ -113,6 +115,42 @@ export class AgentSessionService extends Disposable implements IAgentSessionServ
     return { task, approvalRequest };
   }
 
+  async setPlanSteps(
+    taskId: string,
+    steps: readonly AgentPlanStepInput[],
+    now: string = new Date().toISOString(),
+  ): Promise<readonly AgentPlanStep[]> {
+    const task = this._taskStore.getTask(taskId);
+    if (!task) {
+      throw new Error(`Agent task not found: ${taskId}`);
+    }
+
+    const persisted: AgentPlanStep[] = [];
+    for (const stepInput of steps) {
+      const step: AgentPlanStep = {
+        id: stepInput.id,
+        taskId,
+        title: stepInput.title,
+        description: stepInput.description,
+        kind: stepInput.kind,
+        proposedAction: stepInput.proposedAction,
+        status: 'pending',
+        approvalState: 'not-required',
+        dependsOn: stepInput.dependsOn ?? [],
+        createdAt: stepInput.createdAt ?? now,
+        updatedAt: stepInput.createdAt ?? now,
+      };
+      await this._taskStore.upsertPlanStep(step);
+      persisted.push(step);
+    }
+
+    return persisted;
+  }
+
+  getPlanSteps(taskId: string): readonly AgentPlanStep[] {
+    return this._taskStore.listPlanStepsForTask(taskId);
+  }
+
   async resolveTaskApproval(
     taskId: string,
     requestId: string,
@@ -165,6 +203,7 @@ export class AgentSessionService extends Disposable implements IAgentSessionServ
     };
 
     await this._taskStore.upsertTask(updated);
+    await this._updatePlanStepsForApproval(taskId, approval.id, resolution, now);
     this._onDidChangeTasksEmitter.fire(updated);
     return updated;
   }
@@ -190,5 +229,37 @@ export class AgentSessionService extends Disposable implements IAgentSessionServ
       ? ` Bundled actions: ${request.requestCount}.`
       : '';
     return `Awaiting approval: ${request.summary}.${targetSummary}${bundleSummary}`.trim();
+  }
+
+  private async _updatePlanStepsForApproval(
+    taskId: string,
+    approvalRequestId: string,
+    resolution: AgentApprovalResolution,
+    now: string,
+  ): Promise<void> {
+    const relatedSteps = this._taskStore
+      .listPlanStepsForTask(taskId)
+      .filter((step) => step.approvalRequestId === approvalRequestId);
+
+    for (const step of relatedSteps) {
+      const updated: AgentPlanStep = {
+        ...step,
+        updatedAt: now,
+        approvalState: resolution === 'approve-once' || resolution === 'approve-for-task'
+          ? 'approved'
+          : 'denied',
+        status: resolution === 'cancel-task'
+          ? 'cancelled'
+          : resolution === 'deny'
+            ? 'blocked'
+            : 'pending',
+        lastError: resolution === 'deny'
+          ? 'Approval denied.'
+          : resolution === 'cancel-task'
+            ? 'Task cancelled during approval.'
+            : undefined,
+      };
+      await this._taskStore.upsertPlanStep(updated);
+    }
   }
 }

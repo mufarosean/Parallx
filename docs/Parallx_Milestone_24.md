@@ -1225,8 +1225,8 @@ The milestone should not be considered complete without explicit tests for:
 - [x] C3. Add approval bundling and explanation model
 
 ### Phase D — Agent Task Runtime
-- [ ] D1. Add task/run persistence model
-- [ ] D2. Add orchestration loop for delegated execution
+- [x] D1. Add task/run persistence model
+- [x] D2. Add orchestration loop for delegated execution
 - [ ] D3. Add pause/resume/continue semantics
 
 ### Phase E — Working Memory
