@@ -22,17 +22,18 @@
 1. [Problem Statement](#problem-statement)
 2. [Current State Audit](#current-state-audit)
 3. [Vision](#vision)
-4. [Guiding Principles](#guiding-principles)
-5. [Non-Negotiable Safety Constraints](#non-negotiable-safety-constraints)
-6. [Target Capabilities](#target-capabilities)
-7. [Target Architecture](#target-architecture)
-8. [Phase Plan](#phase-plan)
-9. [Implementation Sequence](#implementation-sequence)
-10. [Migration & Compatibility](#migration--compatibility)
-11. [Evaluation Strategy](#evaluation-strategy)
-12. [Task Tracker](#task-tracker)
-13. [Verification Checklist](#verification-checklist)
-14. [Risk Register](#risk-register)
+4. [Scope](#scope)
+5. [Guiding Principles](#guiding-principles)
+6. [Non-Negotiable Safety Constraints](#non-negotiable-safety-constraints)
+7. [Target Capabilities](#target-capabilities)
+8. [Target Architecture](#target-architecture)
+9. [Phase Plan](#phase-plan)
+10. [Implementation Sequence](#implementation-sequence)
+11. [Migration & Compatibility](#migration--compatibility)
+12. [Evaluation Strategy](#evaluation-strategy)
+13. [Task Tracker](#task-tracker)
+14. [Verification Checklist](#verification-checklist)
+15. [Risk Register](#risk-register)
 
 ---
 
@@ -197,6 +198,42 @@ Parallx AI becomes a **workspace operator**:
 - transparent about its decisions,
 - stoppable and resumable,
 - and always subordinate to user policy.
+
+This milestone is inspired by the same product class as autonomous coding or
+workspace agents, but it is **not** trying to copy a cloud-first or machine-
+wide agent model. Parallx's defining constraint is that the agent operates
+inside the workspace and nowhere else unless the user explicitly expands that
+workspace.
+
+---
+
+## Scope
+
+### In scope
+
+- a general-purpose delegated task model for workspace work;
+- explicit permissions and approval flows for autonomous actions;
+- centralized workspace-boundary enforcement for path-bearing agent actions;
+- resumable autonomous runs with visible status and blocker handling;
+- task-oriented working memory tied to delegated execution;
+- readable user-facing and developer-facing trace surfaces;
+- autonomy-specific unit, integration, e2e, and evaluation coverage.
+
+### Out of scope
+
+- unrestricted machine-wide autonomy;
+- access outside active workspace roots;
+- hidden background agents that continue acting without a visible task run;
+- internet or cloud-browsing autonomy outside supported local-first product constraints;
+- multi-agent orchestration;
+- automatic model-routing as a primary milestone theme;
+- rewriting the full chat stack from scratch.
+
+### Product boundary for this milestone
+
+Milestone 24 is about making one bounded workspace agent trustworthy and
+controllable. It is not about maximizing autonomous reach at the expense of
+clarity, locality, or debuggability.
 
 ---
 
@@ -446,6 +483,100 @@ Owns:
 - trace presentation adapters,
 - and future task-pane integration.
 
+### Core runtime data models
+
+The milestone should introduce explicit structured models rather than passing
+agent state around as prompt text or untyped blobs.
+
+#### `AgentTaskRecord`
+
+Minimum fields:
+
+- `id`
+- `workspaceId`
+- `mode`
+- `goal`
+- `constraints`
+- `autonomyLevel`
+- `status`
+- `createdAt`
+- `updatedAt`
+- `completionCriteria`
+- `artifactRefs`
+
+#### `AgentPlanStep`
+
+Minimum fields:
+
+- `id`
+- `taskId`
+- `title`
+- `description`
+- `status`
+- `kind`
+- `proposedAction`
+- `approvalState`
+- `dependsOn`
+
+#### `AgentApprovalRequest`
+
+Minimum fields:
+
+- `id`
+- `taskId`
+- `stepId`
+- `actionClass`
+- `toolName`
+- `summary`
+- `scope`
+- `reason`
+- `status`
+- `createdAt`
+- `resolvedAt`
+
+#### `AgentTraceEntry`
+
+Minimum fields:
+
+- `id`
+- `taskId`
+- `stepId?`
+- `type`
+- `summary`
+- `detail`
+- `toolName?`
+- `approvalRequestId?`
+- `stateBefore?`
+- `stateAfter?`
+- `timestamp`
+
+#### `AgentBoundaryDecision`
+
+Minimum fields:
+
+- `allowed`
+- `reason`
+- `normalizedPath?`
+- `workspaceRoot?`
+- `violationType?`
+
+### Code-organization constraints
+
+The autonomy stack must remain maintainable under active debugging. To enforce
+that, the implementation should follow these rules:
+
+1. Do not create a single catch-all agent service that owns planning, policy,
+   execution, memory, and UI.
+2. Keep persistence models, service logic, and UI adapters in separate files.
+3. Prefer wrappers around the current tool and chat runtime rather than large
+   rewrites of proven subsystems.
+4. Boundary enforcement and policy classification must be reusable services,
+   not embedded ad hoc in each tool callsite.
+5. Trace payload schemas must be explicit TypeScript types, not inferred from
+   arbitrary object literals.
+6. Each phase should add focused tests alongside its service boundary rather
+   than relying on later end-to-end coverage to prove correctness.
+
 ### Architectural rules
 
 1. Planning must not perform tool execution directly.
@@ -454,6 +585,10 @@ Owns:
 4. Memory must store structured state, not opaque prompt blobs.
 5. Boundary enforcement must live in a shared service, not scattered local
    checks.
+6. Approval state must be durable and resumable, not tied only to transient
+   widget state.
+7. Existing chat flows must remain callable without forcing every interaction
+   into the autonomous task runtime.
 
 ### Target runtime shape
 
@@ -578,6 +713,48 @@ without restarting the whole task.
 ### C.3 Bundle related approvals
 
 Avoid approval spam by grouping actions where safe and legible.
+
+### Approval policy matrix
+
+The approval system should start with a narrow, explicit matrix rather than an
+open-ended policy language.
+
+| Action category | Example | Default policy | Notes |
+|---|---|---|---|
+| Workspace read | read file, list directory, search text | allow | must still pass workspace-boundary checks |
+| Workspace search / analysis | semantic search, code usage lookup, retrieval | allow | no silent expansion outside mounted roots |
+| Draft-only synthesis | propose plan, summarize findings, prepare patch text | allow | no side effects |
+| Workspace write | create file, edit file, apply patch | require-approval | may later support trusted-mode overrides |
+| Destructive workspace mutation | delete file, overwrite large content set | require-approval | should display affected targets clearly |
+| Shell / command execution | run terminal command, create task, background process | require-approval | command preview required |
+| Boundary-violating action | read/write outside workspace roots | deny | not overridable from task prompt alone |
+| Unsupported / unregistered tool use | undeclared tool category | deny | must be surfaced as blocked state |
+
+This matrix should be implemented as product data, not buried inside prompt
+text, so the user can inspect and change policy behavior intentionally.
+
+### Approval UX contract
+
+Approval requests should be legible and low-friction.
+
+Minimum approval card contents:
+
+- action summary in user language;
+- affected files or workspace targets;
+- action class and selected tool;
+- why the agent wants to do it now;
+- policy reason for approval requirement;
+- approval scope options.
+
+Minimum approval actions:
+
+- approve once;
+- approve for this task;
+- deny;
+- cancel task.
+
+The first implementation should avoid broad permanent policy editing inside the
+approval card itself. That belongs in a dedicated policy/settings surface.
 
 ---
 
@@ -775,6 +952,180 @@ the visible autonomy level.
 
 ---
 
+## Implementation Breakdown
+
+This section translates the milestone into likely code slices so the work can
+be executed without creating an unplanned agent monolith.
+
+### Phase A implementation slice
+
+Primary outputs:
+
+- delegated task types;
+- interaction mode definitions;
+- task lifecycle enum / transition helpers.
+
+Likely file targets:
+
+- `src/agent/agentTypes.ts`
+- `src/agent/agentTaskModels.ts`
+- `src/agent/agentLifecycle.ts`
+- `src/aiSettings/` additions only if interaction mode becomes user-configurable
+
+Primary tests:
+
+- `tests/unit/agentLifecycle.test.ts`
+- `tests/unit/agentTaskModels.test.ts`
+
+### Phase B implementation slice
+
+Primary outputs:
+
+- centralized boundary checker;
+- action classification types;
+- policy resolution interface.
+
+Likely file targets:
+
+- `src/services/agentBoundaryService.ts`
+- `src/services/agentPolicyService.ts`
+- `src/services/serviceTypes.ts`
+- `src/tools/` wrappers for path-bearing actions where needed
+
+Primary tests:
+
+- `tests/unit/agentBoundaryService.test.ts`
+- `tests/unit/agentPolicyService.test.ts`
+
+### Phase C implementation slice
+
+Primary outputs:
+
+- approval request persistence;
+- approval queue service;
+- approval state transitions;
+- approval-to-resume bridge.
+
+Likely file targets:
+
+- `src/services/agentApprovalService.ts`
+- `src/services/agentTaskStore.ts`
+- `src/services/serviceTypes.ts`
+- `src/built-in/chat/` task message rendering hooks
+
+Primary tests:
+
+- `tests/unit/agentApprovalService.test.ts`
+- `tests/unit/agentTaskStore.test.ts`
+- one focused integration test for pause-on-approval behavior
+
+### Phase D implementation slice
+
+Primary outputs:
+
+- task-run persistence;
+- orchestration loop;
+- resume / continue / cancel semantics.
+
+Likely file targets:
+
+- `src/services/agentSessionService.ts`
+- `src/services/agentExecutionService.ts`
+- `src/services/agentPlanningService.ts`
+- `src/services/agentTaskStore.ts`
+
+Primary tests:
+
+- `tests/unit/agentSessionService.test.ts`
+- `tests/unit/agentExecutionService.test.ts`
+- `tests/integration/agentRuntime.integration.test.ts`
+
+### Phase E implementation slice
+
+Primary outputs:
+
+- task-scoped working-memory records;
+- memory compaction rules;
+- inspect/correct APIs.
+
+Likely file targets:
+
+- `src/services/agentMemoryService.ts`
+- `src/services/agentTaskStore.ts`
+- `src/built-in/chat/data/` task-debug snapshot additions if needed
+
+Primary tests:
+
+- `tests/unit/agentMemoryService.test.ts`
+- `tests/integration/agentMemoryCorrection.integration.test.ts`
+
+### Phase F implementation slice
+
+Primary outputs:
+
+- trace entry schema;
+- blocked-state taxonomy;
+- developer debug adapters.
+
+Likely file targets:
+
+- `src/services/agentTraceService.ts`
+- `src/services/agentBlockReason.ts`
+- `src/built-in/chat/data/chatDataService.ts`
+
+Primary tests:
+
+- `tests/unit/agentTraceService.test.ts`
+- `tests/unit/agentBlockReason.test.ts`
+
+### Phase G implementation slice
+
+Primary outputs:
+
+- task status rendering in chat;
+- approval cards;
+- completion and artifact summaries;
+- first task/trace panel bridge.
+
+Likely file targets:
+
+- `src/built-in/chat/` task rendering components
+- `src/parts/` or `src/views/` for task/trace panel bridge
+- `src/ui/` approval primitives only if existing UI primitives are insufficient
+
+Primary tests:
+
+- `tests/e2e/` delegated-task lifecycle coverage
+- `tests/e2e/` approval queue rendering / resume flow coverage
+
+### Phase H implementation slice
+
+Primary outputs:
+
+- autonomy eval fixtures;
+- policy and boundary evaluation scenarios;
+- rollout gate for autonomous defaults.
+
+Likely file targets:
+
+- `tests/ai-eval/agent-runtime.spec.ts`
+- `tests/ai-eval/scoring.ts`
+- `playwright.ai-eval.config.ts`
+
+Primary tests:
+
+- milestone-specific eval runs for representative delegated tasks;
+- negative tests proving deny/approval/cancel behavior.
+
+### File-organization rule for the implementation
+
+If a new phase appears to require a large file, split by responsibility before
+the file becomes the default place to add more behavior. The intended shape is
+many small services with explicit contracts, not a central `agentService.ts`
+that silently absorbs planning, policy, execution, trace, and UI concerns.
+
+---
+
 ## Migration & Compatibility
 
 Milestone 24 should preserve existing chat functionality while introducing a
@@ -830,6 +1181,29 @@ benchmarks.
 - integration tests for task execution and approval flows;
 - e2e tests for chat/UI interactions and resumable runs;
 - eval scenarios for representative delegated workspace tasks.
+
+### Representative eval scenarios
+
+The eval harness for this milestone should include tasks such as:
+
+- inspect the workspace and produce a cleanup plan without making edits;
+- apply documentation-only fixes automatically while asking before code edits;
+- refuse an edit request that targets a file path outside the workspace;
+- pause on a guarded write action and resume correctly after approval;
+- stop cleanly with a blocked-state explanation when the requested action is
+   denied by policy;
+- resume a partially completed delegated task after a session restart.
+
+### Minimum negative-test coverage
+
+The milestone should not be considered complete without explicit tests for:
+
+- outside-workspace path attempts,
+- denied-action non-execution,
+- approval timeout or dismissal behavior,
+- cancellation during an active autonomous run,
+- stale resumed-task recovery,
+- and trace completeness after failure.
 
 ---
 
