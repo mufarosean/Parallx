@@ -69,6 +69,22 @@ export interface AgentTaskRecord extends NormalizedDelegatedTaskInput {
   readonly artifactRefs: readonly string[];
 }
 
+export type AgentPlanStepStatus = 'pending' | 'running' | 'completed' | 'blocked' | 'cancelled';
+export type AgentPlanStepKind = 'analysis' | 'read' | 'search' | 'write' | 'edit' | 'delete' | 'command' | 'approval';
+export type AgentPlanStepApprovalState = 'not-required' | 'pending' | 'approved' | 'denied';
+
+export interface AgentPlanStep {
+  readonly id: string;
+  readonly taskId: string;
+  readonly title: string;
+  readonly description: string;
+  readonly status: AgentPlanStepStatus;
+  readonly kind: AgentPlanStepKind;
+  readonly proposedAction?: AgentProposedAction;
+  readonly approvalState: AgentPlanStepApprovalState;
+  readonly dependsOn: readonly string[];
+}
+
 export interface AgentBoundaryDecision {
   readonly allowed: boolean;
   readonly reason: string;
@@ -90,4 +106,38 @@ export interface AgentPolicyDecision {
   readonly policy: AgentActionPolicy;
   readonly reason: string;
   readonly boundaryDecisions: readonly AgentBoundaryDecision[];
+}
+
+export const AGENT_APPROVAL_STATUSES = ['pending', 'approved-once', 'approved-for-task', 'denied', 'cancelled'] as const;
+export type AgentApprovalStatus = typeof AGENT_APPROVAL_STATUSES[number];
+
+export const AGENT_APPROVAL_RESOLUTIONS = ['approve-once', 'approve-for-task', 'deny', 'cancel-task'] as const;
+export type AgentApprovalResolution = typeof AGENT_APPROVAL_RESOLUTIONS[number];
+
+export type AgentApprovalScope = 'single-action' | 'task';
+
+export interface AgentApprovalRequest {
+  readonly id: string;
+  readonly taskId: string;
+  readonly stepId: string;
+  readonly actionClass: AgentActionClass;
+  readonly toolName: string;
+  readonly summary: string;
+  readonly scope: AgentApprovalScope;
+  readonly reason: string;
+  readonly status: AgentApprovalStatus;
+  readonly createdAt: string;
+  readonly resolvedAt?: string;
+}
+
+export interface AgentApprovalRequestInput {
+  readonly id: string;
+  readonly taskId: string;
+  readonly stepId: string;
+  readonly actionClass: AgentActionClass;
+  readonly toolName: string;
+  readonly summary: string;
+  readonly scope: AgentApprovalScope;
+  readonly reason: string;
+  readonly createdAt?: string;
 }

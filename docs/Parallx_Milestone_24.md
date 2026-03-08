@@ -1220,7 +1220,7 @@ The milestone should not be considered complete without explicit tests for:
 - [x] B3. Add policy lookup and resolution model
 
 ### Phase C — Permissions & Approval System
-- [ ] C1. Implement approval policy states and persistence
+- [x] C1. Implement approval policy states and persistence
 - [ ] C2. Add approval queue and resumption flow
 - [ ] C3. Add approval bundling and explanation model
 

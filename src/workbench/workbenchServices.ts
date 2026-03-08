@@ -1,7 +1,7 @@
 // workbenchServices.ts — service registration and initialization
 
 import { ServiceCollection } from '../services/serviceCollection.js';
-import { ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
+import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IToolRegistryService, INotificationService, IActivationEventService, IToolErrorService, IConfigurationService, ICommandContributionService, IKeybindingContributionService, IMenuContributionService, IViewContributionService, IKeybindingService, IFileService, ITextFileModelManager, IDatabaseService, IWorkspaceService, ISessionManager } from '../services/serviceTypes.js';
 import { ILanguageModelsService, IChatService, IChatAgentService, IChatModeService, IChatWidgetService, ILanguageModelToolsService } from '../services/chatTypes.js';
 import { IEmbeddingService, IChunkingService, IVectorStoreService, IIndexingPipelineService, IRetrievalService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, IAISettingsService, IUnifiedAIConfigService, IDocumentExtractionService } from '../services/serviceTypes.js';
 import { LifecycleService } from './lifecycle.js';
@@ -27,6 +27,8 @@ import { ViewContributionProcessor } from '../contributions/viewContribution.js'
 import { KeybindingService } from '../services/keybindingService.js';
 import { FileService } from '../services/fileService.js';
 import { TextFileModelManager } from '../services/textFileModelManager.js';
+import { AgentTaskStore } from '../services/agentTaskStore.js';
+import { AgentApprovalService } from '../services/agentApprovalService.js';
 import { EmbeddingService } from '../services/embeddingService.js';
 import { ChunkingService } from '../services/chunkingService.js';
 import { VectorStoreService } from '../services/vectorStoreService.js';
@@ -81,6 +83,11 @@ export function registerWorkbenchServices(services: ServiceCollection): void {
   // ── Text File Model Manager (M4 Capability 1) ──
   const textFileModelManager = new TextFileModelManager(fileService);
   services.registerInstance(ITextFileModelManager, textFileModelManager);
+
+  // ── Agent task persistence + approvals (M24 Phase C foundation) ──
+  const agentTaskStore = new AgentTaskStore();
+  services.registerInstance(IAgentTaskStore, agentTaskStore);
+  services.registerInstance(IAgentApprovalService, new AgentApprovalService(agentTaskStore));
 
   // Note: IToolActivatorService is registered in the workbench after
   // all dependencies (API factory deps) are available.

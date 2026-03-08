@@ -155,7 +155,16 @@ export const IWorkspaceService = createServiceIdentifier<IWorkspaceService>('IWo
 // ─── IWorkspaceBoundaryService ───────────────────────────────────────────────
 
 import type { URI } from '../platform/uri.js';
-import type { AgentActionClass, AgentPolicyDecision, AgentProposedAction } from '../agent/agentTypes.js';
+import type {
+  AgentActionClass,
+  AgentApprovalRequest,
+  AgentApprovalRequestInput,
+  AgentApprovalResolution,
+  AgentPolicyDecision,
+  AgentProposedAction,
+  AgentTaskRecord,
+} from '../agent/agentTypes.js';
+import type { IStorage } from '../platform/storage.js';
 import type { IWorkspaceSessionContext } from '../workspace/workspaceSessionContext.js';
 
 /**
@@ -194,6 +203,69 @@ export interface IAgentPolicyService extends IDisposable {
 }
 
 export const IAgentPolicyService = createServiceIdentifier<IAgentPolicyService>('IAgentPolicyService');
+
+// ─── IAgentTaskStore ────────────────────────────────────────────────────────
+
+/**
+ * Persists agent tasks and approval requests into durable local storage.
+ */
+export interface IAgentTaskStore extends IDisposable {
+  /** Bind storage and hydrate any persisted state. */
+  setStorage(storage: IStorage): Promise<void>;
+
+  /** Insert or replace a task record. */
+  upsertTask(task: AgentTaskRecord): Promise<void>;
+
+  /** Get a task by id. */
+  getTask(taskId: string): AgentTaskRecord | undefined;
+
+  /** List tasks for a workspace. */
+  listTasksForWorkspace(workspaceId: string): readonly AgentTaskRecord[];
+
+  /** Insert or replace an approval request. */
+  upsertApprovalRequest(request: AgentApprovalRequest): Promise<void>;
+
+  /** Get an approval request by id. */
+  getApprovalRequest(requestId: string): AgentApprovalRequest | undefined;
+
+  /** List approval requests for a task. */
+  listApprovalRequestsForTask(taskId: string): readonly AgentApprovalRequest[];
+
+  /** List all pending approval requests. */
+  listPendingApprovalRequests(): readonly AgentApprovalRequest[];
+}
+
+export const IAgentTaskStore = createServiceIdentifier<IAgentTaskStore>('IAgentTaskStore');
+
+// ─── IAgentApprovalService ──────────────────────────────────────────────────
+
+/**
+ * Owns durable creation and resolution of agent approval requests.
+ */
+export interface IAgentApprovalService extends IDisposable {
+  /** Bind storage and hydrate any persisted approval state. */
+  setStorage(storage: IStorage): Promise<void>;
+
+  /** Create and persist a new pending approval request. */
+  createApprovalRequest(input: AgentApprovalRequestInput): Promise<AgentApprovalRequest>;
+
+  /** Resolve a persisted approval request. */
+  resolveApprovalRequest(requestId: string, resolution: AgentApprovalResolution, resolvedAt?: string): Promise<AgentApprovalRequest>;
+
+  /** Get a single approval request by id. */
+  getApprovalRequest(requestId: string): AgentApprovalRequest | undefined;
+
+  /** List approval requests for a task. */
+  listApprovalRequestsForTask(taskId: string): readonly AgentApprovalRequest[];
+
+  /** List pending approval requests. */
+  listPendingApprovalRequests(): readonly AgentApprovalRequest[];
+
+  /** Fires when an approval request is created or resolved. */
+  readonly onDidChangeApprovalRequests: Event<AgentApprovalRequest>;
+}
+
+export const IAgentApprovalService = createServiceIdentifier<IAgentApprovalService>('IAgentApprovalService');
 
 // ─── IDatabaseService ────────────────────────────────────────────────────────
 
