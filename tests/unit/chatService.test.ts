@@ -563,18 +563,614 @@ describe('_stripToolNarration', () => {
     expect(result).toContain('There are 5 folders.');
   });
 
-  it('strips "The user wants to know..." restating', () => {
+  it('preserves generic explanatory prefacing when no tool syntax is present', () => {
     const text = 'The user wants to know the number of files in the workspace.\n\nThere are 42 files.';
     const result = _stripToolNarration(text);
-    expect(result).not.toContain('The user wants to know');
+    expect(result).toContain('The user wants to know');
     expect(result).toContain('There are 42 files.');
   });
 
-  it('strips "To determine X, I will Y" narration', () => {
-    const text = 'To determine the number of files in the workspace, I will list all files.\n\nThere are 42 files.';
+  it('preserves "To determine X, I will Y" when it is ordinary explanation, not tool narration', () => {
+    const text = 'To determine the number of files in the workspace, I will review the indexed file list.\n\nThere are 42 files.';
     const result = _stripToolNarration(text);
-    expect(result).not.toContain('To determine');
+    expect(result).toContain('To determine the number of files');
     expect(result).toContain('There are 42 files.');
+  });
+
+  it('does not replace streamed markdown with an empty string after narration cleanup', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const sendChatRequest = vi.fn().mockReturnValue((async function* () {
+      yield {
+        content: 'The user wants to know the number of files in the workspace.',
+        done: true,
+      };
+    })());
+
+    const services = {
+      sendChatRequest,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {},
+      endToolInvocation() {}, codeBlock() {}, replaceLastMarkdown() {},
+      reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'How many files are there?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(stream.calls.markdown.join('')).toContain('The user wants to know');
+  });
+
+  it('retries once without tools when the final answer collapses to empty markdown', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const sendChatRequest = vi.fn()
+      .mockImplementationOnce(() => (async function* () {
+        yield {
+          toolCalls: [{ function: { name: 'read_file', arguments: { path: 'Claims Guide.md' } } }],
+          done: true,
+        };
+      })())
+      .mockImplementationOnce(() => (async function* () {
+        yield {
+          done: true,
+        };
+      })())
+      .mockImplementationOnce(() => (async function* () {
+        yield {
+          content: 'Call Sarah Chen at (555) 234-5678 or the 24/7 claims line 1-800-555-CLAIM within 72 hours.',
+          done: true,
+        };
+      })());
+
+    const services = {
+      sendChatRequest,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[], warnings: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      warning(content: string) { this.calls.warnings.push(content); },
+      thinking() {}, progress() {}, reference() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'How do I file a claim and who do I call?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(sendChatRequest).toHaveBeenCalledTimes(3);
+    expect(stream.calls.markdown.join('')).toContain('Sarah Chen');
+    expect(stream.calls.warnings).toEqual([]);
+  });
+
+  it('falls back to extractive retrieved-context lines when the retry is also empty', async () => {
+    const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const fallback = _buildExtractiveFallbackAnswer(
+      'How do I file a claim and who do I call?',
+      '[Retrieved Context]\n---\n[1] Source: Claims Guide.md\nPath: Claims Guide.md\n### Step 1: Report the Claim\n- Your agent: Sarah Chen — (555) 234-5678\n- 24/7 Claims Line: 1-800-555-CLAIM (2524)\n- File within 72 hours of the incident\n---',
+    );
+
+    expect(fallback).toContain('Sarah Chen');
+    expect(fallback).toContain('1-800-555-CLAIM');
+    expect(fallback).toContain('72 hours');
+  });
+
+  it('classifies missing grounded evidence as insufficient', async () => {
+    const { _assessEvidenceSufficiency } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const assessment = _assessEvidenceSufficiency(
+      'What is my collision deductible?',
+      '',
+      [],
+    );
+
+    expect(assessment.status).toBe('insufficient');
+    expect(assessment.reasons).toContain('no-grounded-sources');
+  });
+
+  it('classifies a focused single-source fact answer as sufficient', async () => {
+    const { _assessEvidenceSufficiency } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const assessment = _assessEvidenceSufficiency(
+      'What is my collision deductible?',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Auto Insurance Policy.md',
+        'Path: Auto Insurance Policy.md',
+        '### Collision Coverage',
+        '- **Deductible:** $500',
+        '---',
+      ].join('\n'),
+      [{ uri: 'Auto Insurance Policy.md', label: 'Auto Insurance Policy.md', index: 1 }],
+    );
+
+    expect(assessment.status).toBe('sufficient');
+    expect(assessment.reasons).toEqual([]);
+  });
+
+  it('classifies partial hard-query evidence as weak', async () => {
+    const { _assessEvidenceSufficiency } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const assessment = _assessEvidenceSufficiency(
+      'I was rear-ended by an uninsured driver. What should I do and what does my policy cover?',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Accident Quick Reference.md',
+        'Path: Accident Quick Reference.md',
+        '## Uninsured Driver Filing Deadlines',
+        '- After an uninsured driver accident, report the claim to your insurer.',
+        '- Report to insurer: Within 72 hours',
+        '---',
+      ].join('\n'),
+      [{ uri: 'Accident Quick Reference.md', label: 'Accident Quick Reference.md', index: 1 }],
+    );
+
+    expect(assessment.status).toBe('weak');
+    expect(assessment.reasons).toEqual(expect.arrayContaining([
+      'hard-query-low-source-coverage',
+      'hard-query-low-section-coverage',
+    ]));
+  });
+
+  it('builds a keyword-focused retrieve-again query from unresolved terms', async () => {
+    const { _buildRetrieveAgainQuery } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const query = _buildRetrieveAgainQuery(
+      'At what point would my car be declared a total loss?',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Accident Quick Reference.md',
+        'Path: Accident Quick Reference.md',
+        '## Filing Deadlines',
+        '- Report to insurer: Within 72 hours',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(query).toContain('declared');
+    expect(query).toContain('total');
+    expect(query).toContain('loss');
+  });
+
+  it('runs one retrieve-again pass when the initial evidence is insufficient', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const retrieveContext = vi.fn()
+      .mockResolvedValueOnce({
+        text: [
+          '[Retrieved Context]',
+          '---',
+          '[1] Source: Accident Quick Reference.md',
+          'Path: Accident Quick Reference.md',
+          '## Filing Deadlines',
+          '- Report to insurer: Within 72 hours',
+          '---',
+        ].join('\n'),
+        sources: [{ uri: 'Accident Quick Reference.md', label: 'Accident Quick Reference.md', index: 1 }],
+      })
+      .mockResolvedValueOnce({
+        text: [
+          '[Retrieved Context]',
+          '---',
+          '[2] Source: Vehicle Info.md',
+          'Path: Vehicle Info.md',
+          '## Estimated Current Value',
+          '- **Note:** Total loss threshold is 75% of current value (~$21,375 – $22,650).',
+          '---',
+        ].join('\n'),
+        sources: [{ uri: 'Vehicle Info.md', label: 'Vehicle Info.md', index: 2 }],
+      });
+
+    const sendChatRequest = vi.fn().mockImplementation(async function* (messages: Array<{ role: string; content: string }>) {
+      const finalUserMessage = messages[messages.length - 1]?.content ?? '';
+      expect(finalUserMessage).toContain('Vehicle Info.md');
+      yield { content: 'The total loss threshold is 75% of current value.', done: true };
+    });
+
+    const services = {
+      sendChatRequest,
+      retrieveContext,
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'At what point would my car be declared a total loss?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(retrieveContext).toHaveBeenCalledTimes(2);
+    expect(stream.calls.markdown.join('')).toContain('75%');
+  });
+
+  it('adds an evidence-insufficient response constraint when evidence stays thin after retry', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const retrieveContext = vi.fn()
+      .mockResolvedValue({
+        text: [
+          '[Retrieved Context]',
+          '---',
+          '[1] Source: Accident Quick Reference.md',
+          'Path: Accident Quick Reference.md',
+          '## Filing Deadlines',
+          '- Report to insurer: Within 72 hours',
+          '---',
+        ].join('\n'),
+        sources: [{ uri: 'Accident Quick Reference.md', label: 'Accident Quick Reference.md', index: 1 }],
+      });
+
+    const sendChatRequest = vi.fn().mockImplementation(async function* () {
+      yield { done: true };
+    });
+
+    const services = {
+      sendChatRequest,
+      retrieveContext,
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'At what point would my car be declared a total loss?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    const firstUserMessage = sendChatRequest.mock.calls[0]?.[0]?.at(-1)?.content ?? '';
+    expect(firstUserMessage).toContain('Response Constraint: If the evidence stays insufficient');
+    expect(stream.calls.markdown.join('')).toMatch(/Relevant details from retrieved context|do not have enough grounded evidence/);
+  });
+
+  it('keeps extractive fallback anchored to the matching repair-shop section', async () => {
+    const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const fallback = _buildExtractiveFallbackAnswer(
+      'Which repair shops are recommended under my policy? Please cite your sources.',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Agent Contacts.md',
+        'Path: Agent Contacts.md',
+        '## Preferred Repair Shops',
+        '1. **AutoCraft Collision Center**',
+        '2. **Precision Auto Body**',
+        '3. **Riverside Honda Service Center**',
+        '---',
+        '[2] Source: Vehicle Info.md',
+        'Path: Vehicle Info.md',
+        '## Estimated Current Value',
+        '- **Note:** Total loss threshold is 75% of current value',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(fallback).toContain('AutoCraft Collision Center');
+    expect(fallback).toContain('Precision Auto Body');
+    expect(fallback).not.toContain('Total loss threshold');
+  });
+
+  it('combines the strongest retrieved sections when a query needs contact and deadline details', async () => {
+    const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const fallback = _buildExtractiveFallbackAnswer(
+      'OK I want to file a claim. How do I do that and who do I call?',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Claims Guide.md',
+        'Path: Claims Guide.md',
+        '### Step 1: Report the Claim',
+        '**Who to contact:**',
+        '- **Your agent:** Sarah Chen — (555) 234-5678 (Mon-Fri 8am-6pm)',
+        '- **24/7 Claims Line:** 1-800-555-CLAIM (2524)',
+        '- Policy number: PLX-2026-4481',
+        '- Police report number',
+        '---',
+        '[2] Source: Auto Insurance Policy.md',
+        'Path: Auto Insurance Policy.md',
+        '## How to File a Claim',
+        '1. Call your agent or the 24/7 claims line: **1-800-555-CLAIM (2524)**',
+        '2. File within **72 hours** of the incident',
+        '---',
+        '[3] Source: Claims Guide.md',
+        'Path: Claims Guide.md',
+        '## Uninsured Motorist (UM) Claim Procedure',
+        '1. **File a police report within 24 hours** (mandatory for UM claims)',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(fallback).toContain('Sarah Chen');
+    expect(fallback).toContain('1-800-555-CLAIM');
+    expect(fallback).toContain('72 hours');
+    expect(fallback).not.toContain('mandatory for UM claims');
+  });
+
+  it('combines primary and backup coverage sections when the query asks what coverage applies', async () => {
+    const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const fallback = _buildExtractiveFallbackAnswer(
+      'They said they have insurance but I am not sure. What coverage do I have for this?',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Claims Guide.md',
+        'Path: Claims Guide.md',
+        '## Uninsured Motorist (UM) Claim Procedure',
+        '3. Your UM coverage applies: up to $100,000/$300,000 bodily injury, $25,000 property damage',
+        '---',
+        '[2] Source: Auto Insurance Policy.md',
+        'Path: Auto Insurance Policy.md',
+        '### Collision Coverage',
+        '- **Coverage Limit:** $50,000 per occurrence',
+        '- **Deductible:** $500',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(fallback).toContain('Collision Coverage');
+    expect(fallback).toContain('$500');
+    expect(fallback).toContain('UM coverage applies');
+  });
+
+  it('repairs code-oriented answers with the exact helper and stage names from retrieved context', async () => {
+    const { _repairGroundedCodeAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const repaired = _repairGroundedCodeAnswer(
+      'Which helper assembles the escalation packet in the workflow architecture doc, and what two stage names does it include?',
+      'The escalation packet is assembled by the Severity Desk Coordinator. It includes valuation and photos.',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Claims Workflow Architecture.md',
+        '```ts',
+        'export function buildEscalationPacket() {',
+        '  return {',
+        "    stages: ['policy-summary', 'valuation', 'photos', 'police-report'],",
+        "    owner: 'Severity Desk Coordinator',",
+        '  };',
+        '}',
+        '```',
+      ].join('\n'),
+    );
+
+    expect(repaired).toContain('buildEscalationPacket');
+    expect(repaired).toContain('policy-summary');
+    expect(repaired).toContain('valuation');
+  });
+
+  it('leaves non-code answers unchanged when the query is not asking for helper or stage names', async () => {
+    const { _repairGroundedCodeAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const answer = 'The Severity Desk Coordinator owns packet completeness.';
+    const repaired = _repairGroundedCodeAnswer(
+      'Who owns packet completeness in the workflow architecture doc?',
+      answer,
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Claims Workflow Architecture.md',
+        '### 3.1 Packet Ownership',
+        'The Severity Desk Coordinator is responsible for packet completeness.',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(repaired).toBe(answer);
+  });
+
+  it('uses retrieved context as a final fallback when both model passes return no markdown', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const sendChatRequest = vi.fn()
+      .mockImplementationOnce(() => (async function* () {
+        yield {
+          toolCalls: [{ function: { name: 'read_file', arguments: { path: 'Claims Guide.md' } } }],
+          done: true,
+        };
+      })())
+      .mockImplementationOnce(() => (async function* () {
+        yield { done: true };
+      })())
+      .mockImplementationOnce(() => (async function* () {
+        yield { done: true };
+      })());
+
+    const services = {
+      sendChatRequest,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      retrieveContext: vi.fn(async () => ({
+        text: [
+          '[Retrieved Context]',
+          '---',
+          '[1] Source: Claims Guide.md',
+          'Path: Claims Guide.md',
+          '### Step 1: Report the Claim',
+          '- Your agent: Sarah Chen — (555) 234-5678',
+          '- 24/7 Claims Line: 1-800-555-CLAIM (2524)',
+          '- File within 72 hours of the incident',
+          '---',
+        ].join('\n'),
+        sources: [{ uri: 'Claims Guide.md', label: 'Claims Guide.md', index: 1 }],
+      })),
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[], warnings: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      warning(content: string) { this.calls.warnings.push(content); },
+      thinking() {}, progress() {}, reference() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'OK I want to file a claim. How do I do that and who do I call?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(sendChatRequest).toHaveBeenCalledTimes(3);
+    expect(stream.calls.markdown.join('')).toContain('Sarah Chen');
+    expect(stream.calls.markdown.join('')).toContain('1-800-555-CLAIM');
+    expect(stream.calls.markdown.join('')).toContain('72 hours');
+  });
+
+  it('preserves source attribution when abort fallback synthesizes a response', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const sendChatRequest = vi.fn()
+      .mockImplementationOnce(() => (async function* () {
+        throw new DOMException('signal is aborted without reason', 'AbortError');
+      })());
+
+    const services = {
+      sendChatRequest,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      retrieveContext: vi.fn(async () => ({
+        text: [
+          '[Retrieved Context]',
+          '---',
+          '[1] Source: Agent Contacts.md',
+          'Path: Agent Contacts.md',
+          '## Preferred Repair Shops',
+          '1. **AutoCraft Collision Center**',
+          '2. **Precision Auto Body**',
+          '3. **Riverside Honda Service Center**',
+          '---',
+        ].join('\n'),
+        sources: [{ uri: 'Agent Contacts.md', label: 'Agent Contacts.md', index: 1 }],
+      })),
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[], warnings: [] as string[], citations: [] as Array<Array<{ index: number; uri: string; label: string }>> },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      warning(content: string) { this.calls.warnings.push(content); },
+      thinking() {}, progress() {}, reference() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {},
+      setCitations(citations: Array<{ index: number; uri: string; label: string }>) { this.calls.citations.push(citations); },
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'Which repair shops are recommended under my policy? Please cite your sources.', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(stream.calls.markdown.join('')).toContain('AutoCraft Collision Center');
+    expect(stream.calls.markdown.join('')).toContain('Precision Auto Body');
+    expect(stream.calls.markdown.join('')).toContain('Agent Contacts.md');
+    expect(stream.calls.citations).toHaveLength(1);
   });
 });
 
@@ -598,12 +1194,21 @@ describe('_buildMissingCitationFooter', () => {
     expect(footer).toBe('\n\nSources: [4] Agent Contacts.md; [7] Claims Guide.md');
   });
 
-  it('skips the fallback when markdown already contains visible citations', () => {
+  it('skips the fallback when markdown already names the source document', () => {
     const footer = _buildMissingCitationFooter(
-      'Recommended shops are AutoCraft Collision Center [4].',
+      'Recommended shops are listed in Agent Contacts.md.',
       [{ index: 4, label: 'Agent Contacts.md' }],
     );
 
     expect(footer).toBe('');
+  });
+
+  it('adds the fallback when markdown only has bare numeric citation text', () => {
+    const footer = _buildMissingCitationFooter(
+      'Recommended shops are AutoCraft Collision Center 4 and Precision Auto Body 4.',
+      [{ index: 4, label: 'Agent Contacts.md' }],
+    );
+
+    expect(footer).toBe('\n\nSources: [4] Agent Contacts.md');
   });
 });

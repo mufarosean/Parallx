@@ -155,6 +155,32 @@ export const RETRIEVAL_BENCHMARKS: RetrievalBenchmarkCase[] = [
       },
     ],
   },
+  {
+    id: 'T20',
+    name: 'Severity routing matrix lookup',
+    category: 'structured-document',
+    description: 'Question should resolve to the severity routing matrix in the long architecture document.',
+    turns: [
+      {
+        expectedSources: ['Claims Workflow Architecture.md'],
+        requiredTerms: ['severity desk coordinator', 'within 1 business day'],
+        requireCitation: true,
+      },
+    ],
+  },
+  {
+    id: 'T21',
+    name: 'Escalation packet builder snippet',
+    category: 'structured-document',
+    description: 'Question should resolve to the embedded code snippet in the long architecture document.',
+    turns: [
+      {
+        expectedSources: ['Claims Workflow Architecture.md'],
+        requiredTerms: ['buildEscalationPacket', 'policy-summary', 'police-report'],
+        requireCitation: true,
+      },
+    ],
+  },
 ];
 
 export function getRetrievalBenchmarkById(id: string): RetrievalBenchmarkCase | undefined {

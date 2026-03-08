@@ -7,7 +7,7 @@
  *
  * Prerequisites:
  *   - Ollama running at localhost:11434
- *   - At least one model pulled (e.g., `ollama pull qwen2.5:32b-instruct`)
+ *   - The test model pulled (default: `ollama pull gpt-oss:20b`)
  */
 import {
   test as base,
@@ -26,6 +26,7 @@ const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const DEMO_WORKSPACE_SRC = path.join(PROJECT_ROOT, 'demo-workspace');
 const ELECTRON_CLOSE_TIMEOUT = 10_000;
+const DEFAULT_TEST_CHAT_MODEL = 'gpt-oss:20b';
 
 /** Default timeout for waiting on an LLM response (2 minutes). */
 export const RESPONSE_TIMEOUT = 120_000;
@@ -41,6 +42,21 @@ export interface ChatEvalDebugSnapshot {
   retrievalTrace?: unknown;
   isRAGAvailable: boolean;
   isIndexing: boolean;
+  requestInProgress?: boolean;
+  pendingRequestCount?: number;
+  assistantMessageCount?: number;
+  lastAssistantResponseText?: string;
+  lastAssistantResponseComplete?: boolean;
+  lastAssistantPartKinds?: string[];
+  lastAssistantPartSummary?: Array<{ kind: string; preview: string }>;
+  responseDebug?: {
+    phase: string;
+    markdownLength: number;
+    yielded: boolean;
+    cancelled: boolean;
+    retrievedContextLength: number;
+    note?: string;
+  };
   retrievalGate?: {
     hasActiveSlashCommand: boolean;
     isRagReady: boolean;
@@ -64,6 +80,14 @@ async function copyDemoWorkspace(): Promise<string> {
   try {
     await fs.rm(path.join(dest, 'SMOKE_TEST_CHECKLIST.md'));
   } catch { /* may not exist */ }
+
+  const configOverride = process.env.PARALLX_AI_CONFIG_OVERRIDE;
+  if (configOverride) {
+    const overrideDir = path.join(dest, '.parallx');
+    await fs.mkdir(overrideDir, { recursive: true });
+    await fs.writeFile(path.join(overrideDir, 'ai-config.json'), configOverride, 'utf8');
+  }
+
   return dest;
 }
 
@@ -81,10 +105,19 @@ async function closeElectronApp(app: ElectronApplication): Promise<void> {
       app.close(),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Electron close timeout')), ELECTRON_CLOSE_TIMEOUT)),
     ]);
-  } catch {
+  } catch (err) {
+    console.warn(`[AI Eval] closeElectronApp fallback: ${err}`);
     if (child && child.exitCode === null && !child.killed) {
-      try { child.kill(); } catch { /* best effort */ }
+      try {
+        child.kill();
+      } catch { /* best effort */ }
     }
+  }
+
+  if (child && child.exitCode === null && !child.killed) {
+    try {
+      child.kill();
+    } catch { /* best effort */ }
   }
 }
 
@@ -95,8 +128,15 @@ async function checkOllama(): Promise<{ ok: boolean; model?: string; error?: str
     const resp = await fetch('http://localhost:11434/api/tags');
     if (!resp.ok) return { ok: false, error: `Ollama returned HTTP ${resp.status}` };
     const data = (await resp.json()) as { models?: { name: string }[] };
-    const model = data.models?.[0]?.name ?? 'unknown';
-    return { ok: true, model };
+    const requestedModel = (process.env.PARALLX_TEST_CHAT_MODEL || DEFAULT_TEST_CHAT_MODEL).trim();
+    const models = data.models?.map(model => model.name) ?? [];
+    if (!models.includes(requestedModel)) {
+      return {
+        ok: false,
+        error: `Required test model '${requestedModel}' is not installed. Available models: ${models.join(', ') || '(none)'}`,
+      };
+    }
+    return { ok: true, model: requestedModel };
   } catch (e) {
     return { ok: false, error: `Ollama not reachable at localhost:11434: ${e}` };
   }
@@ -108,7 +148,7 @@ type WorkerFixtures = {
   electronApp: ElectronApplication;
   window: Page;
   workspacePath: string;
-  /** Name of the first model reported by Ollama (e.g. "qwen2.5:32b-instruct"). */
+  /** Name of the test model required for the run (defaults to "gpt-oss:20b"). */
   ollamaModel: string;
 };
 
@@ -124,9 +164,9 @@ export const test = base.extend<{}, WorkerFixtures>({
           `\n${'='.repeat(60)}\n` +
           `  Ollama is not running!\n\n` +
           `  AI evaluation tests require a live Ollama instance.\n` +
-          `  Start it and pull a model before running:\n\n` +
+          `  Start it and pull the required test model before running:\n\n` +
           `    ollama serve\n` +
-          `    ollama pull qwen2.5:32b-instruct\n\n` +
+          `    ollama pull ${(process.env.PARALLX_TEST_CHAT_MODEL || DEFAULT_TEST_CHAT_MODEL).trim()}\n\n` +
           `  Error: ${health.error}\n` +
           `${'='.repeat(60)}\n`,
         );
@@ -157,6 +197,18 @@ export const test = base.extend<{}, WorkerFixtures>({
           PARALLX_RENDERER_PORT: '0',
         },
       });
+
+      const child = app.process();
+      if (child) {
+        child.once('exit', (code, signal) => {
+          console.warn(`[AI Eval] Electron process exited code=${code ?? 'null'} signal=${signal ?? 'null'}`);
+        });
+      }
+
+      app.on('close', () => {
+        console.warn('[AI Eval] Electron application close event fired');
+      });
+
       await use(app);
       await closeElectronApp(app);
     },
@@ -166,6 +218,12 @@ export const test = base.extend<{}, WorkerFixtures>({
   window: [
     async ({ electronApp }, use) => {
       const page = await electronApp.firstWindow();
+      page.on('close', () => {
+        console.warn(`[AI Eval] Renderer page closed url=${page.url() || '(unknown)'}`);
+      });
+      page.on('crash', () => {
+        console.warn('[AI Eval] Renderer page crashed');
+      });
       await page.waitForSelector(
         '[data-part-id="workbench.parts.titlebar"]',
         { timeout: 30_000 },
@@ -257,6 +315,58 @@ export async function waitForRagReady(page: Page, timeout = 120_000): Promise<vo
     },
     { timeout },
   );
+
+  const configOverride = process.env.PARALLX_AI_CONFIG_OVERRIDE;
+  if (configOverride) {
+    const overrideResult = await page.evaluate(async (overrideText) => {
+      const host = window as unknown as {
+        __parallx_chat_debug__?: {
+          updateWorkspaceOverride?: (patch: unknown) => Promise<void> | void;
+          getEffectiveConfig?: () => { retrieval?: { ragRerankMode?: string } } | undefined;
+        };
+      };
+      const patch = JSON.parse(overrideText) as { overrides?: unknown };
+      await host.__parallx_chat_debug__?.updateWorkspaceOverride?.(patch.overrides ?? patch);
+      return {
+        hasDebugHook: !!host.__parallx_chat_debug__,
+        hasUpdate: typeof host.__parallx_chat_debug__?.updateWorkspaceOverride === 'function',
+        mode: host.__parallx_chat_debug__?.getEffectiveConfig?.()?.retrieval?.ragRerankMode,
+      };
+    }, configOverride);
+
+    const expectedMode = JSON.parse(configOverride)?.overrides?.retrieval?.ragRerankMode;
+    if (typeof expectedMode === 'string') {
+      if (overrideResult.mode !== expectedMode) {
+        throw new Error(
+          `AI config override did not apply. expected=${expectedMode} actual=${String(overrideResult.mode)} ` +
+          `debugHook=${overrideResult.hasDebugHook} updateMethod=${overrideResult.hasUpdate}`,
+        );
+      }
+    }
+  }
+
+  const requestedModel = (process.env.PARALLX_TEST_CHAT_MODEL || DEFAULT_TEST_CHAT_MODEL).trim();
+  const modelResult = await page.evaluate(async (modelId) => {
+    const host = window as unknown as {
+      __parallx_chat_debug__?: {
+        setActiveModel?: (id: string) => Promise<void> | void;
+        getActiveModel?: () => string | undefined;
+      };
+    };
+    await host.__parallx_chat_debug__?.setActiveModel?.(modelId);
+    return {
+      hasDebugHook: !!host.__parallx_chat_debug__,
+      hasSetter: typeof host.__parallx_chat_debug__?.setActiveModel === 'function',
+      activeModel: host.__parallx_chat_debug__?.getActiveModel?.(),
+    };
+  }, requestedModel);
+
+  if (modelResult.activeModel !== requestedModel) {
+    throw new Error(
+      `Test chat model did not apply. expected=${requestedModel} actual=${String(modelResult.activeModel)} ` +
+      `debugHook=${modelResult.hasDebugHook} setter=${modelResult.hasSetter}`,
+    );
+  }
 }
 
 /** Collapse the session sidebar if it overlaps the input area. */
@@ -318,7 +428,9 @@ export async function sendAndWaitForResponse(
       document.querySelectorAll('.parallx-chat-message--assistant').length > prev,
     beforeCount,
     { timeout },
-  );
+  ).catch((err) => {
+    throw new Error(`Timed out waiting for a new assistant message container: ${err}`);
+  });
 
   // Wait for the streaming cursor to disappear (response fully rendered).
   // The agentic loop may cause the cursor to appear/disappear multiple times
@@ -338,19 +450,46 @@ export async function sendAndWaitForResponse(
     if (!cursorBack) break;
   }
 
-  // Extra settle for DOM to finalize rendering
-  await page.waitForTimeout(2_000);
-
-  // Multi-turn evals should not send the next prompt until the input is
-  // writable again. The streaming cursor can disappear before the widget has
-  // fully unwound request completion and re-enabled the textarea.
+  // The input intentionally stays writable during streaming so users can queue
+  // messages. For tests, wait on the widget's actual completion signals instead
+  // of the textarea enabled state.
   await page.waitForFunction(
-    () => {
-      const textarea = document.querySelector('.parallx-chat-input-textarea') as HTMLTextAreaElement | null;
-      return !!textarea && !textarea.disabled;
+    (previousAssistantCount: number) => {
+      const assistantCount = document.querySelectorAll('.parallx-chat-message--assistant').length;
+      if (assistantCount <= previousAssistantCount) {
+        return false;
+      }
+
+      const stopButton = document.querySelector('.parallx-chat-input-stop') as HTMLElement | null;
+      const stopHidden = !stopButton || getComputedStyle(stopButton).display === 'none';
+      const hasStreamingCursor = !!document.querySelector('.parallx-chat-streaming-cursor');
+      const pendingCount = document.querySelectorAll('.parallx-chat-pending-message').length;
+
+      return stopHidden && !hasStreamingCursor && pendingCount === 0;
     },
+    beforeCount,
     { timeout },
-  );
+  ).catch((err) => {
+    throw new Error(`Timed out waiting for widget completion state: ${err}`);
+  });
+
+  const debug = await page.evaluate(() => {
+    const host = window as unknown as {
+      __parallx_chat_debug__?: { getSnapshot?: () => unknown };
+    };
+    if (!host.__parallx_chat_debug__?.getSnapshot) {
+      return undefined;
+    }
+    try {
+      return host.__parallx_chat_debug__.getSnapshot();
+    } catch {
+      return undefined;
+    }
+  }).catch(() => undefined);
+
+  // Extra settle for DOM to finalize rendering after the data model reports a
+  // complete assistant response.
+  await page.waitForTimeout(500).catch(() => {});
 
   const latencyMs = Date.now() - start;
 
@@ -418,23 +557,11 @@ export async function sendAndWaitForResponse(
     }
 
     return parts.join('\n\n').trim();
-  }, beforeCount);
+  }, beforeCount).catch(() => '');
 
-  const debug = await page.evaluate(() => {
-    const host = window as unknown as {
-      __parallx_chat_debug__?: { getSnapshot?: () => unknown };
-    };
-    if (!host.__parallx_chat_debug__?.getSnapshot) {
-      return undefined;
-    }
-    try {
-      return host.__parallx_chat_debug__.getSnapshot();
-    } catch {
-      return undefined;
-    }
-  });
+  const resolvedText = text.trim() || debug?.lastAssistantResponseText?.trim() || '';
 
-  return { text: text.trim(), latencyMs, debug: debug as ChatEvalDebugSnapshot | undefined };
+  return { text: resolvedText, latencyMs, debug: debug as ChatEvalDebugSnapshot | undefined };
 }
 
 /**

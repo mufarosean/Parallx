@@ -51,6 +51,11 @@ describe('IUnifiedAIConfig defaults', () => {
 
   it('retrieval defaults match retrievalService constants', () => {
     // These must match the hardcoded values in retrievalService.ts
+    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragDecompositionMode).toBe('auto');
+    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragCandidateBreadth).toBe('balanced');
+    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragDiversityStrength).toBe('balanced');
+    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragStructureExpansionMode).toBe('auto');
+    expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragRerankMode).toBe('standard');
     expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragTopK).toBe(20);
     expect(DEFAULT_UNIFIED_CONFIG.retrieval.ragScoreThreshold).toBe(0.01);
   });

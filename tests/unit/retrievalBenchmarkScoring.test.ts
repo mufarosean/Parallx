@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   evaluateRetrievalMetrics,
   buildReport,
+  evaluateRetrievalRolloutGate,
+  RETRIEVAL_ROLLOUT_THRESHOLDS,
   type TestCaseResult,
 } from '../ai-eval/scoring';
 import { getRetrievalBenchmarkById, RETRIEVAL_BENCHMARKS } from '../ai-eval/retrievalBenchmark';
@@ -83,5 +85,53 @@ describe('buildReport retrieval summary', () => {
     expect(report.retrievalSummary?.turnCount).toBe(1);
     expect(report.retrievalSummary?.avgExpectedSourceHitRate).toBe(1);
     expect(report.summary).toContain('RETRIEVAL BASELINE');
+    expect(report.retrievalRolloutGate?.passesThresholds).toBe(true);
+    expect(report.retrievalRolloutGate?.rolloutAllowed).toBe(false);
+    expect(report.summary).toContain('RETRIEVAL ROLLOUT GATE');
+  });
+});
+
+describe('evaluateRetrievalRolloutGate', () => {
+  it('passes thresholds when retrieval metrics meet the rollout bar', () => {
+    const gate = evaluateRetrievalRolloutGate({
+      overallScore: RETRIEVAL_ROLLOUT_THRESHOLDS.minOverallScore,
+      retrievalSummary: {
+        turnCount: 8,
+        avgExpectedSourceHitRate: RETRIEVAL_ROLLOUT_THRESHOLDS.minExpectedSourceHitRate,
+        avgRequiredTermCoverage: RETRIEVAL_ROLLOUT_THRESHOLDS.minRequiredTermCoverage,
+        citationRate: RETRIEVAL_ROLLOUT_THRESHOLDS.minCitationRate,
+        avgForbiddenTermViolations: RETRIEVAL_ROLLOUT_THRESHOLDS.maxAvgForbiddenTermViolations,
+      },
+      manualReviewApproved: true,
+    });
+
+    expect(gate.passesThresholds).toBe(true);
+    expect(gate.rolloutAllowed).toBe(true);
+    expect(gate.reasons).toEqual([]);
+  });
+
+  it('blocks rollout when metrics miss thresholds or manual review is pending', () => {
+    const gate = evaluateRetrievalRolloutGate({
+      overallScore: 0.8,
+      retrievalSummary: {
+        turnCount: 8,
+        avgExpectedSourceHitRate: 0.9,
+        avgRequiredTermCoverage: 0.9,
+        citationRate: 0.75,
+        avgForbiddenTermViolations: 0.25,
+      },
+      manualReviewApproved: false,
+    });
+
+    expect(gate.passesThresholds).toBe(false);
+    expect(gate.rolloutAllowed).toBe(false);
+    expect(gate.reasons).toEqual(expect.arrayContaining([
+      expect.stringContaining('expected-source hit rate'),
+      expect.stringContaining('required-term coverage'),
+      expect.stringContaining('citation rate'),
+      expect.stringContaining('avg forbidden violations'),
+      expect.stringContaining('overall score'),
+      'manual regression review not yet approved',
+    ]));
   });
 });

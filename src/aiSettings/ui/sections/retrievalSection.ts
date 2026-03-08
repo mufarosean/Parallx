@@ -14,6 +14,7 @@
 import { $ } from '../../../ui/dom.js';
 import { Toggle } from '../../../ui/toggle.js';
 import { Slider } from '../../../ui/slider.js';
+import { Dropdown } from '../../../ui/dropdown.js';
 import type { IUnifiedAIConfigService, IUnifiedAIConfig } from '../../unifiedConfigTypes.js';
 import { DEFAULT_UNIFIED_CONFIG } from '../../unifiedConfigTypes.js';
 import { SettingsSection, createSettingRow } from '../sectionBase.js';
@@ -24,6 +25,11 @@ import type { IAISettingsService, AISettingsProfile } from '../../aiSettingsType
 export class RetrievalSection extends SettingsSection {
 
   private _autoRagToggle!: Toggle;
+  private _decompositionModeDropdown!: Dropdown;
+  private _candidateBreadthDropdown!: Dropdown;
+  private _diversityStrengthDropdown!: Dropdown;
+  private _structureExpansionDropdown!: Dropdown;
+  private _rerankModeDropdown!: Dropdown;
   private _topKSlider!: Slider;
   private _topKValue!: HTMLElement;
   private _maxPerSourceSlider!: Slider;
@@ -64,6 +70,121 @@ export class RetrievalSection extends SettingsSection {
       this._notifySaved('retrieval.autoRag');
     }));
     this._addRow(autoRagRow.row);
+
+    // ── Decomposition Mode ──
+    const decompositionModeRow = createSettingRow({
+      label: 'Decomposition Mode',
+      description: 'Controls whether hard questions can be split into multiple retrieval queries. Off forces a single-query retrieval plan.',
+      key: 'retrieval.ragDecompositionMode',
+      onReset: () => this._updateRetrieval({ ragDecompositionMode: defaults.ragDecompositionMode }),
+      scopePath: 'retrieval.ragDecompositionMode',
+      unifiedService: this._unifiedService,
+    });
+    this._decompositionModeDropdown = this._register(new Dropdown(decompositionModeRow.controlSlot, {
+      items: [
+        { value: 'auto', label: 'Auto' },
+        { value: 'off', label: 'Off' },
+      ],
+      selected: defaults.ragDecompositionMode,
+      ariaLabel: 'Retrieval decomposition mode',
+    }));
+    this._register(this._decompositionModeDropdown.onDidChange((value) => {
+      this._updateRetrieval({ ragDecompositionMode: value as IUnifiedAIConfig['retrieval']['ragDecompositionMode'] });
+      this._notifySaved('retrieval.ragDecompositionMode');
+    }));
+    this._addRow(decompositionModeRow.row);
+
+    // ── Candidate Breadth ──
+    const candidateBreadthRow = createSettingRow({
+      label: 'Candidate Breadth',
+      description: 'Controls how aggressively first-stage retrieval widens hard-query candidate recall. Broad affects hard queries only.',
+      key: 'retrieval.ragCandidateBreadth',
+      onReset: () => this._updateRetrieval({ ragCandidateBreadth: defaults.ragCandidateBreadth }),
+      scopePath: 'retrieval.ragCandidateBreadth',
+      unifiedService: this._unifiedService,
+    });
+    this._candidateBreadthDropdown = this._register(new Dropdown(candidateBreadthRow.controlSlot, {
+      items: [
+        { value: 'balanced', label: 'Balanced' },
+        { value: 'broad', label: 'Broad (Hard Queries)' },
+      ],
+      selected: defaults.ragCandidateBreadth,
+      ariaLabel: 'Retrieval candidate breadth',
+    }));
+    this._register(this._candidateBreadthDropdown.onDidChange((value) => {
+      this._updateRetrieval({ ragCandidateBreadth: value as IUnifiedAIConfig['retrieval']['ragCandidateBreadth'] });
+      this._notifySaved('retrieval.ragCandidateBreadth');
+    }));
+    this._addRow(candidateBreadthRow.row);
+
+    // ── Diversity Strength ──
+    const diversityStrengthRow = createSettingRow({
+      label: 'Diversity Strength',
+      description: 'Controls how strongly retrieval favors complementary evidence from different sources and headings.',
+      key: 'retrieval.ragDiversityStrength',
+      onReset: () => this._updateRetrieval({ ragDiversityStrength: defaults.ragDiversityStrength }),
+      scopePath: 'retrieval.ragDiversityStrength',
+      unifiedService: this._unifiedService,
+    });
+    this._diversityStrengthDropdown = this._register(new Dropdown(diversityStrengthRow.controlSlot, {
+      items: [
+        { value: 'balanced', label: 'Balanced' },
+        { value: 'strong', label: 'Strong' },
+      ],
+      selected: defaults.ragDiversityStrength,
+      ariaLabel: 'Retrieval diversity strength',
+    }));
+    this._register(this._diversityStrengthDropdown.onDidChange((value) => {
+      this._updateRetrieval({ ragDiversityStrength: value as IUnifiedAIConfig['retrieval']['ragDiversityStrength'] });
+      this._notifySaved('retrieval.ragDiversityStrength');
+    }));
+    this._addRow(diversityStrengthRow.row);
+
+    // ── Hard-Document Expansion ──
+    const structureExpansionRow = createSettingRow({
+      label: 'Hard-Document Expansion',
+      description: 'Controls parent-section expansion for structured or long-document anchors. Off disables the E1 expansion path.',
+      key: 'retrieval.ragStructureExpansionMode',
+      onReset: () => this._updateRetrieval({ ragStructureExpansionMode: defaults.ragStructureExpansionMode }),
+      scopePath: 'retrieval.ragStructureExpansionMode',
+      unifiedService: this._unifiedService,
+    });
+    this._structureExpansionDropdown = this._register(new Dropdown(structureExpansionRow.controlSlot, {
+      items: [
+        { value: 'auto', label: 'Auto' },
+        { value: 'off', label: 'Off' },
+      ],
+      selected: defaults.ragStructureExpansionMode,
+      ariaLabel: 'Hard-document structure expansion mode',
+    }));
+    this._register(this._structureExpansionDropdown.onDidChange((value) => {
+      this._updateRetrieval({ ragStructureExpansionMode: value as IUnifiedAIConfig['retrieval']['ragStructureExpansionMode'] });
+      this._notifySaved('retrieval.ragStructureExpansionMode');
+    }));
+    this._addRow(structureExpansionRow.row);
+
+    // ── Rerank Mode ──
+    const rerankModeRow = createSettingRow({
+      label: 'Rerank Mode',
+      description: 'Controls the second-stage reranker. Late-interaction is an experimental hard-case path and is off by default.',
+      key: 'retrieval.ragRerankMode',
+      onReset: () => this._updateRetrieval({ ragRerankMode: defaults.ragRerankMode }),
+      scopePath: 'retrieval.ragRerankMode',
+      unifiedService: this._unifiedService,
+    });
+    this._rerankModeDropdown = this._register(new Dropdown(rerankModeRow.controlSlot, {
+      items: [
+        { value: 'standard', label: 'Standard' },
+        { value: 'late-interaction', label: 'Late-Interaction (Experimental)' },
+      ],
+      selected: defaults.ragRerankMode,
+      ariaLabel: 'Retrieval rerank mode',
+    }));
+    this._register(this._rerankModeDropdown.onDidChange((value) => {
+      this._updateRetrieval({ ragRerankMode: value as IUnifiedAIConfig['retrieval']['ragRerankMode'] });
+      this._notifySaved('retrieval.ragRerankMode');
+    }));
+    this._addRow(rerankModeRow.row);
 
     // ── RAG Top K ──
     const topKRow = createSettingRow({
@@ -233,6 +354,21 @@ export class RetrievalSection extends SettingsSection {
 
     if (this._autoRagToggle.checked !== config.autoRag) {
       this._autoRagToggle.checked = config.autoRag;
+    }
+    if (this._decompositionModeDropdown.value !== config.ragDecompositionMode) {
+      this._decompositionModeDropdown.value = config.ragDecompositionMode;
+    }
+    if (this._candidateBreadthDropdown.value !== config.ragCandidateBreadth) {
+      this._candidateBreadthDropdown.value = config.ragCandidateBreadth;
+    }
+    if (this._diversityStrengthDropdown.value !== config.ragDiversityStrength) {
+      this._diversityStrengthDropdown.value = config.ragDiversityStrength;
+    }
+    if (this._structureExpansionDropdown.value !== config.ragStructureExpansionMode) {
+      this._structureExpansionDropdown.value = config.ragStructureExpansionMode;
+    }
+    if (this._rerankModeDropdown.value !== config.ragRerankMode) {
+      this._rerankModeDropdown.value = config.ragRerankMode;
     }
     if (this._topKSlider.value !== config.ragTopK) {
       this._topKSlider.value = config.ragTopK;

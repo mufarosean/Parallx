@@ -119,6 +119,23 @@ export interface HybridSearchTrace {
   keywordTrace?: KeywordSearchTrace;
 }
 
+interface StructuralCompanionRow {
+  rowid: number;
+  source_type: string;
+  source_id: string;
+  chunk_index: number;
+  chunk_text: string;
+  context_prefix: string;
+  heading_path?: string;
+  parent_heading_path?: string;
+  structural_role?: string;
+  document_kind?: string;
+  extraction_pipeline?: RetrievalExtractionPipeline;
+  extraction_fallback?: number | boolean;
+  classification_confidence?: number;
+  classification_reason?: string;
+}
+
 /** Indexing metadata for a source (page or file). */
 export interface IndexingMeta {
   sourceType: string;
@@ -518,6 +535,84 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       if (!isNaN(ms)) { map.set(row.source_id, ms); }
     }
     return map;
+  }
+
+  async getStructuralCompanions(
+    anchor: SearchResult,
+    options?: { limit?: number },
+  ): Promise<SearchResult[]> {
+    const limit = Math.max(1, Math.min(4, options?.limit ?? 2));
+    const sectionKeys = [
+      anchor.headingPath,
+      anchor.parentHeadingPath,
+    ].filter((value): value is string => typeof value === 'string' && value.length > 0);
+
+    if (sectionKeys.length === 0) {
+      return [];
+    }
+
+    const placeholders = sectionKeys.map(() => '?').join(', ');
+    const rows = await this._db.all<StructuralCompanionRow>(
+      `SELECT ve.rowid,
+              ve.source_type,
+              ve.source_id,
+              ve.chunk_index,
+              ve.chunk_text,
+              ve.context_prefix,
+              cm.heading_path,
+              cm.parent_heading_path,
+              cm.structural_role,
+              im.document_kind,
+              im.extraction_pipeline,
+              im.extraction_fallback,
+              im.classification_confidence,
+              im.classification_reason
+         FROM vec_embeddings ve
+         LEFT JOIN chunk_metadata cm ON cm.chunk_id = ve.rowid
+         LEFT JOIN indexing_metadata im ON im.source_type = ve.source_type AND im.source_id = ve.source_id
+        WHERE ve.source_type = ?
+          AND ve.source_id = ?
+          AND ve.rowid != ?
+          AND (
+            cm.heading_path IN (${placeholders})
+            OR cm.parent_heading_path IN (${placeholders})
+          )
+        ORDER BY ABS(CAST(ve.chunk_index AS INTEGER) - ?) ASC,
+                 CASE WHEN cm.heading_path = ? THEN 0 ELSE 1 END ASC,
+                 CASE WHEN cm.parent_heading_path = ? THEN 0 ELSE 1 END ASC,
+                 CAST(ve.chunk_index AS INTEGER) ASC
+        LIMIT ?`,
+      [
+        anchor.sourceType,
+        anchor.sourceId,
+        anchor.rowid,
+        ...sectionKeys,
+        ...sectionKeys,
+        anchor.chunkIndex,
+        anchor.headingPath ?? '',
+        anchor.parentHeadingPath ?? '',
+        limit,
+      ],
+    );
+
+    return rows.map((row) => ({
+      rowid: row.rowid,
+      sourceType: row.source_type,
+      sourceId: row.source_id,
+      chunkIndex: Number(row.chunk_index),
+      chunkText: row.chunk_text,
+      contextPrefix: row.context_prefix,
+      score: 0,
+      sources: ['structure-expand'],
+      headingPath: row.heading_path,
+      parentHeadingPath: row.parent_heading_path,
+      structuralRole: row.structural_role,
+      documentKind: row.document_kind,
+      extractionPipeline: row.extraction_pipeline,
+      extractionFallback: toBoolean(row.extraction_fallback),
+      classificationConfidence: row.classification_confidence,
+      classificationReason: row.classification_reason,
+    }));
   }
 
   /**

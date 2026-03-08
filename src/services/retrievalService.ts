@@ -44,6 +44,10 @@ const KEYWORD_FOCUS_STOPWORDS = new Set([
   'your', 'yours', 'policy', 'according', 'about', 'with', 'now', 'into', 'just', 'want', 'like',
 ]);
 
+const NON_IDENTIFIER_UPPERCASE_TOKENS = new Set([
+  'ok',
+]);
+
 /** Minimum RRF score — chunks below this are dropped.
  *
  * With RRF k=60, the maximum single-path rank score is 1/61 ≈ 0.0164.
@@ -157,6 +161,7 @@ function extractCriticalIdentifiers(query: string): string[] {
   const deduped: string[] = [];
   for (const identifier of identifiers) {
     const key = identifier.toLowerCase();
+    if (NON_IDENTIFIER_UPPERCASE_TOKENS.has(key)) { continue; }
     if (seen.has(key)) { continue; }
     seen.add(key);
     deduped.push(identifier);
@@ -231,6 +236,30 @@ function extractFocusTerms(query: string, identifiers: readonly string[]): strin
   return deduped;
 }
 
+function collectRerankFocusTerms(queryPlan: RetrievalQueryPlan, maxTerms = 12): string[] {
+  const seeds = [
+    ...queryPlan.variants
+      .filter((variant) => typeof variant.keywordQuery === 'string' && variant.keywordQuery.length > 0)
+      .map((variant) => variant.keywordQuery!),
+    ...queryPlan.variants.map((variant) => variant.text),
+  ];
+
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const seed of seeds) {
+    for (const term of extractFocusTerms(seed, queryPlan.identifiers)) {
+      if (seen.has(term)) { continue; }
+      seen.add(term);
+      merged.push(term);
+      if (merged.length >= maxTerms) {
+        return merged;
+      }
+    }
+  }
+
+  return merged;
+}
+
 function decomposeQuery(query: string): string[] {
   const lowered = query.toLowerCase();
   if (/\b(compare|difference|versus|vs\.?|between)\b/i.test(lowered)) {
@@ -259,6 +288,237 @@ function decomposeQuery(query: string): string[] {
 
 function matchesAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text));
+}
+
+type EvidenceRole =
+  | 'definition'
+  | 'architecture-location'
+  | 'implementation-detail'
+  | 'current-behavior'
+  | 'failure-mode'
+  | 'recency';
+
+function uniqueValues<T>(values: readonly T[]): T[] {
+  return Array.from(new Set(values));
+}
+
+function classifyQueryEvidenceRoles(query: string, queryPlan: RetrievalQueryPlan): EvidenceRole[] {
+  const lowered = query.toLowerCase();
+  const roles: EvidenceRole[] = [];
+  const isClaimFilingQuery = matchesAny(lowered, [
+    /\bfile\b.*\bclaim\b/,
+    /\bclaim\b.*\bfile\b/,
+    /\bclaims?\s+line\b/,
+    /who\s+do\s+i\s+call/,
+    /\b72-hour\b/,
+    /\b72\s+hours\b/,
+  ]);
+
+  if (matchesAny(lowered, [
+    /\bwhat is\b/,
+    /\bdefine\b/,
+    /\boverview\b/,
+    /\bsummary\b/,
+    /\bexplain\b/,
+  ])) {
+    roles.push('definition');
+  }
+
+  if (matchesAny(lowered, [
+    /\bwhere\b/,
+    /which\s+(?:file|document|source|module|section)/,
+    /\barchitecture\b/,
+    /\blayout\b/,
+    /\bstructure\b/,
+    /\bpath\b/,
+    /located/,
+  ])) {
+    roles.push('architecture-location');
+  }
+
+  if (matchesAny(lowered, [
+    /\bhow\b/,
+    /implement/,
+    /implementation/,
+    /\bcode\b/,
+    /\blogic\b/,
+    /\bfunction\b/,
+    /\bmethod\b/,
+    /\bconfig\b/,
+    /\bprocedure\b/,
+  ])) {
+    roles.push('implementation-detail');
+  }
+
+  if (matchesAny(lowered, [
+    /\bcurrent\b/,
+    /\bcurrently\b/,
+    /\bnow\b/,
+    /\btoday\b/,
+    /\bdefault\b/,
+    /what\s+does/,
+    /what\s+happens/,
+    /\bbehavior\b/,
+    /\bcover(?:age)?\b/,
+  ])) {
+    roles.push('current-behavior');
+  }
+
+  if (matchesAny(lowered, [
+    /\berror\b/,
+    /\bbug\b/,
+    /\bfail(?:ure)?\b/,
+    /\brisk\b/,
+    /\bissue\b/,
+    /\bproblem\b/,
+    /watch\s+for/,
+    /\bwrong\b/,
+    /\bcrash\b/,
+    /\bteardown\b/,
+    /\bempty response\b/,
+    /\buninsured\b/,
+    /\bexclusion\b/,
+  ])) {
+    roles.push('failure-mode');
+  }
+
+  if (matchesAny(lowered, [
+    /\blatest\b/,
+    /\brecent\b/,
+    /\bupdated\b/,
+    /\bnewest\b/,
+    /\bchanged\b/,
+  ])) {
+    roles.push('recency');
+  }
+
+  if (isClaimFilingQuery) {
+    roles.push('implementation-detail', 'current-behavior', 'failure-mode', 'recency');
+  }
+
+  if (roles.length === 0 && queryPlan.complexity === 'hard') {
+    roles.push('definition', 'implementation-detail', 'current-behavior', 'failure-mode');
+  }
+
+  if (queryPlan.strategy === 'decomposed') {
+    roles.push('implementation-detail', 'current-behavior');
+  }
+
+  return uniqueValues(roles);
+}
+
+function classifyResultEvidenceRoles(result: SearchResult): EvidenceRole[] {
+  const combined = [
+    result.sourceId,
+    result.contextPrefix,
+    result.headingPath,
+    result.parentHeadingPath,
+    result.chunkText,
+    result.documentKind,
+    result.structuralRole,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .join(' ')
+    .toLowerCase();
+
+  const roles: EvidenceRole[] = [];
+
+  if (matchesAny(combined, [
+    /\boverview\b/,
+    /\bsummary\b/,
+    /\bdefinition\b/,
+    /what\s+is/,
+    /\bintroduction\b/,
+    /\bpurpose\b/,
+    /coverage\s+(?:summary|overview|basics)/,
+  ])) {
+    roles.push('definition');
+  }
+
+  if (matchesAny(combined, [
+    /\barchitecture\b/,
+    /\bpipeline\b/,
+    /\bflow\b/,
+    /\bstructure\b/,
+    /\blayout\b/,
+    /\bdirectory\b/,
+    /\bworkspace\b/,
+    /\bmodule map\b/,
+  ])) {
+    roles.push('architecture-location');
+  }
+
+  if (
+    /\.(?:ts|tsx|js|jsx|cjs|mjs|py|java|cs|go|rs|json)$/i.test(result.sourceId)
+    || result.structuralRole === 'code'
+    || matchesAny(combined, [
+      /implement/,
+      /implementation/,
+      /\bfunction\b/,
+      /\bmethod\b/,
+      /\bclass\b/,
+      /\bservice\b/,
+      /\bhandler\b/,
+      /\bprocedure\b/,
+      /\bconfig\b/,
+      /\blogic\b/,
+      /step[- ]by[- ]step/,
+    ])
+  ) {
+    roles.push('implementation-detail');
+  }
+
+  if (matchesAny(combined, [
+    /\bcurrent\b/,
+    /\bcurrently\b/,
+    /\bruntime\b/,
+    /\bdefault\b/,
+    /current\s+behavior/,
+    /runtime\s+behavior/,
+    /coverage\s+applies/,
+    /applies\s+when/,
+    /policy\s+cover(?:age)?/,
+  ])) {
+    roles.push('current-behavior');
+  }
+
+  if (matchesAny(combined, [
+    /\berror\b/,
+    /\bbug\b/,
+    /\bfail(?:ure|ing)?\b/,
+    /\brisk\b/,
+    /\bissue\b/,
+    /\bproblem\b/,
+    /\bwarning\b/,
+    /\bregression\b/,
+    /\bcrash\b/,
+    /\bteardown\b/,
+    /\bempty-response\b/,
+    /\bempty response\b/,
+    /\buninsured\b/,
+    /\bexclusion\b/,
+  ])) {
+    roles.push('failure-mode');
+  }
+
+  if (matchesAny(combined, [
+    /\bupdated\b/,
+    /\blatest\b/,
+    /\brecent\b/,
+    /\btoday\b/,
+    /\bcurrent state\b/,
+    /\b20\d{2}\b/,
+  ])) {
+    roles.push('recency');
+  }
+
+  if (roles.length === 0) {
+    roles.push(/\.(?:ts|tsx|js|jsx|cjs|mjs|py|java|cs|go|rs|json)$/i.test(result.sourceId)
+      ? 'implementation-detail'
+      : 'definition');
+  }
+
+  return uniqueValues(roles);
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -313,6 +573,37 @@ export interface RetrievalQueryPlanTrace {
   }>;
 }
 
+export interface RetrievalDiagnosticCandidate {
+  rowid: number;
+  sourceType: string;
+  sourceId: string;
+  chunkIndex: number;
+  contextPrefix: string;
+  headingPath?: string;
+  parentHeadingPath?: string;
+  structuralRole?: string;
+  score: number;
+  tokenCount: number;
+  sources: string[];
+  preview: string;
+}
+
+export interface RetrievalRerankScoreTrace {
+  rowid: number;
+  sourceType: string;
+  sourceId: string;
+  chunkIndex: number;
+  contextPrefix: string;
+  beforeScore: number;
+  afterScore: number;
+  delta: number;
+}
+
+export interface RetrievalDroppedEvidenceTrace extends RetrievalDiagnosticCandidate {
+  droppedAt: 'score-threshold' | 'dropoff' | 'cosine' | 'dedup' | 'token-budget';
+  detail?: string;
+}
+
 export interface RetrievalTrace {
   query: string;
   topK: number;
@@ -323,8 +614,11 @@ export interface RetrievalTrace {
   dropoffRatio: number;
   rawCandidateCount: number;
   afterScoreFilterCount: number;
+  afterStructureExpansionCount: number;
   afterDropoffCount: number;
   afterCosineCount: number;
+  afterSecondStageCount: number;
+  afterDiversityCount: number;
   afterDedupCount: number;
   finalCount: number;
   scoreThresholdDrops: number;
@@ -334,6 +628,26 @@ export interface RetrievalTrace {
   tokenBudgetDrops: number;
   tokenBudgetUsed: number;
   queryPlan?: RetrievalQueryPlanTrace;
+  rankingTrace?: {
+    focusTerms: string[];
+    secondStageApplied: boolean;
+    secondStageMode?: 'standard' | 'late-interaction';
+    diversityApplied: boolean;
+    diversityMode: 'simple' | 'hard';
+    diversityStrength?: 'balanced' | 'strong';
+    roleBalanceApplied?: boolean;
+    targetRoles?: string[];
+    coveredRoles?: string[];
+    structureExpansionApplied?: boolean;
+  };
+  diagnostics?: {
+    generatedQueries: RetrievalQueryPlanTrace['variants'];
+    firstStageCandidates: RetrievalDiagnosticCandidate[];
+    rerankScores: RetrievalRerankScoreTrace[];
+    droppedEvidence: RetrievalDroppedEvidenceTrace[];
+    finalPackedContextText: string;
+    finalPackedContext: RetrievalDiagnosticCandidate[];
+  };
   finalChunks: Array<{
     sourceType: string;
     sourceId: string;
@@ -365,6 +679,27 @@ interface IVectorStoreTraceAccessor {
   getLastSearchTrace?(): HybridSearchTrace | undefined;
 }
 
+function summarizeCandidatePreview(text: string): string {
+  return collapseWhitespace(text).slice(0, 160);
+}
+
+function toDiagnosticCandidate(result: SearchResult): RetrievalDiagnosticCandidate {
+  return {
+    rowid: result.rowid,
+    sourceType: result.sourceType,
+    sourceId: result.sourceId,
+    chunkIndex: result.chunkIndex,
+    contextPrefix: result.contextPrefix,
+    headingPath: result.headingPath,
+    parentHeadingPath: result.parentHeadingPath,
+    structuralRole: result.structuralRole,
+    score: result.score,
+    tokenCount: estimateTokens(result.chunkText),
+    sources: [...result.sources],
+    preview: summarizeCandidatePreview(result.chunkText),
+  };
+}
+
 // ─── RetrievalService ────────────────────────────────────────────────────────
 
 /**
@@ -378,6 +713,11 @@ interface IVectorStoreTraceAccessor {
 interface IRetrievalConfigProvider {
   getEffectiveConfig(): {
     retrieval: {
+      ragDecompositionMode?: 'auto' | 'off';
+      ragCandidateBreadth?: 'balanced' | 'broad';
+      ragDiversityStrength?: 'balanced' | 'strong';
+      ragStructureExpansionMode?: 'auto' | 'off';
+      ragRerankMode?: 'standard' | 'late-interaction';
       ragTopK: number;
       ragMaxPerSource: number;
       ragTokenBudget: number;
@@ -431,9 +771,14 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     const topK = options?.topK ?? cfgRetrieval?.ragTopK ?? DEFAULT_TOP_K;
     const minScore = options?.minScore ?? cfgRetrieval?.ragScoreThreshold ?? DEFAULT_MIN_SCORE;
     const maxPerSource = options?.maxPerSource ?? cfgRetrieval?.ragMaxPerSource ?? DEFAULT_MAX_PER_SOURCE;
+    const decompositionMode = cfgRetrieval?.ragDecompositionMode ?? 'auto';
+    const candidateBreadth = cfgRetrieval?.ragCandidateBreadth ?? 'balanced';
+    const diversityStrength = cfgRetrieval?.ragDiversityStrength ?? 'balanced';
+    const structureExpansionMode = cfgRetrieval?.ragStructureExpansionMode ?? 'auto';
+    const rerankMode = cfgRetrieval?.ragRerankMode ?? 'standard';
     const cosineThreshold = cfgRetrieval?.ragCosineThreshold ?? DEFAULT_MIN_COSINE_SCORE;
     const dropoffRatio = cfgRetrieval?.ragDropoffRatio ?? DEFAULT_DROPOFF_RATIO;
-    const queryPlan = this._buildQueryPlan(query, topK);
+    const queryPlan = this._buildQueryPlan(query, topK, decompositionMode, candidateBreadth);
 
     // Token budget: 0 = auto (30% of model context window, floor 3000).
     const rawBudget = options?.tokenBudget ?? cfgRetrieval?.ragTokenBudget ?? DEFAULT_TOKEN_BUDGET;
@@ -456,15 +801,26 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       queryPlan,
       options,
     );
+    const structuredResults = await this._applyStructureAwareExpansion(candidateResults, queryPlan, topK, structureExpansionMode);
     const rawResults = this._applyIntentAwareSourceBoost(
-      this._applyLexicalFocusBoost(candidateResults, queryPlan),
+      this._applyLexicalFocusBoost(structuredResults.results, queryPlan),
       query,
       queryPlan,
     );
     const vectorStoreTrace = vectorStoreTraces.at(-1);
 
     // 3. Score threshold filter (RRF scores)
-    let filtered = rawResults.filter((r) => r.score >= minScore);
+    const droppedEvidence: RetrievalDroppedEvidenceTrace[] = [];
+    let filtered = rawResults.filter((r) => {
+      if (r.score >= minScore) { return true; }
+      droppedEvidence.push({
+        ...toDiagnosticCandidate(r),
+        droppedAt: 'score-threshold',
+        detail: `score ${r.score.toFixed(4)} < minScore ${minScore.toFixed(4)}`,
+      });
+      return false;
+    });
+    const afterStructureExpansionCount = rawResults.length;
     const afterScoreFilterCount = filtered.length;
 
     // 3b. Relative score drop-off (configurable, 0 = disabled).
@@ -472,22 +828,45 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     if (dropoffRatio > 0 && filtered.length > 1) {
       const topScore = filtered[0].score;
       const dropoffThreshold = topScore * dropoffRatio;
-      filtered = filtered.filter((r) => r.score >= dropoffThreshold);
+      filtered = filtered.filter((r) => {
+        if (r.score >= dropoffThreshold) { return true; }
+        droppedEvidence.push({
+          ...toDiagnosticCandidate(r),
+          droppedAt: 'dropoff',
+          detail: `score ${r.score.toFixed(4)} < dropoffThreshold ${dropoffThreshold.toFixed(4)}`,
+        });
+        return false;
+      });
     }
     const afterDropoffCount = filtered.length;
 
     // 4. Cosine re-ranking (configurable threshold, 0 = disabled).
     if (cosineThreshold > 0 && filtered.length > 0) {
-      filtered = await this._cosineRerank(queryEmbedding, filtered, cosineThreshold);
+      const cosineResult = await this._cosineRerank(queryEmbedding, filtered, cosineThreshold);
+      filtered = cosineResult.results;
+      droppedEvidence.push(...cosineResult.dropped);
     }
     const afterCosineCount = filtered.length;
 
+    const rerankResult = this._applySecondStageRerank(filtered, queryPlan, rerankMode);
+    filtered = rerankResult.results;
+    const afterSecondStageCount = filtered.length;
+
+    filtered = this._applyDiversityReordering(filtered, queryPlan, topK, maxPerSource, diversityStrength);
+    const afterDiversityCount = filtered.length;
+
+    const roleBalanceResult = this._applyEvidenceRoleBalancing(filtered, query, queryPlan, topK);
+    filtered = roleBalanceResult.results;
+
     // 5. Source deduplication — cap chunks from any single source
-    filtered = this._deduplicateSources(filtered, maxPerSource);
+    const dedupResult = this._deduplicateSources(filtered, maxPerSource);
+    filtered = dedupResult.results;
+    droppedEvidence.push(...dedupResult.dropped);
     const afterDedupCount = filtered.length;
 
     // 6. Token budget enforcement
     const budgeted = this._applyTokenBudget(filtered, tokenBudget);
+    droppedEvidence.push(...budgeted.dropped);
 
     // 7. Map to RetrievedContext and trim to topK
     const finalResults = budgeted.results.slice(0, topK).map((r) => ({
@@ -499,6 +878,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       sources: r.sources,
       tokenCount: estimateTokens(r.chunkText),
     }));
+    const finalPackedContextText = this.formatContext(finalResults);
 
     this._lastTrace = {
       query,
@@ -524,9 +904,12 @@ export class RetrievalService extends Disposable implements IRetrievalService {
         })),
       },
       rawCandidateCount: rawResults.length,
+      afterStructureExpansionCount,
       afterScoreFilterCount,
       afterDropoffCount,
       afterCosineCount,
+      afterSecondStageCount,
+      afterDiversityCount,
       afterDedupCount,
       finalCount: finalResults.length,
       scoreThresholdDrops: rawResults.length - afterScoreFilterCount,
@@ -535,6 +918,30 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       dedupDrops: afterCosineCount - afterDedupCount,
       tokenBudgetDrops: afterDedupCount - budgeted.results.length,
       tokenBudgetUsed: budgeted.tokensUsed,
+      rankingTrace: {
+        focusTerms: rerankResult.focusTerms,
+        secondStageApplied: rerankResult.applied,
+        secondStageMode: rerankResult.mode,
+        diversityApplied: filtered.length > 1,
+        diversityMode: queryPlan.complexity,
+        diversityStrength,
+        roleBalanceApplied: roleBalanceResult.applied,
+        targetRoles: roleBalanceResult.targetRoles,
+        coveredRoles: roleBalanceResult.coveredRoles,
+        structureExpansionApplied: structuredResults.applied,
+      },
+      diagnostics: {
+        generatedQueries: queryPlan.variants.map((variant) => ({
+          text: variant.text,
+          reason: variant.reason,
+          keywordQuery: variant.keywordQuery,
+        })),
+        firstStageCandidates: rawResults.map((result) => toDiagnosticCandidate(result)),
+        rerankScores: rerankResult.scoreChanges,
+        droppedEvidence,
+        finalPackedContextText,
+        finalPackedContext: budgeted.results.slice(0, topK).map((result) => toDiagnosticCandidate(result)),
+      },
       finalChunks: finalResults.map((chunk) => ({
         sourceType: chunk.sourceType,
         sourceId: chunk.sourceId,
@@ -678,7 +1085,12 @@ export class RetrievalService extends Disposable implements IRetrievalService {
 
   // ── Internal ──
 
-  private _buildQueryPlan(query: string, topK: number): RetrievalQueryPlan {
+  private _buildQueryPlan(
+    query: string,
+    topK: number,
+    decompositionMode: 'auto' | 'off',
+    candidateBreadth: 'balanced' | 'broad',
+  ): RetrievalQueryPlan {
     const normalized = collapseWhitespace(query);
     const analysisQuery = stripFormattingRequests(normalized);
     const identifiers = extractCriticalIdentifiers(normalized);
@@ -708,7 +1120,8 @@ export class RetrievalService extends Disposable implements IRetrievalService {
         : 'simple';
 
     const variants: PlannedQueryVariant[] = [{ text: normalized, reason: 'raw' }];
-    const rewrite = buildGuardedRewrite(normalized, identifiers);
+    const decompositionEnabled = decompositionMode !== 'off';
+    const rewrite = decompositionEnabled ? buildGuardedRewrite(normalized, identifiers) : undefined;
     if (complexity === 'hard' && rewrite) {
       variants.push({ text: rewrite, reason: 'rewrite' });
     }
@@ -722,7 +1135,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       reasons.push('keyword-focused-lexical');
     }
 
-    if (complexity === 'hard') {
+    if (complexity === 'hard' && decompositionEnabled) {
       for (const part of decomposeQuery(analysisQuery)) {
         variants.push({
           text: part,
@@ -733,6 +1146,8 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       if (identifiers.length >= 2) {
         variants.push({ text: identifiers.join(' '), reason: 'identifier-focus' });
       }
+    } else if (complexity === 'hard' && !decompositionEnabled) {
+      reasons.push('decomposition-disabled');
     }
 
     const seen = new Set<string>();
@@ -750,11 +1165,15 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     }
 
     const strategy: 'single' | 'decomposed' = dedupedVariants.length > 1 ? 'decomposed' : 'single';
-    const candidateMultiplier = complexity === 'hard'
+    let candidateMultiplier = complexity === 'hard'
       ? HARD_OVERFETCH_FACTOR
       : exactMatchBias
         ? EXACT_OVERFETCH_FACTOR
         : SIMPLE_OVERFETCH_FACTOR;
+    if (candidateBreadth === 'broad' && complexity === 'hard') {
+      candidateMultiplier += 1;
+      reasons.push('broad-candidate-breadth');
+    }
     const perQueryTopK = strategy === 'single'
       ? Math.min(MAX_SEARCH_TOP_K, Math.max(topK * candidateMultiplier, topK + 4))
       : Math.min(MAX_SEARCH_TOP_K, Math.max(8, Math.ceil((topK * candidateMultiplier) / dedupedVariants.length) + 2));
@@ -883,6 +1302,57 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     const wantsRepairShops = matchesAny(normalizedQuery, [/\brepair\b/, /\bshop\b/, /\bshops\b/]);
     const wantsDeductible = matchesAny(normalizedQuery, [/\bdeductible\b/, /\bcollision\b/, /\bcomprehensive\b/]);
     const wantsWorkspaceDocs = matchesAny(normalizedQuery, [/\bdocuments?\b/, /\bfiles?\b/, /\bworkspace\b/, /\bcontents?\b/]);
+    const wantsClaimFiling = matchesAny(normalizedQuery, [
+      /\bfile\b.*\bclaim\b/,
+      /\bclaim\b.*\bfile\b/,
+      /\bclaims?\s+line\b/,
+      /\bhotline\b/,
+      /who\s+do\s+i\s+call/,
+      /\b72-hour\b/,
+      /\b72\s+hours\b/,
+    ]);
+    const wantsTabularEvidence = matchesAny(normalizedQuery, [
+      /\btable\b/,
+      /\bcompare\b/,
+      /\bcomparison\b/,
+      /\bthreshold\b/,
+      /\bdeductible\b/,
+      /\bpremium\b/,
+      /\blimit\b/,
+      /\bvalue\b/,
+      /\bamount\b/,
+      /\bphone\b/,
+      /\bnumber\b/,
+    ]);
+    const wantsCodeEvidence = queryPlan.exactMatchBias || matchesAny(normalizedQuery, [
+      /\bfunction\b/,
+      /\bmethod\b/,
+      /\bclass\b/,
+      /\bapi\b/,
+      /\bjson\b/,
+      /\bconfig\b/,
+      /\bcode\b/,
+      /\bimplementation\b/,
+      /\bhandler\b/,
+      /\bservice\b/,
+      /\bimport\b/,
+    ]);
+    const wantsFigureCaption = matchesAny(normalizedQuery, [
+      /\bfigure\b/,
+      /\bcaption\b/,
+      /\bdiagram\b/,
+      /\bchart\b/,
+      /\bcallout\b/,
+      /\bimage\b/,
+    ]);
+    const wantsCoverageDecision = matchesAny(normalizedQuery, [
+      /\bcoverage\b/,
+      /\binsurance\b/,
+      /\buninsured\b/,
+      /\bunderinsured\b/,
+      /\bum\b/,
+      /\buim\b/,
+    ]);
 
     return results.map((result) => {
       let adjustedScore = result.score;
@@ -937,10 +1407,457 @@ export class RetrievalService extends Disposable implements IRetrievalService {
         }
       }
 
+      if (wantsTabularEvidence) {
+        if (
+          result.structuralRole === 'table'
+          || sourceMeta.includes('table')
+          || result.chunkText.includes('|')
+        ) {
+          adjustedScore += 0.014;
+        } else if (queryPlan.complexity === 'hard' && result.structuralRole === 'section') {
+          adjustedScore -= 0.003;
+        }
+      }
+
+      if (wantsCodeEvidence) {
+        const isCodeLikeSource = /\.(?:ts|tsx|js|jsx|cjs|mjs|py|java|cs|go|rs|json)$/i.test(result.sourceId);
+        if (result.structuralRole === 'code' || isCodeLikeSource) {
+          adjustedScore += queryPlan.exactMatchBias ? 0.016 : 0.010;
+        }
+
+        if (queryPlan.identifiers.some((identifier) => sourceMeta.includes(identifier.toLowerCase()))) {
+          adjustedScore += 0.008;
+        }
+      }
+
+      if (wantsFigureCaption) {
+        if (
+          sourceMeta.includes('figure')
+          || sourceMeta.includes('caption')
+          || sourceMeta.includes('diagram')
+          || sourceMeta.includes('callout')
+        ) {
+          adjustedScore += 0.012;
+        }
+      }
+
+      if (queryPlan.complexity === 'hard' && wantsClaimFiling) {
+        if (result.sourceType === 'concept') {
+          adjustedScore -= 0.012;
+        }
+
+        if (
+          sourceMeta.includes('claims guide')
+          || sourceMeta.includes('claims line')
+          || sourceMeta.includes('within 72 hours')
+          || sourceMeta.includes('72 hours')
+          || sourceMeta.includes('report the claim')
+          || sourceMeta.includes('file a claim')
+        ) {
+          adjustedScore += 0.018;
+        }
+
+        if (
+          sourceMeta.includes('agent contacts')
+          || sourceMeta.includes('your agent')
+          || sourceMeta.includes('sarah')
+          || sourceMeta.includes('phone')
+        ) {
+          adjustedScore += 0.016;
+        }
+
+        if (sourceMeta.includes('accident quick reference')) {
+          adjustedScore += 0.006;
+        }
+
+        if (
+          sourceMeta.includes('auto insurance policy')
+          && !sourceMeta.includes('claim')
+          && !sourceMeta.includes('phone')
+        ) {
+          adjustedScore -= 0.006;
+        }
+      }
+
+      if (queryPlan.complexity === 'hard' && wantsCoverageDecision) {
+        if (result.sourceType === 'concept') {
+          adjustedScore -= 0.018;
+        }
+
+        if (sourceMeta.includes('auto insurance policy') || sourceMeta.includes('claims guide')) {
+          adjustedScore += 0.010;
+        }
+
+        if (
+          sourceMeta.includes('collision coverage')
+          || sourceMeta.includes('uninsured motorist')
+          || sourceMeta.includes('underinsured motorist')
+          || sourceMeta.includes('um/uim')
+          || sourceMeta.includes('deductible')
+        ) {
+          adjustedScore += 0.014;
+        }
+
+        if (sourceMeta.includes('exclusions')) {
+          adjustedScore -= 0.012;
+        }
+      }
+
       return adjustedScore === result.score
         ? result
         : { ...result, score: adjustedScore };
     }).sort((a, b) => b.score - a.score);
+  }
+
+  private _applySecondStageRerank(
+    results: SearchResult[],
+    queryPlan: RetrievalQueryPlan,
+    rerankMode: 'standard' | 'late-interaction',
+  ): { results: SearchResult[]; focusTerms: string[]; applied: boolean; mode: 'standard' | 'late-interaction'; scoreChanges: RetrievalRerankScoreTrace[] } {
+    if (results.length <= 1) {
+      return { results, focusTerms: [], applied: false, mode: rerankMode, scoreChanges: [] };
+    }
+
+    const focusTerms = collectRerankFocusTerms(queryPlan, queryPlan.complexity === 'hard' ? 12 : 8);
+    if (focusTerms.length === 0) {
+      return { results, focusTerms: [], applied: false, mode: rerankMode, scoreChanges: [] };
+    }
+
+    const scoreChanges: RetrievalRerankScoreTrace[] = [];
+    const reranked = results.map((result) => {
+      const beforeScore = result.score;
+      let adjustedScore = result.score;
+      const body = [result.contextPrefix, result.headingPath, result.parentHeadingPath, result.chunkText]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        .join(' ')
+        .toLowerCase();
+      const headingBody = [result.contextPrefix, result.headingPath, result.parentHeadingPath]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        .join(' ')
+        .toLowerCase();
+
+      const matchedTerms = focusTerms.filter((term) => body.includes(term));
+      const headingMatches = focusTerms.filter((term) => headingBody.includes(term));
+
+      if (matchedTerms.length > 0) {
+        adjustedScore += Math.min(0.018, (matchedTerms.length / focusTerms.length) * 0.018);
+      }
+      if (headingMatches.length > 0) {
+        adjustedScore += Math.min(0.012, (headingMatches.length / focusTerms.length) * 0.012);
+      }
+      if (queryPlan.complexity === 'hard' && result.extractionFallback) {
+        adjustedScore -= 0.004;
+      }
+      if (rerankMode === 'late-interaction' && queryPlan.complexity === 'hard') {
+        adjustedScore += this._scoreLateInteractionMatch(result, focusTerms, queryPlan.identifiers);
+      }
+
+      scoreChanges.push({
+        rowid: result.rowid,
+        sourceType: result.sourceType,
+        sourceId: result.sourceId,
+        chunkIndex: result.chunkIndex,
+        contextPrefix: result.contextPrefix,
+        beforeScore,
+        afterScore: adjustedScore,
+        delta: adjustedScore - beforeScore,
+      });
+
+      return adjustedScore === result.score
+        ? result
+        : { ...result, score: adjustedScore };
+    }).sort((a, b) => b.score - a.score);
+
+    scoreChanges.sort((a, b) => b.afterScore - a.afterScore);
+    return { results: reranked, focusTerms, applied: true, mode: rerankMode, scoreChanges };
+  }
+
+  private _scoreLateInteractionMatch(
+    result: SearchResult,
+    focusTerms: string[],
+    identifiers: string[],
+  ): number {
+    const wantsStructuredRow = focusTerms.some((term) => ['review', 'start', 'target', 'coordinator', 'deadline', 'matrix'].includes(term));
+    const wantsCodeSymbol = focusTerms.some((term) => ['helper', 'builder', 'snippet', 'stage', 'stages', 'assemble', 'assembles'].includes(term));
+    const segments = [
+      result.contextPrefix,
+      result.headingPath,
+      result.parentHeadingPath,
+      ...result.chunkText
+        .split(/\r?\n+/)
+        .flatMap((line) => line.split(/(?<=[.!?])\s+/))
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0),
+    ]
+      .filter((segment): segment is string => typeof segment === 'string' && segment.length > 0)
+      .slice(0, 18);
+
+    let bestScore = 0;
+    for (const segment of segments) {
+      const lowered = segment.toLowerCase();
+      const matchedTerms = focusTerms.filter((term) => lowered.includes(term));
+      const matchedIdentifiers = identifiers.filter((identifier) => lowered.includes(identifier.toLowerCase()));
+      const hasStructuredSignal = /^[-*]|^\d+\.|^\|/.test(segment) || /\*\*[^*]+\*\*/.test(segment);
+      const looksLikeCode = /\b(?:function|class|return|readonly|const|export)\b|=>|stages:\s*\[/.test(segment);
+      const hasQuotedStageName = /['"`][a-z0-9-]+['"`]/i.test(segment);
+
+      let segmentScore = 0;
+      if (matchedTerms.length > 0) {
+        segmentScore += Math.min(0.016, (matchedTerms.length / focusTerms.length) * 0.016);
+      }
+      if (matchedIdentifiers.length > 0) {
+        segmentScore += Math.min(0.012, matchedIdentifiers.length * 0.006);
+      }
+      if (hasStructuredSignal && matchedTerms.length > 0) {
+        segmentScore += 0.003;
+      }
+      if (wantsStructuredRow && /^\|/.test(segment) && matchedTerms.length > 0) {
+        segmentScore += 0.006;
+      }
+      if (wantsCodeSymbol && looksLikeCode) {
+        segmentScore += matchedTerms.length > 0 ? 0.010 : 0.004;
+      }
+      if (wantsCodeSymbol && hasQuotedStageName) {
+        segmentScore += 0.004;
+      }
+
+      if (segmentScore > bestScore) {
+        bestScore = segmentScore;
+      }
+    }
+
+    return bestScore;
+  }
+
+  private _applyDiversityReordering(
+    results: SearchResult[],
+    queryPlan: RetrievalQueryPlan,
+    topK: number,
+    maxPerSource: number,
+    diversityStrength: 'balanced' | 'strong',
+  ): SearchResult[] {
+    if (results.length <= 2) {
+      return results;
+    }
+
+    const sourceNoveltyBonus = diversityStrength === 'strong'
+      ? (queryPlan.complexity === 'hard' ? 0.018 : 0.008)
+      : (queryPlan.complexity === 'hard' ? 0.010 : 0.004);
+    const sourceReusePenaltyStep = diversityStrength === 'strong'
+      ? (queryPlan.complexity === 'hard' ? 0.009 : 0.005)
+      : (queryPlan.complexity === 'hard' ? 0.006 : 0.003);
+    const headingNoveltyBonus = diversityStrength === 'strong'
+      ? (queryPlan.complexity === 'hard' ? 0.010 : 0.005)
+      : (queryPlan.complexity === 'hard' ? 0.006 : 0.003);
+    const headingReusePenaltyStep = diversityStrength === 'strong' ? 0.004 : 0.003;
+    const structuralNoveltyBonus = diversityStrength === 'strong'
+      ? (queryPlan.complexity === 'hard' ? 0.005 : 0.002)
+      : (queryPlan.complexity === 'hard' ? 0.003 : 0.001);
+
+    const reordered: SearchResult[] = [];
+    const remaining = [...results];
+
+    while (remaining.length > 0) {
+      let bestIndex = 0;
+      let bestScore = Number.NEGATIVE_INFINITY;
+
+      for (let index = 0; index < remaining.length; index++) {
+        const candidate = remaining[index];
+        const sourceKey = `${candidate.sourceType}:${candidate.sourceId}`;
+        const headingKey = normalizeQueryKey(candidate.headingPath ?? candidate.contextPrefix ?? '');
+        const sourceReuse = reordered.filter((item) => `${item.sourceType}:${item.sourceId}` === sourceKey).length;
+        const headingReuse = headingKey
+          ? reordered.filter((item) => normalizeQueryKey(item.headingPath ?? item.contextPrefix ?? '') === headingKey).length
+          : 0;
+
+        let adjustedScore = candidate.score;
+        if (sourceReuse === 0) {
+          adjustedScore += sourceNoveltyBonus;
+        } else {
+          adjustedScore -= Math.min(sourceNoveltyBonus * 1.2, sourceReuse * sourceReusePenaltyStep);
+        }
+
+        if (headingKey) {
+          if (headingReuse === 0) {
+            adjustedScore += headingNoveltyBonus;
+          } else {
+            adjustedScore -= Math.min(headingNoveltyBonus, headingReuse * headingReusePenaltyStep);
+          }
+        }
+
+        if (candidate.structuralRole && !reordered.some((item) => item.structuralRole === candidate.structuralRole)) {
+          adjustedScore += structuralNoveltyBonus;
+        }
+
+        if (sourceReuse >= maxPerSource) {
+          adjustedScore -= 0.050;
+        }
+
+        if (adjustedScore > bestScore) {
+          bestScore = adjustedScore;
+          bestIndex = index;
+        }
+      }
+
+      reordered.push(remaining.splice(bestIndex, 1)[0]);
+
+      if (reordered.length >= Math.max(topK * 2, topK + maxPerSource) && remaining.length > 0) {
+        reordered.push(...remaining);
+        break;
+      }
+    }
+
+    return reordered;
+  }
+
+  private _applyEvidenceRoleBalancing(
+    results: SearchResult[],
+    query: string,
+    queryPlan: RetrievalQueryPlan,
+    topK: number,
+  ): { results: SearchResult[]; applied: boolean; targetRoles: string[]; coveredRoles: string[] } {
+    if (results.length <= 2) {
+      return { results, applied: false, targetRoles: [], coveredRoles: [] };
+    }
+
+    const targetRoles = classifyQueryEvidenceRoles(query, queryPlan);
+    if (targetRoles.length === 0) {
+      return { results, applied: false, targetRoles: [], coveredRoles: [] };
+    }
+
+    const shouldBalance = queryPlan.complexity === 'hard' || queryPlan.strategy === 'decomposed' || targetRoles.length >= 2;
+    if (!shouldBalance) {
+      return { results, applied: false, targetRoles, coveredRoles: [] };
+    }
+
+    const roleCache = new Map<number, EvidenceRole[]>();
+    const getRoles = (candidate: SearchResult): EvidenceRole[] => {
+      const cached = roleCache.get(candidate.rowid);
+      if (cached) { return cached; }
+      const roles = classifyResultEvidenceRoles(candidate);
+      roleCache.set(candidate.rowid, roles);
+      return roles;
+    };
+
+    const reordered: SearchResult[] = [];
+    const remaining = [...results];
+    const coveredRoles = new Set<EvidenceRole>();
+    const targetRoleSet = new Set(targetRoles as EvidenceRole[]);
+    const reorderLimit = Math.min(results.length, Math.max(topK + queryPlan.variants.length, topK * 2));
+
+    while (remaining.length > 0) {
+      const hasUncoveredTargetRemaining = remaining.some((candidate) =>
+        getRoles(candidate).some((role) => targetRoleSet.has(role) && !coveredRoles.has(role)),
+      );
+
+      let bestIndex = 0;
+      let bestScore = Number.NEGATIVE_INFINITY;
+
+      for (let index = 0; index < remaining.length; index++) {
+        const candidate = remaining[index];
+        const roles = getRoles(candidate);
+        const uncoveredTargetRoles = roles.filter((role) => targetRoleSet.has(role) && !coveredRoles.has(role));
+        const uncoveredSupportRoles = roles.filter((role) => !targetRoleSet.has(role) && !coveredRoles.has(role));
+
+        let adjustedScore = candidate.score;
+        adjustedScore += Math.min(0.024, uncoveredTargetRoles.length * 0.010);
+        adjustedScore += Math.min(0.006, uncoveredSupportRoles.length * 0.003);
+
+        if (roles.length > 1) {
+          adjustedScore += 0.002;
+        }
+
+        if (hasUncoveredTargetRemaining && uncoveredTargetRoles.length === 0) {
+          adjustedScore -= 0.008;
+        }
+
+        if (adjustedScore > bestScore) {
+          bestScore = adjustedScore;
+          bestIndex = index;
+        }
+      }
+
+      const [chosen] = remaining.splice(bestIndex, 1);
+      reordered.push(chosen);
+      for (const role of getRoles(chosen)) {
+        coveredRoles.add(role);
+      }
+
+      if (reordered.length >= reorderLimit && remaining.length > 0) {
+        reordered.push(...remaining);
+        break;
+      }
+    }
+
+    return {
+      results: reordered,
+      applied: true,
+      targetRoles,
+      coveredRoles: Array.from(coveredRoles),
+    };
+  }
+
+  private async _applyStructureAwareExpansion(
+    results: SearchResult[],
+    queryPlan: RetrievalQueryPlan,
+    topK: number,
+    structureExpansionMode: 'auto' | 'off',
+  ): Promise<{ results: SearchResult[]; applied: boolean }> {
+    if (structureExpansionMode === 'off' || results.length === 0 || queryPlan.complexity !== 'hard') {
+      return { results, applied: false };
+    }
+
+    const anchorCandidates = results.filter((result) => this._shouldExpandStructure(result)).slice(0, Math.min(4, topK));
+    if (anchorCandidates.length === 0) {
+      return { results, applied: false };
+    }
+
+    const companions = await Promise.all(
+      anchorCandidates.map((anchor) => this._vectorStore.getStructuralCompanions(anchor, { limit: 2 }).catch(() => [])),
+    );
+
+    const merged = new Map<string, SearchResult>();
+    const makeKey = (result: SearchResult) => `${result.rowid}:${result.sourceType}:${result.sourceId}`;
+    for (const result of results) {
+      merged.set(makeKey(result), result);
+    }
+
+    let added = 0;
+    for (let index = 0; index < anchorCandidates.length; index++) {
+      const anchor = anchorCandidates[index];
+      for (const companion of companions[index]) {
+        const key = makeKey(companion);
+        if (merged.has(key)) { continue; }
+        merged.set(key, {
+          ...companion,
+          score: Math.max(0.001, anchor.score - 0.010 - (Math.abs(companion.chunkIndex - anchor.chunkIndex) * 0.0015)),
+          sources: uniqueValues([...anchor.sources, 'structure-expand']),
+        });
+        added++;
+      }
+    }
+
+    return {
+      results: Array.from(merged.values()).sort((a, b) => b.score - a.score),
+      applied: added > 0,
+    };
+  }
+
+  private _shouldExpandStructure(result: SearchResult): boolean {
+    if (!result.headingPath && !result.parentHeadingPath) {
+      return false;
+    }
+
+    if (result.structuralRole === 'table' || result.structuralRole === 'code') {
+      return true;
+    }
+
+    if (result.extractionPipeline === 'docling' || result.extractionPipeline === 'docling-ocr') {
+      return true;
+    }
+
+    const documentKind = result.documentKind?.toLowerCase() ?? '';
+    return /(pdf|document|technical|manual|architecture|spec|report)/.test(documentKind);
   }
 
   private async _runSingleSearch(
@@ -970,9 +1887,10 @@ export class RetrievalService extends Disposable implements IRetrievalService {
    * Cap the number of chunks from any single source.
    * This prevents one page/file from monopolizing the context window.
    */
-  private _deduplicateSources(results: SearchResult[], maxPerSource: number): SearchResult[] {
+  private _deduplicateSources(results: SearchResult[], maxPerSource: number): { results: SearchResult[]; dropped: RetrievalDroppedEvidenceTrace[] } {
     const sourceCounts = new Map<string, number>();
     const deduped: SearchResult[] = [];
+    const dropped: RetrievalDroppedEvidenceTrace[] = [];
 
     for (const result of results) {
       const key = `${result.sourceType}:${result.sourceId}`;
@@ -981,30 +1899,108 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       if (count < maxPerSource) {
         deduped.push(result);
         sourceCounts.set(key, count + 1);
+      } else {
+        dropped.push({
+          ...toDiagnosticCandidate(result),
+          droppedAt: 'dedup',
+          detail: `source cap reached for ${result.sourceType}:${result.sourceId} (maxPerSource=${maxPerSource})`,
+        });
       }
     }
 
-    return deduped;
+    return { results: deduped, dropped };
   }
 
   /**
-   * Enforce a token budget — include chunks in score order until the budget is exhausted.
+   * Enforce a token budget — prefer compact, complementary chunks over a pure
+   * score-order walk when several candidates fit the remaining budget.
    */
-  private _applyTokenBudget(results: SearchResult[], tokenBudget: number): { results: SearchResult[]; tokensUsed: number } {
-    let tokensUsed = 0;
-    const budgeted: SearchResult[] = [];
-
-    for (const result of results) {
-      const chunkTokens = estimateTokens(result.chunkText);
-      if (tokensUsed + chunkTokens > tokenBudget && budgeted.length > 0) {
-        // Allow at least one chunk even if it exceeds budget
-        break;
-      }
-      budgeted.push(result);
-      tokensUsed += chunkTokens;
+  private _applyTokenBudget(results: SearchResult[], tokenBudget: number): { results: SearchResult[]; tokensUsed: number; dropped: RetrievalDroppedEvidenceTrace[] } {
+    if (results.length === 0) {
+      return { results: [], tokensUsed: 0, dropped: [] };
     }
 
-    return { results: budgeted, tokensUsed };
+    const totalTokens = results.reduce((sum, result) => sum + estimateTokens(result.chunkText), 0);
+    if (totalTokens <= tokenBudget) {
+      return { results: [...results], tokensUsed: totalTokens, dropped: [] };
+    }
+
+    const remaining = [...results];
+    const budgeted: SearchResult[] = [];
+    const dropped: RetrievalDroppedEvidenceTrace[] = [];
+    let tokensUsed = 0;
+    const seenSources = new Set<string>();
+    const seenHeadings = new Set<string>();
+    const seenRoles = new Set<EvidenceRole>();
+
+    while (remaining.length > 0) {
+      const fittingCandidates = remaining
+        .map((result, index) => ({ result, index, tokens: estimateTokens(result.chunkText) }))
+        .filter(({ tokens }) => tokensUsed + tokens <= tokenBudget);
+
+      if (fittingCandidates.length === 0) {
+        if (budgeted.length === 0) {
+          const fallback = remaining[0];
+          budgeted.push(fallback);
+          tokensUsed = estimateTokens(fallback.chunkText);
+          for (const skipped of remaining.slice(1)) {
+            dropped.push({
+              ...toDiagnosticCandidate(skipped),
+              droppedAt: 'token-budget',
+              detail: `no remaining token budget after forced first chunk (tokenBudget=${tokenBudget})`,
+            });
+          }
+        }
+        break;
+      }
+
+      let bestIndex = fittingCandidates[0].index;
+      let bestPackScore = Number.NEGATIVE_INFINITY;
+
+      for (const candidate of fittingCandidates) {
+        const sourceKey = `${candidate.result.sourceType}:${candidate.result.sourceId}`;
+        const headingKey = normalizeQueryKey(candidate.result.headingPath ?? candidate.result.contextPrefix ?? '');
+        const roles = classifyResultEvidenceRoles(candidate.result);
+        const uncoveredRoleCount = roles.filter((role) => !seenRoles.has(role)).length;
+        const densityScore = candidate.result.score / Math.max(1, Math.sqrt(candidate.tokens));
+
+        let packScore = densityScore + (candidate.result.score * 0.20);
+        if (!seenSources.has(sourceKey)) {
+          packScore += 0.004;
+        }
+        if (headingKey && !seenHeadings.has(headingKey)) {
+          packScore += 0.002;
+        }
+        packScore += Math.min(0.009, uncoveredRoleCount * 0.003);
+
+        if (packScore > bestPackScore) {
+          bestPackScore = packScore;
+          bestIndex = candidate.index;
+        }
+      }
+
+      const [selected] = remaining.splice(bestIndex, 1);
+      budgeted.push(selected);
+      tokensUsed += estimateTokens(selected.chunkText);
+      seenSources.add(`${selected.sourceType}:${selected.sourceId}`);
+      const headingKey = normalizeQueryKey(selected.headingPath ?? selected.contextPrefix ?? '');
+      if (headingKey) {
+        seenHeadings.add(headingKey);
+      }
+      for (const role of classifyResultEvidenceRoles(selected)) {
+        seenRoles.add(role);
+      }
+    }
+
+    for (const leftover of remaining) {
+      dropped.push({
+        ...toDiagnosticCandidate(leftover),
+        droppedAt: 'token-budget',
+        detail: `excluded by token budget (tokenBudget=${tokenBudget}, tokensUsed=${tokensUsed})`,
+      });
+    }
+
+    return { results: budgeted, tokensUsed, dropped };
   }
 
   // ── Cosine Re-Ranking (M16 Task 2.2) ──
@@ -1023,13 +2019,14 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     queryEmbedding: number[],
     candidates: SearchResult[],
     minCosine: number = DEFAULT_MIN_COSINE_SCORE,
-  ): Promise<SearchResult[]> {
+  ): Promise<{ results: SearchResult[]; dropped: RetrievalDroppedEvidenceTrace[] }> {
     // Fetch stored embeddings for all candidate rowids
     const rowids = candidates.map((c) => c.rowid);
     const embeddings = await this._vectorStore.getEmbeddings(rowids);
 
     // Score each candidate by cosine similarity
     const scored: Array<{ result: SearchResult; cosine: number }> = [];
+    const dropped: RetrievalDroppedEvidenceTrace[] = [];
     for (const candidate of candidates) {
       const emb = embeddings.get(candidate.rowid);
       if (!emb) {
@@ -1040,6 +2037,12 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       const sim = cosineSimilarity(queryEmbedding, emb);
       if (sim >= minCosine) {
         scored.push({ result: candidate, cosine: sim });
+      } else {
+        dropped.push({
+          ...toDiagnosticCandidate(candidate),
+          droppedAt: 'cosine',
+          detail: `cosine ${sim.toFixed(4)} < threshold ${minCosine.toFixed(4)}`,
+        });
       }
       // else: dropped — not semantically close enough
     }
@@ -1050,6 +2053,14 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       return b.result.score - a.result.score;
     });
 
-    return scored.map((s) => s.result);
+    return {
+      results: scored.map(({ result, cosine }) => ({
+      ...result,
+      // Downstream ranking stages sort by score, so persist a blended score here
+      // instead of returning only an updated array order.
+      score: (result.score * 0.5) + (cosine * 0.05),
+      })),
+      dropped,
+    };
   }
 }

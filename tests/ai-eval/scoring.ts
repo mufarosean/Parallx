@@ -68,6 +68,22 @@ export interface RetrievalSummary {
   avgForbiddenTermViolations: number;
 }
 
+export interface RetrievalRolloutThresholds {
+  minExpectedSourceHitRate: number;
+  minRequiredTermCoverage: number;
+  minCitationRate: number;
+  maxAvgForbiddenTermViolations: number;
+  minOverallScore: number;
+}
+
+export interface RetrievalRolloutGate {
+  thresholds: RetrievalRolloutThresholds;
+  passesThresholds: boolean;
+  manualReviewApproved: boolean;
+  rolloutAllowed: boolean;
+  reasons: string[];
+}
+
 export interface TurnResult {
   prompt: string;
   response: string;
@@ -119,10 +135,19 @@ export interface EvalReport {
   grade: Grade;
   dimensionScores: Record<string, DimensionScore>;
   retrievalSummary?: RetrievalSummary;
+  retrievalRolloutGate?: RetrievalRolloutGate;
   tests: TestCaseResult[];
   /** Pretty-printed text summary for console/file output. */
   summary: string;
 }
+
+export const RETRIEVAL_ROLLOUT_THRESHOLDS: RetrievalRolloutThresholds = {
+  minExpectedSourceHitRate: 1.0,
+  minRequiredTermCoverage: 0.95,
+  minCitationRate: 1.0,
+  maxAvgForbiddenTermViolations: 0,
+  minOverallScore: 0.85,
+};
 
 // ── Grade Thresholds ─────────────────────────────────────────────────────────
 
@@ -287,7 +312,15 @@ export function buildReport(tests: TestCaseResult[], model: string): EvalReport 
       }
     : undefined;
 
-  const summary = formatReport({ overallScore, grade, dimensionScores, retrievalSummary, tests, model });
+  const retrievalRolloutGate = retrievalSummary
+    ? evaluateRetrievalRolloutGate({
+        overallScore,
+        retrievalSummary,
+        manualReviewApproved: process.env.PARALLX_RETRIEVAL_MANUAL_REVIEW_APPROVED === '1',
+      })
+    : undefined;
+
+  const summary = formatReport({ overallScore, grade, dimensionScores, retrievalSummary, retrievalRolloutGate, tests, model });
 
   return {
     timestamp: new Date().toISOString(),
@@ -297,8 +330,49 @@ export function buildReport(tests: TestCaseResult[], model: string): EvalReport 
     grade,
     dimensionScores,
     retrievalSummary,
+    retrievalRolloutGate,
     tests,
     summary,
+  };
+}
+
+export function evaluateRetrievalRolloutGate(opts: {
+  overallScore: number;
+  retrievalSummary: RetrievalSummary;
+  manualReviewApproved?: boolean;
+  thresholds?: RetrievalRolloutThresholds;
+}): RetrievalRolloutGate {
+  const thresholds = opts.thresholds ?? RETRIEVAL_ROLLOUT_THRESHOLDS;
+  const manualReviewApproved = opts.manualReviewApproved ?? false;
+  const reasons: string[] = [];
+
+  if (opts.retrievalSummary.avgExpectedSourceHitRate < thresholds.minExpectedSourceHitRate) {
+    reasons.push(`expected-source hit rate ${(opts.retrievalSummary.avgExpectedSourceHitRate * 100).toFixed(0)}% < ${(thresholds.minExpectedSourceHitRate * 100).toFixed(0)}%`);
+  }
+  if (opts.retrievalSummary.avgRequiredTermCoverage < thresholds.minRequiredTermCoverage) {
+    reasons.push(`required-term coverage ${(opts.retrievalSummary.avgRequiredTermCoverage * 100).toFixed(0)}% < ${(thresholds.minRequiredTermCoverage * 100).toFixed(0)}%`);
+  }
+  if (opts.retrievalSummary.citationRate < thresholds.minCitationRate) {
+    reasons.push(`citation rate ${(opts.retrievalSummary.citationRate * 100).toFixed(0)}% < ${(thresholds.minCitationRate * 100).toFixed(0)}%`);
+  }
+  if (opts.retrievalSummary.avgForbiddenTermViolations > thresholds.maxAvgForbiddenTermViolations) {
+    reasons.push(`avg forbidden violations ${opts.retrievalSummary.avgForbiddenTermViolations.toFixed(2)} > ${thresholds.maxAvgForbiddenTermViolations.toFixed(2)}`);
+  }
+  if (opts.overallScore < thresholds.minOverallScore) {
+    reasons.push(`overall score ${(opts.overallScore * 100).toFixed(1)}% < ${(thresholds.minOverallScore * 100).toFixed(1)}%`);
+  }
+  if (!manualReviewApproved) {
+    reasons.push('manual regression review not yet approved');
+  }
+
+  const passesThresholds = reasons.every((reason) => reason === 'manual regression review not yet approved') || reasons.length === 0;
+
+  return {
+    thresholds,
+    passesThresholds,
+    manualReviewApproved,
+    rolloutAllowed: passesThresholds && manualReviewApproved,
+    reasons,
   };
 }
 
@@ -309,10 +383,11 @@ function formatReport(opts: {
   grade: Grade;
   dimensionScores: Record<string, DimensionScore>;
   retrievalSummary?: RetrievalSummary;
+  retrievalRolloutGate?: RetrievalRolloutGate;
   tests: TestCaseResult[];
   model: string;
 }): string {
-  const { overallScore, grade, dimensionScores, retrievalSummary, tests, model } = opts;
+  const { overallScore, grade, dimensionScores, retrievalSummary, retrievalRolloutGate, tests, model } = opts;
   const W = 64;
   const sep = '='.repeat(W);
   const thin = '-'.repeat(W);
@@ -372,6 +447,21 @@ function formatReport(opts: {
     lines.push(`    Required-term coverage       ${(retrievalSummary.avgRequiredTermCoverage * 100).toFixed(0)}%`);
     lines.push(`    Citation presence rate       ${(retrievalSummary.citationRate * 100).toFixed(0)}%`);
     lines.push(`    Avg forbidden violations     ${retrievalSummary.avgForbiddenTermViolations.toFixed(2)}`);
+  }
+
+  if (retrievalRolloutGate) {
+    lines.push('');
+    lines.push('  RETRIEVAL ROLLOUT GATE');
+    lines.push(thin);
+    lines.push(`    Thresholds passed            ${retrievalRolloutGate.passesThresholds ? 'YES' : 'NO'}`);
+    lines.push(`    Manual review approved       ${retrievalRolloutGate.manualReviewApproved ? 'YES' : 'NO'}`);
+    lines.push(`    Default rollout allowed      ${retrievalRolloutGate.rolloutAllowed ? 'YES' : 'NO'}`);
+    if (retrievalRolloutGate.reasons.length > 0) {
+      lines.push('    Blocking reasons:');
+      for (const reason of retrievalRolloutGate.reasons) {
+        lines.push(`      - ${reason}`);
+      }
+    }
   }
 
   lines.push('');

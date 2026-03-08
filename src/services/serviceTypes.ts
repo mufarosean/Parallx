@@ -1081,6 +1081,15 @@ export interface IVectorStoreService extends IDisposable {
   /** Batch-fetch stored embeddings by rowid. Returns Map<rowid, float[]>. */
   getEmbeddings(rowids: number[]): Promise<Map<number, number[]>>;
 
+  /**
+   * Fetch nearby section/page companion chunks for a retrieved anchor.
+   * Used by retrieval-time structure-aware expansion on hard documents.
+   */
+  getStructuralCompanions(
+    anchor: import('./vectorStoreService.js').SearchResult,
+    options?: { limit?: number },
+  ): Promise<import('./vectorStoreService.js').SearchResult[]>;
+
   /** Get trace information for the most recent hybrid search. */
   getLastSearchTrace?(): import('./vectorStoreService.js').HybridSearchTrace | undefined;
 

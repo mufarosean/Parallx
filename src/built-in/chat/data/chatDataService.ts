@@ -105,6 +105,21 @@ export interface IChatTestDebugSnapshot {
   retrievalTrace?: RetrievalTrace;
   isRAGAvailable: boolean;
   isIndexing: boolean;
+  requestInProgress?: boolean;
+  pendingRequestCount?: number;
+  assistantMessageCount?: number;
+  lastAssistantResponseText?: string;
+  lastAssistantResponseComplete?: boolean;
+  lastAssistantPartKinds?: string[];
+  lastAssistantPartSummary?: Array<{ kind: string; preview: string }>;
+  responseDebug?: {
+    phase: string;
+    markdownLength: number;
+    yielded: boolean;
+    cancelled: boolean;
+    retrievedContextLength: number;
+    note?: string;
+  };
   retrievalGate?: {
     hasActiveSlashCommand: boolean;
     isRagReady: boolean;
@@ -820,12 +835,65 @@ export class ChatDataService {
     };
   }
 
+  reportResponseDebug(debug: {
+    phase: string;
+    markdownLength: number;
+    yielded: boolean;
+    cancelled: boolean;
+    retrievedContextLength: number;
+    note?: string;
+  }): void {
+    this._lastTestDebugSnapshot = {
+      ...this._lastTestDebugSnapshot,
+      responseDebug: { ...debug },
+      isRAGAvailable: this.isRAGAvailable(),
+      isIndexing: this.isIndexing(),
+    };
+  }
+
   getTestDebugSnapshot(): IChatTestDebugSnapshot {
+    const session = this._d.getActiveWidget()?.getSession();
+    const assistantMessages = session?.messages.filter((pair) => pair.response) ?? [];
+    const lastAssistantResponse = assistantMessages.length > 0
+      ? assistantMessages[assistantMessages.length - 1].response
+      : undefined;
+
     return {
       ...structuredClone(this._lastTestDebugSnapshot),
       isRAGAvailable: this.isRAGAvailable(),
       isIndexing: this.isIndexing(),
+      requestInProgress: session?.requestInProgress ?? false,
+      pendingRequestCount: session?.pendingRequests.length ?? 0,
+      assistantMessageCount: assistantMessages.length,
+      lastAssistantResponseText: lastAssistantResponse ? this._extractAssistantResponseText(lastAssistantResponse.parts) : '',
+      lastAssistantResponseComplete: lastAssistantResponse?.isComplete ?? false,
+      lastAssistantPartKinds: lastAssistantResponse?.parts.map((part) => part.kind) ?? [],
+      lastAssistantPartSummary: lastAssistantResponse?.parts.map((part) => ({
+        kind: part.kind,
+        preview: this._summarizeAssistantPart(part),
+      })) ?? [],
     };
+  }
+
+  private _extractAssistantResponseText(parts: ReadonlyArray<{ kind: string; content?: string; code?: string }>): string {
+    return parts
+      .filter((part) => part.kind === ChatContentPartKind.Markdown && typeof part.content === 'string')
+      .map((part) => part.content ?? '')
+      .join('')
+      .trim();
+  }
+
+  private _summarizeAssistantPart(part: { kind: string; content?: string; code?: string; message?: string }): string {
+    if (typeof part.content === 'string' && part.content.trim().length > 0) {
+      return part.content.trim().slice(0, 160);
+    }
+    if (typeof part.message === 'string' && part.message.trim().length > 0) {
+      return part.message.trim().slice(0, 160);
+    }
+    if (typeof part.code === 'string' && part.code.trim().length > 0) {
+      return part.code.trim().slice(0, 160);
+    }
+    return '';
   }
 
   getExcludedContextIds(): ReadonlySet<string> {
@@ -1359,6 +1427,7 @@ export class ChatDataService {
       invalidatePromptFiles: this._d.promptFileService ? () => this.invalidatePromptFiles() : undefined,
       reportContextPills: (p) => this.reportContextPills(p),
       reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
+      reportResponseDebug: (debug) => this.reportResponseDebug(debug),
       getExcludedContextIds: () => this.getExcludedContextIds(),
       reportBudget: (s) => this.reportBudget(s),
       getTerminalOutput: () => this.getTerminalOutput(),

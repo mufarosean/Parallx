@@ -2389,7 +2389,12 @@ export class Workbench extends Layout {
    * stored in `<folder>/.parallx/workspace-identity.json`.
    *
    * - If the file exists and its ID differs from the current workspace ID,
-   *   adopt the stored ID (this recovers sessions after localStorage loss).
+    *   adopt the stored ID only when we are recovering an unbound folder
+    *   workspace after localStorage loss.
+    * - If the current workspace was explicitly restored from saved state, keep
+    *   that saved workspace identity even if the folder has a different durable
+    *   ID. This preserves isolation between named workspaces that point at the
+    *   same folder.
    * - If the file does not exist, write the current workspace ID to it.
    */
   private async _reconcileDurableWorkspaceId(folderPath: string): Promise<void> {
@@ -2401,6 +2406,8 @@ export class Workbench extends Layout {
 
     try {
       const exists: boolean = await fs.exists(identityPath);
+      const restoredFromSavedState = !!this._restoredState
+        && this._restoredState.identity.id === this._workspace.id;
 
       if (exists) {
         // Read the stored identity
@@ -2408,6 +2415,11 @@ export class Workbench extends Layout {
         if (result?.content) {
           const stored = JSON.parse(result.content);
           if (stored?.id && stored.id !== this._workspace.id) {
+            if (restoredFromSavedState) {
+              console.log('[Workbench] Keeping restored workspace identity %s; folder durable identity %s belongs to a different workspace', this._workspace.id, stored.id);
+              return;
+            }
+
             console.log('[Workbench] Recovering durable workspace identity from %s', identityPath);
             this._workspace.adoptId(stored.id);
 

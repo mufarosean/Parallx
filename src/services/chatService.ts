@@ -19,7 +19,6 @@ import {
   ensureChatTables,
   saveSession,
   loadSessions,
-  adoptOrphanedSessions,
   deletePersistedSession,
 } from './chatSessionPersistence.js';
 import type { IChatPersistenceDatabase } from './chatSessionPersistence.js';
@@ -584,12 +583,7 @@ export class ChatService extends Disposable implements IChatService {
   async restoreSessions(): Promise<void> {
     if (!this._database) { return; }
     try {
-      let sessions = await loadSessions(this._database, this._workspaceId);
-
-      // Recover orphaned sessions (workspace UUID changed after localStorage loss)
-      if (sessions.length === 0 && this._workspaceId) {
-        sessions = await adoptOrphanedSessions(this._database, this._workspaceId);
-      }
+      const sessions = await loadSessions(this._database, this._workspaceId);
 
       for (const session of sessions) {
         this._sessions.set(session.id, session);

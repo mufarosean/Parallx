@@ -97,6 +97,16 @@ export interface IUnifiedContextBudgetConfig {
 export interface IUnifiedRetrievalConfig {
   /** Automatically search workspace for context on every message */
   readonly autoRag: boolean;
+  /** Query decomposition mode. Auto keeps the current hard-query decomposition behavior; off forces a single-query plan. */
+  readonly ragDecompositionMode: 'auto' | 'off';
+  /** Candidate breadth preset for first-stage retrieval. Broad only widens hard-query recall. */
+  readonly ragCandidateBreadth: 'balanced' | 'broad';
+  /** Diversity strength for complementary evidence ordering. Strong applies a more aggressive cross-source preference. */
+  readonly ragDiversityStrength: 'balanced' | 'strong';
+  /** Hard-document structure expansion mode. Auto keeps current behavior; off disables parent-section expansion. */
+  readonly ragStructureExpansionMode: 'auto' | 'off';
+  /** Second-stage reranking mode. Standard is the default; late-interaction is experimental. */
+  readonly ragRerankMode: 'standard' | 'late-interaction';
   /** Number of top results to return from hybrid search */
   readonly ragTopK: number;
   /** Maximum chunks from any single source (prevents one doc monopolizing context) */
@@ -364,6 +374,11 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   },
   retrieval: {
     autoRag: true,
+    ragDecompositionMode: 'auto',
+    ragCandidateBreadth: 'balanced',
+    ragDiversityStrength: 'balanced',
+    ragStructureExpansionMode: 'auto',
+    ragRerankMode: 'standard',
     ragTopK: 20,
     ragMaxPerSource: 5,
     ragTokenBudget: 0,         // 0 = auto (30% of model context window)

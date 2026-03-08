@@ -22,7 +22,7 @@
  *
  * Prerequisites:
  *   - Ollama running at localhost:11434
- *   - A model available (e.g., `ollama pull qwen2.5:32b-instruct`)
+ *   - The test model available (default: `ollama pull gpt-oss:20b`)
  *   - Build Parallx: `npm run build:renderer`
  */
 import {
@@ -121,6 +121,7 @@ test.describe.serial('AI Quality Evaluation', () => {
 
   for (const tc of RUBRIC) {
     test(`${tc.id}: ${tc.name}`, async ({ window }) => {
+      const perTurnTimeout = tc.turns.length >= 3 ? 240_000 : RESPONSE_TIMEOUT;
       if (tc.turns.length >= 3) {
         test.setTimeout(12 * 60 * 1000);
       }
@@ -140,7 +141,7 @@ test.describe.serial('AI Quality Evaluation', () => {
           const result = await sendAndWaitForResponse(
             window,
             turn.prompt,
-            RESPONSE_TIMEOUT,
+            perTurnTimeout,
           );
           text = result.text;
           latencyMs = result.latencyMs;

@@ -89,6 +89,14 @@ export interface IDefaultParticipantServices {
     attempted: boolean;
     returnedSources?: number;
   }): void;
+  reportResponseDebug?(debug: {
+    phase: string;
+    markdownLength: number;
+    yielded: boolean;
+    cancelled: boolean;
+    retrievedContextLength: number;
+    note?: string;
+  }): void;
   reportBudget?(slots: ReadonlyArray<{ label: string; used: number; allocated: number; color: string }>): void;
   listFolderFiles?(folderPath: string): Promise<Array<{ relativePath: string; content: string }>>;
   getTerminalOutput?(): Promise<string | undefined>;

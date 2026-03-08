@@ -595,6 +595,64 @@ export const RUBRIC: TestCase[] = [
       ],
     }],
   },
+
+  // ── T20: Structured Long-Doc Retrieval ──────────────────────────────────
+  {
+    id: 'T20',
+    name: 'Deep retrieval -- severity routing matrix lookup',
+    dimension: 'deep-retrieval',
+    description:
+      'Question targets a specific row in the long architecture document rather than the normal policy/claims docs.',
+    turns: [{
+      prompt: 'In the claims workflow architecture, for a potential total loss, who coordinates the escalation packet and when does review start?',
+      assertions: [
+        {
+          name: 'Names the Severity Desk Coordinator',
+          weight: 3,
+          check: containsAny(['severity desk coordinator']),
+        },
+        {
+          name: 'Mentions the one-business-day review target',
+          weight: 3,
+          check: containsAny(['within 1 business day', 'one business day', '1 business day']),
+        },
+        {
+          name: 'Anchors to the workflow architecture document',
+          weight: 1,
+          check: containsAny(['claims workflow architecture', 'workflow architecture']),
+        },
+      ],
+    }],
+  },
+
+  // ── T21: Code-Heavy Retrieval Inside Long Doc ───────────────────────────
+  {
+    id: 'T21',
+    name: 'Deep retrieval -- escalation packet builder snippet',
+    dimension: 'deep-retrieval',
+    description:
+      'Question targets a code block embedded in the long architecture document.',
+    turns: [{
+      prompt: 'Which helper assembles the escalation packet in the workflow architecture doc, and what two stage names does it include?',
+      assertions: [
+        {
+          name: 'Names buildEscalationPacket helper',
+          weight: 3,
+          check: containsAny(['buildescalationpacket', 'buildEscalationPacket']),
+        },
+        {
+          name: 'Mentions policy-summary stage',
+          weight: 2,
+          check: containsAny(['policy-summary', 'policy summary']),
+        },
+        {
+          name: 'Mentions police-report or valuation stage',
+          weight: 2,
+          check: containsAny(['police-report', 'police report', 'valuation']),
+        },
+      ],
+    }],
+  },
 ];
 
 // ── T10: Cross-Session Memory (special structure) ────────────────────────────

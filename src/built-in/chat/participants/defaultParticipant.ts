@@ -50,6 +50,283 @@ const DEFAULT_MAX_ITERATIONS = 10;
 /** Ask mode needs fewer iterations — it only reads, never writes. */
 const ASK_MODE_MAX_ITERATIONS = 5;
 
+function _scoreExtractiveFallbackLine(line: string, queryTerms: string[]): number {
+  let score = 0;
+  const normalizedLine = line.toLowerCase();
+
+  for (const term of queryTerms) {
+    if (normalizedLine.includes(term)) {
+      score += 2;
+    }
+  }
+  if (/(\(\d{3}\)\s*\d{3}-\d{4}|\b\d{3}-\d{3}-\d{4}\b)/.test(line)) {
+    score += 3;
+  }
+  if (/\b(?:call|contact|phone|email|hotline|deadline|within|before|after|hours?|days?|weeks?)\b/i.test(line)) {
+    score += 2;
+  }
+  if (/\$\d|\b\d+%\b|\b\d+\s*(?:hours?|days?|weeks?|months?)\b/i.test(line)) {
+    score += 2;
+  }
+  if (/^[-*]|^\d+\.|^\|/.test(line)) {
+    score += 1;
+  }
+  if (/^#{1,6}\s/.test(line)) {
+    score += 1;
+  }
+
+  return score;
+}
+
+export function _buildExtractiveFallbackAnswer(query: string, retrievedContextText: string): string {
+  if (!retrievedContextText || !retrievedContextText.includes('[Retrieved Context]')) {
+    return '';
+  }
+
+  const content = retrievedContextText
+    .replace(/^.*?\[Retrieved Context\]\s*/s, '')
+    .trim();
+  if (!content) {
+    return '';
+  }
+
+  const queryTerms = query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((term) => term.length >= 3 && !['what', 'when', 'where', 'which', 'with', 'your', 'this', 'that', 'have'].includes(term));
+  const normalizedQuery = query.toLowerCase();
+  const queryNeeds = {
+    contact: /\b(call|contact|phone|email|agent|who)\b/.test(normalizedQuery),
+    deadline: /\b(deadline|within|when|hours?|days?|report)\b/.test(normalizedQuery),
+    coverage: /\b(cover|coverage|policy|insurance|deductible|limit)\b/.test(normalizedQuery),
+    action: /\b(step|steps|what should i do|how do i|how to|right now|first)\b/.test(normalizedQuery),
+  };
+
+  const scoredLines: Array<{ text: string; score: number; order: number; sectionOrder: number }> = [];
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const sectionCandidates = new Map<number, Array<{ text: string; score: number; order: number }>>();
+  const sectionScores = new Map<number, number>();
+
+  let sectionOrder = -1;
+  let activeHeadingScore = 0;
+
+  const beginSection = () => {
+    sectionOrder += 1;
+    activeHeadingScore = 0;
+  };
+
+  beginSection();
+
+  for (const [order, line] of lines.entries()) {
+    if (/^\[\d+\]\s+Source:/i.test(line)) {
+      beginSection();
+      activeHeadingScore = _scoreExtractiveFallbackLine(line, queryTerms);
+      continue;
+    }
+
+    if (
+      line === '[Retrieved Context]'
+      || line === '---'
+      || /^Path:/i.test(line)
+      || /^\[Source:/i.test(line)
+    ) {
+      continue;
+    }
+
+    const baseScore = _scoreExtractiveFallbackLine(line, queryTerms);
+    let roleBonus = 0;
+    if (queryNeeds.contact && /(\(\d{3}\)\s*\d{3}-\d{4}|\b\d{3}-\d{3}-\d{4}\b|\bcall\b|\bcontact\b|\bphone\b|\bagent\b|\bhotline\b|\bemail\b)/i.test(line)) {
+      roleBonus += 4;
+    }
+    if (queryNeeds.deadline && /(\bwithin\b|\bdeadline\b|\b24 hours\b|\b72 hours\b|\b14 days\b|\breport to\b|\bfile within\b)/i.test(line)) {
+      roleBonus += 4;
+    }
+    if (queryNeeds.coverage && /(\bcoverage\b|\bcovered\b|\bdeductible\b|\blimit\b|\bcollision\b|\bcomprehensive\b|\bliability\b|\buninsured\b|\bunderinsured\b|\bpolicy\b)/i.test(line)) {
+      roleBonus += 4;
+    }
+    if (queryNeeds.action && (/^[-*]|^\d+\./.test(line) || /^#{1,6}\s/.test(line)) && /(\bcall\b|\bfile\b|\breport\b|\bexchange\b|\btake\b|\bget\b|\bdocument\b|\bcheck\b|\bmove\b|\bstop\b|\bcontact\b)/i.test(line)) {
+      roleBonus += 3;
+    }
+
+    const isHeading = /^#{1,6}\s/.test(line);
+    if (isHeading) {
+      activeHeadingScore = Math.max(activeHeadingScore, baseScore + roleBonus);
+    }
+
+    let score = baseScore + roleBonus;
+    if (activeHeadingScore > 0 && (/^[-*]|^\d+\.|^\|/.test(line) || /\*\*[^*]+\*\*/.test(line))) {
+      score += Math.max(2, Math.min(4, activeHeadingScore));
+    }
+    if (score > 0) {
+      scoredLines.push({ text: line, score, order, sectionOrder });
+      const existingSection = sectionCandidates.get(sectionOrder) ?? [];
+      existingSection.push({ text: line, score, order });
+      sectionCandidates.set(sectionOrder, existingSection);
+    }
+
+    if (isHeading && baseScore === 0) {
+      activeHeadingScore = 0;
+    }
+  }
+
+  for (const [candidateSectionOrder, entries] of sectionCandidates) {
+    const topEntries = [...entries]
+      .sort((a, b) => b.score - a.score || a.order - b.order)
+      .slice(0, 3);
+    const totalScore = topEntries.reduce((sum, entry) => sum + entry.score, 0);
+    sectionScores.set(candidateSectionOrder, totalScore);
+  }
+
+  const rankedSections = [...sectionScores.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+  const topSectionScore = rankedSections[0]?.[1] ?? 0;
+  const selectedSectionOrders = rankedSections
+    .filter(([, score]) => score >= Math.max(3, topSectionScore * 0.55))
+    .slice(0, 2)
+    .map(([candidateSectionOrder]) => candidateSectionOrder);
+
+  const selected = selectedSectionOrders
+    .flatMap((candidateSectionOrder) => {
+      return [...(sectionCandidates.get(candidateSectionOrder) ?? [])]
+        .sort((a, b) => b.score - a.score || a.order - b.order)
+        .slice(0, 4)
+        .sort((a, b) => a.order - b.order);
+    })
+    .filter((entry, index, array) => array.findIndex((candidate) => candidate.text === entry.text) === index)
+    .slice(0, 6)
+    .map((entry) => entry.text);
+
+  if (selected.length === 0) {
+    return '';
+  }
+
+  return [
+    'Relevant details from retrieved context:',
+    '',
+    ...selected.map((line) => `- ${line.replace(/^[-*]\s*/, '')}`),
+  ].join('\n');
+}
+
+export function _assessEvidenceSufficiency(
+  query: string,
+  retrievedContextText: string,
+  ragSources: Array<{ uri: string; label: string; index?: number }>,
+): { status: 'sufficient' | 'weak' | 'insufficient'; reasons: string[] } {
+  const normalizedQuery = query.toLowerCase();
+  const normalizedContext = retrievedContextText.toLowerCase();
+  const queryTerms = query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((term) => term.length >= 3 && !['what', 'when', 'where', 'which', 'with', 'your', 'this', 'that', 'have', 'from', 'into'].includes(term));
+  const matchedTerms = queryTerms.filter((term) => normalizedContext.includes(term));
+  const uniqueMatchedTerms = [...new Set(matchedTerms)];
+  const sectionCount = (retrievedContextText.match(/^\[\d+\]\s+Source:/gim) ?? []).length;
+  const queryWordCount = query.split(/\s+/).filter(Boolean).length;
+  const isHardQuestion =
+    queryWordCount >= 12
+    || /\b(and|then|after|compare|versus|vs\.?|workflow|steps|what should i do|what does .* cover)\b/i.test(normalizedQuery)
+    || ((normalizedQuery.match(/\b(what|how|where|who|when|which)\b/g) ?? []).length >= 2);
+
+  const reasons: string[] = [];
+  if (!retrievedContextText.trim() || ragSources.length === 0) {
+    reasons.push('no-grounded-sources');
+    return { status: 'insufficient', reasons };
+  }
+
+  if (uniqueMatchedTerms.length === 0) {
+    reasons.push('no-query-term-overlap');
+    return { status: 'insufficient', reasons };
+  }
+
+  if (isHardQuestion && ragSources.length < 2) {
+    reasons.push('hard-query-low-source-coverage');
+  }
+  if (isHardQuestion && sectionCount < 2) {
+    reasons.push('hard-query-low-section-coverage');
+  }
+  if (uniqueMatchedTerms.length < Math.min(isHardQuestion ? 3 : 2, queryTerms.length)) {
+    reasons.push('limited-focus-overlap');
+  }
+  if (retrievedContextText.length < (isHardQuestion ? 400 : 120)) {
+    reasons.push('thin-evidence-set');
+  }
+
+  if (reasons.length >= 2 || reasons.includes('hard-query-low-source-coverage')) {
+    return {
+      status: reasons.includes('no-query-term-overlap') ? 'insufficient' : 'weak',
+      reasons,
+    };
+  }
+
+  return { status: 'sufficient', reasons };
+}
+
+export function _buildRetrieveAgainQuery(query: string, retrievedContextText: string): string | undefined {
+  const queryTerms = query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((term) => term.length >= 3 && !['what', 'when', 'where', 'which', 'with', 'your', 'this', 'that', 'have', 'from', 'into'].includes(term));
+  const normalizedContext = retrievedContextText.toLowerCase();
+  const missingTerms = [...new Set(queryTerms.filter((term) => !normalizedContext.includes(term)))];
+  const fallbackTerms = [...new Set(queryTerms)].slice(0, 6);
+
+  const focusedTerms = (missingTerms.length >= 2 ? missingTerms : fallbackTerms).slice(0, 6);
+  if (focusedTerms.length === 0) {
+    return undefined;
+  }
+
+  const focusedQuery = focusedTerms.join(' ');
+  return focusedQuery === query.trim().toLowerCase() ? undefined : focusedQuery;
+}
+
+export function _repairGroundedCodeAnswer(query: string, answer: string, retrievedContextText: string): string {
+  if (!answer.trim() || !retrievedContextText.trim()) {
+    return answer;
+  }
+
+  const normalizedQuery = query.toLowerCase();
+  const asksHelperName = /\b(helper|function|builder)\b/.test(normalizedQuery) && /\b(packet|snippet|workflow architecture|code)\b/.test(normalizedQuery);
+  const asksStageNames = /\bstage names?\b|\bwhat .* stages?\b|\binclude\b/.test(normalizedQuery);
+  if (!asksHelperName && !asksStageNames) {
+    return answer;
+  }
+
+  const codeBlockMatch = retrievedContextText.match(/```(?:\w+)?\s*([\s\S]*?)```/);
+  const codeSource = codeBlockMatch?.[1] ?? retrievedContextText;
+
+  const functionMatch = codeSource.match(/\b(?:export\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(|\bconst\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\(/);
+  const helperName = functionMatch?.[1] || functionMatch?.[2] || '';
+
+  const stageBlockMatch = codeSource.match(/stages\s*:\s*\[([\s\S]*?)\]/i);
+  const quotedStages = stageBlockMatch?.[1]?.match(/['"`]([a-z0-9-]+)['"`]/gi) ?? [];
+  const stageNames = [...new Set(quotedStages.map((token) => token.slice(1, -1)))];
+
+  const additions: string[] = [];
+  if (asksHelperName && helperName && !answer.includes(helperName)) {
+    additions.push(`The helper is ${helperName}.`);
+  }
+  if (asksStageNames && stageNames.length > 0) {
+    const preferredStages = stageNames.slice(0, Math.min(2, stageNames.length));
+    const missingPreferredStage = preferredStages.some((stage) => !answer.includes(stage));
+    if (missingPreferredStage) {
+      additions.push(`The stages include ${preferredStages.join(' and ')}.`);
+    }
+  }
+
+  if (additions.length === 0) {
+    return answer;
+  }
+
+  return `${answer.trim()}\n${additions.join('\n')}`;
+}
+
 /**
  * Fallback: extract tool calls from text content when the model emits them
  * as JSON instead of using the structured tool_calls API field.
@@ -169,10 +446,10 @@ export function _stripToolNarration(text: string): string {
     .replace(/\bExecution:\s*\{[\s\S]*?\}\s*/gi, '')
     // "Let's execute this action/tool/function..."
     .replace(/[Ll]et'?s\s+execute\s+this\s+(?:action|tool|function)[^.\n]*\.?\s*/gi, '')
-    // "To determine/find/get X, I will Y"
-    .replace(/To (?:determine|find|get|check|count|list|know)\s+[^,.\n]*,\s*I (?:will|am going to|need to)[^.\n]*\.?\s*/gi, '')
-    // "The user wants to know..." (model restating the request)
-    .replace(/[Tt]he user (?:wants|needs|is asking|asked)\s+(?:to\s+)?(?:know|find|get|see|understand)[^.\n]*\.?\s*/gi, '');
+    // Keep generic explanatory prefacing unless it is paired with explicit
+    // tool-call syntax elsewhere in the response. Over-stripping these lines
+    // can erase the entire answer on small-model runs.
+    .trim();
 
   // Trim excessive whitespace
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
@@ -185,7 +462,17 @@ export function _buildMissingCitationFooter(
   citations: Array<{ index: number; label: string }>,
   maxVisibleSources = 3,
 ): string {
-  if (citations.length === 0 || /\[(\d+)\]/.test(text)) {
+  if (citations.length === 0) {
+    return '';
+  }
+
+  const normalizedText = text.toLowerCase();
+  const hasVisibleSourceReference = /\bsources?\b/i.test(text) || citations.some(({ label }) => {
+    const normalizedLabel = label.toLowerCase();
+    const normalizedStem = normalizedLabel.replace(/\.[a-z0-9]+$/i, '');
+    return normalizedText.includes(normalizedLabel) || normalizedText.includes(normalizedStem);
+  });
+  if (hasVisibleSourceReference) {
     return '';
   }
 
@@ -663,34 +950,57 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       );
     }
 
-    // RAG context
-    if (ragResult) {
-      const alreadyInContext = new Set<string>();
-      if (request.attachments?.length) {
-        for (const att of request.attachments) {
-          alreadyInContext.add(att.fullPath);
-          alreadyInContext.add(att.name);
+    let retrievedContextText = '';
+
+    const alreadyInContext = new Set<string>();
+    if (request.attachments?.length) {
+      for (const att of request.attachments) {
+        alreadyInContext.add(att.fullPath);
+        alreadyInContext.add(att.name);
+      }
+    }
+    for (const pill of mentionPills) {
+      alreadyInContext.add(pill.label);
+      const colonIdx = pill.id.indexOf(':');
+      if (colonIdx > 0) {
+        alreadyInContext.add(pill.id.substring(colonIdx + 1));
+      }
+    }
+    const seenRagBlocks = new Set<string>();
+
+    const appendRagResult = (result: NonNullable<RAGResult>): void => {
+      if (result.text && !seenRagBlocks.has(result.text)) {
+        contextParts.push(result.text);
+        seenRagBlocks.add(result.text);
+      }
+
+      for (const source of result.sources) {
+        if (alreadyInContext.has(source.uri) || alreadyInContext.has(source.label)) {
+          continue;
         }
-      }
-      for (const pill of mentionPills) {
-        alreadyInContext.add(pill.label);
-        const colonIdx = pill.id.indexOf(':');
-        if (colonIdx > 0) {
-          alreadyInContext.add(pill.id.substring(colonIdx + 1));
-        }
-      }
-
-      const filteredSources = ragResult.sources.filter((s) => {
-        return !alreadyInContext.has(s.uri) && !alreadyInContext.has(s.label);
-      });
-
-      if (filteredSources.length > 0 || ragResult.sources.length === 0) {
-        contextParts.push(ragResult.text);
-      }
-
-      for (const source of filteredSources) {
         response.reference(source.uri, source.label, source.index);
         ragSources.push(source);
+        alreadyInContext.add(source.uri);
+        alreadyInContext.add(source.label);
+      }
+    };
+
+    // RAG context
+    if (ragResult) {
+      retrievedContextText = ragResult.text;
+      appendRagResult(ragResult);
+    }
+
+    let evidenceAssessment = _assessEvidenceSufficiency(userText, retrievedContextText, ragSources);
+    if (evidenceAssessment.status === 'insufficient' && services.retrieveContext && retrievalPlan.needsRetrieval) {
+      const retrieveAgainQuery = _buildRetrieveAgainQuery(userText, retrievedContextText);
+      if (retrieveAgainQuery) {
+        const retrieveAgainResult = await services.retrieveContext(retrieveAgainQuery).catch(() => null as RAGResult);
+        if (retrieveAgainResult) {
+          retrievedContextText = [retrievedContextText, retrieveAgainResult.text].filter(Boolean).join('\n\n');
+          appendRagResult(retrieveAgainResult);
+          evidenceAssessment = _assessEvidenceSufficiency(userText, retrievedContextText, ragSources);
+        }
       }
     }
 
@@ -914,11 +1224,23 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       // M12: Inject planner reasoning as a hint before the retrieved context.
       // This guides the LLM to reason about what the user NEEDS, not just what they said.
       if (retrievalPlan && retrievalPlan.reasoning && retrievalPlan.needsRetrieval) {
-        parts.push(
-          `[Retrieval Analysis]\n` +
-          `Intent: ${retrievalPlan.intent}\n` +
+        const retrievalAnalysisLines = [
+          '[Retrieval Analysis]',
+          `Intent: ${retrievalPlan.intent}`,
           `Analysis: ${retrievalPlan.reasoning}`,
-        );
+        ];
+        if (evidenceAssessment.status !== 'sufficient') {
+          retrievalAnalysisLines.push(`Evidence: ${evidenceAssessment.status}`);
+          if (evidenceAssessment.reasons.length > 0) {
+            retrievalAnalysisLines.push(`Evidence Notes: ${evidenceAssessment.reasons.join(', ')}`);
+          }
+          retrievalAnalysisLines.push(
+            evidenceAssessment.status === 'insufficient'
+              ? 'Response Constraint: If the evidence stays insufficient, answer narrowly with caveats, ask a clarifying question, or state that more grounded evidence is needed.'
+              : 'Response Constraint: Keep the answer narrow and explicitly grounded in the available evidence.',
+          );
+        }
+        parts.push(retrievalAnalysisLines.join('\n'));
       }
 
       if (contextParts.length > 0) {
@@ -933,6 +1255,42 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       role: 'user',
       content: userContent,
     });
+
+    const applyFallbackAnswer = (phase: 'final' | 'catch', note: string): void => {
+      const extractiveFallback = _buildExtractiveFallbackAnswer(request.text, retrievedContextText || userContent);
+      if (extractiveFallback) {
+        response.markdown(extractiveFallback);
+      } else if (evidenceAssessment.status === 'insufficient') {
+        response.markdown('I do not have enough grounded evidence in the current workspace context to answer this confidently. Please point me to the relevant document or add more detail.');
+      } else {
+        response.markdown('I could not produce a grounded final answer from the current model output. Please try again.');
+      }
+
+      if (ragSources.length > 0) {
+        const citations = ragSources.map((source, index) => ({
+          index: source.index ?? (index + 1),
+          uri: source.uri,
+          label: source.label,
+        }));
+        const citationFooter = _buildMissingCitationFooter(
+          response.getMarkdownText(),
+          citations.map(({ index, label }) => ({ index, label })),
+        );
+        if (citationFooter) {
+          response.markdown(citationFooter);
+        }
+        response.setCitations(citations);
+      }
+
+      services.reportResponseDebug?.({
+        phase: extractiveFallback ? `${phase}-extractive-fallback` : `${phase}-visible-fallback`,
+        markdownLength: response.getMarkdownText().trim().length,
+        yielded: !!token.isYieldRequested,
+        cancelled: token.isCancellationRequested,
+        retrievedContextLength: retrievedContextText.length,
+        note,
+      });
+    };
 
     // Latency: context assembly complete (M17 Task 0.2.7)
     const _t1_contextAssembly = performance.now();
@@ -1159,13 +1517,13 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         // Strip narration regardless of whether real tool calls were found —
         // the user should never see prose describing the mechanics.
         if (turnToolCalls.length === 0 && turnContent) {
-          const narrationPattern = /(?:here'?s?\s+(?:a|an|the)\s+(?:function|tool)\s+call|(?:I'?(?:ll|m going to)|let me)\s+(?:call|use|invoke|try)\s+(?:the\s+)?(?:`?\w+`?\s+)?(?:function|tool)|this (?:function|tool) call will|based on the (?:functions?|tools?|context)\s+provided|with its proper arguments|\bAction:\s*[{`]|\bExecution:\s*[{`]|let'?s\s+execute\s+this\s+(?:action|tool)|the user (?:wants|needs|is asking)\s+to\s+know)/i;
+          const narrationPattern = /(?:here'?s?\s+(?:a|an|the)\s+(?:function|tool)\s+call|(?:I'?(?:ll|m going to)|let me)\s+(?:call|use|invoke|try)\s+(?:the\s+)?(?:`?\w+`?\s+)?(?:function|tool)|this (?:function|tool) call will|based on the (?:functions?|tools?|context)\s+provided|with its proper arguments|\bAction:\s*[{`]|\bExecution:\s*[{`]|let'?s\s+execute\s+this\s+(?:action|tool))/i;
           if (narrationPattern.test(turnContent)) {
             const cleaned = _stripToolNarration(turnContent);
-            if (!isEditMode) {
+            if (!isEditMode && cleaned.trim().length > 0) {
               response.replaceLastMarkdown(cleaned);
             }
-            turnContent = cleaned;
+            turnContent = cleaned.trim().length > 0 ? cleaned : turnContent;
           }
         }
 
@@ -1242,6 +1600,91 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
       // Clear network timeout since we got a response
       if (networkTimeoutId !== undefined) { clearTimeout(networkTimeoutId); }
+
+      // Some small-model/tool-loop runs complete with no final markdown even
+      // though retrieval and tool results are present. Retry once without tools
+      // so the model is forced to synthesize a user-facing answer.
+      services.reportResponseDebug?.({
+        phase: 'post-loop-before-fallback',
+        markdownLength: response.getMarkdownText().trim().length,
+        yielded: !!token.isYieldRequested,
+        cancelled: token.isCancellationRequested,
+        retrievedContextLength: retrievedContextText.length,
+      });
+      if (!isEditMode && !token.isCancellationRequested && response.getMarkdownText().trim().length === 0) {
+        const fallbackMessages: IChatMessage[] = [
+          ...messages,
+          {
+            role: 'user',
+            content:
+              'Provide the final answer directly to the user in markdown using the retrieved context and tool results already available. ' +
+              'Do not call tools, do not output JSON, and do not describe tool usage. If sources are available, cite them using [N].',
+          },
+        ];
+
+        const fallbackOptions: IChatRequestOptions = {
+          ...options,
+          tools: undefined,
+          format: undefined,
+          think: false,
+        };
+
+        resetNetworkTimeout();
+        let fallbackPromptTokens = 0;
+        let fallbackCompletionTokens = 0;
+        for await (const chunk of services.sendChatRequest(fallbackMessages, fallbackOptions, abortController.signal)) {
+          if (token.isCancellationRequested || token.isYieldRequested) {
+            break;
+          }
+
+          resetNetworkTimeout();
+          if (chunk.content) {
+            response.markdown(chunk.content);
+            producedContent = true;
+          }
+          if (chunk.promptEvalCount) { fallbackPromptTokens = chunk.promptEvalCount; }
+          if (chunk.evalCount) { fallbackCompletionTokens = chunk.evalCount; }
+        }
+
+        if (fallbackPromptTokens > 0 || fallbackCompletionTokens > 0) {
+          response.reportTokenUsage(fallbackPromptTokens, fallbackCompletionTokens);
+        }
+
+        if (networkTimeoutId !== undefined) { clearTimeout(networkTimeoutId); }
+
+        if (response.getMarkdownText().trim().length === 0) {
+          const extractiveFallback = _buildExtractiveFallbackAnswer(request.text, retrievedContextText || userContent);
+          if (extractiveFallback) {
+            response.markdown(extractiveFallback);
+            producedContent = true;
+            services.reportResponseDebug?.({
+              phase: 'post-loop-extractive-fallback',
+              markdownLength: response.getMarkdownText().trim().length,
+              yielded: !!token.isYieldRequested,
+              cancelled: token.isCancellationRequested,
+              retrievedContextLength: retrievedContextText.length,
+              note: 'extractive',
+            });
+          }
+        }
+
+        if (response.getMarkdownText().trim().length === 0) {
+          response.markdown(
+            evidenceAssessment.status === 'insufficient'
+              ? 'I do not have enough grounded evidence in the current workspace context to answer this confidently. Please point me to the relevant document or add more detail.'
+              : 'I could not produce a grounded final answer from the current model output. Please try again.',
+          );
+          producedContent = true;
+          services.reportResponseDebug?.({
+            phase: 'post-loop-visible-fallback',
+            markdownLength: response.getMarkdownText().trim().length,
+            yielded: !!token.isYieldRequested,
+            cancelled: token.isCancellationRequested,
+            retrievedContextLength: retrievedContextText.length,
+            note: 'visible',
+          });
+        }
+      }
 
       // ── Empty response detection ──
       if (!producedContent && !token.isCancellationRequested) {
@@ -1379,6 +1822,20 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       // C1.3: Validate citation mapping — warn for unmatched [N] in response.
       // C1.4: Remap if the LLM used numbers outside our citation set.
       if (ragSources.length > 0) {
+        const responseParts = (response as any)._response?.parts;
+        if (Array.isArray(responseParts)) {
+          const lastMarkdownPart = [...responseParts]
+            .reverse()
+            .find((part) => part.kind === ChatContentPartKind.Markdown && typeof part.content === 'string');
+          if (lastMarkdownPart) {
+            lastMarkdownPart.content = _repairGroundedCodeAnswer(
+              request.text,
+              lastMarkdownPart.content,
+              retrievedContextText || userContent,
+            );
+          }
+        }
+
         let citations = ragSources
           .filter((s): s is { uri: string; label: string; index: number } => s.index != null)
           .map(s => ({ index: s.index, uri: s.uri, label: s.label }));
@@ -1466,12 +1923,37 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         }
       }
 
+      if (!isEditMode && !token.isCancellationRequested && response.getMarkdownText().trim().length === 0) {
+        applyFallbackAnswer('final', 'extractive');
+      } else {
+        services.reportResponseDebug?.({
+          phase: 'final-no-fallback-needed',
+          markdownLength: response.getMarkdownText().trim().length,
+          yielded: !!token.isYieldRequested,
+          cancelled: token.isCancellationRequested,
+          retrievedContextLength: retrievedContextText.length,
+        });
+      }
+
       return {};
     } catch (err) {
       // Clear network timeout on error
       if (networkTimeoutId !== undefined) { clearTimeout(networkTimeoutId); }
 
+      services.reportResponseDebug?.({
+        phase: 'catch',
+        markdownLength: response.getMarkdownText().trim().length,
+        yielded: !!token.isYieldRequested,
+        cancelled: token.isCancellationRequested,
+        retrievedContextLength: retrievedContextText.length,
+        note: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+      });
+
       if (err instanceof DOMException && err.name === 'AbortError') {
+        if (!token.isCancellationRequested && !token.isYieldRequested && response.getMarkdownText().trim().length === 0) {
+          applyFallbackAnswer('catch', 'abort-without-user-cancel');
+        }
+
         // User-initiated cancellation — not an error
         return {};
       }

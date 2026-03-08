@@ -277,6 +277,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   if (window.parallxElectron?.testMode) {
     (window as unknown as Record<string, unknown>).__parallx_chat_debug__ = {
       getSnapshot: () => dataService.getTestDebugSnapshot(),
+      getEffectiveConfig: () => unifiedConfigService?.getEffectiveConfig(),
+      updateWorkspaceOverride: (patch: unknown) => unifiedConfigService?.updateWorkspaceOverride(patch as any),
+      getActiveModel: () => languageModelsService.getActiveModel(),
+      setActiveModel: (modelId: string) => languageModelsService.setActiveModel(modelId),
     };
   }
 
@@ -835,6 +839,19 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         : undefined,
     });
     unifiedConfigService.loadWorkspaceConfig().catch(() => { /* best-effort */ });
+
+    if (workspaceService) {
+      context.subscriptions.push(
+        workspaceService.onDidChangeWorkspace(() => {
+          unifiedConfigService.loadWorkspaceConfig().catch(() => { /* best-effort */ });
+        }),
+      );
+      context.subscriptions.push(
+        workspaceService.onDidChangeFolders(() => {
+          unifiedConfigService.loadWorkspaceConfig().catch(() => { /* best-effort */ });
+        }),
+      );
+    }
   }
 
   // PermissionsFileService (M11 Task 2.10): persist permission overrides

@@ -14,6 +14,9 @@
 import { sharedTest as test, expect, setupCanvasPage, setContent } from './fixtures';
 import type { Page } from '@playwright/test';
 
+const MOCK_CHAT_MODEL = (process.env.PARALLX_TEST_CHAT_MODEL || 'gpt-oss:20b').trim();
+const MOCK_CHAT_FAMILY = MOCK_CHAT_MODEL.startsWith('gpt-oss') ? 'gptoss' : 'qwen2';
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
@@ -139,12 +142,12 @@ async function interceptOllama(
       contentType: 'application/json',
       body: JSON.stringify({
         models: [{
-          name: 'qwen2.5:32b-instruct',
-          model: 'qwen2.5:32b-instruct',
+          name: MOCK_CHAT_MODEL,
+          model: MOCK_CHAT_MODEL,
           modified_at: '2026-01-01T00:00:00Z',
           size: 1_000_000_000,
           digest: 'abc123',
-          details: { family: 'qwen2', parameter_size: '32B', quantization_level: 'Q4_K_M' },
+          details: { family: MOCK_CHAT_FAMILY, parameter_size: '20B', quantization_level: 'Q4_K_M' },
         }],
       }),
     });
@@ -164,7 +167,7 @@ async function interceptOllama(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ model_info: { 'qwen2.context_length': 32768 } }),
+      body: JSON.stringify({ model_info: { 'mock.context_length': 32768 } }),
     });
   });
 
@@ -295,22 +298,15 @@ test.describe('Chat Context Integration', () => {
     expect(chatRequests.length).toBeGreaterThanOrEqual(1);
     const lastReq = chatRequests[chatRequests.length - 1];
 
-    // System prompt should reference tool names
-    const sysMsg = lastReq.messages.find((m: any) => m.role === 'system');
-    expect(sysMsg).toBeDefined();
-    expect(sysMsg.content).toContain('read_page');
-    expect(sysMsg.content).toContain('search_workspace');
-    expect(sysMsg.content).toContain('list_pages');
-
-    // In Agent mode, the request should have tool definitions
-    if (lastReq.tools) {
-      const toolNames = lastReq.tools.map((t: any) => t.function?.name);
-      expect(toolNames).toContain('read_page');
-      expect(toolNames).toContain('read_current_page');
-      expect(toolNames).toContain('read_page_by_title');
-      expect(toolNames).toContain('search_workspace');
-      expect(toolNames).toContain('list_pages');
-    }
+    // Ask mode no longer lists tool names inside the system prompt. Tool
+    // definitions are carried on the request payload itself.
+    expect(Array.isArray(lastReq.tools)).toBe(true);
+    const toolNames = lastReq.tools.map((t: any) => t.function?.name);
+    expect(toolNames).toContain('read_page');
+    expect(toolNames).toContain('read_current_page');
+    expect(toolNames).toContain('read_page_by_title');
+    expect(toolNames).toContain('search_workspace');
+    expect(toolNames).toContain('list_pages');
   });
 
   test('system prompt mentions implicit context behavior', async ({ window }) => {
@@ -328,8 +324,8 @@ test.describe('Chat Context Integration', () => {
     const sysMsg = lastReq.messages.find((m: any) => m.role === 'system');
     expect(sysMsg).toBeDefined();
 
-    // Verify the system prompt tells the model about implicit context
-    expect(sysMsg.content).toContain('automatically included');
+    // Verify the system prompt tells the model about implicit context.
+    expect(sysMsg.content).toContain("included in the user's message automatically");
   });
 
   test('assistant response renders in the chat UI', async ({ window }) => {

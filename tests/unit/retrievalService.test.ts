@@ -29,6 +29,7 @@ function createMockVectorStore() {
     deleteSource: vi.fn(async () => {}),
     search: vi.fn(async (): Promise<SearchResult[]> => []),
     vectorSearch: vi.fn(async () => []),
+    getStructuralCompanions: vi.fn(async (): Promise<SearchResult[]> => []),
     getContentHash: vi.fn(async () => null),
     getIndexedSources: vi.fn(async () => []),
     getStats: vi.fn(async () => ({ totalChunks: 0, totalSources: 0, bySourceType: {}, sourceCountByType: {} })),
@@ -137,7 +138,7 @@ describe('RetrievalService', () => {
 
       const results = await service.retrieve('query');
       expect(results).toHaveLength(1);
-      expect(results[0].score).toBe(0.05);
+      expect(results[0].score).toBeGreaterThan(0.05);
     });
 
     it('respects custom minScore option', async () => {
@@ -556,6 +557,92 @@ describe('RetrievalService', () => {
       expect(results[0].sourceId).toBe('agent-contacts');
     });
 
+    it('expands hard structured anchors with nearby parent-section companions', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'docs/Architecture.pdf',
+          score: 0.072,
+          sourceType: 'file_chunk',
+          contextPrefix: 'Architecture.pdf > Retrieval Pipeline > Candidate Fusion',
+          headingPath: 'Retrieval Pipeline > Candidate Fusion',
+          parentHeadingPath: 'Retrieval Pipeline',
+          structuralRole: 'table',
+          documentKind: 'pdf',
+          extractionPipeline: 'docling',
+          chunkText: 'Table: candidate fusion weights and fallback ordering.',
+        }),
+      ]);
+      vectorStore.getStructuralCompanions.mockResolvedValue([
+        makeResult({
+          rowid: 2,
+          sourceId: 'docs/Architecture.pdf',
+          score: 0,
+          sourceType: 'file_chunk',
+          contextPrefix: 'Architecture.pdf > Retrieval Pipeline',
+          headingPath: 'Retrieval Pipeline',
+          structuralRole: 'section',
+          documentKind: 'pdf',
+          extractionPipeline: 'docling',
+          chunkIndex: 6,
+          chunkText: 'The retrieval pipeline first broadens candidates, then reranks and packs evidence.',
+          sources: ['structure-expand'],
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb], [2, emb]]));
+
+      const results = await service.retrieve('How does the retrieval pipeline in the PDF architecture doc rank and pack evidence, and which parent section explains the overall flow?');
+
+      expect(vectorStore.getStructuralCompanions).toHaveBeenCalledTimes(1);
+      expect(results.map((result) => result.sourceId)).toEqual(expect.arrayContaining(['docs/Architecture.pdf']));
+      expect(results.some((result) => result.text.includes('first broadens candidates'))).toBe(true);
+      expect(service.getLastTrace()?.rankingTrace?.structureExpansionApplied).toBe(true);
+    });
+
+    it('does not expand structured anchors when hard-document expansion is off', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      service.setConfigProvider({
+        getEffectiveConfig: () => ({
+          retrieval: {
+            ragCandidateBreadth: 'balanced',
+            ragStructureExpansionMode: 'off',
+            ragRerankMode: 'standard',
+            ragTopK: 20,
+            ragMaxPerSource: 5,
+            ragTokenBudget: 0,
+            ragScoreThreshold: 0.01,
+            ragCosineThreshold: 0.2,
+            ragDropoffRatio: 0,
+          },
+          model: { contextWindow: 8192 },
+        }),
+      });
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'docs/Architecture.pdf',
+          score: 0.072,
+          sourceType: 'file_chunk',
+          contextPrefix: 'Architecture.pdf > Retrieval Pipeline > Candidate Fusion',
+          headingPath: 'Retrieval Pipeline > Candidate Fusion',
+          parentHeadingPath: 'Retrieval Pipeline',
+          structuralRole: 'table',
+          documentKind: 'pdf',
+          extractionPipeline: 'docling',
+          chunkText: 'Table: candidate fusion weights and fallback ordering.',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
+
+      await service.retrieve('How does the retrieval pipeline in the PDF architecture doc rank and pack evidence, and which parent section explains the overall flow?');
+
+      expect(vectorStore.getStructuralCompanions).not.toHaveBeenCalled();
+      expect(service.getLastTrace()?.rankingTrace?.structureExpansionApplied).toBe(false);
+    });
+
     it('keeps short what-about follow-ups on the simple keyword-focused path', async () => {
       const emb = new Array(768).fill(0.1);
       embeddingService.embedQuery.mockResolvedValue(emb);
@@ -574,6 +661,105 @@ describe('RetrievalService', () => {
       expect(trace?.queryPlan?.complexity).toBe('simple');
       expect(trace?.queryPlan?.strategy).toBe('single');
       expect(trace?.queryPlan?.reasons).not.toContain('multi-clause-question');
+    });
+
+    it('widens hard-query candidate breadth when broad mode is enabled', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      service.setConfigProvider({
+        getEffectiveConfig: () => ({
+          retrieval: {
+            ragCandidateBreadth: 'broad',
+            ragStructureExpansionMode: 'auto',
+            ragRerankMode: 'standard',
+            ragTopK: 20,
+            ragMaxPerSource: 5,
+            ragTokenBudget: 0,
+            ragScoreThreshold: 0.01,
+            ragCosineThreshold: 0.2,
+            ragDropoffRatio: 0,
+          },
+          model: { contextWindow: 8192 },
+        }),
+      });
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, sourceId: 'Claims Guide.md', score: 0.06, chunkText: 'Call the police and document the scene.' }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
+
+      await service.retrieve('I was rear-ended by an uninsured driver. What should I do and what does my policy cover?');
+
+      const trace = service.getLastTrace();
+      expect(trace?.queryPlan?.candidateMultiplier).toBe(6);
+      expect(trace?.queryPlan?.reasons).toContain('broad-candidate-breadth');
+    });
+
+    it('keeps hard queries on a single-query plan when decomposition mode is off', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      service.setConfigProvider({
+        getEffectiveConfig: () => ({
+          retrieval: {
+            ragDecompositionMode: 'off',
+            ragCandidateBreadth: 'balanced',
+            ragDiversityStrength: 'balanced',
+            ragStructureExpansionMode: 'auto',
+            ragRerankMode: 'standard',
+            ragTopK: 20,
+            ragMaxPerSource: 5,
+            ragTokenBudget: 0,
+            ragScoreThreshold: 0.01,
+            ragCosineThreshold: 0.2,
+            ragDropoffRatio: 0,
+          },
+          model: { contextWindow: 8192 },
+        }),
+      });
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, sourceId: 'Claims Guide.md', score: 0.06, chunkText: 'Call the police and document the scene.' }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
+
+      await service.retrieve('I was rear-ended by an uninsured driver. What should I do and what does my policy cover?');
+
+      const trace = service.getLastTrace();
+      expect(trace?.queryPlan?.strategy).toBe('single');
+      expect(trace?.queryPlan?.variants).toHaveLength(1);
+      expect(trace?.queryPlan?.reasons).toContain('decomposition-disabled');
+    });
+
+    it('captures developer-facing retrieval diagnostics for queries, candidates, rerank scores, dropped evidence, and final packed context', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, sourceId: 'Claims Guide.md', score: 0.090, headingPath: 'At the Scene', contextPrefix: 'Claims Guide > At the Scene', chunkText: 'Call the police and take photos of the scene.', sourceType: 'file_chunk' }),
+        makeResult({ rowid: 2, sourceId: 'Claims Guide.md', score: 0.089, headingPath: 'At the Scene', contextPrefix: 'Claims Guide > At the Scene', chunkText: 'Exchange information with the other driver and gather witnesses.', sourceType: 'file_chunk' }),
+        makeResult({ rowid: 3, sourceId: 'Auto Insurance Policy.md', score: 0.088, headingPath: 'Uninsured / Underinsured Motorist (UM/UIM)', contextPrefix: 'Auto Insurance Policy > Uninsured / Underinsured Motorist (UM/UIM)', chunkText: 'UM coverage applies when the at-fault driver has no insurance.', sourceType: 'file_chunk' }),
+        makeResult({ rowid: 4, sourceId: 'Concept Coverage', score: 0.005, contextPrefix: 'Coverage Concepts', chunkText: 'Coverage concepts overview.', sourceType: 'concept' }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+        [3, emb],
+        [4, new Array(768).fill(0)],
+      ]));
+
+      await service.retrieve(
+        'I was rear-ended by an uninsured driver. What should I do and what does my policy cover?',
+        { topK: 2, maxPerSource: 1, tokenBudget: 80 },
+      );
+
+      const trace = service.getLastTrace();
+      expect(trace?.diagnostics?.generatedQueries.length).toBeGreaterThan(0);
+      expect(trace?.diagnostics?.firstStageCandidates.length).toBeGreaterThan(0);
+      expect(trace?.diagnostics?.rerankScores.length).toBeGreaterThan(0);
+      expect(trace?.diagnostics?.droppedEvidence).toEqual(expect.arrayContaining([
+        expect.objectContaining({ droppedAt: 'score-threshold', sourceId: 'Concept Coverage' }),
+        expect.objectContaining({ droppedAt: 'dedup', sourceId: 'Claims Guide.md' }),
+      ]));
+      expect(trace?.diagnostics?.finalPackedContext).toHaveLength(2);
+      expect(trace?.diagnostics?.finalPackedContextText).toContain('[Retrieved Context]');
+      expect(trace?.diagnostics?.finalPackedContextText).toContain('Claims Guide.md');
     });
 
     it('boosts direct contact queries toward Agent Contacts over generic accident references', async () => {
@@ -616,6 +802,698 @@ describe('RetrievalService', () => {
 
       expect(results[0].sourceId).toBe('Agent Contacts.md');
       expect(results.at(-1)?.sourceType).toBe('concept');
+    });
+
+    it('second-stage reranking prefers candidates with stronger heading and body overlap', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'Auto Insurance Policy.md',
+          score: 0.061,
+          contextPrefix: 'Auto Insurance Policy > Exclusions',
+          headingPath: 'Exclusions',
+          chunkText: 'This section lists exclusions and coverage limits.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Claims Guide.md',
+          score: 0.058,
+          contextPrefix: 'Claims Guide > Uninsured Motorist Claim Procedure',
+          headingPath: 'Uninsured Motorist Claim Procedure',
+          chunkText: 'If the other driver has no insurance, file a police report within 24 hours and use uninsured motorist coverage.',
+          sourceType: 'file_chunk',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve('What coverage do I have if the other driver has no insurance?');
+
+      expect(results[0].sourceId).toBe('Claims Guide.md');
+      expect(service.getLastTrace()?.rankingTrace?.secondStageApplied).toBe(true);
+      expect(service.getLastTrace()?.rankingTrace?.secondStageMode).toBe('standard');
+    });
+
+    it('uses experimental late-interaction reranking only when explicitly configured', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      service.setConfigProvider({
+        getEffectiveConfig: () => ({
+          retrieval: {
+            ragRerankMode: 'late-interaction',
+            ragTopK: 20,
+            ragMaxPerSource: 5,
+            ragTokenBudget: 0,
+            ragScoreThreshold: 0.01,
+            ragCosineThreshold: 0.2,
+            ragDropoffRatio: 0,
+          },
+          model: { contextWindow: 8192 },
+        }),
+      });
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'Claims Guide.md',
+          score: 0.061,
+          contextPrefix: 'Claims Guide > Filing Basics',
+          headingPath: 'Filing Basics',
+          chunkText: 'Claim filing requires prompt reporting after an accident.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Auto Insurance Policy.md',
+          score: 0.059,
+          contextPrefix: 'Auto Insurance Policy > Claim Duties',
+          headingPath: 'Claim Duties',
+          chunkText: '1. File the claim within 72 hours. 2. Call roadside assistance immediately after any accident. 3. Keep receipts and photos for reimbursement.',
+          sourceType: 'file_chunk',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve('After an accident, who do I call and how soon do I file the claim?');
+
+      expect(results[0].sourceId).toBe('Auto Insurance Policy.md');
+      expect(service.getLastTrace()?.rankingTrace?.secondStageMode).toBe('late-interaction');
+    });
+
+    it('late-interaction keeps downstream hard-query table terms and promotes the matching matrix row', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      service.setConfigProvider({
+        getEffectiveConfig: () => ({
+          retrieval: {
+            ragDecompositionMode: 'auto',
+            ragRerankMode: 'late-interaction',
+            ragTopK: 20,
+            ragMaxPerSource: 5,
+            ragTokenBudget: 0,
+            ragScoreThreshold: 0.01,
+            ragCosineThreshold: 0.2,
+            ragDropoffRatio: 0,
+          },
+          model: { contextWindow: 8192 },
+        }),
+      });
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'Claims Workflow Architecture.md',
+          score: 0.064,
+          contextPrefix: 'Claims Workflow Architecture > Severity Routing Overview',
+          headingPath: 'Severity Routing Overview',
+          chunkText: 'The claims workflow architecture coordinates potential total loss escalation across several desks and checkpoints.',
+          sourceType: 'file_chunk',
+          structuralRole: 'section',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Claims Workflow Architecture.md',
+          score: 0.060,
+          contextPrefix: 'Claims Workflow Architecture > Severity Routing Matrix',
+          headingPath: 'Severity Routing Matrix',
+          chunkText: '| Trigger | Coordinator | Review Start | Target |\n| Potential total loss | Severity Desk Coordinator | Start valuation review immediately | Within 1 business day |',
+          sourceType: 'file_chunk',
+          structuralRole: 'table',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve(
+        'In the claims workflow architecture doc, when a potential total loss is identified, which coordinator starts review and what target does the matrix set?',
+      );
+
+      expect(results[0].text).toContain('Within 1 business day');
+      expect(results[0].text).toContain('Start valuation review immediately');
+      expect(service.getLastTrace()?.rankingTrace?.secondStageMode).toBe('late-interaction');
+      expect(service.getLastTrace()?.rankingTrace?.focusTerms).toEqual(expect.arrayContaining([
+        'review',
+        'starts',
+        'target',
+      ]));
+    });
+
+    it('late-interaction promotes code snippets when helper and stage-name details appear late in the query', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      service.setConfigProvider({
+        getEffectiveConfig: () => ({
+          retrieval: {
+            ragDecompositionMode: 'auto',
+            ragRerankMode: 'late-interaction',
+            ragTopK: 20,
+            ragMaxPerSource: 5,
+            ragTokenBudget: 0,
+            ragScoreThreshold: 0.01,
+            ragCosineThreshold: 0.2,
+            ragDropoffRatio: 0,
+          },
+          model: { contextWindow: 8192 },
+        }),
+      });
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'Claims Workflow Architecture.md',
+          score: 0.064,
+          contextPrefix: 'Claims Workflow Architecture > Escalation Packet Ownership',
+          headingPath: 'Escalation Packet Ownership',
+          chunkText: 'The Severity Desk Coordinator helper assembles the escalation packet before downstream review.',
+          sourceType: 'file_chunk',
+          structuralRole: 'section',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Claims Workflow Architecture.md',
+          score: 0.059,
+          contextPrefix: 'Claims Workflow Architecture > buildEscalationPacket',
+          headingPath: 'buildEscalationPacket',
+          chunkText: 'const buildEscalationPacket = () => ({ stages: [\'policy-summary\', \'valuation\', \'police-report\'] });',
+          sourceType: 'file_chunk',
+          structuralRole: 'code',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve(
+        'In the claims workflow architecture doc for the severity flow, which helper assembles the escalation packet and which stage names are included?',
+      );
+
+      expect(results[0].text).toContain('buildEscalationPacket');
+      expect(results[0].text).toContain('policy-summary');
+      expect(service.getLastTrace()?.rankingTrace?.focusTerms).toEqual(expect.arrayContaining([
+        'helper',
+        'stage',
+      ]));
+    });
+
+    it('diversity-aware ordering surfaces complementary hard-query evidence earlier', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'Claims Guide.md',
+          score: 0.090,
+          contextPrefix: 'Claims Guide > At the Scene',
+          headingPath: 'At the Scene',
+          chunkText: 'Call the police and take photos of the scene.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Claims Guide.md',
+          score: 0.089,
+          contextPrefix: 'Claims Guide > At the Scene',
+          headingPath: 'At the Scene',
+          chunkText: 'Exchange information with the other driver and gather witnesses.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 3,
+          sourceId: 'Auto Insurance Policy.md',
+          score: 0.088,
+          contextPrefix: 'Auto Insurance Policy > Uninsured / Underinsured Motorist (UM/UIM)',
+          headingPath: 'Uninsured / Underinsured Motorist (UM/UIM)',
+          chunkText: 'UM coverage applies when the at-fault driver has no insurance.',
+          sourceType: 'file_chunk',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+        [3, emb],
+      ]));
+
+      const results = await service.retrieve(
+        "I was rear-ended by an uninsured driver. What should I do and what does my policy cover?",
+        { topK: 3, maxPerSource: 3 },
+      );
+
+      expect(results.slice(0, 2).map((result) => result.sourceId)).toEqual(
+        expect.arrayContaining(['Claims Guide.md', 'Auto Insurance Policy.md']),
+      );
+      expect(results[2].sourceId).toBe('Claims Guide.md');
+      expect(service.getLastTrace()?.rankingTrace?.diversityApplied).toBe(true);
+    });
+
+    it('demotes concept noise for hard coverage questions', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'concept:coverage types',
+          score: 0.062,
+          contextPrefix: 'Coverage Types',
+          chunkText: 'Coverage Types: Includes Collision, Comprehensive, Liability, Uninsured/Underinsured Motorist.',
+          sourceType: 'concept',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Auto Insurance Policy.md',
+          score: 0.058,
+          contextPrefix: 'Auto Insurance Policy > Uninsured / Underinsured Motorist (UM/UIM)',
+          headingPath: 'Uninsured / Underinsured Motorist (UM/UIM)',
+          chunkText: 'UM coverage applies when the other driver has no insurance and collision coverage has a $500 deductible.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 3,
+          sourceId: 'Claims Guide.md',
+          score: 0.057,
+          contextPrefix: 'Claims Guide > Uninsured Motorist (UM) Claim Procedure',
+          headingPath: 'Uninsured Motorist (UM) Claim Procedure',
+          chunkText: 'If the other driver is uninsured, file a police report within 24 hours and use UM coverage as a backup.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 4,
+          sourceId: 'Auto Insurance Policy.md',
+          score: 0.059,
+          contextPrefix: 'Auto Insurance Policy > Exclusions',
+          headingPath: 'Exclusions',
+          chunkText: 'This policy does not cover wear and tear or racing.',
+          sourceType: 'file_chunk',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+        [3, emb],
+        [4, emb],
+      ]));
+
+      const results = await service.retrieve('They said they have insurance but I am not sure. What coverage do I have for this?');
+
+      expect(results[0].sourceId).toBe('Auto Insurance Policy.md');
+      expect(results[1].sourceId).toBe('Claims Guide.md');
+      expect(results.findIndex((result) => result.sourceType === 'concept')).toBeGreaterThan(1);
+    });
+
+    it('strong diversity can promote a complementary source ahead of a slightly higher same-source result', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      service.setConfigProvider({
+        getEffectiveConfig: () => ({
+          retrieval: {
+            ragDecompositionMode: 'auto',
+            ragCandidateBreadth: 'balanced',
+            ragDiversityStrength: 'strong',
+            ragStructureExpansionMode: 'auto',
+            ragRerankMode: 'standard',
+            ragTopK: 3,
+            ragMaxPerSource: 3,
+            ragTokenBudget: 0,
+            ragScoreThreshold: 0.01,
+            ragCosineThreshold: 0.2,
+            ragDropoffRatio: 0,
+          },
+          model: { contextWindow: 8192 },
+        }),
+      });
+      vectorStore.search.mockResolvedValue([
+        makeResult({ rowid: 1, sourceId: 'Guide A.md', score: 0.100, contextPrefix: 'Guide A > Overview', headingPath: 'Overview', chunkText: 'Alpha note.', sourceType: 'file_chunk' }),
+        makeResult({ rowid: 2, sourceId: 'Guide A.md', score: 0.099, contextPrefix: 'Guide A > Overview', headingPath: 'Overview', chunkText: 'Beta note.', sourceType: 'file_chunk' }),
+        makeResult({ rowid: 3, sourceId: 'Guide B.md', score: 0.091, contextPrefix: 'Guide B > Summary', headingPath: 'Summary', chunkText: 'Gamma note.', sourceType: 'file_chunk' }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+        [3, emb],
+      ]));
+
+      const results = await service.retrieve(
+        'coverage',
+        { topK: 3, maxPerSource: 3 },
+      );
+
+      expect(results[1].sourceId).toBe('Guide B.md');
+      expect(service.getLastTrace()?.rankingTrace?.diversityStrength).toBe('strong');
+    });
+
+    it('boosts claim filing questions toward claims steps and agent contact evidence', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'Auto Insurance Policy.md',
+          score: 0.064,
+          contextPrefix: 'Auto Insurance Policy > Collision Coverage',
+          headingPath: 'Collision Coverage',
+          chunkText: 'Collision coverage applies after the deductible is paid.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Claims Guide.md',
+          score: 0.058,
+          contextPrefix: 'Claims Guide > Within 72 Hours',
+          headingPath: 'Within 72 Hours',
+          chunkText: 'Report the claim within 72 hours and call the claims line to start the process.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 3,
+          sourceId: 'Agent Contacts.md',
+          score: 0.057,
+          contextPrefix: 'Agent Contacts > Your Agent',
+          headingPath: 'Your Agent',
+          chunkText: 'Sarah Chen can help you file the claim at (555) 234-5678.',
+          sourceType: 'file_chunk',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+        [3, emb],
+      ]));
+
+      const results = await service.retrieve('OK I want to file a claim. How do I do that and who do I call?');
+
+      expect(results.slice(0, 2).map((result) => result.sourceId)).toEqual(
+        expect.arrayContaining(['Claims Guide.md', 'Agent Contacts.md']),
+      );
+    });
+
+    it('prefers tabular evidence for numeric comparison questions', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'Auto Insurance Policy.md',
+          sourceType: 'file_chunk',
+          score: 0.061,
+          contextPrefix: 'Auto Insurance Policy > Coverage Types',
+          chunkText: 'Collision coverage is one part of the policy summary.',
+          structuralRole: 'section',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Auto Insurance Policy.md',
+          sourceType: 'file_chunk',
+          score: 0.058,
+          contextPrefix: 'Auto Insurance Policy > Premium Summary',
+          chunkText: '| Coverage | Annual Premium |\n| Collision ($500 ded) | $620 |\n| Comprehensive ($250 ded) | $280 |',
+          structuralRole: 'table',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve('Compare the collision and comprehensive deductible table values.');
+
+      expect(results[0].text).toContain('Annual Premium');
+    });
+
+    it('prefers code chunks for identifier-heavy implementation queries', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'docs/RETRIEVAL_GUIDE.md',
+          sourceType: 'file_chunk',
+          score: 0.060,
+          contextPrefix: 'Retrieval Guide > Ranking',
+          chunkText: 'The guide mentions applySecondStageRerank conceptually.',
+          structuralRole: 'section',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'src/services/retrievalService.ts',
+          sourceType: 'file_chunk',
+          score: 0.055,
+          contextPrefix: 'RetrievalService > _applySecondStageRerank',
+          headingPath: '_applySecondStageRerank',
+          chunkText: 'private _applySecondStageRerank(results: SearchResult[], queryPlan: RetrievalQueryPlan) {',
+          structuralRole: 'code',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve('Where is _applySecondStageRerank implemented?');
+
+      expect(results[0].sourceId).toBe('src/services/retrievalService.ts');
+    });
+
+    it('prefers figure or caption callouts when the query asks for them', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'docs/Architecture.pdf',
+          sourceType: 'file_chunk',
+          score: 0.060,
+          contextPrefix: 'Architecture.pdf > Retrieval Pipeline',
+          chunkText: 'The retrieval pipeline uses staged ranking and packing.',
+          structuralRole: 'section',
+          documentKind: 'pdf',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'docs/Architecture.pdf',
+          sourceType: 'file_chunk',
+          score: 0.057,
+          contextPrefix: 'Architecture.pdf > Figure 3',
+          chunkText: 'Figure 3 caption: Retrieval pipeline with candidate generation, reranking, and packing.',
+          structuralRole: 'section',
+          documentKind: 'pdf',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve('What does the retrieval pipeline figure caption say?');
+
+      expect(results[0].text).toContain('Figure 3 caption');
+    });
+
+    it('balances evidence roles for hard multi-part questions before packing', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'docs/ARCHITECTURE.md',
+          score: 0.090,
+          contextPrefix: 'ARCHITECTURE > Retrieval Pipeline',
+          headingPath: 'Retrieval Pipeline',
+          chunkText: 'The architecture routes hybrid retrieval into ranking and context assembly.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'docs/RETRIEVAL_NOTES.md',
+          score: 0.089,
+          contextPrefix: 'Retrieval Notes > Ranking Pipeline',
+          headingPath: 'Ranking Pipeline',
+          chunkText: 'The retrieval pipeline overview explains where reranking happens.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 3,
+          sourceId: 'src/services/retrievalService.ts',
+          score: 0.084,
+          contextPrefix: 'RetrievalService > _applySecondStageRerank',
+          headingPath: '_applySecondStageRerank',
+          chunkText: 'Current runtime behavior reranks candidates after cosine filtering and before token-budget packing.',
+          sourceType: 'file_chunk',
+          structuralRole: 'code',
+        }),
+        makeResult({
+          rowid: 4,
+          sourceId: 'docs/RISK_REGISTER.md',
+          score: 0.082,
+          contextPrefix: 'Risk Register > Failure Modes',
+          headingPath: 'Failure Modes',
+          chunkText: 'Worker teardown races and empty-response bugs can still cause flaky evaluation failures.',
+          sourceType: 'file_chunk',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+        [3, emb],
+        [4, emb],
+      ]));
+
+      const results = await service.retrieve(
+        'Where is retrieval reranking implemented, what does it currently do, and what failures should I watch for?',
+        { topK: 3, maxPerSource: 3 },
+      );
+
+      expect(results).toHaveLength(3);
+      expect(results.map((result) => result.sourceId)).toEqual(expect.arrayContaining([
+        'src/services/retrievalService.ts',
+        'docs/RISK_REGISTER.md',
+      ]));
+      expect(results.at(-1)?.sourceId).toBe('docs/RISK_REGISTER.md');
+      expect(results.some((result) => result.sourceId === 'docs/ARCHITECTURE.md' || result.sourceId === 'docs/RETRIEVAL_NOTES.md')).toBe(true);
+
+      const trace = service.getLastTrace();
+      expect(trace?.rankingTrace?.roleBalanceApplied).toBe(true);
+      expect(trace?.rankingTrace?.targetRoles).toEqual(expect.arrayContaining([
+        'architecture-location',
+        'current-behavior',
+        'failure-mode',
+      ]));
+      expect(trace?.rankingTrace?.coveredRoles).toEqual(expect.arrayContaining([
+        'architecture-location',
+        'implementation-detail',
+        'failure-mode',
+      ]));
+    });
+
+    it('packs smaller complementary chunks ahead of one oversized early chunk', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'docs/ARCHITECTURE.md',
+          score: 0.090,
+          contextPrefix: 'ARCHITECTURE > Retrieval Pipeline',
+          headingPath: 'Retrieval Pipeline',
+          chunkText: 'A'.repeat(640),
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'src/services/retrievalService.ts',
+          score: 0.084,
+          contextPrefix: 'RetrievalService > _applySecondStageRerank',
+          headingPath: '_applySecondStageRerank',
+          chunkText: 'Current runtime behavior reranks candidates after cosine filtering and before token-budget packing.',
+          sourceType: 'file_chunk',
+          structuralRole: 'code',
+        }),
+        makeResult({
+          rowid: 3,
+          sourceId: 'docs/RISK_REGISTER.md',
+          score: 0.082,
+          contextPrefix: 'Risk Register > Failure Modes',
+          headingPath: 'Failure Modes',
+          chunkText: 'Worker teardown races and empty-response bugs can still cause flaky evaluation failures.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 4,
+          sourceId: 'docs/CURRENT_BEHAVIOR.md',
+          score: 0.081,
+          contextPrefix: 'Current Behavior > Retrieval Runtime',
+          headingPath: 'Retrieval Runtime',
+          chunkText: 'The current runtime behavior blends cosine reranking with evidence-role-aware packing.',
+          sourceType: 'file_chunk',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+        [3, emb],
+        [4, emb],
+      ]));
+
+      const results = await service.retrieve(
+        'Where is retrieval reranking implemented, what does it currently do, and what failures should I watch for?',
+        { topK: 4, maxPerSource: 4, tokenBudget: 80 },
+      );
+
+      expect(results.map((result) => result.sourceId)).toEqual([
+        'src/services/retrievalService.ts',
+        'docs/RISK_REGISTER.md',
+        'docs/CURRENT_BEHAVIOR.md',
+      ]);
+      expect(results.some((result) => result.sourceId === 'docs/ARCHITECTURE.md')).toBe(false);
+    });
+
+    it('reduces redundant same-heading evidence when a hard query needs complementary sources', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'docs/ARCHITECTURE.md',
+          score: 0.092,
+          contextPrefix: 'ARCHITECTURE > Retrieval Pipeline',
+          headingPath: 'Retrieval Pipeline',
+          chunkText: 'The architecture routes hybrid retrieval into ranking and context assembly.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'docs/ARCHITECTURE.md',
+          score: 0.091,
+          contextPrefix: 'ARCHITECTURE > Retrieval Pipeline',
+          headingPath: 'Retrieval Pipeline',
+          chunkText: 'The retrieval pipeline also controls packing order and section-level evidence assembly.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 3,
+          sourceId: 'src/services/retrievalService.ts',
+          score: 0.084,
+          contextPrefix: 'RetrievalService > _applySecondStageRerank',
+          headingPath: '_applySecondStageRerank',
+          chunkText: 'Current runtime behavior reranks candidates after cosine filtering and before token-budget packing.',
+          sourceType: 'file_chunk',
+          structuralRole: 'code',
+        }),
+        makeResult({
+          rowid: 4,
+          sourceId: 'docs/RISK_REGISTER.md',
+          score: 0.083,
+          contextPrefix: 'Risk Register > Failure Modes',
+          headingPath: 'Failure Modes',
+          chunkText: 'Worker teardown races and empty-response bugs can still cause flaky evaluation failures.',
+          sourceType: 'file_chunk',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+        [3, emb],
+        [4, emb],
+      ]));
+
+      const results = await service.retrieve(
+        'Where is retrieval reranking implemented, what does it currently do, and what failures should I watch for?',
+        { topK: 3, maxPerSource: 3 },
+      );
+
+      expect(results).toHaveLength(3);
+      const architectureEntries = results.filter((result) => result.sourceId === 'docs/ARCHITECTURE.md');
+      expect(architectureEntries).toHaveLength(1);
+      expect(results.map((result) => result.sourceId)).toEqual(expect.arrayContaining([
+        'src/services/retrievalService.ts',
+        'docs/RISK_REGISTER.md',
+      ]));
     });
   });
 });
