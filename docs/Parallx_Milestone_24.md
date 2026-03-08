@@ -864,9 +864,13 @@ Goal: expose autonomy in a usable product shape.
 
 The chat UI should show task progress rather than only plain assistant text.
 
+Status: complete
+
 ### G.2 Add approval UI primitives
 
 The user should be able to approve, deny, or modify pending actions.
+
+Status: complete
 
 ### G.3 Add task summary / artifact summary UI
 
@@ -877,10 +881,27 @@ Completed runs should surface:
 - what remains blocked,
 - and recommended next steps.
 
+Status: complete
+
+Notes:
+
+- chat task cards now surface plan progress, blocker summaries, and completed
+   task summaries;
+- execution now records workspace artifact refs during completed mutation steps
+   and surfaces them in completed task summaries, diagnostics, and recommended
+   next-step guidance.
+
 ### G.4 Plan a dedicated task/trace panel
 
 If the full UI does not ship in this milestone, the architecture and minimal
 bridge should still be built so the dedicated panel can land cleanly next.
+
+Status: complete
+
+Notes:
+
+- chat task cards now consume `IAgentTraceService.getTaskDiagnostics(...)` as
+   the minimal bridge for later extraction into a dedicated task/trace panel.
 
 ---
 
@@ -892,15 +913,36 @@ Goal: prove the autonomous agent is controlled, bounded, and useful.
 
 Verify the agent refuses out-of-workspace file paths and command scopes.
 
+Status: complete
+
+Notes:
+
+- added service-backed autonomy benchmark coverage for outside-workspace file
+   access attempts and blocked-state trace emission.
+
 ### H.2 Add approval-flow evals
 
 Verify the agent pauses for approval, resumes correctly, and never executes a
 denied action.
 
+Status: complete
+
+Notes:
+
+- added approval benchmark coverage for pause-on-approval, deny-without-
+   execution, and approve-then-complete behavior.
+
 ### H.3 Add delegated-task completion evals
 
 Verify the agent can complete representative delegated workspace tasks while
 remaining inside policy.
+
+Status: complete
+
+Notes:
+
+- representative documentation-task benchmarks now verify approved delegated
+   completion with recorded artifact refs and artifact memory.
 
 ### H.4 Add rollout gates
 
@@ -910,6 +952,13 @@ Autonomy should not broaden by default until:
 - approval tests pass,
 - trace completeness is verified,
 - and completion quality meets milestone-owned thresholds.
+
+Status: complete
+
+Notes:
+
+- the AI evaluation scoring/report layer now includes autonomy summaries and an
+   autonomy rollout gate gated by explicit thresholds plus manual review.
 
 ---
 
@@ -1227,48 +1276,48 @@ The milestone should not be considered complete without explicit tests for:
 ### Phase D — Agent Task Runtime
 - [x] D1. Add task/run persistence model
 - [x] D2. Add orchestration loop for delegated execution
-- [ ] D3. Add pause/resume/continue semantics
+- [x] D3. Add pause/resume/continue semantics
 
 ### Phase E — Working Memory
-- [ ] E1. Add task-scoped working-memory model
-- [ ] E2. Integrate user preferences into execution behavior
-- [ ] E3. Add memory inspection and correction hooks
+- [x] E1. Add task-scoped working-memory model
+- [x] E2. Integrate user preferences into execution behavior
+- [x] E3. Add memory inspection and correction hooks
 
 ### Phase F — Traceability & Debugging
-- [ ] F1. Add readable action-trace model
-- [ ] F2. Add normalized blocked-state reasons
-- [ ] F3. Add developer diagnostics for autonomous runs
+- [x] F1. Add readable action-trace model
+- [x] F2. Add normalized blocked-state reasons
+- [x] F3. Add developer diagnostics for autonomous runs
 
 ### Phase G — UI Surfaces
-- [ ] G1. Add task-status rendering in chat
-- [ ] G2. Add approval UI primitives
-- [ ] G3. Add task completion / artifact summary UI
-- [ ] G4. Add task/trace panel bridge or first slice
+- [x] G1. Add task-status rendering in chat
+- [x] G2. Add approval UI primitives
+- [x] G3. Add task completion / artifact summary UI
+- [x] G4. Add task/trace panel bridge or first slice
 
 ### Phase H — Evaluation & Rollout
-- [ ] H1. Add workspace-boundary evaluation coverage
-- [ ] H2. Add approval correctness evaluation coverage
-- [ ] H3. Add delegated-task completion evaluation scenarios
-- [ ] H4. Add rollout gate for autonomous defaults
+- [x] H1. Add workspace-boundary evaluation coverage
+- [x] H2. Add approval correctness evaluation coverage
+- [x] H3. Add delegated-task completion evaluation scenarios
+- [x] H4. Add rollout gate for autonomous defaults
 
 ---
 
 ## Verification Checklist
 
-- [ ] Agent can accept a delegated workspace goal as a structured task
-- [ ] Workspace boundary is enforced for every path-bearing action
-- [ ] Agent cannot access content outside workspace roots
-- [ ] Policy service explains allow / approval / deny decisions
-- [ ] Approval-required actions pause execution instead of continuing
-- [ ] Denied actions never execute
-- [ ] Tasks can pause, resume, cancel, and complete reliably
-- [ ] Working memory supports continuity without hidden opaque state
-- [ ] Users can inspect what the agent did and why
-- [ ] Blocked states are explicit and actionable
-- [ ] Existing chat functionality remains compatible during migration
-- [ ] Local-first defaults remain intact
-- [ ] `tsc --noEmit` clean after each implementation slice
-- [ ] Relevant unit/e2e/eval suites pass after each implementation slice
+- [x] Agent can accept a delegated workspace goal as a structured task
+- [x] Workspace boundary is enforced for every path-bearing action
+- [x] Agent cannot access content outside workspace roots
+- [x] Policy service explains allow / approval / deny decisions
+- [x] Approval-required actions pause execution instead of continuing
+- [x] Denied actions never execute
+- [x] Tasks can pause, resume, cancel, and complete reliably
+- [x] Working memory supports continuity without hidden opaque state
+- [x] Users can inspect what the agent did and why
+- [x] Blocked states are explicit and actionable
+- [x] Existing chat functionality remains compatible during migration
+- [x] Local-first defaults remain intact
+- [x] `tsc --noEmit` clean after each implementation slice
+- [x] Relevant unit/e2e/eval suites pass after each implementation slice
 
 ---
 

@@ -142,9 +142,29 @@ export interface IUnifiedSuggestionsConfig {
 
 // ─── Agent (from config.json) ────────────────────────────────────────────────
 
+export const AGENT_VERBOSITY_OPTIONS = ['concise', 'balanced', 'detailed'] as const;
+export type AgentVerbosityPreference = typeof AGENT_VERBOSITY_OPTIONS[number];
+
+export const AGENT_APPROVAL_STRICTNESS_OPTIONS = ['strict', 'balanced', 'streamlined'] as const;
+export type AgentApprovalStrictness = typeof AGENT_APPROVAL_STRICTNESS_OPTIONS[number];
+
+export const AGENT_EXECUTION_STYLE_OPTIONS = ['stepwise', 'balanced', 'batch'] as const;
+export type AgentExecutionStylePreference = typeof AGENT_EXECUTION_STYLE_OPTIONS[number];
+
+export const AGENT_PROACTIVITY_OPTIONS = ['low', 'balanced', 'high'] as const;
+export type AgentProactivityPreference = typeof AGENT_PROACTIVITY_OPTIONS[number];
+
 export interface IUnifiedAgentConfig {
   /** Maximum agentic loop iterations before stopping */
   readonly maxIterations: number;
+  /** How verbose agent-facing runtime explanations should be. */
+  readonly verbosity: AgentVerbosityPreference;
+  /** Default approval posture for autonomous actions. */
+  readonly approvalStrictness: AgentApprovalStrictness;
+  /** Preferred cadence for autonomous execution. */
+  readonly executionStyle: AgentExecutionStylePreference;
+  /** How proactively the runtime should continue without a check-in. */
+  readonly proactivity: AgentProactivityPreference;
 }
 
 // ─── Memory (NEW in M20) ─────────────────────────────────────────────────────
@@ -410,6 +430,10 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   },
   agent: {
     maxIterations: 10,
+    verbosity: 'balanced',
+    approvalStrictness: 'balanced',
+    executionStyle: 'balanced',
+    proactivity: 'balanced',
   },
   memory: {
     memoryEnabled: true,

@@ -15,9 +15,12 @@ import { ServiceCollection } from '../services/serviceCollection.js';
 import {
   IAgentApprovalService,
   IAgentExecutionService,
+  IAgentMemoryService,
   IAgentPolicyService,
   IAgentSessionService,
   IAgentTaskStore,
+  IAgentTraceService,
+  IUnifiedAIConfigService,
   ILayoutService,
   IViewService,
   IWorkspaceService,
@@ -32,7 +35,9 @@ import { WorkspaceService } from '../services/workspaceService.js';
 import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
 import { AgentPolicyService } from '../services/agentPolicyService.js';
 import { AgentExecutionService } from '../services/agentExecutionService.js';
+import { AgentMemoryService } from '../services/agentMemoryService.js';
 import { AgentSessionService } from '../services/agentSessionService.js';
+import { AgentTraceService } from '../services/agentTraceService.js';
 
 import type { Workspace } from '../workspace/workspace.js';
 import type { WorkspaceSaver } from '../workspace/workspaceSaver.js';
@@ -121,15 +126,28 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
   disposables.push(workspaceBoundaryService);
   services.registerInstance(IWorkspaceBoundaryService, workspaceBoundaryService);
 
-  const agentPolicyService = new AgentPolicyService(workspaceBoundaryService);
+  const unifiedConfigService = services.has(IUnifiedAIConfigService)
+    ? services.get(IUnifiedAIConfigService)
+    : undefined;
+
+  const agentPolicyService = new AgentPolicyService(workspaceBoundaryService, unifiedConfigService);
   disposables.push(agentPolicyService);
   services.registerInstance(IAgentPolicyService, agentPolicyService);
 
   if (services.has(IAgentTaskStore) && services.has(IAgentApprovalService)) {
+    const agentMemoryService = new AgentMemoryService(services.get(IAgentTaskStore));
+    disposables.push(agentMemoryService);
+    services.registerInstance(IAgentMemoryService, agentMemoryService);
+
+    const agentTraceService = new AgentTraceService(services.get(IAgentTaskStore));
+    disposables.push(agentTraceService);
+    services.registerInstance(IAgentTraceService, agentTraceService);
+
     const agentSessionService = new AgentSessionService(
       workspaceService,
       services.get(IAgentTaskStore),
       services.get(IAgentApprovalService),
+      agentTraceService,
     );
     disposables.push(agentSessionService);
     services.registerInstance(IAgentSessionService, agentSessionService);
@@ -138,6 +156,9 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
       services.get(IAgentTaskStore),
       agentSessionService,
       agentPolicyService,
+      unifiedConfigService,
+      agentMemoryService,
+      agentTraceService,
     );
     disposables.push(agentExecutionService);
     services.registerInstance(IAgentExecutionService, agentExecutionService);

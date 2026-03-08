@@ -54,6 +54,7 @@ import {
   type TestCaseResult,
   type TurnResult,
 } from './scoring';
+import { runAutonomyBenchmarkScenarios } from './autonomyScenarioRunner';
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
@@ -620,7 +621,13 @@ test.describe.serial('AI Quality Evaluation', () => {
       return;
     }
 
-    const report = buildReport(allResults, ollamaModel);
+    const autonomyScenarios = await runAutonomyBenchmarkScenarios();
+    console.log('  Autonomy scenario summary:');
+    for (const scenario of autonomyScenarios) {
+      console.log(`    [${scenario.passed ? 'PASS' : 'FAIL'}] ${scenario.id}: ${scenario.name}`);
+    }
+
+    const report = buildReport(allResults, ollamaModel, { autonomyScenarios });
 
     // Console output
     console.log(report.summary);

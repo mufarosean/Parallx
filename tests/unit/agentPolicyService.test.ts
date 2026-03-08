@@ -3,12 +3,17 @@ import { URI } from '../../src/platform/uri';
 import { AgentPolicyService } from '../../src/services/agentPolicyService';
 import { WorkspaceBoundaryService } from '../../src/services/workspaceBoundaryService';
 
-function createPolicyService(folderPaths: readonly string[] = ['/workspace']): AgentPolicyService {
+function createPolicyService(
+  folderPaths: readonly string[] = ['/workspace'],
+  overrides?: { verbosity?: 'concise' | 'balanced' | 'detailed'; approvalStrictness?: 'strict' | 'balanced' | 'streamlined' },
+): AgentPolicyService {
   const boundaryService = new WorkspaceBoundaryService();
   boundaryService.setHost({
     folders: folderPaths.map((path, index) => ({ uri: URI.file(path), name: `root-${index}`, index })),
   });
-  return new AgentPolicyService(boundaryService);
+  return new AgentPolicyService(boundaryService, {
+    getEffectiveConfig: () => ({ agent: overrides ?? {} }),
+  });
 }
 
 describe('AgentPolicyService', () => {
@@ -35,6 +40,28 @@ describe('AgentPolicyService', () => {
 
     expect(decision.actionClass).toBe('edit');
     expect(decision.policy).toBe('require-approval');
+  });
+
+  it('tightens read policy when approval strictness is strict', () => {
+    const service = createPolicyService(['/workspace'], { approvalStrictness: 'strict' });
+    const decision = service.evaluateAction({
+      toolName: 'read_file',
+      targetUris: [URI.file('/workspace/README.md')],
+      interactionMode: 'operator',
+    });
+
+    expect(decision.policy).toBe('require-approval');
+  });
+
+  it('streamlines routine edits when approval strictness is streamlined', () => {
+    const service = createPolicyService(['/workspace'], { approvalStrictness: 'streamlined' });
+    const decision = service.evaluateAction({
+      toolName: 'apply_patch',
+      targetUris: [URI.file('/workspace/docs/README.md')],
+      interactionMode: 'operator',
+    });
+
+    expect(decision.policy).toBe('allow-with-notification');
   });
 
   it('denies boundary-violating actions', () => {

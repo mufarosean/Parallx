@@ -157,14 +157,20 @@ export const IWorkspaceService = createServiceIdentifier<IWorkspaceService>('IWo
 import type { URI } from '../platform/uri.js';
 import type {
   AgentActionClass,
+  AgentMemoryCorrectionInput,
   AgentApprovalRequest,
   AgentApprovalRequestInput,
   AgentApprovalResolution,
+  AgentMemoryEntry,
+  AgentMemoryEntryInput,
   AgentPlanStep,
   AgentPlanStepInput,
   AgentPolicyDecision,
   AgentProposedAction,
   AgentRunResult,
+  AgentTraceEntry,
+  AgentTraceEntryInput,
+  AgentTaskDiagnostics,
   AgentTaskStatus,
   AgentTaskRecord,
 } from '../agent/agentTypes.js';
@@ -246,6 +252,21 @@ export interface IAgentTaskStore extends IDisposable {
 
   /** List all pending approval requests. */
   listPendingApprovalRequests(): readonly AgentApprovalRequest[];
+
+  /** Insert or replace a task memory entry. */
+  upsertMemoryEntry(entry: AgentMemoryEntry): Promise<void>;
+
+  /** Get a task memory entry by id. */
+  getMemoryEntry(entryId: string): AgentMemoryEntry | undefined;
+
+  /** List task memory entries for a task. */
+  listMemoryEntriesForTask(taskId: string): readonly AgentMemoryEntry[];
+
+  /** Insert or replace a trace entry. */
+  upsertTraceEntry(entry: AgentTraceEntry): Promise<void>;
+
+  /** List trace entries for a task. */
+  listTraceEntriesForTask(taskId: string): readonly AgentTraceEntry[];
 }
 
 export const IAgentTaskStore = createServiceIdentifier<IAgentTaskStore>('IAgentTaskStore');
@@ -293,7 +314,7 @@ export interface IAgentSessionService extends IDisposable {
   createTask(input: import('../agent/agentTypes.js').DelegatedTaskInput, taskId?: string, now?: string): Promise<AgentTaskRecord>;
 
   /** Update a task status directly through validated lifecycle transitions. */
-  transitionTask(taskId: string, nextStatus: AgentTaskStatus, now?: string, options?: { blockerReason?: string; currentStepId?: string }): Promise<AgentTaskRecord>;
+  transitionTask(taskId: string, nextStatus: AgentTaskStatus, now?: string, options?: { blockerReason?: string; blockerCode?: import('../agent/agentTypes.js').AgentBlockReasonCode; currentStepId?: string; stopAfterCurrentStep?: boolean }): Promise<AgentTaskRecord>;
 
   /** Move a task into awaiting-approval and enqueue an approval request. */
   queueApprovalForTask(taskId: string, request: Omit<AgentApprovalRequestInput, 'taskId'>, now?: string): Promise<{ task: AgentTaskRecord; approvalRequest: AgentApprovalRequest }>;
@@ -301,8 +322,20 @@ export interface IAgentSessionService extends IDisposable {
   /** Persist plan steps for a task. */
   setPlanSteps(taskId: string, steps: readonly AgentPlanStepInput[], now?: string): Promise<readonly AgentPlanStep[]>;
 
+  /** Merge newly recorded workspace artifact refs into the task. */
+  recordTaskArtifacts(taskId: string, artifactRefs: readonly string[], now?: string): Promise<AgentTaskRecord>;
+
   /** List plan steps for a task. */
   getPlanSteps(taskId: string): readonly AgentPlanStep[];
+
+  /** Request that the task pause after completing its current runnable step. */
+  requestStopAfterCurrentStep(taskId: string, now?: string): Promise<AgentTaskRecord>;
+
+  /** Continue a paused or blocked task. */
+  continueTask(taskId: string, now?: string): Promise<AgentTaskRecord>;
+
+  /** Redirect a paused or blocked task with an additional constraint and resume planning. */
+  redirectTask(taskId: string, constraint: string, now?: string): Promise<AgentTaskRecord>;
 
   /** Resolve an approval request and resume or block the task accordingly. */
   resolveTaskApproval(taskId: string, requestId: string, resolution: AgentApprovalResolution, now?: string): Promise<AgentTaskRecord>;
@@ -330,6 +363,48 @@ export interface IAgentExecutionService extends IDisposable {
 }
 
 export const IAgentExecutionService = createServiceIdentifier<IAgentExecutionService>('IAgentExecutionService');
+
+// ─── IAgentMemoryService ───────────────────────────────────────────────────
+
+/**
+ * Owns task-scoped working memory entries and compaction rules.
+ */
+export interface IAgentMemoryService extends IDisposable {
+  /** Persist a task memory entry. */
+  remember(taskId: string, input: AgentMemoryEntryInput, now?: string): Promise<AgentMemoryEntry>;
+
+  /** List task memory entries in creation order. */
+  listTaskMemory(taskId: string, options?: { includeSuperseded?: boolean }): readonly AgentMemoryEntry[];
+
+  /** Get a specific task memory entry. */
+  getTaskMemoryEntry(taskId: string, entryId: string): AgentMemoryEntry | undefined;
+
+  /** Correct a prior memory entry by superseding it with a new canonical entry. */
+  correctTaskMemory(taskId: string, entryId: string, correction: AgentMemoryCorrectionInput, now?: string): Promise<{ previous: AgentMemoryEntry; corrected: AgentMemoryEntry }>;
+
+  /** Compact older non-pinned memory entries while preserving recent context. */
+  compactTaskMemory(taskId: string, now?: string): Promise<readonly AgentMemoryEntry[]>;
+}
+
+export const IAgentMemoryService = createServiceIdentifier<IAgentMemoryService>('IAgentMemoryService');
+
+// ─── IAgentTraceService ────────────────────────────────────────────────────
+
+/**
+ * Owns readable autonomous run trace entries.
+ */
+export interface IAgentTraceService extends IDisposable {
+  /** Persist a trace entry for a task. */
+  record(taskId: string, input: AgentTraceEntryInput, now?: string): Promise<AgentTraceEntry>;
+
+  /** List trace entries for a task in creation order. */
+  listTaskTrace(taskId: string): readonly AgentTraceEntry[];
+
+  /** Build a reproducible diagnostics snapshot for a task. */
+  getTaskDiagnostics(taskId: string): AgentTaskDiagnostics | undefined;
+}
+
+export const IAgentTraceService = createServiceIdentifier<IAgentTraceService>('IAgentTraceService');
 
 // ─── IDatabaseService ────────────────────────────────────────────────────────
 

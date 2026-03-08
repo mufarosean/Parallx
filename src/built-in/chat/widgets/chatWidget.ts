@@ -17,6 +17,7 @@ import type { OllamaProvider } from '../providers/ollamaProvider.js';
 import { ChatInputPart } from '../input/chatInputPart.js';
 import { chatIcons } from '../chatIcons.js';
 import { ChatListRenderer } from '../rendering/chatListRenderer.js';
+import { renderAgentTaskRail } from '../rendering/chatTaskCards.js';
 import { ChatModelPicker } from '../pickers/chatModelPicker.js';
 import { ChatModePicker } from '../pickers/chatModePicker.js';
 import { ChatSessionSidebar } from './chatSessionSidebar.js';
@@ -65,6 +66,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private readonly _root: HTMLElement;
   private readonly _mainArea: HTMLElement;
   private readonly _messageListContainer: HTMLElement;
+  private readonly _taskRailContainer: HTMLElement;
   private readonly _pendingMessagesContainer: HTMLElement;
   private readonly _scrollBtn: HTMLElement;
   private readonly _inputAreaContainer: HTMLElement;
@@ -94,6 +96,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   // ── State ──
 
   private _isAtBottom = true;
+  private readonly _expandedTaskIds = new Set<string>();
 
   // ── Events ──
 
@@ -141,6 +144,9 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // Message list (scrollable)
     this._messageListContainer = $('div.parallx-chat-message-list');
     this._mainArea.appendChild(this._messageListContainer);
+
+    this._taskRailContainer = $('div.parallx-chat-agent-task-rail-container');
+    this._messageListContainer.appendChild(this._taskRailContainer);
 
     // Pending messages container (between message list and input)
     this._pendingMessagesContainer = $('div.parallx-chat-pending-messages');
@@ -224,6 +230,14 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       }
     }) as EventListener));
 
+    this._register(addDisposableListener(this._messageListContainer, 'parallx-agent-task-action' as keyof HTMLElementEventMap, ((e: CustomEvent<{ taskId: string; action: 'continue' | 'stop-after-step' | 'toggle-details' }>) => {
+      void this._handleAgentTaskAction(e.detail);
+    }) as EventListener));
+
+    this._register(addDisposableListener(this._messageListContainer, 'parallx-agent-approval' as keyof HTMLElementEventMap, ((e: CustomEvent<{ taskId: string; requestId: string; resolution: import('../../../agent/agentTypes.js').AgentApprovalResolution }>) => {
+      void this._handleAgentApproval(e.detail);
+    }) as EventListener));
+
     this._inputPart = this._register(new ChatInputPart(this._inputAreaContainer));
     this._register(this._inputPart.onDidAcceptInput((text) => this._handleSubmit(text)));
     this._register(this._inputPart.onDidRequestStop(() => this._handleStop()));
@@ -283,9 +297,22 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       this._updateVisibility();
     }));
 
+    if (this._services.onDidChangeAgentTasks) {
+      this._register(this._services.onDidChangeAgentTasks(() => {
+        this._renderAgentTasks();
+      }));
+    }
+
+    if (this._services.onDidChangeAgentApprovals) {
+      this._register(this._services.onDidChangeAgentApprovals(() => {
+        this._renderAgentTasks();
+      }));
+    }
+
     // ── Initial state ──
 
     this._updateVisibility();
+    this._renderAgentTasks();
   }
 
   // ── Public API ──
@@ -584,10 +611,35 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     }
   }
 
+  private async _handleAgentTaskAction(detail: { taskId: string; action: 'continue' | 'stop-after-step' | 'toggle-details' }): Promise<void> {
+    if (detail.action === 'toggle-details') {
+      if (this._expandedTaskIds.has(detail.taskId)) {
+        this._expandedTaskIds.delete(detail.taskId);
+      } else {
+        this._expandedTaskIds.add(detail.taskId);
+      }
+      this._renderAgentTasks();
+      return;
+    }
+
+    if (detail.action === 'continue') {
+      await this._services.continueAgentTask?.(detail.taskId);
+      return;
+    }
+
+    await this._services.stopAgentTaskAfterStep?.(detail.taskId);
+  }
+
+  private async _handleAgentApproval(detail: { taskId: string; requestId: string; resolution: import('../../../agent/agentTypes.js').AgentApprovalResolution }): Promise<void> {
+    await this._services.resolveAgentApproval?.(detail.taskId, detail.requestId, detail.resolution);
+  }
+
   // ── Rendering ──
 
   private _renderMessages(): void {
     if (!this._session) {
+      this._renderAgentTasks();
+      this._updateVisibility();
       return;
     }
 
@@ -597,6 +649,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       this._session.messages,
       this._session.requestInProgress,
     );
+
+    this._renderAgentTasks();
 
     this._updateVisibility();
 
@@ -611,10 +665,11 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
   private _updateVisibility(): void {
     const hasSession = !!this._session;
     const hasMessages = hasSession && this._session!.messages.length > 0;
+    const hasAgentTasks = (this._services.getAgentTasks?.().length ?? 0) > 0;
     const isOnline = this._services.getProviderStatus().available;
 
     // Offline state takes priority
-    if (!isOnline && !hasMessages) {
+    if (!isOnline && !hasMessages && !hasAgentTasks) {
       this._emptyStateEl.style.display = 'none';
       this._offlineStateEl.style.display = '';
       this._inputPart.setEnabled(false);
@@ -624,12 +679,21 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._offlineStateEl.style.display = 'none';
 
     // Empty state when no messages
-    if (!hasMessages) {
+    if (!hasMessages && !hasAgentTasks) {
       this._emptyStateEl.style.display = '';
       this._inputPart.setEnabled(true);
     } else {
       this._emptyStateEl.style.display = 'none';
       this._inputPart.setEnabled(true);
+    }
+  }
+
+  private _renderAgentTasks(): void {
+    const tasks = this._services.getAgentTasks?.() ?? [];
+    this._taskRailContainer.replaceChildren();
+    this._taskRailContainer.style.display = tasks.length > 0 ? '' : 'none';
+    if (tasks.length > 0) {
+      this._taskRailContainer.appendChild(renderAgentTaskRail(tasks, this._expandedTaskIds));
     }
   }
 

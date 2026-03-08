@@ -3,6 +3,7 @@ import { InMemoryStorage } from '../../src/platform/storage';
 import { Workspace } from '../../src/workspace/workspace';
 import { Emitter } from '../../src/platform/events';
 import { AgentApprovalService } from '../../src/services/agentApprovalService';
+import { AgentTraceService } from '../../src/services/agentTraceService';
 import { AgentSessionService } from '../../src/services/agentSessionService';
 import { AgentTaskStore } from '../../src/services/agentTaskStore';
 import { WorkspaceService } from '../../src/services/workspaceService';
@@ -26,19 +27,20 @@ function createWorkspaceService(): WorkspaceService {
   return service;
 }
 
-async function createSessionService(): Promise<AgentSessionService> {
+async function createSessionService(): Promise<{ service: AgentSessionService; traceService: AgentTraceService }> {
   const storage = new InMemoryStorage();
   const workspaceService = createWorkspaceService();
   const taskStore = new AgentTaskStore();
   await taskStore.setStorage(storage);
   const approvalService = new AgentApprovalService(taskStore);
   await approvalService.setStorage(storage);
-  return new AgentSessionService(workspaceService, taskStore, approvalService);
+  const traceService = new AgentTraceService(taskStore);
+  return { service: new AgentSessionService(workspaceService, taskStore, approvalService, traceService), traceService };
 }
 
 describe('AgentSessionService', () => {
   it('creates tasks for the active workspace', async () => {
-    const service = await createSessionService();
+    const { service } = await createSessionService();
     const task = await service.createTask({ goal: 'Review the workspace' }, 'task-1', '2026-03-08T13:00:00.000Z');
 
     expect(task.id).toBe('task-1');
@@ -47,7 +49,7 @@ describe('AgentSessionService', () => {
   });
 
   it('queues approvals and moves task into awaiting-approval', async () => {
-    const service = await createSessionService();
+    const { service } = await createSessionService();
     const created = await service.createTask({ goal: 'Patch the docs' }, 'task-1', '2026-03-08T13:01:00.000Z');
     await service.transitionTask('task-1', 'planning', '2026-03-08T13:01:30.000Z');
 
@@ -66,13 +68,14 @@ describe('AgentSessionService', () => {
     expect(created.status).toBe('pending');
     expect(queued.approvalRequest.status).toBe('pending');
     expect(queued.task.status).toBe('awaiting-approval');
+    expect(queued.task.blockerCode).toBe('approval-pending');
     expect(queued.task.resumeStatus).toBe('planning');
     expect(queued.task.blockerReason).toContain('Awaiting approval');
     expect(queued.task.blockerReason).toContain('docs/README.md');
   });
 
   it('persists task plan steps', async () => {
-    const service = await createSessionService();
+    const { service } = await createSessionService();
     await service.createTask({ goal: 'Review the workspace' }, 'task-1', '2026-03-08T13:02:00.000Z');
 
     const steps = await service.setPlanSteps('task-1', [
@@ -97,8 +100,50 @@ describe('AgentSessionService', () => {
     expect(service.getPlanSteps('task-1').map((step) => step.id)).toEqual(['step-1', 'step-2']);
   });
 
+  it('records unique task artifact refs across updates', async () => {
+    const { service } = await createSessionService();
+    await service.createTask({ goal: 'Patch docs' }, 'task-1', '2026-03-08T13:02:35.000Z');
+
+    await service.recordTaskArtifacts('task-1', ['/workspace/docs/README.md'], '2026-03-08T13:02:40.000Z');
+    const updated = await service.recordTaskArtifacts('task-1', ['/workspace/docs/README.md', '/workspace/docs/Guide.md'], '2026-03-08T13:02:45.000Z');
+
+    expect(updated.artifactRefs).toEqual(['/workspace/docs/README.md', '/workspace/docs/Guide.md']);
+  });
+
+  it('continues paused tasks by returning them to planning', async () => {
+    const { service } = await createSessionService();
+    await service.createTask({ goal: 'Review the workspace' }, 'task-1', '2026-03-08T13:02:45.000Z');
+    await service.transitionTask('task-1', 'planning', '2026-03-08T13:03:00.000Z');
+    await service.transitionTask('task-1', 'running', '2026-03-08T13:03:15.000Z');
+    await service.requestStopAfterCurrentStep('task-1', '2026-03-08T13:03:30.000Z');
+    await service.transitionTask('task-1', 'paused', '2026-03-08T13:03:45.000Z', {
+      blockerReason: 'Paused after requested step boundary.',
+      stopAfterCurrentStep: false,
+    });
+
+    const continued = await service.continueTask('task-1', '2026-03-08T13:04:00.000Z');
+    expect(continued.status).toBe('planning');
+    expect(continued.stopAfterCurrentStep).toBe(false);
+    expect(continued.blockerReason).toBeUndefined();
+  });
+
+  it('redirects blocked tasks by appending a new constraint', async () => {
+    const { service } = await createSessionService();
+    await service.createTask({ goal: 'Patch docs', constraints: ['docs-only'] }, 'task-1', '2026-03-08T13:04:15.000Z');
+    await service.transitionTask('task-1', 'planning', '2026-03-08T13:04:30.000Z');
+    await service.transitionTask('task-1', 'blocked', '2026-03-08T13:04:45.000Z', {
+      blockerReason: 'Need narrower scope.',
+    });
+
+    const redirected = await service.redirectTask('task-1', 'only update markdown files under docs/', '2026-03-08T13:05:00.000Z');
+    expect(redirected.status).toBe('planning');
+    expect(redirected.constraints).toContain('docs-only');
+    expect(redirected.constraints).toContain('only update markdown files under docs/');
+    expect(redirected.blockerReason).toBeUndefined();
+  });
+
   it('resumes the prior task status after approval', async () => {
-    const service = await createSessionService();
+    const { service } = await createSessionService();
     await service.createTask({ goal: 'Patch the docs' }, 'task-1', '2026-03-08T13:03:00.000Z');
     await service.transitionTask('task-1', 'planning', '2026-03-08T13:03:15.000Z');
     await service.transitionTask('task-1', 'running', '2026-03-08T13:03:30.000Z');
@@ -121,7 +166,7 @@ describe('AgentSessionService', () => {
   });
 
   it('blocks the task when approval is denied', async () => {
-    const service = await createSessionService();
+    const { service } = await createSessionService();
     await service.createTask({ goal: 'Delete an obsolete file' }, 'task-1', '2026-03-08T13:05:00.000Z');
     await service.transitionTask('task-1', 'planning', '2026-03-08T13:05:30.000Z');
     await service.queueApprovalForTask('task-1', {
@@ -138,11 +183,12 @@ describe('AgentSessionService', () => {
 
     const blocked = await service.resolveTaskApproval('task-1', 'approval-1', 'deny', '2026-03-08T13:06:30.000Z');
     expect(blocked.status).toBe('blocked');
+    expect(blocked.blockerCode).toBe('approval-denied');
     expect(blocked.blockerReason).toContain('Approval denied');
   });
 
   it('cancels the task when approval is cancelled by the user', async () => {
-    const service = await createSessionService();
+    const { service } = await createSessionService();
     await service.createTask({ goal: 'Run a workspace command' }, 'task-1', '2026-03-08T13:07:00.000Z');
     await service.transitionTask('task-1', 'planning', '2026-03-08T13:07:30.000Z');
     await service.queueApprovalForTask('task-1', {
@@ -163,7 +209,7 @@ describe('AgentSessionService', () => {
   });
 
   it('bundles repeated approval requests while a task is already awaiting approval', async () => {
-    const service = await createSessionService();
+    const { service } = await createSessionService();
     await service.createTask({ goal: 'Patch documentation files' }, 'task-1', '2026-03-08T13:09:00.000Z');
     await service.transitionTask('task-1', 'planning', '2026-03-08T13:09:30.000Z');
 
@@ -198,5 +244,38 @@ describe('AgentSessionService', () => {
     expect(second.approvalRequest.affectedTargets).toEqual(['docs/a.md', 'docs/b.md']);
     expect(second.task.status).toBe('awaiting-approval');
     expect(second.task.blockerReason).toContain('Bundled actions: 2');
+  });
+
+  it('records trace entries for task creation, planning, and approvals', async () => {
+    const { service, traceService } = await createSessionService();
+    await service.createTask({ goal: 'Patch the docs' }, 'task-1', '2026-03-08T13:11:00.000Z');
+    await service.setPlanSteps('task-1', [
+      {
+        id: 'step-1',
+        taskId: 'task-1',
+        title: 'Patch docs',
+        description: 'Edit docs/README.md',
+        kind: 'edit',
+      },
+    ], '2026-03-08T13:11:30.000Z');
+    await service.transitionTask('task-1', 'planning', '2026-03-08T13:12:00.000Z');
+    await service.queueApprovalForTask('task-1', {
+      id: 'approval-1',
+      stepId: 'step-1',
+      actionClass: 'edit',
+      toolName: 'apply_patch',
+      summary: 'Edit docs/README.md',
+      explanation: 'The agent needs to update documentation content before continuing.',
+      affectedTargets: ['docs/README.md'],
+      scope: 'single-action',
+      reason: 'Workspace edits require approval.',
+    }, '2026-03-08T13:12:30.000Z');
+
+    expect(traceService.listTaskTrace('task-1').map((entry) => entry.event)).toEqual([
+      'task-created',
+      'plan-step-recorded',
+      'task-transitioned',
+      'approval-requested',
+    ]);
   });
 });

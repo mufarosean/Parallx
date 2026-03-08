@@ -23,6 +23,12 @@ import type {
   ChatMode,
   IChatEditProposalContent,
 } from '../../services/chatTypes.js';
+import type {
+  AgentApprovalRequest,
+  AgentApprovalResolution,
+  AgentTaskDiagnostics,
+  AgentTaskRecord,
+} from '../../agent/agentTypes.js';
 import { ChatRequestQueueKind } from '../../services/chatTypes.js';
 export { ChatRequestQueueKind } from '../../services/chatTypes.js';
 export type { IChatPendingRequest } from '../../services/chatTypes.js';
@@ -220,11 +226,23 @@ export interface IChatWidgetServices {
   readonly writeFileRelative?: (relativePath: string, content: string) => Promise<void>;
   readonly searchSessions?: (query: string) => Promise<Array<{ sessionId: string; sessionTitle: string; matchingContent: string }>>;
   readonly openAISettings?: () => void;
+  readonly getAgentTasks?: () => readonly IChatAgentTaskViewModel[];
+  readonly resolveAgentApproval?: (taskId: string, requestId: string, resolution: AgentApprovalResolution) => Promise<void>;
+  readonly continueAgentTask?: (taskId: string) => Promise<void>;
+  readonly stopAgentTaskAfterStep?: (taskId: string) => Promise<void>;
+  readonly onDidChangeAgentTasks?: Event<AgentTaskRecord>;
+  readonly onDidChangeAgentApprovals?: Event<AgentApprovalRequest>;
   // ── Pending request queue ──
   readonly queueRequest?: (sessionId: string, message: string, kind: ChatRequestQueueKind) => IChatPendingRequest;
   readonly removePendingRequest?: (sessionId: string, requestId: string) => void;
   readonly requestYield?: (sessionId: string) => void;
   readonly onDidChangePendingRequests?: Event<string>;
+}
+
+export interface IChatAgentTaskViewModel {
+  readonly task: AgentTaskRecord;
+  readonly diagnostics?: AgentTaskDiagnostics;
+  readonly pendingApprovals: readonly AgentApprovalRequest[];
 }
 
 /** Services needed by the model picker dropdown. */

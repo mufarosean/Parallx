@@ -30,6 +30,6 @@ describe('agentLifecycle', () => {
   });
 
   it('lists allowed next states', () => {
-    expect(getAllowedAgentTaskTransitions('awaiting-approval')).toEqual(['running', 'blocked', 'cancelled']);
+    expect(getAllowedAgentTaskTransitions('awaiting-approval')).toEqual(['planning', 'running', 'blocked', 'cancelled']);
   });
 });

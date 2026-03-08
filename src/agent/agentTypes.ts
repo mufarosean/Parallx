@@ -36,6 +36,16 @@ export const AGENT_ACTION_POLICIES = ['allow', 'allow-with-notification', 'requi
 export type AgentActionPolicy = typeof AGENT_ACTION_POLICIES[number];
 
 export type AgentBoundaryViolationType = 'no-workspace' | 'outside-workspace' | 'non-file-uri';
+export type AgentBlockReasonCode =
+  | 'outside-workspace-request'
+  | 'policy-denial'
+  | 'approval-pending'
+  | 'approval-denied'
+  | 'insufficient-evidence'
+  | 'tool-failure'
+  | 'conflicting-instruction'
+  | 'user-requested-pause'
+  | 'execution-cadence';
 
 export interface AgentAllowedScope {
   readonly kind: 'workspace';
@@ -69,7 +79,9 @@ export interface AgentTaskRecord extends NormalizedDelegatedTaskInput {
   readonly artifactRefs: readonly string[];
   readonly currentStepId?: string;
   readonly blockerReason?: string;
+  readonly blockerCode?: AgentBlockReasonCode;
   readonly resumeStatus?: AgentTaskStatus;
+  readonly stopAfterCurrentStep?: boolean;
 }
 
 export type AgentPlanStepStatus = 'pending' | 'running' | 'completed' | 'blocked' | 'cancelled';
@@ -111,6 +123,44 @@ export interface AgentRunResult {
   readonly approvalRequestId?: string;
 }
 
+export type AgentTracePhase = 'planning' | 'execution' | 'approval' | 'state';
+export type AgentTraceEvent =
+  | 'task-created'
+  | 'task-transitioned'
+  | 'plan-step-recorded'
+  | 'step-started'
+  | 'step-completed'
+  | 'step-blocked'
+  | 'approval-requested'
+  | 'approval-resolved';
+
+export interface AgentTraceEntryInput {
+  readonly id: string;
+  readonly phase: AgentTracePhase;
+  readonly event: AgentTraceEvent;
+  readonly message: string;
+  readonly stepId?: string;
+  readonly planIntent?: string;
+  readonly selectedTool?: string;
+  readonly approvalResult?: 'pending' | AgentApprovalResolution;
+  readonly outputSummary?: string;
+  readonly previousStatus?: AgentTaskStatus;
+  readonly nextStatus?: AgentTaskStatus;
+}
+
+export interface AgentTraceEntry extends AgentTraceEntryInput {
+  readonly taskId: string;
+  readonly createdAt: string;
+}
+
+export interface AgentTaskDiagnostics {
+  readonly task: AgentTaskRecord;
+  readonly planSteps: readonly AgentPlanStep[];
+  readonly approvals: readonly AgentApprovalRequest[];
+  readonly memory: readonly AgentMemoryEntry[];
+  readonly trace: readonly AgentTraceEntry[];
+}
+
 export interface AgentBoundaryDecision {
   readonly allowed: boolean;
   readonly reason: string;
@@ -141,6 +191,7 @@ export const AGENT_APPROVAL_RESOLUTIONS = ['approve-once', 'approve-for-task', '
 export type AgentApprovalResolution = typeof AGENT_APPROVAL_RESOLUTIONS[number];
 
 export type AgentApprovalScope = 'single-action' | 'task';
+export type AgentMemoryCategory = 'goal' | 'assumption' | 'plan' | 'evidence' | 'attempt' | 'artifact';
 
 export interface AgentApprovalRequest {
   readonly id: string;
@@ -175,4 +226,35 @@ export interface AgentApprovalRequestInput {
   readonly scope: AgentApprovalScope;
   readonly reason: string;
   readonly createdAt?: string;
+}
+
+export interface AgentMemoryEntryInput {
+  readonly id: string;
+  readonly category: AgentMemoryCategory;
+  readonly content: string;
+  readonly source?: 'user' | 'agent' | 'system';
+  readonly evidenceStepIds?: readonly string[];
+  readonly artifactRefs?: readonly string[];
+  readonly pinned?: boolean;
+}
+
+export interface AgentMemoryCorrectionInput {
+  readonly id: string;
+  readonly content: string;
+  readonly category?: AgentMemoryCategory;
+  readonly source?: 'user' | 'agent' | 'system';
+  readonly evidenceStepIds?: readonly string[];
+  readonly artifactRefs?: readonly string[];
+  readonly pinned?: boolean;
+}
+
+export interface AgentMemoryEntry extends AgentMemoryEntryInput {
+  readonly taskId: string;
+  readonly source: 'user' | 'agent' | 'system';
+  readonly evidenceStepIds: readonly string[];
+  readonly artifactRefs: readonly string[];
+  readonly pinned: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly supersededById?: string;
 }

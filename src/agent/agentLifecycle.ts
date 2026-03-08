@@ -3,7 +3,7 @@ import type { AgentTaskStatus } from './agentTypes.js';
 const AGENT_TASK_TRANSITIONS: Record<AgentTaskStatus, readonly AgentTaskStatus[]> = {
   pending: ['planning', 'cancelled'],
   planning: ['awaiting-approval', 'running', 'blocked', 'failed', 'cancelled'],
-  'awaiting-approval': ['running', 'blocked', 'cancelled'],
+  'awaiting-approval': ['planning', 'running', 'blocked', 'cancelled'],
   running: ['awaiting-approval', 'blocked', 'paused', 'completed', 'failed', 'cancelled'],
   blocked: ['planning', 'paused', 'failed', 'cancelled'],
   paused: ['planning', 'running', 'cancelled'],

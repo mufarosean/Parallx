@@ -60,5 +60,6 @@ export function createAgentTaskRecord(
     currentStepId: undefined,
     blockerReason: undefined,
     resumeStatus: undefined,
+    stopAfterCurrentStep: false,
   };
 }

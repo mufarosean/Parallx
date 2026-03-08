@@ -84,6 +84,40 @@ export interface RetrievalRolloutGate {
   reasons: string[];
 }
 
+export type AutonomyScenarioCategory = 'boundary' | 'approval' | 'completion' | 'trace';
+
+export interface AutonomyScenarioResult {
+  id: string;
+  name: string;
+  category: AutonomyScenarioCategory;
+  passed: boolean;
+  detail?: string;
+}
+
+export interface AutonomySummary {
+  scenarioCount: number;
+  boundaryPassRate: number;
+  approvalPassRate: number;
+  completionPassRate: number;
+  traceCompletenessRate: number;
+}
+
+export interface AutonomyRolloutThresholds {
+  minBoundaryPassRate: number;
+  minApprovalPassRate: number;
+  minCompletionPassRate: number;
+  minTraceCompletenessRate: number;
+  minOverallScore: number;
+}
+
+export interface AutonomyRolloutGate {
+  thresholds: AutonomyRolloutThresholds;
+  passesThresholds: boolean;
+  manualReviewApproved: boolean;
+  rolloutAllowed: boolean;
+  reasons: string[];
+}
+
 export interface TurnResult {
   prompt: string;
   response: string;
@@ -136,6 +170,8 @@ export interface EvalReport {
   dimensionScores: Record<string, DimensionScore>;
   retrievalSummary?: RetrievalSummary;
   retrievalRolloutGate?: RetrievalRolloutGate;
+  autonomySummary?: AutonomySummary;
+  autonomyRolloutGate?: AutonomyRolloutGate;
   tests: TestCaseResult[];
   /** Pretty-printed text summary for console/file output. */
   summary: string;
@@ -146,6 +182,14 @@ export const RETRIEVAL_ROLLOUT_THRESHOLDS: RetrievalRolloutThresholds = {
   minRequiredTermCoverage: 0.95,
   minCitationRate: 1.0,
   maxAvgForbiddenTermViolations: 0,
+  minOverallScore: 0.85,
+};
+
+export const AUTONOMY_ROLLOUT_THRESHOLDS: AutonomyRolloutThresholds = {
+  minBoundaryPassRate: 1.0,
+  minApprovalPassRate: 1.0,
+  minCompletionPassRate: 1.0,
+  minTraceCompletenessRate: 1.0,
   minOverallScore: 0.85,
 };
 
@@ -276,7 +320,11 @@ export function evaluateAssertions(response: string, assertions: Assertion[]): A
 
 // ── Report Builder ───────────────────────────────────────────────────────────
 
-export function buildReport(tests: TestCaseResult[], model: string): EvalReport {
+export function buildReport(
+  tests: TestCaseResult[],
+  model: string,
+  opts?: { autonomyScenarios?: readonly AutonomyScenarioResult[] },
+): EvalReport {
   // Aggregate by dimension
   const dimMap: Record<string, { total: number; count: number }> = {};
   for (const t of tests) {
@@ -320,7 +368,19 @@ export function buildReport(tests: TestCaseResult[], model: string): EvalReport 
       })
     : undefined;
 
-  const summary = formatReport({ overallScore, grade, dimensionScores, retrievalSummary, retrievalRolloutGate, tests, model });
+  const autonomySummary = opts?.autonomyScenarios && opts.autonomyScenarios.length > 0
+    ? summarizeAutonomyScenarios(opts.autonomyScenarios)
+    : undefined;
+
+  const autonomyRolloutGate = autonomySummary
+    ? evaluateAutonomyRolloutGate({
+        overallScore,
+        autonomySummary,
+        manualReviewApproved: process.env.PARALLX_AUTONOMY_MANUAL_REVIEW_APPROVED === '1',
+      })
+    : undefined;
+
+  const summary = formatReport({ overallScore, grade, dimensionScores, retrievalSummary, retrievalRolloutGate, autonomySummary, autonomyRolloutGate, tests, model });
 
   return {
     timestamp: new Date().toISOString(),
@@ -331,6 +391,8 @@ export function buildReport(tests: TestCaseResult[], model: string): EvalReport 
     dimensionScores,
     retrievalSummary,
     retrievalRolloutGate,
+    autonomySummary,
+    autonomyRolloutGate,
     tests,
     summary,
   };
@@ -376,6 +438,65 @@ export function evaluateRetrievalRolloutGate(opts: {
   };
 }
 
+export function summarizeAutonomyScenarios(scenarios: readonly AutonomyScenarioResult[]): AutonomySummary {
+  const byCategory = (category: AutonomyScenarioCategory) => scenarios.filter((scenario) => scenario.category === category);
+  const passRate = (category: AutonomyScenarioCategory) => {
+    const matches = byCategory(category);
+    if (matches.length === 0) {
+      return 0;
+    }
+    return matches.filter((scenario) => scenario.passed).length / matches.length;
+  };
+
+  return {
+    scenarioCount: scenarios.length,
+    boundaryPassRate: passRate('boundary'),
+    approvalPassRate: passRate('approval'),
+    completionPassRate: passRate('completion'),
+    traceCompletenessRate: passRate('trace'),
+  };
+}
+
+export function evaluateAutonomyRolloutGate(opts: {
+  overallScore: number;
+  autonomySummary: AutonomySummary;
+  manualReviewApproved?: boolean;
+  thresholds?: AutonomyRolloutThresholds;
+}): AutonomyRolloutGate {
+  const thresholds = opts.thresholds ?? AUTONOMY_ROLLOUT_THRESHOLDS;
+  const manualReviewApproved = opts.manualReviewApproved ?? false;
+  const reasons: string[] = [];
+
+  if (opts.autonomySummary.boundaryPassRate < thresholds.minBoundaryPassRate) {
+    reasons.push(`boundary pass rate ${(opts.autonomySummary.boundaryPassRate * 100).toFixed(0)}% < ${(thresholds.minBoundaryPassRate * 100).toFixed(0)}%`);
+  }
+  if (opts.autonomySummary.approvalPassRate < thresholds.minApprovalPassRate) {
+    reasons.push(`approval pass rate ${(opts.autonomySummary.approvalPassRate * 100).toFixed(0)}% < ${(thresholds.minApprovalPassRate * 100).toFixed(0)}%`);
+  }
+  if (opts.autonomySummary.completionPassRate < thresholds.minCompletionPassRate) {
+    reasons.push(`completion pass rate ${(opts.autonomySummary.completionPassRate * 100).toFixed(0)}% < ${(thresholds.minCompletionPassRate * 100).toFixed(0)}%`);
+  }
+  if (opts.autonomySummary.traceCompletenessRate < thresholds.minTraceCompletenessRate) {
+    reasons.push(`trace completeness rate ${(opts.autonomySummary.traceCompletenessRate * 100).toFixed(0)}% < ${(thresholds.minTraceCompletenessRate * 100).toFixed(0)}%`);
+  }
+  if (opts.overallScore < thresholds.minOverallScore) {
+    reasons.push(`overall score ${(opts.overallScore * 100).toFixed(1)}% < ${(thresholds.minOverallScore * 100).toFixed(1)}%`);
+  }
+  if (!manualReviewApproved) {
+    reasons.push('manual autonomy regression review not yet approved');
+  }
+
+  const passesThresholds = reasons.every((reason) => reason === 'manual autonomy regression review not yet approved') || reasons.length === 0;
+
+  return {
+    thresholds,
+    passesThresholds,
+    manualReviewApproved,
+    rolloutAllowed: passesThresholds && manualReviewApproved,
+    reasons,
+  };
+}
+
 // ── Pretty Report Formatter ──────────────────────────────────────────────────
 
 function formatReport(opts: {
@@ -384,10 +505,12 @@ function formatReport(opts: {
   dimensionScores: Record<string, DimensionScore>;
   retrievalSummary?: RetrievalSummary;
   retrievalRolloutGate?: RetrievalRolloutGate;
+  autonomySummary?: AutonomySummary;
+  autonomyRolloutGate?: AutonomyRolloutGate;
   tests: TestCaseResult[];
   model: string;
 }): string {
-  const { overallScore, grade, dimensionScores, retrievalSummary, retrievalRolloutGate, tests, model } = opts;
+  const { overallScore, grade, dimensionScores, retrievalSummary, retrievalRolloutGate, autonomySummary, autonomyRolloutGate, tests, model } = opts;
   const W = 64;
   const sep = '='.repeat(W);
   const thin = '-'.repeat(W);
@@ -459,6 +582,32 @@ function formatReport(opts: {
     if (retrievalRolloutGate.reasons.length > 0) {
       lines.push('    Blocking reasons:');
       for (const reason of retrievalRolloutGate.reasons) {
+        lines.push(`      - ${reason}`);
+      }
+    }
+  }
+
+  if (autonomySummary) {
+    lines.push('');
+    lines.push('  AUTONOMY BASELINE');
+    lines.push(thin);
+    lines.push(`    Scenario count               ${String(autonomySummary.scenarioCount).padStart(6)}`);
+    lines.push(`    Boundary pass rate           ${(autonomySummary.boundaryPassRate * 100).toFixed(0)}%`);
+    lines.push(`    Approval pass rate           ${(autonomySummary.approvalPassRate * 100).toFixed(0)}%`);
+    lines.push(`    Completion pass rate         ${(autonomySummary.completionPassRate * 100).toFixed(0)}%`);
+    lines.push(`    Trace completeness rate      ${(autonomySummary.traceCompletenessRate * 100).toFixed(0)}%`);
+  }
+
+  if (autonomyRolloutGate) {
+    lines.push('');
+    lines.push('  AUTONOMY ROLLOUT GATE');
+    lines.push(thin);
+    lines.push(`    Thresholds passed            ${autonomyRolloutGate.passesThresholds ? 'YES' : 'NO'}`);
+    lines.push(`    Manual review approved       ${autonomyRolloutGate.manualReviewApproved ? 'YES' : 'NO'}`);
+    lines.push(`    Default rollout allowed      ${autonomyRolloutGate.rolloutAllowed ? 'YES' : 'NO'}`);
+    if (autonomyRolloutGate.reasons.length > 0) {
+      lines.push('    Blocking reasons:');
+      for (const reason of autonomyRolloutGate.reasons) {
         lines.push(`      - ${reason}`);
       }
     }

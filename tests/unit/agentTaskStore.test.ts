@@ -72,4 +72,53 @@ describe('AgentTaskStore', () => {
     expect(second.listPlanStepsForTask('task-1')).toHaveLength(1);
     expect(second.getPlanStep('step-1')?.title).toBe('Inspect workspace');
   });
+
+  it('persists task memory entries across store instances', async () => {
+    const storage = new InMemoryStorage();
+    const first = new AgentTaskStore();
+    await first.setStorage(storage);
+
+    await first.upsertMemoryEntry({
+      id: 'memory-1',
+      taskId: 'task-1',
+      category: 'goal',
+      content: 'Produce a migration checklist.',
+      source: 'user',
+      evidenceStepIds: [],
+      artifactRefs: [],
+      pinned: true,
+      createdAt: '2026-03-08T15:00:00.000Z',
+      updatedAt: '2026-03-08T15:00:00.000Z',
+    });
+
+    const second = new AgentTaskStore();
+    await second.setStorage(storage);
+
+    expect(second.listMemoryEntriesForTask('task-1')).toHaveLength(1);
+    expect(second.getMemoryEntry('memory-1')?.content).toBe('Produce a migration checklist.');
+  });
+
+  it('persists task trace entries across store instances', async () => {
+    const storage = new InMemoryStorage();
+    const first = new AgentTaskStore();
+    await first.setStorage(storage);
+
+    await first.upsertTraceEntry({
+      id: 'trace-1',
+      taskId: 'task-1',
+      phase: 'execution',
+      event: 'step-completed',
+      message: 'Completed step: Inspect workspace',
+      stepId: 'step-1',
+      planIntent: 'Inspect workspace',
+      outputSummary: 'Read the workspace files.',
+      createdAt: '2026-03-08T15:30:00.000Z',
+    });
+
+    const second = new AgentTaskStore();
+    await second.setStorage(storage);
+
+    expect(second.listTraceEntriesForTask('task-1')).toHaveLength(1);
+    expect(second.listTraceEntriesForTask('task-1')[0]?.event).toBe('step-completed');
+  });
 });

@@ -681,6 +681,29 @@ describe('A.4 Consumer wiring', () => {
       await service.updateActivePreset({ agent: { maxIterations: 20 } });
       expect(service.getEffectiveConfig().agent.maxIterations).toBe(20);
     });
+
+    it('default agent preferences are present', () => {
+      expect(service.getEffectiveConfig().agent.verbosity).toBe('balanced');
+      expect(service.getEffectiveConfig().agent.approvalStrictness).toBe('balanced');
+      expect(service.getEffectiveConfig().agent.executionStyle).toBe('balanced');
+      expect(service.getEffectiveConfig().agent.proactivity).toBe('balanced');
+    });
+
+    it('workspace overrides change agent execution preferences', async () => {
+      await service.updateWorkspaceOverride({
+        agent: {
+          verbosity: 'detailed',
+          approvalStrictness: 'strict',
+          executionStyle: 'stepwise',
+          proactivity: 'low',
+        },
+      });
+
+      expect(service.getEffectiveConfig().agent.verbosity).toBe('detailed');
+      expect(service.getEffectiveConfig().agent.approvalStrictness).toBe('strict');
+      expect(service.getEffectiveConfig().agent.executionStyle).toBe('stepwise');
+      expect(service.getEffectiveConfig().agent.proactivity).toBe('low');
+    });
   });
 
   // ── loadWorkspaceConfig ──

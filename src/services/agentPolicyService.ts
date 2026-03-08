@@ -1,12 +1,22 @@
 import { Disposable } from '../platform/lifecycle.js';
 import type {
   AgentActionClass,
+  AgentActionPolicy,
   AgentBoundaryDecision,
   AgentInteractionMode,
   AgentPolicyDecision,
   AgentProposedAction,
 } from '../agent/agentTypes.js';
 import type { IAgentPolicyService, IWorkspaceBoundaryService } from './serviceTypes.js';
+
+interface IAgentPreferenceConfigProvider {
+  getEffectiveConfig(): {
+    agent?: {
+      verbosity?: 'concise' | 'balanced' | 'detailed';
+      approvalStrictness?: 'strict' | 'balanced' | 'streamlined';
+    };
+  };
+}
 
 const READ_TOOLS = ['read', 'list', 'schema', 'cell', 'rows', 'output'];
 const SEARCH_TOOLS = ['search', 'grep', 'semantic', 'retrieval', 'usage'];
@@ -18,6 +28,7 @@ const COMMAND_TOOLS = ['terminal', 'command', 'task'];
 export class AgentPolicyService extends Disposable implements IAgentPolicyService {
   constructor(
     private readonly _workspaceBoundaryService: IWorkspaceBoundaryService,
+    private readonly _configProvider?: IAgentPreferenceConfigProvider,
   ) {
     super();
   }
@@ -98,6 +109,14 @@ export class AgentPolicyService extends Disposable implements IAgentPolicyServic
     };
   }
 
+  private _getVerbosity(): 'concise' | 'balanced' | 'detailed' {
+    return this._configProvider?.getEffectiveConfig().agent?.verbosity ?? 'balanced';
+  }
+
+  private _getApprovalStrictness(): 'strict' | 'balanced' | 'streamlined' {
+    return this._configProvider?.getEffectiveConfig().agent?.approvalStrictness ?? 'balanced';
+  }
+
   private _evaluateBoundary(uri: import('../platform/uri.js').URI): AgentBoundaryDecision {
     if (uri.scheme !== 'file') {
       return {
@@ -139,7 +158,17 @@ export class AgentPolicyService extends Disposable implements IAgentPolicyServic
     };
   }
 
-  private _defaultPolicyForActionClass(actionClass: AgentActionClass): 'allow' | 'require-approval' {
+  private _defaultPolicyForActionClass(actionClass: AgentActionClass): AgentActionPolicy {
+    const strictness = this._getApprovalStrictness();
+
+    if (strictness === 'strict' && (actionClass === 'read' || actionClass === 'search')) {
+      return 'require-approval';
+    }
+
+    if (strictness === 'streamlined' && (actionClass === 'write' || actionClass === 'edit')) {
+      return 'allow-with-notification';
+    }
+
     switch (actionClass) {
       case 'read':
       case 'search':
@@ -157,16 +186,31 @@ export class AgentPolicyService extends Disposable implements IAgentPolicyServic
   }
 
   private _reasonForPolicy(actionClass: AgentActionClass): string {
+    const verbosity = this._getVerbosity();
     switch (actionClass) {
       case 'read':
-        return 'Workspace reads are allowed inside the active workspace boundary.';
+        return verbosity === 'concise'
+          ? 'Workspace reads are allowed.'
+          : verbosity === 'detailed'
+            ? 'Workspace reads are allowed as long as every target remains inside the active workspace boundary.'
+            : 'Workspace reads are allowed inside the active workspace boundary.';
       case 'search':
-        return 'Workspace search and analysis actions are allowed inside the active workspace boundary.';
+        return verbosity === 'concise'
+          ? 'Workspace search is allowed.'
+          : verbosity === 'detailed'
+            ? 'Workspace search and analysis actions are allowed when they stay inside the active workspace boundary and do not mutate files.'
+            : 'Workspace search and analysis actions are allowed inside the active workspace boundary.';
       case 'task-state':
-        return 'Task-state actions are internal runtime updates and may proceed automatically.';
+        return verbosity === 'concise'
+          ? 'Task-state updates may proceed automatically.'
+          : 'Task-state actions are internal runtime updates and may proceed automatically.';
       case 'write':
       case 'edit':
-        return 'Workspace mutations require user approval by default.';
+        return this._defaultPolicyForActionClass(actionClass) === 'allow-with-notification'
+          ? (verbosity === 'detailed'
+            ? 'Routine workspace mutations may proceed automatically under the streamlined preference, but should still remain visible to the user.'
+            : 'Routine workspace mutations may proceed automatically under the streamlined preference.')
+          : 'Workspace mutations require user approval by default.';
       case 'delete':
         return 'Destructive workspace mutations require user approval by default.';
       case 'command':

@@ -32,7 +32,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IAISettingsService, IUnifiedAIConfigService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentSessionService, IAgentTraceService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -170,6 +170,18 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   const unifiedConfigService = api.services.has(IUnifiedAIConfigService)
     ? api.services.get<import('../../aiSettings/unifiedConfigTypes.js').IUnifiedAIConfigService>(IUnifiedAIConfigService)
     : undefined;
+  const agentSessionService = api.services.has(IAgentSessionService)
+    ? api.services.get<import('../../services/serviceTypes.js').IAgentSessionService>(IAgentSessionService)
+    : undefined;
+  const agentApprovalService = api.services.has(IAgentApprovalService)
+    ? api.services.get<import('../../services/serviceTypes.js').IAgentApprovalService>(IAgentApprovalService)
+    : undefined;
+  const agentExecutionService = api.services.has(IAgentExecutionService)
+    ? api.services.get<import('../../services/serviceTypes.js').IAgentExecutionService>(IAgentExecutionService)
+    : undefined;
+  const agentTraceService = api.services.has(IAgentTraceService)
+    ? api.services.get<import('../../services/serviceTypes.js').IAgentTraceService>(IAgentTraceService)
+    : undefined;
 
   // ── 1b. Build file system accessor for built-in tools ──
 
@@ -271,6 +283,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     sessionManager: sessionManager ?? undefined,
     aiSettingsService: aiSettingsService ?? undefined,
     unifiedConfigService: unifiedConfigService ?? undefined,
+    agentSessionService: agentSessionService ?? undefined,
+    agentApprovalService: agentApprovalService ?? undefined,
+    agentExecutionService: agentExecutionService ?? undefined,
+    agentTraceService: agentTraceService ?? undefined,
     openFileEditor: (uri, opts) => api.editors.openFileEditor(uri, opts),
   });
 
