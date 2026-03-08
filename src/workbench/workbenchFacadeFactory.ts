@@ -13,6 +13,7 @@
 import { IDisposable } from '../platform/lifecycle.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import {
+  IAgentPolicyService,
   ILayoutService,
   IViewService,
   IWorkspaceService,
@@ -25,6 +26,7 @@ import { LayoutService } from '../services/layoutService.js';
 import { ViewService } from '../services/viewService.js';
 import { WorkspaceService } from '../services/workspaceService.js';
 import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
+import { AgentPolicyService } from '../services/agentPolicyService.js';
 
 import type { Workspace } from '../workspace/workspace.js';
 import type { WorkspaceSaver } from '../workspace/workspaceSaver.js';
@@ -112,6 +114,10 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
   });
   disposables.push(workspaceBoundaryService);
   services.registerInstance(IWorkspaceBoundaryService, workspaceBoundaryService);
+
+  const agentPolicyService = new AgentPolicyService(workspaceBoundaryService);
+  disposables.push(agentPolicyService);
+  services.registerInstance(IAgentPolicyService, agentPolicyService);
 
   // Enforce workspace boundary on FileService
   if (services.has(IFileService)) {

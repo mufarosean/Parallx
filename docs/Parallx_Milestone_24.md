@@ -1210,14 +1210,14 @@ The milestone should not be considered complete without explicit tests for:
 ## Task Tracker
 
 ### Phase A — Interaction Contract
-- [ ] A1. Define agent interaction modes and behavior contracts
-- [ ] A2. Define delegated task input model
-- [ ] A3. Define task lifecycle states and transitions
+- [x] A1. Define agent interaction modes and behavior contracts
+- [x] A2. Define delegated task input model
+- [x] A3. Define task lifecycle states and transitions
 
 ### Phase B — Workspace Boundary & Policy Foundation
-- [ ] B1. Add centralized workspace-boundary enforcement service
-- [ ] B2. Add action classification model for agent operations
-- [ ] B3. Add policy lookup and resolution model
+- [x] B1. Add centralized workspace-boundary enforcement service (implemented through the existing `IWorkspaceBoundaryService`, now consumed by the agent policy layer)
+- [x] B2. Add action classification model for agent operations
+- [x] B3. Add policy lookup and resolution model
 
 ### Phase C — Permissions & Approval System
 - [ ] C1. Implement approval policy states and persistence

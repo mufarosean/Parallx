@@ -155,6 +155,7 @@ export const IWorkspaceService = createServiceIdentifier<IWorkspaceService>('IWo
 // ─── IWorkspaceBoundaryService ───────────────────────────────────────────────
 
 import type { URI } from '../platform/uri.js';
+import type { AgentActionClass, AgentPolicyDecision, AgentProposedAction } from '../agent/agentTypes.js';
 import type { IWorkspaceSessionContext } from '../workspace/workspaceSessionContext.js';
 
 /**
@@ -178,6 +179,21 @@ export interface IWorkspaceBoundaryService extends IDisposable {
 }
 
 export const IWorkspaceBoundaryService = createServiceIdentifier<IWorkspaceBoundaryService>('IWorkspaceBoundaryService');
+
+// ─── IAgentPolicyService ────────────────────────────────────────────────────
+
+/**
+ * Resolves agent action classification and default policy decisions.
+ */
+export interface IAgentPolicyService extends IDisposable {
+  /** Classify an agent action into a stable action class. */
+  classifyAction(action: AgentProposedAction): AgentActionClass;
+
+  /** Evaluate the default policy decision for an agent action. */
+  evaluateAction(action: AgentProposedAction): AgentPolicyDecision;
+}
+
+export const IAgentPolicyService = createServiceIdentifier<IAgentPolicyService>('IAgentPolicyService');
 
 // ─── IDatabaseService ────────────────────────────────────────────────────────
 
