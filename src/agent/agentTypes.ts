@@ -67,6 +67,9 @@ export interface AgentTaskRecord extends NormalizedDelegatedTaskInput {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly artifactRefs: readonly string[];
+  readonly currentStepId?: string;
+  readonly blockerReason?: string;
+  readonly resumeStatus?: AgentTaskStatus;
 }
 
 export type AgentPlanStepStatus = 'pending' | 'running' | 'completed' | 'blocked' | 'cancelled';

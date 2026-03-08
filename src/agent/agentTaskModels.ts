@@ -57,5 +57,8 @@ export function createAgentTaskRecord(
     createdAt: now,
     updatedAt: now,
     artifactRefs: [],
+    currentStepId: undefined,
+    blockerReason: undefined,
+    resumeStatus: undefined,
   };
 }

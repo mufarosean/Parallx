@@ -1221,7 +1221,7 @@ The milestone should not be considered complete without explicit tests for:
 
 ### Phase C — Permissions & Approval System
 - [x] C1. Implement approval policy states and persistence
-- [ ] C2. Add approval queue and resumption flow
+- [x] C2. Add approval queue and resumption flow
 - [ ] C3. Add approval bundling and explanation model
 
 ### Phase D — Agent Task Runtime

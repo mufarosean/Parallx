@@ -162,6 +162,7 @@ import type {
   AgentApprovalResolution,
   AgentPolicyDecision,
   AgentProposedAction,
+  AgentTaskStatus,
   AgentTaskRecord,
 } from '../agent/agentTypes.js';
 import type { IStorage } from '../platform/storage.js';
@@ -266,6 +267,36 @@ export interface IAgentApprovalService extends IDisposable {
 }
 
 export const IAgentApprovalService = createServiceIdentifier<IAgentApprovalService>('IAgentApprovalService');
+
+// ─── IAgentSessionService ───────────────────────────────────────────────────
+
+/**
+ * Owns task lifecycle transitions and approval pause/resume semantics.
+ */
+export interface IAgentSessionService extends IDisposable {
+  /** Create and persist a new task for the active workspace. */
+  createTask(input: import('../agent/agentTypes.js').DelegatedTaskInput, taskId?: string, now?: string): Promise<AgentTaskRecord>;
+
+  /** Update a task status directly through validated lifecycle transitions. */
+  transitionTask(taskId: string, nextStatus: AgentTaskStatus, now?: string, options?: { blockerReason?: string; currentStepId?: string }): Promise<AgentTaskRecord>;
+
+  /** Move a task into awaiting-approval and enqueue an approval request. */
+  queueApprovalForTask(taskId: string, request: Omit<AgentApprovalRequestInput, 'taskId'>, now?: string): Promise<{ task: AgentTaskRecord; approvalRequest: AgentApprovalRequest }>;
+
+  /** Resolve an approval request and resume or block the task accordingly. */
+  resolveTaskApproval(taskId: string, requestId: string, resolution: AgentApprovalResolution, now?: string): Promise<AgentTaskRecord>;
+
+  /** Get a single task. */
+  getTask(taskId: string): AgentTaskRecord | undefined;
+
+  /** List tasks for the active workspace. */
+  listActiveWorkspaceTasks(): readonly AgentTaskRecord[];
+
+  /** Fires when a task changes. */
+  readonly onDidChangeTasks: Event<AgentTaskRecord>;
+}
+
+export const IAgentSessionService = createServiceIdentifier<IAgentSessionService>('IAgentSessionService');
 
 // ─── IDatabaseService ────────────────────────────────────────────────────────
 
