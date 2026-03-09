@@ -31,7 +31,7 @@ export function buildUnsupportedSpecificCoverageAnswer(
   }
 
   return [
-    `I do not see ${focusPhrase} explicitly listed in your policy documents, so I cannot confirm that it is included.`,
+    `I could not find ${focusPhrase} listed in your policy documents, so it is not explicitly covered in the materials I have.`,
     'The retrieved documents may mention broader categories, but they do not explicitly name that specific coverage.',
     'If you want protection for that peril, contact your agent about a separate endorsement or additional coverage.',
   ].join(' ');

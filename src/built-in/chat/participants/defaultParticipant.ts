@@ -21,9 +21,9 @@ import type {
   ICancellationToken,
   IChatParticipantResult,
   IChatMessage,
+  IChatRequestResponsePair,
   IChatRequestOptions,
   IToolCall,
-  IToolResult,
   IChatEditProposalContent,
   EditProposalOperation,
   IContextPill,
@@ -245,7 +245,7 @@ export function _buildExtractiveFallbackAnswer(query: string, retrievedContextTe
 export function _assessEvidenceSufficiency(
   query: string,
   retrievedContextText: string,
-  ragSources: Array<{ uri: string; label: string; index?: number }>,
+  ragSources: readonly { uri: string; label: string; index?: number }[],
 ): { status: 'sufficient' | 'weak' | 'insufficient'; reasons: string[] } {
   const normalizedQuery = query.toLowerCase();
   const normalizedContext = retrievedContextText.toLowerCase();
@@ -343,7 +343,7 @@ export function _repairUnsupportedSpecificCoverageAnswer(
   }
 
   const escapedPhrase = focusPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const explicitSentence = `The policy documents do not explicitly confirm ${focusPhrase}.`;
+  const explicitSentence = `I could not find ${focusPhrase} listed in your policy documents.`;
   let repaired = answer;
 
   repaired = repaired.replace(
@@ -376,7 +376,7 @@ export function _repairUnsupportedSpecificCoverageAnswer(
     `${explicitSentence} The retrieved documents may mention broader categories, but they do not explicitly name that specific coverage. `,
   );
 
-  if (!new RegExp(`do\\s+not\\s+explicitly\\s+confirm\\s+${escapedPhrase}`, 'i').test(repaired)) {
+  if (!new RegExp(`could\\s+not\\s+find\\s+${escapedPhrase}|do\\s+not\\s+explicitly\\s+confirm\\s+${escapedPhrase}`, 'i').test(repaired)) {
     repaired = `${explicitSentence} ${repaired.trim()}`;
   }
 
@@ -441,29 +441,62 @@ function extractDollarAmount(text: string): string | undefined {
   return text.match(/\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?/)?.[0];
 }
 
+function buildFollowUpRetrievalQuery(
+  query: string,
+  history: readonly IChatRequestResponsePair[],
+): string {
+  const normalizedQuery = query.toLowerCase().replace(/[’']/g, ' ').trim();
+  if (!normalizedQuery || normalizedQuery.includes('deductible') || history.length === 0) {
+    return query;
+  }
+
+  const lastUserText = history[history.length - 1]?.request.text?.toLowerCase().replace(/[’']/g, ' ').trim();
+  if (!lastUserText || !lastUserText.includes('deductible')) {
+    return query;
+  }
+
+  const mentionsCoverageType = /(collision|comprehensive|liability|uninsured|underinsured|medpay|medical|roadside|rental)/.test(normalizedQuery);
+  const isLikelyFollowUp = /^(?:and\b|and what about\b|what about\b|how about\b)/.test(normalizedQuery)
+    || normalizedQuery.split(/\s+/).filter(Boolean).length <= 5;
+  if (!mentionsCoverageType || !isLikelyFollowUp) {
+    return query;
+  }
+
+  return `${query.replace(/[?.!]+$/, '')} deductible`;
+}
+
 export function _repairDeductibleConflictAnswer(query: string, answer: string, retrievedContextText: string): string {
   if (!answer.trim() || !retrievedContextText.trim()) {
     return answer;
   }
 
   const normalizedQuery = query.toLowerCase().replace(/[’']/g, ' ');
-  const asksDeductible = normalizedQuery.includes('deductible');
   const asksCollision = normalizedQuery.includes('collision');
-  if (!asksDeductible || !asksCollision) {
+  const asksComprehensive = normalizedQuery.includes('comprehensive');
+  const asksDeductible = normalizedQuery.includes('deductible')
+    || (/(?:^|\b)(?:and|what about|how about)\b/.test(normalizedQuery) && (asksCollision || asksComprehensive));
+  if (!asksDeductible || (asksCollision === asksComprehensive)) {
     return answer;
   }
 
   const normalizedContext = retrievedContextText.replace(/[*_`~]/g, ' ');
-  const policyCollisionMatch = normalizedContext.match(/Auto Insurance Policy\.md[\s\S]{0,400}?Collision Coverage[\s\S]{0,200}?Deductible:\s*(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i)
-    ?? normalizedContext.match(/Collision Coverage[\s\S]{0,200}?Deductible:\s*(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i)
-    ?? normalizedContext.match(/\bCollision \((\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s+ded\)/i);
-  const policyAmount = policyCollisionMatch?.[1];
+  const coverageLabel = asksCollision ? 'collision' : 'comprehensive';
+  const policyCoverageMatch = asksCollision
+    ? normalizedContext.match(/Auto Insurance Policy\.md[\s\S]{0,400}?Collision Coverage[\s\S]{0,200}?Deductible:\s*(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i)
+      ?? normalizedContext.match(/Collision Coverage[\s\S]{0,200}?Deductible:\s*(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i)
+      ?? normalizedContext.match(/\bCollision \((\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s+ded\)/i)
+    : normalizedContext.match(/Auto Insurance Policy\.md[\s\S]{0,400}?Comprehensive Coverage[\s\S]{0,200}?Deductible:\s*(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i)
+      ?? normalizedContext.match(/Comprehensive Coverage[\s\S]{0,200}?Deductible:\s*(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i)
+      ?? normalizedContext.match(/\bComprehensive \((\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s+ded\)/i);
+  const policyAmount = policyCoverageMatch?.[1];
   if (!policyAmount) {
     return answer;
   }
 
-  const quickReferenceMatch = normalizedContext.match(/Accident Quick Reference\.md[\s\S]{0,300}?Collision Deductible[^\n]*?(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i)
-    ?? normalizedContext.match(/Collision Deductible[^\n]*?(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i);
+  const quickReferenceMatch = asksCollision
+    ? normalizedContext.match(/Accident Quick Reference\.md[\s\S]{0,300}?Collision Deductible[^\n]*?(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i)
+      ?? normalizedContext.match(/Collision Deductible[^\n]*?(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i)
+    : normalizedContext.match(/Comprehensive Deductible[^\n]*?(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i);
   const quickReferenceAmount = quickReferenceMatch?.[1];
   const claimedAmount = extractDollarAmount(query);
   const asksForCurrentValue = ['now', 'current', 'currently', 'today'].some((term) => normalizedQuery.includes(term));
@@ -473,9 +506,9 @@ export function _repairDeductibleConflictAnswer(query: string, answer: string, r
   let repaired = normalizeGroundedAnswerTypography(answer).trim();
 
   if (claimedAmount && claimedAmount !== policyAmount && asksForConfirmation) {
-    repaired = repaired.replace(/^.*?(?=\n|$)/, `No. Your collision deductible is ${policyAmount}, not ${claimedAmount}.`);
+    repaired = repaired.replace(/^.*?(?=\n|$)/, `No. Your ${coverageLabel} deductible is ${policyAmount}, not ${claimedAmount}.`);
     if (!repaired.startsWith('No.')) {
-      repaired = `No. Your collision deductible is ${policyAmount}, not ${claimedAmount}. ${repaired}`.trim();
+      repaired = `No. Your ${coverageLabel} deductible is ${policyAmount}, not ${claimedAmount}. ${repaired}`.trim();
     }
   }
 
@@ -495,13 +528,17 @@ export function _repairDeductibleConflictAnswer(query: string, answer: string, r
   const repairedAmount = extractDollarAmount(repaired);
   if (!asksForComparison && repairedAmount !== policyAmount) {
     const normalizedLead = asksForCurrentValue
-      ? `Your current collision deductible is ${policyAmount}.`
-      : `Your collision deductible is ${policyAmount}.`;
+      ? `Your current ${coverageLabel} deductible is ${policyAmount}.`
+      : `Your ${coverageLabel} deductible is ${policyAmount}.`;
     repaired = `${normalizedLead} ${repaired}`.trim();
-    repaired = repaired.replace(/(Your (?:current )?collision deductible is \$\d{1,3}(?:,\d{3})*(?:\.\d{2})?\.\s*)+/i, normalizedLead + ' ');
+    repaired = repaired.replace(new RegExp(`(Your (?:current )?${coverageLabel} deductible is \\$\\d{1,3}(?:,\\d{3})*(?:\\.\\d{2})?\\.\\s*)+`, 'i'), normalizedLead + ' ');
   }
 
   repaired = repaired.replace(/\n{3,}/g, '\n\n').trim();
+  if (!new RegExp(`\b${coverageLabel}\b`, 'i').test(repaired)) {
+    repaired = `${asksForCurrentValue ? 'Your current' : 'Your'} ${coverageLabel} deductible is ${policyAmount}. ${repaired}`.trim();
+  }
+
   return repaired;
 }
 
@@ -638,12 +675,16 @@ export function _repairGroundedCodeAnswer(query: string, answer: string, retriev
   const normalizedQuery = query.toLowerCase();
   const asksHelperName = /\b(helper|function|builder)\b/.test(normalizedQuery) && /\b(packet|snippet|workflow architecture|code)\b/.test(normalizedQuery);
   const asksStageNames = /\bstage names?\b|\bwhat .* stages?\b|\binclude\b/.test(normalizedQuery);
-  if (!asksHelperName && !asksStageNames) {
+  const asksSourceAnchor = /\b(workflow architecture|architecture doc|architecture document|source document|which document|what document)\b/.test(normalizedQuery);
+  if (!asksHelperName && !asksStageNames && !asksSourceAnchor) {
     return answer;
   }
 
   const codeBlockMatch = retrievedContextText.match(/```(?:\w+)?\s*([\s\S]*?)```/);
   const codeSource = codeBlockMatch?.[1] ?? retrievedContextText;
+  const sourceMatch = retrievedContextText.match(/^\[\d+\]\s+Source:\s+([^\n]+)$/m);
+  const sourceLabel = sourceMatch?.[1]?.trim() ?? '';
+  const sourceDocumentName = sourceLabel.replace(/\.md$/i, '');
 
   const functionMatch = codeSource.match(/\b(?:export\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(|\bconst\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\(/);
   const helperName = functionMatch?.[1] || functionMatch?.[2] || '';
@@ -662,6 +703,9 @@ export function _repairGroundedCodeAnswer(query: string, answer: string, retriev
     if (missingPreferredStage) {
       additions.push(`The stages include ${preferredStages.join(' and ')}.`);
     }
+  }
+  if (asksSourceAnchor && sourceDocumentName && !answer.toLowerCase().includes(sourceDocumentName.toLowerCase())) {
+    additions.push(`These details come from the ${sourceDocumentName} document.`);
   }
 
   if (additions.length === 0) {
@@ -1153,6 +1197,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // message so the model can reference it without a tool call (zero round-trips).
 
     const mentionPills: IContextPill[] = [];
+    const mentionContextBlocks: string[] = [];
 
     // ── Latency instrumentation (M17 Task 0.2.7) ──
     const _t0_contextAssembly = performance.now();
@@ -1184,10 +1229,11 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         mentions,
         mentionServices,
       );
-      contextParts.push(...mentionResult.contextBlocks);
+      mentionContextBlocks.push(...mentionResult.contextBlocks);
       mentionPills.push(...mentionResult.pills);
       userText = mentionResult.cleanText;
     }
+    const contextQueryText = buildFollowUpRetrievalQuery(userText, context.history);
 
     // 1. Implicit context: active canvas page content
     //
@@ -1253,7 +1299,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         reportRetrievalDebug: services.reportRetrievalDebug,
       },
       {
-        userText,
+        userText: contextQueryText,
         sessionId: context.sessionId,
         attachments: request.attachments,
         useCurrentPage: contextPlan.useCurrentPage,
@@ -1266,7 +1312,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     );
 
     const {
-      contextParts,
+      contextParts: assembledContextParts,
       ragSources,
       retrievedContextText,
       evidenceAssessment,
@@ -1280,7 +1326,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         buildRetrieveAgainQuery: _buildRetrieveAgainQuery,
       },
       {
-        userText,
+        userText: contextQueryText,
         messages,
         attachments: request.attachments,
         mentionPills,
@@ -1301,6 +1347,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         attachmentResults,
       },
     );
+    const contextParts = [...mentionContextBlocks, ...assembledContextParts];
 
     const postContextDeterministicAnswer = selectDeterministicAnswer({
       route: turnRoute,
@@ -1491,7 +1538,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       content: userContent,
     });
 
-    const applyFallbackAnswer = (phase: 'final' | 'catch', note: string): void => {
+    const applyFallbackAnswer = (phase: string, note: string): void => {
       const extractiveFallback = _buildExtractiveFallbackAnswer(request.text, retrievedContextText || userContent);
       if (extractiveFallback) {
         response.markdown(extractiveFallback);

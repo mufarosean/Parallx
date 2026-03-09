@@ -19,13 +19,13 @@ export interface IChatContextAssemblyDeps {
   readonly retrieveContext?: (query: string) => Promise<{ text: string; sources: Array<{ uri: string; label: string; index?: number }> } | undefined>;
   readonly addReference: (uri: string, label: string, index?: number) => void;
   readonly reportContextPills?: (pills: IContextPill[]) => void;
-  readonly getExcludedContextIds?: () => Set<string>;
+  readonly getExcludedContextIds?: () => ReadonlySet<string>;
   readonly assessEvidenceSufficiency: (
     query: string,
     retrievedContextText: string,
     ragSources: readonly ChatRagSource[],
   ) => IChatEvidenceAssessment;
-  readonly buildRetrieveAgainQuery: (query: string, retrievedContextText: string) => string;
+  readonly buildRetrieveAgainQuery: (query: string, retrievedContextText: string) => string | undefined;
 }
 
 export interface IChatContextAssemblyOptions {

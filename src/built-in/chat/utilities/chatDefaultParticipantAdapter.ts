@@ -1,9 +1,9 @@
 import type {
   IChatRuntimeTrace,
-  IContextPill,
   IDefaultParticipantServices,
   IUserCommandFileSystem,
 } from '../chatTypes.js';
+import type { IContextPill } from '../../../services/chatTypes.js';
 
 export interface IChatDefaultParticipantAdapterDeps {
   readonly sendChatRequest: IDefaultParticipantServices['sendChatRequest'];

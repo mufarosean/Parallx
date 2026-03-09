@@ -31,7 +31,7 @@ describe('chat deterministic answer selector', () => {
     });
 
     expect(answer?.phase).toBe('unsupported-specific-coverage-direct-answer');
-    expect(answer?.markdown).toContain('earthquake explicitly listed');
+    expect(answer?.markdown).toContain('could not find earthquake');
     expect(answer?.retrievedContextLength).toBeGreaterThan(0);
   });
 

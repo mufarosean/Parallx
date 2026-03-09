@@ -4,7 +4,7 @@ interface IChatDigestDatabaseService {
 }
 
 interface IChatDigestFsAccessor {
-  readdir(relativePath: string): Promise<Array<{ name: string; type: 'file' | 'directory' }>>;
+  readdir(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory' }[]>;
   exists(relativePath: string): Promise<boolean>;
   readFile(relativePath: string): Promise<string>;
 }

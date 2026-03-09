@@ -47,7 +47,7 @@ export async function loadChatContextSources(
 ): Promise<IChatContextSourceLoadResult> {
   const [pageResult, ragResult, memoryResult, conceptResult, attachmentResults] = await Promise.all([
     options.useCurrentPage && deps.getCurrentPageContent
-      ? deps.getCurrentPageContent().catch((): ChatPageResult => null)
+      ? deps.getCurrentPageContent().then((result): ChatPageResult => result ?? null).catch((): ChatPageResult => null)
       : Promise.resolve(null as ChatPageResult),
 
     options.useRetrieval && deps.retrieveContext
@@ -75,11 +75,11 @@ export async function loadChatContextSources(
       : Promise.resolve(null as ChatRagResult),
 
     options.useMemoryRecall && deps.recallMemories
-      ? deps.recallMemories(options.userText, options.sessionId).catch((): ChatMemoryResult => null)
+      ? deps.recallMemories(options.userText, options.sessionId).then((result): ChatMemoryResult => result ?? null).catch((): ChatMemoryResult => null)
       : Promise.resolve(null as ChatMemoryResult),
 
     options.useConceptRecall && deps.recallConcepts
-      ? deps.recallConcepts(options.userText).catch((): ChatConceptResult => null)
+      ? deps.recallConcepts(options.userText).then((result): ChatConceptResult => result ?? null).catch((): ChatConceptResult => null)
       : Promise.resolve(null as ChatConceptResult),
 
     options.attachments?.length && deps.readFileContent

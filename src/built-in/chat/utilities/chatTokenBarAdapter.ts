@@ -1,6 +1,6 @@
-import type { ChatMode, ITokenStatusBarServices } from '../chatTypes.js';
+import type { ITokenStatusBarServices } from '../chatTypes.js';
 import type { ChatWidget } from '../widgets/chatWidget.js';
-import type { IToolDefinition } from '../../../services/chatTypes.js';
+import type { ChatMode, IToolDefinition } from '../../../services/chatTypes.js';
 
 export interface IChatTokenBarAdapterDeps {
   readonly getActiveWidget: () => ChatWidget | undefined;

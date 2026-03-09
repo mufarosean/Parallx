@@ -29,7 +29,7 @@ describe('chat deterministic executors', () => {
       { status: 'insufficient', reasons: ['specific-coverage-not-explicitly-supported'] },
     );
 
-    expect(answer).toContain('earthquake explicitly listed');
+    expect(answer).toContain('could not find earthquake');
     expect(answer).toContain('do not explicitly name that specific coverage');
   });
 

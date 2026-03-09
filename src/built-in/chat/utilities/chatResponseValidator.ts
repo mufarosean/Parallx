@@ -33,7 +33,7 @@ export interface IChatResponseValidatorOptions {
   readonly token: ICancellationToken;
   readonly isEditMode: boolean;
   readonly isConversational: boolean;
-  readonly citationMode: 'required' | 'optional' | 'none';
+  readonly citationMode: 'required' | 'disabled';
   readonly ragSources: Array<{ uri: string; label: string; index?: number }>;
   readonly retrievedContextLength: number;
 }

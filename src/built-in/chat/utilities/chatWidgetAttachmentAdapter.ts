@@ -1,10 +1,10 @@
 import type { Event } from '../../../platform/events.js';
-import type { IChatWidgetServices } from '../chatTypes.js';
+import type { IChatWidgetServices, IWorkspaceFileEntry } from '../chatTypes.js';
 
 export interface IChatWidgetAttachmentAdapterDeps {
   readonly getOpenEditorFiles?: () => Array<{ name: string; fullPath: string }>;
   readonly onDidChangeOpenEditors?: Event<void>;
-  readonly listWorkspaceFiles?: () => Promise<readonly unknown[]>;
+  readonly listWorkspaceFiles?: () => Promise<readonly IWorkspaceFileEntry[]>;
   readonly openFile?: (fullPath: string) => void;
   readonly openPage?: (pageId: string) => void;
   readonly openMemory?: (sessionId: string) => void;
@@ -19,7 +19,7 @@ export function buildChatWidgetAttachmentServices(
           getOpenEditorFiles: deps.getOpenEditorFiles,
           onDidChangeOpenEditors: deps.onDidChangeOpenEditors,
           listWorkspaceFiles: deps.listWorkspaceFiles
-            ? () => deps.listWorkspaceFiles!()
+            ? async () => [...await deps.listWorkspaceFiles!()]
             : undefined,
         }
       : undefined,

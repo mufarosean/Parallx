@@ -64,6 +64,8 @@ export function queueChatMemoryWriteBack(
     return;
   }
 
+  const storeSessionMemory = deps.storeSessionMemory;
+
   deps.getSessionMemoryMessageCount(sessionId).then(async (storedCount) => {
     const shouldSummarize = storedCount === null
       || messageCount >= storedCount * 2
@@ -84,7 +86,7 @@ export function queueChatMemoryWriteBack(
       const fallbackSummary = deps.buildDeterministicSessionSummary(options.history, options.requestText);
 
       if (fallbackSummary) {
-        await deps.storeSessionMemory(sessionId, fallbackSummary, messageCount);
+        await storeSessionMemory(sessionId, fallbackSummary, messageCount);
       }
 
       if (!deps.sendSummarizationRequest) {
@@ -155,7 +157,7 @@ export function queueChatMemoryWriteBack(
       }
 
       if (summaryText) {
-        await deps.storeSessionMemory(sessionId, summaryText, messageCount);
+        await storeSessionMemory(sessionId, summaryText, messageCount);
       }
 
       if (extractedConcepts.length > 0 && deps.storeConceptsFromSession) {

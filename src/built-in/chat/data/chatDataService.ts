@@ -53,7 +53,6 @@ import type { ChatWidget } from '../widgets/chatWidget.js';
 import type { IWorkspaceSessionContext } from '../../../workspace/workspaceSessionContext.js';
 import type { RetrievalTrace } from '../../../services/retrievalService.js';
 
-import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { extractTextContent } from '../tools/builtInTools.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
 import { buildChatDefaultParticipantServices } from '../utilities/chatDefaultParticipantAdapter.js';

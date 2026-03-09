@@ -993,7 +993,7 @@ describe('_stripToolNarration', () => {
 
     expect(result).toEqual({});
     expect(sendChatRequest).not.toHaveBeenCalled();
-    expect(stream.calls.markdown.join('')).toMatch(/do not see earthquake explicitly listed|cannot confirm/i);
+    expect(stream.calls.markdown.join('')).toMatch(/could not find earthquake|not explicitly covered|cannot confirm/i);
   });
 
   it('answers unsupported specific coverage questions directly with a not-found plus contact-agent fallback', async () => {
@@ -1052,7 +1052,7 @@ describe('_stripToolNarration', () => {
 
     expect(result).toEqual({});
     expect(sendChatRequest).not.toHaveBeenCalled();
-    expect(stream.calls.markdown.join('')).toMatch(/do not see earthquake explicitly listed|cannot confirm/i);
+    expect(stream.calls.markdown.join('')).toMatch(/could not find earthquake|not explicitly covered|cannot confirm/i);
     expect(stream.calls.markdown.join('')).toMatch(/contact your agent|endorsement|additional coverage/i);
   });
 
@@ -1065,7 +1065,7 @@ describe('_stripToolNarration', () => {
       { status: 'insufficient', reasons: ['specific-coverage-not-explicitly-supported'] },
     );
 
-    expect(repaired).toContain('do not explicitly confirm earthquake');
+    expect(repaired).toContain('could not find earthquake');
     expect(repaired).toContain('do not explicitly name that specific coverage');
   });
 
@@ -1078,7 +1078,7 @@ describe('_stripToolNarration', () => {
       { status: 'insufficient', reasons: ['specific-coverage-not-explicitly-supported'] },
     );
 
-    expect(repaired).toContain('do not explicitly confirm earthquake');
+    expect(repaired).toContain('could not find earthquake');
     expect(repaired).toContain('do not explicitly name that specific coverage');
     expect(repaired).not.toMatch(/covers? earthquake/i);
   });
@@ -1092,9 +1092,90 @@ describe('_stripToolNarration', () => {
       { status: 'insufficient', reasons: ['specific-coverage-not-explicitly-supported'] },
     );
 
-    expect(repaired).toContain('do not explicitly confirm earthquake');
+    expect(repaired).toContain('could not find earthquake');
     expect(repaired).toContain('do not explicitly name that specific coverage');
     expect(repaired).not.toMatch(/would apply to seismic events/i);
+  });
+
+  it('uses deductible context from the previous turn for short comprehensive follow-ups', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const retrieveContext = vi.fn().mockImplementation(async (query: string) => {
+      if (/comprehensive/i.test(query) && /deductible/i.test(query)) {
+        return {
+          text: [
+            '[Retrieved Context]',
+            '---',
+            '[1] Source: Auto Insurance Policy.md',
+            'Path: Auto Insurance Policy.md',
+            '### Comprehensive Coverage',
+            '- **Deductible:** $250',
+            '---',
+          ].join('\n'),
+          sources: [{ uri: 'Auto Insurance Policy.md', label: 'Auto Insurance Policy.md', index: 1 }],
+        };
+      }
+
+      return {
+        text: [
+          '[Retrieved Context]',
+          '---',
+          '[1] Source: Auto Insurance Policy.md',
+          'Path: Auto Insurance Policy.md',
+          '### Comprehensive Coverage',
+          'Covers non-collision damage.',
+          '---',
+        ].join('\n'),
+        sources: [{ uri: 'Auto Insurance Policy.md', label: 'Auto Insurance Policy.md', index: 1 }],
+      };
+    });
+
+    const sendChatRequest = vi.fn().mockImplementation(async function* () {
+      yield { content: 'Comprehensive coverage is part of your policy.', done: true };
+    });
+
+    const services = {
+      sendChatRequest,
+      retrieveContext,
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'And what about comprehensive?', requestId: '2', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      {
+        sessionId: 's1',
+        history: [{
+          request: { text: 'What is my collision deductible?' },
+          response: { parts: [{ kind: 'markdown', content: 'Your collision deductible is $500.' }] },
+        }],
+      } as any,
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(retrieveContext).toHaveBeenCalledWith(expect.stringMatching(/comprehensive/i));
+    expect(retrieveContext).toHaveBeenCalledWith(expect.stringMatching(/deductible/i));
+    expect(stream.calls.markdown.join('')).toContain('Comprehensive coverage is part of your policy.');
   });
 
   it('redirects obvious off-topic requests back to workspace scope without calling the model', async () => {
@@ -1362,6 +1443,25 @@ describe('_stripToolNarration', () => {
     expect(repaired).not.toContain('$500');
   });
 
+  it('repairs short comprehensive deductible follow-ups to the grounded policy amount', async () => {
+    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const repaired = _repairDeductibleConflictAnswer(
+      'And what about comprehensive?',
+      'Comprehensive coverage is part of your policy.',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Auto Insurance Policy.md',
+        '### Comprehensive Coverage',
+        '- **Deductible:** $250',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(repaired).toContain('comprehensive deductible is $250');
+  });
+
   it('combines primary and backup coverage sections when the query asks what coverage applies', async () => {
     const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
 
@@ -1413,9 +1513,10 @@ describe('_stripToolNarration', () => {
     expect(repaired).toContain('buildEscalationPacket');
     expect(repaired).toContain('policy-summary');
     expect(repaired).toContain('valuation');
+    expect(repaired).toContain('Claims Workflow Architecture document');
   });
 
-  it('leaves non-code answers unchanged when the query is not asking for helper or stage names', async () => {
+  it('anchors architecture-document answers to the retrieved source document when asked', async () => {
     const { _repairGroundedCodeAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
 
     const answer = 'The Severity Desk Coordinator owns packet completeness.';
@@ -1432,7 +1533,8 @@ describe('_stripToolNarration', () => {
       ].join('\n'),
     );
 
-    expect(repaired).toBe(answer);
+    expect(repaired).toContain(answer);
+    expect(repaired).toContain('Claims Workflow Architecture document');
   });
 
   it('uses retrieved context as a final fallback when both model passes return no markdown', async () => {
