@@ -56,6 +56,7 @@ import type { RetrievalTrace } from '../../../services/retrievalService.js';
 import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { extractTextContent } from '../tools/builtInTools.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
+import { buildChatWidgetAttachmentServices } from '../utilities/chatWidgetAttachmentAdapter.js';
 import { buildChatWidgetPickerServices } from '../utilities/chatWidgetPickerAdapter.js';
 import { ReadonlyMarkdownInput } from '../../editor/readonlyMarkdownInput.js';
 
@@ -1581,6 +1582,31 @@ export class ChatDataService {
       getAvailableModes: () => this._d.modeService.getAvailableModes(),
       onDidChangeMode: this._d.modeService.onDidChangeMode,
     });
+    const attachmentServices = buildChatWidgetAttachmentServices({
+      getOpenEditorFiles: this._d.editorService
+        ? () => this._d.editorService!.getOpenEditors().map((ed) => {
+            const parts = ed.id.split(':');
+            if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
+              const pageId = parts.slice(2).join(':');
+              return { name: ed.name, fullPath: `parallx-page://${pageId}` };
+            }
+            return { name: ed.name, fullPath: ed.description || ed.name };
+          })
+        : undefined,
+      onDidChangeOpenEditors: this._d.editorService?.onDidChangeOpenEditors,
+      listWorkspaceFiles: this._d.fsAccessor
+        ? () => this.listWorkspaceFiles()
+        : undefined,
+      openFile: (this._d.editorService && this._d.fileService)
+        ? (fullPath: string) => this.openFile(fullPath)
+        : undefined,
+      openPage: this._d.openPage
+        ? (pageId: string) => { this._d.openPage!(pageId); }
+        : undefined,
+      openMemory: (this._d.memoryService && this._d.editorService)
+        ? (sessionId: string) => { this.openMemoryViewer(sessionId); }
+        : undefined,
+    });
 
     return {
       sendRequest: async (sessionId, message, attachments?) => {
@@ -1596,34 +1622,10 @@ export class ChatDataService {
       }),
       onDidChangeProviderStatus: (this._d.ollamaProvider as any).onDidChangeStatus as Event<void>,
       ...pickerServices,
+      ...attachmentServices,
       getSessions: () => this._d.chatService.getSessions(),
       getSession: (id: string) => this._d.chatService.getSession(id),
       deleteSession: (id: string) => this._d.chatService.deleteSession(id),
-      attachmentServices: this._d.editorService ? {
-        getOpenEditorFiles: () => {
-          return this._d.editorService!.getOpenEditors().map((ed) => {
-            const parts = ed.id.split(':');
-            if (parts.length >= 3 && (parts[1] === 'canvas' || parts[1] === 'database')) {
-              const pageId = parts.slice(2).join(':');
-              return { name: ed.name, fullPath: `parallx-page://${pageId}` };
-            }
-            return { name: ed.name, fullPath: ed.description || ed.name };
-          });
-        },
-        onDidChangeOpenEditors: this._d.editorService!.onDidChangeOpenEditors,
-        listWorkspaceFiles: this._d.fsAccessor
-          ? () => this.listWorkspaceFiles()
-          : undefined,
-      } : undefined,
-      openFile: (this._d.editorService && this._d.fileService)
-        ? (fullPath: string) => this.openFile(fullPath)
-        : undefined,
-      openPage: this._d.openPage
-        ? (pageId: string) => { this._d.openPage!(pageId); }
-        : undefined,
-      openMemory: (this._d.memoryService && this._d.editorService)
-        ? (sessionId: string) => { this.openMemoryViewer(sessionId); }
-        : undefined,
       getSystemPrompt: () => this.getSystemPrompt(),
       readFileRelative: this._d.fsAccessor
         ? (r) => this.readFileRelative(r)
