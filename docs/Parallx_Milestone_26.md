@@ -1038,7 +1038,7 @@ in external systems:
 
 ## Implementation Progress
 
-### Completed slices as of 2026-03-08
+### Completed slices as of 2026-03-09
 
 1. Turn routing moved out of `defaultParticipant.ts` into `chatTurnRouter.ts`.
 2. Context planning and runtime trace shape moved into `chatContextPlanner.ts`
@@ -1048,20 +1048,24 @@ in external systems:
 4. Deterministic answer dispatch moved into
    `chatDeterministicAnswerSelector.ts`.
 5. `ChatDataService` now exposes runtime-trace snapshots for tests and evals.
+6. Parallel context-source loading moved into
+   `chatContextSourceLoader.ts`, narrowing `defaultParticipant.ts` to
+   orchestration and post-load processing.
 
 ### Validation completed for these slices
 
 - focused route/plan tests in `chatRuntimePlanning.test.ts`
 - deterministic executor tests in `chatDeterministicExecutors.test.ts`
 - deterministic selector tests in `chatDeterministicAnswerSelector.test.ts`
+- context-source loader tests in `chatContextSourceLoader.test.ts`
 - existing participant-loop regression coverage in `agenticLoop.test.ts`
 - broader behavior regression coverage in `chatService.test.ts`
 
 ### What remains next
 
-The next high-value cut is still context assembly narrowing: pull retrieval,
-memory, and workspace-context assembly behind narrower adapters so the
-participant stops depending on the full `ChatDataService` orchestration surface.
+The next high-value cut is context post-processing and executor narrowing:
+separate evidence shaping, citation enforcement, and model-execution paths so
+the participant stops mixing planning, execution, and answer-repair concerns.
 
 ---
 

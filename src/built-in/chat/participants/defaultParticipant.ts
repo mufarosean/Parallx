@@ -45,6 +45,7 @@ import { extractMentions, resolveMentions } from '../utilities/chatMentionResolv
 import { determineChatTurnRoute } from '../utilities/chatTurnRouter.js';
 import { createChatContextPlan, createChatRuntimeTrace } from '../utilities/chatContextPlanner.js';
 import { selectDeterministicAnswer } from '../utilities/chatDeterministicAnswerSelector.js';
+import { loadChatContextSources } from '../utilities/chatContextSourceLoader.js';
 import { SlashCommandRegistry, parseSlashCommand } from '../config/chatSlashCommands.js';
 import { loadUserCommands } from '../utilities/userCommandLoader.js';
 
@@ -1276,65 +1277,33 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // concurrently to reduce pre-request latency from sequential to parallel.
     // Mentions ran above (produces userText needed by RAG/memory).
 
-    type PageResult = { title: string; pageId: string; textContent: string } | null;
-    type RAGResult = { text: string; sources: Array<{ uri: string; label: string; index?: number }> } | null;
-    type MemoryResult = string | null;
-    type ConceptResult = string | null;
-    type AttachmentResult = { name: string; content: string | null };
-
-    const [pageResult, ragResult, memoryResult, conceptResult, attachmentResults] = await Promise.all([
-      // Page content
-      (services.getCurrentPageContent && contextPlan.useCurrentPage)
-        ? services.getCurrentPageContent().catch((): PageResult => null)
-        : Promise.resolve(null as PageResult),
-
-      // RAG retrieval
-      (services.retrieveContext && contextPlan.useRetrieval)
-        ? services.retrieveContext(userText)
-            .then((result): RAGResult => {
-              services.reportRetrievalDebug?.({
-                hasActiveSlashCommand,
-                isRagReady,
-                needsRetrieval: contextPlan.useRetrieval,
-                attempted: true,
-                returnedSources: result?.sources.length ?? 0,
-              });
-              return result ?? null;
-            })
-            .catch((): RAGResult => {
-              services.reportRetrievalDebug?.({
-                hasActiveSlashCommand,
-                isRagReady,
-                needsRetrieval: contextPlan.useRetrieval,
-                attempted: true,
-                returnedSources: 0,
-              });
-              return null;
-            })
-        : Promise.resolve(null as RAGResult),
-
-      // Memory recall
-      (services.recallMemories && contextPlan.useMemoryRecall)
-        ? services.recallMemories(userText, context.sessionId).catch((): MemoryResult => null)
-        : Promise.resolve(null as MemoryResult),
-
-      // Concept recall (M17 P1.2 Task 1.2.7)
-      (services.recallConcepts && contextPlan.useConceptRecall)
-        ? services.recallConcepts(userText).catch((): ConceptResult => null)
-        : Promise.resolve(null as ConceptResult),
-
-      // Attachments
-      (request.attachments?.length && services.readFileContent)
-        ? Promise.all(request.attachments.map(async (att): Promise<AttachmentResult> => {
-            try {
-              const content = await services.readFileContent!(att.fullPath);
-              return { name: att.name, content };
-            } catch {
-              return { name: att.name, content: null };
-            }
-          }))
-        : Promise.resolve([] as AttachmentResult[]),
-    ]);
+    const {
+      pageResult,
+      ragResult,
+      memoryResult,
+      conceptResult,
+      attachmentResults,
+    } = await loadChatContextSources(
+      {
+        getCurrentPageContent: services.getCurrentPageContent,
+        retrieveContext: services.retrieveContext,
+        recallMemories: services.recallMemories,
+        recallConcepts: services.recallConcepts,
+        readFileContent: services.readFileContent,
+        reportRetrievalDebug: services.reportRetrievalDebug,
+      },
+      {
+        userText,
+        sessionId: context.sessionId,
+        attachments: request.attachments,
+        useCurrentPage: contextPlan.useCurrentPage,
+        useRetrieval: contextPlan.useRetrieval,
+        useMemoryRecall: contextPlan.useMemoryRecall,
+        useConceptRecall: contextPlan.useConceptRecall,
+        hasActiveSlashCommand,
+        isRagReady,
+      },
+    );
 
     // ── Process parallel results sequentially ──
 
@@ -1366,7 +1335,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     }
     const seenRagBlocks = new Set<string>();
 
-    const appendRagResult = (result: NonNullable<RAGResult>): void => {
+    const appendRagResult = (result: NonNullable<typeof ragResult>): void => {
       if (result.text && !seenRagBlocks.has(result.text)) {
         contextParts.push(result.text);
         seenRagBlocks.add(result.text);
@@ -1393,7 +1362,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     if (evidenceAssessment.status === 'insufficient' && services.retrieveContext && contextPlan.useRetrieval) {
       const retrieveAgainQuery = _buildRetrieveAgainQuery(userText, retrievedContextText);
       if (retrieveAgainQuery) {
-        const retrieveAgainResult = await services.retrieveContext(retrieveAgainQuery).catch(() => null as RAGResult);
+        const retrieveAgainResult = await services.retrieveContext(retrieveAgainQuery).catch(() => null as typeof ragResult);
         if (retrieveAgainResult) {
           retrievedContextText = [retrievedContextText, retrieveAgainResult.text].filter(Boolean).join('\n\n');
           appendRagResult(retrieveAgainResult);
