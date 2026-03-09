@@ -1032,7 +1032,7 @@ in external systems:
 ### Phase E — `ChatDataService` Narrowing and Final Migration
 - [x] E1. Reduce `ChatDataService` service-bundle width ✅ Widget-facing request lifecycle, provider-status, and token/status-bar surfaces now run through dedicated adapters rather than inline `ChatDataService` closures.
 - [x] E2. Separate adapter responsibilities from orchestration responsibilities ✅ Participant builders, system-prompt assembly, viewer helpers, and workspace-digest computation now run through dedicated utilities rather than inline `ChatDataService` orchestration.
-- [ ] E3. Remove dead branches and legacy orchestration paths
+- [x] E3. Remove dead branches and legacy orchestration paths ✅ Deprecated workspace-switch reset surfaces, stale retrieval-plan guards, and leftover legacy wrapper paths were removed after the narrowed chat runtime no longer depended on them.
 
 ---
 
@@ -1126,6 +1126,10 @@ in external systems:
    `defaultParticipant.ts` after confirming the planner always supplies a
    reason string, continuing `E3` cleanup by pruning another dead defensive
    branch around retrieval-analysis injection.
+30. Deprecated workspace-switch reset surfaces were removed from
+   `ChatDataService`, `ChatService`, and their legacy unit coverage after
+   confirming the reload-based workspace flow and session stale guards no
+   longer call or rely on those dead reset paths, completing `E3`.
 
 ### Validation completed for these slices
 
@@ -1157,10 +1161,9 @@ in external systems:
 
 ### What remains next
 
-`E3` is now underway. The next high-value cut is to identify any remaining
-stale helper branches or duplicated fallback/repair paths left behind in
-`defaultParticipant.ts` and the narrowed `ChatDataService` surface, then prune
-them with focused regression coverage.
+Phase E is complete. Milestone 26 implementation work is now fully landed in
+code, with the remaining follow-up focused on broader validation and any future
+non-milestone cleanup that falls outside the scoped architectural cuts above.
 
 ---
 

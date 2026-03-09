@@ -537,42 +537,6 @@ export class ChatService extends Disposable implements IChatService {
     this._sessionManager = sessionManager;
   }
 
-  /**
-   * Hard-reset for workspace switch.
-   *
-    * Cancels all active requests, flushes pending writes for the current DB,
-    * and clears all in-memory sessions.
-    *
-    * @deprecated M14: This method is dead code in the reload-based workspace switch flow.
-    * The session manager + stale guards handle isolation. Kept for backward compatibility
-    * with existing tests. Will be removed in a future milestone.
-   */
-  async resetForWorkspaceSwitch(): Promise<void> {
-    // 1. Cancel every active request
-    for (const [sessionId, cts] of this._activeCancellations) {
-      cts.cancel();
-      cts.dispose();
-      this._activeCancellations.delete(sessionId);
-    }
-
-    // 2. Flush pending persists for the OLD workspace before we ditch sessions
-    if (this._persistTimer !== undefined) {
-      clearTimeout(this._persistTimer);
-      this._persistTimer = undefined;
-    }
-    await this._flushPendingPersists();
-
-    // 3. Clear all in-memory sessions
-    const oldIds = [...this._sessions.keys()];
-    this._sessions.clear();
-    for (const id of oldIds) {
-      this._onDidDeleteSession.fire(id);
-    }
-
-    // 4. Do not restore sessions here; wait for workbench DB rebind.
-  }
-
-
   // ── Session Persistence ──
 
   /**

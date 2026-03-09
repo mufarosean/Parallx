@@ -836,12 +836,6 @@ export interface IChatService extends IDisposable {
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
   /** Cancel the in-progress request for a session. */
   cancelRequest(sessionId: string): void;
-  /**
-   * Hard-reset for workspace switch.
-   * Cancels active requests, clears in-memory sessions,
-   * and re-restores from the (now new-workspace) database.
-   */
-  resetForWorkspaceSwitch(): Promise<void>;
 
   // ── Pending Request Queue ──
 

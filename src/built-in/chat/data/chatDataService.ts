@@ -456,41 +456,6 @@ export class ChatDataService {
     this._lastIndexStats = stats;
   }
 
-  /**
-   * Swap stale service references after a workspace switch.
-   *
-   * Only the services that are recreated by `registerIndexingServices()`
-   * need refreshing — singletons (databaseService, fileService, etc.)
-   * survive across workspaces.
-   *
-   * Also invalidates all caches so the next prompt/digest build reads
-   * from the new workspace.
-   *
-   * @deprecated M14: Dead code in the reload-based workspace switch flow.
-   * Kept for backward compatibility with existing tests.
-   */
-  resetForWorkspaceSwitch(fresh: {
-    retrievalService: ChatDataServiceDeps['retrievalService'];
-    indexingPipelineService: ChatDataServiceDeps['indexingPipelineService'];
-    memoryService: ChatDataServiceDeps['memoryService'];
-  }): void {
-    // Swap stale refs
-    this._d = {
-      ...this._d,
-      retrievalService: fresh.retrievalService,
-      indexingPipelineService: fresh.indexingPipelineService,
-      memoryService: fresh.memoryService,
-    };
-
-    // Invalidate caches
-    this._cachedDigest = undefined;
-    this._cacheTimestamp = 0;
-    this._lastIndexStats = undefined;
-
-    // Invalidate prompt file cache so next build reads from new workspace
-    this._d.promptFileService.invalidate();
-  }
-
   // ═══════════════════════════════════════════════════════════════════════════
   // LLM Proxy Methods
   // ═══════════════════════════════════════════════════════════════════════════
