@@ -751,6 +751,42 @@ describe('_stripToolNarration', () => {
     ]));
   });
 
+  it('classifies specific coverage claims as insufficient when the evidence only supports a broader category', async () => {
+    const { _assessEvidenceSufficiency } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const assessment = _assessEvidenceSufficiency(
+      'What does my policy say about earthquake coverage?',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Auto Insurance Policy.md',
+        'Path: Auto Insurance Policy.md',
+        '### Comprehensive Coverage',
+        'Covers damage to your vehicle from non-collision events: theft, vandalism, natural disasters, falling objects, animal strikes.',
+        '---',
+      ].join('\n'),
+      [{ uri: 'Auto Insurance Policy.md', label: 'Auto Insurance Policy.md', index: 1 }],
+    );
+
+    expect(assessment.status).toBe('insufficient');
+    expect(assessment.reasons).toContain('specific-coverage-not-explicitly-supported');
+  });
+
+  it('builds a deterministic session summary from recent user-provided facts', async () => {
+    const { _buildDeterministicSessionSummary } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const summary = _buildDeterministicSessionSummary(
+      [{ request: { text: 'I was in a car accident yesterday at the Riverside Mall parking lot on Elm Street.' } }],
+      'The other driver ran a red light, hit my passenger door, and the police report number is 2026-0305-1147.',
+    );
+
+    expect(summary).toContain('Riverside Mall parking lot');
+    expect(summary).toContain('Elm Street');
+    expect(summary).toContain('red light');
+    expect(summary).toContain('passenger door');
+    expect(summary).toContain('2026-0305-1147');
+  });
+
   it('builds a keyword-focused retrieve-again query from unresolved terms', async () => {
     const { _buildRetrieveAgainQuery } = await import('../../src/built-in/chat/participants/defaultParticipant');
 
@@ -903,6 +939,239 @@ describe('_stripToolNarration', () => {
     expect(stream.calls.markdown.join('')).toMatch(/Relevant details from retrieved context|do not have enough grounded evidence/);
   });
 
+  it('adds a no-inference constraint for unsupported specific coverage questions', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const retrieveContext = vi.fn().mockResolvedValue({
+      text: [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Auto Insurance Policy.md',
+        'Path: Auto Insurance Policy.md',
+        '### Comprehensive Coverage',
+        'Covers damage to your vehicle from non-collision events: theft, vandalism, natural disasters, falling objects, animal strikes.',
+        '---',
+      ].join('\n'),
+      sources: [{ uri: 'Auto Insurance Policy.md', label: 'Auto Insurance Policy.md', index: 1 }],
+    });
+
+    const sendChatRequest = vi.fn().mockImplementation(async function* () {
+      yield { done: true };
+    });
+
+    const services = {
+      sendChatRequest,
+      retrieveContext,
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'What does my policy say about earthquake coverage?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(sendChatRequest).not.toHaveBeenCalled();
+    expect(stream.calls.markdown.join('')).toMatch(/do not see earthquake explicitly listed|cannot confirm/i);
+  });
+
+  it('answers unsupported specific coverage questions directly with a not-found plus contact-agent fallback', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const retrieveContext = vi.fn().mockResolvedValue({
+      text: [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Auto Insurance Policy.md',
+        'Path: Auto Insurance Policy.md',
+        '## Exclusions',
+        'This policy does NOT cover:',
+        '1. Damage from racing or speed contests',
+        '2. Intentional damage',
+        '---',
+      ].join('\n'),
+      sources: [{ uri: 'Auto Insurance Policy.md', label: 'Auto Insurance Policy.md', index: 1 }],
+    });
+
+    const sendChatRequest = vi.fn().mockImplementation(async function* () {
+      yield { done: true };
+    });
+
+    const services = {
+      sendChatRequest,
+      retrieveContext,
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [],
+      getReadOnlyToolDefinitions: () => [],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'What does my policy say about earthquake coverage?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(sendChatRequest).not.toHaveBeenCalled();
+    expect(stream.calls.markdown.join('')).toMatch(/do not see earthquake explicitly listed|cannot confirm/i);
+    expect(stream.calls.markdown.join('')).toMatch(/contact your agent|endorsement|additional coverage/i);
+  });
+
+  it('repairs overly definitive unsupported specific coverage answers into document-bounded uncertainty', async () => {
+    const { _repairUnsupportedSpecificCoverageAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const repaired = _repairUnsupportedSpecificCoverageAnswer(
+      'What does my policy say about earthquake coverage?',
+      'Your policy does not include earthquake coverage. It is covered under the broader natural disasters category. [1]',
+      { status: 'insufficient', reasons: ['specific-coverage-not-explicitly-supported'] },
+    );
+
+    expect(repaired).toContain('do not explicitly confirm earthquake');
+    expect(repaired).toContain('do not explicitly name that specific coverage');
+  });
+
+  it('removes broader-category affirmative phrasing for unsupported specific coverage answers', async () => {
+    const { _repairUnsupportedSpecificCoverageAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const repaired = _repairUnsupportedSpecificCoverageAnswer(
+      'What does my policy say about earthquake coverage?',
+      'The policy documents do not explicitly confirm earthquake. The documents mention natural disasters. So the policy covers earthquake under that broader category. [1]',
+      { status: 'insufficient', reasons: ['specific-coverage-not-explicitly-supported'] },
+    );
+
+    expect(repaired).toContain('do not explicitly confirm earthquake');
+    expect(repaired).toContain('do not explicitly name that specific coverage');
+    expect(repaired).not.toMatch(/covers? earthquake/i);
+  });
+
+  it('removes unsupported specific coverage phrasing that says broader coverage would apply', async () => {
+    const { _repairUnsupportedSpecificCoverageAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const repaired = _repairUnsupportedSpecificCoverageAnswer(
+      'What does my policy say about earthquake coverage?',
+      'The policy documents do not explicitly confirm earthquake. The only coverage that would apply to seismic events is the Comprehensive part of the policy, which covers natural disasters. [1]',
+      { status: 'insufficient', reasons: ['specific-coverage-not-explicitly-supported'] },
+    );
+
+    expect(repaired).toContain('do not explicitly confirm earthquake');
+    expect(repaired).toContain('do not explicitly name that specific coverage');
+    expect(repaired).not.toMatch(/would apply to seismic events/i);
+  });
+
+  it('redirects obvious off-topic requests back to workspace scope without calling the model', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const sendChatRequest = vi.fn().mockImplementation(async function* () {
+      yield { done: true };
+    });
+
+    const participant = createDefaultParticipant({
+      sendChatRequest,
+      maxIterations: 10,
+    } as any);
+
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: "What's the best recipe for chocolate chip cookies?", requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(sendChatRequest).not.toHaveBeenCalled();
+    expect(stream.calls.markdown.join('')).toMatch(/insurance policy|workspace|files/i);
+    expect(stream.calls.markdown.join('')).not.toMatch(/preheat oven|baking soda|vanilla extract/i);
+  });
+
+  it('repairs malformed collision deductible answers to the grounded policy amount', async () => {
+    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const repaired = _repairDeductibleConflictAnswer(
+      'What is my collision deductible now?',
+      'Your collision deductible is ** 17',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Auto Insurance Policy.md',
+        'Path: Auto Insurance Policy.md',
+        '### Collision Coverage',
+        '- **Deductible:** $950',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(repaired).toContain('$950');
+    expect(repaired).not.toContain('$500');
+  });
+
+  it('repairs vehicle answers to include trim or color when grounded context has it', async () => {
+    const { _repairVehicleInfoAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const repaired = _repairVehicleInfoAnswer(
+      'Tell me about my insured vehicle.',
+      'Your insured vehicle is a 2024 Honda Accord.',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Vehicle Info.md',
+        'Path: Vehicle Info.md',
+        '2024 Honda Accord EX-L',
+        'Color: Lunar Silver Metallic',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(repaired).toMatch(/EX-L|Lunar Silver Metallic/i);
+  });
+
   it('keeps extractive fallback anchored to the matching repair-shop section', async () => {
     const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
 
@@ -966,6 +1235,131 @@ describe('_stripToolNarration', () => {
     expect(fallback).toContain('1-800-555-CLAIM');
     expect(fallback).toContain('72 hours');
     expect(fallback).not.toContain('mandatory for UM claims');
+  });
+
+  it('repairs agent contact answers to include the agent name and ASCII phone formatting', async () => {
+    const { _repairAgentContactAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const repaired = _repairAgentContactAnswer(
+      "What is my insurance agent's phone number?",
+      'Your agent’s phone number is (555) 234‑5678 1\n\nSources: 1 Agent Contacts.md; 2 Claims Guide.md',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Agent Contacts.md',
+        'Path: Agent Contacts.md',
+        '## Agent & Emergency Contacts',
+        '| Field | Details |',
+        '|-------|---------|',
+        '| **Name** | Sarah Chen |',
+        '| **Title** | Senior Insurance Agent |',
+        '| **Phone** | (555) 234-5678 |',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(repaired).toContain('Sarah Chen');
+    expect(repaired).toContain('(555) 234-5678');
+  });
+
+  it('repairs total-loss answers to preserve ASCII 75% and the KBB shorthand from retrieved evidence', async () => {
+    const { _repairTotalLossThresholdAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const repaired = _repairTotalLossThresholdAnswer(
+      'At what point would my car be declared a total loss?',
+      [
+        'Your vehicle would be declared a total loss when the estimated repair cost exceeds 75 % of its current market value.',
+        '',
+        'Current value (Kelly Blue Book Jan 2026): $28,500 - $30,200.',
+      ].join('\n'),
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Vehicle Info.md',
+        'Path: Vehicle Info.md',
+        '## Estimated Current Value',
+        '- **Kelly Blue Book (Jan 2026):** $28,500 - $30,200',
+        '- **Note:** Total loss threshold is 75% of current value (~$21,375 - $22,650).',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(repaired).toContain('75%');
+    expect(repaired).toContain('Kelly Blue Book (KBB)');
+  });
+
+  it('repairs deductible confirmation answers to explicitly reject an incorrect claimed amount', async () => {
+    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const repaired = _repairDeductibleConflictAnswer(
+      'I remember my collision deductible is $1,000. Can you confirm?',
+      'Your collision deductible is $500 according to the policy summary.',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Auto Insurance Policy.md',
+        '### Collision Coverage',
+        '- **Deductible:** $500',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(repaired).toContain('No.');
+    expect(repaired).toContain('$500');
+    expect(repaired).toContain('$1,000');
+  });
+
+  it('repairs current deductible answers to avoid repeating a stale conflicting amount', async () => {
+    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const repaired = _repairDeductibleConflictAnswer(
+      'What is my collision deductible now?',
+      [
+        'Your collision coverage has a deductible of $750 per occurrence as listed in the policy summary.',
+        'The quick-reference card also lists a $500 deductible, which may be an older or incorrect figure.',
+        '',
+        'Collision deductible per policy: $750',
+        'Quick-reference card lists $500',
+      ].join('\n'),
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Auto Insurance Policy.md',
+        '### Collision Coverage',
+        '- **Deductible:** $750',
+        '---',
+        '[5] Source: Accident Quick Reference.md',
+        '| **Collision Deductible** | $500 |',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(repaired).toContain('$750');
+    expect(repaired).not.toContain('$500');
+    expect(repaired).toContain('current policy amount');
+  });
+
+  it('repairs direct deductible answers to suppress stale conflicting amounts from older references', async () => {
+    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const repaired = _repairDeductibleConflictAnswer(
+      'What is my collision deductible?',
+      'Your collision deductible is $950 per occurrence. (While the quick-reference card lists $500, the policy summary specifies $950.)',
+      [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Auto Insurance Policy.md',
+        '### Collision Coverage',
+        '- **Deductible:** $950',
+        '---',
+        '[5] Source: Accident Quick Reference.md',
+        '| **Collision Deductible** | $500 |',
+        '---',
+      ].join('\n'),
+    );
+
+    expect(repaired).toContain('$950');
+    expect(repaired).not.toContain('$500');
   });
 
   it('combines primary and backup coverage sections when the query asks what coverage applies', async () => {
@@ -1172,6 +1566,363 @@ describe('_stripToolNarration', () => {
     expect(stream.calls.markdown.join('')).toContain('Agent Contacts.md');
     expect(stream.calls.citations).toHaveLength(1);
   });
+
+  it('treats a new-session greeting as a conversational clean-slate turn', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const retrieveContext = vi.fn();
+    const recallMemories = vi.fn();
+    const recallConcepts = vi.fn();
+    const getCurrentPageContent = vi.fn();
+    const sendChatRequest = vi.fn().mockImplementation(async function* (messages: Array<{ role: string; content: string }>, options?: { tools?: unknown[] }) {
+      expect(messages[messages.length - 1]?.content).toBe('hello');
+      expect(options?.tools).toBeUndefined();
+      yield { content: 'Hi there. How can I help?', done: true };
+    });
+
+    const services = {
+      sendChatRequest,
+      retrieveContext,
+      recallMemories,
+      recallConcepts,
+      getCurrentPageContent,
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[], citations: [] as Array<Array<{ index: number; uri: string; label: string }>> },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {},
+      setCitations(citations: Array<{ index: number; uri: string; label: string }>) { this.calls.citations.push(citations); },
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'hello', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(retrieveContext).not.toHaveBeenCalled();
+    expect(recallMemories).not.toHaveBeenCalled();
+    expect(recallConcepts).not.toHaveBeenCalled();
+    expect(getCurrentPageContent).not.toHaveBeenCalled();
+    expect(stream.calls.markdown.join('')).toContain('Hi there');
+    expect(stream.calls.markdown.join('')).not.toContain('Sources:');
+    expect(stream.calls.citations).toEqual([]);
+  });
+
+  it('keeps retrieval enabled for explicit workspace questions in a new session', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const retrieveContext = vi.fn().mockResolvedValue({
+      text: [
+        '[Retrieved Context]',
+        '---',
+        '[1] Source: Claims Guide.md',
+        'Path: Claims Guide.md',
+        '## Filing Deadlines',
+        '- Report to insurer: Within 72 hours',
+        '---',
+      ].join('\n'),
+      sources: [{ uri: 'Claims Guide.md', label: 'Claims Guide.md', index: 1 }],
+    });
+    const sendChatRequest = vi.fn().mockImplementation(async function* (messages: Array<{ role: string; content: string }>, options?: { tools?: unknown[] }) {
+      expect(messages[messages.length - 1]?.content).toContain('[Retrieved Context]');
+      expect(options?.tools).toHaveLength(1);
+      yield { content: 'You need to report the claim within 72 hours [1].', done: true };
+    });
+
+    const services = {
+      sendChatRequest,
+      retrieveContext,
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'What does Claims Guide.md say about filing deadlines?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(retrieveContext).toHaveBeenCalledTimes(1);
+    expect(stream.calls.markdown.join('')).toContain('72 hours');
+  });
+
+  it('treats explicit prior-conversation recall as memory-first without workspace retrieval', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const retrieveContext = vi.fn();
+    const recallMemories = vi.fn().mockResolvedValue([
+      '[Conversation Memory]',
+      '---',
+      'Previous session (2026-03-08T10:00:00.000Z):',
+      'The user described an accident at the Riverside Mall parking lot on Elm Street. The other driver ran a red light and hit the passenger door. Police report number: 2026-0305-1147.',
+    ].join('\n'));
+    const sendChatRequest = vi.fn().mockImplementation(async function* (messages: Array<{ role: string; content: string }>, options?: { tools?: unknown[] }) {
+      const userMessage = messages[messages.length - 1]?.content ?? '';
+      expect(userMessage).toContain('[Conversation Memory]');
+      expect(userMessage).not.toContain('[Retrieved Context]');
+      expect(options?.tools).toHaveLength(1);
+      yield { content: 'You previously told me the accident happened at the Riverside Mall parking lot on Elm Street, and that the other driver ran a red light and hit your passenger door. Police report number: 2026-0305-1147.', done: true };
+    });
+
+    const services = {
+      sendChatRequest,
+      retrieveContext,
+      recallMemories,
+      recallConcepts: vi.fn(),
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'In my last conversation, I told you about an accident I had. What details do you remember about it?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's2', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(retrieveContext).not.toHaveBeenCalled();
+    expect(recallMemories).toHaveBeenCalledTimes(1);
+    expect(stream.calls.markdown.join('')).toContain('Riverside Mall parking lot');
+    expect(stream.calls.markdown.join('')).toContain('Elm Street');
+  });
+
+  it('answers approval-scope questions from product semantics without retrieval', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const retrieveContext = vi.fn();
+    const sendChatRequest = vi.fn();
+
+    const services = {
+      sendChatRequest,
+      retrieveContext,
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'What is the difference between Approve once and Approve task?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(retrieveContext).not.toHaveBeenCalled();
+    expect(sendChatRequest).not.toHaveBeenCalled();
+    expect(stream.calls.markdown.join('')).toContain('Approve once allows only the current action to run');
+    expect(stream.calls.markdown.join('')).toContain('remaining approval-scoped actions');
+  });
+
+  it('answers blocked outside-workspace recovery questions from product semantics without retrieval', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const retrieveContext = vi.fn();
+    const sendChatRequest = vi.fn();
+
+    const services = {
+      sendChatRequest,
+      retrieveContext,
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'My delegated task was blocked because it targeted a file outside the workspace. What should I do next?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(retrieveContext).not.toHaveBeenCalled();
+    expect(sendChatRequest).not.toHaveBeenCalled();
+    expect(stream.calls.markdown.join('')).toContain('outside the active workspace boundary');
+    expect(stream.calls.markdown.join('')).toContain('Retarget the task');
+    expect(stream.calls.markdown.join('')).toContain('continue or retry the task');
+  });
+
+  it('answers recorded-artifact follow-up questions from product semantics without retrieval', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const retrieveContext = vi.fn();
+    const sendChatRequest = vi.fn();
+
+    const services = {
+      sendChatRequest,
+      retrieveContext,
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'A delegated task finished with recorded artifacts. What should I check next?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(retrieveContext).not.toHaveBeenCalled();
+    expect(sendChatRequest).not.toHaveBeenCalled();
+    expect(stream.calls.markdown.join('')).toContain('which workspace files the task changed or produced');
+    expect(stream.calls.markdown.join('')).toContain('Check those files first');
+  });
+
+  it('answers trace-explanation questions from product semantics without retrieval', async () => {
+    const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
+
+    const retrieveContext = vi.fn();
+    const sendChatRequest = vi.fn();
+
+    const services = {
+      sendChatRequest,
+      retrieveContext,
+      isRAGAvailable: () => true,
+      isIndexing: () => false,
+      getActiveModel: () => 'test-model',
+      getWorkspaceName: () => 'Test Workspace',
+      getPageCount: async () => 5,
+      getCurrentPageTitle: () => undefined,
+      getToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      getReadOnlyToolDefinitions: () => [{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } }],
+      invokeTool: vi.fn(async () => ({ content: 'tool result' })),
+      maxIterations: 10,
+    } as any;
+
+    const participant = createDefaultParticipant(services);
+    const stream = {
+      calls: { markdown: [] as string[] },
+      markdown(content: string) { this.calls.markdown.push(content); },
+      thinking() {}, progress() {}, reference() {}, warning() {}, confirmation() {},
+      beginToolInvocation() { return '1'; }, updateToolInvocation() {}, endToolInvocation() {},
+      codeBlock() {}, replaceLastMarkdown() {}, reportTokenUsage() {}, setCitations() {},
+      getMarkdownText() { return this.calls.markdown.join(''); },
+    } as any;
+
+    const result = await participant.handler(
+      { text: 'What does the trace in task details help me understand?', requestId: '1', mode: 'ask', modelId: 'test-model', attempt: 0 },
+      { sessionId: 's1', history: [] },
+      stream,
+      { isCancellationRequested: false, isYieldRequested: false, onCancellationRequested: () => ({ dispose() {} }) },
+    );
+
+    expect(result).toEqual({});
+    expect(retrieveContext).not.toHaveBeenCalled();
+    expect(sendChatRequest).not.toHaveBeenCalled();
+    expect(stream.calls.markdown.join('')).toContain('planning, approval, and execution events');
+    expect(stream.calls.markdown.join('')).toContain('why a task stopped');
+  });
 });
 
 describe('_buildMissingCitationFooter', () => {
@@ -1210,5 +1961,27 @@ describe('_buildMissingCitationFooter', () => {
     );
 
     expect(footer).toBe('\n\nSources: [4] Agent Contacts.md');
+  });
+
+  it('adds the fallback when markdown only uses a generic Source column header', () => {
+    const footer = _buildMissingCitationFooter(
+      [
+        '| Step | Source |',
+        '|------|--------|',
+        '| Call your agent | 1 |',
+      ].join('\n'),
+      [{ index: 1, label: 'Accident Quick Reference.md' }],
+    );
+
+    expect(footer).toBe('\n\nSources: [1] Accident Quick Reference.md');
+  });
+
+  it('adds the fallback when markdown references only the source stem without the file name', () => {
+    const footer = _buildMissingCitationFooter(
+      'These details come from the Claims Workflow Architecture document. 1',
+      [{ index: 1, label: 'Claims Workflow Architecture.md' }],
+    );
+
+    expect(footer).toBe('\n\nSources: [1] Claims Workflow Architecture.md');
   });
 });

@@ -103,7 +103,9 @@ describe('chat autonomy UI', () => {
 
     expect(rail.textContent).toContain('Update the claims guide');
     expect(rail.textContent).toContain('Approve once');
-    expect(rail.textContent).toContain('Review the pending approval decision below so the task can continue.');
+    expect(rail.textContent).toContain('Waiting for approval before the next workspace action can run: Write the updated guide.');
+    expect(rail.textContent).toContain('Approve once only allows this single action.');
+    expect(rail.textContent).toContain('Review the pending approval below. Approve once to allow only this action, or deny it to keep the task blocked.');
     expect(rail.textContent).toContain('Approval requested for write_file.');
     expect(rail.querySelector('.parallx-chat-agent-task-details')).toBeTruthy();
   });
@@ -177,7 +179,43 @@ describe('chat autonomy UI', () => {
 
     expect(rail.textContent).toContain('Changed');
     expect(rail.textContent).toContain('/workspace/docs/Claims Guide.md');
+    expect(rail.textContent).toContain('Workspace update complete with 1 finished step and 2 recorded artifacts.');
+    expect(rail.textContent).toContain('Artifacts show which workspace files the task changed or produced.');
+    expect(rail.textContent).toContain('Task details summarize the recorded outcome for this completed run.');
     expect(rail.textContent).toContain('Recommended next step: Review the recorded artifacts in the workspace and decide whether a follow-up task is needed.');
+  });
+
+  it('renders clearer blocked summaries and recovery guidance', async () => {
+    const { renderAgentTaskRail } = await import('../../src/built-in/chat/rendering/chatTaskCards');
+
+    const rail = renderAgentTaskRail([
+      {
+        task: {
+          id: 'task-4',
+          workspaceId: 'ws-1',
+          goal: 'Edit a file outside the workspace',
+          constraints: [],
+          desiredAutonomy: 'allow-policy-actions',
+          completionCriteria: [],
+          allowedScope: { kind: 'workspace' },
+          mode: 'operator',
+          status: 'blocked',
+          createdAt: '2026-03-08T00:00:00.000Z',
+          updatedAt: '2026-03-08T00:00:00.000Z',
+          artifactRefs: [],
+          blockerReason: 'Requested target is outside the active workspace.',
+          blockerCode: 'outside-workspace-request',
+          stopAfterCurrentStep: false,
+        },
+        pendingApprovals: [],
+        diagnostics: undefined,
+      },
+    ], new Set());
+
+    document.body.appendChild(rail);
+
+    expect(rail.textContent).toContain('Task is blocked because the requested action targets a location outside the active workspace boundary.');
+    expect(rail.textContent).toContain('Keep the task inside the active workspace, then continue if you want the agent to retry with an allowed target.');
   });
 
   it('dispatches task and approval events from task rail buttons', async () => {

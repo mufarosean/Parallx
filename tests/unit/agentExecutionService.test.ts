@@ -291,6 +291,51 @@ describe('AgentExecutionService', () => {
     expect(result.executedStepIds).toEqual(['step-1']);
   });
 
+  it('completes after continuing a stepwise-paused task with no remaining steps', async () => {
+    const storage = new InMemoryStorage();
+    const workspaceService = createWorkspaceService();
+    const taskStore = new AgentTaskStore();
+    await taskStore.setStorage(storage);
+    const approvalService = new AgentApprovalService(taskStore);
+    await approvalService.setStorage(storage);
+    const traceService = new AgentTraceService(taskStore);
+    const sessionService = new AgentSessionService(workspaceService, taskStore, approvalService, traceService);
+    const boundaryService = new WorkspaceBoundaryService();
+    boundaryService.setHost({ folders: workspaceService.folders });
+    const configProvider = {
+      getEffectiveConfig: () => ({
+        agent: {
+          verbosity: 'balanced' as const,
+          approvalStrictness: 'balanced' as const,
+          executionStyle: 'stepwise' as const,
+          proactivity: 'balanced' as const,
+        },
+      }),
+    };
+    const policyService = new AgentPolicyService(boundaryService, configProvider);
+    const memoryService = new AgentMemoryService(taskStore);
+    const executionService = new AgentExecutionService(taskStore, sessionService, policyService, configProvider, memoryService, traceService);
+
+    await sessionService.createTask({ goal: 'Inspect workspace readme' }, 'task-1', '2026-03-08T14:25:00.000Z');
+    await sessionService.setPlanSteps('task-1', [
+      {
+        id: 'step-1',
+        taskId: 'task-1',
+        title: 'Inspect workspace',
+        description: 'Read workspace files',
+        kind: 'read',
+      },
+    ], '2026-03-08T14:25:30.000Z');
+
+    const firstRun = await executionService.runTask('task-1', '2026-03-08T14:26:00.000Z');
+    expect(firstRun.task.status).toBe('paused');
+
+    await sessionService.continueTask('task-1', '2026-03-08T14:26:30.000Z');
+    const secondRun = await executionService.runTask('task-1', '2026-03-08T14:27:00.000Z');
+    expect(secondRun.task.status).toBe('completed');
+    expect(secondRun.executedStepIds).toEqual([]);
+  });
+
   it('records execution trace entries for started and completed steps', async () => {
     const { executionService, sessionService, traceService } = await createExecutionHarness();
     await sessionService.createTask({ goal: 'Inspect and summarize workspace' }, 'task-1', '2026-03-08T14:23:00.000Z');

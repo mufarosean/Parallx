@@ -804,6 +804,42 @@ describe('RetrievalService', () => {
       expect(results.at(-1)?.sourceType).toBe('concept');
     });
 
+    it('prefers table-style agent contact fields over generic claim-contact reminders', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'Claims Guide.md',
+          score: 0.052,
+          contextPrefix: 'Claims Guide > Within 24 Hours',
+          headingPath: 'Within 24 Hours',
+          chunkText: 'Call your insurance agent and the 24/7 claims hotline within 24 hours.',
+          sourceType: 'file_chunk',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Agent Contacts.md',
+          score: 0.048,
+          contextPrefix: 'Agent Contacts > Your Agent',
+          headingPath: 'Your Agent',
+          chunkText: '| Field | Details |\n| **Name** | Sarah Chen |\n| **Phone** | (555) 234-5678 |\n| **Email** | sarah.chen@greatlakesmutual.example.com |',
+          sourceType: 'file_chunk',
+          structuralRole: 'table',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve("What is my insurance agent's phone number?");
+
+      expect(results[0].sourceId).toBe('Agent Contacts.md');
+      expect(results[0].text).toContain('Sarah Chen');
+      expect(results[0].text).toContain('(555) 234-5678');
+    });
+
     it('second-stage reranking prefers candidates with stronger heading and body overlap', async () => {
       const emb = new Array(768).fill(0.1);
       embeddingService.embedQuery.mockResolvedValue(emb);
@@ -1224,6 +1260,43 @@ describe('RetrievalService', () => {
       const results = await service.retrieve('Compare the collision and comprehensive deductible table values.');
 
       expect(results[0].text).toContain('Annual Premium');
+    });
+
+    it('prefers threshold-specific vehicle evidence over generic total-loss workflow summaries', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'Claims Workflow Architecture.md',
+          sourceType: 'file_chunk',
+          score: 0.063,
+          contextPrefix: 'Claims Workflow Architecture > Severity Routing Overview',
+          headingPath: 'Severity Routing Overview',
+          chunkText: 'Potential total loss cases are routed to the severity desk for review and settlement handling.',
+          structuralRole: 'section',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Vehicle Info.md',
+          sourceType: 'file_chunk',
+          score: 0.058,
+          contextPrefix: 'Vehicle Info > Estimated Current Value',
+          headingPath: 'Estimated Current Value',
+          chunkText: '| Measure | Value |\n| Current value (KBB) | $28,500-$30,200 |\n| Total loss threshold | 75% of KBB value |',
+          structuralRole: 'table',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve('What is the total loss threshold for my car based on KBB value?');
+
+      expect(results[0].sourceId).toBe('Vehicle Info.md');
+      expect(results[0].text).toContain('75%');
+      expect(results[0].text).toContain('KBB');
     });
 
     it('prefers code chunks for identifier-heavy implementation queries', async () => {

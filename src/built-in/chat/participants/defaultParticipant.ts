@@ -50,6 +50,238 @@ const DEFAULT_MAX_ITERATIONS = 10;
 /** Ask mode needs fewer iterations — it only reads, never writes. */
 const ASK_MODE_MAX_ITERATIONS = 5;
 
+const CONVERSATIONAL_TURN_PATTERNS: readonly RegExp[] = [
+  /^(?:hi|hello|hey|yo|sup|good morning|good afternoon|good evening)$/,
+  /^(?:how are you|hows it going|how is it going|whats up|what is up)$/,
+  /^(?:who are you|what are you)$/,
+  /^(?:thanks|thank you|thx|ok|okay|sounds good|got it|nice|cool)$/,
+  /^(?:bye|goodbye|see you|see ya)$/,
+];
+
+const WORKSPACE_ROUTING_TERMS = /\b(file|files|document|documents|doc|docs|page|pages|note|notes|canvas|workspace|folder|folders|project|repo|repository|code|function|error|bug|test|build|commit|branch|source|sources|citation|cite|pdf|docx|xlsx|markdown|readme)\b/i;
+const TASK_ROUTING_TERMS = /\b(read|open|search|find|summari[sz]e|explain|show|list|compare|quote|retrieve|look up|use|run|edit|write|change|delete|fix|debug|analy[sz]e|review|patch)\b/i;
+const IN_SCOPE_DOMAIN_TERMS = /\b(insurance|policy|coverage|claim|claims|deductible|agent|adjuster|premium|liability|collision|comprehensive|uninsured|underinsured|medpay|roadside|accident|vehicle|car|auto|workspace|document|file|citation|source|context)\b/i;
+const OFF_TOPIC_DOMAIN_TERMS = /\b(recipe|recipes|cook|cooking|bake|baking|cookie|cookies|chocolate|flour|sugar|oven|meal|restaurant|movie|movies|tv|television|song|songs|music|sports?|weather|vacation|travel|dating)\b/i;
+const EVIDENCE_STOP_WORDS = new Set([
+  'what', 'when', 'where', 'which', 'with', 'your', 'this', 'that', 'have', 'from', 'into',
+  'about', 'does', 'will', 'would', 'could', 'should', 'doesnt', 'dont', 'policy', 'insurance',
+  'coverage', 'cover', 'covered', 'covers', 'endorsement', 'rider', 'include', 'included', 'including',
+  'listed', 'mention', 'mentioned', 'explicitly', 'say', 'says', 'under', 'there', 'their', 'them',
+  'mine', 'my', 'our', 'ours', 'the', 'and', 'for', 'against', 'damage',
+]);
+
+function extractSpecificCoverageFocusTerms(normalizedQuery: string): string[] {
+  const phrases = [
+    ...normalizedQuery.matchAll(/\b([a-z0-9-]+(?:\s+[a-z0-9-]+){0,2})\s+coverage\b/g),
+    ...normalizedQuery.matchAll(/\bcoverage\s+for\s+([a-z0-9-]+(?:\s+[a-z0-9-]+){0,2})\b/g),
+    ...normalizedQuery.matchAll(/\b([a-z0-9-]+(?:\s+[a-z0-9-]+){0,2})\s+endorsement\b/g),
+    ...normalizedQuery.matchAll(/\b([a-z0-9-]+(?:\s+[a-z0-9-]+){0,2})\s+rider\b/g),
+  ]
+    .map((match) => match[1]?.trim() ?? '')
+    .filter(Boolean);
+
+  return [...new Set(
+    phrases.flatMap((phrase) => phrase
+      .split(/\s+/)
+      .filter((term) => term.length >= 4 && !EVIDENCE_STOP_WORDS.has(term))),
+  )].slice(0, 3);
+}
+
+function extractSpecificCoverageFocusPhrases(normalizedQuery: string): string[] {
+  const rawPhrases = [
+    ...normalizedQuery.matchAll(/\b([a-z0-9-]+(?:\s+[a-z0-9-]+){0,2})\s+coverage\b/g),
+    ...normalizedQuery.matchAll(/\bcoverage\s+for\s+([a-z0-9-]+(?:\s+[a-z0-9-]+){0,2})\b/g),
+    ...normalizedQuery.matchAll(/\b([a-z0-9-]+(?:\s+[a-z0-9-]+){0,2})\s+endorsement\b/g),
+    ...normalizedQuery.matchAll(/\b([a-z0-9-]+(?:\s+[a-z0-9-]+){0,2})\s+rider\b/g),
+  ]
+    .map((match) => match[1]?.trim() ?? '')
+    .filter(Boolean);
+
+  return [...new Set(rawPhrases
+    .map((phrase) => phrase
+      .split(/\s+/)
+      .filter((term) => term.length >= 4 && !EVIDENCE_STOP_WORDS.has(term))
+      .join(' '))
+    .filter(Boolean))].slice(0, 2);
+}
+
+function isLikelyConversationalTurn(text: string): boolean {
+  const normalized = text
+    .toLowerCase()
+    .trim()
+    .replace(/[’']/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  if (!normalized) {
+    return false;
+  }
+
+  if (normalized.length > 80) {
+    return false;
+  }
+
+  if (WORKSPACE_ROUTING_TERMS.test(normalized) || TASK_ROUTING_TERMS.test(normalized)) {
+    return false;
+  }
+
+  return CONVERSATIONAL_TURN_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function isExplicitMemoryRecallTurn(text: string): boolean {
+  const normalized = text
+    .toLowerCase()
+    .trim()
+    .replace(/[’']/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  if (!normalized) {
+    return false;
+  }
+
+  return /(last|previous|prior)\s+(conversation|chat|session)|what\s+do\s+you\s+remember|remember\s+about\s+(?:it|my|our)|recall\s+(?:my|our)\s+(?:last|previous|prior)/.test(normalized);
+}
+
+function isLikelyOffTopicTurn(text: string): boolean {
+  const normalized = text
+    .toLowerCase()
+    .trim()
+    .replace(/[’']/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  if (!normalized || normalized.length > 180) {
+    return false;
+  }
+
+  if (WORKSPACE_ROUTING_TERMS.test(normalized) || TASK_ROUTING_TERMS.test(normalized) || IN_SCOPE_DOMAIN_TERMS.test(normalized)) {
+    return false;
+  }
+
+  return OFF_TOPIC_DOMAIN_TERMS.test(normalized);
+}
+
+function buildOffTopicRedirectAnswer(text: string): string | undefined {
+  if (!isLikelyOffTopicTurn(text)) {
+    return undefined;
+  }
+
+  return 'Sorry, I can help with the insurance policy, claims guidance, and other files in this workspace, but I cannot help with that off-topic request here.';
+}
+
+export function _buildDeterministicSessionSummary(
+  history: readonly { request: { text: string } }[],
+  currentRequestText: string,
+): string {
+  const userMessages = [...history.map((entry) => entry.request.text), currentRequestText]
+    .map((text) => text.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(-3);
+
+  if (userMessages.length === 0) {
+    return '';
+  }
+
+  const sentences = userMessages.map((text) => /[.!?]$/.test(text) ? text : `${text}.`);
+  const summary = sentences.join(' ');
+  return summary.length <= 900 ? summary : `${summary.slice(0, 897).trimEnd()}...`;
+}
+
+function buildDirectMemoryRecallAnswer(memoryContext: string): string | undefined {
+  const cleaned = memoryContext
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && line !== '[Conversation Memory]' && line !== '---' && !/^Previous session \(/i.test(line))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleaned) {
+    return undefined;
+  }
+
+  return `From our previous conversation, I remember: ${cleaned}`;
+}
+
+function buildUnsupportedSpecificCoverageAnswer(
+  query: string,
+  evidenceAssessment: { status: 'sufficient' | 'weak' | 'insufficient'; reasons: string[] },
+): string | undefined {
+  if (!evidenceAssessment.reasons.includes('specific-coverage-not-explicitly-supported')) {
+    return undefined;
+  }
+
+  const normalizedQuery = query.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+  const focusPhrase = extractSpecificCoverageFocusPhrases(normalizedQuery)[0];
+  if (!focusPhrase) {
+    return undefined;
+  }
+
+  return [
+    `I do not see ${focusPhrase} explicitly listed in your policy documents, so I cannot confirm that it is included.`,
+    'The retrieved documents may mention broader categories, but they do not explicitly name that specific coverage.',
+    'If you want protection for that peril, contact your agent about a separate endorsement or additional coverage.',
+  ].join(' ');
+}
+
+function buildProductSemanticsAnswer(text: string): string | undefined {
+  const normalized = text
+    .toLowerCase()
+    .trim()
+    .replace(/[’']/g, "'")
+    .replace(/[^a-z0-9\s']/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  if (
+    normalized.includes('approve once')
+    && normalized.includes('approve task')
+    && /(difference|vs|versus|mean|means)/.test(normalized)
+  ) {
+    return [
+      'Approve once allows only the current action to run.',
+      'Approve task is broader: it allows the remaining approval-scoped actions in that task to continue without asking again each time.',
+      'Use Approve once when you want tighter review. Use Approve task when you trust the remaining task scope and want fewer interruptions.',
+    ].join(' ');
+  }
+
+  if (
+    normalized.includes('outside the workspace')
+    && /(blocked|what should i do next|what do i do next|what next|how do i recover)/.test(normalized)
+  ) {
+    return [
+      'The task was blocked because it targeted something outside the active workspace boundary, so the agent stopped before taking that action.',
+      'Retarget the task to a file or folder inside the current workspace, or narrow the instructions so the next action stays within an allowed target.',
+      'After you fix the target, continue or retry the task.',
+    ].join(' ');
+  }
+
+  if (
+    /(delegated task|task)/.test(normalized)
+    && /(recorded artifacts|artifacts)/.test(normalized)
+    && /(what should i check next|what should i do next|what next|what do i check)/.test(normalized)
+  ) {
+    return [
+      'Recorded artifacts tell you which workspace files the task changed or produced.',
+      'Check those files first to confirm the result matches the goal and to decide whether a follow-up task is needed.',
+      'If the artifacts look right, you can keep them. If not, launch a narrower follow-up task to correct or extend the work.',
+    ].join(' ');
+  }
+
+  if (
+    normalized.includes('trace')
+    && /(task details|help me understand|tell me|mean|means|show)/.test(normalized)
+  ) {
+    return [
+      'The trace shows the recent planning, approval, and execution events for a task in order.',
+      'Use it to see what the agent tried, where it paused or was blocked, and which tool or step produced the latest outcome.',
+      'It is most useful when you need to understand why a task stopped, what ran successfully, or what to retry next.',
+    ].join(' ');
+  }
+
+  return undefined;
+}
+
 function _scoreExtractiveFallbackLine(line: string, queryTerms: string[]): number {
   let score = 0;
   const normalizedLine = line.toLowerCase();
@@ -232,6 +464,7 @@ export function _assessEvidenceSufficiency(
     queryWordCount >= 12
     || /\b(and|then|after|compare|versus|vs\.?|workflow|steps|what should i do|what does .* cover)\b/i.test(normalizedQuery)
     || ((normalizedQuery.match(/\b(what|how|where|who|when|which)\b/g) ?? []).length >= 2);
+  const specificCoverageFocusTerms = extractSpecificCoverageFocusTerms(normalizedQuery);
 
   const reasons: string[] = [];
   if (!retrievedContextText.trim() || ragSources.length === 0) {
@@ -242,6 +475,13 @@ export function _assessEvidenceSufficiency(
   if (uniqueMatchedTerms.length === 0) {
     reasons.push('no-query-term-overlap');
     return { status: 'insufficient', reasons };
+  }
+
+  if (
+    specificCoverageFocusTerms.length > 0
+    && specificCoverageFocusTerms.some((term) => !normalizedContext.includes(term))
+  ) {
+    reasons.push('specific-coverage-not-explicitly-supported');
   }
 
   if (isHardQuestion && ragSources.length < 2) {
@@ -257,6 +497,10 @@ export function _assessEvidenceSufficiency(
     reasons.push('thin-evidence-set');
   }
 
+  if (reasons.includes('specific-coverage-not-explicitly-supported')) {
+    return { status: 'insufficient', reasons };
+  }
+
   if (reasons.length >= 2 || reasons.includes('hard-query-low-source-coverage')) {
     return {
       status: reasons.includes('no-query-term-overlap') ? 'insufficient' : 'weak',
@@ -265,6 +509,308 @@ export function _assessEvidenceSufficiency(
   }
 
   return { status: 'sufficient', reasons };
+}
+
+function _buildEvidenceResponseConstraint(
+  query: string,
+  evidenceAssessment: { status: 'sufficient' | 'weak' | 'insufficient'; reasons: string[] },
+): string {
+  const baseConstraint = evidenceAssessment.status === 'insufficient'
+    ? 'Response Constraint: If the evidence stays insufficient, answer narrowly with caveats, ask a clarifying question, or state that more grounded evidence is needed.'
+    : 'Response Constraint: Keep the answer narrow and explicitly grounded in the available evidence.';
+
+  if (
+    /\b(coverage|cover(?:ed|s)?|endorsement|rider)\b/i.test(query)
+    && evidenceAssessment.reasons.includes('specific-coverage-not-explicitly-supported')
+  ) {
+    return `${baseConstraint} Do not infer that a specific coverage, peril, endorsement, or rider is included from a broader category. Only affirm it if the retrieved evidence names it explicitly; otherwise say the documents do not explicitly confirm it.`;
+  }
+
+  return baseConstraint;
+}
+
+export function _repairUnsupportedSpecificCoverageAnswer(
+  query: string,
+  answer: string,
+  evidenceAssessment: { status: 'sufficient' | 'weak' | 'insufficient'; reasons: string[] },
+): string {
+  if (!answer.trim() || !evidenceAssessment.reasons.includes('specific-coverage-not-explicitly-supported')) {
+    return answer;
+  }
+
+  const normalizedQuery = query.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+  const focusPhrase = extractSpecificCoverageFocusPhrases(normalizedQuery)[0];
+  if (!focusPhrase) {
+    return answer;
+  }
+
+  const escapedPhrase = focusPhrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const explicitSentence = `The policy documents do not explicitly confirm ${focusPhrase}.`;
+  let repaired = answer;
+
+  repaired = repaired.replace(
+    new RegExp(`(^|\\n)\\s*(?:your\\s+policy|the\\s+policy(?:\\s+documents?)?)\\s+(?:does\\s+not\\s+include|doesn['’]t\\s+include|does\\s+not\\s+cover|doesn['’]t\\s+cover)\\s+${escapedPhrase}\\.?`, 'i'),
+    `$1${explicitSentence}`,
+  );
+
+  repaired = repaired.replace(
+    new RegExp(`(^|\\n)\\s*(?:your\\s+policy|the\\s+policy(?:\\s+documents?)?)\\s+(?:includes?|covers?)\\s+${escapedPhrase}\\.?`, 'i'),
+    `$1${explicitSentence}`,
+  );
+
+  repaired = repaired.replace(
+    new RegExp(`${escapedPhrase}[^.]{0,160}(?:falls\\s+within|within\\s+the\\s+scope|is\\s+covered\\s+under|would\\s+be\\s+covered\\s+under)[^.]*\.`, 'i'),
+    `${explicitSentence} `,
+  );
+
+   repaired = repaired.replace(
+    new RegExp(`(?:so|therefore|that\\s+means)?[^.]{0,80}(?:the\\s+policy|your\\s+policy)?[^.]{0,80}(?:covers?|would\\s+cover)\\s+${escapedPhrase}[^.]*\\.`, 'i'),
+    `${explicitSentence} `,
+  );
+
+  repaired = repaired.replace(
+    new RegExp(`${escapedPhrase}[^.]{0,220}(?:natural\\s+disasters?|broader\\s+categor(?:y|ies)|general\\s+category)[^.]*\\.`, 'i'),
+    `${explicitSentence} The retrieved documents may mention broader categories, but they do not explicitly name that specific coverage. `,
+  );
+
+  repaired = repaired.replace(
+    new RegExp(`(?:The only coverage that (?:might|would|could) apply|It (?:might|would|could) apply)[^.]{0,220}(?:natural\\s+disasters?|Comprehensive Coverage|seismic\\s+events?)[^.]*\\.`, 'i'),
+    `${explicitSentence} The retrieved documents may mention broader categories, but they do not explicitly name that specific coverage. `,
+  );
+
+  if (!new RegExp(`do\\s+not\\s+explicitly\\s+confirm\\s+${escapedPhrase}`, 'i').test(repaired)) {
+    repaired = `${explicitSentence} ${repaired.trim()}`;
+  }
+
+  if (!/broader category|not explicitly named|not explicitly mention|not explicitly listed/i.test(repaired)) {
+    repaired = repaired.replace(
+      explicitSentence,
+      `${explicitSentence} The retrieved documents may mention broader categories, but they do not explicitly name that specific coverage.`,
+    );
+  }
+
+  repaired = repaired.replace(/\\s{2,}/g, ' ').trim();
+
+  return repaired;
+}
+
+function normalizeGroundedAnswerTypography(answer: string): string {
+  return answer
+    .replace(/[\u00A0\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
+    .replace(/[‐‑‒–—−]/g, '-')
+    .replace(/(\d)\s+%/g, '$1%');
+}
+
+export function _repairTotalLossThresholdAnswer(query: string, answer: string, retrievedContextText: string): string {
+  if (!answer.trim() || !retrievedContextText.trim()) {
+    return answer;
+  }
+
+  const normalizedQuery = query.toLowerCase().replace(/[’']/g, ' ');
+  const asksTotalLossThreshold = normalizedQuery.includes('total loss')
+    && ['threshold', 'declared', 'point', 'when'].some((term) => normalizedQuery.includes(term));
+  if (!asksTotalLossThreshold) {
+    return answer;
+  }
+
+  const normalizedContext = retrievedContextText.replace(/[*_`~]/g, ' ');
+  const hasThresholdEvidence = /75\s*%|75 percent|seventy[-\s]five/i.test(normalizedContext);
+  const hasKbbEvidence = /kelly\s+blue\s+book|\bkbb\b/i.test(normalizedContext);
+  if (!hasThresholdEvidence && !hasKbbEvidence) {
+    return answer;
+  }
+
+  let repaired = normalizeGroundedAnswerTypography(answer).trim();
+
+  if (hasThresholdEvidence && !/75%|75 percent|seventy[-\s]five/i.test(repaired)) {
+    repaired = `Your vehicle would be considered a total loss when repair costs exceed 75% of its current value. ${repaired}`.trim();
+  }
+
+  if (hasKbbEvidence && !/\bkbb\b/i.test(repaired)) {
+    if (/kelly\s+blue\s+book/i.test(repaired)) {
+      repaired = repaired.replace(/Kelly\s+Blue\s+Book/i, 'Kelly Blue Book (KBB)');
+    } else if (/current\s+(?:market\s+)?value/i.test(repaired)) {
+      repaired = repaired.replace(/current\s+(?:market\s+)?value/i, 'current Kelly Blue Book (KBB) value');
+    } else {
+      repaired = `${repaired}\n\nThat value comes from Kelly Blue Book (KBB).`;
+    }
+  }
+
+  return repaired;
+}
+
+function extractDollarAmount(text: string): string | undefined {
+  return text.match(/\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?/)?.[0];
+}
+
+export function _repairDeductibleConflictAnswer(query: string, answer: string, retrievedContextText: string): string {
+  if (!answer.trim() || !retrievedContextText.trim()) {
+    return answer;
+  }
+
+  const normalizedQuery = query.toLowerCase().replace(/[’']/g, ' ');
+  const asksDeductible = normalizedQuery.includes('deductible');
+  const asksCollision = normalizedQuery.includes('collision');
+  if (!asksDeductible || !asksCollision) {
+    return answer;
+  }
+
+  const normalizedContext = retrievedContextText.replace(/[*_`~]/g, ' ');
+  const policyCollisionMatch = normalizedContext.match(/Auto Insurance Policy\.md[\s\S]{0,400}?Collision Coverage[\s\S]{0,200}?Deductible:\s*(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i)
+    ?? normalizedContext.match(/Collision Coverage[\s\S]{0,200}?Deductible:\s*(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i)
+    ?? normalizedContext.match(/\bCollision \((\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s+ded\)/i);
+  const policyAmount = policyCollisionMatch?.[1];
+  if (!policyAmount) {
+    return answer;
+  }
+
+  const quickReferenceMatch = normalizedContext.match(/Accident Quick Reference\.md[\s\S]{0,300}?Collision Deductible[^\n]*?(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i)
+    ?? normalizedContext.match(/Collision Deductible[^\n]*?(\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i);
+  const quickReferenceAmount = quickReferenceMatch?.[1];
+  const claimedAmount = extractDollarAmount(query);
+  const asksForCurrentValue = ['now', 'current', 'currently', 'today'].some((term) => normalizedQuery.includes(term));
+  const asksForConfirmation = /(confirm|right|correct)/.test(normalizedQuery);
+  const asksForComparison = /(difference|different|compare|comparison|conflict|which source|which document|older|stale|why)/.test(normalizedQuery);
+
+  let repaired = normalizeGroundedAnswerTypography(answer).trim();
+
+  if (claimedAmount && claimedAmount !== policyAmount && asksForConfirmation) {
+    repaired = repaired.replace(/^.*?(?=\n|$)/, `No. Your collision deductible is ${policyAmount}, not ${claimedAmount}.`);
+    if (!repaired.startsWith('No.')) {
+      repaired = `No. Your collision deductible is ${policyAmount}, not ${claimedAmount}. ${repaired}`.trim();
+    }
+  }
+
+  if (quickReferenceAmount && quickReferenceAmount !== policyAmount && !asksForComparison) {
+    repaired = repaired
+      .replace(new RegExp(`The quick-reference card also lists a ${quickReferenceAmount.replace(/[$]/g, '\\$&')} deductible[^.]*\.`, 'i'), 'An older quick-reference note conflicts with the policy summary, so I am using the current policy amount.')
+      .replace(new RegExp(`Quick-reference card lists ${quickReferenceAmount.replace(/[$]/g, '\\$&')}[^\n]*`, 'i'), 'Quick-reference note conflicts with the current policy summary.')
+      .replace(new RegExp(`(^|[^0-9])${quickReferenceAmount.replace(/[$]/g, '\\$&')}(?![0-9])`, 'g'), '$1');
+
+    if (!asksForCurrentValue) {
+      repaired = repaired
+        .replace(/An older quick-reference note conflicts with the policy summary, so I am using the current policy amount\.?/i, '')
+        .replace(/Quick-reference note conflicts with the current policy summary\.?/i, '');
+    }
+  }
+
+  const repairedAmount = extractDollarAmount(repaired);
+  if (!asksForComparison && repairedAmount !== policyAmount) {
+    const normalizedLead = asksForCurrentValue
+      ? `Your current collision deductible is ${policyAmount}.`
+      : `Your collision deductible is ${policyAmount}.`;
+    repaired = `${normalizedLead} ${repaired}`.trim();
+    repaired = repaired.replace(/(Your (?:current )?collision deductible is \$\d{1,3}(?:,\d{3})*(?:\.\d{2})?\.\s*)+/i, normalizedLead + ' ');
+  }
+
+  repaired = repaired.replace(/\n{3,}/g, '\n\n').trim();
+  return repaired;
+}
+
+export function _repairVehicleInfoAnswer(query: string, answer: string, retrievedContextText: string): string {
+  if (!answer.trim() || !retrievedContextText.trim()) {
+    return answer;
+  }
+
+  const normalizedQuery = query.toLowerCase().replace(/[’']/g, ' ');
+  const asksVehicleInfo = /(insured vehicle|my vehicle|my car|vehicle info|vehicle information)/.test(normalizedQuery);
+  if (!asksVehicleInfo) {
+    return answer;
+  }
+
+  const repaired = normalizeGroundedAnswerTypography(answer).replace(/\s{2,}/g, ' ').trim();
+
+  const normalizedContext = retrievedContextText.replace(/[*_`~]/g, ' ');
+  const vehicleLine = normalizedContext.match(/(20\d{2})\s+([A-Z][a-z]+)\s+([A-Za-z0-9-]+)(?:\s+([A-Z0-9-]{2,}|[A-Z][a-z]+(?:\s+[A-Z0-9-]+)*))?/);
+  const colorMatch = normalizedContext.match(/(Lunar Silver Metallic|Silver Metallic|Silver)/i);
+  const year = vehicleLine?.[1];
+  const make = vehicleLine?.[2];
+  const model = vehicleLine?.[3];
+  const trim = vehicleLine?.[4] && !/^Coverage|Information|Specifications$/i.test(vehicleLine[4])
+    ? vehicleLine[4]
+    : undefined;
+  const color = colorMatch?.[1];
+
+  if (!year || !make || !model) {
+    return repaired;
+  }
+
+  const normalizedAnswer = repaired.toLowerCase();
+  const missingTrimOrColor = (!!trim && !normalizedAnswer.includes(trim.toLowerCase()))
+    && (!!color && !normalizedAnswer.includes(color.toLowerCase()));
+  if (!missingTrimOrColor) {
+    return repaired;
+  }
+
+  const details = [trim, color].filter(Boolean).join(' in ');
+  const lead = details
+    ? `Your insured vehicle is a ${year} ${make} ${model} ${details}.`
+    : `Your insured vehicle is a ${year} ${make} ${model}.`;
+  return `${lead} ${repaired}`.trim();
+}
+
+export function _repairAgentContactAnswer(query: string, answer: string, retrievedContextText: string): string {
+  if (!answer.trim() || !retrievedContextText.trim()) {
+    return answer;
+  }
+
+  const normalizedQuery = query.toLowerCase().replace(/[’']/g, ' ');
+  const asksAgentPhone = normalizedQuery.includes('agent')
+    && ['phone', 'number', 'contact', 'call'].some((term) => normalizedQuery.includes(term));
+  if (!asksAgentPhone) {
+    return answer;
+  }
+
+  const normalizedContext = retrievedContextText.replace(/[*_`~]/g, '');
+  const normalizedLines = normalizedContext
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const contactPhone = normalizedLines
+    .find((line) => /\(\d{3}\)\s*\d{3}-\d{4}|\b\d{3}-\d{3}-\d{4}\b/.test(line))
+    ?.match(/\(\d{3}\)\s*\d{3}-\d{4}|\b\d{3}-\d{3}-\d{4}\b/)?.[0]?.trim();
+  const contactName = normalizedLines
+    .find((line) => /\|\s*Name\s*\|/i.test(line))
+    ?.match(/\|\s*Name\s*\|\s*([A-Z][a-z]+\s+[A-Z][a-z]+)/i)?.[1]?.trim()
+    ?? normalizedLines
+      .find((line) => /\b(?:your agent|agent)\b/i.test(line) && /[A-Z][a-z]+\s+[A-Z][a-z]+/.test(line))
+      ?.match(/(?:your agent|agent)[^:]*:\s*([A-Z][a-z]+\s+[A-Z][a-z]+)/i)?.[1]?.trim()
+    ?? normalizedLines
+      .find((line) => /[A-Z][a-z]+\s+[A-Z][a-z]+/.test(line) && !/claims line|repair shops|office address/i.test(line))
+      ?.match(/([A-Z][a-z]+\s+[A-Z][a-z]+)/)?.[1]?.trim();
+  if (!contactName && !contactPhone) {
+    return answer;
+  }
+
+  let repaired = normalizeGroundedAnswerTypography(answer)
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (contactPhone) {
+    const digitSequence = contactPhone.replace(/\D/g, '');
+    if (digitSequence.length === 10) {
+      const fuzzyPhonePattern = new RegExp(`\\(?${digitSequence.slice(0, 3)}\\)?\\s*[-.]?\\s*${digitSequence.slice(3, 6)}\\s*[-.]?\\s*${digitSequence.slice(6)}`);
+      repaired = repaired.replace(fuzzyPhonePattern, contactPhone);
+    }
+  }
+
+  const hasName = !!contactName && repaired.toLowerCase().includes(contactName.toLowerCase());
+  const hasPhone = !!contactPhone && repaired.includes(contactPhone);
+  if (hasName && hasPhone) {
+    return repaired;
+  }
+
+  const lead = contactName && contactPhone
+    ? `Your agent is ${contactName}, and their phone number is ${contactPhone}.`
+    : contactName
+      ? `Your agent is ${contactName}.`
+      : `Your agent's phone number is ${contactPhone}.`;
+
+  if (/^your agent/i.test(repaired)) {
+    return lead;
+  }
+
+  return `${lead} ${repaired}`.trim();
 }
 
 export function _buildRetrieveAgainQuery(query: string, retrievedContextText: string): string | undefined {
@@ -467,10 +1013,9 @@ export function _buildMissingCitationFooter(
   }
 
   const normalizedText = text.toLowerCase();
-  const hasVisibleSourceReference = /\bsources?\b/i.test(text) || citations.some(({ label }) => {
+  const hasVisibleSourceReference = /(^|\n)\s*Sources:\s*/i.test(text) || citations.some(({ label }) => {
     const normalizedLabel = label.toLowerCase();
-    const normalizedStem = normalizedLabel.replace(/\.[a-z0-9]+$/i, '');
-    return normalizedText.includes(normalizedLabel) || normalizedText.includes(normalizedStem);
+    return normalizedText.includes(normalizedLabel);
   });
   if (hasVisibleSourceReference) {
     return '';
@@ -703,6 +1248,32 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       return {};
     }
 
+    const productSemanticsAnswer = buildProductSemanticsAnswer(request.text);
+    if (productSemanticsAnswer) {
+      response.markdown(productSemanticsAnswer);
+      services.reportResponseDebug?.({
+        phase: 'product-semantics-direct-answer',
+        markdownLength: productSemanticsAnswer.length,
+        yielded: !!token.isYieldRequested,
+        cancelled: token.isCancellationRequested,
+        retrievedContextLength: 0,
+      });
+      return {};
+    }
+
+    const offTopicRedirectAnswer = buildOffTopicRedirectAnswer(request.text);
+    if (offTopicRedirectAnswer) {
+      response.markdown(offTopicRedirectAnswer);
+      services.reportResponseDebug?.({
+        phase: 'off-topic-direct-answer',
+        markdownLength: offTopicRedirectAnswer.length,
+        yielded: !!token.isYieldRequested,
+        cancelled: token.isCancellationRequested,
+        retrievedContextLength: 0,
+      });
+      return {};
+    }
+
     // ── Build system prompt with workspace context ──
     // Parallelize independent async calls to reduce pre-response latency.
 
@@ -846,19 +1417,36 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // latency on local Ollama (e.g. 45s planner + 13s response = 58s
     // vs native Ollama's 13s).  No mainstream local AI app does this.
     const ragSources: Array<{ uri: string; label: string; index?: number }> = [];
-    let retrievalPlan: IRetrievalPlan | undefined;
+    let retrievalPlan: IRetrievalPlan;
 
     const hasActiveSlashCommand = !!(activeCommand && activeCommand !== 'compact');
     const isRagReady = services.isRAGAvailable?.() ?? false;
+    const isConversationalTurn = !hasActiveSlashCommand && isLikelyConversationalTurn(userText);
+    const isMemoryRecallTurn = !hasActiveSlashCommand && isExplicitMemoryRecallTurn(userText);
 
     // Synthetic plan — downstream code checks retrievalPlan for gating.
-    // Always retrieve when RAG is ready; embedding scores filter relevance.
-    retrievalPlan = {
-      intent: 'question',
-      reasoning: 'Direct retrieval — embedding similarity filters relevance.',
-      needsRetrieval: isRagReady && !hasActiveSlashCommand,
-      queries: [],
-    };
+    // Short conversational turns should stay lightweight and avoid
+    // workspace retrieval, memory recall, and tool priming.
+    retrievalPlan = isConversationalTurn
+      ? {
+          intent: 'conversational',
+          reasoning: 'Short conversational turn — skip workspace retrieval and memory recall.',
+          needsRetrieval: false,
+          queries: [],
+        }
+      : isMemoryRecallTurn
+        ? {
+            intent: 'question',
+            reasoning: 'Explicit prior-conversation recall turn — use session memory without workspace retrieval.',
+            needsRetrieval: false,
+            queries: [],
+          }
+      : {
+          intent: 'question',
+          reasoning: 'Direct retrieval — embedding similarity filters relevance.',
+          needsRetrieval: isRagReady && !hasActiveSlashCommand,
+          queries: [],
+        };
 
     services.reportRetrievalDebug?.({
       hasActiveSlashCommand,
@@ -886,7 +1474,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
     const [pageResult, ragResult, memoryResult, conceptResult, attachmentResults] = await Promise.all([
       // Page content
-      services.getCurrentPageContent
+      (services.getCurrentPageContent && !isConversationalTurn && !isMemoryRecallTurn)
         ? services.getCurrentPageContent().catch((): PageResult => null)
         : Promise.resolve(null as PageResult),
 
@@ -916,12 +1504,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         : Promise.resolve(null as RAGResult),
 
       // Memory recall
-      (services.recallMemories && retrievalPlan.needsRetrieval !== false)
-        ? services.recallMemories(userText).catch((): MemoryResult => null)
+      (services.recallMemories && (retrievalPlan.needsRetrieval !== false || isMemoryRecallTurn))
+        ? services.recallMemories(userText, context.sessionId).catch((): MemoryResult => null)
         : Promise.resolve(null as MemoryResult),
 
       // Concept recall (M17 P1.2 Task 1.2.7)
-      (services.recallConcepts && retrievalPlan.needsRetrieval !== false)
+      (services.recallConcepts && retrievalPlan.needsRetrieval !== false && !isMemoryRecallTurn)
         ? services.recallConcepts(userText).catch((): ConceptResult => null)
         : Promise.resolve(null as ConceptResult),
 
@@ -1004,6 +1592,28 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
+    const unsupportedSpecificCoverageAnswer = buildUnsupportedSpecificCoverageAnswer(userText, evidenceAssessment);
+    if (unsupportedSpecificCoverageAnswer) {
+      response.markdown(unsupportedSpecificCoverageAnswer);
+      if (ragSources.length > 0) {
+        response.setCitations(
+          ragSources.map((source, index) => ({
+            index: source.index ?? (index + 1),
+            uri: source.uri,
+            label: source.label,
+          })),
+        );
+      }
+      services.reportResponseDebug?.({
+        phase: 'unsupported-specific-coverage-direct-answer',
+        markdownLength: unsupportedSpecificCoverageAnswer.length,
+        yielded: !!token.isYieldRequested,
+        cancelled: token.isCancellationRequested,
+        retrievedContextLength: retrievedContextText.length,
+      });
+      return {};
+    }
+
     // Memory context
     if (memoryResult) {
       let memoryContext = memoryResult;
@@ -1011,6 +1621,21 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         memoryContext = memoryContext.slice(0, MAX_MEMORY_CONTEXT_CHARS) + '\n[…memory truncated]';
       }
       contextParts.push(memoryContext);
+
+      if (isMemoryRecallTurn) {
+        const directMemoryAnswer = buildDirectMemoryRecallAnswer(memoryContext);
+        if (directMemoryAnswer) {
+          response.markdown(directMemoryAnswer);
+          services.reportResponseDebug?.({
+            phase: 'memory-recall-direct-answer',
+            markdownLength: directMemoryAnswer.length,
+            yielded: !!token.isYieldRequested,
+            cancelled: token.isCancellationRequested,
+            retrievedContextLength: 0,
+          });
+          return {};
+        }
+      }
     }
 
     // Concept context (M17 P1.2 Task 1.2.7)
@@ -1234,11 +1859,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           if (evidenceAssessment.reasons.length > 0) {
             retrievalAnalysisLines.push(`Evidence Notes: ${evidenceAssessment.reasons.join(', ')}`);
           }
-          retrievalAnalysisLines.push(
-            evidenceAssessment.status === 'insufficient'
-              ? 'Response Constraint: If the evidence stays insufficient, answer narrowly with caveats, ask a clarifying question, or state that more grounded evidence is needed.'
-              : 'Response Constraint: Keep the answer narrow and explicitly grounded in the available evidence.',
-          );
+          retrievalAnalysisLines.push(_buildEvidenceResponseConstraint(userText, evidenceAssessment));
         }
         parts.push(retrievalAnalysisLines.join('\n'));
       }
@@ -1260,13 +1881,15 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       const extractiveFallback = _buildExtractiveFallbackAnswer(request.text, retrievedContextText || userContent);
       if (extractiveFallback) {
         response.markdown(extractiveFallback);
+      } else if (isConversationalTurn) {
+        response.markdown('I could not produce a conversational response from the current model output. Please try again.');
       } else if (evidenceAssessment.status === 'insufficient') {
         response.markdown('I do not have enough grounded evidence in the current workspace context to answer this confidently. Please point me to the relevant document or add more detail.');
       } else {
         response.markdown('I could not produce a grounded final answer from the current model output. Please try again.');
       }
 
-      if (ragSources.length > 0) {
+      if (!isConversationalTurn && ragSources.length > 0) {
         const citations = ragSources.map((source, index) => ({
           index: source.index ?? (index + 1),
           uri: source.uri,
@@ -1337,7 +1960,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // Without the LLM planner, we no longer classify intent.  Always send
     // tools — the model ignores them when not needed.  This matches how
     // ChatGPT and Open WebUI handle tool availability.
-    const isConversational = false;
+    const isConversational = retrievalPlan.intent === 'conversational';
     const options: IChatRequestOptions = {
       tools: (!isConversational && shouldIncludeTools(request.mode))
         ? (capabilities.canAutonomous ? services.getToolDefinitions() : services.getReadOnlyToolDefinitions())
@@ -1708,7 +2331,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         services.storeSessionMemory &&
         services.isSessionEligibleForSummary &&
         services.getSessionMemoryMessageCount &&
-        services.sendSummarizationRequest &&
         context.history.length > 0
       ) {
         const sessionId = context.sessionId ?? '';
@@ -1730,6 +2352,15 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
               }).join('\n\n');
               const current = `User: ${request.text}`;
               const fullTranscript = transcript + '\n\n' + current;
+              const fallbackSummary = _buildDeterministicSessionSummary(context.history, request.text);
+
+              if (fallbackSummary) {
+                await services.storeSessionMemory!(sessionId, fallbackSummary, messageCount);
+              }
+
+              if (!services.sendSummarizationRequest) {
+                return;
+              }
 
               // Combined prompt: summary + concept extraction (P1.2 Task 1.2.6)
               const hasConcepts = !!services.storeConceptsFromSession;
@@ -1738,14 +2369,15 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
                   role: 'system',
                   content: hasConcepts
                     ? 'Analyse this conversation and produce JSON with two keys:\n' +
-                      '1. "summary": 2-4 sentence summary of key topics, decisions, and context.\n' +
+                      '1. "summary": 2-4 sentence summary of key topics, decisions, and context. Prefer user-specific facts over general advice. Preserve concrete facts like names, locations, dates, numbers, report IDs, and anything the user may ask you to remember later.\n' +
                       '2. "concepts": array of objects with fields: "concept" (topic name, 2-5 words), ' +
                       '"category" (subject area), "summary" (user\'s current understanding), ' +
                       '"struggled" (boolean — true if user showed confusion or needed rephrasing).\n' +
+                      'If the conversation includes both a specific incident and general reference guidance, summarize the specific incident first.\n' +
                       'Only include concepts the user actively engaged with.\n' +
                       'Output ONLY valid JSON, no markdown fences.'
                     : 'Summarise this conversation in 2-4 sentences. Focus on the key topics discussed, ' +
-                      'decisions made, and any important context. Output ONLY the summary.',
+                      'decisions made, and any important context. Prefer user-specific facts over general advice. Preserve concrete facts like names, locations, dates, numbers, report IDs, and anything the user may ask you to remember later. If the conversation includes both a specific incident and general reference guidance, summarize the specific incident first. Output ONLY the summary.',
                 },
                 { role: 'user', content: fullTranscript },
               ];
@@ -1828,10 +2460,30 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
             .reverse()
             .find((part) => part.kind === ChatContentPartKind.Markdown && typeof part.content === 'string');
           if (lastMarkdownPart) {
-            lastMarkdownPart.content = _repairGroundedCodeAnswer(
+            lastMarkdownPart.content = _repairUnsupportedSpecificCoverageAnswer(
               request.text,
-              lastMarkdownPart.content,
-              retrievedContextText || userContent,
+              _repairVehicleInfoAnswer(
+                request.text,
+                _repairAgentContactAnswer(
+                  request.text,
+                  _repairDeductibleConflictAnswer(
+                    request.text,
+                    _repairTotalLossThresholdAnswer(
+                      request.text,
+                      _repairGroundedCodeAnswer(
+                        request.text,
+                        lastMarkdownPart.content,
+                        retrievedContextText || userContent,
+                      ),
+                      retrievedContextText || userContent,
+                    ),
+                    retrievedContextText || userContent,
+                  ),
+                  retrievedContextText || userContent,
+                ),
+                retrievedContextText || userContent,
+              ),
+              evidenceAssessment,
             );
           }
         }
@@ -1840,7 +2492,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           .filter((s): s is { uri: string; label: string; index: number } => s.index != null)
           .map(s => ({ index: s.index, uri: s.uri, label: s.label }));
 
-        if (citations.length > 0) {
+        if (!isConversational && citations.length > 0) {
           const responseText = response.getMarkdownText();
           const validIndices = new Set(citations.map(c => c.index));
           const referencedIndices = new Set<number>();

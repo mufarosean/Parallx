@@ -10,6 +10,7 @@ describe('agentLifecycle', () => {
   it('allows valid forward transitions', () => {
     expect(canTransitionAgentTaskStatus('pending', 'planning')).toBe(true);
     expect(canTransitionAgentTaskStatus('planning', 'running')).toBe(true);
+    expect(canTransitionAgentTaskStatus('planning', 'completed')).toBe(true);
     expect(canTransitionAgentTaskStatus('running', 'completed')).toBe(true);
   });
 

@@ -1311,6 +1311,14 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       /\b72-hour\b/,
       /\b72\s+hours\b/,
     ]);
+    const wantsAgentFieldLookup = wantsAgentContact && matchesAny(normalizedQuery, [
+      /\bname\b/,
+      /\bphone\b/,
+      /\bnumber\b/,
+      /\bemail\b/,
+      /\bcell\b/,
+      /\boffice\b/,
+    ]);
     const wantsTabularEvidence = matchesAny(normalizedQuery, [
       /\btable\b/,
       /\bcompare\b/,
@@ -1323,6 +1331,14 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       /\bamount\b/,
       /\bphone\b/,
       /\bnumber\b/,
+    ]);
+    const wantsTotalLossThreshold = matchesAny(normalizedQuery, [
+      /\btotal\s+loss\b/,
+      /\b75%\b/,
+      /\bkbb\b/,
+      /\bkelly\s+blue\s+book\b/,
+      /\bcurrent\s+value\b/,
+      /\bthreshold\b/,
     ]);
     const wantsCodeEvidence = queryPlan.exactMatchBias || matchesAny(normalizedQuery, [
       /\bfunction\b/,
@@ -1380,6 +1396,21 @@ export class RetrievalService extends Disposable implements IRetrievalService {
         }
       }
 
+      if (wantsAgentFieldLookup) {
+        if (
+          sourceMeta.includes('| name |')
+          || sourceMeta.includes('| phone |')
+          || sourceMeta.includes('| email |')
+          || sourceMeta.includes('| field |')
+          || sourceMeta.includes('senior insurance agent')
+        ) {
+          adjustedScore += 0.018;
+        }
+        if (sourceMeta.includes('claims line') || sourceMeta.includes('hotline')) {
+          adjustedScore -= 0.006;
+        }
+      }
+
       if (wantsRepairShops) {
         if (sourceMeta.includes('preferred repair') || sourceMeta.includes('repair shop')) {
           adjustedScore += 0.016;
@@ -1416,6 +1447,21 @@ export class RetrievalService extends Disposable implements IRetrievalService {
           adjustedScore += 0.014;
         } else if (queryPlan.complexity === 'hard' && result.structuralRole === 'section') {
           adjustedScore -= 0.003;
+        }
+      }
+
+      if (wantsTotalLossThreshold) {
+        if (
+          sourceMeta.includes('total loss')
+          && (sourceMeta.includes('75%') || sourceMeta.includes('kbb') || sourceMeta.includes('current value'))
+        ) {
+          adjustedScore += 0.018;
+        }
+        if (sourceMeta.includes('vehicle info')) {
+          adjustedScore += 0.008;
+        }
+        if (sourceMeta.includes('severity desk') && !sourceMeta.includes('75%') && !sourceMeta.includes('kbb')) {
+          adjustedScore -= 0.006;
         }
       }
 

@@ -653,6 +653,255 @@ export const RUBRIC: TestCase[] = [
       ],
     }],
   },
+
+  // ── T22: AIR Behavior — Identity Cleanliness ───────────────────────────
+  {
+    id: 'T22',
+    name: 'AIR behavior -- fresh-session identity stays clean',
+    dimension: 'air-behavior',
+    description:
+      'A fresh-session identity question should stay conversational and avoid workspace fact contamination.',
+    turns: [{
+      prompt: 'Who are you?',
+      assertions: [
+        {
+          name: 'Explains role naturally',
+          weight: 2,
+          check: containsAny(['assistant', 'help', 'parallx', 'ai']),
+        },
+        {
+          name: 'Avoids policy-specific contamination',
+          weight: 3,
+          check: containsNone(['$500', 'plx-2026', 'jordan rivera', 'sarah chen']),
+        },
+        {
+          name: 'Stays concise and conversational',
+          weight: 1,
+          check: lengthBetween(20, 800),
+        },
+      ],
+    }],
+  },
+
+  // ── T23: AIR Behavior — Grounded to Social Follow-Up ───────────────────
+  {
+    id: 'T23',
+    name: 'AIR behavior -- grounded answer then social follow-up',
+    dimension: 'air-behavior',
+    description:
+      'AIR should answer a grounded question correctly, then drop back to lightweight social behavior on a follow-up thanks.',
+    turns: [
+      {
+        prompt: 'What is my collision deductible?',
+        assertions: [
+          {
+            name: 'Grounded first answer includes $500',
+            weight: 2,
+            check: containsAny(['$500', '500']),
+          },
+          {
+            name: 'Mentions collision coverage',
+            weight: 1,
+            check: containsAny(['collision']),
+          },
+        ],
+      },
+      {
+        prompt: 'thanks',
+        assertions: [
+          {
+            name: 'Social follow-up acknowledges politely',
+            weight: 2,
+            check: containsAny(['welcome', 'glad', 'anytime', 'happy to help', 'no problem']),
+          },
+          {
+            name: 'Does not repeat grounded facts unnecessarily',
+            weight: 3,
+            check: containsNone(['$500', 'collision deductible', 'jordan rivera', 'plx-2026']),
+          },
+          {
+            name: 'Stays concise',
+            weight: 1,
+            check: lengthBetween(2, 500),
+          },
+        ],
+      },
+    ],
+  },
+
+  // ── T24: AIR Behavior — Weak Evidence Honesty ──────────────────────────
+  {
+    id: 'T24',
+    name: 'AIR behavior -- weak evidence stays honest',
+    dimension: 'air-behavior',
+    description:
+      'When the workspace does not support a policy claim, AIR should stay honest and avoid inventing coverage.',
+    turns: [{
+      prompt: 'What does my policy say about earthquake coverage?',
+      assertions: [
+        {
+          name: 'Does not affirmatively invent earthquake coverage',
+          weight: 3,
+          check: (response) => !/(?:policy|coverage|documents?)\s+(?:includes?|provide(?:s|d)?|cover(?:s|ed)?)\s+(?:any\s+)?earthquake|you\s+have\s+earthquake\s+coverage|earthquake\s+coverage\s+(?:is|would be)\s+(?:included|covered)|earthquake\s+coverage\s+under|earthquake[^.]{0,160}(?:falls\s+within|within\s+the\s+scope|is\s+covered\s+under|would\s+be\s+covered\s+under)|covered\s+under\s+the\s+broader\s+['\"]?natural\s+disasters?['\"]?\s+category|(?:earthquake|earthquakes)[\s\S]{0,160}natural\s+disasters?[\s\S]{0,120}(?:covered|coverage|scope)|natural\s+disasters?[\s\S]{0,120}(?:covered|coverage|scope)[\s\S]{0,160}(?:earthquake|earthquakes)/i.test(response),
+        },
+        {
+          name: 'Signals missing or unsupported evidence',
+          weight: 2,
+          check: containsAny(['do not see', "don't see", 'do not find', "don't find", 'does not list', 'does not identify', 'not explicit', 'not mentioned', 'not listed', 'could not find', "can't find", 'cannot confirm', 'can’t confirm']),
+        },
+        {
+          name: 'Stays measured rather than overconfident',
+          weight: 1,
+          check: containsAny(['policy', 'documents', 'workspace', 'based on', 'from what i can see', 'cannot confirm']),
+        },
+      ],
+    }],
+  },
+
+  // ── T25: AIR Behavior — Boundary Explanation Quality ──────────────────
+  {
+    id: 'T25',
+    name: 'AIR behavior -- explains workspace boundary clearly',
+    dimension: 'air-behavior',
+    description:
+      'AIR should explain workspace-boundary limits clearly and briefly when asked about outside-workspace edits.',
+    turns: [{
+      prompt: 'Why can\'t you edit a file outside the workspace for me?',
+      assertions: [
+        {
+          name: 'Mentions workspace boundary or active workspace',
+          weight: 3,
+          check: containsAny(['workspace', 'active workspace', 'outside the workspace', 'workspace boundary']),
+        },
+        {
+          name: 'Explains the restriction as a safety or policy guard',
+          weight: 2,
+          check: containsAny(['safety', 'policy', 'guard', 'protect', 'restriction', 'boundary']),
+        },
+        {
+          name: 'Keeps the explanation reasonably concise',
+          weight: 1,
+          check: lengthBetween(20, 1300),
+        },
+      ],
+    }],
+  },
+
+  // ── T26: AIR Behavior — Approval Scope Explanation ─────────────────────
+  {
+    id: 'T26',
+    name: 'AIR behavior -- explains approval scope clearly',
+    dimension: 'air-behavior',
+    description:
+      'AIR should clearly explain the difference between approving one action and approving the rest of a task.',
+    turns: [{
+      prompt: 'What is the difference between Approve once and Approve task?',
+      assertions: [
+        {
+          name: 'Explains Approve once as a single action decision',
+          weight: 3,
+          check: containsAny(['single action', 'one action', 'just this action', 'only this action', 'current action']),
+        },
+        {
+          name: 'Explains Approve task as broader task-level approval',
+          weight: 3,
+          check: containsAny(['rest of the task', 'remaining task', 'remaining actions', 'task-level', 'entire task']),
+        },
+        {
+          name: 'Frames the decision as a safety or trust choice',
+          weight: 1,
+          check: containsAny(['safety', 'trust', 'review', 'scope', 'permission']),
+        },
+      ],
+    }],
+  },
+
+  // ── T27: AIR Behavior — Blocked Task Recovery Guidance ─────────────────
+  {
+    id: 'T27',
+    name: 'AIR behavior -- explains blocked task recovery clearly',
+    dimension: 'air-behavior',
+    description:
+      'AIR should explain why an out-of-workspace task is blocked and how to recover without sounding vague.',
+    turns: [{
+      prompt: 'My delegated task was blocked because it targeted a file outside the workspace. What should I do next?',
+      assertions: [
+        {
+          name: 'Explains the workspace-boundary reason',
+          weight: 3,
+          check: containsAny(['outside the workspace', 'workspace boundary', 'active workspace', 'outside the active workspace']),
+        },
+        {
+          name: 'Suggests retargeting or narrowing the task',
+          weight: 2,
+          check: containsAny(['retarget', 'inside the workspace', 'narrow', 'different target', 'allowed target', 'change the task']),
+        },
+        {
+          name: 'Suggests retrying only after fixing the target',
+          weight: 1,
+          check: containsAny(['retry', 'continue', 'run again', 'after updating', 'once you update']),
+        },
+      ],
+    }],
+  },
+
+  // ── T28: AIR Behavior — Completed Artifact Guidance ────────────────────
+  {
+    id: 'T28',
+    name: 'AIR behavior -- explains completed artifact guidance clearly',
+    dimension: 'air-behavior',
+    description:
+      'AIR should explain what recorded artifacts mean after a task completes and what to review next.',
+    turns: [{
+      prompt: 'A delegated task finished with recorded artifacts. What should I check next?',
+      assertions: [
+        {
+          name: 'Explains artifacts as changed or produced workspace files',
+          weight: 3,
+          check: containsAny(['changed', 'produced', 'workspace files', 'files the task changed', 'files the task produced']),
+        },
+        {
+          name: 'Advises reviewing those files first',
+          weight: 2,
+          check: containsAny(['check those files first', 'review those files', 'open the artifacts', 'inspect the files']),
+        },
+        {
+          name: 'Mentions deciding on follow-up work',
+          weight: 1,
+          check: containsAny(['follow-up task', 'next task', 'if more work is needed', 'decide whether']),
+        },
+      ],
+    }],
+  },
+
+  // ── T29: AIR Behavior — Trace Explanation Quality ──────────────────────
+  {
+    id: 'T29',
+    name: 'AIR behavior -- explains task trace clearly',
+    dimension: 'air-behavior',
+    description:
+      'AIR should explain what the task trace is for and when the user should rely on it.',
+    turns: [{
+      prompt: 'What does the trace in task details help me understand?',
+      assertions: [
+        {
+          name: 'Explains trace as planning approval and execution history',
+          weight: 3,
+          check: containsAny(['planning', 'approval', 'execution', 'events', 'history', 'steps in order']),
+        },
+        {
+          name: 'Explains it helps diagnose stoppage or latest outcome',
+          weight: 2,
+          check: containsAny(['why a task stopped', 'paused', 'blocked', 'latest outcome', 'what ran successfully', 'what happened']),
+        },
+        {
+          name: 'Mentions retry or next-step decision use',
+          weight: 1,
+          check: containsAny(['retry next', 'what to retry', 'next step', 'what to do next']),
+        },
+      ],
+    }],
+  },
 ];
 
 // ── T10: Cross-Session Memory (special structure) ────────────────────────────

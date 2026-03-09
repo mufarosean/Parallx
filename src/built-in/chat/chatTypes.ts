@@ -72,7 +72,7 @@ export interface IDefaultParticipantServices {
   readFileContent?(fullPath: string): Promise<string>;
   getCurrentPageContent?(): Promise<{ title: string; pageId: string; textContent: string } | undefined>;
   retrieveContext?(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>;
-  recallMemories?(query: string): Promise<string | undefined>;
+  recallMemories?(query: string, sessionId?: string): Promise<string | undefined>;
   storeSessionMemory?(sessionId: string, summary: string, messageCount: number): Promise<void>;
   storeConceptsFromSession?(concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }>, sessionId: string): Promise<void>;
   recallConcepts?(query: string): Promise<string | undefined>;

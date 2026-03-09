@@ -1,8 +1,8 @@
 /**
  * AI Quality Evaluation — Test Spec
  *
- * End-to-end Playwright tests that launch Parallx with the demo-workspace
- * (insurance knowledge base), interact with the AI chat using REAL Ollama
+ * End-to-end Playwright tests that launch Parallx with the selected evaluation workspace
+ * (the bundled insurance demo by default), interact with the AI chat using REAL Ollama
  * inference, and score responses across 7 quality dimensions:
  *
  *   1. Factual Recall       — Can it retrieve specific facts?
@@ -87,12 +87,14 @@ const allResults: TestCaseResult[] = [];
 // ═════════════════════════════════════════════════════════════════════════════
 
 test.describe.serial('AI Quality Evaluation', () => {
+  let workspaceDisplayName = process.env.PARALLX_AI_EVAL_WORKSPACE_NAME || 'demo-workspace';
 
   // ── Setup: Open workspace, wait for indexing, open chat ────────────────────
 
   test.beforeAll(
-    async ({ window, electronApp, workspacePath }) => {
-      console.log('\n  [Setup] Opening demo-workspace...');
+    async ({ window, electronApp, workspacePath, workspaceLabel }) => {
+      workspaceDisplayName = process.env.PARALLX_AI_EVAL_WORKSPACE_NAME || workspaceLabel || path.basename(workspacePath) || 'workspace';
+      console.log(`\n  [Setup] Opening ${workspaceDisplayName}...`);
       await openFolderViaMenu(electronApp, window, workspacePath);
 
       // Wait for the indexing pipeline to process the 5 small .md files.
@@ -627,7 +629,10 @@ test.describe.serial('AI Quality Evaluation', () => {
       console.log(`    [${scenario.passed ? 'PASS' : 'FAIL'}] ${scenario.id}: ${scenario.name}`);
     }
 
-    const report = buildReport(allResults, ollamaModel, { autonomyScenarios });
+    const report = buildReport(allResults, ollamaModel, {
+      autonomyScenarios,
+      workspaceName: workspaceDisplayName,
+    });
 
     // Console output
     console.log(report.summary);

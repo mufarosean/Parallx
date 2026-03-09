@@ -1,7 +1,7 @@
 /**
  * AI Quality Evaluation — Playwright Fixtures
  *
- * Provides a worker-scoped Electron instance with the demo-workspace loaded.
+ * Provides a worker-scoped Electron instance with the evaluation workspace loaded.
  * Uses REAL Ollama inference — no mocking. Tests exercise the exact same
  * code path a user follows: launch app → open folder → open chat → type → read.
  *
@@ -69,14 +69,36 @@ export interface ChatEvalDebugSnapshot {
 
 // ── Workspace Copy ───────────────────────────────────────────────────────────
 
+function resolveWorkspaceSource(): { sourcePath: string; label: string } {
+  const overridePath = process.env.PARALLX_AI_EVAL_WORKSPACE?.trim();
+  if (!overridePath) {
+    return {
+      sourcePath: DEMO_WORKSPACE_SRC,
+      label: 'demo-workspace',
+    };
+  }
+
+  const sourcePath = path.resolve(overridePath);
+  return {
+    sourcePath,
+    label: path.basename(sourcePath) || sourcePath,
+  };
+}
+
 /**
- * Copy the demo-workspace to a temp directory so that the .parallx/ database
- * folder doesn't pollute the repo. Excludes SMOKE_TEST_CHECKLIST.md to avoid
+ * Copy the selected evaluation workspace to a temp directory so that the .parallx/ database
+ * folder doesn't pollute the source workspace. Excludes SMOKE_TEST_CHECKLIST.md to avoid
  * test metadata leaking into RAG results.
  */
-async function copyDemoWorkspace(): Promise<string> {
+async function copyEvalWorkspace(): Promise<{ workspacePath: string; workspaceLabel: string }> {
+  const { sourcePath, label } = resolveWorkspaceSource();
+  const stat = await fs.stat(sourcePath).catch(() => null);
+  if (!stat?.isDirectory()) {
+    throw new Error(`AI eval workspace not found or not a directory: ${sourcePath}`);
+  }
+
   const dest = path.join(os.tmpdir(), `parallx-ai-eval-${Date.now()}`);
-  await fs.cp(DEMO_WORKSPACE_SRC, dest, { recursive: true });
+  await fs.cp(sourcePath, dest, { recursive: true });
   try {
     await fs.rm(path.join(dest, 'SMOKE_TEST_CHECKLIST.md'));
   } catch { /* may not exist */ }
@@ -88,7 +110,7 @@ async function copyDemoWorkspace(): Promise<string> {
     await fs.writeFile(path.join(overrideDir, 'ai-config.json'), configOverride, 'utf8');
   }
 
-  return dest;
+  return { workspacePath: dest, workspaceLabel: label };
 }
 
 async function cleanupDir(dir: string): Promise<void> {
@@ -148,6 +170,7 @@ type WorkerFixtures = {
   electronApp: ElectronApplication;
   window: Page;
   workspacePath: string;
+  workspaceLabel: string;
   /** Name of the test model required for the run (defaults to "gpt-oss:20b"). */
   ollamaModel: string;
 };
@@ -178,9 +201,17 @@ export const test = base.extend<{}, WorkerFixtures>({
 
   workspacePath: [
     async ({}, use) => {
-      const dir = await copyDemoWorkspace();
-      await use(dir);
-      await cleanupDir(dir);
+      const { workspacePath } = await copyEvalWorkspace();
+      await use(workspacePath);
+      await cleanupDir(workspacePath);
+    },
+    { scope: 'worker' },
+  ],
+
+  workspaceLabel: [
+    async ({}, use) => {
+      const { workspaceLabel } = resolveWorkspaceSource();
+      await use(workspaceLabel);
     },
     { scope: 'worker' },
   ],

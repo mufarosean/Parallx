@@ -28,7 +28,7 @@ import type { EmbeddedChunk } from './vectorStoreService.js';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /** Minimum number of message pairs before a session is eligible for summarisation. */
-const MIN_MESSAGES_FOR_SUMMARY = 3;
+const MIN_MESSAGES_FOR_SUMMARY = 2;
 
 /** Maximum character length for a preference value. */
 const MAX_PREFERENCE_VALUE_LENGTH = 500;

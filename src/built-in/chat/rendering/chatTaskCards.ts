@@ -119,7 +119,7 @@ function renderApprovalRequest(taskId: string, request: AgentApprovalRequest): H
   root.appendChild(title);
 
   const detail = $('div.parallx-chat-agent-approval-detail');
-  detail.textContent = request.explanation;
+  detail.textContent = [request.explanation, buildApprovalScopeHint(request)].filter(Boolean).join(' ');
   root.appendChild(detail);
 
   if (request.affectedTargets.length > 0) {
@@ -158,6 +158,10 @@ function renderTaskDiagnostics(
   summary.appendChild(_metaPill(`Approvals ${diagnostics.approvals.length}`));
   summary.appendChild(_metaPill(`Artifacts ${diagnostics.task.artifactRefs.length}`));
   root.appendChild(summary);
+
+  const diagnosticsIntro = $('div.parallx-chat-agent-task-details-empty');
+  diagnosticsIntro.textContent = buildDiagnosticsIntro(task, diagnostics);
+  root.appendChild(diagnosticsIntro);
 
   if (artifactGroups.length > 0) {
     root.appendChild(renderArtifactGroups(artifactGroups, true));
@@ -198,6 +202,12 @@ function renderArtifactGroups(groups: readonly ArtifactGroup[], detailed: boolea
   const title = $('div.parallx-chat-agent-task-artifacts-title');
   title.textContent = detailed ? 'Artifact summary' : 'Artifacts';
   root.appendChild(title);
+
+  if (detailed) {
+    const detail = $('div.parallx-chat-agent-task-details-empty');
+    detail.textContent = 'Artifacts show which workspace files the task changed or produced.';
+    root.appendChild(detail);
+  }
 
   for (const group of groups) {
     const groupEl = $('div.parallx-chat-agent-task-artifact-group');
@@ -282,17 +292,21 @@ function buildTaskSummary(
   pendingApprovals: readonly AgentApprovalRequest[],
 ): string {
   if (pendingApprovals.length > 0) {
-    return 'Waiting for approval before the next workspace action can run.';
+    const nextApproval = pendingApprovals[0];
+    return `Waiting for approval before the next workspace action can run: ${nextApproval.summary}.`;
   }
-  if ((task.status === 'blocked' || task.status === 'paused') && task.blockerReason) {
+  if (task.status === 'blocked') {
+    return buildBlockedSummary(task);
+  }
+  if (task.status === 'paused' && task.blockerReason) {
     return task.blockerReason;
   }
   if (task.status === 'completed') {
     const completed = diagnostics?.planSteps.filter((step) => step.status === 'completed').length ?? 0;
     if (task.artifactRefs.length > 0) {
-      return `Completed with ${completed} finished step${completed === 1 ? '' : 's'} and ${task.artifactRefs.length} recorded artifact${task.artifactRefs.length === 1 ? '' : 's'}.`;
+      return `Workspace update complete with ${completed} finished step${completed === 1 ? '' : 's'} and ${task.artifactRefs.length} recorded artifact${task.artifactRefs.length === 1 ? '' : 's'}.`;
     }
-    return `Completed with ${completed} finished step${completed === 1 ? '' : 's'} and no recorded workspace artifacts.`;
+    return `Task complete with ${completed} finished step${completed === 1 ? '' : 's'} and no recorded workspace artifacts.`;
   }
   if (task.status === 'running') {
     return 'Executing the current plan inside the active workspace boundary.';
@@ -309,10 +323,19 @@ function buildRecommendedNextStep(
   hasArtifacts: boolean,
 ): string | undefined {
   if (pendingApprovals.length > 0) {
-    return 'Review the pending approval decision below so the task can continue.';
+    const nextApproval = pendingApprovals[0];
+    return nextApproval.scope === 'task'
+      ? 'Review the pending approval below. Approve task to allow the remaining task actions, or deny it to keep the task blocked.'
+      : 'Review the pending approval below. Approve once to allow only this action, or deny it to keep the task blocked.';
   }
 
   if (task.status === 'blocked') {
+    if (task.blockerCode === 'approval-denied') {
+      return 'Continue to retry the task, or redirect it with narrower instructions if you want to request a different action.';
+    }
+    if (task.blockerCode === 'outside-workspace-request') {
+      return 'Keep the task inside the active workspace, then continue if you want the agent to retry with an allowed target.';
+    }
     return 'Continue to retry the task, or redirect it with a narrower constraint before running again.';
   }
 
@@ -327,6 +350,51 @@ function buildRecommendedNextStep(
   }
 
   return undefined;
+}
+
+function buildDiagnosticsIntro(
+  task: AgentTaskRecord,
+  diagnostics: AgentTaskDiagnostics,
+): string {
+  if (task.status === 'completed') {
+    return diagnostics.trace.length > 0
+      ? 'Trace shows the recent planning, approval, and execution events that led to this result.'
+      : 'Task details summarize the recorded outcome for this completed run.';
+  }
+
+  if (task.status === 'blocked') {
+    return 'Trace shows where the task stopped and which condition blocked the next action.';
+  }
+
+  if (task.status === 'paused') {
+    return 'Trace shows the most recent completed step so you can decide whether to continue or redirect the task.';
+  }
+
+  return 'Trace shows the most recent planning, approval, and execution events for this task.';
+}
+
+function buildApprovalScopeHint(request: AgentApprovalRequest): string {
+  if (request.scope === 'task') {
+    return 'Approve task allows the remaining approval-scoped actions in this task.';
+  }
+
+  return 'Approve once only allows this single action.';
+}
+
+function buildBlockedSummary(task: AgentTaskRecord): string {
+  if (task.blockerCode === 'approval-denied') {
+    return 'Task is blocked because an approval was denied. Review the requested action before retrying.';
+  }
+
+  if (task.blockerCode === 'outside-workspace-request') {
+    return 'Task is blocked because the requested action targets a location outside the active workspace boundary.';
+  }
+
+  if (task.blockerReason) {
+    return task.blockerReason;
+  }
+
+  return 'Task is blocked until its current constraint is resolved.';
 }
 
 function buildArtifactGroups(

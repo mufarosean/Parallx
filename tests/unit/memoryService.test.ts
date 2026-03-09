@@ -333,13 +333,13 @@ describe('MemoryService', () => {
   // ── Task 5.1: Conversation Memory ──
 
   describe('isSessionEligibleForSummary', () => {
-    it('returns false for sessions with fewer than 3 messages', () => {
+    it('returns false for sessions with fewer than 2 messages', () => {
       expect(service.isSessionEligibleForSummary(0)).toBe(false);
       expect(service.isSessionEligibleForSummary(1)).toBe(false);
-      expect(service.isSessionEligibleForSummary(2)).toBe(false);
     });
 
-    it('returns true for sessions with 3 or more messages', () => {
+    it('returns true for sessions with 2 or more messages', () => {
+      expect(service.isSessionEligibleForSummary(2)).toBe(true);
       expect(service.isSessionEligibleForSummary(3)).toBe(true);
       expect(service.isSessionEligibleForSummary(10)).toBe(true);
     });

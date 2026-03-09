@@ -18,6 +18,7 @@ export type Dimension =
   | 'multi-doc-synthesis'
   | 'source-attribution'
   | 'conversational'
+  | 'air-behavior'
   | 'follow-up'
   | 'cross-session-memory'
   | 'data-freshness'
@@ -118,6 +119,35 @@ export interface AutonomyRolloutGate {
   reasons: string[];
 }
 
+export interface AirBehaviorSummary {
+  testCount: number;
+  overallScore: number;
+  benchmarkScores: Record<string, number>;
+  autonomyCommunicationScore: number;
+}
+
+export interface AirBehaviorRolloutThresholds {
+  minIdentityCleanlinessScore: number;
+  minGroundedSocialScore: number;
+  minWeakEvidenceHonestyScore: number;
+  minWorkspaceBoundaryScore: number;
+  minApprovalScopeScore: number;
+  minBlockedRecoveryScore: number;
+  minArtifactGuidanceScore: number;
+  minTraceExplanationScore: number;
+  minAutonomyCommunicationScore: number;
+  minOverallAirScore: number;
+  minOverallScore: number;
+}
+
+export interface AirBehaviorRolloutGate {
+  thresholds: AirBehaviorRolloutThresholds;
+  passesThresholds: boolean;
+  manualReviewApproved: boolean;
+  rolloutAllowed: boolean;
+  reasons: string[];
+}
+
 export interface TurnResult {
   prompt: string;
   response: string;
@@ -172,6 +202,8 @@ export interface EvalReport {
   retrievalRolloutGate?: RetrievalRolloutGate;
   autonomySummary?: AutonomySummary;
   autonomyRolloutGate?: AutonomyRolloutGate;
+  airBehaviorSummary?: AirBehaviorSummary;
+  airBehaviorRolloutGate?: AirBehaviorRolloutGate;
   tests: TestCaseResult[];
   /** Pretty-printed text summary for console/file output. */
   summary: string;
@@ -190,6 +222,33 @@ export const AUTONOMY_ROLLOUT_THRESHOLDS: AutonomyRolloutThresholds = {
   minApprovalPassRate: 1.0,
   minCompletionPassRate: 1.0,
   minTraceCompletenessRate: 1.0,
+  minOverallScore: 0.85,
+};
+
+export const AIR_BEHAVIOR_BENCHMARK_LABELS = {
+  T22: 'identity cleanliness',
+  T23: 'grounded to social follow-up',
+  T24: 'weak-evidence honesty',
+  T25: 'workspace boundary explanation',
+  T26: 'approval scope explanation',
+  T27: 'blocked-task recovery guidance',
+  T28: 'completed-artifact guidance',
+  T29: 'task-trace explanation',
+} as const;
+
+export const AIR_AUTONOMY_COMMUNICATION_BENCHMARK_IDS = ['T26', 'T27', 'T28', 'T29'] as const;
+
+export const AIR_BEHAVIOR_ROLLOUT_THRESHOLDS: AirBehaviorRolloutThresholds = {
+  minIdentityCleanlinessScore: 0.85,
+  minGroundedSocialScore: 0.85,
+  minWeakEvidenceHonestyScore: 0.85,
+  minWorkspaceBoundaryScore: 0.85,
+  minApprovalScopeScore: 0.85,
+  minBlockedRecoveryScore: 0.85,
+  minArtifactGuidanceScore: 0.85,
+  minTraceExplanationScore: 0.85,
+  minAutonomyCommunicationScore: 0.9,
+  minOverallAirScore: 0.9,
   minOverallScore: 0.85,
 };
 
@@ -323,7 +382,7 @@ export function evaluateAssertions(response: string, assertions: Assertion[]): A
 export function buildReport(
   tests: TestCaseResult[],
   model: string,
-  opts?: { autonomyScenarios?: readonly AutonomyScenarioResult[] },
+  opts?: { autonomyScenarios?: readonly AutonomyScenarioResult[]; workspaceName?: string },
 ): EvalReport {
   // Aggregate by dimension
   const dimMap: Record<string, { total: number; count: number }> = {};
@@ -380,12 +439,16 @@ export function buildReport(
       })
     : undefined;
 
-  const summary = formatReport({ overallScore, grade, dimensionScores, retrievalSummary, retrievalRolloutGate, autonomySummary, autonomyRolloutGate, tests, model });
+  const airBehaviorSummary = summarizeAirBehaviorTests(tests);
+  const airBehaviorRolloutGate = airBehaviorSummary
+    ? evaluateAirBehaviorRolloutGate({
+        overallScore,
+        airBehaviorSummary,
+        manualReviewApproved: process.env.PARALLX_AIR_MANUAL_REVIEW_APPROVED === '1',
+      })
+    : undefined;
 
-  return {
-    timestamp: new Date().toISOString(),
-    model,
-    workspaceName: 'demo-workspace (insurance)',
+  const summary = formatReport({
     overallScore,
     grade,
     dimensionScores,
@@ -393,6 +456,25 @@ export function buildReport(
     retrievalRolloutGate,
     autonomySummary,
     autonomyRolloutGate,
+    airBehaviorSummary,
+    airBehaviorRolloutGate,
+    tests,
+    model,
+  });
+
+  return {
+    timestamp: new Date().toISOString(),
+    model,
+    workspaceName: opts?.workspaceName || 'demo-workspace (insurance)',
+    overallScore,
+    grade,
+    dimensionScores,
+    retrievalSummary,
+    retrievalRolloutGate,
+    autonomySummary,
+    autonomyRolloutGate,
+    airBehaviorSummary,
+    airBehaviorRolloutGate,
     tests,
     summary,
   };
@@ -497,6 +579,86 @@ export function evaluateAutonomyRolloutGate(opts: {
   };
 }
 
+export function summarizeAirBehaviorTests(tests: readonly TestCaseResult[]): AirBehaviorSummary | undefined {
+  const airTests = tests.filter((test) => test.dimension === 'air-behavior');
+  if (airTests.length === 0) {
+    return undefined;
+  }
+
+  const benchmarkScores = Object.fromEntries(
+    airTests.map((test) => [test.id, test.score]),
+  );
+  const overallScore = airTests.reduce((sum, test) => sum + test.score, 0) / airTests.length;
+  const autonomyCommunicationTests = airTests.filter((test) =>
+    AIR_AUTONOMY_COMMUNICATION_BENCHMARK_IDS.includes(test.id as (typeof AIR_AUTONOMY_COMMUNICATION_BENCHMARK_IDS)[number]),
+  );
+  const autonomyCommunicationScore = autonomyCommunicationTests.length > 0
+    ? autonomyCommunicationTests.reduce((sum, test) => sum + test.score, 0) / autonomyCommunicationTests.length
+    : 0;
+
+  return {
+    testCount: airTests.length,
+    overallScore,
+    benchmarkScores,
+    autonomyCommunicationScore,
+  };
+}
+
+export function evaluateAirBehaviorRolloutGate(opts: {
+  overallScore: number;
+  airBehaviorSummary: AirBehaviorSummary;
+  manualReviewApproved?: boolean;
+  thresholds?: AirBehaviorRolloutThresholds;
+}): AirBehaviorRolloutGate {
+  const thresholds = opts.thresholds ?? AIR_BEHAVIOR_ROLLOUT_THRESHOLDS;
+  const manualReviewApproved = opts.manualReviewApproved ?? false;
+  const reasons: string[] = [];
+  const benchmarkChecks: Array<{ id: keyof typeof AIR_BEHAVIOR_BENCHMARK_LABELS; minScore: number }> = [
+    { id: 'T22', minScore: thresholds.minIdentityCleanlinessScore },
+    { id: 'T23', minScore: thresholds.minGroundedSocialScore },
+    { id: 'T24', minScore: thresholds.minWeakEvidenceHonestyScore },
+    { id: 'T25', minScore: thresholds.minWorkspaceBoundaryScore },
+    { id: 'T26', minScore: thresholds.minApprovalScopeScore },
+    { id: 'T27', minScore: thresholds.minBlockedRecoveryScore },
+    { id: 'T28', minScore: thresholds.minArtifactGuidanceScore },
+    { id: 'T29', minScore: thresholds.minTraceExplanationScore },
+  ];
+
+  for (const benchmark of benchmarkChecks) {
+    const score = opts.airBehaviorSummary.benchmarkScores[benchmark.id];
+    if (typeof score !== 'number') {
+      reasons.push(`missing AIR benchmark ${benchmark.id} (${AIR_BEHAVIOR_BENCHMARK_LABELS[benchmark.id]})`);
+      continue;
+    }
+    if (score < benchmark.minScore) {
+      reasons.push(`${AIR_BEHAVIOR_BENCHMARK_LABELS[benchmark.id]} ${(score * 100).toFixed(0)}% < ${(benchmark.minScore * 100).toFixed(0)}%`);
+    }
+  }
+
+  if (opts.airBehaviorSummary.autonomyCommunicationScore < thresholds.minAutonomyCommunicationScore) {
+    reasons.push(`autonomy communication score ${(opts.airBehaviorSummary.autonomyCommunicationScore * 100).toFixed(0)}% < ${(thresholds.minAutonomyCommunicationScore * 100).toFixed(0)}%`);
+  }
+  if (opts.airBehaviorSummary.overallScore < thresholds.minOverallAirScore) {
+    reasons.push(`overall AIR score ${(opts.airBehaviorSummary.overallScore * 100).toFixed(0)}% < ${(thresholds.minOverallAirScore * 100).toFixed(0)}%`);
+  }
+  if (opts.overallScore < thresholds.minOverallScore) {
+    reasons.push(`overall score ${(opts.overallScore * 100).toFixed(1)}% < ${(thresholds.minOverallScore * 100).toFixed(1)}%`);
+  }
+  if (!manualReviewApproved) {
+    reasons.push('manual AIR behavior review not yet approved');
+  }
+
+  const passesThresholds = reasons.every((reason) => reason === 'manual AIR behavior review not yet approved') || reasons.length === 0;
+
+  return {
+    thresholds,
+    passesThresholds,
+    manualReviewApproved,
+    rolloutAllowed: passesThresholds && manualReviewApproved,
+    reasons,
+  };
+}
+
 // ── Pretty Report Formatter ──────────────────────────────────────────────────
 
 function formatReport(opts: {
@@ -507,10 +669,24 @@ function formatReport(opts: {
   retrievalRolloutGate?: RetrievalRolloutGate;
   autonomySummary?: AutonomySummary;
   autonomyRolloutGate?: AutonomyRolloutGate;
+  airBehaviorSummary?: AirBehaviorSummary;
+  airBehaviorRolloutGate?: AirBehaviorRolloutGate;
   tests: TestCaseResult[];
   model: string;
 }): string {
-  const { overallScore, grade, dimensionScores, retrievalSummary, retrievalRolloutGate, autonomySummary, autonomyRolloutGate, tests, model } = opts;
+  const {
+    overallScore,
+    grade,
+    dimensionScores,
+    retrievalSummary,
+    retrievalRolloutGate,
+    autonomySummary,
+    autonomyRolloutGate,
+    airBehaviorSummary,
+    airBehaviorRolloutGate,
+    tests,
+    model,
+  } = opts;
   const W = 64;
   const sep = '='.repeat(W);
   const thin = '-'.repeat(W);
@@ -543,6 +719,7 @@ function formatReport(opts: {
     'multi-doc-synthesis',
     'source-attribution',
     'conversational',
+    'air-behavior',
     'follow-up',
     'cross-session-memory',
     'data-freshness',
@@ -608,6 +785,35 @@ function formatReport(opts: {
     if (autonomyRolloutGate.reasons.length > 0) {
       lines.push('    Blocking reasons:');
       for (const reason of autonomyRolloutGate.reasons) {
+        lines.push(`      - ${reason}`);
+      }
+    }
+  }
+
+  if (airBehaviorSummary) {
+    lines.push('');
+    lines.push('  AIR BEHAVIOR SUMMARY');
+    lines.push(thin);
+    lines.push(`    AIR benchmark count          ${String(airBehaviorSummary.testCount).padStart(6)}`);
+    lines.push(`    Overall AIR score            ${(airBehaviorSummary.overallScore * 100).toFixed(0)}%`);
+    lines.push(`    Autonomy communication       ${(airBehaviorSummary.autonomyCommunicationScore * 100).toFixed(0)}%`);
+    for (const benchmarkId of Object.keys(AIR_BEHAVIOR_BENCHMARK_LABELS) as Array<keyof typeof AIR_BEHAVIOR_BENCHMARK_LABELS>) {
+      const score = airBehaviorSummary.benchmarkScores[benchmarkId];
+      const display = typeof score === 'number' ? `${(score * 100).toFixed(0)}%` : 'MISSING';
+      lines.push(`    ${`${benchmarkId} ${AIR_BEHAVIOR_BENCHMARK_LABELS[benchmarkId]}`.padEnd(28)} ${display}`);
+    }
+  }
+
+  if (airBehaviorRolloutGate) {
+    lines.push('');
+    lines.push('  AIR BEHAVIOR ROLLOUT GATE');
+    lines.push(thin);
+    lines.push(`    Thresholds passed            ${airBehaviorRolloutGate.passesThresholds ? 'YES' : 'NO'}`);
+    lines.push(`    Manual review approved       ${airBehaviorRolloutGate.manualReviewApproved ? 'YES' : 'NO'}`);
+    lines.push(`    Default rollout allowed      ${airBehaviorRolloutGate.rolloutAllowed ? 'YES' : 'NO'}`);
+    if (airBehaviorRolloutGate.reasons.length > 0) {
+      lines.push('    Blocking reasons:');
+      for (const reason of airBehaviorRolloutGate.reasons) {
         lines.push(`      - ${reason}`);
       }
     }

@@ -40,6 +40,8 @@ import type { IPromptFileAccess } from '../../services/promptFileService.js';
 import { PermissionService } from '../../services/permissionService.js';
 import type { ToolGrantDecision } from '../../services/chatTypes.js';
 import { ChatDataService, buildFileSystemAccessor, extractCanvasPageId } from './data/chatDataService.js';
+import { URI } from '../../platform/uri.js';
+import type { AgentPlanStepInput, DelegatedTaskInput, AgentApprovalResolution } from '../../agent/agentTypes.js';
 
 // ── Local API type — only the subset we use ──
 
@@ -80,6 +82,61 @@ interface ParallxApi {
   editors: {
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
     openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
+  };
+}
+
+type TestAgentPlanStepSeed = Omit<AgentPlanStepInput, 'taskId' | 'proposedAction'> & {
+  proposedAction?: {
+    toolName?: string;
+    actionClass?: import('../../agent/agentTypes.js').AgentActionClass;
+    summary?: string;
+    targetPaths?: readonly string[];
+    interactionMode?: import('../../agent/agentTypes.js').AgentInteractionMode;
+  };
+};
+
+function resolveTestTargetUris(
+  workspaceService: import('../../services/serviceTypes.js').IWorkspaceService | undefined,
+  targetPaths: readonly string[] | undefined,
+): readonly URI[] | undefined {
+  if (!targetPaths || targetPaths.length === 0) {
+    return undefined;
+  }
+
+  const firstFolder = workspaceService?.folders[0]?.uri;
+  return targetPaths
+    .map((targetPath) => targetPath.trim())
+    .filter((targetPath) => targetPath.length > 0)
+    .map((targetPath) => {
+      if (/^[a-zA-Z]:[\\/]/.test(targetPath) || targetPath.startsWith('/')) {
+        return URI.file(targetPath);
+      }
+
+      if (!firstFolder) {
+        throw new Error('Cannot resolve relative target paths without an active workspace folder.');
+      }
+
+      return firstFolder.joinPath(...targetPath.replace(/\\/g, '/').split('/').filter(Boolean));
+    });
+}
+
+function buildTestPlanStepInput(
+  workspaceService: import('../../services/serviceTypes.js').IWorkspaceService | undefined,
+  taskId: string,
+  step: TestAgentPlanStepSeed,
+): AgentPlanStepInput {
+  return {
+    ...step,
+    taskId,
+    proposedAction: step.proposedAction
+      ? {
+        toolName: step.proposedAction.toolName,
+        actionClass: step.proposedAction.actionClass,
+        summary: step.proposedAction.summary,
+        interactionMode: step.proposedAction.interactionMode,
+        targetUris: resolveTestTargetUris(workspaceService, step.proposedAction.targetPaths),
+      }
+      : undefined,
   };
 }
 
@@ -290,6 +347,100 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     openFileEditor: (uri, opts) => api.editors.openFileEditor(uri, opts),
   });
 
+  const createAgentTaskDebugDriver = () => ({
+    listTasks: () => agentSessionService?.listActiveWorkspaceTasks() ?? [],
+    getTask: (taskId: string) => agentSessionService?.getTask(taskId),
+    getDiagnostics: (taskId: string) => agentTraceService?.getTaskDiagnostics(taskId),
+    createTask: async (input: DelegatedTaskInput, taskId?: string, now?: string) => {
+      if (!agentSessionService) {
+        throw new Error('Agent session service is not available.');
+      }
+      return agentSessionService.createTask(input, taskId, now);
+    },
+    setPlanSteps: async (taskId: string, steps: readonly TestAgentPlanStepSeed[], now?: string) => {
+      if (!agentSessionService) {
+        throw new Error('Agent session service is not available.');
+      }
+      return agentSessionService.setPlanSteps(
+        taskId,
+        steps.map((step) => buildTestPlanStepInput(workspaceService, taskId, step)),
+        now,
+      );
+    },
+    transitionTask: async (
+      taskId: string,
+      nextStatus: import('../../agent/agentTypes.js').AgentTaskStatus,
+      now?: string,
+      options?: { blockerReason?: string; blockerCode?: import('../../agent/agentTypes.js').AgentBlockReasonCode; currentStepId?: string; stopAfterCurrentStep?: boolean },
+    ) => {
+      if (!agentSessionService) {
+        throw new Error('Agent session service is not available.');
+      }
+      return agentSessionService.transitionTask(taskId, nextStatus, now, options);
+    },
+    queueApproval: async (
+      taskId: string,
+      request: Omit<import('../../agent/agentTypes.js').AgentApprovalRequestInput, 'taskId' | 'affectedTargets'> & { affectedTargets?: readonly string[] },
+      now?: string,
+    ) => {
+      if (!agentSessionService) {
+        throw new Error('Agent session service is not available.');
+      }
+      return agentSessionService.queueApprovalForTask(taskId, {
+        ...request,
+        affectedTargets: request.affectedTargets ? [...request.affectedTargets] : undefined,
+      }, now);
+    },
+    runTask: async (taskId: string, now?: string) => {
+      if (!agentExecutionService) {
+        throw new Error('Agent execution service is not available.');
+      }
+      return agentExecutionService.runTask(taskId, now);
+    },
+    resolveApproval: async (taskId: string, requestId: string, resolution: AgentApprovalResolution, now?: string) => {
+      if (!agentSessionService) {
+        throw new Error('Agent session service is not available.');
+      }
+      return agentSessionService.resolveTaskApproval(taskId, requestId, resolution, now);
+    },
+    continueTask: async (taskId: string, now?: string) => {
+      if (!agentSessionService) {
+        throw new Error('Agent session service is not available.');
+      }
+      return agentSessionService.continueTask(taskId, now);
+    },
+    seedTask: async (
+      seed: {
+        readonly input: DelegatedTaskInput;
+        readonly taskId?: string;
+        readonly steps?: readonly TestAgentPlanStepSeed[];
+        readonly run?: boolean;
+        readonly now?: string;
+      },
+    ) => {
+      if (!agentSessionService) {
+        throw new Error('Agent session service is not available.');
+      }
+
+      const task = await agentSessionService.createTask(seed.input, seed.taskId, seed.now);
+      if (seed.steps && seed.steps.length > 0) {
+        await agentSessionService.setPlanSteps(
+          task.id,
+          seed.steps.map((step) => buildTestPlanStepInput(workspaceService, task.id, step)),
+          seed.now,
+        );
+      }
+      if (seed.run) {
+        await agentExecutionService?.runTask(task.id, seed.now);
+      }
+      return {
+        task: agentSessionService.getTask(task.id) ?? task,
+        diagnostics: agentTraceService?.getTaskDiagnostics(task.id),
+        approvals: agentApprovalService?.listApprovalRequestsForTask(task.id) ?? [],
+      };
+    },
+  });
+
   if (window.parallxElectron?.testMode) {
     (window as unknown as Record<string, unknown>).__parallx_chat_debug__ = {
       getSnapshot: () => dataService.getTestDebugSnapshot(),
@@ -297,6 +448,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       updateWorkspaceOverride: (patch: unknown) => unifiedConfigService?.updateWorkspaceOverride(patch as any),
       getActiveModel: () => languageModelsService.getActiveModel(),
       setActiveModel: (modelId: string) => languageModelsService.setActiveModel(modelId),
+      agent: createAgentTaskDebugDriver(),
     };
   }
 
