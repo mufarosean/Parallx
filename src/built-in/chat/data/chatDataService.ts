@@ -56,6 +56,7 @@ import type { RetrievalTrace } from '../../../services/retrievalService.js';
 import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { extractTextContent } from '../tools/builtInTools.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
+import { buildChatDefaultParticipantServices } from '../utilities/chatDefaultParticipantAdapter.js';
 import { buildChatWidgetAttachmentServices } from '../utilities/chatWidgetAttachmentAdapter.js';
 import { buildChatWidgetPickerServices } from '../utilities/chatWidgetPickerAdapter.js';
 import { buildChatWidgetRequestServices } from '../utilities/chatWidgetRequestAdapter.js';
@@ -1483,7 +1484,7 @@ export class ChatDataService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   buildDefaultParticipantServices(): IDefaultParticipantServices {
-    return {
+    return buildChatDefaultParticipantServices({
       sendChatRequest: (m, o, s) => this.sendChatRequest(m, o, s),
       getActiveModel: () => this.getActiveModel(),
       getWorkspaceName: () => this.getWorkspaceName(),
@@ -1535,7 +1536,7 @@ export class ChatDataService {
       sessionManager: this._d.sessionManager,
       aiSettingsService: this._d.aiSettingsService,
       unifiedConfigService: this._d.unifiedConfigService,
-    };
+    });
   }
 
   buildWorkspaceParticipantServices(): IWorkspaceParticipantServices {

@@ -101,6 +101,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatContextAssembly.ts':        ['utilities/'],
   'utilities/chatContextPlanner.ts':         [],
   'utilities/chatContextSourceLoader.ts':    [],
+  'utilities/chatDefaultParticipantAdapter.ts': [],
   'utilities/chatDeterministicAnswerSelector.ts': ['utilities/'],
   'utilities/chatDeterministicExecutors.ts': [],
   'utilities/chatGroundedExecutor.ts':       [],

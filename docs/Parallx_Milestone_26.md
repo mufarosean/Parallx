@@ -1087,6 +1087,9 @@ in external systems:
 18. Token/status-bar service composition moved out of `ChatDataService` into
    `chatTokenBarAdapter.ts`, finishing `E1` by pulling the last UI-facing
    adapter bundle behind a dedicated utility.
+19. Default-participant service wiring moved out of `ChatDataService` into
+   `chatDefaultParticipantAdapter.ts`, starting `E2` by separating participant
+   adapter composition from the core orchestration/data service.
 
 ### Validation completed for these slices
 
@@ -1105,6 +1108,7 @@ in external systems:
 - widget session adapter tests in `chatWidgetSessionAdapter.test.ts`
 - widget request adapter tests in `chatWidgetRequestAdapter.test.ts`
 - token/status-bar adapter tests in `chatTokenBarAdapter.test.ts`
+- default participant adapter tests in `chatDefaultParticipantAdapter.test.ts`
 - existing participant-loop regression coverage in `agenticLoop.test.ts`
 - broader behavior regression coverage in `chatService.test.ts`
 - chat data/compliance regressions in `chatGateCompliance.test.ts`,
@@ -1113,10 +1117,10 @@ in external systems:
 
 ### What remains next
 
-`E1` is now complete. The next high-value cut is `E2`: separate the remaining
-`ChatDataService` orchestration responsibilities from its adapter-construction
-role, then use `E3` to remove any dead legacy paths left behind by the
-participant and service-bundle narrowing work.
+`E2` is now underway. The next high-value cut is to pull the remaining
+workspace/canvas participant service builders behind dedicated adapters, then
+reassess what orchestration-only responsibilities remain in `ChatDataService`
+before starting `E3` dead-path cleanup.
 
 ---
 
