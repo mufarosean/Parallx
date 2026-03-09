@@ -14,6 +14,7 @@
 
 import { DisposableStore, toDisposable } from '../../platform/lifecycle.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { doesPageChangeAffectSidebar } from './canvasTypes.js';
 import type { IPage, IPageTreeNode, ICanvasDataService } from './canvasTypes.js';
 import type { IDatabaseDataService, IDatabaseView } from './database/databaseRegistry.js';
 import { $ } from '../../ui/dom.js';
@@ -135,7 +136,12 @@ export class CanvasSidebar {
 
     // Subscribe to data changes
     this._disposables.push(
-      this._dataService.onDidChangePage(() => this._requestRefreshTree()),
+      this._dataService.onDidChangePage((event) => {
+        if (!doesPageChangeAffectSidebar(event)) {
+          return;
+        }
+        this._requestRefreshTree();
+      }),
     );
 
     // Sync selection with active editor

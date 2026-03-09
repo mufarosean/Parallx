@@ -465,6 +465,37 @@ export function columnDropPlugin(): Plugin {
     return ry < r.height / 2 ? 'above' : 'below';
   }
 
+  function isNoOpAboveBelowDrop(
+    target: Omit<DropTarget, 'zone'>,
+    zone: 'above' | 'below',
+    dragFrom: number,
+    dragTo: number,
+  ): boolean {
+    const insertPos = zone === 'above'
+      ? target.blockPos
+      : target.blockPos + target.blockNode.nodeSize;
+    return insertPos >= dragFrom && insertPos <= dragTo;
+  }
+
+  function resolveDragBounds(view: EditorView, dragSession: ReturnType<typeof getActiveCanvasDragSession>): {
+    from: number;
+    to: number;
+  } {
+    const dragging = view.dragging as { from?: number; to?: number } | null;
+    return {
+      from: typeof dragging?.from === 'number'
+        ? dragging.from
+        : typeof dragSession?.from === 'number'
+          ? dragSession.from
+          : view.state.selection.from,
+      to: typeof dragging?.to === 'number'
+        ? dragging.to
+        : typeof dragSession?.to === 'number'
+          ? dragSession.to
+          : view.state.selection.to,
+    };
+  }
+
   // ── Plugin ──
 
   return new Plugin({
@@ -486,6 +517,8 @@ export function columnDropPlugin(): Plugin {
           if (!view.dragging) { hideAll(); return false; }
 
           resetStaleTimer();
+          const dragSession = getActiveCanvasDragSession();
+          const { from: dF, to: dT } = resolveDragBounds(view, dragSession);
 
           const x = event.clientX;
           const y = event.clientY;
@@ -534,13 +567,18 @@ export function columnDropPlugin(): Plugin {
           }
 
           // Skip if hovering over the source block
-          const { from: dF, to: dT } = view.state.selection;
           if (raw.blockPos >= dF && raw.blockPos < dT) {
             hideAll(); return false;
           }
 
           const isCL = raw.blockNode.type.name === 'columnList';
           const zone = getZone(raw.blockEl, x, y, isCL, raw.isListItem);
+
+          if ((zone === 'above' || zone === 'below') && isNoOpAboveBelowDrop(raw, zone, dF, dT)) {
+            hideAll();
+            return false;
+          }
+
           activeTarget = { ...raw, zone };
 
           const container = view.dom.parentElement;
@@ -598,10 +636,10 @@ export function columnDropPlugin(): Plugin {
           event.preventDefault();
           event.stopPropagation();
 
-          const { from: dragFrom, to: dragTo } = view.state.selection;
+          const dragSession = getActiveCanvasDragSession();
+          const { from: dragFrom, to: dragTo } = resolveDragBounds(view, dragSession);
           const content = slice.content;
           const draggedAreListItems = areAllDraggedNodesListItems(content);
-          const dragSession = getActiveCanvasDragSession();
           const { tr } = view.state;
           tr.setMeta('addToHistory', true);
 
@@ -613,6 +651,10 @@ export function columnDropPlugin(): Plugin {
             let insertPos = target.zone === 'above'
               ? target.blockPos
               : target.blockPos + target.blockNode.nodeSize;
+
+            if (!isDuplicate && insertPos >= dragFrom && insertPos <= dragTo) {
+              return true;
+            }
 
             if (draggedAreListItems) {
               const dragProbePos = Math.max(0, Math.min(

@@ -83,6 +83,8 @@ export interface PageChangeEvent {
   readonly pageId: string;
   /** The page data after the change (undefined for Deleted). */
   readonly page?: IPage;
+  /** The mutable fields that changed for Updated events when known. */
+  readonly changedFields?: readonly PageUpdateField[];
 }
 
 // ─── Page Update Data ────────────────────────────────────────────────────────
@@ -97,6 +99,26 @@ export type PageUpdateData = Partial<Pick<IPage,
   'fontFamily' | 'fullWidth' | 'smallText' | 'isLocked' | 'isFavorited' |
   'contentSchemaVersion'
 >> & { expectedRevision?: number };
+
+export type PageUpdateField = Exclude<keyof PageUpdateData, 'expectedRevision'>;
+
+const SIDEBAR_RELEVANT_PAGE_FIELDS: ReadonlySet<PageUpdateField> = new Set([
+  'title',
+  'icon',
+  'isFavorited',
+]);
+
+export function doesPageChangeAffectSidebar(event: PageChangeEvent): boolean {
+  if (event.kind !== PageChangeKind.Updated) {
+    return true;
+  }
+
+  if (!event.changedFields || event.changedFields.length === 0) {
+    return true;
+  }
+
+  return event.changedFields.some((field) => SIDEBAR_RELEVANT_PAGE_FIELDS.has(field));
+}
 
 // ─── Cross-Page Move Params ─────────────────────────────────────────────────
 

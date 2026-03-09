@@ -35,12 +35,16 @@ async function startDragFromBlock(page: Page, blockIndex: number): Promise<{ fro
     // Create NodeSelection on this block
     editor.commands.setNodeSelection(pos);
 
+    const node = doc.child(idx);
+    const from = pos;
+    const to = pos + node.nodeSize;
+
     // Set view.dragging (mimics BlockHandlesController's _onDragHandleDragStart)
     const slice = view.state.selection.content();
-    view.dragging = { slice, move: true };
+    view.dragging = { slice, move: true, from, to };
     view.dom.classList.add('dragging');
 
-    return { from: view.state.selection.from, to: view.state.selection.to };
+    return { from, to };
   }, blockIndex);
 }
 
@@ -195,6 +199,37 @@ async function getTopLevelBlockIndexBySelector(page: Page, selector: string): Pr
 // ═════════════════════════════════════════════════════════════════════════════
 
 test.describe('Column Drag-Drop', () => {
+
+  test('adjacent no-op edge is not offered and does not delete the source block', async ({
+    window: page,
+    electronApp,
+    workspacePath,
+  }) => {
+    await setupCanvasPage(page, electronApp, workspacePath);
+    await waitForEditor(page);
+
+    await setContent(page, [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Alpha' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Bravo' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Charlie' }] },
+    ]);
+
+    await startDragFromBlock(page, 0);
+    const targetRect = await getBlockRect(page, 1);
+    const targetX = targetRect.left + targetRect.width / 2;
+    const targetY = targetRect.top + 2;
+
+    const dragoverResult = await dispatchDragover(page, targetX, targetY);
+    expect(dragoverResult.horzVisible).toBe(false);
+    expect(dragoverResult.vertVisible).toBe(false);
+
+    await dispatchDrop(page, targetX, targetY);
+    await page.waitForTimeout(250);
+
+    const doc = await getDocJSON(page);
+    const topLevelTexts = (doc.content || []).map((node: any) => node.content?.[0]?.text || node.type);
+    expect(topLevelTexts).toEqual(['Alpha', 'Bravo', 'Charlie']);
+  });
 
   test('zone detection, indicators, and drop outcomes', async ({
     window: page,

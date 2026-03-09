@@ -219,27 +219,8 @@ export class BlockHandlesController {
     if (this._isIgnoredOverlayElement(target)) return;
     if (!editor.isEditable) return;
 
-    // ── Sticky handle: if the handle is already visible for a block, keep
-    // it stable while the mouse is within the block's ownership zone
-    // (handle-left → block-right, block-top → block-bottom).  This prevents
-    // the handle from jumping or vanishing when the user moves toward it,
-    // especially in columns where the path to the handle crosses the column
-    // resize boundary zone (which would otherwise trigger _hideHandle). ──
-    if (
-      this._resolvedBlockPos != null &&
-      this._resolvedBlockDom &&
-      this._dragHandleEl && !this._dragHandleEl.classList.contains('hide')
-    ) {
-      const blockRect = this._resolvedBlockDom.getBoundingClientRect();
-      const handleLeft = blockRect.left - BlockHandlesController._HANDLE_WIDTH - 22;
-      if (
-        event.clientX >= handleLeft &&
-        event.clientX <= blockRect.right &&
-        event.clientY >= blockRect.top &&
-        event.clientY <= blockRect.bottom
-      ) {
-        return; // mouse still in current block's zone — keep handle stable
-      }
+    if (this._isPointerWithinStickyHandleZone(event.clientX, event.clientY)) {
+      return;
     }
 
     if (this._isResizeInteractionActive()) {
@@ -262,13 +243,7 @@ export class BlockHandlesController {
 
   private readonly _onEditorMouseLeave = (e: MouseEvent): void => {
     const related = e.relatedTarget as HTMLElement | null;
-    // Don't hide when moving to the block action menu (may be outside container)
-    if (
-      related?.classList.contains('block-action-menu') ||
-      related?.closest('.block-action-menu') ||
-      related?.classList.contains('block-action-submenu') ||
-      related?.closest('.block-action-submenu')
-    ) {
+    if (this._isHandleRelatedElement(related)) {
       return;
     }
     this._hideHandle();
@@ -580,6 +555,49 @@ export class BlockHandlesController {
       this._interactionReleaseTimer = null;
       this._setHandleInteractionLock(false);
     }, 120);
+  }
+
+  private _isHandleRelatedElement(element: HTMLElement | null): boolean {
+    if (!element) return false;
+
+    return (
+      element.classList.contains('block-add-btn') ||
+      !!element.closest('.block-add-btn') ||
+      element.classList.contains('drag-handle') ||
+      !!element.closest('.drag-handle') ||
+      element.classList.contains('block-action-menu') ||
+      !!element.closest('.block-action-menu') ||
+      element.classList.contains('block-action-submenu') ||
+      !!element.closest('.block-action-submenu')
+    );
+  }
+
+  private _isPointerWithinStickyHandleZone(clientX: number, clientY: number): boolean {
+    if (
+      this._resolvedBlockPos == null ||
+      !this._resolvedBlockDom ||
+      !this._dragHandleEl ||
+      this._dragHandleEl.classList.contains('hide')
+    ) {
+      return false;
+    }
+
+    const rects = [this._resolvedBlockDom.getBoundingClientRect()];
+
+    if (!this._dragHandleEl.classList.contains('hide')) {
+      rects.push(this._dragHandleEl.getBoundingClientRect());
+    }
+
+    if (this._blockAddBtn && !this._blockAddBtn.classList.contains('hide')) {
+      rects.push(this._blockAddBtn.getBoundingClientRect());
+    }
+
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const right = Math.max(...rects.map((rect) => rect.right));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+
+    return clientX >= left && clientX <= right && clientY >= top && clientY <= bottom;
   }
 
 

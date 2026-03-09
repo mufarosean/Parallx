@@ -14,6 +14,7 @@ import {
   type IPageTreeNode,
   type ICanvasDataService,
   type PageChangeEvent,
+  type PageUpdateField,
   type PageUpdateData,
   type CrossPageMoveParams,
   PageChangeKind,
@@ -165,6 +166,24 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     return electron.database;
   }
 
+  private _getChangedFields(updates: PageUpdateData): PageUpdateField[] {
+    const changedFields: PageUpdateField[] = [];
+
+    if (updates.title !== undefined) changedFields.push('title');
+    if (updates.icon !== undefined) changedFields.push('icon');
+    if (updates.content !== undefined) changedFields.push('content', 'contentSchemaVersion');
+    if (updates.contentSchemaVersion !== undefined && updates.content === undefined) changedFields.push('contentSchemaVersion');
+    if (updates.coverUrl !== undefined) changedFields.push('coverUrl');
+    if (updates.coverYOffset !== undefined) changedFields.push('coverYOffset');
+    if (updates.fontFamily !== undefined) changedFields.push('fontFamily');
+    if (updates.fullWidth !== undefined) changedFields.push('fullWidth');
+    if (updates.smallText !== undefined) changedFields.push('smallText');
+    if (updates.isLocked !== undefined) changedFields.push('isLocked');
+    if (updates.isFavorited !== undefined) changedFields.push('isFavorited');
+
+    return changedFields;
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // Page CRUD
   // ══════════════════════════════════════════════════════════════════════════
@@ -281,6 +300,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     pageId: string,
     updates: PageUpdateData,
   ): Promise<IPage> {
+    const changedFields = this._getChangedFields(updates);
     const expectedRevision = updates.expectedRevision;
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -371,7 +391,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     }
 
     this._knownRevisions.set(pageId, page.revision);
-    this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page });
+    this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page, changedFields });
     return page;
   }
 
@@ -548,8 +568,18 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     this._knownRevisions.set(sourcePageId, sourcePage.revision);
     this._knownRevisions.set(targetPageId, targetPage.revision);
 
-    this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId: sourcePageId, page: sourcePage });
-    this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId: targetPageId, page: targetPage });
+    this._onDidChangePage.fire({
+      kind: PageChangeKind.Updated,
+      pageId: sourcePageId,
+      page: sourcePage,
+      changedFields: ['content', 'contentSchemaVersion'],
+    });
+    this._onDidChangePage.fire({
+      kind: PageChangeKind.Updated,
+      pageId: targetPageId,
+      page: targetPage,
+      changedFields: ['content', 'contentSchemaVersion'],
+    });
 
     return { sourcePage, targetPage };
   }
@@ -1168,7 +1198,12 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       const updated = await this.getPage(pageId);
       if (updated) {
         this._knownRevisions.set(pageId, updated.revision);
-        this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page: updated });
+        this._onDidChangePage.fire({
+          kind: PageChangeKind.Updated,
+          pageId,
+          page: updated,
+          changedFields: ['content', 'contentSchemaVersion'],
+        });
       }
     }
   }
