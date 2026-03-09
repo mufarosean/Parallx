@@ -1093,6 +1093,9 @@ in external systems:
 20. Workspace and canvas participant service wiring moved out of
    `ChatDataService` into `chatScopedParticipantAdapters.ts`, continuing `E2`
    by removing the remaining inline participant adapter composition.
+21. System prompt assembly moved out of `ChatDataService` into
+   `chatSystemPromptComposer.ts`, continuing `E2` by separating prompt-layer
+   coordination from the core data service.
 
 ### Validation completed for these slices
 
@@ -1113,6 +1116,7 @@ in external systems:
 - token/status-bar adapter tests in `chatTokenBarAdapter.test.ts`
 - default participant adapter tests in `chatDefaultParticipantAdapter.test.ts`
 - scoped participant adapter tests in `chatScopedParticipantAdapters.test.ts`
+- system prompt composer tests in `chatSystemPromptComposer.test.ts`
 - existing participant-loop regression coverage in `agenticLoop.test.ts`
 - broader behavior regression coverage in `chatService.test.ts`
 - chat data/compliance regressions in `chatGateCompliance.test.ts`,
@@ -1122,10 +1126,9 @@ in external systems:
 ### What remains next
 
 `E2` is now centered on the remaining non-adapter orchestration helpers inside
-`ChatDataService`: system-prompt assembly, workspace-digest construction,
-memory/viewer opening, and similar cross-domain glue that still mixes service
-coordination with data access. Those are the next candidates before `E3`
-dead-path cleanup.
+`ChatDataService`: workspace-digest construction, memory/viewer opening, and
+similar cross-domain glue that still mixes service coordination with data
+access. Those are the next candidates before `E3` dead-path cleanup.
 
 ---
 

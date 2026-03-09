@@ -61,6 +61,7 @@ import { buildChatWidgetAttachmentServices } from '../utilities/chatWidgetAttach
 import { buildChatWidgetPickerServices } from '../utilities/chatWidgetPickerAdapter.js';
 import { buildChatWidgetRequestServices } from '../utilities/chatWidgetRequestAdapter.js';
 import { buildChatWidgetSessionServices } from '../utilities/chatWidgetSessionAdapter.js';
+import { composeChatSystemPrompt } from '../utilities/chatSystemPromptComposer.js';
 import {
   buildChatCanvasParticipantServices,
   buildChatWorkspaceParticipantServices,
@@ -1210,32 +1211,24 @@ export class ChatDataService {
   }
 
   async getSystemPrompt(): Promise<string> {
-    const mode = ChatMode.Agent; // Show the full agent prompt (most complete)
-    const pageCount = this._d.databaseService?.isOpen
-      ? (await this._d.databaseService.all<{ id: string }>('SELECT id FROM pages')).length
-      : 0;
-    const fileCount = this._d.fsAccessor
-      ? await (async () => { try { return (await this._d.fsAccessor!.readdir('')).length; } catch { return 0; } })()
-      : 0;
-
-    // Read prompt overlay if available
-    let promptOverlay: string | undefined;
-    if (this._d.promptFileService) {
-      try {
-        const layers = await this._d.promptFileService.loadLayers();
-        promptOverlay = this._d.promptFileService.assemblePromptOverlay(layers);
-      } catch { /* best-effort */ }
-    }
-
-    return buildSystemPrompt(mode, {
+    return composeChatSystemPrompt({
       workspaceName: this._d.workspaceService?.activeWorkspace?.name ?? 'Parallx Workspace',
-      pageCount,
-      currentPageTitle: undefined,
-      tools: this._d.languageModelToolsService?.getToolDefinitions() ?? [],
-      fileCount,
+      getPageCount: async () => this._d.databaseService?.isOpen
+        ? (await this._d.databaseService.all<{ id: string }>('SELECT id FROM pages')).length
+        : 0,
+      getFileCount: async () => {
+        if (!this._d.fsAccessor) {
+          return 0;
+        }
+        try {
+          return (await this._d.fsAccessor.readdir('')).length;
+        } catch {
+          return 0;
+        }
+      },
+      getToolDefinitions: () => this._d.languageModelToolsService?.getToolDefinitions() ?? [],
       isRAGAvailable: !!this._d.retrievalService,
-      isIndexing: false,
-      promptOverlay,
+      promptFileService: this._d.promptFileService,
     });
   }
 
