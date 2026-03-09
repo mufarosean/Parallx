@@ -47,6 +47,7 @@ import { createChatContextPlan, createChatRuntimeTrace } from '../utilities/chat
 import { selectDeterministicAnswer } from '../utilities/chatDeterministicAnswerSelector.js';
 import { assembleChatContext } from '../utilities/chatContextAssembly.js';
 import { executeChatModelOnly } from '../utilities/chatModelOnlyExecutor.js';
+import { executeChatGrounded } from '../utilities/chatGroundedExecutor.js';
 import { loadChatContextSources } from '../utilities/chatContextSourceLoader.js';
 import { SlashCommandRegistry, parseSlashCommand } from '../config/chatSlashCommands.js';
 import { loadUserCommands } from '../utilities/userCommandLoader.js';
@@ -1696,300 +1697,45 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         );
         producedContent = modelOnlyResult.producedContent;
       } else {
-        // ── Agentic loop (Cap 6 Task 6.2) ──
-        //
-        // When the model returns tool_calls, we:
-        // 1. Render tool invocation cards (pending)
-        // 2. Invoke each tool via ILanguageModelToolsService
-        // 3. Update card status (running → completed/rejected)
-        // 4. Append tool result messages
-        // 5. Re-send the updated history back to the model
-        // 6. Repeat until no more tool_calls or max iterations reached
-        //
-        // Ask mode: read-only tools only.  Agent mode: all tools.
-        // Edit mode: tools are not sent in the request.
-
-        // Capture session guard for stale detection during tool invocations
-        const toolGuard = services.sessionManager
-          ? captureSession(services.sessionManager)
-          : undefined;
-
-        for (let iteration = 0; iteration <= maxIterations; iteration++) {
-        // Yield check — allow a steering/queued message to interrupt between iterations
-        if (token.isYieldRequested || token.isCancellationRequested) {
-          break;
-        }
-
-        // Collect content and tool calls from the current LLM turn
-        let turnContent = '';
-        const turnToolCalls: IToolCall[] = [];
-        let turnPromptTokens = 0;
-        let turnCompletionTokens = 0;
-
-        const stream = services.sendChatRequest(
-          messages,
-          options,
-          abortController.signal,
-        );
-
-        // Latency: start LLM streaming (M17 Task 0.2.7)
-        const _t2_streamStart = performance.now();
-        let _firstTokenLogged = false;
-
-        for await (const chunk of stream) {
-          // Log time-to-first-token once
-          if (!_firstTokenLogged && (chunk.content || chunk.thinking)) {
-            console.debug(`[Parallx:latency] Time to first token: ${(performance.now() - _t2_streamStart).toFixed(1)}ms`);
-            _firstTokenLogged = true;
-          }
-
-          if (token.isCancellationRequested || token.isYieldRequested) {
-            break;
-          }
-
-          // Reset stall timeout — model is actively producing data
-          resetNetworkTimeout();
-
-          // Thinking content
-          if (chunk.thinking) {
-            response.thinking(chunk.thinking);
-          }
-
-          // Regular content — in Edit mode, buffer instead of streaming
-          if (chunk.content) {
-            if (!isEditMode) {
-              response.markdown(chunk.content);
-            }
-            turnContent += chunk.content;
-            producedContent = true;
-          }
-
-          // Collect tool calls from the response
-          if (chunk.toolCalls && chunk.toolCalls.length > 0) {
-            for (const tc of chunk.toolCalls) {
-              turnToolCalls.push(tc);
-            }
-          }
-
-          // Capture real token counts from Ollama's final chunk
-          if (chunk.promptEvalCount) { turnPromptTokens = chunk.promptEvalCount; }
-          if (chunk.evalCount) { turnCompletionTokens = chunk.evalCount; }
-        }
-
-        // Latency: streaming complete (M17 Task 0.2.7)
-        console.debug(`[Parallx:latency] LLM stream complete: ${(performance.now() - _t2_streamStart).toFixed(1)}ms`);
-
-        // Report token usage from this turn to the response stream
-        if (turnPromptTokens > 0 || turnCompletionTokens > 0) {
-          response.reportTokenUsage(turnPromptTokens, turnCompletionTokens);
-        }
-
-        // If cancelled or yield requested, break out
-        if (token.isCancellationRequested || token.isYieldRequested) {
-          break;
-        }
-
-        // ── Edit mode: parse JSON structured output into edit proposals ──
-        if (isEditMode && turnContent) {
-          _parseEditResponse(turnContent, response);
-          break; // Edit mode is single-turn (no tool calls)
-        }
-
-        // ── Fallback: detect tool calls embedded as JSON in text content ──
-        // Small models (llama3.1:8b, qwen2.5) sometimes emit tool calls as
-        // JSON text in the content field instead of using the structured
-        // tool_calls API.  If no structured tool calls were found, scan the
-        // accumulated text for JSON tool call patterns.
-        if (turnToolCalls.length === 0 && turnContent && canInvokeTools) {
-          const { toolCalls: textToolCalls, cleanedText } = _extractToolCallsFromText(turnContent);
-          if (textToolCalls.length > 0) {
-            for (const tc of textToolCalls) {
-              turnToolCalls.push(tc);
-            }
-            // Replace the already-rendered markdown to strip the raw JSON
-            if (!isEditMode) {
-              response.replaceLastMarkdown(cleanedText);
-            }
-            turnContent = cleanedText;
-          }
-        }
-
-        // ── Narration detection ──
-        // Small models sometimes narrate about tool calls in prose instead of
-        // actually calling them (e.g. "Here's a function call to read_file...",
-        // "Action: { name: list_files ... }", "The user wants to know...").
-        // Strip narration regardless of whether real tool calls were found —
-        // the user should never see prose describing the mechanics.
-        if (turnToolCalls.length === 0 && turnContent) {
-          const narrationPattern = /(?:here'?s?\s+(?:a|an|the)\s+(?:function|tool)\s+call|(?:I'?(?:ll|m going to)|let me)\s+(?:call|use|invoke|try)\s+(?:the\s+)?(?:`?\w+`?\s+)?(?:function|tool)|this (?:function|tool) call will|based on the (?:functions?|tools?|context)\s+provided|with its proper arguments|\bAction:\s*[{`]|\bExecution:\s*[{`]|let'?s\s+execute\s+this\s+(?:action|tool))/i;
-          if (narrationPattern.test(turnContent)) {
-            const cleaned = _stripToolNarration(turnContent);
-            if (!isEditMode && cleaned.trim().length > 0) {
-              response.replaceLastMarkdown(cleaned);
-            }
-            turnContent = cleaned.trim().length > 0 ? cleaned : turnContent;
-          }
-        }
-
-        // No tool calls → model gave a final answer, done
-        if (turnToolCalls.length === 0) {
-          break;
-        }
-
-        // ── Tool-calling turn: discard streamed content ──
-        // When the model calls tools, any text it produced alongside the
-        // tool calls is intermediate thinking (raw JSON, narration, etc.)
-        // — not the final answer.  The real answer comes on the next turn
-        // after tool results are processed.  Clear streamed markdown so the
-        // user only sees the final synthesized response.
-        if (turnContent && !isEditMode) {
-          response.replaceLastMarkdown('');
-        }
-
-        // Tool calls but not in Agent mode or no invokeTool wired
-        if (!canInvokeTools) {
-          response.warning('Tool calls are not available in this mode.');
-          break;
-        }
-
-        // Guard against exceeding max iterations (the last iteration
-        // should be the model's final response without tool calls)
-        if (iteration === maxIterations) {
-          response.warning(`Agentic loop reached maximum iterations (${maxIterations}). Stopping.`);
-          break;
-        }
-
-        // Append the assistant message (with content + tool_calls) to history
-        // so the model sees its own tool call + results on the next turn.
-        // Note: Ollama expects the assistant message to be present before tool results.
-        if (turnContent) {
-          messages.push({ role: 'assistant', content: turnContent });
-        }
-
-        // ── Process each tool call ──
-
-        for (const toolCall of turnToolCalls) {
-          const tcName = toolCall.function.name;
-          const tcArgs = toolCall.function.arguments;
-
-          // Tools run silently — no tool cards shown to the user.
-          // The user sees the final response, not the mechanics.
-          producedContent = true;
-
-          // Invoke the tool (skip if session is stale)
-          let result: IToolResult;
-          if (toolGuard && !toolGuard.isValid()) {
-            result = { content: 'Workspace session changed — results discarded.', isError: true };
-            console.warn('[DefaultParticipant] Skipping tool "%s" — workspace session changed', tcName);
-          } else {
-            try {
-              result = await services.invokeTool!(tcName, tcArgs, token);
-            } catch (err) {
-              const errMsg = err instanceof Error ? err.message : String(err);
-              result = { content: `Tool "${tcName}" failed: ${errMsg}`, isError: true };
-            }
-          }
-
-          // Append tool result message for the model
-          messages.push({
-            role: 'tool',
-            content: result.content,
-            toolName: tcName,
-          });
-        }
-
-        // Loop continues: messages now include tool results,
-        // next iteration sends the full history back to the model.
-        }
-      }
-
-      // Clear network timeout since we got a response
-      if (networkTimeoutId !== undefined) { clearTimeout(networkTimeoutId); }
-
-      // Some small-model/tool-loop runs complete with no final markdown even
-      // though retrieval and tool results are present. Retry once without tools
-      // so the model is forced to synthesize a user-facing answer.
-      services.reportResponseDebug?.({
-        phase: 'post-loop-before-fallback',
-        markdownLength: response.getMarkdownText().trim().length,
-        yielded: !!token.isYieldRequested,
-        cancelled: token.isCancellationRequested,
-        retrievedContextLength: retrievedContextText.length,
-      });
-      if (!isEditMode && !token.isCancellationRequested && response.getMarkdownText().trim().length === 0) {
-        const fallbackMessages: IChatMessage[] = [
-          ...messages,
+        const groundedResult = await executeChatGrounded(
           {
-            role: 'user',
-            content:
-              'Provide the final answer directly to the user in markdown using the retrieved context and tool results already available. ' +
-              'Do not call tools, do not output JSON, and do not describe tool usage. If sources are available, cite them using [N].',
+            sendChatRequest: services.sendChatRequest,
+            invokeTool: services.invokeTool,
+            resetNetworkTimeout,
+            parseEditResponse: _parseEditResponse,
+            extractToolCallsFromText: _extractToolCallsFromText,
+            stripToolNarration: _stripToolNarration,
+            buildExtractiveFallbackAnswer: _buildExtractiveFallbackAnswer,
+            reportResponseDebug: services.reportResponseDebug,
+            reportFirstTokenLatency: (durationMs) => {
+              console.debug(`[Parallx:latency] Time to first token: ${durationMs.toFixed(1)}ms`);
+            },
+            reportStreamCompleteLatency: (durationMs) => {
+              console.debug(`[Parallx:latency] LLM stream complete: ${durationMs.toFixed(1)}ms`);
+            },
           },
-        ];
-
-        const fallbackOptions: IChatRequestOptions = {
-          ...options,
-          tools: undefined,
-          format: undefined,
-          think: false,
-        };
-
-        resetNetworkTimeout();
-        let fallbackPromptTokens = 0;
-        let fallbackCompletionTokens = 0;
-        for await (const chunk of services.sendChatRequest(fallbackMessages, fallbackOptions, abortController.signal)) {
-          if (token.isCancellationRequested || token.isYieldRequested) {
-            break;
-          }
-
-          resetNetworkTimeout();
-          if (chunk.content) {
-            response.markdown(chunk.content);
-            producedContent = true;
-          }
-          if (chunk.promptEvalCount) { fallbackPromptTokens = chunk.promptEvalCount; }
-          if (chunk.evalCount) { fallbackCompletionTokens = chunk.evalCount; }
-        }
-
-        if (fallbackPromptTokens > 0 || fallbackCompletionTokens > 0) {
-          response.reportTokenUsage(fallbackPromptTokens, fallbackCompletionTokens);
-        }
-
-        if (networkTimeoutId !== undefined) { clearTimeout(networkTimeoutId); }
-
-        if (response.getMarkdownText().trim().length === 0) {
-          const extractiveFallback = _buildExtractiveFallbackAnswer(request.text, retrievedContextText || userContent);
-          if (extractiveFallback) {
-            response.markdown(extractiveFallback);
-            producedContent = true;
-            services.reportResponseDebug?.({
-              phase: 'post-loop-extractive-fallback',
-              markdownLength: response.getMarkdownText().trim().length,
-              yielded: !!token.isYieldRequested,
-              cancelled: token.isCancellationRequested,
-              retrievedContextLength: retrievedContextText.length,
-              note: 'extractive',
-            });
-          }
-        }
-
-        if (response.getMarkdownText().trim().length === 0) {
-          response.markdown(
-            evidenceAssessment.status === 'insufficient'
-              ? 'I do not have enough grounded evidence in the current workspace context to answer this confidently. Please point me to the relevant document or add more detail.'
-              : 'I could not produce a grounded final answer from the current model output. Please try again.',
-          );
-          producedContent = true;
-          services.reportResponseDebug?.({
-            phase: 'post-loop-visible-fallback',
-            markdownLength: response.getMarkdownText().trim().length,
-            yielded: !!token.isYieldRequested,
-            cancelled: token.isCancellationRequested,
-            retrievedContextLength: retrievedContextText.length,
-            note: 'visible',
-          });
-        }
+          {
+            messages,
+            requestOptions: options,
+            abortSignal: abortController.signal,
+            response,
+            token,
+            maxIterations,
+            canInvokeTools,
+            isEditMode,
+            requestText: request.text,
+            userContent,
+            retrievedContextText,
+            evidenceAssessment,
+            toolGuard: services.sessionManager
+              ? captureSession(services.sessionManager)
+              : undefined,
+          },
+        );
+        producedContent = groundedResult.producedContent;
       }
+
+      if (networkTimeoutId !== undefined) { clearTimeout(networkTimeoutId); }
 
       // ── Empty response detection ──
       if (!producedContent && !token.isCancellationRequested) {

@@ -1021,7 +1021,7 @@ in external systems:
 ### Phase C — Response Path Decomposition
 - [x] C1. Extract deterministic product-semantics handler ✅ Product-semantics, off-topic, memory-recall, and unsupported-specific-coverage direct answers now flow through deterministic selector/executor modules.
 - [x] C2. Extract conversational/model-only executor ✅ No-tool Ask/Edit turns now run through `chatModelOnlyExecutor.ts`, leaving the participant loop focused on tool-enabled execution.
-- [ ] C3. Extract grounded/tool-enabled executor
+- [x] C3. Extract grounded/tool-enabled executor ✅ Tool-loop execution and no-markdown fallback synthesis now run through `chatGroundedExecutor.ts`.
 - [ ] C4. Extract delegated-task handoff executor
 
 ### Phase D — Validation and Memory Isolation
@@ -1057,6 +1057,9 @@ in external systems:
 8. No-tool conversational and edit execution moved into
    `chatModelOnlyExecutor.ts`, leaving `defaultParticipant.ts` to select
    between model-only and tool-enabled execution paths.
+9. Tool-enabled looping and post-loop fallback synthesis moved into
+   `chatGroundedExecutor.ts`, narrowing `defaultParticipant.ts` to execution
+   selection plus post-response validation and write-back.
 
 ### Validation completed for these slices
 
@@ -1066,15 +1069,15 @@ in external systems:
 - context-source loader tests in `chatContextSourceLoader.test.ts`
 - context assembly tests in `chatContextAssembly.test.ts`
 - model-only executor tests in `chatModelOnlyExecutor.test.ts`
+- grounded executor tests in `chatGroundedExecutor.test.ts`
 - existing participant-loop regression coverage in `agenticLoop.test.ts`
 - broader behavior regression coverage in `chatService.test.ts`
 
 ### What remains next
 
-The next high-value cut is grounded/tool-enabled execution and validation:
-separate the agentic loop and fallback synthesis from citation and
-answer-repair coordination so the participant stops mixing execution,
-validation, and final response shaping.
+The next high-value cut is validation and handoff narrowing: separate
+citation enforcement and answer-repair coordination from final response
+shaping, then isolate delegated-task handoff from the participant body.
 
 ---
 
