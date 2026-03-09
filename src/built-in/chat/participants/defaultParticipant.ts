@@ -45,6 +45,7 @@ import { extractMentions, resolveMentions } from '../utilities/chatMentionResolv
 import { determineChatTurnRoute } from '../utilities/chatTurnRouter.js';
 import { createChatContextPlan, createChatRuntimeTrace } from '../utilities/chatContextPlanner.js';
 import { selectDeterministicAnswer } from '../utilities/chatDeterministicAnswerSelector.js';
+import { assembleChatContext } from '../utilities/chatContextAssembly.js';
 import { loadChatContextSources } from '../utilities/chatContextSourceLoader.js';
 import { SlashCommandRegistry, parseSlashCommand } from '../config/chatSlashCommands.js';
 import { loadUserCommands } from '../utilities/userCommandLoader.js';
@@ -1190,7 +1191,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // The content of the currently open page is injected directly into the user
     // message so the model can reference it without a tool call (zero round-trips).
 
-    const contextParts: string[] = [];
     const mentionPills: IContextPill[] = [];
 
     // ── Latency instrumentation (M17 Task 0.2.7) ──
@@ -1245,7 +1245,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // generate search queries before the response call.  That doubled
     // latency on local Ollama (e.g. 45s planner + 13s response = 58s
     // vs native Ollama's 13s).  No mainstream local AI app does this.
-    const ragSources: Array<{ uri: string; label: string; index?: number }> = [];
     const isRagReady = services.isRAGAvailable?.() ?? false;
     const turnRoute = determineChatTurnRoute(userText, { hasActiveSlashCommand });
     const contextPlan = createChatContextPlan(turnRoute, { hasActiveSlashCommand, isRagReady });
@@ -1305,71 +1304,42 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       },
     );
 
-    // ── Process parallel results sequentially ──
-
-    // Page content
-    if (pageResult && pageResult.textContent) {
-      const text = pageResult.textContent.length > MAX_PAGE_CONTEXT_CHARS
-        ? pageResult.textContent.slice(0, MAX_PAGE_CONTEXT_CHARS) + '\n[…truncated — use read_current_page for full content]'
-        : pageResult.textContent;
-      contextParts.push(
-        `[Currently open page: "${pageResult.title}" (id: ${pageResult.pageId})]\n${text}`,
-      );
-    }
-
-    let retrievedContextText = '';
-
-    const alreadyInContext = new Set<string>();
-    if (request.attachments?.length) {
-      for (const att of request.attachments) {
-        alreadyInContext.add(att.fullPath);
-        alreadyInContext.add(att.name);
-      }
-    }
-    for (const pill of mentionPills) {
-      alreadyInContext.add(pill.label);
-      const colonIdx = pill.id.indexOf(':');
-      if (colonIdx > 0) {
-        alreadyInContext.add(pill.id.substring(colonIdx + 1));
-      }
-    }
-    const seenRagBlocks = new Set<string>();
-
-    const appendRagResult = (result: NonNullable<typeof ragResult>): void => {
-      if (result.text && !seenRagBlocks.has(result.text)) {
-        contextParts.push(result.text);
-        seenRagBlocks.add(result.text);
-      }
-
-      for (const source of result.sources) {
-        if (alreadyInContext.has(source.uri) || alreadyInContext.has(source.label)) {
-          continue;
-        }
-        response.reference(source.uri, source.label, source.index);
-        ragSources.push(source);
-        alreadyInContext.add(source.uri);
-        alreadyInContext.add(source.label);
-      }
-    };
-
-    // RAG context
-    if (ragResult) {
-      retrievedContextText = ragResult.text;
-      appendRagResult(ragResult);
-    }
-
-    let evidenceAssessment = _assessEvidenceSufficiency(userText, retrievedContextText, ragSources);
-    if (evidenceAssessment.status === 'insufficient' && services.retrieveContext && contextPlan.useRetrieval) {
-      const retrieveAgainQuery = _buildRetrieveAgainQuery(userText, retrievedContextText);
-      if (retrieveAgainQuery) {
-        const retrieveAgainResult = await services.retrieveContext(retrieveAgainQuery).catch(() => null as typeof ragResult);
-        if (retrieveAgainResult) {
-          retrievedContextText = [retrievedContextText, retrieveAgainResult.text].filter(Boolean).join('\n\n');
-          appendRagResult(retrieveAgainResult);
-          evidenceAssessment = _assessEvidenceSufficiency(userText, retrievedContextText, ragSources);
-        }
-      }
-    }
+    const {
+      contextParts,
+      ragSources,
+      retrievedContextText,
+      evidenceAssessment,
+    } = await assembleChatContext(
+      {
+        retrieveContext: services.retrieveContext,
+        addReference: (uri, label, index) => response.reference(uri, label, index),
+        reportContextPills: services.reportContextPills,
+        getExcludedContextIds: services.getExcludedContextIds,
+        assessEvidenceSufficiency: _assessEvidenceSufficiency,
+        buildRetrieveAgainQuery: _buildRetrieveAgainQuery,
+      },
+      {
+        userText,
+        messages,
+        attachments: request.attachments,
+        mentionPills,
+        useRetrieval: contextPlan.useRetrieval,
+        maxMemoryContextChars: MAX_MEMORY_CONTEXT_CHARS,
+        maxConceptContextChars: MAX_CONCEPT_CONTEXT_CHARS,
+        pageResult: pageResult && pageResult.textContent
+          ? {
+              ...pageResult,
+              textContent: pageResult.textContent.length > MAX_PAGE_CONTEXT_CHARS
+                ? pageResult.textContent.slice(0, MAX_PAGE_CONTEXT_CHARS) + '\n[…truncated — use read_current_page for full content]'
+                : pageResult.textContent,
+            }
+          : pageResult,
+        ragResult,
+        memoryResult,
+        conceptResult,
+        attachmentResults,
+      },
+    );
 
     const postContextDeterministicAnswer = selectDeterministicAnswer({
       route: turnRoute,
@@ -1398,13 +1368,11 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       return {};
     }
 
-    // Memory context
     if (memoryResult) {
       let memoryContext = memoryResult;
       if (memoryContext.length > MAX_MEMORY_CONTEXT_CHARS) {
         memoryContext = memoryContext.slice(0, MAX_MEMORY_CONTEXT_CHARS) + '\n[…memory truncated]';
       }
-      contextParts.push(memoryContext);
 
       if (isMemoryRecallTurn) {
         const memoryDeterministicAnswer = selectDeterministicAnswer({
@@ -1421,108 +1389,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
             retrievedContextLength: memoryDeterministicAnswer.retrievedContextLength,
           });
           return {};
-        }
-      }
-    }
-
-    // Concept context (M17 P1.2 Task 1.2.7)
-    if (conceptResult) {
-      let conceptContext = conceptResult;
-      if (conceptContext.length > MAX_CONCEPT_CONTEXT_CHARS) {
-        conceptContext = conceptContext.slice(0, MAX_CONCEPT_CONTEXT_CHARS) + '\n[…concepts truncated]';
-      }
-      contextParts.push(conceptContext);
-    }
-
-    // Attachments
-    for (const att of attachmentResults) {
-      if (att.content !== null) {
-        contextParts.push(`File: ${att.name}\n\`\`\`\n${att.content}\n\`\`\``);
-      } else {
-        contextParts.push(`File: ${att.name}\n[Could not read file]`);
-      }
-    }
-
-    // 2b. Report context pills to the UI (M11 Task 1.10)
-    //
-    // After all context sources are resolved, build pills for display.
-    const pills: IContextPill[] = [];
-    if (services.reportContextPills) {
-
-      // System prompt overlay (SOUL + AGENTS + TOOLS)
-      const sysContent = messages[0]?.content ?? '';
-      pills.push({
-        id: 'system-prompt',
-        label: 'System prompt',
-        type: 'system',
-        tokens: Math.ceil(sysContent.length / 4),
-        removable: false,
-      });
-
-      // RAG sources
-      for (const src of ragSources) {
-        pills.push({
-          id: src.uri,
-          label: src.label,
-          type: 'rag',
-          tokens: 0, // token count is estimated from context part, rough
-          removable: true,
-          index: src.index,
-        });
-      }
-
-      // Explicit attachments
-      if (request.attachments?.length) {
-        for (const att of request.attachments) {
-          pills.push({
-            id: att.fullPath,
-            label: att.name,
-            type: 'attachment',
-            tokens: 0,
-            removable: true,
-          });
-        }
-      }
-
-      // @mention-resolved pills (M11 Tasks 3.2–3.4)
-      pills.push(...mentionPills);
-
-      // Estimate tokens for each pill from context parts
-      // (rough: distribute non-system context proportionally)
-      const totalNonSysChars = contextParts.reduce((sum, p) => sum + p.length, 0);
-      for (const pill of pills) {
-        if (pill.type === 'rag' || pill.type === 'attachment') {
-          // Find the matching context part by label
-          const match = contextParts.find(p => p.includes(pill.label));
-          if (match) {
-            (pill as { tokens: number }).tokens = Math.ceil(match.length / 4);
-          } else if (totalNonSysChars > 0 && pills.length > 1) {
-            // Fallback: evenly distribute
-            const nonSysPills = pills.filter(p => p.type !== 'system');
-            (pill as { tokens: number }).tokens = Math.ceil(totalNonSysChars / nonSysPills.length / 4);
-          }
-        }
-      }
-
-      services.reportContextPills(pills);
-    }
-
-    // 2b½. Filter out excluded context sources (M11 Task 1.10)
-    //
-    // If the user has excluded pills via the UI, remove those context parts
-    // so the LLM doesn't see them.
-    if (services.getExcludedContextIds) {
-      const excluded = services.getExcludedContextIds();
-      if (excluded.size > 0) {
-        // Remove context parts that belong to excluded pills (by label or URI match)
-        for (let i = contextParts.length - 1; i >= 0; i--) {
-          const part = contextParts[i];
-          const shouldExclude = pills.some(
-            (pill: IContextPill) => excluded.has(pill.id) && pill.removable && part.includes(pill.label),
-          );
-          if (shouldExclude) {
-            contextParts.splice(i, 1);
-          }
         }
       }
     }
@@ -2110,7 +1976,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
 
       // ── Post-response: session memory + concept extraction (M10/M17 P1.2) ──
-      // Create or *update* the session summary using growth-based re-summarisation.
+      // Create or update the session summary using growth-based re-summarisation.
       // Also extract learning concepts in the same LLM call (M17 P1.2 Task 1.2.6).
       // Gated by memory.memoryEnabled toggle (M20 F.3)
       if (
@@ -2121,16 +1987,14 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         context.history.length > 0
       ) {
         const sessionId = context.sessionId ?? '';
-        const messageCount = context.history.length + 1; // +1 for current exchange
+        const messageCount = context.history.length + 1;
         if (sessionId && services.isSessionEligibleForSummary(messageCount)) {
-          // Fire and forget — don't block chat response
           services.getSessionMemoryMessageCount(sessionId).then(async (storedCount) => {
             const shouldSummarize = storedCount === null
               || messageCount >= storedCount * 2
               || messageCount >= storedCount + 10;
             if (!shouldSummarize) { return; }
             try {
-              // Build a compact conversation transcript for summarization
               const transcript = context.history.map((p) => {
                 const respText = p.response.parts
                   .map((part) => ('content' in part && typeof part.content === 'string') ? part.content : '')
@@ -2149,7 +2013,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
                 return;
               }
 
-              // Combined prompt: summary + concept extraction (P1.2 Task 1.2.6)
               const hasConcepts = !!services.storeConceptsFromSession;
               const summaryPrompt: IChatMessage[] = [
                 {
@@ -2176,13 +2039,11 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
               if (!rawText.trim()) { return; }
 
-              // Parse response — try JSON first, fall back to plain summary
               let summaryText = rawText.trim();
               let extractedConcepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }> = [];
 
               if (hasConcepts) {
                 try {
-                  // Strip markdown fences if the model wraps them
                   let jsonStr = summaryText;
                   const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
                   if (fenceMatch) { jsonStr = fenceMatch[1].trim(); }
@@ -2206,7 +2067,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
                       }));
                   }
                 } catch {
-                  // JSON parsing failed — use raw text as summary, no concepts
                 }
               }
 
@@ -2214,12 +2074,10 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
                 await services.storeSessionMemory!(sessionId, summaryText, messageCount);
               }
 
-              // Store extracted concepts (P1.2 Task 1.2.6)
               if (extractedConcepts.length > 0 && services.storeConceptsFromSession) {
                 services.storeConceptsFromSession(extractedConcepts, sessionId).catch(() => {});
               }
             } catch {
-              // Memory summarisation is best-effort
             }
           }).catch(() => {});
         }

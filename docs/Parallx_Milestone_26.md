@@ -1051,6 +1051,9 @@ in external systems:
 6. Parallel context-source loading moved into
    `chatContextSourceLoader.ts`, narrowing `defaultParticipant.ts` to
    orchestration and post-load processing.
+7. Post-load context assembly moved into `chatContextAssembly.ts`, including
+   retrieve-again retry, memory/concept/attachment shaping, context-pill
+   reporting, and excluded-pill filtering.
 
 ### Validation completed for these slices
 
@@ -1058,14 +1061,16 @@ in external systems:
 - deterministic executor tests in `chatDeterministicExecutors.test.ts`
 - deterministic selector tests in `chatDeterministicAnswerSelector.test.ts`
 - context-source loader tests in `chatContextSourceLoader.test.ts`
+- context assembly tests in `chatContextAssembly.test.ts`
 - existing participant-loop regression coverage in `agenticLoop.test.ts`
 - broader behavior regression coverage in `chatService.test.ts`
 
 ### What remains next
 
-The next high-value cut is context post-processing and executor narrowing:
-separate evidence shaping, citation enforcement, and model-execution paths so
-the participant stops mixing planning, execution, and answer-repair concerns.
+The next high-value cut is executor and validator narrowing: separate
+conversational/model-only execution, grounded/tool-enabled execution, and
+citation or answer-repair coordination so the participant stops mixing
+execution, validation, and final response shaping.
 
 ---
 
