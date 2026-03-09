@@ -48,6 +48,7 @@ import { selectDeterministicAnswer } from '../utilities/chatDeterministicAnswerS
 import { assembleChatContext } from '../utilities/chatContextAssembly.js';
 import { executeChatModelOnly } from '../utilities/chatModelOnlyExecutor.js';
 import { executeChatGrounded } from '../utilities/chatGroundedExecutor.js';
+import { validateAndFinalizeChatResponse } from '../utilities/chatResponseValidator.js';
 import { loadChatContextSources } from '../utilities/chatContextSourceLoader.js';
 import { SlashCommandRegistry, parseSlashCommand } from '../config/chatSlashCommands.js';
 import { loadUserCommands } from '../utilities/userCommandLoader.js';
@@ -1869,32 +1870,21 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         );
       }
 
-      // M15+M19: Attach numbered citation map to all markdown parts so the
-      // renderer can resolve [N] markers to clickable source badges.
-      // C1.3: Validate citation mapping — warn for unmatched [N] in response.
-      // C1.4: Remap if the LLM used numbers outside our citation set.
-      if (contextPlan.citationMode === 'required' && ragSources.length > 0) {
-        const responseParts = (response as any)._response?.parts;
-        if (Array.isArray(responseParts)) {
-          const lastMarkdownPart = [...responseParts]
-            .reverse()
-            .find((part) => part.kind === ChatContentPartKind.Markdown && typeof part.content === 'string');
-          if (lastMarkdownPart) {
-            lastMarkdownPart.content = _repairUnsupportedSpecificCoverageAnswer(
+      validateAndFinalizeChatResponse(
+        {
+          repairMarkdown: (markdown) => _repairUnsupportedSpecificCoverageAnswer(
+            request.text,
+            _repairVehicleInfoAnswer(
               request.text,
-              _repairVehicleInfoAnswer(
+              _repairAgentContactAnswer(
                 request.text,
-                _repairAgentContactAnswer(
+                _repairDeductibleConflictAnswer(
                   request.text,
-                  _repairDeductibleConflictAnswer(
+                  _repairTotalLossThresholdAnswer(
                     request.text,
-                    _repairTotalLossThresholdAnswer(
+                    _repairGroundedCodeAnswer(
                       request.text,
-                      _repairGroundedCodeAnswer(
-                        request.text,
-                        lastMarkdownPart.content,
-                        retrievedContextText || userContent,
-                      ),
+                      markdown,
                       retrievedContextText || userContent,
                     ),
                     retrievedContextText || userContent,
@@ -1903,109 +1893,24 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
                 ),
                 retrievedContextText || userContent,
               ),
-              evidenceAssessment,
-            );
-          }
-        }
-
-        let citations = ragSources
-          .filter((s): s is { uri: string; label: string; index: number } => s.index != null)
-          .map(s => ({ index: s.index, uri: s.uri, label: s.label }));
-
-        if (!isConversational && citations.length > 0) {
-          const responseText = response.getMarkdownText();
-          const validIndices = new Set(citations.map(c => c.index));
-          const referencedIndices = new Set<number>();
-          const refPattern = /\[(\d+)\]/g;
-          let m: RegExpExecArray | null;
-          while ((m = refPattern.exec(responseText)) !== null) {
-            referencedIndices.add(parseInt(m[1], 10));
-          }
-
-          // Check for citations the LLM used that aren't in our set
-          const unmatchedRefs = [...referencedIndices].filter(n => !validIndices.has(n));
-
-          if (unmatchedRefs.length > 0) {
-            // C1.4: Remap based on first-appearance order.
-            // The LLM may have renumbered (e.g. used [1],[2],[3] when our
-            // sources were numbered [1],[3],[5]). Build a remap from the
-            // order of first appearance in the response text to our actual
-            // source indices.
-            const firstAppearance: number[] = [];
-            const seenInResponse = new Set<number>();
-            const orderPattern = /\[(\d+)\]/g;
-            let om: RegExpExecArray | null;
-            while ((om = orderPattern.exec(responseText)) !== null) {
-              const n = parseInt(om[1], 10);
-              if (!seenInResponse.has(n)) {
-                seenInResponse.add(n);
-                firstAppearance.push(n);
-              }
-            }
-
-            // If the LLM's cited count matches our source count,
-            // remap by first-appearance order → our citation order
-            if (firstAppearance.length === citations.length) {
-              const sortedCitations = [...citations].sort((a, b) => a.index - b.index);
-              const remap = new Map<number, number>();
-              for (let i = 0; i < firstAppearance.length; i++) {
-                remap.set(firstAppearance[i], sortedCitations[i].index);
-              }
-
-              // Remap the [N] markers in markdown parts from LLM numbering
-              // to our actual citation indices.
-              // NOTE: We do NOT remap citations[].index — those already carry
-              // the correct source indices from ragSources. Only the markdown
-              // text needs rewriting.
-              const parts = (response as any)._response?.parts;
-              if (Array.isArray(parts)) {
-                for (const part of parts) {
-                  if (part.kind === ChatContentPartKind.Markdown && typeof part.content === 'string') {
-                    part.content = part.content.replace(/\[(\d+)\]/g, (_: string, num: string) => {
-                      const mapped = remap.get(parseInt(num, 10));
-                      return mapped != null ? `[${mapped}]` : `[${num}]`;
-                    });
-                  }
-                }
-              }
-            } else {
-              // Can't safely remap — log warning
-              console.warn(
-                `[Citations] LLM used ${firstAppearance.length} unique citations but ${citations.length} sources were provided. ` +
-                `Unmatched: [${unmatchedRefs.join(', ')}]`,
-              );
-            }
-          }
-
-          const responseParts = (response as any)._response?.parts;
-          const lastMarkdownContent = Array.isArray(responseParts)
-            ? [...responseParts]
-              .reverse()
-              .find((part) => part.kind === ChatContentPartKind.Markdown && typeof part.content === 'string')?.content ?? ''
-            : response.getMarkdownText();
-          const citationFooter = _buildMissingCitationFooter(
-            lastMarkdownContent,
-            citations.map(({ index, label }) => ({ index, label })),
-          );
-          if (citationFooter) {
-            response.markdown(citationFooter);
-          }
-
-          response.setCitations(citations);
-        }
-      }
-
-      if (!isEditMode && !token.isCancellationRequested && response.getMarkdownText().trim().length === 0) {
-        applyFallbackAnswer('final', 'extractive');
-      } else {
-        services.reportResponseDebug?.({
-          phase: 'final-no-fallback-needed',
-          markdownLength: response.getMarkdownText().trim().length,
-          yielded: !!token.isYieldRequested,
-          cancelled: token.isCancellationRequested,
+              retrievedContextText || userContent,
+            ),
+            evidenceAssessment,
+          ),
+          buildMissingCitationFooter: _buildMissingCitationFooter,
+          applyFallbackAnswer,
+          reportResponseDebug: services.reportResponseDebug,
+        },
+        {
+          response,
+          token,
+          isEditMode,
+          isConversational,
+          citationMode: contextPlan.citationMode,
+          ragSources,
           retrievedContextLength: retrievedContextText.length,
-        });
-      }
+        },
+      );
 
       return {};
     } catch (err) {

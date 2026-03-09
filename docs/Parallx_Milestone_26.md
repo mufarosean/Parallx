@@ -1025,8 +1025,8 @@ in external systems:
 - [ ] C4. Extract delegated-task handoff executor
 
 ### Phase D — Validation and Memory Isolation
-- [ ] D1. Extract response validator and answer-repair coordinator
-- [ ] D2. Extract citation-policy enforcement from the main participant body
+- [x] D1. Extract response validator and answer-repair coordinator ✅ Final markdown repair and fallback-vs-debug reporting now run through `chatResponseValidator.ts`.
+- [x] D2. Extract citation-policy enforcement from the main participant body ✅ Citation remapping, footer enforcement, and `setCitations(...)` now run through `chatResponseValidator.ts`.
 - [ ] D3. Extract memory write-back coordinator from the main participant body
 
 ### Phase E — `ChatDataService` Narrowing and Final Migration
@@ -1060,6 +1060,9 @@ in external systems:
 9. Tool-enabled looping and post-loop fallback synthesis moved into
    `chatGroundedExecutor.ts`, narrowing `defaultParticipant.ts` to execution
    selection plus post-response validation and write-back.
+10. Final response repair, citation remapping/footer enforcement, and
+    fallback-vs-debug reporting moved into `chatResponseValidator.ts`,
+    narrowing `defaultParticipant.ts` to validator wiring plus memory/write-back.
 
 ### Validation completed for these slices
 
@@ -1070,14 +1073,15 @@ in external systems:
 - context assembly tests in `chatContextAssembly.test.ts`
 - model-only executor tests in `chatModelOnlyExecutor.test.ts`
 - grounded executor tests in `chatGroundedExecutor.test.ts`
+- response validator tests in `chatResponseValidator.test.ts`
 - existing participant-loop regression coverage in `agenticLoop.test.ts`
 - broader behavior regression coverage in `chatService.test.ts`
 
 ### What remains next
 
-The next high-value cut is validation and handoff narrowing: separate
-citation enforcement and answer-repair coordination from final response
-shaping, then isolate delegated-task handoff from the participant body.
+The next high-value cut is handoff and write-back narrowing: isolate
+delegated-task handoff from the participant body, then extract post-response
+memory persistence so `defaultParticipant.ts` stays a composition root.
 
 ---
 
