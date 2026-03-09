@@ -1078,6 +1078,9 @@ in external systems:
 15. Attachment/open-target widget wiring moved out of `ChatDataService` into
    `chatWidgetAttachmentAdapter.ts`, continuing `E1` by separating attachment
    and open-target composition from the core service bundle.
+16. Session/search/system-prompt/file-relative widget wiring moved out of
+   `ChatDataService` into `chatWidgetSessionAdapter.ts`, continuing `E1` by
+   separating session-facing adapter composition from the core service bundle.
 
 ### Validation completed for these slices
 
@@ -1093,6 +1096,7 @@ in external systems:
 - agent-task widget adapter tests in `chatAgentTaskWidgetAdapter.test.ts`
 - widget picker adapter tests in `chatWidgetPickerAdapter.test.ts`
 - widget attachment adapter tests in `chatWidgetAttachmentAdapter.test.ts`
+- widget session adapter tests in `chatWidgetSessionAdapter.test.ts`
 - existing participant-loop regression coverage in `agenticLoop.test.ts`
 - broader behavior regression coverage in `chatService.test.ts`
 - chat data/compliance regressions in `chatGateCompliance.test.ts`,
@@ -1101,9 +1105,9 @@ in external systems:
 ### What remains next
 
 The next high-value cut remains `ChatDataService` narrowing: split the
-remaining widget-facing session/search and request-lifecycle surfaces from chat
-orchestration so `E1` can retire more service-bundle width without changing
-runtime behavior.
+remaining provider-status and request-lifecycle surfaces from chat
+orchestration, then evaluate whether the token/status-bar builder should be
+pulled behind a dedicated adapter to finish `E1` cleanly.
 
 ---
 

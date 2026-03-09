@@ -58,6 +58,7 @@ import { extractTextContent } from '../tools/builtInTools.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
 import { buildChatWidgetAttachmentServices } from '../utilities/chatWidgetAttachmentAdapter.js';
 import { buildChatWidgetPickerServices } from '../utilities/chatWidgetPickerAdapter.js';
+import { buildChatWidgetSessionServices } from '../utilities/chatWidgetSessionAdapter.js';
 import { ReadonlyMarkdownInput } from '../../editor/readonlyMarkdownInput.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1607,6 +1608,21 @@ export class ChatDataService {
         ? (sessionId: string) => { this.openMemoryViewer(sessionId); }
         : undefined,
     });
+    const sessionServices = buildChatWidgetSessionServices({
+      getSessions: () => this._d.chatService.getSessions(),
+      getSession: (id: string) => this._d.chatService.getSession(id),
+      deleteSession: (id: string) => this._d.chatService.deleteSession(id),
+      getSystemPrompt: () => this.getSystemPrompt(),
+      readFileRelative: this._d.fsAccessor
+        ? (relativePath: string) => this.readFileRelative(relativePath)
+        : undefined,
+      writeFileRelative: (this._d.fileService && this._d.workspaceService?.folders?.length)
+        ? (relativePath: string, content: string) => this.writeFileRelative(relativePath, content)
+        : undefined,
+      searchSessions: this._d.databaseService
+        ? (query: string) => this.searchSessions(query)
+        : undefined,
+    });
 
     return {
       sendRequest: async (sessionId, message, attachments?) => {
@@ -1623,19 +1639,7 @@ export class ChatDataService {
       onDidChangeProviderStatus: (this._d.ollamaProvider as any).onDidChangeStatus as Event<void>,
       ...pickerServices,
       ...attachmentServices,
-      getSessions: () => this._d.chatService.getSessions(),
-      getSession: (id: string) => this._d.chatService.getSession(id),
-      deleteSession: (id: string) => this._d.chatService.deleteSession(id),
-      getSystemPrompt: () => this.getSystemPrompt(),
-      readFileRelative: this._d.fsAccessor
-        ? (r) => this.readFileRelative(r)
-        : undefined,
-      writeFileRelative: (this._d.fileService && this._d.workspaceService?.folders?.length)
-        ? (r, c) => this.writeFileRelative(r, c)
-        : undefined,
-      searchSessions: this._d.databaseService
-        ? (q) => this.searchSessions(q)
-        : undefined,
+      ...sessionServices,
       ...agentTaskServices,
       // ── Pending request queue ──
       queueRequest: (sessionId: string, message: string, kind: ChatRequestQueueKind) =>
