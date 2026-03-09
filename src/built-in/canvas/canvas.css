@@ -243,24 +243,6 @@
   flex: 1;
 }
 
-/* ── Inline rename input ── */
-
-.canvas-inline-input {
-  flex: 1;
-  border: 1px solid var(--vscode-focusBorder);
-  background: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  font: inherit;
-  font-size: inherit;
-  padding: 0 4px;
-  outline: none;
-  min-height: 22px;
-  line-height: inherit;
-  box-sizing: border-box;
-  border-radius: 4px;
-  align-self: center;
-}
-
 /* ── Drag-and-drop indicators ── */
 
 .canvas-node--drag-over-reparent {
@@ -2955,6 +2937,119 @@
 .canvas-node-action-btn:hover {
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.8);
+}
+
+/* ── Sidebar Page Options Popup ── */
+
+.canvas-sidebar-page-menu {
+  position: fixed;
+  z-index: 1005;
+  --canvas-sidebar-page-menu-control-height: 32px;
+  width: 280px;
+  padding: 8px;
+  border-radius: 10px;
+  background: #252525;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: slashMenuFadeIn 0.12s ease-out;
+}
+
+.canvas-sidebar-page-menu__header {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.canvas-sidebar-page-menu__icon-btn {
+  width: var(--canvas-sidebar-page-menu-control-height);
+  min-width: var(--canvas-sidebar-page-menu-control-height);
+  height: var(--canvas-sidebar-page-menu-control-height);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.78);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.canvas-sidebar-page-menu__icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.canvas-sidebar-page-menu__icon-btn--empty {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.canvas-sidebar-page-menu__title {
+  flex: 1;
+  display: flex;
+}
+
+.canvas-sidebar-page-menu__title .ui-input-box {
+  width: 100%;
+  justify-content: center;
+}
+
+.canvas-sidebar-page-menu__title-input {
+  width: 100%;
+  min-height: var(--canvas-sidebar-page-menu-control-height);
+  height: var(--canvas-sidebar-page-menu-control-height);
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--vscode-input-foreground);
+  font: inherit;
+  line-height: calc(var(--canvas-sidebar-page-menu-control-height) - 2px);
+  box-sizing: border-box;
+}
+
+.canvas-sidebar-page-menu__title-input:focus {
+  border-color: var(--vscode-focusBorder);
+  outline: none;
+}
+
+.canvas-sidebar-page-menu__divider {
+  height: 1px;
+  margin: 4px 0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.canvas-sidebar-page-menu__action {
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.82);
+  min-height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.canvas-sidebar-page-menu__action:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.canvas-sidebar-page-menu__action--danger {
+  color: #ff8d8d;
+}
+
+.canvas-sidebar-page-menu__action--danger:hover {
+  background: rgba(255, 77, 77, 0.12);
+}
+
+.canvas-sidebar-page-menu__action-label {
+  flex: 1;
 }
 
 /* (position + padding-right moved to main .canvas-node rule) */
