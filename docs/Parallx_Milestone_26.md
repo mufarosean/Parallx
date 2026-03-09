@@ -1020,7 +1020,7 @@ in external systems:
 
 ### Phase C — Response Path Decomposition
 - [x] C1. Extract deterministic product-semantics handler ✅ Product-semantics, off-topic, memory-recall, and unsupported-specific-coverage direct answers now flow through deterministic selector/executor modules.
-- [ ] C2. Extract conversational/model-only executor
+- [x] C2. Extract conversational/model-only executor ✅ No-tool Ask/Edit turns now run through `chatModelOnlyExecutor.ts`, leaving the participant loop focused on tool-enabled execution.
 - [ ] C3. Extract grounded/tool-enabled executor
 - [ ] C4. Extract delegated-task handoff executor
 
@@ -1054,6 +1054,9 @@ in external systems:
 7. Post-load context assembly moved into `chatContextAssembly.ts`, including
    retrieve-again retry, memory/concept/attachment shaping, context-pill
    reporting, and excluded-pill filtering.
+8. No-tool conversational and edit execution moved into
+   `chatModelOnlyExecutor.ts`, leaving `defaultParticipant.ts` to select
+   between model-only and tool-enabled execution paths.
 
 ### Validation completed for these slices
 
@@ -1062,15 +1065,16 @@ in external systems:
 - deterministic selector tests in `chatDeterministicAnswerSelector.test.ts`
 - context-source loader tests in `chatContextSourceLoader.test.ts`
 - context assembly tests in `chatContextAssembly.test.ts`
+- model-only executor tests in `chatModelOnlyExecutor.test.ts`
 - existing participant-loop regression coverage in `agenticLoop.test.ts`
 - broader behavior regression coverage in `chatService.test.ts`
 
 ### What remains next
 
-The next high-value cut is executor and validator narrowing: separate
-conversational/model-only execution, grounded/tool-enabled execution, and
-citation or answer-repair coordination so the participant stops mixing
-execution, validation, and final response shaping.
+The next high-value cut is grounded/tool-enabled execution and validation:
+separate the agentic loop and fallback synthesis from citation and
+answer-repair coordination so the participant stops mixing execution,
+validation, and final response shaping.
 
 ---
 

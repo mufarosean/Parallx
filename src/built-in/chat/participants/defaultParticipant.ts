@@ -46,6 +46,7 @@ import { determineChatTurnRoute } from '../utilities/chatTurnRouter.js';
 import { createChatContextPlan, createChatRuntimeTrace } from '../utilities/chatContextPlanner.js';
 import { selectDeterministicAnswer } from '../utilities/chatDeterministicAnswerSelector.js';
 import { assembleChatContext } from '../utilities/chatContextAssembly.js';
+import { executeChatModelOnly } from '../utilities/chatModelOnlyExecutor.js';
 import { loadChatContextSources } from '../utilities/chatContextSourceLoader.js';
 import { SlashCommandRegistry, parseSlashCommand } from '../config/chatSlashCommands.js';
 import { loadUserCommands } from '../utilities/userCommandLoader.js';
@@ -1664,29 +1665,56 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     resetNetworkTimeout();
 
     try {
-      // ── Agentic loop (Cap 6 Task 6.2) ──
-      //
-      // When the model returns tool_calls, we:
-      // 1. Render tool invocation cards (pending)
-      // 2. Invoke each tool via ILanguageModelToolsService
-      // 3. Update card status (running → completed/rejected)
-      // 4. Append tool result messages
-      // 5. Re-send the updated history back to the model
-      // 6. Repeat until no more tool_calls or max iterations reached
-      //
-      // Ask mode: read-only tools only.  Agent mode: all tools.
-      // Edit mode: tools are not sent in the request.
-
       const canInvokeTools = capabilities.canInvokeTools && !!services.invokeTool;
       const isEditMode = capabilities.canProposeEdits && !capabilities.canAutonomous;
       let producedContent = false;
 
-      // Capture session guard for stale detection during tool invocations
-      const toolGuard = services.sessionManager
-        ? captureSession(services.sessionManager)
-        : undefined;
+      if (options.tools === undefined && !capabilities.canAutonomous) {
+        const modelOnlyResult = await executeChatModelOnly(
+          {
+            sendChatRequest: services.sendChatRequest,
+            resetNetworkTimeout,
+            parseEditResponse: _parseEditResponse,
+            extractToolCallsFromText: _extractToolCallsFromText,
+            stripToolNarration: _stripToolNarration,
+            reportFirstTokenLatency: (durationMs) => {
+              console.debug(`[Parallx:latency] Time to first token: ${durationMs.toFixed(1)}ms`);
+            },
+            reportStreamCompleteLatency: (durationMs) => {
+              console.debug(`[Parallx:latency] LLM stream complete: ${durationMs.toFixed(1)}ms`);
+            },
+          },
+          {
+            messages,
+            requestOptions: options,
+            abortSignal: abortController.signal,
+            response,
+            token,
+            canInvokeTools,
+            isEditMode,
+          },
+        );
+        producedContent = modelOnlyResult.producedContent;
+      } else {
+        // ── Agentic loop (Cap 6 Task 6.2) ──
+        //
+        // When the model returns tool_calls, we:
+        // 1. Render tool invocation cards (pending)
+        // 2. Invoke each tool via ILanguageModelToolsService
+        // 3. Update card status (running → completed/rejected)
+        // 4. Append tool result messages
+        // 5. Re-send the updated history back to the model
+        // 6. Repeat until no more tool_calls or max iterations reached
+        //
+        // Ask mode: read-only tools only.  Agent mode: all tools.
+        // Edit mode: tools are not sent in the request.
 
-      for (let iteration = 0; iteration <= maxIterations; iteration++) {
+        // Capture session guard for stale detection during tool invocations
+        const toolGuard = services.sessionManager
+          ? captureSession(services.sessionManager)
+          : undefined;
+
+        for (let iteration = 0; iteration <= maxIterations; iteration++) {
         // Yield check — allow a steering/queued message to interrupt between iterations
         if (token.isYieldRequested || token.isCancellationRequested) {
           break;
@@ -1872,6 +1900,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
         // Loop continues: messages now include tool results,
         // next iteration sends the full history back to the model.
+        }
       }
 
       // Clear network timeout since we got a response
