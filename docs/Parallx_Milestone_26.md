@@ -1031,7 +1031,7 @@ in external systems:
 
 ### Phase E — `ChatDataService` Narrowing and Final Migration
 - [x] E1. Reduce `ChatDataService` service-bundle width ✅ Widget-facing request lifecycle, provider-status, and token/status-bar surfaces now run through dedicated adapters rather than inline `ChatDataService` closures.
-- [ ] E2. Separate adapter responsibilities from orchestration responsibilities
+- [x] E2. Separate adapter responsibilities from orchestration responsibilities ✅ Participant builders, system-prompt assembly, viewer helpers, and workspace-digest computation now run through dedicated utilities rather than inline `ChatDataService` orchestration.
 - [ ] E3. Remove dead branches and legacy orchestration paths
 
 ---
@@ -1099,6 +1099,9 @@ in external systems:
 22. File opening and session-memory viewer glue moved out of
    `ChatDataService` into `chatViewerOpeners.ts`, continuing `E2` by
    separating editor-facing helper coordination from the core data service.
+23. Workspace-digest computation moved out of `ChatDataService` into
+   `chatWorkspaceDigest.ts`, completing `E2` by separating the remaining
+   cross-domain digest orchestration from the core data service.
 
 ### Validation completed for these slices
 
@@ -1121,6 +1124,7 @@ in external systems:
 - scoped participant adapter tests in `chatScopedParticipantAdapters.test.ts`
 - system prompt composer tests in `chatSystemPromptComposer.test.ts`
 - viewer opener tests in `chatViewerOpeners.test.ts`
+- workspace digest tests in `chatWorkspaceDigest.test.ts`
 - existing participant-loop regression coverage in `agenticLoop.test.ts`
 - broader behavior regression coverage in `chatService.test.ts`
 - chat data/compliance regressions in `chatGateCompliance.test.ts`,
@@ -1129,10 +1133,9 @@ in external systems:
 
 ### What remains next
 
-`E2` is now centered on the remaining non-adapter orchestration helpers inside
-`ChatDataService`: workspace-digest construction and similar cross-domain glue
-that still mixes service coordination with data access. Those are the next
-candidates before `E3` dead-path cleanup.
+`E2` is now complete. The next high-value cut is `E3`: identify and remove any
+dead branches, stale legacy helpers, and no-longer-needed orchestration paths
+left behind by the participant and `ChatDataService` narrowing work.
 
 ---
 

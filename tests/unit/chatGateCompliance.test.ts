@@ -113,6 +113,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatSystemPromptComposer.ts': ['config/'],
   'utilities/chatTurnRouter.ts':             [],
   'utilities/chatViewerOpeners.ts':          [],
+  'utilities/chatWorkspaceDigest.ts':        [],
   'utilities/chatWidgetAttachmentAdapter.ts': [],
   'utilities/chatWidgetPickerAdapter.ts':    [],
   'utilities/chatWidgetRequestAdapter.ts':   [],

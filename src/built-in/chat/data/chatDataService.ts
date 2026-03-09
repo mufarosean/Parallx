@@ -68,6 +68,7 @@ import {
 } from '../utilities/chatScopedParticipantAdapters.js';
 import { buildChatTokenBarServices } from '../utilities/chatTokenBarAdapter.js';
 import { openChatFile, openChatMemoryViewer } from '../utilities/chatViewerOpeners.js';
+import { computeChatWorkspaceDigest } from '../utilities/chatWorkspaceDigest.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -1280,146 +1281,14 @@ export class ChatDataService {
       return this._cachedDigest;
     }
 
-    const result = await this._computeWorkspaceDigest();
+    const result = await computeChatWorkspaceDigest({
+      databaseService: this._d.databaseService,
+      fsAccessor: this._d.fsAccessor,
+      getContextLength: () => this.getContextLength(),
+    });
     this._cachedDigest = result;
     this._cacheTimestamp = now;
     return result;
-  }
-
-  private async _computeWorkspaceDigest(): Promise<string | undefined> {
-    const sections: string[] = [];
-
-    // Dynamic digest cap based on model context window (M16 Task 3.2).
-    // System prompt gets 10% of context; digest gets at most 60% of that
-    // (leaving room for SOUL.md, AGENTS.md, rules, citation instructions).
-    // Fallback: 8192 context → 10% = 819 tokens → 60% = 491 tokens → ~2000 chars.
-    // For large contexts (128K): 10% = 12800 → 60% = 7680 → ~30720 chars → capped at 12000.
-    const contextLength = await this.getContextLength();
-    const effectiveContext = contextLength > 0 ? contextLength : 8192;
-    const systemBudgetTokens = Math.floor(effectiveContext * 0.10);
-    const digestBudgetTokens = Math.floor(systemBudgetTokens * 0.60);
-    const MAX_DIGEST_CHARS = Math.min(digestBudgetTokens * 4, 12000); // hard cap at 12K chars
-    let totalChars = 0;
-
-    // Pre-load document summaries from indexing_metadata.
-    // These are brief content descriptions (first ~200 chars) generated during
-    // indexing so the AI knows what each file/page contains, not just its name.
-    const summaries = new Map<string, string>();
-    if (this._d.databaseService?.isOpen) {
-      try {
-        const rows = await this._d.databaseService.all<{ source_id: string; summary: string }>(
-          `SELECT source_id, summary FROM indexing_metadata WHERE summary IS NOT NULL AND summary != ''`,
-        );
-        for (const row of rows) {
-          summaries.set(row.source_id, row.summary);
-        }
-      } catch { /* best-effort — column may not exist yet */ }
-    }
-
-    // 1. Canvas page titles (with content summaries when available)
-    if (this._d.databaseService?.isOpen) {
-      try {
-        const pages = await this._d.databaseService.all<{ title: string; id: string }>(
-          'SELECT title, id FROM pages WHERE is_archived = 0 ORDER BY updated_at DESC LIMIT 30',
-        );
-        if (pages.length > 0) {
-          const pageLines = pages.map(p => {
-            const pageSummary = summaries.get(p.id);
-            return pageSummary
-              ? `  - ${p.title} — ${pageSummary}`
-              : `  - ${p.title}`;
-          });
-          const block = `CANVAS PAGES (${pages.length}):\n${pageLines.join('\n')}`;
-          sections.push(block);
-          totalChars += block.length;
-        }
-      } catch { /* best-effort */ }
-    }
-
-    // 2. Workspace file tree — breadth-first, no artificial depth/entry caps.
-    //    The only limit is MAX_DIGEST_CHARS which caps the total system prompt
-    //    budget. The AI should see EVERY file the workspace contains; the
-    //    context window is the natural constraint, not arbitrary constants.
-    //    Files are annotated with content summaries so the AI knows what's
-    //    INSIDE each file, not just its name.
-    if (this._d.fsAccessor) {
-      try {
-        const treeLines: string[] = [];
-        let treeChars = 0;
-        const fsAccessor = this._d.fsAccessor;
-
-        // Breadth-first queue: each item is { dir, depth, prefix }
-        type QueueItem = { dir: string; depth: number; prefix: string };
-        const queue: QueueItem[] = [{ dir: '.', depth: 0, prefix: '  ' }];
-
-        while (queue.length > 0) {
-          const { dir, depth, prefix } = queue.shift()!;
-
-          let entries;
-          try {
-            entries = await fsAccessor.readdir(dir);
-          } catch { continue; }
-
-          const sorted = [...entries].sort((a, b) => {
-            if (a.type === 'directory' && b.type !== 'directory') return -1;
-            if (a.type !== 'directory' && b.type === 'directory') return 1;
-            return a.name.localeCompare(b.name);
-          });
-
-          for (const entry of sorted) {
-            if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === '__pycache__' || entry.name === '.git') continue;
-            const icon = entry.type === 'directory' ? '📁' : '📄';
-            // Build workspace-relative path for summary lookup
-            const relPath = dir === '.' ? entry.name : `${dir}/${entry.name}`;
-            const fileSummary = entry.type !== 'directory' ? summaries.get(relPath) : undefined;
-            const line = fileSummary
-              ? `${prefix}${icon} ${entry.name} — ${fileSummary}`
-              : `${prefix}${icon} ${entry.name}`;
-            treeLines.push(line);
-            treeChars += line.length + 1;
-            if (entry.type === 'directory') {
-              queue.push({ dir: relPath, depth: depth + 1, prefix: prefix + '  ' });
-            }
-          }
-
-          // Budget check: stop walking if we've already exceeded the char budget.
-          // We check the running tree size against the remaining budget so we
-          // don't waste time traversing a massive repo we can't fit anyway.
-          const runningSize = treeChars + 20; // +20 for header
-          if (totalChars + runningSize >= MAX_DIGEST_CHARS) break;
-        }
-        if (treeLines.length > 0) {
-          const block = `WORKSPACE FILES:\n${treeLines.join('\n')}`;
-          if (totalChars + block.length < MAX_DIGEST_CHARS) {
-            sections.push(block);
-            totalChars += block.length;
-          }
-        }
-      } catch { /* best-effort */ }
-    }
-
-    // 3. Key file previews (README, SOUL.md, etc.)
-    if (this._d.fsAccessor) {
-      const keyFiles = ['README.md', 'README.txt', 'README', 'SOUL.md', 'AGENTS.md'];
-      for (const fileName of keyFiles) {
-        if (totalChars >= MAX_DIGEST_CHARS) break;
-        try {
-          const exists = await this._d.fsAccessor.exists(fileName);
-          if (!exists) continue;
-          const content = await this._d.fsAccessor.readFile(fileName);
-          const preview = content.length > 500 ? content.slice(0, 500) + '\n...(truncated)' : content;
-          const block = `KEY FILE — ${fileName}:\n\`\`\`\n${preview}\n\`\`\``;
-          if (totalChars + block.length < MAX_DIGEST_CHARS) {
-            sections.push(block);
-            totalChars += block.length;
-          }
-        } catch { /* best-effort */ }
-      }
-    }
-
-    return sections.length > 0
-      ? `HERE IS WHAT EXISTS IN THIS WORKSPACE (file names and brief summaries):\n\n${sections.join('\n\n')}\n\nIMPORTANT: The list above shows file NAMES and short previews only — NOT the full content of each file. You have NOT read every document. When the user asks about specific file content, rely on [Retrieved Context] chunks provided in the user message, or use search_knowledge / read_file tools to look up the actual content. NEVER guess or fabricate what a file contains based on its title alone.`
-      : undefined;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
