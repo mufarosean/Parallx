@@ -1267,6 +1267,8 @@ export {
   applyBackgroundColorToBlock,
   indentBlock,
   outdentBlock,
+  resolveBlockAncestry,
+  resolveMovableBlock,
   setOnLinkedPageBlockDeleted,
 } from './blockStateRegistry/blockStateRegistry.js';
 
@@ -1275,6 +1277,8 @@ export {
   turnBlockIntoColumns,
   createColumnLayoutFromDrop,
   addColumnToLayoutFromDrop,
+  areAllDraggedNodesListItems,
+  wrapDraggedListItemsForDrop,
 } from './blockStateRegistry/blockStateRegistry.js';
 
 export {

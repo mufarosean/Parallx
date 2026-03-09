@@ -23,6 +23,8 @@ import {
   indentBlock,
   outdentBlock,
   isColumnEffectivelyEmpty,
+  resolveBlockAncestry,
+  resolveMovableBlock,
   moveBlockAcrossColumnBoundary,
   moveBlockDownWithinPageFlow,
   moveBlockUpWithinPageFlow,
@@ -193,34 +195,11 @@ export const ColumnList = Node.create({
       // page flow. If already at the top of a column, move above the
       // columnList.
       'Mod-Shift-ArrowUp': ({ editor }) => {
-        const { $from } = editor.state.selection;
+        const result = moveBlockUpWithinPageFlow(editor);
+        if (result.moved) return true;
 
-        // Locate the moveable block — direct child of column or doc
-        let blockDepth = -1;
-        let insideColumn = false;
-        for (let d = $from.depth; d >= 1; d--) {
-          if ($from.node(d).type.name === 'column') {
-            blockDepth = d + 1;
-            insideColumn = true;
-            break;
-          }
-        }
-        if (blockDepth < 0) blockDepth = 1; // top-level
-        if (blockDepth > $from.depth) return false;
-
-        const blockPos = $from.before(blockDepth);
-        const blockNode = editor.state.doc.nodeAt(blockPos);
-        if (!blockNode) return false;
-
-        const indexInParent = $from.index(blockDepth - 1);
-
-        if (indexInParent > 0) {
-          moveBlockUpWithinPageFlow(editor);
-          return true;
-        }
-
-        // Already at top of page flow — cross-flow move?
-        if (insideColumn) {
+        const ancestry = resolveBlockAncestry(editor.state.selection.$from);
+        if (ancestry.columnDepth !== null) {
           return moveBlockAcrossColumnBoundary(editor, 'up');
         }
 
@@ -231,34 +210,11 @@ export const ColumnList = Node.create({
       // current page flow. If already at the bottom of a column, move below
       // the columnList.
       'Mod-Shift-ArrowDown': ({ editor }) => {
-        const { $from } = editor.state.selection;
+        const result = moveBlockDownWithinPageFlow(editor);
+        if (result.moved) return true;
 
-        let blockDepth = -1;
-        let insideColumn = false;
-        for (let d = $from.depth; d >= 1; d--) {
-          if ($from.node(d).type.name === 'column') {
-            blockDepth = d + 1;
-            insideColumn = true;
-            break;
-          }
-        }
-        if (blockDepth < 0) blockDepth = 1;
-        if (blockDepth > $from.depth) return false;
-
-        const blockPos = $from.before(blockDepth);
-        const blockNode = editor.state.doc.nodeAt(blockPos);
-        if (!blockNode) return false;
-
-        const container = $from.node(blockDepth - 1);
-        const indexInParent = $from.index(blockDepth - 1);
-
-        if (indexInParent < container.childCount - 1) {
-          moveBlockDownWithinPageFlow(editor);
-          return true;
-        }
-
-        // Already at bottom of page flow — cross-flow move?
-        if (insideColumn) {
+        const ancestry = resolveBlockAncestry(editor.state.selection.$from);
+        if (ancestry.columnDepth !== null) {
           return moveBlockAcrossColumnBoundary(editor, 'down');
         }
 
@@ -267,17 +223,15 @@ export const ColumnList = Node.create({
 
       // Ctrl/Cmd+D — Duplicate the current block within the current page flow
       'Mod-d': ({ editor }) => {
-        const { $from } = editor.state.selection;
+        const movable = resolveMovableBlock(editor.state.selection.$from);
+        if (!movable) return false;
 
-        let blockDepth = -1;
-        for (let d = $from.depth; d >= 1; d--) {
-          if ($from.node(d).type.name === 'column') { blockDepth = d + 1; break; }
-        }
-        if (blockDepth < 0) blockDepth = 1;
-        if (blockDepth > $from.depth) return false;
-
-        const blockPos = $from.before(blockDepth);
-        const blockNode = editor.state.doc.nodeAt(blockPos);
+        const blockPos = movable.isListItem && movable.listNode?.childCount === 1 && movable.listPos !== null
+          ? movable.listPos
+          : movable.pos;
+        const blockNode = movable.isListItem && movable.listNode?.childCount === 1
+          ? movable.listNode
+          : movable.node;
         if (!blockNode) return false;
 
         duplicateBlockAt(editor, blockPos, blockNode);

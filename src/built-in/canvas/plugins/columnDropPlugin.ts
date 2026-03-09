@@ -26,9 +26,13 @@
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import {
-  resolveBlockAncestry,
+  resolveMovableBlock,
+  getActiveCanvasDragSession,
   classifyPageBlockDropZone,
+  areAllDraggedNodesListItems,
+  deleteDraggedSource,
   moveBlockAboveBelow,
+  wrapDraggedListItemsForDrop,
   createColumnLayoutFromDrop,
   addColumnToLayoutFromDrop,
 } from '../config/blockStateRegistry/blockStateRegistry.js';
@@ -45,6 +49,10 @@ export function columnDropPlugin(): Plugin {
     blockEl: HTMLElement;
     blockPos: number;
     blockNode: any;
+    isListItem: boolean;
+    listPos: number | null;
+    listNode: any | null;
+    listType: 'bulletList' | 'orderedList' | 'taskList' | null;
     // Column context (null = top-level block)
     columnPos: number | null;
     columnListPos: number | null;
@@ -135,6 +143,30 @@ export function columnDropPlugin(): Plugin {
     if (vertIndicator) vertIndicator.style.display = 'none';
   }
 
+  function isListContainerDom(el: HTMLElement | null): boolean {
+    return !!el && (el.tagName === 'UL' || el.tagName === 'OL');
+  }
+
+  function resolveNearestListItemElement(listEl: HTMLElement, y: number): HTMLElement | null {
+    if (!isListContainerDom(listEl)) return null;
+
+    const items = (Array.from(listEl.children) as HTMLElement[])
+      .filter((child) => child.tagName === 'LI');
+    if (items.length === 0) return null;
+
+    let nearest: HTMLElement | null = null;
+    let bestDist = Infinity;
+    for (const item of items) {
+      const r = item.getBoundingClientRect();
+      const dist = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+      if (dist < bestDist) {
+        bestDist = dist;
+        nearest = item;
+      }
+    }
+    return nearest;
+  }
+
   // ── Target detection ──
   // Walk up from elementsFromPoint hits to find the nearest block-level
   // element that is a direct child of a Page-container (doc, column,
@@ -156,23 +188,30 @@ export function columnDropPlugin(): Plugin {
 
   function resolveBlockTarget(view: EditorView, blockEl: HTMLElement): Omit<DropTarget, 'zone'> | null {
     try {
-      const inner = view.posAtDOM(blockEl, 0);
+      let inner: number;
+      if (blockEl.tagName === 'LI') {
+        const directChild = blockEl.firstElementChild as HTMLElement | null;
+        const contentEl = directChild?.tagName === 'LABEL'
+          ? (directChild.nextElementSibling as HTMLElement | null) ?? directChild
+          : directChild;
+        inner = view.posAtDOM(contentEl ?? blockEl, 0);
+      } else {
+        inner = view.posAtDOM(blockEl, 0);
+      }
       const $p = view.state.doc.resolve(inner);
-      const ancestry = resolveBlockAncestry($p);
+      const movable = resolveMovableBlock($p);
+      if (!movable) return null;
 
-      if (ancestry.blockDepth > $p.depth) return null;
-
-      const blockPos = $p.before(ancestry.blockDepth);
-      const blockNode = view.state.doc.nodeAt(blockPos);
-      if (!blockNode) return null;
+      const blockPos = movable.pos;
+      const blockNode = movable.node;
 
       let columnPos: number | null = null;
       let columnListPos: number | null = null;
       let colIdx = 0;
 
-      if (ancestry.columnDepth !== null && ancestry.columnListDepth !== null) {
-        columnPos = $p.before(ancestry.columnDepth);
-        columnListPos = $p.before(ancestry.columnListDepth);
+      if (movable.columnDepth !== null && movable.columnListDepth !== null) {
+        columnPos = $p.before(movable.columnDepth);
+        columnListPos = $p.before(movable.columnListDepth);
         const clNode = view.state.doc.nodeAt(columnListPos);
         if (clNode) {
           let off = columnListPos + 1;
@@ -183,7 +222,18 @@ export function columnDropPlugin(): Plugin {
         }
       }
 
-      return { blockEl, blockPos, blockNode, columnPos, columnListPos, columnIndex: colIdx };
+      return {
+        blockEl,
+        blockPos,
+        blockNode,
+        isListItem: movable.isListItem,
+        listPos: movable.listPos,
+        listNode: movable.listNode,
+        listType: movable.listType,
+        columnPos,
+        columnListPos,
+        columnIndex: colIdx,
+      };
     } catch {
       return null;
     }
@@ -214,6 +264,10 @@ export function columnDropPlugin(): Plugin {
       }
     }
     if (!nearestEl) return null;
+
+    const refinedTarget = resolveNearestListItemElement(nearestEl, y) ?? nearestEl;
+    const resolved = resolveBlockTarget(view, refinedTarget);
+    if (resolved) return resolved;
 
     try {
       const columnListEl = columnEl.parentElement as HTMLElement | null;
@@ -252,6 +306,10 @@ export function columnDropPlugin(): Plugin {
         blockEl: nearestEl,
         blockPos,
         blockNode,
+        isListItem: false,
+        listPos: null,
+        listNode: null,
+        listType: null,
         columnPos,
         columnListPos,
         columnIndex: colIdx,
@@ -276,6 +334,12 @@ export function columnDropPlugin(): Plugin {
         if (resolvedInColumn) return resolvedInColumn;
       }
 
+      const listItemEl = htmlEl.closest('li') as HTMLElement | null;
+      if (listItemEl && proseMirror.contains(listItemEl)) {
+        const resolvedListItem = resolveBlockTarget(view, listItemEl);
+        if (resolvedListItem) return resolvedListItem;
+      }
+
       // Walk up from the hit element to find a block-level element
       // whose parent is a page-container.
       let cur: HTMLElement | null = htmlEl;
@@ -295,7 +359,7 @@ export function columnDropPlugin(): Plugin {
             if (dist < bestDist) { bestDist = dist; nearest = child; }
           }
           if (nearest) {
-            const resolved = resolveBlockTarget(view, nearest);
+            const resolved = resolveBlockTarget(view, resolveNearestListItemElement(nearest, y) ?? nearest);
             if (resolved) return resolved;
           }
           const resolvedSelf = resolveBlockTarget(view, cur);
@@ -333,12 +397,23 @@ export function columnDropPlugin(): Plugin {
     }
     if (bestEl && bestDist < 100) {
       try {
-        const inner = view.posAtDOM(bestEl, 0);
+        const fallbackEl = resolveNearestListItemElement(bestEl, y) ?? bestEl;
+        const inner = view.posAtDOM(fallbackEl, 0);
         const $p = view.state.doc.resolve(inner);
-        const blockPos = $p.before(1);
-        const blockNode = view.state.doc.nodeAt(blockPos);
-        if (blockNode) {
-          return { blockEl: bestEl, blockPos, blockNode, columnPos: null, columnListPos: null, columnIndex: 0 };
+        const movable = resolveMovableBlock($p);
+        if (movable) {
+          return {
+            blockEl: fallbackEl,
+            blockPos: movable.pos,
+            blockNode: movable.node,
+            isListItem: movable.isListItem,
+            listPos: movable.listPos,
+            listNode: movable.listNode,
+            listType: movable.listType,
+            columnPos: null,
+            columnListPos: null,
+            columnIndex: 0,
+          };
         }
       } catch { /* fall through */ }
     }
@@ -356,6 +431,7 @@ export function columnDropPlugin(): Plugin {
     x: number,
     y: number,
     isColumnList: boolean,
+    isListItem: boolean,
   ): 'above' | 'below' | 'left' | 'right' {
     const r = blockEl.getBoundingClientRect();
     const rx = x - r.left;   // cursor X relative to block left edge
@@ -373,7 +449,7 @@ export function columnDropPlugin(): Plugin {
     // Nesting constraint: columnList targets only allow above/below.
     // Blocks INSIDE columns DO allow left/right — the drop handler
     // inserts a new column into the existing columnList (no nesting).
-    const preventLeftRight = isColumnList;
+    const preventLeftRight = isColumnList || isListItem;
 
     if (!preventLeftRight) {
       // Allow a small negative margin on the left so the zone is
@@ -409,20 +485,25 @@ export function columnDropPlugin(): Plugin {
         dragover: (view: EditorView, event: DragEvent) => {
           if (!view.dragging) { hideAll(); return false; }
 
-          // List item drags are handled by ProseMirror's native drop logic
-          // which respects schema constraints and places items within lists.
-          const draggedFirst = view.dragging?.slice?.content?.firstChild;
-          if (draggedFirst && (draggedFirst.type.name === 'listItem' || draggedFirst.type.name === 'taskItem')) {
-            hideAll();
-            return false;
-          }
-
           resetStaleTimer();
 
           const x = event.clientX;
           const y = event.clientY;
           let raw = findTarget(view, x, y);
           if (!raw) { hideAll(); return false; }
+
+          const draggedAreListItems = areAllDraggedNodesListItems(view.dragging.slice.content);
+          if (!draggedAreListItems && raw.isListItem && raw.listPos !== null && raw.listNode) {
+            raw = {
+              ...raw,
+              blockPos: raw.listPos,
+              blockNode: raw.listNode,
+              isListItem: false,
+              listPos: null,
+              listNode: null,
+              listType: null,
+            };
+          }
 
           if (raw.blockNode.type.name === 'pageBlock'
             && classifyPageBlockDropZone(raw.blockEl.getBoundingClientRect(), x, y) === 'interior') {
@@ -459,7 +540,7 @@ export function columnDropPlugin(): Plugin {
           }
 
           const isCL = raw.blockNode.type.name === 'columnList';
-          const zone = getZone(raw.blockEl, x, y, isCL);
+          const zone = getZone(raw.blockEl, x, y, isCL, raw.isListItem);
           activeTarget = { ...raw, zone };
 
           const container = view.dom.parentElement;
@@ -485,14 +566,6 @@ export function columnDropPlugin(): Plugin {
         },
 
         drop: (view: EditorView, event: DragEvent) => {
-          // List item drags are handled by ProseMirror's native drop logic
-          // which respects schema constraints and reorders within lists.
-          const firstDragged = view.dragging?.slice?.content?.firstChild;
-          if (firstDragged && (firstDragged.type.name === 'listItem' || firstDragged.type.name === 'taskItem')) {
-            hideAll();
-            return false;
-          }
-
           // If the drop landed on a pageBlock's interior (cross-page
           // move), pageBlockNode's drop handler already called
           // stopPropagation — we never reach here.  If we DO reach here
@@ -527,6 +600,8 @@ export function columnDropPlugin(): Plugin {
 
           const { from: dragFrom, to: dragTo } = view.state.selection;
           const content = slice.content;
+          const draggedAreListItems = areAllDraggedNodesListItems(content);
+          const dragSession = getActiveCanvasDragSession();
           const { tr } = view.state;
           tr.setMeta('addToHistory', true);
 
@@ -535,10 +610,38 @@ export function columnDropPlugin(): Plugin {
 
           // ── ABOVE / BELOW — reorder block at any level ──
           if (target.zone === 'above' || target.zone === 'below') {
-            const insertPos = target.zone === 'above'
+            let insertPos = target.zone === 'above'
               ? target.blockPos
               : target.blockPos + target.blockNode.nodeSize;
-            moveBlockAboveBelow(tr, content, insertPos, dragFrom, dragTo, isDuplicate);
+
+            if (draggedAreListItems) {
+              const dragProbePos = Math.max(0, Math.min(
+                dragTo > dragFrom ? dragFrom + 1 : dragFrom,
+                view.state.doc.content.size,
+              ));
+              const draggedSource = resolveMovableBlock(view.state.doc.resolve(dragProbePos));
+              const draggedListType = dragSession?.listType
+                ?? draggedSource?.listType
+                ?? (content.firstChild?.type.name === 'taskItem' ? 'taskList' : null);
+
+              if (target.isListItem && target.listType && draggedListType === target.listType) {
+                moveBlockAboveBelow(tr, content, insertPos, dragFrom, dragTo, isDuplicate);
+              } else {
+                if (target.isListItem && target.listPos !== null && target.listNode) {
+                  insertPos = target.zone === 'above'
+                    ? target.listPos
+                    : target.listPos + target.listNode.nodeSize;
+                }
+                if (!draggedListType) return false;
+                const wrappedList = wrapDraggedListItemsForDrop(schema, content, draggedListType);
+                tr.insert(insertPos, wrappedList);
+                if (!isDuplicate) {
+                  deleteDraggedSource(tr, dragFrom, dragTo);
+                }
+              }
+            } else {
+              moveBlockAboveBelow(tr, content, insertPos, dragFrom, dragTo, isDuplicate);
+            }
             view.dispatch(tr);
             return true;
           }

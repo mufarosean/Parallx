@@ -23,6 +23,7 @@ import {
   clearActiveCanvasDragSession,
   setActiveCanvasDragSession,
   PAGE_CONTAINERS,
+  resolveMovableBlock,
   isContainerBlockType,
 } from './handleRegistry.js';
 
@@ -380,6 +381,8 @@ export class BlockHandlesController {
       event.preventDefault();
       return;
     }
+    const movable = resolveMovableBlock(view.state.doc.resolve(block.pos));
+    const draggedListType = movable?.isListItem ? movable.listType ?? undefined : undefined;
 
     // ── Multi-block drag: if the hovered block is part of a multi-selection,
     // drag all selected blocks together. ──
@@ -422,6 +425,7 @@ export class BlockHandlesController {
             from: firstPos,
             to: rangeTo,
             nodes: jsonNodes,
+            listType: draggedListType,
             startedAt: Date.now(),
           }));
         } catch { /* Best-effort */ }
@@ -438,6 +442,7 @@ export class BlockHandlesController {
         from: firstPos,
         to: rangeTo,
         nodes: jsonNodes,
+        listType: draggedListType,
         startedAt: Date.now(),
       });
 
@@ -466,6 +471,7 @@ export class BlockHandlesController {
           from: block.pos,
           to: block.pos + block.node.nodeSize,
           nodes: [block.node.toJSON()],
+          listType: draggedListType,
           startedAt: Date.now(),
         }));
       } catch {
@@ -485,6 +491,7 @@ export class BlockHandlesController {
       from: block.pos,
       to: block.pos + block.node.nodeSize,
       nodes: [block.node.toJSON()],
+      listType: draggedListType,
       startedAt: Date.now(),
     });
 
@@ -590,17 +597,22 @@ export class BlockHandlesController {
     clientX: number,
     clientY: number,
   ): { pos: number; node: any } | null {
+    const isListWrapper = (node: any): boolean => {
+      const name = node?.type?.name;
+      return name === 'bulletList' || name === 'orderedList' || name === 'taskList';
+    };
+
     const hitResult = view.posAtCoords({ left: clientX, top: clientY });
     if (hitResult) {
       // Prefer 'inside' — gives the position of the innermost block node.
       // For atom nodes (mathBlock, bookmark, etc.) 'inside' is -1.
       if (hitResult.inside >= 0) {
         const resolved = this._resolveBlockFromDocPos(view, hitResult.inside);
-        if (resolved) return { pos: resolved.pos, node: resolved.node };
+        if (resolved && !isListWrapper(resolved.node)) return { pos: resolved.pos, node: resolved.node };
       }
       // For atom nodes or boundary positions, use 'pos'.
       const resolved = this._resolveBlockFromDocPos(view, hitResult.pos);
-      if (resolved) return { pos: resolved.pos, node: resolved.node };
+      if (resolved && !isListWrapper(resolved.node)) return { pos: resolved.pos, node: resolved.node };
     }
 
     // Fallback: elementFromPoint → DOM walk → posAtDOM
@@ -751,6 +763,22 @@ export class BlockHandlesController {
     view: any,
     element: HTMLElement,
   ): { pos: number; node: any; depth: number } | null {
+    const listItem = element.closest('li') as HTMLElement | null;
+    if (listItem && view.dom.contains(listItem)) {
+      const directChild = listItem.firstElementChild as HTMLElement | null;
+      const contentEl = directChild?.tagName === 'LABEL'
+        ? (directChild.nextElementSibling as HTMLElement | null) ?? directChild
+        : directChild;
+
+      try {
+        const domPos = view.posAtDOM(contentEl ?? listItem, 0);
+        const resolved = this._resolveBlockFromDocPos(view, domPos);
+        if (resolved) return resolved;
+      } catch {
+        // Fall through to the generic ancestor walk.
+      }
+    }
+
     let current: HTMLElement | null = element;
 
     while (current && current !== view.dom) {
@@ -769,6 +797,11 @@ export class BlockHandlesController {
 
   private _resolveBlockFromDocPos(view: any, docPos: number): { pos: number; node: any; depth: number } | null {
     const $pos = view.state.doc.resolve(docPos);
+
+    const movable = resolveMovableBlock($pos);
+    if (movable && movable.node.type.name !== 'column' && movable.node.type.name !== 'columnList') {
+      return { pos: movable.pos, node: movable.node, depth: movable.depth };
+    }
 
     let containerDepth = 0;
     for (let d = 1; d <= $pos.depth; d++) {
@@ -813,27 +846,6 @@ export class BlockHandlesController {
       return this._resolveFirstBlockInsideColumnList(view, blockPos, node, targetDepth + 1);
     }
     if (node.type.name === 'column') {
-      return null;
-    }
-
-    // List wrappers → drill into the innermost listItem at the cursor position.
-    // Walk from the cursor depth upward to find the deepest listItem/taskItem
-    // ancestor so that nested lists also resolve to their specific items.
-    if (node.type.name === 'bulletList' || node.type.name === 'orderedList' || node.type.name === 'taskList') {
-      for (let d = $pos.depth; d > targetDepth; d--) {
-        const ancestor = $pos.node(d);
-        if (ancestor.type.name === 'listItem' || ancestor.type.name === 'taskItem') {
-          const itemPos = $pos.before(d);
-          const itemNode = view.state.doc.nodeAt(itemPos);
-          if (itemNode) {
-            return { pos: itemPos, node: itemNode, depth: d };
-          }
-        }
-      }
-      // Fallback: first child of the list
-      if (node.firstChild) {
-        return { pos: blockPos + 1, node: node.firstChild, depth: targetDepth + 1 };
-      }
       return null;
     }
 

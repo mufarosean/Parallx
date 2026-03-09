@@ -12,6 +12,7 @@ export interface CanvasDragSession {
   readonly from: number;
   readonly to: number;
   readonly nodes: any[];
+  readonly listType?: 'bulletList' | 'orderedList' | 'taskList';
   readonly startedAt: number;
 }
 
