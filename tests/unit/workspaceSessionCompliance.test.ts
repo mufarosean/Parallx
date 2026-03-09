@@ -91,6 +91,12 @@ describe('M14 Workspace Session Compliance', () => {
     const content = readSrc('built-in/chat/participants/defaultParticipant.ts');
     expect(content).toContain("import { captureSession }");
     expect(content).toContain('toolGuard');
+    expect(content).toContain('captureSession(services.sessionManager)');
+  });
+
+  it('tool guard validation is enforced in grounded executor', () => {
+    const content = readSrc('built-in/chat/utilities/chatGroundedExecutor.ts');
+    expect(content).toContain('toolGuard');
     expect(content).toContain('toolGuard.isValid()');
   });
 
