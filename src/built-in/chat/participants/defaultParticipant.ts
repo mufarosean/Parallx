@@ -48,6 +48,7 @@ import { selectDeterministicAnswer } from '../utilities/chatDeterministicAnswerS
 import { assembleChatContext } from '../utilities/chatContextAssembly.js';
 import { executeChatModelOnly } from '../utilities/chatModelOnlyExecutor.js';
 import { executeChatGrounded } from '../utilities/chatGroundedExecutor.js';
+import { queueChatMemoryWriteBack } from '../utilities/chatMemoryWriteBack.js';
 import { validateAndFinalizeChatResponse } from '../utilities/chatResponseValidator.js';
 import { loadChatContextSources } from '../utilities/chatContextSourceLoader.js';
 import { SlashCommandRegistry, parseSlashCommand } from '../config/chatSlashCommands.js';
@@ -1743,121 +1744,24 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         response.warning('The model returned an empty response. Try rephrasing your question or selecting a different model.');
       }
 
-      // ── Post-response: preference extraction (M10 Phase 5 — Task 5.2) ──
-      // Fire-and-forget — don't block the response
-      // Gated by memory.memoryEnabled toggle (M20 F.3)
       const memoryEnabled = services.unifiedConfigService?.getEffectiveConfig().memory.memoryEnabled ?? true;
-      if (memoryEnabled && services.extractPreferences && request.text) {
-        services.extractPreferences(request.text).catch(() => {});
-      }
-
-      // ── Post-response: session memory + concept extraction (M10/M17 P1.2) ──
-      // Create or update the session summary using growth-based re-summarisation.
-      // Also extract learning concepts in the same LLM call (M17 P1.2 Task 1.2.6).
-      // Gated by memory.memoryEnabled toggle (M20 F.3)
-      if (
-        memoryEnabled &&
-        services.storeSessionMemory &&
-        services.isSessionEligibleForSummary &&
-        services.getSessionMemoryMessageCount &&
-        context.history.length > 0
-      ) {
-        const sessionId = context.sessionId ?? '';
-        const messageCount = context.history.length + 1;
-        if (sessionId && services.isSessionEligibleForSummary(messageCount)) {
-          services.getSessionMemoryMessageCount(sessionId).then(async (storedCount) => {
-            const shouldSummarize = storedCount === null
-              || messageCount >= storedCount * 2
-              || messageCount >= storedCount + 10;
-            if (!shouldSummarize) { return; }
-            try {
-              const transcript = context.history.map((p) => {
-                const respText = p.response.parts
-                  .map((part) => ('content' in part && typeof part.content === 'string') ? part.content : '')
-                  .filter(Boolean).join(' ');
-                return `User: ${p.request.text}\nAssistant: ${respText}`;
-              }).join('\n\n');
-              const current = `User: ${request.text}`;
-              const fullTranscript = transcript + '\n\n' + current;
-              const fallbackSummary = _buildDeterministicSessionSummary(context.history, request.text);
-
-              if (fallbackSummary) {
-                await services.storeSessionMemory!(sessionId, fallbackSummary, messageCount);
-              }
-
-              if (!services.sendSummarizationRequest) {
-                return;
-              }
-
-              const hasConcepts = !!services.storeConceptsFromSession;
-              const summaryPrompt: IChatMessage[] = [
-                {
-                  role: 'system',
-                  content: hasConcepts
-                    ? 'Analyse this conversation and produce JSON with two keys:\n' +
-                      '1. "summary": 2-4 sentence summary of key topics, decisions, and context. Prefer user-specific facts over general advice. Preserve concrete facts like names, locations, dates, numbers, report IDs, and anything the user may ask you to remember later.\n' +
-                      '2. "concepts": array of objects with fields: "concept" (topic name, 2-5 words), ' +
-                      '"category" (subject area), "summary" (user\'s current understanding), ' +
-                      '"struggled" (boolean — true if user showed confusion or needed rephrasing).\n' +
-                      'If the conversation includes both a specific incident and general reference guidance, summarize the specific incident first.\n' +
-                      'Only include concepts the user actively engaged with.\n' +
-                      'Output ONLY valid JSON, no markdown fences.'
-                    : 'Summarise this conversation in 2-4 sentences. Focus on the key topics discussed, ' +
-                      'decisions made, and any important context. Prefer user-specific facts over general advice. Preserve concrete facts like names, locations, dates, numbers, report IDs, and anything the user may ask you to remember later. If the conversation includes both a specific incident and general reference guidance, summarize the specific incident first. Output ONLY the summary.',
-                },
-                { role: 'user', content: fullTranscript },
-              ];
-
-              let rawText = '';
-              for await (const chunk of services.sendSummarizationRequest!(summaryPrompt)) {
-                if (chunk.content) { rawText += chunk.content; }
-              }
-
-              if (!rawText.trim()) { return; }
-
-              let summaryText = rawText.trim();
-              let extractedConcepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }> = [];
-
-              if (hasConcepts) {
-                try {
-                  let jsonStr = summaryText;
-                  const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-                  if (fenceMatch) { jsonStr = fenceMatch[1].trim(); }
-
-                  const parsed = JSON.parse(jsonStr);
-                  if (parsed && typeof parsed.summary === 'string') {
-                    summaryText = parsed.summary.trim();
-                  }
-                  if (Array.isArray(parsed.concepts)) {
-                    extractedConcepts = parsed.concepts
-                      .filter((c: unknown) =>
-                        c && typeof c === 'object' &&
-                        typeof (c as Record<string, unknown>).concept === 'string' &&
-                        (c as Record<string, unknown>).concept,
-                      )
-                      .map((c: Record<string, unknown>) => ({
-                        concept: String(c.concept),
-                        category: String(c.category || 'general'),
-                        summary: String(c.summary || ''),
-                        struggled: Boolean(c.struggled),
-                      }));
-                  }
-                } catch {
-                }
-              }
-
-              if (summaryText) {
-                await services.storeSessionMemory!(sessionId, summaryText, messageCount);
-              }
-
-              if (extractedConcepts.length > 0 && services.storeConceptsFromSession) {
-                services.storeConceptsFromSession(extractedConcepts, sessionId).catch(() => {});
-              }
-            } catch {
-            }
-          }).catch(() => {});
-        }
-      }
+      queueChatMemoryWriteBack(
+        {
+          extractPreferences: services.extractPreferences,
+          storeSessionMemory: services.storeSessionMemory,
+          storeConceptsFromSession: services.storeConceptsFromSession,
+          isSessionEligibleForSummary: services.isSessionEligibleForSummary,
+          getSessionMemoryMessageCount: services.getSessionMemoryMessageCount,
+          sendSummarizationRequest: services.sendSummarizationRequest,
+          buildDeterministicSessionSummary: _buildDeterministicSessionSummary,
+        },
+        {
+          memoryEnabled,
+          requestText: request.text,
+          sessionId: context.sessionId,
+          history: context.history,
+        },
+      );
 
       // M12: Append retrieval plan thought process (collapsible thinking UI)
       // Shows users the AI's reasoning and which queries it searched for.
