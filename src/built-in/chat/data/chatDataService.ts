@@ -1211,56 +1211,11 @@ export class ChatDataService {
     return result;
   }
 
-  async getSystemPrompt(): Promise<string> {
-    return composeChatSystemPrompt({
-      workspaceName: this._d.workspaceService?.activeWorkspace?.name ?? 'Parallx Workspace',
-      getPageCount: async () => this._d.databaseService?.isOpen
-        ? (await this._d.databaseService.all<{ id: string }>('SELECT id FROM pages')).length
-        : 0,
-      getFileCount: async () => {
-        if (!this._d.fsAccessor) {
-          return 0;
-        }
-        try {
-          return (await this._d.fsAccessor.readdir('')).length;
-        } catch {
-          return 0;
-        }
-      },
-      getToolDefinitions: () => this._d.languageModelToolsService?.getToolDefinitions() ?? [],
-      isRAGAvailable: !!this._d.retrievalService,
-      promptFileService: this._d.promptFileService,
-    });
-  }
-
   async searchSessions(query: string): Promise<Array<{ sessionId: string; sessionTitle: string; matchingContent: string }>> {
     if (!this._d.databaseService) { return []; }
     const { searchSessions } = await import('../../../services/chatSessionPersistence.js');
     const workspaceId = this._d.workspaceService?.activeWorkspace?.id ?? '';
     return searchSessions(this._d.databaseService, query, workspaceId);
-  }
-
-  openFile(fullPath: string): void {
-    openChatFile({
-      fullPath,
-      workspaceFolders: this._d.workspaceService?.folders,
-      openFileEditor: this._d.openFileEditor,
-    });
-  }
-
-  /**
-   * Open a session memory entry in a read-only editor tab formatted as Markdown.
-   *
-   * Called when the user clicks a "Session Memory" citation badge.  Fetches the
-   * stored summary for the given sessionId from IMemoryService and displays it
-   * as an untitled editor so the user can review what the AI "remembered".
-   */
-  async openMemoryViewer(sessionId: string): Promise<void> {
-    await openChatMemoryViewer({
-      sessionId,
-      memoryService: this._d.memoryService,
-      editorService: this._d.editorService,
-    });
   }
 
   async getContextLength(): Promise<number> {
@@ -1414,20 +1369,48 @@ export class ChatDataService {
         ? () => this.listWorkspaceFiles()
         : undefined,
       openFile: (this._d.editorService && this._d.fileService)
-        ? (fullPath: string) => this.openFile(fullPath)
+        ? (fullPath: string) => openChatFile({
+            fullPath,
+            workspaceFolders: this._d.workspaceService?.folders,
+            openFileEditor: this._d.openFileEditor,
+          })
         : undefined,
       openPage: this._d.openPage
         ? (pageId: string) => { this._d.openPage!(pageId); }
         : undefined,
       openMemory: (this._d.memoryService && this._d.editorService)
-        ? (sessionId: string) => { this.openMemoryViewer(sessionId); }
+        ? (sessionId: string) => {
+            void openChatMemoryViewer({
+              sessionId,
+              memoryService: this._d.memoryService,
+              editorService: this._d.editorService,
+            });
+          }
         : undefined,
     });
     const sessionServices = buildChatWidgetSessionServices({
       getSessions: () => this._d.chatService.getSessions(),
       getSession: (id: string) => this._d.chatService.getSession(id),
       deleteSession: (id: string) => this._d.chatService.deleteSession(id),
-      getSystemPrompt: () => this.getSystemPrompt(),
+      getSystemPrompt: () => composeChatSystemPrompt({
+        workspaceName: this._d.workspaceService?.activeWorkspace?.name ?? 'Parallx Workspace',
+        getPageCount: async () => this._d.databaseService?.isOpen
+          ? (await this._d.databaseService.all<{ id: string }>('SELECT id FROM pages')).length
+          : 0,
+        getFileCount: async () => {
+          if (!this._d.fsAccessor) {
+            return 0;
+          }
+          try {
+            return (await this._d.fsAccessor.readdir('')).length;
+          } catch {
+            return 0;
+          }
+        },
+        getToolDefinitions: () => this._d.languageModelToolsService?.getToolDefinitions() ?? [],
+        isRAGAvailable: !!this._d.retrievalService,
+        promptFileService: this._d.promptFileService,
+      }),
       readFileRelative: this._d.fsAccessor
         ? (relativePath: string) => this.readFileRelative(relativePath)
         : undefined,

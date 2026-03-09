@@ -1102,6 +1102,10 @@ in external systems:
 23. Workspace-digest computation moved out of `ChatDataService` into
    `chatWorkspaceDigest.ts`, completing `E2` by separating the remaining
    cross-domain digest orchestration from the core data service.
+24. Legacy `ChatDataService` wrapper methods for system prompt generation,
+   file opening, and session-memory viewer opening were removed after their
+   extracted utilities were wired directly into widget service composition,
+   starting `E3` dead-path cleanup.
 
 ### Validation completed for these slices
 
@@ -1133,9 +1137,10 @@ in external systems:
 
 ### What remains next
 
-`E2` is now complete. The next high-value cut is `E3`: identify and remove any
-dead branches, stale legacy helpers, and no-longer-needed orchestration paths
-left behind by the participant and `ChatDataService` narrowing work.
+`E3` is now underway. The next high-value cut is to identify any remaining
+stale helper branches or duplicated fallback/repair paths left behind in
+`defaultParticipant.ts` and the narrowed `ChatDataService` surface, then prune
+them with focused regression coverage.
 
 ---
 
