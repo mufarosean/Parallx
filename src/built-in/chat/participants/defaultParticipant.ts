@@ -1462,7 +1462,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
       // M12: Inject planner reasoning as a hint before the retrieved context.
       // This guides the LLM to reason about what the user NEEDS, not just what they said.
-      if (retrievalPlan.reasoning && retrievalPlan.needsRetrieval) {
+      if (retrievalPlan.needsRetrieval) {
         const retrievalAnalysisLines = [
           '[Retrieval Analysis]',
           `Intent: ${retrievalPlan.intent}`,

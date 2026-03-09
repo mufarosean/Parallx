@@ -1122,6 +1122,10 @@ in external systems:
    `defaultParticipant.ts` after confirming `contextPlan.retrievalPlan` is
    always present, continuing `E3` cleanup by pruning dead defensive branches
    around retrieval-analysis injection and thinking-state reporting.
+29. A stale retrieval-plan reasoning guard was removed from
+   `defaultParticipant.ts` after confirming the planner always supplies a
+   reason string, continuing `E3` cleanup by pruning another dead defensive
+   branch around retrieval-analysis injection.
 
 ### Validation completed for these slices
 
