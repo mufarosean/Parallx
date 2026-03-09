@@ -61,6 +61,10 @@ import { buildChatWidgetAttachmentServices } from '../utilities/chatWidgetAttach
 import { buildChatWidgetPickerServices } from '../utilities/chatWidgetPickerAdapter.js';
 import { buildChatWidgetRequestServices } from '../utilities/chatWidgetRequestAdapter.js';
 import { buildChatWidgetSessionServices } from '../utilities/chatWidgetSessionAdapter.js';
+import {
+  buildChatCanvasParticipantServices,
+  buildChatWorkspaceParticipantServices,
+} from '../utilities/chatScopedParticipantAdapters.js';
 import { buildChatTokenBarServices } from '../utilities/chatTokenBarAdapter.js';
 import { ReadonlyMarkdownInput } from '../../editor/readonlyMarkdownInput.js';
 
@@ -1540,7 +1544,7 @@ export class ChatDataService {
   }
 
   buildWorkspaceParticipantServices(): IWorkspaceParticipantServices {
-    return {
+    return buildChatWorkspaceParticipantServices({
       sendChatRequest: (m, o, s) => this.sendChatRequest(m, o, s),
       getActiveModel: () => this.getActiveModel(),
       getWorkspaceName: () => this.getWorkspaceName(),
@@ -1554,18 +1558,18 @@ export class ChatDataService {
       readFileContent: this._d.fsAccessor
         ? (r) => this._d.fsAccessor!.readFile(r)
         : undefined,
-    };
+    });
   }
 
   buildCanvasParticipantServices(): ICanvasParticipantServices {
-    return {
+    return buildChatCanvasParticipantServices({
       sendChatRequest: (m, o, s) => this.sendChatRequest(m, o, s),
       getActiveModel: () => this.getActiveModel(),
       getWorkspaceName: () => this.getWorkspaceName(),
       getCurrentPageId: () => this.getCurrentPageId(),
       getCurrentPageTitle: () => this.getCurrentPageTitle(),
       getPageStructure: (p) => this.getPageStructure(p),
-    };
+    });
   }
 
   buildWidgetServices(): IChatWidgetServices {
