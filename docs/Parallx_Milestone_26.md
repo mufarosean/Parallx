@@ -1110,6 +1110,10 @@ in external systems:
    `defaultParticipant.ts` after the now-unused network flag was confirmed to
    have no remaining consumers, continuing `E3` cleanup without behavior
    changes.
+26. Duplicated specific-coverage focus parsing was consolidated into
+   `chatSpecificCoverageFocus.ts`, removing a stale duplicate helper path from
+   both `defaultParticipant.ts` and `chatDeterministicExecutors.ts` as part of
+   `E3` cleanup.
 
 ### Validation completed for these slices
 
