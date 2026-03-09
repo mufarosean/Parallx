@@ -896,14 +896,13 @@ function estimateTokens(messages: readonly IChatMessage[]): number {
 /**
  * Categorize a fetch/network error into a user-friendly message.
  */
-function categorizeError(err: unknown): { message: string; isNetworkError: boolean } {
+function categorizeError(err: unknown): { message: string } {
   if (err instanceof DOMException && err.name === 'AbortError') {
-    return { message: '', isNetworkError: false }; // Handled separately
+    return { message: '' }; // Handled separately
   }
   if (err instanceof DOMException && err.name === 'TimeoutError') {
     return {
       message: 'Request timed out. The model may be loading or the Ollama server is unresponsive. Try again or check that Ollama is running.',
-      isNetworkError: true,
     };
   }
   const msg = err instanceof Error ? err.message : String(err);
@@ -911,7 +910,6 @@ function categorizeError(err: unknown): { message: string; isNetworkError: boole
   if (msg.includes('Failed to fetch') || msg.includes('ECONNREFUSED') || msg.includes('NetworkError') || msg.includes('fetch failed')) {
     return {
       message: 'Ollama is not running. Install and start Ollama from https://ollama.com, then try again.',
-      isNetworkError: true,
     };
   }
   // Detect "model not found" — Ollama returns 404 with specific message
@@ -921,10 +919,9 @@ function categorizeError(err: unknown): { message: string; isNetworkError: boole
     const modelName = modelMatch?.[1] ?? 'the requested model';
     return {
       message: `Model "${modelName}" not found. Run \`ollama pull ${modelName}\` to download it.`,
-      isNetworkError: false,
     };
   }
-  return { message: msg, isNetworkError: false };
+  return { message: msg };
 }
 
 // IDefaultParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
@@ -1840,7 +1837,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
 
       // Categorize the error for user-friendly messaging
-      const { message, isNetworkError: _isNetworkError } = categorizeError(err);
+      const { message } = categorizeError(err);
       return {
         errorDetails: {
           message,

@@ -1106,6 +1106,10 @@ in external systems:
    file opening, and session-memory viewer opening were removed after their
    extracted utilities were wired directly into widget service composition,
    starting `E3` dead-path cleanup.
+25. Dead participant error-category branching was removed from
+   `defaultParticipant.ts` after the now-unused network flag was confirmed to
+   have no remaining consumers, continuing `E3` cleanup without behavior
+   changes.
 
 ### Validation completed for these slices
 
