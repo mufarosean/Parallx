@@ -2829,8 +2829,8 @@
 }
 
 .canvas-full-width {
-  --canvas-content-max-width: min(92%, 1480px);
-  --canvas-content-gutter: clamp(24px, 5vw, 80px);
+  --canvas-content-max-width: 100%;
+  --canvas-content-gutter: clamp(24px, 3vw, 56px);
 }
 
 /* Narrow viewports (<768px): minimal gutters */
@@ -2846,8 +2846,8 @@
 @media (min-width: 1441px) {
   .canvas-full-width .canvas-tiptap-editor,
   .canvas-full-width .canvas-page-header {
-    padding-left: clamp(40px, 6vw, 96px);
-    padding-right: clamp(40px, 6vw, 96px);
+    padding-left: clamp(32px, 4vw, 72px);
+    padding-right: clamp(32px, 4vw, 72px);
   }
 }
 
