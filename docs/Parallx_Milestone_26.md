@@ -1118,6 +1118,10 @@ in external systems:
    `defaultParticipant.ts`, reusing the earlier route-derived flag instead of a
    second planner-era intent check during request-option and response-finalizer
    wiring.
+28. Stale nullable-style retrieval-plan guards were removed from
+   `defaultParticipant.ts` after confirming `contextPlan.retrievalPlan` is
+   always present, continuing `E3` cleanup by pruning dead defensive branches
+   around retrieval-analysis injection and thinking-state reporting.
 
 ### Validation completed for these slices
 
