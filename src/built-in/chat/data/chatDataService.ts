@@ -67,7 +67,7 @@ import {
   buildChatWorkspaceParticipantServices,
 } from '../utilities/chatScopedParticipantAdapters.js';
 import { buildChatTokenBarServices } from '../utilities/chatTokenBarAdapter.js';
-import { ReadonlyMarkdownInput } from '../../editor/readonlyMarkdownInput.js';
+import { openChatFile, openChatMemoryViewer } from '../utilities/chatViewerOpeners.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -1240,28 +1240,10 @@ export class ChatDataService {
   }
 
   openFile(fullPath: string): void {
-    // Resolve workspace-relative paths (e.g. "Claims Guide.md") to absolute
-    // filesystem paths, then open via the same EditorsBridge resolver the
-    // explorer uses.  This ensures correct editor type selection (text, image,
-    // PDF, markdown preview), deduplication of already-open tabs, and
-    // consistent behaviour across all file-opening surfaces.
-    if (!this._d.openFileEditor) { return; }
-
-    let fsPath: string;
-    const isAbsolute = /^[/\\]/.test(fullPath) || /^[a-zA-Z]:/.test(fullPath);
-    if (isAbsolute) {
-      fsPath = fullPath;
-    } else if (this._d.workspaceService?.folders?.length) {
-      // Workspace-relative → join with root folder's filesystem path
-      const rootFsPath = this._d.workspaceService.folders[0].uri.fsPath;
-      // Normalize: rootFsPath uses forward slashes from URI.fsPath
-      fsPath = rootFsPath.endsWith('/') ? rootFsPath + fullPath : rootFsPath + '/' + fullPath;
-    } else {
-      fsPath = fullPath;
-    }
-
-    this._d.openFileEditor(fsPath, { pinned: true }).catch((err) => {
-      console.error('[ChatDataService] openFile failed:', err);
+    openChatFile({
+      fullPath,
+      workspaceFolders: this._d.workspaceService?.folders,
+      openFileEditor: this._d.openFileEditor,
     });
   }
 
@@ -1273,47 +1255,11 @@ export class ChatDataService {
    * as an untitled editor so the user can review what the AI "remembered".
    */
   async openMemoryViewer(sessionId: string): Promise<void> {
-    if (!this._d.memoryService || !this._d.editorService) {
-      console.warn('[ChatDataService] openMemoryViewer: missing memoryService or editorService');
-      return;
-    }
-    console.log('[ChatDataService] openMemoryViewer for session:', sessionId);
-
-    try {
-      const memories = await this._d.memoryService.getAllMemories();
-      const match = memories.find((m) => m.sessionId === sessionId);
-
-      let content: string;
-      if (match) {
-        const lines = [
-          `# Session Memory`,
-          ``,
-          `**Session ID:** \`${match.sessionId}\`  `,
-          `**Created:** ${match.createdAt}  `,
-          `**Messages in session:** ${match.messageCount}`,
-          ``,
-          `---`,
-          ``,
-          `## Summary`,
-          ``,
-          match.summary,
-        ];
-        content = lines.join('\n');
-      } else {
-        content = [
-          `# Session Memory`,
-          ``,
-          `No memory found for session \`${sessionId}\`.`,
-          ``,
-          `The memory may have been pruned or the session may still be in progress.`,
-        ].join('\n');
-      }
-
-      const input = ReadonlyMarkdownInput.create(content, 'Session Memory');
-      await this._d.editorService.openEditor(input, { pinned: false });
-    } catch (err) {
-      console.error('[ChatDataService] openMemoryViewer failed:', err);
-    }
+    await openChatMemoryViewer({
+      sessionId,
+      memoryService: this._d.memoryService,
+      editorService: this._d.editorService,
+    });
   }
 
   async getContextLength(): Promise<number> {
