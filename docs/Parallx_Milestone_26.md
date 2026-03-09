@@ -30,18 +30,20 @@
 1. [Problem Statement](#problem-statement)
 2. [Code-First Current State Audit](#code-first-current-state-audit)
 3. [Root Cause Analysis](#root-cause-analysis)
-4. [Vision](#vision)
-5. [Scope](#scope)
-6. [Guiding Principles](#guiding-principles)
-7. [Target Architecture](#target-architecture)
-8. [Subsystem Contracts](#subsystem-contracts)
-9. [Phase Plan](#phase-plan)
-10. [Implementation Sequence](#implementation-sequence)
-11. [Migration and Compatibility](#migration-and-compatibility)
-12. [Evaluation Strategy](#evaluation-strategy)
-13. [Task Tracker](#task-tracker)
-14. [Verification Checklist](#verification-checklist)
-15. [Risk Register](#risk-register)
+4. [Architecture Reference Fit](#architecture-reference-fit)
+5. [External Benchmark Research](#external-benchmark-research)
+6. [Vision](#vision)
+7. [Scope](#scope)
+8. [Guiding Principles](#guiding-principles)
+9. [Target Architecture](#target-architecture)
+10. [Subsystem Contracts](#subsystem-contracts)
+11. [Phase Plan](#phase-plan)
+12. [Implementation Sequence](#implementation-sequence)
+13. [Migration and Compatibility](#migration-and-compatibility)
+14. [Evaluation Strategy](#evaluation-strategy)
+15. [Task Tracker](#task-tracker)
+16. [Verification Checklist](#verification-checklist)
+17. [Risk Register](#risk-register)
 
 ---
 
@@ -256,6 +258,244 @@ context-planning, and response constraints.
 
 ---
 
+## Architecture Reference Fit
+
+The existing Parallx architecture documents were reviewed as reference points,
+but they are not the source of truth for this milestone. The source of truth
+remains the live code paths listed at the top of this document.
+
+### What `ARCHITECTURE.md` contributes
+
+`ARCHITECTURE.md` is still valuable because it reinforces a repo-wide design
+discipline that the AI runtime should follow:
+
+- explicit module responsibility,
+- gate-like boundaries instead of cross-reach imports,
+- source-owned dependencies,
+- and a strong bias against tangled orchestration.
+
+That document is centered on the canvas gate architecture, not on AI runtime
+internals, so it should be treated as a structural style guide rather than an
+AI blueprint.
+
+### What Milestone 24 contributes
+
+`docs/Parallx_Milestone_24.md` is much more directly relevant to the AI target
+state because it already defines several principles that a reliable runtime
+needs:
+
+- services over monoliths,
+- explicit task lifecycle,
+- explicit approval and policy handling,
+- workspace-bounded execution,
+- resumability,
+- and inspectable traces.
+
+Those principles support the M26 direction rather than competing with it.
+
+### What this means for M26
+
+M26 should treat the repo's architecture guidance as a constraint on how the
+AI runtime is decomposed:
+
+- the chat runtime should adopt the same boundary discipline the repo already
+   expects elsewhere,
+- the delegated-task path should lean on the stronger service model already
+   established in M24,
+- and the refactor should avoid creating a new AI monolith under a different
+   name.
+
+---
+
+## External Benchmark Research
+
+This section records the external patterns gathered while assessing what a
+more reliable Parallx AI architecture should look like.
+
+### OpenClaw patterns that matter
+
+The OpenClaw codebase consistently separates concerns that Parallx currently
+mixes together:
+
+1. runtime configuration is explicit,
+2. system-prompt assembly has a fixed section structure,
+3. skills are loaded through a workspace skill snapshot rather than by ad hoc
+    prompt concatenation,
+4. sandbox policy is modeled separately from prompt content,
+5. approvals are represented as runtime objects rather than only prose,
+6. memory flush and session handling are separate runtime concerns,
+7. prompt stability and runtime behavior are tested directly.
+
+The important lesson is not that Parallx should copy OpenClaw feature-for-
+feature. The lesson is that reliability comes from explicit runtime contracts:
+
+- stable prompt assembly,
+- stable tool policy,
+- stable skill loading,
+- stable session/memory handling,
+- stable approval and sandbox semantics.
+
+The deeper runtime research reinforces four additional points that matter for
+Parallx:
+
+1. the agent loop is treated as an authoritative runtime path,
+2. runs are serialized per session and optionally through a global queue to
+   prevent races,
+3. lifecycle, assistant, and tool events are emitted as distinct streams,
+4. timeout, abort, queue, and follow-up behavior are explicit runtime features
+   rather than emergent prompt behavior.
+
+That is especially relevant because Parallx currently blends answer generation,
+task semantics, and post-hoc repair in one path, whereas OpenClaw treats run
+control as a separate system.
+
+### CopilotKit patterns that matter
+
+CopilotKit is a useful comparison because it treats the agent, runtime, and UI
+as distinct systems connected by typed events and explicit tool lifecycles.
+
+The most relevant architectural patterns are:
+
+1. a runtime-side agent runner abstraction,
+2. evented execution stages rather than opaque one-shot replies,
+3. shared state as an explicit contract,
+4. human-in-the-loop as a paused tool state with clear status transitions,
+5. renderable tool and activity traces in the UI.
+
+The lesson for Parallx is that inspectability should not be an afterthought.
+Reliable agent products make run state visible as structured runtime data,
+not just as model narration.
+
+### LangGraph patterns that matter
+
+LangGraph is useful because it formalizes several runtime properties that many
+agent products implement informally.
+
+The most relevant patterns are:
+
+1. durable execution requires explicit persistence and thread identity,
+2. resume does not continue from the same source line and therefore demands
+   deterministic replay boundaries,
+3. human-in-the-loop is modeled as an interrupt/resume contract rather than as
+   free-form chat handling,
+4. short-term state, long-term memory, and checkpoint state are separated,
+5. concurrency, pending tasks, interrupts, and next-step state are all
+   inspectable runtime values.
+
+The main lesson for Parallx is that resumability is not just a storage feature.
+It is a control-flow contract. If a runtime can pause and resume, it must make
+side effects, approval boundaries, and replay semantics explicit.
+
+### Cua patterns that matter
+
+Cua is a different product class, but it reinforces two reliability patterns
+that matter for Parallx:
+
+1. isolate execution environments instead of trusting ambient machine state,
+2. build the evaluation harness into the product architecture.
+
+Its benchmark stack, sandbox model, health checks, and loop-testing harnesses
+show that reliability is not only a runtime-design problem. It is also a
+reproducibility and measurement problem.
+
+For Parallx, this translates into:
+
+- stronger workspace-bounded execution contracts,
+- better run-health visibility,
+- and architecture-specific evals that prove routing, approvals, and handoff
+   behavior remain stable.
+
+### E2B patterns that matter
+
+E2B reinforces the sandbox side of the architecture problem.
+
+The most relevant patterns are:
+
+1. sandbox lifecycle is explicit: create, inspect, extend timeout, pause,
+   resume, kill,
+2. sandbox state is treated as durable runtime state rather than temporary
+   process state,
+3. runtime metadata such as sandbox identity and expiry are queryable,
+4. the execution environment is a first-class product primitive, not an
+   implementation detail.
+
+Parallx is not trying to become a cloud sandbox platform, but the product
+lesson is still useful: execution boundaries become more reliable when they are
+modeled explicitly and surfaced to the runtime.
+
+### Temporal patterns that matter
+
+Temporal is useful because it makes durable execution constraints painfully
+explicit instead of hiding them behind convenience APIs.
+
+The most relevant patterns are:
+
+1. resumable execution is grounded in event history and replay rather than in
+   "continue where we left off" intuition,
+2. workflows need stable workflow identity and per-run identity,
+3. state transitions are explicit progress units that can be counted,
+   inspected, and reasoned about,
+4. long-running execution needs versioning discipline because code changes can
+   invalidate replay expectations,
+5. mutable metadata is useful for inspection, but core execution state must not
+   be hidden in side channels.
+
+The lesson for Parallx is not to copy Temporal's programming model. The lesson
+is that approval pauses, retries, resume, and step boundaries need explicit run
+identity and state-transition semantics if they are going to remain reliable as
+the runtime evolves.
+
+### OpenAI Agents SDK patterns that matter
+
+The OpenAI Agents SDK is useful because it treats handoffs and tracing as core
+runtime primitives instead of optional diagnostics.
+
+The most relevant patterns are:
+
+1. handoffs are explicit runtime actions with a destination and optional
+   structured metadata,
+2. handoff input can be filtered so the receiving specialist does not inherit
+   the entire unshaped transcript by default,
+3. traces and spans are modeled per workflow, agent run, generation, tool call,
+   guardrail, and handoff,
+4. run grouping and metadata are first-class parts of observability,
+5. sensitive trace payloads are configurable rather than accidentally leaked by
+   debug logging.
+
+The lesson for Parallx is that delegated-task handoff should carry a typed
+payload, explicit history-shaping rules, and trace metadata. Inspectability is
+stronger when the runtime records what was handed off, why it was handed off,
+and which execution span now owns the work.
+
+### External-research conclusion
+
+Across OpenClaw, CopilotKit, and Cua, the same pattern appears repeatedly:
+
+reliable AI products are built around a control plane, not just a model loop.
+
+Temporal and the OpenAI Agents SDK reinforce the same conclusion from two more
+angles:
+
+- resumability only stays correct when run identity, replay boundaries, and
+  state transitions are explicit,
+- delegation only stays explainable when handoffs and traces are structured
+  runtime objects rather than prose side effects.
+
+That control plane usually includes:
+
+- explicit runtime state,
+- explicit policy enforcement,
+- explicit capability registration,
+- explicit concurrency and run-lane control,
+- explicit interrupt/resume semantics,
+- explicit execution traces,
+- and explicit evaluation harnesses.
+
+Parallx should adopt those patterns in a workspace-local way rather than keep
+expanding a single mixed participant handler.
+
+---
+
 ## Vision
 
 ### Before M26
@@ -334,6 +574,29 @@ intelligence runtime, not a single large chat handler with accumulated fixes.
 7. **Do not replace working subsystems unnecessarily**
    - this milestone is a refactor and hardening effort, not a rewrite for its
      own sake.
+
+8. **Treat reliability as a control-plane property**
+   - policy, routing, traceability, approvals, and run-state visibility must
+     be modeled explicitly rather than left inside prompt prose.
+
+9. **Make execution inspectable by default**
+   - the runtime should be able to explain which route was chosen, which
+     context sources were allowed, which executor ran, and why validation or
+     repair occurred.
+
+10. **Benchmark the architecture, not only the answers**
+   - validation must prove the staged runtime behaves consistently under
+     routing, policy, and handoff pressure.
+
+11. **Model replay and resume semantics deliberately**
+    - if a turn, task, or approval can be resumed, the architecture must define
+       what is replayed, what is persisted, and which side effects are allowed to
+       happen before a resumable boundary.
+
+12. **Control concurrency explicitly**
+    - session-level serialization, delegated-task handoff, and background work
+       should run under explicit queue or lane rules so one run cannot corrupt or
+       confuse another.
 
 ---
 
@@ -447,6 +710,79 @@ Responsibilities:
 - turn-eligibility checks.
 
 This stage must never affect the answer that was already emitted.
+
+### Cross-Cutting Runtime Control Plane
+
+The staged pipeline should be supported by a small set of explicit cross-
+cutting contracts.
+
+#### 1. Run Record
+
+Each turn should produce an inspectable run record containing at minimum:
+
+- route,
+- context plan,
+- assembled context sources,
+- executor path,
+- validator outcomes,
+- memory-write eligibility.
+
+This gives Parallx a stable debugging and evaluation surface.
+
+#### 2. Capability Registry
+
+Tool, retrieval, memory, prompt-file, and delegated-task capabilities should
+be treated as registered runtime capabilities rather than as incidental access
+through a broad service bundle.
+
+This does not require inventing a plugin framework for M26. It requires making
+capability availability explicit and inspectable per turn.
+
+#### 3. Policy and Approval Gate
+
+Approval and workspace-boundary decisions should be represented as policy
+checks that the executor consumes, not as scattered conditionals inside answer
+generation.
+
+This aligns the chat runtime more closely with the stronger agent-service model
+already present in Parallx and with the external products studied during this
+assessment.
+
+#### 4. Trace Surface
+
+The runtime should emit structured trace data that the existing task cards,
+debug surfaces, and future eval tooling can consume without depending on model
+wording.
+
+That is the key step from "smart chat" to "reliable agent runtime."
+
+#### 5. Concurrency and Resume Semantics
+
+The runtime should define, at architecture level:
+
+- which turn paths are serialized per chat session,
+- which delegated-task operations may continue asynchronously,
+- how approvals pause and resume work,
+- and which write paths must be idempotent across retries or resumes.
+
+This is one of the clearest lessons from the external systems reviewed:
+reliable agents do not rely on informal assumptions about replay or overlap.
+
+#### 6. Boundary Runtime Metadata
+
+When execution is bounded by workspace, approval policy, or a task runtime, the
+runtime should expose the relevant metadata explicitly.
+
+Examples:
+
+- active workspace root,
+- effective approval mode,
+- delegated task/run identifier,
+- pending blocked state,
+- timeout or expiry metadata for long-running work.
+
+This keeps the product explainable without relying on the model to restate the
+state correctly.
 
 ---
 
@@ -648,23 +984,42 @@ The milestone succeeds when the following are true:
 5. delegated-task handoff is structurally clearer than the current mixed path;
 6. existing AIR behavior quality is preserved or improved.
 
+### Reliability-specific success criteria
+
+The milestone should also be judged against the reliability patterns observed
+in external systems:
+
+1. prompt assembly is stable enough to snapshot and regression-test;
+2. runtime route and context-plan decisions are observable without reading
+   model output;
+3. approval and policy decisions are explainable from runtime state rather
+   than reconstructed from prose;
+4. delegated-task handoff behaves like a clear runtime transition, not a
+   hidden branch in normal chat execution;
+5. architecture-level evals can detect regressions in route selection,
+   citation policy, and task handoff even when answer wording changes.
+6. resumable or approval-paused flows do not duplicate side effects across
+   retries or restarts.
+7. session-level concurrency rules prevent overlapping runs from corrupting
+   chat state, memory state, or delegated-task state.
+
 ---
 
 ## Task Tracker
 
 ### Phase A — Runtime Mapping and Interface Extraction
-- [ ] A1. Define turn-route types and route metadata contract
-- [ ] A2. Define context-plan types and context-source policy contract
+- [x] A1. Define turn-route types and route metadata contract ✅ Implemented in `chatTypes.ts` with `IChatTurnRoute`, `ChatTurnRouteKind`, and runtime trace wiring.
+- [x] A2. Define context-plan types and context-source policy contract ✅ Implemented in `chatTypes.ts` and `chatContextPlanner.ts` with explicit retrieval, memory, current-page, and citation policy decisions.
 - [ ] A3. Define prompt-assembly contract and merge order
 - [ ] A4. Define response-executor and validator interfaces
 
 ### Phase B — Turn Router and Context Planner
-- [ ] B1. Extract turn-router module from `defaultParticipant.ts`
-- [ ] B2. Extract context-planner module from `defaultParticipant.ts`
-- [ ] B3. Add focused unit tests for route and plan behavior
+- [x] B1. Extract turn-router module from `defaultParticipant.ts` ✅ Implemented in `chatTurnRouter.ts` and wired through the participant entry path.
+- [x] B2. Extract context-planner module from `defaultParticipant.ts` ✅ Implemented in `chatContextPlanner.ts` and used by the participant runtime.
+- [x] B3. Add focused unit tests for route and plan behavior ✅ Covered in `chatRuntimePlanning.test.ts`.
 
 ### Phase C — Response Path Decomposition
-- [ ] C1. Extract deterministic product-semantics handler
+- [x] C1. Extract deterministic product-semantics handler ✅ Product-semantics, off-topic, memory-recall, and unsupported-specific-coverage direct answers now flow through deterministic selector/executor modules.
 - [ ] C2. Extract conversational/model-only executor
 - [ ] C3. Extract grounded/tool-enabled executor
 - [ ] C4. Extract delegated-task handoff executor
@@ -678,6 +1033,205 @@ The milestone succeeds when the following are true:
 - [ ] E1. Reduce `ChatDataService` service-bundle width
 - [ ] E2. Separate adapter responsibilities from orchestration responsibilities
 - [ ] E3. Remove dead branches and legacy orchestration paths
+
+---
+
+## Implementation Progress
+
+### Completed slices as of 2026-03-08
+
+1. Turn routing moved out of `defaultParticipant.ts` into `chatTurnRouter.ts`.
+2. Context planning and runtime trace shape moved into `chatContextPlanner.ts`
+   and `chatTypes.ts`.
+3. Deterministic direct-answer helpers moved into
+   `chatDeterministicExecutors.ts`.
+4. Deterministic answer dispatch moved into
+   `chatDeterministicAnswerSelector.ts`.
+5. `ChatDataService` now exposes runtime-trace snapshots for tests and evals.
+
+### Validation completed for these slices
+
+- focused route/plan tests in `chatRuntimePlanning.test.ts`
+- deterministic executor tests in `chatDeterministicExecutors.test.ts`
+- deterministic selector tests in `chatDeterministicAnswerSelector.test.ts`
+- existing participant-loop regression coverage in `agenticLoop.test.ts`
+- broader behavior regression coverage in `chatService.test.ts`
+
+### What remains next
+
+The next high-value cut is still context assembly narrowing: pull retrieval,
+memory, and workspace-context assembly behind narrower adapters so the
+participant stops depending on the full `ChatDataService` orchestration surface.
+
+---
+
+## Explicit Tasks Against The Current Architecture
+
+The backlog above is the architectural shape. The work below maps that shape to
+the actual Parallx files and function clusters that currently carry too much
+responsibility.
+
+### 1. `src/built-in/chat/participants/defaultParticipant.ts`
+
+This file is still the main orchestration hotspot. Milestone 26 should treat it
+as a composition root, not the place where routing, planning, execution,
+validation, and memory persistence are decided inline.
+
+Explicit tasks:
+
+- extract a `TurnRouter` from the current turn-classification helpers such as
+   conversational-turn checks, explicit-memory-recall checks, and off-topic
+   checks;
+- move direct-answer helpers for off-topic redirects, product-semantics answers,
+   and memory-recall answers behind deterministic executors rather than leaving
+   them as ad hoc branches in the participant body;
+- extract a `ContextPlanner` that decides when to use retrieval, memory recall,
+   current-page context, prompt overlays, or no external context at all;
+- move evidence sufficiency checks, retrieve-again query generation, and
+   response-repair helpers into a narrow validator layer so the primary execution
+   path stops mixing generation with repair;
+- move tool-call extraction and narration stripping into the grounded/tool
+   execution path so the participant body no longer performs late cleanup on
+   mixed model output;
+- reduce `createDefaultParticipant(...)` to wiring, executor selection, and
+   stream emission rather than full inline orchestration.
+
+Deliverable for this file:
+
+- `defaultParticipant.ts` becomes materially smaller and mostly delegates to
+   router, planner, executor, validator, and write-back modules.
+
+### 2. `src/built-in/chat/data/chatDataService.ts`
+
+`ChatDataService` currently behaves like both an adapter bundle and an
+orchestration surface. Milestone 26 should narrow it into explicit dependency
+facets instead of letting the chat runtime depend on one oversized service.
+
+Explicit tasks:
+
+- split retrieval-facing methods such as context retrieval and citation-source
+   shaping into a dedicated retrieval adapter contract;
+- split memory-facing methods such as recall, session-summary persistence,
+   concept persistence, preference extraction, and prompt-preference formatting
+   into a memory adapter contract;
+- split prompt-related methods such as prompt overlay resolution, system-prompt
+   assembly inputs, and workspace-digest access into a prompt-context adapter
+   contract;
+- split page/file/workspace reads into a workspace-context adapter contract so
+   execution stages ask for specific context rather than a catch-all service;
+- stop using `ChatDataService` as the place where orchestration policy is
+   hidden; route and context decisions should live in runtime modules, not in the
+   adapter layer;
+- preserve existing retrieval, memory, and file behavior unless a narrower
+   contract requires a behavior fix.
+
+Deliverable for this file:
+
+- chat runtime modules depend on smaller interfaces for retrieval, memory,
+   prompt context, and workspace context rather than the full
+   `ChatDataService` surface.
+
+### 3. `src/services/agentSessionService.ts`
+
+This service already has better state-transition boundaries than the main chat
+path. Milestone 26 should align delegated-task handoff with these existing
+contracts rather than recreating agent-task logic in the participant runtime.
+
+Explicit tasks:
+
+- make delegated-task creation an explicit runtime route that hands off through
+   task/session APIs instead of appearing as a hidden branch of normal answer
+   generation;
+- define a task-handoff payload that includes route type, originating turn,
+   approval requirement, plan seed, handoff reason, and runtime metadata needed
+   for traceability;
+- define what transcript/history subset is forwarded into delegated-task
+   execution so task runs do not inherit unbounded or poorly shaped chat history;
+- align approval-blocked flows with existing approval queue and resolution
+   methods so approval state is inspectable without reading assistant prose;
+- ensure continue, redirect, stop-after-step, and approval-resolution flows are
+   surfaced as runtime state transitions that the chat UI can explain directly;
+- define what task status, blocker reason, plan-step state, and artifact summary
+   the chat surface must read back after handoff.
+
+Deliverable for this file:
+
+- delegated-task work becomes a clean runtime transition into the task system,
+   with approval and paused states explained from service state rather than model
+   narration.
+
+### 4. `src/services/agentExecutionService.ts`
+
+This service is the right place to model bounded step execution, pause/resume,
+and artifact recording. Milestone 26 should reuse that structure when the chat
+runtime hands off autonomous work.
+
+Explicit tasks:
+
+- align delegated-task execution with the existing runnable-step selection,
+   step-boundary pause behavior, and artifact-recording lifecycle;
+- require a stable run identifier and step identifier model so retries, resume,
+   and approval-paused flows do not duplicate side effects silently;
+- make pause-after-step and approval-paused boundaries visible in runtime trace
+   data, not just in user-facing text;
+- define which execution events the chat surface receives during task handoff,
+   task progress, artifact creation, pause, resume, and completion;
+- add tests for repeated resume or stop/continue flows so execution semantics
+   stay deterministic even when wording changes.
+
+Deliverable for this file:
+
+- Parallx has an explicit execution-boundary contract for autonomous work rather
+   than a loosely coupled handoff from chat text to task state.
+
+### 5. Cross-Cutting Control-Plane Tasks
+
+These tasks do not belong to one file, but they are required if the new module
+boundaries are going to behave like a real runtime instead of a cleaned-up chat
+loop.
+
+Explicit tasks:
+
+- introduce session-scoped run serialization so overlapping turns cannot corrupt
+   chat history, memory write-back, or delegated-task state;
+- define stable session identifiers, run identifiers, and step identifiers so
+   pause, resume, retry, and follow-up behavior can be traced without ambiguity;
+- define route-decision, context-plan, executor-selection, and approval-state
+   trace objects that can be logged, tested, and shown in debug views;
+- define explicit state-transition records for task handoff, step start,
+   approval block, resume, completion, failure, and cancellation;
+- define citation policy as data on the context plan so citation behavior is
+   decided before response synthesis;
+- define memory write-back as a post-response stage with its own failure policy,
+   telemetry, and best-effort retry semantics;
+- snapshot prompt assembly inputs so prompt behavior can be regression-tested
+   without depending on exact final wording from the model;
+- add architecture-level eval fixtures that detect regressions in route choice,
+   context-source choice, delegated-task handoff, and approval/pause behavior.
+
+### 6. Migration Matrix
+
+The current runtime responsibilities should move as follows:
+
+- turn heuristics in `defaultParticipant.ts` -> `TurnRouter`
+- context-source selection in `defaultParticipant.ts` -> `ContextPlanner`
+- direct product/off-topic/memory answers in `defaultParticipant.ts` ->
+   deterministic executors
+- grounded synthesis and tool handling in `defaultParticipant.ts` -> grounded
+   executor
+- evidence checks and answer repair in `defaultParticipant.ts` -> validator
+   layer
+- memory persistence triggered from the participant path -> memory write-back
+   coordinator
+- retrieval, memory, prompt, and workspace helper aggregation in
+   `ChatDataService` -> smaller adapter contracts
+- delegated-task branching in chat flow -> explicit handoff into
+   `AgentSessionService`
+- bounded autonomous execution semantics -> `AgentExecutionService`
+
+This matrix is the practical definition of the milestone. If a change does not
+move one of these responsibilities to a cleaner boundary, it is probably not
+Milestone 26 work.
 
 ---
 

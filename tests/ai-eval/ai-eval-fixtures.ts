@@ -64,6 +64,32 @@ export interface ChatEvalDebugSnapshot {
     attempted: boolean;
     returnedSources?: number;
   };
+  runtimeTrace?: {
+    route: {
+      kind: string;
+      reason: string;
+      directAnswer?: string;
+    };
+    contextPlan: {
+      route: string;
+      intent: string;
+      useRetrieval: boolean;
+      useMemoryRecall: boolean;
+      useConceptRecall: boolean;
+      useCurrentPage: boolean;
+      citationMode: string;
+      reasoning: string;
+      retrievalPlan: {
+        intent: string;
+        reasoning: string;
+        needsRetrieval: boolean;
+        queries: string[];
+      };
+    };
+    sessionId?: string;
+    hasActiveSlashCommand: boolean;
+    isRagReady: boolean;
+  };
   retrievalError?: string;
 }
 

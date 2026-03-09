@@ -51,6 +51,8 @@ function createStream(): IChatResponseStream & { calls: Record<string, any[][]> 
     button: vi.fn(),
     confirmation: vi.fn((...args) => calls['confirmation'].push(args)),
     push: vi.fn((...args) => calls['push'].push(args)),
+    getMarkdownText: vi.fn(() => calls['markdown'].map((args) => String(args[0] ?? '')).join('')),
+    setCitations: vi.fn(),
     throwIfDone: vi.fn(),
   };
 }

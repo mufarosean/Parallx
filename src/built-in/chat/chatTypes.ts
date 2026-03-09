@@ -103,6 +103,7 @@ export interface IDefaultParticipantServices {
     retrievedContextLength: number;
     note?: string;
   }): void;
+  reportRuntimeTrace?(trace: IChatRuntimeTrace): void;
   reportBudget?(slots: ReadonlyArray<{ label: string; used: number; allocated: number; color: string }>): void;
   listFolderFiles?(folderPath: string): Promise<Array<{ relativePath: string; content: string }>>;
   getTerminalOutput?(): Promise<string | undefined>;
@@ -181,6 +182,39 @@ export interface IRetrievalPlan {
   reasoning: string;
   needsRetrieval: boolean;
   queries: string[];
+}
+
+export type ChatTurnRouteKind =
+  | 'conversational'
+  | 'memory-recall'
+  | 'product-semantics'
+  | 'off-topic'
+  | 'grounded';
+
+export interface IChatTurnRoute {
+  readonly kind: ChatTurnRouteKind;
+  readonly reason: string;
+  readonly directAnswer?: string;
+}
+
+export interface IChatContextPlan {
+  readonly route: ChatTurnRouteKind;
+  readonly intent: IRetrievalPlan['intent'];
+  readonly useRetrieval: boolean;
+  readonly useMemoryRecall: boolean;
+  readonly useConceptRecall: boolean;
+  readonly useCurrentPage: boolean;
+  readonly citationMode: 'required' | 'disabled';
+  readonly reasoning: string;
+  readonly retrievalPlan: IRetrievalPlan;
+}
+
+export interface IChatRuntimeTrace {
+  readonly route: IChatTurnRoute;
+  readonly contextPlan: IChatContextPlan;
+  readonly sessionId?: string;
+  readonly hasActiveSlashCommand: boolean;
+  readonly isRagReady: boolean;
 }
 
 // ── /init command ──

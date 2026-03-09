@@ -12,6 +12,7 @@
 
 import type {
   IDefaultParticipantServices,
+  IChatRuntimeTrace,
   IWorkspaceParticipantServices,
   ICanvasParticipantServices,
   IChatWidgetServices,
@@ -133,6 +134,7 @@ export interface IChatTestDebugSnapshot {
     attempted: boolean;
     returnedSources?: number;
   };
+  runtimeTrace?: IChatRuntimeTrace;
   retrievalError?: string;
 }
 
@@ -930,6 +932,15 @@ export class ChatDataService {
     };
   }
 
+  reportRuntimeTrace(trace: IChatRuntimeTrace): void {
+    this._lastTestDebugSnapshot = {
+      ...this._lastTestDebugSnapshot,
+      runtimeTrace: structuredClone(trace),
+      isRAGAvailable: this.isRAGAvailable(),
+      isIndexing: this.isIndexing(),
+    };
+  }
+
   getTestDebugSnapshot(): IChatTestDebugSnapshot {
     const session = this._d.getActiveWidget()?.getSession();
     const assistantMessages = session?.messages.filter((pair) => pair.response) ?? [];
@@ -1507,6 +1518,7 @@ export class ChatDataService {
       reportContextPills: (p) => this.reportContextPills(p),
       reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
       reportResponseDebug: (debug) => this.reportResponseDebug(debug),
+      reportRuntimeTrace: (trace) => this.reportRuntimeTrace(trace),
       getExcludedContextIds: () => this.getExcludedContextIds(),
       reportBudget: (s) => this.reportBudget(s),
       getTerminalOutput: () => this.getTerminalOutput(),

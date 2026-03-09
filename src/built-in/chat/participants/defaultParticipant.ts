@@ -42,6 +42,9 @@ import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } fr
 import { executeInitCommand } from '../commands/initCommand.js';
 import { TokenBudgetService } from '../../../services/tokenBudgetService.js';
 import { extractMentions, resolveMentions } from '../utilities/chatMentionResolver.js';
+import { determineChatTurnRoute } from '../utilities/chatTurnRouter.js';
+import { createChatContextPlan, createChatRuntimeTrace } from '../utilities/chatContextPlanner.js';
+import { selectDeterministicAnswer } from '../utilities/chatDeterministicAnswerSelector.js';
 import { SlashCommandRegistry, parseSlashCommand } from '../config/chatSlashCommands.js';
 import { loadUserCommands } from '../utilities/userCommandLoader.js';
 
@@ -49,19 +52,6 @@ import { loadUserCommands } from '../utilities/userCommandLoader.js';
 const DEFAULT_MAX_ITERATIONS = 10;
 /** Ask mode needs fewer iterations — it only reads, never writes. */
 const ASK_MODE_MAX_ITERATIONS = 5;
-
-const CONVERSATIONAL_TURN_PATTERNS: readonly RegExp[] = [
-  /^(?:hi|hello|hey|yo|sup|good morning|good afternoon|good evening)$/,
-  /^(?:how are you|hows it going|how is it going|whats up|what is up)$/,
-  /^(?:who are you|what are you)$/,
-  /^(?:thanks|thank you|thx|ok|okay|sounds good|got it|nice|cool)$/,
-  /^(?:bye|goodbye|see you|see ya)$/,
-];
-
-const WORKSPACE_ROUTING_TERMS = /\b(file|files|document|documents|doc|docs|page|pages|note|notes|canvas|workspace|folder|folders|project|repo|repository|code|function|error|bug|test|build|commit|branch|source|sources|citation|cite|pdf|docx|xlsx|markdown|readme)\b/i;
-const TASK_ROUTING_TERMS = /\b(read|open|search|find|summari[sz]e|explain|show|list|compare|quote|retrieve|look up|use|run|edit|write|change|delete|fix|debug|analy[sz]e|review|patch)\b/i;
-const IN_SCOPE_DOMAIN_TERMS = /\b(insurance|policy|coverage|claim|claims|deductible|agent|adjuster|premium|liability|collision|comprehensive|uninsured|underinsured|medpay|roadside|accident|vehicle|car|auto|workspace|document|file|citation|source|context)\b/i;
-const OFF_TOPIC_DOMAIN_TERMS = /\b(recipe|recipes|cook|cooking|bake|baking|cookie|cookies|chocolate|flour|sugar|oven|meal|restaurant|movie|movies|tv|television|song|songs|music|sports?|weather|vacation|travel|dating)\b/i;
 const EVIDENCE_STOP_WORDS = new Set([
   'what', 'when', 'where', 'which', 'with', 'your', 'this', 'that', 'have', 'from', 'into',
   'about', 'does', 'will', 'would', 'could', 'should', 'doesnt', 'dont', 'policy', 'insurance',
@@ -105,70 +95,6 @@ function extractSpecificCoverageFocusPhrases(normalizedQuery: string): string[] 
     .filter(Boolean))].slice(0, 2);
 }
 
-function isLikelyConversationalTurn(text: string): boolean {
-  const normalized = text
-    .toLowerCase()
-    .trim()
-    .replace(/[’']/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ');
-
-  if (!normalized) {
-    return false;
-  }
-
-  if (normalized.length > 80) {
-    return false;
-  }
-
-  if (WORKSPACE_ROUTING_TERMS.test(normalized) || TASK_ROUTING_TERMS.test(normalized)) {
-    return false;
-  }
-
-  return CONVERSATIONAL_TURN_PATTERNS.some((pattern) => pattern.test(normalized));
-}
-
-function isExplicitMemoryRecallTurn(text: string): boolean {
-  const normalized = text
-    .toLowerCase()
-    .trim()
-    .replace(/[’']/g, ' ')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ');
-
-  if (!normalized) {
-    return false;
-  }
-
-  return /(last|previous|prior)\s+(conversation|chat|session)|what\s+do\s+you\s+remember|remember\s+about\s+(?:it|my|our)|recall\s+(?:my|our)\s+(?:last|previous|prior)/.test(normalized);
-}
-
-function isLikelyOffTopicTurn(text: string): boolean {
-  const normalized = text
-    .toLowerCase()
-    .trim()
-    .replace(/[’']/g, ' ')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ');
-
-  if (!normalized || normalized.length > 180) {
-    return false;
-  }
-
-  if (WORKSPACE_ROUTING_TERMS.test(normalized) || TASK_ROUTING_TERMS.test(normalized) || IN_SCOPE_DOMAIN_TERMS.test(normalized)) {
-    return false;
-  }
-
-  return OFF_TOPIC_DOMAIN_TERMS.test(normalized);
-}
-
-function buildOffTopicRedirectAnswer(text: string): string | undefined {
-  if (!isLikelyOffTopicTurn(text)) {
-    return undefined;
-  }
-
-  return 'Sorry, I can help with the insurance policy, claims guidance, and other files in this workspace, but I cannot help with that off-topic request here.';
-}
 
 export function _buildDeterministicSessionSummary(
   history: readonly { request: { text: string } }[],
@@ -186,100 +112,6 @@ export function _buildDeterministicSessionSummary(
   const sentences = userMessages.map((text) => /[.!?]$/.test(text) ? text : `${text}.`);
   const summary = sentences.join(' ');
   return summary.length <= 900 ? summary : `${summary.slice(0, 897).trimEnd()}...`;
-}
-
-function buildDirectMemoryRecallAnswer(memoryContext: string): string | undefined {
-  const cleaned = memoryContext
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && line !== '[Conversation Memory]' && line !== '---' && !/^Previous session \(/i.test(line))
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  if (!cleaned) {
-    return undefined;
-  }
-
-  return `From our previous conversation, I remember: ${cleaned}`;
-}
-
-function buildUnsupportedSpecificCoverageAnswer(
-  query: string,
-  evidenceAssessment: { status: 'sufficient' | 'weak' | 'insufficient'; reasons: string[] },
-): string | undefined {
-  if (!evidenceAssessment.reasons.includes('specific-coverage-not-explicitly-supported')) {
-    return undefined;
-  }
-
-  const normalizedQuery = query.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
-  const focusPhrase = extractSpecificCoverageFocusPhrases(normalizedQuery)[0];
-  if (!focusPhrase) {
-    return undefined;
-  }
-
-  return [
-    `I do not see ${focusPhrase} explicitly listed in your policy documents, so I cannot confirm that it is included.`,
-    'The retrieved documents may mention broader categories, but they do not explicitly name that specific coverage.',
-    'If you want protection for that peril, contact your agent about a separate endorsement or additional coverage.',
-  ].join(' ');
-}
-
-function buildProductSemanticsAnswer(text: string): string | undefined {
-  const normalized = text
-    .toLowerCase()
-    .trim()
-    .replace(/[’']/g, "'")
-    .replace(/[^a-z0-9\s']/g, ' ')
-    .replace(/\s+/g, ' ');
-
-  if (
-    normalized.includes('approve once')
-    && normalized.includes('approve task')
-    && /(difference|vs|versus|mean|means)/.test(normalized)
-  ) {
-    return [
-      'Approve once allows only the current action to run.',
-      'Approve task is broader: it allows the remaining approval-scoped actions in that task to continue without asking again each time.',
-      'Use Approve once when you want tighter review. Use Approve task when you trust the remaining task scope and want fewer interruptions.',
-    ].join(' ');
-  }
-
-  if (
-    normalized.includes('outside the workspace')
-    && /(blocked|what should i do next|what do i do next|what next|how do i recover)/.test(normalized)
-  ) {
-    return [
-      'The task was blocked because it targeted something outside the active workspace boundary, so the agent stopped before taking that action.',
-      'Retarget the task to a file or folder inside the current workspace, or narrow the instructions so the next action stays within an allowed target.',
-      'After you fix the target, continue or retry the task.',
-    ].join(' ');
-  }
-
-  if (
-    /(delegated task|task)/.test(normalized)
-    && /(recorded artifacts|artifacts)/.test(normalized)
-    && /(what should i check next|what should i do next|what next|what do i check)/.test(normalized)
-  ) {
-    return [
-      'Recorded artifacts tell you which workspace files the task changed or produced.',
-      'Check those files first to confirm the result matches the goal and to decide whether a follow-up task is needed.',
-      'If the artifacts look right, you can keep them. If not, launch a narrower follow-up task to correct or extend the work.',
-    ].join(' ');
-  }
-
-  if (
-    normalized.includes('trace')
-    && /(task details|help me understand|tell me|mean|means|show)/.test(normalized)
-  ) {
-    return [
-      'The trace shows the recent planning, approval, and execution events for a task in order.',
-      'Use it to see what the agent tried, where it paused or was blocked, and which tool or step produced the latest outcome.',
-      'It is most useful when you need to understand why a task stopped, what ran successfully, or what to retry next.',
-    ].join(' ');
-  }
-
-  return undefined;
 }
 
 function _scoreExtractiveFallbackLine(line: string, queryTerms: string[]): number {
@@ -1248,28 +1080,24 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       return {};
     }
 
-    const productSemanticsAnswer = buildProductSemanticsAnswer(request.text);
-    if (productSemanticsAnswer) {
-      response.markdown(productSemanticsAnswer);
+    const hasActiveSlashCommand = !!(activeCommand && activeCommand !== 'compact');
+    const earlyRoute = determineChatTurnRoute(effectiveText, { hasActiveSlashCommand });
+    const earlyDeterministicAnswer = selectDeterministicAnswer({ route: earlyRoute });
+    if (earlyDeterministicAnswer) {
+      const isRagReady = services.isRAGAvailable?.() ?? false;
+      const earlyContextPlan = createChatContextPlan(earlyRoute, { hasActiveSlashCommand, isRagReady });
+      services.reportRuntimeTrace?.(createChatRuntimeTrace(
+        earlyRoute,
+        earlyContextPlan,
+        { sessionId: context.sessionId, hasActiveSlashCommand, isRagReady },
+      ));
+      response.markdown(earlyDeterministicAnswer.markdown);
       services.reportResponseDebug?.({
-        phase: 'product-semantics-direct-answer',
-        markdownLength: productSemanticsAnswer.length,
+        phase: earlyDeterministicAnswer.phase,
+        markdownLength: earlyDeterministicAnswer.markdown.length,
         yielded: !!token.isYieldRequested,
         cancelled: token.isCancellationRequested,
-        retrievedContextLength: 0,
-      });
-      return {};
-    }
-
-    const offTopicRedirectAnswer = buildOffTopicRedirectAnswer(request.text);
-    if (offTopicRedirectAnswer) {
-      response.markdown(offTopicRedirectAnswer);
-      services.reportResponseDebug?.({
-        phase: 'off-topic-direct-answer',
-        markdownLength: offTopicRedirectAnswer.length,
-        yielded: !!token.isYieldRequested,
-        cancelled: token.isCancellationRequested,
-        retrievedContextLength: 0,
+        retrievedContextLength: earlyDeterministicAnswer.retrievedContextLength,
       });
       return {};
     }
@@ -1417,41 +1245,23 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // latency on local Ollama (e.g. 45s planner + 13s response = 58s
     // vs native Ollama's 13s).  No mainstream local AI app does this.
     const ragSources: Array<{ uri: string; label: string; index?: number }> = [];
-    let retrievalPlan: IRetrievalPlan;
-
-    const hasActiveSlashCommand = !!(activeCommand && activeCommand !== 'compact');
     const isRagReady = services.isRAGAvailable?.() ?? false;
-    const isConversationalTurn = !hasActiveSlashCommand && isLikelyConversationalTurn(userText);
-    const isMemoryRecallTurn = !hasActiveSlashCommand && isExplicitMemoryRecallTurn(userText);
+    const turnRoute = determineChatTurnRoute(userText, { hasActiveSlashCommand });
+    const contextPlan = createChatContextPlan(turnRoute, { hasActiveSlashCommand, isRagReady });
+    const retrievalPlan: IRetrievalPlan = contextPlan.retrievalPlan;
+    const isConversationalTurn = turnRoute.kind === 'conversational';
+    const isMemoryRecallTurn = turnRoute.kind === 'memory-recall';
 
-    // Synthetic plan — downstream code checks retrievalPlan for gating.
-    // Short conversational turns should stay lightweight and avoid
-    // workspace retrieval, memory recall, and tool priming.
-    retrievalPlan = isConversationalTurn
-      ? {
-          intent: 'conversational',
-          reasoning: 'Short conversational turn — skip workspace retrieval and memory recall.',
-          needsRetrieval: false,
-          queries: [],
-        }
-      : isMemoryRecallTurn
-        ? {
-            intent: 'question',
-            reasoning: 'Explicit prior-conversation recall turn — use session memory without workspace retrieval.',
-            needsRetrieval: false,
-            queries: [],
-          }
-      : {
-          intent: 'question',
-          reasoning: 'Direct retrieval — embedding similarity filters relevance.',
-          needsRetrieval: isRagReady && !hasActiveSlashCommand,
-          queries: [],
-        };
+    services.reportRuntimeTrace?.(createChatRuntimeTrace(
+      turnRoute,
+      contextPlan,
+      { sessionId: context.sessionId, hasActiveSlashCommand, isRagReady },
+    ));
 
     services.reportRetrievalDebug?.({
       hasActiveSlashCommand,
       isRagReady,
-      needsRetrieval: retrievalPlan.needsRetrieval,
+      needsRetrieval: contextPlan.useRetrieval,
       attempted: false,
     });
 
@@ -1474,18 +1284,18 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
     const [pageResult, ragResult, memoryResult, conceptResult, attachmentResults] = await Promise.all([
       // Page content
-      (services.getCurrentPageContent && !isConversationalTurn && !isMemoryRecallTurn)
+      (services.getCurrentPageContent && contextPlan.useCurrentPage)
         ? services.getCurrentPageContent().catch((): PageResult => null)
         : Promise.resolve(null as PageResult),
 
       // RAG retrieval
-      (services.retrieveContext && retrievalPlan.needsRetrieval)
+      (services.retrieveContext && contextPlan.useRetrieval)
         ? services.retrieveContext(userText)
             .then((result): RAGResult => {
               services.reportRetrievalDebug?.({
                 hasActiveSlashCommand,
                 isRagReady,
-                needsRetrieval: retrievalPlan!.needsRetrieval,
+                needsRetrieval: contextPlan.useRetrieval,
                 attempted: true,
                 returnedSources: result?.sources.length ?? 0,
               });
@@ -1495,7 +1305,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
               services.reportRetrievalDebug?.({
                 hasActiveSlashCommand,
                 isRagReady,
-                needsRetrieval: retrievalPlan!.needsRetrieval,
+                needsRetrieval: contextPlan.useRetrieval,
                 attempted: true,
                 returnedSources: 0,
               });
@@ -1504,12 +1314,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         : Promise.resolve(null as RAGResult),
 
       // Memory recall
-      (services.recallMemories && (retrievalPlan.needsRetrieval !== false || isMemoryRecallTurn))
+      (services.recallMemories && contextPlan.useMemoryRecall)
         ? services.recallMemories(userText, context.sessionId).catch((): MemoryResult => null)
         : Promise.resolve(null as MemoryResult),
 
       // Concept recall (M17 P1.2 Task 1.2.7)
-      (services.recallConcepts && retrievalPlan.needsRetrieval !== false && !isMemoryRecallTurn)
+      (services.recallConcepts && contextPlan.useConceptRecall)
         ? services.recallConcepts(userText).catch((): ConceptResult => null)
         : Promise.resolve(null as ConceptResult),
 
@@ -1580,7 +1390,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     }
 
     let evidenceAssessment = _assessEvidenceSufficiency(userText, retrievedContextText, ragSources);
-    if (evidenceAssessment.status === 'insufficient' && services.retrieveContext && retrievalPlan.needsRetrieval) {
+    if (evidenceAssessment.status === 'insufficient' && services.retrieveContext && contextPlan.useRetrieval) {
       const retrieveAgainQuery = _buildRetrieveAgainQuery(userText, retrievedContextText);
       if (retrieveAgainQuery) {
         const retrieveAgainResult = await services.retrieveContext(retrieveAgainQuery).catch(() => null as RAGResult);
@@ -1592,9 +1402,14 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       }
     }
 
-    const unsupportedSpecificCoverageAnswer = buildUnsupportedSpecificCoverageAnswer(userText, evidenceAssessment);
-    if (unsupportedSpecificCoverageAnswer) {
-      response.markdown(unsupportedSpecificCoverageAnswer);
+    const postContextDeterministicAnswer = selectDeterministicAnswer({
+      route: turnRoute,
+      query: userText,
+      evidenceAssessment,
+      retrievedContextText,
+    });
+    if (postContextDeterministicAnswer?.phase === 'unsupported-specific-coverage-direct-answer') {
+      response.markdown(postContextDeterministicAnswer.markdown);
       if (ragSources.length > 0) {
         response.setCitations(
           ragSources.map((source, index) => ({
@@ -1605,11 +1420,11 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         );
       }
       services.reportResponseDebug?.({
-        phase: 'unsupported-specific-coverage-direct-answer',
-        markdownLength: unsupportedSpecificCoverageAnswer.length,
+        phase: postContextDeterministicAnswer.phase,
+        markdownLength: postContextDeterministicAnswer.markdown.length,
         yielded: !!token.isYieldRequested,
         cancelled: token.isCancellationRequested,
-        retrievedContextLength: retrievedContextText.length,
+        retrievedContextLength: postContextDeterministicAnswer.retrievedContextLength,
       });
       return {};
     }
@@ -1623,15 +1438,18 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       contextParts.push(memoryContext);
 
       if (isMemoryRecallTurn) {
-        const directMemoryAnswer = buildDirectMemoryRecallAnswer(memoryContext);
-        if (directMemoryAnswer) {
-          response.markdown(directMemoryAnswer);
+        const memoryDeterministicAnswer = selectDeterministicAnswer({
+          route: turnRoute,
+          memoryContext,
+        });
+        if (memoryDeterministicAnswer) {
+          response.markdown(memoryDeterministicAnswer.markdown);
           services.reportResponseDebug?.({
-            phase: 'memory-recall-direct-answer',
-            markdownLength: directMemoryAnswer.length,
+            phase: memoryDeterministicAnswer.phase,
+            markdownLength: memoryDeterministicAnswer.markdown.length,
             yielded: !!token.isYieldRequested,
             cancelled: token.isCancellationRequested,
-            retrievedContextLength: 0,
+            retrievedContextLength: memoryDeterministicAnswer.retrievedContextLength,
           });
           return {};
         }
@@ -1889,7 +1707,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         response.markdown('I could not produce a grounded final answer from the current model output. Please try again.');
       }
 
-      if (!isConversationalTurn && ragSources.length > 0) {
+      if (contextPlan.citationMode === 'required' && ragSources.length > 0) {
         const citations = ragSources.map((source, index) => ({
           index: source.index ?? (index + 1),
           uri: source.uri,
@@ -2453,7 +2271,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       // renderer can resolve [N] markers to clickable source badges.
       // C1.3: Validate citation mapping — warn for unmatched [N] in response.
       // C1.4: Remap if the LLM used numbers outside our citation set.
-      if (ragSources.length > 0) {
+      if (contextPlan.citationMode === 'required' && ragSources.length > 0) {
         const responseParts = (response as any)._response?.parts;
         if (Array.isArray(responseParts)) {
           const lastMarkdownPart = [...responseParts]
