@@ -56,6 +56,7 @@ import type { RetrievalTrace } from '../../../services/retrievalService.js';
 import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { extractTextContent } from '../tools/builtInTools.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
+import { buildChatWidgetPickerServices } from '../utilities/chatWidgetPickerAdapter.js';
 import { ReadonlyMarkdownInput } from '../../editor/readonlyMarkdownInput.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1569,6 +1570,17 @@ export class ChatDataService {
       agentExecutionService: this._d.agentExecutionService,
       agentTraceService: this._d.agentTraceService,
     });
+    const pickerServices = buildChatWidgetPickerServices({
+      getModels: () => this._d.languageModelsService.getModels(),
+      getActiveModel: () => this._d.languageModelsService.getActiveModel(),
+      setActiveModel: (modelId: string) => this._d.languageModelsService.setActiveModel(modelId),
+      onDidChangeModels: this._d.languageModelsService.onDidChangeModels,
+      getModelContextLength: (modelId: string) => this._d.ollamaProvider.getModelContextLength(modelId) ?? Promise.resolve(0),
+      getMode: () => this._d.modeService.getMode(),
+      setMode: (mode) => this._d.modeService.setMode(mode),
+      getAvailableModes: () => this._d.modeService.getAvailableModes(),
+      onDidChangeMode: this._d.modeService.onDidChangeMode,
+    });
 
     return {
       sendRequest: async (sessionId, message, attachments?) => {
@@ -1583,19 +1595,7 @@ export class ChatDataService {
         available: (this._d.ollamaProvider as any).getLastStatus?.()?.available ?? false,
       }),
       onDidChangeProviderStatus: (this._d.ollamaProvider as any).onDidChangeStatus as Event<void>,
-      modelPicker: {
-        getModels: () => this._d.languageModelsService.getModels(),
-        getActiveModel: () => this._d.languageModelsService.getActiveModel(),
-        setActiveModel: (modelId: string) => this._d.languageModelsService.setActiveModel(modelId),
-        onDidChangeModels: this._d.languageModelsService.onDidChangeModels,
-        getModelContextLength: (modelId: string) => this._d.ollamaProvider.getModelContextLength(modelId) ?? Promise.resolve(0),
-      },
-      modePicker: {
-        getMode: () => this._d.modeService.getMode(),
-        setMode: (mode) => this._d.modeService.setMode(mode),
-        getAvailableModes: () => this._d.modeService.getAvailableModes(),
-        onDidChangeMode: this._d.modeService.onDidChangeMode,
-      },
+      ...pickerServices,
       getSessions: () => this._d.chatService.getSessions(),
       getSession: (id: string) => this._d.chatService.getSession(id),
       deleteSession: (id: string) => this._d.chatService.deleteSession(id),

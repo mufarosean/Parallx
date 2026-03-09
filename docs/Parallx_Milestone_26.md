@@ -1072,6 +1072,9 @@ in external systems:
 13. Agent-task widget adapter wiring moved out of `ChatDataService` into
    `chatAgentTaskWidgetAdapter.ts`, starting `E1` by narrowing the widget/task
    rail service-bundle surface.
+14. Model and mode picker wiring moved out of `ChatDataService` into
+   `chatWidgetPickerAdapter.ts`, continuing `E1` by narrowing widget-facing
+   adapter composition.
 
 ### Validation completed for these slices
 
@@ -1085,6 +1088,7 @@ in external systems:
 - response validator tests in `chatResponseValidator.test.ts`
 - memory write-back tests in `chatMemoryWriteBack.test.ts`
 - agent-task widget adapter tests in `chatAgentTaskWidgetAdapter.test.ts`
+- widget picker adapter tests in `chatWidgetPickerAdapter.test.ts`
 - existing participant-loop regression coverage in `agenticLoop.test.ts`
 - broader behavior regression coverage in `chatService.test.ts`
 - chat data/compliance regressions in `chatGateCompliance.test.ts`,
@@ -1093,8 +1097,9 @@ in external systems:
 ### What remains next
 
 The next high-value cut remains `ChatDataService` narrowing: split additional
-widget-facing adapter surfaces from chat orchestration so `E1` can retire more
-service-bundle width without changing runtime behavior.
+widget-facing adapter surfaces such as session/search or attachment/open-file
+composition from chat orchestration so `E1` can retire more service-bundle
+width without changing runtime behavior.
 
 ---
 
