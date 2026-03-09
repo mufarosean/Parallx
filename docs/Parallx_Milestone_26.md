@@ -1022,7 +1022,7 @@ in external systems:
 - [x] C1. Extract deterministic product-semantics handler ✅ Product-semantics, off-topic, memory-recall, and unsupported-specific-coverage direct answers now flow through deterministic selector/executor modules.
 - [x] C2. Extract conversational/model-only executor ✅ No-tool Ask/Edit turns now run through `chatModelOnlyExecutor.ts`, leaving the participant loop focused on tool-enabled execution.
 - [x] C3. Extract grounded/tool-enabled executor ✅ Tool-loop execution and no-markdown fallback synthesis now run through `chatGroundedExecutor.ts`.
-- [ ] C4. Extract delegated-task handoff executor
+- [x] C4. Extract delegated-task handoff executor ✅ Code-first audit confirmed the default participant no longer owns delegated-task handoff; task approval/continue transitions are already exposed through `ChatDataService` and the task rail adapter layer.
 
 ### Phase D — Validation and Memory Isolation
 - [x] D1. Extract response validator and answer-repair coordinator ✅ Final markdown repair and fallback-vs-debug reporting now run through `chatResponseValidator.ts`.
@@ -1065,7 +1065,10 @@ in external systems:
     narrowing `defaultParticipant.ts` to validator wiring plus memory/write-back.
 11. Post-response preference extraction and session summary/concept write-back
    moved into `chatMemoryWriteBack.ts`, narrowing `defaultParticipant.ts` to
-   execution, response finalization, and remaining handoff wiring.
+   execution and response finalization.
+12. Delegated-task approval/continue transitions are no longer part of the
+   default participant surface; they already live in `ChatDataService` and the
+   task-rail adapter layer.
 
 ### Validation completed for these slices
 
@@ -1083,9 +1086,9 @@ in external systems:
 
 ### What remains next
 
-The next high-value cut is delegated-task handoff narrowing: isolate the
-remaining autonomous-task transition from the participant body so
-`defaultParticipant.ts` stays a composition root.
+The next high-value cut is `ChatDataService` narrowing: reduce the service-
+bundle width and separate task-rail/widget adapter responsibilities from chat
+orchestration so the remaining agent-task integration points are explicit.
 
 ---
 
