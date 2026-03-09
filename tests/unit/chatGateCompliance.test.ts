@@ -53,7 +53,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'config/chatSystemPrompts.ts':    [],
 
   // ── data/ — data service hub ────────────────────────────────────────────
-  'data/chatDataService.ts': ['providers/', 'widgets/', 'config/', 'tools/'],
+  'data/chatDataService.ts': ['providers/', 'widgets/', 'config/', 'tools/', 'utilities/'],
 
   // ── input/ — chat input components ──────────────────────────────────────
   'input/chatContextAttachments.ts': ['chatIcons'],
@@ -70,6 +70,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'rendering/chatContentParts.ts':  ['chatIcons', 'rendering/'],
   'rendering/chatDiffViewer.ts':    [],
   'rendering/chatListRenderer.ts':  ['chatIcons', 'rendering/'],
+  'rendering/chatTaskCards.ts':     [],
 
   // ── tools/ — built-in tool implementations ──────────────────────────────
   'tools/builtInTools.ts':  ['tools/'],
@@ -96,7 +97,18 @@ const FOLDER_RULES: Record<string, string[]> = {
   'commands/initCommand.ts': [],
 
   // ── utilities/ — mention resolution, user commands ──────────────────────
+  'utilities/chatAgentTaskWidgetAdapter.ts': [],
+  'utilities/chatContextAssembly.ts':        ['utilities/'],
+  'utilities/chatContextPlanner.ts':         [],
+  'utilities/chatContextSourceLoader.ts':    [],
+  'utilities/chatDeterministicAnswerSelector.ts': ['utilities/'],
+  'utilities/chatDeterministicExecutors.ts': [],
+  'utilities/chatGroundedExecutor.ts':       [],
+  'utilities/chatMemoryWriteBack.ts':        [],
   'utilities/chatMentionResolver.ts': [],
+  'utilities/chatModelOnlyExecutor.ts':      [],
+  'utilities/chatResponseValidator.ts':      [],
+  'utilities/chatTurnRouter.ts':             [],
   'utilities/userCommandLoader.ts':   [],
 };
 

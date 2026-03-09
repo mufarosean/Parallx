@@ -55,6 +55,7 @@ import type { RetrievalTrace } from '../../../services/retrievalService.js';
 
 import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { extractTextContent } from '../tools/builtInTools.js';
+import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
 import { ReadonlyMarkdownInput } from '../../editor/readonlyMarkdownInput.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1562,6 +1563,13 @@ export class ChatDataService {
   }
 
   buildWidgetServices(): IChatWidgetServices {
+    const agentTaskServices = buildChatAgentTaskWidgetServices({
+      agentSessionService: this._d.agentSessionService,
+      agentApprovalService: this._d.agentApprovalService,
+      agentExecutionService: this._d.agentExecutionService,
+      agentTraceService: this._d.agentTraceService,
+    });
+
     return {
       sendRequest: async (sessionId, message, attachments?) => {
         await this._d.chatService.sendRequest(sessionId, message, attachments ? { attachments } : undefined);
@@ -1626,40 +1634,7 @@ export class ChatDataService {
       searchSessions: this._d.databaseService
         ? (q) => this.searchSessions(q)
         : undefined,
-      getAgentTasks: this._d.agentSessionService
-        ? () => {
-          const tasks = this._d.agentSessionService!.listActiveWorkspaceTasks();
-          return [...tasks]
-            .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-            .map((task) => ({
-              task,
-              diagnostics: this._d.agentTraceService?.getTaskDiagnostics(task.id),
-              pendingApprovals: this._d.agentApprovalService?.listApprovalRequestsForTask(task.id)
-                .filter((request) => request.status === 'pending') ?? [],
-            }));
-        }
-        : undefined,
-      resolveAgentApproval: (this._d.agentSessionService && this._d.agentExecutionService)
-        ? async (taskId, requestId, resolution) => {
-          const task = await this._d.agentSessionService!.resolveTaskApproval(taskId, requestId, resolution);
-          if (resolution === 'approve-once' || resolution === 'approve-for-task' || task.status === 'planning') {
-            await this._d.agentExecutionService!.runTask(taskId);
-          }
-        }
-        : undefined,
-      continueAgentTask: (this._d.agentSessionService && this._d.agentExecutionService)
-        ? async (taskId) => {
-          await this._d.agentSessionService!.continueTask(taskId);
-          await this._d.agentExecutionService!.runTask(taskId);
-        }
-        : undefined,
-      stopAgentTaskAfterStep: this._d.agentSessionService
-        ? async (taskId) => {
-          await this._d.agentSessionService!.requestStopAfterCurrentStep(taskId);
-        }
-        : undefined,
-      onDidChangeAgentTasks: this._d.agentSessionService?.onDidChangeTasks,
-      onDidChangeAgentApprovals: this._d.agentApprovalService?.onDidChangeApprovalRequests,
+      ...agentTaskServices,
       // ── Pending request queue ──
       queueRequest: (sessionId: string, message: string, kind: ChatRequestQueueKind) =>
         this._d.chatService.queueRequest(sessionId, message, kind),

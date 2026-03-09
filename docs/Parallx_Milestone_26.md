@@ -1069,6 +1069,9 @@ in external systems:
 12. Delegated-task approval/continue transitions are no longer part of the
    default participant surface; they already live in `ChatDataService` and the
    task-rail adapter layer.
+13. Agent-task widget adapter wiring moved out of `ChatDataService` into
+   `chatAgentTaskWidgetAdapter.ts`, starting `E1` by narrowing the widget/task
+   rail service-bundle surface.
 
 ### Validation completed for these slices
 
@@ -1081,14 +1084,17 @@ in external systems:
 - grounded executor tests in `chatGroundedExecutor.test.ts`
 - response validator tests in `chatResponseValidator.test.ts`
 - memory write-back tests in `chatMemoryWriteBack.test.ts`
+- agent-task widget adapter tests in `chatAgentTaskWidgetAdapter.test.ts`
 - existing participant-loop regression coverage in `agenticLoop.test.ts`
 - broader behavior regression coverage in `chatService.test.ts`
+- chat data/compliance regressions in `chatGateCompliance.test.ts`,
+  `chatWorkspaceSwitch.test.ts`, and `chatIndexingUI.test.ts`
 
 ### What remains next
 
-The next high-value cut is `ChatDataService` narrowing: reduce the service-
-bundle width and separate task-rail/widget adapter responsibilities from chat
-orchestration so the remaining agent-task integration points are explicit.
+The next high-value cut remains `ChatDataService` narrowing: split additional
+widget-facing adapter surfaces from chat orchestration so `E1` can retire more
+service-bundle width without changing runtime behavior.
 
 ---
 
