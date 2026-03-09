@@ -1030,7 +1030,7 @@ in external systems:
 - [x] D3. Extract memory write-back coordinator from the main participant body ✅ Preference extraction and session summary/concept write-back now run through `chatMemoryWriteBack.ts`.
 
 ### Phase E — `ChatDataService` Narrowing and Final Migration
-- [ ] E1. Reduce `ChatDataService` service-bundle width
+- [x] E1. Reduce `ChatDataService` service-bundle width ✅ Widget-facing request lifecycle, provider-status, and token/status-bar surfaces now run through dedicated adapters rather than inline `ChatDataService` closures.
 - [ ] E2. Separate adapter responsibilities from orchestration responsibilities
 - [ ] E3. Remove dead branches and legacy orchestration paths
 
@@ -1081,6 +1081,12 @@ in external systems:
 16. Session/search/system-prompt/file-relative widget wiring moved out of
    `ChatDataService` into `chatWidgetSessionAdapter.ts`, continuing `E1` by
    separating session-facing adapter composition from the core service bundle.
+17. Provider-status and request-lifecycle widget wiring moved out of
+   `ChatDataService` into `chatWidgetRequestAdapter.ts`, completing the
+   remaining inline widget-facing request surface for `E1`.
+18. Token/status-bar service composition moved out of `ChatDataService` into
+   `chatTokenBarAdapter.ts`, finishing `E1` by pulling the last UI-facing
+   adapter bundle behind a dedicated utility.
 
 ### Validation completed for these slices
 
@@ -1097,17 +1103,20 @@ in external systems:
 - widget picker adapter tests in `chatWidgetPickerAdapter.test.ts`
 - widget attachment adapter tests in `chatWidgetAttachmentAdapter.test.ts`
 - widget session adapter tests in `chatWidgetSessionAdapter.test.ts`
+- widget request adapter tests in `chatWidgetRequestAdapter.test.ts`
+- token/status-bar adapter tests in `chatTokenBarAdapter.test.ts`
 - existing participant-loop regression coverage in `agenticLoop.test.ts`
 - broader behavior regression coverage in `chatService.test.ts`
 - chat data/compliance regressions in `chatGateCompliance.test.ts`,
-  `chatWorkspaceSwitch.test.ts`, and `chatIndexingUI.test.ts`
+   `chatWorkspaceSwitch.test.ts`, `chatIndexingUI.test.ts`, and
+   `chatStreamingAndQueue.test.ts`
 
 ### What remains next
 
-The next high-value cut remains `ChatDataService` narrowing: split the
-remaining provider-status and request-lifecycle surfaces from chat
-orchestration, then evaluate whether the token/status-bar builder should be
-pulled behind a dedicated adapter to finish `E1` cleanly.
+`E1` is now complete. The next high-value cut is `E2`: separate the remaining
+`ChatDataService` orchestration responsibilities from its adapter-construction
+role, then use `E3` to remove any dead legacy paths left behind by the
+participant and service-bundle narrowing work.
 
 ---
 

@@ -111,7 +111,9 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatTurnRouter.ts':             [],
   'utilities/chatWidgetAttachmentAdapter.ts': [],
   'utilities/chatWidgetPickerAdapter.ts':    [],
+  'utilities/chatWidgetRequestAdapter.ts':   [],
   'utilities/chatWidgetSessionAdapter.ts':   [],
+  'utilities/chatTokenBarAdapter.ts':        ['widgets/'],
   'utilities/userCommandLoader.ts':   [],
 };
 

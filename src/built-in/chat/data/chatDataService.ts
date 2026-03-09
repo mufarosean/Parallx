@@ -58,7 +58,9 @@ import { extractTextContent } from '../tools/builtInTools.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
 import { buildChatWidgetAttachmentServices } from '../utilities/chatWidgetAttachmentAdapter.js';
 import { buildChatWidgetPickerServices } from '../utilities/chatWidgetPickerAdapter.js';
+import { buildChatWidgetRequestServices } from '../utilities/chatWidgetRequestAdapter.js';
 import { buildChatWidgetSessionServices } from '../utilities/chatWidgetSessionAdapter.js';
+import { buildChatTokenBarServices } from '../utilities/chatTokenBarAdapter.js';
 import { ReadonlyMarkdownInput } from '../../editor/readonlyMarkdownInput.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1623,12 +1625,11 @@ export class ChatDataService {
         ? (query: string) => this.searchSessions(query)
         : undefined,
     });
-
-    return {
-      sendRequest: async (sessionId, message, attachments?) => {
-        await this._d.chatService.sendRequest(sessionId, message, attachments ? { attachments } : undefined);
+    const requestServices = buildChatWidgetRequestServices({
+      sendRequest: async (sessionId, message, attachments) => {
+        await this._d.chatService.sendRequest(sessionId, message, attachments ? { attachments: attachments as any } : undefined);
       },
-      cancelRequest: (sessionId) => {
+      cancelRequest: (sessionId: string) => {
         this._d.chatService.cancelRequest(sessionId);
       },
       createSession: () => this._d.chatService.createSession(),
@@ -1637,11 +1638,6 @@ export class ChatDataService {
         available: (this._d.ollamaProvider as any).getLastStatus?.()?.available ?? false,
       }),
       onDidChangeProviderStatus: (this._d.ollamaProvider as any).onDidChangeStatus as Event<void>,
-      ...pickerServices,
-      ...attachmentServices,
-      ...sessionServices,
-      ...agentTaskServices,
-      // ── Pending request queue ──
       queueRequest: (sessionId: string, message: string, kind: ChatRequestQueueKind) =>
         this._d.chatService.queueRequest(sessionId, message, kind),
       removePendingRequest: (sessionId: string, requestId: string) =>
@@ -1649,12 +1645,20 @@ export class ChatDataService {
       requestYield: (sessionId: string) =>
         this._d.chatService.requestYield(sessionId),
       onDidChangePendingRequests: this._d.chatService.onDidChangePendingRequests,
+    });
+
+    return {
+      ...requestServices,
+      ...pickerServices,
+      ...attachmentServices,
+      ...sessionServices,
+      ...agentTaskServices,
     };
   }
 
   buildTokenBarServices(): ITokenStatusBarServices {
-    return {
-      getActiveSession: () => this._d.getActiveWidget()?.getSession(),
+    return buildChatTokenBarServices({
+      getActiveWidget: this._d.getActiveWidget,
       getContextLength: () => this.getContextLength(),
       getMode: () => this._d.modeService.getMode() as ChatMode,
       getWorkspaceName: () => this.getWorkspaceName(),
@@ -1666,6 +1670,6 @@ export class ChatDataService {
       isIndexing: () => this.isIndexing(),
       getIndexingProgress: () => this._d.indexingPipelineService?.progress ?? { phase: 'idle' as const, processed: 0, total: 0 },
       getIndexStats: () => this._lastIndexStats,
-    };
+    });
   }
 }
