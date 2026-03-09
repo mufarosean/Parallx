@@ -10,6 +10,7 @@ import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
 import { IIndexingPipelineService } from '../../services/serviceTypes.js';
+import type { IIndexingPipelineService as IndexingPipelineServiceShape } from '../../services/serviceTypes.js';
 import type { IndexingProgress, IndexingSourceResult } from '../../services/indexingPipeline.js';
 
 // ── SVG Icons (Codicon-style, 16×16) ────────────────────────────────────────
@@ -56,6 +57,10 @@ let listEl: HTMLElement | null = null;
 let headerEl: HTMLElement | null = null;
 let countEls: { total: HTMLElement; indexed: HTMLElement; skipped: HTMLElement; errors: HTMLElement } | null = null;
 
+/** Live subscription state for the current indexing pipeline instance. */
+let activePipeline: IndexingPipelineServiceShape | null = null;
+let activePipelineSubscriptions: IDisposable[] = [];
+
 /** Running counters. */
 let totalCount = 0;
 let indexedCount = 0;
@@ -73,53 +78,92 @@ interface IndexingLogEntry {
 // ── Activation ───────────────────────────────────────────────────────────────
 
 export function activate(api: ParallxApi, context: ToolContext): void {
-  // Get the indexing pipeline service
-  const pipeline = api.services.has(IIndexingPipelineService)
-    ? api.services.get<IIndexingPipelineService>(IIndexingPipelineService)
-    : null;
-
-  if (!pipeline) {
-    console.warn('[IndexingLog] IIndexingPipelineService not available — panel will be empty');
-  }
-
-  // Subscribe to per-source events
-  if (pipeline) {
-    const sourceSub = pipeline.onDidIndexSource((result) => {
-      addEntry(result);
-    });
-    context.subscriptions.push(sourceSub);
-
-    // Subscribe to progress changes for the phase header
-    const progressSub = pipeline.onDidChangeProgress((progress) => {
-      updatePhaseHeader(progress);
-    });
-    context.subscriptions.push(progressSub);
-
-    // Subscribe to initial index completion
-    const completeSub = pipeline.onDidCompleteInitialIndex((stats) => {
-      currentPhaseLabel = `Complete — ${stats.pages} pages, ${stats.files} files in ${(stats.durationMs / 1000).toFixed(1)}s`;
-
-      // When all files were already indexed (skipped), per-source events
-      // may not fire so counters stay 0.  Use the pipeline's DB-queried
-      // totals as the authoritative count so the panel shows real numbers.
-      const dbTotal = stats.pages + stats.files;
-      if (dbTotal > 0 && totalCount === 0) {
-        totalCount = dbTotal;
-        indexedCount = dbTotal; // all previously indexed
+  const disposePipelineSubscriptions = (): void => {
+    for (const subscription of activePipelineSubscriptions) {
+      try {
+        subscription.dispose();
+      } catch {
+        // Best effort cleanup only.
       }
+    }
+    activePipelineSubscriptions = [];
+  };
 
+  const bindToPipeline = (pipeline: IndexingPipelineServiceShape | null): void => {
+    if (activePipeline === pipeline) {
+      return;
+    }
+
+    disposePipelineSubscriptions();
+    activePipeline = pipeline;
+
+    if (!pipeline) {
+      currentPhaseLabel = 'Idle';
       refreshHeader();
-    });
-    context.subscriptions.push(completeSub);
+      return;
+    }
 
-    // If pipeline is already running, capture current state
+    activePipelineSubscriptions.push(
+      pipeline.onDidIndexSource((result) => {
+        addEntry(result);
+      }),
+    );
+
+    activePipelineSubscriptions.push(
+      pipeline.onDidChangeProgress((progress) => {
+        updatePhaseHeader(progress);
+      }),
+    );
+
+    activePipelineSubscriptions.push(
+      pipeline.onDidCompleteInitialIndex((stats) => {
+        currentPhaseLabel = `Complete — ${stats.pages} pages, ${stats.files} files in ${(stats.durationMs / 1000).toFixed(1)}s`;
+
+        const dbTotal = stats.pages + stats.files;
+        if (dbTotal > 0 && totalCount === 0) {
+          totalCount = dbTotal;
+          indexedCount = dbTotal;
+        }
+
+        refreshHeader();
+      }),
+    );
+
     if (pipeline.isIndexing) {
       updatePhaseHeader(pipeline.progress);
     } else if (pipeline.isInitialIndexComplete) {
       currentPhaseLabel = 'Complete';
       refreshHeader();
+    } else {
+      currentPhaseLabel = 'Idle';
+      refreshHeader();
     }
-  }
+  };
+
+  const refreshPipelineBinding = (): void => {
+    const pipeline = api.services.has(IIndexingPipelineService)
+      ? api.services.get<IIndexingPipelineService>(IIndexingPipelineService)
+      : null;
+
+    if (!pipeline && !activePipeline) {
+      console.warn('[IndexingLog] IIndexingPipelineService not available — panel will be empty');
+    }
+
+    bindToPipeline(pipeline);
+  };
+
+  refreshPipelineBinding();
+
+  const rebindingTimer = window.setInterval(() => {
+    refreshPipelineBinding();
+  }, 1000);
+  context.subscriptions.push({
+    dispose() {
+      window.clearInterval(rebindingTimer);
+      disposePipelineSubscriptions();
+      activePipeline = null;
+    },
+  });
 
   // Register view provider for the panel tab
   const viewDisposable = api.views.registerViewProvider('view.indexingLog', {

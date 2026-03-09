@@ -501,6 +501,64 @@ describe('IndexingPipelineService', () => {
 
       expect(chunkingService.chunkPage).not.toHaveBeenCalled();
     });
+
+    it('re-indexes when only the page title changes', async () => {
+      const storedHashes = new Map<string, string>();
+      vectorStore.getContentHash.mockImplementation(async (sourceType: string, sourceId: string) => {
+        if (sourceType === '_system' && sourceId === 'pipeline_version') return '3';
+        return storedHashes.get(`${sourceType}:${sourceId}`) ?? null;
+      });
+      vectorStore.upsert.mockImplementation(async (sourceType: string, sourceId: string, _chunks: unknown[], contentHash: string) => {
+        storedHashes.set(`${sourceType}:${sourceId}`, contentHash);
+      });
+
+      db.get
+        .mockResolvedValueOnce({
+          id: 'p1',
+          title: 'Original Title',
+          content: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"hello"}]}]}',
+        })
+        .mockResolvedValueOnce({
+          id: 'p1',
+          title: 'Updated Title',
+          content: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"hello"}]}]}',
+        });
+
+      await pipeline.reindexPage('p1');
+      await pipeline.reindexPage('p1');
+
+      expect(vectorStore.upsert).toHaveBeenCalledTimes(2);
+      expect(chunkingService.chunkPage).toHaveBeenNthCalledWith(1, 'p1', 'Original Title', expect.any(String));
+      expect(chunkingService.chunkPage).toHaveBeenNthCalledWith(2, 'p1', 'Updated Title', expect.any(String));
+    });
+
+    it('skips re-indexing when title and content are unchanged', async () => {
+      const storedHashes = new Map<string, string>();
+      vectorStore.getContentHash.mockImplementation(async (sourceType: string, sourceId: string) => {
+        if (sourceType === '_system' && sourceId === 'pipeline_version') return '3';
+        return storedHashes.get(`${sourceType}:${sourceId}`) ?? null;
+      });
+      vectorStore.upsert.mockImplementation(async (sourceType: string, sourceId: string, _chunks: unknown[], contentHash: string) => {
+        storedHashes.set(`${sourceType}:${sourceId}`, contentHash);
+      });
+
+      db.get
+        .mockResolvedValueOnce({
+          id: 'p1',
+          title: 'Stable Title',
+          content: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"hello"}]}]}',
+        })
+        .mockResolvedValueOnce({
+          id: 'p1',
+          title: 'Stable Title',
+          content: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"hello"}]}]}',
+        });
+
+      await pipeline.reindexPage('p1');
+      await pipeline.reindexPage('p1');
+
+      expect(vectorStore.upsert).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('reindexFile()', () => {
@@ -538,7 +596,7 @@ describe('IndexingPipelineService', () => {
       pipeline.schedulePageReindex('p1');
 
       // Advance past debounce
-      await vi.advanceTimersByTimeAsync(6000);
+      await vi.advanceTimersByTimeAsync(4000);
 
       // Should only index once
       expect(db.get).toHaveBeenCalledTimes(1);

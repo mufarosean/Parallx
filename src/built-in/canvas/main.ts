@@ -14,9 +14,11 @@ import './canvas.css';
 import 'katex/dist/katex.min.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { IIndexingPipelineService, IVectorStoreService } from '../../services/serviceTypes.js';
 import { CanvasDataService } from './canvasDataService.js';
 import type { ICanvasDataService } from './canvasTypes.js';
 import { PageChangeKind } from './canvasTypes.js';
+import type { PageChangeEvent, PageUpdateField } from './canvasTypes.js';
 import { CanvasSidebar } from './canvasSidebar.js';
 import { CanvasEditorProvider } from './canvasEditorProvider.js';
 import { DatabaseDataService } from './database/databaseDataService.js';
@@ -57,6 +59,36 @@ interface ParallxApi {
     readonly openEditors: readonly { id: string; name: string; description: string; isDirty: boolean; isActive: boolean; groupId: string }[];
     onDidChangeOpenEditors(listener: () => void): IDisposable;
   };
+  services: {
+    get<T>(id: { readonly id: string }): T;
+    has(id: { readonly id: string }): boolean;
+  };
+}
+
+const CANVAS_PAGE_REINDEX_DEBOUNCE_MS = 3_000;
+
+function buildIndexedPagePayloadKey(page: { title: string; content: string }): string {
+  return JSON.stringify({ title: page.title, content: page.content });
+}
+
+const INDEX_METADATA_PAGE_FIELDS: ReadonlySet<PageUpdateField> = new Set([
+  'title',
+]);
+
+function doesPageChangeAffectIndexMetadata(event: PageChangeEvent): boolean {
+  if (event.kind === PageChangeKind.Created || event.kind === PageChangeKind.Deleted) {
+    return true;
+  }
+
+  if (event.kind !== PageChangeKind.Updated) {
+    return false;
+  }
+
+  if (!event.changedFields || event.changedFields.length === 0) {
+    return true;
+  }
+
+  return event.changedFields.some((field) => INDEX_METADATA_PAGE_FIELDS.has(field));
 }
 
 // â”€â”€â”€ Module State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -70,6 +102,89 @@ let _sidebar: CanvasSidebar | null = null;
 
 export async function activate(api: ParallxApi, context: ToolContext): Promise<void> {
   _api = api;
+
+  const getIndexingPipeline = () => api.services.has(IIndexingPipelineService)
+    ? api.services.get<import('../../services/serviceTypes.js').IIndexingPipelineService>(IIndexingPipelineService)
+    : undefined;
+  const getVectorStore = () => api.services.has(IVectorStoreService)
+    ? api.services.get<import('../../services/serviceTypes.js').IVectorStoreService>(IVectorStoreService)
+    : undefined;
+  const pendingPageReindexes = new Map<string, ReturnType<typeof setTimeout>>();
+  const queuedPagePayloads = new Map<string, string>();
+  const runningPagePayloads = new Map<string, string>();
+
+  const cancelPendingPageReindex = (pageId: string): void => {
+    const timer = pendingPageReindexes.get(pageId);
+    if (timer) {
+      clearTimeout(timer);
+      pendingPageReindexes.delete(pageId);
+    }
+  };
+
+  const schedulePageReindexForPayload = (page: { id: string; title: string; content: string } | null | undefined): void => {
+    if (!page) {
+      return;
+    }
+
+    const nextPayloadKey = buildIndexedPagePayloadKey(page);
+    const currentPayloadKey = queuedPagePayloads.get(page.id);
+    const runningPayloadKey = runningPagePayloads.get(page.id);
+    if (currentPayloadKey === nextPayloadKey || runningPayloadKey === nextPayloadKey) {
+      return;
+    }
+
+    queuedPagePayloads.set(page.id, nextPayloadKey);
+    if (pendingPageReindexes.has(page.id)) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      pendingPageReindexes.delete(page.id);
+
+      const latestPayloadKey = queuedPagePayloads.get(page.id);
+      if (!latestPayloadKey) {
+        return;
+      }
+
+      runningPagePayloads.set(page.id, latestPayloadKey);
+
+      const indexingPipeline = getIndexingPipeline();
+      if (!indexingPipeline) {
+        return;
+      }
+
+      void indexingPipeline.reindexPage(page.id).catch((err) => {
+        console.warn('[Canvas] Failed to re-index saved page:', page.id, err);
+      }).finally(() => {
+        const finishedPayloadKey = runningPagePayloads.get(page.id);
+        if (finishedPayloadKey === latestPayloadKey) {
+          runningPagePayloads.delete(page.id);
+        }
+
+        if (queuedPagePayloads.get(page.id) !== latestPayloadKey) {
+          const latestPage = _dataService?.getPage(page.id);
+          void latestPage?.then((resolvedPage) => {
+            schedulePageReindexForPayload(resolvedPage ?? undefined);
+          }).catch((err) => {
+            console.warn('[Canvas] Failed to reload page after re-index scheduling drift:', page.id, err);
+          });
+        }
+      });
+    }, CANVAS_PAGE_REINDEX_DEBOUNCE_MS);
+
+    pendingPageReindexes.set(page.id, timer);
+  };
+
+  context.subscriptions.push({
+    dispose() {
+      for (const timer of pendingPageReindexes.values()) {
+        clearTimeout(timer);
+      }
+      pendingPageReindexes.clear();
+      queuedPagePayloads.clear();
+      runningPagePayloads.clear();
+    },
+  });
 
   // 1. Run Canvas migrations on the open database
   await _runMigrations();
@@ -173,6 +288,46 @@ export async function activate(api: ParallxApi, context: ToolContext): Promise<v
           }
         }
       }
+    }),
+  );
+
+  // 5c. Keep the knowledge index in sync with page lifecycle changes.
+  context.subscriptions.push(
+    _dataService.onDidSavePage((pageId) => {
+      void _dataService?.getPage(pageId).then((page) => {
+        schedulePageReindexForPayload(page ?? undefined);
+      }).catch((err) => {
+        console.warn('[Canvas] Failed to load saved page for re-index scheduling:', pageId, err);
+      });
+    }),
+  );
+
+  context.subscriptions.push(
+    _dataService.onDidChangePage((event) => {
+      if (!doesPageChangeAffectIndexMetadata(event)) {
+        return;
+      }
+
+      if (event.kind === PageChangeKind.Deleted) {
+        cancelPendingPageReindex(event.pageId);
+        queuedPagePayloads.delete(event.pageId);
+        runningPagePayloads.delete(event.pageId);
+        const vectorStore = getVectorStore();
+        if (!vectorStore) {
+          return;
+        }
+        void vectorStore.deleteSource('page_block', event.pageId).catch((err) => {
+          console.warn('[Canvas] Failed to remove deleted page from knowledge index:', event.pageId, err);
+        });
+        return;
+      }
+
+      const indexingPipeline = getIndexingPipeline();
+      if (!indexingPipeline) {
+        return;
+      }
+
+      schedulePageReindexForPayload(event.page);
     }),
   );
 
