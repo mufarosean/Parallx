@@ -1114,6 +1114,10 @@ in external systems:
    `chatSpecificCoverageFocus.ts`, removing a stale duplicate helper path from
    both `defaultParticipant.ts` and `chatDeterministicExecutors.ts` as part of
    `E3` cleanup.
+27. Redundant conversational-state recomputation was removed from
+   `defaultParticipant.ts`, reusing the earlier route-derived flag instead of a
+   second planner-era intent check during request-option and response-finalizer
+   wiring.
 
 ### Validation completed for these slices
 

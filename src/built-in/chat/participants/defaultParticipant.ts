@@ -1571,12 +1571,8 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     }
 
     // Build request options (mode-aware)
-    // Without the LLM planner, we no longer classify intent.  Always send
-    // tools — the model ignores them when not needed.  This matches how
-    // ChatGPT and Open WebUI handle tool availability.
-    const isConversational = retrievalPlan.intent === 'conversational';
     const options: IChatRequestOptions = {
-      tools: (!isConversational && shouldIncludeTools(request.mode))
+      tools: (!isConversationalTurn && shouldIncludeTools(request.mode))
         ? (capabilities.canAutonomous ? services.getToolDefinitions() : services.getReadOnlyToolDefinitions())
         : undefined,
       // Edit mode: use JSON structured output
@@ -1766,7 +1762,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           response,
           token,
           isEditMode,
-          isConversational,
+          isConversational: isConversationalTurn,
           citationMode: contextPlan.citationMode,
           ragSources,
           retrievedContextLength: retrievedContextText.length,
