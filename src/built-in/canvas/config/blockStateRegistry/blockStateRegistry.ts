@@ -26,6 +26,7 @@ export * from './blockTransforms.js';
 export * from './blockMovement.js';
 export * from './blockNesting.js';
 export * from './crossPageMovement.js';
+export * from './pageBlockDropRouting.js';
 
 // ── Column plugins (block-state concerns: resize, drop, auto-dissolve) ──
 export { columnResizePlugin } from '../../plugins/columnResizePlugin.js';

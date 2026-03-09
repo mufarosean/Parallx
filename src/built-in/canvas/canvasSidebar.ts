@@ -421,7 +421,10 @@ export class CanvasSidebar {
     }
 
     // Click → open
-    row.addEventListener('click', () => this._selectAndOpenPage(page));
+    row.addEventListener('click', () => {
+      if (this._renamingPageId === page.id) return;
+      this._selectAndOpenPage(page);
+    });
 
     // Right-click → context menu
     row.addEventListener('contextmenu', (e) => {
@@ -576,7 +579,10 @@ export class CanvasSidebar {
     // ── Event handlers ──
 
     // Click → open in editor
-    row.addEventListener('click', () => this._selectAndOpenPage(node));
+    row.addEventListener('click', () => {
+      if (this._renamingPageId === node.id) return;
+      this._selectAndOpenPage(node);
+    });
 
     // Double-click → inline rename
     label.addEventListener('dblclick', (e) => {
@@ -1103,14 +1109,27 @@ export class CanvasSidebar {
   private _startInlineRename(row: HTMLElement, label: HTMLElement, node: IPageTreeNode): void {
     if (this._renamingPageId) return; // already renaming
     this._renamingPageId = node.id;
+    row.classList.add('canvas-node--renaming');
 
     const renameBox = new InputBox(row, { value: node.title });
     renameBox.inputElement.classList.add('canvas-inline-input');
+    renameBox.inputElement.spellcheck = true;
+
+    const stopRenameClickPropagation = (event: Event) => {
+      event.stopPropagation();
+    };
 
     // Replace label with input
     label.style.display = 'none';
     renameBox.focus();
     renameBox.select();
+
+    renameBox.element.addEventListener('mousedown', stopRenameClickPropagation);
+    renameBox.element.addEventListener('click', stopRenameClickPropagation);
+    renameBox.element.addEventListener('dblclick', stopRenameClickPropagation);
+    renameBox.inputElement.addEventListener('mousedown', stopRenameClickPropagation);
+    renameBox.inputElement.addEventListener('click', stopRenameClickPropagation);
+    renameBox.inputElement.addEventListener('dblclick', stopRenameClickPropagation);
 
     const commit = async () => {
       const newTitle = renameBox.value.trim() || 'Untitled';
@@ -1130,7 +1149,14 @@ export class CanvasSidebar {
 
     const cleanup = () => {
       this._renamingPageId = null;
+      row.classList.remove('canvas-node--renaming');
       renameBox.inputElement.removeEventListener('blur', commit);
+      renameBox.element.removeEventListener('mousedown', stopRenameClickPropagation);
+      renameBox.element.removeEventListener('click', stopRenameClickPropagation);
+      renameBox.element.removeEventListener('dblclick', stopRenameClickPropagation);
+      renameBox.inputElement.removeEventListener('mousedown', stopRenameClickPropagation);
+      renameBox.inputElement.removeEventListener('click', stopRenameClickPropagation);
+      renameBox.inputElement.removeEventListener('dblclick', stopRenameClickPropagation);
       renameBox.element.remove();
       renameBox.dispose();
       label.style.display = '';

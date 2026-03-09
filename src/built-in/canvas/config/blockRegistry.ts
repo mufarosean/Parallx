@@ -1318,6 +1318,8 @@ export {
   setActiveCanvasDragSession,
   getActiveCanvasDragSession,
   clearActiveCanvasDragSession,
+  classifyPageBlockDropZone,
+  getPageBlockDropThresholds,
   moveBlockToLinkedPage,
 } from './blockStateRegistry/blockStateRegistry.js';
 export type { CanvasDragSession, CrossPageMoveParams } from './blockStateRegistry/blockStateRegistry.js';

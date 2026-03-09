@@ -407,7 +407,7 @@ export class PageChromeController {
     // ── Title (contenteditable) ──
     this._titleEl = $('div.canvas-page-title');
     this._titleEl.contentEditable = 'true';
-    this._titleEl.spellcheck = false;
+    this._titleEl.spellcheck = true;
     this._titleEl.setAttribute('data-placeholder', 'Untitled');
     const displayTitle = this._currentPage?.title;
     this._titleEl.textContent = (displayTitle && displayTitle !== 'Untitled') ? displayTitle : '';

@@ -5,7 +5,7 @@ description: These instructions provide guidelines for AI to follow when thinkin
 
 ## 0. Canvas Registry Gate Architecture (READ FIRST)
 
-The canvas built-in (`src/built-in/canvas/`) enforces a **five-registry gate architecture**. This is the most critical structural rule in the canvas codebase. Full details are in `ARCHITECTURE.md` — this section defines the rules you must follow **before writing any canvas code**.
+The canvas built-in (`src/built-in/canvas/`) was originally organized around a **five-registry gate architecture**. The current live compliance model extends that structure with the integrated `databaseRegistry` gate, so the enforced architecture is now six gates total. This is the most critical structural rule in the canvas codebase. Full details are in `ARCHITECTURE.md` — this section defines the rules you must follow **before writing any canvas code**.
 
 ### Core Principle
 
@@ -15,7 +15,7 @@ A "child" is any file that belongs to a registry's domain. A "gate" is a registr
 
 **Gate-to-gate rule:** When a gate needs something from another gate, it imports from the gate that **owns** the symbol — never through an intermediate gate that merely passes it through. If IconRegistry owns `svgIcon`, HandleRegistry imports from IconRegistry directly, not from BlockRegistry. This eliminates phantom dependencies and keeps the import graph honest.
 
-### The Five Gates
+### The Original Five Core Gates
 
 | Gate | File | Domain |
 |------|------|--------|
@@ -24,6 +24,14 @@ A "child" is any file that belongs to a registry's domain. A "gate" is a registr
 | **CanvasMenuRegistry** | `menus/canvasMenuRegistry.ts` | Menu lifecycle, mutual exclusion, block-data access for menus |
 | **BlockStateRegistry** | `config/blockStateRegistry/blockStateRegistry.ts` | Block mutations, movements, column operations, drag state |
 | **HandleRegistry** | `handles/handleRegistry.ts` | Block handle interaction, selection, drag lifecycle |
+
+### Current live gate model
+
+The original five core gates still define the canvas-core architecture. The live codebase and `tests/unit/gateCompliance.test.ts` now enforce a sixth gate as well:
+
+| Gate | File | Domain |
+|------|------|--------|
+| **DatabaseRegistry** | `database/databaseRegistry.ts` | Integrated database subsystem used by canvas inline and full-page databases |
 
 ### Import Rules (mandatory — violations break the architecture)
 
@@ -39,6 +47,7 @@ A "child" is any file that belongs to a registry's domain. A "gate" is a registr
    - **CanvasMenuRegistry** → BlockRegistry, IconRegistry, BlockStateRegistry
    - **BlockStateRegistry** → BlockRegistry (inward: `PAGE_CONTAINERS`, `isContainerBlockType`)
    - **HandleRegistry** → BlockRegistry, IconRegistry, BlockStateRegistry, CanvasMenuRegistry
+   - **DatabaseRegistry** → IconRegistry, `canvasTypes`, `header/pageChrome`
 8. **No cycles between gates** — except the one permitted cycle: BlockRegistry ↔ BlockStateRegistry. This cycle is safe because both directions use `export { X } from '...'` live re-export syntax with zero evaluation-time reads. **Never** convert these to `import X; export const Y = X` — that breaks the safety guarantee. The cycle is enforced by a dedicated test in `gateCompliance.test.ts`. No other gate-to-gate cycle is permitted.
 
 ### When adding new code
@@ -68,7 +77,7 @@ Do NOT create a gate for:
 - `math/` — one file, gated through CanvasMenuRegistry.
 - `header/` — one file, gated through BlockRegistry.
 
-Current ratio: 5 gates / ~50 files = 1:10. If the ratio drops below 1:5, reconsider whether some gates should merge.
+Current ratio: 6 gates / ~50 files = roughly 1:8. If the ratio drops too far, reconsider whether some gates should merge.
 
 ### Automated enforcement
 

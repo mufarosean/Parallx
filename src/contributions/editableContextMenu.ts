@@ -9,10 +9,10 @@
 //   - Plain <input> / <textarea> elements
 //   - Any [contenteditable] surface
 //
-// Uses capture-phase listener on `document` so it runs before any
-// component-specific contextmenu handlers (e.g. canvas sidebar, popups).
-// When the target IS an editable surface, this handler suppresses the native
-// Electron/Chromium context menu and shows our ContextMenu instead.
+// Uses a capture-phase listener on `document` only to remember which editable
+// surface initiated the right-click and to keep other app-level context-menu
+// handlers from racing it. The authoritative spellcheck payload comes from the
+// Electron main-process `webContents` context-menu event.
 //
 // VS Code reference: VS Code uses Electron's `Menu.buildFromTemplate()`
 // for the native input context menu. Parallx uses its own ContextMenu widget
@@ -103,6 +103,41 @@ function clipboardHasText(): boolean {
   return readClipboardText().length > 0;
 }
 
+interface IEditableMenuState {
+  readonly x: number;
+  readonly y: number;
+  readonly editFlags: {
+    readonly canUndo: boolean;
+    readonly canRedo: boolean;
+    readonly canCut: boolean;
+    readonly canCopy: boolean;
+    readonly canPaste: boolean;
+    readonly canSelectAll: boolean;
+  };
+  readonly dictionarySuggestions: readonly string[];
+  readonly misspelledWord: string;
+}
+
+async function replaceMisspelling(suggestion: string): Promise<boolean> {
+  try {
+    const api = (window as any).parallxElectron?.editableMenu;
+    if (!api?.replaceMisspelling) return false;
+    return await api.replaceMisspelling(suggestion);
+  } catch {
+    return false;
+  }
+}
+
+async function addWordToDictionary(word: string): Promise<boolean> {
+  try {
+    const api = (window as any).parallxElectron?.editableMenu;
+    if (!api?.addToDictionary) return false;
+    return await api.addToDictionary(word);
+  } catch {
+    return false;
+  }
+}
+
 // ── Command execution ───────────────────────────────────────────────────────
 
 function execUndo(): void {
@@ -168,9 +203,18 @@ function execSelectAll(target: HTMLElement): void {
  */
 export class EditableContextMenu extends Disposable {
 
+  private _pendingContextTarget: {
+    readonly target: HTMLElement;
+    readonly savedSelection: SavedSelection;
+    readonly x: number;
+    readonly y: number;
+    readonly timestamp: number;
+  } | null = null;
+
   constructor() {
     super();
     this._installGlobalListener();
+    this._installMainProcessBridge();
   }
 
   // ── Event listener ──────────────────────────────────────────────────────
@@ -186,10 +230,15 @@ export class EditableContextMenu extends Disposable {
       const editable = findEditableAncestor(target);
       if (!editable) return;
 
-      e.preventDefault();
-      e.stopPropagation();
+      this._pendingContextTarget = {
+        target: editable,
+        savedSelection: saveSelection(editable),
+        x: e.clientX,
+        y: e.clientY,
+        timestamp: Date.now(),
+      };
 
-      this._showMenu(e.clientX, e.clientY, editable);
+      e.stopPropagation();
     };
 
     document.addEventListener('contextmenu', handler, true);
@@ -198,21 +247,101 @@ export class EditableContextMenu extends Disposable {
     }));
   }
 
+  private _installMainProcessBridge(): void {
+    const api = (window as any).parallxElectron?.editableMenu;
+    if (!api?.onOpen) {
+      return;
+    }
+
+    api.onOpen((menuState: IEditableMenuState) => {
+      const pending = this._consumePendingTarget(menuState.x, menuState.y);
+      const target = pending?.target ?? this._resolveEditableTargetAt(menuState.x, menuState.y);
+      if (!target) {
+        return;
+      }
+
+      this._showMenu(
+        menuState.x,
+        menuState.y,
+        target,
+        menuState,
+        pending?.savedSelection ?? saveSelection(target),
+      );
+    });
+  }
+
+  private _consumePendingTarget(x: number, y: number): { target: HTMLElement; savedSelection: SavedSelection } | null {
+    const pending = this._pendingContextTarget;
+    this._pendingContextTarget = null;
+    if (!pending) {
+      return null;
+    }
+
+    const ageMs = Date.now() - pending.timestamp;
+    const isNearby = Math.abs(pending.x - x) <= 6 && Math.abs(pending.y - y) <= 6;
+    if (ageMs > 1000 || !isNearby) {
+      return null;
+    }
+
+    return {
+      target: pending.target,
+      savedSelection: pending.savedSelection,
+    };
+  }
+
+  private _resolveEditableTargetAt(x: number, y: number): HTMLElement | null {
+    const directTarget = document.elementFromPoint(x, y);
+    if (directTarget) {
+      const editable = findEditableAncestor(directTarget);
+      if (editable) {
+        return editable;
+      }
+    }
+
+    const active = document.activeElement;
+    return active instanceof HTMLElement ? findEditableAncestor(active) : null;
+  }
+
   // ── Menu ────────────────────────────────────────────────────────────────
 
-  private _showMenu(x: number, y: number, target: HTMLElement): void {
+  private _showMenu(
+    x: number,
+    y: number,
+    target: HTMLElement,
+    menuState: IEditableMenuState,
+    saved: SavedSelection,
+  ): void {
     const hasSel = hasTextSelection(target);
     const hasClip = clipboardHasText();
-    const saved = saveSelection(target);
+    const spellcheckItems: IContextMenuItem[] = [];
+
+    if (menuState.dictionarySuggestions.length > 0) {
+      for (const suggestion of menuState.dictionarySuggestions.slice(0, 6)) {
+        spellcheckItems.push({
+          id: `replace:${suggestion}`,
+          label: suggestion,
+          group: '0_spellcheck',
+        });
+      }
+    }
+
+    if (menuState.misspelledWord) {
+      spellcheckItems.push({
+        id: 'add-to-dictionary',
+        label: 'Add to Dictionary',
+        group: '0_spellcheck',
+      });
+    }
 
     const items: IContextMenuItem[] = [
-      { id: 'undo',        label: 'Undo',               keybinding: `${mod}+Z`,             group: '1_history' },
-      { id: 'redo',        label: 'Redo',               keybinding: `${mod}+Shift+Z`,       group: '1_history' },
-      { id: 'cut',         label: 'Cut',                keybinding: `${mod}+X`,             group: '2_clipboard', disabled: !hasSel },
-      { id: 'copy',        label: 'Copy',               keybinding: `${mod}+C`,             group: '2_clipboard', disabled: !hasSel },
-      { id: 'paste',       label: 'Paste',              keybinding: `${mod}+V`,             group: '2_clipboard', disabled: !hasClip },
-      { id: 'paste-plain', label: 'Paste as plain text', keybinding: `${mod}+Shift+V`,      group: '2_clipboard', disabled: !hasClip },
-      { id: 'select-all',  label: 'Select all',         keybinding: `${mod}+A`,             group: '3_selection' },
+      ...spellcheckItems,
+      { id: 'undo',        label: 'Undo',                keybinding: `${mod}+Z`,        group: '1_history',   disabled: !menuState.editFlags.canUndo },
+      { id: 'redo',        label: 'Redo',                keybinding: `${mod}+Shift+Z`,  group: '1_history',   disabled: !menuState.editFlags.canRedo },
+      { id: 'cut',         label: 'Cut',                 keybinding: `${mod}+X`,        group: '2_clipboard', disabled: !menuState.editFlags.canCut && !hasSel },
+      { id: 'copy',        label: 'Copy',                keybinding: `${mod}+C`,        group: '2_clipboard', disabled: !menuState.editFlags.canCopy && !hasSel },
+      { id: 'paste',       label: 'Paste',               keybinding: `${mod}+V`,        group: '2_clipboard', disabled: !menuState.editFlags.canPaste && !hasClip },
+      { id: 'paste-plain', label: 'Paste as plain text', keybinding: `${mod}+Shift+V`, group: '2_clipboard', disabled: !menuState.editFlags.canPaste && !hasClip },
+      { id: 'select-all',  label: 'Select all',          keybinding: `${mod}+A`,        group: '3_selection', disabled: !menuState.editFlags.canSelectAll },
     ];
 
     const menu = ContextMenu.show({
@@ -225,14 +354,20 @@ export class EditableContextMenu extends Disposable {
       // Restore focus + selection before executing the command
       restoreAndFocus(saved);
 
+      if (item.id.startsWith('replace:')) {
+        void replaceMisspelling(item.id.slice('replace:'.length));
+        return;
+      }
+
       switch (item.id) {
-        case 'undo':        execUndo(); break;
-        case 'redo':        execRedo(); break;
-        case 'cut':         execCut(); break;
-        case 'copy':        execCopy(); break;
-        case 'paste':       execPaste(); break;
+        case 'add-to-dictionary': void addWordToDictionary(menuState.misspelledWord); break;
+        case 'undo': execUndo(); break;
+        case 'redo': execRedo(); break;
+        case 'cut': execCut(); break;
+        case 'copy': execCopy(); break;
+        case 'paste': execPaste(); break;
         case 'paste-plain': execPastePlain(saved); break;
-        case 'select-all':  execSelectAll(target); break;
+        case 'select-all': execSelectAll(target); break;
       }
     });
   }

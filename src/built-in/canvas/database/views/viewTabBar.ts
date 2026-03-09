@@ -15,6 +15,7 @@ import { svgIcon } from '../databaseRegistry.js';
 import { TabBar, type ITabBarItem } from '../../../../ui/tabBar.js';
 import { ContextMenu, type IContextMenuItem } from '../../../../ui/contextMenu.js';
 import { $, addDisposableListener } from '../../../../ui/dom.js';
+import { showDatabaseTextEntryDialog } from '../databaseRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -195,7 +196,7 @@ export class ViewTabBar extends Disposable {
       try {
         switch (ev.item.id) {
           case 'rename':
-            this._renameView(viewId);
+            await this._renameView(viewId);
             break;
           case 'duplicate': {
             const dup = await this._dataService.duplicateView(viewId);
@@ -216,14 +217,18 @@ export class ViewTabBar extends Disposable {
 
   // ─── Rename ──────────────────────────────────────────────────────────
 
-  private _renameView(viewId: string): void {
+  private async _renameView(viewId: string): Promise<void> {
     const view = this._views.find(v => v.id === viewId);
     if (!view) return;
 
-    // Use prompt for now — inline tab rename is a polish item
-    const newName = prompt('Rename view:', view.name);
-    if (newName && newName !== view.name) {
-      this._dataService.updateView(viewId, { name: newName }).catch(err => {
+    const newName = await showDatabaseTextEntryDialog({
+      title: 'Rename view',
+      value: view.name,
+      placeholder: 'View name',
+      confirmLabel: 'Rename',
+    });
+    if (newName !== undefined && newName !== '' && newName !== view.name) {
+      await this._dataService.updateView(viewId, { name: newName }).catch(err => {
         console.error('[ViewTabBar] Rename failed:', err);
       });
     }

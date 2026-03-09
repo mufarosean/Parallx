@@ -102,6 +102,8 @@ export {
   PROPERTY_TYPE_ICONS,
 } from './properties/propertyConfig.js';
 
+export { showDatabaseTextEntryDialog } from './textEntryDialog.js';
+
 // ─── Views ───────────────────────────────────────────────────────────────────
 
 export { TableView } from './views/tableView.js';

@@ -262,8 +262,24 @@ class CanvasEditorPane implements IDisposable {
       editorProps: {
         attributes: {
           class: 'canvas-tiptap-editor',
+          spellcheck: 'true',
+        },
+        handleDOMEvents: {
+          mousedown: (_view, event) => {
+            if (event.button === 2) {
+              this._menuRegistry?.markContextMenuGesture();
+            } else if (event.button === 0) {
+              this._menuRegistry?.clearContextMenuGesture();
+            }
+            return false;
+          },
+          contextmenu: () => {
+            this._menuRegistry?.markContextMenuGesture();
+            return false;
+          },
         },
         handleKeyDown: (_view, event) => {
+          this._menuRegistry?.clearContextMenuGesture();
           // Prevent Parallx keybinding system from capturing editor shortcuts
           if (event.ctrlKey || event.metaKey || event.altKey) {
             event.stopPropagation();

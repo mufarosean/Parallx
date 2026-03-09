@@ -9,6 +9,7 @@ import {
   resolvePageIcon,
   svgIcon,
   getActiveCanvasDragSession,
+  classifyPageBlockDropZone,
   moveBlockToLinkedPage,
 } from '../config/blockRegistry.js';
 import { layoutPopup } from '../../../ui/dom.js';
@@ -370,13 +371,7 @@ export const PageBlock = Node.create<PageBlockOptions>({
         // left/right strips) belong to the columnDropPlugin for standard
         // above/below reorder and column-creation zones. ──
         const rect = dom.getBoundingClientRect();
-        const rx = event.clientX - rect.left;
-        const ry = event.clientY - rect.top;
-        const H_EDGE = rect.width >= 150 ? 50 : Math.max(16, rect.width * 0.2);
-        const V_EDGE = Math.max(8, rect.height * 0.25);
-        const isOnEdge = rx < H_EDGE || rx > rect.width - H_EDGE
-                      || ry < V_EDGE || ry > rect.height - V_EDGE;
-        if (isOnEdge) {
+        if (classifyPageBlockDropZone(rect, event.clientX, event.clientY) === 'edge') {
           dom.classList.remove('canvas-page-block--drop-target');
           return; // let event bubble to columnDropPlugin
         }

@@ -19,6 +19,7 @@ import type {
   INumberPropertyConfig,
   ISelectOption,
 } from '../databaseRegistry.js';
+import { showDatabaseTextEntryDialog } from '../databaseRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -302,20 +303,24 @@ export function showOptionListEditor(
 
   menu.onDidSelect(e => {
     if (e.item.id === '__add__') {
-      _addNewOption(property, options, dataService, databaseId);
+      void _addNewOption(property, options, dataService, databaseId);
     }
     // Clicking an existing option could open a rename/color sub-menu in the future
   });
 }
 
-function _addNewOption(
+async function _addNewOption(
   property: IDatabaseProperty,
   existingOptions: ISelectOption[],
   dataService: IDatabaseDataService,
   databaseId: string,
-): void {
-  const name = prompt('Option name:'); // TODO: replace with inline input overlay
-  if (!name) return;
+): Promise<void> {
+  const name = await showDatabaseTextEntryDialog({
+    title: 'Option name',
+    placeholder: 'New option',
+    confirmLabel: 'Create',
+  });
+  if (name === undefined || name === '') return;
 
   const color = DEFAULT_OPTION_COLORS[existingOptions.length % DEFAULT_OPTION_COLORS.length];
   const newOption: ISelectOption = {

@@ -27,6 +27,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import {
   resolveBlockAncestry,
+  classifyPageBlockDropZone,
   moveBlockAboveBelow,
   createColumnLayoutFromDrop,
   addColumnToLayoutFromDrop,
@@ -423,6 +424,12 @@ export function columnDropPlugin(): Plugin {
           let raw = findTarget(view, x, y);
           if (!raw) { hideAll(); return false; }
 
+          if (raw.blockNode.type.name === 'pageBlock'
+            && classifyPageBlockDropZone(raw.blockEl.getBoundingClientRect(), x, y) === 'interior') {
+            hideAll();
+            return false;
+          }
+
           // ── pageBlock targets: edge zones are handled here (standard
           // above/below/left/right); only the interior center area is
           // handled by pageBlockNode's own dragover/drop for cross-page
@@ -493,7 +500,10 @@ export function columnDropPlugin(): Plugin {
           // and something unexpected happened — prevent ProseMirror's
           // default drop to be safe.
           const dropTarget = event.target as HTMLElement | null;
-          if (dropTarget?.closest?.('.canvas-page-block') && !activeTarget) {
+          const pageBlockEl = dropTarget?.closest?.('.canvas-page-block') as HTMLElement | null;
+          if (pageBlockEl
+            && classifyPageBlockDropZone(pageBlockEl.getBoundingClientRect(), event.clientX, event.clientY) === 'interior'
+            && !activeTarget) {
             hideAll();
             return true;
           }

@@ -161,6 +161,7 @@ export class CanvasMenuRegistry {
   private _iconMenu: IconMenuController | null = null;
   private _coverMenu: CoverMenuController | null = null;
   private _inlineMathEditor: InlineMathEditorController | null = null;
+  private _contextMenuGestureUntil = 0;
 
   // Bound once so we can remove the same reference on dispose.
   private readonly _onDocMousedown = (e: MouseEvent): void => {
@@ -243,6 +244,39 @@ export class CanvasMenuRegistry {
     for (const menu of this._menus.values()) {
       menu.onSelectionUpdate?.(editor);
     }
+  }
+
+  /**
+   * Mark that the current selection update cycle was initiated by a
+   * right-click/context-menu gesture, not by an intentional text selection.
+   *
+   * Selection-driven menus (bubble / inline AI) should stay hidden while this
+   * short-lived flag is active so the editable spellcheck menu is the only menu
+   * that opens for right-click on a misspelled word.
+   */
+  markContextMenuGesture(): void {
+    this._contextMenuGestureUntil = Date.now() + 1000;
+    this.hideAll();
+  }
+
+  /** Clear the transient right-click/context-menu gesture flag. */
+  clearContextMenuGesture(): void {
+    this._contextMenuGestureUntil = 0;
+  }
+
+  /**
+   * `true` while a recent right-click/context-menu gesture is still active.
+   *
+   * The flag auto-expires after a short timeout so normal selection-driven
+   * menus resume without requiring explicit cleanup from every code path.
+   */
+  isContextMenuGestureActive(): boolean {
+    if (this._contextMenuGestureUntil === 0) return false;
+    if (Date.now() > this._contextMenuGestureUntil) {
+      this._contextMenuGestureUntil = 0;
+      return false;
+    }
+    return true;
   }
 
   // ── Visibility management ───────────────────────────────────────────────

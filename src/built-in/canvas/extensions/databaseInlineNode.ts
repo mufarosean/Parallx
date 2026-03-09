@@ -99,7 +99,7 @@ class DatabaseInlineNodeView {
     titleEl.classList.add('db-host-inline-title');
     titleEl.textContent = this._databaseTitle;
     titleEl.contentEditable = 'true';
-    titleEl.spellcheck = false;
+    titleEl.spellcheck = true;
     this._titleEl = titleEl;
     titleEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {

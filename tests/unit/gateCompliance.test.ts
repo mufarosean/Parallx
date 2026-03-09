@@ -108,6 +108,7 @@ const GATE_RULES: Record<string, string[]> = {
   'config/blockStateRegistry/columnInvariants.ts':    ['config/blockStateRegistry/blockStateRegistry'],  // PAGE_CONTAINERS via resolveBlockAncestry
   'config/blockStateRegistry/crossPageMovement.ts':   ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/blockNesting.ts':         ['config/blockStateRegistry/blockStateRegistry'],
+  'config/blockStateRegistry/pageBlockDropRouting.ts': ['config/blockStateRegistry/blockStateRegistry'],
   'config/blockStateRegistry/dragSession.ts':         [],  // zero canvas imports
 
   // Plugins are BlockStateRegistry children (imported through its barrel)
@@ -146,6 +147,7 @@ const GATE_RULES: Record<string, string[]> = {
   'database/properties/propertyRenderers.ts':    ['database/databaseRegistry'],
   'database/properties/propertyEditors.ts':      ['database/databaseRegistry'],
   'database/properties/propertyConfig.ts':       ['database/databaseRegistry'],
+  'database/textEntryDialog.ts':                 ['database/databaseRegistry'],
   'database/filters/filterEngine.ts':              ['database/databaseRegistry'],
   'database/filters/filterUI.ts':                  ['database/databaseRegistry'],
   'database/views/boardView.ts':                   ['database/databaseRegistry'],

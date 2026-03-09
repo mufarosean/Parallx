@@ -222,6 +222,11 @@ export class BubbleMenuController implements ICanvasMenu {
       return;
     }
 
+    if (this._registry.isContextMenuGestureActive()) {
+      this.hide();
+      return;
+    }
+
     const { from, to, empty } = editor.state.selection;
     if (empty || from === to) {
       this.hide();

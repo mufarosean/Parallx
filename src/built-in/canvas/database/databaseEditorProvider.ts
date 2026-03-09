@@ -277,7 +277,7 @@ class DatabaseEditorPane extends Disposable {
 
     this._descriptionInput = $('div.db-description-input');
     this._descriptionInput.contentEditable = 'true';
-    this._descriptionInput.spellcheck = false;
+    this._descriptionInput.spellcheck = true;
     this._descriptionInput.setAttribute('data-placeholder', 'Add a description…');
     this._descriptionInput.textContent = this._database?.description || '';
 

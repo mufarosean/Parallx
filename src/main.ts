@@ -43,6 +43,24 @@ declare global {
         saveFile(options?: { filters?: { name: string; extensions: string[] }[]; defaultPath?: string; defaultName?: string }): Promise<string | null>;
         showMessageBox(options: { type?: string; title?: string; message: string; detail?: string; buttons?: string[]; defaultId?: number; cancelId?: number; checkboxLabel?: string; checkboxChecked?: boolean }): Promise<{ response: number; checkboxChecked: boolean }>;
       };
+      editableMenu?: {
+        onOpen: (cb: (payload: {
+          x: number;
+          y: number;
+          editFlags: {
+            canUndo: boolean;
+            canRedo: boolean;
+            canCut: boolean;
+            canCopy: boolean;
+            canPaste: boolean;
+            canSelectAll: boolean;
+          };
+          dictionarySuggestions: string[];
+          misspelledWord: string;
+        }) => void) => void;
+        replaceMisspelling: (suggestion: string) => Promise<boolean>;
+        addToDictionary: (word?: string) => Promise<boolean>;
+      };
     };
   }
 }

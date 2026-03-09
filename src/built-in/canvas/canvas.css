@@ -251,12 +251,14 @@
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   font: inherit;
-  font-size: 13px;
-  padding: 0 2px;
+  font-size: inherit;
+  padding: 0 4px;
   outline: none;
-  height: 18px;
-  line-height: 18px;
+  min-height: 22px;
+  line-height: inherit;
   box-sizing: border-box;
+  border-radius: 4px;
+  align-self: center;
 }
 
 /* ── Drag-and-drop indicators ── */
@@ -292,6 +294,8 @@
 
 .canvas-editor-wrapper {
   position: relative; /* containing block for .block-marquee overlay */
+  --canvas-content-max-width: 760px;
+  --canvas-content-gutter: 64px;
   width: 100%;
   height: 100%;
   overflow-x: hidden;
@@ -303,8 +307,8 @@
 
 .canvas-tiptap-editor {
   flex: 1;
-  padding: 8px 64px 96px;
-  max-width: 900px;
+  padding: 8px var(--canvas-content-gutter) 96px;
+  max-width: var(--canvas-content-max-width);
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
@@ -2006,10 +2010,10 @@
  * ───────────────────────────────────────────────────────────────────────────── */
 
 .canvas-page-header {
-  max-width: 900px;
+  max-width: var(--canvas-content-max-width);
   width: 100%;
   margin: 0 auto;
-  padding: 40px 64px 0;
+  padding: 40px var(--canvas-content-gutter) 0;
   box-sizing: border-box;
   flex-shrink: 0;
   position: relative;
@@ -2839,16 +2843,12 @@
 /* ── Full Width Mode ── */
 
 .canvas-full-width .canvas-tiptap-editor {
-  max-width: 1200px;
-  padding-left: 5%;
-  padding-right: 5%;
   transition: max-width 0.2s ease;
 }
 
-.canvas-full-width .canvas-page-header {
-  max-width: 1200px;
-  padding-left: 5%;
-  padding-right: 5%;
+.canvas-full-width {
+  --canvas-content-max-width: min(92%, 1480px);
+  --canvas-content-gutter: clamp(24px, 5vw, 80px);
 }
 
 /* Narrow viewports (<768px): minimal gutters */
@@ -2864,8 +2864,8 @@
 @media (min-width: 1441px) {
   .canvas-full-width .canvas-tiptap-editor,
   .canvas-full-width .canvas-page-header {
-    padding-left: 8%;
-    padding-right: 8%;
+    padding-left: clamp(40px, 6vw, 96px);
+    padding-right: clamp(40px, 6vw, 96px);
   }
 }
 
