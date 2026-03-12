@@ -289,7 +289,7 @@
 
 .canvas-tiptap-editor {
   flex: 1;
-  padding: 8px var(--canvas-content-gutter) 96px;
+  padding: 2px var(--canvas-content-gutter) 96px;
   max-width: var(--canvas-content-max-width);
   margin: 0 auto;
   width: 100%;
@@ -2120,8 +2120,8 @@
   gap: 8px;
   opacity: 0;
   transition: opacity 0.15s ease;
-  margin-bottom: 4px;
-  min-height: 24px;
+  margin-bottom: 0;
+  min-height: 18px;
 }
 
 .canvas-page-header:hover .canvas-page-affordances {
@@ -2155,7 +2155,7 @@
 /* ── Title ── */
 
 .canvas-page-title {
-  font-size: 40px;
+  font-size: 34px;
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.02em;
@@ -2165,7 +2165,7 @@
   background: none;
   width: 100%;
   padding: 0;
-  margin: 4px 0 2px;
+  margin: 2px 0 0;
   caret-color: var(--vscode-editorCursor-foreground);
   word-break: break-word;
   -webkit-font-smoothing: antialiased;
@@ -2819,7 +2819,7 @@
 
 .canvas-font-mono .canvas-page-title {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  font-size: 34px;
+  font-size: 30px;
 }
 
 /* ── Full Width Mode ── */

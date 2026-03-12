@@ -9,7 +9,7 @@ import './indexingLog.css';
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
 import { $ } from '../../ui/dom.js';
-import { IIndexingPipelineService } from '../../services/serviceTypes.js';
+import { IIndexingPipelineService, IVectorStoreService } from '../../services/serviceTypes.js';
 import type { IIndexingPipelineService as IndexingPipelineServiceShape } from '../../services/serviceTypes.js';
 import type { IndexingProgress, IndexingSourceResult } from '../../services/indexingPipeline.js';
 
@@ -78,6 +78,34 @@ interface IndexingLogEntry {
 // ── Activation ───────────────────────────────────────────────────────────────
 
 export function activate(api: ParallxApi, context: ToolContext): void {
+  const vectorStore = api.services.has(IVectorStoreService)
+    ? api.services.get<import('../../services/serviceTypes.js').IVectorStoreService>(IVectorStoreService)
+    : undefined;
+
+  const hydrateCountsFromIndex = async (): Promise<void> => {
+    if (!vectorStore) {
+      return;
+    }
+
+    try {
+      const stats = await vectorStore.getStats();
+      const pages = stats.sourceCountByType['page_block'] ?? 0;
+      const files = stats.sourceCountByType['file_chunk'] ?? 0;
+      const total = pages + files;
+      if (total === 0) {
+        return;
+      }
+
+      totalCount = total;
+      indexedCount = total;
+      skippedCount = 0;
+      errorCount = 0;
+      refreshCounts();
+    } catch (err) {
+      console.warn('[IndexingLog] Failed to hydrate current index stats:', err);
+    }
+  };
+
   const disposePipelineSubscriptions = (): void => {
     for (const subscription of activePipelineSubscriptions) {
       try {
@@ -126,6 +154,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         }
 
         refreshHeader();
+        void hydrateCountsFromIndex();
       }),
     );
 
@@ -134,6 +163,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     } else if (pipeline.isInitialIndexComplete) {
       currentPhaseLabel = 'Complete';
       refreshHeader();
+      void hydrateCountsFromIndex();
     } else {
       currentPhaseLabel = 'Idle';
       refreshHeader();

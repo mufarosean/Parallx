@@ -31,6 +31,7 @@ export interface PageChromeHost {
     onRemove?: () => void;
   }) => void;
   readonly showCoverPicker: (options: {
+    anchor?: HTMLElement | null;
     editorContainer: HTMLElement | null;
     coverEl?: HTMLElement | null;
     pageHeader?: HTMLElement | null;
@@ -102,6 +103,7 @@ export class PageChromeController {
 
   /** Sync UI after an external page change event. */
   syncPageChange(page: IPage): void {
+    this.dismissPopups();
     this._currentPage = page;
 
     // Update title if changed externally
@@ -360,7 +362,7 @@ export class PageChromeController {
     });
     this._iconEl.addEventListener('click', (e) => {
       e.stopPropagation();
-      this._showIconPicker();
+      this._showIconPicker(e.currentTarget as HTMLElement);
     });
     const titleRow = $('div.canvas-page-title-row');
     titleRow.appendChild(this._iconEl);
@@ -377,7 +379,7 @@ export class PageChromeController {
       addIconBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addIconBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._showIconPicker();
+        this._showIconPicker(e.currentTarget as HTMLElement);
       });
       this._hoverAffordances.appendChild(addIconBtn);
     }
@@ -391,7 +393,7 @@ export class PageChromeController {
       addCoverBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addCoverBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._showCoverPicker();
+        this._showCoverPicker(e.currentTarget as HTMLElement);
       });
       this._hoverAffordances.appendChild(addCoverBtn);
     }
@@ -515,7 +517,7 @@ export class PageChromeController {
     changeBtn.textContent = 'Change cover';
     changeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this._showCoverPicker();
+      this._showCoverPicker(e.currentTarget as HTMLElement);
     });
 
     const removeBtn = $('button.canvas-cover-btn');
@@ -575,7 +577,7 @@ export class PageChromeController {
       addIconBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addIconBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._showIconPicker();
+        this._showIconPicker(e.currentTarget as HTMLElement);
       });
       this._hoverAffordances.appendChild(addIconBtn);
     }
@@ -589,7 +591,7 @@ export class PageChromeController {
       addCoverBtn.addEventListener('mousedown', (e) => { e.preventDefault(); });
       addCoverBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        this._showCoverPicker();
+        this._showCoverPicker(e.currentTarget as HTMLElement);
       });
       this._hoverAffordances.appendChild(addCoverBtn);
     }
@@ -692,10 +694,27 @@ export class PageChromeController {
 
   // ── Cover Picker ────────────────────────────────────────────────────────
 
-  private _showCoverPicker(): void {
+  private _resolvePopupAnchor(preferred: HTMLElement | null | undefined, fallbacks: Array<HTMLElement | null | undefined>): HTMLElement {
+    const candidates = [preferred, ...fallbacks];
+    for (const candidate of candidates) {
+      if (!candidate || !candidate.isConnected) {
+        continue;
+      }
+      const rect = candidate.getBoundingClientRect();
+      if (rect.width > 0 || rect.height > 0) {
+        return candidate;
+      }
+    }
+    return this._host.container;
+  }
+
+  private _showCoverPicker(anchor?: HTMLElement | null): void {
     this.dismissPopups();
 
+    const resolvedAnchor = this._resolvePopupAnchor(anchor, [this._coverControls, this._pageHeader]);
+
     this._host.showCoverPicker({
+      anchor: resolvedAnchor,
       editorContainer: this._host.editorContainer,
       coverEl: this._coverEl,
       pageHeader: this._pageHeader,
@@ -707,13 +726,17 @@ export class PageChromeController {
 
   // ── Icon Picker ─────────────────────────────────────────────────────────
 
-  private _showIconPicker(): void {
+  private _showIconPicker(anchor?: HTMLElement | null): void {
     this.dismissPopups();
 
-    const anchor = (this._iconEl?.style.display !== 'none' ? this._iconEl : this._pageHeader) ?? this._host.container;
+    const resolvedAnchor = this._resolvePopupAnchor(anchor, [
+      this._iconEl?.style.display !== 'none' ? this._iconEl : null,
+      this._hoverAffordances,
+      this._pageHeader,
+    ]);
 
     this._host.showIconPicker({
-      anchor,
+      anchor: resolvedAnchor,
       showSearch: true,
       showRemove: !!this._currentPage?.icon,
       iconSize: 22,
