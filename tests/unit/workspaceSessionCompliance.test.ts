@@ -87,8 +87,8 @@ describe('M14 Workspace Session Compliance', () => {
     expect(content).toContain('guard.isValid()');
   });
 
-  it('captureSession is used in defaultParticipant agentic loop', () => {
-    const content = readSrc('built-in/chat/participants/defaultParticipant.ts');
+  it('captureSession is used in chat turn execution config assembly', () => {
+    const content = readSrc('built-in/chat/utilities/chatTurnExecutionConfig.ts');
     expect(content).toContain("import { captureSession }");
     expect(content).toContain('toolGuard');
     expect(content).toContain('captureSession(services.sessionManager)');
@@ -107,8 +107,8 @@ describe('M14 Workspace Session Compliance', () => {
 
   // ── Abort signal propagation ──
 
-  it('session cancellation signal is passed from defaultParticipant into the synthesis utility', () => {
-    const content = readSrc('built-in/chat/participants/defaultParticipant.ts');
+  it('session cancellation signal is passed from execution config assembly into the synthesis utility', () => {
+    const content = readSrc('built-in/chat/utilities/chatTurnExecutionConfig.ts');
     expect(content).toContain('sessionCancellationSignal');
     expect(content).toContain('cancellationSignal');
   });
@@ -174,7 +174,7 @@ describe('M14 Workspace Session Compliance', () => {
     const files = [
       readSrc('services/indexingPipeline.ts'),
       readSrc('services/chatService.ts'),
-      readSrc('built-in/chat/participants/defaultParticipant.ts'),
+      readSrc('built-in/chat/utilities/chatTurnExecutionConfig.ts'),
     ];
     const allContent = files.join('\n');
     const matches = allContent.match(/captureSession\(/g) || [];

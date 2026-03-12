@@ -21,23 +21,22 @@ import type {
   ICancellationToken,
   IChatParticipantResult,
   IChatRequestResponsePair,
-  IChatRequestOptions,
   IToolCall,
   IChatEditProposalContent,
   EditProposalOperation,
 } from '../../../services/chatTypes.js';
 import { ChatContentPartKind, isChatImageAttachment } from '../../../services/chatTypes.js';
-import { captureSession } from '../../../workspace/staleGuard.js';
 import type {
   IDefaultParticipantServices,
   IInitCommandServices,
 } from '../chatTypes.js';
-import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } from '../config/chatModeCapabilities.js';
+import { getModeCapabilities } from '../config/chatModeCapabilities.js';
 import { executeInitCommand } from '../commands/initCommand.js';
 import { determineChatTurnRoute } from '../utilities/chatTurnRouter.js';
 import { tryExecuteCompactChatCommand } from '../utilities/chatCompactCommand.js';
 import { applyChatAnswerRepairPipeline } from '../utilities/chatAnswerRepairPipeline.js';
 import { handleEarlyDeterministicAnswer, handlePreparedContextDeterministicAnswer } from '../utilities/chatDeterministicResponse.js';
+import { buildChatTurnExecutionConfig } from '../utilities/chatTurnExecutionConfig.js';
 import { prepareChatTurnPrelude } from '../utilities/chatTurnPrelude.js';
 import { resolveChatTurnEntryRouting } from '../utilities/chatTurnEntryRouting.js';
 import { applyChatTurnBudgeting } from '../utilities/chatTurnBudgeting.js';
@@ -868,9 +867,6 @@ export function _buildMissingCitationFooter(
   return `\n\nSources: ${visibleSources.map((source) => `[${source.index}] ${source.label}`).join('; ')}`;
 }
 
-/** Default network timeout in milliseconds. */
-const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
-
 // ── Planner gate ──
 //
 // The planner (thinking layer) runs on EVERY message when available.
@@ -1149,88 +1145,50 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     const _t1_contextAssembly = performance.now();
     console.debug(`[Parallx:latency] Context assembly: ${(_t1_contextAssembly - _t0_contextAssembly).toFixed(1)}ms`);
 
-    // Build request options (mode-aware)
-    const options: IChatRequestOptions = {
-      tools: (!isConversationalTurn && shouldIncludeTools(request.mode))
-        ? (capabilities.canAutonomous ? services.getToolDefinitions() : services.getReadOnlyToolDefinitions())
-        : undefined,
-      // Edit mode: use JSON structured output
-      format: shouldUseStructuredOutput(request.mode) ? { type: 'object' } : undefined,
-      // Enable thinking/reasoning mode — the provider passes this to Ollama's
-      // `think` parameter.  Models that support it (DeepSeek-R1, QwQ) will
-      // stream reasoning tokens separately; others silently ignore it.
-      think: true,
-      // M15: Apply model settings from the active AI profile
-      temperature: aiProfile?.model.temperature,
-      maxTokens: aiProfile?.model.maxTokens || undefined,
-    };
+    const { synthesisDeps, synthesisOptions } = buildChatTurnExecutionConfig(services, {
+      requestMode: request.mode,
+      requestText: request.text,
+      capabilities,
+      aiProfile,
+      messages,
+      userContent,
+      retrievedContextText,
+      evidenceAssessment,
+      isConversationalTurn,
+      citationMode: contextPlan.citationMode,
+      ragSources,
+      retrievalPlan,
+      sessionId: context.sessionId,
+      history: context.history,
+      response,
+      token,
+      maxIterations,
+      repairMarkdown: (markdown) => applyChatAnswerRepairPipeline(
+        {
+          repairUnsupportedSpecificCoverageAnswer: _repairUnsupportedSpecificCoverageAnswer,
+          repairVehicleInfoAnswer: _repairVehicleInfoAnswer,
+          repairAgentContactAnswer: _repairAgentContactAnswer,
+          repairDeductibleConflictAnswer: _repairDeductibleConflictAnswer,
+          repairTotalLossThresholdAnswer: _repairTotalLossThresholdAnswer,
+          repairGroundedCodeAnswer: _repairGroundedCodeAnswer,
+        },
+        {
+          query: request.text,
+          markdown,
+          retrievedContextText: retrievedContextText || userContent,
+          evidenceAssessment,
+        },
+      ),
+      buildExtractiveFallbackAnswer: _buildExtractiveFallbackAnswer,
+      buildMissingCitationFooter: _buildMissingCitationFooter,
+      buildDeterministicSessionSummary: _buildDeterministicSessionSummary,
+      parseEditResponse: _parseEditResponse,
+      extractToolCallsFromText: _extractToolCallsFromText,
+      stripToolNarration: _stripToolNarration,
+      categorizeError,
+    });
 
-    const canInvokeTools = capabilities.canInvokeTools && !!services.invokeTool;
-    const isEditMode = capabilities.canProposeEdits && !capabilities.canAutonomous;
-    const memoryEnabled = services.unifiedConfigService?.getEffectiveConfig().memory.memoryEnabled ?? true;
-
-    return executePreparedChatTurn(
-      {
-        sendChatRequest: services.sendChatRequest,
-        invokeTool: services.invokeTool,
-        extractPreferences: services.extractPreferences,
-        storeSessionMemory: services.storeSessionMemory,
-        storeConceptsFromSession: services.storeConceptsFromSession,
-        isSessionEligibleForSummary: services.isSessionEligibleForSummary,
-        getSessionMemoryMessageCount: services.getSessionMemoryMessageCount,
-        sendSummarizationRequest: services.sendSummarizationRequest,
-        reportResponseDebug: services.reportResponseDebug,
-        buildExtractiveFallbackAnswer: _buildExtractiveFallbackAnswer,
-        buildMissingCitationFooter: _buildMissingCitationFooter,
-        buildDeterministicSessionSummary: _buildDeterministicSessionSummary,
-        repairMarkdown: (markdown) => applyChatAnswerRepairPipeline(
-          {
-            repairUnsupportedSpecificCoverageAnswer: _repairUnsupportedSpecificCoverageAnswer,
-            repairVehicleInfoAnswer: _repairVehicleInfoAnswer,
-            repairAgentContactAnswer: _repairAgentContactAnswer,
-            repairDeductibleConflictAnswer: _repairDeductibleConflictAnswer,
-            repairTotalLossThresholdAnswer: _repairTotalLossThresholdAnswer,
-            repairGroundedCodeAnswer: _repairGroundedCodeAnswer,
-          },
-          {
-            query: request.text,
-            markdown,
-            retrievedContextText: retrievedContextText || userContent,
-            evidenceAssessment,
-          },
-        ),
-        parseEditResponse: _parseEditResponse,
-        extractToolCallsFromText: _extractToolCallsFromText,
-        stripToolNarration: _stripToolNarration,
-        categorizeError,
-      },
-      {
-        messages,
-        requestOptions: options,
-        response,
-        token,
-        maxIterations,
-        canInvokeTools,
-        isEditMode,
-        useModelOnlyExecution: options.tools === undefined && !capabilities.canAutonomous,
-        requestText: request.text,
-        userContent,
-        retrievedContextText,
-        evidenceAssessment,
-        isConversationalTurn,
-        citationMode: contextPlan.citationMode,
-        ragSources,
-        retrievalPlan,
-        memoryEnabled,
-        sessionId: context.sessionId,
-        history: context.history,
-        networkTimeoutMs: services.networkTimeout ?? DEFAULT_NETWORK_TIMEOUT_MS,
-        sessionCancellationSignal: services.sessionManager?.activeContext?.cancellationSignal,
-        toolGuard: services.sessionManager
-          ? captureSession(services.sessionManager)
-          : undefined,
-      },
-    );
+    return executePreparedChatTurn(synthesisDeps, synthesisOptions);
   };
 
   // Build participant descriptor

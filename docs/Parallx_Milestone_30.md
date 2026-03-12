@@ -216,6 +216,7 @@ exceptions.
 - [x] Extract the `/compact` command flow out of `defaultParticipant.ts` into a dedicated utility.
 - [x] Extract slash-command normalization and early direct-answer entry routing out of `defaultParticipant.ts` into a dedicated utility.
 - [x] Extract mention-resolution and turn-planning prelude logic out of `defaultParticipant.ts` into a dedicated utility.
+- [x] Extract request-option and synthesis execution-config assembly out of `defaultParticipant.ts` into a dedicated utility.
 
 ### Phase D — Verification
 
@@ -243,6 +244,7 @@ exceptions.
 - [x] Extract participant compact-command flow into its own utility seam
 - [x] Extract participant slash normalization and early entry routing into its own utility seam
 - [x] Extract participant mention-resolution and turn-planning prelude into its own utility seam
+- [x] Extract participant request-option and execution-config assembly into its own utility seam
 - [x] Update regression tests
 - [x] Complete validation runs
 
@@ -260,7 +262,7 @@ Verification completed on 2026-03-12 with:
 
 1. focused chat tests passing,
 2. `npm run build` passing,
-3. full Vitest suite passing (`124` files, `2237` tests),
+3. full Vitest suite passing (`125` files, `2240` tests),
 4. memory and concept recall participating in the same provenance and exclusion contract,
 5. participant turn-context preparation extracted into a dedicated tested utility seam,
 6. final user-content composition extracted into a dedicated tested utility seam,
@@ -271,7 +273,8 @@ Verification completed on 2026-03-12 with:
 11. the composed markdown-repair pipeline extracted into a dedicated tested utility seam,
 12. the `/compact` command flow extracted into a dedicated tested utility seam,
 13. slash-command normalization and early direct-answer entry routing extracted into a dedicated tested utility seam,
-14. mention-resolution and turn-planning prelude logic extracted into a dedicated tested utility seam.
+14. mention-resolution and turn-planning prelude logic extracted into a dedicated tested utility seam,
+15. request-option and synthesis execution-config assembly extracted into a dedicated tested utility seam.
 
 ---
 
