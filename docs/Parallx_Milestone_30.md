@@ -279,6 +279,7 @@ Verification completed on 2026-03-12 with:
 Post-completion cleanup on 2026-03-12:
 
 - [x] Extract grounded-response heuristics, evidence assessment, and retrieval-query helpers out of `defaultParticipant.ts` into `chatGroundedResponseHelpers.ts`.
+- [x] Extract tool-call parsing, narration cleanup, citation footer generation, and edit-response parsing out of `defaultParticipant.ts` into `chatResponseParsingHelpers.ts`.
 
 ---
 

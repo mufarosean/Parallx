@@ -44,6 +44,12 @@ import {
   buildFollowUpRetrievalQuery,
   buildRetrieveAgainQuery as _buildRetrieveAgainQuery,
 } from '../utilities/chatGroundedResponseHelpers.js';
+import {
+  buildMissingCitationFooter as _buildMissingCitationFooter,
+  extractToolCallsFromText as _extractToolCallsFromText,
+  parseEditResponse as _parseEditResponse,
+  stripToolNarration as _stripToolNarration,
+} from '../utilities/chatResponseParsingHelpers.js';
 import { buildChatTurnExecutionConfig } from '../utilities/chatTurnExecutionConfig.js';
 import { prepareChatTurnPrelude } from '../utilities/chatTurnPrelude.js';
 import { resolveChatTurnEntryRouting } from '../utilities/chatTurnEntryRouting.js';
@@ -65,7 +71,10 @@ export {
   _buildDeterministicSessionSummary,
   _buildEvidenceResponseConstraint,
   _buildExtractiveFallbackAnswer,
+  _buildMissingCitationFooter,
   _buildRetrieveAgainQuery,
+  _extractToolCallsFromText,
+  _stripToolNarration,
 };
 
 export function _repairUnsupportedSpecificCoverageAnswer(
@@ -411,165 +420,6 @@ export function _repairGroundedCodeAnswer(query: string, answer: string, retriev
   }
 
   return `${answer.trim()}\n${additions.join('\n')}`;
-}
-
-/**
- * Fallback: extract tool calls from text content when the model emits them
- * as JSON instead of using the structured tool_calls API field.
- *
- * Small models (e.g. llama3.1:8b, qwen2.5) sometimes respond with:
- *   {"name": "read_file", "parameters": {"path": "file.md"}}
- *   {"name": "read_file", "arguments": {"path": "file.md"}}
- * or wrapped in markdown code blocks, rather than using Ollama's tool_calls.
- *
- * @returns Extracted tool calls and the cleaned text (JSON stripped).
- */
-/** @internal Exported for unit testing. */
-export function _extractToolCallsFromText(text: string): { toolCalls: IToolCall[]; cleanedText: string } {
-  const toolCalls: IToolCall[] = [];
-  let cleaned = text;
-
-  // Pattern 1: JSON object with "name" + "parameters" or "arguments" (single or in array)
-  // Matches both bare JSON and JSON inside ```json code blocks.
-  // Ollama/OpenAI format uses "arguments"; some models also emit "parameters".
-  // ARGS_KEY includes surrounding quotes because JSON keys are quoted strings.
-  const ARGS_KEY = '"(?:parameters|arguments)"';
-  const jsonPatterns = [
-    // Code-fenced JSON block (object)
-    new RegExp('```(?:json)?\\s*\\n?({[\\s\\S]*?"name"\\s*:\\s*"[\\w]+"[\\s\\S]*?' + ARGS_KEY + '\\s*:[\\s\\S]*?})\\s*\\n?```', 'g'),
-    // Code-fenced JSON block (array)
-    new RegExp('```(?:json)?\\s*\\n?(\\[[\\s\\S]*?"name"\\s*:\\s*"[\\w]+"[\\s\\S]*?' + ARGS_KEY + '\\s*:[\\s\\S]*?\\])\\s*\\n?```', 'g'),
-    // Bare JSON object
-    new RegExp('({\\s*"name"\\s*:\\s*"[\\w]+"\\s*,\\s*' + ARGS_KEY + '\\s*:\\s*{[^{}]*(?:{[^{}]*}[^{}]*)*}\\s*})', 'g'),
-    // JSON array of tool calls
-    new RegExp('(\\[\\s*{\\s*"name"\\s*:\\s*"[\\w]+"\\s*,\\s*' + ARGS_KEY + '\\s*:[\\s\\S]*?}\\s*\\])', 'g'),
-  ];
-
-  for (const pattern of jsonPatterns) {
-    let match;
-    while ((match = pattern.exec(text)) !== null) {
-      const jsonStr = match[1] || match[0];
-      try {
-        const parsed = JSON.parse(jsonStr);
-        const items = Array.isArray(parsed) ? parsed : [parsed];
-        for (const item of items) {
-          // Accept both "parameters" and "arguments" keys (Ollama / OpenAI formats)
-          const args = item.parameters ?? item.arguments;
-          if (
-            typeof item === 'object' && item !== null &&
-            typeof item.name === 'string' && item.name.length > 0 &&
-            typeof args === 'object' && args !== null
-          ) {
-            toolCalls.push({
-              function: { name: item.name, arguments: args },
-            });
-            // Strip the matched JSON (including code fence if present) from cleaned text
-            cleaned = cleaned.replace(match[0], '');
-          }
-        }
-      } catch {
-        // Not valid JSON — skip
-      }
-    }
-    if (toolCalls.length > 0) { break; } // Don't double-match
-  }
-
-  // Strip common preamble narration small models add before JSON tool calls.
-  // e.g. "Here is the JSON response with its proper arguments that best answers..."
-  // e.g. "Here's the JSON response for the function call:"
-  // e.g. "Based on the conversation history, here is a JSON response..."
-  if (toolCalls.length > 0) {
-    cleaned = cleaned
-      .replace(/(?:Based on[\s\S]{0,60},\s*)?[Hh]ere(?:'s| is) the JSON response[\s\S]{0,80}?:\s*/g, '')
-      .replace(/(?:I will|Let me|I'll)\s+(?:now\s+)?(?:call|use|invoke|execute)\s+the\s+\w+\s+tool[\s\S]{0,40}?[.:]/gi, '');
-  }
-
-  // Trim leftover whitespace / empty lines
-  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
-
-  return { toolCalls, cleanedText: cleaned };
-}
-
-/**
- * Strip prose narration about tool calls from model output.
- *
- * Small models sometimes describe tool calls in natural language instead of
- * executing them (e.g. "Here's a function call to read_file...  This will read
- * the text content...  It seems the file is not located...").  This function
- * removes those narrated tool-call blocks so the user only sees useful content.
- */
-export function _stripToolNarration(text: string): string {
-  // Remove sentences that describe making function/tool calls
-  let cleaned = text
-    // "Here's a/an/the/an alternative function call to X with its proper arguments:"
-    .replace(/[Hh]ere(?:'s| is) (?:a|an|the|an alternative) (?:function|tool) call[^.:\n]*[.:]\s*/g, '')
-    // "Based on the functions/context provided..."
-    .replace(/[Bb]ased on the (?:functions?|tools?|context)[^.:\n]*[.:]\s*/g, '')
-    // "with its proper arguments:"
-    .replace(/with its proper arguments[.:]\s*/gi, '')
-    // "I'll/Let me call/use/invoke the X tool/function"
-    .replace(/(?:I'?(?:ll|m going to)|[Ll]et me)\s+(?:now\s+)?(?:call|use|invoke|try|execute)\s+(?:the\s+)?(?:`?\w+`?\s+)?(?:function|tool)[^.:\n]*[.:]\s*/gi, '')
-    // "This function/tool call will..."
-    .replace(/[Tt]his (?:function|tool) call will[^.\n]*\.\s*/g, '')
-    // "This will list/read/search/get all/the..."
-    .replace(/This will (?:read|list|search|get|fetch|retrieve|provide|show) (?:all |the )?[^.\n]*\.\s*/gi, '')
-    // "The output of this function call indicates..."
-    .replace(/[Tt]he output of this (?:function|tool) call[^.\n]*\.\s*/g, '')
-    // "Alternatively, since there are no pages... you could use X"
-    .replace(/[Aa]lternatively,?\s+(?:since\s+)?[^.\n]*(?:you could|you can)\s+use\s+`?\w+`?[^.\n]*[.:]\s*/g, '')
-    // "It seems that the file X is not located..."  (hallucinated execution result)
-    .replace(/It seems (?:that )?the (?:file|page)[^"\n]*(?:"[^"]*"[^.\n]*)?(?:not (?:located|found)|does(?:n't| not) exist)[^.\n]*\.\s*/gi, '')
-    // "Let me try again with a different approach."
-    .replace(/[Ll]et me try (?:again )?with a different approach\.\s*/g, '')
-    // "Based on the context and conversation history, I'll provide a JSON..."
-    .replace(/Based on[^,.\n]*,\s*I'll provide a JSON[^.\n]*\.\s*/gi, '')
-    // ── Structured narration patterns ──
-    // "Action:" block followed by JSON — model narrating a tool call
-    .replace(/\bAction:\s*```[\s\S]*?```/gi, '')
-    .replace(/\bAction:\s*\{[\s\S]*?\}\s*/gi, '')
-    // "Execution:" block with hallucinated results
-    .replace(/\bExecution:\s*```[\s\S]*?```/gi, '')
-    .replace(/\bExecution:\s*\{[\s\S]*?\}\s*/gi, '')
-    // "Let's execute this action/tool/function..."
-    .replace(/[Ll]et'?s\s+execute\s+this\s+(?:action|tool|function)[^.\n]*\.?\s*/gi, '')
-    // Keep generic explanatory prefacing unless it is paired with explicit
-    // tool-call syntax elsewhere in the response. Over-stripping these lines
-    // can erase the entire answer on small-model runs.
-    .trim();
-
-  // Trim excessive whitespace
-  cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
-  return cleaned;
-}
-
-/** @internal Exported for unit testing. */
-export function _buildMissingCitationFooter(
-  text: string,
-  citations: Array<{ index: number; label: string }>,
-  maxVisibleSources = 3,
-): string {
-  if (citations.length === 0) {
-    return '';
-  }
-
-  const normalizedText = text.toLowerCase();
-  const hasVisibleSourceReference = /(^|\n)\s*Sources:\s*/i.test(text) || citations.some(({ label }) => {
-    const normalizedLabel = label.toLowerCase();
-    return normalizedText.includes(normalizedLabel);
-  });
-  if (hasVisibleSourceReference) {
-    return '';
-  }
-
-  const visibleSources = [...citations]
-    .sort((a, b) => a.index - b.index)
-    .slice(0, Math.max(1, maxVisibleSources));
-
-  if (visibleSources.length === 0) {
-    return '';
-  }
-
-  return `\n\nSources: ${visibleSources.map((source) => `[${source.index}] ${source.label}`).join('; ')}`;
 }
 
 // ── Planner gate ──
@@ -919,106 +769,3 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
   return participant;
 }
 
-// ── Edit mode JSON parser ──
-
-/** Valid edit operations. */
-const VALID_OPERATIONS = new Set<string>(['insert', 'update', 'delete']);
-
-/**
- * Parse JSON structured output from Edit mode and emit edit proposals.
- *
- * Expected schema:
- * ```json
- * {
- *   "explanation": "Brief description of the changes",
- *   "edits": [{ "pageId", "blockId?", "operation", "content" }]
- * }
- * ```
- *
- * Falls back gracefully: shows raw response + warning if parsing fails.
- */
-function _parseEditResponse(rawContent: string, response: IChatResponseStream): void {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawContent);
-  } catch {
-    // JSON parse failed — show raw content with warning
-    response.warning('Edit mode: failed to parse model response as JSON. Showing raw output.');
-    response.markdown(rawContent);
-    return;
-  }
-
-  if (!parsed || typeof parsed !== 'object') {
-    response.warning('Edit mode: model response is not a JSON object. Showing raw output.');
-    response.markdown(rawContent);
-    return;
-  }
-
-  const obj = parsed as Record<string, unknown>;
-
-  // Extract explanation
-  const explanation = typeof obj['explanation'] === 'string' ? obj['explanation'] : '';
-
-  // Extract and validate edits array
-  const editsRaw = obj['edits'];
-  if (!Array.isArray(editsRaw) || editsRaw.length === 0) {
-    // No edits — show explanation as markdown + warning
-    if (explanation) {
-      response.markdown(explanation);
-    }
-    response.warning('Edit mode: no edits found in model response.');
-    return;
-  }
-
-  // Validate and build edit proposals
-  const proposals: IChatEditProposalContent[] = [];
-  const warnings: string[] = [];
-
-  for (let i = 0; i < editsRaw.length; i++) {
-    const entry = editsRaw[i];
-    if (!entry || typeof entry !== 'object') {
-      warnings.push(`Edit ${i + 1}: not a valid object, skipped.`);
-      continue;
-    }
-
-    const e = entry as Record<string, unknown>;
-    const pageId = typeof e['pageId'] === 'string' ? e['pageId'] : '';
-    const blockId = typeof e['blockId'] === 'string' ? e['blockId'] : undefined;
-    const operation = typeof e['operation'] === 'string' ? e['operation'] : '';
-    const content = typeof e['content'] === 'string' ? e['content'] : '';
-
-    if (!pageId) {
-      warnings.push(`Edit ${i + 1}: missing pageId, skipped.`);
-      continue;
-    }
-    if (!VALID_OPERATIONS.has(operation)) {
-      warnings.push(`Edit ${i + 1}: invalid operation "${operation}", skipped.`);
-      continue;
-    }
-
-    proposals.push({
-      kind: ChatContentPartKind.EditProposal,
-      pageId,
-      blockId,
-      operation: operation as EditProposalOperation,
-      after: content,
-      status: 'pending',
-    });
-  }
-
-  // Emit warnings for invalid entries
-  for (const w of warnings) {
-    response.warning(w);
-  }
-
-  if (proposals.length === 0) {
-    if (explanation) {
-      response.markdown(explanation);
-    }
-    response.warning('Edit mode: all proposed edits were invalid.');
-    return;
-  }
-
-  // Emit edit batch (explanation + proposals)
-  response.editBatch(explanation, proposals);
-}

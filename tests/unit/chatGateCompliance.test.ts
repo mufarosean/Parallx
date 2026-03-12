@@ -113,6 +113,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatMentionResolver.ts': [],
   'utilities/chatModelOnlyExecutor.ts':      [],
   'utilities/chatResponseValidator.ts':      [],
+  'utilities/chatResponseParsingHelpers.ts': [],
   'utilities/chatScopedParticipantAdapters.ts': [],
   'utilities/chatSpecificCoverageFocus.ts': [],
   'utilities/chatSystemPromptComposer.ts': ['config/'],
