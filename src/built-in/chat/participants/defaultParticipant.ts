@@ -54,6 +54,7 @@ import {
   repairUnsupportedSpecificCoverageAnswer as _repairUnsupportedSpecificCoverageAnswer,
   repairVehicleInfoAnswer as _repairVehicleInfoAnswer,
 } from '../utilities/chatGroundedAnswerRepairs.js';
+import { categorizeChatRequestError } from '../utilities/chatRequestErrorCategorizer.js';
 import { buildChatTurnExecutionConfig } from '../utilities/chatTurnExecutionConfig.js';
 import { prepareChatTurnPrelude } from '../utilities/chatTurnPrelude.js';
 import { resolveChatTurnEntryRouting } from '../utilities/chatTurnEntryRouting.js';
@@ -91,37 +92,6 @@ export {
 // The planner (thinking layer) runs on EVERY message when available.
 // It classifies intent and decides what context the model needs.
 // See docs/research/INTERACTION_LAYER_ARCHITECTURE.md for rationale.
-
-/**
- * Categorize a fetch/network error into a user-friendly message.
- */
-function categorizeError(err: unknown): { message: string } {
-  if (err instanceof DOMException && err.name === 'AbortError') {
-    return { message: '' }; // Handled separately
-  }
-  if (err instanceof DOMException && err.name === 'TimeoutError') {
-    return {
-      message: 'Request timed out. The model may be loading or the Ollama server is unresponsive. Try again or check that Ollama is running.',
-    };
-  }
-  const msg = err instanceof Error ? err.message : String(err);
-  // Detect "Ollama not running" — fetch to localhost fails
-  if (msg.includes('Failed to fetch') || msg.includes('ECONNREFUSED') || msg.includes('NetworkError') || msg.includes('fetch failed')) {
-    return {
-      message: 'Ollama is not running. Install and start Ollama from https://ollama.com, then try again.',
-    };
-  }
-  // Detect "model not found" — Ollama returns 404 with specific message
-  if (msg.includes('model') && (msg.includes('not found') || msg.includes('404'))) {
-    // Extract model name if possible
-    const modelMatch = msg.match(/model\s+['"]?([^\s'"]+)/i);
-    const modelName = modelMatch?.[1] ?? 'the requested model';
-    return {
-      message: `Model "${modelName}" not found. Run \`ollama pull ${modelName}\` to download it.`,
-    };
-  }
-  return { message: msg };
-}
 
 // IDefaultParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { IDefaultParticipantServices } from '../chatTypes.js';
@@ -404,7 +374,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       parseEditResponse: _parseEditResponse,
       extractToolCallsFromText: _extractToolCallsFromText,
       stripToolNarration: _stripToolNarration,
-      categorizeError,
+      categorizeError: categorizeChatRequestError,
     });
 
     return executePreparedChatTurn(synthesisDeps, synthesisOptions);
