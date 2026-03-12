@@ -44,13 +44,10 @@ import { TokenBudgetService } from '../../../services/tokenBudgetService.js';
 import { extractMentions, resolveMentions } from '../utilities/chatMentionResolver.js';
 import { determineChatTurnRoute } from '../utilities/chatTurnRouter.js';
 import { createChatContextPlan, createChatRuntimeTrace } from '../utilities/chatContextPlanner.js';
-import { selectDeterministicAnswer } from '../utilities/chatDeterministicAnswerSelector.js';
-import { assembleChatContext } from '../utilities/chatContextAssembly.js';
-import { executeChatModelOnly } from '../utilities/chatModelOnlyExecutor.js';
-import { executeChatGrounded } from '../utilities/chatGroundedExecutor.js';
-import { queueChatMemoryWriteBack } from '../utilities/chatMemoryWriteBack.js';
-import { validateAndFinalizeChatResponse } from '../utilities/chatResponseValidator.js';
-import { loadChatContextSources } from '../utilities/chatContextSourceLoader.js';
+import { handleEarlyDeterministicAnswer, handlePreparedContextDeterministicAnswer } from '../utilities/chatDeterministicResponse.js';
+import { composeChatUserContent } from '../utilities/chatUserContentComposer.js';
+import { prepareChatTurnContext, writeChatProvenanceToResponse } from '../utilities/chatTurnContextPreparation.js';
+import { executePreparedChatTurn } from '../utilities/chatTurnSynthesis.js';
 import {
   extractSpecificCoverageFocusPhrases,
   extractSpecificCoverageFocusTerms,
@@ -1089,23 +1086,17 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
     const hasActiveSlashCommand = !!(activeCommand && activeCommand !== 'compact');
     const earlyRoute = determineChatTurnRoute(effectiveText, { hasActiveSlashCommand });
-    const earlyDeterministicAnswer = selectDeterministicAnswer({ route: earlyRoute });
-    if (earlyDeterministicAnswer) {
-      const isRagReady = services.isRAGAvailable?.() ?? false;
-      const earlyContextPlan = createChatContextPlan(earlyRoute, { hasActiveSlashCommand, isRagReady });
-      services.reportRuntimeTrace?.(createChatRuntimeTrace(
-        earlyRoute,
-        earlyContextPlan,
-        { sessionId: context.sessionId, hasActiveSlashCommand, isRagReady },
-      ));
-      response.markdown(earlyDeterministicAnswer.markdown);
-      services.reportResponseDebug?.({
-        phase: earlyDeterministicAnswer.phase,
-        markdownLength: earlyDeterministicAnswer.markdown.length,
-        yielded: !!token.isYieldRequested,
-        cancelled: token.isCancellationRequested,
-        retrievedContextLength: earlyDeterministicAnswer.retrievedContextLength,
-      });
+    const earlyIsRagReady = services.isRAGAvailable?.() ?? false;
+    if (handleEarlyDeterministicAnswer({
+      route: earlyRoute,
+      hasActiveSlashCommand,
+      isRagReady: earlyIsRagReady,
+      sessionId: context.sessionId,
+      response,
+      token,
+      reportRuntimeTrace: services.reportRuntimeTrace,
+      reportResponseDebug: services.reportResponseDebug,
+    })) {
       return {};
     }
 
@@ -1235,13 +1226,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     }
     const contextQueryText = buildFollowUpRetrievalQuery(userText, context.history);
 
-    // 1. Implicit context: active canvas page content
-    //
-    // Cap at ~4000 tokens (16K chars) so a large page doesn't drown
-    // the actual question and RAG context. The model can always use
-    // read_current_page tool for the full text.
-    const MAX_PAGE_CONTEXT_CHARS = 16_000;
-
     // 1b. RAG context: per-turn retrieval
     //
     // Direct embedding retrieval: embed the user's raw message, do hybrid
@@ -1257,7 +1241,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     const contextPlan = createChatContextPlan(turnRoute, { hasActiveSlashCommand, isRagReady });
     const retrievalPlan: IRetrievalPlan = contextPlan.retrievalPlan;
     const isConversationalTurn = turnRoute.kind === 'conversational';
-    const isMemoryRecallTurn = turnRoute.kind === 'memory-recall';
 
     services.reportRuntimeTrace?.(createChatRuntimeTrace(
       turnRoute,
@@ -1272,24 +1255,14 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       attempted: false,
     });
 
-    // 1c. Memory context constants
-    const MAX_MEMORY_CONTEXT_CHARS = 4_000;
-    const MAX_CONCEPT_CONTEXT_CHARS = 2_000;
-
-    // ── Parallel context assembly (M17 Task 0.2.4) ──
-    //
-    // Steps: page content, RAG retrieval, memory recall, concept recall,
-    // and attachment reading are all independent I/O operations. Run them
-    // concurrently to reduce pre-request latency from sequential to parallel.
-    // Mentions ran above (produces userText needed by RAG/memory).
-
     const {
-      pageResult,
-      ragResult,
+      contextParts,
+      ragSources,
+      retrievedContextText,
+      evidenceAssessment,
+      provenance,
       memoryResult,
-      conceptResult,
-      attachmentResults,
-    } = await loadChatContextSources(
+    } = await prepareChatTurnContext(
       {
         getCurrentPageContent: services.getCurrentPageContent,
         retrieveContext: services.retrieveContext,
@@ -1297,108 +1270,37 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         recallConcepts: services.recallConcepts,
         readFileContent: services.readFileContent,
         reportRetrievalDebug: services.reportRetrievalDebug,
-      },
-      {
-        userText: contextQueryText,
-        sessionId: context.sessionId,
-        attachments: request.attachments,
-        useCurrentPage: contextPlan.useCurrentPage,
-        useRetrieval: contextPlan.useRetrieval,
-        useMemoryRecall: contextPlan.useMemoryRecall,
-        useConceptRecall: contextPlan.useConceptRecall,
-        hasActiveSlashCommand,
-        isRagReady,
-      },
-    );
-
-    const {
-      contextParts: assembledContextParts,
-      ragSources,
-      retrievedContextText,
-      evidenceAssessment,
-    } = await assembleChatContext(
-      {
-        retrieveContext: services.retrieveContext,
-        addReference: (uri, label, index) => response.reference(uri, label, index),
         reportContextPills: services.reportContextPills,
         getExcludedContextIds: services.getExcludedContextIds,
         assessEvidenceSufficiency: _assessEvidenceSufficiency,
         buildRetrieveAgainQuery: _buildRetrieveAgainQuery,
       },
       {
-        userText: contextQueryText,
-        messages,
+        contextQueryText,
+        sessionId: context.sessionId,
         attachments: request.attachments,
+        messages,
         mentionPills,
-        useRetrieval: contextPlan.useRetrieval,
-        maxMemoryContextChars: MAX_MEMORY_CONTEXT_CHARS,
-        maxConceptContextChars: MAX_CONCEPT_CONTEXT_CHARS,
-        pageResult: pageResult && pageResult.textContent
-          ? {
-              ...pageResult,
-              textContent: pageResult.textContent.length > MAX_PAGE_CONTEXT_CHARS
-                ? pageResult.textContent.slice(0, MAX_PAGE_CONTEXT_CHARS) + '\n[…truncated — use read_current_page for full content]'
-                : pageResult.textContent,
-            }
-          : pageResult,
-        ragResult,
-        memoryResult,
-        conceptResult,
-        attachmentResults,
+        mentionContextBlocks,
+        contextPlan,
+        hasActiveSlashCommand,
+        isRagReady,
       },
     );
-    const contextParts = [...mentionContextBlocks, ...assembledContextParts];
+    writeChatProvenanceToResponse(response, provenance);
 
-    const postContextDeterministicAnswer = selectDeterministicAnswer({
+    if (handlePreparedContextDeterministicAnswer({
       route: turnRoute,
       query: userText,
       evidenceAssessment,
       retrievedContextText,
-    });
-    if (postContextDeterministicAnswer?.phase === 'unsupported-specific-coverage-direct-answer') {
-      response.markdown(postContextDeterministicAnswer.markdown);
-      if (ragSources.length > 0) {
-        response.setCitations(
-          ragSources.map((source, index) => ({
-            index: source.index ?? (index + 1),
-            uri: source.uri,
-            label: source.label,
-          })),
-        );
-      }
-      services.reportResponseDebug?.({
-        phase: postContextDeterministicAnswer.phase,
-        markdownLength: postContextDeterministicAnswer.markdown.length,
-        yielded: !!token.isYieldRequested,
-        cancelled: token.isCancellationRequested,
-        retrievedContextLength: postContextDeterministicAnswer.retrievedContextLength,
-      });
+      memoryResult,
+      ragSources,
+      response,
+      token,
+      reportResponseDebug: services.reportResponseDebug,
+    })) {
       return {};
-    }
-
-    if (memoryResult) {
-      let memoryContext = memoryResult;
-      if (memoryContext.length > MAX_MEMORY_CONTEXT_CHARS) {
-        memoryContext = memoryContext.slice(0, MAX_MEMORY_CONTEXT_CHARS) + '\n[…memory truncated]';
-      }
-
-      if (isMemoryRecallTurn) {
-        const memoryDeterministicAnswer = selectDeterministicAnswer({
-          route: turnRoute,
-          memoryContext,
-        });
-        if (memoryDeterministicAnswer) {
-          response.markdown(memoryDeterministicAnswer.markdown);
-          services.reportResponseDebug?.({
-            phase: memoryDeterministicAnswer.phase,
-            markdownLength: memoryDeterministicAnswer.markdown.length,
-            yielded: !!token.isYieldRequested,
-            cancelled: token.isCancellationRequested,
-            retrievedContextLength: memoryDeterministicAnswer.retrievedContextLength,
-          });
-          return {};
-        }
-      }
     }
 
     // 2c. Token budget allocation (M11 Task 1.8)
@@ -1495,87 +1397,26 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     //
     // M12: If a retrieval plan is available, inject a reasoning hint so the
     // LLM understands the user's INTENT, not just their literal words.
-    let userContent: string;
-    if (slashResult.command && !slashResult.command.specialHandler) {
-      const contextStr = contextParts.join('\n\n');
-      const templated = commandRegistry.applyTemplate(
-        slashResult.command,
+    const userContent = composeChatUserContent(
+      {
+        applyCommandTemplate: (command, input, contextContent) => commandRegistry.applyTemplate(command, input, contextContent),
+        buildEvidenceResponseConstraint: _buildEvidenceResponseConstraint,
+      },
+      {
+        slashResult,
         effectiveText,
-        contextStr,
-      );
-      userContent = templated ?? effectiveText;
-    } else {
-      const parts: string[] = [];
-
-      // M12: Inject planner reasoning as a hint before the retrieved context.
-      // This guides the LLM to reason about what the user NEEDS, not just what they said.
-      if (retrievalPlan.needsRetrieval) {
-        const retrievalAnalysisLines = [
-          '[Retrieval Analysis]',
-          `Intent: ${retrievalPlan.intent}`,
-          `Analysis: ${retrievalPlan.reasoning}`,
-        ];
-        if (evidenceAssessment.status !== 'sufficient') {
-          retrievalAnalysisLines.push(`Evidence: ${evidenceAssessment.status}`);
-          if (evidenceAssessment.reasons.length > 0) {
-            retrievalAnalysisLines.push(`Evidence Notes: ${evidenceAssessment.reasons.join(', ')}`);
-          }
-          retrievalAnalysisLines.push(_buildEvidenceResponseConstraint(userText, evidenceAssessment));
-        }
-        parts.push(retrievalAnalysisLines.join('\n'));
-      }
-
-      if (contextParts.length > 0) {
-        parts.push(contextParts.join('\n\n'));
-      }
-
-      parts.push(userText);
-      userContent = parts.join('\n\n');
-    }
+        userText,
+        contextParts,
+        retrievalPlan,
+        evidenceAssessment,
+      },
+    );
 
     messages.push({
       role: 'user',
       content: userContent,
       images: request.attachments?.filter(isChatImageAttachment),
     });
-
-    const applyFallbackAnswer = (phase: string, note: string): void => {
-      const extractiveFallback = _buildExtractiveFallbackAnswer(request.text, retrievedContextText || userContent);
-      if (extractiveFallback) {
-        response.markdown(extractiveFallback);
-      } else if (isConversationalTurn) {
-        response.markdown('I could not produce a conversational response from the current model output. Please try again.');
-      } else if (evidenceAssessment.status === 'insufficient') {
-        response.markdown('I do not have enough grounded evidence in the current workspace context to answer this confidently. Please point me to the relevant document or add more detail.');
-      } else {
-        response.markdown('I could not produce a grounded final answer from the current model output. Please try again.');
-      }
-
-      if (contextPlan.citationMode === 'required' && ragSources.length > 0) {
-        const citations = ragSources.map((source, index) => ({
-          index: source.index ?? (index + 1),
-          uri: source.uri,
-          label: source.label,
-        }));
-        const citationFooter = _buildMissingCitationFooter(
-          response.getMarkdownText(),
-          citations.map(({ index, label }) => ({ index, label })),
-        );
-        if (citationFooter) {
-          response.markdown(citationFooter);
-        }
-        response.setCitations(citations);
-      }
-
-      services.reportResponseDebug?.({
-        phase: extractiveFallback ? `${phase}-extractive-fallback` : `${phase}-visible-fallback`,
-        markdownLength: response.getMarkdownText().trim().length,
-        yielded: !!token.isYieldRequested,
-        cancelled: token.isCancellationRequested,
-        retrievedContextLength: retrievedContextText.length,
-        note,
-      });
-    };
 
     // Latency: context assembly complete (M17 Task 0.2.7)
     const _t1_contextAssembly = performance.now();
@@ -1634,164 +1475,37 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       maxTokens: aiProfile?.model.maxTokens || undefined,
     };
 
-    // Create an AbortController linked to the cancellation token
-    const abortController = new AbortController();
-    if (token.isCancellationRequested) {
-      abortController.abort();
-    }
-    const cancelListener = token.onCancellationRequested(() => {
-      abortController.abort();
-    });
+    const canInvokeTools = capabilities.canInvokeTools && !!services.invokeTool;
+    const isEditMode = capabilities.canProposeEdits && !capabilities.canAutonomous;
+    const memoryEnabled = services.unifiedConfigService?.getEffectiveConfig().memory.memoryEnabled ?? true;
 
-    // Link session cancellation signal (fires on workspace switch)
-    const sessionSignal = services.sessionManager?.activeContext?.cancellationSignal;
-    if (sessionSignal) {
-      if (sessionSignal.aborted) {
-        abortController.abort();
-      } else {
-        sessionSignal.addEventListener('abort', () => abortController.abort(), { once: true });
-      }
-    }
-
-    // Network stall timeout — abort if no data received for this duration.
-    // This resets on every chunk so thinking models (qwen3, DeepSeek-R1) that
-    // stream for 60+ seconds don't get killed mid-response.  Only fires when
-    // the model truly stalls (no data at all for the timeout period).
-    const timeoutMs = services.networkTimeout ?? DEFAULT_NETWORK_TIMEOUT_MS;
-    let networkTimeoutId: ReturnType<typeof setTimeout> | undefined;
-    const resetNetworkTimeout = () => {
-      if (timeoutMs <= 0) return;
-      if (networkTimeoutId !== undefined) clearTimeout(networkTimeoutId);
-      networkTimeoutId = setTimeout(() => {
-        abortController.abort(new DOMException('Request timed out', 'TimeoutError'));
-      }, timeoutMs);
-    };
-    resetNetworkTimeout();
-
-    try {
-      const canInvokeTools = capabilities.canInvokeTools && !!services.invokeTool;
-      const isEditMode = capabilities.canProposeEdits && !capabilities.canAutonomous;
-      let producedContent = false;
-
-      if (options.tools === undefined && !capabilities.canAutonomous) {
-        const modelOnlyResult = await executeChatModelOnly(
-          {
-            sendChatRequest: services.sendChatRequest,
-            resetNetworkTimeout,
-            parseEditResponse: _parseEditResponse,
-            extractToolCallsFromText: _extractToolCallsFromText,
-            stripToolNarration: _stripToolNarration,
-            reportFirstTokenLatency: (durationMs) => {
-              console.debug(`[Parallx:latency] Time to first token: ${durationMs.toFixed(1)}ms`);
-            },
-            reportStreamCompleteLatency: (durationMs) => {
-              console.debug(`[Parallx:latency] LLM stream complete: ${durationMs.toFixed(1)}ms`);
-            },
-          },
-          {
-            messages,
-            requestOptions: options,
-            abortSignal: abortController.signal,
-            response,
-            token,
-            canInvokeTools,
-            isEditMode,
-          },
-        );
-        producedContent = modelOnlyResult.producedContent;
-      } else {
-        const groundedResult = await executeChatGrounded(
-          {
-            sendChatRequest: services.sendChatRequest,
-            invokeTool: services.invokeTool,
-            resetNetworkTimeout,
-            parseEditResponse: _parseEditResponse,
-            extractToolCallsFromText: _extractToolCallsFromText,
-            stripToolNarration: _stripToolNarration,
-            buildExtractiveFallbackAnswer: _buildExtractiveFallbackAnswer,
-            reportResponseDebug: services.reportResponseDebug,
-            reportFirstTokenLatency: (durationMs) => {
-              console.debug(`[Parallx:latency] Time to first token: ${durationMs.toFixed(1)}ms`);
-            },
-            reportStreamCompleteLatency: (durationMs) => {
-              console.debug(`[Parallx:latency] LLM stream complete: ${durationMs.toFixed(1)}ms`);
-            },
-          },
-          {
-            messages,
-            requestOptions: options,
-            abortSignal: abortController.signal,
-            response,
-            token,
-            maxIterations,
-            canInvokeTools,
-            isEditMode,
-            requestText: request.text,
-            userContent,
-            retrievedContextText,
-            evidenceAssessment,
-            toolGuard: services.sessionManager
-              ? captureSession(services.sessionManager)
-              : undefined,
-          },
-        );
-        producedContent = groundedResult.producedContent;
-      }
-
-      if (networkTimeoutId !== undefined) { clearTimeout(networkTimeoutId); }
-
-      // ── Empty response detection ──
-      if (!producedContent && !token.isCancellationRequested) {
-        response.warning('The model returned an empty response. Try rephrasing your question or selecting a different model.');
-      }
-
-      const memoryEnabled = services.unifiedConfigService?.getEffectiveConfig().memory.memoryEnabled ?? true;
-      queueChatMemoryWriteBack(
-        {
-          extractPreferences: services.extractPreferences,
-          storeSessionMemory: services.storeSessionMemory,
-          storeConceptsFromSession: services.storeConceptsFromSession,
-          isSessionEligibleForSummary: services.isSessionEligibleForSummary,
-          getSessionMemoryMessageCount: services.getSessionMemoryMessageCount,
-          sendSummarizationRequest: services.sendSummarizationRequest,
-          buildDeterministicSessionSummary: _buildDeterministicSessionSummary,
-        },
-        {
-          memoryEnabled,
-          requestText: request.text,
-          sessionId: context.sessionId,
-          history: context.history,
-        },
-      );
-
-      // M12: Append retrieval plan thought process (collapsible thinking UI)
-      // Shows users the AI's reasoning and which queries it searched for.
-      if (retrievalPlan.needsRetrieval && retrievalPlan.queries.length > 0) {
-        const queryList = retrievalPlan.queries.map((q) => `• ${q}`).join('\n');
-        response.thinking(
-          `Intent: ${retrievalPlan.intent}\n` +
-          `Analysis: ${retrievalPlan.reasoning}\n` +
-          `Searched for:\n${queryList}`,
-        );
-      }
-
-      validateAndFinalizeChatResponse(
-        {
-          repairMarkdown: (markdown) => _repairUnsupportedSpecificCoverageAnswer(
+    return executePreparedChatTurn(
+      {
+        sendChatRequest: services.sendChatRequest,
+        invokeTool: services.invokeTool,
+        extractPreferences: services.extractPreferences,
+        storeSessionMemory: services.storeSessionMemory,
+        storeConceptsFromSession: services.storeConceptsFromSession,
+        isSessionEligibleForSummary: services.isSessionEligibleForSummary,
+        getSessionMemoryMessageCount: services.getSessionMemoryMessageCount,
+        sendSummarizationRequest: services.sendSummarizationRequest,
+        reportResponseDebug: services.reportResponseDebug,
+        buildExtractiveFallbackAnswer: _buildExtractiveFallbackAnswer,
+        buildMissingCitationFooter: _buildMissingCitationFooter,
+        buildDeterministicSessionSummary: _buildDeterministicSessionSummary,
+        repairMarkdown: (markdown) => _repairUnsupportedSpecificCoverageAnswer(
+          request.text,
+          _repairVehicleInfoAnswer(
             request.text,
-            _repairVehicleInfoAnswer(
+            _repairAgentContactAnswer(
               request.text,
-              _repairAgentContactAnswer(
+              _repairDeductibleConflictAnswer(
                 request.text,
-                _repairDeductibleConflictAnswer(
+                _repairTotalLossThresholdAnswer(
                   request.text,
-                  _repairTotalLossThresholdAnswer(
+                  _repairGroundedCodeAnswer(
                     request.text,
-                    _repairGroundedCodeAnswer(
-                      request.text,
-                      markdown,
-                      retrievedContextText || userContent,
-                    ),
+                    markdown,
                     retrievedContextText || userContent,
                   ),
                   retrievedContextText || userContent,
@@ -1800,57 +1514,42 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
               ),
               retrievedContextText || userContent,
             ),
-            evidenceAssessment,
+            retrievedContextText || userContent,
           ),
-          buildMissingCitationFooter: _buildMissingCitationFooter,
-          applyFallbackAnswer,
-          reportResponseDebug: services.reportResponseDebug,
-        },
-        {
-          response,
-          token,
-          isEditMode,
-          isConversational: isConversationalTurn,
-          citationMode: contextPlan.citationMode,
-          ragSources,
-          retrievedContextLength: retrievedContextText.length,
-        },
-      );
-
-      return {};
-    } catch (err) {
-      // Clear network timeout on error
-      if (networkTimeoutId !== undefined) { clearTimeout(networkTimeoutId); }
-
-      services.reportResponseDebug?.({
-        phase: 'catch',
-        markdownLength: response.getMarkdownText().trim().length,
-        yielded: !!token.isYieldRequested,
-        cancelled: token.isCancellationRequested,
-        retrievedContextLength: retrievedContextText.length,
-        note: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
-      });
-
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        if (!token.isCancellationRequested && !token.isYieldRequested && response.getMarkdownText().trim().length === 0) {
-          applyFallbackAnswer('catch', 'abort-without-user-cancel');
-        }
-
-        // User-initiated cancellation — not an error
-        return {};
-      }
-
-      // Categorize the error for user-friendly messaging
-      const { message } = categorizeError(err);
-      return {
-        errorDetails: {
-          message,
-          responseIsIncomplete: true,
-        },
-      };
-    } finally {
-      cancelListener.dispose();
-    }
+          evidenceAssessment,
+        ),
+        parseEditResponse: _parseEditResponse,
+        extractToolCallsFromText: _extractToolCallsFromText,
+        stripToolNarration: _stripToolNarration,
+        categorizeError,
+      },
+      {
+        messages,
+        requestOptions: options,
+        response,
+        token,
+        maxIterations,
+        canInvokeTools,
+        isEditMode,
+        useModelOnlyExecution: options.tools === undefined && !capabilities.canAutonomous,
+        requestText: request.text,
+        userContent,
+        retrievedContextText,
+        evidenceAssessment,
+        isConversationalTurn,
+        citationMode: contextPlan.citationMode,
+        ragSources,
+        retrievalPlan,
+        memoryEnabled,
+        sessionId: context.sessionId,
+        history: context.history,
+        networkTimeoutMs: services.networkTimeout ?? DEFAULT_NETWORK_TIMEOUT_MS,
+        sessionCancellationSignal: services.sessionManager?.activeContext?.cancellationSignal,
+        toolGuard: services.sessionManager
+          ? captureSession(services.sessionManager)
+          : undefined,
+      },
+    );
   };
 
   // Build participant descriptor

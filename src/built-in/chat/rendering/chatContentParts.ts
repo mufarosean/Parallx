@@ -833,6 +833,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
   if (part.isCollapsed) {
     root.classList.add('parallx-chat-thinking--collapsed');
   }
+  const sourceEntries = (part.provenance ?? []).filter((entry) => !!entry.uri);
 
   // ── Toggle header ──
   // Builds:  ▶ Thinking · Searching 4 sources · 3 sources
@@ -847,7 +848,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
 
     // Label: "Thinking" if we have reasoning text, "Context" if just refs/progress
     const hasContent = !!part.content;
-    const hasRefs = part.references && part.references.length > 0;
+    const hasRefs = sourceEntries.length > 0;
     const hasProgress = !!part.progressMessage;
     const baseLabel = hasContent ? 'Thinking' : (hasRefs || hasProgress ? 'Context' : 'Thinking');
 
@@ -868,7 +869,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
 
     // Source count summary
     if (hasRefs) {
-      const count = part.references!.length;
+      const count = sourceEntries.length;
       const sep = $('span.parallx-chat-thinking-sep', '\u00B7');
       toggle.appendChild(sep);
       const countEl = $('span.parallx-chat-thinking-source-count', `${count} source${count !== 1 ? 's' : ''}`);
@@ -896,7 +897,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
   }
 
   // Source reference pills
-  if (part.references && part.references.length > 0) {
+  if (sourceEntries.length > 0) {
     const sourcesSection = $('div.parallx-chat-thinking-sources');
     let areSourcesCollapsed = false;
 
@@ -910,7 +911,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
     const sourcesLabel = $('span.parallx-chat-thinking-sources-label', 'Sources');
     sourcesToggle.appendChild(sourcesLabel);
 
-    const sourcesCount = part.references.length;
+    const sourcesCount = sourceEntries.length;
     const sourcesMeta = $('span.parallx-chat-thinking-sources-meta', `${sourcesCount} source${sourcesCount !== 1 ? 's' : ''}`);
     sourcesToggle.appendChild(sourcesMeta);
 
@@ -928,10 +929,10 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
 
     sourcesSection.appendChild(sourcesToggle);
 
-    for (const ref of part.references) {
+    for (const ref of sourceEntries) {
       const pill = _renderReference({
         kind: ChatContentPartKind.Reference,
-        uri: ref.uri,
+        uri: ref.uri!,
         label: ref.index != null ? `[${ref.index}] ${ref.label}` : ref.label,
       });
       pillsRow.appendChild(pill);

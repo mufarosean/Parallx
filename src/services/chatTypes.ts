@@ -327,13 +327,37 @@ export interface IContextPill {
   /** Display label (filename or source description). */
   readonly label: string;
   /** Context source type. */
-  readonly type: 'attachment' | 'rag' | 'system' | 'rule';
+  readonly type: 'attachment' | 'rag' | 'system' | 'rule' | 'memory' | 'concept';
   /** Estimated token count for this source. */
   readonly tokens: number;
   /** Whether the user can remove this pill (false for system). */
   readonly removable: boolean;
   /** Citation index from the retrieval pipeline (1-based). RAG pills only. */
   readonly index?: number;
+}
+
+/**
+ * A first-class provenance entry for context that influenced a turn.
+ *
+ * This is the canonical representation used to derive both visible source
+ * surfaces and pre-send context transparency, rather than rebuilding those
+ * views from separate ad hoc structures.
+ */
+export interface IChatProvenanceEntry {
+  /** Stable identity for deduplication and exclusions. */
+  readonly id: string;
+  /** Human-readable label shown in the UI. */
+  readonly label: string;
+  /** Provenance origin category. */
+  readonly kind: 'attachment' | 'page' | 'rag' | 'system' | 'rule' | 'memory' | 'concept';
+  /** Optional navigable URI/path for clickable sources. */
+  readonly uri?: string;
+  /** Citation index from retrieval, when applicable. */
+  readonly index?: number;
+  /** Estimated tokens contributed by this source. */
+  readonly tokens: number;
+  /** Whether the user can exclude this source from the next turn. */
+  readonly removable: boolean;
 }
 
 // ── Content Part Discriminated Union ──
@@ -396,8 +420,8 @@ export interface IChatThinkingContent {
   isCollapsed: boolean;
   /** Ephemeral status message shown while context is being gathered. */
   progressMessage?: string;
-  /** Source references gathered during retrieval. */
-  references?: Array<{ uri: string; label: string; index?: number }>;
+  /** Provenance entries visible in the thinking/source surface. */
+  provenance?: IChatProvenanceEntry[];
 }
 
 export interface IChatReferenceContent {
@@ -592,6 +616,8 @@ export interface IChatResponseStream {
   codeBlock(code: string, language?: string): void;
   /** Show a progress indicator. */
   progress(message: string): void;
+  /** Append a provenance entry to the active response. */
+  provenance(entry: IChatProvenanceEntry): void;
   /** Append a clickable reference. */
   reference(uri: string, label: string, index?: number): void;
   /** Append thinking/reasoning content. */

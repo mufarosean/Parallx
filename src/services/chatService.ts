@@ -39,6 +39,7 @@ import type {
   IChatContentPart,
   IChatMarkdownContent,
   IChatThinkingContent,
+  IChatProvenanceEntry,
   IChatReferenceContent,
   IChatToolInvocationContent,
   IChatEditProposalContent,
@@ -131,7 +132,28 @@ class ChatResponseStream implements IChatResponseStream {
   constructor(
     private readonly _response: IChatAssistantResponse,
     private readonly _onUpdate: () => void,
-  ) {}
+  ) {
+    this.throwIfDone = this.throwIfDone.bind(this);
+    this.close = this.close.bind(this);
+    this.reportTokenUsage = this.reportTokenUsage.bind(this);
+    this.setCitations = this.setCitations.bind(this);
+    this.getMarkdownText = this.getMarkdownText.bind(this);
+    this.replaceLastMarkdown = this.replaceLastMarkdown.bind(this);
+    this.markdown = this.markdown.bind(this);
+    this.codeBlock = this.codeBlock.bind(this);
+    this.progress = this.progress.bind(this);
+    this.provenance = this.provenance.bind(this);
+    this.reference = this.reference.bind(this);
+    this.thinking = this.thinking.bind(this);
+    this.warning = this.warning.bind(this);
+    this.button = this.button.bind(this);
+    this.confirmation = this.confirmation.bind(this);
+    this.beginToolInvocation = this.beginToolInvocation.bind(this);
+    this.updateToolInvocation = this.updateToolInvocation.bind(this);
+    this.editProposal = this.editProposal.bind(this);
+    this.editBatch = this.editBatch.bind(this);
+    this.push = this.push.bind(this);
+  }
 
   /**
    * Schedule a batched update notification via queueMicrotask.
@@ -162,10 +184,18 @@ class ChatResponseStream implements IChatResponseStream {
     const parts = this._response.parts as IChatContentPart[];
 
     // Collect any straggler references not yet folded into thinking
-    const stragglerRefs: Array<{ uri: string; label: string }> = [];
+    const stragglerRefs: IChatProvenanceEntry[] = [];
     for (const p of parts) {
       if (p.kind === ChatContentPartKind.Reference) {
-        stragglerRefs.push({ uri: (p as IChatReferenceContent).uri, label: (p as IChatReferenceContent).label });
+        const reference = p as IChatReferenceContent;
+        stragglerRefs.push({
+          id: reference.uri,
+          label: reference.label,
+          kind: 'rag',
+          uri: reference.uri,
+          tokens: 0,
+          removable: true,
+        });
       }
     }
 
@@ -188,13 +218,13 @@ class ChatResponseStream implements IChatResponseStream {
       ) as IChatThinkingContent | undefined;
 
       if (thinkingPart) {
-        if (!thinkingPart.references) {
-          thinkingPart.references = [];
+        if (!thinkingPart.provenance) {
+          thinkingPart.provenance = [];
         }
         for (const ref of stragglerRefs) {
           // Avoid duplicates
-          if (!thinkingPart.references.some(r => r.uri === ref.uri)) {
-            thinkingPart.references.push(ref);
+          if (!thinkingPart.provenance.some((entry) => (entry.uri ?? entry.id) === (ref.uri ?? ref.id))) {
+            thinkingPart.provenance.push(ref);
           }
         }
       }
@@ -313,31 +343,42 @@ class ChatResponseStream implements IChatResponseStream {
     this._scheduleUpdate();
   }
 
-  reference(uri: string, label: string, index?: number): void {
+  provenance(entry: IChatProvenanceEntry): void {
     this.throwIfDone();
     const parts = this._response.parts as IChatContentPart[];
 
-    // Fold references into the existing thinking part so source pills
-    // appear inside the collapsed "Thinking..." section during streaming.
     const thinkingPart = parts.find(
       (p) => p.kind === ChatContentPartKind.Thinking,
     ) as IChatThinkingContent | undefined;
 
     if (thinkingPart) {
-      if (!thinkingPart.references) {
-        thinkingPart.references = [];
+      if (!thinkingPart.provenance) {
+        thinkingPart.provenance = [];
       }
-      thinkingPart.references.push({ uri, label, index });
+      if (!thinkingPart.provenance.some((existing) => (existing.uri ?? existing.id) === (entry.uri ?? entry.id))) {
+        thinkingPart.provenance.push(entry);
+      }
     } else {
-      // No thinking part yet — create one to host the reference
       parts.unshift({
         kind: ChatContentPartKind.Thinking,
         content: '',
         isCollapsed: false,
-        references: [{ uri, label, index }],
+        provenance: [entry],
       });
     }
     this._scheduleUpdate();
+  }
+
+  reference(uri: string, label: string, index?: number): void {
+    this.provenance({
+      id: uri,
+      label,
+      kind: 'rag',
+      uri,
+      index,
+      tokens: 0,
+      removable: true,
+    });
   }
 
   thinking(content: string): void {

@@ -241,6 +241,37 @@ describe('ChatService', () => {
       await promise;
       expect(abortSeen).toHaveBeenCalled();
     });
+
+    it('supports detached response stream methods during agent execution', async () => {
+      const detachedAgent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Detached',
+        description: 'Detached method regression coverage',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          const writeWarning = response.warning;
+          const writeMarkdown = response.markdown;
+          writeWarning('Detached warning');
+          writeMarkdown('Detached markdown');
+          return {};
+        },
+      };
+
+      const svc = new ChatAgentService();
+      svc.registerAgent(detachedAgent);
+      const cs = new ChatService(svc, modeService, lmService);
+
+      const session = cs.createSession();
+      const result = await cs.sendRequest(session.id, 'Hello');
+
+      expect(result).toEqual({});
+      expect(session.messages[0].response.parts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: ChatContentPartKind.Warning, message: 'Detached warning' }),
+          expect.objectContaining({ kind: ChatContentPartKind.Markdown, content: 'Detached markdown' }),
+        ]),
+      );
+    });
   });
 
   // ── Unified Thinking — progress/reference fold into thinking ──
@@ -297,8 +328,8 @@ describe('ChatService', () => {
       expect(parts.find(p => p.kind === ChatContentPartKind.Reference)).toBeUndefined();
       const thinking = parts.find(p => p.kind === ChatContentPartKind.Thinking) as any;
       expect(thinking).toBeDefined();
-      expect(thinking.references).toHaveLength(2);
-      expect(thinking.references[0].label).toBe('test.md');
+      expect(thinking.provenance).toHaveLength(2);
+      expect(thinking.provenance[0].label).toBe('test.md');
     });
 
     it('reference() stores index when provided', async () => {
@@ -323,8 +354,8 @@ describe('ChatService', () => {
 
       const parts = session.messages[0].response.parts;
       const thinking = parts.find(p => p.kind === ChatContentPartKind.Thinking) as any;
-      expect(thinking.references[0].index).toBe(1);
-      expect(thinking.references[1].index).toBe(2);
+      expect(thinking.provenance[0].index).toBe(1);
+      expect(thinking.provenance[1].index).toBe(2);
     });
 
     it('setCitations() attaches citations to all markdown parts', async () => {

@@ -107,10 +107,16 @@ describe('M14 Workspace Session Compliance', () => {
 
   // ── Abort signal propagation ──
 
-  it('session cancellation signal is linked in defaultParticipant', () => {
+  it('session cancellation signal is passed from defaultParticipant into the synthesis utility', () => {
     const content = readSrc('built-in/chat/participants/defaultParticipant.ts');
-    expect(content).toContain('sessionSignal');
+    expect(content).toContain('sessionCancellationSignal');
     expect(content).toContain('cancellationSignal');
+  });
+
+  it('session cancellation signal is linked in the chat synthesis utility', () => {
+    const content = readSrc('built-in/chat/utilities/chatTurnSynthesis.ts');
+    expect(content).toContain('sessionCancellationSignal');
+    expect(content).toContain("addEventListener('abort'");
   });
 
   // ── Service wiring ──

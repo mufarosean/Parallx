@@ -280,6 +280,10 @@ export class ChatContextPills extends Disposable {
         return chatIcons.search;
       case 'attachment':
         return chatIcons.file;
+      case 'memory':
+        return chatIcons.history;
+      case 'concept':
+        return chatIcons.sparkleSmall;
       case 'system':
         return chatIcons.wrench;
       case 'rule':
