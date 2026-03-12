@@ -53,7 +53,7 @@ export interface ILanguageModelInfo {
 /**
  * Model capabilities — derived from Ollama's model info.
  */
-export type ModelCapability = 'completion' | 'tools' | 'thinking';
+export type ModelCapability = 'completion' | 'tools' | 'thinking' | 'vision';
 
 /**
  * Provider connection/availability status.
@@ -80,6 +80,8 @@ export interface IChatMessage {
   readonly role: 'system' | 'user' | 'assistant' | 'tool';
   /** Message text content. */
   readonly content: string;
+  /** Inline image attachments for multimodal user turns. */
+  readonly images?: readonly IChatImageAttachment[];
   /** Tool calls requested by assistant (present when role === 'assistant'). */
   readonly toolCalls?: readonly IToolCall[];
   /** Tool name for tool results (present when role === 'tool'). */
@@ -222,6 +224,8 @@ export interface IChatRequestResponsePair {
 export interface IChatUserMessage {
   /** Raw input text. */
   readonly text: string;
+  /** Unique request ID for this turn. */
+  readonly requestId: string;
   /** Resolved participant ID (from @mention or default). */
   readonly participantId?: string;
   /** Slash command (e.g. '/search'). */
@@ -230,6 +234,10 @@ export interface IChatUserMessage {
   readonly variables?: readonly IChatVariable[];
   /** Files attached as explicit context by the user. */
   readonly attachments?: readonly IChatAttachment[];
+  /** Retry attempt count (0 = first attempt). */
+  readonly attempt: number;
+  /** Original request ID when this message is a replay/regenerate. */
+  readonly replayOfRequestId?: string;
   /** Timestamp when the message was sent. */
   readonly timestamp: number;
 }
@@ -246,12 +254,7 @@ export interface IChatVariable {
 
 // ── Chat Attachments ──
 
-/**
- * A file attached as explicit context by the user (via "Add Context" button).
- *
- * VS Code reference: IChatRequestVariableEntry (chatModel.ts)
- */
-export interface IChatAttachment {
+export interface IChatAttachmentBase {
   /** Unique identifier (typically a file path or URI string). */
   readonly id: string;
   /** Display name (e.g. 'chatWidget.ts'). */
@@ -260,6 +263,36 @@ export interface IChatAttachment {
   readonly fullPath: string;
   /** Whether this is an implicit suggestion (from open editor) vs explicitly added. */
   readonly isImplicit: boolean;
+}
+
+/**
+ * A file attached as explicit context by the user (via "Add Context" button).
+ *
+ * VS Code reference: IChatRequestVariableEntry (chatModel.ts)
+ */
+export interface IChatFileAttachment extends IChatAttachmentBase {
+  readonly kind: 'file';
+}
+
+/** A pasted or uploaded image attachment for multimodal chat turns. */
+export interface IChatImageAttachment extends IChatAttachmentBase {
+  readonly kind: 'image';
+  /** MIME type used to reconstruct a preview and send to Ollama. */
+  readonly mimeType: string;
+  /** Base64-encoded image payload without a data URI prefix. */
+  readonly data: string;
+  /** Source hint shown in the UI (for example, clipboard). */
+  readonly origin?: 'clipboard' | 'file';
+}
+
+export type IChatAttachment = IChatFileAttachment | IChatImageAttachment;
+
+export function isChatImageAttachment(attachment: IChatAttachment): attachment is IChatImageAttachment {
+  return attachment.kind === 'image';
+}
+
+export function isChatFileAttachment(attachment: IChatAttachment): attachment is IChatFileAttachment {
+  return attachment.kind === 'file';
 }
 
 /**
@@ -867,6 +900,10 @@ export interface IChatSendRequestOptions {
   readonly noCommandDetection?: boolean;
   /** Files attached as explicit context. */
   readonly attachments?: readonly IChatAttachment[];
+  /** Retry attempt count (0 = first attempt). */
+  readonly attempt?: number;
+  /** Original request ID when replaying a prior turn. */
+  readonly replayOfRequestId?: string;
 }
 
 export const IChatService = createServiceIdentifier<IChatService>('IChatService');

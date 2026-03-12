@@ -898,14 +898,36 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
   // Source reference pills
   if (part.references && part.references.length > 0) {
     const sourcesSection = $('div.parallx-chat-thinking-sources');
+    let areSourcesCollapsed = false;
 
-    // Add a subtle label when there's also thinking text above
-    if (part.content) {
-      const sourcesLabel = $('div.parallx-chat-thinking-sources-label', 'Sources');
-      sourcesSection.appendChild(sourcesLabel);
-    }
+    const sourcesToggle = document.createElement('button');
+    sourcesToggle.type = 'button';
+    sourcesToggle.className = 'parallx-chat-thinking-sources-toggle';
+
+    const sourcesArrow = $('span.parallx-chat-thinking-sources-arrow', '\u25B6');
+    sourcesToggle.appendChild(sourcesArrow);
+
+    const sourcesLabel = $('span.parallx-chat-thinking-sources-label', 'Sources');
+    sourcesToggle.appendChild(sourcesLabel);
+
+    const sourcesCount = part.references.length;
+    const sourcesMeta = $('span.parallx-chat-thinking-sources-meta', `${sourcesCount} source${sourcesCount !== 1 ? 's' : ''}`);
+    sourcesToggle.appendChild(sourcesMeta);
 
     const pillsRow = $('div.parallx-chat-thinking-sources-pills');
+
+    const updateSourcesState = (): void => {
+      sourcesSection.classList.toggle('parallx-chat-thinking-sources--collapsed', areSourcesCollapsed);
+      sourcesToggle.setAttribute('aria-expanded', String(!areSourcesCollapsed));
+    };
+
+    sourcesToggle.addEventListener('click', () => {
+      areSourcesCollapsed = !areSourcesCollapsed;
+      updateSourcesState();
+    });
+
+    sourcesSection.appendChild(sourcesToggle);
+
     for (const ref of part.references) {
       const pill = _renderReference({
         kind: ChatContentPartKind.Reference,
@@ -915,6 +937,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
       pillsRow.appendChild(pill);
     }
     sourcesSection.appendChild(pillsRow);
+    updateSourcesState();
 
     content.appendChild(sourcesSection);
   }

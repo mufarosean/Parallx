@@ -145,11 +145,9 @@ export class ChatContextPills extends Disposable {
 
     // Calculate totals
     const activePills = this._pills.filter(p => !this._excluded.has(p.id));
-    const totalTokens = activePills.reduce((sum, p) => sum + p.tokens, 0);
     const excludedCount = this._excluded.size;
 
     // Toggle button label
-    const tokenLabel = this._formatTokenCount(totalTokens);
     const sourceLabel = activePills.length === 1 ? '1 source' : `${activePills.length} sources`;
     const excludeLabel = excludedCount > 0 ? ` (${excludedCount} excluded)` : '';
     const arrow = this._expanded ? '▾' : '▸';
@@ -161,7 +159,7 @@ export class ChatContextPills extends Disposable {
     this._toggleBtn.appendChild(arrowSpan);
 
     const text = document.createElement('span');
-    text.textContent = `Context: ${sourceLabel} · ${tokenLabel}${excludeLabel}`;
+    text.textContent = `Sources for next turn: ${sourceLabel}${excludeLabel}`;
     this._toggleBtn.appendChild(text);
 
     // Pills list
@@ -174,59 +172,33 @@ export class ChatContextPills extends Disposable {
       this._pillsContainer.appendChild(el);
     }
 
-    // Also render budget if expanded
+    // Also render the context-window guidance if expanded.
     this._renderBudget();
   }
 
-  /** Render the token budget breakdown bar (Task 4.8). */
+  /** Render lightweight guidance that points quantitative context usage back to the status bar. */
   private _renderBudget(): void {
     this._budgetContainer.innerHTML = '';
     this._budgetContainer.style.display = (this._expanded && this._budgetSlots.length > 0) ? '' : 'none';
     if (!this._expanded || this._budgetSlots.length === 0) { return; }
 
-    const totalAlloc = this._budgetSlots.reduce((s, b) => s + b.allocated, 0);
-    if (totalAlloc === 0) { return; }
-
-    // Label
-    const title = $('div.parallx-chat-context-budget-title', 'Token Budget');
+    const title = $('div.parallx-chat-context-budget-title', 'Context Window');
     this._budgetContainer.appendChild(title);
 
-    // Segmented bar
-    const bar = $('div.parallx-chat-context-budget-bar');
-    for (const slot of this._budgetSlots) {
-      const pct = (slot.allocated / totalAlloc) * 100;
-      const fillPct = slot.allocated > 0 ? Math.min(100, (slot.used / slot.allocated) * 100) : 0;
-      const segment = document.createElement('div');
-      segment.className = 'parallx-chat-context-budget-segment';
-      segment.style.width = `${pct}%`;
-      segment.title = `${slot.label}: ${this._formatTokenCount(slot.used)} / ${this._formatTokenCount(slot.allocated)}`;
+    const totalUsed = this._budgetSlots.reduce((sum, slot) => sum + slot.used, 0);
+    const note = $('div.parallx-chat-context-budget-note');
 
-      const fill = document.createElement('div');
-      fill.className = 'parallx-chat-context-budget-fill';
-      fill.style.width = `${fillPct}%`;
-      fill.style.background = slot.color;
-      segment.appendChild(fill);
-      bar.appendChild(segment);
-    }
-    this._budgetContainer.appendChild(bar);
+    const summary = document.createElement('span');
+    summary.className = 'parallx-chat-context-budget-summary';
+    summary.textContent = `This turn is carrying about ${this._formatTokenCount(totalUsed)} tokens of local source context.`;
+    note.appendChild(summary);
 
-    // Legend row
-    const legend = $('div.parallx-chat-context-budget-legend');
-    for (const slot of this._budgetSlots) {
-      const item = $('span.parallx-chat-context-budget-legend-item');
+    const detail = document.createElement('span');
+    detail.className = 'parallx-chat-context-budget-detail';
+    detail.textContent = 'Overall context-window usage and token pressure live in the status bar.';
+    note.appendChild(detail);
 
-      const dot = document.createElement('span');
-      dot.className = 'parallx-chat-context-budget-dot';
-      dot.style.background = slot.color;
-      item.appendChild(dot);
-
-      const text = document.createElement('span');
-      text.textContent = `${slot.label}: ${this._formatTokenCount(slot.used)}`;
-      item.appendChild(text);
-
-      legend.appendChild(item);
-    }
-    this._budgetContainer.appendChild(legend);
+    this._budgetContainer.appendChild(note);
   }
 
   /** Create a single pill element. */

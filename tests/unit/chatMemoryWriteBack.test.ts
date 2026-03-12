@@ -9,7 +9,7 @@ function flushPromises(): Promise<void> {
 
 function createHistory() {
   return [{
-    request: { text: 'I had an accident on Elm Street.', timestamp: Date.now() },
+    request: { text: 'I had an accident on Elm Street.', requestId: 'req-memory-1', attempt: 0, timestamp: Date.now() },
     response: {
       parts: [{ kind: ChatContentPartKind.Markdown, content: 'You should file a claim.' }],
       isComplete: true,

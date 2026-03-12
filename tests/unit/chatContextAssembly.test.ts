@@ -18,7 +18,7 @@ describe('chat context assembly', () => {
       {
         userText: 'What are the filing deadlines?',
         messages: [{ role: 'system', content: 'system prompt text' } as any],
-        attachments: [{ name: 'notes.txt', fullPath: 'C:/notes.txt' } as any],
+        attachments: [{ kind: 'file', id: 'C:/notes.txt', name: 'notes.txt', fullPath: 'C:/notes.txt', isImplicit: false } as any],
         mentionPills: [{ id: 'rule:claims', label: 'Claims rule', type: 'rule', tokens: 12, removable: true }],
         useRetrieval: true,
         maxMemoryContextChars: 20,
@@ -34,6 +34,8 @@ describe('chat context assembly', () => {
       },
     );
 
+    expect(addReference).toHaveBeenCalledWith('parallx-page://p1', 'Claims');
+    expect(addReference).toHaveBeenCalledWith('C:/notes.txt', 'notes.txt');
     expect(addReference).toHaveBeenCalledWith('Claims Guide.md', 'Claims Guide.md', 1);
     expect(reportContextPills).toHaveBeenCalledTimes(1);
     expect(result.contextParts.some((part) => part.includes('Claims Guide.md'))).toBe(false);
@@ -47,6 +49,38 @@ describe('chat context assembly', () => {
       'notes.txt',
       'Claims rule',
     ]);
+  });
+
+  it('creates visible references for direct page and file context even without retrieval', async () => {
+    const addReference = vi.fn();
+
+    const result = await assembleChatContext(
+      {
+        addReference,
+        assessEvidenceSufficiency: () => ({ status: 'sufficient', reasons: [] }),
+        buildRetrieveAgainQuery: () => '',
+      },
+      {
+        userText: 'Summarize the open document',
+        messages: [{ role: 'system', content: 'system prompt text' } as any],
+        attachments: [{ kind: 'file', name: 'Clark.pdf', fullPath: 'D:/AI/Parallx/Clark.pdf', id: 'D:/AI/Parallx/Clark.pdf', isImplicit: false } as any],
+        mentionPills: [],
+        useRetrieval: false,
+        maxMemoryContextChars: 100,
+        maxConceptContextChars: 100,
+        pageResult: { title: 'Clark.pdf', pageId: 'pdf-page', textContent: 'Open document text' },
+        ragResult: null,
+        memoryResult: null,
+        conceptResult: null,
+        attachmentResults: [{ name: 'Clark.pdf', content: 'Attached file text' }],
+      },
+    );
+
+    expect(addReference).toHaveBeenCalledWith('parallx-page://pdf-page', 'Clark.pdf');
+    expect(addReference).toHaveBeenCalledWith('D:/AI/Parallx/Clark.pdf', 'Clark.pdf');
+    expect(result.ragSources).toHaveLength(0);
+    expect(result.contextParts.some((part) => part.includes('Open document text'))).toBe(true);
+    expect(result.contextParts.some((part) => part.includes('Attached file text'))).toBe(true);
   });
 
   it('runs a retrieve-again pass when initial evidence is insufficient', async () => {

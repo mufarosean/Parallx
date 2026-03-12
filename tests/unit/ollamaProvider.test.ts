@@ -125,6 +125,24 @@ describe('OllamaProvider', () => {
       expect(models[0].quantization).toBe('Q4_K_M');
       freshProvider.dispose();
     });
+
+    it('detects vision capability from model info', async () => {
+      vi.stubGlobal('fetch', createMockFetch(new Map([
+        ['/api/version', () => jsonResponse({ version: '0.5.4' })],
+        ['/api/ps', () => jsonResponse({ models: [] })],
+        ['/api/tags', () => jsonResponse({ models: [] })],
+        ['/api/show', () => jsonResponse({
+          details: { family: 'llava', parameter_size: '7B', quantization_level: 'Q4_K_M' },
+          model_info: { 'llava.context_length': 8192 },
+          capabilities: ['vision'],
+        })],
+      ])));
+
+      const freshProvider = new OllamaProvider();
+      const info = await freshProvider.getModelInfo('llava:latest');
+      expect(info.capabilities).toContain('vision');
+      freshProvider.dispose();
+    });
   });
 
   describe('sendChatRequest streaming', () => {
@@ -177,6 +195,16 @@ describe('OllamaProvider', () => {
 
       expect(caught).toBe(true);
       freshProvider.dispose();
+    });
+
+    it('formats multimodal messages with image payloads', () => {
+      const formatted = provider._debugFormatMessage({
+        role: 'user',
+        content: 'What is in this image?',
+        images: [{ kind: 'image', id: 'img-1', name: 'clipboard.png', fullPath: 'parallx-image://1', isImplicit: false, mimeType: 'image/png', data: 'abc123' }],
+      });
+
+      expect(formatted.images).toEqual(['abc123']);
     });
   });
 

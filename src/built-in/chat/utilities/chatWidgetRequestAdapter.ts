@@ -1,8 +1,9 @@
 import type { Event } from '../../../platform/events.js';
+import type { IChatSendRequestOptions } from '../../../services/chatTypes.js';
 import type { ChatRequestQueueKind, IChatPendingRequest, IChatWidgetServices } from '../chatTypes.js';
 
 export interface IChatWidgetRequestAdapterDeps {
-  readonly sendRequest: (sessionId: string, message: string, attachments?: readonly unknown[]) => Promise<void>;
+  readonly sendRequest: (sessionId: string, message: string, options?: IChatSendRequestOptions) => Promise<void>;
   readonly cancelRequest: (sessionId: string) => void;
   readonly createSession: () => unknown;
   readonly onDidChangeSession: Event<string>;
@@ -30,7 +31,7 @@ export function buildChatWidgetRequestServices(
   | 'onDidChangePendingRequests'
 > {
   return {
-    sendRequest: (sessionId, message, attachments) => deps.sendRequest(sessionId, message, attachments),
+    sendRequest: (sessionId, message, options) => deps.sendRequest(sessionId, message, options),
     cancelRequest: deps.cancelRequest,
     createSession: deps.createSession as IChatWidgetServices['createSession'],
     onDidChangeSession: deps.onDidChangeSession,

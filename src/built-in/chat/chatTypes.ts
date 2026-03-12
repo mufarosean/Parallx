@@ -11,7 +11,7 @@ import type { IDisposable } from '../../platform/lifecycle.js';
 import type {
   IChatMessage,
   IChatSession,
-  IChatAttachment,
+  IChatSendRequestOptions,
   IChatRequestOptions,
   IChatResponseChunk,
   IToolDefinition,
@@ -240,7 +240,7 @@ export interface IInitCommandServices {
 
 /** Service accessor passed from the activation layer to ChatWidget. */
 export interface IChatWidgetServices {
-  readonly sendRequest: (sessionId: string, message: string, attachments?: readonly IChatAttachment[]) => Promise<void>;
+  readonly sendRequest: (sessionId: string, message: string, options?: IChatSendRequestOptions) => Promise<void>;
   readonly cancelRequest: (sessionId: string) => void;
   readonly createSession: () => IChatSession;
   readonly onDidChangeSession: Event<string>;
@@ -282,6 +282,7 @@ export interface IChatAgentTaskViewModel {
 /** Services needed by the model picker dropdown. */
 export interface IModelPickerServices {
   getModels(): Promise<readonly ILanguageModelInfo[]>;
+  getModelInfo?(modelId: string): Promise<ILanguageModelInfo>;
   getActiveModel(): string | undefined;
   setActiveModel(modelId: string): void;
   readonly onDidChangeModels: Event<void>;
@@ -309,6 +310,8 @@ export interface IAttachmentServices {
   readonly onDidChangeOpenEditors: Event<void>;
   listWorkspaceFiles?(): Promise<IWorkspaceFileEntry[]>;
 }
+
+export type RegenerateMessageHandler = (request: import('../../services/chatTypes.js').IChatUserMessage) => void;
 
 /** Services needed by the tool picker — re-exported from main service types. */
 export type { IToolPickerServices } from '../../services/chatTypes.js';

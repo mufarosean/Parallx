@@ -125,7 +125,26 @@ describe('ChatService', () => {
       expect(result).toBeDefined();
       expect(session.messages).toHaveLength(1);
       expect(session.messages[0].request.text).toBe('Hello');
+      expect(session.messages[0].request.requestId).toBeTruthy();
+      expect(session.messages[0].request.attempt).toBe(0);
       expect(session.messages[0].response.isComplete).toBe(true);
+    });
+
+    it('stores replay metadata for regenerated requests', async () => {
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello');
+
+      const original = session.messages[0].request;
+      await chatService.sendRequest(session.id, original.text, {
+        attachments: original.attachments,
+        attempt: original.attempt + 1,
+        replayOfRequestId: original.requestId,
+      });
+
+      expect(session.messages).toHaveLength(2);
+      expect(session.messages[1].request.attempt).toBe(1);
+      expect(session.messages[1].request.replayOfRequestId).toBe(original.requestId);
+      expect(session.messages[1].request.requestId).not.toBe(original.requestId);
     });
 
     it('auto-generates title from first message', async () => {
@@ -359,6 +378,31 @@ describe('ChatService', () => {
       expect(thinking).toBeDefined();
       // progressMessage should be cleared after close()
       expect(thinking.progressMessage).toBeUndefined();
+    });
+
+    it('retains a progress-only thinking part after close()', async () => {
+      const agent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Test',
+        description: 'Test',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          response.progress('Thinking…');
+          response.markdown('Done');
+          return {};
+        },
+      };
+      const svc = new ChatAgentService();
+      svc.registerAgent(agent);
+      const cs = new ChatService(svc, modeService, lmService);
+      const session = cs.createSession();
+      await cs.sendRequest(session.id, 'test');
+
+      const parts = session.messages[0].response.parts;
+      const thinking = parts.find(p => p.kind === ChatContentPartKind.Thinking) as any;
+      expect(thinking).toBeDefined();
+      expect(thinking.progressMessage).toBeUndefined();
+      expect(parts[0].kind).toBe(ChatContentPartKind.Thinking);
     });
 
     it('thinking part appears first after close()', async () => {
@@ -776,7 +820,7 @@ describe('_stripToolNarration', () => {
     const { _buildDeterministicSessionSummary } = await import('../../src/built-in/chat/participants/defaultParticipant');
 
     const summary = _buildDeterministicSessionSummary(
-      [{ request: { text: 'I was in a car accident yesterday at the Riverside Mall parking lot on Elm Street.' } }],
+      [{ request: { text: 'I was in a car accident yesterday at the Riverside Mall parking lot on Elm Street.', requestId: 'req-summary-1', attempt: 0, timestamp: Date.now() } }],
       'The other driver ran a red light, hit my passenger door, and the police report number is 2026-0305-1147.',
     );
 
@@ -1164,7 +1208,7 @@ describe('_stripToolNarration', () => {
       {
         sessionId: 's1',
         history: [{
-          request: { text: 'What is my collision deductible?' },
+          request: { text: 'What is my collision deductible?', requestId: 'req-history-1', attempt: 0, timestamp: Date.now() },
           response: { parts: [{ kind: 'markdown', content: 'Your collision deductible is $500.' }] },
         }],
       } as any,

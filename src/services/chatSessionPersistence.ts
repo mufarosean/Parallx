@@ -17,6 +17,7 @@ import type {
   IChatAssistantResponse,
   IChatRequestResponsePair,
   IChatContentPart,
+  IChatAttachment,
 } from './chatTypes.js';
 import { ChatMode } from './chatTypes.js';
 
@@ -130,7 +131,7 @@ export async function saveSession(db: IChatPersistenceDatabase, session: IChatSe
         session.id,
         'user',
         pair.request.text,
-        JSON.stringify([]), // User messages don't have parts
+        JSON.stringify(_serializeUserMessageMetadata(pair.request)),
         '',
         1,
         pair.request.timestamp,
@@ -195,8 +196,16 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
 
     for (const msg of messageRows) {
       if (msg.role === 'user') {
+        const metadata = _deserializeUserMessageMetadata(msg.parts_json);
         pendingUser = {
           text: msg.content,
+          requestId: metadata.requestId ?? 'legacy-request',
+          participantId: metadata.participantId,
+          command: metadata.command,
+          variables: metadata.variables,
+          attachments: metadata.attachments,
+          attempt: metadata.attempt ?? 0,
+          replayOfRequestId: metadata.replayOfRequestId,
           timestamp: msg.timestamp,
         };
       } else if (msg.role === 'assistant' && pendingUser) {
@@ -303,6 +312,46 @@ function _parseMode(mode: string): ChatMode {
   if (mode === 'edit') { return ChatMode.Edit; }
   if (mode === 'agent') { return ChatMode.Agent; }
   return ChatMode.Ask;
+}
+
+function _serializeUserMessageMetadata(message: IChatUserMessage): Record<string, unknown> {
+  return {
+    requestId: message.requestId,
+    participantId: message.participantId,
+    command: message.command,
+    variables: message.variables,
+    attachments: message.attachments,
+    attempt: message.attempt,
+    replayOfRequestId: message.replayOfRequestId,
+  };
+}
+
+function _deserializeUserMessageMetadata(partsJson: string): Partial<IChatUserMessage> {
+  try {
+    const parsed = JSON.parse(partsJson) as {
+      requestId?: unknown;
+      participantId?: unknown;
+      command?: unknown;
+      variables?: unknown;
+      attachments?: unknown;
+      attempt?: unknown;
+      replayOfRequestId?: unknown;
+    };
+    return {
+      requestId: typeof parsed.requestId === 'string' ? parsed.requestId : 'legacy-request',
+      participantId: typeof parsed.participantId === 'string' ? parsed.participantId : undefined,
+      command: typeof parsed.command === 'string' ? parsed.command : undefined,
+      variables: Array.isArray(parsed.variables) ? parsed.variables as IChatUserMessage['variables'] : undefined,
+      attachments: Array.isArray(parsed.attachments) ? parsed.attachments as readonly IChatAttachment[] : undefined,
+      attempt: typeof parsed.attempt === 'number' ? parsed.attempt : 0,
+      replayOfRequestId: typeof parsed.replayOfRequestId === 'string' ? parsed.replayOfRequestId : undefined,
+    };
+  } catch {
+    return {
+      requestId: 'legacy-request',
+      attempt: 0,
+    };
+  }
 }
 
 // ── Cross-session search (M11 Task 4.5) ──

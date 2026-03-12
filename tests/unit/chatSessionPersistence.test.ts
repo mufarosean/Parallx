@@ -112,7 +112,7 @@ describe('chatSessionPersistence', () => {
       const session = createTestSession();
       session.messages = [
         {
-          request: { text: 'Hello', participantId: 'parallx.chat.default', mode: ChatMode.Ask },
+          request: { text: 'Hello', requestId: 'req-1', participantId: 'parallx.chat.default', attempt: 0, timestamp: Date.now() },
           response: {
             parts: [{ kind: ChatContentPartKind.Markdown, content: 'Hi there!' }],
             isComplete: true,
@@ -131,7 +131,7 @@ describe('chatSessionPersistence', () => {
       const session = createTestSession();
       session.messages = [
         {
-          request: { text: 'Test', participantId: 'parallx.chat.default', mode: ChatMode.Ask },
+          request: { text: 'Test', requestId: 'req-2', participantId: 'parallx.chat.default', attempt: 0, timestamp: Date.now() },
           response: {
             parts: [
               { kind: ChatContentPartKind.Markdown, content: 'Response text' },
@@ -149,6 +149,33 @@ describe('chatSessionPersistence', () => {
         c.sql.includes('chat_messages') && c.params,
       );
       expect(messageInserts.length).toBeGreaterThan(0);
+    });
+
+    it('serializes user request metadata into parts_json', async () => {
+      const session = createTestSession();
+      session.messages = [
+        {
+          request: {
+            text: 'Hello',
+            requestId: 'req-serial',
+            participantId: 'parallx.chat.default',
+            attachments: [{ kind: 'image', id: 'img-1', name: 'Pasted image', fullPath: 'parallx-image://1', isImplicit: false, mimeType: 'image/png', data: 'abc123' }],
+            attempt: 1,
+            replayOfRequestId: 'req-0',
+            timestamp: Date.now(),
+          },
+          response: {
+            parts: [{ kind: ChatContentPartKind.Markdown, content: 'Hi there!' }],
+            isComplete: true,
+          },
+        },
+      ];
+
+      await saveSession(db, session);
+      const userInsert = db._runCalls.find((call) => Array.isArray(call.params) && call.params[1] === 'user');
+      expect(userInsert).toBeTruthy();
+      expect(String(userInsert?.params?.[3])).toContain('req-serial');
+      expect(String(userInsert?.params?.[3])).toContain('Pasted image');
     });
   });
 

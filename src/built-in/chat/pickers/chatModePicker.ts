@@ -20,10 +20,10 @@ import type { IModePickerServices } from '../chatTypes.js';
 export type { IModePickerServices } from '../chatTypes.js';
 
 /** Mode display metadata. */
-const MODE_META: Record<ChatMode, { label: string; title: string; description: string }> = {
-  [ChatMode.Ask]: { label: 'Ask', title: 'Q&A mode — no side effects', description: 'Ask questions without side effects' },
-  [ChatMode.Edit]: { label: 'Edit', title: 'Edit mode — canvas editing', description: 'Edit canvas with accept/reject' },
-  [ChatMode.Agent]: { label: 'Agent', title: 'Agent mode — autonomous', description: 'Autonomous with tool invocation' },
+const MODE_META: Record<ChatMode, { label: string; title: string; description: string; icon: string }> = {
+  [ChatMode.Ask]: { label: 'Ask', title: 'Q&A mode — no side effects', description: 'Ask questions without side effects', icon: chatIcons.chatBubble },
+  [ChatMode.Edit]: { label: 'Edit', title: 'Edit mode — canvas editing', description: 'Edit canvas with accept/reject', icon: chatIcons.pencil },
+  [ChatMode.Agent]: { label: 'Agent', title: 'Agent mode — autonomous', description: 'Autonomous with tool invocation', icon: chatIcons.agent },
 };
 
 /**
@@ -34,6 +34,7 @@ export class ChatModePicker extends Disposable {
   private readonly _root: HTMLElement;
   private readonly _button: HTMLButtonElement;
   private _dropdown: HTMLElement | undefined;
+  private _closeHandler: ((e: MouseEvent) => void) | undefined;
   private _services: IModePickerServices;
 
   private readonly _onDidSelectMode = this._register(new Emitter<ChatMode>());
@@ -49,7 +50,7 @@ export class ChatModePicker extends Disposable {
 
     // Button showing current mode + chevron
     this._button = document.createElement('button');
-    this._button.className = 'parallx-chat-picker-btn';
+    this._button.className = 'parallx-chat-picker-btn parallx-chat-picker-btn--mode';
     this._button.type = 'button';
     this._root.appendChild(this._button);
 
@@ -74,9 +75,11 @@ export class ChatModePicker extends Disposable {
     const current = this._services.getMode();
     const meta = MODE_META[current];
     this._button.innerHTML = '';
-    const label = document.createElement('span');
-    label.textContent = meta.label;
-    this._button.appendChild(label);
+
+    const icon = document.createElement('span');
+    icon.className = 'parallx-chat-picker-icon';
+    icon.innerHTML = meta.icon;
+    this._button.appendChild(icon);
 
     // Chevron
     const chevron = document.createElement('span');
@@ -104,8 +107,16 @@ export class ChatModePicker extends Disposable {
         item.classList.add('parallx-chat-picker-item--active');
       }
 
+      const icon = document.createElement('span');
+      icon.className = 'parallx-chat-picker-item-icon';
+      icon.innerHTML = meta.icon;
+      item.appendChild(icon);
+
       const name = $('span.parallx-chat-picker-item-name', meta.label);
       item.appendChild(name);
+
+      const description = $('span.parallx-chat-picker-item-description', meta.description);
+      item.appendChild(description);
 
       item.addEventListener('click', () => {
         this._services.setMode(mode);
@@ -128,9 +139,9 @@ export class ChatModePicker extends Disposable {
     const closeHandler = (e: MouseEvent) => {
       if (!dropdown.contains(e.target as Node) && !this._button.contains(e.target as Node)) {
         this._closeDropdown();
-        document.removeEventListener('mousedown', closeHandler);
       }
     };
+    this._closeHandler = closeHandler;
     document.addEventListener('mousedown', closeHandler);
   }
 
@@ -138,6 +149,10 @@ export class ChatModePicker extends Disposable {
     if (this._dropdown) {
       this._dropdown.remove();
       this._dropdown = undefined;
+    }
+    if (this._closeHandler) {
+      document.removeEventListener('mousedown', this._closeHandler);
+      this._closeHandler = undefined;
     }
   }
 

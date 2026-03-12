@@ -26,6 +26,8 @@ import type {
   IChatWidgetDescriptor,
   IContextPill,
   IChatPendingRequest,
+  IChatUserMessage,
+  ILanguageModelInfo,
 } from '../../../services/chatTypes.js';
 import { ChatRequestQueueKind } from '../../../services/chatTypes.js';
 import type {
@@ -97,6 +99,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
   private _isAtBottom = true;
   private readonly _expandedTaskIds = new Set<string>();
+  private _visionSyncRequestId = 0;
+  private _responsiveLayoutObserver: ResizeObserver | undefined;
 
   // ── Events ──
 
@@ -195,12 +199,17 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._offlineStateEl = this._buildOfflineState();
     this._messageListContainer.appendChild(this._offlineStateEl);
 
+    this._setupResponsiveLayout();
+
     // ── Sub-components ──
 
     this._listRenderer = this._register(new ChatListRenderer());
     if (services.openFile) {
       this._listRenderer.setOpenAttachmentHandler(services.openFile);
     }
+    this._listRenderer.setRegenerateHandler((request) => {
+      void this._handleRegenerate(request);
+    });
     // Task 4.9: Wire cancel handler from widget into list renderer
     this._listRenderer.setCancelHandler(() => this._handleStop());
 
@@ -247,12 +256,15 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     const pickerSlot = this._inputPart.getPickerSlot();
 
-    if (services.modelPicker) {
-      this._register(new ChatModelPicker(pickerSlot, services.modelPicker));
-    }
-
     if (services.modePicker) {
       this._register(new ChatModePicker(pickerSlot, services.modePicker));
+    }
+
+    if (services.modelPicker) {
+      this._register(new ChatModelPicker(pickerSlot, services.modelPicker));
+      this._register(services.modelPicker.onDidChangeModels(() => {
+        void this._syncVisionSupport();
+      }));
     }
 
     // ── Attachment services (enable "Add Context" file picker) ──
@@ -313,6 +325,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     this._updateVisibility();
     this._renderAgentTasks();
+    void this._syncVisionSupport();
   }
 
   // ── Public API ──
@@ -430,7 +443,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._onDidAcceptInput.fire(text);
 
     try {
-      await this._services.sendRequest(sessionId, text, attachments.length > 0 ? attachments : undefined);
+      await this._services.sendRequest(sessionId, text, attachments.length > 0 ? { attachments } : undefined);
     } catch (err) {
       console.error('[ChatWidget] Send request failed:', err);
     } finally {
@@ -444,6 +457,58 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     if (this._session) {
       this._services.cancelRequest(this._session.id);
     }
+  }
+
+  private async _handleRegenerate(request: IChatUserMessage): Promise<void> {
+    if (!this._session || this._session.requestInProgress) {
+      return;
+    }
+
+    this._inputPart.setStreaming(true);
+    try {
+      await this._services.sendRequest(this._session.id, request.text, {
+        attachments: request.attachments,
+        command: request.command,
+        participantId: request.participantId,
+        attempt: request.attempt + 1,
+        replayOfRequestId: request.requestId,
+      });
+    } catch (err) {
+      console.error('[ChatWidget] Regenerate failed:', err);
+    } finally {
+      this._inputPart.setStreaming(false);
+    }
+  }
+
+  private async _syncVisionSupport(): Promise<void> {
+    const syncRequestId = ++this._visionSyncRequestId;
+    const modelPicker = this._services.modelPicker;
+    if (!modelPicker) {
+      this._inputPart.setVisionSupported(false);
+      return;
+    }
+
+    const activeModelId = modelPicker.getActiveModel();
+    if (!activeModelId) {
+      this._inputPart.setVisionSupported(false);
+      return;
+    }
+
+    if (modelPicker.getModelInfo) {
+      const activeModel = await modelPicker.getModelInfo(activeModelId).catch((): ILanguageModelInfo | undefined => undefined);
+      if (syncRequestId !== this._visionSyncRequestId || modelPicker.getActiveModel() !== activeModelId) {
+        return;
+      }
+      this._inputPart.setVisionSupported(!!activeModel?.capabilities.includes('vision'));
+      return;
+    }
+
+    const models = await modelPicker.getModels().catch((): readonly ILanguageModelInfo[] => []);
+    if (syncRequestId !== this._visionSyncRequestId || modelPicker.getActiveModel() !== activeModelId) {
+      return;
+    }
+    const activeModel = models.find((model) => model.id === activeModelId);
+    this._inputPart.setVisionSupported(!!activeModel?.capabilities.includes('vision'));
   }
 
   // ── Pending Message Queue UI ──
@@ -997,6 +1062,32 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
 
     append(root, spinner, title, instruction);
     return root;
+  }
+
+  private _setupResponsiveLayout(): void {
+    const updateLayout = () => {
+      const width = this._mainArea.getBoundingClientRect().width;
+      this._root.classList.toggle('parallx-chat-widget--compact', width <= 430);
+      this._root.classList.toggle('parallx-chat-widget--narrow', width <= 340);
+    };
+
+    updateLayout();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      this._responsiveLayoutObserver = new ResizeObserver(() => {
+        updateLayout();
+      });
+      this._responsiveLayoutObserver.observe(this._mainArea);
+      this._register(toDisposable(() => {
+        this._responsiveLayoutObserver?.disconnect();
+        this._responsiveLayoutObserver = undefined;
+      }));
+      return;
+    }
+
+    const onResize = () => updateLayout();
+    window.addEventListener('resize', onResize);
+    this._register(toDisposable(() => window.removeEventListener('resize', onResize)));
   }
 }
 

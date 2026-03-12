@@ -1,3 +1,4 @@
+import { isChatFileAttachment, isChatImageAttachment } from '../../../services/chatTypes.js';
 import type { IChatAttachment, IChatMessage, IContextPill } from '../../../services/chatTypes.js';
 
 import type {
@@ -58,8 +59,13 @@ export async function assembleChatContext(
   const contextParts: string[] = [];
   const ragSources: ChatRagSource[] = [];
   let retrievedContextText = '';
+  const directReferenceUris = new Set<string>();
 
   if (options.pageResult && options.pageResult.textContent) {
+    const pageUri = `parallx-page://${options.pageResult.pageId}`;
+    deps.addReference(pageUri, options.pageResult.title);
+    directReferenceUris.add(pageUri);
+    directReferenceUris.add(options.pageResult.title);
     contextParts.push(
       `[Currently open page: "${options.pageResult.title}" (id: ${options.pageResult.pageId})]\n${options.pageResult.textContent}`,
     );
@@ -71,6 +77,9 @@ export async function assembleChatContext(
       alreadyInContext.add(attachment.fullPath);
       alreadyInContext.add(attachment.name);
     }
+  }
+  for (const directRef of directReferenceUris) {
+    alreadyInContext.add(directRef);
   }
   for (const pill of options.mentionPills) {
     alreadyInContext.add(pill.label);
@@ -132,11 +141,28 @@ export async function assembleChatContext(
     contextParts.push(conceptContext);
   }
 
-  for (const attachment of options.attachmentResults) {
+  const fileAttachments = options.attachments?.filter(isChatFileAttachment) ?? [];
+  for (const [index, attachment] of options.attachmentResults.entries()) {
+    const sourceAttachment = fileAttachments[index];
+    if (sourceAttachment && !directReferenceUris.has(sourceAttachment.fullPath)) {
+      deps.addReference(sourceAttachment.fullPath, sourceAttachment.name);
+      directReferenceUris.add(sourceAttachment.fullPath);
+      directReferenceUris.add(sourceAttachment.name);
+      alreadyInContext.add(sourceAttachment.fullPath);
+      alreadyInContext.add(sourceAttachment.name);
+    }
     if (attachment.content !== null) {
       contextParts.push(`File: ${attachment.name}\n\`\`\`\n${attachment.content}\n\`\`\``);
     } else {
       contextParts.push(`File: ${attachment.name}\n[Could not read file]`);
+    }
+  }
+
+  if (options.attachments?.length) {
+    for (const attachment of options.attachments) {
+      if (isChatImageAttachment(attachment)) {
+        contextParts.push(`Attached image: ${attachment.name}`);
+      }
     }
   }
 

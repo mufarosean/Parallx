@@ -1039,7 +1039,12 @@ export class ChatDataService {
     if (!session) return;
     const messages = session.messages as IChatRequestResponsePair[];
     messages.splice(0, messages.length, {
-      request: { text: '[Compacted conversation history]' },
+      request: {
+        text: '[Compacted conversation history]',
+        requestId: 'compacted-history',
+        attempt: 0,
+        timestamp: Date.now(),
+      },
       response: {
         parts: [{ kind: ChatContentPartKind.Markdown, content: summaryText }],
         isComplete: true,
@@ -1308,6 +1313,7 @@ export class ChatDataService {
     });
     const pickerServices = buildChatWidgetPickerServices({
       getModels: () => this._d.languageModelsService.getModels(),
+      getModelInfo: (modelId: string) => this._d.ollamaProvider.getModelInfo(modelId),
       getActiveModel: () => this._d.languageModelsService.getActiveModel(),
       setActiveModel: (modelId: string) => this._d.languageModelsService.setActiveModel(modelId),
       onDidChangeModels: this._d.languageModelsService.onDidChangeModels,
@@ -1386,8 +1392,8 @@ export class ChatDataService {
         : undefined,
     });
     const requestServices = buildChatWidgetRequestServices({
-      sendRequest: async (sessionId, message, attachments) => {
-        await this._d.chatService.sendRequest(sessionId, message, attachments ? { attachments: attachments as any } : undefined);
+      sendRequest: async (sessionId, message, options) => {
+        await this._d.chatService.sendRequest(sessionId, message, options);
       },
       cancelRequest: (sessionId: string) => {
         this._d.chatService.cancelRequest(sessionId);

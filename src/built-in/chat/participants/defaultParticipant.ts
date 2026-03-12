@@ -28,7 +28,7 @@ import type {
   EditProposalOperation,
   IContextPill,
 } from '../../../services/chatTypes.js';
-import { ChatContentPartKind } from '../../../services/chatTypes.js';
+import { ChatContentPartKind, isChatImageAttachment } from '../../../services/chatTypes.js';
 import { captureSession } from '../../../workspace/staleGuard.js';
 import type {
   IDefaultParticipantServices,
@@ -1536,6 +1536,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     messages.push({
       role: 'user',
       content: userContent,
+      images: request.attachments?.filter(isChatImageAttachment),
     });
 
     const applyFallbackAnswer = (phase: string, note: string): void => {

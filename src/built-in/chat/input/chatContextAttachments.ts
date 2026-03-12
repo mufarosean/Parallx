@@ -16,7 +16,8 @@ import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
 import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
-import type { IChatAttachment } from '../../../services/chatTypes.js';
+import { isChatImageAttachment } from '../../../services/chatTypes.js';
+import type { IChatAttachment, IChatImageAttachment } from '../../../services/chatTypes.js';
 import type { IOpenEditorFile, IAttachmentServices } from '../chatTypes.js';
 
 // IOpenEditorFile, IWorkspaceFileEntry, IAttachmentServices — now defined in chatTypes.ts (M13 Phase 1)
@@ -39,6 +40,8 @@ export class ChatContextAttachments extends Disposable {
 
   /** Dismissed implicit suggestions (user clicked × on an implicit). */
   private readonly _dismissed = new Set<string>();
+
+  private _visionSupported = false;
 
   // ── Events ──
 
@@ -71,12 +74,37 @@ export class ChatContextAttachments extends Disposable {
       return;
     }
     this._explicit.set(file.fullPath, {
+      kind: 'file',
       id: file.fullPath,
       name: file.name,
       fullPath: file.fullPath,
       isImplicit: false,
     });
     this._dismissed.delete(file.fullPath);
+    this._render();
+    this._onDidChange.fire();
+  }
+
+  async addPastedImage(file: File): Promise<void> {
+    const dataUrl = await this._readFileAsDataUrl(file);
+    const commaIndex = dataUrl.indexOf(',');
+    if (commaIndex < 0) {
+      return;
+    }
+
+    const mimeType = dataUrl.slice(5, dataUrl.indexOf(';', 5)) || file.type || 'image/png';
+    const id = `parallx-image://${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const attachment: IChatImageAttachment = {
+      kind: 'image',
+      id,
+      name: file.name || 'Pasted image',
+      fullPath: id,
+      isImplicit: false,
+      mimeType,
+      data: dataUrl.slice(commaIndex + 1),
+      origin: 'clipboard',
+    };
+    this._explicit.set(id, attachment);
     this._render();
     this._onDidChange.fire();
   }
@@ -97,7 +125,21 @@ export class ChatContextAttachments extends Disposable {
 
   /** Get all effective attachments (explicit only — implicit suggestions are not sent). */
   getAttachments(): readonly IChatAttachment[] {
-    return Array.from(this._explicit.values());
+    return Array.from(this._explicit.values()).filter((attachment) => {
+      if (!isChatImageAttachment(attachment)) {
+        return true;
+      }
+      return this._visionSupported;
+    });
+  }
+
+  setVisionSupported(visionSupported: boolean): void {
+    if (this._visionSupported === visionSupported) {
+      return;
+    }
+    this._visionSupported = visionSupported;
+    this._render();
+    this._onDidChange.fire();
   }
 
   /** Clear all explicit attachments and dismissed set. */
@@ -120,8 +162,8 @@ export class ChatContextAttachments extends Disposable {
 
     // 1. Render explicit attachments (chips with × to remove)
     for (const attachment of this._explicit.values()) {
-      const chip = this._createChip(attachment.name, false, () => {
-        this.removeAttachment(attachment.fullPath);
+      const chip = this._createChip(attachment, false, () => {
+        this.removeAttachment(attachment.id);
       });
       this._root.appendChild(chip);
     }
@@ -145,27 +187,51 @@ export class ChatContextAttachments extends Disposable {
   }
 
   /** Create an explicit attachment chip with × close button. */
-  private _createChip(label: string, _isImplicit: boolean, onRemove: () => void): HTMLElement {
+  private _createChip(attachment: IChatAttachment, _isImplicit: boolean, onRemove: () => void): HTMLElement {
     const chip = $('div.parallx-chat-context-chip');
+    if (isChatImageAttachment(attachment)) {
+      chip.classList.add('parallx-chat-context-chip--image');
+      if (!this._visionSupported) {
+        chip.classList.add('parallx-chat-context-chip--disabled');
+        chip.title = 'Active model does not support vision. Switch to a vision-capable model to send this image.';
+      }
+    }
 
     // File icon
     const icon = document.createElement('span');
     icon.className = 'parallx-chat-context-chip-icon';
-    icon.innerHTML = chatIcons.file;
+    if (isChatImageAttachment(attachment)) {
+      const preview = document.createElement('span');
+      preview.className = 'parallx-chat-context-chip-preview';
+      preview.style.backgroundImage = `url(${this._buildPreviewDataUrl(attachment)})`;
+      icon.appendChild(preview);
+
+      const glyph = document.createElement('span');
+      glyph.className = 'parallx-chat-context-chip-glyph';
+      glyph.innerHTML = chatIcons.image;
+      icon.appendChild(glyph);
+    } else {
+      icon.innerHTML = chatIcons.file;
+    }
     chip.appendChild(icon);
 
     // Label
     const name = document.createElement('span');
     name.className = 'parallx-chat-context-chip-label';
-    name.textContent = label;
+    name.textContent = attachment.name;
     chip.appendChild(name);
+
+    if (isChatImageAttachment(attachment) && !this._visionSupported) {
+      const status = $('span.parallx-chat-context-chip-status', 'Vision required');
+      chip.appendChild(status);
+    }
 
     // × close button
     const closeBtn = document.createElement('button');
     closeBtn.className = 'parallx-chat-context-chip-close';
     closeBtn.type = 'button';
     closeBtn.title = 'Remove';
-    closeBtn.setAttribute('aria-label', `Remove ${label}`);
+    closeBtn.setAttribute('aria-label', `Remove ${attachment.name}`);
     closeBtn.innerHTML = chatIcons.close;
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -174,6 +240,19 @@ export class ChatContextAttachments extends Disposable {
     chip.appendChild(closeBtn);
 
     return chip;
+  }
+
+  private _buildPreviewDataUrl(attachment: IChatImageAttachment): string {
+    return `data:${attachment.mimeType};base64,${attachment.data}`;
+  }
+
+  private _readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error ?? new Error('Failed to read image attachment.'));
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.readAsDataURL(file);
+    });
   }
 
   /** Create an implicit suggestion chip with + add button. */

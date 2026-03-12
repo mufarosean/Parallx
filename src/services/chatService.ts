@@ -306,7 +306,7 @@ class ChatResponseStream implements IChatResponseStream {
       parts.unshift({
         kind: ChatContentPartKind.Thinking,
         content: '',
-        isCollapsed: true,
+        isCollapsed: false,
         progressMessage: message,
       });
     }
@@ -333,7 +333,7 @@ class ChatResponseStream implements IChatResponseStream {
       parts.unshift({
         kind: ChatContentPartKind.Thinking,
         content: '',
-        isCollapsed: true,
+        isCollapsed: false,
         references: [{ uri, label, index }],
       });
     }
@@ -357,7 +357,7 @@ class ChatResponseStream implements IChatResponseStream {
       parts.unshift({
         kind: ChatContentPartKind.Thinking,
         content,
-        isCollapsed: true,
+        isCollapsed: false,
       });
     }
 
@@ -682,11 +682,17 @@ export class ChatService extends Disposable implements IChatService {
     const parsed = parseChatRequest(message);
 
     // 1. Create user message
+    const requestId = generateUUID();
+    const attempt = Math.max(0, options?.attempt ?? 0);
+
     const userMessage: IChatUserMessage = {
       text: message,
+      requestId,
       participantId: options?.participantId ?? parsed.participantId,
       command: options?.command ?? parsed.command,
       attachments: options?.attachments,
+      attempt,
+      replayOfRequestId: options?.replayOfRequestId,
       timestamp: Date.now(),
     };
 
@@ -728,12 +734,12 @@ export class ChatService extends Disposable implements IChatService {
     // 8. Build participant request (use parsed text with @mention stripped)
     const participantRequest: IChatParticipantRequest = {
       text: parsed.text,
-      requestId: generateUUID(),
+      requestId,
       command: options?.command ?? parsed.command,
       mode: session.mode,
       modelId: session.modelId,
       attachments: options?.attachments,
-      attempt: 0,
+      attempt,
     };
 
     // 9. Build context
