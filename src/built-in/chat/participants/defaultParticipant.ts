@@ -25,24 +25,20 @@ import type {
   IToolCall,
   IChatEditProposalContent,
   EditProposalOperation,
-  IContextPill,
 } from '../../../services/chatTypes.js';
 import { ChatContentPartKind, isChatImageAttachment } from '../../../services/chatTypes.js';
 import { captureSession } from '../../../workspace/staleGuard.js';
 import type {
   IDefaultParticipantServices,
   IInitCommandServices,
-  IMentionResolutionServices,
-  IRetrievalPlan,
 } from '../chatTypes.js';
 import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } from '../config/chatModeCapabilities.js';
 import { executeInitCommand } from '../commands/initCommand.js';
-import { extractMentions, resolveMentions } from '../utilities/chatMentionResolver.js';
 import { determineChatTurnRoute } from '../utilities/chatTurnRouter.js';
-import { createChatContextPlan, createChatRuntimeTrace } from '../utilities/chatContextPlanner.js';
 import { tryExecuteCompactChatCommand } from '../utilities/chatCompactCommand.js';
 import { applyChatAnswerRepairPipeline } from '../utilities/chatAnswerRepairPipeline.js';
 import { handleEarlyDeterministicAnswer, handlePreparedContextDeterministicAnswer } from '../utilities/chatDeterministicResponse.js';
+import { prepareChatTurnPrelude } from '../utilities/chatTurnPrelude.js';
 import { resolveChatTurnEntryRouting } from '../utilities/chatTurnEntryRouting.js';
 import { applyChatTurnBudgeting } from '../utilities/chatTurnBudgeting.js';
 import { assembleChatTurnMessages } from '../utilities/chatTurnMessageAssembly.js';
@@ -1038,73 +1034,30 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // The content of the currently open page is injected directly into the user
     // message so the model can reference it without a tool call (zero round-trips).
 
-    const mentionPills: IContextPill[] = [];
-    const mentionContextBlocks: string[] = [];
-
     // ── Latency instrumentation (M17 Task 0.2.7) ──
     const _t0_contextAssembly = performance.now();
-
-    // 0. @mention resolution (M11 Tasks 3.2–3.4)
-    //
-    // Extract @file:, @folder:, @workspace, @terminal mentions from
-    // the user's raw text. Resolve each to context blocks + pills.
-    // The clean text (mentions stripped) is used for the LLM message.
-    const mentions = extractMentions(request.text);
-    let userText = request.text;
-    if (mentions.length > 0) {
-      const mentionServices: IMentionResolutionServices = {
-        readFileContent: services.readFileContent
-          ? (path: string) => services.readFileContent!(path)
-          : undefined,
-        listFolderFiles: services.listFolderFiles
-          ? (folderPath: string) => services.listFolderFiles!(folderPath)
-          : undefined,
-        retrieveContext: services.retrieveContext
-          ? (query: string) => services.retrieveContext!(query)
-          : undefined,
-        getTerminalOutput: services.getTerminalOutput
-          ? () => services.getTerminalOutput!()
-          : undefined,
-      };
-      const mentionResult = await resolveMentions(
-        request.text,
-        mentions,
-        mentionServices,
-      );
-      mentionContextBlocks.push(...mentionResult.contextBlocks);
-      mentionPills.push(...mentionResult.pills);
-      userText = mentionResult.cleanText;
-    }
-    const contextQueryText = buildFollowUpRetrievalQuery(userText, context.history);
-
-    // 1b. RAG context: per-turn retrieval
-    //
-    // Direct embedding retrieval: embed the user's raw message, do hybrid
-    // vector + BM25 search, inject top results.  This is the pattern used
-    // by Open WebUI, AnythingLLM, Jan, and LibreChat — one LLM call total.
-    //
-    // The old M12 planner made a separate LLM call to classify intent and
-    // generate search queries before the response call.  That doubled
-    // latency on local Ollama (e.g. 45s planner + 13s response = 58s
-    // vs native Ollama's 13s).  No mainstream local AI app does this.
-    const isRagReady = services.isRAGAvailable?.() ?? false;
-    const turnRoute = determineChatTurnRoute(userText, { hasActiveSlashCommand });
-    const contextPlan = createChatContextPlan(turnRoute, { hasActiveSlashCommand, isRagReady });
-    const retrievalPlan: IRetrievalPlan = contextPlan.retrievalPlan;
-    const isConversationalTurn = turnRoute.kind === 'conversational';
-
-    services.reportRuntimeTrace?.(createChatRuntimeTrace(
+    const {
+      mentionPills,
+      mentionContextBlocks,
+      userText,
+      contextQueryText,
+      isRagReady,
       turnRoute,
       contextPlan,
-      { sessionId: context.sessionId, hasActiveSlashCommand, isRagReady },
-    ));
-
-    services.reportRetrievalDebug?.({
-      hasActiveSlashCommand,
-      isRagReady,
-      needsRetrieval: contextPlan.useRetrieval,
-      attempted: false,
-    });
+      retrievalPlan,
+      isConversationalTurn,
+    } = await prepareChatTurnPrelude(
+      services,
+      {
+        buildFollowUpRetrievalQuery,
+      },
+      {
+        requestText: request.text,
+        history: context.history,
+        sessionId: context.sessionId,
+        hasActiveSlashCommand,
+      },
+    );
 
     const {
       contextParts,
