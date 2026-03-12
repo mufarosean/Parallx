@@ -117,6 +117,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatSystemPromptComposer.ts': ['config/'],
   'utilities/chatTurnContextPreparation.ts': ['utilities/'],
   'utilities/chatTurnBudgeting.ts':          [],
+  'utilities/chatTurnEntryRouting.ts':       [],
   'utilities/chatTurnMessageAssembly.ts':    ['config/'],
   'utilities/chatTurnSynthesis.ts':         ['utilities/'],
   'utilities/chatTurnRouter.ts':             [],

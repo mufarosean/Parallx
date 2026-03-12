@@ -43,6 +43,7 @@ import { createChatContextPlan, createChatRuntimeTrace } from '../utilities/chat
 import { tryExecuteCompactChatCommand } from '../utilities/chatCompactCommand.js';
 import { applyChatAnswerRepairPipeline } from '../utilities/chatAnswerRepairPipeline.js';
 import { handleEarlyDeterministicAnswer, handlePreparedContextDeterministicAnswer } from '../utilities/chatDeterministicResponse.js';
+import { resolveChatTurnEntryRouting } from '../utilities/chatTurnEntryRouting.js';
 import { applyChatTurnBudgeting } from '../utilities/chatTurnBudgeting.js';
 import { assembleChatTurnMessages } from '../utilities/chatTurnMessageAssembly.js';
 import { composeChatUserContent } from '../utilities/chatUserContentComposer.js';
@@ -979,25 +980,30 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       return {};
     }
 
-    // ── Slash command detection (M11 Tasks 3.5–3.6) ──
-    //
-    // If the user typed /command, parse it and apply the prompt template.
-    // Special handlers (/init, /compact) are dispatched above or below.
-    const slashResult = parseSlashCommand(request.text, commandRegistry);
-    let effectiveText = request.text;
-    let activeCommand = request.command; // from the parser (chatRequestParser.ts)
-    if (slashResult.command) {
-      activeCommand = slashResult.commandName;
-      // /compact is handled later (Task 3.8)
-      if (slashResult.command.specialHandler === 'compact') {
-        // Fall through — handled in the /compact section below
-      } else if (slashResult.command.specialHandler === 'init') {
-        // Already handled above via request.command
-      } else {
-        // Apply prompt template — context will be filled after context injection
-        effectiveText = slashResult.remainingText;
-      }
-    }
+    const earlyIsRagReady = services.isRAGAvailable?.() ?? false;
+    const {
+      slashResult,
+      effectiveText,
+      activeCommand,
+      hasActiveSlashCommand,
+      handled: handledEarlyAnswer,
+    } = resolveChatTurnEntryRouting({
+      parseSlashCommand: (text) => parseSlashCommand(text, commandRegistry),
+      determineChatTurnRoute,
+      handleEarlyDeterministicAnswer: (options) => handleEarlyDeterministicAnswer({
+        ...options,
+        sessionId: options.sessionId ?? context.sessionId,
+      }),
+    }, {
+      requestText: request.text,
+      requestCommand: request.command,
+      isRagReady: earlyIsRagReady,
+      sessionId: context.sessionId,
+      response,
+      token,
+      reportRuntimeTrace: services.reportRuntimeTrace,
+      reportResponseDebug: services.reportResponseDebug,
+    });
 
     // ── /compact command handler (M11 Task 3.8) ──
     //
@@ -1015,19 +1021,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       return {};
     }
 
-    const hasActiveSlashCommand = !!(activeCommand && activeCommand !== 'compact');
-    const earlyRoute = determineChatTurnRoute(effectiveText, { hasActiveSlashCommand });
-    const earlyIsRagReady = services.isRAGAvailable?.() ?? false;
-    if (handleEarlyDeterministicAnswer({
-      route: earlyRoute,
-      hasActiveSlashCommand,
-      isRagReady: earlyIsRagReady,
-      sessionId: context.sessionId,
-      response,
-      token,
-      reportRuntimeTrace: services.reportRuntimeTrace,
-      reportResponseDebug: services.reportResponseDebug,
-    })) {
+    if (handledEarlyAnswer) {
       return {};
     }
 
