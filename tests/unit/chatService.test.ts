@@ -183,6 +183,52 @@ describe('ChatService', () => {
       expect(session.messages[0].request.attempt).toBe(1);
     });
 
+    it('collapses old replay chains when regenerating a duplicated session', async () => {
+      const session = chatService.createSession();
+
+      session.messages.push(
+        {
+          request: {
+            text: 'Hello',
+            requestId: 'req-1',
+            attempt: 0,
+            timestamp: 1,
+          },
+          response: {
+            parts: [{ kind: ChatContentPartKind.Markdown, content: 'Old answer' }],
+            isComplete: true,
+            modelId: session.modelId,
+            timestamp: 2,
+          },
+        },
+        {
+          request: {
+            text: 'Hello',
+            requestId: 'req-2',
+            attempt: 1,
+            replayOfRequestId: 'req-1',
+            timestamp: 3,
+          },
+          response: {
+            parts: [{ kind: ChatContentPartKind.Markdown, content: 'Duplicate answer' }],
+            isComplete: true,
+            modelId: session.modelId,
+            timestamp: 4,
+          },
+        },
+      );
+
+      await chatService.sendRequest(session.id, 'Hello', {
+        attempt: 2,
+        replayOfRequestId: 'req-2',
+      });
+
+      expect(session.messages).toHaveLength(1);
+      expect(session.messages[0].request.text).toBe('Hello');
+      expect(session.messages[0].request.attempt).toBe(2);
+      expect(session.messages[0].request.replayOfRequestId).toBe('req-2');
+    });
+
     it('auto-generates title from first message', async () => {
       const session = chatService.createSession();
       await chatService.sendRequest(session.id, 'What is TypeScript?');

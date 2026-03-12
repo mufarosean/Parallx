@@ -285,6 +285,7 @@ Post-completion cleanup on 2026-03-12:
 - [x] Repoint chat unit tests to import helper seams directly instead of relying on `defaultParticipant.ts` re-exports.
 - [x] Split helper-only chat tests into dedicated utility suites so `chatService.test.ts` stays focused on integration behavior.
 - [x] Refine chat regenerate behavior so replay replaces the prior turn in-place instead of appending a second assistant response.
+- [x] Harden regenerate replay replacement to collapse older duplicated replay chains created before the in-place fix.
 
 ---
 

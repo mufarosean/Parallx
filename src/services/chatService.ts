@@ -72,6 +72,40 @@ function generateUUID(): string {
   });
 }
 
+function findReplayReplacementIndex(
+  session: IChatSession,
+  replayOfRequestId: string | undefined,
+): number {
+  if (!replayOfRequestId) {
+    return -1;
+  }
+
+  const pairs = session.messages;
+  let replayIndex = pairs.findIndex((pair) => pair.request.requestId === replayOfRequestId);
+  if (replayIndex < 0) {
+    return -1;
+  }
+
+  const visitedRequestIds = new Set<string>();
+  while (replayIndex >= 0) {
+    const replayedRequest = pairs[replayIndex]?.request;
+    const previousRequestId = replayedRequest?.replayOfRequestId;
+    if (!previousRequestId || visitedRequestIds.has(previousRequestId)) {
+      break;
+    }
+
+    visitedRequestIds.add(previousRequestId);
+    const previousIndex = pairs.findIndex((pair) => pair.request.requestId === previousRequestId);
+    if (previousIndex < 0) {
+      break;
+    }
+
+    replayIndex = previousIndex;
+  }
+
+  return replayIndex;
+}
+
 /**
  * Simple CancellationToken backed by an AbortController.
  */
@@ -751,9 +785,7 @@ export class ChatService extends Disposable implements IChatService {
       response: assistantResponse,
     };
 
-    const replayIndex = typeof options?.replayOfRequestId === 'string'
-      ? session.messages.findIndex((existingPair) => existingPair.request.requestId === options.replayOfRequestId)
-      : -1;
+    const replayIndex = findReplayReplacementIndex(session, options?.replayOfRequestId);
     const isReplayReplacement = replayIndex >= 0;
 
     if (isReplayReplacement) {
