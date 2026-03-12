@@ -282,6 +282,7 @@ Post-completion cleanup on 2026-03-12:
 - [x] Extract tool-call parsing, narration cleanup, citation footer generation, and edit-response parsing out of `defaultParticipant.ts` into `chatResponseParsingHelpers.ts`.
 - [x] Extract grounded answer-repair heuristics out of `defaultParticipant.ts` into `chatGroundedAnswerRepairs.ts`.
 - [x] Extract request-error categorization out of `defaultParticipant.ts` into `chatRequestErrorCategorizer.ts`.
+- [x] Repoint chat unit tests to import helper seams directly instead of relying on `defaultParticipant.ts` re-exports.
 
 ---
 

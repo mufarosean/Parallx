@@ -70,22 +70,6 @@ import { loadUserCommands } from '../utilities/userCommandLoader.js';
 const DEFAULT_MAX_ITERATIONS = 10;
 /** Ask mode needs fewer iterations — it only reads, never writes. */
 const ASK_MODE_MAX_ITERATIONS = 5;
-export {
-  _assessEvidenceSufficiency,
-  _buildDeterministicSessionSummary,
-  _buildEvidenceResponseConstraint,
-  _buildExtractiveFallbackAnswer,
-  _buildMissingCitationFooter,
-  _buildRetrieveAgainQuery,
-  _extractToolCallsFromText,
-  _repairAgentContactAnswer,
-  _repairDeductibleConflictAnswer,
-  _repairGroundedCodeAnswer,
-  _repairTotalLossThresholdAnswer,
-  _repairUnsupportedSpecificCoverageAnswer,
-  _repairVehicleInfoAnswer,
-  _stripToolNarration,
-};
 
 // ── Planner gate ──
 //

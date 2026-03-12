@@ -6,6 +6,25 @@ import { ChatAgentService } from '../../src/services/chatAgentService';
 import { ChatModeService } from '../../src/services/chatModeService';
 import { LanguageModelsService } from '../../src/services/languageModelsService';
 import { ChatMode, ChatContentPartKind } from '../../src/services/chatTypes';
+import {
+  repairAgentContactAnswer as _repairAgentContactAnswer,
+  repairDeductibleConflictAnswer as _repairDeductibleConflictAnswer,
+  repairGroundedCodeAnswer as _repairGroundedCodeAnswer,
+  repairTotalLossThresholdAnswer as _repairTotalLossThresholdAnswer,
+  repairUnsupportedSpecificCoverageAnswer as _repairUnsupportedSpecificCoverageAnswer,
+  repairVehicleInfoAnswer as _repairVehicleInfoAnswer,
+} from '../../src/built-in/chat/utilities/chatGroundedAnswerRepairs';
+import {
+  assessEvidenceSufficiency as _assessEvidenceSufficiency,
+  buildDeterministicSessionSummary as _buildDeterministicSessionSummary,
+  buildExtractiveFallbackAnswer as _buildExtractiveFallbackAnswer,
+  buildRetrieveAgainQuery as _buildRetrieveAgainQuery,
+} from '../../src/built-in/chat/utilities/chatGroundedResponseHelpers';
+import {
+  buildMissingCitationFooter as _buildMissingCitationFooter,
+  extractToolCallsFromText as _extractToolCallsFromText,
+  stripToolNarration as _stripToolNarration,
+} from '../../src/built-in/chat/utilities/chatResponseParsingHelpers';
 import type {
   IChatParticipant,
   IChatParticipantRequest,
@@ -463,13 +482,6 @@ describe('ChatService', () => {
 // ── _extractToolCallsFromText — text-based tool call fallback ──
 
 describe('_extractToolCallsFromText', () => {
-  let _extractToolCallsFromText: typeof import('../../src/built-in/chat/participants/defaultParticipant')._extractToolCallsFromText;
-
-  beforeEach(async () => {
-    const mod = await import('../../src/built-in/chat/participants/defaultParticipant');
-    _extractToolCallsFromText = mod._extractToolCallsFromText;
-  });
-
   it('extracts a bare JSON tool call object', () => {
     const text = 'Here is the tool call:\n{"name": "read_file", "parameters": {"path": "file.md"}}';
     const { toolCalls, cleanedText } = _extractToolCallsFromText(text);
@@ -551,13 +563,6 @@ describe('_extractToolCallsFromText', () => {
 // ── _stripToolNarration — prose tool-call narration removal ──
 
 describe('_stripToolNarration', () => {
-  let _stripToolNarration: typeof import('../../src/built-in/chat/participants/defaultParticipant')._stripToolNarration;
-
-  beforeEach(async () => {
-    const mod = await import('../../src/built-in/chat/participants/defaultParticipant');
-    _stripToolNarration = mod._stripToolNarration;
-  });
-
   it('strips "Here\'s a function call to X" narration', () => {
     const text = 'Here\'s a function call to read_file with its proper arguments:\nSome useful content.';
     const result = _stripToolNarration(text);
@@ -755,8 +760,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('falls back to extractive retrieved-context lines when the retry is also empty', async () => {
-    const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const fallback = _buildExtractiveFallbackAnswer(
       'How do I file a claim and who do I call?',
       '[Retrieved Context]\n---\n[1] Source: Claims Guide.md\nPath: Claims Guide.md\n### Step 1: Report the Claim\n- Your agent: Sarah Chen — (555) 234-5678\n- 24/7 Claims Line: 1-800-555-CLAIM (2524)\n- File within 72 hours of the incident\n---',
@@ -768,8 +771,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('classifies missing grounded evidence as insufficient', async () => {
-    const { _assessEvidenceSufficiency } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const assessment = _assessEvidenceSufficiency(
       'What is my collision deductible?',
       '',
@@ -781,8 +782,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('classifies a focused single-source fact answer as sufficient', async () => {
-    const { _assessEvidenceSufficiency } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const assessment = _assessEvidenceSufficiency(
       'What is my collision deductible?',
       [
@@ -802,8 +801,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('classifies partial hard-query evidence as weak', async () => {
-    const { _assessEvidenceSufficiency } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const assessment = _assessEvidenceSufficiency(
       'I was rear-ended by an uninsured driver. What should I do and what does my policy cover?',
       [
@@ -827,8 +824,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('classifies specific coverage claims as insufficient when the evidence only supports a broader category', async () => {
-    const { _assessEvidenceSufficiency } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const assessment = _assessEvidenceSufficiency(
       'What does my policy say about earthquake coverage?',
       [
@@ -848,8 +843,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('builds a deterministic session summary from recent user-provided facts', async () => {
-    const { _buildDeterministicSessionSummary } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const summary = _buildDeterministicSessionSummary(
       [{ request: { text: 'I was in a car accident yesterday at the Riverside Mall parking lot on Elm Street.', requestId: 'req-summary-1', attempt: 0, timestamp: Date.now() } }],
       'The other driver ran a red light, hit my passenger door, and the police report number is 2026-0305-1147.',
@@ -863,8 +856,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('builds a keyword-focused retrieve-again query from unresolved terms', async () => {
-    const { _buildRetrieveAgainQuery } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const query = _buildRetrieveAgainQuery(
       'At what point would my car be declared a total loss?',
       [
@@ -1132,8 +1123,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('repairs overly definitive unsupported specific coverage answers into document-bounded uncertainty', async () => {
-    const { _repairUnsupportedSpecificCoverageAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const repaired = _repairUnsupportedSpecificCoverageAnswer(
       'What does my policy say about earthquake coverage?',
       'Your policy does not include earthquake coverage. It is covered under the broader natural disasters category. [1]',
@@ -1145,8 +1134,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('removes broader-category affirmative phrasing for unsupported specific coverage answers', async () => {
-    const { _repairUnsupportedSpecificCoverageAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const repaired = _repairUnsupportedSpecificCoverageAnswer(
       'What does my policy say about earthquake coverage?',
       'The policy documents do not explicitly confirm earthquake. The documents mention natural disasters. So the policy covers earthquake under that broader category. [1]',
@@ -1159,8 +1146,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('removes unsupported specific coverage phrasing that says broader coverage would apply', async () => {
-    const { _repairUnsupportedSpecificCoverageAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const repaired = _repairUnsupportedSpecificCoverageAnswer(
       'What does my policy say about earthquake coverage?',
       'The policy documents do not explicitly confirm earthquake. The only coverage that would apply to seismic events is the Comprehensive part of the policy, which covers natural disasters. [1]',
@@ -1288,8 +1273,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('repairs malformed collision deductible answers to the grounded policy amount', async () => {
-    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const repaired = _repairDeductibleConflictAnswer(
       'What is my collision deductible now?',
       'Your collision deductible is ** 17',
@@ -1309,8 +1292,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('repairs vehicle answers to include trim or color when grounded context has it', async () => {
-    const { _repairVehicleInfoAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const repaired = _repairVehicleInfoAnswer(
       'Tell me about my insured vehicle.',
       'Your insured vehicle is a 2024 Honda Accord.',
@@ -1329,8 +1310,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('keeps extractive fallback anchored to the matching repair-shop section', async () => {
-    const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const fallback = _buildExtractiveFallbackAnswer(
       'Which repair shops are recommended under my policy? Please cite your sources.',
       [
@@ -1357,8 +1336,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('combines the strongest retrieved sections when a query needs contact and deadline details', async () => {
-    const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const fallback = _buildExtractiveFallbackAnswer(
       'OK I want to file a claim. How do I do that and who do I call?',
       [
@@ -1394,8 +1371,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('repairs agent contact answers to include the agent name and ASCII phone formatting', async () => {
-    const { _repairAgentContactAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const repaired = _repairAgentContactAnswer(
       "What is my insurance agent's phone number?",
       'Your agent’s phone number is (555) 234‑5678 1\n\nSources: 1 Agent Contacts.md; 2 Claims Guide.md',
@@ -1419,8 +1394,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('repairs total-loss answers to preserve ASCII 75% and the KBB shorthand from retrieved evidence', async () => {
-    const { _repairTotalLossThresholdAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const repaired = _repairTotalLossThresholdAnswer(
       'At what point would my car be declared a total loss?',
       [
@@ -1445,8 +1418,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('repairs deductible confirmation answers to explicitly reject an incorrect claimed amount', async () => {
-    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const repaired = _repairDeductibleConflictAnswer(
       'I remember my collision deductible is $1,000. Can you confirm?',
       'Your collision deductible is $500 according to the policy summary.',
@@ -1466,8 +1437,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('repairs current deductible answers to avoid repeating a stale conflicting amount', async () => {
-    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const repaired = _repairDeductibleConflictAnswer(
       'What is my collision deductible now?',
       [
@@ -1496,8 +1465,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('repairs direct deductible answers to suppress stale conflicting amounts from older references', async () => {
-    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const repaired = _repairDeductibleConflictAnswer(
       'What is my collision deductible?',
       'Your collision deductible is $950 per occurrence. (While the quick-reference card lists $500, the policy summary specifies $950.)',
@@ -1519,8 +1486,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('repairs short comprehensive deductible follow-ups to the grounded policy amount', async () => {
-    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const repaired = _repairDeductibleConflictAnswer(
       'And what about comprehensive?',
       'Comprehensive coverage is part of your policy.',
@@ -1538,8 +1503,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('combines primary and backup coverage sections when the query asks what coverage applies', async () => {
-    const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const fallback = _buildExtractiveFallbackAnswer(
       'They said they have insurance but I am not sure. What coverage do I have for this?',
       [
@@ -1565,8 +1528,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('repairs code-oriented answers with the exact helper and stage names from retrieved context', async () => {
-    const { _repairGroundedCodeAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const repaired = _repairGroundedCodeAnswer(
       'Which helper assembles the escalation packet in the workflow architecture doc, and what two stage names does it include?',
       'The escalation packet is assembled by the Severity Desk Coordinator. It includes valuation and photos.',
@@ -1592,8 +1553,6 @@ describe('_stripToolNarration', () => {
   });
 
   it('anchors architecture-document answers to the retrieved source document when asked', async () => {
-    const { _repairGroundedCodeAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
     const answer = 'The Severity Desk Coordinator owns packet completeness.';
     const repaired = _repairGroundedCodeAnswer(
       'Who owns packet completeness in the workflow architecture doc?',
@@ -2103,13 +2062,6 @@ describe('_stripToolNarration', () => {
 });
 
 describe('_buildMissingCitationFooter', () => {
-  let _buildMissingCitationFooter: typeof import('../../src/built-in/chat/participants/defaultParticipant')._buildMissingCitationFooter;
-
-  beforeEach(async () => {
-    const mod = await import('../../src/built-in/chat/participants/defaultParticipant');
-    _buildMissingCitationFooter = mod._buildMissingCitationFooter;
-  });
-
   it('adds a visible citation footer when markdown has no [N] markers', () => {
     const footer = _buildMissingCitationFooter(
       'Recommended shops are AutoCraft Collision Center and Precision Auto Body.',
