@@ -355,8 +355,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
    * Update the widget dimensions. Called by the host view on resize.
    */
   layout(_width: number, _height: number): void {
-    // Dimensions received from host view for future Tiptap relayout.
-    // Flex layout handles sizing automatically for now.
+    void _width;
+    void _height;
   }
 
   // ── Session helpers ──
@@ -768,6 +768,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
         newWidth = Math.max(ChatWidget.SIDEBAR_MIN_WIDTH, Math.min(newWidth, ChatWidget.SIDEBAR_MAX_WIDTH));
         this._sidebarWidth = newWidth;
         this._sessionSidebar.rootElement.style.width = `${newWidth}px`;
+        this._sessionSidebar.rootElement.style.flexBasis = `${newWidth}px`;
       });
     };
 
@@ -800,6 +801,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     this._register(this._sessionSidebar.onDidToggle((visible) => {
       if (visible) {
         this._sessionSidebar.rootElement.style.width = `${this._sidebarWidth}px`;
+        this._sessionSidebar.rootElement.style.flexBasis = `${this._sidebarWidth}px`;
         this._sash.classList.add('parallx-chat-sidebar-sash--visible');
       } else {
         this._sash.classList.remove('parallx-chat-sidebar-sash--visible');
@@ -809,6 +811,8 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
     // Initial sash visibility reflects sidebar default state
     if (this._sessionSidebar.isVisible) {
       this._sash.classList.add('parallx-chat-sidebar-sash--visible');
+      this._sessionSidebar.rootElement.style.width = `${this._sidebarWidth}px`;
+      this._sessionSidebar.rootElement.style.flexBasis = `${this._sidebarWidth}px`;
     }
   }
 

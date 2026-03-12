@@ -1704,6 +1704,8 @@
   display: none;
   flex-direction: column;
   flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
   width: 260px;
   height: 100%;
   border-left: 1px solid var(--vscode-sideBarSectionHeader-border, #2d2d2d);
