@@ -699,6 +699,53 @@
   color: var(--vscode-foreground, #cccccc);
 }
 
+.parallx-chat-markdown .parallx-chat-math-block {
+  margin: 10px 0;
+  overflow-x: auto;
+}
+
+.parallx-chat-markdown .parallx-chat-math-block .katex-display {
+  margin: 0;
+}
+
+.parallx-chat-markdown .parallx-chat-math-fallback {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  background: var(--vscode-textCodeBlock-background, #2d2d2d);
+  color: var(--vscode-textPreformat-foreground, #d4d4d4);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.parallx-chat-markdown table {
+  width: max-content;
+  min-width: min(100%, 420px);
+  max-width: 100%;
+  margin: 10px 0 12px;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.parallx-chat-markdown thead {
+  background: var(--vscode-editor-inactiveSelectionBackground, rgba(127, 127, 127, 0.12));
+}
+
+.parallx-chat-markdown th,
+.parallx-chat-markdown td {
+  padding: 6px 10px;
+  border: 1px solid var(--vscode-widget-border, #454545);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.parallx-chat-markdown th:first-child,
+.parallx-chat-markdown td:first-child {
+  text-align: left;
+}
+
 /* ── Input Area Wrapper ── */
 
 .parallx-chat-input-area {

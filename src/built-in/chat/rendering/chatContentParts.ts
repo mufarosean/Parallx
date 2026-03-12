@@ -8,6 +8,10 @@
 // VS Code reference:
 //   src/vs/workbench/contrib/chat/browser/chatContentParts/
 
+import 'katex/dist/katex.min.css';
+
+import MarkdownIt from 'markdown-it';
+import katex from 'katex';
 import { $ } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import { extractFilePath, renderCodeActionButtons } from './chatCodeActions.js';
@@ -26,6 +30,8 @@ import type {
   IChatEditBatchContent,
   IChatReferenceContent,
 } from '../../../services/chatTypes.js';
+
+const CHAT_MARKDOWN = _createChatMarkdownRenderer();
 
 /**
  * Render a single content part into the given container.
@@ -56,6 +62,10 @@ export function renderContentPart(part: IChatContentPart): HTMLElement {
   }
 }
 
+export function _postProcessMathFallbacksForTest(container: HTMLElement): void {
+  _postProcessMathFallbacks(container);
+}
+
 // ── Markdown ──
 
 /**
@@ -67,6 +77,7 @@ function _renderMarkdown(part: IChatMarkdownContent): HTMLElement {
   const el = $('div.parallx-chat-markdown');
   // Convert basic markdown to HTML
   el.innerHTML = _markdownToHtml(part.content);
+  _postProcessMathFallbacks(el);
 
   // M15: Post-process [N] citation markers into clickable superscript badges.
   // The model emits [1], [2] etc. based on numbered retrieved context.
@@ -79,6 +90,305 @@ function _renderMarkdown(part: IChatMarkdownContent): HTMLElement {
   }
 
   return el;
+}
+
+function _postProcessMathFallbacks(container: HTMLElement): void {
+  const candidates = Array.from(container.querySelectorAll<HTMLElement>('p, li > p, blockquote p'));
+  for (const element of candidates) {
+    if (_stripMathDelimiterArtifacts(element)) {
+      continue;
+    }
+
+    if (element.querySelector('code, pre, .katex, a, sup')) {
+      continue;
+    }
+
+    const rawText = (element.textContent || '').replace(/\u00a0/g, ' ').trim();
+    const wholeParagraphMatch = rawText.match(/^(?:\\)?\[\s*([\s\S]*?)\s*(?:\\)?\]$/);
+    if (wholeParagraphMatch) {
+      const latex = wholeParagraphMatch[1].trim();
+      if (_looksLikeLatex(latex)) {
+        element.innerHTML = `<span class="parallx-chat-math-block">${_renderKatex(latex, true)}</span>`;
+        continue;
+      }
+    }
+
+    const originalHtml = element.innerHTML;
+    const updatedHtml = originalHtml.replace(
+      /(?:\\)?\[\s*(?:<br\s*\/?>|\n)+([\s\S]*?)(?:<br\s*\/?>|\n)+\s*(?:\\)?\]/g,
+      (_match, fragment) => {
+        const latex = _extractMathTextFromHtmlFragment(fragment);
+        if (!_looksLikeLatex(latex)) {
+          return _match;
+        }
+        return `<span class="parallx-chat-math-block">${_renderKatex(latex, true)}</span>`;
+      },
+    );
+
+    if (updatedHtml !== originalHtml) {
+      element.innerHTML = updatedHtml;
+    }
+  }
+}
+
+function _stripMathDelimiterArtifacts(element: HTMLElement): boolean {
+  if (!element.querySelector('.katex, .parallx-chat-math-block')) {
+    return false;
+  }
+
+  const significantNodes = Array.from(element.childNodes).filter((node) => {
+    return node.nodeType !== Node.TEXT_NODE || (node.textContent || '').trim().length > 0;
+  });
+
+  if (significantNodes.length < 3) {
+    return false;
+  }
+
+  const first = significantNodes[0];
+  const last = significantNodes[significantNodes.length - 1];
+  if (first.nodeType !== Node.TEXT_NODE || last.nodeType !== Node.TEXT_NODE) {
+    return false;
+  }
+
+  const open = (first.textContent || '').trim();
+  const close = (last.textContent || '').trim();
+  const isWrappedMath = (open === '$' && close === '$')
+    || (open === '\\(' && close === '\\)')
+    || (open === '[' && close === ']')
+    || (open === '\\[' && close === '\\]');
+  if (!isWrappedMath) {
+    return false;
+  }
+
+  const middleNodes = significantNodes.slice(1, -1);
+  const containsRenderedMath = middleNodes.some((node) => {
+    return node.nodeType === Node.ELEMENT_NODE
+      && (node as Element).matches('.katex, .katex-display, .parallx-chat-math-block')
+      || (node.nodeType === Node.ELEMENT_NODE && !!(node as Element).querySelector('.katex, .katex-display, .parallx-chat-math-block'));
+  });
+  if (!containsRenderedMath) {
+    return false;
+  }
+
+  const onlyMathMarkupBetween = middleNodes.every((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return (node.textContent || '').trim().length === 0;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return false;
+    }
+    const elementNode = node as Element;
+    return elementNode.tagName === 'BR'
+      || elementNode.matches('.katex, .katex-display, .parallx-chat-math-block')
+      || !!elementNode.querySelector('.katex, .katex-display, .parallx-chat-math-block');
+  });
+  if (!onlyMathMarkupBetween) {
+    return false;
+  }
+
+  first.remove();
+  last.remove();
+  return true;
+}
+
+function _extractMathTextFromHtmlFragment(fragment: string): string {
+  const normalized = fragment.replace(/<br\s*\/?>/gi, '\n');
+  const temp = document.createElement('div');
+  temp.innerHTML = normalized;
+  return (temp.textContent || '')
+    .replace(/\u00a0/g, ' ')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join('\n');
+}
+
+function _looksLikeLatex(text: string): boolean {
+  return /\\[A-Za-z]+|[_^{}]|=/.test(text);
+}
+
+function _normalizeChatMarkdown(md: string): string {
+  const withMathBlocks = _normalizeLooseMathBlocks(md);
+  return _normalizeAlignedTables(withMathBlocks);
+}
+
+function _normalizeLooseMathBlocks(md: string): string {
+  const lines = md.split('\n');
+  const normalized: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const trimmed = lines[index].trim();
+    const isOpen = trimmed === '[' || trimmed === '\\[';
+    if (!isOpen) {
+      normalized.push(lines[index]);
+      continue;
+    }
+
+    const blockLines: string[] = [];
+    let closeIndex = -1;
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      const cursorTrimmed = lines[cursor].trim();
+      if (cursorTrimmed === ']' || cursorTrimmed === '\\]') {
+        closeIndex = cursor;
+        break;
+      }
+      blockLines.push(lines[cursor]);
+    }
+
+    if (closeIndex < 0) {
+      normalized.push(lines[index]);
+      continue;
+    }
+
+    const latex = blockLines.join('\n').trim();
+    if (!_looksLikeLatex(latex)) {
+      normalized.push(lines[index]);
+      continue;
+    }
+
+    normalized.push('\\[');
+    normalized.push(...blockLines);
+    normalized.push('\\]');
+    index = closeIndex;
+  }
+
+  return normalized.join('\n');
+}
+
+function _normalizeAlignedTables(md: string): string {
+  const lines = md.split('\n');
+  const normalized: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const parsed = _parseAlignedTable(lines, index);
+    if (!parsed) {
+      normalized.push(lines[index]);
+      continue;
+    }
+
+    normalized.push(...parsed.markdownLines);
+    index = parsed.endLine;
+  }
+
+  return normalized.join('\n');
+}
+
+function _parseAlignedTable(
+  lines: string[],
+  startLine: number,
+): { markdownLines: string[]; endLine: number } | undefined {
+  const block: string[] = [];
+  let endLine = startLine;
+
+  for (let index = startLine; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+    if (!trimmed) {
+      break;
+    }
+    if (/^(?:[-*+]\s|\d{1,3}[.)]\s|>|#|```|\|)/.test(trimmed)) {
+      break;
+    }
+    block.push(line);
+    endLine = index;
+  }
+
+  if (block.length < 3) {
+    return undefined;
+  }
+
+  const rows = block.map((line, rowIndex) => _splitAlignedTableRow(line, rowIndex === 0));
+  if (rows.some((row) => !row)) {
+    return undefined;
+  }
+
+  const safeRows = rows as string[][];
+  const header = safeRows[0];
+  if (header.length < 3 || !_looksLikeTriangleHeader(header)) {
+    return undefined;
+  }
+
+  const targetColumns = header.length;
+  const dataRows = safeRows.slice(1);
+  if (dataRows.length < 2) {
+    return undefined;
+  }
+
+  const validDataRows = dataRows.every((row) => {
+    if (row.length < 2 || row.length > targetColumns) {
+      return false;
+    }
+    return _isTriangleRowLabel(row[0]) && row.slice(1).every((cell) => cell === '' || _isNumericTableCell(cell));
+  });
+  if (!validDataRows) {
+    return undefined;
+  }
+
+  const paddedRows = [header, ...dataRows.map((row) => {
+    const padded = row.slice();
+    while (padded.length < targetColumns) {
+      padded.push('');
+    }
+    return padded;
+  })];
+
+  const markdownLines = [
+    _toPipeTableRow(paddedRows[0]),
+    _toPipeTableRow(new Array(targetColumns).fill('---')),
+    ...paddedRows.slice(1).map(_toPipeTableRow),
+  ];
+  return { markdownLines, endLine };
+}
+
+function _splitAlignedTableRow(line: string, isHeader: boolean): string[] | undefined {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  let cells = trimmed.split(/\s{2,}|\t+/).map((cell) => cell.trim()).filter(Boolean);
+  if (cells.length >= 3) {
+    return cells;
+  }
+
+  if (isHeader) {
+    const headerMatch = trimmed.match(/^(Year|AY|Accident Year)\s+(.+)$/i);
+    if (!headerMatch) {
+      return undefined;
+    }
+    const headerCells = [headerMatch[1], ...Array.from(headerMatch[2].matchAll(/\d+\s*(?:months?|mos?)|ultimate/gi)).map((match) => match[0].trim())];
+    return headerCells.length >= 3 ? headerCells : undefined;
+  }
+
+  const rowMatch = trimmed.match(/^([A-Za-z]{1,6}|\d{4})\s+(.+)$/);
+  if (!rowMatch) {
+    return undefined;
+  }
+  const numericCells = Array.from(rowMatch[2].matchAll(/-?\d[\d,]*(?:\.\d+)?/g)).map((match) => match[0]);
+  if (numericCells.length < 1) {
+    return undefined;
+  }
+  return [rowMatch[1], ...numericCells];
+}
+
+function _looksLikeTriangleHeader(header: string[]): boolean {
+  const first = header[0].toLowerCase();
+  if (!(first === 'year' || first === 'ay' || first === 'accident year')) {
+    return false;
+  }
+  return header.slice(1).every((cell) => /\d+\s*(?:months?|mos?)|ultimate/i.test(cell));
+}
+
+function _isTriangleRowLabel(value: string): boolean {
+  return /^\d{4}$/.test(value) || /^[A-Za-z]{1,8}$/.test(value);
+}
+
+function _isNumericTableCell(value: string): boolean {
+  return /^-?\d[\d,]*(?:\.\d+)?$/.test(value.trim());
+}
+
+function _toPipeTableRow(cells: string[]): string {
+  return `| ${cells.map((cell) => cell.trim()).join(' | ')} |`;
 }
 
 /**
@@ -310,158 +620,7 @@ function _autoLinkSourceMentions(
  * Exported for testing.
  */
 export function _markdownToHtml(md: string): string {
-  // Phase 1: extract fenced code blocks into placeholders so their
-  // content is never touched by block or inline processing
-  const codeBlocks: string[] = [];
-  const prepared = md.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
-    const i = codeBlocks.length;
-    const langAttr = lang ? ` data-lang="${_escapeHtml(lang)}"` : '';
-    codeBlocks.push(`<pre${langAttr}><code>${_escapeHtml(code.trimEnd())}</code></pre>`);
-    return `\x00CB${i}\x00`;
-  });
-
-  // Phase 2: walk lines, grouping into blocks
-  const lines = prepared.split('\n');
-  const blocks: string[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // -- Code block placeholder --
-    const cbMatch = line.match(/^\x00CB(\d+)\x00$/);
-    if (cbMatch) {
-      blocks.push(codeBlocks[parseInt(cbMatch[1])]);
-      i++;
-      continue;
-    }
-
-    // -- Empty line — skip --
-    if (line.trim() === '') {
-      i++;
-      continue;
-    }
-
-    // -- Heading --
-    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
-    if (headingMatch) {
-      const level = headingMatch[1].length;
-      blocks.push(`<h${level}>${_inlineFormat(_escapeHtml(headingMatch[2]))}</h${level}>`);
-      i++;
-      continue;
-    }
-
-    // -- Horizontal rule --
-    if (/^[-*_]{3,}\s*$/.test(line)) {
-      blocks.push('<hr>');
-      i++;
-      continue;
-    }
-
-    // -- Blockquote --
-    if (/^\s*>\s?/.test(line)) {
-      const quoteLines: string[] = [];
-      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
-        quoteLines.push(lines[i].replace(/^\s*>\s?/, ''));
-        i++;
-      }
-      // Recurse for nested markdown inside blockquote
-      blocks.push(`<blockquote>${_markdownToHtml(quoteLines.join('\n'))}</blockquote>`);
-      continue;
-    }
-
-    // -- Unordered list (-, *, +) with optional leading whitespace --
-    if (/^\s*[-*+]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length) {
-        const ulMatch = lines[i].match(/^\s*[-*+]\s+(.*)/);
-        if (ulMatch) {
-          items.push(ulMatch[1]);
-          i++;
-        } else if (lines[i].trim() === '') {
-          // Blank line — peek ahead: if the next non-blank line is still
-          // a list item, keep consuming (loose list); otherwise stop.
-          let peek = i + 1;
-          while (peek < lines.length && lines[peek].trim() === '') peek++;
-          if (peek < lines.length && /^\s*[-*+]\s+/.test(lines[peek])) {
-            i++;            // skip blank line
-          } else {
-            break;
-          }
-        } else {
-          break;
-        }
-      }
-      blocks.push('<ul>' + items.map(t => `<li>${_inlineFormat(_escapeHtml(t))}</li>`).join('') + '</ul>');
-      continue;
-    }
-
-    // -- Ordered list --
-    if (/^\s*\d+[.)]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length) {
-        const olMatch = lines[i].match(/^\s*\d+[.)]\s+(.*)/);
-        if (olMatch) {
-          items.push(olMatch[1]);
-          i++;
-        } else if (lines[i].trim() === '') {
-          let peek = i + 1;
-          while (peek < lines.length && lines[peek].trim() === '') peek++;
-          if (peek < lines.length && /^\s*\d+[.)]\s+/.test(lines[peek])) {
-            i++;
-          } else {
-            break;
-          }
-        } else {
-          break;
-        }
-      }
-      blocks.push('<ol>' + items.map(t => `<li>${_inlineFormat(_escapeHtml(t))}</li>`).join('') + '</ol>');
-      continue;
-    }
-
-    // -- Paragraph: consecutive non-blank, non-block lines --
-    const paraLines: string[] = [];
-    while (
-      i < lines.length &&
-      lines[i].trim() !== '' &&
-      !lines[i].match(/^#{1,3}\s+/) &&
-      !lines[i].match(/^\s*[-*+]\s+/) &&
-      !lines[i].match(/^\s*\d+[.)]\s+/) &&
-      !lines[i].match(/^[-*_]{3,}\s*$/) &&
-      !lines[i].match(/^\s*>\s?/) &&
-      !lines[i].match(/^\x00CB\d+\x00$/)
-    ) {
-      paraLines.push(lines[i]);
-      i++;
-    }
-    if (paraLines.length > 0) {
-      const content = paraLines.map(l => _inlineFormat(_escapeHtml(l))).join('<br>');
-      blocks.push(`<p>${content}</p>`);
-    }
-  }
-
-  return blocks.join('\n');
-}
-
-/**
- * Apply inline formatting to an already-escaped HTML string.
- * Order matters: code spans first (so their content is opaque to bold/italic).
- */
-function _inlineFormat(html: string): string {
-  // Inline code (`...`) — first, so code content won't be styled
-  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-  // Bold (**...**  or __...__)
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
-  // Italic (*...* or _..._) — must come after bold
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/(?<!\w)_(.+?)_(?!\w)/g, '<em>$1</em>');
-  // Strikethrough (~~...~~)
-  html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
-  // Links [text](url)
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-  return html;
+  return CHAT_MARKDOWN.render(_normalizeChatMarkdown(md));
 }
 
 function _escapeHtml(text: string): string {
@@ -469,6 +628,141 @@ function _escapeHtml(text: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+function _createChatMarkdownRenderer(): MarkdownIt {
+  const markdown = new MarkdownIt({
+    html: false,
+    breaks: true,
+    linkify: false,
+  });
+
+  _installKatexRules(markdown);
+
+  const defaultLinkOpen = markdown.renderer.rules.link_open
+    ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+  markdown.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    token.attrSet('target', '_blank');
+    token.attrSet('rel', 'noopener');
+    return defaultLinkOpen(tokens, idx, options, env, self);
+  };
+
+  return markdown;
+}
+
+function _installKatexRules(markdown: MarkdownIt): void {
+  markdown.block.ruler.before('fence', 'parallx_math_block', (state, startLine, endLine, silent) => {
+    const start = state.bMarks[startLine] + state.tShift[startLine];
+    const max = state.eMarks[startLine];
+    const firstLine = state.src.slice(start, max).trim();
+
+    let open = '';
+    let close = '';
+    if (firstLine === '$$') {
+      open = '$$';
+      close = '$$';
+    } else if (firstLine === '\\[') {
+      open = '\\[';
+      close = '\\]';
+    } else {
+      return false;
+    }
+
+    let nextLine = startLine + 1;
+    const contentLines: string[] = [];
+    while (nextLine < endLine) {
+      const nextStart = state.bMarks[nextLine] + state.tShift[nextLine];
+      const nextMax = state.eMarks[nextLine];
+      const nextText = state.src.slice(nextStart, nextMax);
+      if (nextText.trim() === close) {
+        break;
+      }
+      contentLines.push(nextText);
+      nextLine += 1;
+    }
+
+    if (nextLine >= endLine) {
+      return false;
+    }
+
+    if (!silent) {
+      const token = state.push('parallx_math_block', 'div', 0);
+      token.block = true;
+      token.content = contentLines.join('\n').trim();
+      token.map = [startLine, nextLine + 1];
+      token.markup = open;
+    }
+
+    state.line = nextLine + 1;
+    return true;
+  });
+
+  markdown.inline.ruler.before('escape', 'parallx_math_inline', (state, silent) => {
+    const src = state.src;
+    const start = state.pos;
+
+    let open = '';
+    let close = '';
+    if (src.startsWith('\\(', start)) {
+      open = '\\(';
+      close = '\\)';
+    } else if (src.charAt(start) === '$' && src.charAt(start + 1) !== '$') {
+      open = '$';
+      close = '$';
+    } else {
+      return false;
+    }
+
+    let matchPos = start + open.length;
+    while (matchPos < src.length) {
+      matchPos = src.indexOf(close, matchPos);
+      if (matchPos < 0) {
+        return false;
+      }
+      if (src.charAt(matchPos - 1) !== '\\') {
+        break;
+      }
+      matchPos += close.length;
+    }
+
+    const content = src.slice(start + open.length, matchPos);
+    if (!content.trim() || /\n/.test(content)) {
+      return false;
+    }
+
+    if (!silent) {
+      const token = state.push('parallx_math_inline', 'span', 0);
+      token.content = content;
+      token.markup = open;
+    }
+
+    state.pos = matchPos + close.length;
+    return true;
+  });
+
+  markdown.renderer.rules.parallx_math_inline = (tokens, idx) => {
+    return _renderKatex(tokens[idx].content, false);
+  };
+
+  markdown.renderer.rules.parallx_math_block = (tokens, idx) => {
+    return `<div class="parallx-chat-math-block">${_renderKatex(tokens[idx].content, true)}</div>\n`;
+  };
+}
+
+function _renderKatex(expression: string, displayMode: boolean): string {
+  try {
+    return katex.renderToString(expression, {
+      throwOnError: false,
+      displayMode,
+      output: 'html',
+    });
+  } catch {
+    const escaped = _escapeHtml(expression);
+    return displayMode
+      ? `<pre class="parallx-chat-math-fallback">${escaped}</pre>`
+      : `<code class="parallx-chat-math-fallback">${escaped}</code>`;
+  }
 }
 
 // ── Code Block ──
