@@ -40,11 +40,11 @@ import type {
 import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } from '../config/chatModeCapabilities.js';
 import { executeInitCommand } from '../commands/initCommand.js';
-import { TokenBudgetService } from '../../../services/tokenBudgetService.js';
 import { extractMentions, resolveMentions } from '../utilities/chatMentionResolver.js';
 import { determineChatTurnRoute } from '../utilities/chatTurnRouter.js';
 import { createChatContextPlan, createChatRuntimeTrace } from '../utilities/chatContextPlanner.js';
 import { handleEarlyDeterministicAnswer, handlePreparedContextDeterministicAnswer } from '../utilities/chatDeterministicResponse.js';
+import { applyChatTurnBudgeting } from '../utilities/chatTurnBudgeting.js';
 import { composeChatUserContent } from '../utilities/chatUserContentComposer.js';
 import { prepareChatTurnContext, writeChatProvenanceToResponse } from '../utilities/chatTurnContextPreparation.js';
 import { executePreparedChatTurn } from '../utilities/chatTurnSynthesis.js';
@@ -873,26 +873,12 @@ export function _buildMissingCitationFooter(
 
 /** Default network timeout in milliseconds. */
 const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
-/** Context overflow threshold — warn at this fraction of context length. */
-const CONTEXT_OVERFLOW_WARN_THRESHOLD = 0.8;
 
 // ── Planner gate ──
 //
 // The planner (thinking layer) runs on EVERY message when available.
 // It classifies intent and decides what context the model needs.
 // See docs/research/INTERACTION_LAYER_ARCHITECTURE.md for rationale.
-
-/**
- * Rough token estimation: chars / 4.
- * This is the same heuristic used by VS Code's chat implementation.
- */
-function estimateTokens(messages: readonly IChatMessage[]): number {
-  let chars = 0;
-  for (const m of messages) {
-    chars += m.content.length;
-  }
-  return Math.ceil(chars / 4);
-}
 
 /**
  * Categorize a fetch/network error into a user-friendly message.
@@ -1303,92 +1289,15 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       return {};
     }
 
-    // 2c. Token budget allocation (M11 Task 1.8)
-    //
-    // Apply token budget to trim RAG context and history if they exceed
-    // their allotted slots. This prevents context window overflow before
-    // the ad-hoc summarization safety net kicks in.
-    //
-    // When the model's context length isn't available yet (first call before
-    // the cache is warm), use a conservative fallback so budgeting always runs.
-    // Without this, the very first request sends unbounded context.
-    const BUDGET_FALLBACK_CTX = 8192;
-    const contextWindow = services.getModelContextLength?.() || BUDGET_FALLBACK_CTX;
-    if (contextParts.length > 0) {
-      const budgetService = new TokenBudgetService();
-
-      // M20: Apply elastic context budget from unified config if available
-      const unifiedBudget = services.unifiedConfigService?.getEffectiveConfig().retrieval.contextBudget;
-      if (unifiedBudget) {
-        budgetService.setElasticConfig({
-          trimPriority: unifiedBudget.trimPriority,
-          minPercent: unifiedBudget.minPercent,
-        });
-      }
-
-      const ragContent = contextParts.join('\n\n');
-      const historyContent = messages
-        .filter(m => m.role !== 'system')
-        .map(m => m.content)
-        .join('\n');
-
-      const budgetResult = budgetService.allocate(
-        contextWindow,
-        messages[0]?.content ?? '',
-        ragContent,
-        historyContent,
-        userText,
-      );
-
-      // If RAG was trimmed, replace contextParts with trimmed version
-      if (budgetResult.wasTrimmed && budgetResult.slots['ragContext'] !== ragContent) {
-        contextParts.length = 0;
-        const trimmed = budgetResult.slots['ragContext'];
-        if (trimmed) {
-          contextParts.push(trimmed);
-        }
-      }
-
-      // If history was trimmed, truncate the messages array
-      if (budgetResult.wasTrimmed && budgetResult.slots['history'] !== historyContent) {
-        // Keep system prompt (index 0) and replace history with trimmed version
-        const trimmedHistory = budgetResult.slots['history'];
-        // Remove old history messages, re-add as single summarized message
-        while (messages.length > 1) {
-          messages.pop();
-        }
-        if (trimmedHistory) {
-          messages.push({
-            role: 'user',
-            content: '[Summarized conversation context]\n' + trimmedHistory,
-          });
-          messages.push({
-            role: 'assistant',
-            content: 'Understood, I have the context.',
-          });
-        }
-      }
-
-      if (budgetResult.warning) {
-        response.progress(budgetResult.warning);
-      }
-
-      // Report budget breakdown to the UI (Task 4.8)
-      // Use post-trim values from budgetResult.slots so the UI shows actual usage
-      // M20 Phase G: With elastic allocation, "allocated" = actual demand (no fixed ceilings)
-      if (services.reportBudget) {
-        const sysTokens = Math.ceil((messages[0]?.content ?? '').length / 4);
-        const ragTokens = Math.ceil((budgetResult.slots['ragContext'] ?? ragContent).length / 4);
-        const histTokens = Math.ceil((budgetResult.slots['history'] ?? historyContent).length / 4);
-        const userTokens = Math.ceil(userText.length / 4);
-        services.reportBudget([
-          { label: 'System', used: sysTokens, allocated: sysTokens, color: '#6c71c4' },
-          { label: 'RAG',    used: ragTokens,  allocated: ragTokens,  color: '#268bd2' },
-          { label: 'History', used: histTokens, allocated: histTokens, color: '#859900' },
-          { label: 'User',   used: userTokens,  allocated: userTokens,  color: '#cb4b16' },
-        ]);
-      }
-    }
+    applyChatTurnBudgeting({
+      messages,
+      contextParts,
+      userText,
+      response,
+      contextWindow: services.getModelContextLength?.(),
+      elasticBudget: services.unifiedConfigService?.getEffectiveConfig().retrieval.contextBudget,
+      reportBudget: services.reportBudget,
+    });
 
     // 3. Compose final user message (use userText — mentions stripped)
     //
@@ -1421,43 +1330,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // Latency: context assembly complete (M17 Task 0.2.7)
     const _t1_contextAssembly = performance.now();
     console.debug(`[Parallx:latency] Context assembly: ${(_t1_contextAssembly - _t0_contextAssembly).toFixed(1)}ms`);
-
-    // ── Context overflow detection & oldest-first truncation (M17 Task 0.2.5) ──
-    //
-    // When the assembled messages exceed the model's context window, drop
-    // the oldest history messages one-at-a-time until we fit.  This avoids
-    // the prior approach of making a blocking LLM summarization call before
-    // the main response — which added 20–60s of latency.
-    //
-    // The `/compact` command still exists for explicit LLM-based condensation.
-
-    const contextLength = services.getModelContextLength?.() || BUDGET_FALLBACK_CTX;
-    {
-      const warnThreshold = Math.floor(contextLength * CONTEXT_OVERFLOW_WARN_THRESHOLD);
-      let tokenEstimate = estimateTokens(messages);
-
-      if (tokenEstimate > contextLength) {
-        // Drop oldest history messages (indices 1..n-1, keeping system[0] + current user[last])
-        // until we fit within the context window.
-        while (tokenEstimate > contextLength && messages.length > 2) {
-          messages.splice(1, 1); // remove oldest non-system message
-          tokenEstimate = estimateTokens(messages);
-        }
-
-        if (messages.length <= 2) {
-          // Only system + current user left — warn that history was fully dropped
-          response.warning(
-            `Context window full (${tokenEstimate} / ${contextLength} estimated tokens). ` +
-            'All previous conversation history has been dropped. Use /compact to manage context.',
-          );
-        }
-      } else if (tokenEstimate > warnThreshold) {
-        response.warning(
-          `Approaching context limit (${tokenEstimate} / ${contextLength} estimated tokens). ` +
-          'Older messages may be dropped automatically if the conversation continues.',
-        );
-      }
-    }
 
     // Build request options (mode-aware)
     const options: IChatRequestOptions = {

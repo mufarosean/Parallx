@@ -114,6 +114,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatSpecificCoverageFocus.ts': [],
   'utilities/chatSystemPromptComposer.ts': ['config/'],
   'utilities/chatTurnContextPreparation.ts': ['utilities/'],
+  'utilities/chatTurnBudgeting.ts':          [],
   'utilities/chatTurnSynthesis.ts':         ['utilities/'],
   'utilities/chatTurnRouter.ts':             [],
   'utilities/chatUserContentComposer.ts':    [],
