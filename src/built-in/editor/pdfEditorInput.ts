@@ -1,7 +1,7 @@
 // pdfEditorInput.ts — Lightweight EditorInput for PDF files
 //
 // Simple URI holder for PDFs. The PdfEditorPane reads the binary
-// data and renders via Chromium's built-in PDF viewer.
+// data and renders it with PDF.js.
 
 import { EditorInput, type IEditorInput } from '../../editor/editorInput.js';
 import type { SerializedEditorEntry } from '../../editor/editorTypes.js';
