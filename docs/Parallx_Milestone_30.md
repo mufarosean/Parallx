@@ -280,6 +280,7 @@ Post-completion cleanup on 2026-03-12:
 
 - [x] Extract grounded-response heuristics, evidence assessment, and retrieval-query helpers out of `defaultParticipant.ts` into `chatGroundedResponseHelpers.ts`.
 - [x] Extract tool-call parsing, narration cleanup, citation footer generation, and edit-response parsing out of `defaultParticipant.ts` into `chatResponseParsingHelpers.ts`.
+- [x] Extract grounded answer-repair heuristics out of `defaultParticipant.ts` into `chatGroundedAnswerRepairs.ts`.
 
 ---
 
