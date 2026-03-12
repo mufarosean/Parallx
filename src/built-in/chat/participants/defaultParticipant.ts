@@ -41,6 +41,7 @@ import { executeInitCommand } from '../commands/initCommand.js';
 import { extractMentions, resolveMentions } from '../utilities/chatMentionResolver.js';
 import { determineChatTurnRoute } from '../utilities/chatTurnRouter.js';
 import { createChatContextPlan, createChatRuntimeTrace } from '../utilities/chatContextPlanner.js';
+import { applyChatAnswerRepairPipeline } from '../utilities/chatAnswerRepairPipeline.js';
 import { handleEarlyDeterministicAnswer, handlePreparedContextDeterministicAnswer } from '../utilities/chatDeterministicResponse.js';
 import { applyChatTurnBudgeting } from '../utilities/chatTurnBudgeting.js';
 import { assembleChatTurnMessages } from '../utilities/chatTurnMessageAssembly.js';
@@ -1290,30 +1291,21 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         buildExtractiveFallbackAnswer: _buildExtractiveFallbackAnswer,
         buildMissingCitationFooter: _buildMissingCitationFooter,
         buildDeterministicSessionSummary: _buildDeterministicSessionSummary,
-        repairMarkdown: (markdown) => _repairUnsupportedSpecificCoverageAnswer(
-          request.text,
-          _repairVehicleInfoAnswer(
-            request.text,
-            _repairAgentContactAnswer(
-              request.text,
-              _repairDeductibleConflictAnswer(
-                request.text,
-                _repairTotalLossThresholdAnswer(
-                  request.text,
-                  _repairGroundedCodeAnswer(
-                    request.text,
-                    markdown,
-                    retrievedContextText || userContent,
-                  ),
-                  retrievedContextText || userContent,
-                ),
-                retrievedContextText || userContent,
-              ),
-              retrievedContextText || userContent,
-            ),
-            retrievedContextText || userContent,
-          ),
-          evidenceAssessment,
+        repairMarkdown: (markdown) => applyChatAnswerRepairPipeline(
+          {
+            repairUnsupportedSpecificCoverageAnswer: _repairUnsupportedSpecificCoverageAnswer,
+            repairVehicleInfoAnswer: _repairVehicleInfoAnswer,
+            repairAgentContactAnswer: _repairAgentContactAnswer,
+            repairDeductibleConflictAnswer: _repairDeductibleConflictAnswer,
+            repairTotalLossThresholdAnswer: _repairTotalLossThresholdAnswer,
+            repairGroundedCodeAnswer: _repairGroundedCodeAnswer,
+          },
+          {
+            query: request.text,
+            markdown,
+            retrievedContextText: retrievedContextText || userContent,
+            evidenceAssessment,
+          },
         ),
         parseEditResponse: _parseEditResponse,
         extractToolCallsFromText: _extractToolCallsFromText,
