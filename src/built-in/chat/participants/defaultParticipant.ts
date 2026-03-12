@@ -20,7 +20,6 @@ import type {
   IChatResponseStream,
   ICancellationToken,
   IChatParticipantResult,
-  IChatMessage,
   IChatRequestResponsePair,
   IChatRequestOptions,
   IToolCall,
@@ -41,6 +40,7 @@ import { executeInitCommand } from '../commands/initCommand.js';
 import { extractMentions, resolveMentions } from '../utilities/chatMentionResolver.js';
 import { determineChatTurnRoute } from '../utilities/chatTurnRouter.js';
 import { createChatContextPlan, createChatRuntimeTrace } from '../utilities/chatContextPlanner.js';
+import { tryExecuteCompactChatCommand } from '../utilities/chatCompactCommand.js';
 import { applyChatAnswerRepairPipeline } from '../utilities/chatAnswerRepairPipeline.js';
 import { handleEarlyDeterministicAnswer, handlePreparedContextDeterministicAnswer } from '../utilities/chatDeterministicResponse.js';
 import { applyChatTurnBudgeting } from '../utilities/chatTurnBudgeting.js';
@@ -1003,70 +1003,15 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     //
     // Summarize conversation history and replace old messages with a compact summary.
     // Shows token savings to the user.
-    if (activeCommand === 'compact' || slashResult.command?.specialHandler === 'compact') {
-      if (!services.sendSummarizationRequest) {
-        response.markdown('`/compact` requires a summarization model. No summarization service available.');
-        return {};
-      }
-      if (context.history.length < 2) {
-        response.markdown('Nothing to compact — conversation history is too short.');
-        return {};
-      }
-
-      response.progress('Compacting conversation history…');
-
-      // Build history text for summarization
-      const historyText = context.history.map((pair) => {
-        const respText = pair.response.parts
-          .map((p) => {
-            const part = p as unknown as Record<string, unknown>;
-            if ('text' in part && typeof part.text === 'string') { return part.text; }
-            if ('code' in part && typeof part.code === 'string') { return '```\n' + part.code + '\n```'; }
-            return '';
-          })
-          .filter(Boolean)
-          .join('\n');
-        return `User: ${pair.request.text}\nAssistant: ${respText}`;
-      }).join('\n\n---\n\n');
-
-      const beforeTokens = Math.ceil(historyText.length / 4);
-
-      // Summarize via LLM
-      const summaryPrompt: IChatMessage[] = [
-        {
-          role: 'system',
-          content:
-            'You are a conversation summarizer. Condense the following conversation history into a concise context summary. ' +
-            'Preserve all key facts, decisions, code references, and action items. Output ONLY the summary.',
-        },
-        { role: 'user', content: historyText },
-      ];
-
-      let summaryText = '';
-      for await (const chunk of services.sendSummarizationRequest(summaryPrompt)) {
-        if (chunk.content) { summaryText += chunk.content; }
-      }
-
-      if (summaryText) {
-        const afterTokens = Math.ceil(summaryText.length / 4);
-        const saved = beforeTokens - afterTokens;
-
-        // Actually replace session history with the compacted summary
-        if (services.compactSession) {
-          services.compactSession(context.sessionId, summaryText);
-        }
-
-        response.markdown(
-          `**Conversation compacted.**\n\n` +
-          `- Before: ~${beforeTokens.toLocaleString()} tokens (${context.history.length} turns)\n` +
-          `- After: ~${afterTokens.toLocaleString()} tokens (summary)\n` +
-          `- Saved: ~${saved.toLocaleString()} tokens (${Math.round((saved / beforeTokens) * 100)}%)\n\n` +
-          `The summarized context will be used for future messages in this session.`,
-        );
-      } else {
-        response.markdown('Could not generate a summary. The conversation was not modified.');
-      }
-
+    if (await tryExecuteCompactChatCommand({
+      sendSummarizationRequest: services.sendSummarizationRequest,
+      compactSession: services.compactSession,
+    }, {
+      isCompactCommand: activeCommand === 'compact' || slashResult.command?.specialHandler === 'compact',
+      sessionId: context.sessionId,
+      history: context.history,
+      response,
+    })) {
       return {};
     }
 

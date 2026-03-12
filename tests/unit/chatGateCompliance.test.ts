@@ -99,6 +99,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   // ── utilities/ — mention resolution, user commands ──────────────────────
   'utilities/chatAgentTaskWidgetAdapter.ts': [],
   'utilities/chatAnswerRepairPipeline.ts': [],
+  'utilities/chatCompactCommand.ts': [],
   'utilities/chatContextAssembly.ts':        ['utilities/'],
   'utilities/chatContextPlanner.ts':         [],
   'utilities/chatContextSourceLoader.ts':    [],
