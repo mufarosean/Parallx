@@ -928,7 +928,7 @@ export interface IChatSendRequestOptions {
   readonly attachments?: readonly IChatAttachment[];
   /** Retry attempt count (0 = first attempt). */
   readonly attempt?: number;
-  /** Original request ID when replaying a prior turn. */
+  /** Original request ID when replaying a prior turn; when found, the prior turn is replaced. */
   readonly replayOfRequestId?: string;
 }
 

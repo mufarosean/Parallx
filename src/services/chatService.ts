@@ -745,15 +745,25 @@ export class ChatService extends Disposable implements IChatService {
       timestamp: Date.now(),
     };
 
-    // 3. Append pair to session
+    // 3. Append or replace the request/response pair in-session.
     const pair: IChatRequestResponsePair = {
       request: userMessage,
       response: assistantResponse,
     };
-    session.messages.push(pair);
+
+    const replayIndex = typeof options?.replayOfRequestId === 'string'
+      ? session.messages.findIndex((existingPair) => existingPair.request.requestId === options.replayOfRequestId)
+      : -1;
+    const isReplayReplacement = replayIndex >= 0;
+
+    if (isReplayReplacement) {
+      session.messages.splice(replayIndex, session.messages.length - replayIndex, pair);
+    } else {
+      session.messages.push(pair);
+    }
 
     // 4. Auto-generate title from first message
-    if (session.messages.length === 1) {
+    if (!isReplayReplacement && session.messages.length === 1) {
       session.title = message.length > 50 ? message.slice(0, 47) + '...' : message;
     }
 

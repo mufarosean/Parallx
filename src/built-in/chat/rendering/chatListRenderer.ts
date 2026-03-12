@@ -180,7 +180,7 @@ export class ChatListRenderer extends Disposable {
       }
 
       // Add message actions bar now that streaming is complete
-      this._addMessageActions(lastPair.assistantEl, body, messages[lastIdx].request);
+      this._addMessageActions(lastPair.assistantEl, body, messages[lastIdx].request, true);
     }
 
     lastPair.partCount = newPartCount;
@@ -205,7 +205,12 @@ export class ChatListRenderer extends Disposable {
       container.appendChild(userEl);
 
       // Assistant response
-      const assistantEl = this._renderAssistantMessage(pair.request, pair.response, requestInProgress && i === messages.length - 1);
+      const assistantEl = this._renderAssistantMessage(
+        pair.request,
+        pair.response,
+        requestInProgress && i === messages.length - 1,
+        i === messages.length - 1,
+      );
       container.appendChild(assistantEl);
 
       this._renderedPairs.set(i, {
@@ -297,6 +302,7 @@ export class ChatListRenderer extends Disposable {
     request: IChatUserMessage,
     response: IChatAssistantResponse,
     isStreaming: boolean = false,
+    isLatest: boolean = false,
   ): HTMLElement {
     const root = $('div.parallx-chat-message.parallx-chat-message--assistant');
     const parts = response.parts;
@@ -318,29 +324,31 @@ export class ChatListRenderer extends Disposable {
 
     // Message actions bar (copy) — only shown on completed responses
     if (parts.length > 0 && response.isComplete) {
-      this._addMessageActions(root, body, request);
+      this._addMessageActions(root, body, request, isLatest);
     }
 
     return root;
   }
 
   /** Add copy button actions bar to an assistant message. */
-  private _addMessageActions(root: HTMLElement, body: HTMLElement, request: IChatUserMessage): void {
+  private _addMessageActions(root: HTMLElement, body: HTMLElement, request: IChatUserMessage, canRegenerate: boolean): void {
     // Don't duplicate
     if (root.querySelector('.parallx-chat-message-actions')) { return; }
 
     const actions = $('div.parallx-chat-message-actions');
 
-    const regenerateBtn = document.createElement('button');
-    regenerateBtn.className = 'parallx-chat-action-btn';
-    regenerateBtn.type = 'button';
-    regenerateBtn.title = 'Regenerate response';
-    regenerateBtn.setAttribute('aria-label', 'Regenerate response');
-    regenerateBtn.innerHTML = chatIcons.refresh;
-    regenerateBtn.addEventListener('click', () => {
-      this._onRegenerateMessage?.(request);
-    });
-    actions.appendChild(regenerateBtn);
+    if (canRegenerate) {
+      const regenerateBtn = document.createElement('button');
+      regenerateBtn.className = 'parallx-chat-action-btn';
+      regenerateBtn.type = 'button';
+      regenerateBtn.title = 'Regenerate response';
+      regenerateBtn.setAttribute('aria-label', 'Regenerate response');
+      regenerateBtn.innerHTML = chatIcons.refresh;
+      regenerateBtn.addEventListener('click', () => {
+        this._onRegenerateMessage?.(request);
+      });
+      actions.appendChild(regenerateBtn);
+    }
 
     const copyBtn = document.createElement('button');
     copyBtn.className = 'parallx-chat-action-btn';

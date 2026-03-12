@@ -141,10 +141,46 @@ describe('ChatService', () => {
         replayOfRequestId: original.requestId,
       });
 
-      expect(session.messages).toHaveLength(2);
-      expect(session.messages[1].request.attempt).toBe(1);
-      expect(session.messages[1].request.replayOfRequestId).toBe(original.requestId);
-      expect(session.messages[1].request.requestId).not.toBe(original.requestId);
+      expect(session.messages).toHaveLength(1);
+      expect(session.messages[0].request.attempt).toBe(1);
+      expect(session.messages[0].request.replayOfRequestId).toBe(original.requestId);
+      expect(session.messages[0].request.requestId).not.toBe(original.requestId);
+    });
+
+    it('replaces the replayed turn instead of appending a duplicate assistant response', async () => {
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello');
+
+      const originalRequestId = session.messages[0].request.requestId;
+
+      await chatService.sendRequest(session.id, 'Hello', {
+        attempt: 1,
+        replayOfRequestId: originalRequestId,
+      });
+
+      expect(session.messages).toHaveLength(1);
+      expect(session.messages[0].request.requestId).not.toBe(originalRequestId);
+      expect(session.messages[0].request.replayOfRequestId).toBe(originalRequestId);
+      expect(session.messages[0].response.parts[0]).toMatchObject({
+        kind: ChatContentPartKind.Markdown,
+        content: 'Hello from default agent',
+      });
+    });
+
+    it('drops trailing turns when replaying an earlier request', async () => {
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'First');
+      await chatService.sendRequest(session.id, 'Second');
+
+      const original = session.messages[0].request;
+      await chatService.sendRequest(session.id, original.text, {
+        attempt: original.attempt + 1,
+        replayOfRequestId: original.requestId,
+      });
+
+      expect(session.messages).toHaveLength(1);
+      expect(session.messages[0].request.text).toBe('First');
+      expect(session.messages[0].request.attempt).toBe(1);
     });
 
     it('auto-generates title from first message', async () => {
