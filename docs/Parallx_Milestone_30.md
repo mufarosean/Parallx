@@ -211,6 +211,7 @@ exceptions.
 - [x] Extract post-context execution, fallback handling, and response finalization out of `defaultParticipant.ts` into a dedicated utility.
 - [x] Extract deterministic answer selection/emission out of `defaultParticipant.ts` into a dedicated utility.
 - [x] Extract token-budget and context-overflow handling out of `defaultParticipant.ts` into a dedicated utility.
+- [x] Extract system-prompt and history message assembly out of `defaultParticipant.ts` into a dedicated utility.
 
 ### Phase D — Verification
 
@@ -233,6 +234,7 @@ exceptions.
 - [x] Extract participant synthesis/execution flow into its own utility seam
 - [x] Extract participant deterministic response handling into its own utility seam
 - [x] Extract participant budgeting and context-overflow handling into its own utility seam
+- [x] Extract participant system-prompt and history message assembly into its own utility seam
 - [x] Update regression tests
 - [x] Complete validation runs
 
@@ -250,13 +252,14 @@ Verification completed on 2026-03-12 with:
 
 1. focused chat tests passing,
 2. `npm run build` passing,
-3. full Vitest suite passing (`119` files, `2220` tests),
+3. full Vitest suite passing (`120` files, `2223` tests),
 4. memory and concept recall participating in the same provenance and exclusion contract,
 5. participant turn-context preparation extracted into a dedicated tested utility seam,
 6. final user-content composition extracted into a dedicated tested utility seam,
 7. post-context execution, fallback handling, and response finalization extracted into a dedicated tested utility seam,
 8. deterministic answer selection and emission extracted into a dedicated tested utility seam,
-9. token-budget and context-overflow handling extracted into a dedicated tested utility seam.
+9. token-budget and context-overflow handling extracted into a dedicated tested utility seam,
+10. system-prompt and history message assembly extracted into a dedicated tested utility seam.
 
 ---
 

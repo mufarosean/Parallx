@@ -35,9 +35,7 @@ import type {
   IInitCommandServices,
   IMentionResolutionServices,
   IRetrievalPlan,
-  ISystemPromptContext,
 } from '../chatTypes.js';
-import { buildSystemPrompt } from '../config/chatSystemPrompts.js';
 import { getModeCapabilities, shouldIncludeTools, shouldUseStructuredOutput } from '../config/chatModeCapabilities.js';
 import { executeInitCommand } from '../commands/initCommand.js';
 import { extractMentions, resolveMentions } from '../utilities/chatMentionResolver.js';
@@ -45,6 +43,7 @@ import { determineChatTurnRoute } from '../utilities/chatTurnRouter.js';
 import { createChatContextPlan, createChatRuntimeTrace } from '../utilities/chatContextPlanner.js';
 import { handleEarlyDeterministicAnswer, handlePreparedContextDeterministicAnswer } from '../utilities/chatDeterministicResponse.js';
 import { applyChatTurnBudgeting } from '../utilities/chatTurnBudgeting.js';
+import { assembleChatTurnMessages } from '../utilities/chatTurnMessageAssembly.js';
 import { composeChatUserContent } from '../utilities/chatUserContentComposer.js';
 import { prepareChatTurnContext, writeChatProvenanceToResponse } from '../utilities/chatTurnContextPreparation.js';
 import { executePreparedChatTurn } from '../utilities/chatTurnSynthesis.js';
@@ -1086,86 +1085,12 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       return {};
     }
 
-    // ── Build system prompt with workspace context ──
-    // Parallelize independent async calls to reduce pre-response latency.
-
-    const [pageCount, fileCount, promptOverlayFromFiles, workspaceDigest, prefsBlock] = await Promise.all([
-      services.getPageCount().catch(() => 0),
-      services.getFileCount ? services.getFileCount().catch(() => 0) : Promise.resolve(undefined),
-      services.getPromptOverlay ? services.getPromptOverlay().catch(() => undefined) : Promise.resolve(undefined),
-      services.getWorkspaceDigest ? services.getWorkspaceDigest().catch(() => undefined) : Promise.resolve(undefined),
-      services.getPreferencesForPrompt ? services.getPreferencesForPrompt().catch(() => undefined) : Promise.resolve(undefined),
-    ]);
-
-    // M15: AI Settings persona overlay takes priority over file-based prompt overlay.
-    // Both replace PARALLX_IDENTITY in the system prompt via the promptOverlay field.
     const aiProfile = services.aiSettingsService?.getActiveProfile();
-    const promptOverlay = aiProfile?.chat.systemPrompt || promptOverlayFromFiles;
 
-    // Workspace description — primes the AI with what "workspace" means here.
-    // Read from unified config; falls back to empty (auto-generation handled by digest).
-    const workspaceDescription = services.unifiedConfigService?.getEffectiveConfig().chat.workspaceDescription ?? '';
-
-    const promptContext: ISystemPromptContext = {
-      workspaceName: services.getWorkspaceName(),
-      pageCount,
-      currentPageTitle: services.getCurrentPageTitle(),
-      // Tools are sent via the Ollama API tools parameter, NOT in the system
-      // prompt text.  Listing them in the prompt causes small models to narrate
-      // about tool calls instead of using the structured API.
-      tools: undefined,
-      fileCount,
-      isRAGAvailable: services.isRAGAvailable?.() ?? false,
-      isIndexing: services.isIndexing?.() ?? false,
-      promptOverlay,
-      workspaceDigest,
-      workspaceDescription,
-    };
-
-    const systemPrompt = buildSystemPrompt(request.mode, promptContext);
-
-    // Append user preferences to system prompt (M10 Phase 5 — Task 5.2)
-    const finalSystemPrompt = prefsBlock
-      ? systemPrompt + '\n\n' + prefsBlock
-      : systemPrompt;
-
-    // Build the message list from conversation history + current request
-    const messages: IChatMessage[] = [];
-
-    // System prompt (mode-aware)
-    messages.push({
-      role: 'system',
-      content: finalSystemPrompt,
+    const { messages } = await assembleChatTurnMessages(services, {
+      mode: request.mode,
+      history: context.history,
     });
-
-    // History (previous request/response pairs)
-    for (const pair of context.history) {
-      messages.push({
-        role: 'user',
-        content: pair.request.text,
-      });
-
-      // Extract text from response parts
-      const responseText = pair.response.parts
-        .map((part) => {
-          if ('content' in part && typeof part.content === 'string') {
-            return part.content;
-          }
-          if ('code' in part && typeof part.code === 'string') {
-            return '```\n' + part.code + '\n```';
-          }
-          return '';
-        })
-        .filter(Boolean)
-        .join('\n');
-
-      if (responseText) {
-        messages.push({
-          role: 'assistant',
-          content: responseText,
-        });
-      }
-    }
 
     // ── Build user message with implicit context + attachments ──
     //
