@@ -276,6 +276,10 @@ Verification completed on 2026-03-12 with:
 14. mention-resolution and turn-planning prelude logic extracted into a dedicated tested utility seam,
 15. request-option and synthesis execution-config assembly extracted into a dedicated tested utility seam.
 
+Post-completion cleanup on 2026-03-12:
+
+- [x] Extract grounded-response heuristics, evidence assessment, and retrieval-query helpers out of `defaultParticipant.ts` into `chatGroundedResponseHelpers.ts`.
+
 ---
 
 ## Future Direction

@@ -107,6 +107,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatDeterministicAnswerSelector.ts': ['utilities/'],
   'utilities/chatDeterministicExecutors.ts': ['utilities/'],
   'utilities/chatDeterministicResponse.ts': ['utilities/'],
+  'utilities/chatGroundedResponseHelpers.ts': ['utilities/'],
   'utilities/chatGroundedExecutor.ts':       [],
   'utilities/chatMemoryWriteBack.ts':        [],
   'utilities/chatMentionResolver.ts': [],
