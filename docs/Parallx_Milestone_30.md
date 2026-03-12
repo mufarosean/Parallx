@@ -283,6 +283,7 @@ Post-completion cleanup on 2026-03-12:
 - [x] Extract grounded answer-repair heuristics out of `defaultParticipant.ts` into `chatGroundedAnswerRepairs.ts`.
 - [x] Extract request-error categorization out of `defaultParticipant.ts` into `chatRequestErrorCategorizer.ts`.
 - [x] Repoint chat unit tests to import helper seams directly instead of relying on `defaultParticipant.ts` re-exports.
+- [x] Split helper-only chat tests into dedicated utility suites so `chatService.test.ts` stays focused on integration behavior.
 
 ---
 
