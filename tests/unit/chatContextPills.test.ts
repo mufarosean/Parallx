@@ -95,4 +95,23 @@ describe('ChatContextPills', () => {
     expect(document.body.querySelector('button[aria-label="Zoom in context menu"]')).toBeNull();
     expect(document.body.querySelector('button[aria-label="Zoom out context menu"]')).toBeNull();
   });
+
+  it('does not close when scrolling inside the menu panel', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const pills = new ChatContextPills(container);
+    pills.setPills([
+      createPill(),
+      createPill({ id: 'notes.txt', label: 'notes.txt', type: 'attachment' }),
+      createPill({ id: 'memory:session-recall', label: 'Session memory', type: 'memory' }),
+    ]);
+
+    const trigger = container.querySelector('.parallx-chat-context-menu-trigger') as HTMLButtonElement;
+    trigger.click();
+
+    const menu = document.body.querySelector('.parallx-chat-context-menu-panel') as HTMLElement;
+    menu.dispatchEvent(new Event('scroll'));
+
+    expect(menu.style.display).toBe('');
+  });
 });

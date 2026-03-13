@@ -165,8 +165,13 @@ export class ChatContextPills extends Disposable {
       this._render();
     }));
 
-    this._register(addDisposableListener(window, 'scroll', () => {
+    this._register(addDisposableListener(window, 'scroll', (event: Event) => {
       if (!this._expanded) {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof Node && this._menu.contains(target)) {
         return;
       }
 
