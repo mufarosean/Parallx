@@ -83,7 +83,10 @@ function findReplayReplacementIndex(
   const pairs = session.messages;
   let replayIndex = pairs.findIndex((pair) => pair.request.requestId === replayOfRequestId);
   if (replayIndex < 0) {
-    return -1;
+    replayIndex = pairs.findIndex((pair) => pair.request.replayOfRequestId === replayOfRequestId);
+    if (replayIndex < 0) {
+      return -1;
+    }
   }
 
   const visitedRequestIds = new Set<string>();

@@ -286,6 +286,7 @@ Post-completion cleanup on 2026-03-12:
 - [x] Split helper-only chat tests into dedicated utility suites so `chatService.test.ts` stays focused on integration behavior.
 - [x] Refine chat regenerate behavior so replay replaces the prior turn in-place instead of appending a second assistant response.
 - [x] Harden regenerate replay replacement to collapse older duplicated replay chains created before the in-place fix.
+- [x] Fix repeated regenerate clicks on the same visible message so stale action bindings and stale replay IDs do not reintroduce duplication.
 
 ---
 

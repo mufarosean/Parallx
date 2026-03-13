@@ -101,8 +101,15 @@ export class ChatListRenderer extends Disposable {
     if (!lastPair) { return; }
 
     const response = messages[lastIdx].response;
+    const latestRequest = messages[lastIdx].request;
     const body = lastPair.assistantEl.querySelector('.parallx-chat-message-body') as HTMLElement;
     if (!body) { return; }
+
+    const existingActions = lastPair.assistantEl.querySelector('.parallx-chat-message-actions');
+    const renderedRequestId = lastPair.assistantEl.dataset.requestId;
+    if (existingActions && (requestInProgress || renderedRequestId !== latestRequest.requestId)) {
+      existingActions.remove();
+    }
 
     // Remove typing indicator if present
     const typingEl = body.querySelector('.parallx-chat-typing-indicator');
@@ -180,9 +187,14 @@ export class ChatListRenderer extends Disposable {
       }
 
       // Add message actions bar now that streaming is complete
-      this._addMessageActions(lastPair.assistantEl, body, messages[lastIdx].request, true);
+      this._addMessageActions(lastPair.assistantEl, body, latestRequest, true);
     }
 
+    if (!requestInProgress && response.isComplete && !lastPair.assistantEl.querySelector('.parallx-chat-message-actions')) {
+      this._addMessageActions(lastPair.assistantEl, body, latestRequest, true);
+    }
+
+    lastPair.assistantEl.dataset.requestId = latestRequest.requestId;
     lastPair.partCount = newPartCount;
   }
 
@@ -218,6 +230,7 @@ export class ChatListRenderer extends Disposable {
         assistantEl,
         partCount: pair.response.parts.length,
       });
+      assistantEl.dataset.requestId = pair.request.requestId;
     }
 
     // Show streaming cursor on the last assistant message if in progress
@@ -326,6 +339,8 @@ export class ChatListRenderer extends Disposable {
     if (parts.length > 0 && response.isComplete) {
       this._addMessageActions(root, body, request, isLatest);
     }
+
+    root.dataset.requestId = request.requestId;
 
     return root;
   }

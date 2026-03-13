@@ -40,4 +40,23 @@ describe('ChatListRenderer', () => {
     expect(copyButtons).toHaveLength(2);
     expect(regenerateButtons[0].closest('.parallx-chat-message')?.textContent).toContain('Second answer');
   });
+
+  it('refreshes the regenerate handler binding when the latest request identity changes', () => {
+    const renderer = new ChatListRenderer();
+    const container = document.createElement('div');
+    const requests: string[] = [];
+    renderer.setRegenerateHandler((request) => {
+      requests.push(request.requestId);
+    });
+
+    renderer.renderMessages(container, [createPair('req-1', 'Question', 'Answer')], false);
+    const initialButton = container.querySelector('button[aria-label="Regenerate response"]') as HTMLButtonElement;
+    initialButton.click();
+
+    renderer.renderMessages(container, [createPair('req-2', 'Question', 'Updated answer')], false);
+    const updatedButton = container.querySelector('button[aria-label="Regenerate response"]') as HTMLButtonElement;
+    updatedButton.click();
+
+    expect(requests).toEqual(['req-1', 'req-2']);
+  });
 });

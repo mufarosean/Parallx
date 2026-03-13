@@ -147,6 +147,28 @@ describe('ChatService', () => {
       expect(session.messages[0].request.requestId).not.toBe(original.requestId);
     });
 
+    it('allows repeated regenerate clicks on the same visible message without duplication', async () => {
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello');
+
+      const firstRequestId = session.messages[0].request.requestId;
+      await chatService.sendRequest(session.id, 'Hello', {
+        attempt: 1,
+        replayOfRequestId: firstRequestId,
+      });
+
+      const regeneratedRequestId = session.messages[0].request.requestId;
+      await chatService.sendRequest(session.id, 'Hello', {
+        attempt: 2,
+        replayOfRequestId: firstRequestId,
+      });
+
+      expect(session.messages).toHaveLength(1);
+      expect(session.messages[0].request.requestId).not.toBe(regeneratedRequestId);
+      expect(session.messages[0].request.attempt).toBe(2);
+      expect(session.messages[0].request.replayOfRequestId).toBe(firstRequestId);
+    });
+
     it('replaces the replayed turn instead of appending a duplicate assistant response', async () => {
       const session = chatService.createSession();
       await chatService.sendRequest(session.id, 'Hello');
