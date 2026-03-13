@@ -240,6 +240,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         getCurrentPageContent: services.getCurrentPageContent,
         retrieveContext: services.retrieveContext,
         recallMemories: services.recallMemories,
+        recallTranscripts: services.recallTranscripts,
         recallConcepts: services.recallConcepts,
         readFileContent: services.readFileContent,
         reportRetrievalDebug: services.reportRetrievalDebug,

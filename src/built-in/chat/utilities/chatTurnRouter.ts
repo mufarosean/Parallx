@@ -43,6 +43,10 @@ function isExplicitMemoryRecallTurn(text: string): boolean {
     return false;
   }
 
+  if (/\btranscript\b|\bsession\s+transcript\b/.test(normalized)) {
+    return false;
+  }
+
   return /(last|previous|prior)\s+(conversation|chat|session)|what\s+do\s+you\s+remember|remember\s+about\s+(?:it|my|our)|recall\s+(?:my|our)\s+(?:last|previous|prior)/.test(normalized);
 }
 

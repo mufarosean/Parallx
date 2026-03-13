@@ -4,6 +4,7 @@ import type { IChatAttachment } from '../../../services/chatTypes.js';
 export type ChatPageResult = { title: string; pageId: string; textContent: string } | null;
 export type ChatRagResult = { text: string; sources: Array<{ uri: string; label: string; index?: number }> } | null;
 export type ChatMemoryResult = string | null;
+export type ChatTranscriptResult = string | null;
 export type ChatConceptResult = string | null;
 export type ChatAttachmentResult = { name: string; content: string | null };
 
@@ -11,6 +12,7 @@ export interface IChatContextSourceLoaderDeps {
   readonly getCurrentPageContent?: () => Promise<{ title: string; pageId: string; textContent: string } | undefined>;
   readonly retrieveContext?: (query: string) => Promise<{ text: string; sources: Array<{ uri: string; label: string; index?: number }> } | undefined>;
   readonly recallMemories?: (query: string, sessionId?: string) => Promise<string | undefined>;
+  readonly recallTranscripts?: (query: string) => Promise<string | undefined>;
   readonly recallConcepts?: (query: string) => Promise<string | undefined>;
   readonly readFileContent?: (fullPath: string) => Promise<string>;
   readonly reportRetrievalDebug?: (debug: {
@@ -29,6 +31,7 @@ export interface IChatContextSourceLoadOptions {
   readonly useCurrentPage: boolean;
   readonly useRetrieval: boolean;
   readonly useMemoryRecall: boolean;
+  readonly useTranscriptRecall: boolean;
   readonly useConceptRecall: boolean;
   readonly hasActiveSlashCommand: boolean;
   readonly isRagReady: boolean;
@@ -38,6 +41,7 @@ export interface IChatContextSourceLoadResult {
   readonly pageResult: ChatPageResult;
   readonly ragResult: ChatRagResult;
   readonly memoryResult: ChatMemoryResult;
+  readonly transcriptResult: ChatTranscriptResult;
   readonly conceptResult: ChatConceptResult;
   readonly attachmentResults: ChatAttachmentResult[];
 }
@@ -46,7 +50,7 @@ export async function loadChatContextSources(
   deps: IChatContextSourceLoaderDeps,
   options: IChatContextSourceLoadOptions,
 ): Promise<IChatContextSourceLoadResult> {
-  const [pageResult, ragResult, memoryResult, conceptResult, attachmentResults] = await Promise.all([
+  const [pageResult, ragResult, memoryResult, transcriptResult, conceptResult, attachmentResults] = await Promise.all([
     options.useCurrentPage && deps.getCurrentPageContent
       ? deps.getCurrentPageContent().then((result): ChatPageResult => result ?? null).catch((): ChatPageResult => null)
       : Promise.resolve(null as ChatPageResult),
@@ -79,6 +83,10 @@ export async function loadChatContextSources(
       ? deps.recallMemories(options.userText, options.sessionId).then((result): ChatMemoryResult => result ?? null).catch((): ChatMemoryResult => null)
       : Promise.resolve(null as ChatMemoryResult),
 
+    options.useTranscriptRecall && deps.recallTranscripts
+      ? deps.recallTranscripts(options.userText).then((result): ChatTranscriptResult => result ?? null).catch((): ChatTranscriptResult => null)
+      : Promise.resolve(null as ChatTranscriptResult),
+
     options.useConceptRecall && deps.recallConcepts
       ? deps.recallConcepts(options.userText).then((result): ChatConceptResult => result ?? null).catch((): ChatConceptResult => null)
       : Promise.resolve(null as ChatConceptResult),
@@ -99,6 +107,7 @@ export async function loadChatContextSources(
     pageResult,
     ragResult,
     memoryResult,
+    transcriptResult,
     conceptResult,
     attachmentResults,
   };

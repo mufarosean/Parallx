@@ -14,12 +14,14 @@ import { loadChatContextSources } from './chatContextSourceLoader.js';
 
 const MAX_PAGE_CONTEXT_CHARS = 16_000;
 const MAX_MEMORY_CONTEXT_CHARS = 4_000;
+const MAX_TRANSCRIPT_CONTEXT_CHARS = 4_000;
 const MAX_CONCEPT_CONTEXT_CHARS = 2_000;
 
 export interface IPrepareChatTurnContextDeps {
   readonly getCurrentPageContent?: IDefaultParticipantServices['getCurrentPageContent'];
   readonly retrieveContext?: IDefaultParticipantServices['retrieveContext'];
   readonly recallMemories?: IDefaultParticipantServices['recallMemories'];
+  readonly recallTranscripts?: IDefaultParticipantServices['recallTranscripts'];
   readonly recallConcepts?: IDefaultParticipantServices['recallConcepts'];
   readonly readFileContent?: IDefaultParticipantServices['readFileContent'];
   readonly reportRetrievalDebug?: IDefaultParticipantServices['reportRetrievalDebug'];
@@ -52,6 +54,7 @@ export interface IPreparedChatTurnContext {
   readonly evidenceAssessment: IChatEvidenceAssessment;
   readonly provenance: IChatProvenanceEntry[];
   readonly memoryResult: string | null;
+  readonly transcriptResult: string | null;
   readonly conceptResult: string | null;
 }
 
@@ -59,17 +62,21 @@ export async function prepareChatTurnContext(
   deps: IPrepareChatTurnContextDeps,
   options: IPrepareChatTurnContextOptions,
 ): Promise<IPreparedChatTurnContext> {
+  const useTranscriptRecall = /\btranscript\b|\bsession\s+history\b|\bprior\s+session\b|\bprevious\s+session\b/i.test(options.contextQueryText);
+
   const {
     pageResult,
     ragResult,
     memoryResult,
     conceptResult,
     attachmentResults,
+    transcriptResult,
   } = await loadChatContextSources(
     {
       getCurrentPageContent: deps.getCurrentPageContent,
       retrieveContext: deps.retrieveContext,
       recallMemories: deps.recallMemories,
+      recallTranscripts: deps.recallTranscripts,
       recallConcepts: deps.recallConcepts,
       readFileContent: deps.readFileContent,
       reportRetrievalDebug: deps.reportRetrievalDebug,
@@ -79,8 +86,9 @@ export async function prepareChatTurnContext(
       sessionId: options.sessionId,
       attachments: options.attachments,
       useCurrentPage: options.contextPlan.useCurrentPage,
-      useRetrieval: options.contextPlan.useRetrieval,
+      useRetrieval: options.contextPlan.useRetrieval && !useTranscriptRecall,
       useMemoryRecall: options.contextPlan.useMemoryRecall,
+      useTranscriptRecall,
       useConceptRecall: options.contextPlan.useConceptRecall,
       hasActiveSlashCommand: options.hasActiveSlashCommand,
       isRagReady: options.isRagReady,
@@ -106,8 +114,9 @@ export async function prepareChatTurnContext(
       messages: options.messages,
       attachments: options.attachments,
       mentionPills: options.mentionPills,
-      useRetrieval: options.contextPlan.useRetrieval,
+      useRetrieval: options.contextPlan.useRetrieval && !useTranscriptRecall,
       maxMemoryContextChars: MAX_MEMORY_CONTEXT_CHARS,
+      maxTranscriptContextChars: MAX_TRANSCRIPT_CONTEXT_CHARS,
       maxConceptContextChars: MAX_CONCEPT_CONTEXT_CHARS,
       pageResult: pageResult && pageResult.textContent
         ? {
@@ -119,6 +128,7 @@ export async function prepareChatTurnContext(
         : pageResult,
       ragResult,
       memoryResult,
+      transcriptResult,
       conceptResult,
       attachmentResults,
     },
@@ -131,6 +141,7 @@ export async function prepareChatTurnContext(
     evidenceAssessment,
     provenance,
     memoryResult,
+    transcriptResult,
     conceptResult,
   };
 }

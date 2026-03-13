@@ -17,6 +17,12 @@ describe('chat runtime routing', () => {
     expect(route.kind).toBe('memory-recall');
   });
 
+  it('does not route transcript-specific questions into markdown memory recall', () => {
+    const route = determineChatTurnRoute('Search the previous session transcript and tell me the deployment codename I mentioned there.');
+
+    expect(route.kind).toBe('grounded');
+  });
+
   it('routes product semantics as direct answers', () => {
     const route = determineChatTurnRoute('what is the difference between approve once and approve task?');
 

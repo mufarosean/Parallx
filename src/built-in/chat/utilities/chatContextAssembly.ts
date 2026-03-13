@@ -7,6 +7,7 @@ import type {
   ChatMemoryResult,
   ChatPageResult,
   ChatRagResult,
+  ChatTranscriptResult,
 } from './chatContextSourceLoader.js';
 
 type ChatRagSource = NonNullable<ChatRagResult>['sources'][number];
@@ -35,10 +36,12 @@ export interface IChatContextAssemblyOptions {
   readonly mentionPills: readonly IContextPill[];
   readonly useRetrieval: boolean;
   readonly maxMemoryContextChars: number;
+  readonly maxTranscriptContextChars: number;
   readonly maxConceptContextChars: number;
   readonly pageResult: ChatPageResult;
   readonly ragResult: ChatRagResult;
   readonly memoryResult: ChatMemoryResult;
+  readonly transcriptResult: ChatTranscriptResult;
   readonly conceptResult: ChatConceptResult;
   readonly attachmentResults: readonly ChatAttachmentResult[];
 }
@@ -195,6 +198,22 @@ export async function assembleChatContext(
       removable: true,
     });
     pushContextBlock(memoryContext, [memoryId]);
+  }
+
+  if (options.transcriptResult) {
+    const transcriptId = 'transcript:recall';
+    let transcriptContext = options.transcriptResult;
+    if (transcriptContext.length > options.maxTranscriptContextChars) {
+      transcriptContext = transcriptContext.slice(0, options.maxTranscriptContextChars) + '\n[…transcript recall truncated]';
+    }
+    appendProvenance(provenance, {
+      id: transcriptId,
+      label: 'Transcript recall',
+      kind: 'memory',
+      tokens: Math.ceil(transcriptContext.length / 4),
+      removable: true,
+    });
+    pushContextBlock(transcriptContext, [transcriptId]);
   }
 
   if (options.conceptResult) {

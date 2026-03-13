@@ -53,6 +53,7 @@ import type { ChatWidget } from '../widgets/chatWidget.js';
 import type { IWorkspaceSessionContext } from '../../../workspace/workspaceSessionContext.js';
 import type { RetrievalTrace } from '../../../services/retrievalService.js';
 import { detectPreferences, formatConceptContextBlock } from '../../../services/memoryService.js';
+import { searchWorkspaceTranscripts } from '../../../services/transcriptSearch.js';
 
 import { extractTextContent } from '../tools/builtInTools.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
@@ -329,6 +330,21 @@ function formatCanonicalMemoryContext(items: Array<{ label: string; content: str
     lines.push(item.content);
   }
   return lines.join('\n');
+}
+
+function formatTranscriptRecallContext(items: Array<{ label: string; content: string }>): string | undefined {
+  const cleaned = items
+    .map((item) => ({
+      label: item.label.trim(),
+      content: item.content.trim(),
+    }))
+    .filter((item) => item.label && item.content);
+
+  if (cleaned.length === 0) {
+    return undefined;
+  }
+
+  return cleaned.map((item) => `${item.label}\n${item.content}`).join('\n\n');
 }
 
 function extractDailyDateLabel(path: string): string | undefined {
@@ -802,6 +818,27 @@ export class ChatDataService {
 
       return undefined;
     } catch { return undefined; }
+  }
+
+  async recallTranscripts(query: string): Promise<string | undefined> {
+    try {
+      if (this._d.unifiedConfigService?.getEffectiveConfig().memory.transcriptIndexingEnabled !== true) {
+        return undefined;
+      }
+
+      if (!this._d.fsAccessor) {
+        return undefined;
+      }
+
+      return formatTranscriptRecallContext(
+        (await searchWorkspaceTranscripts(this._d.fsAccessor, query, { topK: 3 })).map((result) => ({
+          label: `Transcript (${result.sessionId}):`,
+          content: result.text,
+        })),
+      );
+    } catch {
+      return undefined;
+    }
   }
 
   async storeSessionMemory(sessionId: string, summary: string, messageCount: number): Promise<void> {
@@ -1405,6 +1442,7 @@ export class ChatDataService {
         ? (q) => this.retrieveContext(q) as Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>
         : undefined,
       recallMemories: (this._d.memoryService || this._d.workspaceMemoryService) ? (q, s) => this.recallMemories(q, s) : undefined,
+      recallTranscripts: this._d.retrievalService ? (q) => this.recallTranscripts(q) : undefined,
       storeSessionMemory: (this._d.memoryService || this._d.workspaceMemoryService) ? (s, su, m) => this.storeSessionMemory(s, su, m) : undefined,
       storeConceptsFromSession: this._d.memoryService ? (c, s) => this.storeConceptsFromSession(c, s) : undefined,
       recallConcepts: this._d.memoryService ? (q) => this.recallConcepts(q) : undefined,

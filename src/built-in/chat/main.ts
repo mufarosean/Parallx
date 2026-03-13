@@ -42,6 +42,7 @@ import type { ToolGrantDecision } from '../../services/chatTypes.js';
 import { ChatDataService, buildFileSystemAccessor, extractCanvasPageId } from './data/chatDataService.js';
 import { URI } from '../../platform/uri.js';
 import type { AgentPlanStepInput, DelegatedTaskInput, AgentApprovalResolution } from '../../agent/agentTypes.js';
+import { searchWorkspaceTranscripts } from '../../services/transcriptSearch.js';
 
 // ── Local API type — only the subset we use ──
 
@@ -617,17 +618,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
               return [];
             }
 
-            const chunks = await retrievalService.retrieve(query, { sourceFilter: 'file_chunk' });
-            return chunks
-              .filter((chunk) => chunk.sourceId.startsWith('.parallx/sessions/'))
-              .filter((chunk) => !options?.sessionId || chunk.sourceId === `.parallx/sessions/${options.sessionId}.jsonl`)
-              .map((chunk) => ({
-                sourceId: chunk.sourceId,
-                contextPrefix: chunk.contextPrefix,
-                text: chunk.text,
-                score: chunk.score,
-                sessionId: chunk.sourceId.replace(/^\.parallx\/sessions\//, '').replace(/\.jsonl$/i, ''),
-              }));
+            if (!fsAccessor) {
+              return [];
+            }
+
+            return searchWorkspaceTranscripts(fsAccessor, query, options);
           },
         }
       : undefined;

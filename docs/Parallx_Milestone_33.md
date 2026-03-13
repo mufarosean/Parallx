@@ -244,7 +244,7 @@ present ask.
 ### Phase B — Memory invocation rework
 
 - [x] Remove automatic memory recall from default grounded turns.
-- [ ] Keep explicit memory-recall routing for explicit prior-context questions.
+- [x] Keep explicit memory-recall routing for explicit prior-context questions.
 - [x] Rework user-content composition so the current ask is foregrounded ahead
       of supporting memory/context.
 - [x] Add explicit new-session guardrails so greetings and light conversational
@@ -257,6 +257,7 @@ present ask.
 - [x] Add a live regression proving a new session greeting does not surface
       unrelated prior-session memory.
 - [x] Add a live regression proving explicit prior-memory questions still work.
+- [ ] Add a stable live regression for explicit transcript recall.
 
 ---
 
@@ -310,12 +311,21 @@ Completed implementation work in this session:
 15. added explicit `transcript_search` and `transcript_get` built-in tools so
    prior-session recall is a separate, named capability rather than implicit
    memory injection.
+16. excluded transcript-specific prompts from the markdown memory-recall route
+   so transcript asks no longer short-circuit into canonical memory answers;
+17. added an explicit transcript recall path in chat context preparation so
+   transcript-specific asks can attach transcript context without broadening
+   default grounded-turn memory behavior;
+18. switched transcript search and transcript recall to a direct canonical
+   `.parallx/sessions/*.jsonl` scan for deterministic transcript lookup rather
+   than relying only on generic workspace retrieval ranking.
 
 Focused validation completed:
 
 1. `npm run test:unit -- chatRuntimePlanning.test.ts chatUserContentComposer.test.ts chatService.test.ts workspaceTranscriptService.test.ts` ✅
 2. `npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/memory-layers.spec.ts` ✅
 3. `npm run test:unit -- builtInTools.test.ts indexingPipeline.test.ts chatSystemPrompts.test.ts` ✅
+4. `npm run test:unit -- builtInTools.test.ts chatRuntimePlanning.test.ts` ✅
 
 ---
 
@@ -329,6 +339,9 @@ Focused validation completed:
    memory recall.
 4. We should keep transcript search optional rather than accidentally turning it
    into another broad implicit memory layer.
+5. A stable live transcript AI-eval still needs dedicated observability or a
+   cleaner harness path, because current live validation conflates transcript
+   recall with generic workspace/tool availability behavior.
 
 ---
 
