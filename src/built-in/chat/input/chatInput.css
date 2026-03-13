@@ -956,9 +956,7 @@
 }
 
 .parallx-chat-context-menu-panel {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 8px);
+  position: fixed;
   width: min(520px, calc(100vw - 48px));
   max-height: min(340px, 50vh);
   overflow: auto;
