@@ -31,7 +31,14 @@ function requireWriter(writer: IBuiltInToolFileWriter | undefined): asserts writ
  */
 function sanitizeRelativePath(relPath: string, writer: IBuiltInToolFileWriter): string {
   // Normalize
-  let clean = relPath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+  let clean = relPath.replace(/\\/g, '/');
+  if (clean === '.' || clean === './' || clean === '') {
+    clean = '.';
+  } else if (clean.startsWith('./')) {
+    clean = clean.slice(2);
+  } else if (clean.startsWith('/')) {
+    clean = clean.slice(1);
+  }
 
   // Reject absolute paths
   if (clean.startsWith('/') || /^[a-zA-Z]:/.test(clean)) {

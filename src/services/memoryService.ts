@@ -65,6 +65,67 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+export function detectPreferences(text: string): { key: string; value: string }[] {
+  const results: { key: string; value: string }[] = [];
+  const seen = new Set<string>();
+
+  const patterns: { re: RegExp; keyPrefix: string }[] = [
+    { re: /\bi\s+prefer\s+(.+?)(?:\.|,|$)/gi, keyPrefix: 'preference' },
+    { re: /\balways\s+use\s+(.+?)(?:\.|,|$)/gi, keyPrefix: 'tool_preference' },
+    { re: /\bmy\s+preference\s+is\s+(.+?)(?:\.|,|$)/gi, keyPrefix: 'preference' },
+    { re: /\bdefault\s+to\s+(.+?)(?:\.|,|$)/gi, keyPrefix: 'default' },
+    { re: /\bi\s+(?:like|want)\s+(.+?)(?:\s+for\s+|\.|,|$)/gi, keyPrefix: 'preference' },
+    { re: /\buse\s+(.+?)\s+instead\s+of\s+(.+?)(?:\.|,|$)/gi, keyPrefix: 'preference' },
+    { re: /\bformat\s+(.+?)\s+as\s+(.+?)(?:\.|,|$)/gi, keyPrefix: 'formatting' },
+  ];
+
+  for (const { re, keyPrefix } of patterns) {
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text)) !== null) {
+      const value = (match[1] ?? '').trim();
+      if (!value || value.length < 2 || value.length > 200) { continue; }
+
+      const keyWords = value.toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 3)
+        .join('_');
+
+      const key = `${keyPrefix}_${keyWords}`;
+      if (seen.has(key)) { continue; }
+      seen.add(key);
+      results.push({ key, value });
+    }
+  }
+
+  return results;
+}
+
+export function formatConceptContextBlock(concepts: LearningConcept[]): string {
+  if (concepts.length === 0) { return ''; }
+
+  const lines: string[] = ['[Prior knowledge — concepts the user has studied before]'];
+
+  for (const c of concepts) {
+    const struggle = c.struggleCount > 0 ? `, struggles noted (${c.struggleCount}×)` : '';
+    const daysSince = Math.round(
+      (Date.now() - new Date(c.lastSeen).getTime()) / (1000 * 60 * 60 * 24),
+    );
+    const lastStudied = daysSince === 0 ? 'today' : daysSince === 1 ? 'yesterday' : `${daysSince} days ago`;
+
+    lines.push(
+      `- ${c.concept} (${c.category}): encountered ${c.encounterCount}×${struggle}. ` +
+      `Last studied ${lastStudied}. Mastery: ${c.masteryLevel.toFixed(1)}/1.0`,
+    );
+    if (c.summary) {
+      lines.push(`  ${c.summary}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 /**
  * Compute exponential decay score (M17 P1.3 Task 1.3.3).
  *
@@ -633,27 +694,7 @@ export class MemoryService extends Disposable implements IMemoryService {
    * Format recalled concepts into a context block for system prompt injection.
    */
   formatConceptContext(concepts: LearningConcept[]): string {
-    if (concepts.length === 0) { return ''; }
-
-    const lines: string[] = ['[Prior knowledge — concepts the user has studied before]'];
-
-    for (const c of concepts) {
-      const struggle = c.struggleCount > 0 ? `, struggles noted (${c.struggleCount}×)` : '';
-      const daysSince = Math.round(
-        (Date.now() - new Date(c.lastSeen).getTime()) / (1000 * 60 * 60 * 24),
-      );
-      const lastStudied = daysSince === 0 ? 'today' : daysSince === 1 ? 'yesterday' : `${daysSince} days ago`;
-
-      lines.push(
-        `- ${c.concept} (${c.category}): encountered ${c.encounterCount}×${struggle}. ` +
-        `Last studied ${lastStudied}. Mastery: ${c.masteryLevel.toFixed(1)}/1.0`,
-      );
-      if (c.summary) {
-        lines.push(`  ${c.summary}`);
-      }
-    }
-
-    return lines.join('\n');
+    return formatConceptContextBlock(concepts);
   }
 
   // ── User Preference Learning (Task 5.2) ──
@@ -675,7 +716,7 @@ export class MemoryService extends Disposable implements IMemoryService {
   async extractAndStorePreferences(text: string): Promise<UserPreference[]> {
     await this._ensureInitialized();
 
-    const extracted = this._detectPreferences(text);
+    const extracted = detectPreferences(text);
     if (extracted.length === 0) { return []; }
 
     const stored: UserPreference[] = [];
@@ -940,53 +981,5 @@ export class MemoryService extends Disposable implements IMemoryService {
         await this._vectorStore.deleteSource(CONCEPT_SOURCE_TYPE, `concept:${c.concept.toLowerCase()}`);
       } catch { /* best-effort */ }
     }
-  }
-
-  // ── Preference Detection (internal) ──
-
-  /**
-   * Detect preference patterns in free-form text.
-   *
-   * Returns an array of { key, value } pairs. Key is a normalised
-   * category label, value is the preference statement.
-   */
-  private _detectPreferences(text: string): { key: string; value: string }[] {
-    const results: { key: string; value: string }[] = [];
-    const seen = new Set<string>();
-
-    // Patterns: match "I prefer X", "always use X", etc.
-    const patterns: { re: RegExp; keyPrefix: string }[] = [
-      { re: /\bi\s+prefer\s+(.+?)(?:\.|,|$)/gi, keyPrefix: 'preference' },
-      { re: /\balways\s+use\s+(.+?)(?:\.|,|$)/gi, keyPrefix: 'tool_preference' },
-      { re: /\bmy\s+preference\s+is\s+(.+?)(?:\.|,|$)/gi, keyPrefix: 'preference' },
-      { re: /\bdefault\s+to\s+(.+?)(?:\.|,|$)/gi, keyPrefix: 'default' },
-      { re: /\bi\s+(?:like|want)\s+(.+?)(?:\s+for\s+|\.|,|$)/gi, keyPrefix: 'preference' },
-      { re: /\buse\s+(.+?)\s+instead\s+of\s+(.+?)(?:\.|,|$)/gi, keyPrefix: 'preference' },
-      { re: /\bformat\s+(.+?)\s+as\s+(.+?)(?:\.|,|$)/gi, keyPrefix: 'formatting' },
-    ];
-
-    for (const { re, keyPrefix } of patterns) {
-      let match: RegExpExecArray | null;
-      while ((match = re.exec(text)) !== null) {
-        const value = (match[1] ?? '').trim();
-        if (!value || value.length < 2 || value.length > 200) { continue; }
-
-        // Normalise key: prefix + first few meaningful words
-        const keyWords = value.toLowerCase()
-          .replace(/[^a-z0-9\s]/g, '')
-          .split(/\s+/)
-          .filter(Boolean)
-          .slice(0, 3)
-          .join('_');
-
-        const key = `${keyPrefix}_${keyWords}`;
-        if (seen.has(key)) { continue; }
-        seen.add(key);
-
-        results.push({ key, value });
-      }
-    }
-
-    return results;
   }
 }

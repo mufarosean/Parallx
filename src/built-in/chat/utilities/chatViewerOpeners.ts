@@ -1,4 +1,4 @@
-import type { IEditorService, IMemoryService } from '../../../services/serviceTypes.js';
+import type { IEditorService, IMemoryService, IWorkspaceMemoryService } from '../../../services/serviceTypes.js';
 import { ReadonlyMarkdownInput } from '../../editor/readonlyMarkdownInput.js';
 
 interface IWorkspaceFolderRef {
@@ -13,8 +13,11 @@ export interface IOpenChatFileDeps {
 
 export interface IOpenChatMemoryViewerDeps {
   readonly sessionId: string;
+  readonly workspaceMemoryService?: IWorkspaceMemoryService;
   readonly memoryService?: IMemoryService;
   readonly editorService?: IEditorService;
+  readonly workspaceFolders?: readonly IWorkspaceFolderRef[];
+  readonly openFileEditor?: (uri: string, options?: { pinned?: boolean }) => Promise<void>;
 }
 
 export interface IChatSessionMemoryRecord {
@@ -77,14 +80,28 @@ export function openChatFile(deps: IOpenChatFileDeps): void {
 }
 
 export async function openChatMemoryViewer(deps: IOpenChatMemoryViewerDeps): Promise<void> {
-  if (!deps.memoryService || !deps.editorService) {
-    console.warn('[ChatDataService] openMemoryViewer: missing memoryService or editorService');
+  if (!deps.editorService && !deps.openFileEditor) {
+    console.warn('[ChatDataService] openMemoryViewer: missing editor opener');
     return;
   }
 
   console.log('[ChatDataService] openMemoryViewer for session:', deps.sessionId);
 
   try {
+    if (deps.workspaceMemoryService && deps.openFileEditor) {
+      const relativePath = await deps.workspaceMemoryService.findSessionSummaryRelativePath(deps.sessionId);
+      if (relativePath) {
+        const fsPath = resolveChatOpenFilePath(relativePath, deps.workspaceFolders);
+        await deps.openFileEditor(fsPath, { pinned: false });
+        return;
+      }
+    }
+
+    if (!deps.memoryService || !deps.editorService) {
+      console.warn('[ChatDataService] openMemoryViewer: canonical file not found and legacy memory viewer dependencies missing');
+      return;
+    }
+
     const memories = await deps.memoryService.getAllMemories();
     const match = memories.find((memory) => memory.sessionId === deps.sessionId);
     const content = buildSessionMemoryMarkdown(deps.sessionId, match);

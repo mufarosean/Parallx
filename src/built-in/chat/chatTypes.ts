@@ -438,6 +438,15 @@ export interface IBuiltInToolRetrieval {
   retrieve(query: string, sourceFilter?: string): Promise<{ sourceType: string; sourceId: string; contextPrefix: string; text: string; score: number }[]>;
 }
 
+/** Canonical memory search accessor for built-in tools. */
+export interface IBuiltInToolCanonicalMemorySearch {
+  isReady(): boolean;
+  search(
+    query: string,
+    options?: { layer?: 'all' | 'durable' | 'daily'; date?: string },
+  ): Promise<Array<{ sourceId: string; contextPrefix: string; text: string; score: number; layer: 'durable' | 'daily' }>>;
+}
+
 /** Terminal accessor for built-in tools. */
 export interface IBuiltInToolTerminal {
   exec(command: string, options?: { cwd?: string; timeout?: number }): Promise<{

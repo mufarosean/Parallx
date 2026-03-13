@@ -72,6 +72,7 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
     '',
     'CONTEXT:',
     '- The content of the currently open page (if any) is included in the user\'s message automatically.',
+    '- Canonical workspace memory lives in `.parallx/memory/`: use `.parallx/memory/MEMORY.md` for durable memory and `.parallx/memory/YYYY-MM-DD.md` for daily notes when you need to read or update explicit memory.',
   );
   if (ctx.isRAGAvailable) {
     lines.push(
@@ -93,6 +94,7 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
     '- ONLY state facts that come from: (1) [Retrieved Context] in the user message, (2) tool results, or (3) the conversation history. If none of these contain the information, say you don\'t have it and offer to look it up.',
     '- Do NOT invent, guess, or fabricate content. If you are unsure what a file contains, say so honestly rather than guessing from the title.',
     '- NEVER say a file is "too large to read" — all files are indexed and searchable. Use the retrieved context or search_knowledge.',
+    '- For canonical workspace memory under `.parallx/memory/`, prefer `memory_search` to find relevant notes and `memory_get` to read a specific memory layer.',
     '- NEVER describe function calls, tool names, or JSON objects in your response. Use tools silently — the user only sees the final answer.',
     '- You can read workspace content but CANNOT create, modify, or delete anything in Ask mode.',
     '- If the user\'s message is short or vague, interpret it generously — but ground your answer in actual retrieved content, not guesses.',
@@ -174,6 +176,7 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     '',
     'CONTEXT:',
     '- The content of the currently open page (if any) is included in the user\'s message automatically.',
+    '- Canonical workspace memory lives in `.parallx/memory/`: use `.parallx/memory/MEMORY.md` for durable memory and `.parallx/memory/YYYY-MM-DD.md` for daily notes when you need to read or update explicit memory.',
   );
   if (ctx.isRAGAvailable) {
     lines.push(
@@ -195,6 +198,7 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     '- ONLY state facts that come from: (1) [Retrieved Context] in the user message, (2) tool results, or (3) the conversation history. If none of these contain the information, say you don\'t have it and offer to look it up.',
     '- Do NOT invent, guess, or fabricate content. If you are unsure what a file contains, say so honestly rather than guessing from the title.',
     '- NEVER say a file is "too large to read" — all files are indexed and searchable. Use the retrieved context or search_knowledge.',
+    '- For canonical workspace memory under `.parallx/memory/`, prefer `memory_search` to find relevant notes and `memory_get` to read a specific memory layer.',
     '- NEVER describe function calls, tool names, or JSON objects in your response. Use tools silently — the user only sees the final answer.',
     '- Read-only tools (search, read, list) can be used freely. Write tools (create, update, delete) require user confirmation.',
     '- If a tool call fails, try alternatives before reporting failure.',

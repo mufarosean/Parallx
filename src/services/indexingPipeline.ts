@@ -846,8 +846,12 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
 
       if (entry.type === FileType.Directory) {
+        if (relativePath === '.parallx' && entry.name !== 'memory') {
+          continue;
+        }
+
         // Skip hidden directories by default (same as prior behavior)
-        if (entry.name.startsWith('.')) {
+        if (entry.name.startsWith('.') && relPath !== '.parallx') {
           continue;
         }
         // Check .parallxignore patterns (replaces hardcoded SKIP_DIRS)

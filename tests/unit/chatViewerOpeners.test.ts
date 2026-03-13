@@ -71,4 +71,21 @@ describe('chat viewer openers', () => {
       { pinned: false },
     );
   });
+
+  it('prefers opening the canonical markdown file for a session summary', async () => {
+    const openFileEditor = vi.fn().mockResolvedValue(undefined);
+    const workspaceMemoryService = {
+      findSessionSummaryRelativePath: vi.fn().mockResolvedValue('.parallx/memory/2026-03-12.md'),
+    } as any;
+
+    await openChatMemoryViewer({
+      sessionId: 'session-1',
+      workspaceMemoryService,
+      workspaceFolders: [{ uri: { fsPath: 'D:/AI/Parallx/demo-workspace' } }],
+      openFileEditor,
+    });
+
+    expect(openFileEditor).toHaveBeenCalledWith('D:/AI/Parallx/demo-workspace/.parallx/memory/2026-03-12.md', { pinned: false });
+    expect(ReadonlyMarkdownInput.create).not.toHaveBeenCalled();
+  });
 });

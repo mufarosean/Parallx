@@ -20,11 +20,16 @@ import {
   IAgentSessionService,
   IAgentTaskStore,
   IAgentTraceService,
+  ICanonicalMemorySearchService,
+  IIndexingPipelineService,
+  IMemoryService,
+  IRetrievalService,
   IUnifiedAIConfigService,
   ILayoutService,
   IViewService,
   IWorkspaceService,
   IWorkspaceBoundaryService,
+  IWorkspaceMemoryService,
   INotificationService,
   IFileService,
 } from '../services/serviceTypes.js';
@@ -33,6 +38,8 @@ import { LayoutService } from '../services/layoutService.js';
 import { ViewService } from '../services/viewService.js';
 import { WorkspaceService } from '../services/workspaceService.js';
 import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
+import { WorkspaceMemoryService } from '../services/workspaceMemoryService.js';
+import { CanonicalMemorySearchService } from '../services/canonicalMemorySearchService.js';
 import { AgentPolicyService } from '../services/agentPolicyService.js';
 import { AgentExecutionService } from '../services/agentExecutionService.js';
 import { AgentMemoryService } from '../services/agentMemoryService.js';
@@ -125,6 +132,67 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
   });
   disposables.push(workspaceBoundaryService);
   services.registerInstance(IWorkspaceBoundaryService, workspaceBoundaryService);
+
+  if (services.has(IFileService)) {
+    const workspaceMemoryService = new WorkspaceMemoryService(services.get(IFileService), workspaceService);
+    disposables.push(workspaceMemoryService);
+    services.registerInstance(IWorkspaceMemoryService, workspaceMemoryService);
+    workspaceMemoryService.ensureScaffold().catch((err) => {
+      console.warn('[Workbench] Failed to seed workspace memory scaffold:', err);
+    });
+  }
+
+  if (services.has(IRetrievalService) && services.has(IIndexingPipelineService) && services.has(IWorkspaceMemoryService)) {
+    const canonicalMemorySearchService = new CanonicalMemorySearchService(
+      services.get(IRetrievalService),
+      services.get(IIndexingPipelineService),
+      services.get(IWorkspaceMemoryService),
+    );
+    disposables.push(canonicalMemorySearchService);
+    services.registerInstance(ICanonicalMemorySearchService, canonicalMemorySearchService);
+  }
+
+  if (services.has(IWorkspaceMemoryService) && services.has(IMemoryService)) {
+    const workspaceMemoryService = services.get(IWorkspaceMemoryService);
+    const memoryService = services.get(IMemoryService);
+    workspaceMemoryService.importLegacySnapshot({
+      memories: [],
+      preferences: [],
+      concepts: [],
+    }).then(async (result) => {
+      if (result.reason === 'already-imported') {
+        return;
+      }
+
+      const [memories, preferences, concepts] = await Promise.all([
+        memoryService.getAllMemories().catch(() => []),
+        memoryService.getPreferences().catch(() => []),
+        memoryService.getAllConcepts().catch(() => []),
+      ]);
+
+      return workspaceMemoryService.importLegacySnapshot({
+        memories: memories.map((memory) => ({
+          sessionId: memory.sessionId,
+          createdAt: memory.createdAt,
+          messageCount: memory.messageCount,
+          summary: memory.summary,
+        })),
+        preferences: preferences.map((preference) => ({
+          key: preference.key,
+          value: preference.value,
+        })),
+        concepts: concepts.map((concept) => ({
+          concept: concept.concept,
+          category: concept.category,
+          summary: concept.summary,
+          encounterCount: concept.encounterCount,
+          masteryLevel: concept.masteryLevel,
+        })),
+      });
+    }).catch((err) => {
+      console.warn('[Workbench] Failed to import legacy memory snapshot:', err);
+    });
+  }
 
   const unifiedConfigService = services.has(IUnifiedAIConfigService)
     ? services.get(IUnifiedAIConfigService)

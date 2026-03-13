@@ -43,7 +43,7 @@ import {
 
 import type { Event } from '../../../platform/events.js';
 
-import type { IAgentApprovalService, IAgentExecutionService, IAgentSessionService, IAgentTraceService, IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager } from '../../../services/serviceTypes.js';
+import type { IAgentApprovalService, IAgentExecutionService, IAgentSessionService, IAgentTraceService, ICanonicalMemorySearchService, IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager, IWorkspaceMemoryService } from '../../../services/serviceTypes.js';
 import type { IAISettingsService } from '../../../aiSettings/aiSettingsTypes.js';
 import type { IUnifiedAIConfigService } from '../../../aiSettings/unifiedConfigTypes.js';
 import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageModelToolsService } from '../../../services/chatTypes.js';
@@ -52,6 +52,7 @@ import type { PromptFileService } from '../../../services/promptFileService.js';
 import type { ChatWidget } from '../widgets/chatWidget.js';
 import type { IWorkspaceSessionContext } from '../../../workspace/workspaceSessionContext.js';
 import type { RetrievalTrace } from '../../../services/retrievalService.js';
+import { detectPreferences, formatConceptContextBlock } from '../../../services/memoryService.js';
 
 import { extractTextContent } from '../tools/builtInTools.js';
 import { buildChatAgentTaskWidgetServices } from '../utilities/chatAgentTaskWidgetAdapter.js';
@@ -86,6 +87,8 @@ export interface ChatDataServiceDeps {
   readonly retrievalService: IRetrievalService | undefined;
   readonly indexingPipelineService: IIndexingPipelineService | undefined;
   readonly memoryService: IMemoryService | undefined;
+  readonly workspaceMemoryService?: IWorkspaceMemoryService;
+  readonly canonicalMemorySearchService?: ICanonicalMemorySearchService;
   readonly languageModelsService: ILanguageModelsService;
   readonly languageModelToolsService: ILanguageModelToolsService | undefined;
   readonly chatService: IChatService;
@@ -156,6 +159,20 @@ export interface IChatTestDebugSnapshot {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_FILE_READ_BYTES = 50 * 1024; // 50 KB per spec
+
+function normalizeWorkspaceRelativePath(relativePath: string): string {
+  const normalized = relativePath.replace(/\\/g, '/');
+  if (normalized === '.' || normalized === './' || normalized === '') {
+    return '.';
+  }
+  if (normalized.startsWith('./')) {
+    return normalized.slice(2);
+  }
+  if (normalized.startsWith('/')) {
+    return normalized.slice(1);
+  }
+  return normalized;
+}
 
 /**
  * Extract the canvas page UUID from an editor input ID.
@@ -293,6 +310,32 @@ function scoreSessionForRecallQuery(session: IChatSession, query: string): numbe
   return score;
 }
 
+function formatCanonicalMemoryContext(items: Array<{ label: string; content: string }>): string | undefined {
+  const cleanedItems = items
+    .map((item) => ({
+      label: item.label,
+      content: item.content.replace(/\r\n/g, '\n').trim(),
+    }))
+    .filter((item) => item.content.length > 0);
+
+  if (cleanedItems.length === 0) {
+    return undefined;
+  }
+
+  const lines: string[] = ['[Conversation Memory]'];
+  for (const item of cleanedItems) {
+    lines.push('---');
+    lines.push(item.label);
+    lines.push(item.content);
+  }
+  return lines.join('\n');
+}
+
+function extractDailyDateLabel(path: string): string | undefined {
+  const match = /\.parallx\/memory\/(\d{4}-\d{2}-\d{2})\.md$/i.exec(path);
+  return match?.[1];
+}
+
 function walkContentNode(node: unknown, texts: string[]): void {
   if (!node || typeof node !== 'object') { return; }
   const n = node as Record<string, unknown>;
@@ -347,7 +390,7 @@ export function buildFileSystemAccessor(
 
   function resolveUri(relativePath: string): import('../../../platform/uri.js').URI {
     const rootUri = getRootUri();
-    const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+    const clean = normalizeWorkspaceRelativePath(relativePath);
     if (!clean || clean === '.') { return rootUri; }
 
     // Detect absolute paths — if the path starts with a drive letter (C:/) or
@@ -685,22 +728,68 @@ export class ChatDataService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async recallMemories(query: string, sessionId?: string): Promise<string | undefined> {
-    if (!this._d.memoryService) { return undefined; }
     try {
       const normalizedQuery = query.toLowerCase().replace(/[’']/g, ' ');
       const asksForPriorConversationRecall = /(last|previous|prior)\s+(conversation|chat|session)|what\s+do\s+you\s+remember|remember\s+about\s+(?:my|our)\s+(?:last|previous|prior)|recall\s+(?:my|our)\s+(?:last|previous|prior)/i.test(normalizedQuery);
 
-      if (asksForPriorConversationRecall) {
-        const currentSession = sessionId ? this._d.chatService.getSession(sessionId) : undefined;
-        const recentSession = this._d.chatService.getSessions()
-          .filter((session) => session.messages.length > 0 && session.id !== sessionId)
-          .filter((session) => !currentSession || session.createdAt < currentSession.createdAt)
-          .map((session) => ({ session, score: scoreSessionForRecallQuery(session, query) }))
-          .filter(({ session }) => session.messages.some((pair) => pair.request.text.trim().toLowerCase() !== query.trim().toLowerCase()))
-          .sort((a, b) => b.score - a.score || b.session.createdAt - a.session.createdAt)[0]?.session;
-        if (recentSession) {
-          return buildRecentSessionRecallSummary(recentSession);
+      if (this._d.canonicalMemorySearchService) {
+        const memoryResults = await this._d.canonicalMemorySearchService.search(query);
+        if (memoryResults.length > 0) {
+          const formatted = formatCanonicalMemoryContext(
+            memoryResults.slice(0, 3).map((result) => ({
+              label: result.layer === 'durable'
+                ? 'Durable memory:'
+                : `Daily memory (${extractDailyDateLabel(result.sourceId) ?? result.sourceId}):`,
+              content: result.text,
+            })),
+          );
+          if (formatted) {
+            return formatted;
+          }
         }
+      }
+
+      if (asksForPriorConversationRecall && this._d.fsAccessor) {
+        try {
+          const directItems: Array<{ label: string; content: string }> = [];
+
+          const durablePath = this._d.workspaceMemoryService?.getDurableMemoryRelativePath() ?? '.parallx/memory/MEMORY.md';
+          const durableExists = await this._d.fsAccessor.exists(durablePath).catch(() => false);
+          if (durableExists) {
+            const durableContent = await this._d.fsAccessor.readFile(durablePath);
+            if (durableContent.trim()) {
+              directItems.push({
+                label: 'Durable memory:',
+                content: durableContent,
+              });
+            }
+          }
+
+          const memoryEntries = await this._d.fsAccessor.readdir('.parallx/memory');
+          const latestDaily = memoryEntries
+            .filter((entry) => entry.type === 'file' && /^\d{4}-\d{2}-\d{2}\.md$/i.test(entry.name))
+            .sort((a, b) => b.name.localeCompare(a.name))[0];
+          if (latestDaily) {
+            const dailyContent = await this._d.fsAccessor.readFile(`.parallx/memory/${latestDaily.name}`);
+            if (dailyContent.trim()) {
+              directItems.push({
+                label: `Daily memory (${latestDaily.name.replace(/\.md$/i, '')}):`,
+                content: dailyContent,
+              });
+            }
+          }
+
+          const formatted = formatCanonicalMemoryContext(directItems);
+            if (formatted) {
+              return formatted;
+            }
+        } catch {
+          // best-effort fallback only
+        }
+      }
+
+      if (this._d.workspaceMemoryService || !this._d.memoryService) {
+        return undefined;
       }
 
       let memories = await this._d.memoryService.recallMemories(query);
@@ -716,6 +805,14 @@ export class ChatDataService {
   }
 
   async storeSessionMemory(sessionId: string, summary: string, messageCount: number): Promise<void> {
+    if (this._d.workspaceMemoryService) {
+      try {
+        await this._d.workspaceMemoryService.appendSessionSummary(sessionId, summary, messageCount);
+        return;
+      } catch {
+        // best-effort canonical write-back
+      }
+    }
     if (!this._d.memoryService) { return; }
     try { await this._d.memoryService.storeMemory(sessionId, summary, messageCount); } catch { /* best-effort */ }
   }
@@ -727,6 +824,22 @@ export class ChatDataService {
     concepts: Array<{ concept: string; category: string; summary: string; struggled: boolean }>,
     sessionId: string,
   ): Promise<void> {
+    if (this._d.workspaceMemoryService) {
+      try {
+        await this._d.workspaceMemoryService.upsertConcepts(concepts.map((c) => ({
+          concept: c.concept,
+          category: c.category,
+          summary: c.summary,
+          encounterCount: 1,
+          masteryLevel: c.struggled ? 0 : 0.1,
+          struggleCount: c.struggled ? 1 : 0,
+        })));
+        return;
+      } catch {
+        // fall through to legacy fallback only if canonical upsert fails
+      }
+    }
+
     if (!this._d.memoryService) { return; }
     try {
       const mapped = concepts.map((c) => ({
@@ -751,6 +864,31 @@ export class ChatDataService {
    * Returns formatted context string or undefined.
    */
   async recallConcepts(query: string): Promise<string | undefined> {
+    if (this._d.workspaceMemoryService) {
+      try {
+        const concepts = await this._d.workspaceMemoryService.searchConcepts(query);
+        if (!concepts.length) { return undefined; }
+        const now = new Date().toISOString();
+        const formatted = formatConceptContextBlock(concepts.map((concept, index) => ({
+          id: index + 1,
+          concept: concept.concept,
+          category: concept.category,
+          summary: concept.summary,
+          masteryLevel: concept.masteryLevel,
+          encounterCount: concept.encounterCount,
+          struggleCount: concept.struggleCount,
+          firstSeen: now,
+          lastSeen: now,
+          lastAccessed: now,
+          sourceSessions: '[]',
+          decayScore: 1,
+        })));
+        return formatted || undefined;
+      } catch {
+        // fall through to legacy fallback only if canonical search fails
+      }
+    }
+
     if (!this._d.memoryService) { return undefined; }
     try {
       const concepts = await this._d.memoryService.recallConcepts(query);
@@ -765,6 +903,9 @@ export class ChatDataService {
   }
 
   async hasSessionMemory(sessionId: string): Promise<boolean> {
+    if (this._d.workspaceMemoryService) {
+      try { return await this._d.workspaceMemoryService.hasSessionSummary(sessionId); } catch { return false; }
+    }
     if (!this._d.memoryService) { return false; }
     try { return await this._d.memoryService.hasMemory(sessionId); } catch { return false; }
   }
@@ -774,18 +915,40 @@ export class ChatDataService {
    * Returns `null` if no memory exists (M17 Task 1.1.3).
    */
   async getSessionMemoryMessageCount(sessionId: string): Promise<number | null> {
+    if (this._d.workspaceMemoryService) {
+      try { return await this._d.workspaceMemoryService.getSessionSummaryMessageCount(sessionId); } catch { return null; }
+    }
     if (!this._d.memoryService) { return null; }
     try { return await this._d.memoryService.getMemoryMessageCount(sessionId); } catch { return null; }
   }
 
   async extractPreferences(text: string): Promise<void> {
+    if (this._d.workspaceMemoryService) {
+      try {
+        const extracted = detectPreferences(text);
+        if (extracted.length > 0) {
+          await this._d.workspaceMemoryService.upsertPreferences(extracted);
+        }
+        return;
+      } catch {
+        // fall through to legacy fallback only if canonical upsert fails
+      }
+    }
+
     if (!this._d.memoryService) { return; }
-    try { await this._d.memoryService.extractAndStorePreferences(text); } catch { /* best-effort */ }
+    try {
+      await this._d.memoryService.extractAndStorePreferences(text);
+    } catch { /* best-effort */ }
   }
 
   async getPreferencesForPrompt(): Promise<string | undefined> {
-    if (!this._d.memoryService) { return undefined; }
     try {
+      if (this._d.workspaceMemoryService) {
+        const promptBlock = await this._d.workspaceMemoryService.getPreferencesPromptBlock();
+        return promptBlock;
+      }
+
+      if (!this._d.memoryService) { return undefined; }
       const prefs = await this._d.memoryService.getPreferences();
       if (prefs.length === 0) { return undefined; }
       return this._d.memoryService.formatPreferencesForPrompt(prefs);
@@ -835,7 +998,7 @@ export class ChatDataService {
   async writeFileRelative(relativePath: string, content: string): Promise<void> {
     if (!this._d.fileService || !this._d.workspaceService?.folders?.length) { return; }
     const rootUri = this._d.workspaceService.folders[0].uri;
-    const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+    const clean = normalizeWorkspaceRelativePath(relativePath);
     const targetUri = rootUri.joinPath(clean);
 
     // Ensure parent directory exists
@@ -1241,15 +1404,15 @@ export class ChatDataService {
       retrieveContext: this._d.retrievalService
         ? (q) => this.retrieveContext(q) as Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>
         : undefined,
-      recallMemories: this._d.memoryService ? (q, s) => this.recallMemories(q, s) : undefined,
-      storeSessionMemory: this._d.memoryService ? (s, su, m) => this.storeSessionMemory(s, su, m) : undefined,
+      recallMemories: (this._d.memoryService || this._d.workspaceMemoryService) ? (q, s) => this.recallMemories(q, s) : undefined,
+      storeSessionMemory: (this._d.memoryService || this._d.workspaceMemoryService) ? (s, su, m) => this.storeSessionMemory(s, su, m) : undefined,
       storeConceptsFromSession: this._d.memoryService ? (c, s) => this.storeConceptsFromSession(c, s) : undefined,
       recallConcepts: this._d.memoryService ? (q) => this.recallConcepts(q) : undefined,
       isSessionEligibleForSummary: this._d.memoryService ? (m) => this.isSessionEligibleForSummary(m) : undefined,
       hasSessionMemory: this._d.memoryService ? (s) => this.hasSessionMemory(s) : undefined,
       getSessionMemoryMessageCount: this._d.memoryService ? (s) => this.getSessionMemoryMessageCount(s) : undefined,
-      extractPreferences: this._d.memoryService ? (t) => this.extractPreferences(t) : undefined,
-      getPreferencesForPrompt: this._d.memoryService ? () => this.getPreferencesForPrompt() : undefined,
+      extractPreferences: (this._d.memoryService || this._d.workspaceMemoryService) ? (t) => this.extractPreferences(t) : undefined,
+      getPreferencesForPrompt: (this._d.memoryService || this._d.workspaceMemoryService) ? () => this.getPreferencesForPrompt() : undefined,
       getPromptOverlay: this._d.promptFileService ? (a) => this.getPromptOverlay(a) : undefined,
       listFilesRelative: this._d.fsAccessor ? (r) => this.listFilesRelative(r) : undefined,
       readFileRelative: this._d.fsAccessor ? (r) => this.readFileRelative(r) : undefined,
@@ -1348,12 +1511,15 @@ export class ChatDataService {
       openPage: this._d.openPage
         ? (pageId: string) => { this._d.openPage!(pageId); }
         : undefined,
-      openMemory: (this._d.memoryService && this._d.editorService)
+      openMemory: ((this._d.workspaceMemoryService && this._d.openFileEditor) || (this._d.memoryService && this._d.editorService))
         ? (sessionId: string) => {
             void openChatMemoryViewer({
               sessionId,
+              workspaceMemoryService: this._d.workspaceMemoryService,
               memoryService: this._d.memoryService,
               editorService: this._d.editorService,
+              workspaceFolders: this._d.workspaceService?.folders,
+              openFileEditor: this._d.openFileEditor,
             });
           }
         : undefined,

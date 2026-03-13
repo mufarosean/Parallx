@@ -471,6 +471,119 @@ describe('IndexingPipelineService', () => {
       expect(fileService.readFile).toHaveBeenCalledTimes(2);
       expect(chunkingService.chunkFile).toHaveBeenCalledTimes(1);
     });
+
+    it('indexes canonical .parallx/memory files while skipping other .parallx internals', async () => {
+      db.all.mockResolvedValueOnce([]);
+
+      fileService.readdir.mockImplementation(async (uri: URI) => {
+        if (uri.fsPath === '/workspace') {
+          return [
+            { name: '.parallx', uri: URI.file('/workspace/.parallx'), type: FileType.Directory, size: 0, mtime: 0 },
+          ];
+        }
+        if (uri.fsPath === '/workspace/.parallx') {
+          return [
+            { name: 'memory', uri: URI.file('/workspace/.parallx/memory'), type: FileType.Directory, size: 0, mtime: 0 },
+            { name: 'ai-config.json', uri: URI.file('/workspace/.parallx/ai-config.json'), type: FileType.File, size: 50, mtime: 0 },
+          ];
+        }
+        if (uri.fsPath === '/workspace/.parallx/memory') {
+          return [
+            { name: 'MEMORY.md', uri: URI.file('/workspace/.parallx/memory/MEMORY.md'), type: FileType.File, size: 80, mtime: 0 },
+            { name: '2026-03-12.md', uri: URI.file('/workspace/.parallx/memory/2026-03-12.md'), type: FileType.File, size: 80, mtime: 0 },
+          ];
+        }
+        return [];
+      });
+
+      fileService.readFile.mockImplementation(async (uri: URI) => {
+        if (uri.fsPath.endsWith('/.parallxignore')) {
+          return { content: '', encoding: 'utf-8', size: 0, mtime: 0 };
+        }
+        if (uri.fsPath.endsWith('/.parallx/memory/MEMORY.md')) {
+          return { content: '# Durable Memory\n\nPreference', encoding: 'utf-8', size: 30, mtime: 0 };
+        }
+        if (uri.fsPath.endsWith('/.parallx/memory/2026-03-12.md')) {
+          return { content: '# 2026-03-12\n\nDaily note', encoding: 'utf-8', size: 25, mtime: 0 };
+        }
+        throw new Error(`Unexpected readFile path: ${uri.fsPath}`);
+      });
+
+      await pipeline.start();
+
+      expect(chunkingService.chunkFile).toHaveBeenCalledWith('.parallx/memory/MEMORY.md', '# Durable Memory\n\nPreference', 'markdown');
+      expect(chunkingService.chunkFile).toHaveBeenCalledWith('.parallx/memory/2026-03-12.md', '# 2026-03-12\n\nDaily note', 'markdown');
+      expect(chunkingService.chunkFile).not.toHaveBeenCalledWith('.parallx/ai-config.json', expect.anything(), expect.anything());
+    });
+
+    it('rebuilds canonical memory index from markdown files when derived vector data is empty', async () => {
+      const configureCanonicalMemoryFiles = (targetFileService: ReturnType<typeof createMockFileService>) => {
+        targetFileService.readdir.mockImplementation(async (uri: URI) => {
+          if (uri.fsPath === '/workspace') {
+            return [
+              { name: '.parallx', uri: URI.file('/workspace/.parallx'), type: FileType.Directory, size: 0, mtime: 0 },
+            ];
+          }
+          if (uri.fsPath === '/workspace/.parallx') {
+            return [
+              { name: 'memory', uri: URI.file('/workspace/.parallx/memory'), type: FileType.Directory, size: 0, mtime: 0 },
+            ];
+          }
+          if (uri.fsPath === '/workspace/.parallx/memory') {
+            return [
+              { name: 'MEMORY.md', uri: URI.file('/workspace/.parallx/memory/MEMORY.md'), type: FileType.File, size: 80, mtime: 0 },
+            ];
+          }
+          return [];
+        });
+
+        targetFileService.readFile.mockImplementation(async (uri: URI) => {
+          if (uri.fsPath.endsWith('/.parallxignore')) {
+            return { content: '', encoding: 'utf-8', size: 0, mtime: 0 };
+          }
+          if (uri.fsPath.endsWith('/.parallx/memory/MEMORY.md')) {
+            return { content: '# Durable Memory\n\nRebuildable memory', encoding: 'utf-8', size: 36, mtime: 0 };
+          }
+          throw new Error(`Unexpected readFile path: ${uri.fsPath}`);
+        });
+      };
+
+      configureCanonicalMemoryFiles(fileService);
+      await pipeline.start();
+      expect(vectorStore.upsert).toHaveBeenCalledWith(
+        'file_chunk',
+        '.parallx/memory/MEMORY.md',
+        expect.any(Array),
+        expect.any(String),
+        expect.any(String),
+        expect.any(Object),
+      );
+
+      const rebuiltVectorStore = createMockVectorStore();
+      const rebuiltFileService = createMockFileService();
+      configureCanonicalMemoryFiles(rebuiltFileService);
+      const rebuiltPipeline = new IndexingPipelineService(
+        db as any,
+        rebuiltFileService as any,
+        embeddingService as any,
+        chunkingService as any,
+        rebuiltVectorStore as any,
+        workspaceService as any,
+      );
+
+      await rebuiltPipeline.start();
+
+      expect(rebuiltVectorStore.upsert).toHaveBeenCalledWith(
+        'file_chunk',
+        '.parallx/memory/MEMORY.md',
+        expect.any(Array),
+        expect.any(String),
+        expect.any(String),
+        expect.any(Object),
+      );
+
+      rebuiltPipeline.dispose();
+    });
   });
 
   describe('reindexPage()', () => {

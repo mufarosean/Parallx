@@ -14,12 +14,17 @@ import {
   registerBuiltInTools,
   extractTextContent,
 } from '../../src/built-in/chat/tools/builtInTools';
+import { buildFileSystemAccessor } from '../../src/built-in/chat/data/chatDataService';
 import type { IBuiltInToolDatabase } from '../../src/built-in/chat/tools/builtInTools';
 import type {
   ILanguageModelToolsService,
   IChatTool,
   ICancellationToken,
 } from '../../src/services/chatTypes';
+import { WorkspaceService } from '../../src/services/workspaceService';
+import { Workspace } from '../../src/workspace/workspace';
+import { Emitter } from '../../src/platform/events';
+import { URI } from '../../src/platform/uri';
 
 // ── Fake content ──
 
@@ -135,6 +140,26 @@ function getTool(name: string, toolsService: ReturnType<typeof createMockToolsSe
   return tool;
 }
 
+function createWorkspaceService(rootPath: string): WorkspaceService {
+  const workspace = Workspace.create('Test Workspace');
+  workspace.addFolder(URI.file(rootPath), 'workspace');
+  const onDidSwitchWorkspace = new Emitter<Workspace>();
+  const service = new WorkspaceService();
+  service.setHost({
+    workspace,
+    _workspaceSaver: {
+      save: async () => {},
+      requestSave: () => {},
+    },
+    createWorkspace: async () => workspace,
+    switchWorkspace: async () => {},
+    getRecentWorkspaces: async () => [],
+    removeRecentWorkspace: async () => {},
+    onDidSwitchWorkspace: onDidSwitchWorkspace.event,
+  });
+  return service;
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // 1. extractCanvasPageId
 // ──────────────────────────────────────────────────────────────────────────────
@@ -180,6 +205,26 @@ describe('extractCanvasPageId (logic verification)', () => {
 
   it('returns undefined for IDs with wrong namespace', () => {
     expect(extractCanvasPageId('parallx.canvas:text:file-id')).toBeUndefined();
+  });
+});
+
+describe('buildFileSystemAccessor hidden path handling', () => {
+  it('preserves leading dot for .parallx paths', async () => {
+    const fileService = {
+      readdir: vi.fn(async () => []),
+      readFile: vi.fn(async () => ({ content: 'ok', encoding: 'utf8', size: 2, mtime: 0 })),
+      stat: vi.fn(async (uri: URI) => ({ size: 2, uri })),
+      exists: vi.fn(async () => true),
+      isRichDocument: vi.fn(() => false),
+      readDocumentText: vi.fn(async () => ({ text: 'ok', format: 'text' })),
+    } as any;
+    const workspaceService = createWorkspaceService('D:/AI/Parallx/demo-workspace');
+    const accessor = buildFileSystemAccessor(fileService, workspaceService)!;
+
+    await accessor.exists('.parallx/memory/MEMORY.md');
+
+    const calledUri = fileService.exists.mock.calls[0][0] as URI;
+    expect(calledUri.fsPath).toBe('D:/AI/Parallx/demo-workspace/.parallx/memory/MEMORY.md');
   });
 });
 

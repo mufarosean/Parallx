@@ -152,6 +152,108 @@ export interface IWorkspaceService extends IDisposable {
 
 export const IWorkspaceService = createServiceIdentifier<IWorkspaceService>('IWorkspaceService');
 
+// ─── IWorkspaceMemoryService ───────────────────────────────────────────────
+
+export interface IWorkspaceMemoryService extends IDisposable {
+  /** Canonical workspace memory root: .parallx/memory */
+  readonly memoryRoot: URI | undefined;
+
+  /** Canonical durable memory file: .parallx/memory/MEMORY.md */
+  readonly durableMemoryUri: URI | undefined;
+
+  /** Canonical daily log file: .parallx/memory/YYYY-MM-DD.md */
+  getDailyMemoryUri(date?: Date): URI | undefined;
+
+  /** Relative path for today's daily memory log. */
+  getDailyMemoryRelativePath(date?: Date): string;
+
+  /** Relative path for durable memory. */
+  getDurableMemoryRelativePath(): string;
+
+  /** Ensure canonical memory directories and seed files exist. */
+  ensureScaffold(): Promise<void>;
+
+  /** Read the durable memory markdown file. */
+  readDurableMemory(): Promise<string>;
+
+  /** Overwrite the durable memory markdown file. */
+  writeDurableMemory(content: string): Promise<void>;
+
+  /** Read the daily memory markdown file for a date. */
+  readDailyMemory(date?: Date): Promise<string>;
+
+  /** Append a note to the daily memory markdown file for a date. */
+  appendDailyMemory(text: string, date?: Date): Promise<void>;
+
+  /** Append a structured session summary block to the daily memory file. */
+  appendSessionSummary(sessionId: string, summary: string, messageCount: number, date?: Date): Promise<void>;
+
+  /** Sync the durable preferences section in MEMORY.md from canonical preference records. */
+  syncPreferences(preferences: Array<{ key: string; value: string }>): Promise<void>;
+
+  /** Read canonical durable preferences as key-value pairs. */
+  readPreferences(): Promise<Array<{ key: string; value: string }>>;
+
+  /** Merge preference records into canonical durable memory. */
+  upsertPreferences(preferences: Array<{ key: string; value: string }>): Promise<void>;
+
+  /** Sync legacy/imported learning concepts into a durable markdown section. */
+  syncConcepts(concepts: Array<{ concept: string; category: string; summary: string; encounterCount?: number; masteryLevel?: number }>): Promise<void>;
+
+  /** Read canonical durable concepts. */
+  readConcepts(): Promise<Array<{ concept: string; category: string; summary: string; encounterCount: number; masteryLevel: number; struggleCount: number }>>;
+
+  /** Merge concept records into canonical durable memory. */
+  upsertConcepts(concepts: Array<{ concept: string; category: string; summary: string; encounterCount?: number; masteryLevel?: number; struggleCount?: number }>): Promise<void>;
+
+  /** Search canonical durable concepts with simple workspace-local ranking. */
+  searchConcepts(query: string, topK?: number): Promise<Array<{ concept: string; category: string; summary: string; encounterCount: number; masteryLevel: number; struggleCount: number }>>;
+
+  /** Read a prompt-ready preferences block from canonical durable memory. */
+  getPreferencesPromptBlock(): Promise<string | undefined>;
+
+  /** Resolve the canonical markdown file containing a stored session summary, if present. */
+  findSessionSummaryRelativePath(sessionId: string): Promise<string | undefined>;
+
+  /** Whether a canonical daily log already contains a summary block for the session. */
+  hasSessionSummary(sessionId: string): Promise<boolean>;
+
+  /** Read the canonical message count stored for a session summary, if present. */
+  getSessionSummaryMessageCount(sessionId: string): Promise<number | null>;
+
+  /** Import legacy DB-backed memory snapshot into canonical markdown files once. */
+  importLegacySnapshot(snapshot: {
+    memories: Array<{ sessionId: string; createdAt: string; messageCount: number; summary: string }>;
+    preferences: Array<{ key: string; value: string }>;
+    concepts: Array<{ concept: string; category: string; summary: string; encounterCount?: number; masteryLevel?: number }>;
+  }): Promise<{ imported: boolean; reason: 'imported' | 'already-imported' | 'empty-snapshot' }>;
+}
+
+export const IWorkspaceMemoryService = createServiceIdentifier<IWorkspaceMemoryService>('IWorkspaceMemoryService');
+
+// ─── ICanonicalMemorySearchService ────────────────────────────────────────
+
+export interface ICanonicalMemorySearchResult {
+  readonly sourceId: string;
+  readonly contextPrefix: string;
+  readonly text: string;
+  readonly score: number;
+  readonly layer: 'durable' | 'daily';
+}
+
+export interface ICanonicalMemorySearchService extends IDisposable {
+  /** Whether canonical memory search can currently serve indexed results. */
+  isReady(): boolean;
+
+  /** Search canonical workspace memory only, independent of generic file retrieval. */
+  search(
+    query: string,
+    options?: { layer?: 'all' | 'durable' | 'daily'; date?: string; topK?: number },
+  ): Promise<ICanonicalMemorySearchResult[]>;
+}
+
+export const ICanonicalMemorySearchService = createServiceIdentifier<ICanonicalMemorySearchService>('ICanonicalMemorySearchService');
+
 // ─── IWorkspaceBoundaryService ───────────────────────────────────────────────
 
 import type { URI } from '../platform/uri.js';

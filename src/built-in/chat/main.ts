@@ -32,7 +32,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentSessionService, IAgentTraceService, IVectorStoreService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentSessionService, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -83,6 +83,20 @@ interface ParallxApi {
     openEditor(options: { typeId: string; title: string; icon?: string; instanceId?: string }): Promise<void>;
     openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
   };
+}
+
+function normalizeWorkspaceRelativePath(relativePath: string): string {
+  const normalized = relativePath.replace(/\\/g, '/');
+  if (normalized === '.' || normalized === './' || normalized === '') {
+    return '.';
+  }
+  if (normalized.startsWith('./')) {
+    return normalized.slice(2);
+  }
+  if (normalized.startsWith('/')) {
+    return normalized.slice(1);
+  }
+  return normalized;
 }
 
 type TestAgentPlanStepSeed = Omit<AgentPlanStepInput, 'taskId' | 'proposedAction'> & {
@@ -325,6 +339,12 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     retrievalService,
     indexingPipelineService,
     memoryService,
+    workspaceMemoryService: api.services.has(IWorkspaceMemoryService)
+      ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceMemoryService>(IWorkspaceMemoryService)
+      : undefined,
+    canonicalMemorySearchService: api.services.has(ICanonicalMemorySearchService)
+      ? api.services.get<import('../../services/serviceTypes.js').ICanonicalMemorySearchService>(ICanonicalMemorySearchService)
+      : undefined,
     languageModelsService,
     languageModelToolsService,
     chatService,
@@ -577,6 +597,17 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       }
       : undefined;
 
+    const canonicalMemorySearchAccessor = api.services.has(ICanonicalMemorySearchService)
+      ? (() => {
+          const canonicalMemorySearchService = api.services.get<import('../../services/serviceTypes.js').ICanonicalMemorySearchService>(ICanonicalMemorySearchService);
+          return {
+            isReady: () => canonicalMemorySearchService.isReady(),
+            search: (query: string, options?: { layer?: 'all' | 'durable' | 'daily'; date?: string }) =>
+              canonicalMemorySearchService.search(query, options),
+          };
+        })()
+      : undefined;
+
     // Build file writer accessor for write_file / edit_file tools (M11 Task 2.2 + 2.3)
     //
     // The writer accessor has two concerns:
@@ -616,7 +647,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
               throw new Error('No workspace folder is open — cannot write files');
             }
             const rootUri = folders[0].uri;
-            const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+            const clean = normalizeWorkspaceRelativePath(relativePath);
             const targetUri = rootUri.joinPath(clean);
 
             // Ensure parent directory exists
@@ -651,7 +682,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       };
     })();
 
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath);
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }
@@ -1024,7 +1055,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
               throw new Error('No workspace folder — cannot write config');
             }
             const rootUri = folders[0].uri;
-            const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+            const clean = normalizeWorkspaceRelativePath(relativePath);
             await fileService!.writeFile(rootUri.joinPath(clean), content);
           }
         : undefined,
@@ -1060,7 +1091,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
             throw new Error('No workspace folder is open — cannot write permissions');
           }
           const rootUri = folders[0].uri;
-          const clean = relativePath.replace(/\\/g, '/').replace(/^\.?\/?/, '');
+          const clean = normalizeWorkspaceRelativePath(relativePath);
           await fileService!.writeFile(rootUri.joinPath(clean), content);
         },
       });
