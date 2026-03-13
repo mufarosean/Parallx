@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMissingCitationFooter,
   extractToolCallsFromText,
+  selectAttributableCitations,
   stripToolNarration,
 } from '../../src/built-in/chat/utilities/chatResponseParsingHelpers';
 
@@ -228,6 +229,61 @@ describe('chat response parsing helpers', () => {
       );
 
       expect(footer).toBe('\n\nSources: [1] Claims Workflow Architecture.md');
+    });
+  });
+
+  describe('selectAttributableCitations', () => {
+    it('returns only explicitly cited sources in first-appearance order', () => {
+      const result = selectAttributableCitations(
+        'Use [7] for the overview and [4] for the claim details. [7]',
+        [
+          { index: 4, label: 'Claims Guide.md' },
+          { index: 7, label: 'Agent Contacts.md' },
+          { index: 9, label: 'Vehicle Info.md' },
+        ],
+      );
+
+      expect(result).toEqual([
+        { index: 7, label: 'Agent Contacts.md' },
+        { index: 4, label: 'Claims Guide.md' },
+      ]);
+    });
+
+    it('matches explicit source-name mentions when numeric markers are absent', () => {
+      const result = selectAttributableCitations(
+        'Recommended shops are listed in Agent Contacts.md and the workflow comes from Claims Workflow Architecture document.',
+        [
+          { index: 1, label: 'Claims Workflow Architecture.md' },
+          { index: 4, label: 'Agent Contacts.md' },
+          { index: 7, label: 'Vehicle Info.md' },
+        ],
+      );
+
+      expect(result).toEqual([
+        { index: 4, label: 'Agent Contacts.md' },
+        { index: 1, label: 'Claims Workflow Architecture.md' },
+      ]);
+    });
+
+    it('falls back to a single source candidate when only one source exists', () => {
+      const result = selectAttributableCitations(
+        'The answer is supported by the available material.',
+        [{ index: 3, label: 'Policy.md' }],
+      );
+
+      expect(result).toEqual([{ index: 3, label: 'Policy.md' }]);
+    });
+
+    it('returns no sources when multiple candidates exist without attributable references', () => {
+      const result = selectAttributableCitations(
+        'The answer is supported by the available material.',
+        [
+          { index: 3, label: 'Policy.md' },
+          { index: 5, label: 'Claims.md' },
+        ],
+      );
+
+      expect(result).toEqual([]);
     });
   });
 });

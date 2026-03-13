@@ -17,6 +17,10 @@ export interface IChatResponseValidatorDeps {
     markdown: string,
     citations: Array<{ index: number; label: string }>,
   ) => string;
+  readonly selectAttributableCitations: <T extends { index: number; label: string }>(
+    markdown: string,
+    citations: T[],
+  ) => T[];
   readonly applyFallbackAnswer: (phase: string, note: string) => void;
   readonly reportResponseDebug?: (debug: {
     phase: string;
@@ -113,15 +117,18 @@ export function validateAndFinalizeChatResponse(
           .reverse()
           .find((part) => part.kind === 'markdown' && typeof part.content === 'string')?.content ?? ''
         : options.response.getMarkdownText();
+      const attributableCitations = deps.selectAttributableCitations(lastMarkdownContent, citations);
       const citationFooter = deps.buildMissingCitationFooter(
         lastMarkdownContent,
-        citations.map(({ index, label }) => ({ index, label })),
+        attributableCitations.map(({ index, label }) => ({ index, label })),
       );
       if (citationFooter) {
         options.response.markdown(citationFooter);
       }
 
-      options.response.setCitations(citations);
+      if (attributableCitations.length > 0) {
+        options.response.setCitations(attributableCitations);
+      }
     }
   }
 

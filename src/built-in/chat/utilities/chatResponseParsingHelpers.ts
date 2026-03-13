@@ -115,6 +115,89 @@ export function buildMissingCitationFooter(
   return `\n\nSources: ${visibleSources.map((source) => `[${source.index}] ${source.label}`).join('; ')}`;
 }
 
+function normalizeCitationSearchText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getCitationLabelVariants(label: string): string[] {
+  const variants = new Set<string>();
+  const normalizedLabel = normalizeCitationSearchText(label);
+  if (normalizedLabel) {
+    variants.add(normalizedLabel);
+  }
+
+  const withoutExtension = label.replace(/\.[a-z0-9]{1,6}$/i, '');
+  const normalizedStem = normalizeCitationSearchText(withoutExtension);
+  if (
+    normalizedStem
+    && normalizedStem !== normalizedLabel
+    && normalizedStem.split(' ').length >= 2
+  ) {
+    variants.add(normalizedStem);
+  }
+
+  return [...variants].filter((variant) => variant.length >= 4);
+}
+
+/** @internal Exported for unit testing. */
+export function selectAttributableCitations<T extends { index: number; label: string }>(
+  text: string,
+  citations: T[],
+): T[] {
+  if (citations.length === 0) {
+    return [];
+  }
+
+  const citationByIndex = new Map(citations.map((citation) => [citation.index, citation]));
+  const selected: T[] = [];
+  const selectedIndices = new Set<number>();
+
+  const explicitPattern = /\[(\d+)\]/g;
+  let match: RegExpExecArray | null;
+  while ((match = explicitPattern.exec(text)) !== null) {
+    const index = parseInt(match[1], 10);
+    const citation = citationByIndex.get(index);
+    if (citation && !selectedIndices.has(index)) {
+      selectedIndices.add(index);
+      selected.push(citation);
+    }
+  }
+
+  const normalizedText = normalizeCitationSearchText(text);
+  if (normalizedText.length > 0) {
+    const labelMatches = citations
+      .filter((citation) => !selectedIndices.has(citation.index))
+      .map((citation) => {
+        const positions = getCitationLabelVariants(citation.label)
+          .map((variant) => normalizedText.indexOf(variant))
+          .filter((position) => position >= 0);
+        return {
+          citation,
+          position: positions.length > 0 ? Math.min(...positions) : -1,
+        };
+      })
+      .filter((entry) => entry.position >= 0)
+      .sort((a, b) => a.position - b.position || a.citation.index - b.citation.index);
+
+    for (const entry of labelMatches) {
+      if (!selectedIndices.has(entry.citation.index)) {
+        selectedIndices.add(entry.citation.index);
+        selected.push(entry.citation);
+      }
+    }
+  }
+
+  if (selected.length === 0 && citations.length === 1) {
+    return [citations[0]];
+  }
+
+  return selected;
+}
+
 const VALID_OPERATIONS = new Set<string>(['insert', 'update', 'delete']);
 
 export function parseEditResponse(rawContent: string, response: IChatResponseStream): void {

@@ -80,6 +80,30 @@ describe('chat deterministic response', () => {
     }));
   });
 
+  it('does not attach all retrieval candidates when a deterministic answer lacks attributable references', () => {
+    const response = createResponse();
+
+    const handled = handlePreparedContextDeterministicAnswer({
+      route: { kind: 'grounded', reason: 'grounded route' },
+      query: 'What does my policy say about earthquake coverage?',
+      evidenceAssessment: {
+        status: 'insufficient',
+        reasons: ['specific-coverage-not-explicitly-supported'],
+      },
+      retrievedContextText: '[Retrieved Context]\nPolicy excerpt',
+      memoryResult: null,
+      ragSources: [
+        { uri: 'Policy.md', label: 'Policy.md', index: 4 },
+        { uri: 'Claims.md', label: 'Claims.md', index: 5 },
+      ],
+      response,
+      token: createToken(),
+    });
+
+    expect(handled).toBe(true);
+    expect(response.setCitations).not.toHaveBeenCalled();
+  });
+
   it('handles memory recall deterministic answers', () => {
     const response = createResponse();
     const reportResponseDebug = vi.fn();

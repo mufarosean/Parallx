@@ -11,6 +11,7 @@ import { executeChatModelOnly } from './chatModelOnlyExecutor.js';
 import { executeChatGrounded, type IChatGroundedEvidenceAssessment, type IChatGroundedToolGuard } from './chatGroundedExecutor.js';
 import { queueChatMemoryWriteBack } from './chatMemoryWriteBack.js';
 import { validateAndFinalizeChatResponse } from './chatResponseValidator.js';
+import { selectAttributableCitations } from './chatResponseParsingHelpers.js';
 
 const DEFAULT_NETWORK_TIMEOUT_MS = 60_000;
 
@@ -113,14 +114,20 @@ export async function executePreparedChatTurn(
         uri: source.uri,
         label: source.label,
       }));
+      const attributableCitations = selectAttributableCitations(
+        options.response.getMarkdownText(),
+        citations,
+      );
       const citationFooter = deps.buildMissingCitationFooter(
         options.response.getMarkdownText(),
-        citations.map(({ index, label }) => ({ index, label })),
+        attributableCitations.map(({ index, label }) => ({ index, label })),
       );
       if (citationFooter) {
         options.response.markdown(citationFooter);
       }
-      options.response.setCitations(citations);
+      if (attributableCitations.length > 0) {
+        options.response.setCitations(attributableCitations);
+      }
     }
 
     deps.reportResponseDebug?.({
@@ -269,6 +276,7 @@ export async function executePreparedChatTurn(
       {
         repairMarkdown: deps.repairMarkdown,
         buildMissingCitationFooter: deps.buildMissingCitationFooter,
+        selectAttributableCitations,
         applyFallbackAnswer,
         reportResponseDebug: deps.reportResponseDebug,
       },

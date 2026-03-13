@@ -2,6 +2,7 @@ import type { ICancellationToken, IChatResponseStream } from '../../../services/
 import type { IChatRuntimeTrace, IChatTurnRoute } from '../chatTypes.js';
 import { createChatContextPlan, createChatRuntimeTrace } from './chatContextPlanner.js';
 import { selectDeterministicAnswer } from './chatDeterministicAnswerSelector.js';
+import { selectAttributableCitations } from './chatResponseParsingHelpers.js';
 
 interface IChatResponseDebugReporter {
   (debug: {
@@ -106,13 +107,15 @@ export function handlePreparedContextDeterministicAnswer(options: {
     });
 
     if (options.ragSources.length > 0) {
-      options.response.setCitations(
-        options.ragSources.map((source, index) => ({
+      const citations = options.ragSources.map((source, index) => ({
           index: source.index ?? (index + 1),
           uri: source.uri,
           label: source.label,
-        })),
-      );
+        }));
+      const attributableCitations = selectAttributableCitations(coverageAnswer.markdown, citations);
+      if (attributableCitations.length > 0) {
+        options.response.setCitations(attributableCitations);
+      }
     }
     return true;
   }

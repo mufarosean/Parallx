@@ -183,11 +183,15 @@ In the near term, before the full attribution redesign lands:
 
 ### Phase B — Citation contract hardening
 
-- [ ] Audit every path that calls `setCitations(...)` and separate explicit
+- [x] Audit every path that calls `setCitations(...)` and separate explicit
       answer citations from broad retrieval candidates.
-- [ ] Stop treating all `ragSources` as equivalent to "sources used".
-- [ ] Introduce a validated `usedSources` set derived from explicit references
-      or deterministic fallback attribution.
+- [x] Stop treating all `ragSources` as equivalent to "sources used" in the
+   validator, deterministic-answer path, and fallback synthesis path.
+- [x] Introduce a first validated `usedSources` subset derived from explicit
+   `[N]` references, explicit source-name mentions, and single-source
+   answers.
+- [x] Validate the Phase B slice with focused attribution tests, full unit
+   suite, and build.
 
 ### Phase C — Repair and fallback reliability
 
@@ -214,7 +218,8 @@ In the near term, before the full attribution redesign lands:
 - [x] Collapse thinking-block considered sources by default
 - [x] Relabel transcript source section as `Sources Considered`
 - [x] Validate the Phase A UI slice
-- [ ] Separate used sources from considered sources in the citation pipeline
+- [x] Separate used sources from considered sources in the citation pipeline
+- [x] Validate the Phase B attribution subset slice
 - [ ] Add citation repair/regeneration pass
 - [ ] Validate footer as authoritative source-of-truth
 - [ ] Complete focused and full validation for each execution phase
@@ -227,6 +232,9 @@ In the near term, before the full attribution redesign lands:
 - [x] Focused chat tests pass for the Phase A slice
 - [x] `npm run test:unit` passes for the Phase A slice
 - [x] `npm run build` passes for the Phase A slice
+- [x] Focused attribution and gate-compliance tests pass for the Phase B slice
+- [x] `npm run test:unit` passes for the Phase B slice
+- [x] `npm run build` passes for the Phase B slice
 - [ ] Full attribution redesign tests pass
 - [ ] Build passes after citation contract hardening
 - [ ] Full Vitest suite passes after milestone completion
