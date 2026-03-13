@@ -47,7 +47,7 @@ The current work is **Milestone 15 — AI Personality & Behavior Settings** (`do
 
 ### Canvas Gate Architecture
 
-The canvas built-in (`src/built-in/canvas/`) has its own five-registry gate architecture. Full rules are in the archived instructions file (`.github/instructions/archive/parallx-instructions-pre-m9.instructions.md`) and in `ARCHITECTURE.md`. When working on canvas code, consult those references.
+The canvas built-in (`src/built-in/canvas/`) has its own registry-gated architecture. The original canvas core used five gates; the live enforced model now includes the integrated database gate as well. Full rules are in the archived instructions file (`.github/instructions/archive/parallx-instructions-pre-m9.instructions.md`) and in `ARCHITECTURE.md`. When working on canvas code, consult those references.
 
 ---
 

@@ -19,7 +19,7 @@
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
-import { $ } from '../../../ui/dom.js';
+import { $, addDisposableListener, layoutPopup } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import type { IContextPill } from '../../../services/chatTypes.js';
 import type { ITokenBudgetSlot } from '../chatTypes.js';
@@ -27,18 +27,50 @@ import type { ITokenBudgetSlot } from '../chatTypes.js';
 // ITokenBudgetSlot — now defined in chatTypes.ts (M13 Phase 1)
 export type { ITokenBudgetSlot } from '../chatTypes.js';
 
+type ContextPillGroupKey = IContextPill['type'];
+
+const CONTEXT_PILL_GROUP_ORDER: ContextPillGroupKey[] = [
+  'attachment',
+  'rag',
+  'memory',
+  'concept',
+  'rule',
+  'system',
+];
+
+function getContextPillGroupLabel(type: ContextPillGroupKey): string {
+  switch (type) {
+    case 'attachment':
+      return 'Attachments';
+    case 'rag':
+      return 'Retrieved Sources';
+    case 'memory':
+      return 'Session Memory';
+    case 'concept':
+      return 'Concept Recall';
+    case 'rule':
+      return 'Rules';
+    case 'system':
+      return 'System';
+    default:
+      return 'Other';
+  }
+}
+
 // ── Component ──
 
 /**
- * Context pills strip — shows what context sources are visible to the LLM.
+ * Context pills menu — shows what context sources are visible to the LLM.
  *
- * Renders below the context ribbon (above the textarea) as a collapsible section.
- * Updated after each message send when context source data becomes available.
+ * Renders as a toolbar button that opens a compact anchored menu above the
+ * composer controls, keeping the transcript and input stack visually lighter.
  */
 export class ChatContextPills extends Disposable {
 
   private readonly _root: HTMLElement;
   private readonly _toggleBtn: HTMLElement;
+  private readonly _menu: HTMLElement;
+  private readonly _menuHeader: HTMLElement;
   private readonly _pillsContainer: HTMLElement;
   private readonly _budgetContainer: HTMLElement;
 
@@ -51,7 +83,7 @@ export class ChatContextPills extends Disposable {
   /** IDs of pills the user has removed (excluded from next message). */
   private readonly _excluded = new Set<string>();
 
-  /** Whether the pills strip is expanded. */
+  /** Whether the menu is open. */
   private _expanded = false;
 
   // ── Events ──
@@ -67,14 +99,16 @@ export class ChatContextPills extends Disposable {
   constructor(container: HTMLElement) {
     super();
 
-    this._root = $('div.parallx-chat-context-pills');
+    this._root = $('div.parallx-chat-context-menu');
     container.appendChild(this._root);
     this._register(toDisposable(() => this._root.remove()));
 
-    // Toggle button: "Context: 3 sources (1.2k tokens)" — click to expand/collapse
+    // Toggle button: compact toolbar control that opens the context menu.
     const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'parallx-chat-context-pills-toggle';
+    toggleBtn.className = 'parallx-chat-context-menu-trigger';
     toggleBtn.type = 'button';
+    toggleBtn.setAttribute('aria-haspopup', 'menu');
+    toggleBtn.setAttribute('aria-expanded', 'false');
     this._toggleBtn = toggleBtn;
     this._toggleBtn.addEventListener('click', () => {
       this._expanded = !this._expanded;
@@ -82,13 +116,68 @@ export class ChatContextPills extends Disposable {
     });
     this._root.appendChild(this._toggleBtn);
 
-    // Pills container (collapsible)
-    this._pillsContainer = $('div.parallx-chat-context-pills-list');
-    this._root.appendChild(this._pillsContainer);
+    this._menu = $('div.parallx-chat-context-menu-panel');
+    this._menu.setAttribute('role', 'menu');
+    this._menu.style.display = 'none';
+    this._menu.style.position = 'fixed';
+    document.body.appendChild(this._menu);
+    this._register(toDisposable(() => this._menu.remove()));
 
-    // Budget breakdown container (Task 4.8 — collapsible alongside pills)
+    this._menuHeader = $('div.parallx-chat-context-menu-header');
+    this._menu.appendChild(this._menuHeader);
+
+    // Pills container (inside menu)
+    this._pillsContainer = $('div.parallx-chat-context-pills-list');
+    this._menu.appendChild(this._pillsContainer);
+
+    // Budget breakdown container (Task 4.8 — inside the menu)
     this._budgetContainer = $('div.parallx-chat-context-budget');
-    this._root.appendChild(this._budgetContainer);
+    this._menu.appendChild(this._budgetContainer);
+
+    this._register(addDisposableListener(document, 'mousedown', (event: MouseEvent) => {
+      if (!this._expanded) {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof Node && !this._root.contains(target) && !this._menu.contains(target)) {
+        this._expanded = false;
+        this._render();
+      }
+    }));
+
+    this._register(addDisposableListener(document, 'keydown', (event: KeyboardEvent) => {
+      if (!this._expanded || event.key !== 'Escape') {
+        return;
+      }
+
+      this._expanded = false;
+      this._render();
+      this._toggleBtn.focus();
+    }));
+
+    this._register(addDisposableListener(window, 'resize', () => {
+      if (!this._expanded) {
+        return;
+      }
+
+      this._expanded = false;
+      this._render();
+    }));
+
+    this._register(addDisposableListener(window, 'scroll', (event: globalThis.Event) => {
+      if (!this._expanded) {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof Node && this._menu.contains(target)) {
+        return;
+      }
+
+      this._expanded = false;
+      this._render();
+    }, true));
 
     // Start hidden
     this._root.style.display = 'none';
@@ -120,6 +209,7 @@ export class ChatContextPills extends Disposable {
   clear(): void {
     this._pills = [];
     this._excluded.clear();
+    this._expanded = false;
     this._render();
   }
 
@@ -145,123 +235,147 @@ export class ChatContextPills extends Disposable {
 
     // Calculate totals
     const activePills = this._pills.filter(p => !this._excluded.has(p.id));
-    const totalTokens = activePills.reduce((sum, p) => sum + p.tokens, 0);
     const excludedCount = this._excluded.size;
 
     // Toggle button label
-    const tokenLabel = this._formatTokenCount(totalTokens);
     const sourceLabel = activePills.length === 1 ? '1 source' : `${activePills.length} sources`;
     const excludeLabel = excludedCount > 0 ? ` (${excludedCount} excluded)` : '';
-    const arrow = this._expanded ? '▾' : '▸';
+    const arrow = this._expanded ? '▴' : '▾';
 
     this._toggleBtn.textContent = '';
+    this._toggleBtn.setAttribute('aria-expanded', this._expanded ? 'true' : 'false');
+
+    const text = document.createElement('span');
+    text.className = 'parallx-chat-context-menu-trigger-label';
+    text.textContent = `Context ${activePills.length}`;
+    this._toggleBtn.appendChild(text);
+
+    if (excludedCount > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'parallx-chat-context-menu-trigger-badge';
+      badge.textContent = `${excludedCount} excluded`;
+      this._toggleBtn.appendChild(badge);
+    }
+
     const arrowSpan = document.createElement('span');
     arrowSpan.className = 'parallx-chat-context-pills-arrow';
     arrowSpan.textContent = arrow;
     this._toggleBtn.appendChild(arrowSpan);
 
-    const text = document.createElement('span');
-    text.textContent = `Context: ${sourceLabel} · ${tokenLabel}${excludeLabel}`;
-    this._toggleBtn.appendChild(text);
+    this._menuHeader.innerHTML = '';
+
+    const headerTop = $('div.parallx-chat-context-menu-header-top');
+    const titleWrap = $('div.parallx-chat-context-menu-header-copy');
+    const title = $('div.parallx-chat-context-menu-title', 'Sources For Next Turn');
+    const summary = $('div.parallx-chat-context-menu-summary', `${sourceLabel}${excludeLabel}`);
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(summary);
+    headerTop.appendChild(titleWrap);
+
+    this._menuHeader.appendChild(headerTop);
 
     // Pills list
     this._pillsContainer.innerHTML = '';
-    this._pillsContainer.style.display = this._expanded ? '' : 'none';
+    this._menu.style.display = this._expanded ? '' : 'none';
 
+    const groupedPills = new Map<ContextPillGroupKey, IContextPill[]>();
     for (const pill of this._pills) {
-      const isExcluded = this._excluded.has(pill.id);
-      const el = this._createPill(pill, isExcluded);
-      this._pillsContainer.appendChild(el);
+      const group = groupedPills.get(pill.type) ?? [];
+      group.push(pill);
+      groupedPills.set(pill.type, group);
     }
 
-    // Also render budget if expanded
+    for (const groupKey of CONTEXT_PILL_GROUP_ORDER) {
+      const groupPills = groupedPills.get(groupKey);
+      if (!groupPills || groupPills.length === 0) {
+        continue;
+      }
+
+      const activeCount = groupPills.filter((pill) => !this._excluded.has(pill.id)).length;
+      const section = $('div.parallx-chat-context-group');
+      const sectionHeader = $('div.parallx-chat-context-group-title');
+      const sectionTitle = $('span.parallx-chat-context-group-title-text', getContextPillGroupLabel(groupKey));
+      const sectionCount = $('span.parallx-chat-context-group-title-count', `${activeCount}/${groupPills.length}`);
+      sectionHeader.appendChild(sectionTitle);
+      sectionHeader.appendChild(sectionCount);
+      section.appendChild(sectionHeader);
+
+      const sectionList = $('div.parallx-chat-context-group-list');
+      for (const pill of groupPills) {
+        const isExcluded = this._excluded.has(pill.id);
+        sectionList.appendChild(this._createPill(pill, isExcluded));
+      }
+
+      section.appendChild(sectionList);
+      this._pillsContainer.appendChild(section);
+    }
+
     this._renderBudget();
+
+    if (this._expanded) {
+      layoutPopup(this._menu, this._toggleBtn.getBoundingClientRect(), {
+        position: 'above',
+        gap: 8,
+      });
+    }
   }
 
-  /** Render the token budget breakdown bar (Task 4.8). */
+  /** Render lightweight guidance that points quantitative context usage back to the status bar. */
   private _renderBudget(): void {
     this._budgetContainer.innerHTML = '';
     this._budgetContainer.style.display = (this._expanded && this._budgetSlots.length > 0) ? '' : 'none';
     if (!this._expanded || this._budgetSlots.length === 0) { return; }
 
-    const totalAlloc = this._budgetSlots.reduce((s, b) => s + b.allocated, 0);
-    if (totalAlloc === 0) { return; }
-
-    // Label
-    const title = $('div.parallx-chat-context-budget-title', 'Token Budget');
+    const title = $('div.parallx-chat-context-budget-title', 'Context Window');
     this._budgetContainer.appendChild(title);
 
-    // Segmented bar
-    const bar = $('div.parallx-chat-context-budget-bar');
-    for (const slot of this._budgetSlots) {
-      const pct = (slot.allocated / totalAlloc) * 100;
-      const fillPct = slot.allocated > 0 ? Math.min(100, (slot.used / slot.allocated) * 100) : 0;
-      const segment = document.createElement('div');
-      segment.className = 'parallx-chat-context-budget-segment';
-      segment.style.width = `${pct}%`;
-      segment.title = `${slot.label}: ${this._formatTokenCount(slot.used)} / ${this._formatTokenCount(slot.allocated)}`;
+    const totalUsed = this._budgetSlots.reduce((sum, slot) => sum + slot.used, 0);
+    const note = $('div.parallx-chat-context-budget-note');
 
-      const fill = document.createElement('div');
-      fill.className = 'parallx-chat-context-budget-fill';
-      fill.style.width = `${fillPct}%`;
-      fill.style.background = slot.color;
-      segment.appendChild(fill);
-      bar.appendChild(segment);
-    }
-    this._budgetContainer.appendChild(bar);
+    const summary = document.createElement('span');
+    summary.className = 'parallx-chat-context-budget-summary';
+    summary.textContent = `This turn is carrying about ${this._formatTokenCount(totalUsed)} tokens of local source context.`;
+    note.appendChild(summary);
 
-    // Legend row
-    const legend = $('div.parallx-chat-context-budget-legend');
-    for (const slot of this._budgetSlots) {
-      const item = $('span.parallx-chat-context-budget-legend-item');
+    const detail = document.createElement('span');
+    detail.className = 'parallx-chat-context-budget-detail';
+    detail.textContent = 'Overall context-window usage and token pressure live in the status bar.';
+    note.appendChild(detail);
 
-      const dot = document.createElement('span');
-      dot.className = 'parallx-chat-context-budget-dot';
-      dot.style.background = slot.color;
-      item.appendChild(dot);
-
-      const text = document.createElement('span');
-      text.textContent = `${slot.label}: ${this._formatTokenCount(slot.used)}`;
-      item.appendChild(text);
-
-      legend.appendChild(item);
-    }
-    this._budgetContainer.appendChild(legend);
+    this._budgetContainer.appendChild(note);
   }
 
   /** Create a single pill element. */
   private _createPill(pill: IContextPill, isExcluded: boolean): HTMLElement {
     const modifiers = [
-      `parallx-chat-context-pill--${pill.type}`,
+      `parallx-chat-context-item--${pill.type}`,
       isExcluded ? 'parallx-chat-context-pill--excluded' : '',
     ].filter(Boolean).join('.');
 
-    const el = $(`div.parallx-chat-context-pill.${modifiers}`);
+    const el = $(`div.parallx-chat-context-item.${modifiers}`);
 
-    // Type icon
-    const icon = document.createElement('span');
-    icon.className = 'parallx-chat-context-pill-icon';
-    icon.innerHTML = this._iconForType(pill.type);
-    el.appendChild(icon);
+    const body = $('div.parallx-chat-context-item-body');
 
     // Label
     const label = document.createElement('span');
-    label.className = 'parallx-chat-context-pill-label';
+    label.className = 'parallx-chat-context-item-label';
     label.textContent = pill.label;
     label.title = pill.id;
-    el.appendChild(label);
+    body.appendChild(label);
 
     // Token count badge
     const tokens = document.createElement('span');
-    tokens.className = 'parallx-chat-context-pill-tokens';
-    tokens.textContent = this._formatTokenCount(pill.tokens);
-    el.appendChild(tokens);
+    tokens.className = 'parallx-chat-context-item-meta';
+    tokens.textContent = `${this._formatTokenCount(pill.tokens)} tokens`;
+    body.appendChild(tokens);
+
+    el.appendChild(body);
 
     // Action button: × to exclude, or ↩ to restore
     if (pill.removable) {
       if (isExcluded) {
         const restoreBtn = document.createElement('button');
-        restoreBtn.className = 'parallx-chat-context-pill-action';
+        restoreBtn.className = 'parallx-chat-context-item-action';
         restoreBtn.type = 'button';
         restoreBtn.title = 'Restore to context';
         restoreBtn.setAttribute('aria-label', `Restore ${pill.label}`);
@@ -275,7 +389,7 @@ export class ChatContextPills extends Disposable {
         el.appendChild(restoreBtn);
       } else {
         const removeBtn = document.createElement('button');
-        removeBtn.className = 'parallx-chat-context-pill-action';
+        removeBtn.className = 'parallx-chat-context-item-action';
         removeBtn.type = 'button';
         removeBtn.title = 'Exclude from context';
         removeBtn.setAttribute('aria-label', `Remove ${pill.label}`);
@@ -301,19 +415,4 @@ export class ChatContextPills extends Disposable {
     return `${tokens}`;
   }
 
-  /** Get the icon SVG for a pill type. */
-  private _iconForType(type: IContextPill['type']): string {
-    switch (type) {
-      case 'rag':
-        return chatIcons.search;
-      case 'attachment':
-        return chatIcons.file;
-      case 'system':
-        return chatIcons.wrench;
-      case 'rule':
-        return chatIcons.file;
-      default:
-        return chatIcons.file;
-    }
-  }
 }

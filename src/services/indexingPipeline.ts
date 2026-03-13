@@ -47,7 +47,7 @@ import type { SourceIndexMetadata } from './vectorStoreService.js';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 /** Debounce delay for page re-indexing after save (ms). */
-const PAGE_DEBOUNCE_MS = 5_000;
+const PAGE_DEBOUNCE_MS = 3_000;
 
 /** Debounce delay for file re-indexing after change (ms). */
 const FILE_DEBOUNCE_MS = 5_000;
@@ -78,6 +78,10 @@ const RICH_DOCUMENT_EXTENSIONS = new Set([
   '.ppt',   // M21 C.2: Legacy PowerPoint
   '.epub',  // M21 C.2: E-books via Docling
 ]);
+
+function buildPageIndexPayload(title: string, content: string): string {
+  return JSON.stringify({ title, content });
+}
 
 /**
  * Image extensions that can be indexed via Docling OCR (M21).
@@ -513,8 +517,8 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   private async _indexSinglePage(pageId: string, title: string, content: string): Promise<boolean> {
     if (!content || content === '{}') { return false; }
 
-    // Check content hash — skip if unchanged
-    const contentHash = await hashText(content);
+    // Check effective indexed payload hash — skip if the retrievable page state is unchanged.
+    const contentHash = await hashText(buildPageIndexPayload(title, content));
     const storedHash = await this._vectorStore.getContentHash('page_block', pageId);
     if (storedHash === contentHash) { return false; }
 

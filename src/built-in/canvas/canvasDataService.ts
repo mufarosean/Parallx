@@ -14,6 +14,7 @@ import {
   type IPageTreeNode,
   type ICanvasDataService,
   type PageChangeEvent,
+  type PageUpdateField,
   type PageUpdateData,
   type CrossPageMoveParams,
   PageChangeKind,
@@ -147,6 +148,9 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   /** Last known committed revision per page. */
   private readonly _knownRevisions = new Map<string, number>();
 
+  /** Last known committed stored content per page. */
+  private readonly _knownStoredContent = new Map<string, string>();
+
   /** Debounce interval in ms. */
   private readonly _autoSaveMs: number;
 
@@ -163,6 +167,30 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       throw new Error('[CanvasDataService] window.parallxElectron.database not available');
     }
     return electron.database;
+  }
+
+  private _rememberPageState(page: IPage): IPage {
+    this._knownRevisions.set(page.id, page.revision);
+    this._knownStoredContent.set(page.id, page.content);
+    return page;
+  }
+
+  private _getChangedFields(updates: PageUpdateData): PageUpdateField[] {
+    const changedFields: PageUpdateField[] = [];
+
+    if (updates.title !== undefined) changedFields.push('title');
+    if (updates.icon !== undefined) changedFields.push('icon');
+    if (updates.content !== undefined) changedFields.push('content', 'contentSchemaVersion');
+    if (updates.contentSchemaVersion !== undefined && updates.content === undefined) changedFields.push('contentSchemaVersion');
+    if (updates.coverUrl !== undefined) changedFields.push('coverUrl');
+    if (updates.coverYOffset !== undefined) changedFields.push('coverYOffset');
+    if (updates.fontFamily !== undefined) changedFields.push('fontFamily');
+    if (updates.fullWidth !== undefined) changedFields.push('fullWidth');
+    if (updates.smallText !== undefined) changedFields.push('smallText');
+    if (updates.isLocked !== undefined) changedFields.push('isLocked');
+    if (updates.isFavorited !== undefined) changedFields.push('isFavorited');
+
+    return changedFields;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -203,7 +231,6 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     if (!page) throw new Error(`[CanvasDataService] Created page "${id}" not found after insert`);
 
     this._onDidChangePage.fire({ kind: PageChangeKind.Created, pageId: id, page });
-    this._knownRevisions.set(id, page.revision);
     return page;
   }
 
@@ -215,7 +242,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     if (result.error) throw new Error(result.error.message);
     const page = result.row ? rowToPage(result.row) : null;
     if (page) {
-      this._knownRevisions.set(page.id, page.revision);
+      this._rememberPageState(page);
     }
     return page;
   }
@@ -281,6 +308,7 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     pageId: string,
     updates: PageUpdateData,
   ): Promise<IPage> {
+    const changedFields = this._getChangedFields(updates);
     const expectedRevision = updates.expectedRevision;
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -370,8 +398,8 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       }
     }
 
-    this._knownRevisions.set(pageId, page.revision);
-    this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page });
+    this._rememberPageState(page);
+    this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page, changedFields });
     return page;
   }
 
@@ -548,8 +576,18 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
     this._knownRevisions.set(sourcePageId, sourcePage.revision);
     this._knownRevisions.set(targetPageId, targetPage.revision);
 
-    this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId: sourcePageId, page: sourcePage });
-    this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId: targetPageId, page: targetPage });
+    this._onDidChangePage.fire({
+      kind: PageChangeKind.Updated,
+      pageId: sourcePageId,
+      page: sourcePage,
+      changedFields: ['content', 'contentSchemaVersion'],
+    });
+    this._onDidChangePage.fire({
+      kind: PageChangeKind.Updated,
+      pageId: targetPageId,
+      page: targetPage,
+      changedFields: ['content', 'contentSchemaVersion'],
+    });
 
     return { sourcePage, targetPage };
   }
@@ -668,6 +706,21 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
   scheduleContentSave(pageId: string, content: string): void {
     const normalized = normalizeCanvasContentForStorage(content);
     const expectedRevision = this._knownRevisions.get(pageId);
+    const knownContent = this._knownStoredContent.get(pageId);
+    const pendingSave = this._pendingSaves.get(pageId);
+    const retrySave = this._retryQueue.get(pageId);
+
+    if (pendingSave?.content === normalized.storedContent) {
+      return;
+    }
+
+    if (retrySave?.content === normalized.storedContent) {
+      return;
+    }
+
+    if (!pendingSave && !retrySave && knownContent === normalized.storedContent) {
+      return;
+    }
 
     // Cancel existing timer for this page
     this._cancelPendingSave(pageId);
@@ -1168,7 +1221,12 @@ export class CanvasDataService extends Disposable implements ICanvasDataService 
       const updated = await this.getPage(pageId);
       if (updated) {
         this._knownRevisions.set(pageId, updated.revision);
-        this._onDidChangePage.fire({ kind: PageChangeKind.Updated, pageId, page: updated });
+        this._onDidChangePage.fire({
+          kind: PageChangeKind.Updated,
+          pageId,
+          page: updated,
+          changedFields: ['content', 'contentSchemaVersion'],
+        });
       }
     }
   }

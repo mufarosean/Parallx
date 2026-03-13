@@ -39,6 +39,7 @@ import type {
   IChatContentPart,
   IChatMarkdownContent,
   IChatThinkingContent,
+  IChatProvenanceEntry,
   IChatReferenceContent,
   IChatToolInvocationContent,
   IChatEditProposalContent,
@@ -69,6 +70,43 @@ function generateUUID(): string {
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+}
+
+function findReplayReplacementIndex(
+  session: IChatSession,
+  replayOfRequestId: string | undefined,
+): number {
+  if (!replayOfRequestId) {
+    return -1;
+  }
+
+  const pairs = session.messages;
+  let replayIndex = pairs.findIndex((pair) => pair.request.requestId === replayOfRequestId);
+  if (replayIndex < 0) {
+    replayIndex = pairs.findIndex((pair) => pair.request.replayOfRequestId === replayOfRequestId);
+    if (replayIndex < 0) {
+      return -1;
+    }
+  }
+
+  const visitedRequestIds = new Set<string>();
+  while (replayIndex >= 0) {
+    const replayedRequest = pairs[replayIndex]?.request;
+    const previousRequestId = replayedRequest?.replayOfRequestId;
+    if (!previousRequestId || visitedRequestIds.has(previousRequestId)) {
+      break;
+    }
+
+    visitedRequestIds.add(previousRequestId);
+    const previousIndex = pairs.findIndex((pair) => pair.request.requestId === previousRequestId);
+    if (previousIndex < 0) {
+      break;
+    }
+
+    replayIndex = previousIndex;
+  }
+
+  return replayIndex;
 }
 
 /**
@@ -131,7 +169,28 @@ class ChatResponseStream implements IChatResponseStream {
   constructor(
     private readonly _response: IChatAssistantResponse,
     private readonly _onUpdate: () => void,
-  ) {}
+  ) {
+    this.throwIfDone = this.throwIfDone.bind(this);
+    this.close = this.close.bind(this);
+    this.reportTokenUsage = this.reportTokenUsage.bind(this);
+    this.setCitations = this.setCitations.bind(this);
+    this.getMarkdownText = this.getMarkdownText.bind(this);
+    this.replaceLastMarkdown = this.replaceLastMarkdown.bind(this);
+    this.markdown = this.markdown.bind(this);
+    this.codeBlock = this.codeBlock.bind(this);
+    this.progress = this.progress.bind(this);
+    this.provenance = this.provenance.bind(this);
+    this.reference = this.reference.bind(this);
+    this.thinking = this.thinking.bind(this);
+    this.warning = this.warning.bind(this);
+    this.button = this.button.bind(this);
+    this.confirmation = this.confirmation.bind(this);
+    this.beginToolInvocation = this.beginToolInvocation.bind(this);
+    this.updateToolInvocation = this.updateToolInvocation.bind(this);
+    this.editProposal = this.editProposal.bind(this);
+    this.editBatch = this.editBatch.bind(this);
+    this.push = this.push.bind(this);
+  }
 
   /**
    * Schedule a batched update notification via queueMicrotask.
@@ -162,10 +221,18 @@ class ChatResponseStream implements IChatResponseStream {
     const parts = this._response.parts as IChatContentPart[];
 
     // Collect any straggler references not yet folded into thinking
-    const stragglerRefs: Array<{ uri: string; label: string }> = [];
+    const stragglerRefs: IChatProvenanceEntry[] = [];
     for (const p of parts) {
       if (p.kind === ChatContentPartKind.Reference) {
-        stragglerRefs.push({ uri: (p as IChatReferenceContent).uri, label: (p as IChatReferenceContent).label });
+        const reference = p as IChatReferenceContent;
+        stragglerRefs.push({
+          id: reference.uri,
+          label: reference.label,
+          kind: 'rag',
+          uri: reference.uri,
+          tokens: 0,
+          removable: true,
+        });
       }
     }
 
@@ -188,13 +255,13 @@ class ChatResponseStream implements IChatResponseStream {
       ) as IChatThinkingContent | undefined;
 
       if (thinkingPart) {
-        if (!thinkingPart.references) {
-          thinkingPart.references = [];
+        if (!thinkingPart.provenance) {
+          thinkingPart.provenance = [];
         }
         for (const ref of stragglerRefs) {
           // Avoid duplicates
-          if (!thinkingPart.references.some(r => r.uri === ref.uri)) {
-            thinkingPart.references.push(ref);
+          if (!thinkingPart.provenance.some((entry) => (entry.uri ?? entry.id) === (ref.uri ?? ref.id))) {
+            thinkingPart.provenance.push(ref);
           }
         }
       }
@@ -306,38 +373,49 @@ class ChatResponseStream implements IChatResponseStream {
       parts.unshift({
         kind: ChatContentPartKind.Thinking,
         content: '',
-        isCollapsed: true,
+        isCollapsed: false,
         progressMessage: message,
       });
     }
     this._scheduleUpdate();
   }
 
-  reference(uri: string, label: string, index?: number): void {
+  provenance(entry: IChatProvenanceEntry): void {
     this.throwIfDone();
     const parts = this._response.parts as IChatContentPart[];
 
-    // Fold references into the existing thinking part so source pills
-    // appear inside the collapsed "Thinking..." section during streaming.
     const thinkingPart = parts.find(
       (p) => p.kind === ChatContentPartKind.Thinking,
     ) as IChatThinkingContent | undefined;
 
     if (thinkingPart) {
-      if (!thinkingPart.references) {
-        thinkingPart.references = [];
+      if (!thinkingPart.provenance) {
+        thinkingPart.provenance = [];
       }
-      thinkingPart.references.push({ uri, label, index });
+      if (!thinkingPart.provenance.some((existing) => (existing.uri ?? existing.id) === (entry.uri ?? entry.id))) {
+        thinkingPart.provenance.push(entry);
+      }
     } else {
-      // No thinking part yet — create one to host the reference
       parts.unshift({
         kind: ChatContentPartKind.Thinking,
         content: '',
-        isCollapsed: true,
-        references: [{ uri, label, index }],
+        isCollapsed: false,
+        provenance: [entry],
       });
     }
     this._scheduleUpdate();
+  }
+
+  reference(uri: string, label: string, index?: number): void {
+    this.provenance({
+      id: uri,
+      label,
+      kind: 'rag',
+      uri,
+      index,
+      tokens: 0,
+      removable: true,
+    });
   }
 
   thinking(content: string): void {
@@ -357,7 +435,7 @@ class ChatResponseStream implements IChatResponseStream {
       parts.unshift({
         kind: ChatContentPartKind.Thinking,
         content,
-        isCollapsed: true,
+        isCollapsed: false,
       });
     }
 
@@ -682,11 +760,17 @@ export class ChatService extends Disposable implements IChatService {
     const parsed = parseChatRequest(message);
 
     // 1. Create user message
+    const requestId = generateUUID();
+    const attempt = Math.max(0, options?.attempt ?? 0);
+
     const userMessage: IChatUserMessage = {
       text: message,
+      requestId,
       participantId: options?.participantId ?? parsed.participantId,
       command: options?.command ?? parsed.command,
       attachments: options?.attachments,
+      attempt,
+      replayOfRequestId: options?.replayOfRequestId,
       timestamp: Date.now(),
     };
 
@@ -698,15 +782,23 @@ export class ChatService extends Disposable implements IChatService {
       timestamp: Date.now(),
     };
 
-    // 3. Append pair to session
+    // 3. Append or replace the request/response pair in-session.
     const pair: IChatRequestResponsePair = {
       request: userMessage,
       response: assistantResponse,
     };
-    session.messages.push(pair);
+
+    const replayIndex = findReplayReplacementIndex(session, options?.replayOfRequestId);
+    const isReplayReplacement = replayIndex >= 0;
+
+    if (isReplayReplacement) {
+      session.messages.splice(replayIndex, session.messages.length - replayIndex, pair);
+    } else {
+      session.messages.push(pair);
+    }
 
     // 4. Auto-generate title from first message
-    if (session.messages.length === 1) {
+    if (!isReplayReplacement && session.messages.length === 1) {
       session.title = message.length > 50 ? message.slice(0, 47) + '...' : message;
     }
 
@@ -728,12 +820,12 @@ export class ChatService extends Disposable implements IChatService {
     // 8. Build participant request (use parsed text with @mention stripped)
     const participantRequest: IChatParticipantRequest = {
       text: parsed.text,
-      requestId: generateUUID(),
+      requestId,
       command: options?.command ?? parsed.command,
       mode: session.mode,
       modelId: session.modelId,
       attachments: options?.attachments,
-      attempt: 0,
+      attempt,
     };
 
     // 9. Build context

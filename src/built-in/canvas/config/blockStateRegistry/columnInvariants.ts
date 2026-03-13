@@ -34,6 +34,28 @@ export interface BlockAncestry {
   columnListDepth: number | null;
 }
 
+export interface MovableBlockContext extends BlockAncestry {
+  readonly pos: number;
+  readonly node: any;
+  readonly depth: number;
+  readonly parentDepth: number;
+  readonly parentPos: number;
+  readonly parentNode: any;
+  readonly isListItem: boolean;
+  readonly listDepth: number | null;
+  readonly listPos: number | null;
+  readonly listNode: any | null;
+  readonly listType: 'bulletList' | 'orderedList' | 'taskList' | null;
+}
+
+export function isListItemNodeName(name: string | null | undefined): name is 'listItem' | 'taskItem' {
+  return name === 'listItem' || name === 'taskItem';
+}
+
+export function isListNodeName(name: string | null | undefined): name is 'bulletList' | 'orderedList' | 'taskList' {
+  return name === 'bulletList' || name === 'orderedList' || name === 'taskList';
+}
+
 /**
  * Walk a resolved position's ancestry to find its block container context.
  *
@@ -66,6 +88,59 @@ export function resolveBlockAncestry($pos: any): BlockAncestry {
     blockDepth: containerDepth + 1,
     columnDepth,
     columnListDepth: columnDepth !== null ? columnDepth - 1 : null,
+  };
+}
+
+export function resolveMovableBlock($pos: any): MovableBlockContext | null {
+  const ancestry = resolveBlockAncestry($pos);
+
+  for (let depth = $pos.depth; depth >= 1; depth--) {
+    const node = $pos.node(depth);
+    if (!isListItemNodeName(node?.type?.name)) continue;
+
+    const parentDepth = depth - 1;
+    if (parentDepth < 0) continue;
+
+    const parentNode = parentDepth === 0 ? $pos.doc : $pos.node(parentDepth);
+    if (!isListNodeName(parentNode?.type?.name)) continue;
+
+    return {
+      ...ancestry,
+      pos: $pos.before(depth),
+      node,
+      depth,
+      parentDepth,
+      parentPos: parentDepth === 0 ? 0 : $pos.before(parentDepth),
+      parentNode,
+      isListItem: true,
+      listDepth: parentDepth,
+      listPos: parentDepth === 0 ? 0 : $pos.before(parentDepth),
+      listNode: parentNode,
+      listType: parentNode.type.name,
+    };
+  }
+
+  const blockDepth = ancestry.blockDepth;
+  if ($pos.depth < blockDepth) return null;
+
+  const node = $pos.node(blockDepth);
+  if (!node) return null;
+
+  const parentDepth = blockDepth - 1;
+
+  return {
+    ...ancestry,
+    pos: $pos.before(blockDepth),
+    node,
+    depth: blockDepth,
+    parentDepth,
+    parentPos: parentDepth === 0 ? 0 : $pos.before(parentDepth),
+    parentNode: parentDepth === 0 ? $pos.doc : $pos.node(parentDepth),
+    isListItem: false,
+    listDepth: null,
+    listPos: null,
+    listNode: null,
+    listType: null,
   };
 }
 

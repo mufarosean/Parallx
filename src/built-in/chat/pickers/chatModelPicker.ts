@@ -25,6 +25,7 @@ export class ChatModelPicker extends Disposable {
   private readonly _root: HTMLElement;
   private readonly _button: HTMLButtonElement;
   private _dropdown: HTMLElement | undefined;
+  private _closeHandler: ((e: MouseEvent) => void) | undefined;
   private _services: IModelPickerServices;
 
   private readonly _onDidSelectModel = this._register(new Emitter<string>());
@@ -39,7 +40,7 @@ export class ChatModelPicker extends Disposable {
     this._register(toDisposable(() => this._root.remove()));
 
     this._button = document.createElement('button');
-    this._button.className = 'parallx-chat-picker-btn';
+    this._button.className = 'parallx-chat-picker-btn parallx-chat-picker-btn--model';
     this._button.type = 'button';
     this._button.textContent = 'Model\u2026';
     this._root.appendChild(this._button);
@@ -143,9 +144,9 @@ export class ChatModelPicker extends Disposable {
     const closeHandler = (e: MouseEvent) => {
       if (!dropdown.contains(e.target as Node) && !this._button.contains(e.target as Node)) {
         this._closeDropdown();
-        document.removeEventListener('mousedown', closeHandler);
       }
     };
+    this._closeHandler = closeHandler;
     document.addEventListener('mousedown', closeHandler);
   }
 
@@ -153,6 +154,10 @@ export class ChatModelPicker extends Disposable {
     if (this._dropdown) {
       this._dropdown.remove();
       this._dropdown = undefined;
+    }
+    if (this._closeHandler) {
+      document.removeEventListener('mousedown', this._closeHandler);
+      this._closeHandler = undefined;
     }
   }
 

@@ -54,6 +54,60 @@ test.describe('Block Handles â€” Plus Button and Action Menu', () => {
     }
   });
 
+  test('list item handle stays visible when moving toward the handle', async ({
+    window,
+    electronApp,
+    workspacePath,
+  }) => {
+    await setupCanvasPage(window, electronApp, workspacePath);
+    const tiptap = window.locator('.tiptap');
+    await tiptap.click();
+    await waitForEditor(window);
+
+    await setContent(window, [{
+      type: 'bulletList',
+      content: [
+        { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Alpha list item with enough width to hover' }] }] },
+        { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Bravo list item' }] }] },
+      ],
+    }]);
+
+    const firstItem = tiptap.locator(':scope > ul:not([data-type="taskList"]) > li').first();
+    await firstItem.hover();
+    await window.waitForTimeout(500);
+
+    const dragHandle = window.locator('.drag-handle');
+    await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+
+    const handleBox = await dragHandle.boundingBox();
+    const itemBox = await firstItem.boundingBox();
+    expect(handleBox).toBeTruthy();
+    expect(itemBox).toBeTruthy();
+    if (!handleBox || !itemBox) return;
+
+    const startX = itemBox.x + 8;
+    const endX = handleBox.x + handleBox.width / 2;
+    const y = itemBox.y + itemBox.height / 2;
+    const steps = 8;
+    const dx = (endX - startX) / steps;
+
+    for (let i = 0; i <= steps; i++) {
+      const currentX = startX + dx * i;
+      await window.mouse.move(currentX, y);
+      await window.waitForTimeout(80);
+
+      const hidden = await dragHandle.evaluate((el) => el.classList.contains('hide'));
+      expect(hidden, `Handle .hide at step ${i} (x=${Math.round(currentX)})`).toBe(false);
+    }
+
+    await window.mouse.move(
+      handleBox.x + handleBox.width / 2,
+      handleBox.y + handleBox.height / 2,
+    );
+    await window.waitForTimeout(200);
+    await expect(dragHandle).toBeVisible({ timeout: 3_000 });
+  });
+
   test('divider block shows drag handle and plus affordance', async ({
     window,
     electronApp,

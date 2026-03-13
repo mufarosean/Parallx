@@ -198,6 +198,15 @@ contextBridge.exposeInMainWorld('parallxElectron', {
     writeText: (text) => clipboard.writeText(text ?? ''),
   },
 
+  editableMenu: {
+    onOpen: (callback) => {
+      ipcRenderer.removeAllListeners('editableMenu:open');
+      ipcRenderer.on('editableMenu:open', (_event, payload) => callback(payload));
+    },
+    replaceMisspelling: (suggestion) => ipcRenderer.invoke('editableMenu:replaceMisspelling', suggestion),
+    addToDictionary: (word) => ipcRenderer.invoke('editableMenu:addToDictionary', word),
+  },
+
   // ══════════════════════════════════════════════════════════════════════════
   // Document Extraction API
   // ══════════════════════════════════════════════════════════════════════════

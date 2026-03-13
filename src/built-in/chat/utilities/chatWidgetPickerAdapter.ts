@@ -4,6 +4,7 @@ import type { ChatMode, ILanguageModelInfo } from '../../../services/chatTypes.j
 
 export interface IChatWidgetPickerAdapterDeps {
   readonly getModels: () => Promise<readonly ILanguageModelInfo[]>;
+  readonly getModelInfo?: (modelId: string) => Promise<ILanguageModelInfo>;
   readonly getActiveModel: () => string | undefined;
   readonly setActiveModel: (modelId: string) => void;
   readonly onDidChangeModels: Event<void>;
@@ -20,6 +21,7 @@ export function buildChatWidgetPickerServices(
   return {
     modelPicker: {
       getModels: deps.getModels,
+      getModelInfo: deps.getModelInfo,
       getActiveModel: deps.getActiveModel,
       setActiveModel: deps.setActiveModel,
       onDidChangeModels: deps.onDidChangeModels,

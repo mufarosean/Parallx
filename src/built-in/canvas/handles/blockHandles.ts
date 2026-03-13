@@ -23,6 +23,7 @@ import {
   clearActiveCanvasDragSession,
   setActiveCanvasDragSession,
   PAGE_CONTAINERS,
+  resolveMovableBlock,
   isContainerBlockType,
 } from './handleRegistry.js';
 
@@ -218,27 +219,8 @@ export class BlockHandlesController {
     if (this._isIgnoredOverlayElement(target)) return;
     if (!editor.isEditable) return;
 
-    // ── Sticky handle: if the handle is already visible for a block, keep
-    // it stable while the mouse is within the block's ownership zone
-    // (handle-left → block-right, block-top → block-bottom).  This prevents
-    // the handle from jumping or vanishing when the user moves toward it,
-    // especially in columns where the path to the handle crosses the column
-    // resize boundary zone (which would otherwise trigger _hideHandle). ──
-    if (
-      this._resolvedBlockPos != null &&
-      this._resolvedBlockDom &&
-      this._dragHandleEl && !this._dragHandleEl.classList.contains('hide')
-    ) {
-      const blockRect = this._resolvedBlockDom.getBoundingClientRect();
-      const handleLeft = blockRect.left - BlockHandlesController._HANDLE_WIDTH - 22;
-      if (
-        event.clientX >= handleLeft &&
-        event.clientX <= blockRect.right &&
-        event.clientY >= blockRect.top &&
-        event.clientY <= blockRect.bottom
-      ) {
-        return; // mouse still in current block's zone — keep handle stable
-      }
+    if (this._isPointerWithinStickyHandleZone(event.clientX, event.clientY)) {
+      return;
     }
 
     if (this._isResizeInteractionActive()) {
@@ -261,13 +243,7 @@ export class BlockHandlesController {
 
   private readonly _onEditorMouseLeave = (e: MouseEvent): void => {
     const related = e.relatedTarget as HTMLElement | null;
-    // Don't hide when moving to the block action menu (may be outside container)
-    if (
-      related?.classList.contains('block-action-menu') ||
-      related?.closest('.block-action-menu') ||
-      related?.classList.contains('block-action-submenu') ||
-      related?.closest('.block-action-submenu')
-    ) {
+    if (this._isHandleRelatedElement(related)) {
       return;
     }
     this._hideHandle();
@@ -380,6 +356,8 @@ export class BlockHandlesController {
       event.preventDefault();
       return;
     }
+    const movable = resolveMovableBlock(view.state.doc.resolve(block.pos));
+    const draggedListType = movable?.isListItem ? movable.listType ?? undefined : undefined;
 
     // ── Multi-block drag: if the hovered block is part of a multi-selection,
     // drag all selected blocks together. ──
@@ -422,6 +400,7 @@ export class BlockHandlesController {
             from: firstPos,
             to: rangeTo,
             nodes: jsonNodes,
+            listType: draggedListType,
             startedAt: Date.now(),
           }));
         } catch { /* Best-effort */ }
@@ -438,6 +417,7 @@ export class BlockHandlesController {
         from: firstPos,
         to: rangeTo,
         nodes: jsonNodes,
+        listType: draggedListType,
         startedAt: Date.now(),
       });
 
@@ -466,6 +446,7 @@ export class BlockHandlesController {
           from: block.pos,
           to: block.pos + block.node.nodeSize,
           nodes: [block.node.toJSON()],
+          listType: draggedListType,
           startedAt: Date.now(),
         }));
       } catch {
@@ -485,6 +466,7 @@ export class BlockHandlesController {
       from: block.pos,
       to: block.pos + block.node.nodeSize,
       nodes: [block.node.toJSON()],
+      listType: draggedListType,
       startedAt: Date.now(),
     });
 
@@ -575,6 +557,49 @@ export class BlockHandlesController {
     }, 120);
   }
 
+  private _isHandleRelatedElement(element: HTMLElement | null): boolean {
+    if (!element) return false;
+
+    return (
+      element.classList.contains('block-add-btn') ||
+      !!element.closest('.block-add-btn') ||
+      element.classList.contains('drag-handle') ||
+      !!element.closest('.drag-handle') ||
+      element.classList.contains('block-action-menu') ||
+      !!element.closest('.block-action-menu') ||
+      element.classList.contains('block-action-submenu') ||
+      !!element.closest('.block-action-submenu')
+    );
+  }
+
+  private _isPointerWithinStickyHandleZone(clientX: number, clientY: number): boolean {
+    if (
+      this._resolvedBlockPos == null ||
+      !this._resolvedBlockDom ||
+      !this._dragHandleEl ||
+      this._dragHandleEl.classList.contains('hide')
+    ) {
+      return false;
+    }
+
+    const rects = [this._resolvedBlockDom.getBoundingClientRect()];
+
+    if (!this._dragHandleEl.classList.contains('hide')) {
+      rects.push(this._dragHandleEl.getBoundingClientRect());
+    }
+
+    if (this._blockAddBtn && !this._blockAddBtn.classList.contains('hide')) {
+      rects.push(this._blockAddBtn.getBoundingClientRect());
+    }
+
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const right = Math.max(...rects.map((rect) => rect.right));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+
+    return clientX >= left && clientX <= right && clientY >= top && clientY <= bottom;
+  }
+
 
   // ── Block Resolution ────────────────────────────────────────────────────
 
@@ -590,17 +615,22 @@ export class BlockHandlesController {
     clientX: number,
     clientY: number,
   ): { pos: number; node: any } | null {
+    const isListWrapper = (node: any): boolean => {
+      const name = node?.type?.name;
+      return name === 'bulletList' || name === 'orderedList' || name === 'taskList';
+    };
+
     const hitResult = view.posAtCoords({ left: clientX, top: clientY });
     if (hitResult) {
       // Prefer 'inside' — gives the position of the innermost block node.
       // For atom nodes (mathBlock, bookmark, etc.) 'inside' is -1.
       if (hitResult.inside >= 0) {
         const resolved = this._resolveBlockFromDocPos(view, hitResult.inside);
-        if (resolved) return { pos: resolved.pos, node: resolved.node };
+        if (resolved && !isListWrapper(resolved.node)) return { pos: resolved.pos, node: resolved.node };
       }
       // For atom nodes or boundary positions, use 'pos'.
       const resolved = this._resolveBlockFromDocPos(view, hitResult.pos);
-      if (resolved) return { pos: resolved.pos, node: resolved.node };
+      if (resolved && !isListWrapper(resolved.node)) return { pos: resolved.pos, node: resolved.node };
     }
 
     // Fallback: elementFromPoint → DOM walk → posAtDOM
@@ -751,6 +781,22 @@ export class BlockHandlesController {
     view: any,
     element: HTMLElement,
   ): { pos: number; node: any; depth: number } | null {
+    const listItem = element.closest('li') as HTMLElement | null;
+    if (listItem && view.dom.contains(listItem)) {
+      const directChild = listItem.firstElementChild as HTMLElement | null;
+      const contentEl = directChild?.tagName === 'LABEL'
+        ? (directChild.nextElementSibling as HTMLElement | null) ?? directChild
+        : directChild;
+
+      try {
+        const domPos = view.posAtDOM(contentEl ?? listItem, 0);
+        const resolved = this._resolveBlockFromDocPos(view, domPos);
+        if (resolved) return resolved;
+      } catch {
+        // Fall through to the generic ancestor walk.
+      }
+    }
+
     let current: HTMLElement | null = element;
 
     while (current && current !== view.dom) {
@@ -769,6 +815,11 @@ export class BlockHandlesController {
 
   private _resolveBlockFromDocPos(view: any, docPos: number): { pos: number; node: any; depth: number } | null {
     const $pos = view.state.doc.resolve(docPos);
+
+    const movable = resolveMovableBlock($pos);
+    if (movable && movable.node.type.name !== 'column' && movable.node.type.name !== 'columnList') {
+      return { pos: movable.pos, node: movable.node, depth: movable.depth };
+    }
 
     let containerDepth = 0;
     for (let d = 1; d <= $pos.depth; d++) {
@@ -813,27 +864,6 @@ export class BlockHandlesController {
       return this._resolveFirstBlockInsideColumnList(view, blockPos, node, targetDepth + 1);
     }
     if (node.type.name === 'column') {
-      return null;
-    }
-
-    // List wrappers → drill into the innermost listItem at the cursor position.
-    // Walk from the cursor depth upward to find the deepest listItem/taskItem
-    // ancestor so that nested lists also resolve to their specific items.
-    if (node.type.name === 'bulletList' || node.type.name === 'orderedList' || node.type.name === 'taskList') {
-      for (let d = $pos.depth; d > targetDepth; d--) {
-        const ancestor = $pos.node(d);
-        if (ancestor.type.name === 'listItem' || ancestor.type.name === 'taskItem') {
-          const itemPos = $pos.before(d);
-          const itemNode = view.state.doc.nodeAt(itemPos);
-          if (itemNode) {
-            return { pos: itemPos, node: itemNode, depth: d };
-          }
-        }
-      }
-      // Fallback: first child of the list
-      if (node.firstChild) {
-        return { pos: blockPos + 1, node: node.firstChild, depth: targetDepth + 1 };
-      }
       return null;
     }
 

@@ -30,6 +30,7 @@
   overflow: hidden;
   position: relative;
   contain: layout style;
+  background: var(--vscode-sideBar-background, #1e1e1e);
 }
 
 /* ── Message List (scrollable region) ── */
@@ -38,8 +39,9 @@
   flex: 1 1 auto;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 0;
+  padding: 24px 0 18px;
   scroll-behavior: smooth;
+  background: inherit;
 }
 
 .parallx-chat-agent-task-rail-container {
@@ -292,7 +294,7 @@
 .parallx-chat-message {
   display: flex;
   gap: 10px;
-  padding: 10px 16px;
+  padding: 12px 22px;
   position: relative;
 }
 
@@ -301,20 +303,26 @@
   border-top: none;
 }
 
-/* ── User Messages — VS Code Copilot style: blue bubble, right-aligned ── */
+/* ── User Messages — prompt-style boxed turns ── */
 
 .parallx-chat-message--user {
-  flex-direction: row-reverse;
-  padding-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-bottom: 8px;
 }
 
 .parallx-chat-message--user .parallx-chat-message-body {
-  background: var(--vscode-inputValidation-infoBackground, #063b49);
-  border: 1px solid var(--vscode-inputValidation-infoBorder, #007acc);
-  border-radius: 10px 10px 2px 10px;
-  padding: 8px 12px;
-  max-width: 85%;
-  flex: 0 1 auto;
+  width: fit-content;
+  max-width: min(920px, calc(100% - clamp(36px, 14%, 132px)));
+  margin-left: auto;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 20%, var(--vscode-editorWidget-background, #252526) 80%);
+  box-sizing: border-box;
 }
 
 .parallx-chat-message--user .parallx-chat-message-body p {
@@ -328,7 +336,10 @@
   flex-wrap: wrap;
   gap: 4px;
   justify-content: flex-end;
-  padding-top: 4px;
+  width: fit-content;
+  max-width: min(920px, calc(100% - clamp(36px, 14%, 132px)));
+  margin-left: auto;
+  padding-top: 0;
 }
 
 .parallx-chat-message-attachment-chip {
@@ -336,14 +347,19 @@
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 4px;
-  background: var(--vscode-badge-background, #4d4d4d);
-  color: var(--vscode-badge-foreground, #ffffff);
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--vscode-widget-border, #454545) 60%, transparent);
+  background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 84%, transparent);
+  color: var(--vscode-foreground, #cccccc);
   font-size: 11px;
   font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
   cursor: pointer;
   white-space: nowrap;
   transition: background 100ms ease;
+}
+
+.parallx-chat-message-attachment-chip--image {
+  white-space: normal;
 }
 
 .parallx-chat-message-attachment-chip:hover {
@@ -353,6 +369,7 @@
 .parallx-chat-message-attachment-icon {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
 }
 
 .parallx-chat-message-attachment-icon svg {
@@ -360,10 +377,27 @@
   height: 12px;
 }
 
+.parallx-chat-message-attachment-preview {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.parallx-chat-message-attachment-glyph {
+  display: inline-flex;
+  align-items: center;
+}
+
 /* ── Assistant Messages — plain text, left-aligned ── */
 
 .parallx-chat-message--assistant {
-  padding-bottom: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding-bottom: 10px;
 }
 
 /* Avatars removed — VS Code Copilot chat does not use profile images */
@@ -377,7 +411,12 @@
 }
 
 .parallx-chat-message--assistant .parallx-chat-message-body {
-  padding-left: 4px;
+  width: min(100%, 920px);
+  margin-left: 6px;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .parallx-chat-message-body p {
@@ -393,37 +432,31 @@
 .parallx-chat-message-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
-  position: absolute;
-  right: 12px;
-  top: 6px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 100ms ease;
-  background: var(--vscode-editorWidget-background, #252526);
-  border: 1px solid var(--vscode-widget-border, #454545);
-  border-radius: 4px;
-  padding: 1px;
-  box-shadow: 0 2px 4px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.2));
-}
-
-.parallx-chat-message:hover .parallx-chat-message-actions {
+  gap: 4px;
+  position: static;
   opacity: 1;
   pointer-events: auto;
+  margin-left: 10px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .parallx-chat-action-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--vscode-foreground, #cccccc);
+  gap: 4px;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--vscode-widget-border, #454545) 74%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 84%, transparent);
+  color: var(--vscode-descriptionForeground, #b0b0b0);
   cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
 
 .parallx-chat-action-btn svg {
@@ -432,7 +465,9 @@
 }
 
 .parallx-chat-action-btn:hover {
-  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+  background: color-mix(in srgb, var(--vscode-toolbar-hoverBackground, #5a5d5e50) 86%, transparent);
+  color: var(--vscode-foreground, #cccccc);
+  border-color: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 50%, transparent);
 }
 
 /* ── Streaming Indicator ── */
@@ -504,6 +539,7 @@
   padding: 32px 24px;
   text-align: center;
   color: var(--vscode-descriptionForeground, #989898);
+  box-sizing: border-box;
 }
 
 .parallx-chat-empty-state-icon {
@@ -699,11 +735,58 @@
   color: var(--vscode-foreground, #cccccc);
 }
 
+.parallx-chat-markdown .parallx-chat-math-block {
+  margin: 10px 0;
+  overflow-x: auto;
+}
+
+.parallx-chat-markdown .parallx-chat-math-block .katex-display {
+  margin: 0;
+}
+
+.parallx-chat-markdown .parallx-chat-math-fallback {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  background: var(--vscode-textCodeBlock-background, #2d2d2d);
+  color: var(--vscode-textPreformat-foreground, #d4d4d4);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.parallx-chat-markdown table {
+  width: max-content;
+  min-width: min(100%, 420px);
+  max-width: 100%;
+  margin: 10px 0 12px;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.parallx-chat-markdown thead {
+  background: var(--vscode-editor-inactiveSelectionBackground, rgba(127, 127, 127, 0.12));
+}
+
+.parallx-chat-markdown th,
+.parallx-chat-markdown td {
+  padding: 6px 10px;
+  border: 1px solid var(--vscode-widget-border, #454545);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.parallx-chat-markdown th:first-child,
+.parallx-chat-markdown td:first-child {
+  text-align: left;
+}
+
 /* ── Input Area Wrapper ── */
 
 .parallx-chat-input-area {
   flex-shrink: 0;
-  padding: 4px 12px 12px;
+  padding: 14px 18px 18px;
   background: var(--vscode-sideBar-background, #1e1e1e);
 }
 
@@ -914,10 +997,10 @@
 
 /* Thinking block — unified context/thinking section */
 .parallx-chat-thinking {
-  margin: 6px 0 10px;
+  margin: 4px 0 8px;
   border-radius: 6px;
-  background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.08));
-  border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.2));
+  background: color-mix(in srgb, var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.08)) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-widget-border, rgba(127, 127, 127, 0.2)) 78%, transparent);
   overflow: hidden;
 }
 
@@ -926,7 +1009,7 @@
   font-size: 12px;
   color: var(--vscode-descriptionForeground, #989898);
   user-select: none;
-  padding: 7px 10px;
+  padding: 5px 10px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -964,7 +1047,7 @@
 .parallx-chat-thinking-progress-label {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   font-size: 11px;
   color: var(--vscode-descriptionForeground, #989898);
 }
@@ -985,7 +1068,7 @@
 }
 
 .parallx-chat-thinking-content {
-  padding: 0 10px 8px;
+  padding: 0 10px 6px;
   font-size: 12px;
   color: var(--vscode-descriptionForeground, #989898);
   line-height: 1.5;
@@ -994,7 +1077,7 @@
 
 .parallx-chat-thinking-text {
   white-space: pre-wrap;
-  padding: 8px 0 4px;
+  padding: 6px 0 2px;
   font-size: 12px;
   line-height: 1.5;
   color: var(--vscode-descriptionForeground, #b0b0b0);
@@ -1006,7 +1089,35 @@
 
 /* Sources section inside thinking collapsible */
 .parallx-chat-thinking-sources {
-  padding-top: 6px;
+  padding-top: 4px;
+}
+
+.parallx-chat-thinking-sources-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #888);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.parallx-chat-thinking-sources-toggle:hover {
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-thinking-sources-arrow {
+  display: inline-block;
+  font-size: 8px;
+  opacity: 0.7;
+  transition: transform 150ms ease;
+  transform: rotate(90deg);
+}
+
+.parallx-chat-thinking-sources--collapsed .parallx-chat-thinking-sources-arrow {
+  transform: rotate(0deg);
 }
 
 .parallx-chat-thinking-sources-label {
@@ -1015,7 +1126,12 @@
   color: var(--vscode-descriptionForeground, #888);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 4px;
+}
+
+.parallx-chat-thinking-sources-meta {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+  opacity: 0.85;
 }
 
 .parallx-chat-thinking-sources-pills {
@@ -1023,6 +1139,11 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 5px;
+  padding-top: 4px;
+}
+
+.parallx-chat-thinking-sources--collapsed .parallx-chat-thinking-sources-pills {
+  display: none;
 }
 
 .parallx-chat-thinking-sources .parallx-chat-reference {
@@ -1657,6 +1778,8 @@
   display: none;
   flex-direction: column;
   flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
   width: 260px;
   height: 100%;
   border-left: 1px solid var(--vscode-sideBarSectionHeader-border, #2d2d2d);
@@ -1942,6 +2065,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   padding: 6px 10px;
   border-radius: 6px;
   border: 1px solid var(--vscode-widget-border, #2d2d2d);
@@ -1981,6 +2105,8 @@
   font-weight: 600;
   color: var(--vscode-foreground, #cccccc);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .parallx-chat-hint-desc {
@@ -1989,6 +2115,50 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.parallx-chat-widget--compact .parallx-chat-empty-state {
+  padding: 24px 16px;
+}
+
+.parallx-chat-widget--compact .parallx-chat-empty-state-hints {
+  grid-template-columns: 1fr;
+  max-width: 280px;
+}
+
+.parallx-chat-widget--compact .parallx-chat-empty-state-subtitle {
+  max-width: 240px;
+}
+
+.parallx-chat-widget--narrow .parallx-chat-empty-state-icon {
+  margin-bottom: 10px;
+}
+
+.parallx-chat-widget--narrow .parallx-chat-empty-state-title {
+  font-size: 13px;
+}
+
+.parallx-chat-widget--narrow .parallx-chat-empty-state-subtitle {
+  max-width: 220px;
+  font-size: 11px;
+}
+
+.parallx-chat-widget--narrow .parallx-chat-empty-state-hints {
+  gap: 4px;
+  margin-top: 14px;
+  max-width: 100%;
+}
+
+.parallx-chat-widget--narrow .parallx-chat-hint-item {
+  padding: 6px 8px;
+}
+
+.parallx-chat-widget--narrow .parallx-chat-hint-icon {
+  width: 16px;
+}
+
+.parallx-chat-widget--narrow .parallx-chat-hint-desc {
+  display: none;
 }
 
 /* ── System Prompt Viewer Modal (Task 4.10) ── */

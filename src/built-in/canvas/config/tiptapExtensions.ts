@@ -25,6 +25,7 @@ import type { EditorExtensionContext } from './blockRegistry.js';
 
 import type { Extensions } from '@tiptap/core';
 import { Extension } from '@tiptap/core';
+import { Plugin, TextSelection } from '@tiptap/pm/state';
 
 /**
  * Every block-level node type that receives a persistent unique ID via
@@ -91,6 +92,43 @@ const UNIQUE_ID_BLOCK_TYPES: string[] = [
 export function createEditorExtensions(lowlight: any, context?: EditorExtensionContext): Extensions {
   const registryContext: EditorExtensionContext = { lowlight, ...context };
 
+  const clipboardImagePaste = Extension.create({
+    name: 'clipboardImagePaste',
+    addProseMirrorPlugins() {
+      return [
+        new Plugin({
+          props: {
+            handlePaste(view, event) {
+              const items = Array.from(event.clipboardData?.items ?? []);
+              const imageItem = items.find((item) => item.type.startsWith('image/'));
+              const file = imageItem?.getAsFile();
+              const imageType = view.state.schema.nodes.image;
+              if (!file || !imageType) return false;
+
+              event.preventDefault();
+
+              const reader = new FileReader();
+              reader.onload = () => {
+                const src = typeof reader.result === 'string' ? reader.result : '';
+                if (!src) return;
+
+                const { from, to } = view.state.selection;
+                const imageNode = imageType.create({ src });
+                const tr = view.state.tr.replaceRangeWith(from, to, imageNode);
+                const afterImagePos = Math.min(tr.doc.content.size, from + imageNode.nodeSize);
+                tr.setSelection(TextSelection.near(tr.doc.resolve(afterImagePos)));
+                view.dispatch(tr);
+                view.focus();
+              };
+              reader.readAsDataURL(file);
+              return true;
+            },
+          },
+        }),
+      ];
+    },
+  });
+
   return [
     // ── 1. StarterKit (bundled blocks) ──
     StarterKit.configure({
@@ -146,6 +184,7 @@ export function createEditorExtensions(lowlight: any, context?: EditorExtensionC
     // via posAtCoords and positions the handle directly in its mousemove handler.
     CharacterCount,
     AutoJoiner,
+    clipboardImagePaste,
     UniqueID.configure({
       types: UNIQUE_ID_BLOCK_TYPES,
       // attributeName defaults to 'id', rendered as data-id in HTML.

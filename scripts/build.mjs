@@ -11,7 +11,7 @@
 //   node scripts/build.mjs              → development (no minification, inline sourcemaps)
 //   node scripts/build.mjs --production → production  (minified, external sourcemaps)
 import { build } from 'esbuild';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, cp, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 const isProduction = process.argv.includes('--production');
@@ -38,9 +38,14 @@ await build({
   assetNames: 'fonts/[name]',
 });
 
-// ── Copy PDF.js web-worker to dist ────────────────────────────────────────
+// ── Copy PDF.js runtime assets to dist ─────────────────────────────────────
 const workerSrc = 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs';
 const workerDst = 'dist/renderer/pdf.worker.min.mjs';
+const pdfAssetDirs = [
+  ['node_modules/pdfjs-dist/cmaps', 'dist/renderer/pdfjs/cmaps'],
+  ['node_modules/pdfjs-dist/standard_fonts', 'dist/renderer/pdfjs/standard_fonts'],
+  ['node_modules/pdfjs-dist/wasm', 'dist/renderer/pdfjs/wasm'],
+];
 
 if (existsSync(workerSrc)) {
   await mkdir('dist/renderer', { recursive: true });
@@ -48,6 +53,16 @@ if (existsSync(workerSrc)) {
   console.log('Copied pdf.worker.min.mjs → dist/renderer/');
 } else {
   console.warn('⚠ pdf.worker.min.mjs not found — PDF viewer may not work.');
+}
+
+for (const [srcDir, dstDir] of pdfAssetDirs) {
+  if (!existsSync(srcDir)) {
+    console.warn(`⚠ ${srcDir} not found — PDF rendering fidelity may degrade.`);
+    continue;
+  }
+
+  await cp(srcDir, dstDir, { recursive: true, force: true });
+  console.log(`Copied ${srcDir} → ${dstDir}`);
 }
 
 console.log(`Build complete (${isProduction ? 'production' : 'development'}).`);

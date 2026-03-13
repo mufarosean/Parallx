@@ -111,9 +111,6 @@ export abstract class Layout extends Disposable {
   protected _zenMode = false;
   /** Pre–Zen-Mode visibility snapshot for restore. */
   protected _preZenState: ZenModeExitInfo | null = null;
-  /** Coalesce flag for _layoutViewContainers during sash drags. */
-  private _viewContainerLayoutPending = false;
-
   constructor(protected readonly _container: HTMLElement) {
     super();
   }
@@ -312,19 +309,11 @@ export abstract class Layout extends Disposable {
    * Called by Workbench after Phase 3 content setup is complete.
    */
   protected _wireGridHandlers(): void {
-    // Coalesce view container layout — both hGrid and vGrid fire onDidChange
-    // synchronously during a single sash drag frame. Use rAF to batch into one call.
-    const scheduleViewContainerLayout = (): void => {
-      if (!this._viewContainerLayoutPending) {
-        this._viewContainerLayoutPending = true;
-        requestAnimationFrame(() => {
-          this._viewContainerLayoutPending = false;
-          this._layoutViewContainers();
-        });
-      }
-    };
-    this._hGrid.onDidChange(scheduleViewContainerLayout);
-    this._vGrid.onDidChange(scheduleViewContainerLayout);
+    // Grid sash drags are already rAF-throttled inside Grid itself.
+    // Layout contributed containers synchronously here so nested views do not
+    // visually lag behind the structural sidebar resize.
+    this._hGrid.onDidChange(() => this._layoutViewContainers());
+    this._vGrid.onDidChange(() => this._layoutViewContainers());
 
     // Track sidebar width after sash drags so toggleSidebar() restores the right size
     this._hGrid.onDidChange(() => {

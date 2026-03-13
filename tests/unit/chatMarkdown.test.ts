@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { _markdownToHtml } from '../../src/built-in/chat/rendering/chatContentParts';
+import { _markdownToHtml, _postProcessMathFallbacksForTest, renderContentPart } from '../../src/built-in/chat/rendering/chatContentParts';
 
 describe('_markdownToHtml — block-level parser', () => {
 
@@ -27,7 +27,7 @@ describe('_markdownToHtml — block-level parser', () => {
 
   it('joins consecutive lines with <br>', () => {
     const html = _markdownToHtml('Line one\nLine two');
-    expect(html).toContain('<p>Line one<br>Line two</p>');
+    expect(html).toMatch(/<p>Line one<br>\s*Line two<\/p>/);
   });
 
   it('separates paragraphs on blank lines', () => {
@@ -49,12 +49,12 @@ describe('_markdownToHtml — block-level parser', () => {
 
   it('renders unordered list with * marker', () => {
     const html = _markdownToHtml('* One\n* Two');
-    expect(html).toContain('<ul><li>One</li><li>Two</li></ul>');
+    expect(html).toMatch(/<ul>\s*<li>One<\/li>\s*<li>Two<\/li>\s*<\/ul>/);
   });
 
   it('renders unordered list with + marker', () => {
     const html = _markdownToHtml('+ Alpha\n+ Beta');
-    expect(html).toContain('<ul><li>Alpha</li><li>Beta</li></ul>');
+    expect(html).toMatch(/<ul>\s*<li>Alpha<\/li>\s*<li>Beta<\/li>\s*<\/ul>/);
   });
 
   it('handles indented list items (spaces before marker)', () => {
@@ -67,9 +67,9 @@ describe('_markdownToHtml — block-level parser', () => {
   it('keeps list together across blank lines when next item continues', () => {
     const html = _markdownToHtml('- First\n\n- Second\n\n- Third');
     expect(html).toContain('<ul>');
-    expect(html).toContain('<li>First</li>');
-    expect(html).toContain('<li>Second</li>');
-    expect(html).toContain('<li>Third</li>');
+    expect(html).toMatch(/<li>\s*<p>First<\/p>\s*<\/li>/);
+    expect(html).toMatch(/<li>\s*<p>Second<\/p>\s*<\/li>/);
+    expect(html).toMatch(/<li>\s*<p>Third<\/p>\s*<\/li>/);
     expect(html).toContain('</ul>');
     // Should be ONE list, not three
     expect(html.match(/<ul>/g)?.length).toBe(1);
@@ -104,12 +104,12 @@ describe('_markdownToHtml — block-level parser', () => {
 
   it('renders fenced code block', () => {
     const html = _markdownToHtml('```js\nconst x = 1;\n```');
-    expect(html).toContain('<pre data-lang="js"><code>const x = 1;</code></pre>');
+    expect(html).toContain('<pre><code class="language-js">const x = 1;\n</code></pre>');
   });
 
   it('escapes HTML inside code blocks', () => {
     const html = _markdownToHtml('```\n<div>test</div>\n```');
-    expect(html).toContain('&lt;div&gt;');
+    expect(html).toContain('&lt;div&gt;test&lt;/div&gt;');
   });
 
   it('does not process markdown inside code blocks', () => {
@@ -142,12 +142,47 @@ describe('_markdownToHtml — block-level parser', () => {
 
   it('renders strikethrough', () => {
     const html = _markdownToHtml('This is ~~deleted~~ text');
-    expect(html).toContain('<del>deleted</del>');
+    expect(html).toContain('<s>deleted</s>');
   });
 
   it('renders links', () => {
     const html = _markdownToHtml('Visit [Example](https://example.com)');
     expect(html).toContain('<a href="https://example.com" target="_blank" rel="noopener">Example</a>');
+  });
+
+  it('renders inline math with \\(...\\)', () => {
+    const html = _markdownToHtml(String.raw`The factor is \(f_j = 1.08\).`);
+    expect(html).toContain('class="katex"');
+    expect(html).not.toContain('\\(');
+    expect(html).not.toContain('\\)');
+  });
+
+  it('renders inline math with $...$', () => {
+    const html = _markdownToHtml('Use $f_j^*=1.12$ for the estimate.');
+    expect(html).toContain('class="katex"');
+    expect(html).not.toContain('$f_j^*=1.12$');
+  });
+
+  it('renders display math with \\[...\\]', () => {
+    const md = [String.raw`\[`, String.raw`f_j = \frac{a}{b}`, String.raw`\]`].join('\n');
+    const html = _markdownToHtml(md);
+    expect(html).toContain('class="parallx-chat-math-block"');
+    expect(html).toContain('class="katex-display"');
+    expect(html).not.toContain('\\[');
+    expect(html).not.toContain('\\]');
+  });
+
+  it('does not render math syntax inside fenced code blocks', () => {
+    const html = _markdownToHtml(`\`\`\`tex\n${String.raw`\[f_j = \frac{a}{b}\]`}\n\`\`\``);
+    expect(html).toContain(String.raw`\[f_j = \frac{a}{b}\]`);
+    expect(html).not.toContain('class="katex"');
+  });
+
+  it('strips stray delimiter text nodes around rendered math', () => {
+    const container = document.createElement('div');
+    container.innerHTML = '<p>$<span class="katex">rendered math</span>$</p>';
+    _postProcessMathFallbacksForTest(container);
+    expect(container.innerHTML).toBe('<p><span class="katex">rendered math</span></p>');
   });
 
   // ── Blockquotes ──
@@ -204,7 +239,7 @@ describe('_markdownToHtml — block-level parser', () => {
     const html = _markdownToHtml(md);
     expect(html).toContain('<p>Here is a summary:</p>');
     expect(html).toContain('<h2>Overview</h2>');
-    expect(html).toContain('<ul><li>Point one</li><li>Point two</li></ul>');
+    expect(html).toMatch(/<ul>\s*<li>Point one<\/li>\s*<li>Point two<\/li>\s*<\/ul>/);
     expect(html).toContain('<p>That covers it.</p>');
   });
 
@@ -233,10 +268,115 @@ describe('_markdownToHtml — block-level parser', () => {
     ].join('\n');
     const html = _markdownToHtml(md);
     expect(html).toContain('<h2>Agent Contacts.md</h2>');
-    expect(html).toContain('<li><strong>Contents:</strong></li>');
-    expect(html).toContain('<li>Contact Information:</li>');
-    expect(html).toContain('<li>Name: Sarah Chen</li>');
+    expect(html).toMatch(/<li>\s*<p><strong>Contents:<\/strong><\/p>\s*<\/li>/);
+    expect(html).toMatch(/<li>\s*<p>Contact Information:<\/p>\s*<\/li>/);
+    expect(html).toMatch(/<li>\s*<p>Name: Sarah Chen<\/p>\s*<\/li>/);
     // All items in one <ul>, not split into multiple
     expect(html.match(/<ul>/g)?.length).toBe(1);
+  });
+
+  it('preserves ordered list start values when numbering resumes after a block', () => {
+    const md = [
+      '1. Estimate Age-to-Age Factors:',
+      '',
+      '- Compute the age-to-age factors.',
+      '',
+      String.raw`\[`,
+      String.raw`f_j = \frac{C_{i,j+1}}{C_{i,j}}`,
+      String.raw`\]`,
+      '',
+      '2. Calculate Volume-Weighted Factors:',
+      '',
+      '- Use the weighted average.',
+    ].join('\n');
+    const html = _markdownToHtml(md);
+    expect(html).toContain('<ol>');
+    expect(html).toContain('<ol start="2">');
+    expect(html).toContain('class="parallx-chat-math-block"');
+  });
+
+  it('renders the chain-ladder style finance answer without resetting numbering to 1', () => {
+    const md = [
+      '1. Estimate Age-to-Age Factors:',
+      '',
+      '- Compute the age-to-age factors (LDFs) for each development period.',
+      String.raw`- Let \(C_{i,j}\) be the cumulative losses at the end of accident year \(i\) and development period \(j\).`,
+      String.raw`- The age-to-age factor \(f_j\) for development period \(j\) is given by:`,
+      '',
+      String.raw`\[`,
+      String.raw`f_j = \frac{\sum_{i=1}^{n-j} C_{i,j+1}}{\sum_{i=1}^{n-j} C_{i,j}}`,
+      String.raw`\]`,
+      '',
+      '2. Calculate Volume-Weighted Factors:',
+      '',
+      String.raw`- Compute the volume-weighted factors: \(f_j^*\):`,
+      '',
+      String.raw`\[`,
+      String.raw`f_j^* = \frac{\sum_{i=1}^{n-j} C_{i,j} \cdot f_j}{\sum_{i=1}^{n-j} C_{i,j}}`,
+      String.raw`\]`,
+    ].join('\n');
+
+    const html = _markdownToHtml(md);
+    expect(html).toContain('<ol start="2">');
+    expect(html.match(/class="parallx-chat-math-block"/g)?.length).toBe(2);
+    expect(html.match(/class="katex"/g)?.length).toBeGreaterThan(1);
+    expect(html).not.toContain('>1. Calculate Volume-Weighted Factors');
+  });
+
+  it('renders plain bracketed display math in the screenshot-style answer flow', () => {
+    const part = {
+      kind: 'markdown',
+      content: [
+        '1. Estimate Age-to-Age Factors (LDFs):',
+        '',
+        String.raw`- For each development period \(j\), calculate the age-to-age factors \(f_j\):`,
+        '',
+        '[',
+        String.raw`f_j = \frac{\sum_{i=1}^{n-j} C_{i,j+1}}{\sum_{i=1}^{n-j} C_{i,j}}`,
+        ']',
+        '',
+        String.raw`where \(C_{i,j}\) is the cumulative loss amount for accident year \(i\).`,
+      ].join('\n'),
+    } as any;
+
+    const element = renderContentPart(part);
+    expect(element.querySelectorAll('.parallx-chat-math-block')).toHaveLength(1);
+    expect(element.querySelectorAll('.katex-display')).toHaveLength(1);
+    expect(element.textContent || '').not.toContain('[\nf_j');
+  });
+
+  it('normalizes standalone bracket math lines into a rendered display equation', () => {
+    const html = _markdownToHtml([
+      '3. Calculate the Weighted Residuals:',
+      '',
+      '- The weighted residual for each cell can be calculated using the formula:',
+      '',
+      '[',
+      String.raw`\text{Weighted Residual} = \frac{\text{Actual Loss} - \text{Predicted Loss}}{\sqrt{\text{Prior Cumulative Loss}}}`,
+      ']',
+    ].join('\n'));
+
+    expect(html).toContain('class="parallx-chat-math-block"');
+    expect(html).toContain('class="katex-display"');
+    expect(html).not.toContain('<p>[</p>');
+    expect(html).not.toContain('Weighted Residual} = \\frac');
+  });
+
+  it('converts aligned loss triangles into markdown tables', () => {
+    const html = _markdownToHtml([
+      'Given the following cumulative losses:',
+      '',
+      'Year 12 months 24 months 36 months',
+      '2010 1,200 1,700',
+      '2011 500 2,600 3,000',
+      '2012 2,600 3,000 4,680',
+      '2013 700 2,100 1,260',
+    ].join('\n'));
+
+    expect(html).toContain('<table>');
+    expect(html).toContain('<th>Year</th>');
+    expect(html).toContain('<th>12 months</th>');
+    expect(html).toContain('<td>2011</td>');
+    expect(html).toContain('<td>3,000</td>');
   });
 });

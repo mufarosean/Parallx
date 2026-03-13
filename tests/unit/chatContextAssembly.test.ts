@@ -4,21 +4,19 @@ import { assembleChatContext } from '../../src/built-in/chat/utilities/chatConte
 
 describe('chat context assembly', () => {
   it('assembles context, reports pills, and filters excluded sources', async () => {
-    const addReference = vi.fn();
     const reportContextPills = vi.fn();
 
     const result = await assembleChatContext(
       {
-        addReference,
         reportContextPills,
-        getExcludedContextIds: () => new Set(['Claims Guide.md']),
+        getExcludedContextIds: () => new Set(['Claims Guide.md', 'memory:session-recall']),
         assessEvidenceSufficiency: () => ({ status: 'sufficient', reasons: [] }),
         buildRetrieveAgainQuery: () => '',
       },
       {
         userText: 'What are the filing deadlines?',
         messages: [{ role: 'system', content: 'system prompt text' } as any],
-        attachments: [{ name: 'notes.txt', fullPath: 'C:/notes.txt' } as any],
+        attachments: [{ kind: 'file', id: 'C:/notes.txt', name: 'notes.txt', fullPath: 'C:/notes.txt', isImplicit: false } as any],
         mentionPills: [{ id: 'rule:claims', label: 'Claims rule', type: 'rule', tokens: 12, removable: true }],
         useRetrieval: true,
         maxMemoryContextChars: 20,
@@ -34,19 +32,58 @@ describe('chat context assembly', () => {
       },
     );
 
-    expect(addReference).toHaveBeenCalledWith('Claims Guide.md', 'Claims Guide.md', 1);
     expect(reportContextPills).toHaveBeenCalledTimes(1);
     expect(result.contextParts.some((part) => part.includes('Claims Guide.md'))).toBe(false);
     expect(result.contextParts.some((part) => part.includes('Page context'))).toBe(true);
-    expect(result.contextParts.some((part) => part.includes('[…memory truncated]'))).toBe(true);
+    expect(result.contextParts.some((part) => part.includes('[…memory truncated]'))).toBe(false);
     expect(result.contextParts.some((part) => part.includes('[…concepts truncated]'))).toBe(true);
     expect(result.contextParts.some((part) => part.includes('attachment body'))).toBe(true);
+    expect(result.provenance.map((entry) => ({ kind: entry.kind, label: entry.label, index: entry.index }))).toEqual([
+      { kind: 'page', label: 'Claims', index: undefined },
+      { kind: 'rag', label: 'Claims Guide.md', index: 1 },
+      { kind: 'memory', label: 'Session memory', index: undefined },
+      { kind: 'concept', label: 'Concept recall', index: undefined },
+      { kind: 'attachment', label: 'notes.txt', index: undefined },
+    ]);
     expect(result.pills.map((pill) => pill.label)).toEqual([
       'System prompt',
       'Claims Guide.md',
+      'Session memory',
+      'Concept recall',
       'notes.txt',
       'Claims rule',
     ]);
+  });
+
+  it('creates visible references for direct page and file context even without retrieval', async () => {
+    const result = await assembleChatContext(
+      {
+        assessEvidenceSufficiency: () => ({ status: 'sufficient', reasons: [] }),
+        buildRetrieveAgainQuery: () => '',
+      },
+      {
+        userText: 'Summarize the open document',
+        messages: [{ role: 'system', content: 'system prompt text' } as any],
+        attachments: [{ kind: 'file', name: 'Clark.pdf', fullPath: 'D:/AI/Parallx/Clark.pdf', id: 'D:/AI/Parallx/Clark.pdf', isImplicit: false } as any],
+        mentionPills: [],
+        useRetrieval: false,
+        maxMemoryContextChars: 100,
+        maxConceptContextChars: 100,
+        pageResult: { title: 'Clark.pdf', pageId: 'pdf-page', textContent: 'Open document text' },
+        ragResult: null,
+        memoryResult: null,
+        conceptResult: null,
+        attachmentResults: [{ name: 'Clark.pdf', content: 'Attached file text' }],
+      },
+    );
+
+    expect(result.provenance.map((entry) => ({ kind: entry.kind, uri: entry.uri }))).toEqual([
+      { kind: 'page', uri: 'parallx-page://pdf-page' },
+      { kind: 'attachment', uri: 'D:/AI/Parallx/Clark.pdf' },
+    ]);
+    expect(result.ragSources).toHaveLength(0);
+    expect(result.contextParts.some((part) => part.includes('Open document text'))).toBe(true);
+    expect(result.contextParts.some((part) => part.includes('Attached file text'))).toBe(true);
   });
 
   it('runs a retrieve-again pass when initial evidence is insufficient', async () => {
@@ -61,7 +98,6 @@ describe('chat context assembly', () => {
     const result = await assembleChatContext(
       {
         retrieveContext,
-        addReference: vi.fn(),
         assessEvidenceSufficiency,
         buildRetrieveAgainQuery: () => 'collision deductible policy',
       },

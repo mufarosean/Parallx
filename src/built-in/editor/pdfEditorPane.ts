@@ -1,7 +1,6 @@
 // pdfEditorPane.ts — PDF viewer pane (PDF.js Viewer layer)
 //
-// Production PDF viewer using Mozilla's PDF.js Viewer layer — the same
-// rendering engine that powers Firefox's built-in PDF reader.
+// Production PDF viewer using Mozilla's PDF.js Viewer layer.
 //
 // The Viewer layer provides:
 //   - Canvas buffer with eviction (ring buffer, bounded memory)
@@ -47,8 +46,12 @@ import type { IEditorInput } from '../../editor/editorInput.js';
 import { PdfEditorInput } from './pdfEditorInput.js';
 import { $, hide, show, startDrag, endDrag } from '../../ui/dom.js';
 import { ContextMenu } from '../../ui/contextMenu.js';
+import { toDisposable } from '../../platform/lifecycle.js';
 
 const PANE_ID = 'pdf-editor-pane';
+const PDFJS_CMAP_URL = './dist/renderer/pdfjs/cmaps/';
+const PDFJS_STANDARD_FONT_URL = './dist/renderer/pdfjs/standard_fonts/';
+const PDFJS_WASM_URL = './dist/renderer/pdfjs/wasm/';
 
 // TextLayerMode is not exported from pdf_viewer.mjs
 const TEXT_LAYER_ENABLE = 1;
@@ -83,6 +86,13 @@ interface PdfOutlineItem {
   dest: string | any[] | null;
   url: string | null;
   items: PdfOutlineItem[];
+}
+
+interface SelectionOverlayRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
 // ─── PdfEditorPane ───────────────────────────────────────────────────────
@@ -143,9 +153,109 @@ export class PdfEditorPane extends EditorPane {
   private _scaleValue = 'page-fit';  // default fit mode
   private _resizeTimer: ReturnType<typeof setTimeout> | null = null;
   private _currentInput: PdfEditorInput | null = null;
+  private _selectionOverlayFrame: number | null = null;
 
   constructor() {
     super(PANE_ID);
+  }
+
+  private _installTestDebugHook(): void {
+    if (!(globalThis as any).parallxElectron?.testMode) {
+      return;
+    }
+
+    (globalThis as any).__parallxPdfDebug = {
+      getState: () => this._collectDebugState(),
+      setScaleValue: (value: string) => {
+        this._setScaleValue(value);
+        return this._collectDebugState();
+      },
+      setNumericScale: (value: number) => {
+        if (this._pdfViewer) {
+          this._pdfViewer.currentScale = value;
+        }
+        return this._collectDebugState();
+      },
+    };
+  }
+
+  private _removeTestDebugHook(): void {
+    if ((globalThis as any).__parallxPdfDebug?.getState === undefined) {
+      return;
+    }
+    delete (globalThis as any).__parallxPdfDebug;
+  }
+
+  private _collectDebugState(): Record<string, unknown> {
+    const pageView = this._pdfViewer?.getPageView(0) as any;
+    const pageDiv = pageView?.div ?? this._viewerContainer?.querySelector('.page');
+    const canvas = pageView?.canvas ?? pageDiv?.querySelector('canvas');
+    const textLayerDiv = pageView?.textLayer?.div ?? pageDiv?.querySelector('.textLayer');
+    const rectOf = (node: Element | null | undefined) => {
+      if (!node) {
+        return null;
+      }
+      const rect = node.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      };
+    };
+    const fonts = typeof document !== 'undefined' && 'fonts' in document
+      ? Array.from(document.fonts as FontFaceSet).slice(0, 40).map((font) => {
+        const face = font as FontFace;
+        return {
+          family: face.family,
+          status: face.status,
+          weight: face.weight,
+          style: face.style,
+        };
+      })
+      : [];
+
+    return {
+      currentScale: this._pdfViewer?.currentScale ?? null,
+      currentScaleValue: this._pdfViewer?.currentScaleValue ?? null,
+      pagesCount: this._pdfViewer?.pagesCount ?? 0,
+      devicePixelRatio: globalThis.devicePixelRatio ?? 1,
+      pageView: pageView ? {
+        renderingState: pageView.renderingState ?? null,
+        scale: pageView.scale ?? null,
+        hasRestrictedScaling: pageView.hasRestrictedScaling ?? null,
+      } : null,
+      pageRect: rectOf(pageDiv),
+      canvas: canvas ? {
+        width: (canvas as HTMLCanvasElement).width,
+        height: (canvas as HTMLCanvasElement).height,
+        styleWidth: (canvas as HTMLElement).style.width || null,
+        styleHeight: (canvas as HTMLElement).style.height || null,
+        rect: rectOf(canvas),
+      } : null,
+      textLayer: textLayerDiv ? {
+        rect: rectOf(textLayerDiv),
+        spanCount: textLayerDiv.querySelectorAll('span').length,
+      } : null,
+      selectionOverlay: {
+        rootCount: this._viewerContainer?.querySelectorAll('.pdf-selection-overlay-root').length ?? 0,
+        boxCount: this._viewerContainer?.querySelectorAll('.pdf-selection-overlay-box').length ?? 0,
+        boxes: Array.from(this._viewerContainer?.querySelectorAll<HTMLElement>('.pdf-selection-overlay-box') ?? []).slice(0, 20).map((box) => rectOf(box)),
+        endOfContent: (() => {
+          const endOfContent = this._viewerContainer?.querySelector<HTMLElement>('.textLayer .endOfContent');
+          if (!endOfContent) {
+            return null;
+          }
+          return {
+            parentClassName: endOfContent.parentElement?.className ?? null,
+            widthStyle: endOfContent.style.width || null,
+            heightStyle: endOfContent.style.height || null,
+            rect: rectOf(endOfContent),
+          };
+        })(),
+      },
+      fonts,
+    };
   }
 
   // ── DOM setup ────────────────────────────────────────────────────────
@@ -238,10 +348,205 @@ export class PdfEditorPane extends EditorPane {
     container.appendChild(this._errorEl);
 
     // Wire text selection context menu (shows on mouseup via shared ContextMenu)
+    this._wireSelectionOverlay();
     this._wireContextMenu();
 
     container.tabIndex = 0;
     container.addEventListener('keydown', (e) => this._onKeyDown(e));
+  }
+
+  private _wireSelectionOverlay(): void {
+    const controller = new AbortController();
+    this._register(toDisposable(() => controller.abort()));
+
+    document.addEventListener('selectionchange', () => this._scheduleSelectionOverlayUpdate(), {
+      signal: controller.signal,
+    });
+
+    window.addEventListener('resize', () => this._scheduleSelectionOverlayUpdate(), {
+      signal: controller.signal,
+    });
+  }
+
+  private _scheduleSelectionOverlayUpdate(): void {
+    if (this._selectionOverlayFrame !== null) {
+      return;
+    }
+
+    this._selectionOverlayFrame = requestAnimationFrame(() => {
+      this._selectionOverlayFrame = requestAnimationFrame(() => {
+        this._selectionOverlayFrame = null;
+        this._updateSelectionOverlay();
+      });
+    });
+  }
+
+  private _updateSelectionOverlay(): void {
+    this._clearSelectionOverlay();
+
+    const selection = globalThis.getSelection?.();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !this._viewerContainer) {
+      return;
+    }
+
+    const textLayers = Array.from(this._viewerContainer.querySelectorAll<HTMLElement>('.textLayer'));
+    for (const textLayer of textLayers) {
+      const rects = this._collectSelectionRectsForTextLayer(selection, textLayer);
+      if (rects.length === 0) {
+        continue;
+      }
+
+      const mergedRects = this._mergeSelectionOverlayRects(rects);
+      if (mergedRects.length === 0) {
+        continue;
+      }
+
+      const overlayRoot = this._createSelectionOverlayRoot(textLayer);
+      if (!overlayRoot) {
+        continue;
+      }
+
+      for (const rect of mergedRects) {
+        const box = document.createElement('div');
+        box.classList.add('pdf-selection-overlay-box');
+        box.style.left = `${rect.left}px`;
+        box.style.top = `${rect.top}px`;
+        box.style.width = `${rect.width}px`;
+        box.style.height = `${rect.height}px`;
+        overlayRoot.appendChild(box);
+      }
+    }
+  }
+
+  private _clearSelectionOverlay(): void {
+    if (this._selectionOverlayFrame !== null) {
+      cancelAnimationFrame(this._selectionOverlayFrame);
+      this._selectionOverlayFrame = null;
+    }
+
+    this._viewerContainer?.querySelectorAll('.pdf-selection-overlay-root').forEach((node) => node.remove());
+  }
+
+  private _collectSelectionRectsForTextLayer(selection: Selection, textLayer: HTMLElement): SelectionOverlayRect[] {
+    const textLayerRect = textLayer.getBoundingClientRect();
+    if (textLayerRect.width === 0 || textLayerRect.height === 0) {
+      return [];
+    }
+
+    const rects: SelectionOverlayRect[] = [];
+    for (let index = 0; index < selection.rangeCount; index += 1) {
+      const range = selection.getRangeAt(index);
+      if (!range.intersectsNode(textLayer)) {
+        continue;
+      }
+
+      for (const rect of Array.from(range.getClientRects())) {
+        const clippedRect = this._clipRectToBounds(rect, textLayerRect);
+        if (!clippedRect) {
+          continue;
+        }
+
+        rects.push({
+          left: clippedRect.left - textLayerRect.left,
+          top: clippedRect.top - textLayerRect.top,
+          width: clippedRect.width,
+          height: clippedRect.height,
+        });
+      }
+    }
+
+    return rects;
+  }
+
+  private _clipRectToBounds(rect: DOMRect | ClientRect, bounds: DOMRect): SelectionOverlayRect | null {
+    const left = Math.max(rect.left, bounds.left);
+    const top = Math.max(rect.top, bounds.top);
+    const right = Math.min(rect.right, bounds.right);
+    const bottom = Math.min(rect.bottom, bounds.bottom);
+    const width = right - left;
+    const height = bottom - top;
+
+    if (width <= 0.5 || height <= 0.5) {
+      return null;
+    }
+
+    return { left, top, width, height };
+  }
+
+  private _mergeSelectionOverlayRects(rects: SelectionOverlayRect[]): SelectionOverlayRect[] {
+    const sortedRects = [...rects].sort((a, b) => {
+      const centerYDelta = (a.top + a.height / 2) - (b.top + b.height / 2);
+      if (Math.abs(centerYDelta) > 1.5) {
+        return centerYDelta;
+      }
+      return a.left - b.left;
+    });
+
+    const lines: Array<{ centerY: number; rects: SelectionOverlayRect[] }> = [];
+    for (const rect of sortedRects) {
+      const centerY = rect.top + rect.height / 2;
+      const line = lines.find((candidate) => {
+        const referenceHeight = candidate.rects.reduce((sum, value) => sum + value.height, 0) / candidate.rects.length;
+        const tolerance = Math.max(3, referenceHeight * 0.45);
+        return Math.abs(candidate.centerY - centerY) <= tolerance;
+      });
+
+      if (line) {
+        line.rects.push({ ...rect });
+        line.centerY = (line.centerY * (line.rects.length - 1) + centerY) / line.rects.length;
+      } else {
+        lines.push({ centerY, rects: [{ ...rect }] });
+      }
+    }
+
+    const mergedRects: SelectionOverlayRect[] = [];
+    for (const line of lines) {
+      const lineRects = line.rects.sort((a, b) => a.left - b.left);
+      const averageHeight = lineRects.reduce((sum, value) => sum + value.height, 0) / lineRects.length;
+      const gapTolerance = Math.max(6, Math.min(40, averageHeight * 1.5));
+      let currentRect: SelectionOverlayRect | null = null;
+
+      for (const rect of lineRects) {
+        if (!currentRect) {
+          currentRect = { ...rect };
+          continue;
+        }
+
+        const currentRight = currentRect.left + currentRect.width;
+        const rectRight = rect.left + rect.width;
+        const gap = rect.left - currentRight;
+
+        if (gap <= gapTolerance) {
+          const mergedLeft = Math.min(currentRect.left, rect.left);
+          const mergedTop = Math.min(currentRect.top, rect.top);
+          const mergedRight = Math.max(currentRight, rectRight);
+          const mergedBottom = Math.max(currentRect.top + currentRect.height, rect.top + rect.height);
+          currentRect = {
+            left: mergedLeft,
+            top: mergedTop,
+            width: mergedRight - mergedLeft,
+            height: mergedBottom - mergedTop,
+          };
+          continue;
+        }
+
+        mergedRects.push(currentRect);
+        currentRect = { ...rect };
+      }
+
+      if (currentRect) {
+        mergedRects.push(currentRect);
+      }
+    }
+
+    return mergedRects;
+  }
+
+  private _createSelectionOverlayRoot(textLayer: HTMLElement): HTMLElement | null {
+    const overlayRoot = document.createElement('div');
+    overlayRoot.classList.add('pdf-selection-overlay-root');
+    textLayer.insertBefore(overlayRoot, textLayer.firstChild);
+    return overlayRoot;
   }
 
   // ── Toolbar ──────────────────────────────────────────────────────────
@@ -741,11 +1046,10 @@ export class PdfEditorPane extends EditorPane {
         textLayerMode: TEXT_LAYER_ENABLE,
         annotationMode: AnnotationMode.ENABLE_FORMS,
         removePageBorders: false,
-        maxCanvasPixels: 32 * 1024 * 1024,
-        enableDetailCanvas: true,
-        enableHWA: false,
+        enableHWA: true,
         supportsPinchToZoom: true,
         enableAutoLinking: true,
+        minDurationToUpdateCanvas: 0,
         l10n: new GenericL10n('en-US'),
       });
 
@@ -762,6 +1066,12 @@ export class PdfEditorPane extends EditorPane {
 
       this._eventBus.on('scalechanging', (evt: any) => {
         this._zoomLabelEl.textContent = `${Math.round(evt.scale * 100)}%`;
+        this._pdfViewer?.update();
+        this._scheduleSelectionOverlayUpdate();
+      });
+
+      this._eventBus.on('textlayerrendered', () => {
+        this._scheduleSelectionOverlayUpdate();
       });
 
       this._eventBus.on('updatefindmatchescount', (evt: any) => {
@@ -789,11 +1099,19 @@ export class PdfEditorPane extends EditorPane {
 
       // ── Load document ──────────────────────────────────────────────
 
-      this._pdfDoc = await pdfjsLib.getDocument({ data }).promise;
+      this._pdfDoc = await pdfjsLib.getDocument({
+        data,
+        cMapUrl: PDFJS_CMAP_URL,
+        cMapPacked: true,
+        standardFontDataUrl: PDFJS_STANDARD_FONT_URL,
+        wasmUrl: PDFJS_WASM_URL,
+        enableHWA: true,
+      }).promise;
 
       this._pdfViewer.setDocument(this._pdfDoc);
       this._linkService.setDocument(this._pdfDoc, null);
       this._findController.setDocument(this._pdfDoc);
+      this._installTestDebugHook();
 
       // Update toolbar page count
       this._pageTotalEl.textContent = String(this._pdfDoc.numPages);
@@ -808,6 +1126,8 @@ export class PdfEditorPane extends EditorPane {
       this._eventBus.on('pagesinit', () => {
         this._pdfViewer!.currentScaleValue = this._scaleValue;
         this._zoomLabelEl.textContent = `${Math.round(this._pdfViewer!.currentScale * 100)}%`;
+        this._pdfViewer!.update();
+        this._scheduleSelectionOverlayUpdate();
       });
 
       // ── Load page labels ───────────────────────────────────────────
@@ -1039,6 +1359,7 @@ export class PdfEditorPane extends EditorPane {
     // Show shared ContextMenu on mouseup when text is selected
     this._viewerContainer.addEventListener('mouseup', (e) => {
       requestAnimationFrame(() => {
+        this._scheduleSelectionOverlayUpdate();
         const sel = window.getSelection();
         const text = sel?.toString()?.trim() ?? '';
         if (text.length > 0) {
@@ -1052,7 +1373,10 @@ export class PdfEditorPane extends EditorPane {
     });
 
     // Dismiss on scroll
-    this._viewerContainer.addEventListener('scroll', () => this._dismissContextMenu());
+    this._viewerContainer.addEventListener('scroll', () => {
+      this._dismissContextMenu();
+      this._scheduleSelectionOverlayUpdate();
+    });
   }
 
   private _showSelectionMenu(x: number, y: number): void {
@@ -1167,6 +1491,8 @@ export class PdfEditorPane extends EditorPane {
           // Re-apply the current scale value — the viewer recalculates
           // 'page-width' / 'page-fit' / 'auto' to the new container size.
           this._pdfViewer.currentScaleValue = this._pdfViewer.currentScaleValue;
+          this._pdfViewer.update();
+          this._scheduleSelectionOverlayUpdate();
         }
       }, 150);
     }
@@ -1192,11 +1518,13 @@ export class PdfEditorPane extends EditorPane {
     this._viewerEl?.replaceChildren();
     this._outlineTree?.replaceChildren();
     this._thumbnailList?.replaceChildren();
+    this._clearSelectionOverlay();
     this._thumbCanvases.clear();
     this._activeThumb = null;
     this._outline = null;
     this._pageLabels = null;
     this._currentInput = null;
+    this._removeTestDebugHook();
 
     // Reset UI
     this._searchVisible = false;

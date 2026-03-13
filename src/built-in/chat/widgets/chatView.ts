@@ -68,17 +68,11 @@ export function createChatView(
   // Register this widget as the active widget for command dispatch
   setActiveWidget(widget);
 
-  // Layout on resize — throttled via rAF to avoid excessive reflows during
-  // continuous sash drags that rapidly change the container width.
-  let resizeRafId = 0;
   const resizeObserver = new ResizeObserver((entries) => {
-    cancelAnimationFrame(resizeRafId);
-    resizeRafId = requestAnimationFrame(() => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        widget.layout(width, height);
-      }
-    });
+    for (const entry of entries) {
+      const { width, height } = entry.contentRect;
+      widget.layout(width, height);
+    }
   });
   resizeObserver.observe(root);
 

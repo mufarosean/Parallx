@@ -27,6 +27,14 @@ import type {
   ModelCapability,
 } from '../../../services/chatTypes.js';
 
+interface OllamaRequestMessage {
+  role: string;
+  content: string;
+  images?: string[];
+  tool_calls?: { function: { name: string; arguments: Record<string, unknown> } }[];
+  tool_name?: string;
+}
+
 // ── Ollama API response shapes (internal) ────────────────────────────────────
 
 interface OllamaTagsResponse {
@@ -119,6 +127,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
   private _lastStatus: IProviderStatus = { available: false };
   private _consecutiveFailures = 0;
   private _loadedModels: string[] = [];
+  private _hasEverConnected = false;
 
   /** True while in the startup burst window (fast polling). */
   private _startupBurst = true;
@@ -336,6 +345,9 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
     if (response.capabilities?.includes('tools')) {
       capabilities.push('tools');
     }
+    if (response.capabilities?.includes('vision')) {
+      capabilities.push('vision');
+    }
     // Check for thinking support (DeepSeek-R1, QwQ, etc.)
     const familyLower = response.details.family.toLowerCase();
     if (familyLower.includes('deepseek') || familyLower.includes('qwq')) {
@@ -503,11 +515,14 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
 
   // ── Internal: Formatting Helpers ──
 
-  private _formatMessage(msg: IChatMessage): Record<string, unknown> {
-    const out: Record<string, unknown> = {
+  private _formatMessage(msg: IChatMessage): OllamaRequestMessage {
+    const out: OllamaRequestMessage = {
       role: msg.role,
       content: msg.content,
     };
+    if (msg.images?.length) {
+      out.images = msg.images.map((image) => image.data);
+    }
     if (msg.toolCalls && msg.toolCalls.length > 0) {
       out['tool_calls'] = msg.toolCalls.map((tc) => ({
         function: { name: tc.function.name, arguments: tc.function.arguments },
@@ -517,6 +532,10 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       out['tool_name'] = msg.toolName;
     }
     return out;
+  }
+
+  _debugFormatMessage(msg: IChatMessage): OllamaRequestMessage {
+    return this._formatMessage(msg);
   }
 
   private _formatToolDefinition(tool: IToolDefinition): Record<string, unknown> {
@@ -673,6 +692,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
 
     if (isAvailable) {
       this._consecutiveFailures = 0;
+      this._hasEverConnected = true;
       // Connected — end startup burst early
       this._startupBurst = false;
       // Also poll loaded models
@@ -751,7 +771,7 @@ export class OllamaProvider extends Disposable implements ILanguageModelProvider
       interval = HEALTH_POLL_STARTUP_MS;
     } else if (this._lastStatus.available) {
       interval = HEALTH_POLL_CONNECTED_MS;
-    } else if (this._consecutiveFailures >= HEALTH_FAILURE_BACKOFF_THRESHOLD) {
+    } else if (this._hasEverConnected && this._consecutiveFailures >= HEALTH_FAILURE_BACKOFF_THRESHOLD) {
       interval = HEALTH_POLL_BACKOFF_MS;
     } else {
       interval = HEALTH_POLL_DISCONNECTED_MS;

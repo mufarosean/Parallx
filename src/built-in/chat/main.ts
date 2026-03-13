@@ -32,7 +32,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentSessionService, IAgentTraceService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentSessionService, IAgentTraceService, IVectorStoreService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -196,6 +196,9 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     : undefined;
   let indexingPipelineService = api.services.has(IIndexingPipelineService)
     ? api.services.get<import('../../services/serviceTypes.js').IIndexingPipelineService>(IIndexingPipelineService)
+    : undefined;
+  const vectorStoreService = api.services.has(IVectorStoreService)
+    ? api.services.get<import('../../services/serviceTypes.js').IVectorStoreService>(IVectorStoreService)
     : undefined;
   let memoryService = api.services.has(IMemoryService)
     ? api.services.get<import('../../services/serviceTypes.js').IMemoryService>(IMemoryService)
@@ -811,6 +814,22 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // Track these subscriptions so we can dispose/re-subscribe on workspace switch
   let _indexingSubs: IDisposable[] = [];
 
+  const _hydrateIndexStats = async (): Promise<void> => {
+    if (!vectorStoreService) return;
+
+    try {
+      const stats = await vectorStoreService.getStats();
+      _lastIndexStats = {
+        pages: stats.sourceCountByType['page_block'] ?? 0,
+        files: stats.sourceCountByType['file_chunk'] ?? 0,
+      };
+      dataService.setLastIndexStats(_lastIndexStats);
+      _tokenStatusBar?.update().catch(() => {});
+    } catch (err) {
+      console.warn('[Chat] Failed to hydrate index stats:', err);
+    }
+  };
+
   const _subscribeIndexingEvents = (): void => {
     // Dispose previous listeners
     for (const d of _indexingSubs) d.dispose();
@@ -829,6 +848,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       _tokenStatusBar?.update().catch(() => {});
     });
     _indexingSubs.push(completeSub as unknown as IDisposable);
+
+    if (indexingPipelineService.isInitialIndexComplete) {
+      void _hydrateIndexStats();
+    }
   };
 
   _subscribeIndexingEvents();

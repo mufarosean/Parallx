@@ -1,3 +1,500 @@
+# Milestone 22 — PDF Engine Reliability & Rendering Fidelity
+
+> **Authoritative Scope Notice**
+>
+> This document is the single source of truth for Milestone 22.
+> All implementation must conform to the structures and boundaries defined here.
+> Milestones 1–21 established the Parallx shell, editor system, local AI stack,
+> document ingestion pipeline, and custom PDF editor. This milestone hardens the
+> **PDF viewing engine itself** so that Parallx's custom PDF experience achieves
+> native-grade rendering stability, sharpness, and text selection fidelity while
+> preserving the custom toolbar, sidebars, and workbench integration.
+
+---
+
+## Table of Contents
+
+1. [Problem Statement](#problem-statement)
+2. [Current State Research](#current-state-research)
+3. [Root Cause Model](#root-cause-model)
+4. [Vision](#vision)
+5. [Architecture](#architecture)
+6. [Design Principles](#design-principles)
+7. [Phase A — Diagnostic Hardening](#phase-a--diagnostic-hardening)
+8. [Phase B — Render Pipeline Control](#phase-b--render-pipeline-control)
+9. [Phase C — Selection Geometry Fidelity](#phase-c--selection-geometry-fidelity)
+10. [Phase D — Sharpness Policy & Fallbacks](#phase-d--sharpness-policy--fallbacks)
+11. [Phase E — Regression Coverage](#phase-e--regression-coverage)
+12. [Migration & Compatibility](#migration--compatibility)
+13. [Task Tracker](#task-tracker)
+14. [Verification Checklist](#verification-checklist)
+15. [Risk Register](#risk-register)
+
+---
+
+## Problem Statement
+
+### What the user experiences today
+
+Parallx ships a custom PDF editor pane implemented with `pdfjs-dist` in
+`src/built-in/editor/pdfEditorPane.ts`. It preserves the custom workbench shell,
+toolbar, outline, thumbnails, and selection actions. However, the rendering and
+selection quality are not reliable enough.
+
+Current failures observed in the live Electron app:
+
+1. **Blur after zoom changes**
+   - At 100% and other scales, the displayed page can remain blurry even though
+     the page frame visibly resized.
+   - In diagnostic runs, the page wrapper expands to the new scale while the
+     underlying canvas remains at the old bitmap size until a later scroll.
+
+2. **Mixed sharp and blurry regions on the same page**
+   - Some page regions appear crisp while others remain soft.
+   - This is especially visible after zoom changes and scroll interactions.
+
+3. **Text selection drift / fragmentation**
+   - Text selection geometry can feel misaligned, ugly, or fragmented.
+   - This happens when the text layer and the rendered page are not using the
+     same effective geometry at the same moment.
+
+4. **Non-deterministic behavior**
+   - The same page can look different before and after scrolling, resizing, or
+     waiting, which indicates a render-pipeline synchronization problem rather
+     than a static asset problem.
+
+### What this milestone fixes
+
+Milestone 22 turns the PDF pane into a **reliable rendering engine integration**.
+The goal is not cosmetic tuning. The goal is to enforce the following invariant:
+
+> For every visible PDF page, the page box, canvas backing store, detail canvas
+> policy, and text layer geometry must represent the same viewport scale and
+> visible region before the page is considered visually ready.
+
+This milestone fixes the root causes behind blur, partial sharpness, and broken
+selection while keeping the custom Parallx PDF UI.
+
+---
+
+## Current State Research
+
+### Parallx implementation today
+
+Current PDF implementation facts from the codebase:
+
+- `src/built-in/editor/pdfEditorPane.ts`
+  - Instantiates `PDFViewer`, `PDFLinkService`, and `PDFFindController` directly.
+  - Uses `currentScaleValue` for preset zoom and `currentScale` for numeric zoom.
+  - Re-applies scale in `layoutPaneContent()` via a delayed assignment.
+  - Maintains a custom toolbar, search bar, outline, thumbnail sidebar, and
+    selection context menu.
+
+- `src/built-in/editor/pdfEditorPane.css`
+  - Uses an absolutely positioned `.pdf-viewer-container` inside a flex wrapper.
+  - Overrides PDF.js styling locally.
+  - Fences `.textLayer` subtree to `box-sizing: content-box` to protect against
+    the global workbench `border-box` reset.
+
+- `tests/e2e/19-pdf-diagnostics.spec.ts`
+  - Opens a generated PDF through the real Electron workbench.
+  - Captures screenshots and JSON runtime diagnostics.
+  - Uses a test-only `window.__parallxPdfDebug` hook to capture viewer state.
+
+### Proven findings from live diagnostics
+
+Automated Electron diagnostics already established the following:
+
+1. At initial `page-fit`, rendering completes normally.
+2. After a direct 100% scale change, the page wrapper expands immediately.
+3. In that stale state, the backing canvas remains at the old bitmap size.
+4. The text layer can temporarily collapse or diverge from page geometry.
+5. A real scroll-position change causes PDF.js to rerender and reconcile the
+   canvas and text layer.
+6. Blob-backed PDF.js runtime fonts are loading after the CSP/font MIME fixes,
+   so the remaining issue is not explained by blocked font faces.
+
+### PDF.js behavior that matters
+
+Research against upstream PDF.js behavior shows:
+
+1. `PDFViewer` updates scale via `#setScaleUpdatePages(...)`, which:
+   - updates `--scale-factor`
+   - refreshes page views
+   - dispatches `scalechanging`
+   - then calls `update()` on the rendering queue
+
+2. `PDFPageView.update(...)` can follow multiple paths:
+   - full rerender
+   - CSS transform path
+   - postponed drawing path
+   - detail canvas / restricted-scaling path
+
+3. PDF.js supports a **detail canvas** strategy for restricted/high zoom cases:
+   - visible regions can be rerendered sharply while other regions remain on the
+     lower-resolution backing canvas temporarily.
+   - this improves responsiveness, but it creates mixed sharp/blurry regions if
+     the visible-area bookkeeping is wrong or late.
+
+4. Stock PDF.js app wiring explicitly calls `pdfViewer.update()` on scale change
+   and on resize, but its full app shell also owns the viewer lifecycle more
+   tightly than Parallx does.
+
+### Synthesis
+
+The rendering failures in Parallx are not best described as “wrong PDF
+resolution.” PDFs are primarily vector documents. The engine must choose an
+output bitmap per page from:
+
+- page viewport dimensions in PDF space
+- current zoom
+- display device pixel ratio
+- restricted-scaling/detail-canvas policy
+
+The current bug class is **state divergence**, not bad source resolution.
+
+---
+
+## Root Cause Model
+
+Milestone 22 treats the current failures as two connected but distinct defects.
+
+### Defect 1: stale backing canvas after scale transition
+
+Observed behavior:
+
+- page frame resizes to the new scale
+- canvas bitmap stays at the previous scale
+- blur remains until scroll causes rerender
+
+Interpretation:
+
+- Parallx is allowing the page to appear visually updated before PDF.js finishes
+  reconciling the new render state for the visible page.
+- The render queue is being advanced reliably by real scroll movement, but not
+  reliably by the current Parallx zoom/layout handoff.
+
+### Defect 2: partial sharpness from detail-canvas / visible-area mismatch
+
+Observed behavior:
+
+- some page regions are crisp while other regions are blurred
+- behavior changes with scroll / zoom / viewport changes
+
+Interpretation:
+
+- PDF.js detail-canvas behavior and/or restricted scaling is active for some
+  view states, but Parallx is not guaranteeing that visible-area updates,
+  container metrics, and page-ready state stay synchronized.
+- The user sees an intermediate state that stock PDF.js normally hides or
+  reconciles faster.
+
+### Defect 3: text layer not sharing the exact same ready-state contract
+
+Observed behavior:
+
+- text selection is fragmented, offset, or ugly
+
+Interpretation:
+
+- The text layer is sensitive to inherited CSS and viewport transform changes.
+- Even after the `content-box` fix, the pane still needs a stronger invariant:
+  the page is not “ready” until the text layer geometry matches the active page
+  viewport for the visible page.
+
+### Defect 4: native selection paint exposes fragmented Chromium text boxes
+
+Observed behavior:
+
+- the selected text is correct, but the blue highlight can appear as overlapping
+  blocks at word boundaries and list bullets
+- the effect is strongest on real-world PDFs where the text layer is split into
+  many absolutely positioned spans
+
+Interpretation:
+
+- PDF.js uses a Chromium-specific `.endOfContent` helper and native
+  `Range.getClientRects()` selection painting to make drag selection behave.
+- That behavior is functionally correct for copy/search, but it can expose a
+  noisy visual result when adjacent text spans slightly overlap or when the
+  browser paints each span boundary independently.
+- Parallx should preserve the real browser selection for copy/search while
+  owning the visible highlight paint so the user sees merged, stable selection
+  geometry instead of fragmented native rectangles.
+
+---
+
+## Vision
+
+### Before M22
+
+> You open a PDF in Parallx. The custom toolbar and sidebars work, but after
+> zooming the page can be soft or partially soft. Text selection may feel wrong.
+> Scrolling sometimes makes the page look better, which means the visual output
+> is not deterministic.
+
+### After M22
+
+> You open the same PDF in Parallx. Zoom changes settle into a sharp, stable
+> page without needing manual scroll “fixes.” If detail rendering is used, it is
+> invisible to the user and never exposes a mixed sharp/blurry state. Text
+> selection tracks the rendered page geometry correctly. Playwright diagnostics
+> and unit coverage prove that visible-page render state is coherent across load,
+> zoom, resize, and scroll transitions.
+
+---
+
+## Architecture
+
+### Rendering Readiness Contract
+
+Milestone 22 introduces a stricter page-ready model in the Parallx PDF pane.
+
+For the active visible page, the pane must treat a zoom/layout transition as
+complete only when all of the following are true:
+
+1. `PDFPageView` is no longer in an intermediate stale state.
+2. Canvas backing-store dimensions match the effective viewport scale policy.
+3. Any detail-canvas policy has either:
+   - fully rendered the visible region, or
+   - been disabled / bypassed by policy.
+4. Text layer geometry reflects the same viewport dimensions as the rendered
+   page.
+
+### Diagnostic Layers
+
+The PDF diagnostics system must capture, at minimum:
+
+- page render state
+- canvas bitmap size
+- canvas CSS rect
+- page rect
+- text-layer rect
+- visible-region / detail-canvas indicators where available
+- device pixel ratio
+- zoom mode and numeric scale
+
+### Policy Layers
+
+Milestone 22 allows the PDF pane to make an explicit policy choice instead of
+leaving everything to implicit PDF.js defaults:
+
+1. **Preferred path**
+   - keep PDF.js optimized rendering
+   - enforce correct visible-page reconciliation timing
+
+2. **Fallback path**
+   - selectively disable problematic detail-canvas behavior or other
+     optimization paths if they are the direct source of visible defects
+   - prioritize stable sharpness and correct selection over theoretical scroll
+     performance wins
+
+---
+
+## Design Principles
+
+1. **Stable sharpness beats clever partial rendering.**
+   - If an optimization makes visible quality worse, Parallx must not use it.
+
+2. **A page is not ready just because its box resized.**
+   - Visual readiness requires coherent geometry across canvas and text layers.
+
+3. **No guesswork after this milestone begins.**
+   - Every rendering change must be validated by diagnostics or tests.
+
+4. **Preserve the custom Parallx PDF shell.**
+   - The toolbar, outline, thumbnails, and workbench integration remain intact.
+
+5. **Prefer engine-correct fixes over CSS masking.**
+   - CSS corrections are valid only when the issue is actually CSS geometry.
+
+---
+
+## Phase A — Diagnostic Hardening
+
+Goal: make the rendering state machine observable enough that fixes are provable.
+
+### Deliverables
+
+- Extend the PDF debug hook to expose:
+  - current page render state
+  - detail-canvas presence/state if accessible
+  - visible-area and restricted-scaling indicators if accessible
+  - page-ready readiness checks used by Parallx
+- Expand Playwright diagnostics to cover:
+  - initial load
+  - zoom-in
+  - zoom-out
+  - exact 100%
+  - resize-driven relayout
+  - selection geometry after each relevant state change
+
+### Non-goals
+
+- No speculative rendering hacks in this phase.
+
+---
+
+## Phase B — Render Pipeline Control
+
+Goal: ensure scale changes and relayout transitions drive PDF.js in a way that
+produces an immediate, deterministic visible-page rerender.
+
+### Scope
+
+- Audit all current calls to:
+  - `currentScaleValue`
+  - `currentScale`
+  - `increaseScale()` / `decreaseScale()`
+  - relayout-time scale reapplication
+- Replace any scale path that leaves the page in a stale CSS-scaled state.
+- Align Parallx event handling more closely with stock PDF.js viewer behavior
+  where appropriate.
+- Add a Parallx-side readiness barrier so the page is not treated as visually
+  settled until the visible page is actually rerendered.
+
+### Decision gates
+
+- If PDF.js optimized behavior can be made stable, keep it.
+- If not, explicitly disable the optimization path that causes visible blur.
+
+---
+
+## Phase C — Selection Geometry Fidelity
+
+Goal: guarantee that text selection overlays share the same viewport geometry as
+the rendered page.
+
+### Scope
+
+- Preserve the existing `.textLayer` box-model fencing.
+- Audit page rect, canvas rect, and text-layer rect for consistent dimensions.
+- Eliminate any Parallx CSS or layout behavior that causes layer drift.
+- Restore the PDF.js selection special-cases for helper nodes and non-text
+  descendants.
+- Add a Parallx-owned merged selection overlay so visible selection paint is
+  stable even when native Chromium rectangles are fragmented.
+- Add automated geometry assertions for text selection against known sample PDFs.
+
+### Output
+
+- Selection ranges align with text spans after load, zoom, and resize.
+- Visible selection highlight no longer shows overlapping native blocks for
+  multi-span text selections.
+
+---
+
+## Phase D — Sharpness Policy & Fallbacks
+
+Goal: make the PDF pane explicitly choose a rendering policy that favors stable
+quality.
+
+### Scope
+
+- Evaluate PDF.js detail-canvas behavior in Parallx specifically.
+- If mixed sharp/blurred regions are caused by detail rendering:
+  - either synchronize visible-area updates correctly, or
+  - disable the problematic path for Parallx’s pane.
+- Audit restricted-scaling thresholds and any max-canvas policy that makes the
+  visible page look degraded under normal use.
+
+### Acceptance rule
+
+- The user must not see partially sharpened pages during normal zoom/scroll use.
+
+---
+
+## Phase E — Regression Coverage
+
+Goal: prevent future regressions and make PDF fidelity a permanent test surface.
+
+### Unit coverage
+
+- Add focused unit tests for Parallx PDF pane state helpers introduced in M22.
+- Test any new page-ready / geometry-normalization logic in isolation.
+
+### E2E coverage
+
+- Extend Playwright coverage to assert:
+  - crisp rerender after 100% transition without manual scroll repair
+  - consistent behavior across multiple zoom levels
+  - no text-layer collapse on numeric zoom
+  - stable selection geometry after zoom and resize
+
+### Artifact coverage
+
+- Persist JSON diagnostics and screenshots for PDF regression failures.
+
+---
+
+## Migration & Compatibility
+
+- No migration is required for user data.
+- Existing PDF editor commands and toolbar actions remain intact.
+- Existing diagnostic hooks may be expanded but remain test-only.
+- If an optimization path is disabled, the behavior change is internal only.
+
+---
+
+## Task Tracker
+
+### A. Diagnostics
+
+- [ ] A1. Expand the PDF debug hook to expose visible-page render policy state.
+- [x] A2. Extend `tests/e2e/19-pdf-diagnostics.spec.ts` to cover more zoom and resize transitions.
+- [x] A3. Add assertions that distinguish stale-canvas blur from detail-canvas partial rendering.
+
+### B. Render pipeline
+
+- [ ] B1. Audit every Parallx-controlled zoom path and remove inconsistent scale application.
+- [ ] B2. Implement a deterministic visible-page rerender handshake after zoom and relayout.
+- [ ] B3. Ensure resize-driven scale reapplication matches PDF.js stock expectations.
+
+### C. Selection fidelity
+
+- [x] C1. Add geometry checks for page rect, canvas rect, text-layer rect, and selection-overlay boxes.
+- [x] C2. Fix any remaining layer drift caused by Parallx CSS/layout.
+- [x] C3. Restore PDF.js selection helper special-cases and replace fragmented native paint with a merged Parallx overlay.
+- [x] C4. Validate text selection on generated multi-span PDFs with automated overlap assertions.
+
+### D. Sharpness policy
+
+- [ ] D1. Determine whether detail canvas can remain enabled safely in Parallx.
+- [ ] D2. If not, disable or constrain the offending optimization path.
+- [ ] D3. Validate that no mixed sharp/blurry visible region remains during normal use.
+
+### E. Verification
+
+- [ ] E1. Add unit tests for new PDF pane helper logic.
+- [x] E2. Make Playwright diagnostics assert the fixed behavior, not just record it.
+- [x] E3. Run `tsc --noEmit`, `npx vitest run`, and targeted Playwright PDF diagnostics before closure.
+
+---
+
+## Verification Checklist
+
+- [ ] Opening a PDF produces a fully rendered first page without text-layer collapse.
+- [ ] Switching from `page-fit` to 100% produces a sharp visible page without requiring scroll.
+- [ ] Zooming at multiple levels does not leave stale low-resolution canvases visible.
+- [ ] The user never sees mixed sharp/blurry regions on the same visible viewport area.
+- [x] Text selection boxes align with the rendered text after load, zoom, resize, and scroll.
+- [x] Text selection no longer shows overlapping block artifacts for multi-span lines.
+- [ ] No CSP/font-load regressions occur for runtime PDF.js fonts.
+- [x] `npm run build` passes.
+- [x] `npx vitest run` passes.
+- [x] Targeted Playwright PDF diagnostics pass and encode the new invariants.
+
+---
+
+## Risk Register
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| PDF.js internal behavior differs from stock app integration assumptions | High | Compare Parallx event flow to stock PDF.js app behavior and validate with runtime diagnostics |
+| Disabling detail-canvas optimization harms scroll performance | Medium | Prefer synchronization fix first; only disable optimization if it is the direct visible defect source |
+| Text-layer fixes accidentally regress search highlighting or annotations | Medium | Keep selection tests, search tests, and annotation visibility checks in Playwright |
+| Fixing numeric zoom only leaves preset zoom paths inconsistent | High | Audit all zoom paths together in Phase B |
+| Renderer changes appear correct on generated PDFs but fail on real-world PDFs | High | Validate against both generated fixtures and at least one real PDF sample in the workspace or test assets |
 # Milestone 22 — AI Cleanup Audit & Dead Code Removal
 
 > **Authoritative Scope Notice**

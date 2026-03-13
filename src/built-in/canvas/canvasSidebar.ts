@@ -3,22 +3,26 @@
 // Provides a tree view of all Canvas pages with:
 //   • Expand/collapse for nested pages
 //   • Click to open page in editor
-//   • Inline rename (double-click or F2)
+//   • Page options popup for rename/icon changes (double-click or F2)
 //   • Create (+) button in toolbar
 //   • Delete via keyboard (Delete key)
 //   • Drag-and-drop to reorder and reparent
 //   • Reactive updates from CanvasDataService change events
 //   • Favorites section at top (Task 10.2)
 //   • Trash section at bottom (Task 10.3)
-//   • Right-click context menu (Task 10.7)
+//   • Right-click page options popup (Task 10.7)
 
+import { DisposableStore, toDisposable } from '../../platform/lifecycle.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
+import { doesPageChangeAffectSidebar } from './canvasTypes.js';
 import type { IPage, IPageTreeNode, ICanvasDataService } from './canvasTypes.js';
 import type { IDatabaseDataService, IDatabaseView } from './database/databaseRegistry.js';
 import { $ } from '../../ui/dom.js';
+import { layoutPopup } from '../../ui/dom.js';
 import { InputBox } from '../../ui/inputBox.js';
+import { IconPicker } from '../../ui/iconPicker.js';
 import { ContextMenu, type IContextMenuItem } from '../../ui/contextMenu.js';
-import { createIconElement, resolvePageIcon, svgIcon } from './config/blockRegistry.js';
+import { createIconElement, PAGE_SELECTABLE_ICONS, resolvePageIcon, svgIcon } from './config/blockRegistry.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -79,8 +83,11 @@ export class CanvasSidebar {
   private _dropTarget: { parentId: string | null; afterSiblingId: string | undefined } | null = null;
   private _dragOverElement: HTMLElement | null = null;
 
-  // ── Inline rename state ──
-  private _renamingPageId: string | null = null;
+  // ── Sidebar page options popup ──
+  private _pageOptionsPopup: HTMLElement | null = null;
+  private _pageOptionsPopupStore: DisposableStore | null = null;
+  private _pageOptionsIconPicker: IconPicker | null = null;
+  private _pageOptionsPageId: string | null = null;
 
   // ── Database detection (M8 Phase 2) ──
   private _databasePageIds = new Set<string>();
@@ -129,7 +136,12 @@ export class CanvasSidebar {
 
     // Subscribe to data changes
     this._disposables.push(
-      this._dataService.onDidChangePage(() => this._requestRefreshTree()),
+      this._dataService.onDidChangePage((event) => {
+        if (!doesPageChangeAffectSidebar(event)) {
+          return;
+        }
+        this._requestRefreshTree();
+      }),
     );
 
     // Sync selection with active editor
@@ -149,6 +161,7 @@ export class CanvasSidebar {
       dispose: () => {
         this._treeList?.removeEventListener('keydown', this._handleKeydown);
         this._dismissContextMenuCleanup();
+        this._dismissPageOptionsPopup({ commitTitle: false });
         this._dismissTrashPanel();
         this._treeList = null;
         for (const d of this._disposables) d.dispose();
@@ -176,8 +189,6 @@ export class CanvasSidebar {
   }
 
   private async _refreshTree(): Promise<void> {
-    // Don't wipe the DOM while an inline rename is in progress
-    if (this._renamingPageId) return;
     const refreshSeq = ++this._refreshSeq;
 
     const applyIfLatest = (fn: () => void): void => {
@@ -367,7 +378,7 @@ export class CanvasSidebar {
     const iconArea = $('span.canvas-node-icon-area');
     const isDbFav = this._databasePageIds.has(page.id);
     const iconEl = isDbFav
-      ? createIconElement('database', 14)
+      ? createIconElement(page.icon ? resolvePageIcon(page.icon) : 'database', 14)
       : createIconElement(resolvePageIcon(page.icon), 14);
     iconEl.classList.add('canvas-node-icon');
     if (isDbFav) iconEl.classList.add('canvas-node-icon--database');
@@ -401,7 +412,7 @@ export class CanvasSidebar {
     moreBtn.title = 'More actions';
     moreBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this._showContextMenu(e, page);
+      this._showPageOptionsPopup(page, moreBtn.getBoundingClientRect());
     });
     actions.appendChild(moreBtn);
 
@@ -421,13 +432,15 @@ export class CanvasSidebar {
     }
 
     // Click → open
-    row.addEventListener('click', () => this._selectAndOpenPage(page));
+    row.addEventListener('click', () => {
+      this._selectAndOpenPage(page);
+    });
 
     // Right-click → context menu
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      this._showContextMenu(e, page);
+      this._showPageOptionsPopup(page, { x: e.clientX, y: e.clientY });
     });
 
     return row;
@@ -511,7 +524,7 @@ export class CanvasSidebar {
     // Icon — database pages get an SVG database icon; regular pages get their resolved icon
     let iconEl: HTMLElement;
     if (this._databasePageIds.has(node.id)) {
-      iconEl = createIconElement('database', 14);
+      iconEl = createIconElement(node.icon ? resolvePageIcon(node.icon) : 'database', 14);
       iconEl.classList.add('canvas-node-icon', 'canvas-node-icon--database');
     } else {
       iconEl = createIconElement(resolvePageIcon(node.icon), 14);
@@ -551,7 +564,7 @@ export class CanvasSidebar {
     moreBtn.title = 'More actions';
     moreBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this._showContextMenu(e, node);
+      this._showPageOptionsPopup(node, moreBtn.getBoundingClientRect());
     });
     nodeActions.appendChild(moreBtn);
 
@@ -576,19 +589,21 @@ export class CanvasSidebar {
     // ── Event handlers ──
 
     // Click → open in editor
-    row.addEventListener('click', () => this._selectAndOpenPage(node));
-
-    // Double-click → inline rename
-    label.addEventListener('dblclick', (e) => {
-      e.stopPropagation();
-      this._startInlineRename(row, label, node);
+    row.addEventListener('click', () => {
+      this._selectAndOpenPage(node);
     });
 
-    // Right-click → context menu
+    // Double-click → page options popup focused on the title
+    label.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      this._showPageOptionsPopup(node, row.getBoundingClientRect(), { focusTitle: true, selectTitle: true });
+    });
+
+    // Right-click → page options popup
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      this._showContextMenu(e, node);
+      this._showPageOptionsPopup(node, { x: e.clientX, y: e.clientY });
     });
 
     // ── Drag-and-drop ──
@@ -646,118 +661,284 @@ export class CanvasSidebar {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // Right-Click Context Menu (Task 10.7)
+  // Sidebar Page Options Popup
   // ══════════════════════════════════════════════════════════════════════════
 
-  private _showContextMenu(e: MouseEvent, page: IPage | IPageTreeNode): void {
+  private _showPageOptionsPopup(
+    page: IPage | IPageTreeNode,
+    anchor: DOMRect | { x: number; y: number },
+    options?: { focusTitle?: boolean; selectTitle?: boolean },
+  ): void {
     this._dismissContextMenuCleanup();
-
-    const icon = (name: string) => (el: HTMLElement) => el.appendChild(createIconElement(name, 14));
-
-    const actions = new Map<string, () => void>();
-
-    const items: IContextMenuItem[] = [
-      {
-        id: 'open', label: 'Open', group: '1_nav',
-        renderIcon: icon('open'),
-      },
-      {
-        id: 'new-subpage', label: 'New subpage', group: '1_nav',
-        renderIcon: icon('new-page'),
-      },
-      ...(this._databaseDataService ? [{
-        id: 'new-database', label: 'New database', group: '1_nav',
-      } as IContextMenuItem] : []),
-      {
-        id: 'rename', label: 'Rename', group: '1_nav',
-        renderIcon: icon('edit'),
-      },
-      {
-        id: 'favorite', group: '2_edit',
-        label: page.isFavorited ? 'Remove from Favorites' : 'Add to Favorites',
-        renderIcon: icon(page.isFavorited ? 'star' : 'star-filled'),
-      },
-      {
-        id: 'duplicate', label: 'Duplicate', group: '2_edit',
-        renderIcon: icon('duplicate'),
-      },
-      {
-        id: 'export-md', label: 'Export as Markdown', group: '2_edit',
-        renderIcon: icon('export'),
-      },
-      {
-        id: 'delete', label: 'Delete', group: '3_danger',
-        renderIcon: icon('trash'),
-        className: 'context-menu-item--danger',
-      },
-    ];
-
-    actions.set('open', () => this._selectAndOpenPage(page));
-    actions.set('new-subpage', () => this._createPage(page.id));
-    actions.set('new-database', () => this._createDatabase(page.id));
-    actions.set('rename', () => {
-      requestAnimationFrame(() => {
-        const el = this._treeList?.querySelector(`[data-page-id="${page.id}"]`);
-        if (el) {
-          const label = el.querySelector('.canvas-node-label');
-          const node = this._findNode(this._tree, page.id);
-          if (label && node) {
-            this._startInlineRename(el as HTMLElement, label as HTMLElement, node);
-          }
+    if (this._pageOptionsPopup && this._pageOptionsPageId === page.id) {
+      if (options?.focusTitle) {
+        const existingInput = this._pageOptionsPopup.querySelector('input') as HTMLInputElement | null;
+        existingInput?.focus();
+        if (existingInput && options.selectTitle) {
+          existingInput.select();
         }
+        return;
+      }
+      this._dismissPageOptionsPopup({ commitTitle: false });
+      return;
+    }
+    this._dismissPageOptionsPopup({ commitTitle: false });
+
+    const popupStore = new DisposableStore();
+    const popup = $('div.canvas-sidebar-page-menu');
+    popup.setAttribute('data-page-id', page.id);
+    const header = $('div.canvas-sidebar-page-menu__header');
+    const iconButton = $('button.canvas-sidebar-page-menu__icon-btn') as HTMLButtonElement;
+    iconButton.type = 'button';
+    let currentIcon = page.icon;
+    iconButton.title = currentIcon ? 'Change icon' : 'Add icon';
+    const renderIconButton = (iconId: string | null | undefined) => {
+      const resolvedIcon = this._databasePageIds.has(page.id)
+        ? (iconId ? resolvePageIcon(iconId) : 'database')
+        : resolvePageIcon(iconId);
+      iconButton.innerHTML = '';
+      iconButton.appendChild(createIconElement(resolvedIcon, 16));
+      iconButton.classList.toggle('canvas-sidebar-page-menu__icon-btn--empty', !iconId && !this._databasePageIds.has(page.id));
+      iconButton.title = iconId ? 'Change icon' : 'Add icon';
+    };
+    renderIconButton(currentIcon);
+    header.appendChild(iconButton);
+
+    const titleWrap = $('div.canvas-sidebar-page-menu__title');
+    const titleInput = popupStore.add(new InputBox(titleWrap, {
+      value: page.title,
+      placeholder: 'Untitled',
+      ariaLabel: 'Page title',
+    }));
+    titleInput.inputElement.classList.add('canvas-sidebar-page-menu__title-input');
+    titleInput.inputElement.spellcheck = true;
+    header.appendChild(titleWrap);
+    popup.appendChild(header);
+    popup.appendChild($('div.canvas-sidebar-page-menu__divider'));
+
+    const addAction = (config: { id: string; label: string; iconId: string; danger?: boolean; action: () => void | Promise<void> }) => {
+      const actionBtn = $('button.canvas-sidebar-page-menu__action') as HTMLButtonElement;
+      actionBtn.type = 'button';
+      actionBtn.appendChild(createIconElement(config.iconId, 14));
+      const text = $('span.canvas-sidebar-page-menu__action-label');
+      text.textContent = config.label;
+      actionBtn.appendChild(text);
+      if (config.danger) actionBtn.classList.add('canvas-sidebar-page-menu__action--danger');
+      actionBtn.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await commitTitleChange();
+        this._dismissPageOptionsPopup({ commitTitle: false });
+        await config.action();
+      });
+      popup.appendChild(actionBtn);
+    };
+
+    let lastCommittedTitle = page.title;
+    const commitTitleChange = async (): Promise<void> => {
+      const nextTitle = titleInput.value.trim() || 'Untitled';
+      if (nextTitle === lastCommittedTitle) return;
+      try {
+        await this._dataService.updatePage(page.id, { title: nextTitle });
+        lastCommittedTitle = nextTitle;
+      } catch (err) {
+        console.error('[CanvasSidebar] Rename failed:', err);
+      }
+    };
+
+    titleInput.onDidSubmit(() => {
+      void commitTitleChange().finally(() => {
+        this._dismissPageOptionsPopup({ commitTitle: false });
       });
     });
-    actions.set('favorite', () => this._dataService.toggleFavorite(page.id));
-    actions.set('duplicate', async () => {
-      try {
-        const newPage = await this._dataService.duplicatePage(page.id);
-        this._selectAndOpenPage(newPage);
-      } catch (err) {
-        console.error('[CanvasSidebar] Duplicate failed:', err);
-      }
+    titleInput.onDidCancel(() => {
+      this._dismissPageOptionsPopup({ commitTitle: false });
     });
-    actions.set('export-md', async () => {
-      try {
-        const fullPage = await this._dataService.getPage(page.id);
-        if (!fullPage) return;
 
-        const { tiptapJsonToMarkdown } = await import('./markdownExport.js');
-        let doc: unknown = null;
-        try { doc = JSON.parse(fullPage.content); } catch { /* empty */ }
+    const canCreateDatabase = !!this._databaseDataService;
 
-        const markdown = tiptapJsonToMarkdown(doc, fullPage.title);
-        const safeName = fullPage.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100).trim() || 'Untitled';
-
-        const electron = (window as any).parallxElectron;
-        if (!electron?.dialog?.saveFile || !electron?.fs?.writeFile) return;
-
-        const filePath = await electron.dialog.saveFile({
-          filters: [{ name: 'Markdown', extensions: ['md'] }],
-          defaultName: `${safeName}.md`,
-        });
-        if (filePath) {
-          await electron.fs.writeFile(filePath, markdown, 'utf-8');
+    addAction({
+      id: 'open',
+      label: 'Open',
+      iconId: 'open',
+      action: () => this._selectAndOpenPage(page),
+    });
+    addAction({
+      id: 'new-subpage',
+      label: 'New subpage',
+      iconId: 'new-page',
+      action: () => this._createPage(page.id),
+    });
+    if (canCreateDatabase) {
+      addAction({
+        id: 'new-database',
+        label: 'New database',
+        iconId: 'database',
+        action: () => this._createDatabase(page.id),
+      });
+    }
+    addAction({
+      id: 'favorite',
+      label: page.isFavorited ? 'Remove from Favorites' : 'Add to Favorites',
+      iconId: page.isFavorited ? 'star-filled' : 'star',
+      action: async () => {
+        await this._dataService.toggleFavorite(page.id);
+      },
+    });
+    addAction({
+      id: 'duplicate',
+      label: 'Duplicate',
+      iconId: 'duplicate',
+      action: async () => {
+        try {
+          const newPage = await this._dataService.duplicatePage(page.id);
+          this._selectAndOpenPage(newPage);
+        } catch (err) {
+          console.error('[CanvasSidebar] Duplicate failed:', err);
         }
-      } catch (err) {
-        console.error('[CanvasSidebar] Export failed:', err);
+      },
+    });
+    addAction({
+      id: 'export-md',
+      label: 'Export as Markdown',
+      iconId: 'export',
+      action: async () => {
+        try {
+          const fullPage = await this._dataService.getPage(page.id);
+          if (!fullPage) return;
+
+          const { tiptapJsonToMarkdown } = await import('./markdownExport.js');
+          let doc: unknown = null;
+          try { doc = JSON.parse(fullPage.content); } catch { /* empty */ }
+
+          const markdown = tiptapJsonToMarkdown(doc, fullPage.title);
+          const safeName = fullPage.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100).trim() || 'Untitled';
+
+          const electron = (window as any).parallxElectron;
+          if (!electron?.dialog?.saveFile || !electron?.fs?.writeFile) return;
+
+          const filePath = await electron.dialog.saveFile({
+            filters: [{ name: 'Markdown', extensions: ['md'] }],
+            defaultName: `${safeName}.md`,
+          });
+          if (filePath) {
+            await electron.fs.writeFile(filePath, markdown, 'utf-8');
+          }
+        } catch (err) {
+          console.error('[CanvasSidebar] Export failed:', err);
+        }
+      },
+    });
+    addAction({
+      id: 'delete',
+      label: 'Delete',
+      iconId: 'trash',
+      danger: true,
+      action: () => this._deletePage(page.id),
+    });
+
+    document.body.appendChild(popup);
+    layoutPopup(popup, anchor, { position: 'below', gap: 4 });
+
+    this._pageOptionsPopup = popup;
+    this._pageOptionsPopupStore = popupStore;
+    this._pageOptionsPageId = page.id;
+
+    const openIconPicker = () => {
+      this._pageOptionsIconPicker?.dismiss();
+      this._pageOptionsIconPicker = new IconPicker(document.body, {
+        anchor: iconButton,
+        icons: PAGE_SELECTABLE_ICONS,
+        renderIcon: (iconId) => svgIcon(iconId),
+        showSearch: true,
+        showRemove: !!currentIcon,
+        iconSize: 20,
+      });
+      this._pageOptionsIconPicker.onDidSelectIcon((iconId) => {
+        currentIcon = iconId;
+        renderIconButton(iconId);
+        void this._dataService.updatePage(page.id, { icon: iconId });
+      });
+      this._pageOptionsIconPicker.onDidRemoveIcon(() => {
+        currentIcon = null;
+        renderIconButton(null);
+        void this._dataService.updatePage(page.id, { icon: null });
+      });
+      this._pageOptionsIconPicker.onDidDismiss(() => {
+        this._pageOptionsIconPicker = null;
+      });
+    };
+
+    iconButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openIconPicker();
+    });
+
+    popupStore.add(toDisposable(() => {
+      this._pageOptionsIconPicker?.dismiss();
+      this._pageOptionsIconPicker = null;
+      popup.remove();
+    }));
+    popupStore.add(toDisposable(() => {
+      document.removeEventListener('mousedown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeydown, true);
+    }));
+
+    const handlePointerDown = (event: MouseEvent): void => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (popup.contains(target)) return;
+      if (this._pageOptionsIconPicker?.element.contains(target)) return;
+      void this._dismissPageOptionsPopup({ commitTitle: true });
+    };
+
+    const handleKeydown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      this._dismissPageOptionsPopup({ commitTitle: false });
+    };
+
+    setTimeout(() => {
+      document.addEventListener('mousedown', handlePointerDown, true);
+    }, 0);
+    document.addEventListener('keydown', handleKeydown, true);
+
+    if (options?.focusTitle) {
+      setTimeout(() => {
+        titleInput.focus();
+        if (options.selectTitle) {
+          titleInput.select();
+        }
+      }, 0);
+    }
+  }
+
+  private _dismissPageOptionsPopup(options?: { commitTitle?: boolean }): void {
+    const popup = this._pageOptionsPopup;
+    const popupStore = this._pageOptionsPopupStore;
+    if (!popup || !popupStore) return;
+
+    this._pageOptionsPopup = null;
+    this._pageOptionsPopupStore = null;
+    this._pageOptionsPageId = null;
+
+    if (options?.commitTitle) {
+      const input = popup.querySelector('input') as HTMLInputElement | null;
+      const pageId = popup.getAttribute('data-page-id');
+      if (input && pageId) {
+        const nextTitle = input.value.trim() || 'Untitled';
+        const node = this._findNode(this._tree, pageId) ?? this._favoritedPages.find(page => page.id === pageId) ?? null;
+        if (node && nextTitle !== node.title) {
+          void this._dataService.updatePage(pageId, { title: nextTitle }).catch((err) => {
+            console.error('[CanvasSidebar] Rename failed:', err);
+          });
+        }
       }
-    });
-    actions.set('delete', () => this._deletePage(page.id));
+    }
 
-    this._contextMenu = ContextMenu.show({
-      items,
-      anchor: { x: e.clientX, y: e.clientY },
-      className: 'canvas-context-menu',
-    });
-
-    this._contextMenu.onDidSelect(({ item }) => {
-      const action = actions.get(item.id);
-      if (action) action();
-    });
-
-    this._contextMenu.onDidDismiss(() => {
-      this._contextMenu = null;
-    });
+    popupStore.dispose();
   }
 
   private _dismissContextMenuCleanup(): void {
@@ -986,14 +1167,17 @@ export class CanvasSidebar {
         icon: createdPage.icon || undefined,
         instanceId: createdPage.id,
       });
-      // After tree refreshes, start inline rename on the new page
+      // After tree refreshes, focus the new page title in the page options popup
       requestAnimationFrame(() => {
         const el = this._treeList?.querySelector(`[data-page-id="${createdPage.id}"]`);
         if (el) {
-          const label = el.querySelector('.canvas-node-label');
-          if (label) {
-            const node = this._findNode(this._tree, createdPage.id);
-            if (node) this._startInlineRename(el as HTMLElement, label as HTMLElement, node);
+          const node = this._findNode(this._tree, createdPage.id);
+          const pageRef = node ?? this._favoritedPages.find(page => page.id === createdPage.id) ?? null;
+          if (pageRef) {
+            this._showPageOptionsPopup(pageRef, (el as HTMLElement).getBoundingClientRect(), {
+              focusTitle: true,
+              selectTitle: true,
+            });
           }
         }
       });
@@ -1032,14 +1216,17 @@ export class CanvasSidebar {
         icon: 'database',
         instanceId: createdPage.id,
       });
-      // After tree refreshes, start inline rename
+      // After tree refreshes, focus the page options popup title
       requestAnimationFrame(() => {
         const el = this._treeList?.querySelector(`[data-page-id="${createdPage.id}"]`);
         if (el) {
-          const label = el.querySelector('.canvas-node-label');
-          if (label) {
-            const node = this._findNode(this._tree, createdPage.id);
-            if (node) this._startInlineRename(el as HTMLElement, label as HTMLElement, node);
+          const node = this._findNode(this._tree, createdPage.id);
+          const pageRef = node ?? this._favoritedPages.find(page => page.id === createdPage.id) ?? null;
+          if (pageRef) {
+            this._showPageOptionsPopup(pageRef, (el as HTMLElement).getBoundingClientRect(), {
+              focusTitle: true,
+              selectTitle: true,
+            });
           }
         }
       });
@@ -1098,47 +1285,6 @@ export class CanvasSidebar {
     };
 
     await this._dataService.flushContentSave(parentPageId, nextDoc);
-  }
-
-  private _startInlineRename(row: HTMLElement, label: HTMLElement, node: IPageTreeNode): void {
-    if (this._renamingPageId) return; // already renaming
-    this._renamingPageId = node.id;
-
-    const renameBox = new InputBox(row, { value: node.title });
-    renameBox.inputElement.classList.add('canvas-inline-input');
-
-    // Replace label with input
-    label.style.display = 'none';
-    renameBox.focus();
-    renameBox.select();
-
-    const commit = async () => {
-      const newTitle = renameBox.value.trim() || 'Untitled';
-      cleanup();
-      if (newTitle !== node.title) {
-        try {
-          await this._dataService.updatePage(node.id, { title: newTitle });
-        } catch (err) {
-          console.error('[CanvasSidebar] Rename failed:', err);
-        }
-      }
-    };
-
-    const cancel = () => {
-      cleanup();
-    };
-
-    const cleanup = () => {
-      this._renamingPageId = null;
-      renameBox.inputElement.removeEventListener('blur', commit);
-      renameBox.element.remove();
-      renameBox.dispose();
-      label.style.display = '';
-    };
-
-    renameBox.onDidSubmit(() => commit());
-    renameBox.onDidCancel(() => cancel());
-    renameBox.inputElement.addEventListener('blur', commit);
   }
 
   private async _deletePage(pageId: string): Promise<void> {
@@ -1305,10 +1451,14 @@ export class CanvasSidebar {
       e.preventDefault();
       const el = this._treeList?.querySelector(`[data-page-id="${this._selectedPageId}"]`);
       if (el) {
-        const label = el.querySelector('.canvas-node-label');
-        const node = this._findNode(this._tree, this._selectedPageId);
-        if (label && node) {
-          this._startInlineRename(el as HTMLElement, label as HTMLElement, node);
+        const node = this._findNode(this._tree, this._selectedPageId)
+          ?? this._favoritedPages.find(page => page.id === this._selectedPageId)
+          ?? null;
+        if (node) {
+          this._showPageOptionsPopup(node, (el as HTMLElement).getBoundingClientRect(), {
+            focusTitle: true,
+            selectTitle: true,
+          });
         }
       }
     }

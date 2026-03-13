@@ -31,6 +31,9 @@ const GRADIENTS = [
 // ── Options ─────────────────────────────────────────────────────────────────
 
 export interface CoverMenuOptions {
+  /** Anchor element used for positioning the picker popup. */
+  readonly anchor?: HTMLElement | null;
+
   /**
    * Container whose bounding rect is used for horizontal centering.
    * Falls back to `CoverMenuHost.container` if `null`.
@@ -227,20 +230,27 @@ export class CoverMenuController implements ICanvasMenu {
     this._element = picker;
     this._visible = true;
 
-    const wrapperRect = (options.editorContainer ?? this._host.container).getBoundingClientRect();
-    const pickerWidth = 420;
-    const left = wrapperRect.left + (wrapperRect.width - pickerWidth) / 2;
-
-    let top: number;
-    const coverVisible = options.coverEl && options.coverEl.style.display !== 'none';
-    if (coverVisible) {
-      top = options.coverEl!.getBoundingClientRect().bottom + 4;
-    } else if (options.pageHeader) {
-      top = options.pageHeader.getBoundingClientRect().top;
-    } else {
-      top = wrapperRect.top + 60;
+    const anchor = options.anchor;
+    if (anchor && anchor.isConnected) {
+      const anchorRect = anchor.getBoundingClientRect();
+      if (anchorRect.width > 0 || anchorRect.height > 0) {
+        layoutPopup(picker, anchorRect, { position: 'below', gap: 6 });
+        return;
+      }
     }
 
-    layoutPopup(picker, { x: left, y: top });
+    const coverVisible = options.coverEl && options.coverEl.style.display !== 'none';
+    if (coverVisible) {
+      layoutPopup(picker, options.coverEl!.getBoundingClientRect(), { position: 'below', gap: 4 });
+      return;
+    }
+
+    if (options.pageHeader) {
+      layoutPopup(picker, options.pageHeader.getBoundingClientRect(), { position: 'below', gap: 6 });
+      return;
+    }
+
+    const wrapperRect = (options.editorContainer ?? this._host.container).getBoundingClientRect();
+    layoutPopup(picker, { x: wrapperRect.left + 24, y: wrapperRect.top + 60 });
   }
 }

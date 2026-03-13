@@ -196,6 +196,35 @@ describe('renderContentPart — Reference (Task 6.2)', () => {
   });
 });
 
+describe('renderContentPart — Thinking provenance visibility', () => {
+  let renderContentPart: typeof import('../../src/built-in/chat/rendering/chatContentParts.js').renderContentPart;
+  let ChatContentPartKind: typeof import('../../src/services/chatTypes.js').ChatContentPartKind;
+
+  beforeEach(async () => {
+    const partsMod = await import('../../src/built-in/chat/rendering/chatContentParts.js');
+    renderContentPart = partsMod.renderContentPart;
+    const typesMod = await import('../../src/services/chatTypes.js');
+    ChatContentPartKind = typesMod.ChatContentPartKind;
+  });
+
+  it('collapses considered sources by default inside the thinking block', () => {
+    const el = renderContentPart({
+      kind: ChatContentPartKind.Thinking,
+      content: 'Reviewing grounded evidence',
+      isCollapsed: false,
+      provenance: [
+        { id: 'Claims Guide.md', label: 'Claims Guide.md', kind: 'rag', uri: 'Claims Guide.md', index: 1, tokens: 120, removable: true },
+      ],
+    });
+
+    const sourcesSection = el.querySelector('.parallx-chat-thinking-sources') as HTMLElement;
+    const sourcesLabel = el.querySelector('.parallx-chat-thinking-sources-label') as HTMLElement;
+
+    expect(sourcesSection.classList.contains('parallx-chat-thinking-sources--collapsed')).toBe(true);
+    expect(sourcesLabel.textContent).toBe('Sources Considered');
+  });
+});
+
 // ── Task 6.2: Source citation emission from defaultParticipant ──
 
 describe('retrieveContext — source citation metadata (Task 6.2)', () => {

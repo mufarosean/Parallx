@@ -27,7 +27,7 @@ describe('ChatSessionSidebar', () => {
       modelId: 'llama3.1:8b',
       messages: [
         {
-          request: { text: 'Hello world', participantId: undefined, commandId: undefined, variables: [] },
+          request: { text: 'Hello world', requestId: 'req-1', participantId: undefined, variables: [], attempt: 0, timestamp: NOW - HOUR },
           response: { parts: [], isComplete: true },
         },
       ],
@@ -42,11 +42,11 @@ describe('ChatSessionSidebar', () => {
       modelId: 'llama3.1:8b',
       messages: [
         {
-          request: { text: 'Help me build something', participantId: undefined, commandId: undefined, variables: [] },
+          request: { text: 'Help me build something', requestId: 'req-2', participantId: undefined, variables: [], attempt: 0, timestamp: NOW - 3 * DAY },
           response: { parts: [], isComplete: true },
         },
         {
-          request: { text: 'Follow up', participantId: undefined, commandId: undefined, variables: [] },
+          request: { text: 'Follow up', requestId: 'req-3', participantId: undefined, variables: [], attempt: 0, timestamp: NOW - 3 * DAY + 1000 },
           response: { parts: [], isComplete: true },
         },
       ],

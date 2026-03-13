@@ -18,6 +18,7 @@ let rendererServer = null;
 /** @type {number | null} */
 let rendererServerPort = null;
 let isAppQuitting = false;
+let lastEditableContextMenu = null;
 
 const RENDERER_ROOT = path.join(__dirname, '..');
 const DEFAULT_RENDERER_PORT = 31789;
@@ -47,6 +48,7 @@ function contentTypeFor(filePath) {
     case '.mjs': return 'application/javascript; charset=utf-8';
     case '.css': return 'text/css; charset=utf-8';
     case '.json': return 'application/json; charset=utf-8';
+    case '.pdf': return 'application/pdf';
     case '.svg': return 'image/svg+xml';
     case '.png': return 'image/png';
     case '.jpg':
@@ -54,6 +56,12 @@ function contentTypeFor(filePath) {
     case '.gif': return 'image/gif';
     case '.webp': return 'image/webp';
     case '.ico': return 'image/x-icon';
+    case '.woff': return 'font/woff';
+    case '.woff2': return 'font/woff2';
+    case '.ttf': return 'font/ttf';
+    case '.otf': return 'font/otf';
+    case '.eot': return 'application/vnd.ms-fontobject';
+    case '.pfb': return 'application/x-font-type1';
     case '.map': return 'application/json; charset=utf-8';
     default: return 'application/octet-stream';
   }
@@ -178,6 +186,114 @@ function boundsOnScreen(bounds) {
   });
 }
 
+function normalizeLocaleTag(locale) {
+  return typeof locale === 'string'
+    ? locale.trim().replace(/_/g, '-').toLowerCase()
+    : '';
+}
+
+function selectSpellCheckerLanguages(availableLanguages, preferredLanguages) {
+  const available = Array.isArray(availableLanguages) ? availableLanguages : [];
+  const preferred = Array.isArray(preferredLanguages) ? preferredLanguages : [];
+  const availableByNormalized = new Map(
+    available.map((language) => [normalizeLocaleTag(language), language]),
+  );
+  const selected = [];
+
+  for (const locale of preferred) {
+    const normalized = normalizeLocaleTag(locale);
+    if (!normalized) {
+      continue;
+    }
+
+    const exactMatch = availableByNormalized.get(normalized);
+    if (exactMatch && !selected.includes(exactMatch)) {
+      selected.push(exactMatch);
+      continue;
+    }
+
+    const baseLanguage = normalized.split('-')[0];
+    if (!baseLanguage) {
+      continue;
+    }
+
+    const baseMatch = available.find((language) => {
+      const candidate = normalizeLocaleTag(language);
+      return candidate === baseLanguage || candidate.startsWith(`${baseLanguage}-`);
+    });
+
+    if (baseMatch && !selected.includes(baseMatch)) {
+      selected.push(baseMatch);
+    }
+  }
+
+  if (selected.length === 0) {
+    const fallback = availableByNormalized.get('en-us') || available[0];
+    if (fallback) {
+      selected.push(fallback);
+    }
+  }
+
+  return selected;
+}
+
+function configureSpellCheckerForWindow(window) {
+  const session = window?.webContents?.session;
+  if (!session) {
+    return;
+  }
+
+  session.setSpellCheckerEnabled(true);
+
+  const availableLanguages = Array.isArray(session.availableSpellCheckerLanguages)
+    ? session.availableSpellCheckerLanguages
+    : [];
+  if (availableLanguages.length === 0) {
+    return;
+  }
+
+  const currentLanguages = typeof session.getSpellCheckerLanguages === 'function'
+    ? session.getSpellCheckerLanguages()
+    : [];
+  const preferredSystemLanguages = typeof app.getPreferredSystemLanguages === 'function'
+    ? app.getPreferredSystemLanguages()
+    : [];
+  const locale = typeof app.getLocale === 'function' ? app.getLocale() : '';
+  const selectedLanguages = selectSpellCheckerLanguages(availableLanguages, [
+    ...currentLanguages,
+    ...preferredSystemLanguages,
+    locale,
+    'en-US',
+  ]);
+
+  if (selectedLanguages.length > 0) {
+    session.setSpellCheckerLanguages(selectedLanguages);
+  }
+}
+
+function buildEditableMenuState(params) {
+  const editFlags = params?.editFlags || {};
+  const dictionarySuggestions = Array.isArray(params?.dictionarySuggestions)
+    ? params.dictionarySuggestions.filter((value) => typeof value === 'string' && value.trim().length > 0)
+    : [];
+  const misspelledWord = typeof params?.misspelledWord === 'string' ? params.misspelledWord : '';
+
+  return {
+    x: typeof params?.x === 'number' ? params.x : 0,
+    y: typeof params?.y === 'number' ? params.y : 0,
+    editFlags: {
+      canUndo: !!editFlags.canUndo,
+      canRedo: !!editFlags.canRedo,
+      canCut: !!editFlags.canCut,
+      canCopy: !!editFlags.canCopy,
+      canPaste: !!editFlags.canPaste,
+      canSelectAll: !!editFlags.canSelectAll,
+    },
+    dictionarySuggestions,
+    misspelledWord,
+  };
+}
+
 async function createWindow() {
   const saved = loadWindowState();
   const useSaved = saved?.bounds && boundsOnScreen(saved.bounds);
@@ -199,10 +315,26 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      spellcheck: true,
     },
   };
 
   mainWindow = new BrowserWindow(opts);
+  configureSpellCheckerForWindow(mainWindow);
+
+  mainWindow.webContents.on('context-menu', (event, params) => {
+    if (params?.isEditable) {
+      event.preventDefault();
+      lastEditableContextMenu = {
+        webContentsId: mainWindow.webContents.id,
+        timestamp: Date.now(),
+        params,
+      };
+      mainWindow.webContents.send('editableMenu:open', buildEditableMenuState(params));
+      return;
+    }
+    lastEditableContextMenu = null;
+  });
 
   if (saved?.isMaximized) {
     mainWindow.maximize();
@@ -269,6 +401,22 @@ ipcMain.on('window:maximize', () => {
 });
 ipcMain.on('window:close', () => mainWindow?.close());
 ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() ?? false);
+ipcMain.handle('editableMenu:replaceMisspelling', (event, suggestion) => {
+  if (typeof suggestion !== 'string' || suggestion.trim().length === 0) {
+    return false;
+  }
+  event.sender.replaceMisspelling(suggestion);
+  return true;
+});
+ipcMain.handle('editableMenu:addToDictionary', (event, word) => {
+  const value = typeof word === 'string' && word.trim().length > 0
+    ? word.trim()
+    : (typeof lastEditableContextMenu?.params?.misspelledWord === 'string' ? lastEditableContextMenu.params.misspelledWord : '');
+  if (!value) {
+    return false;
+  }
+  return event.sender.session.addWordToSpellCheckerDictionary(value);
+});
 
 app.whenReady().then(async () => {
   // Ensure user tools directory exists before anything tries to scan it

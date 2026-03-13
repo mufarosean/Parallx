@@ -80,9 +80,6 @@ export class ChatInputPart extends Disposable {
       this._onDidChangeAttachments.fire();
     }));
 
-    // Context pills strip — shows RAG sources, system context, token counts (M11 Task 1.10)
-    this._contextPills = this._register(new ChatContextPills(this._root));
-
     // Editor area (textarea wrapper)
     const editorArea = $('div.parallx-chat-input-editor');
     this._root.appendChild(editorArea);
@@ -98,22 +95,22 @@ export class ChatInputPart extends Disposable {
     this._toolbar = $('div.parallx-chat-input-toolbar');
     this._root.appendChild(this._toolbar);
 
-    // Picker slot (model/mode pickers will be appended here)
-    this._pickerSlot = $('div.parallx-chat-input-toolbar-pickers');
-    this._toolbar.appendChild(this._pickerSlot);
-
     // Add Context button (VS Code-style attach)
     this._attachBtn = document.createElement('button');
     this._attachBtn.className = 'parallx-chat-input-attach';
     this._attachBtn.type = 'button';
     this._attachBtn.title = 'Add Context...';
     this._attachBtn.setAttribute('aria-label', 'Add Context');
-    this._attachBtn.innerHTML = chatIcons.attach;
+    this._attachBtn.innerHTML = chatIcons.newChat;
     this._attachLabel = document.createElement('span');
     this._attachLabel.className = 'parallx-chat-input-attach-label';
-    this._attachLabel.textContent = 'Add Context';
+    this._attachLabel.textContent = '';
     this._attachBtn.appendChild(this._attachLabel);
     this._toolbar.appendChild(this._attachBtn);
+
+    // Picker slot (mode/model pickers will be appended here)
+    this._pickerSlot = $('div.parallx-chat-input-toolbar-pickers');
+    this._toolbar.appendChild(this._pickerSlot);
 
     // Attach button click — open file picker
     this._register(addDisposableListener(this._attachBtn, 'click', () => {
@@ -141,6 +138,9 @@ export class ChatInputPart extends Disposable {
     // Spacer
     const spacer = $('div.parallx-chat-input-toolbar-spacer');
     this._toolbar.appendChild(spacer);
+
+    // Pre-send context visibility and exclusions live in a toolbar menu.
+    this._contextPills = this._register(new ChatContextPills(this._toolbar));
 
     // Submit button (icon-only: ↑ arrow, VS Code style)
     this._submitBtn = document.createElement('button');
@@ -176,6 +176,10 @@ export class ChatInputPart extends Disposable {
     // Auto-resize textarea
     this._register(addDisposableListener(this._textarea, 'input', () => {
       this._autoResize();
+    }));
+
+    this._register(addDisposableListener(this._textarea, 'paste', (event: ClipboardEvent) => {
+      void this._handlePaste(event);
     }));
 
     // Submit button click
@@ -221,6 +225,7 @@ export class ChatInputPart extends Disposable {
     this._textarea.value = '';
     this._autoResize();
     this._contextRibbon.clear();
+    this._contextPills.clearExclusions();
   }
 
   /** Focus the textarea. */
@@ -285,17 +290,18 @@ export class ChatInputPart extends Disposable {
     return this._contextRibbon.getAttachments();
   }
 
-  /** Update context pills display with new data (M11 Task 1.10). */
+  setVisionSupported(visionSupported: boolean): void {
+    this._contextRibbon.setVisionSupported(visionSupported);
+  }
+
   setContextPills(pills: readonly IContextPill[]): void {
     this._contextPills.setPills(pills);
   }
 
-  /** Update token budget breakdown display (Task 4.8). */
   setBudget(slots: readonly import('./chatContextPills.js').ITokenBudgetSlot[]): void {
     this._contextPills.setBudget(slots);
   }
 
-  /** Get IDs of context sources the user has excluded via pills UI. */
   getExcludedContextIds(): ReadonlySet<string> {
     return this._contextPills.getExcluded();
   }
@@ -321,11 +327,27 @@ export class ChatInputPart extends Disposable {
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
   }
 
-  /** Update attach button label visibility based on attachment count. */
+  /** Keep the add-context control icon-only. */
   private _updateAttachBtnLabel(): void {
-    // When files are attached, collapse to just the paperclip icon
-    const hasAttachments = this._contextRibbon.hasAttachments();
-    this._attachLabel.style.display = hasAttachments ? 'none' : '';
+    this._attachLabel.style.display = 'none';
+  }
+
+  private async _handlePaste(event: ClipboardEvent): Promise<void> {
+    const items = Array.from(event.clipboardData?.items ?? []);
+    const imageItems = items.filter((item) => item.type.startsWith('image/'));
+    if (imageItems.length === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    for (const item of imageItems) {
+      const file = item.getAsFile();
+      if (!file) {
+        continue;
+      }
+      await this._contextRibbon.addPastedImage(file);
+    }
+    this._updateAttachBtnLabel();
   }
 
   /** Open the multi-file picker dropdown (Task 4.7). */

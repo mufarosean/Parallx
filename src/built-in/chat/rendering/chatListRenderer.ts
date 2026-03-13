@@ -15,9 +15,10 @@ import { Disposable } from '../../../platform/lifecycle.js';
 import { $ } from '../../../ui/dom.js';
 import { renderContentPart } from './chatContentParts.js';
 import { chatIcons } from '../chatIcons.js';
+import { isChatImageAttachment } from '../../../services/chatTypes.js';
 import type { IChatRequestResponsePair, IChatAssistantResponse, IChatUserMessage } from '../../../services/chatTypes.js';
 import { ChatContentPartKind } from '../../../services/chatTypes.js';
-import type { OpenAttachmentHandler } from '../chatTypes.js';
+import type { OpenAttachmentHandler, RegenerateMessageHandler } from '../chatTypes.js';
 
 // OpenAttachmentHandler — now defined in chatTypes.ts (M13 Phase 1)
 export type { OpenAttachmentHandler } from '../chatTypes.js';
@@ -32,6 +33,7 @@ export type { OpenAttachmentHandler } from '../chatTypes.js';
 export class ChatListRenderer extends Disposable {
 
   private _onOpenAttachment: OpenAttachmentHandler | undefined;
+  private _onRegenerateMessage: RegenerateMessageHandler | undefined;
 
   /**
    * Track the last rendered state so we can do incremental updates.
@@ -42,6 +44,10 @@ export class ChatListRenderer extends Disposable {
   /** Set callback for when user clicks an attachment chip in a message. */
   setOpenAttachmentHandler(handler: OpenAttachmentHandler): void {
     this._onOpenAttachment = handler;
+  }
+
+  setRegenerateHandler(handler: RegenerateMessageHandler): void {
+    this._onRegenerateMessage = handler;
   }
 
   /** Set callback for cancelling the in-progress request (Task 4.9). */
@@ -95,8 +101,15 @@ export class ChatListRenderer extends Disposable {
     if (!lastPair) { return; }
 
     const response = messages[lastIdx].response;
+    const latestRequest = messages[lastIdx].request;
     const body = lastPair.assistantEl.querySelector('.parallx-chat-message-body') as HTMLElement;
     if (!body) { return; }
+
+    const existingActions = lastPair.assistantEl.querySelector('.parallx-chat-message-actions');
+    const renderedRequestId = lastPair.assistantEl.dataset.requestId;
+    if (existingActions && (requestInProgress || renderedRequestId !== latestRequest.requestId)) {
+      existingActions.remove();
+    }
 
     // Remove typing indicator if present
     const typingEl = body.querySelector('.parallx-chat-typing-indicator');
@@ -174,9 +187,14 @@ export class ChatListRenderer extends Disposable {
       }
 
       // Add message actions bar now that streaming is complete
-      this._addMessageActions(lastPair.assistantEl, body);
+      this._addMessageActions(lastPair.assistantEl, body, latestRequest, true);
     }
 
+    if (!requestInProgress && response.isComplete && !lastPair.assistantEl.querySelector('.parallx-chat-message-actions')) {
+      this._addMessageActions(lastPair.assistantEl, body, latestRequest, true);
+    }
+
+    lastPair.assistantEl.dataset.requestId = latestRequest.requestId;
     lastPair.partCount = newPartCount;
   }
 
@@ -199,7 +217,12 @@ export class ChatListRenderer extends Disposable {
       container.appendChild(userEl);
 
       // Assistant response
-      const assistantEl = this._renderAssistantMessage(pair.response, requestInProgress && i === messages.length - 1);
+      const assistantEl = this._renderAssistantMessage(
+        pair.request,
+        pair.response,
+        requestInProgress && i === messages.length - 1,
+        i === messages.length - 1,
+      );
       container.appendChild(assistantEl);
 
       this._renderedPairs.set(i, {
@@ -207,6 +230,7 @@ export class ChatListRenderer extends Disposable {
         assistantEl,
         partCount: pair.response.parts.length,
       });
+      assistantEl.dataset.requestId = pair.request.requestId;
     }
 
     // Show streaming cursor on the last assistant message if in progress
@@ -230,24 +254,39 @@ export class ChatListRenderer extends Disposable {
   private _renderUserMessage(request: IChatUserMessage): HTMLElement {
     const root = $('div.parallx-chat-message.parallx-chat-message--user');
 
-    // VS Code Copilot style: user messages are blue bubbles, right-aligned, no avatar
     const body = $('div.parallx-chat-message-body');
     const p = $('p');
     p.textContent = request.text;
     body.appendChild(p);
+
     root.appendChild(body);
 
-    // Attachment chips shown below the message bubble (VS Code style)
+    // Explicit attachments are rendered below the user prompt box, aligned to its right edge.
     if (request.attachments?.length) {
       const ribbon = $('div.parallx-chat-message-attachments');
       for (const attachment of request.attachments) {
         const chip = $('div.parallx-chat-message-attachment-chip');
         chip.title = attachment.fullPath;
+        if (isChatImageAttachment(attachment)) {
+          chip.classList.add('parallx-chat-message-attachment-chip--image');
+        }
 
         // File icon
         const icon = document.createElement('span');
         icon.className = 'parallx-chat-message-attachment-icon';
-        icon.innerHTML = chatIcons.file;
+        if (isChatImageAttachment(attachment)) {
+          const preview = document.createElement('span');
+          preview.className = 'parallx-chat-message-attachment-preview';
+          preview.style.backgroundImage = `url(data:${attachment.mimeType};base64,${attachment.data})`;
+          icon.appendChild(preview);
+
+          const glyph = document.createElement('span');
+          glyph.className = 'parallx-chat-message-attachment-glyph';
+          glyph.innerHTML = chatIcons.image;
+          icon.appendChild(glyph);
+        } else {
+          icon.innerHTML = chatIcons.file;
+        }
         chip.appendChild(icon);
 
         // File name
@@ -256,9 +295,11 @@ export class ChatListRenderer extends Disposable {
         chip.appendChild(label);
 
         // Click to open in editor
-        chip.addEventListener('click', () => {
-          this._onOpenAttachment?.(attachment.fullPath);
-        });
+        if (!isChatImageAttachment(attachment)) {
+          chip.addEventListener('click', () => {
+            this._onOpenAttachment?.(attachment.fullPath);
+          });
+        }
 
         ribbon.appendChild(chip);
       }
@@ -271,8 +312,10 @@ export class ChatListRenderer extends Disposable {
   // ── Assistant Message ──
 
   private _renderAssistantMessage(
+    request: IChatUserMessage,
     response: IChatAssistantResponse,
     isStreaming: boolean = false,
+    isLatest: boolean = false,
   ): HTMLElement {
     const root = $('div.parallx-chat-message.parallx-chat-message--assistant');
     const parts = response.parts;
@@ -294,18 +337,33 @@ export class ChatListRenderer extends Disposable {
 
     // Message actions bar (copy) — only shown on completed responses
     if (parts.length > 0 && response.isComplete) {
-      this._addMessageActions(root, body);
+      this._addMessageActions(root, body, request, isLatest);
     }
+
+    root.dataset.requestId = request.requestId;
 
     return root;
   }
 
   /** Add copy button actions bar to an assistant message. */
-  private _addMessageActions(root: HTMLElement, body: HTMLElement): void {
+  private _addMessageActions(root: HTMLElement, body: HTMLElement, request: IChatUserMessage, canRegenerate: boolean): void {
     // Don't duplicate
     if (root.querySelector('.parallx-chat-message-actions')) { return; }
 
     const actions = $('div.parallx-chat-message-actions');
+
+    if (canRegenerate) {
+      const regenerateBtn = document.createElement('button');
+      regenerateBtn.className = 'parallx-chat-action-btn';
+      regenerateBtn.type = 'button';
+      regenerateBtn.title = 'Regenerate response';
+      regenerateBtn.setAttribute('aria-label', 'Regenerate response');
+      regenerateBtn.innerHTML = chatIcons.refresh;
+      regenerateBtn.addEventListener('click', () => {
+        this._onRegenerateMessage?.(request);
+      });
+      actions.appendChild(regenerateBtn);
+    }
 
     const copyBtn = document.createElement('button');
     copyBtn.className = 'parallx-chat-action-btn';

@@ -37,6 +37,7 @@ describe('chat response validator', () => {
       {
         repairMarkdown: (markdown) => markdown.replace('Answer', 'Repaired answer'),
         buildMissingCitationFooter: () => '\n\nSources:\n[3] Policy.md\n[5] Claims.md',
+        selectAttributableCitations: (markdown, citations) => citations.filter(({ index }) => markdown.includes(`[${index}]`)),
         applyFallbackAnswer: vi.fn(),
         reportResponseDebug,
       },
@@ -69,6 +70,63 @@ describe('chat response validator', () => {
     });
   });
 
+  it('keeps only attributable citations when the answer references a subset of sources', () => {
+    const response = createResponse('Answer [5].');
+
+    validateAndFinalizeChatResponse(
+      {
+        repairMarkdown: (markdown) => markdown,
+        buildMissingCitationFooter: () => '',
+        selectAttributableCitations: (markdown, citations) => citations.filter(({ index }) => markdown.includes(`[${index}]`)),
+        applyFallbackAnswer: vi.fn(),
+      },
+      {
+        response,
+        token: createToken(),
+        isEditMode: false,
+        isConversational: false,
+        citationMode: 'required',
+        ragSources: [
+          { uri: 'Policy.md', label: 'Policy.md', index: 3 },
+          { uri: 'Claims.md', label: 'Claims.md', index: 5 },
+        ],
+        retrievedContextLength: 80,
+      },
+    );
+
+    expect(response.setCitations).toHaveBeenCalledWith([
+      { index: 5, uri: 'Claims.md', label: 'Claims.md' },
+    ]);
+  });
+
+  it('does not attach broad citations when the answer has no attributable source reference', () => {
+    const response = createResponse('Answer without explicit attribution.');
+
+    validateAndFinalizeChatResponse(
+      {
+        repairMarkdown: (markdown) => markdown,
+        buildMissingCitationFooter: () => '',
+        selectAttributableCitations: (markdown, citations) => citations.filter(({ index }) => markdown.includes(`[${index}]`)),
+        applyFallbackAnswer: vi.fn(),
+      },
+      {
+        response,
+        token: createToken(),
+        isEditMode: false,
+        isConversational: false,
+        citationMode: 'required',
+        ragSources: [
+          { uri: 'Policy.md', label: 'Policy.md', index: 3 },
+          { uri: 'Claims.md', label: 'Claims.md', index: 5 },
+        ],
+        retrievedContextLength: 80,
+      },
+    );
+
+    expect(response.setCitations).not.toHaveBeenCalled();
+    expect(response.markdown).not.toHaveBeenCalled();
+  });
+
   it('applies the final fallback when no markdown remains', () => {
     const response = createResponse('');
     const applyFallbackAnswer = vi.fn();
@@ -77,6 +135,7 @@ describe('chat response validator', () => {
       {
         repairMarkdown: (markdown) => markdown,
         buildMissingCitationFooter: () => '',
+        selectAttributableCitations: () => [],
         applyFallbackAnswer,
       },
       {

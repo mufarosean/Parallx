@@ -8,7 +8,7 @@ import { $ } from '../ui/dom.js';
 
 const SIDEBAR_CONSTRAINTS: SizeConstraints = {
   minimumWidth: 170,
-  maximumWidth: 800,
+  maximumWidth: Number.POSITIVE_INFINITY,
   minimumHeight: 0,
   maximumHeight: Number.POSITIVE_INFINITY,
 };

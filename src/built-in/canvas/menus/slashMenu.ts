@@ -122,7 +122,7 @@ export class SlashMenuController implements ICanvasMenu {
     // Keyboard handler for menu
     if (!this._menu.dataset.listening) {
       this._menu.dataset.listening = '1';
-      editor.view.dom.addEventListener('keydown', this._handleKeydown);
+      editor.view.dom.addEventListener('keydown', this._handleKeydown, true);
     }
   }
 
@@ -134,7 +134,7 @@ export class SlashMenuController implements ICanvasMenu {
     this._filterText = '';
     const editor = this._host.editor;
     if (editor) {
-      editor.view.dom.removeEventListener('keydown', this._handleKeydown);
+      editor.view.dom.removeEventListener('keydown', this._handleKeydown, true);
       delete this._menu.dataset.listening;
     }
   }
@@ -210,17 +210,25 @@ export class SlashMenuController implements ICanvasMenu {
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       this._selectedIndex = (this._selectedIndex + 1) % filtered.length;
       this._renderItems(filtered, editor);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       this._selectedIndex = (this._selectedIndex - 1 + filtered.length) % filtered.length;
       this._renderItems(filtered, editor);
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       void this._execute(filtered[this._selectedIndex], editor);
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       this.hide();
     }
   };

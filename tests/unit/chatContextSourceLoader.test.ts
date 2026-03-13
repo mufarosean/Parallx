@@ -23,7 +23,7 @@ describe('chat context source loader', () => {
       {
         userText: 'hello',
         sessionId: 's1',
-        attachments: [{ name: 'a.txt', fullPath: 'C:/a.txt' } as any],
+        attachments: [{ kind: 'file', id: 'C:/a.txt', name: 'a.txt', fullPath: 'C:/a.txt', isImplicit: false } as any],
         useCurrentPage: false,
         useRetrieval: false,
         useMemoryRecall: true,

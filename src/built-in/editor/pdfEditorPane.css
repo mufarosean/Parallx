@@ -389,9 +389,49 @@
   --pdfViewer-padding-bottom: 12px;
 }
 
-/* Text layer — selection color follows Parallx theme */
+/* PDF.js page/layout math assumes content-box sizing on its page shell and
+   rendering layers. The workbench-wide border-box reset shrinks the page
+   content area by the transparent PDF.js page border, which desynchronizes the
+   canvas and text layer geometry. */
+.pdf-editor-pane .pdfViewer .page,
+.pdf-editor-pane .pdfViewer .page .canvasWrapper,
+.pdf-editor-pane .pdfViewer .page .textLayer,
+.pdf-editor-pane .pdfViewer .page .annotationLayer,
+.pdf-editor-pane .pdfViewer .page .xfaLayer {
+  box-sizing: content-box;
+}
+
+/* PDF.js text-layer geometry is sensitive to inherited box-model rules.
+   Keep the app-wide border-box reset from distorting selection overlays. */
+.pdf-editor-pane .textLayer,
+.pdf-editor-pane .textLayer *,
+.pdf-editor-pane .textLayer *::before,
+.pdf-editor-pane .textLayer *::after {
+  box-sizing: content-box;
+}
+
+/* Match the platform's expected PDF selection color without altering PDF.js text metrics. */
 .pdf-editor-pane .textLayer ::selection {
-  background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.6));
+  background: transparent;
+}
+
+.pdf-editor-pane .textLayer br::selection,
+.pdf-editor-pane .textLayer .endOfContent::selection {
+  background: transparent;
+}
+
+.pdf-editor-pane .pdf-selection-overlay-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  box-sizing: content-box;
+}
+
+.pdf-editor-pane .pdf-selection-overlay-box {
+  position: absolute;
+  border-radius: 2px;
+  background: rgba(0, 120, 215, 0.28);
 }
 
 /* Search highlight colors */

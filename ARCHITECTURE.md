@@ -7,7 +7,7 @@
 
 ## Canvas Registry Gate Architecture
 
-The canvas built-in (`src/built-in/canvas/`) has its own internal dependency structure enforced through **five registries** that act as gates. This architecture was established across 20+ commits to eliminate a tangled dependency graph where files imported freely from each other.
+The canvas built-in (`src/built-in/canvas/`) has its own internal dependency structure enforced through **six registry gates**. The original canvas core was built around five gates; the live architecture now includes a sixth gate for the integrated database subsystem. This architecture was established across 20+ commits to eliminate a tangled dependency graph where files imported freely from each other.
 
 ### Core Principle
 
@@ -17,7 +17,7 @@ A "child" is any file that belongs to a registry's domain (e.g. `slashMenu.ts` i
 
 **Gate-to-gate rule:** When a gate needs something from another gate, it imports from the gate that **owns** the symbol — never through an intermediate gate that merely passes it through. If IconRegistry owns `svgIcon`, HandleRegistry imports from IconRegistry directly, not from BlockRegistry. This eliminates phantom dependencies and keeps the import graph honest.
 
-### The Five Gates
+### The Six Gates
 
 ```
                     ┌──────────────┐
@@ -125,6 +125,20 @@ Children import from `blockStateRegistry.ts` (their gate), never from `blockRegi
 
 Handle children import from `handleRegistry.ts` only — never from blockRegistry, canvasMenuRegistry, or each other's paths directly.
 
+### 6. DatabaseRegistry (`database/databaseRegistry.ts`)
+
+**Role:** Gate for the integrated database subsystem used by canvas inline and full-page databases.
+
+**Re-exports from IconRegistry (source owner):** `svgIcon`, `PAGE_SELECTABLE_ICONS`, `resolvePageIcon`
+
+**Re-exports from pageChrome:** `PageChromeController` and page chrome types
+
+**Own API:** Database types, property configuration UI, view host/view classes, filter UI, relation/rollup helpers, formula engine exports, and database-specific shared UI helpers.
+
+**Children:** `databaseEditorProvider`, `databaseViewHost`, `views/*`, `properties/*`, `filters/*`, `relations/*`, `polish/*`, and other database-owned helpers.
+
+Database children import from `databaseRegistry.ts` only — never from iconRegistry, pageChrome, or sibling database files directly.
+
 ### Gate-to-Gate Import Edges (enforced by compliance test)
 
 | Gate | Imports from | Why |
@@ -134,6 +148,7 @@ Handle children import from `handleRegistry.ts` only — never from blockRegistr
 | **CanvasMenuRegistry** | BlockRegistry, IconRegistry, BlockStateRegistry | Block data from owner, icons from owner, mutations from owner |
 | **BlockStateRegistry** | BlockRegistry | Inward gate: `PAGE_CONTAINERS`, `isContainerBlockType` |
 | **HandleRegistry** | BlockRegistry, IconRegistry, BlockStateRegistry, CanvasMenuRegistry | Each symbol from its source owner |
+| **DatabaseRegistry** | IconRegistry, `canvasTypes`, `header/pageChrome` | Icons from source owner, shared canvas types, page chrome integration |
 
 ### Gate Isolation Invariants
 
@@ -281,7 +296,7 @@ The circular dependency that broke column editing (`978539d`) was caused by exac
 - `explorer/` — Built-in file explorer view
 - `output/` — Output panel view
 - `tool-gallery/` — Tool discovery and installation view
-- `canvas/` — Canvas built-in with five-registry gate architecture (see "Canvas Registry Gate Architecture" above)
+- `canvas/` — Canvas built-in with six-gate registry architecture (five original canvas-core gates plus `databaseRegistry`) (see "Canvas Registry Gate Architecture" above)
 - `chat/` — AI chat assistant (see "Chat / AI Subsystem" below)
 - `search/` — Workspace search view
 

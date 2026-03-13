@@ -1,3 +1,4 @@
+import { isChatFileAttachment } from '../../../services/chatTypes.js';
 import type { IChatAttachment } from '../../../services/chatTypes.js';
 
 export type ChatPageResult = { title: string; pageId: string; textContent: string } | null;
@@ -83,7 +84,7 @@ export async function loadChatContextSources(
       : Promise.resolve(null as ChatConceptResult),
 
     options.attachments?.length && deps.readFileContent
-      ? Promise.all(options.attachments.map(async (attachment): Promise<ChatAttachmentResult> => {
+      ? Promise.all(options.attachments.filter(isChatFileAttachment).map(async (attachment): Promise<ChatAttachmentResult> => {
           try {
             const content = await deps.readFileContent!(attachment.fullPath);
             return { name: attachment.name, content };

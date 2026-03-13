@@ -125,7 +125,130 @@ describe('ChatService', () => {
       expect(result).toBeDefined();
       expect(session.messages).toHaveLength(1);
       expect(session.messages[0].request.text).toBe('Hello');
+      expect(session.messages[0].request.requestId).toBeTruthy();
+      expect(session.messages[0].request.attempt).toBe(0);
       expect(session.messages[0].response.isComplete).toBe(true);
+    });
+
+    it('stores replay metadata for regenerated requests', async () => {
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello');
+
+      const original = session.messages[0].request;
+      await chatService.sendRequest(session.id, original.text, {
+        attachments: original.attachments,
+        attempt: original.attempt + 1,
+        replayOfRequestId: original.requestId,
+      });
+
+      expect(session.messages).toHaveLength(1);
+      expect(session.messages[0].request.attempt).toBe(1);
+      expect(session.messages[0].request.replayOfRequestId).toBe(original.requestId);
+      expect(session.messages[0].request.requestId).not.toBe(original.requestId);
+    });
+
+    it('allows repeated regenerate clicks on the same visible message without duplication', async () => {
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello');
+
+      const firstRequestId = session.messages[0].request.requestId;
+      await chatService.sendRequest(session.id, 'Hello', {
+        attempt: 1,
+        replayOfRequestId: firstRequestId,
+      });
+
+      const regeneratedRequestId = session.messages[0].request.requestId;
+      await chatService.sendRequest(session.id, 'Hello', {
+        attempt: 2,
+        replayOfRequestId: firstRequestId,
+      });
+
+      expect(session.messages).toHaveLength(1);
+      expect(session.messages[0].request.requestId).not.toBe(regeneratedRequestId);
+      expect(session.messages[0].request.attempt).toBe(2);
+      expect(session.messages[0].request.replayOfRequestId).toBe(firstRequestId);
+    });
+
+    it('replaces the replayed turn instead of appending a duplicate assistant response', async () => {
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello');
+
+      const originalRequestId = session.messages[0].request.requestId;
+
+      await chatService.sendRequest(session.id, 'Hello', {
+        attempt: 1,
+        replayOfRequestId: originalRequestId,
+      });
+
+      expect(session.messages).toHaveLength(1);
+      expect(session.messages[0].request.requestId).not.toBe(originalRequestId);
+      expect(session.messages[0].request.replayOfRequestId).toBe(originalRequestId);
+      expect(session.messages[0].response.parts[0]).toMatchObject({
+        kind: ChatContentPartKind.Markdown,
+        content: 'Hello from default agent',
+      });
+    });
+
+    it('drops trailing turns when replaying an earlier request', async () => {
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'First');
+      await chatService.sendRequest(session.id, 'Second');
+
+      const original = session.messages[0].request;
+      await chatService.sendRequest(session.id, original.text, {
+        attempt: original.attempt + 1,
+        replayOfRequestId: original.requestId,
+      });
+
+      expect(session.messages).toHaveLength(1);
+      expect(session.messages[0].request.text).toBe('First');
+      expect(session.messages[0].request.attempt).toBe(1);
+    });
+
+    it('collapses old replay chains when regenerating a duplicated session', async () => {
+      const session = chatService.createSession();
+
+      session.messages.push(
+        {
+          request: {
+            text: 'Hello',
+            requestId: 'req-1',
+            attempt: 0,
+            timestamp: 1,
+          },
+          response: {
+            parts: [{ kind: ChatContentPartKind.Markdown, content: 'Old answer' }],
+            isComplete: true,
+            modelId: session.modelId,
+            timestamp: 2,
+          },
+        },
+        {
+          request: {
+            text: 'Hello',
+            requestId: 'req-2',
+            attempt: 1,
+            replayOfRequestId: 'req-1',
+            timestamp: 3,
+          },
+          response: {
+            parts: [{ kind: ChatContentPartKind.Markdown, content: 'Duplicate answer' }],
+            isComplete: true,
+            modelId: session.modelId,
+            timestamp: 4,
+          },
+        },
+      );
+
+      await chatService.sendRequest(session.id, 'Hello', {
+        attempt: 2,
+        replayOfRequestId: 'req-2',
+      });
+
+      expect(session.messages).toHaveLength(1);
+      expect(session.messages[0].request.text).toBe('Hello');
+      expect(session.messages[0].request.attempt).toBe(2);
+      expect(session.messages[0].request.replayOfRequestId).toBe('req-2');
     });
 
     it('auto-generates title from first message', async () => {
@@ -222,6 +345,37 @@ describe('ChatService', () => {
       await promise;
       expect(abortSeen).toHaveBeenCalled();
     });
+
+    it('supports detached response stream methods during agent execution', async () => {
+      const detachedAgent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Detached',
+        description: 'Detached method regression coverage',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          const writeWarning = response.warning;
+          const writeMarkdown = response.markdown;
+          writeWarning('Detached warning');
+          writeMarkdown('Detached markdown');
+          return {};
+        },
+      };
+
+      const svc = new ChatAgentService();
+      svc.registerAgent(detachedAgent);
+      const cs = new ChatService(svc, modeService, lmService);
+
+      const session = cs.createSession();
+      const result = await cs.sendRequest(session.id, 'Hello');
+
+      expect(result).toEqual({});
+      expect(session.messages[0].response.parts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: ChatContentPartKind.Warning, message: 'Detached warning' }),
+          expect.objectContaining({ kind: ChatContentPartKind.Markdown, content: 'Detached markdown' }),
+        ]),
+      );
+    });
   });
 
   // ── Unified Thinking — progress/reference fold into thinking ──
@@ -278,8 +432,8 @@ describe('ChatService', () => {
       expect(parts.find(p => p.kind === ChatContentPartKind.Reference)).toBeUndefined();
       const thinking = parts.find(p => p.kind === ChatContentPartKind.Thinking) as any;
       expect(thinking).toBeDefined();
-      expect(thinking.references).toHaveLength(2);
-      expect(thinking.references[0].label).toBe('test.md');
+      expect(thinking.provenance).toHaveLength(2);
+      expect(thinking.provenance[0].label).toBe('test.md');
     });
 
     it('reference() stores index when provided', async () => {
@@ -304,8 +458,8 @@ describe('ChatService', () => {
 
       const parts = session.messages[0].response.parts;
       const thinking = parts.find(p => p.kind === ChatContentPartKind.Thinking) as any;
-      expect(thinking.references[0].index).toBe(1);
-      expect(thinking.references[1].index).toBe(2);
+      expect(thinking.provenance[0].index).toBe(1);
+      expect(thinking.provenance[1].index).toBe(2);
     });
 
     it('setCitations() attaches citations to all markdown parts', async () => {
@@ -361,6 +515,31 @@ describe('ChatService', () => {
       expect(thinking.progressMessage).toBeUndefined();
     });
 
+    it('retains a progress-only thinking part after close()', async () => {
+      const agent: IChatParticipant = {
+        id: 'parallx.chat.default',
+        displayName: 'Test',
+        description: 'Test',
+        commands: [],
+        handler: async (_req, _ctx, response) => {
+          response.progress('Thinking…');
+          response.markdown('Done');
+          return {};
+        },
+      };
+      const svc = new ChatAgentService();
+      svc.registerAgent(agent);
+      const cs = new ChatService(svc, modeService, lmService);
+      const session = cs.createSession();
+      await cs.sendRequest(session.id, 'test');
+
+      const parts = session.messages[0].response.parts;
+      const thinking = parts.find(p => p.kind === ChatContentPartKind.Thinking) as any;
+      expect(thinking).toBeDefined();
+      expect(thinking.progressMessage).toBeUndefined();
+      expect(parts[0].kind).toBe(ChatContentPartKind.Thinking);
+    });
+
     it('thinking part appears first after close()', async () => {
       const agent: IChatParticipant = {
         id: 'parallx.chat.default',
@@ -385,198 +564,7 @@ describe('ChatService', () => {
     });
   });});
 
-// ── _extractToolCallsFromText — text-based tool call fallback ──
-
-describe('_extractToolCallsFromText', () => {
-  let _extractToolCallsFromText: typeof import('../../src/built-in/chat/participants/defaultParticipant')._extractToolCallsFromText;
-
-  beforeEach(async () => {
-    const mod = await import('../../src/built-in/chat/participants/defaultParticipant');
-    _extractToolCallsFromText = mod._extractToolCallsFromText;
-  });
-
-  it('extracts a bare JSON tool call object', () => {
-    const text = 'Here is the tool call:\n{"name": "read_file", "parameters": {"path": "file.md"}}';
-    const { toolCalls, cleanedText } = _extractToolCallsFromText(text);
-    expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0].function.name).toBe('read_file');
-    expect(toolCalls[0].function.arguments).toEqual({ path: 'file.md' });
-    expect(cleanedText).toBe('Here is the tool call:');
-  });
-
-  it('extracts a JSON tool call inside a code block', () => {
-    const text = 'I will read the file:\n```json\n{"name": "read_file", "parameters": {"path": "test.md"}}\n```\nDone.';
-    const { toolCalls, cleanedText } = _extractToolCallsFromText(text);
-    expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0].function.name).toBe('read_file');
-    expect(cleanedText).toContain('I will read the file:');
-    expect(cleanedText).toContain('Done.');
-    expect(cleanedText).not.toContain('read_file');
-  });
-
-  it('returns empty array when no tool calls found', () => {
-    const text = 'Hello! How can I help you today?';
-    const { toolCalls, cleanedText } = _extractToolCallsFromText(text);
-    expect(toolCalls).toHaveLength(0);
-    expect(cleanedText).toBe(text);
-  });
-
-  it('handles tool call with nested parameters', () => {
-    const text = '{"name": "search_workspace", "parameters": {"query": "hello world", "limit": 5}}';
-    const { toolCalls } = _extractToolCallsFromText(text);
-    expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0].function.name).toBe('search_workspace');
-    expect(toolCalls[0].function.arguments).toEqual({ query: 'hello world', limit: 5 });
-  });
-
-  it('does not extract invalid JSON', () => {
-    const text = '{"name": "read_file", "parameters": {broken}}';
-    const { toolCalls } = _extractToolCallsFromText(text);
-    expect(toolCalls).toHaveLength(0);
-  });
-
-  it('does not extract objects missing name or parameters', () => {
-    const text = '{"action": "read_file", "params": {"path": "x"}}';
-    const { toolCalls } = _extractToolCallsFromText(text);
-    expect(toolCalls).toHaveLength(0);
-  });
-
-  it('strips the matched JSON from cleaned text', () => {
-    const text = '{"name": "list_files", "parameters": {"directory": "."}}';
-    const { cleanedText } = _extractToolCallsFromText(text);
-    expect(cleanedText).toBe('');
-  });
-
-  it('preserves surrounding text when stripping tool call', () => {
-    const text = 'Let me check.\n{"name": "list_files", "parameters": {"directory": "."}}\nHere are the results:';
-    const { toolCalls, cleanedText } = _extractToolCallsFromText(text);
-    expect(toolCalls).toHaveLength(1);
-    expect(cleanedText).toContain('Let me check.');
-    expect(cleanedText).toContain('Here are the results:');
-  });
-
-  it('extracts tool call using "arguments" key (Ollama/OpenAI format)', () => {
-    const text = '{"name": "list_files", "arguments": {"path": "."}}';
-    const { toolCalls, cleanedText } = _extractToolCallsFromText(text);
-    expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0].function.name).toBe('list_files');
-    expect(toolCalls[0].function.arguments).toEqual({ path: '.' });
-    expect(cleanedText).toBe('');
-  });
-
-  it('extracts code-fenced tool call with "arguments" key', () => {
-    const text = 'Action:\n```json\n{"name": "read_file", "arguments": {"path": "docs/README.md"}}\n```';
-    const { toolCalls } = _extractToolCallsFromText(text);
-    expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0].function.name).toBe('read_file');
-    expect(toolCalls[0].function.arguments).toEqual({ path: 'docs/README.md' });
-  });
-});
-
-// ── _stripToolNarration — prose tool-call narration removal ──
-
-describe('_stripToolNarration', () => {
-  let _stripToolNarration: typeof import('../../src/built-in/chat/participants/defaultParticipant')._stripToolNarration;
-
-  beforeEach(async () => {
-    const mod = await import('../../src/built-in/chat/participants/defaultParticipant');
-    _stripToolNarration = mod._stripToolNarration;
-  });
-
-  it('strips "Here\'s a function call to X" narration', () => {
-    const text = 'Here\'s a function call to read_file with its proper arguments:\nSome useful content.';
-    const result = _stripToolNarration(text);
-    expect(result).toContain('Some useful content.');
-    expect(result).not.toContain('function call');
-  });
-
-  it('strips "Let me call/use the X tool" narration', () => {
-    const text = 'Let me use the list_files tool to find that.\nThe workspace has 5 files.';
-    const result = _stripToolNarration(text);
-    expect(result).not.toContain('Let me use');
-    expect(result).toContain('The workspace has 5 files.');
-  });
-
-  it('strips "This function call will..." narration', () => {
-    const text = 'This function call will read the text content of the specified file.\nHere is the summary.';
-    const result = _stripToolNarration(text);
-    expect(result).not.toContain('function call will');
-    expect(result).toContain('Here is the summary.');
-  });
-
-  it('strips "Based on the functions provided" narration', () => {
-    const text = 'Based on the functions provided and the context:\n\nHere\'s a function call to list_pages with its proper arguments:\n\nSome useful content about the workspace.';
-    const result = _stripToolNarration(text);
-    expect(result).not.toContain('Based on the functions');
-    expect(result).not.toContain('proper arguments');
-    expect(result).toContain('Some useful content about the workspace.');
-  });
-
-  it('strips "Alternatively you could use X" narration', () => {
-    const text = 'Alternatively, since there are no pages in the workspace, you could use `read_file` to read the contents:\nHere are the files.';
-    const result = _stripToolNarration(text);
-    expect(result).not.toContain('Alternatively');
-    expect(result).not.toContain('read_file');
-    expect(result).toContain('Here are the files.');
-  });
-
-  it('strips "This will list all pages" narration', () => {
-    const text = 'This will list all pages in the workspace with their titles and IDs.\nThe workspace has 5 files.';
-    const result = _stripToolNarration(text);
-    expect(result).not.toContain('This will list');
-    expect(result).toContain('The workspace has 5 files.');
-  });
-
-  it('strips hallucinated execution results', () => {
-    const text = 'It seems that the file "Auto Insurance Policy.md" is not located in the specified path. Let me try again with a different approach.';
-    const result = _stripToolNarration(text);
-    expect(result).not.toContain('not located');
-    expect(result).not.toContain('different approach');
-  });
-
-  it('preserves useful content among narration', () => {
-    const text = 'The workspace contains 7 files.\n\nHere\'s a function call to read_file with proper args:\nThis will read the insurance policy.\n\nPlease let me know if you need more.';
-    const result = _stripToolNarration(text);
-    expect(result).toContain('The workspace contains 7 files.');
-    expect(result).toContain('Please let me know if you need more.');
-  });
-
-  it('returns text unchanged when no narration is present', () => {
-    const text = 'The workspace has 5 pages about insurance. Here is a summary.';
-    const result = _stripToolNarration(text);
-    expect(result).toBe(text);
-  });
-
-  it('strips "Action:" block with JSON', () => {
-    const text = 'The user wants to know the number of files.\n\nAction:\n{"name": "list_files", "arguments": {"path": "."}}\n\nLet\'s execute this action.';
-    const result = _stripToolNarration(text);
-    expect(result).not.toContain('Action:');
-    expect(result).not.toContain('list_files');
-    expect(result).not.toContain("Let's execute");
-  });
-
-  it('strips "Execution:" block with hallucinated results', () => {
-    const text = 'Execution:\n{"result": [{"name": "Activism", "type": "directory"}]}\n\nThere are 5 folders.';
-    const result = _stripToolNarration(text);
-    expect(result).not.toContain('Execution:');
-    expect(result).not.toContain('Activism');
-    expect(result).toContain('There are 5 folders.');
-  });
-
-  it('preserves generic explanatory prefacing when no tool syntax is present', () => {
-    const text = 'The user wants to know the number of files in the workspace.\n\nThere are 42 files.';
-    const result = _stripToolNarration(text);
-    expect(result).toContain('The user wants to know');
-    expect(result).toContain('There are 42 files.');
-  });
-
-  it('preserves "To determine X, I will Y" when it is ordinary explanation, not tool narration', () => {
-    const text = 'To determine the number of files in the workspace, I will review the indexed file list.\n\nThere are 42 files.';
-    const result = _stripToolNarration(text);
-    expect(result).toContain('To determine the number of files');
-    expect(result).toContain('There are 42 files.');
-  });
-
+describe('default participant integration helpers', () => {
   it('does not replace streamed markdown with an empty string after narration cleanup', async () => {
     const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
 
@@ -677,135 +665,6 @@ describe('_stripToolNarration', () => {
     expect(sendChatRequest).toHaveBeenCalledTimes(3);
     expect(stream.calls.markdown.join('')).toContain('Sarah Chen');
     expect(stream.calls.warnings).toEqual([]);
-  });
-
-  it('falls back to extractive retrieved-context lines when the retry is also empty', async () => {
-    const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const fallback = _buildExtractiveFallbackAnswer(
-      'How do I file a claim and who do I call?',
-      '[Retrieved Context]\n---\n[1] Source: Claims Guide.md\nPath: Claims Guide.md\n### Step 1: Report the Claim\n- Your agent: Sarah Chen — (555) 234-5678\n- 24/7 Claims Line: 1-800-555-CLAIM (2524)\n- File within 72 hours of the incident\n---',
-    );
-
-    expect(fallback).toContain('Sarah Chen');
-    expect(fallback).toContain('1-800-555-CLAIM');
-    expect(fallback).toContain('72 hours');
-  });
-
-  it('classifies missing grounded evidence as insufficient', async () => {
-    const { _assessEvidenceSufficiency } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const assessment = _assessEvidenceSufficiency(
-      'What is my collision deductible?',
-      '',
-      [],
-    );
-
-    expect(assessment.status).toBe('insufficient');
-    expect(assessment.reasons).toContain('no-grounded-sources');
-  });
-
-  it('classifies a focused single-source fact answer as sufficient', async () => {
-    const { _assessEvidenceSufficiency } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const assessment = _assessEvidenceSufficiency(
-      'What is my collision deductible?',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Auto Insurance Policy.md',
-        'Path: Auto Insurance Policy.md',
-        '### Collision Coverage',
-        '- **Deductible:** $500',
-        '---',
-      ].join('\n'),
-      [{ uri: 'Auto Insurance Policy.md', label: 'Auto Insurance Policy.md', index: 1 }],
-    );
-
-    expect(assessment.status).toBe('sufficient');
-    expect(assessment.reasons).toEqual([]);
-  });
-
-  it('classifies partial hard-query evidence as weak', async () => {
-    const { _assessEvidenceSufficiency } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const assessment = _assessEvidenceSufficiency(
-      'I was rear-ended by an uninsured driver. What should I do and what does my policy cover?',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Accident Quick Reference.md',
-        'Path: Accident Quick Reference.md',
-        '## Uninsured Driver Filing Deadlines',
-        '- After an uninsured driver accident, report the claim to your insurer.',
-        '- Report to insurer: Within 72 hours',
-        '---',
-      ].join('\n'),
-      [{ uri: 'Accident Quick Reference.md', label: 'Accident Quick Reference.md', index: 1 }],
-    );
-
-    expect(assessment.status).toBe('weak');
-    expect(assessment.reasons).toEqual(expect.arrayContaining([
-      'hard-query-low-source-coverage',
-      'hard-query-low-section-coverage',
-    ]));
-  });
-
-  it('classifies specific coverage claims as insufficient when the evidence only supports a broader category', async () => {
-    const { _assessEvidenceSufficiency } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const assessment = _assessEvidenceSufficiency(
-      'What does my policy say about earthquake coverage?',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Auto Insurance Policy.md',
-        'Path: Auto Insurance Policy.md',
-        '### Comprehensive Coverage',
-        'Covers damage to your vehicle from non-collision events: theft, vandalism, natural disasters, falling objects, animal strikes.',
-        '---',
-      ].join('\n'),
-      [{ uri: 'Auto Insurance Policy.md', label: 'Auto Insurance Policy.md', index: 1 }],
-    );
-
-    expect(assessment.status).toBe('insufficient');
-    expect(assessment.reasons).toContain('specific-coverage-not-explicitly-supported');
-  });
-
-  it('builds a deterministic session summary from recent user-provided facts', async () => {
-    const { _buildDeterministicSessionSummary } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const summary = _buildDeterministicSessionSummary(
-      [{ request: { text: 'I was in a car accident yesterday at the Riverside Mall parking lot on Elm Street.' } }],
-      'The other driver ran a red light, hit my passenger door, and the police report number is 2026-0305-1147.',
-    );
-
-    expect(summary).toContain('Riverside Mall parking lot');
-    expect(summary).toContain('Elm Street');
-    expect(summary).toContain('red light');
-    expect(summary).toContain('passenger door');
-    expect(summary).toContain('2026-0305-1147');
-  });
-
-  it('builds a keyword-focused retrieve-again query from unresolved terms', async () => {
-    const { _buildRetrieveAgainQuery } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const query = _buildRetrieveAgainQuery(
-      'At what point would my car be declared a total loss?',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Accident Quick Reference.md',
-        'Path: Accident Quick Reference.md',
-        '## Filing Deadlines',
-        '- Report to insurer: Within 72 hours',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(query).toContain('declared');
-    expect(query).toContain('total');
-    expect(query).toContain('loss');
   });
 
   it('runs one retrieve-again pass when the initial evidence is insufficient', async () => {
@@ -1056,47 +915,6 @@ describe('_stripToolNarration', () => {
     expect(stream.calls.markdown.join('')).toMatch(/contact your agent|endorsement|additional coverage/i);
   });
 
-  it('repairs overly definitive unsupported specific coverage answers into document-bounded uncertainty', async () => {
-    const { _repairUnsupportedSpecificCoverageAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const repaired = _repairUnsupportedSpecificCoverageAnswer(
-      'What does my policy say about earthquake coverage?',
-      'Your policy does not include earthquake coverage. It is covered under the broader natural disasters category. [1]',
-      { status: 'insufficient', reasons: ['specific-coverage-not-explicitly-supported'] },
-    );
-
-    expect(repaired).toContain('could not find earthquake');
-    expect(repaired).toContain('do not explicitly name that specific coverage');
-  });
-
-  it('removes broader-category affirmative phrasing for unsupported specific coverage answers', async () => {
-    const { _repairUnsupportedSpecificCoverageAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const repaired = _repairUnsupportedSpecificCoverageAnswer(
-      'What does my policy say about earthquake coverage?',
-      'The policy documents do not explicitly confirm earthquake. The documents mention natural disasters. So the policy covers earthquake under that broader category. [1]',
-      { status: 'insufficient', reasons: ['specific-coverage-not-explicitly-supported'] },
-    );
-
-    expect(repaired).toContain('could not find earthquake');
-    expect(repaired).toContain('do not explicitly name that specific coverage');
-    expect(repaired).not.toMatch(/covers? earthquake/i);
-  });
-
-  it('removes unsupported specific coverage phrasing that says broader coverage would apply', async () => {
-    const { _repairUnsupportedSpecificCoverageAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const repaired = _repairUnsupportedSpecificCoverageAnswer(
-      'What does my policy say about earthquake coverage?',
-      'The policy documents do not explicitly confirm earthquake. The only coverage that would apply to seismic events is the Comprehensive part of the policy, which covers natural disasters. [1]',
-      { status: 'insufficient', reasons: ['specific-coverage-not-explicitly-supported'] },
-    );
-
-    expect(repaired).toContain('could not find earthquake');
-    expect(repaired).toContain('do not explicitly name that specific coverage');
-    expect(repaired).not.toMatch(/would apply to seismic events/i);
-  });
-
   it('uses deductible context from the previous turn for short comprehensive follow-ups', async () => {
     const { createDefaultParticipant } = await import('../../src/built-in/chat/participants/defaultParticipant');
 
@@ -1164,7 +982,7 @@ describe('_stripToolNarration', () => {
       {
         sessionId: 's1',
         history: [{
-          request: { text: 'What is my collision deductible?' },
+          request: { text: 'What is my collision deductible?', requestId: 'req-history-1', attempt: 0, timestamp: Date.now() },
           response: { parts: [{ kind: 'markdown', content: 'Your collision deductible is $500.' }] },
         }],
       } as any,
@@ -1210,331 +1028,6 @@ describe('_stripToolNarration', () => {
     expect(sendChatRequest).not.toHaveBeenCalled();
     expect(stream.calls.markdown.join('')).toMatch(/insurance policy|workspace|files/i);
     expect(stream.calls.markdown.join('')).not.toMatch(/preheat oven|baking soda|vanilla extract/i);
-  });
-
-  it('repairs malformed collision deductible answers to the grounded policy amount', async () => {
-    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const repaired = _repairDeductibleConflictAnswer(
-      'What is my collision deductible now?',
-      'Your collision deductible is ** 17',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Auto Insurance Policy.md',
-        'Path: Auto Insurance Policy.md',
-        '### Collision Coverage',
-        '- **Deductible:** $950',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(repaired).toContain('$950');
-    expect(repaired).not.toContain('$500');
-  });
-
-  it('repairs vehicle answers to include trim or color when grounded context has it', async () => {
-    const { _repairVehicleInfoAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const repaired = _repairVehicleInfoAnswer(
-      'Tell me about my insured vehicle.',
-      'Your insured vehicle is a 2024 Honda Accord.',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Vehicle Info.md',
-        'Path: Vehicle Info.md',
-        '2024 Honda Accord EX-L',
-        'Color: Lunar Silver Metallic',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(repaired).toMatch(/EX-L|Lunar Silver Metallic/i);
-  });
-
-  it('keeps extractive fallback anchored to the matching repair-shop section', async () => {
-    const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const fallback = _buildExtractiveFallbackAnswer(
-      'Which repair shops are recommended under my policy? Please cite your sources.',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Agent Contacts.md',
-        'Path: Agent Contacts.md',
-        '## Preferred Repair Shops',
-        '1. **AutoCraft Collision Center**',
-        '2. **Precision Auto Body**',
-        '3. **Riverside Honda Service Center**',
-        '---',
-        '[2] Source: Vehicle Info.md',
-        'Path: Vehicle Info.md',
-        '## Estimated Current Value',
-        '- **Note:** Total loss threshold is 75% of current value',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(fallback).toContain('AutoCraft Collision Center');
-    expect(fallback).toContain('Precision Auto Body');
-    expect(fallback).not.toContain('Total loss threshold');
-  });
-
-  it('combines the strongest retrieved sections when a query needs contact and deadline details', async () => {
-    const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const fallback = _buildExtractiveFallbackAnswer(
-      'OK I want to file a claim. How do I do that and who do I call?',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Claims Guide.md',
-        'Path: Claims Guide.md',
-        '### Step 1: Report the Claim',
-        '**Who to contact:**',
-        '- **Your agent:** Sarah Chen — (555) 234-5678 (Mon-Fri 8am-6pm)',
-        '- **24/7 Claims Line:** 1-800-555-CLAIM (2524)',
-        '- Policy number: PLX-2026-4481',
-        '- Police report number',
-        '---',
-        '[2] Source: Auto Insurance Policy.md',
-        'Path: Auto Insurance Policy.md',
-        '## How to File a Claim',
-        '1. Call your agent or the 24/7 claims line: **1-800-555-CLAIM (2524)**',
-        '2. File within **72 hours** of the incident',
-        '---',
-        '[3] Source: Claims Guide.md',
-        'Path: Claims Guide.md',
-        '## Uninsured Motorist (UM) Claim Procedure',
-        '1. **File a police report within 24 hours** (mandatory for UM claims)',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(fallback).toContain('Sarah Chen');
-    expect(fallback).toContain('1-800-555-CLAIM');
-    expect(fallback).toContain('72 hours');
-    expect(fallback).not.toContain('mandatory for UM claims');
-  });
-
-  it('repairs agent contact answers to include the agent name and ASCII phone formatting', async () => {
-    const { _repairAgentContactAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const repaired = _repairAgentContactAnswer(
-      "What is my insurance agent's phone number?",
-      'Your agent’s phone number is (555) 234‑5678 1\n\nSources: 1 Agent Contacts.md; 2 Claims Guide.md',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Agent Contacts.md',
-        'Path: Agent Contacts.md',
-        '## Agent & Emergency Contacts',
-        '| Field | Details |',
-        '|-------|---------|',
-        '| **Name** | Sarah Chen |',
-        '| **Title** | Senior Insurance Agent |',
-        '| **Phone** | (555) 234-5678 |',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(repaired).toContain('Sarah Chen');
-    expect(repaired).toContain('(555) 234-5678');
-  });
-
-  it('repairs total-loss answers to preserve ASCII 75% and the KBB shorthand from retrieved evidence', async () => {
-    const { _repairTotalLossThresholdAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const repaired = _repairTotalLossThresholdAnswer(
-      'At what point would my car be declared a total loss?',
-      [
-        'Your vehicle would be declared a total loss when the estimated repair cost exceeds 75 % of its current market value.',
-        '',
-        'Current value (Kelly Blue Book Jan 2026): $28,500 - $30,200.',
-      ].join('\n'),
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Vehicle Info.md',
-        'Path: Vehicle Info.md',
-        '## Estimated Current Value',
-        '- **Kelly Blue Book (Jan 2026):** $28,500 - $30,200',
-        '- **Note:** Total loss threshold is 75% of current value (~$21,375 - $22,650).',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(repaired).toContain('75%');
-    expect(repaired).toContain('Kelly Blue Book (KBB)');
-  });
-
-  it('repairs deductible confirmation answers to explicitly reject an incorrect claimed amount', async () => {
-    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const repaired = _repairDeductibleConflictAnswer(
-      'I remember my collision deductible is $1,000. Can you confirm?',
-      'Your collision deductible is $500 according to the policy summary.',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Auto Insurance Policy.md',
-        '### Collision Coverage',
-        '- **Deductible:** $500',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(repaired).toContain('No.');
-    expect(repaired).toContain('$500');
-    expect(repaired).toContain('$1,000');
-  });
-
-  it('repairs current deductible answers to avoid repeating a stale conflicting amount', async () => {
-    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const repaired = _repairDeductibleConflictAnswer(
-      'What is my collision deductible now?',
-      [
-        'Your collision coverage has a deductible of $750 per occurrence as listed in the policy summary.',
-        'The quick-reference card also lists a $500 deductible, which may be an older or incorrect figure.',
-        '',
-        'Collision deductible per policy: $750',
-        'Quick-reference card lists $500',
-      ].join('\n'),
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Auto Insurance Policy.md',
-        '### Collision Coverage',
-        '- **Deductible:** $750',
-        '---',
-        '[5] Source: Accident Quick Reference.md',
-        '| **Collision Deductible** | $500 |',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(repaired).toContain('$750');
-    expect(repaired).not.toContain('$500');
-    expect(repaired).toContain('current policy amount');
-  });
-
-  it('repairs direct deductible answers to suppress stale conflicting amounts from older references', async () => {
-    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const repaired = _repairDeductibleConflictAnswer(
-      'What is my collision deductible?',
-      'Your collision deductible is $950 per occurrence. (While the quick-reference card lists $500, the policy summary specifies $950.)',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Auto Insurance Policy.md',
-        '### Collision Coverage',
-        '- **Deductible:** $950',
-        '---',
-        '[5] Source: Accident Quick Reference.md',
-        '| **Collision Deductible** | $500 |',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(repaired).toContain('$950');
-    expect(repaired).not.toContain('$500');
-  });
-
-  it('repairs short comprehensive deductible follow-ups to the grounded policy amount', async () => {
-    const { _repairDeductibleConflictAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const repaired = _repairDeductibleConflictAnswer(
-      'And what about comprehensive?',
-      'Comprehensive coverage is part of your policy.',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Auto Insurance Policy.md',
-        '### Comprehensive Coverage',
-        '- **Deductible:** $250',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(repaired).toContain('comprehensive deductible is $250');
-  });
-
-  it('combines primary and backup coverage sections when the query asks what coverage applies', async () => {
-    const { _buildExtractiveFallbackAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const fallback = _buildExtractiveFallbackAnswer(
-      'They said they have insurance but I am not sure. What coverage do I have for this?',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Claims Guide.md',
-        'Path: Claims Guide.md',
-        '## Uninsured Motorist (UM) Claim Procedure',
-        '3. Your UM coverage applies: up to $100,000/$300,000 bodily injury, $25,000 property damage',
-        '---',
-        '[2] Source: Auto Insurance Policy.md',
-        'Path: Auto Insurance Policy.md',
-        '### Collision Coverage',
-        '- **Coverage Limit:** $50,000 per occurrence',
-        '- **Deductible:** $500',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(fallback).toContain('Collision Coverage');
-    expect(fallback).toContain('$500');
-    expect(fallback).toContain('UM coverage applies');
-  });
-
-  it('repairs code-oriented answers with the exact helper and stage names from retrieved context', async () => {
-    const { _repairGroundedCodeAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const repaired = _repairGroundedCodeAnswer(
-      'Which helper assembles the escalation packet in the workflow architecture doc, and what two stage names does it include?',
-      'The escalation packet is assembled by the Severity Desk Coordinator. It includes valuation and photos.',
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Claims Workflow Architecture.md',
-        '```ts',
-        'export function buildEscalationPacket() {',
-        '  return {',
-        "    stages: ['policy-summary', 'valuation', 'photos', 'police-report'],",
-        "    owner: 'Severity Desk Coordinator',",
-        '  };',
-        '}',
-        '```',
-      ].join('\n'),
-    );
-
-    expect(repaired).toContain('buildEscalationPacket');
-    expect(repaired).toContain('policy-summary');
-    expect(repaired).toContain('valuation');
-    expect(repaired).toContain('Claims Workflow Architecture document');
-  });
-
-  it('anchors architecture-document answers to the retrieved source document when asked', async () => {
-    const { _repairGroundedCodeAnswer } = await import('../../src/built-in/chat/participants/defaultParticipant');
-
-    const answer = 'The Severity Desk Coordinator owns packet completeness.';
-    const repaired = _repairGroundedCodeAnswer(
-      'Who owns packet completeness in the workflow architecture doc?',
-      answer,
-      [
-        '[Retrieved Context]',
-        '---',
-        '[1] Source: Claims Workflow Architecture.md',
-        '### 3.1 Packet Ownership',
-        'The Severity Desk Coordinator is responsible for packet completeness.',
-        '---',
-      ].join('\n'),
-    );
-
-    expect(repaired).toContain(answer);
-    expect(repaired).toContain('Claims Workflow Architecture document');
   });
 
   it('uses retrieved context as a final fallback when both model passes return no markdown', async () => {
@@ -2024,66 +1517,5 @@ describe('_stripToolNarration', () => {
     expect(sendChatRequest).not.toHaveBeenCalled();
     expect(stream.calls.markdown.join('')).toContain('planning, approval, and execution events');
     expect(stream.calls.markdown.join('')).toContain('why a task stopped');
-  });
-});
-
-describe('_buildMissingCitationFooter', () => {
-  let _buildMissingCitationFooter: typeof import('../../src/built-in/chat/participants/defaultParticipant')._buildMissingCitationFooter;
-
-  beforeEach(async () => {
-    const mod = await import('../../src/built-in/chat/participants/defaultParticipant');
-    _buildMissingCitationFooter = mod._buildMissingCitationFooter;
-  });
-
-  it('adds a visible citation footer when markdown has no [N] markers', () => {
-    const footer = _buildMissingCitationFooter(
-      'Recommended shops are AutoCraft Collision Center and Precision Auto Body.',
-      [
-        { index: 4, label: 'Agent Contacts.md' },
-        { index: 7, label: 'Claims Guide.md' },
-      ],
-    );
-
-    expect(footer).toBe('\n\nSources: [4] Agent Contacts.md; [7] Claims Guide.md');
-  });
-
-  it('skips the fallback when markdown already names the source document', () => {
-    const footer = _buildMissingCitationFooter(
-      'Recommended shops are listed in Agent Contacts.md.',
-      [{ index: 4, label: 'Agent Contacts.md' }],
-    );
-
-    expect(footer).toBe('');
-  });
-
-  it('adds the fallback when markdown only has bare numeric citation text', () => {
-    const footer = _buildMissingCitationFooter(
-      'Recommended shops are AutoCraft Collision Center 4 and Precision Auto Body 4.',
-      [{ index: 4, label: 'Agent Contacts.md' }],
-    );
-
-    expect(footer).toBe('\n\nSources: [4] Agent Contacts.md');
-  });
-
-  it('adds the fallback when markdown only uses a generic Source column header', () => {
-    const footer = _buildMissingCitationFooter(
-      [
-        '| Step | Source |',
-        '|------|--------|',
-        '| Call your agent | 1 |',
-      ].join('\n'),
-      [{ index: 1, label: 'Accident Quick Reference.md' }],
-    );
-
-    expect(footer).toBe('\n\nSources: [1] Accident Quick Reference.md');
-  });
-
-  it('adds the fallback when markdown references only the source stem without the file name', () => {
-    const footer = _buildMissingCitationFooter(
-      'These details come from the Claims Workflow Architecture document. 1',
-      [{ index: 1, label: 'Claims Workflow Architecture.md' }],
-    );
-
-    expect(footer).toBe('\n\nSources: [1] Claims Workflow Architecture.md');
   });
 });
