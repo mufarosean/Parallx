@@ -287,6 +287,7 @@ Post-completion cleanup on 2026-03-12:
 - [x] Refine chat regenerate behavior so replay replaces the prior turn in-place instead of appending a second assistant response.
 - [x] Harden regenerate replay replacement to collapse older duplicated replay chains created before the in-place fix.
 - [x] Fix repeated regenerate clicks on the same visible message so stale action bindings and stale replay IDs do not reintroduce duplication.
+- [x] Move pre-send context pills out of the persistent composer stack into a toolbar-anchored menu while preserving exclusions and budget guidance.
 
 ---
 

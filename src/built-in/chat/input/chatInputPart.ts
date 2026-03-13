@@ -80,9 +80,6 @@ export class ChatInputPart extends Disposable {
       this._onDidChangeAttachments.fire();
     }));
 
-    // Pre-send context visibility and exclusions.
-    this._contextPills = this._register(new ChatContextPills(this._root));
-
     // Editor area (textarea wrapper)
     const editorArea = $('div.parallx-chat-input-editor');
     this._root.appendChild(editorArea);
@@ -141,6 +138,9 @@ export class ChatInputPart extends Disposable {
     // Spacer
     const spacer = $('div.parallx-chat-input-toolbar-spacer');
     this._toolbar.appendChild(spacer);
+
+    // Pre-send context visibility and exclusions live in a toolbar menu.
+    this._contextPills = this._register(new ChatContextPills(this._toolbar));
 
     // Submit button (icon-only: ↑ arrow, VS Code style)
     this._submitBtn = document.createElement('button');

@@ -19,7 +19,7 @@
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
-import { $ } from '../../../ui/dom.js';
+import { $, addDisposableListener } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import type { IContextPill } from '../../../services/chatTypes.js';
 import type { ITokenBudgetSlot } from '../chatTypes.js';
@@ -30,15 +30,17 @@ export type { ITokenBudgetSlot } from '../chatTypes.js';
 // ── Component ──
 
 /**
- * Context pills strip — shows what context sources are visible to the LLM.
+ * Context pills menu — shows what context sources are visible to the LLM.
  *
- * Renders below the context ribbon (above the textarea) as a collapsible section.
- * Updated after each message send when context source data becomes available.
+ * Renders as a toolbar button that opens a compact anchored menu above the
+ * composer controls, keeping the transcript and input stack visually lighter.
  */
 export class ChatContextPills extends Disposable {
 
   private readonly _root: HTMLElement;
   private readonly _toggleBtn: HTMLElement;
+  private readonly _menu: HTMLElement;
+  private readonly _menuHeader: HTMLElement;
   private readonly _pillsContainer: HTMLElement;
   private readonly _budgetContainer: HTMLElement;
 
@@ -51,7 +53,7 @@ export class ChatContextPills extends Disposable {
   /** IDs of pills the user has removed (excluded from next message). */
   private readonly _excluded = new Set<string>();
 
-  /** Whether the pills strip is expanded. */
+  /** Whether the menu is open. */
   private _expanded = false;
 
   // ── Events ──
@@ -67,14 +69,16 @@ export class ChatContextPills extends Disposable {
   constructor(container: HTMLElement) {
     super();
 
-    this._root = $('div.parallx-chat-context-pills');
+    this._root = $('div.parallx-chat-context-menu');
     container.appendChild(this._root);
     this._register(toDisposable(() => this._root.remove()));
 
-    // Toggle button: "Context: 3 sources (1.2k tokens)" — click to expand/collapse
+    // Toggle button: compact toolbar control that opens the context menu.
     const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'parallx-chat-context-pills-toggle';
+    toggleBtn.className = 'parallx-chat-context-menu-trigger';
     toggleBtn.type = 'button';
+    toggleBtn.setAttribute('aria-haspopup', 'menu');
+    toggleBtn.setAttribute('aria-expanded', 'false');
     this._toggleBtn = toggleBtn;
     this._toggleBtn.addEventListener('click', () => {
       this._expanded = !this._expanded;
@@ -82,13 +86,42 @@ export class ChatContextPills extends Disposable {
     });
     this._root.appendChild(this._toggleBtn);
 
-    // Pills container (collapsible)
-    this._pillsContainer = $('div.parallx-chat-context-pills-list');
-    this._root.appendChild(this._pillsContainer);
+    this._menu = $('div.parallx-chat-context-menu-panel');
+    this._menu.setAttribute('role', 'menu');
+    this._root.appendChild(this._menu);
 
-    // Budget breakdown container (Task 4.8 — collapsible alongside pills)
+    this._menuHeader = $('div.parallx-chat-context-menu-header');
+    this._menu.appendChild(this._menuHeader);
+
+    // Pills container (inside menu)
+    this._pillsContainer = $('div.parallx-chat-context-pills-list');
+    this._menu.appendChild(this._pillsContainer);
+
+    // Budget breakdown container (Task 4.8 — inside the menu)
     this._budgetContainer = $('div.parallx-chat-context-budget');
-    this._root.appendChild(this._budgetContainer);
+    this._menu.appendChild(this._budgetContainer);
+
+    this._register(addDisposableListener(document, 'mousedown', (event: MouseEvent) => {
+      if (!this._expanded) {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof Node && !this._root.contains(target)) {
+        this._expanded = false;
+        this._render();
+      }
+    }));
+
+    this._register(addDisposableListener(document, 'keydown', (event: KeyboardEvent) => {
+      if (!this._expanded || event.key !== 'Escape') {
+        return;
+      }
+
+      this._expanded = false;
+      this._render();
+      this._toggleBtn.focus();
+    }));
 
     // Start hidden
     this._root.style.display = 'none';
@@ -120,6 +153,7 @@ export class ChatContextPills extends Disposable {
   clear(): void {
     this._pills = [];
     this._excluded.clear();
+    this._expanded = false;
     this._render();
   }
 
@@ -150,21 +184,43 @@ export class ChatContextPills extends Disposable {
     // Toggle button label
     const sourceLabel = activePills.length === 1 ? '1 source' : `${activePills.length} sources`;
     const excludeLabel = excludedCount > 0 ? ` (${excludedCount} excluded)` : '';
-    const arrow = this._expanded ? '▾' : '▸';
+    const arrow = this._expanded ? '▴' : '▾';
 
     this._toggleBtn.textContent = '';
+    this._toggleBtn.setAttribute('aria-expanded', this._expanded ? 'true' : 'false');
+
+    const icon = document.createElement('span');
+    icon.className = 'parallx-chat-context-menu-trigger-icon';
+    icon.innerHTML = chatIcons.search;
+    this._toggleBtn.appendChild(icon);
+
     const arrowSpan = document.createElement('span');
     arrowSpan.className = 'parallx-chat-context-pills-arrow';
     arrowSpan.textContent = arrow;
-    this._toggleBtn.appendChild(arrowSpan);
 
     const text = document.createElement('span');
-    text.textContent = `Sources for next turn: ${sourceLabel}${excludeLabel}`;
+    text.className = 'parallx-chat-context-menu-trigger-label';
+    text.textContent = `Context ${activePills.length}`;
     this._toggleBtn.appendChild(text);
+
+    if (excludedCount > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'parallx-chat-context-menu-trigger-badge';
+      badge.textContent = `${excludedCount} excluded`;
+      this._toggleBtn.appendChild(badge);
+    }
+
+    this._toggleBtn.appendChild(arrowSpan);
+
+    this._menuHeader.innerHTML = '';
+    const title = $('div.parallx-chat-context-menu-title', 'Sources For Next Turn');
+    const summary = $('div.parallx-chat-context-menu-summary', `${sourceLabel}${excludeLabel}`);
+    this._menuHeader.appendChild(title);
+    this._menuHeader.appendChild(summary);
 
     // Pills list
     this._pillsContainer.innerHTML = '';
-    this._pillsContainer.style.display = this._expanded ? '' : 'none';
+    this._menu.style.display = this._expanded ? '' : 'none';
 
     for (const pill of this._pills) {
       const isExcluded = this._excluded.has(pill.id);

@@ -897,23 +897,25 @@
   text-overflow: ellipsis;
 }
 
-/* ── Context pills strip (M11 Task 1.10) ── */
+/* ── Context menu (toolbar anchored) ── */
 
-.parallx-chat-context-pills {
-  padding: 4px 12px 2px;
+.parallx-chat-context-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
   font-family: var(--vscode-font-family, system-ui, -apple-system, sans-serif);
 }
 
-.parallx-chat-context-pills-toggle {
+.parallx-chat-context-menu-trigger {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
-  justify-content: space-between;
-  padding: 6px 10px;
-  border: 1px solid color-mix(in srgb, var(--vscode-widget-border, #454545) 65%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--vscode-editorWidget-background, #252526) 76%, transparent);
+  justify-content: center;
+  padding: 4px 8px;
+  min-height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
   color: var(--vscode-descriptionForeground, #8b8b8b);
   font-size: 11px;
   font-family: inherit;
@@ -921,9 +923,31 @@
   transition: color 100ms ease, background 100ms ease;
 }
 
-.parallx-chat-context-pills-toggle:hover {
+.parallx-chat-context-menu-trigger:hover {
   color: var(--vscode-foreground, #cccccc);
-  background: color-mix(in srgb, var(--vscode-toolbar-hoverBackground, #5a5d5e50) 86%, transparent);
+  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+}
+
+.parallx-chat-context-menu-trigger-icon,
+.parallx-chat-context-menu-trigger-icon svg {
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.parallx-chat-context-menu-trigger-label {
+  white-space: nowrap;
+}
+
+.parallx-chat-context-menu-trigger-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 78%, transparent);
+  color: var(--vscode-badge-foreground, #ffffff);
+  font-size: 10px;
+  line-height: 1.6;
 }
 
 .parallx-chat-context-pills-arrow {
@@ -931,11 +955,44 @@
   line-height: 1;
 }
 
+.parallx-chat-context-menu-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: min(520px, calc(100vw - 48px));
+  max-height: min(340px, 50vh);
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--vscode-editorWidget-border, #454545);
+  border-radius: 10px;
+  background: var(--vscode-editorWidget-background, #252526);
+  box-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+  z-index: 30;
+}
+
+.parallx-chat-context-menu-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.parallx-chat-context-menu-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.parallx-chat-context-menu-summary {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+}
+
 .parallx-chat-context-pills-list {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 8px 2px 4px;
+  padding: 2px 0 4px;
 }
 
 .parallx-chat-context-pill {
@@ -1028,7 +1085,7 @@
 /* ── Token Budget Breakdown (Task 4.8) ── */
 
 .parallx-chat-context-budget {
-  padding: 8px 2px 4px;
+  padding: 8px 0 4px;
 }
 
 .parallx-chat-context-budget-title {
