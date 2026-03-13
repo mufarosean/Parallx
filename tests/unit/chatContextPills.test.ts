@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { ChatContextPills } from '../../src/built-in/chat/input/chatContextPills';
 import type { IContextPill } from '../../src/services/chatTypes';
@@ -17,6 +17,10 @@ function createPill(overrides: Partial<IContextPill> = {}): IContextPill {
 }
 
 describe('ChatContextPills', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
   it('renders as a hidden toolbar control until pills exist', () => {
     const container = document.createElement('div');
     const pills = new ChatContextPills(container);
@@ -31,13 +35,14 @@ describe('ChatContextPills', () => {
 
   it('opens as a menu and keeps exclusions functional', () => {
     const container = document.createElement('div');
+    document.body.appendChild(container);
     const pills = new ChatContextPills(container);
     pills.setPills([createPill(), createPill({ id: 'memory:session-recall', label: 'Session memory', type: 'memory' })]);
 
     const trigger = container.querySelector('.parallx-chat-context-menu-trigger') as HTMLButtonElement;
     trigger.click();
 
-    const menu = container.querySelector('.parallx-chat-context-menu-panel') as HTMLElement;
+    const menu = document.body.querySelector('.parallx-chat-context-menu-panel') as HTMLElement;
     expect(menu.style.display).toBe('');
     expect(menu.textContent).toContain('Sources For Next Turn');
 
@@ -50,6 +55,7 @@ describe('ChatContextPills', () => {
 
   it('groups menu pills by source type in a stable order', () => {
     const container = document.createElement('div');
+    document.body.appendChild(container);
     const pills = new ChatContextPills(container);
     pills.setPills([
       createPill({ id: 'system-prompt', label: 'System prompt', type: 'system', removable: false }),
@@ -63,7 +69,7 @@ describe('ChatContextPills', () => {
     const trigger = container.querySelector('.parallx-chat-context-menu-trigger') as HTMLButtonElement;
     trigger.click();
 
-    const headers = [...container.querySelectorAll('.parallx-chat-context-group-title')].map((el) => el.textContent);
+    const headers = [...document.body.querySelectorAll('.parallx-chat-context-group-title')].map((el) => el.textContent);
     expect(headers).toEqual([
       'Attachments',
       'Retrieved Sources',

@@ -19,7 +19,7 @@
 import { Disposable, toDisposable } from '../../../platform/lifecycle.js';
 import { Emitter } from '../../../platform/events.js';
 import type { Event } from '../../../platform/events.js';
-import { $, addDisposableListener } from '../../../ui/dom.js';
+import { $, addDisposableListener, layoutPopup } from '../../../ui/dom.js';
 import { chatIcons } from '../chatIcons.js';
 import type { IContextPill } from '../../../services/chatTypes.js';
 import type { ITokenBudgetSlot } from '../chatTypes.js';
@@ -118,7 +118,10 @@ export class ChatContextPills extends Disposable {
 
     this._menu = $('div.parallx-chat-context-menu-panel');
     this._menu.setAttribute('role', 'menu');
-    this._root.appendChild(this._menu);
+    this._menu.style.display = 'none';
+    this._menu.style.position = 'fixed';
+    document.body.appendChild(this._menu);
+    this._register(toDisposable(() => this._menu.remove()));
 
     this._menuHeader = $('div.parallx-chat-context-menu-header');
     this._menu.appendChild(this._menuHeader);
@@ -137,7 +140,7 @@ export class ChatContextPills extends Disposable {
       }
 
       const target = event.target;
-      if (target instanceof Node && !this._root.contains(target)) {
+      if (target instanceof Node && !this._root.contains(target) && !this._menu.contains(target)) {
         this._expanded = false;
         this._render();
       }
@@ -152,6 +155,24 @@ export class ChatContextPills extends Disposable {
       this._render();
       this._toggleBtn.focus();
     }));
+
+    this._register(addDisposableListener(window, 'resize', () => {
+      if (!this._expanded) {
+        return;
+      }
+
+      this._expanded = false;
+      this._render();
+    }));
+
+    this._register(addDisposableListener(window, 'scroll', () => {
+      if (!this._expanded) {
+        return;
+      }
+
+      this._expanded = false;
+      this._render();
+    }, true));
 
     // Start hidden
     this._root.style.display = 'none';
@@ -251,6 +272,13 @@ export class ChatContextPills extends Disposable {
     // Pills list
     this._pillsContainer.innerHTML = '';
     this._menu.style.display = this._expanded ? '' : 'none';
+
+    if (this._expanded) {
+      layoutPopup(this._menu, this._toggleBtn.getBoundingClientRect(), {
+        position: 'above',
+        gap: 8,
+      });
+    }
 
     const groupedPills = new Map<ContextPillGroupKey, IContextPill[]>();
     for (const pill of this._pills) {
