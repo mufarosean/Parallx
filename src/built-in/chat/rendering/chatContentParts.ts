@@ -899,7 +899,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
   // Source reference pills
   if (sourceEntries.length > 0) {
     const sourcesSection = $('div.parallx-chat-thinking-sources');
-    let areSourcesCollapsed = false;
+    let areSourcesCollapsed = true;
 
     const sourcesToggle = document.createElement('button');
     sourcesToggle.type = 'button';
@@ -908,7 +908,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
     const sourcesArrow = $('span.parallx-chat-thinking-sources-arrow', '\u25B6');
     sourcesToggle.appendChild(sourcesArrow);
 
-    const sourcesLabel = $('span.parallx-chat-thinking-sources-label', 'Sources');
+    const sourcesLabel = $('span.parallx-chat-thinking-sources-label', 'Sources Considered');
     sourcesToggle.appendChild(sourcesLabel);
 
     const sourcesCount = sourceEntries.length;
