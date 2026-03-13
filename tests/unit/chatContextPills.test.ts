@@ -46,6 +46,7 @@ describe('ChatContextPills', () => {
     const menu = document.body.querySelector('.parallx-chat-context-menu-panel') as HTMLElement;
     expect(menu.style.display).toBe('');
     expect(menu.textContent).toContain('Sources For Next Turn');
+    expect(menu.querySelector('.parallx-chat-context-item-icon')).toBeNull();
 
     const removeBtn = menu.querySelector('button[aria-label="Remove Claims Guide.md"]') as HTMLButtonElement;
     removeBtn.click();

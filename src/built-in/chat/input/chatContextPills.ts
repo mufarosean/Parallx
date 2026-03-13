@@ -354,12 +354,6 @@ export class ChatContextPills extends Disposable {
 
     const el = $(`div.parallx-chat-context-item.${modifiers}`);
 
-    // Type icon
-    const icon = document.createElement('span');
-    icon.className = 'parallx-chat-context-item-icon';
-    icon.innerHTML = this._iconForType(pill.type);
-    el.appendChild(icon);
-
     const body = $('div.parallx-chat-context-item-body');
 
     // Label
@@ -421,23 +415,4 @@ export class ChatContextPills extends Disposable {
     return `${tokens}`;
   }
 
-  /** Get the icon SVG for a pill type. */
-  private _iconForType(type: IContextPill['type']): string {
-    switch (type) {
-      case 'rag':
-        return chatIcons.search;
-      case 'attachment':
-        return chatIcons.file;
-      case 'memory':
-        return chatIcons.history;
-      case 'concept':
-        return chatIcons.sparkleSmall;
-      case 'system':
-        return chatIcons.wrench;
-      case 'rule':
-        return chatIcons.file;
-      default:
-        return chatIcons.file;
-    }
-  }
 }

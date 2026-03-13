@@ -951,12 +951,34 @@
   width: min(560px, calc(100vw - 48px));
   max-height: min(340px, 50vh);
   overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--vscode-scrollbarSlider-background, #79797966) 90%, transparent) transparent;
   padding: 10px;
   border: 1px solid var(--vscode-editorWidget-border, #454545);
   border-radius: 10px;
   background: var(--vscode-editorWidget-background, #252526);
   box-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
   z-index: 30;
+}
+
+.parallx-chat-context-menu-panel::-webkit-scrollbar {
+  width: 10px;
+}
+
+.parallx-chat-context-menu-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.parallx-chat-context-menu-panel::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--vscode-scrollbarSlider-background, #79797966) 90%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.parallx-chat-context-menu-panel::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--vscode-scrollbarSlider-hoverBackground, #646464b3) 90%, transparent);
+  background-clip: padding-box;
 }
 
 .parallx-chat-context-menu-header {
@@ -1038,6 +1060,13 @@
   background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 32%, transparent);
   color: var(--vscode-foreground, #cccccc);
   min-width: 0;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.parallx-chat-context-item:hover,
+.parallx-chat-context-item:focus-within {
+  background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 88%, transparent);
+  border-color: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 55%, var(--vscode-widget-border, #454545) 45%);
 }
 
 .parallx-chat-context-item--rag {
@@ -1061,20 +1090,6 @@
 .parallx-chat-context-pill--excluded {
   opacity: 0.4;
   text-decoration: line-through;
-}
-
-.parallx-chat-context-item-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-}
-
-.parallx-chat-context-item-icon svg {
-  width: 12px;
-  height: 12px;
 }
 
 .parallx-chat-context-item-body {
@@ -1110,15 +1125,23 @@
   color: inherit;
   cursor: pointer;
   flex-shrink: 0;
-  opacity: 0.6;
+  opacity: 0;
   font-size: 12px;
   line-height: 1;
-  transition: opacity 100ms ease;
+  transition: opacity 100ms ease, background 100ms ease;
 }
 
-.parallx-chat-context-item-action:hover {
+.parallx-chat-context-item:hover .parallx-chat-context-item-action,
+.parallx-chat-context-item:focus-within .parallx-chat-context-item-action,
+.parallx-chat-context-pill--excluded .parallx-chat-context-item-action {
+  opacity: 0.72;
+}
+
+.parallx-chat-context-item-action:hover,
+.parallx-chat-context-item-action:focus-visible {
   opacity: 1;
   background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+  outline: none;
 }
 
 .parallx-chat-context-item-action svg {
