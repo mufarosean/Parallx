@@ -231,19 +231,27 @@ export async function loadSessions(db: IChatPersistenceDatabase, workspaceId: st
       }
     }
 
+    const { messages: normalizedMessages, changed } = _normalizeReplayChains(messages);
+
     const sessionResource = URI.from({ scheme: CHAT_SESSION_SCHEME, path: `/${row.id}` });
 
-    sessions.push({
+    const session: IChatSession = {
       id: row.id,
       sessionResource,
       createdAt: row.created_at,
       title: row.title,
       mode: _parseMode(row.mode),
       modelId: row.model_id,
-      messages,
+      messages: normalizedMessages,
       requestInProgress: false,
       pendingRequests: [],
-    });
+    };
+
+    sessions.push(session);
+
+    if (changed) {
+      await saveSession(db, session, workspaceId);
+    }
   }
 
   return sessions;
@@ -352,6 +360,65 @@ function _deserializeUserMessageMetadata(partsJson: string): Partial<IChatUserMe
       attempt: 0,
     };
   }
+}
+
+function _normalizeReplayChains(
+  messages: readonly IChatRequestResponsePair[],
+): { messages: IChatRequestResponsePair[]; changed: boolean } {
+  if (messages.length < 2) {
+    return { messages: [...messages], changed: false };
+  }
+
+  const indexByRequestId = new Map<string, number>();
+  for (let index = 0; index < messages.length; index++) {
+    indexByRequestId.set(messages[index].request.requestId, index);
+  }
+
+  const latestIndexByRoot = new Map<number, number>();
+  const rootIndexByMessageIndex = new Map<number, number>();
+
+  for (let index = 0; index < messages.length; index++) {
+    let rootIndex = index;
+    let replayOfRequestId = messages[index].request.replayOfRequestId;
+    const visitedRequestIds = new Set<string>();
+
+    while (replayOfRequestId && !visitedRequestIds.has(replayOfRequestId)) {
+      visitedRequestIds.add(replayOfRequestId);
+      const previousIndex = indexByRequestId.get(replayOfRequestId);
+      if (previousIndex === undefined) {
+        break;
+      }
+
+      rootIndex = previousIndex;
+      replayOfRequestId = messages[previousIndex].request.replayOfRequestId;
+    }
+
+    rootIndexByMessageIndex.set(index, rootIndex);
+    latestIndexByRoot.set(rootIndex, index);
+  }
+
+  let changed = false;
+  const normalized: IChatRequestResponsePair[] = [];
+
+  for (let index = 0; index < messages.length; index++) {
+    const rootIndex = rootIndexByMessageIndex.get(index) ?? index;
+    const latestIndex = latestIndexByRoot.get(rootIndex) ?? index;
+
+    if (index !== rootIndex) {
+      changed = true;
+      continue;
+    }
+
+    if (latestIndex !== rootIndex) {
+      changed = true;
+      normalized.push(messages[latestIndex]);
+      continue;
+    }
+
+    normalized.push(messages[index]);
+  }
+
+  return { messages: normalized, changed };
 }
 
 // ── Cross-session search (M11 Task 4.5) ──

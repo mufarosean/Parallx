@@ -211,6 +211,161 @@ describe('chatSessionPersistence', () => {
       expect(selectCalls.length).toBe(1);
       expect(selectCalls[0].params).toContain('');
     });
+
+    it('collapses duplicated replay chains when restoring sessions', async () => {
+      db.all = async <T>(sql: string, params?: unknown[]): Promise<T[]> => {
+        db._allCalls.push({ sql, params });
+
+        if (sql.includes('FROM chat_sessions')) {
+          return [{
+            id: 'session-1',
+            title: 'Session',
+            mode: 'ask',
+            model_id: 'qwen',
+            created_at: 1,
+            updated_at: 2,
+          }] as T[];
+        }
+
+        if (sql.includes('FROM chat_messages')) {
+          return [
+            {
+              role: 'user',
+              content: 'Hello',
+              parts_json: JSON.stringify({ requestId: 'req-1', attempt: 0 }),
+              model_id: '',
+              is_complete: 1,
+              timestamp: 10,
+              sort_order: 0,
+            },
+            {
+              role: 'assistant',
+              content: 'Original answer',
+              parts_json: JSON.stringify([{ kind: ChatContentPartKind.Markdown, content: 'Original answer' }]),
+              model_id: 'qwen',
+              is_complete: 1,
+              timestamp: 11,
+              sort_order: 1,
+            },
+            {
+              role: 'user',
+              content: 'Hello',
+              parts_json: JSON.stringify({ requestId: 'req-2', attempt: 1, replayOfRequestId: 'req-1' }),
+              model_id: '',
+              is_complete: 1,
+              timestamp: 12,
+              sort_order: 2,
+            },
+            {
+              role: 'assistant',
+              content: 'Regenerated answer',
+              parts_json: JSON.stringify([{ kind: ChatContentPartKind.Markdown, content: 'Regenerated answer' }]),
+              model_id: 'qwen',
+              is_complete: 1,
+              timestamp: 13,
+              sort_order: 3,
+            },
+            {
+              role: 'user',
+              content: 'What next?',
+              parts_json: JSON.stringify({ requestId: 'req-3', attempt: 0 }),
+              model_id: '',
+              is_complete: 1,
+              timestamp: 14,
+              sort_order: 4,
+            },
+            {
+              role: 'assistant',
+              content: 'Next answer',
+              parts_json: JSON.stringify([{ kind: ChatContentPartKind.Markdown, content: 'Next answer' }]),
+              model_id: 'qwen',
+              is_complete: 1,
+              timestamp: 15,
+              sort_order: 5,
+            },
+          ] as T[];
+        }
+
+        return [];
+      };
+
+      const sessions = await loadSessions(db, 'ws-1');
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].messages).toHaveLength(2);
+      expect(sessions[0].messages[0].request.requestId).toBe('req-2');
+      expect(sessions[0].messages[0].request.replayOfRequestId).toBe('req-1');
+      expect(sessions[0].messages[0].response.parts[0]).toMatchObject({
+        kind: ChatContentPartKind.Markdown,
+        content: 'Regenerated answer',
+      });
+      expect(sessions[0].messages[1].request.requestId).toBe('req-3');
+    });
+
+    it('persists the healed session back to storage after collapsing replay chains', async () => {
+      db.all = async <T>(sql: string, params?: unknown[]): Promise<T[]> => {
+        db._allCalls.push({ sql, params });
+
+        if (sql.includes('FROM chat_sessions')) {
+          return [{
+            id: 'session-1',
+            title: 'Session',
+            mode: 'ask',
+            model_id: 'qwen',
+            created_at: 1,
+            updated_at: 2,
+          }] as T[];
+        }
+
+        if (sql.includes('FROM chat_messages')) {
+          return [
+            {
+              role: 'user',
+              content: 'Hello',
+              parts_json: JSON.stringify({ requestId: 'req-1', attempt: 0 }),
+              model_id: '',
+              is_complete: 1,
+              timestamp: 10,
+              sort_order: 0,
+            },
+            {
+              role: 'assistant',
+              content: 'Original answer',
+              parts_json: JSON.stringify([{ kind: ChatContentPartKind.Markdown, content: 'Original answer' }]),
+              model_id: 'qwen',
+              is_complete: 1,
+              timestamp: 11,
+              sort_order: 1,
+            },
+            {
+              role: 'user',
+              content: 'Hello',
+              parts_json: JSON.stringify({ requestId: 'req-2', attempt: 1, replayOfRequestId: 'req-1' }),
+              model_id: '',
+              is_complete: 1,
+              timestamp: 12,
+              sort_order: 2,
+            },
+            {
+              role: 'assistant',
+              content: 'Regenerated answer',
+              parts_json: JSON.stringify([{ kind: ChatContentPartKind.Markdown, content: 'Regenerated answer' }]),
+              model_id: 'qwen',
+              is_complete: 1,
+              timestamp: 13,
+              sort_order: 3,
+            },
+          ] as T[];
+        }
+
+        return [];
+      };
+
+      await loadSessions(db, 'ws-1');
+
+      expect(db._runCalls.some((call) => call.sql.includes('DELETE FROM chat_messages WHERE session_id = ?'))).toBe(true);
+      expect(db._runCalls.filter((call) => call.sql.includes('INSERT INTO chat_messages')).length).toBe(2);
+    });
   });
 
   describe('workspace scoping', () => {
