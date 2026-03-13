@@ -14,7 +14,7 @@ import { addDisposableListener } from '../ui/dom.js';
 import { Emitter, Event } from '../platform/events.js';
 import { ServiceCollection } from '../services/serviceCollection.js';
 import { URI } from '../platform/uri.js';
-import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService } from '../services/serviceTypes.js';
+import { IAgentApprovalService, IAgentTaskStore, ILifecycleService, ICommandService, IContextKeyService, IEditorService, IEditorGroupService, INotificationService, IActivationEventService, IToolErrorService, IToolActivatorService, IToolRegistryService, IToolEnablementService, IWindowService, IFileService, ITextFileModelManager, IThemeService, IKeybindingService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IWorkspaceTranscriptService } from '../services/serviceTypes.js';
 import { LifecyclePhase, LifecycleService } from './lifecycle.js';
 import { registerWorkbenchServices, registerConfigurationServices, registerChatServices, registerIndexingServices, registerUnifiedAIConfigService } from './workbenchServices.js';
 import { IChatService, ILanguageModelsService } from '../services/chatTypes.js';
@@ -2140,6 +2140,10 @@ export class Workbench extends Layout {
     if (this._databaseService.isOpen && this._services.has(IChatService)) {
       const chatService = this._services.get<IChatService>(IChatService);
       chatService.setDatabase(this._databaseService as any, this._workspace?.id ?? '');
+
+      if (this._services.has(IWorkspaceTranscriptService)) {
+        chatService.setTranscriptService(this._services.get(IWorkspaceTranscriptService));
+      }
 
       // Late-bind session manager for stale session detection (M14 Phase 2)
       if (this._services.has(ISessionManager)) {

@@ -43,6 +43,8 @@ export function composeChatUserContent(
 
   const parts: string[] = [];
 
+  parts.push(`[User Request]\n${options.userText}`);
+
   if (options.retrievalPlan.needsRetrieval) {
     const retrievalAnalysisLines = [
       '[Retrieval Analysis]',
@@ -62,9 +64,7 @@ export function composeChatUserContent(
   }
 
   if (options.contextParts.length > 0) {
-    parts.push(options.contextParts.join('\n\n'));
+    parts.push(`[Supporting Context]\n${options.contextParts.join('\n\n')}`);
   }
-
-  parts.push(options.userText);
   return parts.join('\n\n');
 }

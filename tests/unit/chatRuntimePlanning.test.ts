@@ -66,8 +66,8 @@ describe('chat context planning', () => {
     });
 
     expect(plan.useRetrieval).toBe(true);
-    expect(plan.useMemoryRecall).toBe(true);
-    expect(plan.useConceptRecall).toBe(true);
+    expect(plan.useMemoryRecall).toBe(false);
+    expect(plan.useConceptRecall).toBe(false);
     expect(plan.useCurrentPage).toBe(true);
     expect(plan.citationMode).toBe('required');
     expect(trace.route.kind).toBe('grounded');

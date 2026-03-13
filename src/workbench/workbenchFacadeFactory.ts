@@ -30,6 +30,7 @@ import {
   IWorkspaceService,
   IWorkspaceBoundaryService,
   IWorkspaceMemoryService,
+  IWorkspaceTranscriptService,
   INotificationService,
   IFileService,
 } from '../services/serviceTypes.js';
@@ -39,6 +40,7 @@ import { ViewService } from '../services/viewService.js';
 import { WorkspaceService } from '../services/workspaceService.js';
 import { WorkspaceBoundaryService } from '../services/workspaceBoundaryService.js';
 import { WorkspaceMemoryService } from '../services/workspaceMemoryService.js';
+import { WorkspaceTranscriptService } from '../services/workspaceTranscriptService.js';
 import { CanonicalMemorySearchService } from '../services/canonicalMemorySearchService.js';
 import { AgentPolicyService } from '../services/agentPolicyService.js';
 import { AgentExecutionService } from '../services/agentExecutionService.js';
@@ -139,6 +141,13 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
     services.registerInstance(IWorkspaceMemoryService, workspaceMemoryService);
     workspaceMemoryService.ensureScaffold().catch((err) => {
       console.warn('[Workbench] Failed to seed workspace memory scaffold:', err);
+    });
+
+    const workspaceTranscriptService = new WorkspaceTranscriptService(services.get(IFileService), workspaceService);
+    disposables.push(workspaceTranscriptService);
+    services.registerInstance(IWorkspaceTranscriptService, workspaceTranscriptService);
+    workspaceTranscriptService.ensureScaffold().catch((err) => {
+      console.warn('[Workbench] Failed to seed workspace transcript scaffold:', err);
     });
   }
 

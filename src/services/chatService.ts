@@ -22,7 +22,7 @@ import {
   deletePersistedSession,
 } from './chatSessionPersistence.js';
 import type { IChatPersistenceDatabase } from './chatSessionPersistence.js';
-import type { ISessionManager } from './serviceTypes.js';
+import type { ISessionManager, IWorkspaceTranscriptService } from './serviceTypes.js';
 import { captureSession } from '../workspace/staleGuard.js';
 import type { SessionGuard } from '../workspace/staleGuard.js';
 import type {
@@ -554,6 +554,7 @@ export class ChatService extends Disposable implements IChatService {
   private _workspaceId: string = '';
   /** Session manager for stale session detection. */
   private _sessionManager: ISessionManager | undefined;
+  private _transcriptService: IWorkspaceTranscriptService | undefined;
 
   /** Debounce timer for persistence writes. */
   private _persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -615,6 +616,10 @@ export class ChatService extends Disposable implements IChatService {
     this._sessionManager = sessionManager;
   }
 
+  setTranscriptService(transcriptService: IWorkspaceTranscriptService): void {
+    this._transcriptService = transcriptService;
+  }
+
   // ── Session Persistence ──
 
   /**
@@ -644,7 +649,7 @@ export class ChatService extends Disposable implements IChatService {
    * Coalesces multiple writes within 500ms.
    */
   private _schedulePersist(sessionId: string): void {
-    if (!this._database) { return; }
+    if (!this._database && !this._transcriptService) { return; }
     this._pendingPersistIds.add(sessionId);
     if (this._persistTimer !== undefined) {
       clearTimeout(this._persistTimer);
@@ -660,13 +665,16 @@ export class ChatService extends Disposable implements IChatService {
    * Called by the debounce timer and on dispose (to avoid data loss on shutdown).
    */
   private _flushPendingPersists(): void {
-    if (!this._database || this._pendingPersistIds.size === 0) return;
+    if (this._pendingPersistIds.size === 0) return;
     const ids = [...this._pendingPersistIds];
     this._pendingPersistIds.clear();
     for (const id of ids) {
       const session = this._sessions.get(id);
       if (session && this._database) {
         saveSession(this._database, session, this._workspaceId).catch(() => { /* best-effort */ });
+      }
+      if (session && this._transcriptService) {
+        this._transcriptService.writeSessionTranscript(session).catch(() => { /* best-effort */ });
       }
     }
   }
@@ -714,6 +722,9 @@ export class ChatService extends Disposable implements IChatService {
     }
 
     if (this._sessions.delete(sessionId)) {
+      if (this._transcriptService) {
+        this._transcriptService.deleteSessionTranscript(sessionId).catch(() => { /* best-effort */ });
+      }
       // Remove from database
       if (this._database) {
         deletePersistedSession(this._database, sessionId).catch(() => { /* best-effort */ });

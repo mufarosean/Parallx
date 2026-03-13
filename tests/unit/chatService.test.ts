@@ -118,6 +118,34 @@ describe('ChatService', () => {
   // ── Request Orchestration ──
 
   describe('sendRequest', () => {
+    it('writes a separate transcript snapshot after a request completes', async () => {
+      const transcriptService = {
+        writeSessionTranscript: vi.fn(async () => {}),
+        deleteSessionTranscript: vi.fn(async () => {}),
+      } as any;
+
+      chatService.setTranscriptService(transcriptService);
+
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Hello');
+      chatService.dispose();
+
+      expect(transcriptService.writeSessionTranscript).toHaveBeenCalledWith(session);
+    });
+
+    it('deletes the separate transcript snapshot when a session is deleted', () => {
+      const transcriptService = {
+        writeSessionTranscript: vi.fn(async () => {}),
+        deleteSessionTranscript: vi.fn(async () => {}),
+      } as any;
+      chatService.setTranscriptService(transcriptService);
+
+      const session = chatService.createSession();
+      chatService.deleteSession(session.id);
+
+      expect(transcriptService.deleteSessionTranscript).toHaveBeenCalledWith(session.id);
+    });
+
     it('sends a message and invokes the default agent', async () => {
       const session = chatService.createSession();
       const result = await chatService.sendRequest(session.id, 'Hello');
@@ -1170,7 +1198,7 @@ describe('default participant integration helpers', () => {
     const recallConcepts = vi.fn();
     const getCurrentPageContent = vi.fn();
     const sendChatRequest = vi.fn().mockImplementation(async function* (messages: Array<{ role: string; content: string }>, options?: { tools?: unknown[] }) {
-      expect(messages[messages.length - 1]?.content).toBe('hello');
+      expect(messages[messages.length - 1]?.content).toBe('[User Request]\nhello');
       expect(options?.tools).toBeUndefined();
       yield { content: 'Hi there. How can I help?', done: true };
     });

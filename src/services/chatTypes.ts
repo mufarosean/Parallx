@@ -891,6 +891,8 @@ export interface IChatService extends IDisposable {
   setDatabase(database: import('./chatSessionPersistence.js').IChatPersistenceDatabase, workspaceId?: string): void;
   /** Late-bind a session manager for stale session detection (M14 Phase 2). */
   setSessionManager(sessionManager: import('./serviceTypes.js').ISessionManager): void;
+  /** Late-bind a workspace transcript service for canonical transcript persistence. */
+  setTranscriptService(transcriptService: import('./serviceTypes.js').IWorkspaceTranscriptService): void;
   /** Send a user message and orchestrate the full request pipeline. */
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
   /** Cancel the in-progress request for a session. */

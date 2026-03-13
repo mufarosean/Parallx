@@ -231,6 +231,33 @@ export interface IWorkspaceMemoryService extends IDisposable {
 
 export const IWorkspaceMemoryService = createServiceIdentifier<IWorkspaceMemoryService>('IWorkspaceMemoryService');
 
+// ─── IWorkspaceTranscriptService ───────────────────────────────────────────
+
+export interface IWorkspaceTranscriptService extends IDisposable {
+  /** Canonical transcript root: .parallx/sessions */
+  readonly transcriptRoot: URI | undefined;
+
+  /** Resolve the canonical transcript file URI for a chat session. */
+  getTranscriptUri(sessionId: string): URI | undefined;
+
+  /** Relative transcript path for a chat session. */
+  getTranscriptRelativePath(sessionId: string): string;
+
+  /** Ensure canonical transcript directories exist. */
+  ensureScaffold(): Promise<void>;
+
+  /** Persist the current transcript snapshot for a session. */
+  writeSessionTranscript(session: import('./chatTypes.js').IChatSession): Promise<void>;
+
+  /** Read the canonical transcript snapshot for a session. */
+  readSessionTranscript(sessionId: string): Promise<string>;
+
+  /** Delete the canonical transcript file for a session. */
+  deleteSessionTranscript(sessionId: string): Promise<void>;
+}
+
+export const IWorkspaceTranscriptService = createServiceIdentifier<IWorkspaceTranscriptService>('IWorkspaceTranscriptService');
+
 // ─── ICanonicalMemorySearchService ────────────────────────────────────────
 
 export interface ICanonicalMemorySearchResult {

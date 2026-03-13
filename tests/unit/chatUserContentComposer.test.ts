@@ -55,8 +55,8 @@ describe('chat user content composer', () => {
     expect(result).toContain('Evidence: weak');
     expect(result).toContain('Evidence Notes: thin-evidence-set');
     expect(result).toContain('Response Constraint: stay grounded.');
-    expect(result).toContain('Retrieved chunk\n\nAttachment text');
-    expect(result).toMatch(/what is covered$/);
+    expect(result).toContain('[User Request]\nwhat is covered');
+    expect(result).toContain('[Supporting Context]\nRetrieved chunk\n\nAttachment text');
   });
 
   it('omits retrieval analysis when retrieval is not needed', () => {
@@ -76,6 +76,6 @@ describe('chat user content composer', () => {
     );
 
     expect(result).not.toContain('[Retrieval Analysis]');
-    expect(result).toBe('Current page\n\nhello');
+    expect(result).toBe('[User Request]\nhello\n\n[Supporting Context]\nCurrent page');
   });
 });
