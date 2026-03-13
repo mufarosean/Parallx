@@ -85,6 +85,8 @@ export class ChatContextPills extends Disposable {
 
   /** Whether the menu is open. */
   private _expanded = false;
+  /** Menu zoom level for readability. */
+  private _zoomLevel: 0 | 1 | 2 = 1;
 
   // ── Events ──
 
@@ -264,21 +266,50 @@ export class ChatContextPills extends Disposable {
     this._toggleBtn.appendChild(arrowSpan);
 
     this._menuHeader.innerHTML = '';
+    this._menu.classList.remove(
+      'parallx-chat-context-menu-panel--zoom-0',
+      'parallx-chat-context-menu-panel--zoom-1',
+      'parallx-chat-context-menu-panel--zoom-2',
+    );
+    this._menu.classList.add(`parallx-chat-context-menu-panel--zoom-${this._zoomLevel}`);
+
+    const headerTop = $('div.parallx-chat-context-menu-header-top');
+    const titleWrap = $('div.parallx-chat-context-menu-header-copy');
     const title = $('div.parallx-chat-context-menu-title', 'Sources For Next Turn');
     const summary = $('div.parallx-chat-context-menu-summary', `${sourceLabel}${excludeLabel}`);
-    this._menuHeader.appendChild(title);
-    this._menuHeader.appendChild(summary);
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(summary);
+    headerTop.appendChild(titleWrap);
+
+    const zoomControls = $('div.parallx-chat-context-menu-zoom-controls');
+    const zoomOutBtn = this._createHeaderButton('Zoom out context menu', 'A−', () => {
+      if (this._zoomLevel > 0) {
+        this._zoomLevel = (this._zoomLevel - 1) as 0 | 1 | 2;
+        this._render();
+      }
+    });
+    zoomOutBtn.disabled = this._zoomLevel === 0;
+
+    const zoomLabel = $('span.parallx-chat-context-menu-zoom-label', this._zoomLevel === 0 ? '85%' : this._zoomLevel === 1 ? '100%' : '115%');
+
+    const zoomInBtn = this._createHeaderButton('Zoom in context menu', 'A+', () => {
+      if (this._zoomLevel < 2) {
+        this._zoomLevel = (this._zoomLevel + 1) as 0 | 1 | 2;
+        this._render();
+      }
+    });
+    zoomInBtn.disabled = this._zoomLevel === 2;
+
+    zoomControls.appendChild(zoomOutBtn);
+    zoomControls.appendChild(zoomLabel);
+    zoomControls.appendChild(zoomInBtn);
+    headerTop.appendChild(zoomControls);
+
+    this._menuHeader.appendChild(headerTop);
 
     // Pills list
     this._pillsContainer.innerHTML = '';
     this._menu.style.display = this._expanded ? '' : 'none';
-
-    if (this._expanded) {
-      layoutPopup(this._menu, this._toggleBtn.getBoundingClientRect(), {
-        position: 'above',
-        gap: 8,
-      });
-    }
 
     const groupedPills = new Map<ContextPillGroupKey, IContextPill[]>();
     for (const pill of this._pills) {
@@ -294,7 +325,12 @@ export class ChatContextPills extends Disposable {
       }
 
       const section = $('div.parallx-chat-context-group');
-      const sectionHeader = $('div.parallx-chat-context-group-title', getContextPillGroupLabel(groupKey));
+      const activeCount = groupPills.filter((pill) => !this._excluded.has(pill.id)).length;
+      const sectionHeader = $('div.parallx-chat-context-group-title');
+      const sectionTitle = $('span.parallx-chat-context-group-title-text', getContextPillGroupLabel(groupKey));
+      const sectionCount = $('span.parallx-chat-context-group-title-count', `${activeCount}/${groupPills.length}`);
+      sectionHeader.appendChild(sectionTitle);
+      sectionHeader.appendChild(sectionCount);
       section.appendChild(sectionHeader);
 
       const sectionList = $('div.parallx-chat-context-group-list');
@@ -310,6 +346,13 @@ export class ChatContextPills extends Disposable {
 
     // Also render the context-window guidance if expanded.
     this._renderBudget();
+
+    if (this._expanded) {
+      layoutPopup(this._menu, this._toggleBtn.getBoundingClientRect(), {
+        position: 'above',
+        gap: 8,
+      });
+    }
   }
 
   /** Render lightweight guidance that points quantitative context usage back to the status bar. */
@@ -340,36 +383,40 @@ export class ChatContextPills extends Disposable {
   /** Create a single pill element. */
   private _createPill(pill: IContextPill, isExcluded: boolean): HTMLElement {
     const modifiers = [
-      `parallx-chat-context-pill--${pill.type}`,
+      `parallx-chat-context-item--${pill.type}`,
       isExcluded ? 'parallx-chat-context-pill--excluded' : '',
     ].filter(Boolean).join('.');
 
-    const el = $(`div.parallx-chat-context-pill.${modifiers}`);
+    const el = $(`div.parallx-chat-context-item.${modifiers}`);
 
     // Type icon
     const icon = document.createElement('span');
-    icon.className = 'parallx-chat-context-pill-icon';
+    icon.className = 'parallx-chat-context-item-icon';
     icon.innerHTML = this._iconForType(pill.type);
     el.appendChild(icon);
 
+    const body = $('div.parallx-chat-context-item-body');
+
     // Label
     const label = document.createElement('span');
-    label.className = 'parallx-chat-context-pill-label';
+    label.className = 'parallx-chat-context-item-label';
     label.textContent = pill.label;
     label.title = pill.id;
-    el.appendChild(label);
+    body.appendChild(label);
 
     // Token count badge
     const tokens = document.createElement('span');
-    tokens.className = 'parallx-chat-context-pill-tokens';
-    tokens.textContent = this._formatTokenCount(pill.tokens);
-    el.appendChild(tokens);
+    tokens.className = 'parallx-chat-context-item-meta';
+    tokens.textContent = `${this._formatTokenCount(pill.tokens)} tokens`;
+    body.appendChild(tokens);
+
+    el.appendChild(body);
 
     // Action button: × to exclude, or ↩ to restore
     if (pill.removable) {
       if (isExcluded) {
         const restoreBtn = document.createElement('button');
-        restoreBtn.className = 'parallx-chat-context-pill-action';
+        restoreBtn.className = 'parallx-chat-context-item-action';
         restoreBtn.type = 'button';
         restoreBtn.title = 'Restore to context';
         restoreBtn.setAttribute('aria-label', `Restore ${pill.label}`);
@@ -383,7 +430,7 @@ export class ChatContextPills extends Disposable {
         el.appendChild(restoreBtn);
       } else {
         const removeBtn = document.createElement('button');
-        removeBtn.className = 'parallx-chat-context-pill-action';
+        removeBtn.className = 'parallx-chat-context-item-action';
         removeBtn.type = 'button';
         removeBtn.title = 'Exclude from context';
         removeBtn.setAttribute('aria-label', `Remove ${pill.label}`);
@@ -399,6 +446,19 @@ export class ChatContextPills extends Disposable {
     }
 
     return el;
+  }
+
+  private _createHeaderButton(ariaLabel: string, text: string, onClick: () => void): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.className = 'parallx-chat-context-menu-header-btn';
+    button.type = 'button';
+    button.setAttribute('aria-label', ariaLabel);
+    button.textContent = text;
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      onClick();
+    });
+    return button;
   }
 
   /** Format a token count for display (e.g. 1234 → "1.2k"). */

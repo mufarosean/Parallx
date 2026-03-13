@@ -69,7 +69,7 @@ describe('ChatContextPills', () => {
     const trigger = container.querySelector('.parallx-chat-context-menu-trigger') as HTMLButtonElement;
     trigger.click();
 
-    const headers = [...document.body.querySelectorAll('.parallx-chat-context-group-title')].map((el) => el.textContent);
+    const headers = [...document.body.querySelectorAll('.parallx-chat-context-group-title-text')].map((el) => el.textContent);
     expect(headers).toEqual([
       'Attachments',
       'Retrieved Sources',
@@ -78,5 +78,22 @@ describe('ChatContextPills', () => {
       'Rules',
       'System',
     ]);
+  });
+
+  it('supports zoom controls for larger menu readability', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const pills = new ChatContextPills(container);
+    pills.setPills([createPill(), createPill({ id: 'notes.txt', label: 'notes.txt', type: 'attachment' })]);
+
+    const trigger = container.querySelector('.parallx-chat-context-menu-trigger') as HTMLButtonElement;
+    trigger.click();
+
+    const zoomInBtn = document.body.querySelector('button[aria-label="Zoom in context menu"]') as HTMLButtonElement;
+    const menu = document.body.querySelector('.parallx-chat-context-menu-panel') as HTMLElement;
+    zoomInBtn.click();
+
+    expect(menu.classList.contains('parallx-chat-context-menu-panel--zoom-2')).toBe(true);
+    expect(document.body.textContent).toContain('115%');
   });
 });
