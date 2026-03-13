@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerBuiltInTools } from '../../src/built-in/chat/tools/builtInTools';
 import type { IBuiltInToolDatabase } from '../../src/built-in/chat/tools/builtInTools';
-import type { IBuiltInToolCanonicalMemorySearch, IBuiltInToolFileSystem, IBuiltInToolRetrieval } from '../../src/built-in/chat/chatTypes';
+import type { IBuiltInToolCanonicalMemorySearch, IBuiltInToolFileSystem, IBuiltInToolRetrieval, IBuiltInToolTranscriptSearch } from '../../src/built-in/chat/chatTypes';
 import type {
   ILanguageModelToolsService,
   IChatTool,
@@ -74,20 +74,30 @@ function createMockCanonicalMemorySearch(overrides: Partial<IBuiltInToolCanonica
   };
 }
 
+function createMockTranscriptSearch(overrides: Partial<IBuiltInToolTranscriptSearch> = {}): IBuiltInToolTranscriptSearch {
+  return {
+    isEnabled: vi.fn(() => false),
+    isReady: vi.fn(() => true),
+    search: vi.fn(async () => []),
+    ...overrides,
+  };
+}
+
 // ── Tests ──
 
 describe('registerBuiltInTools', () => {
-  it('registers all 17 built-in tools', () => {
+  it('registers all 19 built-in tools', () => {
     const toolsService = createMockToolsService();
     const db = createMockDb();
     const fs = createMockFs();
     const retrieval = createMockRetrieval();
     const canonicalMemorySearch = createMockCanonicalMemorySearch();
+    const transcriptSearch = createMockTranscriptSearch();
 
-    const disposables = registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch);
+    const disposables = registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    expect(toolsService.registeredTools).toHaveLength(17);
-    expect(disposables).toHaveLength(17);
+    expect(toolsService.registeredTools).toHaveLength(19);
+    expect(disposables).toHaveLength(19);
 
     const names = toolsService.registeredTools.map(t => t.name).sort();
     expect(names).toEqual([
@@ -107,6 +117,8 @@ describe('registerBuiltInTools', () => {
       'search_files',
       'search_knowledge',
       'search_workspace',
+      'transcript_get',
+      'transcript_search',
       'write_file',
     ]);
   });
@@ -117,10 +129,11 @@ describe('registerBuiltInTools', () => {
     const fs = createMockFs();
     const retrieval = createMockRetrieval();
     const canonicalMemorySearch = createMockCanonicalMemorySearch();
+    const transcriptSearch = createMockTranscriptSearch();
 
-    registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch);
+    registerBuiltInTools(toolsService, db, fs, undefined, retrieval, canonicalMemorySearch, transcriptSearch);
 
-    const readOnly = ['search_workspace', 'read_page', 'read_page_by_title', 'read_current_page', 'list_pages', 'get_page_properties', 'list_files', 'read_file', 'search_files', 'search_knowledge', 'memory_get', 'memory_search'];
+    const readOnly = ['search_workspace', 'read_page', 'read_page_by_title', 'read_current_page', 'list_pages', 'get_page_properties', 'list_files', 'read_file', 'search_files', 'search_knowledge', 'memory_get', 'memory_search', 'transcript_get', 'transcript_search'];
     for (const name of readOnly) {
       const tool = toolsService.registeredTools.find(t => t.name === name);
       expect(tool?.requiresConfirmation, `${name} should not require confirmation`).toBe(false);
@@ -203,6 +216,60 @@ describe('read_page tool', () => {
     const result = await tool.handler({}, createToken());
     expect(result.isError).toBe(true);
     expect(result.content).toContain('pageId is required');
+  });
+});
+
+describe('transcript tools', () => {
+  it('transcript_get renders a readable transcript instead of raw jsonl', async () => {
+    const toolsService = createMockToolsService();
+    const fs = createMockFs({
+      exists: vi.fn(async (path: string) => path === '.parallx/sessions/session-1.jsonl'),
+      readFile: vi.fn(async () => [
+        JSON.stringify({ type: 'session', sessionId: 'session-1' }),
+        JSON.stringify({ type: 'message', timestamp: '2026-03-13T12:00:00.000Z', message: { role: 'user', content: [{ type: 'text', text: 'Hello there' }] } }),
+        JSON.stringify({ type: 'message', timestamp: '2026-03-13T12:00:01.000Z', message: { role: 'assistant', content: [{ type: 'text', text: 'Hi back' }] } }),
+      ].join('\n')),
+    });
+
+    registerBuiltInTools(toolsService, createMockDb(), fs, undefined, createMockRetrieval(), createMockCanonicalMemorySearch(), createMockTranscriptSearch());
+    const tool = toolsService.registeredTools.find(t => t.name === 'transcript_get')!;
+
+    const result = await tool.handler({ sessionId: 'session-1' }, createToken());
+    expect(result.content).toContain('User');
+    expect(result.content).toContain('Hello there');
+    expect(result.content).toContain('Assistant');
+    expect(result.content).toContain('Hi back');
+    expect(result.content).not.toContain('"type":"message"');
+  });
+
+  it('transcript_search reports disabled state until transcript indexing is enabled', async () => {
+    const toolsService = createMockToolsService();
+    registerBuiltInTools(toolsService, createMockDb(), createMockFs(), undefined, createMockRetrieval(), createMockCanonicalMemorySearch(), createMockTranscriptSearch());
+    const tool = toolsService.registeredTools.find(t => t.name === 'transcript_search')!;
+
+    const result = await tool.handler({ query: 'hello' }, createToken());
+    expect(result.content).toContain('Transcript search is disabled');
+  });
+
+  it('transcript_search returns formatted transcript matches when enabled', async () => {
+    const toolsService = createMockToolsService();
+    const transcriptSearch = createMockTranscriptSearch({
+      isEnabled: vi.fn(() => true),
+      search: vi.fn(async () => [{
+        sourceId: '.parallx/sessions/session-1.jsonl',
+        contextPrefix: '[Source: ".parallx/sessions/session-1.jsonl"]',
+        text: 'User: Hello there\nAssistant: Hi back',
+        score: 0.91,
+        sessionId: 'session-1',
+      }]),
+    });
+    registerBuiltInTools(toolsService, createMockDb(), createMockFs(), undefined, createMockRetrieval(), createMockCanonicalMemorySearch(), transcriptSearch);
+    const tool = toolsService.registeredTools.find(t => t.name === 'transcript_search')!;
+
+    const result = await tool.handler({ query: 'hello there' }, createToken());
+    expect(result.content).toContain('session-1');
+    expect(result.content).toContain('User: Hello there');
+    expect(result.content).toContain('Score: 0.910');
   });
 });
 
@@ -301,11 +368,24 @@ describe('create_page tool', () => {
 });
 
 describe('built-in tools with no database', () => {
-  it('all tools return error when db is undefined', async () => {
+  it('db-backed tools return an error when db is undefined', async () => {
     const toolsService = createMockToolsService();
     registerBuiltInTools(toolsService, undefined);
 
+    const dbBackedToolNames = new Set([
+      'search_workspace',
+      'read_page',
+      'read_page_by_title',
+      'read_current_page',
+      'list_pages',
+      'get_page_properties',
+      'create_page',
+    ]);
+
     for (const tool of toolsService.registeredTools) {
+      if (!dbBackedToolNames.has(tool.name)) {
+        continue;
+      }
       const result = await tool.handler({}, createToken()).catch((e: Error) => ({
         content: e.message,
         isError: true,

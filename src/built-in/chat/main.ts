@@ -608,6 +608,30 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         })()
       : undefined;
 
+    const transcriptSearchAccessor = retrievalService && indexingPipelineService && unifiedConfigService
+      ? {
+          isEnabled: () => unifiedConfigService.getEffectiveConfig().memory.transcriptIndexingEnabled === true,
+          isReady: () => indexingPipelineService.isInitialIndexComplete,
+          async search(query: string, options?: { sessionId?: string }) {
+            if (unifiedConfigService.getEffectiveConfig().memory.transcriptIndexingEnabled !== true) {
+              return [];
+            }
+
+            const chunks = await retrievalService.retrieve(query, { sourceFilter: 'file_chunk' });
+            return chunks
+              .filter((chunk) => chunk.sourceId.startsWith('.parallx/sessions/'))
+              .filter((chunk) => !options?.sessionId || chunk.sourceId === `.parallx/sessions/${options.sessionId}.jsonl`)
+              .map((chunk) => ({
+                sourceId: chunk.sourceId,
+                contextPrefix: chunk.contextPrefix,
+                text: chunk.text,
+                score: chunk.score,
+                sessionId: chunk.sourceId.replace(/^\.parallx\/sessions\//, '').replace(/\.jsonl$/i, ''),
+              }));
+          },
+        }
+      : undefined;
+
     // Build file writer accessor for write_file / edit_file tools (M11 Task 2.2 + 2.3)
     //
     // The writer accessor has two concerns:
@@ -682,7 +706,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       };
     })();
 
-    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath);
+    const toolDisposables = registerBuiltInTools(languageModelToolsService, databaseService ?? undefined, fsAccessor, getCurrentPageId, retrievalAccessor, canonicalMemorySearchAccessor, transcriptSearchAccessor, writerAccessor, terminalAccessor, workspaceService?.folders?.[0]?.uri?.fsPath);
     for (const d of toolDisposables) {
       context.subscriptions.push(d);
     }

@@ -174,6 +174,8 @@ export interface IUnifiedMemoryConfig {
   readonly memoryEnabled: boolean;
   /** Whether post-chat summarization runs */
   readonly autoSummarize: boolean;
+  /** Whether canonical session transcripts are indexed for explicit transcript recall. */
+  readonly transcriptIndexingEnabled: boolean;
   /** Days before stale memories are evicted */
   readonly evictionDays: number;
 }
@@ -438,6 +440,7 @@ export const DEFAULT_UNIFIED_CONFIG: IUnifiedAIConfig = {
   memory: {
     memoryEnabled: true,
     autoSummarize: true,
+    transcriptIndexingEnabled: false,
     evictionDays: 90,
   },
   indexing: {

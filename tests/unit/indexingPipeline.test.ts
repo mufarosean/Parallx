@@ -484,6 +484,7 @@ describe('IndexingPipelineService', () => {
         if (uri.fsPath === '/workspace/.parallx') {
           return [
             { name: 'memory', uri: URI.file('/workspace/.parallx/memory'), type: FileType.Directory, size: 0, mtime: 0 },
+            { name: 'sessions', uri: URI.file('/workspace/.parallx/sessions'), type: FileType.Directory, size: 0, mtime: 0 },
             { name: 'ai-config.json', uri: URI.file('/workspace/.parallx/ai-config.json'), type: FileType.File, size: 50, mtime: 0 },
           ];
         }
@@ -491,6 +492,11 @@ describe('IndexingPipelineService', () => {
           return [
             { name: 'MEMORY.md', uri: URI.file('/workspace/.parallx/memory/MEMORY.md'), type: FileType.File, size: 80, mtime: 0 },
             { name: '2026-03-12.md', uri: URI.file('/workspace/.parallx/memory/2026-03-12.md'), type: FileType.File, size: 80, mtime: 0 },
+          ];
+        }
+        if (uri.fsPath === '/workspace/.parallx/sessions') {
+          return [
+            { name: 'session-1.jsonl', uri: URI.file('/workspace/.parallx/sessions/session-1.jsonl'), type: FileType.File, size: 120, mtime: 0 },
           ];
         }
         return [];
@@ -514,6 +520,66 @@ describe('IndexingPipelineService', () => {
       expect(chunkingService.chunkFile).toHaveBeenCalledWith('.parallx/memory/MEMORY.md', '# Durable Memory\n\nPreference', 'markdown');
       expect(chunkingService.chunkFile).toHaveBeenCalledWith('.parallx/memory/2026-03-12.md', '# 2026-03-12\n\nDaily note', 'markdown');
       expect(chunkingService.chunkFile).not.toHaveBeenCalledWith('.parallx/ai-config.json', expect.anything(), expect.anything());
+      expect(chunkingService.chunkFile).not.toHaveBeenCalledWith('.parallx/sessions/session-1.jsonl', expect.anything(), expect.anything());
+    });
+
+    it('indexes canonical .parallx/sessions transcripts only when transcript indexing is enabled', async () => {
+      db.all.mockResolvedValueOnce([]);
+      pipeline.setConfigProvider({
+        getEffectiveConfig: () => ({
+          memory: { transcriptIndexingEnabled: true },
+        }),
+      } as any);
+
+      fileService.readdir.mockImplementation(async (uri: URI) => {
+        if (uri.fsPath === '/workspace') {
+          return [
+            { name: '.parallx', uri: URI.file('/workspace/.parallx'), type: FileType.Directory, size: 0, mtime: 0 },
+          ];
+        }
+        if (uri.fsPath === '/workspace/.parallx') {
+          return [
+            { name: 'memory', uri: URI.file('/workspace/.parallx/memory'), type: FileType.Directory, size: 0, mtime: 0 },
+            { name: 'sessions', uri: URI.file('/workspace/.parallx/sessions'), type: FileType.Directory, size: 0, mtime: 0 },
+          ];
+        }
+        if (uri.fsPath === '/workspace/.parallx/memory') {
+          return [];
+        }
+        if (uri.fsPath === '/workspace/.parallx/sessions') {
+          return [
+            { name: 'session-1.jsonl', uri: URI.file('/workspace/.parallx/sessions/session-1.jsonl'), type: FileType.File, size: 120, mtime: 0 },
+          ];
+        }
+        return [];
+      });
+
+      fileService.readFile.mockImplementation(async (uri: URI) => {
+        if (uri.fsPath.endsWith('/.parallxignore')) {
+          return { content: '', encoding: 'utf-8', size: 0, mtime: 0 };
+        }
+        if (uri.fsPath.endsWith('/.parallx/sessions/session-1.jsonl')) {
+          return {
+            content: [
+              JSON.stringify({ type: 'session', sessionId: 'session-1' }),
+              JSON.stringify({ type: 'message', message: { role: 'user', content: [{ type: 'text', text: 'Hello there' }] } }),
+              JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: 'Hi back' }] } }),
+            ].join('\n'),
+            encoding: 'utf-8',
+            size: 120,
+            mtime: 0,
+          };
+        }
+        throw new Error(`Unexpected readFile path: ${uri.fsPath}`);
+      });
+
+      await pipeline.start();
+
+      expect(chunkingService.chunkFile).toHaveBeenCalledWith(
+        '.parallx/sessions/session-1.jsonl',
+        'User: Hello there\nAssistant: Hi back',
+        'markdown',
+      );
     });
 
     it('rebuilds canonical memory index from markdown files when derived vector data is empty', async () => {

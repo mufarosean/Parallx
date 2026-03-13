@@ -447,6 +447,16 @@ export interface IBuiltInToolCanonicalMemorySearch {
   ): Promise<Array<{ sourceId: string; contextPrefix: string; text: string; score: number; layer: 'durable' | 'daily' }>>;
 }
 
+/** Canonical transcript search accessor for built-in tools. */
+export interface IBuiltInToolTranscriptSearch {
+  isEnabled(): boolean;
+  isReady(): boolean;
+  search(
+    query: string,
+    options?: { sessionId?: string },
+  ): Promise<Array<{ sourceId: string; contextPrefix: string; text: string; score: number; sessionId: string }>>;
+}
+
 /** Terminal accessor for built-in tools. */
 export interface IBuiltInToolTerminal {
   exec(command: string, options?: { cwd?: string; timeout?: number }): Promise<{

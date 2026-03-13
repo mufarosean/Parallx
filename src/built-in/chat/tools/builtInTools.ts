@@ -5,6 +5,7 @@
 //                  list_pages, get_page_properties, create_page
 //   fileTools.ts — list_files, read_file, search_files, search_knowledge
 //   memoryTools.ts — memory_get, memory_search
+//   transcriptTools.ts — transcript_get, transcript_search
 //   writeTools.ts — write_file, edit_file, delete_file
 //   terminalTools.ts — run_command
 //
@@ -21,6 +22,7 @@ import type {
   IBuiltInToolFileSystem,
   IBuiltInToolFileWriter,
   IBuiltInToolRetrieval,
+  IBuiltInToolTranscriptSearch,
   IBuiltInToolTerminal,
   CurrentPageIdGetter,
 } from '../chatTypes.js';
@@ -32,6 +34,7 @@ export type {
   IBuiltInToolFileSystem,
   IBuiltInToolFileWriter,
   IBuiltInToolRetrieval,
+  IBuiltInToolTranscriptSearch,
   IBuiltInToolTerminal,
   CurrentPageIdGetter,
 } from '../chatTypes.js';
@@ -57,6 +60,10 @@ import {
   createMemorySearchTool,
 } from './memoryTools.js';
 import {
+  createTranscriptGetTool,
+  createTranscriptSearchTool,
+} from './transcriptTools.js';
+import {
   createWriteFileTool,
   createEditFileTool,
   createDeleteFileTool,
@@ -78,6 +85,7 @@ export function registerBuiltInTools(
   getCurrentPageId?: CurrentPageIdGetter,
   retrieval?: IBuiltInToolRetrieval,
   canonicalMemorySearch?: IBuiltInToolCanonicalMemorySearch,
+  transcriptSearch?: IBuiltInToolTranscriptSearch,
   writer?: IBuiltInToolFileWriter,
   terminal?: IBuiltInToolTerminal,
   workspaceRoot?: string,
@@ -99,6 +107,8 @@ export function registerBuiltInTools(
     createSearchFilesTool(fs),
     createMemoryGetTool(fs),
     createMemorySearchTool(canonicalMemorySearch),
+    createTranscriptGetTool(fs),
+    createTranscriptSearchTool(transcriptSearch),
     // ── Write tools (M11 Task 2.2 + 2.3) ──
     createWriteFileTool(fs, writer),
     createEditFileTool(fs, writer),

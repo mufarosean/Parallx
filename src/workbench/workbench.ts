@@ -2344,6 +2344,7 @@ export class Workbench extends Layout {
     // M20: Wire retrieval service to read defaults from unified config
     if (this._services.has(IUnifiedAIConfigService)) {
       result.retrievalService.setConfigProvider(this._services.get(IUnifiedAIConfigService));
+      result.indexingPipeline.setConfigProvider(this._services.get(IUnifiedAIConfigService));
     }
 
     // Track all new services for disposal on next restart

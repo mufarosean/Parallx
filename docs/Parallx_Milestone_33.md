@@ -162,6 +162,7 @@ Initial Parallx contract:
 2. transcripts are the session-history layer;
 3. transcripts are not injected as default memory;
 4. transcript recall remains optional and separate from workspace memory recall.
+5. transcript indexing is opt-in via `memory.transcriptIndexingEnabled` and is disabled by default.
 
 ### 2. Daily memory layer
 
@@ -206,6 +207,18 @@ Parallx should move closer to OpenClaw's invocation model:
 4. the current user request must remain more prominent than any recalled memory
    context in prompt composition.
 
+### 7. Transcript recall policy
+
+Transcript recall is a distinct explicit channel, not an extension of default
+workspace memory.
+
+1. transcript indexing is off by default;
+2. when enabled, only `.parallx/sessions/*.jsonl` is indexed for transcript recall;
+3. transcript recall is accessed explicitly through `transcript_search` and
+   `transcript_get`;
+4. transcript recall should only be used when the user explicitly asks about
+   prior session history, prior turns, or transcript-backed recap.
+
 ### 6. Prompt composition rule
 
 When context is attached to the current user turn, the user's actual question
@@ -225,6 +238,8 @@ present ask.
 - [x] Create a transcript persistence service for `.parallx/sessions/*.jsonl`.
 - [x] Wire transcript creation/update/delete into `ChatService`.
 - [x] Keep transcript storage separate from daily memory and durable memory.
+- [x] Add optional transcript indexing toggle for `.parallx/sessions/*.jsonl`.
+- [x] Add explicit transcript recall tools separate from memory recall.
 
 ### Phase B — Memory invocation rework
 
@@ -290,11 +305,17 @@ Completed implementation work in this session:
     markdown-backed write-back still work after the invocation change.
 13. added a live clean-slate greeting regression proving a fresh new session
    saying `hi` does not surface unrelated durable or daily memory.
+14. added an opt-in transcript indexing path for `.parallx/sessions/*.jsonl`
+   that sanitizes JSONL into user/assistant text before chunking;
+15. added explicit `transcript_search` and `transcript_get` built-in tools so
+   prior-session recall is a separate, named capability rather than implicit
+   memory injection.
 
 Focused validation completed:
 
 1. `npm run test:unit -- chatRuntimePlanning.test.ts chatUserContentComposer.test.ts chatService.test.ts workspaceTranscriptService.test.ts` ✅
 2. `npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/memory-layers.spec.ts` ✅
+3. `npm run test:unit -- builtInTools.test.ts indexingPipeline.test.ts chatSystemPrompts.test.ts` ✅
 
 ---
 

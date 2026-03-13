@@ -43,6 +43,7 @@ import { hashText } from './chunkingService.js';
 import { DocumentClassifier } from './documentClassifier.js';
 import type { ClassificationResult } from './documentClassifier.js';
 import type { SourceIndexMetadata } from './vectorStoreService.js';
+import { renderTranscriptForIndexing } from './transcriptFormat.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -57,13 +58,15 @@ const BATCH_SIZE = 32;
 
 /** File extensions supported for text indexing. */
 const INDEXABLE_EXTENSIONS = new Set([
-  '.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.json',
+  '.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.json', '.jsonl',
   '.py', '.css', '.scss', '.html', '.htm', '.xml', '.yaml', '.yml',
   '.toml', '.ini', '.cfg', '.conf', '.sh', '.bash', '.zsh',
   '.rs', '.go', '.java', '.kt', '.swift', '.c', '.cpp', '.h', '.hpp',
   '.rb', '.lua', '.sql', '.graphql', '.gql', '.env', '.gitignore',
   '.dockerfile', '.csv', '.mdx', '.svelte', '.vue',
 ]);
+
+const TRANSCRIPT_ROOT = '.parallx/sessions';
 
 /**
  * File extensions for rich/binary document formats that require extraction.
@@ -257,6 +260,9 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
   /** Optional session manager for stale-session guards (M14). */
   private readonly _sessionManager: ISessionManager | undefined;
 
+  /** Optional config provider for feature-gated indexing behavior. */
+  private _configProvider: { getEffectiveConfig(): { memory?: { transcriptIndexingEnabled?: boolean } } } | undefined;
+
   /** Session guard captured at pipeline start — checked before commits. */
   private _sessionGuard: SessionGuard | undefined;
 
@@ -296,6 +302,14 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     this._sessionManager = sessionManager;
     this._documentExtractionService = documentExtractionService;
     this._classifier = this._register(new DocumentClassifier());
+  }
+
+  setConfigProvider(provider: { getEffectiveConfig(): { memory?: { transcriptIndexingEnabled?: boolean } } }): void {
+    this._configProvider = provider;
+  }
+
+  private _isTranscriptIndexingEnabled(): boolean {
+    return this._configProvider?.getEffectiveConfig().memory?.transcriptIndexingEnabled === true;
   }
 
   // ── Public API ──
@@ -705,6 +719,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
     const ext = getExtension(absolutePath);
     const isRichDoc = ext !== null && RICH_DOCUMENT_EXTENSIONS.has(ext);
     const isImage = ext !== null && IMAGE_EXTENSIONS.has(ext);
+    const isTranscript = relPath.startsWith(`${TRANSCRIPT_ROOT}/`) && ext === '.jsonl';
 
     // Read file content — route through extraction for rich documents
     let content: string;
@@ -756,8 +771,16 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       } else {
         const fileContent = await this._fileService.readFile(uri);
         if (fileContent.size > MAX_FILE_SIZE) { return false; }
-        content = fileContent.content;
+        content = isTranscript ? renderTranscriptForIndexing(fileContent.content) : fileContent.content;
         pipelineUsed = 'text';
+        if (isTranscript) {
+          language = 'markdown';
+          classification = {
+            documentClass: 'digital-doc',
+            confidence: 1,
+            reasons: ['Session transcript'],
+          } as ClassificationResult;
+        }
       }
     } catch (err) {
       if (isRichDoc || isImage) {
@@ -846,7 +869,7 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
       const relPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
 
       if (entry.type === FileType.Directory) {
-        if (relativePath === '.parallx' && entry.name !== 'memory') {
+        if (relativePath === '.parallx' && entry.name !== 'memory' && !(entry.name === 'sessions' && this._isTranscriptIndexingEnabled())) {
           continue;
         }
 
