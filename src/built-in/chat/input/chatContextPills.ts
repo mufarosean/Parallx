@@ -27,6 +27,36 @@ import type { ITokenBudgetSlot } from '../chatTypes.js';
 // ITokenBudgetSlot — now defined in chatTypes.ts (M13 Phase 1)
 export type { ITokenBudgetSlot } from '../chatTypes.js';
 
+type ContextPillGroupKey = IContextPill['type'];
+
+const CONTEXT_PILL_GROUP_ORDER: ContextPillGroupKey[] = [
+  'attachment',
+  'rag',
+  'memory',
+  'concept',
+  'rule',
+  'system',
+];
+
+function getContextPillGroupLabel(type: ContextPillGroupKey): string {
+  switch (type) {
+    case 'attachment':
+      return 'Attachments';
+    case 'rag':
+      return 'Retrieved Sources';
+    case 'memory':
+      return 'Session Memory';
+    case 'concept':
+      return 'Concept Recall';
+    case 'rule':
+      return 'Rules';
+    case 'system':
+      return 'System';
+    default:
+      return 'Other';
+  }
+}
+
 // ── Component ──
 
 /**
@@ -222,10 +252,32 @@ export class ChatContextPills extends Disposable {
     this._pillsContainer.innerHTML = '';
     this._menu.style.display = this._expanded ? '' : 'none';
 
+    const groupedPills = new Map<ContextPillGroupKey, IContextPill[]>();
     for (const pill of this._pills) {
-      const isExcluded = this._excluded.has(pill.id);
-      const el = this._createPill(pill, isExcluded);
-      this._pillsContainer.appendChild(el);
+      const group = groupedPills.get(pill.type) ?? [];
+      group.push(pill);
+      groupedPills.set(pill.type, group);
+    }
+
+    for (const groupKey of CONTEXT_PILL_GROUP_ORDER) {
+      const groupPills = groupedPills.get(groupKey);
+      if (!groupPills || groupPills.length === 0) {
+        continue;
+      }
+
+      const section = $('div.parallx-chat-context-group');
+      const sectionHeader = $('div.parallx-chat-context-group-title', getContextPillGroupLabel(groupKey));
+      section.appendChild(sectionHeader);
+
+      const sectionList = $('div.parallx-chat-context-group-list');
+      for (const pill of groupPills) {
+        const isExcluded = this._excluded.has(pill.id);
+        const el = this._createPill(pill, isExcluded);
+        sectionList.appendChild(el);
+      }
+
+      section.appendChild(sectionList);
+      this._pillsContainer.appendChild(section);
     }
 
     // Also render the context-window guidance if expanded.

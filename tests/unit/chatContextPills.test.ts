@@ -47,4 +47,30 @@ describe('ChatContextPills', () => {
     expect(pills.getExcluded().has('Claims Guide.md')).toBe(true);
     expect(trigger.textContent).toContain('1 excluded');
   });
+
+  it('groups menu pills by source type in a stable order', () => {
+    const container = document.createElement('div');
+    const pills = new ChatContextPills(container);
+    pills.setPills([
+      createPill({ id: 'system-prompt', label: 'System prompt', type: 'system', removable: false }),
+      createPill({ id: 'notes.txt', label: 'notes.txt', type: 'attachment' }),
+      createPill({ id: 'memory:session-recall', label: 'Session memory', type: 'memory' }),
+      createPill({ id: 'rule:claims', label: 'Claims rule', type: 'rule' }),
+      createPill({ id: 'concept:recall', label: 'Concept recall', type: 'concept' }),
+      createPill({ id: 'Claims Guide.md', label: 'Claims Guide.md', type: 'rag' }),
+    ]);
+
+    const trigger = container.querySelector('.parallx-chat-context-menu-trigger') as HTMLButtonElement;
+    trigger.click();
+
+    const headers = [...container.querySelectorAll('.parallx-chat-context-group-title')].map((el) => el.textContent);
+    expect(headers).toEqual([
+      'Attachments',
+      'Retrieved Sources',
+      'Session Memory',
+      'Concept Recall',
+      'Rules',
+      'System',
+    ]);
+  });
 });

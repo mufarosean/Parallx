@@ -990,9 +990,29 @@
 
 .parallx-chat-context-pills-list {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0 4px;
+}
+
+.parallx-chat-context-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.parallx-chat-context-group-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground, #8b8b8b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.parallx-chat-context-group-list {
+  display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 2px 0 4px;
 }
 
 .parallx-chat-context-pill {
