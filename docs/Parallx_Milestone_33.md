@@ -239,7 +239,7 @@ present ask.
 
 - [x] Add focused unit coverage for transcript persistence.
 - [x] Add focused unit coverage for memory-invocation routing.
-- [ ] Add a live regression proving a new session greeting does not surface
+- [x] Add a live regression proving a new session greeting does not surface
       unrelated prior-session memory.
 - [x] Add a live regression proving explicit prior-memory questions still work.
 
@@ -288,6 +288,8 @@ Completed implementation work in this session:
     memory-invocation behavior;
 12. re-ran the live memory-layer AI-eval to confirm explicit memory recall and
     markdown-backed write-back still work after the invocation change.
+13. added a live clean-slate greeting regression proving a fresh new session
+   saying `hi` does not surface unrelated durable or daily memory.
 
 Focused validation completed:
 

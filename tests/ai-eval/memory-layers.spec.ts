@@ -154,6 +154,32 @@ test.describe.serial('AI Memory Layer Evaluation', () => {
     expect(lower).toContain('structured brevity');
   });
 
+  test('keeps a fresh-session greeting clean and does not surface unrelated memory', async ({ window }) => {
+    await startNewSession(window);
+    await window.waitForTimeout(500);
+
+    const result = await sendAndWaitForResponse(
+      window,
+      'hi',
+      RESPONSE_TIMEOUT,
+    );
+
+    const lower = normalizeForMatch(result.text);
+    expect(
+      lower.includes('hi')
+      || lower.includes('hello')
+      || lower.includes('how can i help')
+      || lower.includes('what can i help')
+      || lower.includes('what would you like'),
+    ).toBe(true);
+    expect(lower).not.toContain('ember-rail');
+    expect(lower).not.toContain('structured brevity');
+    expect(lower).not.toContain('daily note');
+    expect(lower).not.toContain('durable preference');
+    expect(lower).not.toContain('.parallx');
+    expect(lower).not.toContain('memory.md');
+  });
+
   test('writes canonical session summaries and preferences back to markdown memory', async ({ window, workspacePath }) => {
     await startNewSession(window);
     await window.waitForTimeout(500);
