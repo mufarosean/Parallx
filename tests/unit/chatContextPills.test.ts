@@ -31,6 +31,7 @@ describe('ChatContextPills', () => {
     pills.setPills([createPill()]);
     expect((container.firstElementChild as HTMLElement).style.display).toBe('');
     expect(container.querySelector('.parallx-chat-context-menu-trigger')?.textContent).toContain('Context 1');
+    expect(container.querySelector('.parallx-chat-context-menu-trigger-icon')).toBeNull();
   });
 
   it('opens as a menu and keeps exclusions functional', () => {
@@ -80,7 +81,7 @@ describe('ChatContextPills', () => {
     ]);
   });
 
-  it('supports zoom controls for larger menu readability', () => {
+  it('keeps the menu as a plain scrollable panel without zoom controls', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const pills = new ChatContextPills(container);
@@ -89,11 +90,9 @@ describe('ChatContextPills', () => {
     const trigger = container.querySelector('.parallx-chat-context-menu-trigger') as HTMLButtonElement;
     trigger.click();
 
-    const zoomInBtn = document.body.querySelector('button[aria-label="Zoom in context menu"]') as HTMLButtonElement;
     const menu = document.body.querySelector('.parallx-chat-context-menu-panel') as HTMLElement;
-    zoomInBtn.click();
-
-    expect(menu.classList.contains('parallx-chat-context-menu-panel--zoom-2')).toBe(true);
-    expect(document.body.textContent).toContain('115%');
+    expect(menu).toBeTruthy();
+    expect(document.body.querySelector('button[aria-label="Zoom in context menu"]')).toBeNull();
+    expect(document.body.querySelector('button[aria-label="Zoom out context menu"]')).toBeNull();
   });
 });

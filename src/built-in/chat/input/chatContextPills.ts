@@ -85,8 +85,6 @@ export class ChatContextPills extends Disposable {
 
   /** Whether the menu is open. */
   private _expanded = false;
-  /** Menu zoom level for readability. */
-  private _zoomLevel: 0 | 1 | 2 = 1;
 
   // ── Events ──
 
@@ -242,15 +240,6 @@ export class ChatContextPills extends Disposable {
     this._toggleBtn.textContent = '';
     this._toggleBtn.setAttribute('aria-expanded', this._expanded ? 'true' : 'false');
 
-    const icon = document.createElement('span');
-    icon.className = 'parallx-chat-context-menu-trigger-icon';
-    icon.innerHTML = chatIcons.search;
-    this._toggleBtn.appendChild(icon);
-
-    const arrowSpan = document.createElement('span');
-    arrowSpan.className = 'parallx-chat-context-pills-arrow';
-    arrowSpan.textContent = arrow;
-
     const text = document.createElement('span');
     text.className = 'parallx-chat-context-menu-trigger-label';
     text.textContent = `Context ${activePills.length}`;
@@ -263,15 +252,12 @@ export class ChatContextPills extends Disposable {
       this._toggleBtn.appendChild(badge);
     }
 
+    const arrowSpan = document.createElement('span');
+    arrowSpan.className = 'parallx-chat-context-pills-arrow';
+    arrowSpan.textContent = arrow;
     this._toggleBtn.appendChild(arrowSpan);
 
     this._menuHeader.innerHTML = '';
-    this._menu.classList.remove(
-      'parallx-chat-context-menu-panel--zoom-0',
-      'parallx-chat-context-menu-panel--zoom-1',
-      'parallx-chat-context-menu-panel--zoom-2',
-    );
-    this._menu.classList.add(`parallx-chat-context-menu-panel--zoom-${this._zoomLevel}`);
 
     const headerTop = $('div.parallx-chat-context-menu-header-top');
     const titleWrap = $('div.parallx-chat-context-menu-header-copy');
@@ -280,30 +266,6 @@ export class ChatContextPills extends Disposable {
     titleWrap.appendChild(title);
     titleWrap.appendChild(summary);
     headerTop.appendChild(titleWrap);
-
-    const zoomControls = $('div.parallx-chat-context-menu-zoom-controls');
-    const zoomOutBtn = this._createHeaderButton('Zoom out context menu', 'A−', () => {
-      if (this._zoomLevel > 0) {
-        this._zoomLevel = (this._zoomLevel - 1) as 0 | 1 | 2;
-        this._render();
-      }
-    });
-    zoomOutBtn.disabled = this._zoomLevel === 0;
-
-    const zoomLabel = $('span.parallx-chat-context-menu-zoom-label', this._zoomLevel === 0 ? '85%' : this._zoomLevel === 1 ? '100%' : '115%');
-
-    const zoomInBtn = this._createHeaderButton('Zoom in context menu', 'A+', () => {
-      if (this._zoomLevel < 2) {
-        this._zoomLevel = (this._zoomLevel + 1) as 0 | 1 | 2;
-        this._render();
-      }
-    });
-    zoomInBtn.disabled = this._zoomLevel === 2;
-
-    zoomControls.appendChild(zoomOutBtn);
-    zoomControls.appendChild(zoomLabel);
-    zoomControls.appendChild(zoomInBtn);
-    headerTop.appendChild(zoomControls);
 
     this._menuHeader.appendChild(headerTop);
 
@@ -324,8 +286,8 @@ export class ChatContextPills extends Disposable {
         continue;
       }
 
-      const section = $('div.parallx-chat-context-group');
       const activeCount = groupPills.filter((pill) => !this._excluded.has(pill.id)).length;
+      const section = $('div.parallx-chat-context-group');
       const sectionHeader = $('div.parallx-chat-context-group-title');
       const sectionTitle = $('span.parallx-chat-context-group-title-text', getContextPillGroupLabel(groupKey));
       const sectionCount = $('span.parallx-chat-context-group-title-count', `${activeCount}/${groupPills.length}`);
@@ -336,15 +298,13 @@ export class ChatContextPills extends Disposable {
       const sectionList = $('div.parallx-chat-context-group-list');
       for (const pill of groupPills) {
         const isExcluded = this._excluded.has(pill.id);
-        const el = this._createPill(pill, isExcluded);
-        sectionList.appendChild(el);
+        sectionList.appendChild(this._createPill(pill, isExcluded));
       }
 
       section.appendChild(sectionList);
       this._pillsContainer.appendChild(section);
     }
 
-    // Also render the context-window guidance if expanded.
     this._renderBudget();
 
     if (this._expanded) {
@@ -446,19 +406,6 @@ export class ChatContextPills extends Disposable {
     }
 
     return el;
-  }
-
-  private _createHeaderButton(ariaLabel: string, text: string, onClick: () => void): HTMLButtonElement {
-    const button = document.createElement('button');
-    button.className = 'parallx-chat-context-menu-header-btn';
-    button.type = 'button';
-    button.setAttribute('aria-label', ariaLabel);
-    button.textContent = text;
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      onClick();
-    });
-    return button;
   }
 
   /** Format a token count for display (e.g. 1234 → "1.2k"). */

@@ -289,7 +289,7 @@ Post-completion cleanup on 2026-03-12:
 - [x] Fix repeated regenerate clicks on the same visible message so stale action bindings and stale replay IDs do not reintroduce duplication.
 - [x] Move pre-send context pills out of the persistent composer stack into a toolbar-anchored menu while preserving exclusions and budget guidance.
 - [x] Group toolbar context menu contents by source type so large context sets remain scannable without flattening into one long pill wall.
-- [x] Replace dense context chips with readable grouped rows and add explicit menu zoom controls for dense source sets.
+- [x] Replace dense context chips with readable grouped rows while keeping the context menu a plain scrollable panel.
 
 ---
 

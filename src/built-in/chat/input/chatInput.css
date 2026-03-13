@@ -928,15 +928,6 @@
   background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
 }
 
-.parallx-chat-context-menu-trigger-icon,
-.parallx-chat-context-menu-trigger-icon svg {
-  width: 12px;
-  height: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .parallx-chat-context-menu-trigger-label {
   white-space: nowrap;
 }
@@ -957,7 +948,7 @@
 
 .parallx-chat-context-menu-panel {
   position: fixed;
-  width: min(520px, calc(100vw - 48px));
+  width: min(560px, calc(100vw - 48px));
   max-height: min(340px, 50vh);
   overflow: auto;
   padding: 10px;
@@ -966,19 +957,6 @@
   background: var(--vscode-editorWidget-background, #252526);
   box-shadow: 0 8px 24px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
   z-index: 30;
-}
-
-.parallx-chat-context-menu-panel--zoom-0 {
-  width: min(460px, calc(100vw - 48px));
-}
-
-.parallx-chat-context-menu-panel--zoom-1 {
-  width: min(560px, calc(100vw - 48px));
-}
-
-.parallx-chat-context-menu-panel--zoom-2 {
-  width: min(680px, calc(100vw - 32px));
-  max-height: min(420px, 62vh);
 }
 
 .parallx-chat-context-menu-header {
@@ -991,7 +969,7 @@
 .parallx-chat-context-menu-header-top {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
 }
 
@@ -999,43 +977,6 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.parallx-chat-context-menu-zoom-controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.parallx-chat-context-menu-header-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 28px;
-  height: 24px;
-  padding: 0 8px;
-  border: 1px solid var(--vscode-widget-border, #454545);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--vscode-descriptionForeground, #8b8b8b);
-  cursor: pointer;
-}
-
-.parallx-chat-context-menu-header-btn:hover:not(:disabled) {
-  color: var(--vscode-foreground, #cccccc);
-  background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
-}
-
-.parallx-chat-context-menu-header-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.parallx-chat-context-menu-zoom-label {
-  min-width: 34px;
-  text-align: center;
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground, #8b8b8b);
 }
 
 .parallx-chat-context-menu-title {
