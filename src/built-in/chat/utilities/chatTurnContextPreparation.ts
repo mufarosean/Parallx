@@ -62,8 +62,6 @@ export async function prepareChatTurnContext(
   deps: IPrepareChatTurnContextDeps,
   options: IPrepareChatTurnContextOptions,
 ): Promise<IPreparedChatTurnContext> {
-  const useTranscriptRecall = /\btranscript\b|\bsession\s+history\b|\bprior\s+session\b|\bprevious\s+session\b/i.test(options.contextQueryText);
-
   const {
     pageResult,
     ragResult,
@@ -86,9 +84,9 @@ export async function prepareChatTurnContext(
       sessionId: options.sessionId,
       attachments: options.attachments,
       useCurrentPage: options.contextPlan.useCurrentPage,
-      useRetrieval: options.contextPlan.useRetrieval && !useTranscriptRecall,
+      useRetrieval: options.contextPlan.useRetrieval,
       useMemoryRecall: options.contextPlan.useMemoryRecall,
-      useTranscriptRecall,
+      useTranscriptRecall: options.contextPlan.useTranscriptRecall,
       useConceptRecall: options.contextPlan.useConceptRecall,
       hasActiveSlashCommand: options.hasActiveSlashCommand,
       isRagReady: options.isRagReady,
@@ -114,7 +112,7 @@ export async function prepareChatTurnContext(
       messages: options.messages,
       attachments: options.attachments,
       mentionPills: options.mentionPills,
-      useRetrieval: options.contextPlan.useRetrieval && !useTranscriptRecall,
+      useRetrieval: options.contextPlan.useRetrieval,
       maxMemoryContextChars: MAX_MEMORY_CONTEXT_CHARS,
       maxTranscriptContextChars: MAX_TRANSCRIPT_CONTEXT_CHARS,
       maxConceptContextChars: MAX_CONCEPT_CONTEXT_CHARS,

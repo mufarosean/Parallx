@@ -452,3 +452,24 @@ that changes user trust in this order:
    and be described more narrowly?
 6. Is a user-visible migration-status surface worth the extra product surface
    area, or should this remain a diagnostic-only concern?
+
+---
+
+## Implementation Log
+
+### 2026-03-14 — First retrieval-lane routing slice
+
+Completed in this slice:
+
+1. introduced a first-class `transcript-recall` route in the chat lane
+   contract instead of relying on a late regex heuristic during context
+   preparation;
+2. wired transcript recall intent through `IChatContextPlan` so the routing
+   decision, context planner, and source loader agree on lane choice;
+3. fixed route precedence so explicit transcript-history questions win over the
+   broader memory-recall matcher;
+4. added focused regression coverage in the chat turn prelude tests.
+
+Focused validation completed:
+
+1. `npm run test:unit -- chatTurnPrelude.test.ts chatDataServiceMemoryRecall.test.ts chatViewerOpeners.test.ts` ✅

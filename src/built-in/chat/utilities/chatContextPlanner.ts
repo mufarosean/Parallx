@@ -18,6 +18,7 @@ function buildRetrievalPlan(
         queries: [],
       };
     case 'memory-recall':
+    case 'transcript-recall':
       return {
         intent: 'question',
         reasoning: route.reason,
@@ -70,6 +71,20 @@ export function createChatContextPlan(
         intent: retrievalPlan.intent,
         useRetrieval: false,
         useMemoryRecall: true,
+        useTranscriptRecall: false,
+        useConceptRecall: false,
+        useCurrentPage: false,
+        citationMode: 'disabled',
+        reasoning: route.reason,
+        retrievalPlan,
+      };
+    case 'transcript-recall':
+      return {
+        route: route.kind,
+        intent: retrievalPlan.intent,
+        useRetrieval: false,
+        useMemoryRecall: false,
+        useTranscriptRecall: true,
         useConceptRecall: false,
         useCurrentPage: false,
         citationMode: 'disabled',
@@ -83,6 +98,7 @@ export function createChatContextPlan(
         intent: retrievalPlan.intent,
         useRetrieval: false,
         useMemoryRecall: false,
+        useTranscriptRecall: false,
         useConceptRecall: false,
         useCurrentPage: false,
         citationMode: 'disabled',
@@ -96,6 +112,7 @@ export function createChatContextPlan(
         intent: retrievalPlan.intent,
         useRetrieval: retrievalPlan.needsRetrieval,
         useMemoryRecall: false,
+        useTranscriptRecall: false,
         useConceptRecall: false,
         useCurrentPage: true,
         citationMode: retrievalPlan.needsRetrieval ? 'required' : 'disabled',

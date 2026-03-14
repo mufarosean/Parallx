@@ -50,6 +50,16 @@ function isExplicitMemoryRecallTurn(text: string): boolean {
   return /(last|previous|prior)\s+(conversation|chat|session)|what\s+do\s+you\s+remember|remember\s+about\s+(?:it|my|our)|recall\s+(?:my|our)\s+(?:last|previous|prior)/.test(normalized);
 }
 
+function isExplicitTranscriptRecallTurn(text: string): boolean {
+  const normalized = normalizeForRouting(text);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return /\btranscript\b|\bsession\s+history\b|\bchat\s+history\b|what\s+did\s+(?:i|we)\s+(?:say|discuss)|\b(?:last|previous|prior)\s+session\b/.test(normalized);
+}
+
 function buildOffTopicRedirectAnswer(text: string): string | undefined {
   const normalized = normalizeForRouting(text);
 
@@ -146,6 +156,13 @@ export function determineChatTurnRoute(
       kind: 'off-topic',
       reason: 'Matched an off-topic request pattern outside the workspace domain.',
       directAnswer: offTopicRedirectAnswer,
+    };
+  }
+
+  if (isExplicitTranscriptRecallTurn(text)) {
+    return {
+      kind: 'transcript-recall',
+      reason: 'Explicit prior-session history should use transcript recall without generic retrieval.',
     };
   }
 

@@ -188,6 +188,7 @@ export interface IRetrievalPlan {
 export type ChatTurnRouteKind =
   | 'conversational'
   | 'memory-recall'
+  | 'transcript-recall'
   | 'product-semantics'
   | 'off-topic'
   | 'grounded';
@@ -203,6 +204,7 @@ export interface IChatContextPlan {
   readonly intent: IRetrievalPlan['intent'];
   readonly useRetrieval: boolean;
   readonly useMemoryRecall: boolean;
+  readonly useTranscriptRecall: boolean;
   readonly useConceptRecall: boolean;
   readonly useCurrentPage: boolean;
   readonly citationMode: 'required' | 'disabled';

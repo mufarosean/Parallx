@@ -58,4 +58,24 @@ describe('chat turn prelude', () => {
     expect(result.contextPlan.useRetrieval).toBe(false);
     expect(result.retrievalPlan.needsRetrieval).toBe(false);
   });
+
+  it('routes explicit prior-session history questions to the transcript lane', async () => {
+    const result = await prepareChatTurnPrelude({
+      isRAGAvailable: () => true,
+      reportRuntimeTrace: vi.fn(),
+      reportRetrievalDebug: vi.fn(),
+    }, {
+      buildFollowUpRetrievalQuery: (query) => query,
+    }, {
+      requestText: 'What did we discuss in the previous session about coverage exclusions?',
+      history: [],
+      sessionId: 'session-3',
+      hasActiveSlashCommand: false,
+    });
+
+    expect(result.turnRoute.kind).toBe('transcript-recall');
+    expect(result.contextPlan.useTranscriptRecall).toBe(true);
+    expect(result.contextPlan.useRetrieval).toBe(false);
+    expect(result.contextPlan.useCurrentPage).toBe(false);
+  });
 });
