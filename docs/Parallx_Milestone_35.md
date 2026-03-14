@@ -170,7 +170,7 @@ After Milestone 35:
 
 ### Phase D — Product clarity
 
-- [ ] Add or update product documentation so it is explicit that workspace
+- [x] Add or update product documentation so it is explicit that workspace
       memory lives in markdown files.
 - [x] Define whether any replacement affordance is needed for opening memory
       files or folders, without reintroducing memory CRUD inside AI Settings.
@@ -264,3 +264,14 @@ Completed in this slice:
    day;
 3. intentionally kept this as a command-based affordance instead of restoring a
    dedicated memory-management UI inside AI Settings.
+
+### 2026-03-13 — Product documentation alignment
+
+Completed in this slice:
+
+1. updated the AI user guide to state explicitly that AI Settings no longer owns
+   workspace memory content;
+2. documented `.parallx/memory/MEMORY.md` and `.parallx/memory/YYYY-MM-DD.md`
+   as the canonical user-facing memory files;
+3. documented the new command-based access path for opening durable memory and
+   today’s daily memory log directly from the command palette.

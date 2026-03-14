@@ -111,6 +111,12 @@ Access AI Settings from:
 
 The AI Settings panel controls how the AI thinks, speaks, and behaves — no config files needed.
 
+Important boundary:
+
+- AI Settings configures AI behavior and model policy.
+- Workspace memory content does **not** live in AI Settings.
+- Canonical memory lives in markdown files under `.parallx/memory/`.
+
 ### Persona
 
 | Setting | What it controls |
@@ -174,6 +180,28 @@ Test your settings before committing:
 1. Type a message (or click a starter chip: *"Hello, who are you?"*, *"Summarize what you know about me."*, *"What should I work on today?"*)
 2. Click **Run** — the AI responds using your current settings
 3. Click **Open in chat** to start a real conversation from the preview
+
+### Workspace Memory Files
+
+Parallx stores canonical workspace memory in markdown files, following the
+OpenClaw-style model:
+
+| File | Purpose |
+|------|---------|
+| `.parallx/memory/MEMORY.md` | Durable memory — curated preferences, decisions, conventions, and durable facts |
+| `.parallx/memory/YYYY-MM-DD.md` | Daily memory log — day-scoped notes and session summaries |
+
+You can open these directly from the command palette:
+
+- `Parallx: Open Durable Memory`
+- `Parallx: Open Today's Memory Log`
+
+You can also access the `.parallx` folder directly in the Explorer whenever you
+want to inspect or edit memory files by hand.
+
+If you opened a workspace that predates canonical markdown memory, Parallx will
+import legacy memory records into these markdown files and continue using the
+markdown files as the source of truth.
 
 ---
 
