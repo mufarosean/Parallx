@@ -5,7 +5,7 @@
 
 import type { ToolContext } from '../../tools/toolModuleLoader.js';
 import type { IDisposable } from '../../platform/lifecycle.js';
-import { IAISettingsService, IUnifiedAIConfigService, INotificationService } from '../../services/serviceTypes.js';
+import { IAISettingsService, IUnifiedAIConfigService, INotificationService, IWorkspaceMemoryService } from '../../services/serviceTypes.js';
 import { ILanguageModelsService, ILanguageModelToolsService } from '../../services/chatTypes.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
 import { AISettingsPanel } from '../../aiSettings/ui/aiSettingsPanel.js';
@@ -14,6 +14,9 @@ import { getIcon } from '../../ui/iconRegistry.js';
 // ─── Local API type ──────────────────────────────────────────────────────────
 
 interface ParallxApi {
+  editors: {
+    openFileEditor(uri: string, options?: { pinned?: boolean }): Promise<void>;
+  };
   views: {
     registerViewProvider(
       viewId: string,
@@ -57,6 +60,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // Get the Unified AI Config service for workspace override info (M20 B.2)
   const unifiedConfigService = api.services.has(IUnifiedAIConfigService)
     ? api.services.get<import('../../aiSettings/unifiedConfigTypes.js').IUnifiedAIConfigService>(IUnifiedAIConfigService)
+    : undefined;
+
+  const workspaceMemoryService = api.services.has(IWorkspaceMemoryService)
+    ? api.services.get<import('../../services/serviceTypes.js').IWorkspaceMemoryService>(IWorkspaceMemoryService)
     : undefined;
 
   // Get the Language Models service (for Default Model dropdown in Model section)
@@ -112,6 +119,32 @@ export function activate(api: ParallxApi, context: ToolContext): void {
       if (_panel && typeof sectionId === 'string') {
         _panel.scrollToSection(sectionId);
       }
+    }),
+  );
+
+  async function openCanonicalMemoryFile(relativePathPromise: Promise<string> | string): Promise<void> {
+    if (!workspaceMemoryService) {
+      notificationService?.warning?.('Workspace memory service is not available.');
+      return;
+    }
+
+    const relativePath = await Promise.resolve(relativePathPromise);
+    await api.editors.openFileEditor(relativePath, { pinned: false });
+  }
+
+  context.subscriptions.push(
+    api.commands.registerCommand('memory.openDurable', async () => {
+      await openCanonicalMemoryFile(workspaceMemoryService?.getDurableMemoryRelativePath() ?? '.parallx/memory/MEMORY.md');
+    }),
+  );
+
+  context.subscriptions.push(
+    api.commands.registerCommand('memory.openTodayLog', async () => {
+      if (!workspaceMemoryService) {
+        notificationService?.warning?.('Workspace memory service is not available.');
+        return;
+      }
+      await openCanonicalMemoryFile(workspaceMemoryService.ensureDailyMemory());
     }),
   );
 

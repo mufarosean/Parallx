@@ -250,6 +250,20 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
     return normalizeMarkdown(result.content);
   }
 
+  async ensureDailyMemory(date: Date = new Date()): Promise<string> {
+    await this.ensureScaffold();
+    const uri = this.getDailyMemoryUri(date);
+    if (!uri) {
+      throw new Error('No workspace root folder available');
+    }
+
+    if (!(await this._fileService.exists(uri))) {
+      await this._fileService.writeFile(uri, `# ${formatIsoDate(date)}\n`);
+    }
+
+    return this.getDailyMemoryRelativePath(date);
+  }
+
   async appendDailyMemory(text: string, date: Date = new Date()): Promise<void> {
     await this.ensureScaffold();
     const uri = this.getDailyMemoryUri(date);

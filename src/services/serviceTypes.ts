@@ -182,6 +182,9 @@ export interface IWorkspaceMemoryService extends IDisposable {
   /** Read the daily memory markdown file for a date. */
   readDailyMemory(date?: Date): Promise<string>;
 
+  /** Ensure the daily memory markdown file exists for a date and return its relative path. */
+  ensureDailyMemory(date?: Date): Promise<string>;
+
   /** Append a note to the daily memory markdown file for a date. */
   appendDailyMemory(text: string, date?: Date): Promise<void>;
 

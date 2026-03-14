@@ -227,6 +227,8 @@ export const AI_SETTINGS_MANIFEST: IToolManifest = {
   contributes: {
     commands: [
       { id: 'ai-settings.open', title: 'Parallx: Open AI Settings' },
+      { id: 'memory.openDurable', title: 'Parallx: Open Durable Memory' },
+      { id: 'memory.openTodayLog', title: 'Parallx: Open Today\'s Memory Log' },
     ],
     keybindings: [
       { command: 'ai-settings.open', key: 'Ctrl+Shift+A' },

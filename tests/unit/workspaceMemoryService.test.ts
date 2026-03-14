@@ -103,6 +103,17 @@ describe('WorkspaceMemoryService', () => {
     expect(dailyLog).toContain('Follow-up context for the same day.');
   });
 
+  it('ensures today\'s daily memory file exists before opening it in the editor', async () => {
+    const workspaceService = createWorkspaceService('D:/AI/Parallx/demo-workspace');
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    const relativePath = await service.ensureDailyMemory(new Date('2026-03-13T08:00:00.000Z'));
+
+    expect(relativePath).toBe('.parallx/memory/2026-03-13.md');
+    expect(fileService.files.get('D:/AI/Parallx/demo-workspace/.parallx/memory/2026-03-13.md')).toBe('# 2026-03-13\n');
+  });
+
   it('appends structured session summaries to the daily log', async () => {
     const workspaceService = createWorkspaceService('D:/AI/Parallx/demo-workspace');
     const fileService = createFileServiceMock();

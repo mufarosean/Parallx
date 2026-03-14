@@ -172,7 +172,7 @@ After Milestone 35:
 
 - [ ] Add or update product documentation so it is explicit that workspace
       memory lives in markdown files.
-- [ ] Define whether any replacement affordance is needed for opening memory
+- [x] Define whether any replacement affordance is needed for opening memory
       files or folders, without reintroducing memory CRUD inside AI Settings.
 
 ---
@@ -252,3 +252,15 @@ Completed in this slice:
 Focused validation completed:
 
 1. `npm run test:unit -- chatViewerOpeners.test.ts workspaceMemoryService.test.ts chatDataServiceMemoryRecall.test.ts` ✅
+
+### 2026-03-13 — Canonical memory access commands
+
+Completed in this slice:
+
+1. added lightweight workbench commands to open canonical durable memory and
+   today’s daily memory log directly in the editor;
+2. added a small workspace-memory helper to ensure the daily log file exists
+   before opening it, so users can land in a real markdown file even on a fresh
+   day;
+3. intentionally kept this as a command-based affordance instead of restoring a
+   dedicated memory-management UI inside AI Settings.
