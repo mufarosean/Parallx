@@ -10,12 +10,18 @@ import {
 import { BOOKS_RUBRIC } from './booksRubric';
 import {
   evaluateAssertions,
+  evaluateRetrievalMetrics,
   scoreTurn,
-  buildReport,
   type TestCaseResult,
-  type TurnResult,
 } from './scoring';
+import {
+  buildBooksEvalReport,
+  evaluatePipelineMetrics,
+  type BooksTestCaseResult,
+  type BooksTurnResult,
+} from './booksScoring';
 import { runAutonomyBenchmarkScenarios } from './autonomyScenarioRunner';
+import { validateBooksWorkspaceGroundTruth } from './booksGroundTruth';
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
@@ -30,11 +36,12 @@ if (!process.env.PARALLX_AI_EVAL_WORKSPACE) {
 }
 
 test.describe.serial('Books Workspace Evaluation', () => {
-  const allResults: TestCaseResult[] = [];
+  const allResults: BooksTestCaseResult[] = [];
   let workspaceDisplayName = process.env.PARALLX_AI_EVAL_WORKSPACE_NAME || 'Books';
 
   test.beforeAll(async ({ window, electronApp, workspacePath, workspaceLabel }) => {
     workspaceDisplayName = process.env.PARALLX_AI_EVAL_WORKSPACE_NAME || workspaceLabel || path.basename(workspacePath) || 'Books';
+    await validateBooksWorkspaceGroundTruth(workspacePath);
     console.log(`\n  [Setup] Opening ${workspaceDisplayName}...`);
     await openFolderViaMenu(electronApp, window, workspacePath);
 
@@ -55,27 +62,38 @@ test.describe.serial('Books Workspace Evaluation', () => {
       await startNewSession(window);
       await window.waitForTimeout(500);
 
-      const turns: TurnResult[] = [];
+      const turns: BooksTurnResult[] = [];
 
       for (const turn of tc.turns) {
         let text = '';
         let latencyMs = 0;
+        let debug;
 
         try {
           const result = await sendAndWaitForResponse(window, turn.prompt, RESPONSE_TIMEOUT);
           text = result.text;
           latencyMs = result.latencyMs;
+          debug = result.debug;
         } catch (err) {
           console.warn(`  [WARN] ${tc.id}: Infrastructure error for "${turn.prompt}": ${err}`);
         }
 
         const assertionResults = evaluateAssertions(text, turn.assertions);
         const score = scoreTurn(assertionResults);
+        const retrievalMetrics = turn.retrievalExpectation
+          ? evaluateRetrievalMetrics(text, turn.retrievalExpectation)
+          : undefined;
+        const pipelineMetrics = turn.pipelineExpectation
+          ? evaluatePipelineMetrics(debug, turn.pipelineExpectation)
+          : undefined;
         turns.push({
           prompt: turn.prompt,
           response: text || '(empty response)',
           latencyMs,
           assertions: assertionResults,
+          retrievalMetrics,
+          pipelineMetrics,
+          debug,
           score,
         });
       }
@@ -87,7 +105,7 @@ test.describe.serial('Books Workspace Evaluation', () => {
       allResults.push({
         id: tc.id,
         name: tc.name,
-        dimension: tc.dimension,
+        dimension: tc.dimension as TestCaseResult['dimension'],
         turns,
         score: testScore,
       });
@@ -109,7 +127,7 @@ test.describe.serial('Books Workspace Evaluation', () => {
       console.log(`    [${scenario.passed ? 'PASS' : 'FAIL'}] ${scenario.id}: ${scenario.name}`);
     }
 
-    const report = buildReport(allResults, ollamaModel, {
+    const report = buildBooksEvalReport(allResults, ollamaModel, {
       autonomyScenarios,
       workspaceName: workspaceDisplayName,
     });

@@ -1,4 +1,4 @@
-import type { Assertion, Dimension } from './scoring';
+import type { Assertion, Dimension, RetrievalExpectation } from './scoring';
 import {
   containsAny,
   containsAll,
@@ -6,10 +6,19 @@ import {
   lengthBetween,
   hasCitationMarkers,
 } from './scoring';
+import type { PipelineExpectation } from './booksScoring';
+import {
+  ACTIVISM_SOURCE_IDS,
+  BOOKS_SOURCE_TRUTH,
+  containsAllNormalized,
+  containsAnyNormalized,
+} from './booksGroundTruth';
 
 export interface BooksTestCaseTurn {
   prompt: string;
   assertions: Assertion[];
+  retrievalExpectation?: RetrievalExpectation;
+  pipelineExpectation?: PipelineExpectation;
 }
 
 export interface BooksTestCase {
@@ -22,154 +31,245 @@ export interface BooksTestCase {
 
 export const BOOKS_RUBRIC: BooksTestCase[] = [
   {
-    id: 'B01',
-    name: 'Workspace overview -- top-level categories',
-    dimension: 'summary',
-    description: 'Summarize the main top-level folders in the Books workspace.',
-    turns: [{
-      prompt: 'What are some of the main top-level folders in this Books workspace?',
-      assertions: [
-        { name: 'Mentions Activism', weight: 1, check: containsAny(['activism']) },
-        { name: 'Mentions Art', weight: 1, check: containsAny(['art']) },
-        { name: 'Mentions Data Science', weight: 1, check: containsAny(['data science']) },
-        { name: 'Mentions Philosophy or Stoicism', weight: 1, check: containsAny(['philosophy', 'stoicism']) },
-        { name: 'Mentions Zimbabwe or Shona area', weight: 1, check: containsAny(['zimbabwe', 'shona']) },
-        { name: 'Substantial overview', weight: 1, check: lengthBetween(60, 4000) },
-      ],
-    }],
-  },
-  {
-    id: 'B02',
-    name: 'Detail retrieval -- activism titles',
+    id: 'BW01',
+    name: 'Exact retrieval -- Daily Stoic identification',
     dimension: 'detail-retrieval',
-    description: 'Retrieve specific book titles from the Activism folder.',
+    description: 'Identify the Stoicism book that explicitly says it contains 366 meditations.',
     turns: [{
-      prompt: 'Name two books in the Activism folder.',
+      prompt: 'Which book in the Stoicism folder explicitly says it contains 366 meditations? Cite the source.',
       assertions: [
-        {
-          name: 'Mentions any two known Activism titles',
-          weight: 4,
-          check: (responseText: string) => {
-            const normalized = responseText.toLowerCase();
-            const titles = [
-              'black skin, white masks',
-              'freedom is a constant struggle',
-              'how change happens',
-              'nihilism and negritude',
-              'slacktivism',
-              'sara ahmed trying to transform',
-            ];
-            return titles.filter((title) => normalized.includes(title)).length >= 2;
-          },
-        },
-        { name: 'Not just one title', weight: 1, check: lengthBetween(40, 3000) },
+        { name: 'Mentions The Daily Stoic', weight: 3, check: containsAnyNormalized(BOOKS_SOURCE_TRUTH.dailyStoic.aliases) },
+        { name: 'Mentions 366 meditations', weight: 2, check: containsAnyNormalized(['366 meditations', '366']) },
+        { name: 'Has citation markers', weight: 2, check: hasCitationMarkers() },
+        { name: 'Does not claim content is unavailable', weight: 2, check: containsNone(['i do not have the content', 'summary not available', 'not available in the current context']) },
       ],
+      retrievalExpectation: {
+        expectedSources: [BOOKS_SOURCE_TRUTH.dailyStoic.title],
+        requiredTerms: ['daily stoic', '366'],
+        requireCitation: true,
+      },
+      pipelineExpectation: {
+        expectedSources: [BOOKS_SOURCE_TRUTH.dailyStoic.title],
+        expectedRouteKind: 'grounded',
+        expectedIntent: 'question',
+        requireRetrievalAttempted: true,
+        minReturnedSources: 1,
+      },
     }],
   },
   {
-    id: 'B03',
-    name: 'Source attribution -- Shona and Zimbabwe books',
+    id: 'BW02',
+    name: 'Exact retrieval -- FSI Shona dialects',
+    dimension: 'detail-retrieval',
+    description: 'Retrieve the dialects listed in the FSI Shona preface.',
+    turns: [{
+      prompt: 'According to the FSI Shona book, which dialects is the standardized form based on? Cite the source.',
+      assertions: [
+        { name: 'Mentions Zezuru', weight: 2, check: containsAnyNormalized(['Zezuru']) },
+        { name: 'Mentions Manyika', weight: 2, check: containsAnyNormalized(['Manyika']) },
+        { name: 'Mentions Korekore', weight: 2, check: containsAnyNormalized(['Korekore']) },
+        { name: 'Has citation markers', weight: 2, check: hasCitationMarkers() },
+        { name: 'Does not refuse coverage', weight: 1, check: containsNone(['do not have the content', 'cannot summarize']) },
+      ],
+      retrievalExpectation: {
+        expectedSources: [BOOKS_SOURCE_TRUTH.fsiShona.title],
+        requiredTerms: ['Zezuru', 'Manyika', 'Korekore'],
+        requireCitation: true,
+      },
+      pipelineExpectation: {
+        expectedSources: [BOOKS_SOURCE_TRUTH.fsiShona.title],
+        expectedRouteKind: 'grounded',
+        expectedIntent: 'question',
+        requireRetrievalAttempted: true,
+        minReturnedSources: 1,
+      },
+    }],
+  },
+  {
+    id: 'BW03',
+    name: 'Content understanding -- How Change Happens',
     dimension: 'source-attribution',
-    description: 'Answer a category query with source citations.',
+    description: 'Retrieve authorship and core theme from How Change Happens using explicit grounding.',
     turns: [{
-      prompt: 'What books do I have about Shona language or culture? Please cite sources.',
+      prompt: 'Who wrote How Change Happens, and what core idea is highlighted in its opening praise pages? Cite the source.',
       assertions: [
-        { name: 'Mentions a Shona dictionary or phrasebook', weight: 2, check: containsAny(['shona-english', 'dictionary', 'phrasebook']) },
-        { name: 'Mentions Tsumo or Broken roots or FSI Shona', weight: 2, check: containsAny(['tsumo', 'broken roots', 'fsi']) },
-        { name: 'Has citation markers', weight: 2, check: hasCitationMarkers },
+        { name: 'Mentions Duncan Green', weight: 2, check: containsAnyNormalized(['Duncan Green']) },
+        { name: 'Mentions power or politics', weight: 2, check: containsAnyNormalized(['power', 'politics']) },
+        { name: 'Mentions institutions or social change', weight: 2, check: containsAnyNormalized(['institutions', 'social change', 'change']) },
+        { name: 'Has citation markers', weight: 2, check: hasCitationMarkers() },
+        { name: 'Does not hallucinate another author', weight: 1, check: containsNone(['Ryan Holiday', 'Stephen Hanselman']) },
       ],
+      retrievalExpectation: {
+        expectedSources: [BOOKS_SOURCE_TRUTH.howChangeHappens.title],
+        requiredTerms: ['Duncan Green', 'power'],
+        requireCitation: true,
+      },
+      pipelineExpectation: {
+        expectedSources: [BOOKS_SOURCE_TRUTH.howChangeHappens.title],
+        expectedRouteKind: 'grounded',
+        expectedIntent: 'question',
+        requireRetrievalAttempted: true,
+        minReturnedSources: 1,
+      },
     }],
   },
   {
-    id: 'B04',
-    name: 'Format awareness -- epub files',
-    dimension: 'detail-retrieval',
-    description: 'Identify EPUB content in the workspace.',
-    turns: [{
-      prompt: 'Do I have any EPUB files in this Books workspace?',
-      assertions: [
-        { name: 'Mentions EPUB format', weight: 1, check: containsAny(['epub']) },
-        { name: 'Mentions Dramatic Color in the Landscape or I Will Teach You to Be Rich', weight: 3, check: containsAny(['dramatic color in the landscape', 'i will teach you to be rich']) },
-        { name: 'Does not claim there are no EPUB files', weight: 1, check: containsNone(['no epub', 'no epub files', 'none']) },
-      ],
-    }],
-  },
-  {
-    id: 'B05',
-    name: 'Detail retrieval -- docx file',
-    dimension: 'detail-retrieval',
-    description: 'Find the DOCX file in the Art subtree.',
-    turns: [{
-      prompt: 'Is there a DOCX file anywhere in this workspace?',
-      assertions: [
-        { name: 'Mentions DOCX format', weight: 1, check: containsAny(['docx']) },
-        { name: 'Mentions oil_painting_guide_final', weight: 3, check: containsAny(['oil_painting_guide_final']) },
-        { name: 'Mentions Art or Chat GPT folder context', weight: 1, check: containsAny(['art', 'chat gpt']) },
-      ],
-    }],
-  },
-  {
-    id: 'B06',
-    name: 'Multi-doc synthesis -- duplicate titles across folders',
+    id: 'BW04',
+    name: 'Cross-folder duplicate title detection',
     dimension: 'multi-doc-synthesis',
-    description: 'Identify titles that appear in more than one folder.',
+    description: 'Confirm that known duplicate titles exist in both Activism and Black Consciousness.',
     turns: [{
-      prompt: 'Do any book titles appear in more than one folder? Give me a couple of examples.',
+      prompt: 'Do the titles Black Skin, White Masks and Freedom Is a Constant Struggle both appear in Activism and Black Consciousness? Answer directly and cite sources.',
       assertions: [
-        { name: 'Mentions Black Skin, White Masks duplicate', weight: 2, check: containsAll(['black skin', 'white masks']) },
-        { name: 'Mentions another duplicate title', weight: 2, check: containsAny(['freedom is a constant struggle', 'nihilism and negritude']) },
-        { name: 'Mentions both Activism and Black Consciousness', weight: 2, check: containsAll(['activism', 'black consciousness']) },
+        { name: 'Mentions Black Skin, White Masks', weight: 2, check: containsAnyNormalized(['Black Skin, White Masks']) },
+        { name: 'Mentions Freedom Is a Constant Struggle', weight: 2, check: containsAnyNormalized(['Freedom Is a Constant Struggle']) },
+        { name: 'Mentions Activism', weight: 2, check: containsAnyNormalized(['Activism']) },
+        { name: 'Mentions Black Consciousness', weight: 2, check: containsAnyNormalized(['Black Consciousness']) },
+        { name: 'Has citation markers', weight: 1, check: hasCitationMarkers() },
       ],
+      retrievalExpectation: {
+        expectedSources: [
+          BOOKS_SOURCE_TRUTH.blackSkinWhiteMasks.title,
+          BOOKS_SOURCE_TRUTH.freedomConstantStruggle.title,
+        ],
+        requiredTerms: ['Activism', 'Black Consciousness'],
+        requireCitation: true,
+      },
+      pipelineExpectation: {
+        expectedSources: [
+          BOOKS_SOURCE_TRUTH.blackSkinWhiteMasks.title,
+          BOOKS_SOURCE_TRUTH.freedomConstantStruggle.title,
+        ],
+        expectedRouteKind: 'grounded',
+        expectedIntent: 'question',
+        requireRetrievalAttempted: true,
+        minReturnedSources: 2,
+      },
     }],
   },
   {
-    id: 'B07',
+    id: 'BW05',
+    name: 'Coverage job -- summarize each file in Activism',
+    dimension: 'deep-retrieval',
+    description: 'The assistant should treat this as a coverage job, not a representative retrieval question.',
+    turns: [{
+      prompt: 'Read each file in the Activism folder and give me exactly one sentence per file. If coverage is incomplete, say that coverage is incomplete.',
+      assertions: [
+        { name: 'Mentions Black Skin, White Masks', weight: 1, check: containsAnyNormalized([BOOKS_SOURCE_TRUTH.blackSkinWhiteMasks.title]) },
+        { name: 'Mentions Freedom Is a Constant Struggle', weight: 1, check: containsAnyNormalized([BOOKS_SOURCE_TRUTH.freedomConstantStruggle.title]) },
+        { name: 'Mentions How Change Happens', weight: 1, check: containsAnyNormalized([BOOKS_SOURCE_TRUTH.howChangeHappens.title]) },
+        { name: 'Mentions Nihilism and Negritude', weight: 1, check: containsAnyNormalized([BOOKS_SOURCE_TRUTH.nihilismNegritude.title]) },
+        { name: 'Mentions Sara Ahmed Trying to Transform', weight: 1, check: containsAnyNormalized([BOOKS_SOURCE_TRUTH.saraAhmed.title]) },
+        { name: 'Mentions Slacktivism', weight: 1, check: containsAnyNormalized([BOOKS_SOURCE_TRUTH.slacktivism.title]) },
+        { name: 'Does not use unavailable-content excuse', weight: 3, check: containsNone(['i do not have the content', 'summary not available', 'not available in the current context', 'cannot summarize this file']) },
+        { name: 'Substantial multi-file response', weight: 2, check: lengthBetween(200, 8000) },
+      ],
+      retrievalExpectation: {
+        expectedSources: ACTIVISM_SOURCE_IDS.map((sourceId) => BOOKS_SOURCE_TRUTH[sourceId].title),
+      },
+      pipelineExpectation: {
+        expectedSources: ACTIVISM_SOURCE_IDS.map((sourceId) => BOOKS_SOURCE_TRUTH[sourceId].title),
+        expectedRouteKind: 'grounded',
+        expectedIntent: 'exploration',
+        expectedCoverageMode: 'exhaustive',
+        requireRetrievalAttempted: true,
+        minReturnedSources: 4,
+      },
+    }],
+  },
+  {
+    id: 'BW06',
     name: 'Follow-up -- stoicism drill-down',
     dimension: 'follow-up',
-    description: 'Handle a folder query and then a follow-up narrowing to a title detail.',
+    description: 'Handle a workspace query about Shona books and then narrow correctly on follow-up.',
     turns: [
       {
-        prompt: 'What books are in the Stoicism folder?',
+        prompt: 'Name three books in this workspace about Shona language or culture. Cite the sources.',
         assertions: [
-          { name: 'Mentions The Daily Stoic', weight: 2, check: containsAll(['daily', 'stoic']) },
+          { name: 'Mentions FSI Shona', weight: 2, check: containsAnyNormalized(BOOKS_SOURCE_TRUTH.fsiShona.aliases) },
+          { name: 'Mentions Shona dictionary', weight: 2, check: containsAnyNormalized(BOOKS_SOURCE_TRUTH.shonaDictionary.aliases) },
+          { name: 'Mentions Tsumo', weight: 2, check: containsAnyNormalized(BOOKS_SOURCE_TRUTH.tsumo.aliases) },
+          { name: 'Has citation markers', weight: 1, check: hasCitationMarkers() },
         ],
+        retrievalExpectation: {
+          expectedSources: [
+            BOOKS_SOURCE_TRUTH.fsiShona.title,
+            BOOKS_SOURCE_TRUTH.shonaDictionary.title,
+            BOOKS_SOURCE_TRUTH.tsumo.title,
+          ],
+          requireCitation: true,
+        },
+        pipelineExpectation: {
+          expectedSources: [
+            BOOKS_SOURCE_TRUTH.fsiShona.title,
+            BOOKS_SOURCE_TRUTH.shonaDictionary.title,
+            BOOKS_SOURCE_TRUTH.tsumo.title,
+          ],
+          expectedRouteKind: 'grounded',
+          expectedIntent: 'question',
+          requireRetrievalAttempted: true,
+          minReturnedSources: 2,
+        },
       },
       {
-        prompt: 'Which one mentions 366 meditations?',
+        prompt: 'Which one is the 1965 Foreign Service Institute course?',
         assertions: [
-          { name: 'Resolves follow-up to The Daily Stoic', weight: 3, check: containsAll(['daily', 'stoic']) },
-          { name: 'Mentions 366 meditations', weight: 2, check: containsAny(['366', 'meditations']) },
+          { name: 'Resolves follow-up to FSI Shona', weight: 3, check: containsAnyNormalized(BOOKS_SOURCE_TRUTH.fsiShona.aliases) },
+          { name: 'Mentions 1965', weight: 2, check: containsAnyNormalized(['1965']) },
+          { name: 'Does not switch to dictionary or Tsumo', weight: 1, check: containsNone(['dictionary and phrasebook', 'tsumo']) },
         ],
+        retrievalExpectation: {
+          expectedSources: [BOOKS_SOURCE_TRUTH.fsiShona.title],
+          requiredTerms: ['1965', 'Foreign Service Institute'],
+        },
+        pipelineExpectation: {
+          expectedSources: [BOOKS_SOURCE_TRUTH.fsiShona.title],
+          expectedRouteKind: 'grounded',
+          expectedIntent: 'question',
+          requireRetrievalAttempted: true,
+          minReturnedSources: 1,
+        },
       },
     ],
   },
   {
-    id: 'B08',
-    name: 'Deep retrieval -- cross-category comparison',
-    dimension: 'deep-retrieval',
-    description: 'Compare two large categories using grounded example titles.',
+    id: 'BW07',
+    name: 'Honesty guard -- no support in Stoicism',
+    dimension: 'hallucination-guard',
+    description: 'The assistant should refuse unsupported claims instead of fabricating a stoicism/cookies match.',
     turns: [{
-      prompt: 'Compare the Art and Data Science folders at a high level using example titles from each.',
+      prompt: 'In the Stoicism folder, which book is about baking chocolate chip cookies? If none, say that none of the Stoicism books appear to be about that.',
       assertions: [
-        { name: 'Mentions Art folder', weight: 1, check: containsAny(['art']) },
-        { name: 'Mentions Data Science folder', weight: 1, check: containsAny(['data science']) },
-        { name: 'Includes an Art example title', weight: 2, check: containsAny(['how to draw', 'dynamic bible', 'landscape painting', 'morpho']) },
-        { name: 'Includes a Data Science example title', weight: 2, check: containsAny(['python cookbook', 'ggplot2', 'gis in r', 'statistical analysis with excel']) },
+        { name: 'States there is no support', weight: 3, check: containsAnyNormalized(['none of the stoicism books', 'no evidence', 'none appear to be about that']) },
+        { name: 'Does not hallucinate a cookie book', weight: 3, check: containsNone(['the daily stoic is about baking', 'cookie recipe', 'chocolate chip cookie']) },
+        { name: 'Keeps response concise', weight: 1, check: lengthBetween(30, 800) },
       ],
     }],
   },
   {
-    id: 'B09',
-    name: 'Conversational -- off-topic redirect in Books workspace',
-    dimension: 'conversational',
-    description: 'Off-topic prompts should redirect back to the Books workspace context.',
+    id: 'BW08',
+    name: 'Exact format/file-presence check -- EPUB and PDF pair',
+    dimension: 'workspace-exploration',
+    description: 'Confirm the workspace contains both EPUB and PDF versions of the same title.',
     turns: [{
-      prompt: "What's the best recipe for chocolate chip cookies?",
+      prompt: 'Do I have both an EPUB and a PDF copy of I Will Teach You to Be Rich in this workspace?',
       assertions: [
-        { name: 'Does not provide a recipe', weight: 3, check: containsNone(['cup of flour', 'baking soda', 'vanilla extract', 'preheat oven', '350 degrees', '375 degrees']) },
-        { name: 'Redirects to books or workspace context', weight: 2, check: containsAny(['workspace', 'books', 'files', 'documents']) },
-        { name: 'Polite tone', weight: 1, check: containsAny(['sorry', 'can help', 'happy to help', 'however']) },
+        { name: 'Mentions I Will Teach You to Be Rich', weight: 2, check: containsAnyNormalized(BOOKS_SOURCE_TRUTH.richEpub.aliases) },
+        { name: 'Mentions EPUB', weight: 2, check: containsAnyNormalized(['epub']) },
+        { name: 'Mentions PDF', weight: 2, check: containsAnyNormalized(['pdf']) },
+        { name: 'Affirms both are present', weight: 2, check: containsAnyNormalized(['both', 'yes']) },
       ],
+      retrievalExpectation: {
+        expectedSources: [BOOKS_SOURCE_TRUTH.richEpub.title],
+        requiredTerms: ['epub', 'pdf'],
+      },
+      pipelineExpectation: {
+        expectedSources: [BOOKS_SOURCE_TRUTH.richEpub.title],
+        expectedRouteKind: 'grounded',
+        expectedIntent: 'question',
+        requireRetrievalAttempted: true,
+        minReturnedSources: 1,
+      },
     }],
   },
 ];

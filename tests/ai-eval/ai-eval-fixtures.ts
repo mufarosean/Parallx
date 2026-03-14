@@ -84,6 +84,7 @@ export interface ChatEvalDebugSnapshot {
         reasoning: string;
         needsRetrieval: boolean;
         queries: string[];
+        coverageMode?: 'representative' | 'exhaustive';
       };
     };
     sessionId?: string;

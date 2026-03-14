@@ -493,6 +493,8 @@ test researcher and second-brain scenarios directly.
 
 Tasks:
 
+1. establish the Books workspace AI eval harness as the primary Milestone 37
+   acceptance benchmark for researcher-style corpus trust;
 1. add AI evals for exhaustive summaries, corpus comparisons, exact lookups,
    and fail-closed behavior;
 2. validate on mixed file types and messy workspaces;
