@@ -162,11 +162,11 @@ After Milestone 35:
 
 ### Phase C — Runtime normalization
 
-- [ ] Audit remaining user-facing consumers of `IMemoryService.getAllMemories()`,
+- [x] Audit remaining user-facing consumers of `IMemoryService.getAllMemories()`,
       `getPreferences()`, and `getAllConcepts()`.
-- [ ] Reclassify each remaining DB-memory dependency as one of:
+- [x] Reclassify each remaining DB-memory dependency as one of:
       migration-only, fallback-only, or must-be-reworked.
-- [ ] Prefer canonical markdown-backed reads in user-facing memory flows.
+- [x] Prefer canonical markdown-backed reads in user-facing memory flows.
 
 ### Phase D — Product clarity
 
@@ -234,3 +234,21 @@ Completed in this slice:
 Focused validation completed:
 
 1. `npm run test:unit -- workspaceMemoryService.test.ts chatDataServiceMemoryRecall.test.ts unifiedAIConfigService.test.ts` ✅
+
+### 2026-03-13 — Runtime normalization audit and memory-viewer cleanup
+
+Completed in this slice:
+
+1. audited the remaining consumers of `IMemoryService.getAllMemories()`,
+   `getPreferences()`, and `getAllConcepts()` and classified them as:
+   migration-only in workbench startup, fallback-only in chat memory recall,
+   and a user-facing rework target in the chat memory viewer opener;
+2. updated the chat memory viewer opener so, when workspace memory is available,
+   missing canonical session summaries are backfilled into markdown and opened
+   from `.parallx/memory/` instead of showing a DB-era readonly memory view;
+3. kept the readonly legacy viewer only as a compatibility fallback for older
+   environments that do not have workspace memory services available.
+
+Focused validation completed:
+
+1. `npm run test:unit -- chatViewerOpeners.test.ts workspaceMemoryService.test.ts chatDataServiceMemoryRecall.test.ts` ✅

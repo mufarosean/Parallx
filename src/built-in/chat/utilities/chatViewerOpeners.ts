@@ -95,6 +95,25 @@ export async function openChatMemoryViewer(deps: IOpenChatMemoryViewerDeps): Pro
         await deps.openFileEditor(fsPath, { pinned: false });
         return;
       }
+
+      if (deps.memoryService) {
+        const memories = await deps.memoryService.getAllMemories();
+        const match = memories.find((memory) => memory.sessionId === deps.sessionId);
+        if (match) {
+          const createdAt = new Date(match.createdAt);
+          const summaryDate = Number.isNaN(createdAt.getTime()) ? new Date() : createdAt;
+          await deps.workspaceMemoryService.appendSessionSummary(
+            match.sessionId,
+            match.summary,
+            match.messageCount,
+            summaryDate,
+          );
+          const canonicalPath = deps.workspaceMemoryService.getDailyMemoryRelativePath(summaryDate);
+          const fsPath = resolveChatOpenFilePath(canonicalPath, deps.workspaceFolders);
+          await deps.openFileEditor(fsPath, { pinned: false });
+          return;
+        }
+      }
     }
 
     if (!deps.memoryService || !deps.editorService) {

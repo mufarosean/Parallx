@@ -88,4 +88,40 @@ describe('chat viewer openers', () => {
     expect(openFileEditor).toHaveBeenCalledWith('D:/AI/Parallx/demo-workspace/.parallx/memory/2026-03-12.md', { pinned: false });
     expect(ReadonlyMarkdownInput.create).not.toHaveBeenCalled();
   });
+
+  it('backfills and opens a canonical markdown summary when only legacy DB memory exists', async () => {
+    const openFileEditor = vi.fn().mockResolvedValue(undefined);
+    const workspaceMemoryService = {
+      findSessionSummaryRelativePath: vi.fn().mockResolvedValue(undefined),
+      appendSessionSummary: vi.fn().mockResolvedValue(undefined),
+      getDailyMemoryRelativePath: vi.fn(() => '.parallx/memory/2026-03-08.md'),
+    } as any;
+    const memoryService = {
+      getAllMemories: vi.fn().mockResolvedValue([
+        {
+          sessionId: 'session-1',
+          createdAt: '2026-03-08T00:00:00.000Z',
+          messageCount: 3,
+          summary: 'Summary text.',
+        },
+      ]),
+    } as any;
+
+    await openChatMemoryViewer({
+      sessionId: 'session-1',
+      workspaceMemoryService,
+      memoryService,
+      workspaceFolders: [{ uri: { fsPath: 'D:/AI/Parallx/demo-workspace' } }],
+      openFileEditor,
+    });
+
+    expect(workspaceMemoryService.appendSessionSummary).toHaveBeenCalledWith(
+      'session-1',
+      'Summary text.',
+      3,
+      new Date('2026-03-08T00:00:00.000Z'),
+    );
+    expect(openFileEditor).toHaveBeenCalledWith('D:/AI/Parallx/demo-workspace/.parallx/memory/2026-03-08.md', { pinned: false });
+    expect(ReadonlyMarkdownInput.create).not.toHaveBeenCalled();
+  });
 });
