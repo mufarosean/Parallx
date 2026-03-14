@@ -296,7 +296,7 @@ describe('WorkspaceMemoryService', () => {
     expect(searchResults[0].concept).toBe('Coverage reasoning');
   });
 
-  it('does not import the same legacy snapshot twice once the marker exists', async () => {
+  it('treats identical legacy snapshots as already imported once canonical entries are present', async () => {
     const workspaceService = createWorkspaceService('D:/AI/Parallx/demo-workspace');
     const fileService = createFileServiceMock();
     const service = new WorkspaceMemoryService(fileService.service, workspaceService);
@@ -320,10 +320,10 @@ describe('WorkspaceMemoryService', () => {
           sessionId: 'legacy-session',
           createdAt: '2026-03-11T12:00:00.000Z',
           messageCount: 4,
-          summary: 'Should not duplicate.',
+          summary: 'Imported legacy summary.',
         },
       ],
-      preferences: [{ key: 'duplicate', value: 'no' }],
+      preferences: [],
       concepts: [],
     });
 
@@ -331,5 +331,74 @@ describe('WorkspaceMemoryService', () => {
     const dailyMemory = fileService.files.get('D:/AI/Parallx/demo-workspace/.parallx/memory/2026-03-11.md')!;
     expect((dailyMemory.match(/## Session legacy-session/g) ?? [])).toHaveLength(1);
     expect(dailyMemory).not.toContain('Should not duplicate.');
+  });
+
+  it('backfills missing canonical entries even when the legacy import marker already exists', async () => {
+    const workspaceService = createWorkspaceService('D:/AI/Parallx/demo-workspace');
+    const fileService = createFileServiceMock();
+    const service = new WorkspaceMemoryService(fileService.service, workspaceService);
+
+    await service.importLegacySnapshot({
+      memories: [
+        {
+          sessionId: 'legacy-session',
+          createdAt: '2026-03-11T12:00:00.000Z',
+          messageCount: 4,
+          summary: 'Imported legacy summary.',
+        },
+      ],
+      preferences: [
+        { key: 'answer-style', value: 'structured brevity' },
+      ],
+      concepts: [
+        {
+          concept: 'coverage reasoning',
+          category: 'insurance',
+          summary: 'User asked about policy coverage logic.',
+          encounterCount: 3,
+          masteryLevel: 0.6,
+        },
+      ],
+    });
+
+    fileService.files.set(
+      'D:/AI/Parallx/demo-workspace/.parallx/memory/MEMORY.md',
+      '# Durable Memory\n\n## Legacy Import\n\n- Imported legacy DB snapshot: yes\n- Imported at: 2026-03-12T00:00:00.000Z\n',
+    );
+    fileService.files.delete('D:/AI/Parallx/demo-workspace/.parallx/memory/2026-03-11.md');
+
+    const result = await service.importLegacySnapshot({
+      memories: [
+        {
+          sessionId: 'legacy-session',
+          createdAt: '2026-03-11T12:00:00.000Z',
+          messageCount: 4,
+          summary: 'Imported legacy summary.',
+        },
+      ],
+      preferences: [
+        { key: 'answer-style', value: 'structured brevity' },
+      ],
+      concepts: [
+        {
+          concept: 'coverage reasoning',
+          category: 'insurance',
+          summary: 'User asked about policy coverage logic.',
+          encounterCount: 3,
+          masteryLevel: 0.6,
+        },
+      ],
+    });
+
+    expect(result).toEqual({ imported: true, reason: 'imported' });
+
+    const durableMemory = fileService.files.get('D:/AI/Parallx/demo-workspace/.parallx/memory/MEMORY.md')!;
+    const dailyMemory = fileService.files.get('D:/AI/Parallx/demo-workspace/.parallx/memory/2026-03-11.md')!;
+
+    expect(durableMemory).toContain('## Preferences');
+    expect(durableMemory).toContain('## Concepts');
+    expect(durableMemory).toContain('Imported legacy DB snapshot: yes');
+    expect(durableMemory).toContain('Last normalized at:');
+    expect(dailyMemory).toContain('## Session legacy-session');
   });
 });

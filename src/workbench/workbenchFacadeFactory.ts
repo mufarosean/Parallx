@@ -164,21 +164,11 @@ export function registerFacadeServices(deps: FacadeFactoryDeps): IDisposable[] {
   if (services.has(IWorkspaceMemoryService) && services.has(IMemoryService)) {
     const workspaceMemoryService = services.get(IWorkspaceMemoryService);
     const memoryService = services.get(IMemoryService);
-    workspaceMemoryService.importLegacySnapshot({
-      memories: [],
-      preferences: [],
-      concepts: [],
-    }).then(async (result) => {
-      if (result.reason === 'already-imported') {
-        return;
-      }
-
-      const [memories, preferences, concepts] = await Promise.all([
+    Promise.all([
         memoryService.getAllMemories().catch(() => []),
         memoryService.getPreferences().catch(() => []),
         memoryService.getAllConcepts().catch(() => []),
-      ]);
-
+      ]).then(([memories, preferences, concepts]) => {
       return workspaceMemoryService.importLegacySnapshot({
         memories: memories.map((memory) => ({
           sessionId: memory.sessionId,

@@ -64,6 +64,15 @@ function extractMarkdownSection(content: string, heading: string): string | unde
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function extractLegacyImportTimestamp(section: string | undefined): string | undefined {
+  if (!section) {
+    return undefined;
+  }
+
+  const match = section.match(/^- Imported at: (.+)$/m);
+  return match?.[1]?.trim() || undefined;
+}
+
 function parsePreferenceLines(section: string | undefined): Array<{ key: string; value: string }> {
   if (!section) {
     return [];
@@ -513,35 +522,64 @@ export class WorkspaceMemoryService extends Disposable implements IWorkspaceMemo
 
     const durableMemory = await this.readDurableMemory();
     const existingImportSection = extractMarkdownSection(durableMemory, LEGACY_IMPORT_SECTION_HEADING);
-    if (existingImportSection?.includes('Imported legacy DB snapshot: yes')) {
-      return { imported: false, reason: 'already-imported' };
-    }
+    const alreadyImported = existingImportSection?.includes('Imported legacy DB snapshot: yes') === true;
 
     const hasContent = snapshot.memories.length > 0 || snapshot.preferences.length > 0 || snapshot.concepts.length > 0;
     if (!hasContent) {
       return { imported: false, reason: 'empty-snapshot' };
     }
 
-    if (snapshot.preferences.length > 0) {
-      await this.syncPreferences(snapshot.preferences);
+    const existingPreferences = await this.readPreferences();
+    const existingPreferenceKeys = new Set(existingPreferences.map((preference) => preference.key));
+    const missingPreferences = snapshot.preferences.filter((preference) => !existingPreferenceKeys.has(preference.key));
+    if (missingPreferences.length > 0) {
+      await this.upsertPreferences(missingPreferences);
     }
 
-    if (snapshot.concepts.length > 0) {
-      await this.syncConcepts(snapshot.concepts);
+    const existingConcepts = await this.readConcepts();
+    const existingConceptKeys = new Set(existingConcepts.map((concept) => normalizeConceptKey(concept.concept)));
+    const missingConcepts = snapshot.concepts.filter((concept) => !existingConceptKeys.has(normalizeConceptKey(concept.concept)));
+    if (missingConcepts.length > 0) {
+      await this.upsertConcepts(missingConcepts.map((concept) => ({
+        concept: concept.concept,
+        category: concept.category,
+        summary: concept.summary,
+        encounterCount: concept.encounterCount,
+        masteryLevel: concept.masteryLevel,
+        struggleCount: 0,
+      })));
     }
 
+    let importedMemories = 0;
     for (const memory of snapshot.memories) {
+      if (await this.hasSessionSummary(memory.sessionId)) {
+        continue;
+      }
       const createdAt = new Date(memory.createdAt);
       await this.appendSessionSummary(memory.sessionId, memory.summary, memory.messageCount, Number.isNaN(createdAt.getTime()) ? new Date() : createdAt);
+      importedMemories++;
+    }
+
+    const importedPreferences = missingPreferences.length;
+    const importedConcepts = missingConcepts.length;
+    const appliedChanges = importedMemories > 0 || importedPreferences > 0 || importedConcepts > 0;
+
+    if (!appliedChanges && alreadyImported) {
+      return { imported: false, reason: 'already-imported' };
     }
 
     const refreshedDurableMemory = await this.readDurableMemory();
+    const importedAt = extractLegacyImportTimestamp(existingImportSection) ?? new Date().toISOString();
     const importBody = [
       '- Imported legacy DB snapshot: yes',
-      `- Imported at: ${new Date().toISOString()}`,
+      `- Imported at: ${importedAt}`,
       `- Imported memories: ${snapshot.memories.length}`,
       `- Imported preferences: ${snapshot.preferences.length}`,
       `- Imported concepts: ${snapshot.concepts.length}`,
+      `- Last normalized at: ${new Date().toISOString()}`,
+      `- Canonical memories present: ${snapshot.memories.length - importedMemories}/${snapshot.memories.length}`,
+      `- Canonical preferences present: ${snapshot.preferences.length - importedPreferences}/${snapshot.preferences.length}`,
+      `- Canonical concepts present: ${snapshot.concepts.length - importedConcepts}/${snapshot.concepts.length}`,
     ].join('\n');
     const nextDurableMemory = replaceMarkdownSection(refreshedDurableMemory, LEGACY_IMPORT_SECTION_HEADING, importBody);
     await this.writeDurableMemory(nextDurableMemory);
