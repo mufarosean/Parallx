@@ -191,9 +191,18 @@ describe('chat response parsing helpers', () => {
       expect(footer).toBe('\n\nSources: [4] Agent Contacts.md; [7] Claims Guide.md');
     });
 
-    it('skips the fallback when markdown already names the source document', () => {
+    it('still adds the fallback when markdown names the source document but lacks bracket markers', () => {
       const footer = buildMissingCitationFooter(
         'Recommended shops are listed in Agent Contacts.md.',
+        [{ index: 4, label: 'Agent Contacts.md' }],
+      );
+
+      expect(footer).toBe('\n\nSources: [4] Agent Contacts.md');
+    });
+
+    it('skips the fallback when markdown already has structured citation markers', () => {
+      const footer = buildMissingCitationFooter(
+        'Recommended shops are listed in Agent Contacts.md [4].',
         [{ index: 4, label: 'Agent Contacts.md' }],
       );
 

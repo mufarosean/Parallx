@@ -437,7 +437,7 @@ function _postProcessCitations(
           // Create a clickable superscript citation badge
           const badge = document.createElement('sup');
           badge.className = 'parallx-citation-badge';
-          badge.textContent = String(idx);
+          badge.textContent = `[${idx}]`;
           badge.title = citation.label;
           badge.setAttribute('data-citation-index', String(idx));
           badge.setAttribute('data-citation-uri', citation.uri);

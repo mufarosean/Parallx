@@ -96,11 +96,12 @@ export function buildMissingCitationFooter(
   }
 
   const normalizedText = text.toLowerCase();
+  const hasStructuredCitationMarkers = /\[\d+\]/.test(text);
   const hasVisibleSourceReference = /(^|\n)\s*Sources:\s*/i.test(text) || citations.some(({ label }) => {
     const normalizedLabel = label.toLowerCase();
     return normalizedText.includes(normalizedLabel);
   });
-  if (hasVisibleSourceReference) {
+  if (hasStructuredCitationMarkers || (/([Ss]ources:\s*)/.test(text) && hasVisibleSourceReference)) {
     return '';
   }
 
