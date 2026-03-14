@@ -1463,7 +1463,10 @@ export class ChatDataService {
         if (entry.type === 'file') {
           const relPath = folderPath ? `${folderPath}/${entry.name}` : entry.name;
           try {
-            const content = await this._d.fsAccessor.readFile(relPath);
+            const ext = relPath.includes('.') ? relPath.slice(relPath.lastIndexOf('.')).toLowerCase() : '';
+            const content = this._d.fsAccessor.isRichDocument(ext)
+              ? await this._d.fsAccessor.readDocumentText(relPath)
+              : await this._d.fsAccessor.readFile(relPath);
             results.push({
               relativePath: relPath,
               content: content.length > MAX_FILE_SIZE ? content.slice(0, MAX_FILE_SIZE) + '\n… (truncated)' : content,

@@ -20,6 +20,53 @@ export type { IChatMention, IMentionResolutionResult, IMentionResolutionServices
 // Path can be quoted ("path with spaces") or unquoted (terminated by whitespace).
 const MENTION_RE = /@(file|folder):(?:"([^"]+)"|(\S+))|@(workspace|terminal)\b/g;
 
+export async function buildFolderMentionContext(
+  folderPath: string,
+  services: IMentionResolutionServices,
+  folderCharBudget: number = 100_000,
+): Promise<{ contextBlock: string; pills: IContextPill[] }> {
+  if (!services.listFolderFiles) {
+    throw new Error('Folder listing is not available');
+  }
+
+  const files = await services.listFolderFiles(folderPath);
+  let charCount = 0;
+  let includedCount = 0;
+  const parts: string[] = [];
+  const pills: IContextPill[] = [];
+  parts.push(`[Mentioned folder: ${folderPath}] (${files.length} files)`);
+
+  for (const file of files) {
+    if (charCount + file.content.length > folderCharBudget) {
+      parts.push(`\n... (${files.length - includedCount} more files omitted — token budget)`);
+      break;
+    }
+    parts.push(`\n--- ${file.relativePath} ---\n\`\`\`\n${file.content}\n\`\`\``);
+    charCount += file.content.length;
+    includedCount++;
+    pills.push({
+      id: `mention-folder-file:${file.relativePath}`,
+      label: file.relativePath.split('/').pop() ?? file.relativePath,
+      type: 'attachment',
+      tokens: Math.ceil(file.content.length / 4),
+      removable: true,
+    });
+  }
+
+  pills.unshift({
+    id: `mention-folder:${folderPath}`,
+    label: `${folderPath}/ (${includedCount} files)`,
+    type: 'attachment',
+    tokens: Math.ceil(charCount / 4),
+    removable: true,
+  });
+
+  return {
+    contextBlock: parts.join('\n'),
+    pills,
+  };
+}
+
 /**
  * Extract all mentions from user input text.
  */
@@ -113,31 +160,9 @@ export async function resolveMentions(
       case 'folder': {
         if (!mention.path || !services.listFolderFiles) { break; }
         try {
-          const files = await services.listFolderFiles(mention.path);
-          let charCount = 0;
-          let includedCount = 0;
-          const parts: string[] = [];
-          parts.push(`[Mentioned folder: ${mention.path}] (${files.length} files)`);
-
-          for (const f of files) {
-            if (charCount + f.content.length > folderCharBudget) {
-              parts.push(`\n... (${files.length - includedCount} more files omitted — token budget)`);
-              break;
-            }
-            parts.push(`\n--- ${f.relativePath} ---\n\`\`\`\n${f.content}\n\`\`\``);
-            charCount += f.content.length;
-            includedCount++;
-          }
-
-          const block = parts.join('\n');
-          contextBlocks.push(block);
-          pills.push({
-            id: `mention-folder:${mention.path}`,
-            label: `${mention.path}/ (${includedCount} files)`,
-            type: 'attachment',
-            tokens: Math.ceil(charCount / 4),
-            removable: true,
-          });
+          const folderResult = await buildFolderMentionContext(mention.path, services, folderCharBudget);
+          contextBlocks.push(folderResult.contextBlock);
+          pills.push(...folderResult.pills);
         } catch {
           contextBlocks.push(`[Mentioned folder: ${mention.path}]\n[Could not read folder]`);
         }
