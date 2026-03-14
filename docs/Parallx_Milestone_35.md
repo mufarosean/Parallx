@@ -152,8 +152,8 @@ After Milestone 35:
 
 ### Phase B — AI Settings cleanup
 
-- [ ] Remove the Memory section from the AI Settings panel.
-- [ ] Remove Memory-section wiring from the AI Settings built-in activation
+- [x] Remove the Memory section from the AI Settings panel.
+- [x] Remove Memory-section wiring from the AI Settings built-in activation
       path.
 - [ ] Ensure AI Settings navigation, layout, and search still behave correctly
       after section removal.
@@ -219,3 +219,18 @@ Completed in this slice:
 Focused validation completed:
 
 1. `npm run test:unit -- workspaceMemoryService.test.ts chatDataServiceMemoryRecall.test.ts` ✅
+
+### 2026-03-13 — AI Settings memory-surface removal
+
+Completed in this slice:
+
+1. removed the Memory section from the AI Settings panel so workspace memory
+   content is no longer presented as a configurable AI-settings surface;
+2. removed the AI Settings activation wiring that adapted `IMemoryService`
+   database-era APIs into the panel;
+3. deleted the stale `MemorySection` implementation so AI Settings no longer
+   implies memory CRUD belongs in the settings UI.
+
+Focused validation completed:
+
+1. `npm run test:unit -- workspaceMemoryService.test.ts chatDataServiceMemoryRecall.test.ts unifiedAIConfigService.test.ts` ✅

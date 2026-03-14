@@ -26,8 +26,6 @@ import { RetrievalSection } from './sections/retrievalSection.js';
 import { AgentSection } from './sections/agentSection.js';
 import { IndexingSection } from './sections/indexingSection.js';
 import { ToolsSection } from './sections/toolsSection.js';
-import { MemorySection } from './sections/memorySection.js';
-import type { IMemorySectionServices } from './sections/memorySection.js';
 import { AdvancedSection } from './sections/advancedSection.js';
 import { PreviewSection } from './sections/previewSection.js';
 import type { IToolPickerServices } from '../../services/chatTypes.js';
@@ -49,7 +47,6 @@ export class AISettingsPanel extends Disposable {
     private readonly _languageModelsService?: ILanguageModelsService,
     private readonly _unifiedConfigService?: IUnifiedAIConfigService,
     private readonly _toolPickerServices?: IToolPickerServices,
-    private readonly _memorySectionServices?: IMemorySectionServices,
   ) {
     super();
 
@@ -95,7 +92,6 @@ export class AISettingsPanel extends Disposable {
       this._register(new AgentSection(this._service, this._unifiedConfigService)),
       this._register(new IndexingSection(this._service, this._unifiedConfigService)),
       this._register(new ToolsSection(this._service, this._toolPickerServices, this._unifiedConfigService)),
-      this._register(new MemorySection(this._service, this._memorySectionServices, this._unifiedConfigService)),
       this._register(new AdvancedSection(this._service)),
       this._register(new PreviewSection(this._service)),
     ];
@@ -137,7 +133,6 @@ export class AISettingsPanel extends Disposable {
       { id: 'agent', label: 'Agent' },
       { id: 'indexing', label: 'Indexing' },
       { id: 'tools', label: 'Tools' },
-      { id: 'memory', label: 'Memory' },
       { id: 'advanced', label: 'Advanced' },
       { id: 'preview', label: 'Preview' },
     ];
