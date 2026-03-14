@@ -36,10 +36,11 @@ const RICH_DOCUMENT_EXTENSIONS = new Set([
 ]);
 
 /**
- * Maximum file size for rich document extraction (10 MB).
- * PDFs and Office docs can be large; we cap to avoid memory issues.
+ * Maximum file size for rich document extraction (25 MB).
+ * Study PDFs are often materially larger than lightweight notes; keep the
+ * cap high enough for real workspaces while still guarding pathological files.
  */
-const MAX_RICH_DOC_SIZE = 10 * 1024 * 1024;
+const MAX_RICH_DOC_SIZE = 25 * 1024 * 1024;
 
 // ─── Lazy module loading ────────────────────────────────────────────────────
 // We lazy-load the extraction libraries so they don't slow down app startup.

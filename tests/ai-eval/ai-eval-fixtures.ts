@@ -64,6 +64,12 @@ export interface ChatEvalDebugSnapshot {
     attempted: boolean;
     returnedSources?: number;
   };
+  explicitSourceDebug?: {
+    attempted: boolean;
+    matchedPath?: string;
+    readSucceeded: boolean;
+    reason?: string;
+  };
   runtimeTrace?: {
     route: {
       kind: string;

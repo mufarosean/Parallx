@@ -196,6 +196,12 @@ export interface IChatTestDebugSnapshot {
     attempted: boolean;
     returnedSources?: number;
   };
+  explicitSourceDebug?: {
+    attempted: boolean;
+    matchedPath?: string;
+    readSucceeded: boolean;
+    reason?: string;
+  };
   runtimeTrace?: IChatRuntimeTrace;
   retrievalError?: string;
 }
@@ -206,6 +212,44 @@ export interface IChatTestDebugSnapshot {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_FILE_READ_BYTES = 50 * 1024; // 50 KB per spec
+const MAX_EXPLICIT_SOURCE_CONTEXT_CHARS = 30_000;
+const MAX_EXPLICIT_SOURCE_SCAN_FILES = 2_000;
+const MAX_EXPLICIT_SOURCE_SCAN_DEPTH = 6;
+const EXPLICIT_SOURCE_QUERY_PATTERNS: readonly RegExp[] = [
+  /\baccording to\b/i,
+  /\bin (?:the )?.*\b(?:book|document|file|pdf|guide|paper)\b/i,
+  /\bfrom (?:the )?.*\b(?:book|document|file|pdf|guide|paper)\b/i,
+  /\bwhich (?:book|document|file|pdf|guide|paper)\b/i,
+];
+const EXPLICIT_SOURCE_STOPWORDS = new Set([
+  'a', 'an', 'and', 'art', 'basic', 'book', 'books', 'by', 'cite', 'course', 'document', 'documents', 'file',
+  'files', 'folder', 'from', 'guide', 'in', 'is', 'of', 'on', 'paper', 'pdf', 'please', 'source', 'sources', 'student',
+  'text', 'the', 'this', 'to', 'which', 'work', 'workspace',
+]);
+
+function normalizeExplicitSourceText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\.(pdf|docx|md|txt|epub|xlsx|xls)$/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeExplicitSourceText(text: string): string[] {
+  return normalizeExplicitSourceText(text)
+    .split(/\s+/)
+    .filter((token) => token.length >= 3 && !EXPLICIT_SOURCE_STOPWORDS.has(token));
+}
+
+function shouldUseExplicitSourceFallback(query: string): boolean {
+  return EXPLICIT_SOURCE_QUERY_PATTERNS.some((pattern) => pattern.test(query));
+}
+
+function toDisplayLabel(relativePath: string): string {
+  const parts = relativePath.replace(/\\/g, '/').split('/');
+  return parts[parts.length - 1] || relativePath;
+}
 
 function normalizeWorkspaceRelativePath(relativePath: string): string {
   const normalized = relativePath.replace(/\\/g, '/');
@@ -699,9 +743,10 @@ export class ChatDataService {
   async retrieveContext(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined> {
     if (!this._d.retrievalService) {
       this._lastTestDebugSnapshot = {
+        ...this._lastTestDebugSnapshot,
         query,
         ragSources: [],
-        contextPills: [],
+        contextPills: this._lastTestDebugSnapshot.contextPills,
         isRAGAvailable: this.isRAGAvailable(),
         isIndexing: this.isIndexing(),
         retrievalError: undefined,
@@ -710,15 +755,38 @@ export class ChatDataService {
     }
     if (!this._d.indexingPipelineService?.isInitialIndexComplete) {
       this._lastTestDebugSnapshot = {
+        ...this._lastTestDebugSnapshot,
         query,
         ragSources: [],
-        contextPills: [],
+        contextPills: this._lastTestDebugSnapshot.contextPills,
         isRAGAvailable: this.isRAGAvailable(),
         isIndexing: this.isIndexing(),
         retrievalError: undefined,
       };
       return undefined;
     }
+
+    const explicitSourceResolution = await this._getExplicitSourceContext(query);
+    this._lastTestDebugSnapshot = {
+      ...this._lastTestDebugSnapshot,
+      explicitSourceDebug: explicitSourceResolution.debug,
+    };
+
+    if (explicitSourceResolution.result) {
+      this._lastTestDebugSnapshot = {
+        ...this._lastTestDebugSnapshot,
+        query,
+        retrievedContextText: explicitSourceResolution.result.text,
+        ragSources: explicitSourceResolution.result.sources.map((source) => ({ ...source })),
+        contextPills: this._lastTestDebugSnapshot.contextPills,
+        retrievalTrace: undefined,
+        isRAGAvailable: this.isRAGAvailable(),
+        isIndexing: this.isIndexing(),
+        retrievalError: undefined,
+      };
+      return explicitSourceResolution.result;
+    }
+
     try {
       // No hardcoded overrides — retrieval parameters come from AI Settings
       // (ragTopK, ragMaxPerSource, ragTokenBudget, etc.) via the config
@@ -727,6 +795,7 @@ export class ChatDataService {
       const retrievalTrace = this._d.retrievalService.getLastTrace?.();
       if (chunks.length === 0) {
         this._lastTestDebugSnapshot = {
+          ...this._lastTestDebugSnapshot,
           query,
           ragSources: [],
           contextPills: this._lastTestDebugSnapshot.contextPills,
@@ -740,6 +809,7 @@ export class ChatDataService {
       const text = this._d.retrievalService.formatContext(chunks);
       const sources = this._buildSourceCitations(chunks);
       this._lastTestDebugSnapshot = {
+        ...this._lastTestDebugSnapshot,
         query,
         retrievedContextText: text,
         ragSources: sources.map((source) => ({ ...source })),
@@ -752,6 +822,7 @@ export class ChatDataService {
       return { text, sources };
     } catch (error) {
       this._lastTestDebugSnapshot = {
+        ...this._lastTestDebugSnapshot,
         query,
         ragSources: [],
         contextPills: this._lastTestDebugSnapshot.contextPills,
@@ -760,6 +831,130 @@ export class ChatDataService {
         retrievalError: error instanceof Error ? error.message : String(error),
       };
       return undefined;
+    }
+  }
+
+  private async _getExplicitSourceContext(
+    query: string,
+  ): Promise<{
+    result?: { text: string; sources: Array<{ uri: string; label: string; index: number }> };
+    debug: {
+      attempted: boolean;
+      matchedPath?: string;
+      readSucceeded: boolean;
+      reason?: string;
+    };
+  }> {
+    if (!this._d.fsAccessor || !shouldUseExplicitSourceFallback(query)) {
+      return { debug: { attempted: false, readSucceeded: false, reason: 'query-not-eligible' } };
+    }
+
+    const relativePath = await this._findExplicitSourcePath(query);
+    if (!relativePath) {
+      return { debug: { attempted: true, readSucceeded: false, reason: 'no-matching-path' } };
+    }
+
+    const ext = relativePath.includes('.') ? relativePath.slice(relativePath.lastIndexOf('.')).toLowerCase() : '';
+    let content = '';
+    try {
+      content = this._d.fsAccessor.isRichDocument(ext)
+        ? await this._d.fsAccessor.readDocumentText(relativePath)
+        : await this._d.fsAccessor.readFile(relativePath);
+    } catch {
+      return { debug: { attempted: true, matchedPath: relativePath, readSucceeded: false, reason: 'read-failed' } };
+    }
+
+    const trimmedContent = content.trim();
+    if (!trimmedContent) {
+      return { debug: { attempted: true, matchedPath: relativePath, readSucceeded: false, reason: 'empty-content' } };
+    }
+
+    const excerpt = trimmedContent.length > MAX_EXPLICIT_SOURCE_CONTEXT_CHARS
+      ? `${trimmedContent.slice(0, MAX_EXPLICIT_SOURCE_CONTEXT_CHARS)}\n[…truncated explicit source read]`
+      : trimmedContent;
+    const label = toDisplayLabel(relativePath);
+
+    return {
+      result: {
+        text: [
+          '[Retrieved Context]',
+          '---',
+          `[1] Source: [Source: "${relativePath}"]`,
+          `Path: ${relativePath}`,
+          excerpt,
+          '---',
+        ].join('\n'),
+        sources: [{ uri: relativePath, label, index: 1 }],
+      },
+      debug: {
+        attempted: true,
+        matchedPath: relativePath,
+        readSucceeded: true,
+      },
+    };
+  }
+
+  private async _findExplicitSourcePath(query: string): Promise<string | undefined> {
+    if (!this._d.fsAccessor) {
+      return undefined;
+    }
+
+    const queryTokens = tokenizeExplicitSourceText(query);
+    if (queryTokens.length < 2) {
+      return undefined;
+    }
+
+    const filePaths: string[] = [];
+    await this._collectWorkspaceFilePaths('.', 0, filePaths);
+
+    const scored = filePaths
+      .map((relativePath) => {
+        const label = toDisplayLabel(relativePath);
+        const labelTokens = tokenizeExplicitSourceText(label);
+        const matchedTokens = labelTokens.filter((token) => queryTokens.includes(token));
+        const exactPhraseMatch = normalizeExplicitSourceText(query).includes(normalizeExplicitSourceText(label));
+        const score = matchedTokens.length + (exactPhraseMatch ? 3 : 0);
+        return { relativePath, score, matchedTokens, labelTokens };
+      })
+      .filter((candidate) => candidate.score >= 2 && candidate.matchedTokens.length >= Math.min(2, candidate.labelTokens.length || 2))
+      .sort((a, b) => b.score - a.score || a.relativePath.localeCompare(b.relativePath));
+
+    if (scored.length === 0) {
+      return undefined;
+    }
+
+    return scored[0].relativePath;
+  }
+
+  private async _collectWorkspaceFilePaths(relativePath: string, depth: number, results: string[]): Promise<void> {
+    if (!this._d.fsAccessor || depth > MAX_EXPLICIT_SOURCE_SCAN_DEPTH || results.length >= MAX_EXPLICIT_SOURCE_SCAN_FILES) {
+      return;
+    }
+
+    let entries: readonly { name: string; type: 'file' | 'directory'; size: number }[] = [];
+    try {
+      entries = await this._d.fsAccessor.readdir(relativePath === '.' ? '' : relativePath);
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (results.length >= MAX_EXPLICIT_SOURCE_SCAN_FILES) {
+        break;
+      }
+
+      const childPath = relativePath === '.' || relativePath === ''
+        ? entry.name
+        : `${relativePath}/${entry.name}`;
+
+      if (entry.type === 'file') {
+        results.push(childPath);
+        continue;
+      }
+
+      if (entry.type === 'directory' && !['.git', '.parallx', 'node_modules', 'dist', 'out'].includes(entry.name)) {
+        await this._collectWorkspaceFilePaths(childPath, depth + 1, results);
+      }
     }
   }
 

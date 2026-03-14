@@ -92,6 +92,8 @@ export interface SearchOptions {
   topK?: number;
   /** Filter by source type ('page_block', 'file_chunk'). */
   sourceFilter?: string;
+  /** Restrict search to an explicit set of source IDs (workspace-relative file paths or page IDs). */
+  sourceIds?: string[];
   /** Minimum RRF score threshold. */
   minScore?: number;
   /** Whether to include keyword (FTS5 BM25) search. */
@@ -111,6 +113,7 @@ export interface HybridSearchTrace {
   topK: number;
   candidateK: number;
   sourceFilter?: string;
+  sourceIds?: string[];
   includeKeyword: boolean;
   vectorResultCount: number;
   keywordResultCount: number;
@@ -421,13 +424,13 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     const candidateK = DEFAULT_CANDIDATE_K;
 
     // 1. Vector similarity search
-    const vectorResults = await this._vectorSearch(queryEmbedding, candidateK, options.sourceFilter);
+    const vectorResults = await this._vectorSearch(queryEmbedding, candidateK, options.sourceFilter, options.sourceIds);
 
     // 2. Keyword search (FTS5 BM25)
     let keywordResults: VectorRow[] = [];
     let keywordTrace: KeywordSearchTrace | undefined;
     if (includeKeyword && queryText.trim()) {
-      const keywordSearch = await this._keywordSearch(queryText, candidateK, options.sourceFilter);
+      const keywordSearch = await this._keywordSearch(queryText, candidateK, options.sourceFilter, options.sourceIds);
       keywordResults = keywordSearch.results;
       keywordTrace = keywordSearch.trace;
     }
@@ -459,6 +462,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       topK,
       candidateK,
       sourceFilter: options.sourceFilter,
+      sourceIds: options.sourceIds ? [...options.sourceIds] : undefined,
       includeKeyword,
       vectorResultCount: vectorResults.length,
       keywordResultCount: keywordResults.length,
@@ -483,7 +487,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     topK: number = DEFAULT_TOP_K,
     sourceFilter?: string,
   ): Promise<SearchResult[]> {
-    const rows = await this._vectorSearch(queryEmbedding, topK, sourceFilter);
+    const rows = await this._vectorSearch(queryEmbedding, topK, sourceFilter, undefined);
     return rows.map((r) => ({
       rowid: r.rowid,
       sourceType: r.source_type,
@@ -722,13 +726,14 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     queryEmbedding: number[],
     topK: number,
     sourceFilter?: string,
+    sourceIds?: string[],
   ): Promise<VectorRow[]> {
     const embeddingBlob = float32ArrayToBuffer(queryEmbedding);
 
     let sql: string;
     let params: unknown[];
 
-    if (sourceFilter) {
+    if (sourceFilter || (sourceIds?.length ?? 0) > 0) {
       // vec0 KNN with source_type filter via a subquery approach
       // Note: vec0 WHERE clause only supports embedding MATCH and k constraint
       // We filter after the KNN search
@@ -742,7 +747,10 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
             LEFT JOIN indexing_metadata im ON im.source_type = vec_embeddings.source_type AND im.source_id = vec_embeddings.source_id
              WHERE embedding MATCH ? AND k = ?
              ORDER BY distance`;
-      params = [embeddingBlob, topK * 2]; // Over-fetch to account for filtering
+      const overfetchMultiplier = sourceIds && sourceIds.length > 0
+        ? Math.max(4, sourceIds.length * 4)
+        : 2;
+      params = [embeddingBlob, topK * overfetchMultiplier]; // Over-fetch to account for filtering
     } else {
             sql = `SELECT vec_embeddings.rowid, distance, vec_embeddings.source_type, vec_embeddings.source_id,
               vec_embeddings.chunk_index, vec_embeddings.chunk_text, vec_embeddings.context_prefix,
@@ -760,9 +768,10 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     const rows = await this._db.all<VectorRow>(sql, params);
 
     // Apply source filter if needed
-    if (sourceFilter) {
+    if (sourceFilter || (sourceIds?.length ?? 0) > 0) {
+      const allowedSourceIds = sourceIds ? new Set(sourceIds) : undefined;
       return rows
-        .filter((r) => r.source_type === sourceFilter)
+        .filter((r) => (!sourceFilter || r.source_type === sourceFilter) && (!allowedSourceIds || allowedSourceIds.has(r.source_id)))
         .slice(0, topK);
     }
 
@@ -775,6 +784,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     queryText: string,
     topK: number,
     sourceFilter?: string,
+    sourceIds?: string[],
   ): Promise<{ results: VectorRow[]; trace: KeywordSearchTrace }> {
     // Sanitize query for FTS5 (escape special characters) — AND semantics
     const sanitized = sanitizeFts5Query(queryText);
@@ -793,8 +803,22 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     const runFts = async (ftsQuery: string): Promise<VectorRow[]> => {
       let sql: string;
       let params: unknown[];
+      const sourceIdPlaceholders = sourceIds?.map(() => '?').join(', ');
 
-      if (sourceFilter) {
+      if (sourceFilter || (sourceIds?.length ?? 0) > 0) {
+        const whereClauses = ['fts_chunks MATCH ?'];
+        params = [ftsQuery];
+
+        if (sourceFilter) {
+          whereClauses.push('f.source_type = ?');
+          params.push(sourceFilter);
+        }
+
+        if (sourceIds && sourceIds.length > 0 && sourceIdPlaceholders) {
+          whereClauses.push(`f.source_id IN (${sourceIdPlaceholders})`);
+          params.push(...sourceIds);
+        }
+
         sql = `SELECT f.chunk_id as rowid, f.source_type, f.source_id, f.content,
              v.chunk_index, v.chunk_text, v.context_prefix, f.rank as distance,
              cm.heading_path, cm.parent_heading_path, cm.structural_role,
@@ -804,10 +828,10 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
                JOIN vec_embeddings v ON v.rowid = f.chunk_id
            LEFT JOIN chunk_metadata cm ON cm.chunk_id = f.chunk_id
            LEFT JOIN indexing_metadata im ON im.source_type = f.source_type AND im.source_id = f.source_id
-               WHERE fts_chunks MATCH ? AND f.source_type = ?
+               WHERE ${whereClauses.join(' AND ')}
                ORDER BY f.rank
                LIMIT ?`;
-        params = [ftsQuery, sourceFilter, topK];
+        params.push(topK);
       } else {
         sql = `SELECT f.chunk_id as rowid, f.source_type, f.source_id, f.content,
              v.chunk_index, v.chunk_text, v.context_prefix, f.rank as distance,

@@ -574,6 +574,8 @@ export interface RetrievalOptions {
   topK?: number;
   /** Filter by source type ('page_block', 'file_chunk'). */
   sourceFilter?: string;
+  /** Restrict retrieval to an explicit set of source IDs when the user clearly targets named sources. */
+  sourceIds?: string[];
   /** Minimum relevance score (default: 0.01). */
   minScore?: number;
   /** Whether to include FTS5 keyword search (default: true). */
@@ -724,6 +726,38 @@ interface RetrievalQueryPlan {
   variants: PlannedQueryVariant[];
 }
 
+const EXPLICIT_SOURCE_QUERY_PATTERNS: readonly RegExp[] = [
+  /\baccording to\b/i,
+  /\bin (?:the )?.*\b(?:book|document|file|pdf|guide|paper)\b/i,
+  /\bfrom (?:the )?.*\b(?:book|document|file|pdf|guide|paper)\b/i,
+  /\bwhich (?:book|document|file|pdf|guide|paper)\b/i,
+];
+
+const SOURCE_MATCH_STOPWORDS = new Set([
+  'a', 'an', 'and', 'art', 'basic', 'book', 'books', 'by', 'cite', 'course', 'document', 'documents', 'file',
+  'files', 'folder', 'guide', 'in', 'is', 'of', 'on', 'paper', 'pdf', 'please', 'source', 'sources', 'student',
+  'text', 'the', 'this', 'to', 'which', 'work', 'workspace',
+]);
+
+function normalizeSourceMatchText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\.(pdf|docx|md|txt|epub|xlsx|xls)$/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeSourceMatch(text: string): string[] {
+  return normalizeSourceMatchText(text)
+    .split(/\s+/)
+    .filter((token) => token.length >= 3 && !SOURCE_MATCH_STOPWORDS.has(token));
+}
+
+function shouldAttemptExplicitSourceResolution(query: string): boolean {
+  return EXPLICIT_SOURCE_QUERY_PATTERNS.some((pattern) => pattern.test(query));
+}
+
 interface IVectorStoreTraceAccessor {
   getLastSearchTrace?(): HybridSearchTrace | undefined;
 }
@@ -828,6 +862,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     const cosineThreshold = cfgRetrieval?.ragCosineThreshold ?? DEFAULT_MIN_COSINE_SCORE;
     const dropoffRatio = cfgRetrieval?.ragDropoffRatio ?? DEFAULT_DROPOFF_RATIO;
     const queryPlan = this._buildQueryPlan(query, topK, decompositionMode, candidateBreadth);
+    const explicitSourceIds = options?.sourceIds ?? await this._resolveExplicitSourceIds(query, queryPlan);
 
     // Token budget: 0 = auto (30% of model context window, floor 3000).
     const rawBudget = options?.tokenBudget ?? cfgRetrieval?.ragTokenBudget ?? DEFAULT_TOKEN_BUDGET;
@@ -848,7 +883,10 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       query,
       queryEmbedding,
       queryPlan,
-      options,
+      {
+        ...options,
+        sourceIds: explicitSourceIds,
+      },
     );
     const structuredResults = await this._applyStructureAwareExpansion(candidateResults, queryPlan, topK, structureExpansionMode);
     const rankedResults = this._applyIntentAwareSourceBoost(
@@ -1993,6 +2031,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     const searchOptions: SearchOptions = {
       topK: searchTopK,
       sourceFilter: options?.sourceFilter,
+      sourceIds: options?.sourceIds,
       minScore: 0,
       includeKeyword: options?.includeKeyword ?? true,
     };
@@ -2004,6 +2043,52 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     );
     const trace = (this._vectorStore as IVectorStoreTraceAccessor).getLastSearchTrace?.();
     return { results, trace };
+  }
+
+  private async _resolveExplicitSourceIds(
+    query: string,
+    queryPlan: RetrievalQueryPlan,
+  ): Promise<string[] | undefined> {
+    if (!shouldAttemptExplicitSourceResolution(query)) {
+      return undefined;
+    }
+
+    const indexedSources = await this._vectorStore.getIndexedSources().catch(() => []);
+    const queryTokens = tokenizeSourceMatch(query);
+    if (queryTokens.length < 2) {
+      return undefined;
+    }
+
+    const scored = indexedSources
+      .filter((source) => /file/i.test(source.sourceType))
+      .map((source) => {
+        const baseName = source.sourceId.replace(/\\/g, '/').split('/').pop() ?? source.sourceId;
+        const sourceTokens = tokenizeSourceMatch(baseName);
+        const matchedTokens = sourceTokens.filter((token) => queryTokens.includes(token));
+        const normalizedBaseName = normalizeSourceMatchText(baseName);
+        const normalizedQuery = normalizeSourceMatchText(query);
+        const exactPhraseMatch = normalizedBaseName.length > 0 && normalizedQuery.includes(normalizedBaseName);
+        const identifierOverlap = queryPlan.identifiers.filter((identifier) => normalizeSourceMatchText(identifier) && normalizedBaseName.includes(normalizeSourceMatchText(identifier))).length;
+        const score = matchedTokens.length + (exactPhraseMatch ? 3 : 0) + identifierOverlap;
+        return {
+          sourceId: source.sourceId,
+          score,
+          matchedTokens,
+          sourceTokens,
+        };
+      })
+      .filter((candidate) => candidate.score >= 2 && candidate.matchedTokens.length >= Math.min(2, candidate.sourceTokens.length || 2))
+      .sort((a, b) => b.score - a.score);
+
+    if (scored.length === 0) {
+      return undefined;
+    }
+
+    const topScore = scored[0].score;
+    return scored
+      .filter((candidate) => candidate.score >= Math.max(2, topScore - 1))
+      .slice(0, 3)
+      .map((candidate) => candidate.sourceId);
   }
 
   /**
