@@ -473,3 +473,20 @@ Completed in this slice:
 Focused validation completed:
 
 1. `npm run test:unit -- chatTurnPrelude.test.ts chatDataServiceMemoryRecall.test.ts chatViewerOpeners.test.ts` ✅
+
+### 2026-03-14 — Memory lane narrowing slice
+
+Completed in this slice:
+
+1. introduced a query-scope resolver for canonical memory recall so Parallx can
+   distinguish durable-memory asks from daily-memory asks before searching;
+2. wired canonical memory search to use existing `layer` and `date` filters
+   instead of always searching all memory layers together;
+3. narrowed direct markdown fallback so explicit dated-daily, recent/daily, and
+   durable-memory asks read the right canonical files first;
+4. added focused regression coverage for durable-memory routing, recent daily
+   routing, and explicit dated-daily recall.
+
+Focused validation completed:
+
+1. `npm run test:unit -- chatDataServiceMemoryRecall.test.ts chatTurnPrelude.test.ts chatViewerOpeners.test.ts` ✅

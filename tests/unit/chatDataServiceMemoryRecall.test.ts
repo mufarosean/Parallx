@@ -96,6 +96,10 @@ describe('ChatDataService.recallMemories', () => {
 
     const result = await harness.service.recallMemories('What do you remember about answer preferences?');
 
+    expect(harness.canonicalMemorySearchService.search).toHaveBeenCalledWith(
+      'What do you remember about answer preferences?',
+      { layer: 'durable', date: undefined },
+    );
     expect(result).toContain('[Conversation Memory]');
     expect(result).toContain('Durable memory:');
     expect(result).toContain('structured brevity');
@@ -114,10 +118,30 @@ describe('ChatDataService.recallMemories', () => {
 
     const result = await harness.service.recallMemories('What do you remember about our previous conversation?');
 
+    expect(harness.canonicalMemorySearchService.search).toHaveBeenCalledWith(
+      'What do you remember about our previous conversation?',
+      { layer: 'daily', date: undefined },
+    );
     expect(result).toContain('[Conversation Memory]');
     expect(result).toContain('Daily memory (2026-03-12):');
     expect(result).toContain('ember-rail');
     expect(harness.memoryService.recallMemories).not.toHaveBeenCalled();
+  });
+
+  it('loads an explicitly dated daily memory file for canonical recall', async () => {
+    const harness = createDataService();
+    harness.canonicalMemorySearchService.search.mockResolvedValueOnce([]);
+    harness.fsAccessor.exists.mockResolvedValueOnce(true);
+    harness.fsAccessor.readFile.mockResolvedValueOnce('# 2026-03-11\n\n- Vendor escalation happened here.');
+
+    const result = await harness.service.recallMemories('What happened on 2026-03-11?');
+
+    expect(harness.canonicalMemorySearchService.search).toHaveBeenCalledWith(
+      'What happened on 2026-03-11?',
+      { layer: 'daily', date: '2026-03-11' },
+    );
+    expect(result).toContain('Daily memory (2026-03-11):');
+    expect(result).toContain('Vendor escalation happened here.');
   });
 
   it('falls back to legacy DB memory when canonical memory has no result', async () => {

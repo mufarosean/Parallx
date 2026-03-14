@@ -71,6 +71,52 @@ import { buildChatTokenBarServices } from '../utilities/chatTokenBarAdapter.js';
 import { openChatFile, openChatMemoryViewer } from '../utilities/chatViewerOpeners.js';
 import { computeChatWorkspaceDigest } from '../utilities/chatWorkspaceDigest.js';
 
+function resolveMemoryRecallScope(query: string): {
+  layer: 'all' | 'durable' | 'daily';
+  date?: string;
+  asksForPriorConversationRecall: boolean;
+} {
+  const normalizedQuery = query.toLowerCase().replace(/[’']/g, ' ');
+  const asksForPriorConversationRecall = /(last|previous|prior)\s+(conversation|chat|session)|remember\s+about\s+(?:my|our)\s+(?:last|previous|prior)|recall\s+(?:my|our)\s+(?:last|previous|prior)/i.test(normalizedQuery);
+  const explicitDateMatch = normalizedQuery.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  const hasDailyIndicators = /\b(today|yesterday|recent|recently|earlier today|this morning|this afternoon|tonight)\b/.test(normalizedQuery) || asksForPriorConversationRecall;
+  const hasDurableIndicators = /\b(prefer|preference|preferences|decision|decisions|convention|conventions|rule|rules|style|tone|remember about me|durable)\b/.test(normalizedQuery);
+
+  if (explicitDateMatch?.[1]) {
+    return {
+      layer: 'daily',
+      date: explicitDateMatch[1],
+      asksForPriorConversationRecall,
+    };
+  }
+
+  if (hasDailyIndicators && hasDurableIndicators) {
+    return {
+      layer: 'all',
+      asksForPriorConversationRecall,
+    };
+  }
+
+  if (hasDailyIndicators) {
+    return {
+      layer: 'daily',
+      asksForPriorConversationRecall,
+    };
+  }
+
+  if (hasDurableIndicators) {
+    return {
+      layer: 'durable',
+      asksForPriorConversationRecall,
+    };
+  }
+
+  return {
+    layer: 'all',
+    asksForPriorConversationRecall,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -745,11 +791,13 @@ export class ChatDataService {
 
   async recallMemories(query: string, sessionId?: string): Promise<string | undefined> {
     try {
-      const normalizedQuery = query.toLowerCase().replace(/[’']/g, ' ');
-      const asksForPriorConversationRecall = /(last|previous|prior)\s+(conversation|chat|session)|what\s+do\s+you\s+remember|remember\s+about\s+(?:my|our)\s+(?:last|previous|prior)|recall\s+(?:my|our)\s+(?:last|previous|prior)/i.test(normalizedQuery);
+      const recallScope = resolveMemoryRecallScope(query);
 
       if (this._d.canonicalMemorySearchService) {
-        const memoryResults = await this._d.canonicalMemorySearchService.search(query);
+        const memoryResults = await this._d.canonicalMemorySearchService.search(query, {
+          layer: recallScope.layer,
+          date: recallScope.date,
+        });
         if (memoryResults.length > 0) {
           const formatted = formatCanonicalMemoryContext(
             memoryResults.slice(0, 3).map((result) => ({
@@ -765,12 +813,15 @@ export class ChatDataService {
         }
       }
 
-      if (asksForPriorConversationRecall && this._d.fsAccessor) {
+      if ((recallScope.layer !== 'all' || recallScope.asksForPriorConversationRecall) && this._d.fsAccessor) {
         try {
           const directItems: Array<{ label: string; content: string }> = [];
 
           const durablePath = this._d.workspaceMemoryService?.getDurableMemoryRelativePath() ?? '.parallx/memory/MEMORY.md';
-          const durableExists = await this._d.fsAccessor.exists(durablePath).catch(() => false);
+          const shouldLoadDurable = recallScope.layer === 'durable' || recallScope.layer === 'all';
+          const durableExists = shouldLoadDurable
+            ? await this._d.fsAccessor.exists(durablePath).catch(() => false)
+            : false;
           if (durableExists) {
             const durableContent = await this._d.fsAccessor.readFile(durablePath);
             if (durableContent.trim()) {
@@ -781,17 +832,34 @@ export class ChatDataService {
             }
           }
 
-          const memoryEntries = await this._d.fsAccessor.readdir('.parallx/memory');
-          const latestDaily = memoryEntries
-            .filter((entry) => entry.type === 'file' && /^\d{4}-\d{2}-\d{2}\.md$/i.test(entry.name))
-            .sort((a, b) => b.name.localeCompare(a.name))[0];
-          if (latestDaily) {
-            const dailyContent = await this._d.fsAccessor.readFile(`.parallx/memory/${latestDaily.name}`);
-            if (dailyContent.trim()) {
-              directItems.push({
-                label: `Daily memory (${latestDaily.name.replace(/\.md$/i, '')}):`,
-                content: dailyContent,
-              });
+          const shouldLoadDaily = recallScope.layer === 'daily' || recallScope.layer === 'all';
+          if (shouldLoadDaily) {
+            const requestedDailyPath = recallScope.date ? `.parallx/memory/${recallScope.date}.md` : undefined;
+            if (requestedDailyPath) {
+              const requestedDailyExists = await this._d.fsAccessor.exists(requestedDailyPath).catch(() => false);
+              if (requestedDailyExists) {
+                const dailyContent = await this._d.fsAccessor.readFile(requestedDailyPath);
+                if (dailyContent.trim()) {
+                  directItems.push({
+                    label: `Daily memory (${recallScope.date}):`,
+                    content: dailyContent,
+                  });
+                }
+              }
+            } else {
+              const memoryEntries = await this._d.fsAccessor.readdir('.parallx/memory');
+              const latestDaily = memoryEntries
+                .filter((entry) => entry.type === 'file' && /^\d{4}-\d{2}-\d{2}\.md$/i.test(entry.name))
+                .sort((a, b) => b.name.localeCompare(a.name))[0];
+              if (latestDaily) {
+                const dailyContent = await this._d.fsAccessor.readFile(`.parallx/memory/${latestDaily.name}`);
+                if (dailyContent.trim()) {
+                  directItems.push({
+                    label: `Daily memory (${latestDaily.name.replace(/\.md$/i, '')}):`,
+                    content: dailyContent,
+                  });
+                }
+              }
             }
           }
 
@@ -809,7 +877,7 @@ export class ChatDataService {
       }
 
       let memories = await this._d.memoryService.recallMemories(query);
-      if (memories.length === 0 && asksForPriorConversationRecall) {
+      if (memories.length === 0 && recallScope.asksForPriorConversationRecall) {
         memories = (await this._d.memoryService.getAllMemories()).slice(0, 1);
       }
       if (memories.length > 0) {
