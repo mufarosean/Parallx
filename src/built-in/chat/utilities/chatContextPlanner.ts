@@ -36,12 +36,15 @@ function buildRetrievalPlan(
     case 'grounded':
     default:
       return {
-        intent: 'question',
+        intent: route.coverageMode === 'exhaustive' ? 'exploration' : 'question',
         reasoning: options.hasActiveSlashCommand
           ? 'Slash command is active, so automatic retrieval stays off while normal execution continues.'
-          : 'Direct retrieval uses embedding similarity to filter relevant workspace context.',
+          : route.coverageMode === 'exhaustive'
+            ? 'This request needs exhaustive file-by-file coverage. Use retrieval for discovery, but do not treat representative top-k context as full coverage.'
+            : 'Direct retrieval uses embedding similarity to filter relevant workspace context.',
         needsRetrieval: options.isRagReady && !options.hasActiveSlashCommand,
         queries: [],
+        coverageMode: route.coverageMode ?? 'representative',
       };
   }
 }

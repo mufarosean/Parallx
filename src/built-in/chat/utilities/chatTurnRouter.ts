@@ -60,6 +60,19 @@ function isExplicitTranscriptRecallTurn(text: string): boolean {
   return /\btranscript\b|\bsession\s+history\b|\bchat\s+history\b|what\s+did\s+(?:i|we)\s+(?:say|discuss)|\b(?:last|previous|prior)\s+session\b/.test(normalized);
 }
 
+function isExhaustiveWorkspaceReviewTurn(text: string): boolean {
+  const normalized = normalizeForRouting(text);
+
+  if (!normalized) {
+    return false;
+  }
+
+  const hasExhaustiveLanguage = /(each|every|all|for each)\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|one\s+sentence\s+summary\s+of\s+each|summari[sz]e\s+each\s+(?:file|document|paper|guide|note)|read\s+each\s+(?:file|document|paper|guide|note)/.test(normalized);
+  const hasWorkspaceTarget = /\b(folder|directory|workspace|docs|documents|guides|papers|files)\b/.test(normalized);
+
+  return hasExhaustiveLanguage && hasWorkspaceTarget;
+}
+
 function buildOffTopicRedirectAnswer(text: string): string | undefined {
   const normalized = normalizeForRouting(text);
 
@@ -182,6 +195,9 @@ export function determineChatTurnRoute(
 
   return {
     kind: 'grounded',
-    reason: 'Default grounded route uses normal workspace-aware context planning.',
+    reason: isExhaustiveWorkspaceReviewTurn(text)
+      ? 'This request needs exhaustive file-by-file coverage rather than representative retrieval.'
+      : 'Default grounded route uses normal workspace-aware context planning.',
+    coverageMode: isExhaustiveWorkspaceReviewTurn(text) ? 'exhaustive' : 'representative',
   };
 }

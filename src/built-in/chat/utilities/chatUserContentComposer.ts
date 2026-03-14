@@ -51,6 +51,14 @@ export function composeChatUserContent(
       `Intent: ${options.retrievalPlan.intent}`,
       `Analysis: ${options.retrievalPlan.reasoning}`,
     ];
+    if (options.retrievalPlan.coverageMode === 'exhaustive') {
+      retrievalAnalysisLines.push(
+        'Coverage Mode: exhaustive',
+        'Coverage Contract: This request requires file-by-file or source-by-source coverage. Representative semantic retrieval is not enough.',
+        'Coverage Contract: Use available read-only tools to enumerate and read the relevant files before answering.',
+        'Coverage Contract: Do not invent summaries for files you have not actually read. If coverage is incomplete, say so explicitly.',
+      );
+    }
     if (options.evidenceAssessment.status !== 'sufficient') {
       retrievalAnalysisLines.push(`Evidence: ${options.evidenceAssessment.status}`);
       if (options.evidenceAssessment.reasons.length > 0) {

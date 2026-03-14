@@ -126,6 +126,12 @@ describe('buildSystemPrompt — Ask mode', () => {
     expect(prompt).toContain('semantic search');
   });
 
+  it('includes an exhaustive-coverage exception for retrieved context reuse', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ isRAGAvailable: true }));
+    expect(prompt).toContain('if the user asks for exhaustive file-by-file or folder-wide coverage');
+    expect(prompt).toContain('Use read-only tools to enumerate and read the relevant files before answering.');
+  });
+
   it('omits RAG note when RAG is not available', () => {
     const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ isRAGAvailable: false }));
     expect(prompt).not.toContain('semantic search');
@@ -219,6 +225,11 @@ describe('buildSystemPrompt — Agent mode', () => {
   it('includes rules section', () => {
     const prompt = buildSystemPrompt(ChatMode.Agent, makeContext());
     expect(prompt).toContain('RULES');
+  });
+
+  it('includes the exhaustive-coverage exception in Agent mode too', () => {
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ isRAGAvailable: true }));
+    expect(prompt).toContain('if the user asks for exhaustive file-by-file or folder-wide coverage');
   });
 
   it('mentions user confirmation for write tools', () => {

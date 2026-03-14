@@ -20,7 +20,14 @@ describe('chat runtime routing', () => {
   it('does not route transcript-specific questions into markdown memory recall', () => {
     const route = determineChatTurnRoute('Search the previous session transcript and tell me the deployment codename I mentioned there.');
 
+    expect(route.kind).toBe('transcript-recall');
+  });
+
+  it('marks exhaustive file-by-file review requests as exhaustive coverage turns', () => {
+    const route = determineChatTurnRoute('Read each file in this folder and provide a one sentence summary of each file.');
+
     expect(route.kind).toBe('grounded');
+    expect(route.coverageMode).toBe('exhaustive');
   });
 
   it('routes product semantics as direct answers', () => {
@@ -79,6 +86,15 @@ describe('chat context planning', () => {
     expect(trace.route.kind).toBe('grounded');
     expect(trace.contextPlan.citationMode).toBe('required');
     expect(trace.sessionId).toBe('session-1');
+  });
+
+  it('switches grounded planning into exploration intent for exhaustive coverage turns', () => {
+    const route = determineChatTurnRoute('Summarize each file in this directory in one sentence.');
+    const plan = createChatContextPlan(route, { hasActiveSlashCommand: false, isRagReady: true });
+
+    expect(plan.useRetrieval).toBe(true);
+    expect(plan.retrievalPlan.intent).toBe('exploration');
+    expect(plan.retrievalPlan.coverageMode).toBe('exhaustive');
   });
 
   it('keeps retrieval off for slash-command turns even when rag is ready', () => {

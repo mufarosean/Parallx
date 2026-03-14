@@ -509,3 +509,23 @@ Completed in this slice:
 Focused validation completed:
 
 1. `npm run test:unit -- chatContextAssembly.test.ts chatContextPills.test.ts chatTurnContextPreparation.test.ts chatIndexingUI.test.ts` ✅
+
+### 2026-03-14 — Exhaustive coverage trust-fix slice
+
+Completed in this slice:
+
+1. introduced an explicit `exhaustive` coverage mode in chat retrieval planning
+   for file-by-file or folder-wide review requests instead of treating them as
+   ordinary representative retrieval asks;
+2. changed grounded planning for those turns to use an exploration-oriented
+   retrieval contract, signalling that top-k retrieved context is not full
+   coverage;
+3. added a coverage contract to the composed user content instructing the model
+   to use read-only tools to enumerate and read relevant files before answering,
+   and to avoid inventing summaries for files it has not actually read;
+4. softened the global “use retrieved context directly” prompt rule with an
+   explicit exception for exhaustive file-by-file and folder-wide requests.
+
+Focused validation completed:
+
+1. `npm run test:unit -- chatSystemPrompts.test.ts chatRuntimePlanning.test.ts chatUserContentComposer.test.ts chatTurnPrelude.test.ts` ✅

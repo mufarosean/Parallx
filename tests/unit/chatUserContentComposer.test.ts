@@ -44,7 +44,7 @@ describe('chat user content composer', () => {
         effectiveText: 'what is covered',
         userText: 'what is covered',
         contextParts: ['Retrieved chunk', 'Attachment text'],
-        retrievalPlan: { intent: 'question', reasoning: 'Need policy evidence.', needsRetrieval: true, queries: [] },
+        retrievalPlan: { intent: 'question', reasoning: 'Need policy evidence.', needsRetrieval: true, queries: [], coverageMode: 'representative' },
         evidenceAssessment: { status: 'weak', reasons: ['thin-evidence-set'] },
       },
     );
@@ -70,12 +70,34 @@ describe('chat user content composer', () => {
         effectiveText: 'hello',
         userText: 'hello',
         contextParts: ['Current page'],
-        retrievalPlan: { intent: 'conversational', reasoning: 'No retrieval.', needsRetrieval: false, queries: [] },
+        retrievalPlan: { intent: 'conversational', reasoning: 'No retrieval.', needsRetrieval: false, queries: [], coverageMode: 'representative' },
         evidenceAssessment: { status: 'sufficient', reasons: [] },
       },
     );
 
     expect(result).not.toContain('[Retrieval Analysis]');
     expect(result).toBe('[User Request]\nhello\n\n[Supporting Context]\nCurrent page');
+  });
+
+  it('adds an explicit coverage contract for exhaustive review requests', () => {
+    const result = composeChatUserContent(
+      {
+        applyCommandTemplate: vi.fn(),
+        buildEvidenceResponseConstraint: () => 'Response Constraint: stay grounded.',
+      },
+      {
+        slashResult: { command: undefined, commandName: undefined, remainingText: 'summarize each file' },
+        effectiveText: 'summarize each file',
+        userText: 'summarize each file in the folder',
+        contextParts: ['Retrieved chunk'],
+        retrievalPlan: { intent: 'exploration', reasoning: 'Need exhaustive file coverage.', needsRetrieval: true, queries: [], coverageMode: 'exhaustive' },
+        evidenceAssessment: { status: 'sufficient', reasons: [] },
+      },
+    );
+
+    expect(result).toContain('Coverage Mode: exhaustive');
+    expect(result).toContain('Representative semantic retrieval is not enough.');
+    expect(result).toContain('Use available read-only tools to enumerate and read the relevant files before answering.');
+    expect(result).toContain('Do not invent summaries for files you have not actually read.');
   });
 });

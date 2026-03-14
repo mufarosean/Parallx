@@ -78,7 +78,8 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
     lines.push(
       '- Relevant knowledge from across the workspace is retrieved automatically via semantic search and included in the user\'s message.',
       '- This includes content extracted from PDFs, DOCX, XLSX, and other rich documents — they are fully indexed.',
-      '- When retrieved context appears in the message, USE IT DIRECTLY to answer. Do not re-read the file with a tool — the context IS the file content.',
+      '- When retrieved context already contains enough evidence for the question, USE IT DIRECTLY to answer instead of redundantly re-reading the same source.',
+      '- Exception: if the user asks for exhaustive file-by-file or folder-wide coverage, do not assume retrieved top-k snippets are complete. Use read-only tools to enumerate and read the relevant files before answering.',
     );
   }
   lines.push(
@@ -184,7 +185,8 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     lines.push(
       '- Relevant knowledge from across the workspace is retrieved automatically via semantic search and included in the user\'s message.',
       '- This includes content extracted from PDFs, DOCX, XLSX, and other rich documents — they are fully indexed.',
-      '- When retrieved context appears in the message, USE IT DIRECTLY to answer. Do not re-read the file with a tool — the context IS the file content.',
+      '- When retrieved context already contains enough evidence for the question, USE IT DIRECTLY to answer instead of redundantly re-reading the same source.',
+      '- Exception: if the user asks for exhaustive file-by-file or folder-wide coverage, do not assume retrieved top-k snippets are complete. Use read-only tools to enumerate and read the relevant files before answering.',
     );
   }
   lines.push(
