@@ -1333,6 +1333,97 @@ describe('RetrievalService', () => {
       expect(results[0].sourceId).toBe('src/services/retrievalService.ts');
     });
 
+    it('excludes .parallx internal artifacts from generic grounded retrieval by default', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: '.parallx/ai-config.json',
+          sourceType: 'file_chunk',
+          score: 0.070,
+          contextPrefix: '.parallx/ai-config.json',
+          chunkText: '{"models": ["gpt-oss:20b"]}',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'Claims Guide.md',
+          sourceType: 'file_chunk',
+          score: 0.061,
+          contextPrefix: 'Claims Guide > Filing Basics',
+          chunkText: 'File the claim within 72 hours and call the claims hotline.',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve('How do I file a claim after an accident?');
+
+      expect(results).toHaveLength(1);
+      expect(results[0].sourceId).toBe('Claims Guide.md');
+      expect(service.getLastTrace()?.corpusHygieneDrops).toBe(1);
+    });
+
+    it('can include .parallx artifacts when a caller explicitly opts in', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: '.parallx/memory/MEMORY.md',
+          sourceType: 'file_chunk',
+          score: 0.072,
+          contextPrefix: 'Durable memory',
+          chunkText: 'Preferred answer style: structured brevity.',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([[1, emb]]));
+
+      const results = await service.retrieve('answer style memory', {
+        sourceFilter: 'file_chunk',
+        internalArtifactPolicy: 'include',
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0].sourceId).toBe('.parallx/memory/MEMORY.md');
+      expect(service.getLastTrace()?.corpusHygieneDrops).toBe(0);
+    });
+
+    it('does not apply insurance-agent boosts to unrelated agent architecture queries', async () => {
+      const emb = new Array(768).fill(0.1);
+      embeddingService.embedQuery.mockResolvedValue(emb);
+      vectorStore.search.mockResolvedValue([
+        makeResult({
+          rowid: 1,
+          sourceId: 'Agent Contacts.md',
+          sourceType: 'file_chunk',
+          score: 0.065,
+          contextPrefix: 'Agent Contacts > Your Agent',
+          chunkText: 'Sarah Chen — (555) 234-5678',
+        }),
+        makeResult({
+          rowid: 2,
+          sourceId: 'src/services/agentExecutionService.ts',
+          sourceType: 'file_chunk',
+          score: 0.060,
+          contextPrefix: 'AgentExecutionService > queueApprovalForTask',
+          headingPath: 'queueApprovalForTask',
+          chunkText: 'const queued = await this._sessionService.queueApprovalForTask(taskId, request);',
+          structuralRole: 'code',
+        }),
+      ]);
+      vectorStore.getEmbeddings.mockResolvedValue(new Map([
+        [1, emb],
+        [2, emb],
+      ]));
+
+      const results = await service.retrieve('Where is the agent approval flow implemented?');
+
+      expect(results[0].sourceId).toBe('src/services/agentExecutionService.ts');
+    });
+
     it('prefers figure or caption callouts when the query asks for them', async () => {
       const emb = new Array(768).fill(0.1);
       embeddingService.embedQuery.mockResolvedValue(emb);

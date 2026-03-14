@@ -48,6 +48,7 @@ export class CanonicalMemorySearchService extends Disposable implements ICanonic
     const chunks = await this._retrievalService.retrieve(trimmed, {
       sourceFilter: 'file_chunk',
       topK: options?.topK,
+      internalArtifactPolicy: 'include',
     });
 
     return chunks

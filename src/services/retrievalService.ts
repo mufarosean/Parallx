@@ -290,6 +290,51 @@ function matchesAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text));
 }
 
+function isInternalArtifactPath(sourceId: string): boolean {
+  return /^\.parallx\//i.test(sourceId);
+}
+
+function queryExplicitlyTargetsInternalArtifacts(query: string): boolean {
+  return matchesAny(query.toLowerCase(), [
+    /\.parallx\//,
+    /\bparallx\b/,
+    /\bai-config(?:\.json)?\b/,
+    /\bpermissions\.json\b/,
+    /\bmemory\.md\b/,
+    /\bmemory\s+file\b/,
+    /\btranscript\b/,
+    /\bsession\s+history\b/,
+    /\bsession\s+log\b/,
+  ]);
+}
+
+function isInsuranceCorpusCandidate(result: SearchResult): boolean {
+  const sourceMeta = [
+    result.sourceId,
+    result.contextPrefix,
+    result.headingPath,
+    result.parentHeadingPath,
+    result.chunkText.slice(0, 180),
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .join(' ')
+    .toLowerCase();
+
+  return matchesAny(sourceMeta, [
+    /agent contacts/,
+    /claims guide/,
+    /auto insurance policy/,
+    /accident quick reference/,
+    /vehicle info/,
+    /uninsured motorist/,
+    /underinsured motorist/,
+    /claims hotline/,
+    /deductible/,
+    /total loss/,
+    /kbb/,
+  ]);
+}
+
 type EvidenceRole =
   | 'definition'
   | 'architecture-location'
@@ -537,6 +582,8 @@ export interface RetrievalOptions {
   maxPerSource?: number;
   /** Max total tokens of context to return (default: 4000). */
   tokenBudget?: number;
+  /** Whether internal workspace artifacts such as `.parallx/*` may participate in generic retrieval. */
+  internalArtifactPolicy?: 'exclude' | 'include';
 }
 
 /** A retrieved context chunk with source attribution. */
@@ -600,7 +647,7 @@ export interface RetrievalRerankScoreTrace {
 }
 
 export interface RetrievalDroppedEvidenceTrace extends RetrievalDiagnosticCandidate {
-  droppedAt: 'score-threshold' | 'dropoff' | 'cosine' | 'dedup' | 'token-budget';
+  droppedAt: 'corpus-hygiene' | 'score-threshold' | 'dropoff' | 'cosine' | 'dedup' | 'token-budget';
   detail?: string;
 }
 
@@ -613,6 +660,7 @@ export interface RetrievalTrace {
   cosineThreshold: number;
   dropoffRatio: number;
   rawCandidateCount: number;
+  afterCorpusHygieneCount: number;
   afterScoreFilterCount: number;
   afterStructureExpansionCount: number;
   afterDropoffCount: number;
@@ -621,6 +669,7 @@ export interface RetrievalTrace {
   afterDiversityCount: number;
   afterDedupCount: number;
   finalCount: number;
+  corpusHygieneDrops: number;
   scoreThresholdDrops: number;
   dropoffDrops: number;
   cosineDrops: number;
@@ -802,15 +851,18 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       options,
     );
     const structuredResults = await this._applyStructureAwareExpansion(candidateResults, queryPlan, topK, structureExpansionMode);
-    const rawResults = this._applyIntentAwareSourceBoost(
+    const rankedResults = this._applyIntentAwareSourceBoost(
       this._applyLexicalFocusBoost(structuredResults.results, queryPlan),
       query,
       queryPlan,
     );
     const vectorStoreTrace = vectorStoreTraces.at(-1);
 
+    const corpusHygieneResult = this._applyInternalArtifactHygiene(rankedResults, query, options);
+    const rawResults = corpusHygieneResult.results;
+
     // 3. Score threshold filter (RRF scores)
-    const droppedEvidence: RetrievalDroppedEvidenceTrace[] = [];
+    const droppedEvidence: RetrievalDroppedEvidenceTrace[] = [...corpusHygieneResult.dropped];
     let filtered = rawResults.filter((r) => {
       if (r.score >= minScore) { return true; }
       droppedEvidence.push({
@@ -820,7 +872,9 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       });
       return false;
     });
-    const afterStructureExpansionCount = rawResults.length;
+    const rawCandidateCount = rankedResults.length;
+    const afterStructureExpansionCount = rawCandidateCount;
+    const afterCorpusHygieneCount = rawResults.length;
     const afterScoreFilterCount = filtered.length;
 
     // 3b. Relative score drop-off (configurable, 0 = disabled).
@@ -903,8 +957,9 @@ export class RetrievalService extends Disposable implements IRetrievalService {
           keywordQuery: variant.keywordQuery,
         })),
       },
-      rawCandidateCount: rawResults.length,
+      rawCandidateCount,
       afterStructureExpansionCount,
+      afterCorpusHygieneCount,
       afterScoreFilterCount,
       afterDropoffCount,
       afterCosineCount,
@@ -912,7 +967,8 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       afterDiversityCount,
       afterDedupCount,
       finalCount: finalResults.length,
-      scoreThresholdDrops: rawResults.length - afterScoreFilterCount,
+      corpusHygieneDrops: rawCandidateCount - afterCorpusHygieneCount,
+      scoreThresholdDrops: afterCorpusHygieneCount - afterScoreFilterCount,
       dropoffDrops: afterScoreFilterCount - afterDropoffCount,
       cosineDrops: afterDropoffCount - afterCosineCount,
       dedupDrops: afterCosineCount - afterDedupCount,
@@ -1287,22 +1343,43 @@ export class RetrievalService extends Disposable implements IRetrievalService {
   ): SearchResult[] {
     const normalizedQuery = normalizeQueryKey(stripFormattingRequests(query));
     const isSimple = queryPlan.complexity === 'simple';
-    const wantsAgentContact = matchesAny(normalizedQuery, [
-      /\bagent\b/,
+    const insuranceDomainQuery = matchesAny(normalizedQuery, [
+      /\binsurance\b/,
+      /\bpolicy\b/,
+      /\bclaim\b/,
+      /\bclaims\b/,
+      /\bcoverage\b/,
+      /\bdeductible\b/,
+      /\baccident\b/,
+      /\brepair\b/,
+      /\bdriver\b/,
+      /\bmotorist\b/,
+      /\btotal\s+loss\b/,
+      /\bkbb\b/,
+      /\broadside\b/,
+      /\bhotline\b/,
+    ]);
+    const hasInsuranceCorpusCandidates = results.some((result) => isInsuranceCorpusCandidate(result));
+    const insuranceDomainActive = insuranceDomainQuery || hasInsuranceCorpusCandidates;
+    const wantsAgentContact = insuranceDomainActive && matchesAny(normalizedQuery, [
       /\bcontact\b/,
       /\bphone\b/,
       /\bnumber\b/,
       /\bcall\b/,
+      /\bemail\b/,
+      /\bmy\s+agent\b/,
+      /\byour\s+agent\b/,
+      /\bagent\s+contact\b/,
     ]) && !matchesAny(normalizedQuery, [
       /\brepair\b/,
       /\bshop\b/,
       /\broadside\b/,
       /\bclaims\s+line\b/,
     ]);
-    const wantsRepairShops = matchesAny(normalizedQuery, [/\brepair\b/, /\bshop\b/, /\bshops\b/]);
-    const wantsDeductible = matchesAny(normalizedQuery, [/\bdeductible\b/, /\bcollision\b/, /\bcomprehensive\b/]);
+    const wantsRepairShops = insuranceDomainActive && matchesAny(normalizedQuery, [/\brepair\b/, /\bshop\b/, /\bshops\b/]);
+    const wantsDeductible = insuranceDomainActive && matchesAny(normalizedQuery, [/\bdeductible\b/, /\bcollision\b/, /\bcomprehensive\b/]);
     const wantsWorkspaceDocs = matchesAny(normalizedQuery, [/\bdocuments?\b/, /\bfiles?\b/, /\bworkspace\b/, /\bcontents?\b/]);
-    const wantsClaimFiling = matchesAny(normalizedQuery, [
+    const wantsClaimFiling = insuranceDomainActive && matchesAny(normalizedQuery, [
       /\bfile\b.*\bclaim\b/,
       /\bclaim\b.*\bfile\b/,
       /\bclaims?\s+line\b/,
@@ -1361,7 +1438,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       /\bcallout\b/,
       /\bimage\b/,
     ]);
-    const wantsCoverageDecision = matchesAny(normalizedQuery, [
+    const wantsCoverageDecision = insuranceDomainActive && matchesAny(normalizedQuery, [
       /\bcoverage\b/,
       /\binsurance\b/,
       /\buninsured\b/,
@@ -1955,6 +2032,36 @@ export class RetrievalService extends Disposable implements IRetrievalService {
     }
 
     return { results: deduped, dropped };
+  }
+
+  private _applyInternalArtifactHygiene(
+    results: SearchResult[],
+    query: string,
+    options?: RetrievalOptions,
+  ): { results: SearchResult[]; dropped: RetrievalDroppedEvidenceTrace[] } {
+    const allowInternalArtifacts = options?.internalArtifactPolicy === 'include'
+      || queryExplicitlyTargetsInternalArtifacts(query);
+
+    if (allowInternalArtifacts) {
+      return { results, dropped: [] };
+    }
+
+    const filtered: SearchResult[] = [];
+    const dropped: RetrievalDroppedEvidenceTrace[] = [];
+
+    for (const result of results) {
+      if (result.sourceType === 'file_chunk' && isInternalArtifactPath(result.sourceId)) {
+        dropped.push({
+          ...toDiagnosticCandidate(result),
+          droppedAt: 'corpus-hygiene',
+          detail: `excluded internal artifact from generic retrieval (${result.sourceId})`,
+        });
+        continue;
+      }
+      filtered.push(result);
+    }
+
+    return { results: filtered, dropped };
   }
 
   /**
