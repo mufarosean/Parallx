@@ -327,7 +327,7 @@ export interface IContextPill {
   /** Display label (filename or source description). */
   readonly label: string;
   /** Context source type. */
-  readonly type: 'attachment' | 'rag' | 'system' | 'rule' | 'memory' | 'concept';
+  readonly type: 'attachment' | 'rag' | 'system' | 'rule' | 'memory' | 'transcript' | 'concept';
   /** Estimated token count for this source. */
   readonly tokens: number;
   /** Whether the user can remove this pill (false for system). */
@@ -349,7 +349,7 @@ export interface IChatProvenanceEntry {
   /** Human-readable label shown in the UI. */
   readonly label: string;
   /** Provenance origin category. */
-  readonly kind: 'attachment' | 'page' | 'rag' | 'system' | 'rule' | 'memory' | 'concept';
+  readonly kind: 'attachment' | 'page' | 'rag' | 'system' | 'rule' | 'memory' | 'transcript' | 'concept';
   /** Optional navigable URI/path for clickable sources. */
   readonly uri?: string;
   /** Citation index from retrieval, when applicable. */

@@ -38,7 +38,7 @@ describe('ChatContextPills', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const pills = new ChatContextPills(container);
-    pills.setPills([createPill(), createPill({ id: 'memory:session-recall', label: 'Session memory', type: 'memory' })]);
+    pills.setPills([createPill(), createPill({ id: 'memory:session-recall', label: 'Durable memory', type: 'memory' })]);
 
     const trigger = container.querySelector('.parallx-chat-context-menu-trigger') as HTMLButtonElement;
     trigger.click();
@@ -62,7 +62,8 @@ describe('ChatContextPills', () => {
     pills.setPills([
       createPill({ id: 'system-prompt', label: 'System prompt', type: 'system', removable: false }),
       createPill({ id: 'notes.txt', label: 'notes.txt', type: 'attachment' }),
-      createPill({ id: 'memory:session-recall', label: 'Session memory', type: 'memory' }),
+      createPill({ id: 'memory:session-recall', label: 'Durable memory', type: 'memory' }),
+      createPill({ id: 'transcript:recall', label: 'Transcript recall', type: 'transcript' }),
       createPill({ id: 'rule:claims', label: 'Claims rule', type: 'rule' }),
       createPill({ id: 'concept:recall', label: 'Concept recall', type: 'concept' }),
       createPill({ id: 'Claims Guide.md', label: 'Claims Guide.md', type: 'rag' }),
@@ -76,6 +77,7 @@ describe('ChatContextPills', () => {
       'Attachments',
       'Retrieved Sources',
       'Session Memory',
+      'Transcript Recall',
       'Concept Recall',
       'Rules',
       'System',
@@ -104,7 +106,7 @@ describe('ChatContextPills', () => {
     pills.setPills([
       createPill(),
       createPill({ id: 'notes.txt', label: 'notes.txt', type: 'attachment' }),
-      createPill({ id: 'memory:session-recall', label: 'Session memory', type: 'memory' }),
+      createPill({ id: 'memory:session-recall', label: 'Durable memory', type: 'memory' }),
     ]);
 
     const trigger = container.querySelector('.parallx-chat-context-menu-trigger') as HTMLButtonElement;

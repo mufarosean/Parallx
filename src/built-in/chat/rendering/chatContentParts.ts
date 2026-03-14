@@ -833,7 +833,7 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
   if (part.isCollapsed) {
     root.classList.add('parallx-chat-thinking--collapsed');
   }
-  const sourceEntries = (part.provenance ?? []).filter((entry) => !!entry.uri);
+  const sourceEntries = part.provenance ?? [];
 
   // ── Toggle header ──
   // Builds:  ▶ Thinking · Searching 4 sources · 3 sources
@@ -930,11 +930,13 @@ function _renderThinking(part: IChatThinkingContent): HTMLElement {
     sourcesSection.appendChild(sourcesToggle);
 
     for (const ref of sourceEntries) {
-      const pill = _renderReference({
-        kind: ChatContentPartKind.Reference,
-        uri: ref.uri!,
-        label: ref.index != null ? `[${ref.index}] ${ref.label}` : ref.label,
-      });
+      const pill = ref.uri
+        ? _renderReference({
+            kind: ChatContentPartKind.Reference,
+            uri: ref.uri,
+            label: ref.index != null ? `[${ref.index}] ${ref.label}` : ref.label,
+          })
+        : _renderStaticProvenancePill(ref);
       pillsRow.appendChild(pill);
     }
     sourcesSection.appendChild(pillsRow);
@@ -1022,6 +1024,41 @@ function _renderReference(part: IChatReferenceContent): HTMLElement {
       ? `Open page: ${part.label}`
       : `Open file: ${part.label}`;
 
+  return root;
+}
+
+function _renderStaticProvenancePill(entry: { label: string; kind: 'attachment' | 'page' | 'rag' | 'system' | 'rule' | 'memory' | 'transcript' | 'concept' }): HTMLElement {
+  const root = $('span.parallx-chat-reference.parallx-chat-reference--static');
+
+  const icon = $('span.parallx-chat-reference-icon');
+  switch (entry.kind) {
+    case 'transcript':
+      icon.innerHTML = chatIcons.history;
+      break;
+    case 'memory':
+      icon.innerHTML = chatIcons.sparkleSmall;
+      break;
+    case 'concept':
+      icon.innerHTML = chatIcons.sparkleSmall;
+      break;
+    case 'system':
+    case 'rule':
+      icon.innerHTML = chatIcons.gear;
+      break;
+    case 'attachment':
+      icon.innerHTML = chatIcons.file;
+      break;
+    default:
+      icon.innerHTML = chatIcons.file;
+      break;
+  }
+  root.appendChild(icon);
+
+  const label = $('span.parallx-chat-reference-label');
+  label.textContent = entry.label;
+  root.appendChild(label);
+
+  root.title = entry.label;
   return root;
 }
 

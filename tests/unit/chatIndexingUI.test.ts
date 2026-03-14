@@ -214,6 +214,8 @@ describe('renderContentPart — Thinking provenance visibility', () => {
       isCollapsed: false,
       provenance: [
         { id: 'Claims Guide.md', label: 'Claims Guide.md', kind: 'rag', uri: 'Claims Guide.md', index: 1, tokens: 120, removable: true },
+        { id: 'memory:session-recall', label: 'Durable memory', kind: 'memory', tokens: 80, removable: true },
+        { id: 'transcript:recall', label: 'Transcript recall', kind: 'transcript', tokens: 60, removable: true },
       ],
     });
 
@@ -222,6 +224,9 @@ describe('renderContentPart — Thinking provenance visibility', () => {
 
     expect(sourcesSection.classList.contains('parallx-chat-thinking-sources--collapsed')).toBe(true);
     expect(sourcesLabel.textContent).toBe('Sources Considered');
+    expect(el.textContent).toContain('3 sources');
+    expect(el.textContent).toContain('Durable memory');
+    expect(el.textContent).toContain('Transcript recall');
   });
 });
 

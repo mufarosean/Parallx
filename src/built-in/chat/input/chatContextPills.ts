@@ -33,6 +33,7 @@ const CONTEXT_PILL_GROUP_ORDER: ContextPillGroupKey[] = [
   'attachment',
   'rag',
   'memory',
+  'transcript',
   'concept',
   'rule',
   'system',
@@ -46,6 +47,8 @@ function getContextPillGroupLabel(type: ContextPillGroupKey): string {
       return 'Retrieved Sources';
     case 'memory':
       return 'Session Memory';
+    case 'transcript':
+      return 'Transcript Recall';
     case 'concept':
       return 'Concept Recall';
     case 'rule':

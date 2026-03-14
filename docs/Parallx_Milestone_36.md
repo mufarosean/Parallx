@@ -490,3 +490,22 @@ Completed in this slice:
 Focused validation completed:
 
 1. `npm run test:unit -- chatDataServiceMemoryRecall.test.ts chatTurnPrelude.test.ts chatViewerOpeners.test.ts` ✅
+
+### 2026-03-14 — Provenance lane visibility slice
+
+Completed in this slice:
+
+1. upgraded chat provenance so transcript recall is tracked as its own source
+   kind instead of being lumped into generic memory provenance;
+2. made memory provenance labels more explicit by distinguishing generic,
+   durable, daily, and mixed memory recall labels in the existing provenance
+   model;
+3. updated the existing “Sources Considered” UI so non-URI provenance lanes
+   such as memory, transcript recall, and concept recall are rendered as visible
+   static source pills instead of being silently dropped;
+4. updated the context-pill grouping model so transcript recall can appear as a
+   distinct source group in pre-send context transparency.
+
+Focused validation completed:
+
+1. `npm run test:unit -- chatContextAssembly.test.ts chatContextPills.test.ts chatTurnContextPreparation.test.ts chatIndexingUI.test.ts` ✅

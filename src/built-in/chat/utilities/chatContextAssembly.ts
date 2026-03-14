@@ -86,6 +86,22 @@ function provenanceToPill(entry: IChatProvenanceEntry): IContextPill | undefined
   };
 }
 
+function resolveMemoryProvenanceLabel(memoryResult: string): string {
+  const hasDurable = /Durable memory:/i.test(memoryResult);
+  const hasDaily = /Daily memory \(/i.test(memoryResult);
+
+  if (hasDurable && hasDaily) {
+    return 'Daily + durable memory';
+  }
+  if (hasDurable) {
+    return 'Durable memory';
+  }
+  if (hasDaily) {
+    return 'Daily memory';
+  }
+  return 'Memory recall';
+}
+
 export async function assembleChatContext(
   deps: IChatContextAssemblyDeps,
   options: IChatContextAssemblyOptions,
@@ -192,7 +208,7 @@ export async function assembleChatContext(
     }
     appendProvenance(provenance, {
       id: memoryId,
-      label: 'Session memory',
+      label: resolveMemoryProvenanceLabel(options.memoryResult),
       kind: 'memory',
       tokens: Math.ceil(memoryContext.length / 4),
       removable: true,
@@ -209,7 +225,7 @@ export async function assembleChatContext(
     appendProvenance(provenance, {
       id: transcriptId,
       label: 'Transcript recall',
-      kind: 'memory',
+      kind: 'transcript',
       tokens: Math.ceil(transcriptContext.length / 4),
       removable: true,
     });

@@ -41,14 +41,14 @@ describe('chat context assembly', () => {
     expect(result.provenance.map((entry) => ({ kind: entry.kind, label: entry.label, index: entry.index }))).toEqual([
       { kind: 'page', label: 'Claims', index: undefined },
       { kind: 'rag', label: 'Claims Guide.md', index: 1 },
-      { kind: 'memory', label: 'Session memory', index: undefined },
+      { kind: 'memory', label: 'Memory recall', index: undefined },
       { kind: 'concept', label: 'Concept recall', index: undefined },
       { kind: 'attachment', label: 'notes.txt', index: undefined },
     ]);
     expect(result.pills.map((pill) => pill.label)).toEqual([
       'System prompt',
       'Claims Guide.md',
-      'Session memory',
+      'Memory recall',
       'Concept recall',
       'notes.txt',
       'Claims rule',

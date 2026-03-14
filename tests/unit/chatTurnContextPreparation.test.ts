@@ -28,6 +28,7 @@ describe('chat turn context preparation', () => {
           intent: 'question',
           useRetrieval: true,
           useMemoryRecall: true,
+          useTranscriptRecall: false,
           useConceptRecall: true,
           useCurrentPage: false,
           citationMode: 'required',
