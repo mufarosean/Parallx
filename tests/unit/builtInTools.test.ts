@@ -466,3 +466,36 @@ describe('memory_search tool', () => {
     expect(result.content).toContain('No canonical memory results found');
   });
 });
+
+describe('search_knowledge tool', () => {
+  it('passes folder_path as pathPrefixes to the retrieval function', async () => {
+    const retrieval = createMockRetrieval({
+      retrieve: vi.fn(async () => [
+        { sourceType: 'file_chunk', sourceId: 'RF Guides/doc1.md', contextPrefix: 'RF Guides', text: 'scoped result', score: 0.8 },
+      ]),
+    });
+    const toolsService = createMockToolsService();
+    registerBuiltInTools(toolsService, createMockDb(), createMockFs(), undefined, retrieval, createMockCanonicalMemorySearch());
+    const tool = toolsService.registeredTools.find(t => t.name === 'search_knowledge')!;
+
+    const result = await tool.handler({ query: 'test query', folder_path: 'RF Guides' }, createToken());
+
+    expect(retrieval.retrieve).toHaveBeenCalledWith('test query', undefined, ['RF Guides/']);
+    expect(result.content).toContain('scoped result');
+  });
+
+  it('omits pathPrefixes when folder_path is not provided', async () => {
+    const retrieval = createMockRetrieval({
+      retrieve: vi.fn(async () => [
+        { sourceType: 'page_block', sourceId: 'p1', contextPrefix: 'Overview', text: 'global result', score: 0.7 },
+      ]),
+    });
+    const toolsService = createMockToolsService();
+    registerBuiltInTools(toolsService, createMockDb(), createMockFs(), undefined, retrieval, createMockCanonicalMemorySearch());
+    const tool = toolsService.registeredTools.find(t => t.name === 'search_knowledge')!;
+
+    await tool.handler({ query: 'test query' }, createToken());
+
+    expect(retrieval.retrieve).toHaveBeenCalledWith('test query', undefined, undefined);
+  });
+});

@@ -603,6 +603,53 @@ describe('VectorStoreService', () => {
       expect(trace?.keywordTrace?.andResultCount).toBe(0);
       expect(trace?.fusedResultCount).toBeGreaterThan(0);
     });
+
+    it('filters results by pathPrefixes in vector search (post-query)', async () => {
+      db.all.mockResolvedValueOnce([
+        vectorRow(1, 'file_chunk', 'RF Guides/doc1.md', 0, 'In-scope chunk'),
+        vectorRow(2, 'file_chunk', 'Other/doc2.md', 0, 'Out-of-scope chunk'),
+        vectorRow(3, 'file_chunk', 'RF Guides/doc3.md', 1, 'Another in-scope'),
+      ]);
+      db.all.mockResolvedValueOnce([]); // keyword search
+
+      const results = await service.search(
+        [0.1, 0.2],
+        'test query',
+        { pathPrefixes: ['RF Guides/'] },
+      );
+
+      // Only RF Guides/ sources should remain
+      expect(results.every((r) => r.sourceId.startsWith('RF Guides/'))).toBe(true);
+      expect(results.length).toBe(2);
+    });
+
+    it('applies pathPrefixes filter in keyword search via SQL LIKE clause', async () => {
+      db.all.mockResolvedValueOnce([]); // vector search
+      db.all.mockResolvedValueOnce([
+        vectorRow(1, 'file_chunk', 'claims/doc.md', 0, 'Claims chunk'),
+      ]); // keyword search
+
+      await service.search(
+        [0.1],
+        'claims info',
+        { pathPrefixes: ['claims/'] },
+      );
+
+      // The keyword SQL should include LIKE clause for the path prefix
+      const keywordCall = db.all.mock.calls[1];
+      expect(keywordCall[0]).toContain('LIKE');
+      expect(keywordCall[1]).toContain('claims/%');
+    });
+
+    it('records pathPrefixes in the search trace', async () => {
+      db.all.mockResolvedValueOnce([]); // vector
+      db.all.mockResolvedValueOnce([]); // keyword
+
+      await service.search([0.1], 'test', { pathPrefixes: ['docs/'] });
+
+      const trace = service.getLastSearchTrace();
+      expect(trace?.pathPrefixes).toEqual(['docs/']);
+    });
   });
 
   describe('vectorSearch()', () => {
