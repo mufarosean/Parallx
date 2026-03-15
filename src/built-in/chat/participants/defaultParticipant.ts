@@ -33,6 +33,7 @@ import { tryExecuteCompactChatCommand } from '../utilities/chatCompactCommand.js
 import { applyChatAnswerRepairPipeline } from '../utilities/chatAnswerRepairPipeline.js';
 import { buildExecutionPlan } from '../utilities/chatExecutionPlanner.js';
 import { gatherEvidence, computeCoverage } from '../utilities/chatEvidenceGatherer.js';
+import { buildExecutionPlanPromptSection } from '../config/chatSystemPrompts.js';
 import { handleEarlyDeterministicAnswer, handlePreparedContextDeterministicAnswer } from '../utilities/chatDeterministicResponse.js';
 import {
   assessEvidenceSufficiency as _assessEvidenceSufficiency,
@@ -252,6 +253,13 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     const coverageRecord = evidenceBundle
       ? computeCoverage(evidenceBundle)
       : undefined;
+
+    // Append execution plan context to the system message so the model
+    // knows the scope and workflow constraints for this turn.
+    const planPromptSection = buildExecutionPlanPromptSection(executionPlan, queryScope, coverageRecord);
+    if (planPromptSection && messages.length > 0 && messages[0].role === 'system') {
+      messages[0] = { ...messages[0], content: messages[0].content + planPromptSection };
+    }
 
     const {
       contextParts,
