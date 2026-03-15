@@ -3,10 +3,12 @@ import type {
   IChatContextPlan,
   IChatTurnRoute,
   IDefaultParticipantServices,
+  IQueryScope,
   IRetrievalPlan,
   IMentionResolutionServices,
 } from '../chatTypes.js';
 import { buildFolderMentionContext, extractMentions, resolveMentions } from './chatMentionResolver.js';
+import { resolveQueryScope } from './chatScopeResolver.js';
 import { determineChatTurnRoute } from './chatTurnRouter.js';
 import { createChatContextPlan, createChatRuntimeTrace } from './chatContextPlanner.js';
 
@@ -24,6 +26,7 @@ function inferExhaustiveFolderPath(text: string): string | undefined {
 type IChatTurnPreludeDeps = Pick<
   IDefaultParticipantServices,
   | 'readFileContent'
+  | 'listFilesRelative'
   | 'listFolderFiles'
   | 'retrieveContext'
   | 'getTerminalOutput'
@@ -56,6 +59,7 @@ export interface IPreparedChatTurnPrelude {
   readonly contextPlan: IChatContextPlan;
   readonly retrievalPlan: IRetrievalPlan;
   readonly isConversationalTurn: boolean;
+  readonly queryScope: IQueryScope;
 }
 
 function createMentionResolutionServices(deps: IChatTurnPreludeDeps): IMentionResolutionServices {
@@ -137,6 +141,19 @@ export async function prepareChatTurnPrelude(
     },
   ));
 
+  // ── Scope resolution ────
+  const mentionScope = {
+    folders: mentions
+      .filter((m): m is typeof m & { kind: 'folder'; path: string } => m.kind === 'folder' && 'path' in m)
+      .map((m) => m.path),
+    files: mentions
+      .filter((m): m is typeof m & { kind: 'file'; path: string } => m.kind === 'file' && 'path' in m)
+      .map((m) => m.path),
+  };
+  const queryScope = await resolveQueryScope(userText, mentionScope, {
+    listFilesRelative: deps.listFilesRelative,
+  });
+
   deps.reportRetrievalDebug?.({
     hasActiveSlashCommand: input.hasActiveSlashCommand,
     isRagReady,
@@ -154,5 +171,6 @@ export async function prepareChatTurnPrelude(
     contextPlan,
     retrievalPlan,
     isConversationalTurn,
+    queryScope,
   };
 }
