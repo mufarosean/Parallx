@@ -167,6 +167,7 @@ handleChatTurn()                 — defaultParticipant.ts
 | No `chatKnowledgeTaskExecutor.ts` exists | — | — |
 | No `CoverageManifest` or `SourceEvidenceRecord` types exist | — | — |
 | Pipeline is strictly linear — no branching, no re-planning, no intermediate validation | `defaultParticipant.ts` | — |
+| Deterministic answers exist as pattern-matched shortcuts, not as a coverage substrate | `chatDeterministicResponse.ts`, `chatDeterministicExecutors.ts` | — |
 
 ### What M37 implemented vs proposed
 
@@ -529,6 +530,13 @@ booleans (`useRetrieval`, `useMemoryRecall`, etc.) instead of ordered steps.
 quick-path plan for generic grounded queries (task class A). `IExecutionPlan`
 is used when the planner detects a non-trivial workflow.
 
+**Relationship to deterministic answers:** `chatDeterministicResponse.ts` and
+`chatDeterministicExecutors.ts` already implement pattern-matched deterministic
+responses (e.g., session summaries, /init outputs). These are not the same as
+M38 execution plans — they are shortcut answers that bypass the model entirely.
+M38's execution plans still route through model synthesis, but with engine-
+gathered scoped evidence instead of global RAG.
+
 ### C. Evidence bundle
 
 Source-keyed evidence that preserves identity through the pipeline.
@@ -616,6 +624,17 @@ before any retrieval or tool use occurs.
      - Falls back to `level: 'workspace'` when no scope is detectable.
      - Subsumes `inferExhaustiveFolderPath()` — that function becomes a
        special case of scope resolution.
+
+     **Existing infrastructure to build on:**
+     - `_resolveExplicitSourceIds()` in `retrievalService.ts` (L2048) already
+       maps "according to [book]" references to source IDs using filename
+       similarity. This is the closest existing entity resolver. The new
+       `resolveQueryScope()` generalizes this pattern from retrieval-time
+       ad-hoc resolution to pipeline-time first-class scope resolution.
+     - The workspace digest (computed via `appendWorkspaceStats()` in
+       `chatSystemPrompts.ts` L206) already contains file/folder names and
+       page titles. This precomputed data can serve as the candidate set for
+       fuzzy entity matching without requiring a filesystem scan on every turn.
 
 0.3. Wire `resolveQueryScope()` into the pipeline between routing and planning
      (in `prepareChatTurnPrelude()` at L78 or `defaultParticipant.ts`).
