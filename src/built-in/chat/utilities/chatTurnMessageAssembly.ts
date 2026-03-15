@@ -22,6 +22,7 @@ type IChatTurnMessageAssemblyDeps = Pick<
   | 'isIndexing'
   | 'aiSettingsService'
   | 'unifiedConfigService'
+  | 'getWorkflowSkillCatalog'
 >;
 
 export interface IAssembleChatTurnMessagesInput {
@@ -71,6 +72,7 @@ export async function assembleChatTurnMessages(
     promptOverlay,
     workspaceDigest,
     workspaceDescription,
+    skillCatalog: services.getWorkflowSkillCatalog?.(),
   };
 
   const systemPrompt = buildSystemPrompt(input.mode, promptContext);

@@ -351,3 +351,59 @@ describe('buildSystemPrompt — skill catalog', () => {
     expect(addedTokens).toBeLessThan(500);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// M39 Phase C: buildSkillInstructionSection
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import { buildSkillInstructionSection } from '../../src/built-in/chat/config/chatSystemPrompts.js';
+import type { IActivatedSkill } from '../../src/built-in/chat/chatTypes.js';
+
+describe('buildSkillInstructionSection', () => {
+  const mockSkill: IActivatedSkill = {
+    manifest: {
+      name: 'exhaustive-summary',
+      description: 'Summarize every file',
+      version: '1.0.0',
+      author: 'parallx',
+      permission: 'auto-allow',
+      parameters: [],
+      tags: ['workflow', 'summary'],
+      body: 'Step 1: Enumerate files\nStep 2: Read each\nStep 3: Summarize',
+      relativePath: '.parallx/skills/exhaustive-summary/SKILL.md',
+      kind: 'workflow',
+      disableModelInvocation: false,
+      userInvocable: true,
+    },
+    resolvedBody: 'Step 1: Enumerate files\nStep 2: Read each\nStep 3: Summarize',
+    activatedBy: 'planner',
+  };
+
+  it('wraps content in <skill_instructions> tags', () => {
+    const section = buildSkillInstructionSection(mockSkill);
+    expect(section).toContain('<skill_instructions>');
+    expect(section).toContain('</skill_instructions>');
+  });
+
+  it('includes the skill name', () => {
+    const section = buildSkillInstructionSection(mockSkill);
+    expect(section).toContain('exhaustive-summary');
+  });
+
+  it('includes the resolved body', () => {
+    const section = buildSkillInstructionSection(mockSkill);
+    expect(section).toContain('Step 1: Enumerate files');
+    expect(section).toContain('Step 3: Summarize');
+  });
+
+  it('includes activation source', () => {
+    const section = buildSkillInstructionSection(mockSkill);
+    expect(section).toContain('planner');
+  });
+
+  it('includes behavioral instruction for the model', () => {
+    const section = buildSkillInstructionSection(mockSkill);
+    expect(section).toContain('Follow these step-by-step instructions');
+    expect(section).toContain('Do not skip steps');
+  });
+});

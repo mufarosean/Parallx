@@ -140,6 +140,7 @@ const FOLDER_RULES: Record<string, string[]> = {
   'utilities/chatWidgetRequestAdapter.ts':   [],
   'utilities/chatWidgetSessionAdapter.ts':   [],
   'utilities/chatTokenBarAdapter.ts':        ['widgets/'],
+  'utilities/chatSkillMatcher.ts':           [],
   'utilities/userCommandLoader.ts':   [],
 };
 

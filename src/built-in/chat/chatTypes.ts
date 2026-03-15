@@ -118,6 +118,10 @@ export interface IDefaultParticipantServices {
   aiSettingsService?: { getActiveProfile(): import('../../aiSettings/aiSettingsTypes.js').AISettingsProfile };
   /** Unified AI Config service for all configuration (M20). */
   unifiedConfigService?: IUnifiedAIConfigService;
+  /** M39: Return lightweight catalog of workflow skills for prompt injection. */
+  getWorkflowSkillCatalog?(): ISkillCatalogEntry[];
+  /** M39: Return full skill manifest by name (for activation). */
+  getSkillManifest?(name: string): import('../../services/skillLoaderService.js').ISkillManifest | undefined;
 }
 
 /** Services injected into the @workspace participant. */
@@ -330,6 +334,21 @@ export interface ISkillCatalogEntry {
   readonly description: string;
   readonly kind: SkillKind;
   readonly tags: readonly string[];
+}
+
+/** Tier 2 — result of matching user intent to a workflow skill. */
+export interface ISkillMatchResult {
+  readonly matched: boolean;
+  readonly skill?: ISkillCatalogEntry;
+  readonly reason: string;
+}
+
+/** Tier 3 — fully activated skill with resolved body ready for injection. */
+export interface IActivatedSkill {
+  readonly manifest: import('../../services/skillLoaderService.js').ISkillManifest;
+  readonly resolvedBody: string;
+  readonly activatedBy: 'planner' | 'user';
+  readonly scope?: IQueryScope;
 }
 
 export type ChatTurnRouteKind =

@@ -357,3 +357,29 @@ export function buildExecutionPlanPromptSection(
 
   return lines.join('\n');
 }
+
+// ── M39: Skill instruction injection ──
+
+import type { IActivatedSkill } from '../chatTypes.js';
+
+/**
+ * Build a system-prompt addon that injects an activated skill's full body.
+ * The skill instructions are wrapped in `<skill_instructions>` tags so the
+ * model can identify them as authoritative workflow guidance.
+ */
+export function buildSkillInstructionSection(skill: IActivatedSkill): string {
+  const lines: string[] = [
+    '',
+    '<skill_instructions>',
+    `ACTIVATED SKILL: ${skill.manifest.name}`,
+    `Activated by: ${skill.activatedBy}`,
+    '',
+    'Follow these step-by-step instructions carefully. They take priority over',
+    'your general behavior for this turn. Use the available tools to complete',
+    'each step. Do not skip steps or summarize the instructions.',
+    '',
+    skill.resolvedBody,
+    '</skill_instructions>',
+  ];
+  return lines.join('\n');
+}

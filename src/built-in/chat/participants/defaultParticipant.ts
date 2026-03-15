@@ -33,7 +33,7 @@ import { tryExecuteCompactChatCommand } from '../utilities/chatCompactCommand.js
 import { applyChatAnswerRepairPipeline } from '../utilities/chatAnswerRepairPipeline.js';
 import { buildExecutionPlan } from '../utilities/chatExecutionPlanner.js';
 import { gatherEvidence, computeCoverage } from '../utilities/chatEvidenceGatherer.js';
-import { buildExecutionPlanPromptSection } from '../config/chatSystemPrompts.js';
+import { buildExecutionPlanPromptSection, buildSkillInstructionSection } from '../config/chatSystemPrompts.js';
 import { handleEarlyDeterministicAnswer, handlePreparedContextDeterministicAnswer } from '../utilities/chatDeterministicResponse.js';
 import {
   assessEvidenceSufficiency as _assessEvidenceSufficiency,
@@ -70,6 +70,8 @@ import { prepareChatTurnContext, writeChatProvenanceToResponse } from '../utilit
 import { executePreparedChatTurn } from '../utilities/chatTurnSynthesis.js';
 import { SlashCommandRegistry, parseSlashCommand } from '../config/chatSlashCommands.js';
 import { loadUserCommands } from '../utilities/userCommandLoader.js';
+import { matchWorkflowSkill, activateSkill } from '../utilities/chatSkillMatcher.js';
+import type { IActivatedSkill } from '../chatTypes.js';
 
 /** Default maximum agentic loop iterations. */
 const DEFAULT_MAX_ITERATIONS = 10;
@@ -259,6 +261,30 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     const planPromptSection = buildExecutionPlanPromptSection(executionPlan, queryScope, coverageRecord);
     if (planPromptSection && messages.length > 0 && messages[0].role === 'system') {
       messages[0] = { ...messages[0], content: messages[0].content + planPromptSection };
+    }
+
+    // ── M39: Skill matching & activation ──
+    //
+    // After the route and scope are known, attempt to match a workflow skill.
+    // If matched, load the full skill body and inject it into the system prompt.
+    const skillCatalog = services.getWorkflowSkillCatalog?.() ?? [];
+    const skillMatch = skillCatalog.length > 0
+      ? matchWorkflowSkill(userText, turnRoute, queryScope, skillCatalog)
+      : { matched: false, reason: 'No workflow skills available' } as const;
+
+    let activatedSkill: IActivatedSkill | undefined;
+    if (skillMatch.matched && skillMatch.skill) {
+      const manifest = services.getSkillManifest?.(skillMatch.skill.name);
+      if (manifest) {
+        activatedSkill = activateSkill(manifest, userText, 'planner', queryScope);
+        // Inject skill instructions into the system message
+        if (messages.length > 0 && messages[0].role === 'system') {
+          messages[0] = {
+            ...messages[0],
+            content: messages[0].content + buildSkillInstructionSection(activatedSkill),
+          };
+        }
+      }
     }
 
     const {
