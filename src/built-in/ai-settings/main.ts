@@ -124,7 +124,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
 
   async function openCanonicalMemoryFile(relativePathPromise: Promise<string> | string): Promise<void> {
     if (!workspaceMemoryService) {
-      notificationService?.warning?.('Workspace memory service is not available.');
+      notificationService?.warn('Workspace memory service is not available.');
       return;
     }
 
@@ -141,7 +141,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   context.subscriptions.push(
     api.commands.registerCommand('memory.openTodayLog', async () => {
       if (!workspaceMemoryService) {
-        notificationService?.warning?.('Workspace memory service is not available.');
+        notificationService?.warn('Workspace memory service is not available.');
         return;
       }
       await openCanonicalMemoryFile(workspaceMemoryService.ensureDailyMemory());

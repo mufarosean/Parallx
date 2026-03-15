@@ -25,6 +25,7 @@ export interface IChatDefaultParticipantAdapterDeps {
   readonly getCurrentPageContent?: IDefaultParticipantServices['getCurrentPageContent'];
   readonly retrieveContext?: IDefaultParticipantServices['retrieveContext'];
   readonly recallMemories?: IDefaultParticipantServices['recallMemories'];
+  readonly recallTranscripts?: IDefaultParticipantServices['recallTranscripts'];
   readonly storeSessionMemory?: IDefaultParticipantServices['storeSessionMemory'];
   readonly storeConceptsFromSession?: IDefaultParticipantServices['storeConceptsFromSession'];
   readonly recallConcepts?: IDefaultParticipantServices['recallConcepts'];
@@ -78,6 +79,7 @@ export function buildChatDefaultParticipantServices(
     getCurrentPageContent: deps.getCurrentPageContent,
     retrieveContext: deps.retrieveContext,
     recallMemories: deps.recallMemories,
+    recallTranscripts: deps.recallTranscripts,
     storeSessionMemory: deps.storeSessionMemory,
     storeConceptsFromSession: deps.storeConceptsFromSession,
     recallConcepts: deps.recallConcepts,

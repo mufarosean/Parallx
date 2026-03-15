@@ -33,7 +33,6 @@ import type {
   IToolResult,
   IContextPill,
   IChatRequestResponsePair,
-  IChatSession,
 } from '../../../services/chatTypes.js';
 import {
   ChatContentPartKind,
@@ -381,57 +380,6 @@ export function extractBlockPreview(contentJson: string): string {
   } catch {
     return '';
   }
-}
-
-function buildRecentSessionRecallSummary(session: IChatSession): string | undefined {
-  const userRequests = session.messages
-    .map((pair: IChatRequestResponsePair) => pair.request.text.replace(/\s+/g, ' ').trim())
-    .filter(Boolean)
-    .slice(-3);
-
-  if (userRequests.length === 0) {
-    return undefined;
-  }
-
-  const summary = userRequests
-    .map((text: string) => /[.!?]$/.test(text) ? text : `${text}.`)
-    .join(' ');
-
-  return [
-    '[Conversation Memory]',
-    '---',
-    `Previous session (${new Date(session.createdAt).toISOString()}):`,
-    summary.length <= 900 ? summary : `${summary.slice(0, 897).trimEnd()}...`,
-  ].join('\n');
-}
-
-function scoreSessionForRecallQuery(session: IChatSession, query: string): number {
-  const combined = session.messages
-    .map((pair) => pair.request.text)
-    .join(' ')
-    .toLowerCase();
-  const queryTerms = query
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter((term) => term.length >= 4 && !['last', 'previous', 'prior', 'conversation', 'chat', 'session', 'remember', 'details', 'about'].includes(term));
-
-  let score = 0;
-  for (const term of queryTerms) {
-    if (combined.includes(term)) {
-      score += 3;
-    }
-  }
-  if (/\b(i|my|we|our)\b/.test(combined)) {
-    score += 2;
-  }
-  if (/\baccident|driver|door|police|report|claim|street|mall|parking\b/.test(combined)) {
-    score += 4;
-  }
-  if (/\b\d{4}-\d{4}|\d{2,}\b/.test(combined)) {
-    score += 2;
-  }
-  return score;
 }
 
 function formatCanonicalMemoryContext(items: Array<{ label: string; content: string }>): string | undefined {
@@ -1136,7 +1084,7 @@ export class ChatDataService {
   // Memory & Preferences
   // ═══════════════════════════════════════════════════════════════════════════
 
-  async recallMemories(query: string, sessionId?: string): Promise<string | undefined> {
+  async recallMemories(query: string, _sessionId?: string): Promise<string | undefined> {
     try {
       const recallScope = resolveMemoryRecallScope(query);
 
@@ -1896,7 +1844,7 @@ export class ChatDataService {
         ? (q, pathPrefixes) => this.retrieveContext(q, pathPrefixes) as Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>
         : undefined,
       recallMemories: (this._d.memoryService || this._d.workspaceMemoryService) ? (q, s) => this.recallMemories(q, s) : undefined,
-      recallTranscripts: this._d.retrievalService ? (q) => this.recallTranscripts(q) : undefined,
+      recallTranscripts: this._d.retrievalService ? (q: string) => this.recallTranscripts(q) : undefined,
       storeSessionMemory: (this._d.memoryService || this._d.workspaceMemoryService) ? (s, su, m) => this.storeSessionMemory(s, su, m) : undefined,
       storeConceptsFromSession: this._d.memoryService ? (c, s) => this.storeConceptsFromSession(c, s) : undefined,
       recallConcepts: this._d.memoryService ? (q) => this.recallConcepts(q) : undefined,

@@ -7,7 +7,6 @@ import type {
 import type {
   IBuiltInToolFileSystem,
   IBuiltInToolCanonicalMemorySearch,
-  IBuiltInToolRetrieval,
 } from '../chatTypes.js';
 
 const MEMORY_ROOT = '.parallx/memory';

@@ -778,8 +778,8 @@ export class IndexingPipelineService extends Disposable implements IIndexingPipe
           classification = {
             documentClass: 'digital-doc',
             confidence: 1,
-            reasons: ['Session transcript'],
-          } as ClassificationResult;
+            reason: 'Session transcript',
+          };
         }
       }
     } catch (err) {

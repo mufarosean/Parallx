@@ -67,6 +67,7 @@ export function createChatContextPlan(
         useRetrieval: false,
         useMemoryRecall: false,
         useConceptRecall: false,
+        useTranscriptRecall: false,
         useCurrentPage: false,
         citationMode: 'disabled',
         reasoning: route.reason,
