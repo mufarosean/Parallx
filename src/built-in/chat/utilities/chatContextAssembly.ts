@@ -1,6 +1,8 @@
 import { isChatFileAttachment, isChatImageAttachment } from '../../../services/chatTypes.js';
 import type { IChatAttachment, IChatMessage, IChatProvenanceEntry, IContextPill } from '../../../services/chatTypes.js';
 
+import type { IEvidenceBundle } from '../chatTypes.js';
+
 import type {
   ChatAttachmentResult,
   ChatConceptResult,
@@ -44,6 +46,8 @@ export interface IChatContextAssemblyOptions {
   readonly transcriptResult: ChatTranscriptResult;
   readonly conceptResult: ChatConceptResult;
   readonly attachmentResults: readonly ChatAttachmentResult[];
+  /** M38: Pre-gathered evidence bundle from the execution planner. */
+  readonly evidenceBundle?: IEvidenceBundle;
 }
 
 export interface IChatContextAssemblyResult {
@@ -275,6 +279,40 @@ export async function assembleChatContext(
     for (const attachment of options.attachments) {
       if (isChatImageAttachment(attachment)) {
         pushContextBlock(`Attached image: ${attachment.name}`, [attachment.fullPath]);
+      }
+    }
+  }
+
+  // ── M38: Inject evidence bundle items as labelled context blocks ─────────
+  if (options.evidenceBundle) {
+    for (const item of options.evidenceBundle.items) {
+      switch (item.kind) {
+        case 'structural': {
+          const listing = item.files.map(f => `  - ${f.relativePath}`).join('\n');
+          pushContextBlock(`[Enumerated files in "${item.scopePath || '.'}"]\n${listing}`, [`evidence:structural:${item.scopePath}`]);
+          break;
+        }
+        case 'semantic': {
+          // Semantic evidence overlaps with ragResult — only add if not already present.
+          if (!seenRagBlocks.has(item.text)) {
+            pushContextBlock(item.text, item.sources.map(s => s.uri));
+            seenRagBlocks.add(item.text);
+            for (const source of item.sources) {
+              if (!alreadyInContext.has(source.uri)) {
+                ragSources.push(source);
+                alreadyInContext.add(source.uri);
+              }
+            }
+          }
+          break;
+        }
+        case 'exhaustive': {
+          for (const read of item.reads) {
+            const sourceId = `evidence:read:${read.relativePath}`;
+            pushContextBlock(`[File: ${read.relativePath}]\n${read.content}`, [sourceId]);
+          }
+          break;
+        }
       }
     }
   }

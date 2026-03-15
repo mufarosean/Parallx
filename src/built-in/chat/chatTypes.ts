@@ -256,6 +256,53 @@ export interface IExecutionPlan {
   readonly scope: IQueryScope;
 }
 
+// ── M38 Phase 3: Evidence types ────────────────────────────────────────────
+
+/** Metadata for one file discovered via enumeration. */
+export interface IFileEntry {
+  readonly relativePath: string;
+  /** File extension (including dot), e.g. ".md" */
+  readonly ext: string;
+}
+
+/** Evidence from a structural inspection or enumeration step. */
+export interface IStructuralEvidence {
+  readonly kind: 'structural';
+  /** Workspace-relative file paths discovered. */
+  readonly files: readonly IFileEntry[];
+  /** Scope path that was enumerated. */
+  readonly scopePath: string;
+}
+
+/** Evidence from a scoped-retrieve (RAG) step. */
+export interface ISemanticEvidence {
+  readonly kind: 'semantic';
+  /** Retrieved text content. */
+  readonly text: string;
+  /** Source identifiers for citations. */
+  readonly sources: readonly { uri: string; label: string; index?: number }[];
+}
+
+/** Evidence from a deterministic-read step. */
+export interface IExhaustiveEvidence {
+  readonly kind: 'exhaustive';
+  /** File reads with their full content. */
+  readonly reads: readonly { relativePath: string; content: string }[];
+}
+
+/** Tagged union of evidence subtypes. */
+export type EvidenceItem = IStructuralEvidence | ISemanticEvidence | IExhaustiveEvidence;
+
+/** A bundle of evidence gathered from executing all plan steps. */
+export interface IEvidenceBundle {
+  /** The plan that produced this evidence. */
+  readonly plan: IExecutionPlan;
+  /** Ordered evidence items (one per non-synthesize step). */
+  readonly items: readonly EvidenceItem[];
+  /** Total character count of all evidence text. */
+  readonly totalChars: number;
+}
+
 export type ChatTurnRouteKind =
   | 'conversational'
   | 'memory-recall'

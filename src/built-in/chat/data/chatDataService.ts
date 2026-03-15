@@ -1630,6 +1630,42 @@ export class ChatDataService {
     return results;
   }
 
+  /**
+   * M38: Recursive enumeration returning structured file metadata.
+   * Walks subdirectories up to `maxDepth` (default 3) and returns file
+   * entries with their relative path and extension — no content reading.
+   */
+  async listFolderFilesStructured(
+    folderPath: string,
+    options?: { recursive?: boolean; maxDepth?: number },
+  ): Promise<Array<{ relativePath: string; ext: string }>> {
+    if (!this._d.fsAccessor) { return []; }
+    const MAX_ENTRIES = 200;
+    const maxDepth = options?.recursive !== false ? (options?.maxDepth ?? 3) : 0;
+    const results: Array<{ relativePath: string; ext: string }> = [];
+
+    const walk = async (dir: string, depth: number): Promise<void> => {
+      if (results.length >= MAX_ENTRIES) return;
+      try {
+        const entries = await this._d.fsAccessor!.readdir(dir);
+        for (const entry of entries) {
+          if (results.length >= MAX_ENTRIES) return;
+          const relPath = dir ? `${dir}/${entry.name}` : entry.name;
+          if (entry.type === 'file') {
+            const dotIndex = entry.name.lastIndexOf('.');
+            const ext = dotIndex >= 0 ? entry.name.slice(dotIndex).toLowerCase() : '';
+            results.push({ relativePath: relPath, ext });
+          } else if (entry.type === 'directory' && depth < maxDepth) {
+            await walk(relPath, depth + 1);
+          }
+        }
+      } catch { /* skip unreadable directories */ }
+    };
+
+    await walk(folderPath, 0);
+    return results;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // User Command FS & Session Compaction
   // ═══════════════════════════════════════════════════════════════════════════
