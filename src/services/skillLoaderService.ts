@@ -16,6 +16,9 @@ import type { ToolPermissionLevel } from './chatTypes.js';
 // Types
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/** Skill kind — tool (M11) or workflow (M39). */
+export type SkillKind = 'tool' | 'workflow';
+
 /** Parsed SKILL.md frontmatter. */
 export interface ISkillManifest {
   readonly name: string;
@@ -29,6 +32,15 @@ export interface ISkillManifest {
   readonly body: string;
   /** Path to the SKILL.md file relative to workspace. */
   readonly relativePath: string;
+
+  // ── M39 fields ──
+
+  /** Whether this skill is a tool declaration or a workflow playbook. Default: 'tool'. */
+  readonly kind: SkillKind;
+  /** When true, only the user can trigger this skill (not the model). Default: false. */
+  readonly disableModelInvocation: boolean;
+  /** Whether the skill appears in the slash-command menu. Default: true. */
+  readonly userInvocable: boolean;
 }
 
 export interface ISkillParameter {
@@ -66,9 +78,35 @@ export function parseSkillFrontmatter(content: string): { frontmatter: Record<st
   let currentListKey: string | null = null;
   let currentList: Record<string, unknown>[] = [];
 
-  for (const line of yamlBlock.split('\n')) {
+  // Track folded/literal block scalar (key: > or key: |)
+  let blockScalarKey: string | null = null;
+  let blockScalarLines: string[] = [];
+  let blockScalarFolded = true; // true = '>' (folded), false = '|' (literal)
+
+  const lines = yamlBlock.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) { continue; }
+    if (!trimmed || trimmed.startsWith('#')) {
+      // Blank line inside block scalar preserves a newline
+      if (blockScalarKey) { blockScalarLines.push(''); }
+      continue;
+    }
+
+    // Inside a block scalar — collect indented continuation lines
+    if (blockScalarKey) {
+      if (/^\s{2,}/.test(line)) {
+        blockScalarLines.push(trimmed);
+        continue;
+      }
+      // Not indented → flush the block scalar
+      const joined = blockScalarFolded
+        ? blockScalarLines.filter(Boolean).join(' ')
+        : blockScalarLines.join('\n');
+      frontmatter[blockScalarKey] = joined;
+      blockScalarKey = null;
+      blockScalarLines = [];
+    }
 
     // List item under current key: `  - name: value`
     if (currentListKey && /^\s*-\s+\w+:/.test(line)) {
@@ -103,8 +141,8 @@ export function parseSkillFrontmatter(content: string): { frontmatter: Record<st
       currentList = [];
     }
 
-    // Top-level key: value
-    const kvMatch = trimmed.match(/^(\w+):\s*(.*)$/);
+    // Top-level key: value (supports hyphenated keys like `disable-model-invocation`)
+    const kvMatch = trimmed.match(/^([\w-]+):\s*(.*)$/);
     if (kvMatch) {
       const key = kvMatch[1];
       const rawValue = kvMatch[2].trim();
@@ -117,6 +155,14 @@ export function parseSkillFrontmatter(content: string): { frontmatter: Record<st
           currentListKey = key;
           currentList = [];
         }
+        continue;
+      }
+
+      // Block scalar: `key: >` (folded) or `key: |` (literal)
+      if (rawValue === '>' || rawValue === '|') {
+        blockScalarKey = key;
+        blockScalarLines = [];
+        blockScalarFolded = rawValue === '>';
         continue;
       }
 
@@ -134,6 +180,14 @@ export function parseSkillFrontmatter(content: string): { frontmatter: Record<st
   // Flush trailing list
   if (currentListKey) {
     frontmatter[currentListKey] = currentList;
+  }
+
+  // Flush trailing block scalar
+  if (blockScalarKey) {
+    const joined = blockScalarFolded
+      ? blockScalarLines.filter(Boolean).join(' ')
+      : blockScalarLines.join('\n');
+    frontmatter[blockScalarKey] = joined;
   }
 
   return { frontmatter, body };
@@ -190,6 +244,15 @@ export function validateSkillManifest(
   const rawTags = Array.isArray(fm['tags']) ? fm['tags'] : [];
   const tags = rawTags.map((t) => String(t).trim()).filter(Boolean);
 
+  // M39 fields — kind, disableModelInvocation, userInvocable
+  const kind = _validKind(String(fm['kind'] ?? 'tool'));
+  const disableModelInvocation = fm['disableModelInvocation'] === true
+    || fm['disableModelInvocation'] === 'true'
+    || fm['disable-model-invocation'] === true
+    || fm['disable-model-invocation'] === 'true';
+  const rawUserInvocable = fm['userInvocable'] ?? fm['user-invocable'];
+  const userInvocable = rawUserInvocable === false || rawUserInvocable === 'false' ? false : true;
+
   return {
     name,
     description,
@@ -200,6 +263,9 @@ export function validateSkillManifest(
     tags,
     body: parsed.body,
     relativePath,
+    kind,
+    disableModelInvocation,
+    userInvocable,
   };
 }
 
@@ -208,6 +274,13 @@ function _validPermission(raw: string): ToolPermissionLevel {
     return raw;
   }
   return 'requires-approval';
+}
+
+function _validKind(raw: string): SkillKind {
+  if (raw === 'tool' || raw === 'workflow') {
+    return raw;
+  }
+  return 'tool';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
