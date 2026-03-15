@@ -773,7 +773,7 @@ export class ChatDataService {
   // RAG Context Retrieval
   // ═══════════════════════════════════════════════════════════════════════════
 
-  async retrieveContext(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined> {
+  async retrieveContext(query: string, pathPrefixes?: string[]): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined> {
     if (!this._d.retrievalService) {
       this._lastTestDebugSnapshot = {
         ...this._lastTestDebugSnapshot,
@@ -824,7 +824,7 @@ export class ChatDataService {
       // No hardcoded overrides — retrieval parameters come from AI Settings
       // (ragTopK, ragMaxPerSource, ragTokenBudget, etc.) via the config
       // provider bound to the retrieval service. Users control the limits.
-      const chunks = await this._d.retrievalService.retrieve(query);
+      const chunks = await this._d.retrievalService.retrieve(query, pathPrefixes?.length ? { pathPrefixes } : undefined);
       const retrievalTrace = this._d.retrievalService.getLastTrace?.();
       if (chunks.length === 0) {
         this._lastTestDebugSnapshot = {
@@ -1857,7 +1857,7 @@ export class ChatDataService {
       readFileContent: (p) => this.readFileContent(p),
       getCurrentPageContent: () => this.getCurrentPageContent(),
       retrieveContext: this._d.retrievalService
-        ? (q) => this.retrieveContext(q) as Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>
+        ? (q, pathPrefixes) => this.retrieveContext(q, pathPrefixes) as Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>
         : undefined,
       recallMemories: (this._d.memoryService || this._d.workspaceMemoryService) ? (q, s) => this.recallMemories(q, s) : undefined,
       recallTranscripts: this._d.retrievalService ? (q) => this.recallTranscripts(q) : undefined,

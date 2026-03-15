@@ -71,7 +71,7 @@ export interface IDefaultParticipantServices {
   isIndexing?(): boolean;
   readFileContent?(fullPath: string): Promise<string>;
   getCurrentPageContent?(): Promise<{ title: string; pageId: string; textContent: string } | undefined>;
-  retrieveContext?(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>;
+  retrieveContext?(query: string, pathPrefixes?: string[]): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>;
   recallMemories?(query: string, sessionId?: string): Promise<string | undefined>;
   recallTranscripts?(query: string): Promise<string | undefined>;
   storeSessionMemory?(sessionId: string, summary: string, messageCount: number): Promise<void>;
@@ -432,7 +432,7 @@ export interface IMentionResolutionResult {
 export interface IMentionResolutionServices {
   readFileContent?(path: string): Promise<string>;
   listFolderFiles?(folderPath: string): Promise<Array<{ relativePath: string; content: string }>>;
-  retrieveContext?(query: string): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>;
+  retrieveContext?(query: string, pathPrefixes?: string[]): Promise<{ text: string; sources: Array<{ uri: string; label: string; index: number }> } | undefined>;
   getTerminalOutput?(): Promise<string | undefined>;
 }
 

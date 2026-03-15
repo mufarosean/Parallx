@@ -10,7 +10,7 @@ export type ChatAttachmentResult = { name: string; content: string | null };
 
 export interface IChatContextSourceLoaderDeps {
   readonly getCurrentPageContent?: () => Promise<{ title: string; pageId: string; textContent: string } | undefined>;
-  readonly retrieveContext?: (query: string) => Promise<{ text: string; sources: Array<{ uri: string; label: string; index?: number }> } | undefined>;
+  readonly retrieveContext?: (query: string, pathPrefixes?: string[]) => Promise<{ text: string; sources: Array<{ uri: string; label: string; index?: number }> } | undefined>;
   readonly recallMemories?: (query: string, sessionId?: string) => Promise<string | undefined>;
   readonly recallTranscripts?: (query: string) => Promise<string | undefined>;
   readonly recallConcepts?: (query: string) => Promise<string | undefined>;
@@ -35,6 +35,7 @@ export interface IChatContextSourceLoadOptions {
   readonly useConceptRecall: boolean;
   readonly hasActiveSlashCommand: boolean;
   readonly isRagReady: boolean;
+  readonly pathPrefixes?: readonly string[];
 }
 
 export interface IChatContextSourceLoadResult {
@@ -56,7 +57,9 @@ export async function loadChatContextSources(
       : Promise.resolve(null as ChatPageResult),
 
     options.useRetrieval && deps.retrieveContext
-      ? deps.retrieveContext(options.userText)
+      ? (options.pathPrefixes?.length
+          ? deps.retrieveContext(options.userText, [...options.pathPrefixes])
+          : deps.retrieveContext(options.userText))
           .then((result): ChatRagResult => {
             deps.reportRetrievalDebug?.({
               hasActiveSlashCommand: options.hasActiveSlashCommand,
