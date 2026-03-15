@@ -94,6 +94,8 @@ export interface SearchOptions {
   sourceFilter?: string;
   /** Restrict search to an explicit set of source IDs (workspace-relative file paths or page IDs). */
   sourceIds?: string[];
+  /** Restrict search to sources whose source_id starts with one of these prefixes (scope filtering). */
+  pathPrefixes?: string[];
   /** Minimum RRF score threshold. */
   minScore?: number;
   /** Whether to include keyword (FTS5 BM25) search. */
@@ -114,6 +116,7 @@ export interface HybridSearchTrace {
   candidateK: number;
   sourceFilter?: string;
   sourceIds?: string[];
+  pathPrefixes?: string[];
   includeKeyword: boolean;
   vectorResultCount: number;
   keywordResultCount: number;
@@ -424,13 +427,13 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     const candidateK = DEFAULT_CANDIDATE_K;
 
     // 1. Vector similarity search
-    const vectorResults = await this._vectorSearch(queryEmbedding, candidateK, options.sourceFilter, options.sourceIds);
+    const vectorResults = await this._vectorSearch(queryEmbedding, candidateK, options.sourceFilter, options.sourceIds, options.pathPrefixes);
 
     // 2. Keyword search (FTS5 BM25)
     let keywordResults: VectorRow[] = [];
     let keywordTrace: KeywordSearchTrace | undefined;
     if (includeKeyword && queryText.trim()) {
-      const keywordSearch = await this._keywordSearch(queryText, candidateK, options.sourceFilter, options.sourceIds);
+      const keywordSearch = await this._keywordSearch(queryText, candidateK, options.sourceFilter, options.sourceIds, options.pathPrefixes);
       keywordResults = keywordSearch.results;
       keywordTrace = keywordSearch.trace;
     }
@@ -463,6 +466,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       candidateK,
       sourceFilter: options.sourceFilter,
       sourceIds: options.sourceIds ? [...options.sourceIds] : undefined,
+      pathPrefixes: options.pathPrefixes ? [...options.pathPrefixes] : undefined,
       includeKeyword,
       vectorResultCount: vectorResults.length,
       keywordResultCount: keywordResults.length,
@@ -727,13 +731,14 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     topK: number,
     sourceFilter?: string,
     sourceIds?: string[],
+    pathPrefixes?: string[],
   ): Promise<VectorRow[]> {
     const embeddingBlob = float32ArrayToBuffer(queryEmbedding);
 
     let sql: string;
     let params: unknown[];
 
-    if (sourceFilter || (sourceIds?.length ?? 0) > 0) {
+    if (sourceFilter || (sourceIds?.length ?? 0) > 0 || (pathPrefixes?.length ?? 0) > 0) {
       // vec0 KNN with source_type filter via a subquery approach
       // Note: vec0 WHERE clause only supports embedding MATCH and k constraint
       // We filter after the KNN search
@@ -749,7 +754,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
              ORDER BY distance`;
       const overfetchMultiplier = sourceIds && sourceIds.length > 0
         ? Math.max(4, sourceIds.length * 4)
-        : 2;
+        : pathPrefixes && pathPrefixes.length > 0 ? 3 : 2;
       params = [embeddingBlob, topK * overfetchMultiplier]; // Over-fetch to account for filtering
     } else {
             sql = `SELECT vec_embeddings.rowid, distance, vec_embeddings.source_type, vec_embeddings.source_id,
@@ -768,10 +773,15 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     const rows = await this._db.all<VectorRow>(sql, params);
 
     // Apply source filter if needed
-    if (sourceFilter || (sourceIds?.length ?? 0) > 0) {
+    if (sourceFilter || (sourceIds?.length ?? 0) > 0 || (pathPrefixes?.length ?? 0) > 0) {
       const allowedSourceIds = sourceIds ? new Set(sourceIds) : undefined;
       return rows
-        .filter((r) => (!sourceFilter || r.source_type === sourceFilter) && (!allowedSourceIds || allowedSourceIds.has(r.source_id)))
+        .filter((r) => {
+          if (sourceFilter && r.source_type !== sourceFilter) { return false; }
+          if (allowedSourceIds && !allowedSourceIds.has(r.source_id)) { return false; }
+          if (pathPrefixes && pathPrefixes.length > 0 && !pathPrefixes.some((p) => r.source_id.startsWith(p))) { return false; }
+          return true;
+        })
         .slice(0, topK);
     }
 
@@ -785,6 +795,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
     topK: number,
     sourceFilter?: string,
     sourceIds?: string[],
+    pathPrefixes?: string[],
   ): Promise<{ results: VectorRow[]; trace: KeywordSearchTrace }> {
     // Sanitize query for FTS5 (escape special characters) — AND semantics
     const sanitized = sanitizeFts5Query(queryText);
@@ -805,7 +816,7 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
       let params: unknown[];
       const sourceIdPlaceholders = sourceIds?.map(() => '?').join(', ');
 
-      if (sourceFilter || (sourceIds?.length ?? 0) > 0) {
+      if (sourceFilter || (sourceIds?.length ?? 0) > 0 || (pathPrefixes?.length ?? 0) > 0) {
         const whereClauses = ['fts_chunks MATCH ?'];
         params = [ftsQuery];
 
@@ -817,6 +828,12 @@ export class VectorStoreService extends Disposable implements IVectorStoreServic
         if (sourceIds && sourceIds.length > 0 && sourceIdPlaceholders) {
           whereClauses.push(`f.source_id IN (${sourceIdPlaceholders})`);
           params.push(...sourceIds);
+        }
+
+        if (pathPrefixes && pathPrefixes.length > 0) {
+          const prefixClauses = pathPrefixes.map(() => 'f.source_id LIKE ?');
+          whereClauses.push(`(${prefixClauses.join(' OR ')})`);
+          params.push(...pathPrefixes.map((p) => p + '%'));
         }
 
         sql = `SELECT f.chunk_id as rowid, f.source_type, f.source_id, f.content,

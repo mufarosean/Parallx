@@ -576,6 +576,8 @@ export interface RetrievalOptions {
   sourceFilter?: string;
   /** Restrict retrieval to an explicit set of source IDs when the user clearly targets named sources. */
   sourceIds?: string[];
+  /** Restrict retrieval to sources whose source_id starts with one of these prefixes (scope filtering). */
+  pathPrefixes?: string[];
   /** Minimum relevance score (default: 0.01). */
   minScore?: number;
   /** Whether to include FTS5 keyword search (default: true). */
@@ -2032,6 +2034,7 @@ export class RetrievalService extends Disposable implements IRetrievalService {
       topK: searchTopK,
       sourceFilter: options?.sourceFilter,
       sourceIds: options?.sourceIds,
+      pathPrefixes: options?.pathPrefixes,
       minScore: 0,
       includeKeyword: options?.includeKeyword ?? true,
     };
