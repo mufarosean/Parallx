@@ -214,6 +214,48 @@ export interface IQueryScope {
   readonly confidence: number;
 }
 
+// ── Execution Plan Types (M38 Phase 2) ─────────────────────────────────────
+
+/** Workflow classifications that guide execution planning. */
+export type WorkflowType =
+  | 'generic-grounded'       // Standard RAG — existing behavior
+  | 'scoped-topic'           // Entity reference + topic question
+  | 'folder-summary'         // Entity reference + summary verb
+  | 'document-summary'       // Single document + summary verb
+  | 'comparative'            // Two entities + comparison cue
+  | 'exhaustive-extraction'  // Entity + "every"/"all" + extraction verb
+  | 'mixed';                 // Structural cue + semantic cue together
+
+/** A single step in an execution plan. */
+export interface IExecutionStep {
+  readonly kind:
+    | 'enumerate'            // List files in a scope path
+    | 'structural-inspect'   // Read directory structure
+    | 'scoped-retrieve'      // RAG with pathPrefixes
+    | 'deterministic-read'   // Read specific files by path
+    | 'synthesize';          // Final LLM synthesis step
+  /** Human-readable label for trace/debug output. */
+  readonly label: string;
+  /** Scope path(s) this step operates on (when applicable). */
+  readonly targetPaths?: readonly string[];
+}
+
+/** Output format constraints for the final synthesis. */
+export interface IOutputConstraints {
+  /** Expected structure: prose, list, table, json. */
+  readonly format?: 'prose' | 'list' | 'table' | 'json';
+  /** Whether every source in scope must be cited. */
+  readonly requireExhaustiveCitation?: boolean;
+}
+
+/** A typed execution plan built from route + scope. */
+export interface IExecutionPlan {
+  readonly workflowType: WorkflowType;
+  readonly steps: readonly IExecutionStep[];
+  readonly outputConstraints: IOutputConstraints;
+  readonly scope: IQueryScope;
+}
+
 export type ChatTurnRouteKind =
   | 'conversational'
   | 'memory-recall'
