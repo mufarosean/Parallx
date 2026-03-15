@@ -454,3 +454,118 @@ When the user asks to summarize all/each/every file:
     expect(manifest!.userInvocable).toBe(true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// registerBuiltInWorkflowSkills — M39 Phase E
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('registerBuiltInWorkflowSkills', () => {
+  it('registers all 4 built-in workflow skills', () => {
+    const loader = new SkillLoaderService();
+    loader.registerBuiltInWorkflowSkills();
+    const skills = loader.skills;
+    expect(skills.length).toBe(4);
+  });
+
+  it('registers expected skill names', () => {
+    const loader = new SkillLoaderService();
+    loader.registerBuiltInWorkflowSkills();
+    const names = new Set(loader.skills.map(s => s.name));
+    expect(names).toContain('exhaustive-summary');
+    expect(names).toContain('folder-overview');
+    expect(names).toContain('document-comparison');
+    expect(names).toContain('scoped-extraction');
+  });
+
+  it('all built-in skills have kind workflow', () => {
+    const loader = new SkillLoaderService();
+    loader.registerBuiltInWorkflowSkills();
+    for (const skill of loader.skills) {
+      expect(skill.kind).toBe('workflow');
+    }
+  });
+
+  it('all built-in skills have tags including workflow', () => {
+    const loader = new SkillLoaderService();
+    loader.registerBuiltInWorkflowSkills();
+    for (const skill of loader.skills) {
+      expect(skill.tags).toContain('workflow');
+    }
+  });
+
+  it('all built-in skills have non-empty body', () => {
+    const loader = new SkillLoaderService();
+    loader.registerBuiltInWorkflowSkills();
+    for (const skill of loader.skills) {
+      expect(skill.body.length).toBeGreaterThan(50);
+    }
+  });
+
+  it('built-in skills appear in workflow catalog', () => {
+    const loader = new SkillLoaderService();
+    loader.registerBuiltInWorkflowSkills();
+    const catalog = loader.getWorkflowSkillCatalog();
+    expect(catalog.length).toBe(4);
+    for (const entry of catalog) {
+      expect(entry.kind).toBe('workflow');
+    }
+  });
+
+  it('workspace skills override built-in skills with same name', async () => {
+    const loader = new SkillLoaderService();
+    loader.registerBuiltInWorkflowSkills();
+
+    // Verify built-in is loaded
+    const original = loader.getSkill('exhaustive-summary');
+    expect(original).toBeDefined();
+    expect(original!.body).toContain('Exhaustive');
+
+    // Simulate workspace override via scanSkills
+    const mockFs: ISkillFileSystem = {
+      exists: vi.fn(async (path: string) => path === '.parallx/skills' || path === '.parallx/skills/exhaustive-summary/SKILL.md'),
+      listDirs: vi.fn(async () => ['exhaustive-summary']),
+      readFile: vi.fn(async () => `---
+name: exhaustive-summary
+description: Custom workspace override
+kind: workflow
+version: 1.0.0
+author: user
+permission: always-allowed
+tags: [workflow, summary]
+---
+
+# Custom Override Body
+This is a workspace-level override of the built-in skill.`),
+    };
+    loader.setFileSystem(mockFs);
+    await loader.scanSkills();
+
+    const overridden = loader.getSkill('exhaustive-summary');
+    expect(overridden).toBeDefined();
+    expect(overridden!.body).toContain('Custom Override Body');
+    expect(overridden!.description).toBe('Custom workspace override');
+  });
+
+  it('is idempotent — calling twice does not duplicate skills', () => {
+    const loader = new SkillLoaderService();
+    loader.registerBuiltInWorkflowSkills();
+    loader.registerBuiltInWorkflowSkills();
+    expect(loader.skills.length).toBe(4);
+  });
+
+  it('built-in skills have userInvocable true by default', () => {
+    const loader = new SkillLoaderService();
+    loader.registerBuiltInWorkflowSkills();
+    for (const skill of loader.skills) {
+      expect(skill.userInvocable).toBe(true);
+    }
+  });
+
+  it('built-in skills have disableModelInvocation false', () => {
+    const loader = new SkillLoaderService();
+    loader.registerBuiltInWorkflowSkills();
+    for (const skill of loader.skills) {
+      expect(skill.disableModelInvocation).toBe(false);
+    }
+  });
+});

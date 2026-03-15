@@ -357,6 +357,21 @@ export class SkillLoaderService extends Disposable {
     this._fs = fs;
   }
 
+  /**
+   * Register built-in workflow skills (shipped with Parallx).
+   * Called during initialization before workspace skills are scanned.
+   * Workspace skills with the same name will override built-ins.
+   */
+  registerBuiltInWorkflowSkills(): void {
+    for (const content of BUILTIN_WORKFLOW_SKILLS) {
+      const parsed = parseSkillFrontmatter(content);
+      if (!parsed) { continue; }
+      const manifest = validateSkillManifest(parsed, `built-in/skills/${String(parsed.frontmatter['name'] || 'unknown')}/SKILL.md`);
+      if (!manifest) { continue; }
+      this._skills.set(manifest.name, manifest);
+    }
+  }
+
   /** All loaded skill manifests. */
   get skills(): readonly ISkillManifest[] {
     return [...this._skills.values()];
@@ -472,3 +487,211 @@ export class SkillLoaderService extends Disposable {
     }
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Built-in Workflow Skills (M39)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Embedded content of the 4 built-in workflow skills.
+ * These are shipped with Parallx and available in every workspace.
+ * Workspace skills with the same name will override these.
+ */
+const BUILTIN_WORKFLOW_SKILLS: readonly string[] = [
+  // ── exhaustive-summary ──
+  `---
+name: exhaustive-summary
+description: Summarize every file in a folder or the entire workspace. Reads each file individually and produces a per-file summary, then combines them into a comprehensive overview.
+version: 1.0.0
+author: parallx
+kind: workflow
+permission: auto-allow
+user-invocable: true
+tags: [workflow, summary, exhaustive]
+parameters:
+  - name: scope
+    type: string
+    description: Folder path to summarize, or empty for entire workspace
+    required: false
+---
+
+# Exhaustive Summary Workflow
+
+Follow these steps precisely. Do not skip any step. Read every file.
+
+## Step 1: Enumerate all files
+
+Use \`list_files\` to enumerate every file in the target scope ($ARGUMENTS or the entire workspace root).
+Record the complete list as your **coverage checklist**.
+
+## Step 2: Read each file
+
+For **every** file in the coverage checklist:
+1. Use \`read_file\` to read the full content.
+2. Write a 2-4 sentence summary.
+3. Note the file's relative path.
+
+Do NOT skip files. Do NOT say a file is "too large to read."
+If a file is very short (< 3 lines), note it as a stub.
+If a file contains irrelevant content, still summarize it but note it.
+
+## Step 3: Compile the summary
+
+1. **Overview**: One paragraph describing the workspace/folder's purpose.
+2. **File summaries**: Each file with path, 2-4 sentence summary, and any notable characteristics.
+3. **Statistics**: Total file count, folder count, notable patterns.
+
+## Step 4: Verify coverage
+
+Compare your summary list against the checklist from Step 1.
+State: "Coverage: X/Y files summarized" where X must equal Y.
+Note any contradictions between files.`,
+
+  // ── folder-overview ──
+  `---
+name: folder-overview
+description: Provide a structural overview of a folder including file count, types, hierarchy, and brief descriptions of each file.
+version: 1.0.0
+author: parallx
+kind: workflow
+permission: auto-allow
+user-invocable: true
+tags: [workflow, overview, structural]
+parameters:
+  - name: folder
+    type: string
+    description: Folder path to overview, or empty for workspace root
+    required: false
+---
+
+# Folder Overview Workflow
+
+Follow these steps precisely.
+
+## Step 1: Enumerate the folder
+
+Use \`list_files\` to list all files and subfolders in $ARGUMENTS or the workspace root.
+Record total file count, subfolder names, and file names.
+
+## Step 2: Classify files
+
+For each file, use \`read_file\` to read the first ~20 lines. Determine:
+- **Type**: based on extension
+- **Purpose**: brief description based on content
+
+## Step 3: Build the overview
+
+1. **Folder**: Name and path
+2. **Contents**: Total files, total subfolders
+3. **File listing**: Each file with name, type, and 1-sentence description
+4. **Subfolders**: List contents one level deep
+
+## Step 4: Note issues
+
+Flag: empty/stub files, duplicate filenames, inconsistent naming, drafts.`,
+
+  // ── document-comparison ──
+  `---
+name: document-comparison
+description: Compare two or more documents in detail, analyzing differences, contradictions, and similarities across multiple dimensions.
+version: 1.0.0
+author: parallx
+kind: workflow
+permission: auto-allow
+user-invocable: true
+tags: [workflow, comparison, analysis]
+parameters:
+  - name: targets
+    type: string
+    description: Names or paths of documents to compare
+    required: true
+---
+
+# Document Comparison Workflow
+
+Follow these steps precisely. Read every target document in full.
+
+## Step 1: Identify target documents
+
+Parse $ARGUMENTS to determine which documents to compare.
+Use \`list_files\` and \`search_knowledge\` to locate them.
+If the same filename exists in multiple folders, identify ALL instances.
+
+## Step 2: Read each document
+
+Use \`read_file\` to read the **complete content** of each document.
+For each, note: path, length, structure, key claims/numbers/facts.
+
+## Step 3: Analyze dimensions
+
+Compare across:
+1. **Structure**: Organization, sections, format
+2. **Content overlap**: Shared topics
+3. **Factual differences**: Different facts, numbers, dates
+4. **Contradictions**: Direct conflicts (flag prominently)
+5. **Unique content**: What exists in one but not the other
+
+## Step 4: Synthesize comparison
+
+1. **Documents compared**: List each with path
+2. **Summary**: One paragraph overview
+3. **Key differences**: Specific values from each document
+4. **Contradictions**: Exact conflicting claims, citing both sources
+5. **Similarities**: Shared content
+6. **Unique content**: Per-document exclusive content
+
+Always cite exact values. Present BOTH sides of contradictions.`,
+
+  // ── scoped-extraction ──
+  `---
+name: scoped-extraction
+description: Extract specific information from all files in a scope. Reads every file, extracts requested facts or values, and aggregates results with full coverage.
+version: 1.0.0
+author: parallx
+kind: workflow
+permission: auto-allow
+user-invocable: true
+tags: [workflow, extraction, exhaustive]
+parameters:
+  - name: query
+    type: string
+    description: What to extract and from which scope
+    required: true
+---
+
+# Scoped Extraction Workflow
+
+Follow these steps precisely. Check every file — no exceptions.
+
+## Step 1: Parse the request
+
+From $ARGUMENTS, determine:
+- **What** to extract (e.g. "deductible amounts", "contact names")
+- **Where** to look (specific folder or entire workspace)
+
+## Step 2: Enumerate files
+
+Use \`list_files\` to enumerate all files in scope.
+Record the complete file list as your coverage checklist.
+
+## Step 3: Read and extract
+
+For **every** file in the checklist:
+1. Use \`read_file\` to read the content.
+2. Search for the target information.
+3. If found: record value(s), file path, and context.
+4. If not found: note "No matching information in [file]."
+
+## Step 4: Aggregate results
+
+1. **Extraction target**: What was searched for
+2. **Scope**: Files/folders searched
+3. **Results**: Each value with source file and context
+4. **No matches**: Files checked but containing no relevant info
+5. **Coverage**: "Checked X/Y files" (X must equal Y)
+
+## Step 5: Identify conflicts
+
+If the same information has different values in different files, flag the conflict and show both values.`,
+];
+

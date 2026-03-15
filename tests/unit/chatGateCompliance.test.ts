@@ -29,6 +29,10 @@ const EXEMPT_FILES = new Set([
   'widgets/chatWidget.css',         // Stylesheet
   'widgets/chatView.css',           // Stylesheet
   'widgets/chatTokenStatusBar.css', // Stylesheet
+  'skills/exhaustive-summary/SKILL.md',   // Built-in workflow skill (M39)
+  'skills/folder-overview/SKILL.md',      // Built-in workflow skill (M39)
+  'skills/document-comparison/SKILL.md',  // Built-in workflow skill (M39)
+  'skills/scoped-extraction/SKILL.md',    // Built-in workflow skill (M39)
 ]);
 
 // ── Per-file import rules ───────────────────────────────────────────────────

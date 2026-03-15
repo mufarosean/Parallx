@@ -1056,6 +1056,7 @@ export function activate(api: ParallxApi, context: ToolContext): void {
         },
         exists: (path: string) => fsAccessor!.exists(path),
       });
+      skillLoader.registerBuiltInWorkflowSkills();
       skillLoader.scanSkills().catch(() => { /* best-effort */ });
       context.subscriptions.push(skillLoader);
     }).catch(() => { /* optional service */ });
