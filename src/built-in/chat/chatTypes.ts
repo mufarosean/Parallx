@@ -186,6 +186,34 @@ export interface IRetrievalPlan {
   coverageMode?: 'representative' | 'exhaustive' | 'enumeration';
 }
 
+// ── M38: Scope resolution ──
+
+/** A resolved entity reference from freeform user text (M38). */
+export interface IResolvedEntity {
+  /** What the user wrote, e.g. "RF Guides" */
+  readonly naturalName: string;
+  /** Actual workspace-relative path, e.g. "RF Guides/" */
+  readonly resolvedPath: string;
+  /** Whether this maps to a folder, file, or canvas page. */
+  readonly kind: 'folder' | 'file' | 'page';
+}
+
+/** Canonical scope object passed through all downstream pipeline stages (M38). */
+export interface IQueryScope {
+  /** Granularity of the resolved scope. */
+  readonly level: 'workspace' | 'folder' | 'document' | 'selection';
+  /** Workspace-relative path prefixes that scope retrieval. */
+  readonly pathPrefixes?: readonly string[];
+  /** Explicit document/source IDs for page-level scoping. */
+  readonly documentIds?: readonly string[];
+  /** How the scope was determined. */
+  readonly derivedFrom: 'explicit-mention' | 'inferred' | 'contextual';
+  /** Resolved entity references that produced this scope. */
+  readonly resolvedEntities?: readonly IResolvedEntity[];
+  /** Confidence in the resolution (0–1). */
+  readonly confidence: number;
+}
+
 export type ChatTurnRouteKind =
   | 'conversational'
   | 'memory-recall'
@@ -217,6 +245,7 @@ export interface IChatContextPlan {
 export interface IChatRuntimeTrace {
   readonly route: IChatTurnRoute;
   readonly contextPlan: IChatContextPlan;
+  readonly queryScope?: IQueryScope;
   readonly sessionId?: string;
   readonly hasActiveSlashCommand: boolean;
   readonly isRagReady: boolean;
