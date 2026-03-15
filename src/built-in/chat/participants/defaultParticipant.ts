@@ -31,6 +31,8 @@ import { executeInitCommand } from '../commands/initCommand.js';
 import { determineChatTurnRoute } from '../utilities/chatTurnRouter.js';
 import { tryExecuteCompactChatCommand } from '../utilities/chatCompactCommand.js';
 import { applyChatAnswerRepairPipeline } from '../utilities/chatAnswerRepairPipeline.js';
+import { buildExecutionPlan } from '../utilities/chatExecutionPlanner.js';
+import { gatherEvidence, computeCoverage } from '../utilities/chatEvidenceGatherer.js';
 import { handleEarlyDeterministicAnswer, handlePreparedContextDeterministicAnswer } from '../utilities/chatDeterministicResponse.js';
 import {
   assessEvidenceSufficiency as _assessEvidenceSufficiency,
@@ -217,6 +219,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       contextPlan,
       retrievalPlan,
       isConversationalTurn,
+      queryScope,
     } = await prepareChatTurnPrelude(
       services,
       {
@@ -229,6 +232,26 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         hasActiveSlashCommand,
       },
     );
+
+    // ── M38: Planned evidence pipeline ──
+    //
+    // For non-generic workflows, build an execution plan, gather typed
+    // evidence, and compute coverage.  For generic-grounded, these are
+    // no-ops — the existing context flow runs unchanged (Task 5.2).
+    const executionPlan = buildExecutionPlan(turnRoute, queryScope);
+    const isPlannedWorkflow = executionPlan.workflowType !== 'generic-grounded';
+
+    const evidenceBundle = isPlannedWorkflow
+      ? await gatherEvidence(executionPlan, contextQueryText, {
+          listFilesRelative: services.listFilesRelative,
+          readFileRelative: services.readFileRelative,
+          retrieveContext: services.retrieveContext,
+        })
+      : undefined;
+
+    const coverageRecord = evidenceBundle
+      ? computeCoverage(evidenceBundle)
+      : undefined;
 
     const {
       contextParts,
@@ -261,6 +284,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         contextPlan,
         hasActiveSlashCommand,
         isRagReady,
+        evidenceBundle,
       },
     );
     writeChatProvenanceToResponse(response, provenance);
@@ -308,6 +332,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
         contextParts,
         retrievalPlan,
         evidenceAssessment,
+        coverageRecord,
       },
     );
 
@@ -355,6 +380,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
           markdown,
           retrievedContextText: retrievedContextText || userContent,
           evidenceAssessment,
+          coverageRecord,
         },
       ),
       buildExtractiveFallbackAnswer: _buildExtractiveFallbackAnswer,
