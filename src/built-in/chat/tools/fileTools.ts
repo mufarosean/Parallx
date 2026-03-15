@@ -246,6 +246,10 @@ export function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | und
           description: 'Optional filter: "page_block" for canvas pages only, "file_chunk" for workspace files only',
           enum: ['page_block', 'file_chunk'],
         },
+        folder_path: {
+          type: 'string',
+          description: 'Optional folder path to restrict search scope (e.g. "RF Guides/")',
+        },
       },
     },
     requiresConfirmation: false,
@@ -264,9 +268,11 @@ export function createSearchKnowledgeTool(retrieval: IBuiltInToolRetrieval | und
       }
 
       const sourceFilter = typeof args['source_filter'] === 'string' ? args['source_filter'] : undefined;
+      const folderPath = typeof args['folder_path'] === 'string' && args['folder_path'].trim() ? args['folder_path'].trim() : undefined;
+      const pathPrefixes = folderPath ? [folderPath.endsWith('/') ? folderPath : folderPath + '/'] : undefined;
 
       try {
-        const results = await retrieval.retrieve(query, sourceFilter);
+        const results = await retrieval.retrieve(query, sourceFilter, pathPrefixes);
 
         if (results.length === 0) {
           return { content: `No relevant results found for "${query}".` };

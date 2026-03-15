@@ -469,7 +469,7 @@ export interface IBuiltInToolFileWriter {
 /** Retrieval accessor for built-in tools. */
 export interface IBuiltInToolRetrieval {
   isReady(): boolean;
-  retrieve(query: string, sourceFilter?: string): Promise<{ sourceType: string; sourceId: string; contextPrefix: string; text: string; score: number }[]>;
+  retrieve(query: string, sourceFilter?: string, pathPrefixes?: string[]): Promise<{ sourceType: string; sourceId: string; contextPrefix: string; text: string; score: number }[]>;
 }
 
 /** Canonical memory search accessor for built-in tools. */

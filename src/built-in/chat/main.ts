@@ -582,10 +582,11 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     const retrievalAccessor = retrievalService && indexingPipelineService
       ? {
         isReady: () => indexingPipelineService!.isInitialIndexComplete,
-        async retrieve(query: string, sourceFilter?: string) {
+        async retrieve(query: string, sourceFilter?: string, pathPrefixes?: string[]) {
           // No hardcoded limits — retrieval params from AI Settings.
           const chunks = await retrievalService!.retrieve(query, {
             sourceFilter,
+            pathPrefixes,
           });
           return chunks.map((c) => ({
             sourceType: c.sourceType,
