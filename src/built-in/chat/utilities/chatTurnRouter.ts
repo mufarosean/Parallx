@@ -1,4 +1,4 @@
-import type { IChatTurnRoute } from '../chatTypes.js';
+import type { IChatTurnRoute, WorkflowType } from '../chatTypes.js';
 
 const CONVERSATIONAL_TURN_PATTERNS: readonly RegExp[] = [
   /^(?:hi|hello|hey|yo|sup|good morning|good afternoon|good evening)$/,
@@ -156,6 +156,49 @@ function buildProductSemanticsAnswer(text: string): string | undefined {
   return undefined;
 }
 
+// ── M38: Workflow type classification ──────────────────────────────────────
+
+const SUMMARY_VERBS = /\b(summari[sz]e|overview|summarize|describe|outline|recap|brief)\b/i;
+const COMPARISON_CUES = /\b(compare|contrast|difference|differences|vs\.?|versus)\b/i;
+const EXHAUSTIVE_CUES = /\b(every|all|each|complete|entire|full)\b/i;
+const EXTRACTION_VERBS = /\b(extract|list|enumerate|find|identify|collect|gather|pull)\b/i;
+
+function classifyWorkflowType(text: string, isExhaustive: boolean): WorkflowType {
+
+  if (isExhaustive) {
+    if (EXTRACTION_VERBS.test(text) && EXHAUSTIVE_CUES.test(text)) {
+      return 'exhaustive-extraction';
+    }
+    return 'folder-summary';
+  }
+
+  // Comparative: "compare X vs Y"
+  if (COMPARISON_CUES.test(text)) {
+    return 'comparative';
+  }
+
+  // Count entity-like capitalized phrases (in original text, not normalized)
+  const entityMatches = text.match(/\b[A-Z][A-Za-z0-9 _&-]{2,60}\b/g) ?? [];
+  const hasEntityRef = entityMatches.length > 0;
+
+  // Folder summary: entity + summary verb + folder/files context
+  if (hasEntityRef && SUMMARY_VERBS.test(text) && /\b(folder|directory|files)\b/i.test(text)) {
+    return 'folder-summary';
+  }
+
+  // Document summary: entity + summary verb (no folder context)
+  if (hasEntityRef && SUMMARY_VERBS.test(text)) {
+    return 'document-summary';
+  }
+
+  // Scoped topic: entity reference + topic question (not summary)
+  if (hasEntityRef && !SUMMARY_VERBS.test(text)) {
+    return 'scoped-topic';
+  }
+
+  return 'generic-grounded';
+}
+
 export function determineChatTurnRoute(
   text: string,
   options?: { hasActiveSlashCommand?: boolean },
@@ -211,14 +254,19 @@ export function determineChatTurnRoute(
       kind: 'grounded',
       reason: 'File or directory enumeration question — use tools to list actual contents instead of relying on retrieved context.',
       coverageMode: 'enumeration',
+      workflowType: 'folder-summary',
     };
   }
 
+  const exhaustive = isExhaustiveWorkspaceReviewTurn(text);
+  const workflowType = classifyWorkflowType(text, exhaustive);
+
   return {
     kind: 'grounded',
-    reason: isExhaustiveWorkspaceReviewTurn(text)
+    reason: exhaustive
       ? 'This request needs exhaustive file-by-file coverage rather than representative retrieval.'
       : 'Default grounded route uses normal workspace-aware context planning.',
-    coverageMode: isExhaustiveWorkspaceReviewTurn(text) ? 'exhaustive' : 'representative',
+    coverageMode: exhaustive ? 'exhaustive' : 'representative',
+    workflowType,
   };
 }

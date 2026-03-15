@@ -269,6 +269,8 @@ export interface IChatTurnRoute {
   readonly reason: string;
   readonly directAnswer?: string;
   readonly coverageMode?: 'representative' | 'exhaustive' | 'enumeration';
+  /** M38: Resolved workflow type for execution planning. */
+  readonly workflowType?: WorkflowType;
 }
 
 export interface IChatContextPlan {
