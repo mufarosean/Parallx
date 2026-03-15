@@ -1,4 +1,4 @@
-import type { IParsedSlashCommand } from '../chatTypes.js';
+import type { ICoverageRecord, IParsedSlashCommand } from '../chatTypes.js';
 import type { IRetrievalPlan } from '../chatTypes.js';
 
 export interface IChatUserContentEvidenceAssessment {
@@ -25,6 +25,8 @@ export interface IComposeChatUserContentOptions {
   readonly contextParts: readonly string[];
   readonly retrievalPlan: IRetrievalPlan;
   readonly evidenceAssessment: IChatUserContentEvidenceAssessment;
+  /** M38: Coverage record from the evidence engine. */
+  readonly coverageRecord?: ICoverageRecord;
 }
 
 export function composeChatUserContent(
@@ -77,6 +79,22 @@ export function composeChatUserContent(
       );
     }
     parts.push(retrievalAnalysisLines.join('\n'));
+  }
+
+  // ── M38: Coverage constraint injection ─────────────────────────────────
+  if (options.coverageRecord && options.coverageRecord.level !== 'full') {
+    const coverageLines = [
+      '[Coverage Assessment]',
+      `Level: ${options.coverageRecord.level} (${options.coverageRecord.coveredTargets}/${options.coverageRecord.totalTargets} targets covered)`,
+    ];
+    if (options.coverageRecord.gaps.length > 0) {
+      coverageLines.push(`Gaps: ${options.coverageRecord.gaps.join(', ')}`);
+    }
+    coverageLines.push(
+      'Coverage Contract: Your answer is based on incomplete evidence. Do not claim completeness or exhaustive coverage.',
+      'Coverage Contract: Explicitly note which sources were not available or not read.',
+    );
+    parts.push(coverageLines.join('\n'));
   }
 
   if (options.contextParts.length > 0) {

@@ -303,6 +303,23 @@ export interface IEvidenceBundle {
   readonly totalChars: number;
 }
 
+// ── M38 Phase 4: Coverage Tracking ─────────────────────────────────────────
+
+/** How completely the evidence covers the targets in scope. */
+export type CoverageLevel = 'full' | 'partial' | 'minimal' | 'none';
+
+/** A record of how many targets were enumerated, read, and represented. */
+export interface ICoverageRecord {
+  /** Overall coverage assessment. */
+  readonly level: CoverageLevel;
+  /** Number of targets in scope (e.g. files enumerated). */
+  readonly totalTargets: number;
+  /** Number of targets that were actually read or retrieved. */
+  readonly coveredTargets: number;
+  /** Paths that could not be read or were skipped. */
+  readonly gaps: readonly string[];
+}
+
 export type ChatTurnRouteKind =
   | 'conversational'
   | 'memory-recall'

@@ -1,3 +1,5 @@
+import type { ICoverageRecord } from '../chatTypes.js';
+
 export interface IChatAnswerRepairEvidenceAssessment {
   readonly status: 'sufficient' | 'weak' | 'insufficient';
   readonly reasons: string[];
@@ -23,6 +25,8 @@ export interface IApplyChatAnswerRepairPipelineInput {
   readonly markdown: string;
   readonly retrievedContextText: string;
   readonly evidenceAssessment: IChatAnswerRepairEvidenceAssessment;
+  /** M38: Coverage record from the evidence engine. */
+  readonly coverageRecord?: ICoverageRecord;
 }
 
 export function applyChatAnswerRepairPipeline(
@@ -31,7 +35,7 @@ export function applyChatAnswerRepairPipeline(
 ): string {
   const groundedContext = input.retrievedContextText || input.markdown;
 
-  return deps.repairGroundedAnswerTypography(
+  let repaired = deps.repairGroundedAnswerTypography(
     deps.repairUnsupportedWorkspaceTopicAnswer(
       input.query,
       deps.repairUnsupportedSpecificCoverageAnswer(
@@ -61,4 +65,29 @@ export function applyChatAnswerRepairPipeline(
       ),
     ),
   );
+
+  // M38: Coverage validation — qualify answers that claim completeness
+  // despite incomplete evidence coverage.
+  repaired = repairCoverageCompleteness(repaired, input.coverageRecord);
+
+  return repaired;
+}
+
+// ── M38: Coverage completeness validation ──────────────────────────────────
+
+const FALSE_COMPLETENESS_PATTERNS = /\b(all\s+(?:files?|documents?|sources?)|every\s+(?:file|document|source)|complete\s+(?:list|summary|overview)|comprehensive\s+(?:summary|list|review)|(?:exhaustive|full)\s+(?:summary|list|review|coverage))\b/i;
+
+/**
+ * If coverage is partial or minimal, check whether the answer claims
+ * completeness.  If it does, append a qualifier note.
+ */
+function repairCoverageCompleteness(answer: string, coverage?: ICoverageRecord): string {
+  if (!coverage || coverage.level === 'full') return answer;
+  if (!FALSE_COMPLETENESS_PATTERNS.test(answer)) return answer;
+
+  const gapNote = coverage.gaps.length > 0
+    ? ` The following sources were not available: ${coverage.gaps.slice(0, 5).join(', ')}${coverage.gaps.length > 5 ? ` and ${coverage.gaps.length - 5} more` : ''}.`
+    : '';
+
+  return `${answer}\n\n> **Note:** This answer is based on ${coverage.coveredTargets} of ${coverage.totalTargets} available sources (${coverage.level} coverage).${gapNote}`;
 }

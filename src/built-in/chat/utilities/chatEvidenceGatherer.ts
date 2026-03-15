@@ -6,7 +6,9 @@
  */
 
 import type {
+  CoverageLevel,
   EvidenceItem,
+  ICoverageRecord,
   IEvidenceBundle,
   IExecutionPlan,
   IExecutionStep,
@@ -158,4 +160,71 @@ function measureChars(item: EvidenceItem): number {
     case 'exhaustive':
       return item.reads.reduce((sum, r) => sum + r.content.length, 0);
   }
+}
+
+// ── Coverage computation ───────────────────────────────────────────────────
+
+/**
+ * Compute a coverage record from the evidence bundle.
+ *
+ * The record compares the set of files discovered during structural/enumerate
+ * steps against the files actually read during exhaustive steps.  For purely
+ * semantic workflows (no enumeration), coverage defaults to 'full' since
+ * retrieval completeness is assessed separately by evidence sufficiency.
+ */
+export function computeCoverage(bundle: IEvidenceBundle): ICoverageRecord {
+  // Collect all enumerated file paths from structural evidence.
+  const enumeratedPaths = new Set<string>();
+  for (const item of bundle.items) {
+    if (item.kind === 'structural') {
+      for (const file of item.files) {
+        enumeratedPaths.add(file.relativePath);
+      }
+    }
+  }
+
+  // If no structural enumeration, coverage is not applicable — default full.
+  if (enumeratedPaths.size === 0) {
+    return { level: 'full', totalTargets: 0, coveredTargets: 0, gaps: [] };
+  }
+
+  // Collect all paths that were actually read.
+  const readPaths = new Set<string>();
+  for (const item of bundle.items) {
+    if (item.kind === 'exhaustive') {
+      for (const read of item.reads) {
+        readPaths.add(read.relativePath);
+      }
+    }
+  }
+
+  // Also count semantic sources as covering files they reference.
+  for (const item of bundle.items) {
+    if (item.kind === 'semantic') {
+      for (const source of item.sources) {
+        readPaths.add(source.uri);
+      }
+    }
+  }
+
+  const totalTargets = enumeratedPaths.size;
+  const gaps: string[] = [];
+  for (const path of enumeratedPaths) {
+    if (!readPaths.has(path)) {
+      gaps.push(path);
+    }
+  }
+  const coveredTargets = totalTargets - gaps.length;
+  const level = classifyCoverageLevel(coveredTargets, totalTargets);
+
+  return { level, totalTargets, coveredTargets, gaps };
+}
+
+function classifyCoverageLevel(covered: number, total: number): CoverageLevel {
+  if (total === 0) return 'full';
+  const ratio = covered / total;
+  if (ratio >= 1) return 'full';
+  if (ratio >= 0.7) return 'partial';
+  if (ratio > 0) return 'minimal';
+  return 'none';
 }
