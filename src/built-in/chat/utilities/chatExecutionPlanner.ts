@@ -45,6 +45,9 @@ function buildSteps(
 ): IExecutionStep[] {
   switch (workflowType) {
     case 'generic-grounded':
+      // Equivalent to the existing IChatContextPlan grounded path:
+      // useRetrieval: true, citationMode: 'required', single retrieval pass.
+      // No behavioral change for standard RAG queries (Task 2.4 contract).
       return [
         { kind: 'scoped-retrieve', label: 'Retrieve relevant context' },
         { kind: 'synthesize', label: 'Generate grounded response' },
