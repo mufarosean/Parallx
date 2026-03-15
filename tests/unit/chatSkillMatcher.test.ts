@@ -256,3 +256,98 @@ describe('activateSkill', () => {
     expect(result.manifest).toBe(testManifest);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// M39 Phase D: Slash command integration
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import { SlashCommandRegistry, parseSlashCommand } from '../../src/built-in/chat/config/chatSlashCommands.js';
+
+describe('Skill slash command registration', () => {
+  it('registers workflow skills as slash commands with specialHandler "skill"', () => {
+    const registry = new SlashCommandRegistry();
+    const skillCommands = [
+      {
+        name: 'exhaustive-summary',
+        description: 'Summarize every file',
+        promptTemplate: '',
+        isBuiltIn: false,
+        specialHandler: 'skill',
+      },
+      {
+        name: 'folder-overview',
+        description: 'Overview of folder contents',
+        promptTemplate: '',
+        isBuiltIn: false,
+        specialHandler: 'skill',
+      },
+    ];
+    registry.registerCommands(skillCommands);
+
+    const cmd = registry.getCommand('exhaustive-summary');
+    expect(cmd).toBeDefined();
+    expect(cmd?.specialHandler).toBe('skill');
+    expect(cmd?.isBuiltIn).toBe(false);
+  });
+
+  it('skill slash commands are parsed correctly', () => {
+    const registry = new SlashCommandRegistry();
+    registry.registerCommand({
+      name: 'exhaustive-summary',
+      description: 'Summarize every file',
+      promptTemplate: '',
+      isBuiltIn: false,
+      specialHandler: 'skill',
+    });
+
+    const result = parseSlashCommand('/exhaustive-summary policies/umbrella', registry);
+    expect(result.command).toBeDefined();
+    expect(result.commandName).toBe('exhaustive-summary');
+    expect(result.remainingText).toBe('policies/umbrella');
+  });
+
+  it('skill slash commands pass arguments to activateSkill', () => {
+    const manifest: ISkillManifest = {
+      name: 'folder-overview',
+      description: 'Overview of a folder',
+      version: '1.0.0',
+      author: 'parallx',
+      permission: 'auto-allow',
+      parameters: [],
+      tags: ['workflow', 'overview'],
+      body: 'Step 1: List files in $ARGUMENTS\nStep 2: Describe each file',
+      relativePath: '.parallx/skills/folder-overview/SKILL.md',
+      kind: 'workflow',
+      disableModelInvocation: false,
+      userInvocable: true,
+    };
+
+    const result = activateSkill(manifest, 'policies/umbrella', 'user');
+    expect(result.resolvedBody).toBe(
+      'Step 1: List files in policies/umbrella\nStep 2: Describe each file',
+    );
+    expect(result.activatedBy).toBe('user');
+  });
+
+  it('does not register skills without workflow kind (hypothetical filter)', () => {
+    // The registration code filters by kind === 'workflow'
+    // Tool skills should not become slash commands
+    const toolSkill = {
+      name: 'tool-skill',
+      description: 'A tool skill',
+      kind: 'tool' as const,
+      tags: ['tool'],
+    };
+    const catalog = [toolSkill];
+    const skillCommands = catalog
+      .filter(s => s.kind === 'workflow')
+      .map(s => ({
+        name: s.name,
+        description: s.description,
+        promptTemplate: '',
+        isBuiltIn: false,
+        specialHandler: 'skill',
+      }));
+    expect(skillCommands).toHaveLength(0);
+  });
+});

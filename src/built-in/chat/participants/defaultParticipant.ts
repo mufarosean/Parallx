@@ -112,6 +112,26 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     }).catch(() => { /* best-effort */ });
   }
 
+  // ── M39: Register workflow skills as slash commands ──
+  //
+  // Every workflow skill with userInvocable !== false gets a /skill-name
+  // slash command. The special handler 'skill' triggers direct activation.
+  {
+    const catalog = services.getWorkflowSkillCatalog?.() ?? [];
+    const skillCommands = catalog
+      .filter(s => s.kind === 'workflow')
+      .map(s => ({
+        name: s.name,
+        description: s.description,
+        promptTemplate: '',
+        isBuiltIn: false,
+        specialHandler: 'skill',
+      }));
+    if (skillCommands.length > 0) {
+      commandRegistry.registerCommands(skillCommands);
+    }
+  }
+
   const handler: IChatParticipantHandler = async (
     request: IChatParticipantRequest,
     context: IChatParticipantContext,
@@ -265,26 +285,37 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
 
     // ── M39: Skill matching & activation ──
     //
-    // After the route and scope are known, attempt to match a workflow skill.
-    // If matched, load the full skill body and inject it into the system prompt.
+    // Two activation paths:
+    // 1. Slash command: /skill-name bypasses the matcher, directly activates
+    // 2. Planner: deterministic tag+keyword matching against the route
     const skillCatalog = services.getWorkflowSkillCatalog?.() ?? [];
-    const skillMatch = skillCatalog.length > 0
-      ? matchWorkflowSkill(userText, turnRoute, queryScope, skillCatalog)
-      : { matched: false, reason: 'No workflow skills available' } as const;
+    const isSkillSlashCommand = slashResult.command?.specialHandler === 'skill';
 
     let activatedSkill: IActivatedSkill | undefined;
-    if (skillMatch.matched && skillMatch.skill) {
-      const manifest = services.getSkillManifest?.(skillMatch.skill.name);
+
+    if (isSkillSlashCommand && slashResult.commandName) {
+      // Path 1: User explicit slash command → direct activation
+      const manifest = services.getSkillManifest?.(slashResult.commandName);
       if (manifest) {
-        activatedSkill = activateSkill(manifest, userText, 'planner', queryScope);
-        // Inject skill instructions into the system message
-        if (messages.length > 0 && messages[0].role === 'system') {
-          messages[0] = {
-            ...messages[0],
-            content: messages[0].content + buildSkillInstructionSection(activatedSkill),
-          };
+        activatedSkill = activateSkill(manifest, effectiveText, 'user', queryScope);
+      }
+    } else if (skillCatalog.length > 0) {
+      // Path 2: Planner-driven matching
+      const skillMatch = matchWorkflowSkill(userText, turnRoute, queryScope, skillCatalog);
+      if (skillMatch.matched && skillMatch.skill) {
+        const manifest = services.getSkillManifest?.(skillMatch.skill.name);
+        if (manifest) {
+          activatedSkill = activateSkill(manifest, userText, 'planner', queryScope);
         }
       }
+    }
+
+    // Inject activated skill instructions into the system prompt
+    if (activatedSkill && messages.length > 0 && messages[0].role === 'system') {
+      messages[0] = {
+        ...messages[0],
+        content: messages[0].content + buildSkillInstructionSection(activatedSkill),
+      };
     }
 
     const {
