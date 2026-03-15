@@ -320,6 +320,18 @@ export interface ICoverageRecord {
   readonly gaps: readonly string[];
 }
 
+// ── M39: Skill types ────────────────────────────────────────────────────────
+
+import type { SkillKind } from '../../services/skillLoaderService.js';
+
+/** Tier 1 — lightweight catalog entry visible in the system prompt. */
+export interface ISkillCatalogEntry {
+  readonly name: string;
+  readonly description: string;
+  readonly kind: SkillKind;
+  readonly tags: readonly string[];
+}
+
 export type ChatTurnRouteKind =
   | 'conversational'
   | 'memory-recall'
@@ -633,6 +645,8 @@ export interface ISystemPromptContext {
    * understanding of what "workspace" means in this context.
    */
   readonly workspaceDescription?: string;
+  /** M39: Lightweight catalog of available workflow skills. */
+  readonly skillCatalog?: readonly ISkillCatalogEntry[];
 }
 
 /** Mode capability matrix (Ask/Edit/Agent). */

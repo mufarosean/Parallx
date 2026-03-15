@@ -356,6 +356,42 @@ tags: [workflow, summary, exhaustive]
     expect(tools).toHaveLength(2);
   });
 
+  it('getWorkflowSkillCatalog returns only workflow skills', async () => {
+    await service.scanSkills();
+    const catalog = service.getWorkflowSkillCatalog();
+    expect(catalog).toHaveLength(1);
+    expect(catalog[0].name).toBe('exhaustive-summary');
+    expect(catalog[0].kind).toBe('workflow');
+    expect(catalog[0].tags).toContain('workflow');
+  });
+
+  it('getWorkflowSkillCatalog excludes disableModelInvocation skills', async () => {
+    const PRIVATE_WF = `---
+name: private-workflow
+description: A private workflow
+kind: workflow
+disableModelInvocation: true
+tags: [workflow]
+---
+
+Private instructions.`;
+
+    (mockFs.listDirs as ReturnType<typeof vi.fn>).mockResolvedValue([
+      'read_file', 'exhaustive-summary', 'private-workflow',
+    ]);
+    (mockFs.readFile as ReturnType<typeof vi.fn>).mockImplementation(async (path: string) => {
+      if (path.includes('read_file')) { return TOOL_SKILL; }
+      if (path.includes('exhaustive-summary')) { return WORKFLOW_SKILL; }
+      if (path.includes('private-workflow')) { return PRIVATE_WF; }
+      return '';
+    });
+
+    await service.scanSkills();
+    const catalog = service.getWorkflowSkillCatalog();
+    expect(catalog).toHaveLength(1);
+    expect(catalog[0].name).toBe('exhaustive-summary');
+  });
+
   it('reload removes a deleted skill', async () => {
     await service.scanSkills();
     expect(service.skills).toHaveLength(2);

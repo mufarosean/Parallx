@@ -373,6 +373,16 @@ export class SkillLoaderService extends Disposable {
   }
 
   /**
+   * Return a lightweight catalog of workflow skills for system prompt injection.
+   * Excludes skills with `disableModelInvocation: true`.
+   */
+  getWorkflowSkillCatalog(): { name: string; description: string; kind: SkillKind; tags: readonly string[] }[] {
+    return this.skills
+      .filter(s => s.kind === 'workflow' && !s.disableModelInvocation)
+      .map(s => ({ name: s.name, description: s.description, kind: s.kind, tags: s.tags }));
+  }
+
+  /**
    * Scan `.parallx/skills/` and load all SKILL.md manifests.
    * Emits `onDidChangeSkills` if the set changes.
    */

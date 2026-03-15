@@ -67,6 +67,9 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
   lines.push('');
   appendWorkspaceStats(lines, ctx);
 
+  // Skill catalog (M39 — progressive disclosure tier 1)
+  appendSkillCatalog(lines, ctx);
+
   // Context explanation (RAG-aware)
   lines.push(
     '',
@@ -181,6 +184,9 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
   lines.push('');
   appendWorkspaceStats(lines, ctx);
 
+  // Skill catalog (M39 — progressive disclosure tier 1)
+  appendSkillCatalog(lines, ctx);
+
   // Context explanation (RAG-aware)
   lines.push(
     '',
@@ -279,6 +285,37 @@ function appendWorkspaceStats(lines: string[], ctx: ISystemPromptContext): void 
   if (ctx.workspaceDigest) {
     lines.push('', ctx.workspaceDigest);
   }
+}
+
+// ── M39: Skill catalog helper ──
+
+/** Maximum token budget for the skill catalog section (~20 tokens per entry). */
+const SKILL_CATALOG_MAX_ENTRIES = 100;
+
+/**
+ * Append a lightweight skill catalog to the system prompt.
+ * Only included when workflow skills exist. Each entry is ~20 tokens.
+ */
+function appendSkillCatalog(lines: string[], ctx: ISystemPromptContext): void {
+  const catalog = ctx.skillCatalog;
+  if (!catalog || catalog.length === 0) { return; }
+
+  const entries = catalog.slice(0, SKILL_CATALOG_MAX_ENTRIES);
+
+  lines.push(
+    '',
+    '<available_skills>',
+    'The following workflow skills provide specialized step-by-step instructions for complex tasks.',
+    'When a task matches a skill\'s description, the skill will be activated automatically.',
+    'You can also use your standard tools for tasks that don\'t match any skill.',
+    '',
+  );
+
+  for (const entry of entries) {
+    lines.push(`- **${entry.name}**: ${entry.description}`);
+  }
+
+  lines.push('</available_skills>');
 }
 
 // ── M38: Dynamic execution plan prompt section ──

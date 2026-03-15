@@ -292,3 +292,62 @@ describe('buildSystemPrompt — edge cases', () => {
     expect(prompt).not.toContain('Files and folders at the workspace root:');
   });
 });
+
+// ── M39: Skill catalog injection ──
+
+describe('buildSystemPrompt — skill catalog', () => {
+  const catalogEntries = [
+    { name: 'exhaustive-summary', description: 'Summarize every file in the workspace', kind: 'workflow' as const, tags: ['workflow', 'summary'] },
+    { name: 'folder-overview', description: 'Overview of a folder structure', kind: 'workflow' as const, tags: ['workflow', 'overview'] },
+  ];
+
+  it('includes skill catalog section when skills are provided (Ask mode)', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ skillCatalog: catalogEntries }));
+    expect(prompt).toContain('<available_skills>');
+    expect(prompt).toContain('</available_skills>');
+    expect(prompt).toContain('exhaustive-summary');
+    expect(prompt).toContain('folder-overview');
+  });
+
+  it('includes skill catalog section in Agent mode', () => {
+    const prompt = buildSystemPrompt(ChatMode.Agent, makeContext({ skillCatalog: catalogEntries }));
+    expect(prompt).toContain('<available_skills>');
+    expect(prompt).toContain('exhaustive-summary');
+  });
+
+  it('omits skill catalog when no skills provided', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ skillCatalog: undefined }));
+    expect(prompt).not.toContain('<available_skills>');
+  });
+
+  it('omits skill catalog when empty array', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ skillCatalog: [] }));
+    expect(prompt).not.toContain('<available_skills>');
+  });
+
+  it('does not include skill catalog in Edit mode', () => {
+    const prompt = buildSystemPrompt(ChatMode.Edit, makeContext({ skillCatalog: catalogEntries }));
+    expect(prompt).not.toContain('<available_skills>');
+  });
+
+  it('includes behavioral instruction text', () => {
+    const prompt = buildSystemPrompt(ChatMode.Ask, makeContext({ skillCatalog: catalogEntries }));
+    expect(prompt).toContain('workflow skills provide specialized step-by-step instructions');
+    expect(prompt).toContain('activated automatically');
+  });
+
+  it('skill catalog adds reasonable token overhead', () => {
+    const fourSkills = [
+      { name: 'exhaustive-summary', description: 'Summarize every file in the workspace', kind: 'workflow' as const, tags: ['workflow'] },
+      { name: 'folder-overview', description: 'Overview of a folder structure', kind: 'workflow' as const, tags: ['workflow'] },
+      { name: 'document-comparison', description: 'Compare two or more documents', kind: 'workflow' as const, tags: ['workflow'] },
+      { name: 'scoped-extraction', description: 'Extract specific information across scope', kind: 'workflow' as const, tags: ['workflow'] },
+    ];
+
+    const withoutSkills = buildSystemPrompt(ChatMode.Ask, makeContext());
+    const withSkills = buildSystemPrompt(ChatMode.Ask, makeContext({ skillCatalog: fourSkills }));
+
+    const addedTokens = Math.ceil((withSkills.length - withoutSkills.length) / 4);
+    expect(addedTokens).toBeLessThan(500);
+  });
+});
