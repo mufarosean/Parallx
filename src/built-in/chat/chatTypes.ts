@@ -183,7 +183,7 @@ export interface IRetrievalPlan {
   reasoning: string;
   needsRetrieval: boolean;
   queries: string[];
-  coverageMode?: 'representative' | 'exhaustive';
+  coverageMode?: 'representative' | 'exhaustive' | 'enumeration';
 }
 
 export type ChatTurnRouteKind =
@@ -198,7 +198,7 @@ export interface IChatTurnRoute {
   readonly kind: ChatTurnRouteKind;
   readonly reason: string;
   readonly directAnswer?: string;
-  readonly coverageMode?: 'representative' | 'exhaustive';
+  readonly coverageMode?: 'representative' | 'exhaustive' | 'enumeration';
 }
 
 export interface IChatContextPlan {

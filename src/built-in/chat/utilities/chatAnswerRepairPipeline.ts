@@ -4,6 +4,8 @@ export interface IChatAnswerRepairEvidenceAssessment {
 }
 
 export interface IChatAnswerRepairPipelineDeps {
+  readonly repairGroundedAnswerTypography: (answer: string) => string;
+  readonly repairUnsupportedWorkspaceTopicAnswer: (query: string, answer: string) => string;
   readonly repairUnsupportedSpecificCoverageAnswer: (
     query: string,
     answer: string,
@@ -29,29 +31,34 @@ export function applyChatAnswerRepairPipeline(
 ): string {
   const groundedContext = input.retrievedContextText || input.markdown;
 
-  return deps.repairUnsupportedSpecificCoverageAnswer(
-    input.query,
-    deps.repairVehicleInfoAnswer(
+  return deps.repairGroundedAnswerTypography(
+    deps.repairUnsupportedWorkspaceTopicAnswer(
       input.query,
-      deps.repairAgentContactAnswer(
+      deps.repairUnsupportedSpecificCoverageAnswer(
         input.query,
-        deps.repairDeductibleConflictAnswer(
+        deps.repairVehicleInfoAnswer(
           input.query,
-          deps.repairTotalLossThresholdAnswer(
+          deps.repairAgentContactAnswer(
             input.query,
-            deps.repairGroundedCodeAnswer(
+            deps.repairDeductibleConflictAnswer(
               input.query,
-              input.markdown,
+              deps.repairTotalLossThresholdAnswer(
+                input.query,
+                deps.repairGroundedCodeAnswer(
+                  input.query,
+                  input.markdown,
+                  groundedContext,
+                ),
+                groundedContext,
+              ),
               groundedContext,
             ),
             groundedContext,
           ),
           groundedContext,
         ),
-        groundedContext,
+        input.evidenceAssessment,
       ),
-      groundedContext,
     ),
-    input.evidenceAssessment,
   );
 }

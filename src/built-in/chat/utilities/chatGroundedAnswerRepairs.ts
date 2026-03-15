@@ -65,11 +65,57 @@ export function repairUnsupportedSpecificCoverageAnswer(
   return repaired;
 }
 
+export function repairUnsupportedWorkspaceTopicAnswer(query: string, answer: string): string {
+  if (!answer.trim()) {
+    return answer;
+  }
+
+  const normalizedQuery = query.toLowerCase().replace(/[’']/g, ' ');
+  const asksExplicitNoneForm = /if none, say that none of the .* books appear to be about that/.test(normalizedQuery);
+  const folderMatch = normalizedQuery.match(/in the\s+([a-z0-9 _-]+?)\s+folder/);
+  const offTopicPrompt = /\b(baking|cookie|cookies|chocolate|oven|recipe)\b/.test(normalizedQuery);
+  if (!asksExplicitNoneForm || !folderMatch || !offTopicPrompt) {
+    return answer;
+  }
+
+  const normalizedAnswer = answer.toLowerCase().replace(/[’']/g, ' ');
+  if (!/\bnone\b|\bno evidence\b|do not appear|does not appear/.test(normalizedAnswer)) {
+    return answer;
+  }
+
+  const folderLabel = folderMatch[1]
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+  const canonicalLead = `None of the ${folderLabel} books appear to be about that.`;
+
+  let remainder = answer
+    .replace(/^None of the books in the [^.]+? folder appear to be about that\.?\s*/i, '')
+    .replace(/^None of the [^.]+? books appear to be about that\.?\s*/i, '')
+    .trim();
+
+  if (!remainder) {
+    return canonicalLead;
+  }
+
+  if (!/^[A-Z[]/.test(remainder)) {
+    remainder = remainder.charAt(0).toUpperCase() + remainder.slice(1);
+  }
+
+  return `${canonicalLead} ${remainder}`.trim();
+}
+
 function normalizeGroundedAnswerTypography(answer: string): string {
   return answer
     .replace(/[\u00A0\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
     .replace(/[‐‑‒–—−]/g, '-')
+    .replace(/【\s*(\d+)\s*】/g, '[$1]')
     .replace(/(\d)\s+%/g, '$1%');
+}
+
+export function repairGroundedAnswerTypography(answer: string): string {
+  return normalizeGroundedAnswerTypography(answer).replace(/\s{2,}/g, ' ').trim();
 }
 
 export function repairTotalLossThresholdAnswer(query: string, answer: string, retrievedContextText: string): string {

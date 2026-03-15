@@ -49,9 +49,11 @@ import {
 import {
   repairAgentContactAnswer as _repairAgentContactAnswer,
   repairDeductibleConflictAnswer as _repairDeductibleConflictAnswer,
+  repairGroundedAnswerTypography as _repairGroundedAnswerTypography,
   repairGroundedCodeAnswer as _repairGroundedCodeAnswer,
   repairTotalLossThresholdAnswer as _repairTotalLossThresholdAnswer,
   repairUnsupportedSpecificCoverageAnswer as _repairUnsupportedSpecificCoverageAnswer,
+  repairUnsupportedWorkspaceTopicAnswer as _repairUnsupportedWorkspaceTopicAnswer,
   repairVehicleInfoAnswer as _repairVehicleInfoAnswer,
 } from '../utilities/chatGroundedAnswerRepairs.js';
 import { categorizeChatRequestError } from '../utilities/chatRequestErrorCategorizer.js';
@@ -339,6 +341,8 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       maxIterations,
       repairMarkdown: (markdown) => applyChatAnswerRepairPipeline(
         {
+          repairGroundedAnswerTypography: _repairGroundedAnswerTypography,
+          repairUnsupportedWorkspaceTopicAnswer: _repairUnsupportedWorkspaceTopicAnswer,
           repairUnsupportedSpecificCoverageAnswer: _repairUnsupportedSpecificCoverageAnswer,
           repairVehicleInfoAnswer: _repairVehicleInfoAnswer,
           repairAgentContactAnswer: _repairAgentContactAnswer,

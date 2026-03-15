@@ -34,18 +34,22 @@ function buildRetrievalPlan(
         queries: [],
       };
     case 'grounded':
-    default:
+    default: {
+      const isToolFirst = route.coverageMode === 'exhaustive' || route.coverageMode === 'enumeration';
       return {
-        intent: route.coverageMode === 'exhaustive' ? 'exploration' : 'question',
+        intent: isToolFirst ? 'exploration' : 'question',
         reasoning: options.hasActiveSlashCommand
           ? 'Slash command is active, so automatic retrieval stays off while normal execution continues.'
-          : route.coverageMode === 'exhaustive'
-            ? 'This request needs exhaustive file-by-file coverage. Use retrieval for discovery, but do not treat representative top-k context as full coverage.'
-            : 'Direct retrieval uses embedding similarity to filter relevant workspace context.',
-        needsRetrieval: options.isRagReady && !options.hasActiveSlashCommand,
+          : route.coverageMode === 'enumeration'
+            ? 'File/directory enumeration — suppressing RAG retrieval to avoid context contamination. The model must use list_files/read_file tools for accurate results.'
+            : route.coverageMode === 'exhaustive'
+              ? 'Exhaustive file-by-file coverage — suppressing RAG retrieval to prevent cross-source contamination. The model must use tools to enumerate and read files.'
+              : 'Direct retrieval uses embedding similarity to filter relevant workspace context.',
+        needsRetrieval: isToolFirst ? false : options.isRagReady && !options.hasActiveSlashCommand,
         queries: [],
         coverageMode: route.coverageMode ?? 'representative',
       };
+    }
   }
 }
 

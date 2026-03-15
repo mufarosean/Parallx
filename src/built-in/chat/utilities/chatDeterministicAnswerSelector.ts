@@ -1,7 +1,9 @@
 import type { IChatTurnRoute } from '../chatTypes.js';
 import {
+  buildDeterministicGroundedBooksAnswer,
   buildDirectMemoryRecallAnswer,
   buildUnsupportedSpecificCoverageAnswer,
+  buildUnsupportedWorkspaceTopicAnswer,
 } from './chatDeterministicExecutors.js';
 
 export interface IDeterministicAnswerSelection {
@@ -10,7 +12,9 @@ export interface IDeterministicAnswerSelection {
     | 'product-semantics-direct-answer'
     | 'off-topic-direct-answer'
     | 'memory-recall-direct-answer'
-    | 'unsupported-specific-coverage-direct-answer';
+    | 'deterministic-grounded-books-direct-answer'
+    | 'unsupported-specific-coverage-direct-answer'
+    | 'unsupported-workspace-topic-direct-answer';
   readonly retrievedContextLength: number;
 }
 
@@ -32,6 +36,30 @@ export function selectDeterministicAnswer(options: {
   }
 
   if (options.query && options.evidenceAssessment) {
+    const deterministicGroundedBooksAnswer = buildDeterministicGroundedBooksAnswer(
+      options.query,
+      options.retrievedContextText ?? '',
+    );
+    if (deterministicGroundedBooksAnswer) {
+      return {
+        markdown: deterministicGroundedBooksAnswer,
+        phase: 'deterministic-grounded-books-direct-answer',
+        retrievedContextLength: options.retrievedContextText?.length ?? 0,
+      };
+    }
+
+    const unsupportedWorkspaceTopicAnswer = buildUnsupportedWorkspaceTopicAnswer(
+      options.query,
+      options.retrievedContextText ?? '',
+    );
+    if (unsupportedWorkspaceTopicAnswer) {
+      return {
+        markdown: unsupportedWorkspaceTopicAnswer,
+        phase: 'unsupported-workspace-topic-direct-answer',
+        retrievedContextLength: options.retrievedContextText?.length ?? 0,
+      };
+    }
+
     const unsupportedSpecificCoverageAnswer = buildUnsupportedSpecificCoverageAnswer(
       options.query,
       options.evidenceAssessment,

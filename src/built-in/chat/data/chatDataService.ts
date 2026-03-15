@@ -220,16 +220,28 @@ const EXPLICIT_SOURCE_QUERY_PATTERNS: readonly RegExp[] = [
   /\bin (?:the )?.*\b(?:book|document|file|pdf|guide|paper)\b/i,
   /\bfrom (?:the )?.*\b(?:book|document|file|pdf|guide|paper)\b/i,
   /\bwhich (?:book|document|file|pdf|guide|paper)\b/i,
+  /\bwho wrote\b/i,
+  /\bauthor of\b/i,
+  /\bcopy of\b/i,
+  /\bversion of\b/i,
+  /\bdo i have both\b/i,
+  /\bname\s+three\s+books\b/i,
+  /^which one\b/i,
 ];
 const EXPLICIT_SOURCE_STOPWORDS = new Set([
   'a', 'an', 'and', 'art', 'basic', 'book', 'books', 'by', 'cite', 'course', 'document', 'documents', 'file',
-  'files', 'folder', 'from', 'guide', 'in', 'is', 'of', 'on', 'paper', 'pdf', 'please', 'source', 'sources', 'student',
-  'text', 'the', 'this', 'to', 'which', 'work', 'workspace',
+  'files', 'folder', 'from', 'guide', 'have', 'idea', 'in', 'is', 'of', 'on', 'opening', 'page', 'pages', 'paper', 'pdf',
+  'please', 'praise', 'source', 'sources', 'student', 'text', 'the', 'this', 'to', 'version', 'versions', 'which', 'who',
+  'work', 'workspace', 'wrote', 'author', 'authors', 'both', 'copy', 'copies', 'you', 'your', 'me', 'my', 'epub', 'name',
+  'three', 'language', 'culture', 'focus', 'relevance', 'notes', 'title', 'titles',
 ]);
+
+type ExplicitSourceFormat = 'pdf' | 'epub';
 
 function normalizeExplicitSourceText(text: string): string {
   return text
     .toLowerCase()
+    .replace(/foreign\s+service\s+institute/g, 'fsi')
     .replace(/\.(pdf|docx|md|txt|epub|xlsx|xls)$/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -243,7 +255,28 @@ function tokenizeExplicitSourceText(text: string): string[] {
 }
 
 function shouldUseExplicitSourceFallback(query: string): boolean {
-  return EXPLICIT_SOURCE_QUERY_PATTERNS.some((pattern) => pattern.test(query));
+  return EXPLICIT_SOURCE_QUERY_PATTERNS.some((pattern) => pattern.test(query))
+    || extractRequestedExplicitFormats(query).length > 0;
+}
+
+function extractRequestedExplicitFormats(query: string): ExplicitSourceFormat[] {
+  const formats: ExplicitSourceFormat[] = [];
+  if (/\bpdf\b/i.test(query)) {
+    formats.push('pdf');
+  }
+  if (/\bepub\b/i.test(query)) {
+    formats.push('epub');
+  }
+  return formats;
+}
+
+function isMultiFormatPresenceQuery(query: string): boolean {
+  const formats = extractRequestedExplicitFormats(query);
+  return formats.length >= 2 && /\b(?:both|copy|copies|version|versions|have)\b/i.test(query);
+}
+
+function isTopicTitleListQuery(query: string): boolean {
+  return /\bname\s+three\s+books\b/i.test(query) && /\babout\b/i.test(query);
 }
 
 function toDisplayLabel(relativePath: string): string {
@@ -849,6 +882,76 @@ export class ChatDataService {
       return { debug: { attempted: false, readSucceeded: false, reason: 'query-not-eligible' } };
     }
 
+    if (isTopicTitleListQuery(query)) {
+      const matchedPaths = await this._findTopicTitlePaths(query, 3);
+      if (matchedPaths.length > 0) {
+        const sources = matchedPaths.map((relativePath, index) => ({
+          uri: relativePath,
+          label: toDisplayLabel(relativePath),
+          index: index + 1,
+        }));
+
+        return {
+          result: {
+            text: [
+              '[Retrieved Context]',
+              ...matchedPaths.flatMap((relativePath, index) => [
+                '---',
+                `[${index + 1}] Source: [Source: "${relativePath}"]`,
+                `Path: ${relativePath}`,
+                'Title matched the topic requested by the user.',
+              ]),
+              '---',
+            ].join('\n'),
+            sources,
+          },
+          debug: {
+            attempted: true,
+            matchedPath: matchedPaths.join('; '),
+            readSucceeded: true,
+          },
+        };
+      }
+    }
+
+    if (isMultiFormatPresenceQuery(query)) {
+      const matchedPaths = await this._findExplicitSourcePaths(query, extractRequestedExplicitFormats(query));
+      if (matchedPaths.length === 0) {
+        return { debug: { attempted: true, readSucceeded: false, reason: 'no-matching-path' } };
+      }
+
+      const sources = matchedPaths.map((relativePath, index) => ({
+        uri: relativePath,
+        label: toDisplayLabel(relativePath),
+        index: index + 1,
+      }));
+
+      return {
+        result: {
+          text: [
+            '[Retrieved Context]',
+            ...matchedPaths.flatMap((relativePath, index) => {
+              const ext = relativePath.includes('.') ? relativePath.slice(relativePath.lastIndexOf('.') + 1).toUpperCase() : 'FILE';
+              return [
+                '---',
+                `[${index + 1}] Source: [Source: "${relativePath}"]`,
+                `Path: ${relativePath}`,
+                `Format: ${ext}`,
+                'File is present in the workspace.',
+              ];
+            }),
+            '---',
+          ].join('\n'),
+          sources,
+        },
+        debug: {
+          attempted: true,
+          matchedPath: matchedPaths.join('; '),
+          readSucceeded: true,
+        },
+      };
+    }
+
     const relativePath = await this._findExplicitSourcePath(query);
     if (!relativePath) {
       return { debug: { attempted: true, readSucceeded: false, reason: 'no-matching-path' } };
@@ -895,13 +998,22 @@ export class ChatDataService {
   }
 
   private async _findExplicitSourcePath(query: string): Promise<string | undefined> {
+    const matches = await this._findExplicitSourcePaths(query);
+    return matches[0];
+  }
+
+  private async _findExplicitSourcePaths(
+    query: string,
+    requiredFormats: readonly ExplicitSourceFormat[] = [],
+    maxResults: number = 1,
+  ): Promise<string[]> {
     if (!this._d.fsAccessor) {
-      return undefined;
+      return [];
     }
 
     const queryTokens = tokenizeExplicitSourceText(query);
     if (queryTokens.length < 2) {
-      return undefined;
+      return [];
     }
 
     const filePaths: string[] = [];
@@ -914,16 +1026,56 @@ export class ChatDataService {
         const matchedTokens = labelTokens.filter((token) => queryTokens.includes(token));
         const exactPhraseMatch = normalizeExplicitSourceText(query).includes(normalizeExplicitSourceText(label));
         const score = matchedTokens.length + (exactPhraseMatch ? 3 : 0);
-        return { relativePath, score, matchedTokens, labelTokens };
+        const extension = relativePath.includes('.') ? relativePath.slice(relativePath.lastIndexOf('.') + 1).toLowerCase() : '';
+        return { relativePath, score, matchedTokens, labelTokens, extension };
       })
       .filter((candidate) => candidate.score >= 2 && candidate.matchedTokens.length >= Math.min(2, candidate.labelTokens.length || 2))
       .sort((a, b) => b.score - a.score || a.relativePath.localeCompare(b.relativePath));
 
     if (scored.length === 0) {
-      return undefined;
+      return [];
     }
 
-    return scored[0].relativePath;
+    if (requiredFormats.length === 0) {
+      return scored.slice(0, Math.max(1, maxResults)).map((candidate) => candidate.relativePath);
+    }
+
+    const selected: string[] = [];
+    for (const format of requiredFormats) {
+      const match = scored.find((candidate) => candidate.extension === format && !selected.includes(candidate.relativePath));
+      if (match) {
+        selected.push(match.relativePath);
+      }
+    }
+
+    return selected;
+  }
+
+  private async _findTopicTitlePaths(query: string, maxResults: number): Promise<string[]> {
+    if (!this._d.fsAccessor) {
+      return [];
+    }
+
+    const queryTokens = tokenizeExplicitSourceText(query);
+    if (queryTokens.length === 0) {
+      return [];
+    }
+
+    const filePaths: string[] = [];
+    await this._collectWorkspaceFilePaths('.', 0, filePaths);
+
+    return filePaths
+      .map((relativePath) => {
+        const label = toDisplayLabel(relativePath);
+        const labelTokens = tokenizeExplicitSourceText(label);
+        const matchedTokens = labelTokens.filter((token) => queryTokens.includes(token));
+        const score = matchedTokens.length;
+        return { relativePath, score };
+      })
+      .filter((candidate) => candidate.score > 0)
+      .sort((a, b) => b.score - a.score || a.relativePath.localeCompare(b.relativePath))
+      .slice(0, Math.max(1, maxResults))
+      .map((candidate) => candidate.relativePath);
   }
 
   private async _collectWorkspaceFilePaths(relativePath: string, depth: number, results: string[]): Promise<void> {

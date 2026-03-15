@@ -76,8 +76,7 @@ export function createReadFileTool(fs: IBuiltInToolFileSystem | undefined): ICha
     description:
       'Read the content of a workspace file. Path is relative to the workspace root. ' +
       'Supports text files (up to 50 KB) and rich documents (PDF, DOCX, XLSX — text is extracted automatically). ' +
-      'IMPORTANT: If the user\'s message already contains retrieved context from a file (via automatic semantic search), ' +
-      'use that context directly instead of re-reading the file. ' +
+      'Use this tool whenever you need to verify or confirm the actual contents of a file. ' +
       'For large documents like books, prefer search_knowledge which searches across all indexed chunks.',
     parameters: {
       type: 'object',

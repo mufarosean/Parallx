@@ -499,7 +499,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       if (syncRequestId !== this._visionSyncRequestId || modelPicker.getActiveModel() !== activeModelId) {
         return;
       }
-      this._inputPart.setVisionSupported(!!activeModel?.capabilities.includes('vision'));
+      this._inputPart.setVisionSupported(!!activeModel?.capabilities?.includes('vision'));
       return;
     }
 
@@ -508,7 +508,7 @@ export class ChatWidget extends Disposable implements IChatWidgetDescriptor {
       return;
     }
     const activeModel = models.find((model) => model.id === activeModelId);
-    this._inputPart.setVisionSupported(!!activeModel?.capabilities.includes('vision'));
+    this._inputPart.setVisionSupported(!!activeModel?.capabilities?.includes('vision'));
   }
 
   // ── Pending Message Queue UI ──

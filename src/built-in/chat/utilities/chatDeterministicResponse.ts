@@ -96,7 +96,12 @@ export function handlePreparedContextDeterministicAnswer(options: {
     retrievedContextText: options.retrievedContextText,
   });
 
-  if (coverageAnswer?.phase === 'unsupported-specific-coverage-direct-answer') {
+  if (
+    coverageAnswer?.phase === 'deterministic-grounded-books-direct-answer'
+    ||
+    coverageAnswer?.phase === 'unsupported-specific-coverage-direct-answer'
+    || coverageAnswer?.phase === 'unsupported-workspace-topic-direct-answer'
+  ) {
     emitDeterministicAnswer({
       response: options.response,
       token: options.token,

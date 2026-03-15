@@ -59,6 +59,14 @@ export function composeChatUserContent(
         'Coverage Contract: Do not invent summaries for files you have not actually read. If coverage is incomplete, say so explicitly.',
       );
     }
+    if (options.retrievalPlan.coverageMode === 'enumeration') {
+      retrievalAnalysisLines.push(
+        'Coverage Mode: enumeration',
+        'Enumeration Contract: This question asks about directory contents, file names, or file counts.',
+        'Enumeration Contract: You MUST use the list_files tool to get the actual directory listing. Do NOT answer from memory, retrieved context snippets, or the workspace digest.',
+        'Enumeration Contract: Only report files that list_files actually returns. Do not guess or fabricate file names.',
+      );
+    }
     if (options.evidenceAssessment.status !== 'sufficient') {
       retrievalAnalysisLines.push(`Evidence: ${options.evidenceAssessment.status}`);
       if (options.evidenceAssessment.reasons.length > 0) {

@@ -92,9 +92,10 @@ describe('chat context planning', () => {
     const route = determineChatTurnRoute('Summarize each file in this directory in one sentence.');
     const plan = createChatContextPlan(route, { hasActiveSlashCommand: false, isRagReady: true });
 
-    expect(plan.useRetrieval).toBe(true);
+    expect(plan.useRetrieval).toBe(false);
     expect(plan.retrievalPlan.intent).toBe('exploration');
     expect(plan.retrievalPlan.coverageMode).toBe('exhaustive');
+    expect(plan.retrievalPlan.needsRetrieval).toBe(false);
   });
 
   it('keeps retrieval off for slash-command turns even when rag is ready', () => {

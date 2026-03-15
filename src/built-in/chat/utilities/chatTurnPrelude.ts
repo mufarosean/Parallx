@@ -108,7 +108,7 @@ export async function prepareChatTurnPrelude(
 
   if (
     turnRoute.kind === 'grounded'
-    && turnRoute.coverageMode === 'exhaustive'
+    && (turnRoute.coverageMode === 'exhaustive' || turnRoute.coverageMode === 'enumeration')
     && !mentions.some((mention) => mention.kind === 'folder')
     && deps.listFolderFiles
   ) {

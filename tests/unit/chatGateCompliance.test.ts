@@ -75,8 +75,10 @@ const FOLDER_RULES: Record<string, string[]> = {
   // ── tools/ — built-in tool implementations ──────────────────────────────
   'tools/builtInTools.ts':  ['tools/'],
   'tools/fileTools.ts':     [],
+  'tools/memoryTools.ts':   [],
   'tools/pageTools.ts':     ['tools/'],
   'tools/terminalTools.ts': [],
+  'tools/transcriptTools.ts': [],
   'tools/writeTools.ts':    [],
 
   // ── participants/ — chat participants ───────────────────────────────────

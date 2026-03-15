@@ -60,6 +60,19 @@ function isExplicitTranscriptRecallTurn(text: string): boolean {
   return /\btranscript\b|\bsession\s+history\b|\bchat\s+history\b|what\s+did\s+(?:i|we)\s+(?:say|discuss)|\b(?:last|previous|prior)\s+session\b/.test(normalized);
 }
 
+function isFileEnumerationTurn(text: string): boolean {
+  const normalized = normalizeForRouting(text);
+
+  if (!normalized || normalized.length > 200) {
+    return false;
+  }
+
+  // "what files are in X", "how many files in X", "list the files in X",
+  // "what's in the X folder", "show me the contents of X directory"
+  return /(?:what(?:'?s| is| are)\s+in\s+the\s+\w|how\s+many\s+files|list\s+(?:the\s+)?(?:files|contents)|show\s+(?:me\s+)?(?:the\s+)?(?:files|contents)\s+(?:in|of)|what(?:'?s| is)\s+in\s+(?:the\s+)?(?:my\s+)?workspace)/.test(normalized)
+    && /\b(?:folder|directory|workspace|dir)\b/.test(normalized);
+}
+
 function isExhaustiveWorkspaceReviewTurn(text: string): boolean {
   const normalized = normalizeForRouting(text);
 
@@ -190,6 +203,14 @@ export function determineChatTurnRoute(
     return {
       kind: 'conversational',
       reason: 'Short conversational turn should avoid workspace retrieval and tool priming.',
+    };
+  }
+
+  if (isFileEnumerationTurn(text)) {
+    return {
+      kind: 'grounded',
+      reason: 'File or directory enumeration question — use tools to list actual contents instead of relying on retrieved context.',
+      coverageMode: 'enumeration',
     };
   }
 
