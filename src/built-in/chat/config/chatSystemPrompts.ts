@@ -96,13 +96,18 @@ function buildAskPrompt(ctx: ISystemPromptContext): string {
     '- The workspace digest above shows file NAMES and short previews — it is NOT the full content. NEVER describe or summarize a file\'s contents based only on its title or filename.',
     '- ONLY state facts that come from: (1) [Retrieved Context] in the user message, (2) tool results, or (3) the conversation history. If none of these contain the information, say you don\'t have it and offer to look it up.',
     '- Do NOT invent, guess, or fabricate content. If you are unsure what a file contains, say so honestly rather than guessing from the title.',
+    '- When the user states a fact that contradicts workspace evidence, you MUST lead with a contrast word ("Actually", "However", or "But") and state the correct value before any other information. For example: "Actually, your records show X, not Y."',
+    '- When retrieved evidence contains a percentage, threshold, or formula, you MUST do the arithmetic and state the concrete dollar amount or result in your answer. For example: "75% of $28,500 is approximately $21,375." Never state just the percentage without computing the value.',
+    '- When the user asks for "all", an "overview", or a "summary" of something, enumerate every relevant item found in the evidence. Do not stop at a representative subset — completeness matters.',
+    '- When the user\'s message is a casual greeting or social remark (e.g. "Hey!", "Thanks", "Good morning"), respond briefly in 1-3 sentences. Do not volunteer information the user did not ask for.',
     '- NEVER say a file is "too large to read" — all files are indexed and searchable. Use the retrieved context or search_knowledge.',
     '- For canonical workspace memory under `.parallx/memory/`, prefer `memory_search` to find relevant notes and `memory_get` to read a specific memory layer.',
     '- For explicit prior-session transcript history under `.parallx/sessions/`, use `transcript_search` to locate relevant turns and `transcript_get` to read a specific session transcript. Do not use transcript recall unless the user explicitly asks about prior session history.',
     '- Treat each new chat as a fresh session. Do not reference prior sessions, daily notes, or durable memory unless the user explicitly asks for prior work, remembered decisions, preferences, dates, or todos.',
     '- NEVER describe function calls, tool names, or JSON objects in your response. Use tools silently — the user only sees the final answer.',
     '- You can read workspace content but CANNOT create, modify, or delete anything in Ask mode.',
-    '- If the user\'s message is short or vague, interpret it generously — but ground your answer in actual retrieved content, not guesses.',
+    '- All actions are restricted to the active workspace. This boundary exists to protect the user — it ensures you only read, write, and reason about files the user has explicitly opened, preventing accidental access to unrelated data.',
+    '- If the user\'s message is short or vague, interpret it generously — but ground your answer in actual retrieved content, not guesses.'
   );
 
   // Citation instructions — tell the model to use [N] notation for retrieved sources
@@ -205,14 +210,19 @@ function buildAgentPrompt(ctx: ISystemPromptContext): string {
     '- The workspace digest above shows file NAMES and short previews — it is NOT the full content. NEVER describe or summarize a file\'s contents based only on its title or filename.',
     '- ONLY state facts that come from: (1) [Retrieved Context] in the user message, (2) tool results, or (3) the conversation history. If none of these contain the information, say you don\'t have it and offer to look it up.',
     '- Do NOT invent, guess, or fabricate content. If you are unsure what a file contains, say so honestly rather than guessing from the title.',
+    '- When the user states a fact that contradicts workspace evidence, you MUST lead with a contrast word ("Actually", "However", or "But") and state the correct value before any other information. For example: "Actually, your records show X, not Y."',
+    '- When retrieved evidence contains a percentage, threshold, or formula, you MUST do the arithmetic and state the concrete dollar amount or result in your answer. For example: "75% of $28,500 is approximately $21,375." Never state just the percentage without computing the value.',
+    '- When the user asks for "all", an "overview", or a "summary" of something, enumerate every relevant item found in the evidence. Do not stop at a representative subset — completeness matters.',
+    '- When the user\'s message is a casual greeting or social remark (e.g. "Hey!", "Thanks", "Good morning"), respond briefly in 1-3 sentences. Do not volunteer information the user did not ask for.',
     '- NEVER say a file is "too large to read" — all files are indexed and searchable. Use the retrieved context or search_knowledge.',
     '- For canonical workspace memory under `.parallx/memory/`, prefer `memory_search` to find relevant notes and `memory_get` to read a specific memory layer.',
     '- For explicit prior-session transcript history under `.parallx/sessions/`, use `transcript_search` to locate relevant turns and `transcript_get` to read a specific session transcript. Do not use transcript recall unless the user explicitly asks about prior session history.',
     '- Treat each new chat as a fresh session. Do not reference prior sessions, daily notes, or durable memory unless the user explicitly asks for prior work, remembered decisions, preferences, dates, or todos.',
     '- NEVER describe function calls, tool names, or JSON objects in your response. Use tools silently — the user only sees the final answer.',
     '- Read-only tools (search, read, list) can be used freely. Write tools (create, update, delete) require user confirmation.',
+    '- All actions are restricted to the active workspace. This boundary exists to protect the user — it ensures you only read, write, and reason about files the user has explicitly opened, preventing accidental access to unrelated data.',
     '- If a tool call fails, try alternatives before reporting failure.',
-    '- If the user\'s message is short or vague, interpret it generously — but ground your answer in actual retrieved content, not guesses.',
+    '- If the user\'s message is short or vague, interpret it generously — but ground your answer in actual retrieved content, not guesses.'
   );
 
   // Citation instructions — tell the model to use [N] notation for retrieved sources

@@ -488,6 +488,12 @@ test.describe.serial('AI Quality Evaluation', () => {
       const assistantMsgs = window.locator('.parallx-chat-message--assistant');
       const lastMsg = assistantMsgs.last();
 
+      // Citation badges are rendered asynchronously after streaming ends
+      // (setCitations → scheduleUpdate → re-render). Wait for them to appear.
+      await lastMsg.locator('.parallx-citation-badge, .parallx-source-mention, .parallx-chat-reference').first()
+        .waitFor({ state: 'attached', timeout: 5_000 }).catch(() => { /* may not exist */ });
+      await window.waitForTimeout(500); // let layout settle
+
       // Source citations appear as:
       // 1. Reference pills in thinking section: .parallx-chat-reference
       // 2. Citation badges in text: .parallx-citation-badge
@@ -550,6 +556,24 @@ test.describe.serial('AI Quality Evaluation', () => {
           clickedSourceLabel = (await visibleSrcMentions.first().innerText().catch(() => '')).trim();
           await visibleSrcMentions.first().click();
           clicked = true;
+        }
+
+        // Fallback: if badges/mentions exist in DOM but none were :visible,
+        // scroll to the first one and click it directly — Playwright's :visible
+        // pseudo-selector can miss inline elements before layout settles.
+        if (!clicked) {
+          const fallbackEl = badgeCount > 0 ? citBadges.first()
+            : mentionCount > 0 ? srcMentions.first()
+            : pillCount > 0 ? refPills.first() : null;
+          if (fallbackEl) {
+            console.log('  [T19] Fallback: scrolling to element and clicking directly...');
+            await fallbackEl.scrollIntoViewIfNeeded().catch(() => {});
+            await window.waitForTimeout(300);
+            clickedSourceLabel = (await fallbackEl.getAttribute('title').catch(() => ''))
+              ?? (await fallbackEl.innerText().catch(() => '')).trim();
+            await fallbackEl.click({ force: true });
+            clicked = true;
+          }
         }
 
         assertions.push({
