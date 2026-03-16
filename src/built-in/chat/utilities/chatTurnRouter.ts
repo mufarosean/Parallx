@@ -1,215 +1,14 @@
-import type { IChatTurnRoute, WorkflowType } from '../chatTypes.js';
-
-const CONVERSATIONAL_TURN_PATTERNS: readonly RegExp[] = [
-  /^(?:hi|hello|hey|yo|sup|good morning|good afternoon|good evening)$/,
-  /^(?:how are you|hows it going|how is it going|whats up|what is up)$/,
-  /^(?:who are you|what are you)$/,
-  /^(?:thanks|thank you|thx|ok|okay|sounds good|got it|nice|cool)$/,
-  /^(?:bye|goodbye|see you|see ya)$/,
-];
-
-const WORKSPACE_ROUTING_TERMS = /\b(file|files|document|documents|doc|docs|page|pages|note|notes|canvas|workspace|folder|folders|project|repo|repository|code|function|error|bug|test|build|commit|branch|source|sources|citation|cite|pdf|docx|xlsx|markdown|readme)\b/i;
-const TASK_ROUTING_TERMS = /\b(read|open|search|find|summari[sz]e|explain|show|list|compare|quote|retrieve|look up|use|run|edit|write|change|delete|fix|debug|analy[sz]e|review|patch)\b/i;
-const IN_SCOPE_DOMAIN_TERMS = /\b(insurance|policy|coverage|claim|claims|deductible|agent|adjuster|premium|liability|collision|comprehensive|uninsured|underinsured|medpay|roadside|accident|vehicle|car|auto|workspace|document|file|citation|source|context)\b/i;
-const OFF_TOPIC_DOMAIN_TERMS = /\b(recipe|recipes|cook|cooking|bake|baking|cookie|cookies|chocolate|flour|sugar|oven|meal|restaurant|movie|movies|tv|television|song|songs|music|sports?|weather|vacation|travel|dating)\b/i;
-
-function normalizeForRouting(text: string, apostropheReplacement = ' '): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[’']/g, apostropheReplacement)
-    .replace(/[^a-z0-9\s']/g, ' ')
-    .replace(/\s+/g, ' ');
-}
-
-function isLikelyConversationalTurn(text: string): boolean {
-  const normalized = normalizeForRouting(text, '').replace(/'/g, '');
-
-  if (!normalized || normalized.length > 80) {
-    return false;
-  }
-
-  if (WORKSPACE_ROUTING_TERMS.test(normalized) || TASK_ROUTING_TERMS.test(normalized)) {
-    return false;
-  }
-
-  return CONVERSATIONAL_TURN_PATTERNS.some((pattern) => pattern.test(normalized));
-}
-
-function isExplicitMemoryRecallTurn(text: string): boolean {
-  const normalized = normalizeForRouting(text);
-
-  if (!normalized) {
-    return false;
-  }
-
-  if (/\btranscript\b|\bsession\s+transcript\b/.test(normalized)) {
-    return false;
-  }
-
-  return /(last|previous|prior)\s+(conversation|chat|session)|what\s+do\s+you\s+remember|remember\s+about\s+(?:it|my|our)|recall\s+(?:my|our)\s+(?:last|previous|prior)/.test(normalized);
-}
-
-function isExplicitTranscriptRecallTurn(text: string): boolean {
-  const normalized = normalizeForRouting(text);
-
-  if (!normalized) {
-    return false;
-  }
-
-  return /\btranscript\b|\bsession\s+history\b|\bchat\s+history\b|what\s+did\s+(?:i|we)\s+(?:say|discuss)|\b(?:last|previous|prior)\s+session\b/.test(normalized);
-}
-
-function isFileEnumerationTurn(text: string): boolean {
-  const normalized = normalizeForRouting(text);
-
-  if (!normalized || normalized.length > 200) {
-    return false;
-  }
-
-  // "what files are in X", "how many files in X", "list the files in X",
-  // "what's in the X folder", "show me the contents of X directory"
-  return /(?:what(?:'?s| is| are)\s+in\s+the\s+\w|how\s+many\s+files|list\s+(?:the\s+)?(?:files|contents)|show\s+(?:me\s+)?(?:the\s+)?(?:files|contents)\s+(?:in|of)|what(?:'?s| is)\s+in\s+(?:the\s+)?(?:my\s+)?workspace)/.test(normalized)
-    && /\b(?:folder|directory|workspace|dir)\b/.test(normalized);
-}
-
-function isExhaustiveWorkspaceReviewTurn(text: string): boolean {
-  const normalized = normalizeForRouting(text);
-
-  if (!normalized) {
-    return false;
-  }
-
-  const hasExhaustiveLanguage = /(?:each|every|all|for each)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|one\s+(?:sentence|paragraph)\s+summary\s+(?:of|for)\s+(?:each|every|all|for each)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|(?:provide|give|create|write)?\s*summary\s+(?:of|for)\s+(?:each|every|all|for each)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|summari[sz]e\s+(?:each|every|all)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|read\s+(?:each|every|all)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?/.test(normalized);
-  const hasWorkspaceTarget = /\b(folder|directory|workspace|docs|documents|guides|papers|files)\b/.test(normalized);
-
-  return hasExhaustiveLanguage && hasWorkspaceTarget;
-}
-
-function buildOffTopicRedirectAnswer(text: string): string | undefined {
-  const normalized = normalizeForRouting(text);
-
-  if (!normalized || normalized.length > 180) {
-    return undefined;
-  }
-
-  if (WORKSPACE_ROUTING_TERMS.test(normalized) || TASK_ROUTING_TERMS.test(normalized) || IN_SCOPE_DOMAIN_TERMS.test(normalized)) {
-    return undefined;
-  }
-
-  if (!OFF_TOPIC_DOMAIN_TERMS.test(normalized)) {
-    return undefined;
-  }
-
-  return 'Sorry, I can help with the insurance policy, claims guidance, and other files in this workspace, but I cannot help with that off-topic request here.';
-}
-
-function buildProductSemanticsAnswer(text: string): string | undefined {
-  const normalized = normalizeForRouting(text, "'");
-
-  if (
-    normalized.includes('approve once')
-    && normalized.includes('approve task')
-    && /(difference|vs|versus|mean|means)/.test(normalized)
-  ) {
-    return [
-      'Approve once allows only the current action to run.',
-      'Approve task is broader: it allows the remaining approval-scoped actions in that task to continue without asking again each time.',
-      'Use Approve once when you want tighter review. Use Approve task when you trust the remaining task scope and want fewer interruptions.',
-    ].join(' ');
-  }
-
-  if (
-    normalized.includes('outside the workspace')
-    && /(blocked|what should i do next|what do i do next|what next|how do i recover)/.test(normalized)
-  ) {
-    return [
-      'The task was blocked because it targeted something outside the active workspace boundary, so the agent stopped before taking that action.',
-      'Retarget the task to a file or folder inside the current workspace, or narrow the instructions so the next action stays within an allowed target.',
-      'After you fix the target, continue or retry the task.',
-    ].join(' ');
-  }
-
-  if (
-    /(delegated task|task)/.test(normalized)
-    && /(recorded artifacts|artifacts)/.test(normalized)
-    && /(what should i check next|what should i do next|what next|what do i check)/.test(normalized)
-  ) {
-    return [
-      'Recorded artifacts tell you which workspace files the task changed or produced.',
-      'Check those files first to confirm the result matches the goal and to decide whether a follow-up task is needed.',
-      'If the artifacts look right, you can keep them. If not, launch a narrower follow-up task to correct or extend the work.',
-    ].join(' ');
-  }
-
-  if (
-    normalized.includes('trace')
-    && /(task details|help me understand|tell me|mean|means|show)/.test(normalized)
-  ) {
-    return [
-      'The trace shows the recent planning, approval, and execution events for a task in order.',
-      'Use it to see what the agent tried, where it paused or was blocked, and which tool or step produced the latest outcome.',
-      'It is most useful when you need to understand why a task stopped, what ran successfully, or what to retry next.',
-    ].join(' ');
-  }
-
-  return undefined;
-}
-
-// ── M38: Workflow type classification ──────────────────────────────────────
-
-const SUMMARY_VERBS = /\b(summari[sz]e|overview|describe|outline|recap|brief)\b/i;
-const COMPARISON_CUES = /\b(compare|contrast|difference|differences|vs\.?|versus)\b/i;
-const EXHAUSTIVE_CUES = /\b(every|all|each|complete|entire|full)\b/i;
-const EXTRACTION_VERBS = /\b(extract|list|enumerate|find|identify|collect|gather|pull)\b/i;
-
-function hasSummaryIntent(text: string): boolean {
-  return SUMMARY_VERBS.test(text)
-    || /\bsummary\b/i.test(text)
-    || /\bone\s+(?:sentence|paragraph)\b/i.test(text);
-}
-
-function classifyWorkflowType(text: string, isExhaustive: boolean): WorkflowType {
-
-  if (isExhaustive) {
-    if (EXTRACTION_VERBS.test(text) && EXHAUSTIVE_CUES.test(text)) {
-      return 'exhaustive-extraction';
-    }
-    return 'folder-summary';
-  }
-
-  // Comparative: "compare X vs Y"
-  if (COMPARISON_CUES.test(text)) {
-    return 'comparative';
-  }
-
-  // Count entity-like capitalized phrases (in original text, not normalized)
-  const entityMatches = text.match(/\b[A-Z][A-Za-z0-9 _&-]{2,60}\b/g) ?? [];
-  const hasEntityRef = entityMatches.length > 0;
-  const summaryIntent = hasSummaryIntent(text);
-
-  // Folder summary: entity + summary verb + folder/files context
-  if (hasEntityRef && summaryIntent && /\b(folder|directory|files)\b/i.test(text)) {
-    return 'folder-summary';
-  }
-
-  // Document summary: entity + summary verb (no folder context)
-  if (hasEntityRef && summaryIntent) {
-    return 'document-summary';
-  }
-
-  // Scoped topic: entity reference + topic question (not summary)
-  if (hasEntityRef && !SUMMARY_VERBS.test(text)) {
-    return 'scoped-topic';
-  }
-
-  return 'generic-grounded';
-}
+import type { IChatTurnRoute, IChatTurnSemantics, WorkflowType } from '../chatTypes.js';
+import { analyzeChatTurnSemantics } from './chatTurnSemantics.js';
 
 export function determineChatTurnRoute(
-  text: string,
+  textOrSemantics: string | IChatTurnSemantics,
   options?: { hasActiveSlashCommand?: boolean },
 ): IChatTurnRoute {
+  const semantics = typeof textOrSemantics === 'string'
+    ? analyzeChatTurnSemantics(textOrSemantics)
+    : textOrSemantics;
+
   if (options?.hasActiveSlashCommand) {
     return {
       kind: 'grounded',
@@ -217,63 +16,58 @@ export function determineChatTurnRoute(
     };
   }
 
-  const productSemanticsAnswer = buildProductSemanticsAnswer(text);
-  if (productSemanticsAnswer) {
+  if (semantics.productSemanticsDirectAnswer) {
     return {
       kind: 'product-semantics',
       reason: 'Matched a product-semantics explanation that should bypass retrieval.',
-      directAnswer: productSemanticsAnswer,
+      directAnswer: semantics.productSemanticsDirectAnswer,
     };
   }
 
-  const offTopicRedirectAnswer = buildOffTopicRedirectAnswer(text);
-  if (offTopicRedirectAnswer) {
+  if (semantics.offTopicDirectAnswer) {
     return {
       kind: 'off-topic',
       reason: 'Matched an off-topic request pattern outside the workspace domain.',
-      directAnswer: offTopicRedirectAnswer,
+      directAnswer: semantics.offTopicDirectAnswer,
     };
   }
 
-  if (isExplicitTranscriptRecallTurn(text)) {
+  if (semantics.isExplicitTranscriptRecall) {
     return {
       kind: 'transcript-recall',
       reason: 'Explicit prior-session history should use transcript recall without generic retrieval.',
     };
   }
 
-  if (isExplicitMemoryRecallTurn(text)) {
+  if (semantics.isExplicitMemoryRecall) {
     return {
       kind: 'memory-recall',
       reason: 'Explicit prior-conversation recall should use memory without retrieval.',
     };
   }
 
-  if (isLikelyConversationalTurn(text)) {
+  if (semantics.isConversational) {
     return {
       kind: 'conversational',
       reason: 'Short conversational turn should avoid workspace retrieval and tool priming.',
     };
   }
 
-  if (isFileEnumerationTurn(text)) {
+  if (semantics.isFileEnumeration) {
     return {
       kind: 'grounded',
       reason: 'File or directory enumeration question — use tools to list actual contents instead of relying on retrieved context.',
-      coverageMode: 'enumeration',
-      workflowType: 'folder-summary',
+      coverageMode: semantics.groundedCoverageModeHint,
+      workflowType: semantics.workflowTypeHint,
     };
   }
 
-  const exhaustive = isExhaustiveWorkspaceReviewTurn(text);
-  const workflowType = classifyWorkflowType(text, exhaustive);
-
   return {
     kind: 'grounded',
-    reason: exhaustive
+    reason: semantics.groundedCoverageModeHint === 'exhaustive'
       ? 'This request needs exhaustive file-by-file coverage rather than representative retrieval.'
       : 'Default grounded route uses normal workspace-aware context planning.',
-    coverageMode: exhaustive ? 'exhaustive' : 'representative',
-    workflowType,
+    coverageMode: semantics.groundedCoverageModeHint,
+    workflowType: semantics.workflowTypeHint,
   };
 }

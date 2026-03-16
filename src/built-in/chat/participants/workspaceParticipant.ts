@@ -20,6 +20,8 @@ import type {
   IChatMessage,
 } from '../../../services/chatTypes.js';
 import type { IWorkspaceParticipantServices } from '../chatTypes.js';
+import { dispatchScopedParticipantCommand } from '../utilities/chatParticipantCommandDispatcher.js';
+import { appendScopedParticipantHistory, createScopedParticipantMessages, streamScopedParticipantLLMResponse } from '../utilities/chatScopedParticipantExecution.js';
 
 // IPageSummary, IWorkspaceParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { IPageSummary, IWorkspaceParticipantServices } from '../chatTypes.js';
@@ -48,20 +50,21 @@ export function createWorkspaceParticipant(services: IWorkspaceParticipantServic
     response: IChatResponseStream,
     token: ICancellationToken,
   ): Promise<IChatParticipantResult> => {
-
-    const command = request.command;
-
     try {
-      if (command === 'search') {
-        return await handleSearch(request, context, response, token, services);
-      } else if (command === 'list') {
-        return await handleList(request, context, response, token, services);
-      } else if (command === 'summarize') {
-        return await handleSummarize(request, context, response, token, services);
-      } else {
-        // No command — inject workspace overview + answer the question
-        return await handleGeneral(request, context, response, token, services);
-      }
+      return await dispatchScopedParticipantCommand({
+        surface: 'workspace',
+        request,
+        context,
+        response,
+        token,
+        services,
+        handlers: {
+          search: handleSearch,
+          list: handleList,
+          summarize: handleSummarize,
+        },
+        defaultHandler: handleGeneral,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return {
@@ -87,13 +90,13 @@ export function createWorkspaceParticipant(services: IWorkspaceParticipantServic
 // ── Command handlers ──
 
 async function handleSearch(
-  request: IChatParticipantRequest,
+  request: import('../chatTypes.js').IChatParticipantInterpretation,
   _context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
   services: IWorkspaceParticipantServices,
 ): Promise<IChatParticipantResult> {
-  const query = request.text.trim();
+  const query = request.effectiveText;
   if (!query) {
     response.markdown('Please provide a search query. Example: `@workspace /search meeting notes`');
     return {};
@@ -120,26 +123,23 @@ async function handleSearch(
     .map((p) => `- ${p.icon ?? '📄'} "${p.title}" (id: ${p.id})`)
     .join('\n');
 
-  const messages: IChatMessage[] = [
-    {
-      role: 'system',
-      content: [
-        `You are a workspace assistant for "${services.getWorkspaceName()}".`,
-        'The user searched their workspace. Here are the matching pages:',
-        '',
-        contextText,
-        '',
-        'Summarise what was found and help the user explore the results.',
-      ].join('\n'),
-    },
-    { role: 'user', content: `I searched for "${query}". What did you find?` },
-  ];
+  const messages = createScopedParticipantMessages(
+    [
+      `You are a workspace assistant for "${services.getWorkspaceName()}".`,
+      'The user searched their workspace. Here are the matching pages:',
+      '',
+      contextText,
+      '',
+      'Summarise what was found and help the user explore the results.',
+    ].join('\n'),
+    `I searched for "${query}". What did you find?`,
+  );
 
-  return await streamLLMResponse(messages, response, token, services);
+  return await streamScopedParticipantLLMResponse(messages, response, token, services.sendChatRequest);
 }
 
 async function handleList(
-  _request: IChatParticipantRequest,
+  _request: import('../chatTypes.js').IChatParticipantInterpretation,
   _context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
@@ -181,13 +181,13 @@ async function handleList(
 }
 
 async function handleSummarize(
-  request: IChatParticipantRequest,
+  request: import('../chatTypes.js').IChatParticipantInterpretation,
   _context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
   services: IWorkspaceParticipantServices,
 ): Promise<IChatParticipantResult> {
-  const pageId = request.text.trim();
+  const pageId = request.effectiveText;
   if (!pageId) {
     response.markdown('Please provide a page ID. Example: `@workspace /summarize <page-id>`');
     return {};
@@ -210,25 +210,22 @@ async function handleSummarize(
 
   response.reference(`parallx://page/${pageId}`, `📄 ${title}`);
 
-  const messages: IChatMessage[] = [
-    {
-      role: 'system',
-      content: [
-        `You are a workspace assistant for "${services.getWorkspaceName()}".`,
-        `The user wants a summary of their page titled "${title}".`,
-        'Here is the page content:',
-        '',
-        contentText,
-      ].join('\n'),
-    },
-    { role: 'user', content: `Summarize this page: "${title}"` },
-  ];
+  const messages = createScopedParticipantMessages(
+    [
+      `You are a workspace assistant for "${services.getWorkspaceName()}".`,
+      `The user wants a summary of their page titled "${title}".`,
+      'Here is the page content:',
+      '',
+      contentText,
+    ].join('\n'),
+    `Summarize this page: "${title}"`,
+  );
 
-  return await streamLLMResponse(messages, response, token, services);
+  return await streamScopedParticipantLLMResponse(messages, response, token, services.sendChatRequest);
 }
 
 async function handleGeneral(
-  request: IChatParticipantRequest,
+  request: import('../chatTypes.js').IChatParticipantInterpretation,
   context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
@@ -268,77 +265,23 @@ async function handleGeneral(
     }
   }
 
-  const messages: IChatMessage[] = [
-    {
-      role: 'system',
-      content: [
-        `You are a workspace assistant for "${services.getWorkspaceName()}".`,
-        `The workspace contains ${pages.length} canvas page${pages.length !== 1 ? 's' : ''}:`,
-        '',
-        pageList || '(no pages yet)',
-        fileListSection,
-        '',
-        'Answer the user\'s question using workspace context where relevant.',
-        'If the question is about a specific page, reference it by title.',
-        'If the question is about files, reference them by path.',
-      ].join('\n'),
-    },
-  ];
+  const messages = createScopedParticipantMessages(
+    [
+      `You are a workspace assistant for "${services.getWorkspaceName()}".`,
+      `The workspace contains ${pages.length} canvas page${pages.length !== 1 ? 's' : ''}:`,
+      '',
+      pageList || '(no pages yet)',
+      fileListSection,
+      '',
+      'Answer the user\'s question using workspace context where relevant.',
+      'If the question is about a specific page, reference it by title.',
+      'If the question is about files, reference them by path.',
+    ].join('\n'),
+    request.effectiveText,
+    context,
+  );
 
-  // History
-  for (const pair of context.history) {
-    messages.push({ role: 'user', content: pair.request.text });
-    const responseText = pair.response.parts
-      .map((part) => {
-        if ('content' in part && typeof part.content === 'string') { return part.content; }
-        if ('code' in part && typeof part.code === 'string') { return '```\n' + part.code + '\n```'; }
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-    if (responseText) {
-      messages.push({ role: 'assistant', content: responseText });
-    }
-  }
-
-  // Current message
-  messages.push({ role: 'user', content: request.text });
-
-  return await streamLLMResponse(messages, response, token, services);
-}
-
-// ── Helpers ──
-
-/**
- * Stream the LLM response to the chat response stream.
- */
-async function streamLLMResponse(
-  messages: IChatMessage[],
-  response: IChatResponseStream,
-  token: ICancellationToken,
-  services: IWorkspaceParticipantServices,
-): Promise<IChatParticipantResult> {
-  const abortController = new AbortController();
-  if (token.isCancellationRequested) { abortController.abort(); }
-  const cancelListener = token.onCancellationRequested(() => abortController.abort());
-
-  try {
-    const stream = services.sendChatRequest(messages, undefined, abortController.signal);
-
-    for await (const chunk of stream) {
-      if (token.isCancellationRequested) { break; }
-      if (chunk.thinking) { response.thinking(chunk.thinking); }
-      if (chunk.content) { response.markdown(chunk.content); }
-    }
-
-    return {};
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') { return {}; }
-    const message = err instanceof Error ? err.message : String(err);
-    return { errorDetails: { message, responseIsIncomplete: true } };
-  } finally {
-    cancelListener.dispose();
-  }
+  return await streamScopedParticipantLLMResponse(messages, response, token, services.sendChatRequest);
 }
 
 /**

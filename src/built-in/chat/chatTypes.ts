@@ -139,6 +139,13 @@ export interface IWorkspaceParticipantServices {
   getWorkspaceName(): string;
   listFiles?(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
   readFileContent?(relativePath: string): Promise<string>;
+  reportRetrievalDebug?(debug: {
+    hasActiveSlashCommand: boolean;
+    isRagReady: boolean;
+    needsRetrieval: boolean;
+    attempted: boolean;
+    returnedSources?: number;
+  }): void;
 }
 
 /** Services injected into the @canvas participant. */
@@ -153,6 +160,13 @@ export interface ICanvasParticipantServices {
   getCurrentPageTitle(): string | undefined;
   getPageStructure(pageId: string): Promise<IPageStructure | null>;
   getWorkspaceName(): string;
+  reportRetrievalDebug?(debug: {
+    hasActiveSlashCommand: boolean;
+    isRagReady: boolean;
+    needsRetrieval: boolean;
+    attempted: boolean;
+    returnedSources?: number;
+  }): void;
 }
 
 // ── Participant data types ──
@@ -704,6 +718,33 @@ export interface IChatParsedRequest {
   readonly command?: string;
   readonly variables: readonly IChatParsedVariable[];
   readonly text: string;
+}
+
+export type ChatParticipantSurface = 'default' | 'workspace' | 'canvas';
+
+export interface IChatParticipantInterpretation {
+  readonly surface: ChatParticipantSurface;
+  readonly rawText: string;
+  readonly effectiveText: string;
+  readonly commandName?: string;
+  readonly hasExplicitCommand: boolean;
+  readonly kind: 'command' | 'message';
+  readonly semantics: IChatTurnSemantics;
+}
+
+export interface IChatTurnSemantics {
+  readonly rawText: string;
+  readonly normalizedText: string;
+  readonly strippedApostropheText: string;
+  readonly isConversational: boolean;
+  readonly isExplicitMemoryRecall: boolean;
+  readonly isExplicitTranscriptRecall: boolean;
+  readonly isFileEnumeration: boolean;
+  readonly isExhaustiveWorkspaceReview: boolean;
+  readonly offTopicDirectAnswer?: string;
+  readonly productSemanticsDirectAnswer?: string;
+  readonly workflowTypeHint: WorkflowType;
+  readonly groundedCoverageModeHint?: 'representative' | 'exhaustive' | 'enumeration';
 }
 
 /** A parsed variable reference in user input. */

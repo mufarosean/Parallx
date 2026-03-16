@@ -518,6 +518,13 @@ export async function sendAndWaitForResponse(
   message: string,
   timeout = RESPONSE_TIMEOUT,
 ): Promise<{ text: string; latencyMs: number; debug?: ChatEvalDebugSnapshot }> {
+  await page.evaluate(() => {
+    const host = window as unknown as {
+      __parallx_chat_debug__?: { resetSnapshot?: () => void };
+    };
+    host.__parallx_chat_debug__?.resetSnapshot?.();
+  }).catch(() => undefined);
+
   // Count existing assistant messages BEFORE sending
   const assistantMsgs = page.locator('.parallx-chat-message--assistant');
   const beforeCount = await assistantMsgs.count();

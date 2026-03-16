@@ -10,6 +10,7 @@ import type {
 import { extractMentions, resolveMentions } from './chatMentionResolver.js';
 import { resolveQueryScope } from './chatScopeResolver.js';
 import { determineChatTurnRoute } from './chatTurnRouter.js';
+import { analyzeChatTurnSemantics } from './chatTurnSemantics.js';
 import { createChatContextPlan, createChatRuntimeTrace } from './chatContextPlanner.js';
 
 type IChatTurnPreludeDeps = Pick<
@@ -91,7 +92,8 @@ export async function prepareChatTurnPrelude(
 
   const contextQueryText = helpers.buildFollowUpRetrievalQuery(userText, input.history);
   const isRagReady = deps.isRAGAvailable?.() ?? false;
-  const turnRoute = determineChatTurnRoute(userText, { hasActiveSlashCommand: input.hasActiveSlashCommand });
+  const turnSemantics = analyzeChatTurnSemantics(userText);
+  const turnRoute = determineChatTurnRoute(turnSemantics, { hasActiveSlashCommand: input.hasActiveSlashCommand });
   const contextPlan = createChatContextPlan(turnRoute, {
     hasActiveSlashCommand: input.hasActiveSlashCommand,
     isRagReady,

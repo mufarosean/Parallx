@@ -727,6 +727,15 @@ export class ChatDataService {
     this._lastIndexStats = stats;
   }
 
+  resetTestDebugSnapshot(): void {
+    this._lastTestDebugSnapshot = {
+      ragSources: [],
+      contextPills: [],
+      isRAGAvailable: this.isRAGAvailable(),
+      isIndexing: this.isIndexing(),
+    };
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // LLM Proxy Methods
   // ═══════════════════════════════════════════════════════════════════════════
@@ -2037,6 +2046,7 @@ export class ChatDataService {
       readFileContent: this._d.fsAccessor
         ? (r) => this._d.fsAccessor!.readFile(r)
         : undefined,
+      reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
     });
   }
 
@@ -2048,6 +2058,7 @@ export class ChatDataService {
       getCurrentPageId: () => this.getCurrentPageId(),
       getCurrentPageTitle: () => this.getCurrentPageTitle(),
       getPageStructure: (p) => this.getPageStructure(p),
+      reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
     });
   }
 

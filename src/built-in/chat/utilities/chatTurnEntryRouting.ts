@@ -6,11 +6,12 @@ import type {
   IDefaultParticipantServices,
   IChatTurnRoute,
   IParsedSlashCommand,
+  IChatTurnSemantics,
 } from '../chatTypes.js';
 
 export interface IChatTurnEntryRoutingDeps {
   readonly parseSlashCommand: (text: string) => IParsedSlashCommand;
-  readonly determineChatTurnRoute: (text: string, options: { hasActiveSlashCommand: boolean }) => IChatTurnRoute;
+  readonly determineChatTurnRoute: (semantics: IChatTurnSemantics, options: { hasActiveSlashCommand: boolean }) => IChatTurnRoute;
   readonly handleEarlyDeterministicAnswer: (options: {
     route: IChatTurnRoute;
     hasActiveSlashCommand: boolean;
@@ -26,6 +27,7 @@ export interface IChatTurnEntryRoutingDeps {
 export interface IResolveChatTurnEntryRoutingInput {
   readonly requestText: string;
   readonly requestCommand?: string;
+  readonly semantics: IChatTurnSemantics;
   readonly isRagReady: boolean;
   readonly sessionId?: string;
   readonly response: IChatResponseStream;
@@ -62,7 +64,7 @@ export function resolveChatTurnEntryRouting(
   }
 
   const hasActiveSlashCommand = !!(activeCommand && activeCommand !== 'compact');
-  const earlyRoute = deps.determineChatTurnRoute(effectiveText, { hasActiveSlashCommand });
+  const earlyRoute = deps.determineChatTurnRoute(input.semantics, { hasActiveSlashCommand });
   const handled = deps.handleEarlyDeterministicAnswer({
     route: earlyRoute,
     hasActiveSlashCommand,

@@ -777,17 +777,14 @@ Observed targeted baseline on current branch:
   - greeting behavior passed
   - concise-length assertion failed
 - `T19` = `100%`
-- `T30` = `38%`
-   - combined greeting still returned a greeting
-   - concise-length now passed on a clean demo-workspace rerun
-   - but unsolicited workspace facts still appeared
-   - runtime route was not conversational
-   - RAG sources still surfaced
+- `T30` = `100%`
+   - combined greeting now routes through the shared conversational path
+   - no unsolicited workspace facts or citations surfaced
 - `T31` = `100%`
    - default and explicit `@workspace` listing behavior aligned on the demo workspace
-- `T32` = `42%`
-   - `@canvas /describe` still returned a generic workspace overview instead of the explicit no-page-open guidance
-   - retrieval was not attempted, but source/debug artifacts still surfaced unexpectedly
+- `T32` = `100%`
+   - `@canvas` no-page guardrail is now clean and source-free
+   - explicit participants now report no-retrieval decisions through the shared debug path
 
 #### Exam 7 workspace
 
@@ -836,6 +833,41 @@ Implemented during Phase 1 so far:
 2. `E708` Exam 7 exhaustive-summary phrasing variant
 3. `T31` default-vs-`@workspace` participant agreement scaffold
 4. `T32` Parallx-specific `@canvas` no-page-open guardrail scaffold
+
+Implemented during Phase 2 so far:
+
+1. shared `IChatParticipantInterpretation` contract for default, `@workspace`, and `@canvas`
+2. shared default-turn interpretation utility for entry parsing, prelude construction, and deterministic skill activation
+3. explicit participant no-retrieval reporting aligned with the shared debug contract
+4. conversational routing tightened so combined greeting phrasing stays source-free
+5. shared default prepared-turn context utility for execution-plan building, prompt enrichment, evidence gathering, and context preparation
+6. shared `IChatTurnSemantics` contract now owns conversational, memory/transcript recall, enumeration, off-topic, product-semantics, workflow-hint, and coverage-hint parsing
+7. `chatTurnRouter.ts` now consumes typed semantics and acts as a route-mapping layer instead of re-owning most parse heuristics
+8. shared scoped-participant command dispatcher now handles `@workspace` and `@canvas` entry dispatch plus retrieval-debug boilerplate
+
+Phase 2 remaining compatibility note:
+
+- default, `@workspace`, and `@canvas` are migrated onto the shared interpretation path
+- contributed / `ChatBridge` participant compatibility is still an explicit follow-on item for Phase 3 shared orchestration work
+
+Implemented during Phase 3 so far:
+
+1. shared default-turn execution utility now owns the default participant's final deterministic-answer, budgeting, user-content composition, synthesis-config, and execution tail
+2. `defaultParticipant.ts` is further reduced toward a coordinator over shared utilities
+3. contributed participant compatibility path is now explicitly mapped:
+   - tool-contributed participants are created through `src/api/bridges/chatBridge.ts`
+   - `ChatBridge.createChatParticipant()` currently registers raw tool handlers directly into `IChatAgentService`
+   - `src/services/chatAgentService.ts` dispatches those contributed handlers through the same agent registry as built-ins, but without the shared built-in orchestration utilities used by default / `@workspace` / `@canvas`
+   - Phase 3 follow-on work must decide whether contributed participants adapt into the shared orchestration contract before registration, or remain intentionally thin pass-through handlers with an explicit compatibility boundary
+4. shared scoped-participant execution utility now owns history replay and LLM streaming for `@workspace` and `@canvas`, reducing participant-local orchestration duplication
+5. shared scoped-participant message builder now owns the common `system + history + current user` message pattern for `@workspace` and `@canvas`, further aligning their prompt contract
+6. shared default command-registry and early-command utilities now own slash-command registration plus `/init` and `/compact` handling, further reducing participant-local control flow in `defaultParticipant.ts`
+
+✅ Phase 3 checkpoint
+
+- targeted participant-agreement scenarios currently pass (`T30`, `T31`, `T32` all `100%`)
+- `defaultParticipant.ts` now primarily coordinates shared utilities rather than owning most orchestration business logic
+- the contributed / `ChatBridge` compatibility path is explicitly mapped for the next migration decision
 
 Canvas note:
 
@@ -1106,6 +1138,8 @@ the build plan that should be followed unless new evidence requires a change.
 Verification:
 
 - `npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/ai-quality.spec.ts -g "T06|T19"`
+- current Phase 2 focused verification:
+   - `npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/ai-quality.spec.ts -g "T30|T31|T32"`
 - `npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/exam7-quality.spec.ts -g "E706|E707"`
 
 #### Phase 2 tasks — establish a shared request-interpretation contract

@@ -21,6 +21,8 @@ import type {
   IChatMessage,
 } from '../../../services/chatTypes.js';
 import type { IPageStructure, ICanvasParticipantServices } from '../chatTypes.js';
+import { dispatchScopedParticipantCommand } from '../utilities/chatParticipantCommandDispatcher.js';
+import { createScopedParticipantMessages, streamScopedParticipantLLMResponse } from '../utilities/chatScopedParticipantExecution.js';
 
 // IBlockSummary, IPageStructure, ICanvasParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { IBlockSummary, IPageStructure, ICanvasParticipantServices } from '../chatTypes.js';
@@ -47,18 +49,20 @@ export function createCanvasParticipant(services: ICanvasParticipantServices): I
     response: IChatResponseStream,
     token: ICancellationToken,
   ): Promise<IChatParticipantResult> => {
-
-    const command = request.command;
-
     try {
-      if (command === 'describe') {
-        return await handleDescribe(request, context, response, token, services);
-      } else if (command === 'blocks') {
-        return await handleBlocks(request, context, response, token, services);
-      } else {
-        // No command — answer canvas-related questions with page context
-        return await handleGeneral(request, context, response, token, services);
-      }
+      return await dispatchScopedParticipantCommand({
+        surface: 'canvas',
+        request,
+        context,
+        response,
+        token,
+        services,
+        handlers: {
+          describe: handleDescribe,
+          blocks: handleBlocks,
+        },
+        defaultHandler: handleGeneral,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { errorDetails: { message, responseIsIncomplete: true } };
@@ -81,7 +85,7 @@ export function createCanvasParticipant(services: ICanvasParticipantServices): I
 // ── Command handlers ──
 
 async function handleDescribe(
-  _request: IChatParticipantRequest,
+  _request: import('../chatTypes.js').IChatParticipantInterpretation,
   _context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
@@ -107,27 +111,24 @@ async function handleDescribe(
 
   const structureText = formatPageStructure(structure);
 
-  const messages: IChatMessage[] = [
-    {
-      role: 'system',
-      content: [
-        `You are a canvas assistant for "${services.getWorkspaceName()}".`,
-        `The user is viewing the page "${structure.title}".`,
-        'Here is the page structure:',
-        '',
-        structureText,
-        '',
-        'Describe the page structure, organisation, and content to the user.',
-      ].join('\n'),
-    },
-    { role: 'user', content: `Describe the structure of "${structure.title}".` },
-  ];
+  const messages = createScopedParticipantMessages(
+    [
+      `You are a canvas assistant for "${services.getWorkspaceName()}".`,
+      `The user is viewing the page "${structure.title}".`,
+      'Here is the page structure:',
+      '',
+      structureText,
+      '',
+      'Describe the page structure, organisation, and content to the user.',
+    ].join('\n'),
+    `Describe the structure of "${structure.title}".`,
+  );
 
-  return await streamLLMResponse(messages, response, token, services);
+  return await streamScopedParticipantLLMResponse(messages, response, token, services.sendChatRequest);
 }
 
 async function handleBlocks(
-  _request: IChatParticipantRequest,
+  _request: import('../chatTypes.js').IChatParticipantInterpretation,
   _context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
@@ -176,7 +177,7 @@ async function handleBlocks(
 }
 
 async function handleGeneral(
-  request: IChatParticipantRequest,
+  request: import('../chatTypes.js').IChatParticipantInterpretation,
   context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
@@ -184,7 +185,6 @@ async function handleGeneral(
 ): Promise<IChatParticipantResult> {
   const pageId = services.getCurrentPageId();
 
-  const messages: IChatMessage[] = [];
   const systemLines: string[] = [
     `You are a canvas assistant for "${services.getWorkspaceName()}".`,
   ];
@@ -213,27 +213,9 @@ async function handleGeneral(
     'Answer the user\'s question about the canvas page and its blocks.',
   );
 
-  messages.push({ role: 'system', content: systemLines.join('\n') });
+  const messages = createScopedParticipantMessages(systemLines.join('\n'), request.effectiveText, context);
 
-  // History
-  for (const pair of context.history) {
-    messages.push({ role: 'user', content: pair.request.text });
-    const responseText = pair.response.parts
-      .map((part) => {
-        if ('content' in part && typeof part.content === 'string') { return part.content; }
-        if ('code' in part && typeof part.code === 'string') { return '```\n' + part.code + '\n```'; }
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-    if (responseText) {
-      messages.push({ role: 'assistant', content: responseText });
-    }
-  }
-
-  messages.push({ role: 'user', content: request.text });
-
-  return await streamLLMResponse(messages, response, token, services);
+  return await streamScopedParticipantLLMResponse(messages, response, token, services.sendChatRequest);
 }
 
 // ── Helpers ──
@@ -255,36 +237,4 @@ function formatPageStructure(structure: IPageStructure): string {
     lines.push(`${indent}[${block.blockType}] ${block.id.slice(0, 8)}${preview}`);
   }
   return lines.join('\n');
-}
-
-/**
- * Stream the LLM response to the chat response stream.
- */
-async function streamLLMResponse(
-  messages: IChatMessage[],
-  response: IChatResponseStream,
-  token: ICancellationToken,
-  services: ICanvasParticipantServices,
-): Promise<IChatParticipantResult> {
-  const abortController = new AbortController();
-  if (token.isCancellationRequested) { abortController.abort(); }
-  const cancelListener = token.onCancellationRequested(() => abortController.abort());
-
-  try {
-    const stream = services.sendChatRequest(messages, undefined, abortController.signal);
-
-    for await (const chunk of stream) {
-      if (token.isCancellationRequested) { break; }
-      if (chunk.thinking) { response.thinking(chunk.thinking); }
-      if (chunk.content) { response.markdown(chunk.content); }
-    }
-
-    return {};
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') { return {}; }
-    const message = err instanceof Error ? err.message : String(err);
-    return { errorDetails: { message, responseIsIncomplete: true } };
-  } finally {
-    cancelListener.dispose();
-  }
 }
