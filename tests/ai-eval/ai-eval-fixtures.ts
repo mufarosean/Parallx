@@ -75,6 +75,8 @@ export interface ChatEvalDebugSnapshot {
       kind: string;
       reason: string;
       directAnswer?: string;
+      workflowType?: string;
+      coverageMode?: 'representative' | 'exhaustive' | 'enumeration';
     };
     contextPlan: {
       route: string;
@@ -92,6 +94,17 @@ export interface ChatEvalDebugSnapshot {
         queries: string[];
         coverageMode?: 'representative' | 'exhaustive';
       };
+    };
+    semanticFallback?: {
+      kind: string;
+      confidence: number;
+      reason: string;
+      workflowTypeHint: string;
+      groundedCoverageModeHint: 'exhaustive';
+    };
+    routeAuthority?: {
+      action: 'preserved' | 'corrected';
+      reason: string;
     };
     sessionId?: string;
     hasActiveSlashCommand: boolean;

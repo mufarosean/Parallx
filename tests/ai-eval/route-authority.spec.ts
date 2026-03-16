@@ -1,0 +1,55 @@
+import {
+  test,
+  expect,
+  openFolderViaMenu,
+  openChatPanel,
+  waitForRagReady,
+  startNewSession,
+  sendAndWaitForResponse,
+  RESPONSE_TIMEOUT,
+} from './ai-eval-fixtures';
+import fs from 'fs/promises';
+import path from 'path';
+
+test.describe.serial('Route Authority Correction Evaluation', () => {
+  let workspaceDisplayName = process.env.PARALLX_AI_EVAL_WORKSPACE_NAME || 'demo-workspace';
+
+  test.beforeAll(async ({ window, electronApp, workspacePath, workspaceLabel }) => {
+    const brokenDocsDir = path.join(workspacePath, 'Broken Docs');
+    await fs.mkdir(brokenDocsDir, { recursive: true });
+    await fs.writeFile(path.join(brokenDocsDir, 'policy-scan.pdf'), 'This is intentionally not a valid PDF file.', 'utf8');
+    await fs.writeFile(path.join(brokenDocsDir, 'claims-scan.pdf'), 'This is intentionally not a valid PDF file.', 'utf8');
+
+    workspaceDisplayName = process.env.PARALLX_AI_EVAL_WORKSPACE_NAME || workspaceLabel || path.basename(workspacePath) || 'demo-workspace';
+    console.log(`\n  [Route Authority] Opening ${workspaceDisplayName}...`);
+    await openFolderViaMenu(electronApp, window, workspacePath);
+
+    console.log('  [Route Authority] Waiting 30s for indexing pipeline...');
+    await window.waitForTimeout(30_000);
+
+    console.log('  [Route Authority] Opening chat panel...');
+    await openChatPanel(window);
+
+    console.log('  [Route Authority] Waiting for RAG readiness...');
+    await waitForRagReady(window);
+  });
+
+  test('corrects empty exhaustive coverage back to representative retrieval', async ({ window }) => {
+    await startNewSession(window);
+    await window.waitForTimeout(500);
+
+    const result = await sendAndWaitForResponse(
+      window,
+      'Please summarize each file in the Broken Docs folder.',
+      RESPONSE_TIMEOUT,
+    );
+
+    expect(result.text.trim().length).toBeGreaterThan(0);
+    expect(result.debug?.runtimeTrace?.routeAuthority?.action).toBe('corrected');
+    expect(result.debug?.runtimeTrace?.routeAuthority?.reason).toContain('representative retrieval');
+    expect(result.debug?.runtimeTrace?.route?.workflowType).toBe('generic-grounded');
+    expect(result.debug?.runtimeTrace?.route?.coverageMode).toBe('representative');
+    expect(result.debug?.runtimeTrace?.contextPlan?.useRetrieval).toBe(true);
+    expect(result.debug?.runtimeTrace?.route?.reason).toContain('Evidence authority correction');
+  });
+});

@@ -869,6 +869,20 @@ Implemented during Phase 3 so far:
 - `defaultParticipant.ts` now primarily coordinates shared utilities rather than owning most orchestration business logic
 - the contributed / `ChatBridge` compatibility path is explicitly mapped for the next migration decision
 
+Implemented during Phase 4 so far:
+
+1. shared typed semantic fallback contract added for bounded ambiguity handling in the interpretation/prelude layer
+2. shared prelude now applies a narrow fallback for broad workspace-summary phrasing only when deterministic routing remains weak and generic
+3. fallback activation is observable through shared runtime-trace / debug artifacts instead of hidden participant-local behavior
+4. shared prepared-turn context now adds a narrow fallback guidance section so ambiguous broad prompts receive explicit exhaustive-summary framing without replacing downstream planning
+
+Current Phase 4 verification:
+
+- `T30` greeting cleanliness still passes at `100%`
+- `S-T09` ambiguous phrasing stress case now passes at `100%`
+- focused unit regressions now pass for shared prelude fallback activation and runtime-trace preservation
+- local Exam 7 phrasing-variant verification (`E708`) remains unrun in this workspace because the Exam 7 eval workspace is not present locally
+
 Canvas note:
 
 - `@canvas` is a Parallx-specific surface with no direct VS Code counterpart.
@@ -1040,6 +1054,20 @@ Success is testable when:
 2. traces can explain why a route was corrected or preserved
 3. participant-specific workflow duplication has been reduced or removed for the
     migrated paths
+
+Implemented during Phase 5 so far:
+
+1. shared route-authority decision contract now allows evidence/planning stages to preserve or correct a grounded route after coverage is known
+2. shared default prepared-turn context now applies a bounded evidence-authority correction when tool-first exhaustive/enumeration coverage produces zero covered targets and RAG is available
+3. corrected route/context-plan decisions are now written back into the shared runtime trace so traces can explain why a route was preserved or corrected
+4. focused unit regressions now cover both semantic fallback and the first evidence-authority correction rule
+
+Current Phase 5 checkpoint:
+
+- shared authority correction compiles cleanly and unit regressions pass
+- trace propagation for both semantic fallback and route authority is covered
+- prepared-turn-context regression now proves that an empty exhaustive route is corrected back into representative retrieval when RAG is available
+- end-to-end route-authority regression now passes by injecting unreadable rich documents into the eval workspace and confirming the real chat flow records a corrected route-authority decision
 
 ### Phase 6 — Config and policy unification
 

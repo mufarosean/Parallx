@@ -178,6 +178,8 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     // evidence, and compute coverage.  For generic-grounded, these are
     // no-ops — the existing context flow runs unchanged (Task 5.2).
     const {
+      turnRoute: preparedTurnRoute,
+      contextPlan: preparedContextPlan,
       contextParts,
       ragSources,
       retrievedContextText,
@@ -217,7 +219,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       token,
       messages,
       slashResult,
-      turnRoute,
+      turnRoute: preparedTurnRoute,
       effectiveText,
       userText,
       contextParts,
@@ -230,7 +232,7 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       retrievedContextText,
       memoryResult,
       isConversationalTurn,
-      citationMode: contextPlan.citationMode,
+      citationMode: preparedContextPlan.citationMode,
       ragSources,
       maxIterations,
       applyCommandTemplate: commandRegistry.applyCommandTemplate,

@@ -104,4 +104,45 @@ describe('chat turn prelude', () => {
     expect(result.mentionContextBlocks).toHaveLength(0);
     expect(listFolderFiles).not.toHaveBeenCalled();
   });
+
+  it('applies a bounded semantic fallback for broad ambiguous workspace-summary phrasing', async () => {
+    const reportRuntimeTrace = vi.fn();
+    const reportRetrievalDebug = vi.fn();
+    const reportResponseDebug = vi.fn();
+
+    const result = await prepareChatTurnPrelude({
+      isRAGAvailable: () => true,
+      listFilesRelative: vi.fn().mockResolvedValue([]),
+      reportRuntimeTrace,
+      reportRetrievalDebug,
+      reportResponseDebug,
+    }, {
+      buildFollowUpRetrievalQuery: (query) => query,
+    }, {
+      requestText: 'Tell me about everything in here.',
+      history: [],
+      sessionId: 'session-5',
+      hasActiveSlashCommand: false,
+    });
+
+    expect(result.semanticFallback?.kind).toBe('broad-workspace-summary');
+    expect(result.turnRoute.workflowType).toBe('folder-summary');
+    expect(result.turnRoute.coverageMode).toBe('exhaustive');
+    expect(result.contextPlan.retrievalPlan.coverageMode).toBe('exhaustive');
+    expect(reportResponseDebug).toHaveBeenCalledWith({
+      phase: 'semantic-fallback',
+      markdownLength: 0,
+      yielded: false,
+      cancelled: false,
+      retrievedContextLength: 0,
+      note: 'broad-workspace-summary:0.76',
+    });
+    expect(reportRuntimeTrace).toHaveBeenCalledOnce();
+    expect(reportRetrievalDebug).toHaveBeenCalledWith({
+      hasActiveSlashCommand: false,
+      isRagReady: true,
+      needsRetrieval: false,
+      attempted: false,
+    });
+  });
 });

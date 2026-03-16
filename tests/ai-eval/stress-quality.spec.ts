@@ -93,6 +93,7 @@ test.describe.serial('M39 Stress Workspace — Skill Quality Evaluation', () => 
       for (const turn of tc.turns) {
         let text = '';
         let latencyMs = 0;
+        let debug;
 
         try {
           const result = await sendAndWaitForResponse(
@@ -102,11 +103,19 @@ test.describe.serial('M39 Stress Workspace — Skill Quality Evaluation', () => 
           );
           text = result.text;
           latencyMs = result.latencyMs;
+          debug = result.debug;
+
           if (!text.trim()) {
             console.warn(`  [WARN] ${tc.id}: empty response for "${turn.prompt}"`);
           }
         } catch (err) {
           console.warn(`  [WARN] ${tc.id}: Infrastructure error for "${turn.prompt}": ${err}`);
+        }
+
+        if (tc.id === 'S-T09' && turn.prompt === 'Tell me about everything in here.' && text.trim()) {
+          expect(debug?.runtimeTrace?.route?.reason).toContain('Semantic fallback applied');
+          expect(debug?.runtimeTrace?.route?.workflowType).toBe('folder-summary');
+          expect(debug?.runtimeTrace?.contextPlan?.retrievalPlan?.coverageMode).toBe('exhaustive');
         }
 
         const assertionResults = evaluateAssertions(text, turn.assertions);

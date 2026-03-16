@@ -1,5 +1,7 @@
 import type {
   IChatContextPlan,
+  IChatRouteAuthorityDecision,
+  IChatSemanticFallbackDecision,
   IChatRuntimeTrace,
   IChatTurnRoute,
   IRetrievalPlan,
@@ -133,11 +135,13 @@ export function createChatContextPlan(
 export function createChatRuntimeTrace(
   route: IChatTurnRoute,
   contextPlan: IChatContextPlan,
-  options: { sessionId?: string; hasActiveSlashCommand: boolean; isRagReady: boolean },
+  options: { sessionId?: string; hasActiveSlashCommand: boolean; isRagReady: boolean; semanticFallback?: IChatSemanticFallbackDecision; routeAuthority?: IChatRouteAuthorityDecision },
 ): IChatRuntimeTrace {
   return {
     route,
     contextPlan,
+    semanticFallback: options.semanticFallback,
+    routeAuthority: options.routeAuthority,
     sessionId: options.sessionId,
     hasActiveSlashCommand: options.hasActiveSlashCommand,
     isRagReady: options.isRagReady,

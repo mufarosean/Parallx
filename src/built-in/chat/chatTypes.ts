@@ -399,6 +399,8 @@ export interface IChatRuntimeTrace {
   readonly route: IChatTurnRoute;
   readonly contextPlan: IChatContextPlan;
   readonly queryScope?: IQueryScope;
+  readonly semanticFallback?: IChatSemanticFallbackDecision;
+  readonly routeAuthority?: IChatRouteAuthorityDecision;
   readonly sessionId?: string;
   readonly hasActiveSlashCommand: boolean;
   readonly isRagReady: boolean;
@@ -745,6 +747,19 @@ export interface IChatTurnSemantics {
   readonly productSemanticsDirectAnswer?: string;
   readonly workflowTypeHint: WorkflowType;
   readonly groundedCoverageModeHint?: 'representative' | 'exhaustive' | 'enumeration';
+}
+
+export interface IChatSemanticFallbackDecision {
+  readonly kind: 'broad-workspace-summary';
+  readonly confidence: number;
+  readonly reason: string;
+  readonly workflowTypeHint: WorkflowType;
+  readonly groundedCoverageModeHint: 'exhaustive';
+}
+
+export interface IChatRouteAuthorityDecision {
+  readonly action: 'preserved' | 'corrected';
+  readonly reason: string;
 }
 
 /** A parsed variable reference in user input. */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createChatContextPlan, createChatRuntimeTrace } from '../../src/built-in/chat/utilities/chatContextPlanner';
+import { resolveChatRouteAuthority } from '../../src/built-in/chat/utilities/chatRouteAuthority';
 import { determineChatTurnRoute } from '../../src/built-in/chat/utilities/chatTurnRouter';
 
 describe('chat runtime routing', () => {
@@ -96,6 +97,43 @@ describe('chat context planning', () => {
     expect(trace.sessionId).toBe('session-1');
   });
 
+  it('preserves semantic fallback details in the runtime trace', () => {
+    const route = determineChatTurnRoute('what does my policy cover?');
+    const plan = createChatContextPlan(route, { hasActiveSlashCommand: false, isRagReady: true });
+    const trace = createChatRuntimeTrace(route, plan, {
+      sessionId: 'session-fallback',
+      hasActiveSlashCommand: false,
+      isRagReady: true,
+      semanticFallback: {
+        kind: 'broad-workspace-summary',
+        confidence: 0.76,
+        reason: 'Broad workspace-wide phrasing implies exhaustive multi-file coverage even though deterministic routing stayed generic.',
+        workflowTypeHint: 'folder-summary',
+        groundedCoverageModeHint: 'exhaustive',
+      },
+    });
+
+    expect(trace.semanticFallback?.kind).toBe('broad-workspace-summary');
+    expect(trace.semanticFallback?.groundedCoverageModeHint).toBe('exhaustive');
+  });
+
+  it('preserves route-authority details in the runtime trace', () => {
+    const route = determineChatTurnRoute('what does my policy cover?');
+    const plan = createChatContextPlan(route, { hasActiveSlashCommand: false, isRagReady: true });
+    const trace = createChatRuntimeTrace(route, plan, {
+      sessionId: 'session-authority',
+      hasActiveSlashCommand: false,
+      isRagReady: true,
+      routeAuthority: {
+        action: 'corrected',
+        reason: 'Coverage tracking reported zero covered targets for a tool-first route, so representative retrieval is now authoritative.',
+      },
+    });
+
+    expect(trace.routeAuthority?.action).toBe('corrected');
+    expect(trace.routeAuthority?.reason).toContain('representative retrieval');
+  });
+
   it('switches grounded planning into exploration intent for exhaustive coverage turns', () => {
     const route = determineChatTurnRoute('Summarize each file in this directory in one sentence.');
     const plan = createChatContextPlan(route, { hasActiveSlashCommand: false, isRagReady: true });
@@ -113,5 +151,42 @@ describe('chat context planning', () => {
 
     expect(plan.useRetrieval).toBe(false);
     expect(plan.citationMode).toBe('required');
+  });
+});
+
+describe('chat route authority', () => {
+  it('corrects empty tool-first exhaustive coverage back to representative retrieval', () => {
+    const route = determineChatTurnRoute('Summarize each file in this directory in one sentence.');
+
+    const result = resolveChatRouteAuthority(route, {
+      level: 'none',
+      totalTargets: 4,
+      coveredTargets: 0,
+      gaps: ['a.md', 'b.md', 'c.md', 'd.md'],
+    }, {
+      hasActiveSlashCommand: false,
+      isRagReady: true,
+    });
+
+    expect(result.turnRoute.workflowType).toBe('generic-grounded');
+    expect(result.turnRoute.coverageMode).toBe('representative');
+    expect(result.authority.action).toBe('corrected');
+  });
+
+  it('preserves the route when exhaustive coverage produced usable evidence', () => {
+    const route = determineChatTurnRoute('Summarize each file in this directory in one sentence.');
+
+    const result = resolveChatRouteAuthority(route, {
+      level: 'partial',
+      totalTargets: 4,
+      coveredTargets: 3,
+      gaps: ['d.md'],
+    }, {
+      hasActiveSlashCommand: false,
+      isRagReady: true,
+    });
+
+    expect(result.turnRoute.workflowType).toBe(route.workflowType);
+    expect(result.authority.action).toBe('preserved');
   });
 });

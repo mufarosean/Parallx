@@ -3,6 +3,7 @@ import type {
   IChatContextPlan,
   IChatTurnRoute,
   IDefaultParticipantServices,
+  IChatSemanticFallbackDecision,
   IQueryScope,
   IRetrievalPlan,
   IMentionResolutionServices,
@@ -11,6 +12,7 @@ import { extractMentions, resolveMentions } from './chatMentionResolver.js';
 import { resolveQueryScope } from './chatScopeResolver.js';
 import { determineChatTurnRoute } from './chatTurnRouter.js';
 import { analyzeChatTurnSemantics } from './chatTurnSemantics.js';
+import { applyChatSemanticFallback, resolveChatSemanticFallback } from './chatSemanticFallback.js';
 import { createChatContextPlan, createChatRuntimeTrace } from './chatContextPlanner.js';
 
 type IChatTurnPreludeDeps = Pick<
@@ -23,6 +25,7 @@ type IChatTurnPreludeDeps = Pick<
   | 'isRAGAvailable'
   | 'reportRuntimeTrace'
   | 'reportRetrievalDebug'
+  | 'reportResponseDebug'
 >;
 
 export interface IPrepareChatTurnPreludeHelpers {
@@ -50,6 +53,7 @@ export interface IPreparedChatTurnPrelude {
   readonly retrievalPlan: IRetrievalPlan;
   readonly isConversationalTurn: boolean;
   readonly queryScope: IQueryScope;
+  readonly semanticFallback?: IChatSemanticFallbackDecision;
 }
 
 function createMentionResolutionServices(deps: IChatTurnPreludeDeps): IMentionResolutionServices {
@@ -93,23 +97,7 @@ export async function prepareChatTurnPrelude(
   const contextQueryText = helpers.buildFollowUpRetrievalQuery(userText, input.history);
   const isRagReady = deps.isRAGAvailable?.() ?? false;
   const turnSemantics = analyzeChatTurnSemantics(userText);
-  const turnRoute = determineChatTurnRoute(turnSemantics, { hasActiveSlashCommand: input.hasActiveSlashCommand });
-  const contextPlan = createChatContextPlan(turnRoute, {
-    hasActiveSlashCommand: input.hasActiveSlashCommand,
-    isRagReady,
-  });
-  const retrievalPlan = contextPlan.retrievalPlan;
-  const isConversationalTurn = turnRoute.kind === 'conversational';
-
-  deps.reportRuntimeTrace?.(createChatRuntimeTrace(
-    turnRoute,
-    contextPlan,
-    {
-      sessionId: input.sessionId,
-      hasActiveSlashCommand: input.hasActiveSlashCommand,
-      isRagReady,
-    },
-  ));
+  const initialTurnRoute = determineChatTurnRoute(turnSemantics, { hasActiveSlashCommand: input.hasActiveSlashCommand });
 
   // ── Scope resolution ────
   const mentionScope = {
@@ -123,6 +111,43 @@ export async function prepareChatTurnPrelude(
   const queryScope = await resolveQueryScope(userText, mentionScope, {
     listFilesRelative: deps.listFilesRelative,
   });
+
+  const semanticFallback = resolveChatSemanticFallback(
+    userText,
+    turnSemantics,
+    initialTurnRoute,
+    queryScope,
+    { hasActiveSlashCommand: input.hasActiveSlashCommand },
+  );
+  const turnRoute = applyChatSemanticFallback(initialTurnRoute, semanticFallback);
+  const contextPlan = createChatContextPlan(turnRoute, {
+    hasActiveSlashCommand: input.hasActiveSlashCommand,
+    isRagReady,
+  });
+  const retrievalPlan = contextPlan.retrievalPlan;
+  const isConversationalTurn = turnRoute.kind === 'conversational';
+
+  if (semanticFallback) {
+    deps.reportResponseDebug?.({
+      phase: 'semantic-fallback',
+      markdownLength: 0,
+      yielded: false,
+      cancelled: false,
+      retrievedContextLength: 0,
+      note: `${semanticFallback.kind}:${semanticFallback.confidence.toFixed(2)}`,
+    });
+  }
+
+  deps.reportRuntimeTrace?.(createChatRuntimeTrace(
+    turnRoute,
+    contextPlan,
+    {
+      sessionId: input.sessionId,
+      hasActiveSlashCommand: input.hasActiveSlashCommand,
+      isRagReady,
+      semanticFallback,
+    },
+  ));
 
   deps.reportRetrievalDebug?.({
     hasActiveSlashCommand: input.hasActiveSlashCommand,
@@ -142,5 +167,6 @@ export async function prepareChatTurnPrelude(
     retrievalPlan,
     isConversationalTurn,
     queryScope,
+    semanticFallback,
   };
 }
