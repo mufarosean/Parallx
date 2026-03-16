@@ -665,6 +665,292 @@ test.describe.serial('AI Quality Evaluation', () => {
     console.log(`  [${tIcon}] T19: ${(turnScore * 100).toFixed(0)}% — Source citation click opens correct document`);
   });
 
+  // ── T30: Combined Greeting → Conversational, Source-Free ─────────────────
+  //
+  // Real-world regression guard for the phrasing variant that previously
+  // triggered grounded behavior instead of a clean social reply.
+
+  test('T30: Combined greeting stays conversational and source-free', async ({ window }) => {
+    await startNewSession(window);
+    await window.waitForTimeout(500);
+
+    let text = '';
+    let latencyMs = 0;
+    let debug: ChatEvalDebugSnapshot | undefined;
+
+    try {
+      const result = await sendAndWaitForResponse(
+        window,
+        'Hi hows it going?',
+        RESPONSE_TIMEOUT,
+      );
+      text = result.text;
+      latencyMs = result.latencyMs;
+      debug = result.debug;
+    } catch (err) {
+      console.warn(`  [WARN] T30: Infrastructure error: ${err}`);
+    }
+
+    const assertions = [
+      {
+        name: 'Returns a greeting',
+        weight: 2,
+        passed: /\b(hello|hi|hey|how can|how may|help|going)\b/i.test(text),
+      },
+      {
+        name: 'No unsolicited workspace facts',
+        weight: 2,
+        passed: !/(\$500|deductible|PLX-2026|collision coverage|claims guide|agent contacts)/i.test(text),
+      },
+      {
+        name: 'Concise (<500 chars)',
+        weight: 1,
+        passed: text.trim().length >= 2 && text.trim().length <= 500,
+      },
+      {
+        name: 'No citation markers in reply',
+        weight: 2,
+        passed: !/(\[1\]|\[2\]|\[3\]|¹|²|³)/.test(text),
+      },
+      {
+        name: 'Runtime route is conversational',
+        weight: 3,
+        passed: debug?.runtimeTrace?.route?.kind === 'conversational',
+      },
+      {
+        name: 'No retrieval attempted',
+        weight: 3,
+        passed: debug?.retrievalGate?.attempted === false,
+      },
+      {
+        name: 'No RAG sources surfaced',
+        weight: 3,
+        passed: (debug?.ragSources?.length ?? 0) === 0,
+      },
+    ];
+
+    if (assertions.some((assertion) => !assertion.passed)) {
+      logDebugSnapshot('T30', 'Hi hows it going?', debug);
+    }
+
+    const turnScore = assertions.length > 0
+      ? assertions.reduce((sum, assertion) => sum + (assertion.passed ? assertion.weight : 0), 0)
+        / assertions.reduce((sum, assertion) => sum + assertion.weight, 0)
+      : 0;
+
+    allResults.push({
+      id: 'T30',
+      name: 'Combined greeting stays conversational and source-free',
+      dimension: 'conversational',
+      turns: [{
+        prompt: 'Hi hows it going?',
+        response: text || '(empty response)',
+        latencyMs,
+        assertions,
+        debug,
+        score: turnScore,
+      }],
+      score: turnScore,
+    });
+
+    const tIcon = turnScore >= 0.85 ? 'PASS' : turnScore >= 0.5 ? 'PART' : 'FAIL';
+    console.log(`  [${tIcon}] T30: ${(turnScore * 100).toFixed(0)}% — Combined greeting stays conversational and source-free`);
+  });
+
+  // ── T31: Default vs @workspace Participant Agreement ─────────────────────
+  //
+  // Phase 1 scaffold for participant-surface agreement. The goal is not to
+  // prove full parity yet, but to ensure explicit participant invocation does
+  // not silently drift away from the shared workspace-listing behavior.
+
+  test('T31: Default and @workspace agree on workspace document listing intent', async ({ window }) => {
+    const assertions: { name: string; weight: number; passed: boolean }[] = [];
+    let defaultText = '';
+    let workspaceText = '';
+    let defaultLatencyMs = 0;
+    let workspaceLatencyMs = 0;
+
+    await startNewSession(window);
+    await window.waitForTimeout(500);
+
+    try {
+      const result = await sendAndWaitForResponse(
+        window,
+        'What documents do I have in my workspace?',
+        RESPONSE_TIMEOUT,
+      );
+      defaultText = result.text;
+      defaultLatencyMs = result.latencyMs;
+    } catch (err) {
+      console.warn(`  [WARN] T31 default path: Infrastructure error: ${err}`);
+    }
+
+    await startNewSession(window);
+    await window.waitForTimeout(500);
+
+    try {
+      const result = await sendAndWaitForResponse(
+        window,
+        '@workspace What documents do I have in my workspace?',
+        RESPONSE_TIMEOUT,
+      );
+      workspaceText = result.text;
+      workspaceLatencyMs = result.latencyMs;
+    } catch (err) {
+      console.warn(`  [WARN] T31 @workspace path: Infrastructure error: ${err}`);
+    }
+
+    const defaultLower = defaultText.toLowerCase();
+    const workspaceLower = workspaceText.toLowerCase();
+
+    const defaultHasPolicy = defaultLower.includes('auto insurance policy') || defaultLower.includes('insurance policy');
+    const defaultHasClaims = defaultLower.includes('claims guide') || defaultLower.includes('claims');
+    const defaultHasAgent = defaultLower.includes('agent contacts') || defaultLower.includes('agent');
+
+    const workspaceHasPolicy = workspaceLower.includes('auto insurance policy') || workspaceLower.includes('insurance policy');
+    const workspaceHasClaims = workspaceLower.includes('claims guide') || workspaceLower.includes('claims');
+    const workspaceHasAgent = workspaceLower.includes('agent contacts') || workspaceLower.includes('agent');
+
+    assertions.push(
+      {
+        name: 'Default path mentions core workspace docs',
+        weight: 3,
+        passed: defaultHasPolicy && defaultHasClaims,
+      },
+      {
+        name: '@workspace path mentions core workspace docs',
+        weight: 3,
+        passed: workspaceHasPolicy && workspaceHasClaims,
+      },
+      {
+        name: 'Default path is substantial',
+        weight: 1,
+        passed: defaultText.trim().length >= 40,
+      },
+      {
+        name: '@workspace path is substantial',
+        weight: 1,
+        passed: workspaceText.trim().length >= 40,
+      },
+      {
+        name: 'Both paths mention at least one overlapping third document family',
+        weight: 2,
+        passed: defaultHasAgent && workspaceHasAgent,
+      },
+    );
+
+    const turnScore = assertions.reduce((sum, assertion) => sum + (assertion.passed ? assertion.weight : 0), 0)
+      / assertions.reduce((sum, assertion) => sum + assertion.weight, 0);
+
+    allResults.push({
+      id: 'T31',
+      name: 'Default and @workspace agree on workspace document listing intent',
+      dimension: 'summary',
+      turns: [
+        {
+          prompt: 'What documents do I have in my workspace?',
+          response: defaultText || '(empty response)',
+          latencyMs: defaultLatencyMs,
+          assertions: [],
+          score: assertions[0].passed && assertions[2].passed ? 1 : 0,
+        },
+        {
+          prompt: '@workspace What documents do I have in my workspace?',
+          response: workspaceText || '(empty response)',
+          latencyMs: workspaceLatencyMs,
+          assertions,
+          score: turnScore,
+        },
+      ],
+      score: turnScore,
+    });
+
+    const tIcon = turnScore >= 0.85 ? 'PASS' : turnScore >= 0.5 ? 'PART' : 'FAIL';
+    console.log(`  [${tIcon}] T31: ${(turnScore * 100).toFixed(0)}% — Default and @workspace agree on workspace document listing intent`);
+  });
+
+  // ── T32: @canvas No-Page Guardrail ────────────────────────────────────────
+  //
+  // Canvas is Parallx-specific. In the standard AI eval workspace there is no
+  // open canvas page, so the first required guardrail is that @canvas fails
+  // cleanly instead of inventing page context.
+
+  test('T32: @canvas without an open page responds with a clean no-page guardrail', async ({ window }) => {
+    await startNewSession(window);
+    await window.waitForTimeout(500);
+
+    let text = '';
+    let latencyMs = 0;
+    let debug: ChatEvalDebugSnapshot | undefined;
+
+    try {
+      const result = await sendAndWaitForResponse(
+        window,
+        '@canvas /describe',
+        RESPONSE_TIMEOUT,
+      );
+      text = result.text;
+      latencyMs = result.latencyMs;
+      debug = result.debug;
+    } catch (err) {
+      console.warn(`  [WARN] T32: Infrastructure error: ${err}`);
+    }
+
+    const lower = text.toLowerCase();
+    const assertions = [
+      {
+        name: 'States that no page is currently open',
+        weight: 3,
+        passed: lower.includes('no page is currently open'),
+      },
+      {
+        name: 'Explains how to use @canvas',
+        weight: 2,
+        passed: lower.includes('open a canvas page') || lower.includes('@canvas /describe'),
+      },
+      {
+        name: 'Does not hallucinate canvas content',
+        weight: 3,
+        passed: !/(page structure|blocks on|the user is viewing|current page contains)/i.test(text),
+      },
+      {
+        name: 'No RAG sources surfaced',
+        weight: 2,
+        passed: (debug?.ragSources?.length ?? 0) === 0,
+      },
+      {
+        name: 'No retrieval attempted',
+        weight: 2,
+        passed: debug?.retrievalGate?.attempted === false,
+      },
+    ];
+
+    if (assertions.some((assertion) => !assertion.passed)) {
+      logDebugSnapshot('T32', '@canvas /describe', debug);
+    }
+
+    const turnScore = assertions.reduce((sum, assertion) => sum + (assertion.passed ? assertion.weight : 0), 0)
+      / assertions.reduce((sum, assertion) => sum + assertion.weight, 0);
+
+    allResults.push({
+      id: 'T32',
+      name: '@canvas without an open page responds with a clean no-page guardrail',
+      dimension: 'summary',
+      turns: [{
+        prompt: '@canvas /describe',
+        response: text || '(empty response)',
+        latencyMs,
+        assertions,
+        debug,
+        score: turnScore,
+      }],
+      score: turnScore,
+    });
+
+    const tIcon = turnScore >= 0.85 ? 'PASS' : turnScore >= 0.5 ? 'PART' : 'FAIL';
+    console.log(`  [${tIcon}] T32: ${(turnScore * 100).toFixed(0)}% — @canvas without an open page responds with a clean no-page guardrail`);
+  });
+
   // ── Report Generation ──────────────────────────────────────────────────────
 
   test.afterAll(async ({ ollamaModel }) => {

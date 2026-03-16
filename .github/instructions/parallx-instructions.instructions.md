@@ -5,20 +5,29 @@ description: These instructions provide guidelines for AI to follow when thinkin
 
 ## 0. Active Milestone Context
 
-The current work is **Milestone 15 — AI Personality & Behavior Settings** (`docs/Parallx_Milestone_15.md`). Read the milestone document before implementing any M15 task. It adds a first-class AI Settings panel so users can configure how all AI in Parallx thinks, speaks, and behaves — without touching code or config files.
+The current work is **Milestone 40 — VS Code Chat Parity Alignment / AI System Redesign** (`docs/Parallx_Milestone_40.md`).
 
-### Key M15 Constraints
+Before starting or resuming any Milestone 40 task, read these three files in order:
 
-- **Service first, UI second.** `IAISettingsService` must fully work (persist, reload, emit events) before building any UI panel.
-- **One group at a time.** Complete and validate each group (tsc clean + all tests pass + git commit) before starting the next. Order: A (Foundation) → B (Wiring) → C (UI Primitives) → D (Core UI) → E (Persistence).
-- **Commit per task.** Each numbered task gets its own commit for fine-grained rollback.
-- **Test after every task.** `tsc --noEmit` + `npx vitest run` after each task.
-- **Use existing patterns.** DI: `createServiceIdentifier` + `registerInstance`. Events: `Emitter<T>/Event<T>` — no event bus. CSS: `var(--vscode-*)` tokens — no `--parallx-*`. Storage: `IStorage` from `platform/storage.ts`.
-- **System prompt injection via `promptOverlay`.** `buildSystemPrompt()` in `chatSystemPrompts.ts` already checks `promptOverlay`. M15 generates the persona block and passes it as `promptOverlay`.
-- **Use `ILanguageModelsService` for all Ollama communication.** Do NOT call Ollama HTTP endpoints directly.
-- **New UI primitives in `src/ui/` first.** Slider, Toggle, Dropdown, SegmentedControl, Textarea must exist before panel sections.
-- **Built-in presets are immutable.** Writing to a `isBuiltIn: true` profile silently clones it.
-- **Deferred capabilities (5–11) are NOT in scope** for the core milestone.
+1. `.github/AGENTS.md`
+2. `.github/instructions/parallx-instructions.instructions.md`
+3. `docs/Parallx_Milestone_40.md`
+
+If a new phase begins, or if context has gone stale, re-read them before doing
+implementation work.
+
+### Key M40 Constraints
+
+- **This is a redesign milestone, not a patch milestone.** Do not solve Milestone 40 issues with isolated local fixes that preserve split-brain behavior.
+- **Preserve working foundations.** Indexing, retrieval substrate, vector storage, memory storage, unified AI config foundations, session persistence, and approval/trace foundations should be retained unless a later assessment proves otherwise.
+- **Redesign the right layers.** Request interpretation, routing policy, prelude flow, participant orchestration boundaries, and shared prompt behavior are in scope for redesign.
+- **Every phase requires a re-read of the grounding docs.** Treat `.github/AGENTS.md` and `docs/Parallx_Milestone_40.md` as mandatory pre-read for each phase.
+- **No hidden parallel paths.** If a compatibility path is introduced, explicitly document the old path, new path, switch-over condition, and removal task.
+- **One shared interpretation model.** Default chat, explicit participants, and bridged participants must converge on one request-interpretation contract.
+- **Use `ILanguageModelsService` for all model communication.** Do NOT call Ollama HTTP endpoints directly.
+- **Verification is phase-gated.** Each phase must have explicit success criteria and required verification commands before it can be treated as complete.
+- **Commit discipline without implicit commits.** Prepare work in small commit-sized units, but do not actually create a git commit unless the user explicitly requests it.
+- **Completion requires milestone updates.** When a task is actually complete, update the milestone tracking document with facts, verification outcomes, and any deviation notes.
 
 ### Key M11 Constraints
 
@@ -58,6 +67,7 @@ The canvas built-in (`src/built-in/canvas/`) has its own registry-gated architec
 - Always consider how the user will interact with each piece of UI and how it fits into the overall experience.
 - Follow the principle of "never reinvent the wheel" — if VS Code has a proven solution, adapt it for Parallx.
 - After completing a task, mark it ✅ in the relevant milestone file. If the implementation deviated significantly, note the deviation alongside the completion marker.
+- Conduct yourself like a serious systems developer working on a risky architectural redesign: be explicit, be conservative with behavior changes, and do not hide transitional complexity.
 
 ---
 

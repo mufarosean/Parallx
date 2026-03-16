@@ -55,9 +55,10 @@ test.describe.serial('M39 Stress Workspace — Skill Quality Evaluation', () => 
   // ── Setup: Open workspace, wait for indexing, open chat ────────────────────
 
   test.beforeAll(
-    async ({ window, electronApp, workspacePath, workspaceLabel }) => {
+    async ({ window, electronApp, workspacePath, workspaceLabel, workspaceHasPersistedIndex }) => {
       workspaceDisplayName = workspaceLabel || path.basename(workspacePath) || 'stress-workspace';
       console.log(`\n  [Stress Eval] Opening ${workspaceDisplayName}...`);
+      console.log(`  [Stress Eval] Source workspace persisted index: ${workspaceHasPersistedIndex ? 'present' : 'missing'}`);
       await openFolderViaMenu(electronApp, window, workspacePath);
 
       // Stress workspace has 20 files — allow extra indexing time

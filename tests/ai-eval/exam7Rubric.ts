@@ -205,4 +205,26 @@ export const EXAM7_RUBRIC: Exam7TestCase[] = [
       ],
     }],
   },
+  {
+    id: 'E708',
+    name: 'Coverage job -- summarize RF Guides with variant phrasing',
+    dimension: 'deep-retrieval',
+    description: 'The assistant should preserve exhaustive folder-summary behavior under a natural phrasing variant.',
+    turns: [{
+      prompt: 'Please summarize each paper in the RF Guides folder in one paragraph.',
+      assertions: [
+        { name: 'Mentions Clark', weight: 1, check: containsAnyNormalized(['Clark']) },
+        { name: 'Mentions Mack or Chain Ladder', weight: 1, check: containsAnyNormalized(['Mack', 'Chain Ladder']) },
+        { name: 'Mentions Verrall', weight: 1, check: containsAnyNormalized(['Verrall']) },
+        { name: 'Substantial multi-file response', weight: 3, check: lengthBetween(500, 20000) },
+        { name: 'Does not claim unavailable content', weight: 2, check: containsNone(['i do not have the content', 'not available in the current context', 'cannot summarize this file', 'not present in the retrieved content', 'content not read', 'summary unavailable']) },
+      ],
+      pipelineExpectation: {
+        expectedRouteKind: 'grounded',
+        expectedIntent: 'exploration',
+        expectedCoverageMode: 'exhaustive',
+        requireRetrievalAttempted: false,
+      },
+    }],
+  },
 ];

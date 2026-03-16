@@ -204,6 +204,7 @@ type WorkerFixtures = {
   window: Page;
   workspacePath: string;
   workspaceLabel: string;
+  workspaceHasPersistedIndex: boolean;
   /** Name of the test model required for the run (defaults to "gpt-oss:20b"). */
   ollamaModel: string;
 };
@@ -245,6 +246,15 @@ export const test = base.extend<{}, WorkerFixtures>({
     async ({}, use) => {
       const { workspaceLabel } = resolveWorkspaceSource();
       await use(workspaceLabel);
+    },
+    { scope: 'worker' },
+  ],
+
+  workspaceHasPersistedIndex: [
+    async ({}, use) => {
+      const { sourcePath } = resolveWorkspaceSource();
+      const persistedIndex = await fs.stat(path.join(sourcePath, '.parallx', 'data.db')).catch(() => null);
+      await use(!!persistedIndex?.isFile());
     },
     { scope: 'worker' },
   ],
@@ -311,9 +321,6 @@ export async function openFolderViaMenu(
   page: Page,
   folderPath: string,
 ): Promise<void> {
-  const existingNodes = await page.locator('.tree-node').count();
-  if (existingNodes > 0) return;
-
   // Mock the OS dialog — Playwright can't drive native dialogs
   await app.evaluate(({ ipcMain }, fp) => {
     ipcMain.removeHandler('dialog:openFolder');
@@ -369,16 +376,55 @@ export async function openChatPanel(page: Page): Promise<void> {
 }
 
 export async function waitForRagReady(page: Page, timeout = 120_000): Promise<void> {
-  await page.waitForFunction(
-    () => {
+  try {
+    await page.waitForFunction(
+      () => {
+        const host = window as unknown as {
+          __parallx_chat_debug__?: { getSnapshot?: () => { isRAGAvailable?: boolean; isIndexing?: boolean } };
+        };
+        const snapshot = host.__parallx_chat_debug__?.getSnapshot?.();
+        return !!snapshot?.isRAGAvailable && !snapshot?.isIndexing;
+      },
+      undefined,
+      { timeout },
+    );
+  } catch (error) {
+    const timeoutDebug = await page.evaluate(() => {
       const host = window as unknown as {
-        __parallx_chat_debug__?: { getSnapshot?: () => { isRAGAvailable?: boolean; isIndexing?: boolean } };
+        __parallx_chat_debug__?: {
+          getSnapshot?: () => {
+            isRAGAvailable?: boolean;
+            isIndexing?: boolean;
+            indexingProgress?: { phase?: string; processed?: number; total?: number; currentSource?: string };
+            indexStats?: { pages?: number; files?: number };
+          };
+        };
       };
       const snapshot = host.__parallx_chat_debug__?.getSnapshot?.();
-      return !!snapshot?.isRAGAvailable && !snapshot?.isIndexing;
-    },
-    { timeout },
-  );
+      return {
+        snapshot,
+        progress: snapshot?.indexingProgress,
+        stats: snapshot?.indexStats,
+      };
+    }).catch(() => undefined);
+
+    const progress = timeoutDebug?.progress;
+    const stats = timeoutDebug?.stats;
+    const snapshot = timeoutDebug?.snapshot;
+    const details = [
+      `timeout=${timeout}`,
+      `isRAGAvailable=${String(snapshot?.isRAGAvailable)}`,
+      `isIndexing=${String(snapshot?.isIndexing)}`,
+      `phase=${String(progress?.phase)}`,
+      `processed=${String(progress?.processed)}`,
+      `total=${String(progress?.total)}`,
+      `currentSource=${String(progress?.currentSource ?? '')}`,
+      `indexedPages=${String(stats?.pages ?? '')}`,
+      `indexedFiles=${String(stats?.files ?? '')}`,
+    ].join(' ');
+
+    throw new Error(`RAG readiness timeout. ${details}. cause=${String(error)}`);
+  }
 
   const configOverride = process.env.PARALLX_AI_CONFIG_OVERRIDE;
   if (configOverride) {

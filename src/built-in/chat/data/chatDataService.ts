@@ -173,6 +173,8 @@ export interface IChatTestDebugSnapshot {
   retrievalTrace?: RetrievalTrace;
   isRAGAvailable: boolean;
   isIndexing: boolean;
+  indexingProgress?: { phase: string; processed: number; total: number; currentSource?: string };
+  indexStats?: { pages: number; files: number };
   requestInProgress?: boolean;
   pendingRequestCount?: number;
   assistantMessageCount?: number;
@@ -1630,6 +1632,10 @@ export class ChatDataService {
       ...structuredClone(this._lastTestDebugSnapshot),
       isRAGAvailable: this.isRAGAvailable(),
       isIndexing: this.isIndexing(),
+      indexingProgress: this._d.indexingPipelineService?.progress
+        ? { ...this._d.indexingPipelineService.progress }
+        : { phase: 'idle', processed: 0, total: 0 },
+      indexStats: this._lastIndexStats,
       requestInProgress: session?.requestInProgress ?? false,
       pendingRequestCount: session?.pendingRequests.length ?? 0,
       assistantMessageCount: assistantMessages.length,

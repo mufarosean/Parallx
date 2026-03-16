@@ -468,6 +468,8 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   if (window.parallxElectron?.testMode) {
     (window as unknown as Record<string, unknown>).__parallx_chat_debug__ = {
       getSnapshot: () => dataService.getTestDebugSnapshot(),
+      getIndexingProgress: () => dataService.buildWidgetServices().getIndexingProgress?.(),
+      getIndexStats: () => dataService.buildWidgetServices().getIndexStats?.(),
       getEffectiveConfig: () => unifiedConfigService?.getEffectiveConfig(),
       updateWorkspaceOverride: (patch: unknown) => unifiedConfigService?.updateWorkspaceOverride(patch as any),
       getActiveModel: () => languageModelsService.getActiveModel(),

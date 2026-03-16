@@ -33,6 +33,30 @@ export class ChatAgentService extends Disposable implements IChatAgentService {
 
   private readonly _agents = new Map<string, IChatParticipant>();
 
+  private _resolveAgent(participantId: string): IChatParticipant | undefined {
+    const direct = this._agents.get(participantId);
+    if (direct) {
+      return direct;
+    }
+
+    if (!participantId.includes('.')) {
+      const builtInId = `parallx.chat.${participantId}`;
+      const builtIn = this._agents.get(builtInId);
+      if (builtIn) {
+        return builtIn;
+      }
+    }
+
+    const normalized = participantId.trim().toLowerCase();
+    for (const agent of this._agents.values()) {
+      if (agent.displayName.trim().toLowerCase() === normalized) {
+        return agent;
+      }
+    }
+
+    return undefined;
+  }
+
   // ── Events ──
 
   private readonly _onDidChangeAgents = this._register(new Emitter<void>());
@@ -61,7 +85,7 @@ export class ChatAgentService extends Disposable implements IChatAgentService {
   }
 
   getAgent(id: string): IChatParticipant | undefined {
-    return this._agents.get(id);
+    return this._resolveAgent(id);
   }
 
   getDefaultAgent(): IChatParticipant | undefined {
@@ -77,7 +101,7 @@ export class ChatAgentService extends Disposable implements IChatAgentService {
     response: IChatResponseStream,
     token: ICancellationToken,
   ): Promise<IChatParticipantResult> {
-    const agent = this._agents.get(participantId);
+    const agent = this._resolveAgent(participantId);
     if (!agent) {
       // Fallback to default agent
       const defaultAgent = this.getDefaultAgent();

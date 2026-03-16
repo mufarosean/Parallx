@@ -26,11 +26,15 @@ This folder contains both canonical product docs and historical snapshots.
 - [Parallx_Milestone_06.md](./Parallx_Milestone_06.md)
 - [Parallx_Milestone_07.md](./Parallx_Milestone_07.md)
 - [Parallx_Milestone_08.md](./Parallx_Milestone_08.md)
+- [Parallx_Milestone_40.md](./Parallx_Milestone_40.md)
 
 ## Research
 - [research/tiptap-columns-research.md](./research/tiptap-columns-research.md)
 - [research/WORKSPACE_CANVAS_PERSISTENCE_RESEARCH.md](./research/WORKSPACE_CANVAS_PERSISTENCE_RESEARCH.md)
 - [research/README.md](./research/README.md)
+- [ai/M40_AI_ENTRYPOINT_INVENTORY.md](./ai/M40_AI_ENTRYPOINT_INVENTORY.md)
+- [ai/M40_PHASE1_STRESS_BASELINE.md](./ai/M40_PHASE1_STRESS_BASELINE.md)
+- [ai/M40_PHASE1_CANVAS_BASELINE.md](./ai/M40_PHASE1_CANVAS_BASELINE.md)
 
 ## Archive
 - [archive/FULL_AUDIT_REPORT.md](./archive/FULL_AUDIT_REPORT.md)
