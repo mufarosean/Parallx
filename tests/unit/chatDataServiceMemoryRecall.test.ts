@@ -309,4 +309,27 @@ describe('ChatDataService.recallMemories', () => {
     expect(result).toContain('struggles noted');
     expect(harness.memoryService.recallConcepts).toBeUndefined();
   });
+
+  it('reads rich documents via readDocumentText for workspace-relative reads', async () => {
+    const harness = createDataService();
+    harness.fsAccessor.isRichDocument.mockImplementation((ext: string) => ext === '.pdf');
+    harness.fsAccessor.readDocumentText.mockResolvedValueOnce('Extracted PDF text');
+
+    const result = await harness.service.readFileRelative('RF Guides/Clark.pdf');
+
+    expect(result).toBe('Extracted PDF text');
+    expect(harness.fsAccessor.readDocumentText).toHaveBeenCalledWith('RF Guides/Clark.pdf');
+    expect(harness.fsAccessor.readFile).not.toHaveBeenCalled();
+  });
+
+  it('reads plain text files via readFile for workspace-relative reads', async () => {
+    const harness = createDataService();
+    harness.fsAccessor.isRichDocument.mockReturnValue(false);
+    harness.fsAccessor.readFile.mockResolvedValueOnce('Plain text');
+
+    const result = await harness.service.readFileRelative('notes/example.md');
+
+    expect(result).toBe('Plain text');
+    expect(harness.fsAccessor.readFile).toHaveBeenCalledWith('notes/example.md');
+  });
 });

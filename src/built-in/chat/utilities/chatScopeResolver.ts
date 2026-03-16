@@ -16,6 +16,15 @@ export interface IScopeResolverDeps {
   listFilesRelative?(relativePath: string): Promise<{ name: string; type: 'file' | 'directory' }[]>;
 }
 
+interface IWorkspaceEntry {
+  readonly name: string;
+  readonly relativePath: string;
+  readonly type: 'file' | 'directory';
+}
+
+const MAX_SCOPE_SCAN_DEPTH = 3;
+const MAX_SCOPE_SCAN_ENTRIES = 400;
+
 /** Context extracted from @mentions that are already resolved. */
 export interface IMentionScope {
   folders: string[];
@@ -148,15 +157,14 @@ async function matchCandidatesToWorkspace(
 ): Promise<IResolvedEntity[]> {
   if (!deps.listFilesRelative) { return []; }
 
-  // Cache root entries (called once per turn at most)
-  const rootEntries = await deps.listFilesRelative('').catch(() => []);
-  if (rootEntries.length === 0) { return []; }
+  const workspaceEntries = await collectWorkspaceEntries(deps);
+  if (workspaceEntries.length === 0) { return []; }
 
   const resolved: IResolvedEntity[] = [];
   const resolvedPaths = new Set<string>();
 
   for (const candidate of candidates) {
-    const match = findBestMatch(candidate, rootEntries);
+    const match = findBestMatch(candidate, workspaceEntries);
     if (match && !resolvedPaths.has(match.resolvedPath)) {
       resolvedPaths.add(match.resolvedPath);
       resolved.push(match);
@@ -166,9 +174,41 @@ async function matchCandidatesToWorkspace(
   return resolved;
 }
 
-interface IWorkspaceEntry {
-  name: string;
-  type: 'file' | 'directory';
+async function collectWorkspaceEntries(deps: IScopeResolverDeps): Promise<IWorkspaceEntry[]> {
+  const results: IWorkspaceEntry[] = [];
+  const visited = new Set<string>();
+
+  const walk = async (relativePath: string, depth: number): Promise<void> => {
+    if (!deps.listFilesRelative || results.length >= MAX_SCOPE_SCAN_ENTRIES) {
+      return;
+    }
+    const key = relativePath || '.';
+    if (visited.has(key)) {
+      return;
+    }
+    visited.add(key);
+
+    const entries = await deps.listFilesRelative(relativePath).catch(() => []);
+    for (const entry of entries) {
+      if (results.length >= MAX_SCOPE_SCAN_ENTRIES) {
+        return;
+      }
+
+      const childPath = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+      results.push({
+        name: entry.name,
+        relativePath: childPath,
+        type: entry.type,
+      });
+
+      if (entry.type === 'directory' && depth < MAX_SCOPE_SCAN_DEPTH) {
+        await walk(childPath, depth + 1);
+      }
+    }
+  };
+
+  await walk('', 0);
+  return results;
 }
 
 /**
@@ -183,7 +223,7 @@ function findBestMatch(
   let bestEntry: IWorkspaceEntry | undefined;
 
   for (const entry of entries) {
-    const score = scoreMatch(normalizedCandidate, entry.name);
+    const score = scoreMatch(normalizedCandidate, entry);
     if (score > bestScore) {
       bestScore = score;
       bestEntry = entry;
@@ -197,8 +237,8 @@ function findBestMatch(
 
   const kind = bestEntry.type === 'directory' ? 'folder' : 'file';
   const resolvedPath = kind === 'folder'
-    ? ensureTrailingSlash(bestEntry.name)
-    : bestEntry.name;
+    ? ensureTrailingSlash(bestEntry.relativePath)
+    : bestEntry.relativePath;
 
   return {
     naturalName: candidate,
@@ -215,20 +255,29 @@ function findBestMatch(
  * - Candidate is prefix of entry (or vice versa): 5
  * - Token overlap: 1 per matched token (minimum 3-char tokens)
  */
-function scoreMatch(normalizedCandidate: string, entryName: string): number {
-  const normalizedEntry = normalizeName(entryName);
+function scoreMatch(normalizedCandidate: string, entry: IWorkspaceEntry): number {
+  const normalizedEntryName = normalizeName(entry.name);
+  const normalizedEntryPath = normalizeName(entry.relativePath);
 
   // Exact match
-  if (normalizedCandidate === normalizedEntry) { return 10; }
+  if (normalizedCandidate === normalizedEntryName || normalizedCandidate === normalizedEntryPath) { return 10; }
 
   // Prefix match (either direction)
-  if (normalizedEntry.startsWith(normalizedCandidate) || normalizedCandidate.startsWith(normalizedEntry)) {
+  if (
+    normalizedEntryName.startsWith(normalizedCandidate)
+    || normalizedCandidate.startsWith(normalizedEntryName)
+    || normalizedEntryPath.startsWith(normalizedCandidate)
+    || normalizedCandidate.startsWith(normalizedEntryPath)
+  ) {
     return 5;
   }
 
   // Token overlap
   const candidateTokens = tokenize(normalizedCandidate);
-  const entryTokens = new Set(tokenize(normalizedEntry));
+  const entryTokens = new Set([
+    ...tokenize(normalizedEntryName),
+    ...tokenize(normalizedEntryPath),
+  ]);
   const overlap = candidateTokens.filter((t) => entryTokens.has(t)).length;
   return overlap;
 }

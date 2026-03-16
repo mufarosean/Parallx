@@ -131,4 +131,30 @@ describe('chat deterministic response', () => {
       retrievedContextLength: 0,
     });
   });
+
+  it('handles unsupported workspace-topic answers and preserves attributable citations', () => {
+    const response = createResponse();
+    const reportResponseDebug = vi.fn();
+
+    const handled = handlePreparedContextDeterministicAnswer({
+      route: { kind: 'grounded', reason: 'grounded route' },
+      query: 'In the RF Guides folder, which paper is about baking chocolate chip cookies? If none, say that none of the RF Guides papers appear to be about that.',
+      evidenceAssessment: { status: 'sufficient', reasons: [] },
+      retrievedContextText: '[Retrieved Context]\n---\n[1] Source: [Source: "RF Guides/Clark.pdf"]\nPath: RF Guides/Clark.pdf\nClark discusses reserve variability.\n---',
+      memoryResult: null,
+      ragSources: [{ uri: 'RF Guides/Clark.pdf', label: 'Clark.pdf', index: 1 }],
+      response,
+      token: createToken(),
+      reportResponseDebug,
+    });
+
+    expect(handled).toBe(true);
+    expect(response.markdown).toHaveBeenCalledWith('None of the Rf Guides papers appear to be about that. [1]');
+    expect(response.setCitations).toHaveBeenCalledWith([
+      { index: 1, uri: 'RF Guides/Clark.pdf', label: 'Clark.pdf' },
+    ]);
+    expect(reportResponseDebug).toHaveBeenCalledWith(expect.objectContaining({
+      phase: 'unsupported-workspace-topic-direct-answer',
+    }));
+  });
 });

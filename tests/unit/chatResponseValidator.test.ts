@@ -99,13 +99,13 @@ describe('chat response validator', () => {
     ]);
   });
 
-  it('does not attach broad citations when the answer has no attributable source reference', () => {
+  it('falls back to footer citations for all citable sources when the answer lacks explicit references', () => {
     const response = createResponse('Answer without explicit attribution.');
 
     validateAndFinalizeChatResponse(
       {
         repairMarkdown: (markdown) => markdown,
-        buildMissingCitationFooter: () => '',
+        buildMissingCitationFooter: () => '\n\nSources:\n[3] Policy.md\n[5] Claims.md',
         selectAttributableCitations: (markdown, citations) => citations.filter(({ index }) => markdown.includes(`[${index}]`)),
         applyFallbackAnswer: vi.fn(),
       },
@@ -123,8 +123,11 @@ describe('chat response validator', () => {
       },
     );
 
-    expect(response.setCitations).not.toHaveBeenCalled();
-    expect(response.markdown).not.toHaveBeenCalled();
+    expect(response.markdown).toHaveBeenCalledWith('\n\nSources:\n[3] Policy.md\n[5] Claims.md');
+    expect(response.setCitations).toHaveBeenCalledWith([
+      { index: 3, uri: 'Policy.md', label: 'Policy.md' },
+      { index: 5, uri: 'Claims.md', label: 'Claims.md' },
+    ]);
   });
 
   it('applies the final fallback when no markdown remains', () => {

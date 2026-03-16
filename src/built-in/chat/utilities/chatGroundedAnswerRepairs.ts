@@ -71,7 +71,7 @@ export function repairUnsupportedWorkspaceTopicAnswer(query: string, answer: str
   }
 
   const normalizedQuery = query.toLowerCase().replace(/[’']/g, ' ');
-  const asksExplicitNoneForm = /if none, say that none of the .* books appear to be about that/.test(normalizedQuery);
+  const asksExplicitNoneForm = /if none, say that none of the .* (?:books|papers|files|guides|documents) appear to be about that/.test(normalizedQuery);
   const folderMatch = normalizedQuery.match(/in the\s+([a-z0-9 _-]+?)\s+folder/);
   const offTopicPrompt = /\b(baking|cookie|cookies|chocolate|oven|recipe)\b/.test(normalizedQuery);
   if (!asksExplicitNoneForm || !folderMatch || !offTopicPrompt) {
@@ -88,11 +88,13 @@ export function repairUnsupportedWorkspaceTopicAnswer(query: string, answer: str
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
-  const canonicalLead = `None of the ${folderLabel} books appear to be about that.`;
+  const collectionLabelMatch = normalizedQuery.match(/if none, say that none of the .*?\s+(books|papers|files|guides|documents)\s+appear to be about that/);
+  const collectionLabel = collectionLabelMatch?.[1] ?? 'items';
+  const canonicalLead = `None of the ${folderLabel} ${collectionLabel} appear to be about that.`;
 
   let remainder = answer
-    .replace(/^None of the books in the [^.]+? folder appear to be about that\.?\s*/i, '')
-    .replace(/^None of the [^.]+? books appear to be about that\.?\s*/i, '')
+    .replace(/^None of the (?:books|papers|files|guides|documents) in the [^.]+? folder appear to be about that\.?\s*/i, '')
+    .replace(/^None of the [^.]+? (?:books|papers|files|guides|documents) appear to be about that\.?\s*/i, '')
     .trim();
 
   if (!remainder) {

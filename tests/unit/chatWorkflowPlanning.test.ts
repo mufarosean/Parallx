@@ -81,6 +81,13 @@ describe('workflow type classification', () => {
     expect(route.coverageMode).toBe('exhaustive');
   });
 
+  it('classifies natural summary phrasing as exhaustive folder-summary', () => {
+    const route = determineChatTurnRoute('Can you provide a one paragraph summary for each of the files in the RF Guides folder?');
+    expect(route.kind).toBe('grounded');
+    expect(route.workflowType).toBe('folder-summary');
+    expect(route.coverageMode).toBe('exhaustive');
+  });
+
   it('classifies file enumeration as folder-summary with enumeration coverage', () => {
     const route = determineChatTurnRoute('How many files are in the Guides directory?');
     expect(route.kind).toBe('grounded');
@@ -111,13 +118,13 @@ describe('buildExecutionPlan', () => {
     expect(plan.steps[0].targetPaths).toEqual(['Claims Guide/']);
   });
 
-  it('produces enumerate + scoped-retrieve + synthesize for folder-summary', () => {
+  it('produces enumerate + deterministic-read + synthesize for folder-summary', () => {
     const scope = folderScope('RF Guides/');
     const route = determineChatTurnRoute('How many files are in the RF Guides directory?');
     const plan = buildExecutionPlan(route, scope);
 
     expect(plan.workflowType).toBe('folder-summary');
-    expect(plan.steps.map(s => s.kind)).toEqual(['enumerate', 'scoped-retrieve', 'synthesize']);
+    expect(plan.steps.map(s => s.kind)).toEqual(['enumerate', 'deterministic-read', 'synthesize']);
     expect(plan.outputConstraints.format).toBe('list');
     expect(plan.outputConstraints.requireExhaustiveCitation).toBe(true);
   });

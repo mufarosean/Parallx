@@ -30,6 +30,14 @@ describe('chat runtime routing', () => {
     expect(route.coverageMode).toBe('exhaustive');
   });
 
+  it('marks natural paragraph-summary phrasing as exhaustive coverage', () => {
+    const route = determineChatTurnRoute('Can you provide a one paragraph summary for each of the files in the RF Guides folder?');
+
+    expect(route.kind).toBe('grounded');
+    expect(route.workflowType).toBe('folder-summary');
+    expect(route.coverageMode).toBe('exhaustive');
+  });
+
   it('routes product semantics as direct answers', () => {
     const route = determineChatTurnRoute('what is the difference between approve once and approve task?');
 
@@ -96,6 +104,7 @@ describe('chat context planning', () => {
     expect(plan.retrievalPlan.intent).toBe('exploration');
     expect(plan.retrievalPlan.coverageMode).toBe('exhaustive');
     expect(plan.retrievalPlan.needsRetrieval).toBe(false);
+    expect(plan.citationMode).toBe('required');
   });
 
   it('keeps retrieval off for slash-command turns even when rag is ready', () => {
@@ -103,6 +112,6 @@ describe('chat context planning', () => {
     const plan = createChatContextPlan(route, { hasActiveSlashCommand: true, isRagReady: true });
 
     expect(plan.useRetrieval).toBe(false);
-    expect(plan.citationMode).toBe('disabled');
+    expect(plan.citationMode).toBe('required');
   });
 });

@@ -64,6 +64,11 @@ interface IChatContextBlock {
   readonly sourceIds: string[];
 }
 
+function toCitationLabelFromPath(path: string): string {
+  const parts = path.replace(/\\/g, '/').split('/');
+  return parts[parts.length - 1] || path;
+}
+
 function appendProvenance(
   target: IChatProvenanceEntry[],
   entry: IChatProvenanceEntry,
@@ -119,6 +124,39 @@ export async function assembleChatContext(
     contextBlocks.push({ text, sourceIds: [...sourceIds] });
   };
 
+  let nextCitationIndex = 1;
+  const registerCitableSource = (
+    source: { uri: string; label: string; index?: number },
+    kind: 'attachment' | 'rag',
+    tokens: number,
+  ): { uri: string; label: string; index: number } => {
+    const existing = ragSources.find((candidate) => candidate.uri === source.uri);
+    if (existing) {
+      return {
+        uri: existing.uri,
+        label: existing.label,
+        index: existing.index ?? source.index ?? 1,
+      };
+    }
+
+    const resolvedIndex = source.index ?? nextCitationIndex;
+    nextCitationIndex = Math.max(nextCitationIndex, resolvedIndex + 1);
+    const citableSource = { uri: source.uri, label: source.label, index: resolvedIndex };
+    ragSources.push(citableSource);
+    appendProvenance(provenance, {
+      id: source.uri,
+      label: source.label,
+      kind,
+      uri: source.uri,
+      index: resolvedIndex,
+      tokens,
+      removable: true,
+    });
+    alreadyInContext.add(source.uri);
+    alreadyInContext.add(source.label);
+    return citableSource;
+  };
+
   if (options.pageResult && options.pageResult.textContent) {
     const pageUri = `parallx-page://${options.pageResult.pageId}`;
     appendProvenance(provenance, {
@@ -169,20 +207,7 @@ export async function assembleChatContext(
     }
 
     for (const source of result.sources) {
-      if (!alreadyInContext.has(source.uri) && !alreadyInContext.has(source.label)) {
-        appendProvenance(provenance, {
-          id: source.uri,
-          label: source.label,
-          kind: 'rag',
-          uri: source.uri,
-          index: source.index,
-          tokens: 0,
-          removable: true,
-        });
-        ragSources.push(source);
-        alreadyInContext.add(source.uri);
-        alreadyInContext.add(source.label);
-      }
+      registerCitableSource(source, 'rag', 0);
     }
   };
 
@@ -257,16 +282,24 @@ export async function assembleChatContext(
     const sourceAttachment = fileAttachments[index];
     if (sourceAttachment) {
       const attachmentId = sourceAttachment.fullPath;
-      appendProvenance(provenance, {
-        id: attachmentId,
-        label: sourceAttachment.name,
-        kind: 'attachment',
-        uri: attachmentId,
-        tokens: attachment.content ? Math.ceil(attachment.content.length / 4) : 0,
-        removable: true,
-      });
-      alreadyInContext.add(attachmentId);
-      alreadyInContext.add(sourceAttachment.name);
+      if (attachment.content !== null) {
+        registerCitableSource(
+          { uri: attachmentId, label: sourceAttachment.name },
+          'attachment',
+          Math.ceil(attachment.content.length / 4),
+        );
+      } else {
+        appendProvenance(provenance, {
+          id: attachmentId,
+          label: sourceAttachment.name,
+          kind: 'attachment',
+          uri: attachmentId,
+          tokens: 0,
+          removable: true,
+        });
+        alreadyInContext.add(attachmentId);
+        alreadyInContext.add(sourceAttachment.name);
+      }
     }
     if (attachment.content !== null) {
       pushContextBlock(`File: ${attachment.name}\n\`\`\`\n${attachment.content}\n\`\`\``, sourceAttachment ? [sourceAttachment.fullPath] : []);
@@ -308,8 +341,12 @@ export async function assembleChatContext(
         }
         case 'exhaustive': {
           for (const read of item.reads) {
-            const sourceId = `evidence:read:${read.relativePath}`;
-            pushContextBlock(`[File: ${read.relativePath}]\n${read.content}`, [sourceId]);
+            const source = registerCitableSource(
+              { uri: read.relativePath, label: toCitationLabelFromPath(read.relativePath) },
+              'attachment',
+              Math.ceil(read.content.length / 4),
+            );
+            pushContextBlock(`[File: ${read.relativePath}]\n${read.content}`, [source.uri]);
           }
           break;
         }

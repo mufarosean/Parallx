@@ -62,7 +62,7 @@ function buildSteps(
     case 'folder-summary':
       return [
         { kind: 'enumerate', label: 'List files in scope', targetPaths },
-        { kind: 'scoped-retrieve', label: 'Retrieve from each enumerated source', targetPaths },
+        { kind: 'deterministic-read', label: 'Read every enumerated source', targetPaths },
         { kind: 'synthesize', label: 'Synthesize folder summary' },
       ];
 

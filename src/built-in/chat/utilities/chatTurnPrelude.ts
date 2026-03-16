@@ -7,21 +7,10 @@ import type {
   IRetrievalPlan,
   IMentionResolutionServices,
 } from '../chatTypes.js';
-import { buildFolderMentionContext, extractMentions, resolveMentions } from './chatMentionResolver.js';
+import { extractMentions, resolveMentions } from './chatMentionResolver.js';
 import { resolveQueryScope } from './chatScopeResolver.js';
 import { determineChatTurnRoute } from './chatTurnRouter.js';
 import { createChatContextPlan, createChatRuntimeTrace } from './chatContextPlanner.js';
-
-function inferExhaustiveFolderPath(text: string): string | undefined {
-  const normalized = text.replace(/[’']/g, ' ');
-  const explicitFolderMatch = normalized.match(/\b(?:in|inside|from|under)\s+the\s+([A-Za-z0-9][A-Za-z0-9 _&-]{1,80}?)\s+folder\b/i);
-  if (explicitFolderMatch?.[1]) {
-    return explicitFolderMatch[1].trim();
-  }
-
-  const genericFolderMatch = normalized.match(/\b([A-Za-z0-9][A-Za-z0-9 _&-]{1,80}?)\s+folder\b/i);
-  return genericFolderMatch?.[1]?.trim();
-}
 
 type IChatTurnPreludeDeps = Pick<
   IDefaultParticipantServices,
@@ -109,27 +98,6 @@ export async function prepareChatTurnPrelude(
   });
   const retrievalPlan = contextPlan.retrievalPlan;
   const isConversationalTurn = turnRoute.kind === 'conversational';
-
-  if (
-    turnRoute.kind === 'grounded'
-    && (turnRoute.coverageMode === 'exhaustive' || turnRoute.coverageMode === 'enumeration')
-    && !mentions.some((mention) => mention.kind === 'folder')
-    && deps.listFolderFiles
-  ) {
-    const inferredFolderPath = inferExhaustiveFolderPath(userText);
-    if (inferredFolderPath) {
-      try {
-        const folderResult = await buildFolderMentionContext(
-          inferredFolderPath,
-          createMentionResolutionServices(deps),
-        );
-        mentionContextBlocks = [...mentionContextBlocks, folderResult.contextBlock];
-        mentionPills = [...mentionPills, ...folderResult.pills];
-      } catch {
-        // best-effort exhaustive folder expansion only
-      }
-    }
-  }
 
   deps.reportRuntimeTrace?.(createChatRuntimeTrace(
     turnRoute,

@@ -80,7 +80,7 @@ function isExhaustiveWorkspaceReviewTurn(text: string): boolean {
     return false;
   }
 
-  const hasExhaustiveLanguage = /(each|every|all|for each)\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|one\s+sentence\s+summary\s+of\s+each|summari[sz]e\s+each\s+(?:file|document|paper|guide|note)|read\s+each\s+(?:file|document|paper|guide|note)/.test(normalized);
+  const hasExhaustiveLanguage = /(?:each|every|all|for each)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|one\s+(?:sentence|paragraph)\s+summary\s+(?:of|for)\s+(?:each|every|all|for each)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|(?:provide|give|create|write)?\s*summary\s+(?:of|for)\s+(?:each|every|all|for each)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|summari[sz]e\s+(?:each|every|all)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?|read\s+(?:each|every|all)(?:\s+of)?(?:\s+the)?\s+(?:file|document|paper|guide|note|pdf|doc|docx|markdown)s?/.test(normalized);
   const hasWorkspaceTarget = /\b(folder|directory|workspace|docs|documents|guides|papers|files)\b/.test(normalized);
 
   return hasExhaustiveLanguage && hasWorkspaceTarget;
@@ -158,10 +158,16 @@ function buildProductSemanticsAnswer(text: string): string | undefined {
 
 // ── M38: Workflow type classification ──────────────────────────────────────
 
-const SUMMARY_VERBS = /\b(summari[sz]e|overview|summarize|describe|outline|recap|brief)\b/i;
+const SUMMARY_VERBS = /\b(summari[sz]e|overview|describe|outline|recap|brief)\b/i;
 const COMPARISON_CUES = /\b(compare|contrast|difference|differences|vs\.?|versus)\b/i;
 const EXHAUSTIVE_CUES = /\b(every|all|each|complete|entire|full)\b/i;
 const EXTRACTION_VERBS = /\b(extract|list|enumerate|find|identify|collect|gather|pull)\b/i;
+
+function hasSummaryIntent(text: string): boolean {
+  return SUMMARY_VERBS.test(text)
+    || /\bsummary\b/i.test(text)
+    || /\bone\s+(?:sentence|paragraph)\b/i.test(text);
+}
 
 function classifyWorkflowType(text: string, isExhaustive: boolean): WorkflowType {
 
@@ -180,14 +186,15 @@ function classifyWorkflowType(text: string, isExhaustive: boolean): WorkflowType
   // Count entity-like capitalized phrases (in original text, not normalized)
   const entityMatches = text.match(/\b[A-Z][A-Za-z0-9 _&-]{2,60}\b/g) ?? [];
   const hasEntityRef = entityMatches.length > 0;
+  const summaryIntent = hasSummaryIntent(text);
 
   // Folder summary: entity + summary verb + folder/files context
-  if (hasEntityRef && SUMMARY_VERBS.test(text) && /\b(folder|directory|files)\b/i.test(text)) {
+  if (hasEntityRef && summaryIntent && /\b(folder|directory|files)\b/i.test(text)) {
     return 'folder-summary';
   }
 
   // Document summary: entity + summary verb (no folder context)
-  if (hasEntityRef && SUMMARY_VERBS.test(text)) {
+  if (hasEntityRef && summaryIntent) {
     return 'document-summary';
   }
 

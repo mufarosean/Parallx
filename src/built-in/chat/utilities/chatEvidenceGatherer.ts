@@ -32,6 +32,16 @@ export interface IEvidenceGathererDeps {
   } | undefined>;
 }
 
+const MAX_ENUM_DEPTH = 3;
+const MAX_ENUM_ENTRIES = 200;
+
+function joinRelativePath(base: string, name: string): string {
+  if (!base) {
+    return name;
+  }
+  return `${base.replace(/\/+$/, '')}/${name.replace(/^\/+/, '')}`;
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────
 
 /**
@@ -50,7 +60,7 @@ export async function gatherEvidence(
   for (const step of plan.steps) {
     if (step.kind === 'synthesize') continue;
 
-    const item = await gatherStep(step, userText, deps);
+    const item = await gatherStep(step, userText, deps, items);
     if (item) {
       items.push(item);
       totalChars += measureChars(item);
@@ -66,6 +76,7 @@ async function gatherStep(
   step: IExecutionStep,
   userText: string,
   deps: IEvidenceGathererDeps,
+  priorItems: readonly EvidenceItem[],
 ): Promise<EvidenceItem | undefined> {
   switch (step.kind) {
     case 'enumerate':
@@ -74,7 +85,7 @@ async function gatherStep(
     case 'scoped-retrieve':
       return gatherSemantic(step, userText, deps);
     case 'deterministic-read':
-      return gatherExhaustive(step, deps);
+      return gatherExhaustive(step, deps, priorItems);
     default:
       return undefined;
   }
@@ -89,16 +100,7 @@ async function gatherStructural(
   if (!deps.listFilesRelative) return undefined;
 
   const scopePath = step.targetPaths?.[0] ?? '';
-  const entries = await deps.listFilesRelative(scopePath);
-
-  const files: IFileEntry[] = entries
-    .filter(e => e.type === 'file')
-    .map(e => {
-      const relativePath = scopePath ? `${scopePath}/${e.name}` : e.name;
-      const dotIndex = e.name.lastIndexOf('.');
-      const ext = dotIndex >= 0 ? e.name.slice(dotIndex) : '';
-      return { relativePath, ext };
-    });
+  const files = await collectFilesInScope(scopePath, deps);
 
   return { kind: 'structural', files, scopePath };
 }
@@ -129,12 +131,21 @@ const MAX_READ_CHARS = 10_000;
 async function gatherExhaustive(
   step: IExecutionStep,
   deps: IEvidenceGathererDeps,
+  priorItems: readonly EvidenceItem[],
 ): Promise<IExhaustiveEvidence | undefined> {
   if (!deps.readFileRelative || !step.targetPaths?.length) return undefined;
 
+  const latestStructural = [...priorItems]
+    .reverse()
+    .find((item): item is IStructuralEvidence => item.kind === 'structural');
+
+  const targetPaths = latestStructural?.files.length
+    ? latestStructural.files.map((file) => file.relativePath)
+    : [...step.targetPaths];
+
   const reads: { relativePath: string; content: string }[] = [];
 
-  for (const targetPath of step.targetPaths.slice(0, MAX_READ_FILES)) {
+  for (const targetPath of targetPaths.slice(0, MAX_READ_FILES)) {
     const content = await deps.readFileRelative(targetPath);
     if (content !== null) {
       reads.push({
@@ -147,6 +158,51 @@ async function gatherExhaustive(
   }
 
   return { kind: 'exhaustive', reads };
+}
+
+async function collectFilesInScope(
+  scopePath: string,
+  deps: IEvidenceGathererDeps,
+): Promise<IFileEntry[]> {
+  if (!deps.listFilesRelative) {
+    return [];
+  }
+
+  const results: IFileEntry[] = [];
+  const visited = new Set<string>();
+
+  const walk = async (relativePath: string, depth: number): Promise<void> => {
+    if (results.length >= MAX_ENUM_ENTRIES) {
+      return;
+    }
+    const key = relativePath || '.';
+    if (visited.has(key)) {
+      return;
+    }
+    visited.add(key);
+
+    const entries = await deps.listFilesRelative!(relativePath).catch(() => []);
+    for (const entry of entries) {
+      if (results.length >= MAX_ENUM_ENTRIES) {
+        return;
+      }
+
+      const childPath = joinRelativePath(relativePath, entry.name);
+      if (entry.type === 'file') {
+        const dotIndex = entry.name.lastIndexOf('.');
+        const ext = dotIndex >= 0 ? entry.name.slice(dotIndex) : '';
+        results.push({ relativePath: childPath, ext });
+        continue;
+      }
+
+      if (depth < MAX_ENUM_DEPTH) {
+        await walk(childPath, depth + 1);
+      }
+    }
+  };
+
+  await walk(scopePath, 0);
+  return results;
 }
 
 // ── Measurement ────────────────────────────────────────────────────────────

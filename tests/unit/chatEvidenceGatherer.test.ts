@@ -13,11 +13,25 @@ function makePlan(steps: IExecutionPlan['steps'], workflowType: IExecutionPlan['
 
 function makeDeps(overrides?: Partial<IEvidenceGathererDeps>): IEvidenceGathererDeps {
   return {
-    listFilesRelative: vi.fn(async () => [
-      { name: 'file1.md', type: 'file' as const },
-      { name: 'file2.pdf', type: 'file' as const },
-      { name: 'subdir', type: 'directory' as const },
-    ]),
+    listFilesRelative: vi.fn(async (relativePath: string) => {
+      if (relativePath === 'docs/' || relativePath === 'docs') {
+        return [
+          { name: 'file1.md', type: 'file' as const },
+          { name: 'file2.pdf', type: 'file' as const },
+          { name: 'subdir', type: 'directory' as const },
+        ];
+      }
+      if (relativePath === 'docs//subdir' || relativePath === 'docs/subdir') {
+        return [
+          { name: 'file3.md', type: 'file' as const },
+        ];
+      }
+      return [
+        { name: 'file1.md', type: 'file' as const },
+        { name: 'file2.pdf', type: 'file' as const },
+        { name: 'subdir', type: 'directory' as const },
+      ];
+    }),
     readFileRelative: vi.fn(async (path: string) => `Content of ${path}`),
     retrieveContext: vi.fn(async () => ({
       text: 'Retrieved context text',
@@ -50,10 +64,11 @@ describe('gatherEvidence', () => {
     expect(bundle.items[0].kind).toBe('structural');
     if (bundle.items[0].kind === 'structural') {
       expect(bundle.items[0].scopePath).toBe('docs/');
-      expect(bundle.items[0].files).toHaveLength(2); // files only, not directory
-      expect(bundle.items[0].files[0].relativePath).toBe('docs//file1.md');
+      expect(bundle.items[0].files).toHaveLength(3);
+      expect(bundle.items[0].files[0].relativePath).toBe('docs/file1.md');
       expect(bundle.items[0].files[0].ext).toBe('.md');
       expect(bundle.items[0].files[1].ext).toBe('.pdf');
+      expect(bundle.items[0].files[2].relativePath).toBe('docs/subdir/file3.md');
     }
     expect(deps.listFilesRelative).toHaveBeenCalledWith('docs/');
   });
@@ -97,14 +112,35 @@ describe('gatherEvidence', () => {
   it('collects multiple evidence items for multi-step plans', async () => {
     const plan = makePlan([
       { kind: 'enumerate', label: 'Enumerate', targetPaths: ['docs/'] },
-      { kind: 'scoped-retrieve', label: 'Retrieve' },
+      { kind: 'deterministic-read', label: 'Read', targetPaths: ['docs/'] },
       { kind: 'synthesize', label: 'Synthesize' },
     ], 'folder-summary');
     const bundle = await gatherEvidence(plan, 'summarize docs folder', makeDeps());
 
     expect(bundle.items).toHaveLength(2);
     expect(bundle.items[0].kind).toBe('structural');
-    expect(bundle.items[1].kind).toBe('semantic');
+    expect(bundle.items[1].kind).toBe('exhaustive');
+  });
+
+  it('uses enumerated files as deterministic-read targets for folder-summary', async () => {
+    const plan = makePlan([
+      { kind: 'enumerate', label: 'Enumerate', targetPaths: ['docs/'] },
+      { kind: 'deterministic-read', label: 'Read everything', targetPaths: ['docs/'] },
+      { kind: 'synthesize', label: 'Synthesize' },
+    ], 'folder-summary');
+    const deps = makeDeps();
+    const bundle = await gatherEvidence(plan, 'summarize docs folder', deps);
+
+    expect(bundle.items[1].kind).toBe('exhaustive');
+    if (bundle.items[1].kind === 'exhaustive') {
+      expect(bundle.items[1].reads.map((read) => read.relativePath)).toEqual([
+        'docs/file1.md',
+        'docs/file2.pdf',
+        'docs/subdir/file3.md',
+      ]);
+    }
+    expect(deps.readFileRelative).toHaveBeenCalledWith('docs/file1.md');
+    expect(deps.readFileRelative).toHaveBeenCalledWith('docs/subdir/file3.md');
   });
 
   it('tracks total character count across evidence items', async () => {

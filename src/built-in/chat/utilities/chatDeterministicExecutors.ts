@@ -47,7 +47,7 @@ export function buildUnsupportedWorkspaceTopicAnswer(
     return undefined;
   }
 
-  if (!/if none, say that none of the .* books appear to be about that/.test(normalizedQuery)) {
+  if (!/if none, say that none of the .* (?:books|papers|files|guides|documents) appear to be about that/.test(normalizedQuery)) {
     return undefined;
   }
 
@@ -65,7 +65,10 @@ export function buildUnsupportedWorkspaceTopicAnswer(
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 
-  return `None of the ${folderLabel} books appear to be about that. [1]`;
+  const collectionLabelMatch = normalizedQuery.match(/if none, say that none of the .*?\s+(books|papers|files|guides|documents)\s+appear to be about that/);
+  const collectionLabel = collectionLabelMatch?.[1] ?? 'items';
+
+  return `None of the ${folderLabel} ${collectionLabel} appear to be about that. [1]`;
 }
 
 export function buildDeterministicGroundedBooksAnswer(

@@ -89,25 +89,19 @@ export function stripToolNarration(text: string): string {
 export function buildMissingCitationFooter(
   text: string,
   citations: Array<{ index: number; label: string }>,
-  maxVisibleSources = 3,
+  maxVisibleSources = Number.POSITIVE_INFINITY,
 ): string {
   if (citations.length === 0) {
     return '';
   }
 
-  const normalizedText = text.toLowerCase();
-  const hasStructuredCitationMarkers = /\[\d+\]/.test(text);
-  const hasVisibleSourceReference = /(^|\n)\s*Sources:\s*/i.test(text) || citations.some(({ label }) => {
-    const normalizedLabel = label.toLowerCase();
-    return normalizedText.includes(normalizedLabel);
-  });
-  if (hasStructuredCitationMarkers || (/([Ss]ources:\s*)/.test(text) && hasVisibleSourceReference)) {
+  if (/(^|\n)\s*Sources:\s*/i.test(text)) {
     return '';
   }
 
   const visibleSources = [...citations]
     .sort((a, b) => a.index - b.index)
-    .slice(0, Math.max(1, maxVisibleSources));
+    .slice(0, Number.isFinite(maxVisibleSources) ? Math.max(1, maxVisibleSources) : undefined);
 
   if (visibleSources.length === 0) {
     return '';

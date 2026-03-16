@@ -78,4 +78,30 @@ describe('chat turn prelude', () => {
     expect(result.contextPlan.useRetrieval).toBe(false);
     expect(result.contextPlan.useCurrentPage).toBe(false);
   });
+
+  it('does not inject inferred folder attachments for exhaustive folder-summary turns', async () => {
+    const listFolderFiles = vi.fn().mockResolvedValue([
+      { relativePath: 'RF Guides/Clark.pdf', content: 'Clark content' },
+    ]);
+
+    const result = await prepareChatTurnPrelude({
+      listFolderFiles,
+      isRAGAvailable: () => true,
+      reportRuntimeTrace: vi.fn(),
+      reportRetrievalDebug: vi.fn(),
+    }, {
+      buildFollowUpRetrievalQuery: (query) => query,
+    }, {
+      requestText: 'Can you provide a one paragraph summary for each of the files in the RF Guides folder?',
+      history: [],
+      sessionId: 'session-4',
+      hasActiveSlashCommand: false,
+    });
+
+    expect(result.turnRoute.workflowType).toBe('folder-summary');
+    expect(result.turnRoute.coverageMode).toBe('exhaustive');
+    expect(result.mentionPills).toHaveLength(0);
+    expect(result.mentionContextBlocks).toHaveLength(0);
+    expect(listFolderFiles).not.toHaveBeenCalled();
+  });
 });

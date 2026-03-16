@@ -123,7 +123,7 @@ export function createChatContextPlan(
         useTranscriptRecall: false,
         useConceptRecall: false,
         useCurrentPage: true,
-        citationMode: retrievalPlan.needsRetrieval ? 'required' : 'disabled',
+        citationMode: 'required',
         reasoning: route.reason,
         retrievalPlan,
       };

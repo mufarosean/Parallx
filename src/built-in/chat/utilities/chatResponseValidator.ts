@@ -118,16 +118,17 @@ export function validateAndFinalizeChatResponse(
           .find((part) => part.kind === 'markdown' && typeof part.content === 'string')?.content ?? ''
         : options.response.getMarkdownText();
       const attributableCitations = deps.selectAttributableCitations(lastMarkdownContent, citations);
+      const citationsToRender = attributableCitations.length > 0 ? attributableCitations : citations;
       const citationFooter = deps.buildMissingCitationFooter(
         lastMarkdownContent,
-        attributableCitations.map(({ index, label }) => ({ index, label })),
+        citationsToRender.map(({ index, label }) => ({ index, label })),
       );
       if (citationFooter) {
         options.response.markdown(citationFooter);
       }
 
-      if (attributableCitations.length > 0) {
-        options.response.setCitations(attributableCitations);
+      if (citationsToRender.length > 0) {
+        options.response.setCitations(citationsToRender);
       }
     }
   }

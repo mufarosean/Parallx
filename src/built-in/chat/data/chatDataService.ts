@@ -237,6 +237,38 @@ const EXPLICIT_SOURCE_STOPWORDS = new Set([
 
 type ExplicitSourceFormat = 'pdf' | 'epub';
 
+const EXPLICIT_SOURCE_STRUCTURED_DOC_TERMS = [
+  'study guide',
+  'reading list',
+  'workbook',
+  'manual',
+  'handbook',
+  'outline',
+  'summary',
+  'summaries',
+  'contents',
+  'table of contents',
+  'toc',
+  'guide',
+];
+
+interface IExplicitSourceQueryFeatures {
+  readonly queryTokens: string[];
+  readonly normalizedQuery: string;
+  readonly anchors: string[];
+  readonly wantsStructuredDocument: boolean;
+  readonly wantsOrderingStructure: boolean;
+}
+
+interface IExplicitSourceCandidateScore {
+  readonly relativePath: string;
+  readonly extension: string;
+  readonly score: number;
+  readonly matchedLabelTokens: string[];
+  readonly matchedPathTokens: string[];
+  readonly anchorMatches: string[];
+}
+
 function normalizeExplicitSourceText(text: string): string {
   return text
     .toLowerCase()
@@ -267,6 +299,114 @@ function extractRequestedExplicitFormats(query: string): ExplicitSourceFormat[] 
     formats.push('epub');
   }
   return formats;
+}
+
+export function extractExplicitSourceAnchors(query: string): string[] {
+  const normalizedQuery = query
+    .toLowerCase()
+    .replace(/[’']/g, ' ')
+    .replace(/[^a-z0-9\s&._-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const anchors = new Set<string>();
+  const patterns = [
+    /(?:according to|in|inside|from)\s+(?:the\s+)?([a-z0-9][a-z0-9\s&._-]{2,100}?)\s+(?:table of contents|toc|contents)\b/g,
+    /(?:according to|in|inside|from)\s+(?:the\s+)?([a-z0-9][a-z0-9\s&._-]{2,100}?(?:study guide|reading list|workbook|manual|handbook|outline|summary|summaries|guide|book|document|paper|pdf|file))\b/g,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of normalizedQuery.matchAll(pattern)) {
+      const rawAnchor = match[1]?.trim();
+      if (!rawAnchor) {
+        continue;
+      }
+      const normalizedAnchor = normalizeExplicitSourceText(rawAnchor);
+      if (normalizedAnchor.length >= 6) {
+        anchors.add(normalizedAnchor);
+      }
+    }
+  }
+
+  return [...anchors];
+}
+
+function buildExplicitSourceQueryFeatures(query: string): IExplicitSourceQueryFeatures {
+  const normalizedQuery = normalizeExplicitSourceText(query);
+  return {
+    queryTokens: tokenizeExplicitSourceText(query),
+    normalizedQuery,
+    anchors: extractExplicitSourceAnchors(query),
+    wantsStructuredDocument: EXPLICIT_SOURCE_STRUCTURED_DOC_TERMS.some((term) => normalizedQuery.includes(normalizeExplicitSourceText(term))),
+    wantsOrderingStructure: /\b(?:table of contents|toc|contents|comes after|comes before|next|previous|following|preceding|order)\b/.test(normalizedQuery),
+  };
+}
+
+function candidateHasStructuredDocumentCue(normalizedCandidate: string): boolean {
+  return EXPLICIT_SOURCE_STRUCTURED_DOC_TERMS.some((term) => normalizedCandidate.includes(normalizeExplicitSourceText(term)));
+}
+
+function candidateMatchesAnchor(anchor: string, normalizedLabel: string, normalizedPath: string): boolean {
+  if (normalizedLabel.includes(anchor) || normalizedPath.includes(anchor)) {
+    return true;
+  }
+
+  const anchorTokens = tokenizeExplicitSourceText(anchor);
+  if (anchorTokens.length === 0) {
+    return false;
+  }
+
+  const candidateTokens = new Set([
+    ...tokenizeExplicitSourceText(normalizedLabel),
+    ...tokenizeExplicitSourceText(normalizedPath),
+  ]);
+  const matchedAnchorTokens = anchorTokens.filter((token) => candidateTokens.has(token));
+  return matchedAnchorTokens.length >= Math.min(anchorTokens.length, 2);
+}
+
+export function scoreExplicitSourceCandidate(query: string, relativePath: string): IExplicitSourceCandidateScore {
+  const features = buildExplicitSourceQueryFeatures(query);
+  const label = toDisplayLabel(relativePath);
+  const normalizedLabel = normalizeExplicitSourceText(label);
+  const normalizedPath = normalizeExplicitSourceText(relativePath);
+  const labelTokens = tokenizeExplicitSourceText(label);
+  const pathTokens = tokenizeExplicitSourceText(relativePath);
+  const matchedLabelTokens = labelTokens.filter((token) => features.queryTokens.includes(token));
+  const matchedPathTokens = pathTokens.filter((token) => features.queryTokens.includes(token));
+  const exactLabelPhraseMatch = features.normalizedQuery.includes(normalizedLabel);
+  const exactPathPhraseMatch = features.normalizedQuery.includes(normalizedPath);
+  const anchorMatches = features.anchors.filter((anchor) => candidateMatchesAnchor(anchor, normalizedLabel, normalizedPath));
+  const structuredCue = candidateHasStructuredDocumentCue(normalizedLabel) || candidateHasStructuredDocumentCue(normalizedPath);
+  let score = matchedPathTokens.length + matchedLabelTokens.length + (exactLabelPhraseMatch ? 3 : 0) + (exactPathPhraseMatch ? 2 : 0);
+
+  if (anchorMatches.length > 0) {
+    score += 6 + anchorMatches.reduce((sum, anchor) => sum + Math.min(2, tokenizeExplicitSourceText(anchor).length - 1), 0);
+  }
+
+  if (features.wantsStructuredDocument && structuredCue) {
+    score += 3;
+  }
+  if (features.wantsOrderingStructure && structuredCue) {
+    score += 3;
+  }
+
+  if (features.anchors.length > 0 && anchorMatches.length === 0 && matchedLabelTokens.length <= 1 && matchedPathTokens.length <= 1) {
+    score -= 3;
+  }
+
+  const extension = relativePath.includes('.') ? relativePath.slice(relativePath.lastIndexOf('.') + 1).toLowerCase() : '';
+  return {
+    relativePath,
+    extension,
+    score,
+    matchedLabelTokens,
+    matchedPathTokens,
+    anchorMatches,
+  };
 }
 
 function isMultiFormatPresenceQuery(query: string): boolean {
@@ -968,16 +1108,11 @@ export class ChatDataService {
     await this._collectWorkspaceFilePaths('.', 0, filePaths);
 
     const scored = filePaths
-      .map((relativePath) => {
-        const label = toDisplayLabel(relativePath);
-        const labelTokens = tokenizeExplicitSourceText(label);
-        const matchedTokens = labelTokens.filter((token) => queryTokens.includes(token));
-        const exactPhraseMatch = normalizeExplicitSourceText(query).includes(normalizeExplicitSourceText(label));
-        const score = matchedTokens.length + (exactPhraseMatch ? 3 : 0);
-        const extension = relativePath.includes('.') ? relativePath.slice(relativePath.lastIndexOf('.') + 1).toLowerCase() : '';
-        return { relativePath, score, matchedTokens, labelTokens, extension };
+      .map((relativePath) => scoreExplicitSourceCandidate(query, relativePath))
+      .filter((candidate) => {
+        const matchedTokenCount = Math.max(candidate.matchedLabelTokens.length, candidate.matchedPathTokens.length);
+        return candidate.score >= 2 && (matchedTokenCount >= 2 || candidate.anchorMatches.length > 0);
       })
-      .filter((candidate) => candidate.score >= 2 && candidate.matchedTokens.length >= Math.min(2, candidate.labelTokens.length || 2))
       .sort((a, b) => b.score - a.score || a.relativePath.localeCompare(b.relativePath));
 
     if (scored.length === 0) {
@@ -1391,7 +1526,10 @@ export class ChatDataService {
   async readFileRelative(relativePath: string): Promise<string | null> {
     if (!this._d.fsAccessor) { return null; }
     try {
-      return await this._d.fsAccessor.readFile(relativePath);
+      const ext = relativePath.includes('.') ? relativePath.slice(relativePath.lastIndexOf('.')).toLowerCase() : '';
+      return this._d.fsAccessor.isRichDocument(ext)
+        ? await this._d.fsAccessor.readDocumentText(relativePath)
+        : await this._d.fsAccessor.readFile(relativePath);
     } catch { return null; }
   }
 

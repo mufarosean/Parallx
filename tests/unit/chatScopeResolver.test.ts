@@ -59,7 +59,22 @@ describe('resolveQueryScope', () => {
   ];
 
   const mockDeps = {
-    listFilesRelative: vi.fn().mockResolvedValue(MOCK_WORKSPACE_ENTRIES),
+    listFilesRelative: vi.fn(async (relativePath: string) => {
+      if (relativePath === '') {
+        return MOCK_WORKSPACE_ENTRIES;
+      }
+      if (relativePath === 'docs') {
+        return [
+          { name: 'Nested Guides', type: 'directory' as const },
+        ];
+      }
+      if (relativePath === 'docs/Nested Guides') {
+        return [
+          { name: 'Folder Notes.md', type: 'file' as const },
+        ];
+      }
+      return [];
+    }),
   };
 
   // ── Explicit mention scope ──
@@ -118,6 +133,18 @@ describe('resolveQueryScope', () => {
     expect(scope.derivedFrom).toBe('inferred');
     expect(scope.resolvedEntities).toBeDefined();
     expect(scope.resolvedEntities!.length).toBeGreaterThan(0);
+  });
+
+  it('resolves nested folders by walking the workspace tree', async () => {
+    const scope = await resolveQueryScope(
+      'Summarize each file in the Nested Guides folder',
+      { folders: [], files: [] },
+      mockDeps,
+    );
+
+    expect(scope.level).toBe('folder');
+    expect(scope.pathPrefixes).toContain('docs/Nested Guides/');
+    expect(scope.derivedFrom).toBe('inferred');
   });
 
   // ── Workspace fallback ──

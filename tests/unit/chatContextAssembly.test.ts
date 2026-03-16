@@ -43,7 +43,7 @@ describe('chat context assembly', () => {
       { kind: 'rag', label: 'Claims Guide.md', index: 1 },
       { kind: 'memory', label: 'Memory recall', index: undefined },
       { kind: 'concept', label: 'Concept recall', index: undefined },
-      { kind: 'attachment', label: 'notes.txt', index: undefined },
+      { kind: 'attachment', label: 'notes.txt', index: 2 },
     ]);
     expect(result.pills.map((pill) => pill.label)).toEqual([
       'System prompt',
@@ -77,13 +77,57 @@ describe('chat context assembly', () => {
       },
     );
 
-    expect(result.provenance.map((entry) => ({ kind: entry.kind, uri: entry.uri }))).toEqual([
+    expect(result.provenance.map((entry) => ({ kind: entry.kind, uri: entry.uri, index: entry.index }))).toEqual([
       { kind: 'page', uri: 'parallx-page://pdf-page' },
-      { kind: 'attachment', uri: 'D:/AI/Parallx/Clark.pdf' },
+      { kind: 'attachment', uri: 'D:/AI/Parallx/Clark.pdf', index: 1 },
     ]);
-    expect(result.ragSources).toHaveLength(0);
+    expect(result.ragSources).toEqual([
+      { uri: 'D:/AI/Parallx/Clark.pdf', label: 'Clark.pdf', index: 1 },
+    ]);
     expect(result.contextParts.some((part) => part.includes('Open document text'))).toBe(true);
     expect(result.contextParts.some((part) => part.includes('Attached file text'))).toBe(true);
+  });
+
+  it('promotes exhaustive direct file reads into citable sources', async () => {
+    const result = await assembleChatContext(
+      {
+        assessEvidenceSufficiency: () => ({ status: 'sufficient', reasons: [] }),
+        buildRetrieveAgainQuery: () => '',
+      },
+      {
+        userText: 'Summarize each file in the RF Guides folder.',
+        messages: [{ role: 'system', content: 'system prompt text' } as any],
+        mentionPills: [],
+        useRetrieval: false,
+        maxMemoryContextChars: 100,
+        maxConceptContextChars: 100,
+        pageResult: null,
+        ragResult: null,
+        memoryResult: null,
+        conceptResult: null,
+        attachmentResults: [],
+        evidenceBundle: {
+          plan: {} as any,
+          items: [{
+            kind: 'exhaustive',
+            reads: [
+              { relativePath: 'RF Guides/Clark.pdf', content: 'Clark summary text' },
+              { relativePath: 'RF Guides/Verrall.pdf', content: 'Verrall summary text' },
+            ],
+          }],
+          totalChars: 34,
+        },
+      },
+    );
+
+    expect(result.ragSources).toEqual([
+      { uri: 'RF Guides/Clark.pdf', label: 'Clark.pdf', index: 1 },
+      { uri: 'RF Guides/Verrall.pdf', label: 'Verrall.pdf', index: 2 },
+    ]);
+    expect(result.provenance.map((entry) => ({ kind: entry.kind, uri: entry.uri, index: entry.index }))).toEqual([
+      { kind: 'attachment', uri: 'RF Guides/Clark.pdf', index: 1 },
+      { kind: 'attachment', uri: 'RF Guides/Verrall.pdf', index: 2 },
+    ]);
   });
 
   it('runs a retrieve-again pass when initial evidence is insufficient', async () => {
