@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createChatContextPlan, createChatRuntimeTrace } from '../../src/built-in/chat/utilities/chatContextPlanner';
-import { resolveChatRouteAuthority } from '../../src/built-in/chat/utilities/chatRouteAuthority';
+import { refineChatRouteAuthorityWithEvidence, resolveChatRouteAuthority } from '../../src/built-in/chat/utilities/chatRouteAuthority';
 import { determineChatTurnRoute } from '../../src/built-in/chat/utilities/chatTurnRouter';
 
 describe('chat runtime routing', () => {
@@ -182,6 +182,41 @@ describe('chat route authority', () => {
       coveredTargets: 3,
       gaps: ['d.md'],
     }, {
+      hasActiveSlashCommand: false,
+      isRagReady: true,
+    });
+
+    expect(result.turnRoute.workflowType).toBe(route.workflowType);
+    expect(result.authority.action).toBe('preserved');
+  });
+
+  it('corrects incomplete exhaustive coverage when evidence remains insufficient', () => {
+    const route = determineChatTurnRoute('Summarize each file in this directory in one sentence.');
+
+    const result = refineChatRouteAuthorityWithEvidence(route, {
+      level: 'minimal',
+      totalTargets: 4,
+      coveredTargets: 1,
+      gaps: ['b.md', 'c.md', 'd.md'],
+    }, 'insufficient', {
+      hasActiveSlashCommand: false,
+      isRagReady: true,
+    });
+
+    expect(result.turnRoute.workflowType).toBe('generic-grounded');
+    expect(result.turnRoute.coverageMode).toBe('representative');
+    expect(result.authority.action).toBe('corrected');
+  });
+
+  it('preserves incomplete exhaustive coverage when evidence is still sufficient', () => {
+    const route = determineChatTurnRoute('Summarize each file in this directory in one sentence.');
+
+    const result = refineChatRouteAuthorityWithEvidence(route, {
+      level: 'partial',
+      totalTargets: 4,
+      coveredTargets: 3,
+      gaps: ['d.md'],
+    }, 'sufficient', {
       hasActiveSlashCommand: false,
       isRagReady: true,
     });

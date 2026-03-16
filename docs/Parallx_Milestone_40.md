@@ -1061,6 +1061,7 @@ Implemented during Phase 5 so far:
 2. shared default prepared-turn context now applies a bounded evidence-authority correction when tool-first exhaustive/enumeration coverage produces zero covered targets and RAG is available
 3. corrected route/context-plan decisions are now written back into the shared runtime trace so traces can explain why a route was preserved or corrected
 4. focused unit regressions now cover both semantic fallback and the first evidence-authority correction rule
+5. post-assessment authority correction now also handles incomplete (`partial`/`minimal`) tool-first coverage when the resulting evidence remains weak or insufficient
 
 Current Phase 5 checkpoint:
 
@@ -1068,6 +1069,7 @@ Current Phase 5 checkpoint:
 - trace propagation for both semantic fallback and route authority is covered
 - prepared-turn-context regression now proves that an empty exhaustive route is corrected back into representative retrieval when RAG is available
 - end-to-end route-authority regression now passes by injecting unreadable rich documents into the eval workspace and confirming the real chat flow records a corrected route-authority decision
+- broader partial/minimal correction is currently unit-covered; the reliable end-to-end proof remains the zero-covered-target route-authority case
 
 ### Phase 6 — Config and policy unification
 

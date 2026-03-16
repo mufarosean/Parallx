@@ -14,7 +14,7 @@ import { createChatContextPlan, createChatRuntimeTrace } from './chatContextPlan
 import { gatherEvidence, computeCoverage } from './chatEvidenceGatherer.js';
 import { buildExecutionPlan } from './chatExecutionPlanner.js';
 import { buildExecutionPlanPromptSection, buildSkillInstructionSection } from '../config/chatSystemPrompts.js';
-import { resolveChatRouteAuthority } from './chatRouteAuthority.js';
+import { refineChatRouteAuthorityWithEvidence, resolveChatRouteAuthority } from './chatRouteAuthority.js';
 import { prepareChatTurnContext } from './chatTurnContextPreparation.js';
 
 type IDefaultPreparedTurnContextServices = Pick<
@@ -95,36 +95,14 @@ export async function resolveDefaultPreparedTurnContext(
     hasActiveSlashCommand: input.hasActiveSlashCommand,
     isRagReady: input.isRagReady,
   });
-  const contextPlan = createChatContextPlan(turnRoute, {
+  let finalTurnRoute = turnRoute;
+  let finalAuthority = authority;
+  let contextPlan = createChatContextPlan(finalTurnRoute, {
     hasActiveSlashCommand: input.hasActiveSlashCommand,
     isRagReady: input.isRagReady,
   });
 
-  services.reportRuntimeTrace?.(createChatRuntimeTrace(
-    turnRoute,
-    contextPlan,
-    {
-      sessionId: input.sessionId,
-      hasActiveSlashCommand: input.hasActiveSlashCommand,
-      isRagReady: input.isRagReady,
-      semanticFallback: input.semanticFallback,
-      routeAuthority: authority,
-    },
-  ));
-
-  const planPromptSection = buildExecutionPlanPromptSection(buildExecutionPlan(turnRoute, input.queryScope), input.queryScope, coverageRecord);
-  if (planPromptSection && input.messages.length > 0 && input.messages[0].role === 'system') {
-    input.messages[0] = { ...input.messages[0], content: input.messages[0].content + planPromptSection };
-  }
-
-  if (input.activatedSkill && input.messages.length > 0 && input.messages[0].role === 'system') {
-    input.messages[0] = {
-      ...input.messages[0],
-      content: input.messages[0].content + buildSkillInstructionSection(input.activatedSkill),
-    };
-  }
-
-  const preparedContext = await prepareChatTurnContext(
+  let preparedContext = await prepareChatTurnContext(
     {
       getCurrentPageContent: services.getCurrentPageContent,
       retrieveContext: services.retrieveContext,
@@ -152,8 +130,79 @@ export async function resolveDefaultPreparedTurnContext(
     },
   );
 
+  const postEvidenceAuthority = refineChatRouteAuthorityWithEvidence(
+    finalTurnRoute,
+    coverageRecord,
+    preparedContext.evidenceAssessment.status,
+    {
+      hasActiveSlashCommand: input.hasActiveSlashCommand,
+      isRagReady: input.isRagReady,
+    },
+  );
+
+  if (postEvidenceAuthority.authority.action === 'corrected') {
+    finalTurnRoute = postEvidenceAuthority.turnRoute;
+    finalAuthority = postEvidenceAuthority.authority;
+    contextPlan = createChatContextPlan(finalTurnRoute, {
+      hasActiveSlashCommand: input.hasActiveSlashCommand,
+      isRagReady: input.isRagReady,
+    });
+
+    preparedContext = await prepareChatTurnContext(
+      {
+        getCurrentPageContent: services.getCurrentPageContent,
+        retrieveContext: services.retrieveContext,
+        recallMemories: services.recallMemories,
+        recallTranscripts: services.recallTranscripts,
+        recallConcepts: services.recallConcepts,
+        readFileContent: services.readFileContent,
+        reportRetrievalDebug: services.reportRetrievalDebug,
+        reportContextPills: services.reportContextPills,
+        getExcludedContextIds: services.getExcludedContextIds,
+        assessEvidenceSufficiency: input.assessEvidenceSufficiency,
+        buildRetrieveAgainQuery: input.buildRetrieveAgainQuery,
+      },
+      {
+        contextQueryText: input.contextQueryText,
+        sessionId: input.sessionId,
+        attachments: input.attachments,
+        messages: input.messages,
+        mentionPills: input.mentionPills,
+        mentionContextBlocks: input.mentionContextBlocks,
+        contextPlan,
+        hasActiveSlashCommand: input.hasActiveSlashCommand,
+        isRagReady: input.isRagReady,
+        evidenceBundle,
+      },
+    );
+  }
+
+  services.reportRuntimeTrace?.(createChatRuntimeTrace(
+    finalTurnRoute,
+    contextPlan,
+    {
+      sessionId: input.sessionId,
+      hasActiveSlashCommand: input.hasActiveSlashCommand,
+      isRagReady: input.isRagReady,
+      semanticFallback: input.semanticFallback,
+      routeAuthority: finalAuthority,
+    },
+  ));
+
+  const planPromptSection = buildExecutionPlanPromptSection(buildExecutionPlan(finalTurnRoute, input.queryScope), input.queryScope, coverageRecord);
+  if (planPromptSection && input.messages.length > 0 && input.messages[0].role === 'system') {
+    input.messages[0] = { ...input.messages[0], content: input.messages[0].content + planPromptSection };
+  }
+
+  if (input.activatedSkill && input.messages.length > 0 && input.messages[0].role === 'system') {
+    input.messages[0] = {
+      ...input.messages[0],
+      content: input.messages[0].content + buildSkillInstructionSection(input.activatedSkill),
+    };
+  }
+
   return {
-    turnRoute,
+    turnRoute: finalTurnRoute,
     contextPlan,
     contextParts: preparedContext.contextParts,
     ragSources: preparedContext.ragSources,

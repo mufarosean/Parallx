@@ -16,9 +16,10 @@ test.describe.serial('Route Authority Correction Evaluation', () => {
 
   test.beforeAll(async ({ window, electronApp, workspacePath, workspaceLabel }) => {
     const brokenDocsDir = path.join(workspacePath, 'Broken Docs');
+    const invalidRichDocBytes = Buffer.from([0x00, 0xff, 0x10, 0x80, 0x7f, 0x01, 0x02, 0x03]);
     await fs.mkdir(brokenDocsDir, { recursive: true });
-    await fs.writeFile(path.join(brokenDocsDir, 'policy-scan.pdf'), 'This is intentionally not a valid PDF file.', 'utf8');
-    await fs.writeFile(path.join(brokenDocsDir, 'claims-scan.pdf'), 'This is intentionally not a valid PDF file.', 'utf8');
+    await fs.writeFile(path.join(brokenDocsDir, 'policy-scan.pdf'), invalidRichDocBytes);
+    await fs.writeFile(path.join(brokenDocsDir, 'claims-scan.pdf'), invalidRichDocBytes);
 
     workspaceDisplayName = process.env.PARALLX_AI_EVAL_WORKSPACE_NAME || workspaceLabel || path.basename(workspacePath) || 'demo-workspace';
     console.log(`\n  [Route Authority] Opening ${workspaceDisplayName}...`);
