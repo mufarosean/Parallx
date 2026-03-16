@@ -1062,6 +1062,7 @@ Implemented during Phase 5 so far:
 3. corrected route/context-plan decisions are now written back into the shared runtime trace so traces can explain why a route was preserved or corrected
 4. focused unit regressions now cover both semantic fallback and the first evidence-authority correction rule
 5. post-assessment authority correction now also handles incomplete (`partial`/`minimal`) tool-first coverage when the resulting evidence remains weak or insufficient
+6. `@workspace` and `@canvas` now share a common scoped prompt/stream runner instead of each repeating local message-build and LLM-stream ceremony
 
 Current Phase 5 checkpoint:
 
@@ -1070,6 +1071,7 @@ Current Phase 5 checkpoint:
 - prepared-turn-context regression now proves that an empty exhaustive route is corrected back into representative retrieval when RAG is available
 - end-to-end route-authority regression now passes by injecting unreadable rich documents into the eval workspace and confirming the real chat flow records a corrected route-authority decision
 - broader partial/minimal correction is currently unit-covered; the reliable end-to-end proof remains the zero-covered-target route-authority case
+- participant-specific scoped prompt execution duplication has been reduced for `@workspace` and `@canvas`, with participant tests still passing
 
 ### Phase 6 — Config and policy unification
 

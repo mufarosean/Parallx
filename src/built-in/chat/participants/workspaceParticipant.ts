@@ -21,7 +21,8 @@ import type {
 } from '../../../services/chatTypes.js';
 import type { IWorkspaceParticipantServices } from '../chatTypes.js';
 import { dispatchScopedParticipantCommand } from '../utilities/chatParticipantCommandDispatcher.js';
-import { appendScopedParticipantHistory, createScopedParticipantMessages, streamScopedParticipantLLMResponse } from '../utilities/chatScopedParticipantExecution.js';
+import { appendScopedParticipantHistory } from '../utilities/chatScopedParticipantExecution.js';
+import { runScopedParticipantPrompt } from '../utilities/chatScopedParticipantPromptRunner.js';
 
 // IPageSummary, IWorkspaceParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { IPageSummary, IWorkspaceParticipantServices } from '../chatTypes.js';
@@ -123,7 +124,7 @@ async function handleSearch(
     .map((p) => `- ${p.icon ?? '📄'} "${p.title}" (id: ${p.id})`)
     .join('\n');
 
-  const messages = createScopedParticipantMessages(
+  return await runScopedParticipantPrompt(
     [
       `You are a workspace assistant for "${services.getWorkspaceName()}".`,
       'The user searched their workspace. Here are the matching pages:',
@@ -133,9 +134,11 @@ async function handleSearch(
       'Summarise what was found and help the user explore the results.',
     ].join('\n'),
     `I searched for "${query}". What did you find?`,
+    undefined,
+    response,
+    token,
+    services.sendChatRequest,
   );
-
-  return await streamScopedParticipantLLMResponse(messages, response, token, services.sendChatRequest);
 }
 
 async function handleList(
@@ -210,7 +213,7 @@ async function handleSummarize(
 
   response.reference(`parallx://page/${pageId}`, `📄 ${title}`);
 
-  const messages = createScopedParticipantMessages(
+  return await runScopedParticipantPrompt(
     [
       `You are a workspace assistant for "${services.getWorkspaceName()}".`,
       `The user wants a summary of their page titled "${title}".`,
@@ -219,9 +222,11 @@ async function handleSummarize(
       contentText,
     ].join('\n'),
     `Summarize this page: "${title}"`,
+    undefined,
+    response,
+    token,
+    services.sendChatRequest,
   );
-
-  return await streamScopedParticipantLLMResponse(messages, response, token, services.sendChatRequest);
 }
 
 async function handleGeneral(
@@ -265,7 +270,7 @@ async function handleGeneral(
     }
   }
 
-  const messages = createScopedParticipantMessages(
+  return await runScopedParticipantPrompt(
     [
       `You are a workspace assistant for "${services.getWorkspaceName()}".`,
       `The workspace contains ${pages.length} canvas page${pages.length !== 1 ? 's' : ''}:`,
@@ -279,9 +284,10 @@ async function handleGeneral(
     ].join('\n'),
     request.effectiveText,
     context,
+    response,
+    token,
+    services.sendChatRequest,
   );
-
-  return await streamScopedParticipantLLMResponse(messages, response, token, services.sendChatRequest);
 }
 
 /**

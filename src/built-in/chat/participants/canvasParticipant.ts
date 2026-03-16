@@ -22,7 +22,7 @@ import type {
 } from '../../../services/chatTypes.js';
 import type { IPageStructure, ICanvasParticipantServices } from '../chatTypes.js';
 import { dispatchScopedParticipantCommand } from '../utilities/chatParticipantCommandDispatcher.js';
-import { createScopedParticipantMessages, streamScopedParticipantLLMResponse } from '../utilities/chatScopedParticipantExecution.js';
+import { runScopedParticipantPrompt } from '../utilities/chatScopedParticipantPromptRunner.js';
 
 // IBlockSummary, IPageStructure, ICanvasParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { IBlockSummary, IPageStructure, ICanvasParticipantServices } from '../chatTypes.js';
@@ -111,7 +111,7 @@ async function handleDescribe(
 
   const structureText = formatPageStructure(structure);
 
-  const messages = createScopedParticipantMessages(
+  return await runScopedParticipantPrompt(
     [
       `You are a canvas assistant for "${services.getWorkspaceName()}".`,
       `The user is viewing the page "${structure.title}".`,
@@ -122,9 +122,11 @@ async function handleDescribe(
       'Describe the page structure, organisation, and content to the user.',
     ].join('\n'),
     `Describe the structure of "${structure.title}".`,
+    undefined,
+    response,
+    token,
+    services.sendChatRequest,
   );
-
-  return await streamScopedParticipantLLMResponse(messages, response, token, services.sendChatRequest);
 }
 
 async function handleBlocks(
@@ -213,9 +215,14 @@ async function handleGeneral(
     'Answer the user\'s question about the canvas page and its blocks.',
   );
 
-  const messages = createScopedParticipantMessages(systemLines.join('\n'), request.effectiveText, context);
-
-  return await streamScopedParticipantLLMResponse(messages, response, token, services.sendChatRequest);
+  return await runScopedParticipantPrompt(
+    systemLines.join('\n'),
+    request.effectiveText,
+    context,
+    response,
+    token,
+    services.sendChatRequest,
+  );
 }
 
 // ── Helpers ──
