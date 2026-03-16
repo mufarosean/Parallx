@@ -20,8 +20,8 @@ import type {
   IChatMessage,
 } from '../../../services/chatTypes.js';
 import type { IWorkspaceParticipantServices } from '../chatTypes.js';
-import { dispatchScopedParticipantCommand } from '../utilities/chatParticipantCommandDispatcher.js';
 import { appendScopedParticipantHistory } from '../utilities/chatScopedParticipantExecution.js';
+import { createScopedParticipantHandler } from '../utilities/chatScopedParticipantHandler.js';
 import { runScopedParticipantPrompt } from '../utilities/chatScopedParticipantPromptRunner.js';
 
 // IPageSummary, IWorkspaceParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
@@ -44,35 +44,16 @@ const MAX_CONTENT_CHARS = 4000; // Truncate page content for context budget
  *   /summarize <id>  — Summarize a page's content
  */
 export function createWorkspaceParticipant(services: IWorkspaceParticipantServices): IChatParticipant & IDisposable {
-
-  const handler: IChatParticipantHandler = async (
-    request: IChatParticipantRequest,
-    context: IChatParticipantContext,
-    response: IChatResponseStream,
-    token: ICancellationToken,
-  ): Promise<IChatParticipantResult> => {
-    try {
-      return await dispatchScopedParticipantCommand({
-        surface: 'workspace',
-        request,
-        context,
-        response,
-        token,
-        services,
-        handlers: {
-          search: handleSearch,
-          list: handleList,
-          summarize: handleSummarize,
-        },
-        defaultHandler: handleGeneral,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return {
-        errorDetails: { message, responseIsIncomplete: true },
-      };
-    }
-  };
+  const handler = createScopedParticipantHandler({
+    surface: 'workspace',
+    services,
+    handlers: {
+      search: handleSearch,
+      list: handleList,
+      summarize: handleSummarize,
+    },
+    defaultHandler: handleGeneral,
+  });
 
   return {
     id: WORKSPACE_PARTICIPANT_ID,

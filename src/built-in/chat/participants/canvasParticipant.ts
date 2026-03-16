@@ -21,7 +21,7 @@ import type {
   IChatMessage,
 } from '../../../services/chatTypes.js';
 import type { IPageStructure, ICanvasParticipantServices } from '../chatTypes.js';
-import { dispatchScopedParticipantCommand } from '../utilities/chatParticipantCommandDispatcher.js';
+import { createScopedParticipantHandler } from '../utilities/chatScopedParticipantHandler.js';
 import { runScopedParticipantPrompt } from '../utilities/chatScopedParticipantPromptRunner.js';
 
 // IBlockSummary, IPageStructure, ICanvasParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
@@ -42,32 +42,15 @@ const MAX_BLOCK_PREVIEW = 200; // chars per block preview
  *   /blocks   — List all blocks on the current page
  */
 export function createCanvasParticipant(services: ICanvasParticipantServices): IChatParticipant & IDisposable {
-
-  const handler: IChatParticipantHandler = async (
-    request: IChatParticipantRequest,
-    context: IChatParticipantContext,
-    response: IChatResponseStream,
-    token: ICancellationToken,
-  ): Promise<IChatParticipantResult> => {
-    try {
-      return await dispatchScopedParticipantCommand({
-        surface: 'canvas',
-        request,
-        context,
-        response,
-        token,
-        services,
-        handlers: {
-          describe: handleDescribe,
-          blocks: handleBlocks,
-        },
-        defaultHandler: handleGeneral,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { errorDetails: { message, responseIsIncomplete: true } };
-    }
-  };
+  const handler = createScopedParticipantHandler({
+    surface: 'canvas',
+    services,
+    handlers: {
+      describe: handleDescribe,
+      blocks: handleBlocks,
+    },
+    defaultHandler: handleGeneral,
+  });
 
   return {
     id: CANVAS_PARTICIPANT_ID,
