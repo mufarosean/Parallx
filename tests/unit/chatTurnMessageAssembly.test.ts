@@ -15,14 +15,9 @@ describe('chat turn message assembly', () => {
       getPreferencesForPrompt: vi.fn().mockResolvedValue('PREFERENCES BLOCK'),
       isRAGAvailable: () => true,
       isIndexing: () => false,
-      aiSettingsService: {
-        getActiveProfile: () => ({
-          chat: { systemPrompt: 'LIVE PERSONA' },
-        } as any),
-      },
       unifiedConfigService: {
         getEffectiveConfig: () => ({
-          chat: { workspaceDescription: 'Insurance workspace' },
+          chat: { systemPrompt: 'LIVE PERSONA', workspaceDescription: 'Insurance workspace' },
         } as any),
       } as any,
     }, {

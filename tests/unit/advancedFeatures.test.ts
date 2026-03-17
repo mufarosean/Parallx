@@ -370,6 +370,7 @@ describe('ProactiveSuggestionsService', () => {
       mockVector as any,
       mockDb as any,
       mockPipeline as any,
+      undefined,
     );
   });
 

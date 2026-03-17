@@ -510,6 +510,23 @@ Milestone 40 is not done when the default chat path looks cleaner.
 It is done when the matrix no longer contains active, conflicting logic paths
 for request interpretation and AI behavior across surfaces.
 
+### 9.3 Current migration-matrix status snapshot
+
+This snapshot records the current repository state after the Phase 5-7 work that
+landed during Milestone 40 close-out.
+
+| Surface group | Status | Notes |
+|---------------|--------|-------|
+| Request parsing | ✅ migrated | default, `@workspace`, `@canvas`, and bridged participants now share the typed interpretation contract |
+| Front-door routing | ✅ migrated | `chatTurnRouter.ts` now consumes typed semantics and planner/evidence layers own more correction authority |
+| Prelude flow | ✅ migrated | shared prelude / prepared-turn utilities now carry the primary interpretation and context-preparation path |
+| Default participant | ✅ migrated | default participant now acts mainly as orchestration over shared utilities |
+| Workspace participant | ✅ migrated | explicit `@workspace` uses shared interpretation semantics and now shares deterministic document-listing behavior with the default path |
+| Canvas participant | ✅ migrated | `@canvas` remains a Parallx-specific surface, but it is on the shared interpretation contract and no-page guardrail path |
+| Tool-contributed participants | ⚠️ partial | `ChatBridge` now applies shared interpretation metadata before handler dispatch; full shared orchestration remains an explicit compatibility boundary rather than a hidden path |
+| Chat/agent policy behavior | ⚠️ partial | overlapping chat/runtime policy and config behavior is aligned for migrated chat surfaces, but milestone close-out still records manual autonomy review as a required external approval step |
+| Config resolution | ⚠️ migrated runtime, compatibility remains | unified effective config is now authoritative for migrated runtime chat behavior and proactive suggestions; legacy compatibility interfaces remain only for non-migrated or compatibility-only consumers |
+
 ---
 
 ## 10. Rebuild Decision
@@ -881,7 +898,39 @@ Current Phase 4 verification:
 - `T30` greeting cleanliness still passes at `100%`
 - `S-T09` ambiguous phrasing stress case now passes at `100%`
 - focused unit regressions now pass for shared prelude fallback activation and runtime-trace preservation
-- local Exam 7 phrasing-variant verification (`E708`) remains unrun in this workspace because the Exam 7 eval workspace is not present locally
+- local Exam 7 phrasing-variant verification (`E708`) remains unrun in this pass, but the local Exam 7 workspace has since been confirmed and targeted Exam 7 verification (`E706|E707`) now passes when `PARALLX_AI_EVAL_WORKSPACE` points at `C:\Users\mchit\OneDrive\Documents\Actuarial Science\Exams\Exam 7 - April 2026`
+
+Implemented during Phases 5-7 so far:
+
+1. planner/evidence authority now includes structural enumeration plus deterministic read evidence in shared context assembly instead of relying on semantic retrieval alone
+2. exhaustive workflows can now produce deterministic evidence-backed folder summaries, comparisons, and extraction answers for high-risk routes
+3. lowercase file-style targets and duplicate-filename comparisons now resolve through the shared scope layer
+4. canonical memory recall now merges durable and daily layers correctly, including direct file-edit reindex scenarios
+5. migrated chat execution now resolves prompt overlay and model-generation settings from unified effective config rather than legacy AI settings profile reads
+6. proactive suggestions now read thresholds from unified effective config
+7. bridged / tool-contributed chat participants now receive shared interpretation metadata through `ChatBridge`
+8. explicit workspace document-listing requests now use a shared deterministic document-listing helper across both the default path and `@workspace`
+
+✅ Phase 6 checkpoint
+
+- migrated runtime AI behavior now resolves through unified config for the covered chat and suggestion surfaces
+- remaining legacy settings usage is reduced to compatibility-only areas instead of authoritative runtime behavior
+- focused unit regressions for config/memory/evidence paths pass
+- canonical memory suite now passes locally: `tests/ai-eval/memory-layers.spec.ts` = `7/7`
+
+Phase 7 close-out status:
+
+- required default/demo verification subset passes locally after clearing stale eval-workspace environment variables:
+   - `tests/ai-eval/ai-quality.spec.ts -g "T06|T19|T30|T31|T32"` = `100%`
+- required stress verification passes locally when pointed at the intended stress workspace:
+   - `PARALLX_AI_EVAL_WORKSPACE=tests/ai-eval/stress-workspace`
+   - `tests/ai-eval/stress-quality.spec.ts` = `98%` (`Excellent`)
+   - targeted rerun `S-T04|S-T05|S-T10` = `100%`
+- required Exam 7 targeted verification now passes locally when the workspace path is wired explicitly:
+   - `PARALLX_AI_EVAL_WORKSPACE="C:\Users\mchit\OneDrive\Documents\Actuarial Science\Exams\Exam 7 - April 2026"`
+   - `tests/ai-eval/exam7-quality.spec.ts -g "E706|E707"` = `100%`
+- rollout/manual-review blocker remains procedural rather than architectural:
+   - autonomy rollout gate still reports manual review approval as pending
 
 Canvas note:
 
@@ -1264,6 +1313,12 @@ Verification:
 
 #### Phase 6 tasks — unify configuration and policy behavior
 
+Status:
+
+- ✅ Runtime migration checkpoint reached.
+- Unified effective config is now the authoritative runtime source for migrated chat prompt/model behavior and proactive suggestions.
+- Compatibility-era `IAISettingsService` assumptions were removed from the migrated default chat execution path and are no longer the hidden authority for those surfaces.
+
 1. Audit all AI behavior reads that still rely on compatibility-only assumptions.
 2. Make unified effective config the authoritative resolution model.
 3. Keep `IAISettingsService` only as a compatibility adapter until all reads
@@ -1283,7 +1338,17 @@ Verification:
 - `npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/memory-layers.spec.ts`
 - targeted config-driven behavior regression checks
 
+Latest recorded outcome:
+
+- `tests/ai-eval/memory-layers.spec.ts` = `7/7` passed locally
+- focused unit/build checks covering config, memory, and deterministic evidence paths passed locally
+
 #### Phase 7 tasks — remove legacy paths and close the matrix
+
+Status:
+
+- close-out verification has been recorded for the locally runnable suites
+- remaining blockers are explicit and external to the migrated runtime code paths
 
 1. Remove compatibility branches that are no longer required.
 2. Mark migration-matrix rows complete.
@@ -1296,6 +1361,14 @@ Verification:
 - `npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/exam7-quality.spec.ts -g "E706|E707"`
 - `npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/memory-layers.spec.ts`
 - `npx playwright test --config=playwright.ai-eval.config.ts tests/ai-eval/stress-quality.spec.ts`
+
+Latest recorded outcome:
+
+- `tests/ai-eval/ai-quality.spec.ts -g "T06|T19|T30|T31|T32"` = `100%` locally on the demo workspace
+- `tests/ai-eval/memory-layers.spec.ts` = `7/7` passed locally
+- `tests/ai-eval/stress-quality.spec.ts` = `98%` (`Excellent`) locally when run against `tests/ai-eval/stress-workspace`
+- `tests/ai-eval/exam7-quality.spec.ts -g "E706|E707"` = `100%` locally when run with `PARALLX_AI_EVAL_WORKSPACE="C:\Users\mchit\OneDrive\Documents\Actuarial Science\Exams\Exam 7 - April 2026"`
+- remaining non-code close-out blocker: autonomy manual review approval is still pending
 
 ### 15.3 Definition of done for Milestone 40 implementation
 

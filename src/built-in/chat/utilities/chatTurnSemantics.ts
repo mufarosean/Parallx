@@ -116,7 +116,7 @@ function isExplicitMemoryRecallTurn(normalizedText: string): boolean {
     return false;
   }
 
-  return /(last|previous|prior)\s+(conversation|chat|session)|what\s+do\s+you\s+remember|remember\s+about\s+(?:it|my|our)|recall\s+(?:my|our)\s+(?:last|previous|prior)/.test(normalizedText);
+  return /(last|previous|prior)\s+(conversation|chat|session)|what\s+do\s+you\s+remember|remember\s+about\s+(?:it|my|our)|recall\s+(?:my|our)\s+(?:last|previous|prior)|\bfrom memory\b|\bdurable memory\b|\bdaily memory\b|\bdurable preference\b|\bremembered preference\b|\bwhat durable preference\b|\bwhat preference is recorded\b|\bwhat .* recorded in daily memory\b|\bwhat was today(?: s|\'s)? .* from memory\b/.test(normalizedText);
 }
 
 function isExplicitTranscriptRecallTurn(normalizedText: string): boolean {

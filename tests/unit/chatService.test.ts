@@ -155,7 +155,51 @@ describe('ChatService', () => {
       expect(session.messages[0].request.text).toBe('Hello');
       expect(session.messages[0].request.requestId).toBeTruthy();
       expect(session.messages[0].request.attempt).toBe(0);
+      expect(session.messages[0].request.variables).toEqual([]);
       expect(session.messages[0].response.isComplete).toBe(true);
+    });
+
+    it('computes structured turn state before dispatching the request', async () => {
+      const capture = vi.fn(async (
+        _request: IChatParticipantRequest,
+        _context: IChatParticipantContext,
+        response: IChatResponseStream,
+      ) => {
+        response.markdown('Captured');
+        return {};
+      });
+
+      agentService.registerAgent({
+        id: 'parallx.chat.capture',
+        displayName: 'Capture',
+        description: 'Capture request',
+        commands: [],
+        handler: capture,
+      });
+
+      chatService.setTurnPreparationServices({
+        isRAGAvailable: () => true,
+        listFilesRelative: vi.fn(async (relativePath: string) => {
+          if (relativePath === '') {
+            return [{ name: 'RF Guides', type: 'directory' }];
+          }
+          return [];
+        }),
+      });
+
+      const session = chatService.createSession();
+      await chatService.sendRequest(session.id, 'Please summarize each file in the RF Guides folder.', {
+        participantId: 'parallx.chat.capture',
+      });
+
+      const request = capture.mock.calls[0][0] as IChatParticipantRequest;
+      expect(request.interpretation?.semantics?.workflowTypeHint).toBe('folder-summary');
+      expect(request.turnState?.queryScope.level).toBe('folder');
+      expect(request.turnState?.queryScope.pathPrefixes).toContain('RF Guides/');
+      expect(request.turnState?.turnRoute.coverageMode).toBe('exhaustive');
+      expect(request.turnState?.hasActiveSlashCommand).toBe(false);
+      expect(request.turnState?.isRagReady).toBe(true);
+      expect(request.turnState?.contextQueryText).toBe('Please summarize each file in the RF Guides folder.');
     });
 
     it('stores replay metadata for regenerated requests', async () => {
@@ -1033,6 +1077,7 @@ describe('default participant integration helpers', () => {
 
     const participant = createDefaultParticipant({
       sendChatRequest,
+      getWorkspaceName: () => 'demo-workspace',
       maxIterations: 10,
     } as any);
 

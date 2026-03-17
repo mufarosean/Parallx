@@ -130,11 +130,12 @@ describe('ChatBridge', () => {
     const participant = bridge.createChatParticipant('test.agent', handler);
 
     expect(participant.id).toBe('test.agent');
-    expect(participant.handler).toBe(handler);
+    expect(participant.handler).not.toBe(handler);
 
     // Verify it's registered
     const agent = agentService.getAgent('test.agent');
     expect(agent).toBeDefined();
+    expect(agent?.handler).toBe(participant.handler);
   });
 
   it('participant properties are mutable', () => {

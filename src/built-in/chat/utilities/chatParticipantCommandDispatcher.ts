@@ -19,6 +19,7 @@ type ParticipantServicesWithRetrievalDebug = Pick<
 
 export type ScopedParticipantHandler<TServices> = (
   interpretation: IChatParticipantInterpretation,
+  request: IChatParticipantRequest,
   context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
@@ -54,6 +55,7 @@ export async function dispatchScopedParticipantCommand<TServices extends Partici
 
   return (handler ?? options.defaultHandler)(
     interpretation,
+    options.request,
     options.context,
     options.response,
     options.token,

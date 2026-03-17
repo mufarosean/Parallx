@@ -15,6 +15,12 @@ import type { IDisposable } from '../platform/lifecycle.js';
 import type { Event } from '../platform/events.js';
 import { ChatContentPartKind } from './chatTypes.js';
 import { parseChatRequest } from '../built-in/chat/input/chatRequestParser.js';
+import { analyzeChatTurnSemantics } from '../built-in/chat/utilities/chatTurnSemantics.js';
+import { determineChatTurnRoute } from '../built-in/chat/utilities/chatTurnRouter.js';
+import { applyChatSemanticFallback, resolveChatSemanticFallback } from '../built-in/chat/utilities/chatSemanticFallback.js';
+import { buildFollowUpRetrievalQuery } from '../built-in/chat/utilities/chatGroundedResponseHelpers.js';
+import { extractMentions, stripMentions } from '../built-in/chat/utilities/chatMentionResolver.js';
+import { resolveQueryScope } from '../built-in/chat/utilities/chatScopeResolver.js';
 import {
   ensureChatTables,
   saveSession,
@@ -50,6 +56,9 @@ import type {
   IChatAgentService,
   IChatModeService,
   ILanguageModelsService,
+  IChatTurnPreparationServices,
+  IChatParticipantTurnState,
+  IChatParticipantMention,
 } from './chatTypes.js';
 import { ChatRequestQueueKind } from './chatTypes.js';
 
@@ -555,6 +564,7 @@ export class ChatService extends Disposable implements IChatService {
   /** Session manager for stale session detection. */
   private _sessionManager: ISessionManager | undefined;
   private _transcriptService: IWorkspaceTranscriptService | undefined;
+  private _turnPreparationServices: IChatTurnPreparationServices | undefined;
 
   /** Debounce timer for persistence writes. */
   private _persistTimer: ReturnType<typeof setTimeout> | undefined;
@@ -618,6 +628,66 @@ export class ChatService extends Disposable implements IChatService {
 
   setTranscriptService(transcriptService: IWorkspaceTranscriptService): void {
     this._transcriptService = transcriptService;
+  }
+
+  setTurnPreparationServices(services: IChatTurnPreparationServices): void {
+    this._turnPreparationServices = services;
+  }
+
+  private _getParticipantSurface(participantId: string): 'default' | 'workspace' | 'canvas' {
+    if (participantId.endsWith('.workspace')) {
+      return 'workspace';
+    }
+    if (participantId.endsWith('.canvas')) {
+      return 'canvas';
+    }
+    return 'default';
+  }
+
+  private async _buildTurnState(
+    requestText: string,
+    commandName: string | undefined,
+    history: readonly IChatRequestResponsePair[],
+  ): Promise<IChatParticipantTurnState> {
+    const mentions = extractMentions(requestText);
+    const userText = stripMentions(requestText, mentions);
+    const semantics = analyzeChatTurnSemantics(userText);
+    const hasActiveSlashCommand = !!(commandName && commandName !== 'compact');
+    const mentionScope = {
+      folders: mentions
+        .filter((mention): mention is IChatParticipantMention & { kind: 'folder'; path: string } => mention.kind === 'folder' && typeof mention.path === 'string')
+        .map((mention) => mention.path),
+      files: mentions
+        .filter((mention): mention is IChatParticipantMention & { kind: 'file'; path: string } => mention.kind === 'file' && typeof mention.path === 'string')
+        .map((mention) => mention.path),
+    };
+    const queryScope = await resolveQueryScope(userText, mentionScope, {
+      listFilesRelative: this._turnPreparationServices?.listFilesRelative,
+    });
+    const initialTurnRoute = determineChatTurnRoute(semantics, { hasActiveSlashCommand });
+    const semanticFallback = resolveChatSemanticFallback(
+      userText,
+      semantics,
+      initialTurnRoute,
+      queryScope,
+      { hasActiveSlashCommand },
+    );
+    const turnRoute = applyChatSemanticFallback(initialTurnRoute, semanticFallback);
+
+    return {
+      rawText: requestText,
+      effectiveText: requestText.trim(),
+      userText,
+      contextQueryText: buildFollowUpRetrievalQuery(userText, history),
+      mentions,
+      semantics,
+      queryScope,
+      turnRoute,
+      semanticFallback,
+      hasActiveSlashCommand,
+      isConversationalTurn: turnRoute.kind === 'conversational',
+      isRagReady: this._turnPreparationServices?.isRAGAvailable?.() ?? false,
+    };
   }
 
   // ── Session Persistence ──
@@ -779,6 +849,7 @@ export class ChatService extends Disposable implements IChatService {
       requestId,
       participantId: options?.participantId ?? parsed.participantId,
       command: options?.command ?? parsed.command,
+      variables: parsed.variables.map((variable) => ({ name: variable.name })),
       attachments: options?.attachments,
       attempt,
       replayOfRequestId: options?.replayOfRequestId,
@@ -833,6 +904,7 @@ export class ChatService extends Disposable implements IChatService {
       text: parsed.text,
       requestId,
       command: options?.command ?? parsed.command,
+      variables: parsed.variables.map((variable) => ({ name: variable.name })),
       mode: session.mode,
       modelId: session.modelId,
       attachments: options?.attachments,
@@ -844,13 +916,26 @@ export class ChatService extends Disposable implements IChatService {
       sessionId,
       history: session.messages.slice(0, -1), // Exclude the current pair
     };
+    const turnState = await this._buildTurnState(parsed.text, options?.command ?? parsed.command, context.history);
 
     // 10. Invoke agent
     let result: IChatParticipantResult;
     try {
       result = await this._agentService.invokeAgent(
         participantId,
-        participantRequest,
+        {
+          ...participantRequest,
+          interpretation: {
+            surface: this._getParticipantSurface(participantId),
+            rawText: parsed.text,
+            effectiveText: parsed.text.trim(),
+            commandName: options?.command ?? parsed.command,
+            hasExplicitCommand: !!(options?.command ?? parsed.command),
+            kind: (options?.command ?? parsed.command) ? 'command' : 'message',
+            semantics: turnState.semantics,
+          },
+          turnState,
+        },
         context,
         stream,
         cts.token,

@@ -51,6 +51,15 @@ export async function resolveQueryScope(
     return buildMentionScope(mentions);
   }
 
+  const duplicateFilenameCandidate = extractDuplicateFilenameCandidate(userText);
+  if (duplicateFilenameCandidate && deps.listFilesRelative) {
+    const workspaceEntries = await collectWorkspaceEntries(deps);
+    const duplicateMatches = findDuplicateFilenameMatches(duplicateFilenameCandidate, workspaceEntries);
+    if (duplicateMatches.length > 0) {
+      return buildInferredScope(duplicateMatches);
+    }
+  }
+
   // ── 2. Natural-language entity extraction ──
   const candidates = extractEntityCandidates(userText);
   if (candidates.length > 0 && deps.listFilesRelative) {
@@ -62,6 +71,11 @@ export async function resolveQueryScope(
 
   // ── 3. Fallback to workspace scope ──
   return WORKSPACE_SCOPE;
+}
+
+function extractDuplicateFilenameCandidate(text: string): string | undefined {
+  const match = text.match(/\bcompare\s+(?:the\s+)?two\s+([a-z0-9][a-z0-9._-]{2,80})\s+(?:documents|docs|files)\b/i);
+  return match?.[1]?.trim();
 }
 
 // ── Internal: Mention scope builder ────────────────────────────────────────
@@ -100,6 +114,8 @@ const ENTITY_EXTRACTION_PATTERNS: RegExp[] = [
   /\b(?:in|inside|from|under|within)\s+(?:the\s+)?([A-Za-z0-9][A-Za-z0-9 _&-]{1,80}?)\s+folder\b/i,
   // "RF Guides folder"
   /\b([A-Za-z0-9][A-Za-z0-9 _&-]{1,80}?)\s+folder\b/i,
+  // "files in RF Guides" / "papers in RF Guides"
+  /\b(?:files?|papers?|docs?|documents?)\s+in\s+(?:the\s+)?(?:['"]?)([A-Z][A-Za-z0-9 _&-]{1,80}?)(?:['"]?)(?=[?.!,]|$)\b/i,
   // "in RF Guides"
   /\b(?:in|inside|from|under|within)\s+(?:the\s+)?(?:['"]?)([A-Za-z0-9][A-Za-z0-9 _&-]{1,80}?)(?:['"]?)\s*(?:directory|dir)\b/i,
   // "the Claims Guide" / "the Quick Reference"
@@ -108,6 +124,11 @@ const ENTITY_EXTRACTION_PATTERNS: RegExp[] = [
   /\b(?:summarize|read|review|explain|describe|analyze)\s+(?:the\s+)?([A-Z][A-Za-z0-9 _&-]{2,80})\b/,
   // "compare X vs Y" — extract both
   /\bcompare\s+(?:the\s+)?([A-Z][A-Za-z0-9 _&-]{2,60})\s+(?:vs\.?|versus|and|with|to)\s+(?:the\s+)?([A-Z][A-Za-z0-9 _&-]{2,60})\b/i,
+  // Lowercase folder-style paths such as policies/ or claims/archive/
+  /\b(?:summarize|list|show|read|review|explain|describe|analyze)\s+(?:each\s+file\s+in\s+|everything\s+in\s+|all\s+files\s+in\s+|the\s+files\s+in\s+)?([a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)+\/?|[a-z0-9][a-z0-9._-]*\/)(?=[?.!,]|$)/i,
+  // Lowercase file-style targets such as auto-policy-2024.md or how-to-file
+  /\b(?:summarize|read|review|explain|describe|analyze|compare)\s+(?:the\s+)?([a-z0-9][a-z0-9._/-]{2,100}(?:\.(?:md|txt|pdf|docx|xlsx))?)\b/i,
+  /\bcompare\s+(?:the\s+)?([a-z0-9][a-z0-9._/-]{2,100}(?:\.(?:md|txt|pdf|docx|xlsx))?)\s+(?:vs\.?|versus|and|with|to)\s+(?:the\s+)?([a-z0-9][a-z0-9._/-]{2,100}(?:\.(?:md|txt|pdf|docx|xlsx))?)\b/i,
   // Quoted entity: "the 'RF Guides'" or 'Claims Guide'
   /['"]([A-Za-z0-9][A-Za-z0-9 _&-]{1,80}?)['"]/,
 ];
@@ -245,6 +266,19 @@ function findBestMatch(
     resolvedPath,
     kind,
   };
+}
+
+function findDuplicateFilenameMatches(
+  candidate: string,
+  entries: IWorkspaceEntry[],
+): IResolvedEntity[] {
+  const normalizedCandidate = normalizeName(candidate);
+  const matches = entries.filter((entry) => entry.type === 'file' && normalizeName(entry.name) === normalizedCandidate);
+  return matches.map((entry) => ({
+    naturalName: candidate,
+    resolvedPath: entry.relativePath,
+    kind: 'file' as const,
+  }));
 }
 
 /**

@@ -13,6 +13,16 @@ describe('extractEntityCandidates', () => {
     expect(result).toContain('RF Guides');
   });
 
+  it('extracts folder reference from bare "files in X" phrasing', () => {
+    const result = extractEntityCandidates('Can you provide a one paragraph summary for each of the files in RF Guides?');
+    expect(result).toContain('RF Guides');
+  });
+
+  it('extracts lowercase folder paths with trailing slashes', () => {
+    const result = extractEntityCandidates('Summarize each file in policies/.');
+    expect(result).toContain('policies/');
+  });
+
   it('extracts folder reference from "X folder" without preposition', () => {
     const result = extractEntityCandidates('List the Claims folder contents');
     expect(result).toContain('Claims');
@@ -123,6 +133,18 @@ describe('resolveQueryScope', () => {
     expect(scope.resolvedEntities!.some((e) => e.resolvedPath === 'RF Guides/')).toBe(true);
   });
 
+  it('infers folder scope from bare "files in X" phrasing', async () => {
+    const scope = await resolveQueryScope(
+      'Can you provide a one paragraph summary for each of the files in RF Guides?',
+      { folders: [], files: [] },
+      mockDeps,
+    );
+
+    expect(scope.level).toBe('folder');
+    expect(scope.derivedFrom).toBe('inferred');
+    expect(scope.pathPrefixes).toContain('RF Guides/');
+  });
+
   it('infers document scope from action verb + entity', async () => {
     const scope = await resolveQueryScope(
       'summarize Claims Guide',
@@ -133,6 +155,89 @@ describe('resolveQueryScope', () => {
     expect(scope.derivedFrom).toBe('inferred');
     expect(scope.resolvedEntities).toBeDefined();
     expect(scope.resolvedEntities!.length).toBeGreaterThan(0);
+  });
+
+  it('resolves lowercase file-style comparisons', async () => {
+    const lowerCaseDeps = {
+      listFilesRelative: vi.fn(async (relativePath: string) => {
+        if (relativePath === '') {
+          return [{ name: 'policies', type: 'directory' as const }];
+        }
+        if (relativePath === 'policies') {
+          return [
+            { name: 'auto-policy-2023.md', type: 'file' as const },
+            { name: 'auto-policy-2024.md', type: 'file' as const },
+          ];
+        }
+        return [];
+      }),
+    };
+
+    const scope = await resolveQueryScope(
+      'Compare auto-policy-2024.md and auto-policy-2023.md.',
+      { folders: [], files: [] },
+      lowerCaseDeps,
+    );
+
+    expect(scope.pathPrefixes).toEqual(expect.arrayContaining([
+      'policies/auto-policy-2024.md',
+      'policies/auto-policy-2023.md',
+    ]));
+  });
+
+  it('resolves lowercase folder-style prompts with trailing slashes', async () => {
+    const lowerCaseFolderDeps = {
+      listFilesRelative: vi.fn(async (relativePath: string) => {
+        if (relativePath === '') {
+          return [{ name: 'policies', type: 'directory' as const }];
+        }
+        if (relativePath === 'policies') {
+          return [
+            { name: 'auto-policy-2023.md', type: 'file' as const },
+            { name: 'auto-policy-2024.md', type: 'file' as const },
+            { name: 'umbrella', type: 'directory' as const },
+          ];
+        }
+        return [];
+      }),
+    };
+
+    const scope = await resolveQueryScope(
+      'Summarize each file in policies/.',
+      { folders: [], files: [] },
+      lowerCaseFolderDeps,
+    );
+
+    expect(scope.level).toBe('folder');
+    expect(scope.pathPrefixes).toContain('policies/');
+  });
+
+  it('resolves duplicate filename comparisons to all matching files', async () => {
+    const duplicateDeps = {
+      listFilesRelative: vi.fn(async (relativePath: string) => {
+        if (relativePath === '') {
+          return [
+            { name: 'claims', type: 'directory' as const },
+            { name: 'notes', type: 'directory' as const },
+          ];
+        }
+        if (relativePath === 'claims' || relativePath === 'notes') {
+          return [{ name: 'how-to-file.md', type: 'file' as const }];
+        }
+        return [];
+      }),
+    };
+
+    const scope = await resolveQueryScope(
+      'Compare the two how-to-file documents.',
+      { folders: [], files: [] },
+      duplicateDeps,
+    );
+
+    expect(scope.pathPrefixes).toEqual(expect.arrayContaining([
+      'claims/how-to-file.md',
+      'notes/how-to-file.md',
+    ]));
   });
 
   it('resolves nested folders by walking the workspace tree', async () => {

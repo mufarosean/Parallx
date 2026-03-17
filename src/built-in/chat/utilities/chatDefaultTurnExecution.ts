@@ -33,7 +33,6 @@ export interface IExecuteDefaultPreparedTurnOptions {
   readonly coverageRecord: import('../chatTypes.js').ICoverageRecord | undefined;
   readonly resolvedRequestText: string;
   readonly capabilities: ReturnType<typeof import('../config/chatModeCapabilities.js').getModeCapabilities>;
-  readonly aiProfile: IDefaultParticipantServices['aiSettingsService'] extends { getActiveProfile(): infer T } ? T | undefined : unknown;
   readonly retrievedContextText: string;
   readonly memoryResult: string | null;
   readonly isConversationalTurn: boolean;
@@ -106,7 +105,6 @@ export function executeDefaultPreparedTurn(
     requestMode: options.request.mode,
     requestText: options.resolvedRequestText,
     capabilities: options.capabilities,
-    aiProfile: options.aiProfile,
     messages: options.messages,
     userContent,
     retrievedContextText: options.retrievedContextText,

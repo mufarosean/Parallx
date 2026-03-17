@@ -43,7 +43,6 @@ import {
 import type { Event } from '../../../platform/events.js';
 
 import type { IAgentApprovalService, IAgentExecutionService, IAgentSessionService, IAgentTraceService, ICanonicalMemorySearchService, IDatabaseService, IFileService, IWorkspaceService, IEditorService, IRetrievalService, IIndexingPipelineService, IMemoryService, ITextFileModelManager, ISessionManager, IWorkspaceMemoryService } from '../../../services/serviceTypes.js';
-import type { IAISettingsService } from '../../../aiSettings/aiSettingsTypes.js';
 import type { IUnifiedAIConfigService } from '../../../aiSettings/unifiedConfigTypes.js';
 import type { ILanguageModelsService, IChatService, IChatModeService, ILanguageModelToolsService } from '../../../services/chatTypes.js';
 import type { OllamaProvider } from '../providers/ollamaProvider.js';
@@ -78,7 +77,7 @@ function resolveMemoryRecallScope(query: string): {
   const normalizedQuery = query.toLowerCase().replace(/[’']/g, ' ');
   const asksForPriorConversationRecall = /(last|previous|prior)\s+(conversation|chat|session)|remember\s+about\s+(?:my|our)\s+(?:last|previous|prior)|recall\s+(?:my|our)\s+(?:last|previous|prior)/i.test(normalizedQuery);
   const explicitDateMatch = normalizedQuery.match(/\b(\d{4}-\d{2}-\d{2})\b/);
-  const hasDailyIndicators = /\b(today|yesterday|recent|recently|earlier today|this morning|this afternoon|tonight)\b/.test(normalizedQuery) || asksForPriorConversationRecall;
+  const hasDailyIndicators = /\b(daily|today|yesterday|recent|recently|earlier today|this morning|this afternoon|tonight|codename)\b/.test(normalizedQuery) || asksForPriorConversationRecall;
   const hasDurableIndicators = /\b(prefer|preference|preferences|decision|decisions|convention|conventions|rule|rules|style|tone|remember about me|durable)\b/.test(normalizedQuery);
 
   if (explicitDateMatch?.[1]) {
@@ -152,8 +151,6 @@ export interface ChatDataServiceDeps {
   readonly sessionContext?: IWorkspaceSessionContext;
   /** Session manager (M14). Used for stale session detection in tool invocations. */
   readonly sessionManager?: ISessionManager;
-  /** AI Settings service (M15). Provides active persona and model defaults. */
-  readonly aiSettingsService?: IAISettingsService;
   /** Unified AI Config service (M20). Single source of truth for all AI configuration. */
   readonly unifiedConfigService?: IUnifiedAIConfigService;
   /** Autonomy services used for task and approval UI surfaces. */
@@ -202,6 +199,15 @@ export interface IChatTestDebugSnapshot {
     matchedPath?: string;
     readSucceeded: boolean;
     reason?: string;
+  };
+  participantDebug?: {
+    surface: 'workspace' | 'canvas';
+    usedSharedTurnState: boolean;
+    attachmentCount: number;
+    fileAttachmentCount: number;
+    imageAttachmentCount: number;
+    queryScopeLevel?: string;
+    semanticFallbackKind?: string;
   };
   runtimeTrace?: IChatRuntimeTrace;
   retrievalError?: string;
@@ -1233,6 +1239,7 @@ export class ChatDataService {
   async recallMemories(query: string, _sessionId?: string): Promise<string | undefined> {
     try {
       const recallScope = resolveMemoryRecallScope(query);
+      const aggregatedItems: Array<{ label: string; content: string }> = [];
 
       if (this._d.canonicalMemorySearchService) {
         const memoryResults = await this._d.canonicalMemorySearchService.search(query, {
@@ -1240,21 +1247,16 @@ export class ChatDataService {
           date: recallScope.date,
         });
         if (memoryResults.length > 0) {
-          const formatted = formatCanonicalMemoryContext(
-            memoryResults.slice(0, 3).map((result) => ({
+          aggregatedItems.push(...memoryResults.slice(0, 3).map((result) => ({
               label: result.layer === 'durable'
                 ? 'Durable memory:'
                 : `Daily memory (${extractDailyDateLabel(result.sourceId) ?? result.sourceId}):`,
               content: result.text,
-            })),
-          );
-          if (formatted) {
-            return formatted;
-          }
+            })));
         }
       }
 
-      if ((recallScope.layer !== 'all' || recallScope.asksForPriorConversationRecall) && this._d.fsAccessor) {
+      if (this._d.fsAccessor) {
         try {
           const directItems: Array<{ label: string; content: string }> = [];
 
@@ -1265,7 +1267,7 @@ export class ChatDataService {
             : false;
           if (durableExists) {
             const durableContent = await this._d.fsAccessor.readFile(durablePath);
-            if (durableContent.trim()) {
+            if (durableContent.trim() && !aggregatedItems.some((item) => item.label === 'Durable memory:')) {
               directItems.push({
                 label: 'Durable memory:',
                 content: durableContent,
@@ -1280,9 +1282,10 @@ export class ChatDataService {
               const requestedDailyExists = await this._d.fsAccessor.exists(requestedDailyPath).catch(() => false);
               if (requestedDailyExists) {
                 const dailyContent = await this._d.fsAccessor.readFile(requestedDailyPath);
-                if (dailyContent.trim()) {
+                const dailyLabel = `Daily memory (${recallScope.date}):`;
+                if (dailyContent.trim() && !aggregatedItems.some((item) => item.label === dailyLabel)) {
                   directItems.push({
-                    label: `Daily memory (${recallScope.date}):`,
+                    label: dailyLabel,
                     content: dailyContent,
                   });
                 }
@@ -1294,9 +1297,10 @@ export class ChatDataService {
                 .sort((a, b) => b.name.localeCompare(a.name))[0];
               if (latestDaily) {
                 const dailyContent = await this._d.fsAccessor.readFile(`.parallx/memory/${latestDaily.name}`);
-                if (dailyContent.trim()) {
+                const dailyLabel = `Daily memory (${latestDaily.name.replace(/\.md$/i, '')}):`;
+                if (dailyContent.trim() && !aggregatedItems.some((item) => item.label === dailyLabel)) {
                   directItems.push({
-                    label: `Daily memory (${latestDaily.name.replace(/\.md$/i, '')}):`,
+                    label: dailyLabel,
                     content: dailyContent,
                   });
                 }
@@ -1304,7 +1308,8 @@ export class ChatDataService {
             }
           }
 
-          const formatted = formatCanonicalMemoryContext(directItems);
+          aggregatedItems.push(...directItems);
+          const formatted = formatCanonicalMemoryContext(aggregatedItems);
             if (formatted) {
               return formatted;
             }
@@ -1616,6 +1621,23 @@ export class ChatDataService {
     this._lastTestDebugSnapshot = {
       ...this._lastTestDebugSnapshot,
       responseDebug: { ...debug },
+      isRAGAvailable: this.isRAGAvailable(),
+      isIndexing: this.isIndexing(),
+    };
+  }
+
+  reportParticipantDebug(debug: {
+    surface: 'workspace' | 'canvas';
+    usedSharedTurnState: boolean;
+    attachmentCount: number;
+    fileAttachmentCount: number;
+    imageAttachmentCount: number;
+    queryScopeLevel?: string;
+    semanticFallbackKind?: string;
+  }): void {
+    this._lastTestDebugSnapshot = {
+      ...this._lastTestDebugSnapshot,
+      participantDebug: { ...debug },
       isRAGAvailable: this.isRAGAvailable(),
       isIndexing: this.isIndexing(),
     };
@@ -2026,7 +2048,6 @@ export class ChatDataService {
       compactSession: (s, t) => this.compactSession(s, t),
       getWorkspaceDigest: () => this.getWorkspaceDigest(),
       sessionManager: this._d.sessionManager,
-      aiSettingsService: this._d.aiSettingsService,
       unifiedConfigService: this._d.unifiedConfigService,
     });
   }
@@ -2046,6 +2067,7 @@ export class ChatDataService {
       readFileContent: this._d.fsAccessor
         ? (r) => this._d.fsAccessor!.readFile(r)
         : undefined,
+      reportParticipantDebug: (debug) => this.reportParticipantDebug(debug),
       reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
     });
   }
@@ -2058,6 +2080,10 @@ export class ChatDataService {
       getCurrentPageId: () => this.getCurrentPageId(),
       getCurrentPageTitle: () => this.getCurrentPageTitle(),
       getPageStructure: (p) => this.getPageStructure(p),
+      readFileContent: this._d.fsAccessor
+        ? (r) => this._d.fsAccessor!.readFile(r)
+        : undefined,
+      reportParticipantDebug: (debug) => this.reportParticipantDebug(debug),
       reportRetrievalDebug: (debug) => this.reportRetrievalDebug(debug),
     });
   }

@@ -23,6 +23,7 @@ import type { IWorkspaceParticipantServices } from '../chatTypes.js';
 import { appendScopedParticipantHistory } from '../utilities/chatScopedParticipantExecution.js';
 import { createScopedParticipantHandler } from '../utilities/chatScopedParticipantHandler.js';
 import { runScopedParticipantPrompt } from '../utilities/chatScopedParticipantPromptRunner.js';
+import { tryHandleWorkspaceDocumentListing } from '../utilities/chatWorkspaceDocumentListing.js';
 
 // IPageSummary, IWorkspaceParticipantServices — now defined in chatTypes.ts (M13 Phase 1)
 export type { IPageSummary, IWorkspaceParticipantServices } from '../chatTypes.js';
@@ -73,6 +74,7 @@ export function createWorkspaceParticipant(services: IWorkspaceParticipantServic
 
 async function handleSearch(
   request: import('../chatTypes.js').IChatParticipantInterpretation,
+  originalRequest: IChatParticipantRequest,
   _context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
@@ -105,8 +107,8 @@ async function handleSearch(
     .map((p) => `- ${p.icon ?? '📄'} "${p.title}" (id: ${p.id})`)
     .join('\n');
 
-  return await runScopedParticipantPrompt(
-    [
+  return await runScopedParticipantPrompt({
+    systemPrompt: [
       `You are a workspace assistant for "${services.getWorkspaceName()}".`,
       'The user searched their workspace. Here are the matching pages:',
       '',
@@ -114,16 +116,21 @@ async function handleSearch(
       '',
       'Summarise what was found and help the user explore the results.',
     ].join('\n'),
-    `I searched for "${query}". What did you find?`,
-    undefined,
+    userText: `I searched for "${query}". What did you find?`,
+    request: originalRequest,
+    context: undefined,
     response,
     token,
-    services.sendChatRequest,
-  );
+    sendChatRequest: services.sendChatRequest,
+    readFileContent: services.readFileContent,
+    reportParticipantDebug: services.reportParticipantDebug,
+    surface: 'workspace',
+  });
 }
 
 async function handleList(
   _request: import('../chatTypes.js').IChatParticipantInterpretation,
+  _originalRequest: IChatParticipantRequest,
   _context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
@@ -166,6 +173,7 @@ async function handleList(
 
 async function handleSummarize(
   request: import('../chatTypes.js').IChatParticipantInterpretation,
+  originalRequest: IChatParticipantRequest,
   _context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
@@ -194,29 +202,44 @@ async function handleSummarize(
 
   response.reference(`parallx://page/${pageId}`, `📄 ${title}`);
 
-  return await runScopedParticipantPrompt(
-    [
+  return await runScopedParticipantPrompt({
+    systemPrompt: [
       `You are a workspace assistant for "${services.getWorkspaceName()}".`,
       `The user wants a summary of their page titled "${title}".`,
       'Here is the page content:',
       '',
       contentText,
     ].join('\n'),
-    `Summarize this page: "${title}"`,
-    undefined,
+    userText: `Summarize this page: "${title}"`,
+    request: originalRequest,
+    context: undefined,
     response,
     token,
-    services.sendChatRequest,
-  );
+    sendChatRequest: services.sendChatRequest,
+    readFileContent: services.readFileContent,
+    reportParticipantDebug: services.reportParticipantDebug,
+    surface: 'workspace',
+  });
 }
 
 async function handleGeneral(
   request: import('../chatTypes.js').IChatParticipantInterpretation,
+  originalRequest: IChatParticipantRequest,
   context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
   services: IWorkspaceParticipantServices,
 ): Promise<IChatParticipantResult> {
+  if (await tryHandleWorkspaceDocumentListing({
+    text: request.effectiveText,
+    listFiles: services.listFiles,
+    response,
+    token,
+    workspaceName: services.getWorkspaceName(),
+  })) {
+    return {};
+  }
+
   // Inject workspace overview into the system prompt
   response.progress('Gathering workspace context...');
 
@@ -251,8 +274,8 @@ async function handleGeneral(
     }
   }
 
-  return await runScopedParticipantPrompt(
-    [
+  return await runScopedParticipantPrompt({
+    systemPrompt: [
       `You are a workspace assistant for "${services.getWorkspaceName()}".`,
       `The workspace contains ${pages.length} canvas page${pages.length !== 1 ? 's' : ''}:`,
       '',
@@ -263,12 +286,16 @@ async function handleGeneral(
       'If the question is about a specific page, reference it by title.',
       'If the question is about files, reference them by path.',
     ].join('\n'),
-    request.effectiveText,
+    userText: request.effectiveText,
+    request: originalRequest,
     context,
     response,
     token,
-    services.sendChatRequest,
-  );
+    sendChatRequest: services.sendChatRequest,
+    readFileContent: services.readFileContent,
+    reportParticipantDebug: services.reportParticipantDebug,
+    surface: 'workspace',
+  });
 }
 
 /**

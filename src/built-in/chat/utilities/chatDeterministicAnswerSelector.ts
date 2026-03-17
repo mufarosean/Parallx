@@ -2,6 +2,7 @@ import type { IChatTurnRoute } from '../chatTypes.js';
 import {
   buildDeterministicGroundedBooksAnswer,
   buildDirectMemoryRecallAnswer,
+  buildDeterministicWorkflowAnswer,
   buildUnsupportedSpecificCoverageAnswer,
   buildUnsupportedWorkspaceTopicAnswer,
 } from './chatDeterministicExecutors.js';
@@ -13,6 +14,7 @@ export interface IDeterministicAnswerSelection {
     | 'off-topic-direct-answer'
     | 'memory-recall-direct-answer'
     | 'deterministic-grounded-books-direct-answer'
+    | 'deterministic-workflow-direct-answer'
     | 'unsupported-specific-coverage-direct-answer'
     | 'unsupported-workspace-topic-direct-answer';
   readonly retrievedContextLength: number;
@@ -46,6 +48,25 @@ export function selectDeterministicAnswer(options: {
         phase: 'deterministic-grounded-books-direct-answer',
         retrievedContextLength: options.retrievedContextText?.length ?? 0,
       };
+    }
+
+    if (
+      options.route.workflowType === 'folder-summary'
+      || options.route.workflowType === 'comparative'
+      || options.route.workflowType === 'exhaustive-extraction'
+    ) {
+      const deterministicWorkflowAnswer = buildDeterministicWorkflowAnswer(
+        options.route.workflowType,
+        options.query,
+        options.retrievedContextText ?? '',
+      );
+      if (deterministicWorkflowAnswer) {
+        return {
+          markdown: deterministicWorkflowAnswer,
+          phase: 'deterministic-workflow-direct-answer',
+          retrievedContextLength: options.retrievedContextText?.length ?? 0,
+        };
+      }
     }
 
     const unsupportedWorkspaceTopicAnswer = buildUnsupportedWorkspaceTopicAnswer(

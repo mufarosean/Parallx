@@ -17,7 +17,7 @@ import type {
   IDatabaseService,
   IIndexingPipelineService,
 } from './serviceTypes.js';
-import type { IAISettingsService } from '../aiSettings/aiSettingsTypes.js';
+import type { IUnifiedAIConfigService } from '../aiSettings/unifiedConfigTypes.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -79,15 +79,15 @@ export class ProactiveSuggestionsService extends Disposable {
     private readonly _vectorStoreService: IVectorStoreService,
     private readonly _db: IDatabaseService,
     private readonly _indexingPipeline: IIndexingPipelineService,
-    aiSettingsService?: IAISettingsService,
+    unifiedConfigService?: Pick<IUnifiedAIConfigService, 'getEffectiveConfig' | 'onDidChangeConfig'>,
   ) {
     super();
 
-    // M15: Read initial AI settings and subscribe to changes
-    if (aiSettingsService) {
-      this._applyAISettings(aiSettingsService);
-      this._register(aiSettingsService.onDidChange(() => {
-        this._applyAISettings(aiSettingsService);
+    // M40 Phase 6: Read authoritative unified config and subscribe to changes.
+    if (unifiedConfigService) {
+      this._applyUnifiedConfig(unifiedConfigService);
+      this._register(unifiedConfigService.onDidChangeConfig(() => {
+        this._applyUnifiedConfig(unifiedConfigService);
       }));
     }
 
@@ -102,15 +102,15 @@ export class ProactiveSuggestionsService extends Disposable {
     }));
   }
 
-  /** M15: Apply AI settings profile to configurable thresholds. */
-  private _applyAISettings(aiSettingsService: IAISettingsService): void {
-    const profile = aiSettingsService.getActiveProfile();
-    this._suggestionsEnabled = profile.suggestions.suggestionsEnabled;
-    this._clusterThreshold = profile.suggestions.suggestionConfidenceThreshold > 0
-      ? profile.suggestions.suggestionConfidenceThreshold
+  /** M40 Phase 6: Apply authoritative unified config to configurable thresholds. */
+  private _applyUnifiedConfig(unifiedConfigService: Pick<IUnifiedAIConfigService, 'getEffectiveConfig'>): void {
+    const suggestions = unifiedConfigService.getEffectiveConfig().suggestions;
+    this._suggestionsEnabled = suggestions.suggestionsEnabled;
+    this._clusterThreshold = suggestions.suggestionConfidenceThreshold > 0
+      ? suggestions.suggestionConfidenceThreshold
       : CLUSTER_THRESHOLD;
-    this._maxSuggestions = profile.suggestions.maxPendingSuggestions > 0
-      ? profile.suggestions.maxPendingSuggestions
+    this._maxSuggestions = suggestions.maxPendingSuggestions > 0
+      ? suggestions.maxPendingSuggestions
       : MAX_SUGGESTIONS;
   }
 

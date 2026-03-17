@@ -133,7 +133,7 @@ async function gatherExhaustive(
   deps: IEvidenceGathererDeps,
   priorItems: readonly EvidenceItem[],
 ): Promise<IExhaustiveEvidence | undefined> {
-  if (!deps.readFileRelative || !step.targetPaths?.length) return undefined;
+  if (!deps.readFileRelative) return undefined;
 
   const latestStructural = [...priorItems]
     .reverse()
@@ -141,7 +141,13 @@ async function gatherExhaustive(
 
   const targetPaths = latestStructural?.files.length
     ? latestStructural.files.map((file) => file.relativePath)
-    : [...step.targetPaths];
+    : step.targetPaths?.length
+      ? [...step.targetPaths]
+      : [];
+
+  if (targetPaths.length === 0) {
+    return undefined;
+  }
 
   const reads: { relativePath: string; content: string }[] = [];
 

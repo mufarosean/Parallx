@@ -32,7 +32,7 @@ import type {
   IChatMessage,
   IChatResponseChunk,
 } from '../../services/chatTypes.js';
-import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IAISettingsService, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentSessionService, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService } from '../../services/serviceTypes.js';
+import { IWorkspaceService, IDatabaseService, IFileService, ITextFileModelManager, IRetrievalService, IIndexingPipelineService, IMemoryService, IRelatedContentService, IAutoTaggingService, IProactiveSuggestionsService, ISessionManager, IUnifiedAIConfigService, IAgentApprovalService, IAgentExecutionService, IAgentSessionService, IAgentTraceService, IVectorStoreService, IWorkspaceMemoryService, ICanonicalMemorySearchService } from '../../services/serviceTypes.js';
 import { IEditorService } from '../../services/serviceTypes.js';
 import type { IBuiltInToolFileSystem } from './chatTypes.js';
 import { PromptFileService } from '../../services/promptFileService.js';
@@ -236,11 +236,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     : undefined;
   const sessionContext = sessionManager?.activeContext;
 
-  // AI Settings service (M15) — persona overlay + model defaults
-  const aiSettingsService = api.services.has(IAISettingsService)
-    ? api.services.get<import('../../aiSettings/aiSettingsTypes.js').IAISettingsService>(IAISettingsService)
-    : undefined;
-
   // Unified AI Config service (M20) — single source of truth
   const unifiedConfigService = api.services.has(IUnifiedAIConfigService)
     ? api.services.get<import('../../aiSettings/unifiedConfigTypes.js').IUnifiedAIConfigService>(IUnifiedAIConfigService)
@@ -362,7 +357,6 @@ export function activate(api: ParallxApi, context: ToolContext): void {
     openPage: (pageId: string) => api.editors.openEditor({ typeId: 'canvas', title: 'Page', instanceId: pageId }),
     sessionContext: sessionContext ?? undefined,
     sessionManager: sessionManager ?? undefined,
-    aiSettingsService: aiSettingsService ?? undefined,
     unifiedConfigService: unifiedConfigService ?? undefined,
     agentSessionService: agentSessionService ?? undefined,
     agentApprovalService: agentApprovalService ?? undefined,
@@ -482,6 +476,10 @@ export function activate(api: ParallxApi, context: ToolContext): void {
   // ── 3a. Register the default chat participant with IChatAgentService ──
 
   const defaultParticipantServices = dataService.buildDefaultParticipantServices();
+  chatService.setTurnPreparationServices({
+    listFilesRelative: defaultParticipantServices.listFilesRelative,
+    isRAGAvailable: defaultParticipantServices.isRAGAvailable,
+  });
 
   const defaultParticipant = createDefaultParticipant(defaultParticipantServices);
   context.subscriptions.push(defaultParticipant);

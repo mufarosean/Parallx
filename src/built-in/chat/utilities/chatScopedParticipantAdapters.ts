@@ -13,6 +13,7 @@ export interface IChatWorkspaceParticipantAdapterDeps {
   readonly getPageTitle: IWorkspaceParticipantServices['getPageTitle'];
   readonly listFiles?: IWorkspaceParticipantServices['listFiles'];
   readonly readFileContent?: IWorkspaceParticipantServices['readFileContent'];
+  readonly reportParticipantDebug?: IWorkspaceParticipantServices['reportParticipantDebug'];
   readonly reportRetrievalDebug?: IWorkspaceParticipantServices['reportRetrievalDebug'];
 }
 
@@ -23,6 +24,8 @@ export interface IChatCanvasParticipantAdapterDeps {
   readonly getCurrentPageId: ICanvasParticipantServices['getCurrentPageId'];
   readonly getCurrentPageTitle: ICanvasParticipantServices['getCurrentPageTitle'];
   readonly getPageStructure: ICanvasParticipantServices['getPageStructure'];
+  readonly readFileContent?: ICanvasParticipantServices['readFileContent'];
+  readonly reportParticipantDebug?: ICanvasParticipantServices['reportParticipantDebug'];
   readonly reportRetrievalDebug?: ICanvasParticipantServices['reportRetrievalDebug'];
 }
 
@@ -39,6 +42,7 @@ export function buildChatWorkspaceParticipantServices(
     getPageTitle: deps.getPageTitle,
     listFiles: deps.listFiles,
     readFileContent: deps.readFileContent,
+    reportParticipantDebug: deps.reportParticipantDebug,
     reportRetrievalDebug: deps.reportRetrievalDebug,
   };
 }
@@ -53,6 +57,8 @@ export function buildChatCanvasParticipantServices(
     getCurrentPageId: deps.getCurrentPageId,
     getCurrentPageTitle: deps.getCurrentPageTitle,
     getPageStructure: deps.getPageStructure,
+    readFileContent: deps.readFileContent,
+    reportParticipantDebug: deps.reportParticipantDebug,
     reportRetrievalDebug: deps.reportRetrievalDebug,
   };
 }

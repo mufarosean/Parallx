@@ -6,17 +6,18 @@ export function interpretChatParticipantRequest(
   surface: ChatParticipantSurface,
   request: IChatParticipantRequest,
 ): IChatParticipantInterpretation {
-  const effectiveText = request.text.trim();
-  const commandName = request.command?.trim() || undefined;
-  const hasExplicitCommand = !!commandName;
+  const providedInterpretation = request.interpretation;
+  const effectiveText = providedInterpretation?.effectiveText ?? request.text.trim();
+  const commandName = request.command?.trim() || providedInterpretation?.commandName || undefined;
+  const hasExplicitCommand = providedInterpretation?.hasExplicitCommand ?? !!commandName;
 
   return {
-    surface,
-    rawText: request.text,
+    surface: providedInterpretation?.surface ?? surface,
+    rawText: providedInterpretation?.rawText ?? request.text,
     effectiveText,
     commandName,
     hasExplicitCommand,
-    kind: hasExplicitCommand ? 'command' : 'message',
-    semantics: analyzeChatTurnSemantics(effectiveText),
+    kind: providedInterpretation?.kind ?? (hasExplicitCommand ? 'command' : 'message'),
+    semantics: providedInterpretation?.semantics ?? analyzeChatTurnSemantics(effectiveText),
   };
 }

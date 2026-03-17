@@ -13,6 +13,7 @@ import type {
   ICancellationToken,
   IToolResult,
 } from '../../services/chatTypes.js';
+import { interpretChatParticipantRequest } from '../../built-in/chat/utilities/chatParticipantInterpretation.js';
 
 /**
  * Bridge for the `parallx.chat` API namespace.
@@ -48,13 +49,31 @@ export class ChatBridge {
     let commands: { name: string; description: string }[] = [];
     let participantDisposable: IDisposable | undefined;
 
+    const wrappedHandler: IChatParticipantHandler = async (request, context, response, token) => {
+      const interpretation = interpretChatParticipantRequest('bridge', request);
+      return handler({
+        ...request,
+        text: interpretation.effectiveText,
+        command: interpretation.commandName,
+        interpretation: {
+          surface: interpretation.surface,
+          rawText: interpretation.rawText,
+          effectiveText: interpretation.effectiveText,
+          commandName: interpretation.commandName,
+          hasExplicitCommand: interpretation.hasExplicitCommand,
+          kind: interpretation.kind,
+          semantics: interpretation.semantics,
+        },
+      }, context, response, token);
+    };
+
     const participant: IChatParticipant = {
       id,
       get displayName() { return displayName; },
       get description() { return description; },
       get iconPath() { return iconPath; },
       get commands() { return commands; },
-      handler,
+      handler: wrappedHandler,
     };
 
     participantDisposable = this._agentService.registerAgent(participant);
@@ -76,7 +95,7 @@ export class ChatBridge {
       set iconPath(v: string | undefined) { iconPath = v; },
       get commands() { return commands; },
       set commands(v: { name: string; description: string }[]) { commands = v; },
-      handler,
+      handler: wrappedHandler,
       dispose: () => disposable.dispose(),
     };
   }

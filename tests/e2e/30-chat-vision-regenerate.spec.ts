@@ -64,15 +64,6 @@ async function waitForAssistantResponse(page: Page, timeout = 15_000): Promise<s
   return (await msgBody.last().textContent()) || '';
 }
 
-async function waitForNextAssistantResponse(page: Page, previousAssistantCount: number, timeout = 15_000): Promise<string> {
-  await page.waitForFunction(
-    (previousCount) => document.querySelectorAll('.parallx-chat-message--assistant').length > previousCount,
-    previousAssistantCount,
-    { timeout },
-  );
-  return waitForAssistantResponse(page, timeout);
-}
-
 async function pasteSyntheticImage(page: Page, fileName = 'clipboard.png'): Promise<void> {
   await page.evaluate(({ name }) => {
     const textarea = document.querySelector('.parallx-chat-input-textarea') as HTMLTextAreaElement | null;
@@ -255,13 +246,16 @@ test.describe('Chat Vision Attachments and Regenerate', () => {
     const firstRequest = findRequestByUserContent(chatRequests, 'Summarize the deductible rules.');
     const firstUserMessage = getLatestUserMessage(firstRequest);
     expect(firstUserMessage?.content).toContain('Summarize the deductible rules.');
+    const firstAssistantText = await window.locator('.parallx-chat-message--assistant .parallx-chat-message-body').last().textContent();
 
-    const previousAssistantCount = await window.locator('.parallx-chat-message--assistant').count();
     const regenerateBtn = window.locator('.parallx-chat-message--assistant').last().locator('button[aria-label="Regenerate response"]');
     await expect(regenerateBtn).toBeVisible();
     await regenerateBtn.click();
 
-    await waitForNextAssistantResponse(window, previousAssistantCount);
+    await expect.poll(async () => {
+      const text = await window.locator('.parallx-chat-message--assistant .parallx-chat-message-body').last().textContent();
+      return text ?? '';
+    }).not.toBe(firstAssistantText ?? '');
     await expect.poll(() => chatRequests.filter((requestBody) => {
       const userMessage = getLatestUserMessage(requestBody);
       return typeof userMessage?.content === 'string' && userMessage.content.includes('Summarize the deductible rules.');

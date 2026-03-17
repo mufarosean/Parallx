@@ -69,6 +69,7 @@ export function createCanvasParticipant(services: ICanvasParticipantServices): I
 
 async function handleDescribe(
   _request: import('../chatTypes.js').IChatParticipantInterpretation,
+  originalRequest: IChatParticipantRequest,
   _context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
@@ -94,8 +95,8 @@ async function handleDescribe(
 
   const structureText = formatPageStructure(structure);
 
-  return await runScopedParticipantPrompt(
-    [
+  return await runScopedParticipantPrompt({
+    systemPrompt: [
       `You are a canvas assistant for "${services.getWorkspaceName()}".`,
       `The user is viewing the page "${structure.title}".`,
       'Here is the page structure:',
@@ -104,16 +105,21 @@ async function handleDescribe(
       '',
       'Describe the page structure, organisation, and content to the user.',
     ].join('\n'),
-    `Describe the structure of "${structure.title}".`,
-    undefined,
+    userText: `Describe the structure of "${structure.title}".`,
+    request: originalRequest,
+    context: undefined,
     response,
     token,
-    services.sendChatRequest,
-  );
+    sendChatRequest: services.sendChatRequest,
+    readFileContent: services.readFileContent,
+    reportParticipantDebug: services.reportParticipantDebug,
+    surface: 'canvas',
+  });
 }
 
 async function handleBlocks(
   _request: import('../chatTypes.js').IChatParticipantInterpretation,
+  _originalRequest: IChatParticipantRequest,
   _context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
@@ -163,6 +169,7 @@ async function handleBlocks(
 
 async function handleGeneral(
   request: import('../chatTypes.js').IChatParticipantInterpretation,
+  originalRequest: IChatParticipantRequest,
   context: IChatParticipantContext,
   response: IChatResponseStream,
   token: ICancellationToken,
@@ -198,14 +205,18 @@ async function handleGeneral(
     'Answer the user\'s question about the canvas page and its blocks.',
   );
 
-  return await runScopedParticipantPrompt(
-    systemLines.join('\n'),
-    request.effectiveText,
+  return await runScopedParticipantPrompt({
+    systemPrompt: systemLines.join('\n'),
+    userText: request.effectiveText,
+    request: originalRequest,
     context,
     response,
     token,
-    services.sendChatRequest,
-  );
+    sendChatRequest: services.sendChatRequest,
+    readFileContent: services.readFileContent,
+    reportParticipantDebug: services.reportParticipantDebug,
+    surface: 'canvas',
+  });
 }
 
 // ── Helpers ──

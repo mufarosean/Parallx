@@ -16,6 +16,8 @@ import { handleEarlyDeterministicAnswer } from './chatDeterministicResponse.js';
 import { matchWorkflowSkill, activateSkill } from './chatSkillMatcher.js';
 import { determineChatTurnRoute } from './chatTurnRouter.js';
 import { prepareChatTurnPrelude } from './chatTurnPrelude.js';
+import { createChatContextPlan } from './chatContextPlanner.js';
+import { extractMentions, resolveMentions } from './chatMentionResolver.js';
 import { resolveChatTurnEntryRouting } from './chatTurnEntryRouting.js';
 
 type IDefaultTurnInterpretationServices = Pick<
@@ -83,18 +85,67 @@ export async function resolveDefaultChatTurnInterpretation(
     reportResponseDebug: services.reportResponseDebug,
   });
 
-  const prelude = await prepareChatTurnPrelude(
-    services,
-    {
-      buildFollowUpRetrievalQuery,
-    },
-    {
-      requestText: input.request.text,
-      history: input.context.history,
-      sessionId: input.context.sessionId,
-      hasActiveSlashCommand,
-    },
-  );
+  const prelude = input.request.turnState
+    ? await (async () => {
+        const mentions = input.request.turnState?.mentions ?? extractMentions(input.request.text);
+        let mentionPills: IPreparedChatTurnPrelude['mentionPills'] = [];
+        let mentionContextBlocks: IPreparedChatTurnPrelude['mentionContextBlocks'] = [];
+
+        if (mentions.length > 0) {
+          const mentionResult = await resolveMentions(
+            input.request.text,
+            mentions as any,
+            {
+              readFileContent: services.readFileContent
+                ? (path: string) => services.readFileContent!(path)
+                : undefined,
+              listFolderFiles: services.listFolderFiles
+                ? (folderPath: string) => services.listFolderFiles!(folderPath)
+                : undefined,
+              retrieveContext: services.retrieveContext
+                ? (query: string) => services.retrieveContext!(query)
+                : undefined,
+              getTerminalOutput: services.getTerminalOutput
+                ? () => services.getTerminalOutput!()
+                : undefined,
+            },
+          );
+          mentionPills = mentionResult.pills;
+          mentionContextBlocks = mentionResult.contextBlocks;
+        }
+
+        const isRagReady = input.request.turnState.isRagReady ?? (services.isRAGAvailable?.() ?? false);
+        const contextPlan = createChatContextPlan(input.request.turnState.turnRoute as any, {
+          hasActiveSlashCommand: input.request.turnState.hasActiveSlashCommand,
+          isRagReady,
+        });
+
+        return {
+          mentionPills,
+          mentionContextBlocks,
+          userText: input.request.turnState.userText,
+          contextQueryText: input.request.turnState.contextQueryText,
+          isRagReady,
+          turnRoute: input.request.turnState.turnRoute as any,
+          contextPlan,
+          retrievalPlan: contextPlan.retrievalPlan,
+          isConversationalTurn: input.request.turnState.isConversationalTurn,
+          queryScope: input.request.turnState.queryScope as any,
+          semanticFallback: input.request.turnState.semanticFallback as any,
+        } satisfies IPreparedChatTurnPrelude;
+      })()
+    : await prepareChatTurnPrelude(
+        services,
+        {
+          buildFollowUpRetrievalQuery,
+        },
+        {
+          requestText: input.request.text,
+          history: input.context.history,
+          sessionId: input.context.sessionId,
+          hasActiveSlashCommand,
+        },
+      );
 
   const skillCatalog = services.getWorkflowSkillCatalog?.() ?? [];
   const isSkillSlashCommand = slashResult.command?.specialHandler === 'skill';

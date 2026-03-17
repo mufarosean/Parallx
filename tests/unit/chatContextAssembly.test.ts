@@ -125,9 +125,11 @@ describe('chat context assembly', () => {
       { uri: 'RF Guides/Verrall.pdf', label: 'Verrall.pdf', index: 2 },
     ]);
     expect(result.provenance.map((entry) => ({ kind: entry.kind, uri: entry.uri, index: entry.index }))).toEqual([
-      { kind: 'attachment', uri: 'RF Guides/Clark.pdf', index: 1 },
-      { kind: 'attachment', uri: 'RF Guides/Verrall.pdf', index: 2 },
+      { kind: 'rag', uri: 'RF Guides/Clark.pdf', index: 1 },
+      { kind: 'rag', uri: 'RF Guides/Verrall.pdf', index: 2 },
     ]);
+    expect(result.retrievedContextText).toContain('Clark summary text');
+    expect(result.retrievedContextText).toContain('Verrall summary text');
   });
 
   it('runs a retrieve-again pass when initial evidence is insufficient', async () => {

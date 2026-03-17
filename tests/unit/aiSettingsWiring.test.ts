@@ -1,13 +1,12 @@
-// tests/unit/aiSettingsWiring.test.ts — M15 Group B: AI Settings wiring tests
+// tests/unit/aiSettingsWiring.test.ts — AI settings / unified config wiring tests
 //
 // Validates that:
-// 1. defaultParticipant reads AI profile for promptOverlay + temperature
-// 2. ProactiveSuggestionsService respects AI settings thresholds
-// 3. Settings changes propagate via onDidChange
+// 1. migrated chat behavior reads unified config for promptOverlay + temperature
+// 2. ProactiveSuggestionsService respects unified config thresholds
+// 3. Unified config changes propagate via onDidChangeConfig
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProactiveSuggestionsService } from '../../src/services/proactiveSuggestionsService';
-import type { AISettingsProfile } from '../../src/aiSettings/aiSettingsTypes';
 import { DEFAULT_PROFILE, BUILT_IN_PRESETS } from '../../src/aiSettings/aiSettingsDefaults';
 import { Emitter } from '../../src/platform/events';
 
@@ -51,31 +50,40 @@ function createMockIndexingPipeline() {
   };
 }
 
-function createMockAISettingsService(overrides?: Partial<AISettingsProfile>) {
-  const profile: AISettingsProfile = {
-    ...structuredClone(DEFAULT_PROFILE),
-    ...overrides,
+function createMockUnifiedConfigService(overrides?: {
+  suggestions?: Partial<typeof DEFAULT_PROFILE.suggestions>;
+  chat?: { systemPrompt?: string; workspaceDescription?: string };
+  model?: { temperature?: number; maxTokens?: number };
+}) {
+  const config = {
     suggestions: {
       ...DEFAULT_PROFILE.suggestions,
       ...overrides?.suggestions,
     },
+    chat: {
+      systemPrompt: overrides?.chat?.systemPrompt ?? DEFAULT_PROFILE.chat.systemPrompt,
+      workspaceDescription: overrides?.chat?.workspaceDescription ?? '',
+    },
+    model: {
+      temperature: overrides?.model?.temperature ?? DEFAULT_PROFILE.model.temperature,
+      maxTokens: overrides?.model?.maxTokens ?? DEFAULT_PROFILE.model.maxTokens,
+    },
   };
-  const onDidChangeEmitter = new Emitter<AISettingsProfile>();
+  const onDidChangeEmitter = new Emitter<void>();
   return {
-    getActiveProfile: vi.fn(() => structuredClone(profile)),
-    onDidChange: onDidChangeEmitter.event,
-    _profile: profile,
-    _fireChange: (p?: AISettingsProfile) => onDidChangeEmitter.fire(p ?? profile),
-    _updateProfile: (patch: Partial<AISettingsProfile['suggestions']>) => {
-      Object.assign(profile.suggestions, patch);
+    getEffectiveConfig: vi.fn(() => structuredClone(config) as any),
+    onDidChangeConfig: onDidChangeEmitter.event,
+    _fireChange: () => onDidChangeEmitter.fire(undefined),
+    _updateSuggestions: (patch: Partial<typeof DEFAULT_PROFILE.suggestions>) => {
+      Object.assign(config.suggestions, patch);
     },
     dispose: vi.fn(),
   };
 }
 
-// ─── ProactiveSuggestionsService + AI Settings ──────────────────────────────
+// ─── ProactiveSuggestionsService + Unified Config ───────────────────────────
 
-describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
+describe('ProactiveSuggestionsService with Unified Config (M40 Phase 6)', () => {
   let mockEmbedding: ReturnType<typeof createMockEmbeddingService>;
   let mockVector: ReturnType<typeof createMockVectorStoreService>;
   let mockDb: ReturnType<typeof createMockDb>;
@@ -88,7 +96,7 @@ describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
     mockPipeline = createMockIndexingPipeline();
   });
 
-  it('works without AI settings service (backward compat)', () => {
+  it('works without unified config service (backward compat)', () => {
     const service = new ProactiveSuggestionsService(
       mockEmbedding as any,
       mockVector as any,
@@ -99,8 +107,8 @@ describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
     service.dispose();
   });
 
-  it('reads initial settings from AI settings service', () => {
-    const aiSettings = createMockAISettingsService({
+  it('reads initial settings from unified config', () => {
+    const unifiedConfig = createMockUnifiedConfigService({
       suggestions: {
         ...DEFAULT_PROFILE.suggestions,
         suggestionsEnabled: false,
@@ -113,14 +121,14 @@ describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
       mockVector as any,
       mockDb as any,
       mockPipeline as any,
-      aiSettings as any,
+      unifiedConfig as any,
     );
-    expect(aiSettings.getActiveProfile).toHaveBeenCalled();
+    expect(unifiedConfig.getEffectiveConfig).toHaveBeenCalled();
     service.dispose();
   });
 
   it('disables scheduling when suggestionsEnabled is false', async () => {
-    const aiSettings = createMockAISettingsService({
+    const unifiedConfig = createMockUnifiedConfigService({
       suggestions: {
         ...DEFAULT_PROFILE.suggestions,
         suggestionsEnabled: false,
@@ -131,7 +139,7 @@ describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
       mockVector as any,
       mockDb as any,
       mockPipeline as any,
-      aiSettings as any,
+      unifiedConfig as any,
     );
 
     // Trigger an index complete event — with disabled suggestions, analysis should NOT run
@@ -146,7 +154,7 @@ describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
   });
 
   it('allows scheduling when suggestionsEnabled is true', async () => {
-    const aiSettings = createMockAISettingsService({
+    const unifiedConfig = createMockUnifiedConfigService({
       suggestions: {
         ...DEFAULT_PROFILE.suggestions,
         suggestionsEnabled: true,
@@ -157,7 +165,7 @@ describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
       mockVector as any,
       mockDb as any,
       mockPipeline as any,
-      aiSettings as any,
+      unifiedConfig as any,
     );
 
     // Force immediate analysis (bypasses cooldown timer)
@@ -168,35 +176,32 @@ describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
     service.dispose();
   });
 
-  it('updates thresholds when onDidChange fires', () => {
-    const aiSettings = createMockAISettingsService();
+  it('updates thresholds when onDidChangeConfig fires', () => {
+    const unifiedConfig = createMockUnifiedConfigService();
     const service = new ProactiveSuggestionsService(
       mockEmbedding as any,
       mockVector as any,
       mockDb as any,
       mockPipeline as any,
-      aiSettings as any,
+      unifiedConfig as any,
     );
 
-    // Verify initial call
-    const initialCallCount = aiSettings.getActiveProfile.mock.calls.length;
+    const initialCallCount = unifiedConfig.getEffectiveConfig.mock.calls.length;
     expect(initialCallCount).toBe(1);
 
-    // Update the profile and fire change
-    aiSettings._updateProfile({
+    unifiedConfig._updateSuggestions({
       suggestionConfidenceThreshold: 0.95,
       maxPendingSuggestions: 2,
       suggestionsEnabled: false,
     });
-    aiSettings._fireChange();
+    unifiedConfig._fireChange();
 
-    // getActiveProfile should have been called again
-    expect(aiSettings.getActiveProfile.mock.calls.length).toBe(initialCallCount + 1);
+    expect(unifiedConfig.getEffectiveConfig.mock.calls.length).toBe(initialCallCount + 1);
     service.dispose();
   });
 
   it('respects maxPendingSuggestions from settings', async () => {
-    const aiSettings = createMockAISettingsService({
+    const unifiedConfig = createMockUnifiedConfigService({
       suggestions: {
         ...DEFAULT_PROFILE.suggestions,
         maxPendingSuggestions: 2,
@@ -211,7 +216,7 @@ describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
       mockVector as any,
       mockDb as any,
       mockPipeline as any,
-      aiSettings as any,
+      unifiedConfig as any,
     );
 
     const result = await service.analyze();
@@ -221,7 +226,7 @@ describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
   });
 
   it('applies higher threshold to reduce cluster detection', async () => {
-    const aiSettings = createMockAISettingsService({
+    const unifiedConfig = createMockUnifiedConfigService({
       suggestions: {
         ...DEFAULT_PROFILE.suggestions,
         // Very high threshold — no clusters should match
@@ -240,7 +245,7 @@ describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
       mockVector as any,
       mockDb as any,
       mockPipeline as any,
-      aiSettings as any,
+      unifiedConfig as any,
     );
 
     const result = await service.analyze();
@@ -251,57 +256,55 @@ describe('ProactiveSuggestionsService with AI Settings (M15 Task 1.6)', () => {
   });
 });
 
-// ─── Chat Participant AI Settings Integration ───────────────────────────────
+// ─── Chat Participant Unified Config Integration ─────────────────────────────
 
-describe('Chat Participant AI Settings Integration (M15 Task 1.5)', () => {
-  it('IDefaultParticipantServices accepts aiSettingsService', () => {
-    // Type-level test — if this compiles, the interface is correctly extended
+describe('Chat Participant Unified Config Integration (M40 Phase 6)', () => {
+  it('IDefaultParticipantServices accepts unifiedConfigService', () => {
     const mockServices: Partial<import('../../src/built-in/chat/chatTypes').IDefaultParticipantServices> = {
-      aiSettingsService: {
-        getActiveProfile: () => structuredClone(DEFAULT_PROFILE),
+      unifiedConfigService: {
+        getEffectiveConfig: () => ({
+          chat: { systemPrompt: DEFAULT_PROFILE.chat.systemPrompt, workspaceDescription: '' },
+          model: { temperature: DEFAULT_PROFILE.model.temperature, maxTokens: DEFAULT_PROFILE.model.maxTokens },
+        } as any),
       },
     };
-    expect(mockServices.aiSettingsService).toBeDefined();
-    expect(mockServices.aiSettingsService!.getActiveProfile().chat.systemPrompt).toBeTruthy();
+    expect(mockServices.unifiedConfigService).toBeDefined();
+    expect(mockServices.unifiedConfigService!.getEffectiveConfig().chat.systemPrompt).toBeTruthy();
   });
 
-  it('AI profile system prompt is used as promptOverlay', () => {
-    const profile = structuredClone(DEFAULT_PROFILE);
-    // Simulate what defaultParticipant.ts does: prefer AI profile system prompt
+  it('unified config system prompt is used as promptOverlay', () => {
+    const config = createMockUnifiedConfigService();
     const fileOverlay = 'file-based overlay';
-    const promptOverlay = profile.chat.systemPrompt || fileOverlay;
-    // DEFAULT_PROFILE has a non-empty system prompt, so it should take priority
-    expect(promptOverlay).toBe(profile.chat.systemPrompt);
+    const promptOverlay = config.getEffectiveConfig().chat.systemPrompt || fileOverlay;
+    expect(promptOverlay).toBe(config.getEffectiveConfig().chat.systemPrompt);
     expect(promptOverlay).not.toBe(fileOverlay);
   });
 
-  it('falls back to file overlay when AI profile prompt is empty', () => {
-    const profile = structuredClone(DEFAULT_PROFILE);
-    profile.chat.systemPrompt = '';
+  it('falls back to file overlay when unified config system prompt is empty', () => {
+    const config = createMockUnifiedConfigService({ chat: { systemPrompt: '' } });
     const fileOverlay = 'file-based overlay';
-    const promptOverlay = profile.chat.systemPrompt || fileOverlay;
+    const promptOverlay = config.getEffectiveConfig().chat.systemPrompt || fileOverlay;
     expect(promptOverlay).toBe(fileOverlay);
   });
 
-  it('temperature from AI profile is applied to request options', () => {
-    const profile = structuredClone(DEFAULT_PROFILE);
+  it('temperature from unified config is applied to request options', () => {
+    const config = createMockUnifiedConfigService();
     const options = {
       tools: undefined,
       format: undefined,
       think: true,
-      temperature: profile.model.temperature,
-      maxTokens: profile.model.maxTokens || undefined,
+      temperature: config.getEffectiveConfig().model.temperature,
+      maxTokens: config.getEffectiveConfig().model.maxTokens || undefined,
     };
     expect(options.temperature).toBe(0.7);
     expect(options.maxTokens).toBeUndefined(); // 0 maps to undefined
   });
 
-  it('non-zero maxTokens from AI profile is passed through', () => {
-    const profile = structuredClone(DEFAULT_PROFILE);
-    profile.model.maxTokens = 2048;
+  it('non-zero maxTokens from unified config is passed through', () => {
+    const config = createMockUnifiedConfigService({ model: { maxTokens: 2048 } });
     const options = {
-      temperature: profile.model.temperature,
-      maxTokens: profile.model.maxTokens || undefined,
+      temperature: config.getEffectiveConfig().model.temperature,
+      maxTokens: config.getEffectiveConfig().model.maxTokens || undefined,
     };
     expect(options.maxTokens).toBe(2048);
   });

@@ -276,9 +276,9 @@ export function registerIndexingServices(
   const relatedContentService = new RelatedContentService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
   const autoTaggingService = new AutoTaggingService(embeddingService, vectorStoreService, databaseService, indexingPipeline);
 
-  // M15: Pass AI Settings service so thresholds are configurable
-  const aiSettingsService = services.has(IAISettingsService) ? services.get(IAISettingsService) : undefined;
-  const proactiveSuggestionsService = new ProactiveSuggestionsService(embeddingService, vectorStoreService, databaseService, indexingPipeline, aiSettingsService);
+  // M40 Phase 6: Proactive suggestions read thresholds from unified effective config.
+  const unifiedConfigService = services.has(IUnifiedAIConfigService) ? services.get(IUnifiedAIConfigService) : undefined;
+  const proactiveSuggestionsService = new ProactiveSuggestionsService(embeddingService, vectorStoreService, databaseService, indexingPipeline, unifiedConfigService);
 
   services.registerInstance(IRelatedContentService, relatedContentService);
   services.registerInstance(IAutoTaggingService, autoTaggingService);

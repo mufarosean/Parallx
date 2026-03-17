@@ -55,6 +55,7 @@ import { categorizeChatRequestError } from '../utilities/chatRequestErrorCategor
 import { assembleChatTurnMessages } from '../utilities/chatTurnMessageAssembly.js';
 import { writeChatProvenanceToResponse } from '../utilities/chatTurnContextPreparation.js';
 import { interpretChatParticipantRequest } from '../utilities/chatParticipantInterpretation.js';
+import { tryHandleWorkspaceDocumentListing } from '../utilities/chatWorkspaceDocumentListing.js';
 import { resolveDefaultChatTurnInterpretation } from '../utilities/chatDefaultTurnInterpretation.js';
 import { resolveDefaultPreparedTurnContext } from '../utilities/chatDefaultPreparedTurnContext.js';
 import { executeDefaultPreparedTurn } from '../utilities/chatDefaultTurnExecution.js';
@@ -114,6 +115,16 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       return initResult;
     }
 
+    if (await tryHandleWorkspaceDocumentListing({
+      text: interpretation.effectiveText,
+      listFiles: services.listFilesRelative,
+      response,
+      token,
+      workspaceName: services.getWorkspaceName(),
+    })) {
+      return {};
+    }
+
     const {
       interpretation: resolvedInterpretation,
       slashResult,
@@ -156,8 +167,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
     if (handledEarlyAnswer) {
       return {};
     }
-
-    const aiProfile = services.aiSettingsService?.getActiveProfile();
 
     const { messages } = await assembleChatTurnMessages(services, {
       mode: request.mode,
@@ -228,7 +237,6 @@ export function createDefaultParticipant(services: IDefaultParticipantServices):
       coverageRecord,
       resolvedRequestText: resolvedInterpretation.rawText,
       capabilities,
-      aiProfile,
       retrievedContextText,
       memoryResult,
       isConversationalTurn,

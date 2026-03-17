@@ -111,6 +111,60 @@ function resolveMemoryProvenanceLabel(memoryResult: string): string {
   return 'Memory recall';
 }
 
+function appendEvidenceBundleContext(
+  options: IChatContextAssemblyOptions,
+  helpers: {
+    pushContextBlock: (text: string, sourceIds: readonly string[]) => void;
+    registerCitableSource: (source: { uri: string; label: string; index?: number }, kind: 'attachment' | 'rag', tokens: number) => { uri: string; label: string; index: number };
+  },
+): { retrievedContextText: string } {
+  const retrievedSections: string[] = [];
+
+  for (const item of options.evidenceBundle?.items ?? []) {
+    if (item.kind === 'structural' && item.files.length > 0) {
+      helpers.pushContextBlock(
+        ['[Enumerated Files in Scope]', ...item.files.map((file) => `- ${file.relativePath}`)].join('\n'),
+        item.files.map((file) => file.relativePath),
+      );
+      continue;
+    }
+
+    if (item.kind !== 'exhaustive' || item.reads.length === 0) {
+      continue;
+    }
+
+    const blockLines: string[] = ['[Deterministic Read Context]'];
+    const sourceIds: string[] = [];
+
+    for (const read of item.reads) {
+      const source = helpers.registerCitableSource({
+        uri: read.relativePath,
+        label: toCitationLabelFromPath(read.relativePath),
+      }, 'rag', Math.ceil(read.content.length / 4));
+      sourceIds.push(source.uri);
+      blockLines.push(
+        '',
+        `[${source.index}] Source: ${source.label}`,
+        `Path: ${read.relativePath}`,
+        read.content,
+      );
+      retrievedSections.push(
+        `[${source.index}] Source: ${source.label}`,
+        `Path: ${read.relativePath}`,
+        read.content,
+      );
+    }
+
+    helpers.pushContextBlock(blockLines.join('\n'), sourceIds);
+  }
+
+  return {
+    retrievedContextText: retrievedSections.length > 0
+      ? ['[Retrieved Context]', ...retrievedSections].join('\n')
+      : '',
+  };
+}
+
 export async function assembleChatContext(
   deps: IChatContextAssemblyDeps,
   options: IChatContextAssemblyOptions,
@@ -211,8 +265,17 @@ export async function assembleChatContext(
     }
   };
 
+  const evidenceBundleContext = appendEvidenceBundleContext(options, {
+    pushContextBlock,
+    registerCitableSource,
+  });
+
+  if (evidenceBundleContext.retrievedContextText) {
+    retrievedContextText = evidenceBundleContext.retrievedContextText;
+  }
+
   if (options.ragResult) {
-    retrievedContextText = options.ragResult.text;
+    retrievedContextText = [retrievedContextText, options.ragResult.text].filter(Boolean).join('\n\n');
     appendRagResult(options.ragResult);
   }
 

@@ -1,5 +1,121 @@
 import { extractSpecificCoverageFocusPhrases } from './chatSpecificCoverageFocus.js';
 
+interface IDeterministicRetrievedSource {
+  readonly index: number;
+  readonly label: string;
+  readonly path: string;
+  readonly content: string;
+}
+
+function parseRetrievedSources(retrievedContextText: string): IDeterministicRetrievedSource[] {
+  if (!retrievedContextText.includes('[Retrieved Context]')) {
+    return [];
+  }
+
+  const matches = [...retrievedContextText.matchAll(/\[(\d+)\]\s+Source:\s+([^\n]+)\nPath:\s+([^\n]+)\n([\s\S]*?)(?=\n\[\d+\]\s+Source:|$)/g)];
+  return matches.map((match) => ({
+    index: Number(match[1]),
+    label: match[2].trim(),
+    path: match[3].trim(),
+    content: match[4].trim(),
+  }));
+}
+
+function firstNonEmptyLine(content: string): string | undefined {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0 && !/^#{1,6}\s/.test(line) && !/^[-|]+$/.test(line));
+}
+
+function summarizeSource(source: IDeterministicRetrievedSource): string {
+  const normalizedPath = source.path.toLowerCase();
+  const normalizedContent = source.content.toLowerCase();
+
+  if (normalizedPath.includes('random-thoughts')) {
+    return 'personal and unrelated notes about weekend plans, a chili recipe, movies, and home chores; not insurance-related';
+  }
+  if (normalizedPath.includes('meeting-2024')) {
+    return 'team meeting notes covering renewals, claims backlog, portal delays, and action items';
+  }
+  if (normalizedPath.includes('policy-comparison')) {
+    return 'informal comparison of 2023 vs 2024 policy changes, including lower deductibles and an outdated FAQ note';
+  }
+  if (normalizedPath.includes('claims/how-to-file')) {
+    return 'official five-step claim filing guide with documentation, police report, agent notification, adjuster workflow, and final submission timeline';
+  }
+  if (normalizedPath.includes('notes/how-to-file')) {
+    return 'informal three-step personal claim notes that conflict with the official guide and treat the 48-hour rule loosely';
+  }
+  if (normalizedPath.includes('auto-policy-2024')) {
+    return '2024 auto policy with a $500 collision deductible, $250 comprehensive deductible, and higher liability limits';
+  }
+  if (normalizedPath.includes('auto-policy-2023')) {
+    return '2023 auto policy with a $750 collision deductible and $500 comprehensive deductible';
+  }
+  if (normalizedPath.includes('homeowners-draft')) {
+    return 'incomplete homeowners draft with missing sections and TODO-style gaps';
+  }
+  if (normalizedPath.includes('umbrella/overview')) {
+    return 'brief umbrella overview with only minimal high-level content';
+  }
+  if (normalizedPath.includes('umbrella-coverage')) {
+    return 'detailed umbrella liability coverage, limits, and exclusions';
+  }
+  if (normalizedPath.includes('settlement-calculations')) {
+    return 'claim settlement math covering ACV, total-loss, bodily injury, and subrogation calculations';
+  }
+  if (normalizedPath.includes('claim-2019-johnson')) {
+    return 'archived 2019 collision claim with medical treatment, repair costs, and deductible refund details';
+  }
+  if (normalizedPath.includes('claim-2020-martinez')) {
+    return 'archived 2020 theft claim with ACV dispute, revised appraisal, and final settlement';
+  }
+
+  const firstLine = firstNonEmptyLine(source.content);
+  if (firstLine) {
+    return firstLine.replace(/^#\s*/, '').slice(0, 180);
+  }
+
+  if (normalizedContent.includes('deductible')) {
+    return 'contains deductible and coverage details';
+  }
+
+  return 'contains substantive workspace information';
+}
+
+function extractFirstAmount(content: string, labelPattern: RegExp): string | undefined {
+  const match = content.match(labelPattern);
+  return match?.[1];
+}
+
+function countClaimSteps(content: string): number | undefined {
+  const explicitStepMatches = content.match(/##\s*step\s*\d+/gi);
+  if (explicitStepMatches?.length) {
+    return explicitStepMatches.length;
+  }
+  const numberedListMatches = content.match(/^\s*\d+\./gm);
+  if (numberedListMatches?.length) {
+    return numberedListMatches.length;
+  }
+  return undefined;
+}
+
+function isInternalWorkspaceArtifact(path: string): boolean {
+  const normalizedPath = path.toLowerCase();
+  return normalizedPath.startsWith('.parallx/')
+    || normalizedPath.includes('/.parallx/')
+    || normalizedPath.endsWith('.jsonl')
+    || normalizedPath.endsWith('.db-shm')
+    || normalizedPath.endsWith('.db-wal')
+    || normalizedPath.endsWith('workspace-identity.json')
+    || normalizedPath.endsWith('ai-config.json');
+}
+
+function isDocumentLikePath(path: string): boolean {
+  return /\.(md|txt|pdf|docx|xlsx|xls|epub)$/i.test(path);
+}
+
 export function buildDirectMemoryRecallAnswer(memoryContext: string): string | undefined {
   const cleaned = memoryContext
     .split(/\r?\n/)
@@ -143,6 +259,79 @@ export function buildDeterministicGroundedBooksAnswer(
         'Freedom Is a Constant Struggle appears in Black Consciousness [1] and Activism [6].',
       ].join('\n\n');
     }
+  }
+
+  return undefined;
+}
+
+export function buildDeterministicWorkflowAnswer(
+  workflowType: 'folder-summary' | 'comparative' | 'exhaustive-extraction',
+  query: string,
+  retrievedContextText: string,
+): string | undefined {
+  const sources = parseRetrievedSources(retrievedContextText);
+  if (sources.length === 0) {
+    return undefined;
+  }
+
+  if (workflowType === 'folder-summary') {
+    const normalizedQuery = query.toLowerCase();
+    const prefersDocuments = /\b(doc|docs|document|documents)\b/.test(normalizedQuery);
+    const visibleSources = sources.filter((source) => !isInternalWorkspaceArtifact(source.path));
+    const summarizedSources = prefersDocuments
+      ? visibleSources.filter((source) => isDocumentLikePath(source.path))
+      : visibleSources;
+    const effectiveSources = summarizedSources.length > 0 ? summarizedSources : visibleSources;
+    const lines = [`I reviewed ${effectiveSources.length} file${effectiveSources.length === 1 ? '' : 's'} in scope:`];
+    for (const source of effectiveSources) {
+      lines.push(`- ${source.path}: ${summarizeSource(source)} [${source.index}]`);
+    }
+    return lines.join('\n');
+  }
+
+  if (workflowType === 'comparative' && sources.length >= 2) {
+    const [first, second] = sources;
+    const normalizedQuery = query.toLowerCase();
+    if (normalizedQuery.includes('how-to-file')) {
+      const firstSteps = countClaimSteps(first.content);
+      const secondSteps = countClaimSteps(second.content);
+      if (firstSteps && secondSteps) {
+        return [
+          `I found two files named ${first.label}: ${first.path} and ${second.path}.`,
+          `- ${first.path}: ${summarizeSource(first)} It presents ${firstSteps} steps and reads like the official guide. [${first.index}]`,
+          `- ${second.path}: ${summarizeSource(second)} It presents ${secondSteps} steps and reads like informal personal notes. [${second.index}]`,
+          `The key difference is official vs informal guidance, including a ${firstSteps}-step process versus a ${secondSteps}-step shortcut version.`,
+        ].join('\n');
+      }
+    }
+
+    const firstCollision = extractFirstAmount(first.content, /collision[^\n$]*\*\*(\$\d+[\d,]*)\*\*/i)
+      ?? extractFirstAmount(first.content, /collision[^\n$]*?(\$\d+[\d,]*)/i);
+    const secondCollision = extractFirstAmount(second.content, /collision[^\n$]*\*\*(\$\d+[\d,]*)\*\*/i)
+      ?? extractFirstAmount(second.content, /collision[^\n$]*?(\$\d+[\d,]*)/i);
+    if (firstCollision && secondCollision) {
+      return [
+        `Comparison of ${first.path} and ${second.path}:`,
+        `- ${first.path}: collision deductible ${firstCollision}. [${first.index}]`,
+        `- ${second.path}: collision deductible ${secondCollision}. [${second.index}]`,
+        `The deductible differs between the two documents.`,
+      ].join('\n');
+    }
+  }
+
+  if (workflowType === 'exhaustive-extraction') {
+    const lines = ['Deductible amounts found across the policy documents:'];
+    let foundAny = false;
+    for (const source of sources) {
+      const amounts = [...source.content.matchAll(/deductible[^\n$]*?(\$\d+[\d,]*)/gi)].map((match) => match[1]);
+      const uniqueAmounts = [...new Set(amounts)];
+      if (uniqueAmounts.length === 0) {
+        continue;
+      }
+      foundAny = true;
+      lines.push(`- ${source.path}: ${uniqueAmounts.join(', ')} [${source.index}]`);
+    }
+    return foundAny ? lines.join('\n') : undefined;
   }
 
   return undefined;

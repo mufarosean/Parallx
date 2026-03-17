@@ -32,6 +32,8 @@ function mockServices(overrides?: Partial<IWorkspaceParticipantServices>): IWork
     getPageContent: vi.fn(async () => '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hello world"}]}]}'),
     getPageTitle: vi.fn(async () => 'Meeting Notes'),
     getWorkspaceName: vi.fn(() => 'Test Workspace'),
+    readFileContent: vi.fn(async (relativePath: string) => `content for ${relativePath}`),
+    reportParticipantDebug: vi.fn(),
     ...overrides,
   };
 }
@@ -64,6 +66,10 @@ function mockStream(): IChatResponseStream {
     beginToolInvocation: vi.fn(),
     updateToolInvocation: vi.fn(),
     push: vi.fn(),
+    replaceLastMarkdown: vi.fn(),
+    reportTokenUsage: vi.fn(),
+    setCitations: vi.fn(),
+    getMarkdownText: vi.fn(() => ''),
     throwIfDone: vi.fn(),
   };
 }
@@ -238,6 +244,69 @@ describe('workspace participant: general (no command)', () => {
     const system = messages.find((m) => m.role === 'system');
     expect(system?.content).toContain('Test Workspace');
     expect(system?.content).toContain('Meeting Notes');
+  });
+
+  it('includes shared turn scope and attachment content in the user message', async () => {
+    const services = mockServices();
+    const stream = mockStream();
+    const participant = createWorkspaceParticipant(services);
+
+    await participant.handler(
+      mockRequest({
+        text: 'Use this attachment',
+        attachments: [{
+          kind: 'file',
+          id: 'Claims Guide.md',
+          name: 'Claims Guide.md',
+          fullPath: 'Claims Guide.md',
+          isImplicit: false,
+        }],
+        turnState: {
+          rawText: 'Use this attachment',
+          effectiveText: 'Use this attachment',
+          userText: 'Use this attachment',
+          contextQueryText: 'Use this attachment',
+          semantics: {
+            rawText: 'Use this attachment',
+            normalizedText: 'use this attachment',
+            strippedApostropheText: 'use this attachment',
+            isConversational: false,
+            isExplicitMemoryRecall: false,
+            isExplicitTranscriptRecall: false,
+            isFileEnumeration: false,
+            isExhaustiveWorkspaceReview: false,
+            workflowTypeHint: 'scoped-topic',
+            groundedCoverageModeHint: 'representative',
+          },
+          queryScope: {
+            level: 'document',
+            pathPrefixes: ['Claims Guide.md'],
+            derivedFrom: 'inferred',
+            confidence: 0.9,
+            resolvedEntities: [{ naturalName: 'Claims Guide', resolvedPath: 'Claims Guide.md', kind: 'file' }],
+          },
+          turnRoute: { kind: 'grounded', reason: 'scoped', workflowType: 'scoped-topic', coverageMode: 'representative' },
+          hasActiveSlashCommand: false,
+          isConversationalTurn: false,
+          isRagReady: true,
+        },
+      }),
+      mockContext(),
+      stream,
+      mockToken(),
+    );
+
+    const messages = (services.sendChatRequest as ReturnType<typeof vi.fn>).mock.calls[0][0] as IChatMessage[];
+    const userMessage = messages.find((m) => m.role === 'user');
+    expect(userMessage?.content).toContain('[Shared turn scope] level=document; route=grounded');
+    expect(userMessage?.content).toContain('[Attached file: Claims Guide.md]');
+    expect(userMessage?.content).toContain('content for Claims Guide.md');
+    expect(services.reportParticipantDebug).toHaveBeenCalledWith(expect.objectContaining({
+      surface: 'workspace',
+      usedSharedTurnState: true,
+      attachmentCount: 1,
+      fileAttachmentCount: 1,
+    }));
   });
 });
 

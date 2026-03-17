@@ -36,6 +36,8 @@ function mockServices(overrides?: Partial<ICanvasParticipantServices>): ICanvasP
     getCurrentPageTitle: vi.fn(() => 'Design Doc'),
     getPageStructure: vi.fn(async () => MOCK_STRUCTURE),
     getWorkspaceName: vi.fn(() => 'Test Workspace'),
+    readFileContent: vi.fn(async (relativePath: string) => `content for ${relativePath}`),
+    reportParticipantDebug: vi.fn(),
     ...overrides,
   };
 }
@@ -68,6 +70,10 @@ function mockStream(): IChatResponseStream {
     beginToolInvocation: vi.fn(),
     updateToolInvocation: vi.fn(),
     push: vi.fn(),
+    replaceLastMarkdown: vi.fn(),
+    reportTokenUsage: vi.fn(),
+    setCitations: vi.fn(),
+    getMarkdownText: vi.fn(() => ''),
     throwIfDone: vi.fn(),
   };
 }
@@ -224,6 +230,39 @@ describe('canvas participant: general (no command)', () => {
     expect(services.getPageStructure).toHaveBeenCalledWith('page-1');
     expect(services.sendChatRequest).toHaveBeenCalled();
     expect(stream.markdown).toHaveBeenCalledWith('LLM canvas response');
+  });
+
+  it('passes image attachments through to the scoped participant user message and image payload', async () => {
+    const services = mockServices();
+    const stream = mockStream();
+    const participant = createCanvasParticipant(services);
+
+    await participant.handler(
+      mockRequest({
+        text: 'Describe this screenshot',
+        attachments: [{
+          kind: 'image',
+          id: 'image-1',
+          name: 'screenshot.png',
+          fullPath: 'image-1',
+          isImplicit: false,
+          mimeType: 'image/png',
+          data: 'abc123',
+        }],
+      }),
+      mockContext(),
+      stream,
+      mockToken(),
+    );
+
+    const messages = (services.sendChatRequest as ReturnType<typeof vi.fn>).mock.calls[0][0] as IChatMessage[];
+    const userMessage = messages.find((m) => m.role === 'user');
+    expect(userMessage?.content).toContain('[Attached image: screenshot.png]');
+    expect(userMessage?.images).toHaveLength(1);
+    expect(services.reportParticipantDebug).toHaveBeenCalledWith(expect.objectContaining({
+      surface: 'canvas',
+      imageAttachmentCount: 1,
+    }));
   });
 
   it('handles no active page gracefully', async () => {

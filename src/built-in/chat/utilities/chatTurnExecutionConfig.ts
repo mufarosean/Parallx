@@ -1,7 +1,4 @@
 import type {
-  AISettingsProfile,
-} from '../../../aiSettings/aiSettingsTypes.js';
-import type {
   ICancellationToken,
   IChatMessage,
   IChatRequestResponsePair,
@@ -27,7 +24,6 @@ export interface IBuildChatTurnExecutionConfigInput {
   readonly requestMode: import('../../../services/chatTypes.js').ChatMode;
   readonly requestText: string;
   readonly capabilities: IChatModeCapabilities;
-  readonly aiProfile?: AISettingsProfile;
   readonly messages: IChatMessage[];
   readonly userContent: string;
   readonly retrievedContextText: string;
@@ -58,14 +54,15 @@ export function buildChatTurnExecutionConfig(
   synthesisDeps: IExecutePreparedChatTurnDeps;
   synthesisOptions: IExecutePreparedChatTurnOptions;
 } {
+  const effectiveConfig = services.unifiedConfigService?.getEffectiveConfig();
   const requestOptions: IChatRequestOptions = {
     tools: (!input.isConversationalTurn && shouldIncludeTools(input.requestMode))
       ? (input.capabilities.canAutonomous ? services.getToolDefinitions() : services.getReadOnlyToolDefinitions())
       : undefined,
     format: shouldUseStructuredOutput(input.requestMode) ? { type: 'object' } : undefined,
     think: true,
-    temperature: input.aiProfile?.model.temperature,
-    maxTokens: input.aiProfile?.model.maxTokens || undefined,
+    temperature: effectiveConfig?.model.temperature,
+    maxTokens: effectiveConfig?.model.maxTokens || undefined,
   };
 
   const canInvokeTools = input.capabilities.canInvokeTools && !!services.invokeTool;

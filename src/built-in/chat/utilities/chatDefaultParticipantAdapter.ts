@@ -52,7 +52,6 @@ export interface IChatDefaultParticipantAdapterDeps {
   readonly compactSession?: IDefaultParticipantServices['compactSession'];
   readonly getWorkspaceDigest?: IDefaultParticipantServices['getWorkspaceDigest'];
   readonly sessionManager?: IDefaultParticipantServices['sessionManager'];
-  readonly aiSettingsService?: IDefaultParticipantServices['aiSettingsService'];
   readonly unifiedConfigService?: IDefaultParticipantServices['unifiedConfigService'];
 }
 
@@ -106,7 +105,6 @@ export function buildChatDefaultParticipantServices(
     compactSession: deps.compactSession,
     getWorkspaceDigest: deps.getWorkspaceDigest,
     sessionManager: deps.sessionManager,
-    aiSettingsService: deps.aiSettingsService,
     unifiedConfigService: deps.unifiedConfigService,
   };
 }

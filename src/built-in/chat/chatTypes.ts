@@ -114,8 +114,6 @@ export interface IDefaultParticipantServices {
   getWorkspaceDigest?(): Promise<string | undefined>;
   /** Session manager for stale session detection during tool invocations. */
   sessionManager?: ISessionManager;
-  /** AI Settings service for persona overlay and model parameters (M15). */
-  aiSettingsService?: { getActiveProfile(): import('../../aiSettings/aiSettingsTypes.js').AISettingsProfile };
   /** Unified AI Config service for all configuration (M20). */
   unifiedConfigService?: IUnifiedAIConfigService;
   /** M39: Return lightweight catalog of workflow skills for prompt injection. */
@@ -139,6 +137,15 @@ export interface IWorkspaceParticipantServices {
   getWorkspaceName(): string;
   listFiles?(relativePath: string): Promise<readonly { name: string; type: 'file' | 'directory'; size: number }[]>;
   readFileContent?(relativePath: string): Promise<string>;
+  reportParticipantDebug?(debug: {
+    surface: 'workspace' | 'canvas';
+    usedSharedTurnState: boolean;
+    attachmentCount: number;
+    fileAttachmentCount: number;
+    imageAttachmentCount: number;
+    queryScopeLevel?: string;
+    semanticFallbackKind?: string;
+  }): void;
   reportRetrievalDebug?(debug: {
     hasActiveSlashCommand: boolean;
     isRagReady: boolean;
@@ -160,6 +167,16 @@ export interface ICanvasParticipantServices {
   getCurrentPageTitle(): string | undefined;
   getPageStructure(pageId: string): Promise<IPageStructure | null>;
   getWorkspaceName(): string;
+  readFileContent?(relativePath: string): Promise<string>;
+  reportParticipantDebug?(debug: {
+    surface: 'workspace' | 'canvas';
+    usedSharedTurnState: boolean;
+    attachmentCount: number;
+    fileAttachmentCount: number;
+    imageAttachmentCount: number;
+    queryScopeLevel?: string;
+    semanticFallbackKind?: string;
+  }): void;
   reportRetrievalDebug?(debug: {
     hasActiveSlashCommand: boolean;
     isRagReady: boolean;
@@ -722,7 +739,7 @@ export interface IChatParsedRequest {
   readonly text: string;
 }
 
-export type ChatParticipantSurface = 'default' | 'workspace' | 'canvas';
+export type ChatParticipantSurface = 'default' | 'workspace' | 'canvas' | 'bridge';
 
 export interface IChatParticipantInterpretation {
   readonly surface: ChatParticipantSurface;

@@ -20,7 +20,6 @@ type IChatTurnMessageAssemblyDeps = Pick<
   | 'getPreferencesForPrompt'
   | 'isRAGAvailable'
   | 'isIndexing'
-  | 'aiSettingsService'
   | 'unifiedConfigService'
   | 'getWorkflowSkillCatalog'
 >;
@@ -57,9 +56,9 @@ export async function assembleChatTurnMessages(
     services.getPreferencesForPrompt ? services.getPreferencesForPrompt().catch(() => undefined) : Promise.resolve(undefined),
   ]);
 
-  const aiProfile = services.aiSettingsService?.getActiveProfile();
-  const promptOverlay = aiProfile?.chat.systemPrompt || promptOverlayFromFiles;
-  const workspaceDescription = services.unifiedConfigService?.getEffectiveConfig().chat.workspaceDescription ?? '';
+  const effectiveConfig = services.unifiedConfigService?.getEffectiveConfig();
+  const promptOverlay = effectiveConfig?.chat.systemPrompt || promptOverlayFromFiles;
+  const workspaceDescription = effectiveConfig?.chat.workspaceDescription ?? '';
 
   const promptContext: ISystemPromptContext = {
     workspaceName: services.getWorkspaceName(),

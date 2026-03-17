@@ -176,7 +176,8 @@ test.describe('Chat Conversational Balance', () => {
     expect(chatRequests.length).toBeGreaterThanOrEqual(1);
     const lastReq = chatRequests[chatRequests.length - 1];
     const userMsg = lastReq.messages.find((m: any) => m.role === 'user');
-    expect(userMsg.content).toBe('hello');
+    expect(userMsg.content).toContain('hello');
+    expect(userMsg.content).toContain('[User Request]');
     expect(userMsg.content).not.toContain('[Retrieved Context]');
     expect(userMsg.content).not.toContain('Currently open page');
     expect(lastReq.tools ?? []).toHaveLength(0);

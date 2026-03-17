@@ -567,6 +567,94 @@ export type IChatParticipantHandler = (
   token: ICancellationToken,
 ) => Promise<IChatParticipantResult>;
 
+export type IChatParticipantWorkflowType =
+  | 'generic-grounded'
+  | 'scoped-topic'
+  | 'folder-summary'
+  | 'document-summary'
+  | 'comparative'
+  | 'exhaustive-extraction'
+  | 'mixed';
+
+export interface IChatParticipantTurnSemantics {
+  readonly rawText: string;
+  readonly normalizedText: string;
+  readonly strippedApostropheText: string;
+  readonly isConversational: boolean;
+  readonly isExplicitMemoryRecall: boolean;
+  readonly isExplicitTranscriptRecall: boolean;
+  readonly isFileEnumeration: boolean;
+  readonly isExhaustiveWorkspaceReview: boolean;
+  readonly offTopicDirectAnswer?: string;
+  readonly productSemanticsDirectAnswer?: string;
+  readonly workflowTypeHint: IChatParticipantWorkflowType;
+  readonly groundedCoverageModeHint?: 'representative' | 'exhaustive' | 'enumeration';
+}
+
+export interface IChatParticipantMention {
+  readonly kind: 'file' | 'folder' | 'workspace' | 'terminal';
+  readonly path?: string;
+  readonly original: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+export interface IChatParticipantResolvedEntity {
+  readonly naturalName: string;
+  readonly resolvedPath: string;
+  readonly kind: 'folder' | 'file' | 'page';
+}
+
+export interface IChatParticipantQueryScope {
+  readonly level: 'workspace' | 'folder' | 'document' | 'selection';
+  readonly pathPrefixes?: readonly string[];
+  readonly documentIds?: readonly string[];
+  readonly derivedFrom: 'explicit-mention' | 'inferred' | 'contextual';
+  readonly resolvedEntities?: readonly IChatParticipantResolvedEntity[];
+  readonly confidence: number;
+}
+
+export interface IChatParticipantTurnRoute {
+  readonly kind: 'grounded' | 'product-semantics' | 'off-topic' | 'transcript-recall' | 'memory-recall' | 'conversational';
+  readonly reason: string;
+  readonly directAnswer?: string;
+  readonly coverageMode?: 'representative' | 'exhaustive' | 'enumeration';
+  readonly workflowType?: IChatParticipantWorkflowType;
+}
+
+export interface IChatParticipantSemanticFallbackDecision {
+  readonly kind: 'broad-workspace-summary';
+  readonly confidence: number;
+  readonly reason: string;
+  readonly workflowTypeHint: IChatParticipantWorkflowType;
+  readonly groundedCoverageModeHint: 'exhaustive';
+}
+
+export interface IChatParticipantTurnState {
+  readonly rawText: string;
+  readonly effectiveText: string;
+  readonly userText: string;
+  readonly contextQueryText: string;
+  readonly mentions?: readonly IChatParticipantMention[];
+  readonly semantics: IChatParticipantTurnSemantics;
+  readonly queryScope: IChatParticipantQueryScope;
+  readonly turnRoute: IChatParticipantTurnRoute;
+  readonly semanticFallback?: IChatParticipantSemanticFallbackDecision;
+  readonly hasActiveSlashCommand: boolean;
+  readonly isConversationalTurn: boolean;
+  readonly isRagReady: boolean;
+}
+
+export interface IChatParticipantRequestInterpretation {
+  readonly surface: 'default' | 'workspace' | 'canvas' | 'bridge';
+  readonly rawText: string;
+  readonly effectiveText: string;
+  readonly commandName?: string;
+  readonly hasExplicitCommand: boolean;
+  readonly kind: 'command' | 'message';
+  readonly semantics?: IChatParticipantTurnSemantics;
+}
+
 /**
  * The parsed request passed to a participant handler.
  *
@@ -589,6 +677,10 @@ export interface IChatParticipantRequest {
   readonly modelId: string;
   /** Retry attempt count (0 = first attempt). */
   readonly attempt: number;
+  /** Shared first-pass request interpretation metadata, if available for this surface. */
+  readonly interpretation?: IChatParticipantRequestInterpretation;
+  /** Shared first-pass turn state computed before dispatch. */
+  readonly turnState?: IChatParticipantTurnState;
 }
 
 /**
@@ -893,6 +985,8 @@ export interface IChatService extends IDisposable {
   setSessionManager(sessionManager: import('./serviceTypes.js').ISessionManager): void;
   /** Late-bind a workspace transcript service for canonical transcript persistence. */
   setTranscriptService(transcriptService: import('./serviceTypes.js').IWorkspaceTranscriptService): void;
+  /** Late-bind workspace-aware turn preparation helpers used before agent dispatch. */
+  setTurnPreparationServices(services: IChatTurnPreparationServices): void;
   /** Send a user message and orchestrate the full request pipeline. */
   sendRequest(sessionId: string, message: string, options?: IChatSendRequestOptions): Promise<IChatParticipantResult>;
   /** Cancel the in-progress request for a session. */
@@ -932,6 +1026,13 @@ export interface IChatSendRequestOptions {
   readonly attempt?: number;
   /** Original request ID when replaying a prior turn; when found, the prior turn is replaced. */
   readonly replayOfRequestId?: string;
+}
+
+export interface IChatTurnPreparationServices {
+  /** List files relative to the active workspace root for scope resolution. */
+  readonly listFilesRelative?: (relativePath: string) => Promise<{ name: string; type: 'file' | 'directory' }[]>;
+  /** Whether RAG is currently available for this workspace. */
+  readonly isRAGAvailable?: () => boolean;
 }
 
 export const IChatService = createServiceIdentifier<IChatService>('IChatService');
